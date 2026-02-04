@@ -1,0 +1,233 @@
+{
+    "name": "Demo Level (con Reglas)",
+    "description": "Nivel de prueba con reglas de eventos",
+    "entities": [
+        {
+            "name": "Player",
+            "components": {
+                "Transform": {
+                    "x": 150,
+                    "y": 100
+                },
+                "Collider": {
+                    "width": 30,
+                    "height": 30
+                },
+                "RigidBody": {
+                    "gravity_scale": 1.0
+                },
+                "Animator": {
+                    "sprite_sheet": "assets/test_spritesheet.png",
+                    "frame_width": 32,
+                    "frame_height": 32,
+                    "animations": {
+                        "idle": {
+                            "frames": [
+                                0,
+                                1,
+                                2,
+                                3
+                            ],
+                            "fps": 4,
+                            "loop": true
+                        },
+                        "run": {
+                            "frames": [
+                                4,
+                                5,
+                                6,
+                                7
+                            ],
+                            "fps": 8,
+                            "loop": true
+                        },
+                        "hit": {
+                            "frames": [
+                                0,
+                                4,
+                                0,
+                                4
+                            ],
+                            "fps": 10,
+                            "loop": false,
+                            "on_complete": "idle"
+                        }
+                    },
+                    "current_state": "idle"
+                }
+            }
+        },
+        {
+            "name": "Enemy",
+            "components": {
+                "Transform": {
+                    "x": 350,
+                    "y": 100,
+                    "scale_x": 1.2,
+                    "scale_y": 1.2
+                },
+                "Collider": {
+                    "width": 35,
+                    "height": 35
+                },
+                "RigidBody": {
+                    "gravity_scale": 0.8
+                },
+                "Animator": {
+                    "sprite_sheet": "assets/test_spritesheet.png",
+                    "frame_width": 32,
+                    "frame_height": 32,
+                    "animations": {
+                        "spin": {
+                            "frames": [
+                                7,
+                                6,
+                                5,
+                                4,
+                                3,
+                                2,
+                                1,
+                                0
+                            ],
+                            "fps": 10,
+                            "loop": true
+                        }
+                    },
+                    "current_state": "spin"
+                }
+            }
+        },
+        {
+            "name": "Coin",
+            "components": {
+                "Transform": {
+                    "x": 250,
+                    "y": 350,
+                    "scale_x": 0.8,
+                    "scale_y": 0.8
+                },
+                "Collider": {
+                    "width": 24,
+                    "height": 24,
+                    "is_trigger": true
+                }
+            }
+        },
+        {
+            "name": "Ground",
+            "components": {
+                "Transform": {
+                    "x": 250,
+                    "y": 570,
+                    "scale_x": 12.0,
+                    "scale_y": 1.0
+                },
+                "Collider": {
+                    "width": 400,
+                    "height": 32
+                }
+            }
+        },
+        {
+            "name": "Platform",
+            "components": {
+                "Transform": {
+                    "x": 250,
+                    "y": 400
+                },
+                "Collider": {
+                    "width": 120,
+                    "height": 20
+                }
+            }
+        }
+    ],
+    "rules": [
+        {
+            "event": "on_collision",
+            "when": {
+                "entity_a": "Player",
+                "entity_b": "Enemy"
+            },
+            "do": [
+                {
+                    "action": "set_animation",
+                    "entity": "Player",
+                    "state": "hit"
+                },
+                {
+                    "action": "log_message",
+                    "message": "Player colisionó con Enemy!"
+                }
+            ]
+        },
+        {
+            "event": "on_collision",
+            "when": {
+                "entity_a": "Enemy",
+                "entity_b": "Player"
+            },
+            "do": [
+                {
+                    "action": "set_animation",
+                    "entity": "Player",
+                    "state": "hit"
+                },
+                {
+                    "action": "log_message",
+                    "message": "Enemy colisionó con Player!"
+                }
+            ]
+        },
+        {
+            "event": "on_trigger_enter",
+            "when": {
+                "entity_a": "Player",
+                "entity_b": "Coin"
+            },
+            "do": [
+                {
+                    "action": "destroy_entity",
+                    "entity": "Coin"
+                },
+                {
+                    "action": "log_message",
+                    "message": "¡Moneda recogida!"
+                },
+                {
+                    "action": "emit_event",
+                    "event": "on_coin_collected",
+                    "data": {
+                        "value": 100
+                    }
+                }
+            ]
+        },
+        {
+            "event": "on_trigger_enter",
+            "when": {
+                "entity_a": "Coin",
+                "entity_b": "Player"
+            },
+            "do": [
+                {
+                    "action": "destroy_entity",
+                    "entity": "Coin"
+                },
+                {
+                    "action": "log_message",
+                    "message": "¡Moneda recogida!"
+                }
+            ]
+        },
+        {
+            "event": "on_coin_collected",
+            "do": [
+                {
+                    "action": "log_message",
+                    "message": "Evento on_coin_collected recibido"
+                }
+            ]
+        }
+    ]
+}
