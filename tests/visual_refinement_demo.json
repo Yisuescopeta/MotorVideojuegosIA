@@ -1,0 +1,37 @@
+[
+    {
+        "action": "LOAD_SCENE",
+        "args": {
+            "path": "levels/demo_level.json"
+        }
+    },
+    {
+        "action": "WAIT",
+        "args": {
+            "frames": 60
+        }
+    },
+    {
+        "action": "PLAY",
+        "args": {}
+    },
+    {
+        "action": "WAIT",
+        "args": {
+            "frames": 120
+        }
+    },
+    {
+        "action": "STOP",
+        "args": {}
+    },
+    {
+        "action": "WAIT",
+        "args": {
+            "frames": 60
+        }
+    },
+    {
+        "action": "EXIT"
+    }
+]

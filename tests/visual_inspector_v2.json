@@ -1,0 +1,41 @@
+[
+    {
+        "action": "LOAD_SCENE",
+        "args": {
+            "path": "levels/demo_level.json"
+        }
+    },
+    {
+        "action": "WAIT",
+        "args": {
+            "frames": 60
+        }
+    },
+    {
+        "action": "SELECT",
+        "args": {
+            "name": "Player"
+        }
+    },
+    {
+        "action": "WAIT",
+        "args": {
+            "frames": 300
+        }
+    },
+    {
+        "action": "SELECT",
+        "args": {
+            "name": "Enemy"
+        }
+    },
+    {
+        "action": "WAIT",
+        "args": {
+            "frames": 300
+        }
+    },
+    {
+        "action": "EXIT"
+    }
+]

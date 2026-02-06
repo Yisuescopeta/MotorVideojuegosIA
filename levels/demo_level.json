@@ -1,0 +1,178 @@
+{
+    "entities": [
+        {
+            "name": "Player",
+            "components": {
+                "Transform": {
+                    "x": 150,
+                    "y": 100,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Collider": {
+                    "width": 30,
+                    "height": 30,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": false
+                },
+                "RigidBody": {
+                    "velocity_x": 0.0,
+                    "velocity_y": 0.0,
+                    "gravity_scale": 1.0,
+                    "is_grounded": false
+                },
+                "Animator": {
+                    "sprite_sheet": "assets/test_spritesheet.png",
+                    "frame_width": 32,
+                    "frame_height": 32,
+                    "animations": {
+                        "idle": {
+                            "frames": [
+                                0,
+                                1,
+                                2,
+                                3
+                            ],
+                            "fps": 4,
+                            "loop": true
+                        },
+                        "run": {
+                            "frames": [
+                                4,
+                                5,
+                                6,
+                                7
+                            ],
+                            "fps": 8,
+                            "loop": true
+                        },
+                        "hit": {
+                            "frames": [
+                                0,
+                                4,
+                                0,
+                                4
+                            ],
+                            "fps": 10,
+                            "loop": false,
+                            "on_complete": "idle"
+                        }
+                    },
+                    "current_state": "idle",
+                    "current_frame": 2,
+                    "is_finished": false
+                }
+            }
+        },
+        {
+            "name": "Enemy",
+            "components": {
+                "Transform": {
+                    "x": 350,
+                    "y": 100,
+                    "rotation": 0.0,
+                    "scale_x": 1.2,
+                    "scale_y": 1.2
+                },
+                "Collider": {
+                    "width": 35,
+                    "height": 35,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": false
+                },
+                "RigidBody": {
+                    "velocity_x": 0.0,
+                    "velocity_y": 0.0,
+                    "gravity_scale": 0.8,
+                    "is_grounded": false
+                },
+                "Animator": {
+                    "sprite_sheet": "assets/test_spritesheet.png",
+                    "frame_width": 32,
+                    "frame_height": 32,
+                    "animations": {
+                        "spin": {
+                            "frames": [
+                                7,
+                                6,
+                                5,
+                                4,
+                                3,
+                                2,
+                                1,
+                                0
+                            ],
+                            "fps": 10,
+                            "loop": true
+                        }
+                    },
+                    "current_state": "spin",
+                    "current_frame": 7,
+                    "is_finished": false
+                }
+            }
+        },
+        {
+            "name": "Coin",
+            "components": {
+                "Transform": {
+                    "x": 250,
+                    "y": 350,
+                    "rotation": 0.0,
+                    "scale_x": 0.8,
+                    "scale_y": 0.8
+                },
+                "Collider": {
+                    "width": 24,
+                    "height": 24,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true
+                }
+            }
+        },
+        {
+            "name": "Ground",
+            "components": {
+                "Transform": {
+                    "x": 250,
+                    "y": 570,
+                    "rotation": 0.0,
+                    "scale_x": 12.0,
+                    "scale_y": 1.0
+                },
+                "Collider": {
+                    "width": 400,
+                    "height": 32,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": false
+                }
+            }
+        },
+        {
+            "name": "Platform",
+            "components": {
+                "Transform": {
+                    "x": 250,
+                    "y": 400,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Collider": {
+                    "width": 120,
+                    "height": 20,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": false
+                }
+            }
+        }
+    ],
+    "rules": [],
+    "name": "Demo Level (con Reglas)"
+}

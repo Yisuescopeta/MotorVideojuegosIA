@@ -1,0 +1,41 @@
+[
+    {
+        "action": "LOAD_SCENE",
+        "args": {
+            "path": "levels/demo_level.json"
+        }
+    },
+    {
+        "action": "WAIT",
+        "args": {
+            "frames": 1
+        }
+    },
+    {
+        "action": "INSPECT_EDIT",
+        "args": {
+            "entity": "Ground",
+            "component": "Transform",
+            "property": "x",
+            "value": 500.0
+        }
+    },
+    {
+        "action": "WAIT",
+        "args": {
+            "frames": 1
+        }
+    },
+    {
+        "action": "ASSERT_POS",
+        "args": {
+            "entity": "Ground",
+            "x": 500.0,
+            "y": 570.0,
+            "tolerance": 0.1
+        }
+    },
+    {
+        "action": "EXIT"
+    }
+]

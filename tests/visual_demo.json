@@ -1,0 +1,80 @@
+[
+    {
+        "action": "LOAD_SCENE",
+        "args": {
+            "path": "levels/demo_level.json"
+        }
+    },
+    {
+        "action": "WAIT",
+        "args": {
+            "frames": 60
+        }
+    },
+    {
+        "action": "SELECT",
+        "args": {
+            "name": "Player"
+        }
+    },
+    {
+        "action": "WAIT",
+        "args": {
+            "frames": 60
+        }
+    },
+    {
+        "action": "INSPECT_EDIT",
+        "args": {
+            "entity": "Player",
+            "component": "Transform",
+            "property": "x",
+            "value": 400.0
+        }
+    },
+    {
+        "action": "WAIT",
+        "args": {
+            "frames": 60
+        }
+    },
+    {
+        "action": "SELECT",
+        "args": {
+            "name": "Enemy"
+        }
+    },
+    {
+        "action": "WAIT",
+        "args": {
+            "frames": 30
+        }
+    },
+    {
+        "action": "INSPECT_EDIT",
+        "args": {
+            "entity": "Enemy",
+            "component": "Transform",
+            "property": "x",
+            "value": 450.0
+        }
+    },
+    {
+        "action": "WAIT",
+        "args": {
+            "frames": 60
+        }
+    },
+    {
+        "action": "PLAY"
+    },
+    {
+        "action": "WAIT",
+        "args": {
+            "frames": 180
+        }
+    },
+    {
+        "action": "EXIT"
+    }
+]
