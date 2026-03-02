@@ -1,0 +1,3 @@
+# Verification Rules
+- Always create a verification script for critical logic fixes before notifying the user.
+- Whenever you modify core systems (Game Loop, Inspector, etc.), verify the changes with a script or automated test if possible.
