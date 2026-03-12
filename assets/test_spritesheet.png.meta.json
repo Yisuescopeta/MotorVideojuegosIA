@@ -1,0 +1,21 @@
+{
+    "guid": "ast_4b39dcc9f7c84d3aaa435429284d42aa",
+    "source_path": "assets/test_spritesheet.png",
+    "path": "assets/test_spritesheet.png",
+    "asset_kind": "texture",
+    "importer": "texture",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "sprite_sheet",
+        "import_mode": "grid",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "sprite_sheet",
+    "import_mode": "grid",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

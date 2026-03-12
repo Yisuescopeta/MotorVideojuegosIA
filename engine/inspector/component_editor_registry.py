@@ -24,3 +24,6 @@ class ComponentEditorRegistry:
 
     def has(self, component_name: str) -> bool:
         return component_name in self._editors
+
+    def list_registered(self) -> list[str]:
+        return list(self._editors.keys())

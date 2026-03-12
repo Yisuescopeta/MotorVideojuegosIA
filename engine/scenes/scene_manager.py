@@ -61,6 +61,7 @@ class SceneManager:
         self._is_playing: bool = False
         self._selected_entity_name: Optional[str] = None
         self._dirty: bool = False
+        self._edit_world_sync_pending: bool = False
         self._history: Any = None
     
     @property
@@ -107,6 +108,7 @@ class SceneManager:
         self._runtime_world = None
         self._is_playing = False
         self._dirty = False
+        self._edit_world_sync_pending = False
 
         log_info(f"SceneManager: Scene '{self._scene.name}' loaded.")
         return self._edit_world
@@ -154,6 +156,7 @@ class SceneManager:
             self._selected_entity_name = self._runtime_world.selected_entity_name or self._selected_entity_name
         self._runtime_world = None
         self._is_playing = False
+        self._edit_world_sync_pending = False
         
         # Restaurar World desde Scene
         self._rebuild_edit_world()
@@ -189,6 +192,7 @@ class SceneManager:
         self._is_playing = False
         self._rebuild_edit_world()
         self._dirty = False
+        self._edit_world_sync_pending = False
         
         print(f"[INFO] SceneManager: escena recargada")
         return self._edit_world
@@ -221,6 +225,7 @@ class SceneManager:
         
         if self._scene is None or self._edit_world is None:
             return False
+        self._flush_pending_edit_world()
         before = copy.deepcopy(self._scene.to_dict())
         if not self._scene.update_component(entity_name, component_name, property_name, value):
             return False
@@ -233,12 +238,26 @@ class SceneManager:
         """Actualiza un metadato de entidad y reconstruye el mundo de edicion."""
         if self._is_playing or self._scene is None:
             return False
+        self._flush_pending_edit_world()
         before = copy.deepcopy(self._scene.to_dict())
         if not self._scene.update_entity_property(entity_name, property_name, value):
             return False
         self._rebuild_edit_world()
         self._dirty = True
         self._record_scene_change(f"{entity_name}.{property_name}", before)
+        return True
+
+    def replace_component_data(self, entity_name: str, component_name: str, component_data: Dict[str, Any]) -> bool:
+        """Reemplaza la fuente serializable completa de un componente."""
+        if self._is_playing or self._scene is None or self._edit_world is None:
+            return False
+        self._flush_pending_edit_world()
+        before = copy.deepcopy(self._scene.to_dict())
+        if not self._scene.replace_component_data(entity_name, component_name, copy.deepcopy(component_data)):
+            return False
+        self._rebuild_edit_world()
+        self._dirty = True
+        self._record_scene_change(f"{entity_name}.{component_name}", before)
         return True
 
     def set_entity_active(self, entity_name: str, active: bool) -> bool:
@@ -257,6 +276,7 @@ class SceneManager:
         """Crea una entidad serializable en la escena de edicion."""
         if self._is_playing or self._scene is None:
             return False
+        self._flush_pending_edit_world()
         entity_data = {
             "name": name,
             "active": True,
@@ -276,6 +296,7 @@ class SceneManager:
         """Crea una entidad completa a partir de datos serializables."""
         if self._is_playing or self._scene is None:
             return False
+        self._flush_pending_edit_world()
         payload = copy.deepcopy(entity_data)
         payload.setdefault("active", True)
         payload.setdefault("tag", "Untagged")
@@ -293,6 +314,7 @@ class SceneManager:
         """Elimina una entidad de la escena de edicion."""
         if self._is_playing or self._scene is None:
             return False
+        self._flush_pending_edit_world()
         before = copy.deepcopy(self._scene.to_dict())
         if not self._scene.remove_entity(entity_name):
             return False
@@ -310,6 +332,7 @@ class SceneManager:
         """Añade un componente a la entidad en la escena de edicion."""
         if self._is_playing or self._scene is None:
             return False
+        self._flush_pending_edit_world()
         data = component_data or {"enabled": True}
         before = copy.deepcopy(self._scene.to_dict())
         if not self._scene.add_component(entity_name, component_name, data):
@@ -323,6 +346,7 @@ class SceneManager:
         """Elimina un componente de la entidad y reconstruye el mundo."""
         if self._is_playing or self._scene is None:
             return False
+        self._flush_pending_edit_world()
         before = copy.deepcopy(self._scene.to_dict())
         if not self._scene.remove_component(entity_name, component_name):
             return False
@@ -339,11 +363,14 @@ class SceneManager:
         """Devuelve los datos serializados de una entidad de la escena actual."""
         if self._scene is None:
             return None
+        self._flush_pending_edit_world()
         return self._scene.find_entity(entity_name)
 
-    def sync_from_edit_world(self) -> bool:
+    def sync_from_edit_world(self, force: bool = False) -> bool:
         """Sincroniza el world visible hacia la escena serializable."""
         if self._is_playing or self._scene is None or self._edit_world is None:
+            return False
+        if not force and not self._edit_world_sync_pending:
             return False
         self._selected_entity_name = self._edit_world.selected_entity_name
         data = self._edit_world.serialize()
@@ -351,6 +378,15 @@ class SceneManager:
         data["rules"] = self._scene.rules_data
         data["feature_metadata"] = self._scene.feature_metadata
         self._scene = Scene(data["name"], data)
+        self._edit_world_sync_pending = False
+        return True
+
+    def mark_edit_world_dirty(self) -> bool:
+        """Marca que el World de edicion fue mutado fuera del modelo Scene."""
+        if self._is_playing or self._scene is None or self._edit_world is None:
+            return False
+        self._dirty = True
+        self._edit_world_sync_pending = True
         return True
 
     def set_selected_entity(self, entity_name: Optional[str]) -> bool:
@@ -380,7 +416,7 @@ class SceneManager:
             
         try:
              import json
-             self.sync_from_edit_world()
+             self.sync_from_edit_world(force=True)
              data = self._scene.to_dict() if self._scene is not None else self._edit_world.serialize()
              data["name"] = self._scene.name if self._scene else "Untitled"
              
@@ -392,6 +428,7 @@ class SceneManager:
              self._scene = Scene(data["name"], data)
              self._rebuild_edit_world()
              self._dirty = False
+             self._edit_world_sync_pending = False
              return True
         except Exception as e:
             print(f"[SCENE] Error al guardar en {path}: {e}")
@@ -412,6 +449,7 @@ class SceneManager:
         self._runtime_world = None
         self._is_playing = False
         self._dirty = False
+        self._edit_world_sync_pending = False
         
         log_info(f"SceneManager: Nueva escena '{name}' creada.")
         return self._edit_world
@@ -456,6 +494,7 @@ class SceneManager:
         self._scene = Scene(data.get("name", self.scene_name), copy.deepcopy(data))
         self._rebuild_edit_world()
         self._dirty = True
+        self._edit_world_sync_pending = False
         return True
 
     def clear_dirty(self) -> None:
@@ -470,3 +509,7 @@ class SceneManager:
             undo=lambda: self.restore_scene_data(before),
             redo=lambda: self.restore_scene_data(after),
         )
+
+    def _flush_pending_edit_world(self) -> None:
+        if self._edit_world_sync_pending:
+            self.sync_from_edit_world(force=True)

@@ -1,0 +1,21 @@
+{
+    "guid": "ast_cce65bdcbc634e99bf978b194dcb0675",
+    "source_path": "scripts/__init__.py",
+    "path": "scripts/__init__.py",
+    "asset_kind": "script",
+    "importer": "script",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "script",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "script",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

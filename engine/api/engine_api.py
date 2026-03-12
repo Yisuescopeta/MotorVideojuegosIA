@@ -31,24 +31,32 @@ from engine.systems.script_behaviour_system import ScriptBehaviourSystem
 from engine.systems.selection_system import SelectionSystem
 from engine.assets.asset_service import AssetService
 
+_UNSET = object()
+
 
 class EngineAPI:
     """
     API publica para controlar el motor y editar el contenido sin usar internals.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        project_root: str | None = None,
+        global_state_dir: str | None = None,
+    ) -> None:
         self.game: Optional[HeadlessGame] = None
         self.scene_manager: Optional[SceneManager] = None
         self.project_service: Optional[ProjectService] = None
         self.asset_service: Optional[AssetService] = None
         self._registry = create_default_registry()
+        self._project_root = project_root or os.getcwd()
+        self._global_state_dir = global_state_dir
         self._initialize_engine()
 
     def _initialize_engine(self) -> None:
         self.game = HeadlessGame()
         self.scene_manager = SceneManager(self._registry)
-        self.project_service = ProjectService(os.getcwd())
+        self.project_service = ProjectService(self._project_root, global_state_dir=self._global_state_dir)
         self.asset_service = AssetService(self.project_service)
 
         event_bus = EventBus()  # type: ignore
@@ -87,6 +95,18 @@ class EngineAPI:
     def stop(self) -> None:
         if self.game is not None:
             self.game.stop()
+
+    def undo(self) -> ActionResult:
+        if self.game is None:
+            return self._fail("Engine not initialized")
+        success = self.game.undo()
+        return self._ok("Undo applied") if success else self._fail("Undo unavailable")
+
+    def redo(self) -> ActionResult:
+        if self.game is None:
+            return self._fail("Engine not initialized")
+        success = self.game.redo()
+        return self._ok("Redo applied") if success else self._fail("Redo unavailable")
 
     def step(self, frames: int = 1) -> None:
         if self.game is None:
@@ -322,6 +342,7 @@ class EngineAPI:
             },
             "AudioSource": {
                 "enabled": True,
+                "asset": {"guid": "", "path": ""},
                 "asset_path": "",
                 "volume": 1.0,
                 "pitch": 1.0,
@@ -370,6 +391,7 @@ class EngineAPI:
             "ScriptBehaviour",
             {
                 "enabled": enabled,
+                "script": {"guid": "", "path": ""},
                 "module_path": module_path,
                 "run_in_edit_mode": run_in_edit_mode,
                 "public_data": public_data or {},
@@ -437,6 +459,11 @@ class EngineAPI:
             return []
         return self.project_service.list_recent_projects()
 
+    def get_project_manifest(self) -> Dict[str, Any]:
+        if self.project_service is None:
+            return {}
+        return self.project_service.get_project_summary()
+
     def open_project(self, path: str) -> ActionResult:
         if self.project_service is None or self.game is None:
             return self._fail("Project service not ready")
@@ -445,10 +472,61 @@ class EngineAPI:
             return self._fail("Open project failed")
         return self._ok("Project opened", {"path": self.project_service.project_root.as_posix()})
 
+    def get_editor_state(self) -> Dict[str, Any]:
+        if self.project_service is None:
+            return {}
+        return self.project_service.load_editor_state()
+
+    def save_editor_state(self, data: Dict[str, Any]) -> ActionResult:
+        if self.project_service is None:
+            return self._fail("Project service not ready")
+        self.project_service.save_editor_state(data)
+        return self._ok("Editor state saved", self.project_service.load_editor_state())
+
     def list_project_assets(self, search: str = "") -> list[Dict[str, Any]]:
         if self.asset_service is None:
             return []
         return self.asset_service.list_assets(search=search)
+
+    def refresh_asset_catalog(self) -> ActionResult:
+        if self.asset_service is None:
+            return self._fail("Asset service not ready")
+        catalog = self.asset_service.refresh_catalog()
+        return self._ok("Asset catalog refreshed", {"count": len(catalog.get("assets", [])), "catalog": catalog})
+
+    def find_assets(
+        self,
+        search: str = "",
+        asset_kind: str = "",
+        importer: str = "",
+        extensions: Optional[list[str]] = None,
+    ) -> list[Dict[str, Any]]:
+        if self.asset_service is None:
+            return []
+        return self.asset_service.find_assets(search=search, asset_kind=asset_kind, importer=importer, extensions=extensions)
+
+    def get_asset_reference(self, locator: str) -> Dict[str, str]:
+        if self.asset_service is None:
+            return {"guid": "", "path": ""}
+        return self.asset_service.get_asset_reference(locator)
+
+    def move_asset(self, locator: str, destination_path: str) -> ActionResult:
+        if self.asset_service is None:
+            return self._fail("Asset service not ready")
+        moved = self.asset_service.move_asset(locator, destination_path)
+        return self._ok("Asset moved", moved) if moved is not None else self._fail("Asset move failed")
+
+    def rename_asset(self, locator: str, new_name: str) -> ActionResult:
+        if self.asset_service is None:
+            return self._fail("Asset service not ready")
+        renamed = self.asset_service.rename_asset(locator, new_name)
+        return self._ok("Asset renamed", renamed) if renamed is not None else self._fail("Asset rename failed")
+
+    def reimport_asset(self, locator: str) -> ActionResult:
+        if self.asset_service is None:
+            return self._fail("Asset service not ready")
+        reimported = self.asset_service.reimport_asset(locator)
+        return self._ok("Asset reimported", reimported) if reimported is not None else self._fail("Asset reimport failed")
 
     def get_asset_metadata(self, asset_path: str) -> Dict[str, Any]:
         if self.asset_service is None:
@@ -491,6 +569,114 @@ class EngineAPI:
             return []
         return self.asset_service.list_slices(asset_path)
 
+    def list_animator_states(self, entity_name: str) -> list[Dict[str, Any]]:
+        entity = self._require_entity(entity_name)
+        from engine.components.animator import Animator
+
+        animator = entity.get_component(Animator)
+        if animator is None:
+            return []
+        result: list[Dict[str, Any]] = []
+        for state_name, state_data in animator.to_dict().get("animations", {}).items():
+            payload = dict(state_data)
+            payload["state_name"] = state_name
+            payload["is_default"] = animator.default_state == state_name
+            result.append(payload)
+        return result
+
+    def set_animator_sprite_sheet(self, entity_name: str, asset_path: str) -> ActionResult:
+        self._ensure_edit_mode()
+        return self.edit_component(entity_name, "Animator", "sprite_sheet", asset_path)
+
+    def upsert_animator_state(
+        self,
+        entity_name: str,
+        state_name: str,
+        slice_names: list[str],
+        fps: float,
+        loop: bool,
+        on_complete: Optional[str],
+        set_default: bool = False,
+    ) -> ActionResult:
+        self._ensure_edit_mode()
+        if self.scene_manager is None:
+            return self._fail("SceneManager not ready")
+        if not state_name.strip():
+            return self._fail("Animator state name is required")
+        payload = self._load_animator_payload(entity_name)
+        if payload is None:
+            return self._fail("Animator not found")
+        animations = payload.setdefault("animations", {})
+        existing = dict(animations.get(state_name, {"frames": [0]}))
+        existing["slice_names"] = list(slice_names)
+        existing["fps"] = float(fps)
+        existing["loop"] = bool(loop)
+        existing["on_complete"] = on_complete if (on_complete in animations and on_complete != state_name) else None
+        animations[state_name] = existing
+        if set_default or not payload.get("default_state"):
+            payload["default_state"] = state_name
+        if payload.get("current_state") not in animations:
+            payload["current_state"] = payload["default_state"]
+        success = self.scene_manager.replace_component_data(entity_name, "Animator", payload)
+        return self._ok("Animator state updated", {"entity": entity_name, "state": state_name}) if success else self._fail("Animator state update failed")
+
+    def set_animator_state_frames(
+        self,
+        entity_name: str,
+        state_name: str,
+        slice_names: list[str],
+        fps: Optional[float] = None,
+        loop: Optional[bool] = None,
+        on_complete: Any = _UNSET,
+        set_default: bool = False,
+    ) -> ActionResult:
+        self._ensure_edit_mode()
+        if self.scene_manager is None:
+            return self._fail("SceneManager not ready")
+        payload = self._load_animator_payload(entity_name)
+        if payload is None:
+            return self._fail("Animator not found")
+        animations = payload.setdefault("animations", {})
+        if state_name not in animations:
+            return self._fail("Animator state not found")
+        state = dict(animations.get(state_name, {}))
+        state["slice_names"] = list(slice_names)
+        if fps is not None:
+            state["fps"] = float(fps)
+        if loop is not None:
+            state["loop"] = bool(loop)
+        if on_complete is not _UNSET:
+            state["on_complete"] = on_complete if (on_complete in animations and on_complete != state_name) else None
+        animations[state_name] = state
+        if set_default or not payload.get("default_state"):
+            payload["default_state"] = state_name
+        if payload.get("current_state") not in animations:
+            payload["current_state"] = payload["default_state"]
+        success = self.scene_manager.replace_component_data(entity_name, "Animator", payload)
+        return self._ok("Animator frames updated", {"entity": entity_name, "state": state_name}) if success else self._fail("Animator frames update failed")
+
+    def remove_animator_state(self, entity_name: str, state_name: str) -> ActionResult:
+        self._ensure_edit_mode()
+        if self.scene_manager is None:
+            return self._fail("SceneManager not ready")
+        payload = self._load_animator_payload(entity_name)
+        if payload is None:
+            return self._fail("Animator not found")
+        animations = payload.setdefault("animations", {})
+        if state_name not in animations:
+            return self._fail("Animator state not found")
+        del animations[state_name]
+        next_default = next(iter(animations.keys()), "")
+        if payload.get("default_state") == state_name:
+            payload["default_state"] = next_default
+        if payload.get("current_state") == state_name:
+            payload["current_state"] = payload.get("default_state", next_default)
+        for animation in animations.values():
+            if animation.get("on_complete") == state_name:
+                animation["on_complete"] = None
+        success = self.scene_manager.replace_component_data(entity_name, "Animator", payload)
+        return self._ok("Animator state removed", {"entity": entity_name, "state": state_name}) if success else self._fail("Animator state remove failed")
+
     def create_animator_state(
         self,
         entity_name: str,
@@ -500,21 +686,15 @@ class EngineAPI:
         loop: bool = True,
         on_complete: Optional[str] = None,
     ) -> ActionResult:
-        entity = self._require_entity(entity_name)
-        from engine.components.animator import Animator
-
-        animator = entity.get_component(Animator)
-        if animator is None:
-            return self._fail("Animator not found")
-        animations = animator.to_dict()["animations"]
-        animations[state_name] = {
-            "frames": animator.animations.get(state_name).frames if state_name in animator.animations else [0],
-            "slice_names": slice_names or [],
-            "fps": fps,
-            "loop": loop,
-            "on_complete": on_complete,
-        }
-        return self.edit_component(entity_name, "Animator", "animations", animations)
+        return self.upsert_animator_state(
+            entity_name,
+            state_name,
+            slice_names or [],
+            fps=fps,
+            loop=loop,
+            on_complete=on_complete,
+            set_default=False,
+        )
 
     def _require_entity(self, name: str):
         if self.game is None or self.game.world is None:
@@ -529,6 +709,17 @@ class EngineAPI:
             return self._fail("SceneManager not ready")
         success = self.scene_manager.update_entity_property(name, property_name, value)
         return self._ok(message, {"entity": name}) if success else self._fail("Entity property update failed")
+
+    def _load_animator_payload(self, entity_name: str) -> Optional[Dict[str, Any]]:
+        if self.scene_manager is None or self.scene_manager.current_scene is None:
+            return None
+        entity_data = self.scene_manager.current_scene.find_entity(entity_name)
+        if entity_data is None:
+            return None
+        component_data = entity_data.get("components", {}).get("Animator")
+        if component_data is None:
+            return None
+        return json.loads(json.dumps(component_data))
 
     def _ensure_edit_mode(self) -> None:
         if self.game is not None and not self.game.is_edit_mode:

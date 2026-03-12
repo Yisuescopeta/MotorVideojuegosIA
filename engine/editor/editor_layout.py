@@ -82,7 +82,7 @@ class EditorLayout:
         self.screen_height = screen_height
         
         # Tabs
-        self.active_tab: str = "SCENE" # "SCENE" | "GAME"
+        self.active_tab: str = "SCENE" # "SCENE" | "GAME" | "ANIMATOR"
         self.active_bottom_tab: str = "PROJECT" # "PROJECT" | "CONSOLE"
         
         # Requests (Game.py lee esto)
@@ -138,6 +138,7 @@ class EditorLayout:
         # Tab Rects
         self.tab_scene_rect = rl.Rectangle(0,0,0,0)
         self.tab_game_rect = rl.Rectangle(0,0,0,0)
+        self.tab_animator_rect = rl.Rectangle(0,0,0,0)
         self.btn_play_rect = rl.Rectangle(0,0,0,0)
         
         self.tab_game_rect = rl.Rectangle(0,0,0,0)
@@ -166,9 +167,10 @@ class EditorLayout:
         content_height = height - top_offset - self.BOTTOM_HEIGHT
         
         # Toolbar layout (Tabs & Buttons)
-        self.tab_scene_rect = rl.Rectangle(width/2 - 100, tab_y, 80, 30)
-        self.tab_game_rect = rl.Rectangle(width/2, tab_y, 80, 30)
-        self.btn_play_rect = rl.Rectangle(width/2 + 100, tab_y, 60, 30)
+        self.tab_scene_rect = rl.Rectangle(width/2 - 145, tab_y, 80, 30)
+        self.tab_game_rect = rl.Rectangle(width/2 - 55, tab_y, 80, 30)
+        self.tab_animator_rect = rl.Rectangle(width/2 + 35, tab_y, 90, 30)
+        self.btn_play_rect = rl.Rectangle(width/2 + 135, tab_y, 60, 30)
         
         # 1. Hierarchy (Left) - Starts below Toolbar
         self.hierarchy_rect = rl.Rectangle(
@@ -232,6 +234,8 @@ class EditorLayout:
                     self.active_tab = "SCENE"
                 elif rl.check_collision_point_rec(mouse_pos, self.tab_game_rect):
                     self.active_tab = "GAME"
+                elif rl.check_collision_point_rec(mouse_pos, self.tab_animator_rect):
+                    self.active_tab = "ANIMATOR"
                 elif rl.check_collision_point_rec(mouse_pos, self.btn_play_rect):
                     self.request_play = True
         
@@ -419,6 +423,12 @@ class EditorLayout:
         if rl.check_collision_point_rec(rl.get_mouse_position(), game_tab_rect):
             if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 self.active_tab = "GAME"
+
+        animator_tab_rect = rl.Rectangle(tab_bar_x + 155, tab_bar_y + 2, 86, tab_bar_height - 4)
+        self._draw_tab("Animator", animator_tab_rect, self.active_tab == "ANIMATOR")
+        if rl.check_collision_point_rec(rl.get_mouse_position(), animator_tab_rect):
+            if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                self.active_tab = "ANIMATOR"
         
         # ========================================
         # 5. Scene/Game View Content
@@ -431,11 +441,17 @@ class EditorLayout:
             self.center_rect.height - self.TAB_HEIGHT
         )
         
-        target_tex = self.scene_texture if self.active_tab == "SCENE" else self.game_texture
-        
+        target_tex = None
+        if self.active_tab == "SCENE":
+            target_tex = self.scene_texture
+        elif self.active_tab == "GAME":
+            target_tex = self.game_texture
+
         if target_tex:
             source = rl.Rectangle(0, 0, target_tex.texture.width, -target_tex.texture.height)
             rl.draw_texture_pro(target_tex.texture, source, view_rect, rl.Vector2(0,0), 0.0, rl.WHITE)
+        else:
+            rl.draw_rectangle_rec(view_rect, self.VIEW_BG_COLOR)
         
         rl.draw_rectangle_lines_ex(view_rect, 1, self.UNITY_BORDER)
         
@@ -664,6 +680,14 @@ class EditorLayout:
         text_x = rect.x + (rect.width - text_width) // 2
         text_y = rect.y + (rect.height - 10) // 2
         rl.draw_text(text, int(text_x), int(text_y), 10, self.UNITY_TEXT)
+
+    def get_center_view_rect(self) -> rl.Rectangle:
+        return rl.Rectangle(
+            self.center_rect.x,
+            self.center_rect.y + self.TAB_HEIGHT,
+            self.center_rect.width,
+            self.center_rect.height - self.TAB_HEIGHT
+        )
 
     def _draw_project_modal(self) -> None:
         rl.draw_rectangle(0, 0, self.screen_width, self.screen_height, rl.Color(0, 0, 0, 150))

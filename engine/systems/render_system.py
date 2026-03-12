@@ -1,5 +1,5 @@
 """
-engine/systems/render_system.py - Sistema de renderizado
+engine/systems/render_system.py - Sistema de renderizado.
 """
 
 from __future__ import annotations
@@ -32,10 +32,15 @@ class RenderSystem:
         self._texture_manager: TextureManager = TextureManager()
         self._project_service: Any = None
         self._asset_service: AssetService | None = None
+        self._asset_resolver: Any = None
 
     def set_project_service(self, project_service: Any) -> None:
         self._project_service = project_service
         self._asset_service = AssetService(project_service) if project_service is not None else None
+        self._asset_resolver = self._asset_service.get_asset_resolver() if self._asset_service is not None else None
+
+    def reset_project_resources(self) -> None:
+        self._texture_manager.unload_all()
 
     def render(
         self,
@@ -185,7 +190,7 @@ class RenderSystem:
             if sprite.width > 0:
                 width = sprite.width
             elif sprite.texture_path:
-                texture = self._texture_manager.load(self._resolve_texture_path(sprite.texture_path))
+                texture = self._load_texture(sprite.get_texture_reference(), sprite.texture_path, sync_callback=sprite.sync_texture_reference)
                 if texture.id != 0:
                     width = texture.width
                     height = texture.height
@@ -197,7 +202,7 @@ class RenderSystem:
         animator = entity.get_component(Animator)
         if animator is not None and animator.enabled:
             current_slice = animator.get_current_slice_name()
-            slice_rect = self._asset_service.get_slice_rect(animator.sprite_sheet, current_slice) if (self._asset_service is not None and current_slice) else None
+            slice_rect = self._asset_service.get_slice_rect(animator.get_sprite_sheet_reference(), current_slice) if (self._asset_service is not None and current_slice) else None
             if slice_rect is not None:
                 width = int(slice_rect["width"])
                 height = int(slice_rect["height"])
@@ -231,12 +236,12 @@ class RenderSystem:
             self._draw_placeholder(entity.name, transform)
 
     def _draw_animated_sprite(self, transform: Transform, animator: Animator) -> None:
-        texture = self._texture_manager.load(self._resolve_texture_path(animator.sprite_sheet))
+        texture = self._load_texture(animator.get_sprite_sheet_reference(), animator.sprite_sheet, sync_callback=animator.sync_sprite_sheet_reference)
         if texture.id == 0:
             return
 
         slice_name = animator.get_current_slice_name()
-        slice_rect = self._asset_service.get_slice_rect(animator.sprite_sheet, slice_name) if (self._asset_service is not None and slice_name) else None
+        slice_rect = self._asset_service.get_slice_rect(animator.get_sprite_sheet_reference(), slice_name) if (self._asset_service is not None and slice_name) else None
         if slice_rect is not None:
             src_x = int(slice_rect["x"])
             src_y = int(slice_rect["y"])
@@ -252,14 +257,17 @@ class RenderSystem:
         dest_h = int(src_h * transform.scale_y)
         dest_x = transform.x - dest_w / 2
         dest_y = transform.y - dest_h / 2
-        source_rect = rl.Rectangle(src_x, src_y, src_w, src_h)
+        if animator.flip_x:
+            source_rect = rl.Rectangle(src_x + src_w, src_y, -src_w, src_h)
+        else:
+            source_rect = rl.Rectangle(src_x, src_y, src_w, src_h)
         dest_rect = rl.Rectangle(dest_x, dest_y, dest_w, dest_h)
         rl.draw_texture_pro(texture, source_rect, dest_rect, rl.Vector2(0, 0), transform.rotation, rl.WHITE)
         state_text = f"{animator.current_state}[{animator.current_frame}]"
         rl.draw_text(state_text, int(dest_x), int(dest_y - 15), 10, rl.YELLOW)
 
     def _draw_sprite(self, transform: Transform, sprite: Sprite) -> None:
-        texture = self._texture_manager.load(self._resolve_texture_path(sprite.texture_path))
+        texture = self._load_texture(sprite.get_texture_reference(), sprite.texture_path, sync_callback=sprite.sync_texture_reference)
         if texture.id == 0:
             return
 
@@ -288,6 +296,16 @@ class RenderSystem:
     def _draw_collider(self, transform: Transform, collider: Collider) -> None:
         left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
         rl.draw_rectangle_lines(int(left), int(top), int(right - left), int(bottom - top), rl.GREEN)
+
+    def _load_texture(self, reference: Any, fallback_path: str, sync_callback: Any = None) -> rl.Texture:
+        entry = self._asset_resolver.resolve_entry(reference) if self._asset_resolver is not None else None
+        if entry is not None:
+            if sync_callback is not None:
+                sync_callback(entry.get("reference", {}))
+            return self._texture_manager.load(entry["absolute_path"], cache_key=entry.get("guid") or entry.get("path"))
+
+        resolved_path = self._resolve_texture_path(fallback_path)
+        return self._texture_manager.load(resolved_path, cache_key=resolved_path)
 
     def _resolve_texture_path(self, path: str) -> str:
         if self._project_service is None or not path:

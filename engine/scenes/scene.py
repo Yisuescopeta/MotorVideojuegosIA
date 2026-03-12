@@ -145,6 +145,17 @@ class Scene:
                 return True
         return False
 
+    def replace_component_data(self, entity_name: str, component_name: str, component_data: Dict[str, Any]) -> bool:
+        """Reemplaza por completo el payload serializable de un componente."""
+        entity_data = self.find_entity(entity_name)
+        if entity_data is None:
+            return False
+        components = entity_data.setdefault("components", {})
+        if component_name not in components:
+            return False
+        components[component_name] = component_data
+        return True
+
     def add_entity(self, entity_data: Dict[str, Any]) -> bool:
         """Añade una nueva entidad a la escena."""
         if self.find_entity(entity_data.get("name", "")) is not None:

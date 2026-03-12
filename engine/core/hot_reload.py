@@ -63,16 +63,19 @@ class HotReloadManager:
         """
         if not os.path.isdir(self.scripts_dir):
             return 0
+
+        abs_dir = os.path.abspath(self.scripts_dir)
+        if abs_dir not in sys.path:
+            sys.path.insert(0, abs_dir)
         
         count = 0
-        for filename in os.listdir(self.scripts_dir):
-            if filename.endswith(".py") and not filename.startswith("_"):
-                filepath = os.path.join(self.scripts_dir, filename)
-                module_name = filename[:-3]  # Quitar .py
-                
-                mtime = os.path.getmtime(filepath)
-                self._module_timestamps[module_name] = mtime
-                count += 1
+        for filepath in Path(self.scripts_dir).rglob("*.py"):
+            if filepath.name.startswith("_"):
+                continue
+            module_name = filepath.relative_to(self.scripts_dir).with_suffix("").as_posix().replace("/", ".")
+            mtime = os.path.getmtime(filepath)
+            self._module_timestamps[module_name] = mtime
+            count += 1
         
         return count
     
@@ -85,16 +88,20 @@ class HotReloadManager:
         """
         if not os.path.isdir(self.scripts_dir):
             return []
+
+        abs_dir = os.path.abspath(self.scripts_dir)
+        if abs_dir not in sys.path:
+            sys.path.insert(0, abs_dir)
         
         reloaded: List[str] = []
         self._errors.clear()
         
-        for filename in os.listdir(self.scripts_dir):
-            if not filename.endswith(".py") or filename.startswith("_"):
+        for filepath_obj in Path(self.scripts_dir).rglob("*.py"):
+            if filepath_obj.name.startswith("_"):
                 continue
             
-            filepath = os.path.join(self.scripts_dir, filename)
-            module_name = filename[:-3]
+            filepath = filepath_obj.as_posix()
+            module_name = filepath_obj.relative_to(self.scripts_dir).with_suffix("").as_posix().replace("/", ".")
             
             try:
                 current_mtime = os.path.getmtime(filepath)
@@ -117,6 +124,10 @@ class HotReloadManager:
         """
         Garantiza que un modulo este cargado y actualizado antes de usarlo.
         """
+        abs_dir = os.path.abspath(self.scripts_dir)
+        if abs_dir not in sys.path:
+            sys.path.insert(0, abs_dir)
+
         normalized = module_name.strip().replace("\\", "/")
         if normalized.endswith(".py"):
             normalized = normalized[:-3]

@@ -49,9 +49,11 @@ if TYPE_CHECKING:
     from cli.script_executor import ScriptExecutor
 
 from engine.debug.timeline import Timeline
+from engine.editor.animator_panel import AnimatorPanel
 from engine.editor.hierarchy_panel import HierarchyPanel
 from engine.editor.gizmo_system import GizmoSystem
 from engine.editor.editor_layout import EditorLayout
+from engine.editor.sprite_editor_modal import SpriteEditorModal
 from engine.editor.raygui_theme import apply_unity_dark_theme
 
 
@@ -104,6 +106,8 @@ class Game:
         
         # Editor Panels
         self.hierarchy_panel: Optional["HierarchyPanel"] = HierarchyPanel()
+        self.animator_panel: Optional["AnimatorPanel"] = AnimatorPanel()
+        self.sprite_editor_modal: Optional["SpriteEditorModal"] = SpriteEditorModal()
         self.gizmo_system: Optional["GizmoSystem"] = GizmoSystem()
         self.editor_layout: Optional["EditorLayout"] = None
         
@@ -237,6 +241,8 @@ class Game:
 
     def set_audio_system(self, system: "AudioSystem") -> None:
         self._audio_system = system
+        if self._project_service is not None and hasattr(self._audio_system, "set_project_service"):
+            self._audio_system.set_project_service(self._project_service)
 
     def set_input_system(self, system: "InputSystem") -> None:
         self._input_system = system
@@ -249,6 +255,8 @@ class Game:
         self._script_behaviour_system.set_hot_reload_manager(self.hot_reload_manager)
         if self._scene_manager is not None:
             self._script_behaviour_system.set_scene_manager(self._scene_manager)
+        if self._project_service is not None and hasattr(self._script_behaviour_system, "set_project_service"):
+            self._script_behaviour_system.set_project_service(self._project_service)
     
     def set_inspector_system(self, system: "InspectorSystem") -> None:
         self._inspector_system = system
@@ -271,6 +279,10 @@ class Game:
         # Conectar inspector al scene_manager para edición
         if self._inspector_system is not None:
             self._inspector_system.set_scene_manager(manager)
+        if self.animator_panel is not None:
+            self.animator_panel.set_scene_manager(manager)
+        if self.sprite_editor_modal is not None:
+            self.sprite_editor_modal.set_history_manager(self._history_manager)
         if self._script_behaviour_system is not None:
             self._script_behaviour_system.set_scene_manager(manager)
         if self.hierarchy_panel is not None:
@@ -287,16 +299,42 @@ class Game:
         self._project_service = service
         if self._render_system is not None:
             self._render_system.set_project_service(service)
+        if self._audio_system is not None and hasattr(self._audio_system, "set_project_service"):
+            self._audio_system.set_project_service(service)
+        if self.animator_panel is not None:
+            self.animator_panel.set_project_service(service)
+        if self.sprite_editor_modal is not None:
+            self.sprite_editor_modal.set_project_service(service)
+            self.sprite_editor_modal.set_history_manager(self._history_manager)
         self.hot_reload_manager.scripts_dir = service.get_project_path("scripts").as_posix()
         self.hot_reload_manager.scan_directory()
         if self._script_behaviour_system is not None:
             self._script_behaviour_system.set_hot_reload_manager(self.hot_reload_manager)
+            if hasattr(self._script_behaviour_system, "set_project_service"):
+                self._script_behaviour_system.set_project_service(service)
         if self.editor_layout is not None and self.editor_layout.project_panel is not None:
             self.editor_layout.project_panel.set_project_service(service)
             self.editor_layout.set_recent_projects(service.list_recent_projects())
         last_scene = service.get_last_scene()
         if last_scene:
             self.current_scene_path = service.resolve_path(last_scene).as_posix()
+
+    def _reset_project_bound_state(self) -> None:
+        if self._state == EngineState.STEPPING:
+            self._state = EngineState.PAUSED
+        if self._state in (EngineState.PLAY, EngineState.PAUSED):
+            self.stop()
+        if self.animator_panel is not None:
+            self.animator_panel.reset()
+        if self.sprite_editor_modal is not None:
+            self.sprite_editor_modal.close()
+        if self._rule_system is not None:
+            self._rule_system.clear_rules()
+        if self._event_bus is not None:
+            self._event_bus.clear_history()
+        if self._render_system is not None and hasattr(self._render_system, "reset_project_resources"):
+            self._render_system.reset_project_resources()
+        self.timeline.clear()
 
     def open_project(self, path: str) -> bool:
         if self._project_service is None or self._scene_manager is None:
@@ -308,6 +346,7 @@ class Game:
             return False
 
         self._history_manager.clear()
+        self._reset_project_bound_state()
         self.set_project_service(self._project_service)
         levels_root = self._project_service.get_project_path("levels")
         last_scene = self._project_service.get_last_scene()
@@ -316,16 +355,15 @@ class Game:
             candidates = sorted(levels_root.glob("*.json"))
             scene_path = candidates[0].as_posix() if candidates else ""
 
-        self.stop()
-        if scene_path:
-            world = self._scene_manager.load_scene_from_file(scene_path)
-            if world is not None:
-                self._world = world
-                self.current_scene_path = scene_path
-                self._project_service.set_last_scene(scene_path)
+        world = self._scene_manager.load_scene_from_file(scene_path) if scene_path else None
+        if world is not None:
+            self._world = world
+            self.current_scene_path = scene_path
+            self._project_service.set_last_scene(scene_path)
         else:
             self._world = self._scene_manager.create_new_scene(manifest.name)
             self.current_scene_path = ""
+            self._project_service.set_last_scene("")
 
         if self.editor_layout is not None:
             self.editor_layout.project_panel.set_project_service(self._project_service)
@@ -387,7 +425,10 @@ class Game:
                      self.width = rl.get_screen_width()
                      self.height = rl.get_screen_height()
 
-                self.editor_layout.update_input()
+                if self.sprite_editor_modal is None or not self.sprite_editor_modal.is_open:
+                    self.editor_layout.update_input()
+                if self.animator_panel is not None and active_world is not None:
+                    self.animator_panel.update(active_world, dt)
                 
                 # Procesar requests de UI
                 if self.editor_layout.request_play:
@@ -495,30 +536,33 @@ class Game:
 
             # 2. Gizmos & Selection (Only if interaction enabled)
             if enable_scene_interaction:
-                 mouse_world = rl.Vector2(0,0)
-                 mouse_in_scene = False
-                 if self.editor_layout:
-                     mouse_world = self.editor_layout.get_scene_mouse_pos()
-                     mouse_in_scene = self.editor_layout.is_mouse_in_scene_view()
-                     # CRITICAL: Prevent scene interaction (selection/gizmo) if mouse is over Inspector
-                     if self.editor_layout.is_mouse_in_inspector():
-                         mouse_in_scene = False
+                mouse_world = rl.Vector2(0, 0)
+                mouse_in_scene = False
+                if self.editor_layout:
+                    mouse_world = self.editor_layout.get_scene_mouse_pos()
+                    mouse_in_scene = self.editor_layout.is_mouse_in_scene_view()
+                    # CRITICAL: Prevent scene interaction (selection/gizmo) if mouse is over Inspector
+                    if self.editor_layout.is_mouse_in_inspector():
+                        mouse_in_scene = False
 
-                 # Gizmos
-                 if self.gizmo_system is not None and active_world is not None:
-                     if self.gizmo_system.is_dragging or mouse_in_scene:
-                          # Pass current tool from editor layout
-                          tool = self.editor_layout.current_tool if self.editor_layout else "Move"
-                          self.gizmo_system.update(active_world, mouse_world, tool)
-                     
-                 if self._selection_system is not None and active_world is not None:
-                     gizmo_active = False
-                     if self.gizmo_system:
-                          if self.gizmo_system.hover_mode.value != 1: 
-                              gizmo_active = True
-                              
-                     if not gizmo_active and mouse_in_scene and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-                         self._selection_system.update(active_world, mouse_world)
+                # Gizmos
+                if self.gizmo_system is not None and active_world is not None:
+                    if self.gizmo_system.is_dragging or mouse_in_scene:
+                        was_dragging = self.gizmo_system.is_dragging
+                        # Pass current tool from editor layout
+                        tool = self.editor_layout.current_tool if self.editor_layout else "Move"
+                        self.gizmo_system.update(active_world, mouse_world, tool)
+                        if (was_dragging or self.gizmo_system.is_dragging) and self._scene_manager is not None:
+                            self._scene_manager.mark_edit_world_dirty()
+
+                if self._selection_system is not None and active_world is not None:
+                    gizmo_active = False
+                    if self.gizmo_system:
+                        if self.gizmo_system.hover_mode.value != 1:
+                            gizmo_active = True
+
+                    if not gizmo_active and mouse_in_scene and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                        self._selection_system.update(active_world, mouse_world)
 
             # Update Animation (Only in Play/Step mode)
             if self._state.allows_gameplay():
@@ -538,7 +582,9 @@ class Game:
 
             if self._state == EngineState.EDIT and active_world is not None and self._script_behaviour_system is not None:
                 try:
-                    self._script_behaviour_system.update(active_world, dt, is_edit_mode=True)
+                    ran_edit_scripts = self._script_behaviour_system.update(active_world, dt, is_edit_mode=True)
+                    if ran_edit_scripts and self._scene_manager is not None:
+                        self._scene_manager.mark_edit_world_dirty()
                 except Exception as e:
                     from engine.editor.console_panel import log_err
                     log_err(f"ScriptBehaviour error: {e}")
@@ -547,9 +593,6 @@ class Game:
             if self._state == EngineState.STEPPING:
                 self._state = EngineState.PAUSED
 
-            if self._state == EngineState.EDIT and self._scene_manager is not None:
-                self._scene_manager.sync_from_edit_world()
-            
             # Renderizar FRAME (Safe)
             try:
                 self._render_frame(active_world)
@@ -569,31 +612,6 @@ class Game:
             self._animation_system.update(world, dt * self.EDIT_ANIMATION_SPEED)
     
     def _process_input(self) -> None:
-        # SPACE -> Play/Stop Toggle
-        if rl.is_key_pressed(rl.KEY_SPACE):
-            if self._state == EngineState.EDIT:
-                self.play()
-                if self.editor_layout:
-                    self.editor_layout.active_tab = "GAME"
-            elif self._state in (EngineState.PLAY, EngineState.PAUSED, EngineState.STEPPING):
-                self.stop()
-                if self.editor_layout:
-                    self.editor_layout.active_tab = "SCENE"
-        
-        # P -> Pause Toggle (Solo si ya estamos jugando)
-        if rl.is_key_pressed(rl.KEY_P):
-            if self._state == EngineState.PLAY:
-                self.pause()
-            elif self._state == EngineState.PAUSED:
-                self.pause() # Resume
-        
-        # ESC -> Stop (Solo si estamos jugando)
-        if rl.is_key_pressed(rl.KEY_ESCAPE):
-            if self._state in (EngineState.PLAY, EngineState.PAUSED, EngineState.STEPPING):
-                self.stop()
-                if self.editor_layout:
-                    self.editor_layout.active_tab = "SCENE"
-                
         # Controles de Debug (solo en PAUSE/PLAY)
         if self._state in (EngineState.PAUSED, EngineState.PLAY):
             # F10: Step
@@ -608,9 +626,6 @@ class Game:
             if rl.is_key_pressed(rl.KEY_F6):
                 self.load_last_snapshot()
         
-        if rl.is_key_pressed(rl.KEY_R):
-            self._reload_scene()
-
         # F11: Fullscreen
         if rl.is_key_pressed(rl.KEY_F11):
             # Toggle Fullscreen
@@ -733,6 +748,18 @@ class Game:
                 
             print(f"[DEBUG] Snapshot loaded. Frame: {snapshot.frame}")
     
+    def undo(self) -> bool:
+        """Revierte el ultimo cambio de authoring en modo edicion."""
+        if self._state != EngineState.EDIT:
+            return False
+        return self._history_manager.undo()
+
+    def redo(self) -> bool:
+        """Reaplica el ultimo cambio revertido en modo edicion."""
+        if self._state != EngineState.EDIT:
+            return False
+        return self._history_manager.redo()
+
     def _draw_debug_info(self) -> None:
         # Estado
         state_color = {
@@ -768,9 +795,6 @@ class Game:
                 10, 95, 12, rl.ORANGE
             )
         
-        y = self.height - 45
-        rl.draw_text("[SPACE] Play  [P] Pause  [ESC] Stop  [R] Reload", 10, y, 12, rl.GRAY)
-    
     def _render_frame(self, active_world: "World") -> None:
         """Renderiza un frame completo de la aplicación (Scene, Game, UI)."""
         rl.begin_drawing()
@@ -813,6 +837,9 @@ class Game:
                     
                 self.editor_layout.end_game_render()
             
+            if self.editor_layout and self.editor_layout.active_tab == "ANIMATOR":
+                pass
+            
             # --- MAIN SCREEN RENDER (LAYOUT & OVERLAYS) ---
             if self.editor_layout:
                 is_playing = (self._state == EngineState.PLAY or self._state == EngineState.PAUSED)
@@ -833,6 +860,19 @@ class Game:
                         is_edit_mode=self.is_edit_mode
                     )
 
+            if self.animator_panel is not None and active_world is not None and self.editor_layout and self.editor_layout.active_tab == "ANIMATOR":
+                rect = self.editor_layout.get_center_view_rect()
+                self.animator_panel.render(
+                    active_world,
+                    int(rect.x),
+                    int(rect.y),
+                    int(rect.width),
+                    int(rect.height),
+                )
+
+            if self.sprite_editor_modal is not None and self.sprite_editor_modal.is_open:
+                self.sprite_editor_modal.render(self.width, self.height)
+
             self._draw_debug_info()
             
             # Hierachy Panel Overlay
@@ -850,17 +890,39 @@ class Game:
         self.running = False
         if self._render_system is not None:
             self._render_system.cleanup()
+        if self.animator_panel is not None:
+            self.animator_panel.cleanup()
+        if self.sprite_editor_modal is not None:
+            self.sprite_editor_modal.cleanup()
         rl.close_window()
+
+    def _open_sprite_editor(self, asset_path: str) -> None:
+        if self.sprite_editor_modal is None or not asset_path:
+            return
+        self.sprite_editor_modal.open(asset_path)
     
     def _process_ui_requests(self) -> None:
         """Procesa peticiones de UI (Escenas, Menús de archivo)."""
-        if self.editor_layout is None or self._scene_manager is None: return
+        if self._scene_manager is None:
+            return
 
-        if self.editor_layout.project_panel and self.editor_layout.project_panel.request_open_sprite_editor_for:
+        if self.editor_layout is not None and self.editor_layout.project_panel and self.editor_layout.project_panel.request_open_sprite_editor_for:
             target_asset = self.editor_layout.project_panel.request_open_sprite_editor_for
             self.editor_layout.project_panel.request_open_sprite_editor_for = None
-            if self._inspector_system is not None and hasattr(self._inspector_system, "open_sprite_editor"):
-                self._inspector_system.open_sprite_editor(target_asset)
+            self._open_sprite_editor(target_asset)
+
+        if self.animator_panel is not None and self.animator_panel.request_open_sprite_editor_for:
+            target_asset = self.animator_panel.request_open_sprite_editor_for
+            self.animator_panel.request_open_sprite_editor_for = None
+            self._open_sprite_editor(target_asset)
+
+        if self._inspector_system is not None and self._inspector_system.request_open_sprite_editor_for:
+            target_asset = self._inspector_system.request_open_sprite_editor_for
+            self._inspector_system.request_open_sprite_editor_for = None
+            self._open_sprite_editor(target_asset)
+
+        if self.editor_layout is None:
+            return
 
         if self.editor_layout.request_browse_project:
             self.editor_layout.request_browse_project = False
@@ -869,7 +931,8 @@ class Game:
                 from tkinter import filedialog
                 root = tkinter.Tk()
                 root.withdraw()
-                path = filedialog.askdirectory(initialdir=os.getcwd(), title="Open Project")
+                initial_dir = self._project_service.project_root.as_posix() if self._project_service is not None else os.getcwd()
+                path = filedialog.askdirectory(initialdir=initial_dir, title="Open Project")
                 root.destroy()
                 if path:
                     self.editor_layout.pending_project_path = path

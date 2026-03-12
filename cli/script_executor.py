@@ -6,6 +6,7 @@ PROPÓSITO:
     Permite simular acciones de usuario y verificar estados.
 
 COMANDOS SOPORTADOS:
+    - OPEN_PROJECT <path>
     - LOAD_SCENE <path>
     - CREATE_ENTITY <name>
     - DELETE_ENTITY <name>
@@ -27,6 +28,9 @@ COMANDOS SOPORTADOS:
     - WAIT <frames>
     - SNAPSHOT_SAVE
     - SNAPSHOT_LOAD
+    - SET_EDITOR_STATE <state>
+    - UNDO
+    - REDO
     - ASSERT_POS <entity> <x> <y> <tolerance>
     - EXIT
 """
@@ -108,7 +112,12 @@ class ScriptExecutor:
         print(f"[SCRIPT] Ejecutando: {action} {args}")
         
         try:
-            if action == "LOAD_SCENE":
+            if action == "OPEN_PROJECT":
+                path = args.get("path", "")
+                if not path or not self.game.open_project(path):
+                    raise Exception(f"No se pudo abrir proyecto: {path}")
+
+            elif action == "LOAD_SCENE":
                 path = args.get("path")
                 with open(path, 'r') as f:
                     data = json.load(f)
@@ -218,6 +227,7 @@ class ScriptExecutor:
                     "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
                     "AudioSource": {
                         "enabled": True,
+                        "asset": {"guid": "", "path": ""},
                         "asset_path": "",
                         "volume": 1.0,
                         "pitch": 1.0,
@@ -236,6 +246,7 @@ class ScriptExecutor:
                 module_path = args.get("module_path", "")
                 component_data = {
                     "enabled": bool(args.get("enabled", True)),
+                    "script": args.get("script", {"guid": "", "path": ""}),
                     "module_path": module_path,
                     "run_in_edit_mode": bool(args.get("run_in_edit_mode", False)),
                     "public_data": args.get("public_data", {}),
@@ -294,6 +305,19 @@ class ScriptExecutor:
             elif action == "WAIT":
                 frames = args.get("frames", 1)
                 self.wait_frames = frames
+
+            elif action == "SET_EDITOR_STATE":
+                if self.game._project_service is None:
+                    raise Exception("No hay ProjectService activo")
+                self.game._project_service.save_editor_state(args.get("state", {}))
+
+            elif action == "UNDO":
+                if not self.game.undo():
+                    raise Exception("No se pudo deshacer")
+
+            elif action == "REDO":
+                if not self.game.redo():
+                    raise Exception("No se pudo rehacer")
                 
             elif action == "ASSERT_POS":
                 name = args.get("entity")

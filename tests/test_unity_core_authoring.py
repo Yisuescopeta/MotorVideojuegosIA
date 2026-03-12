@@ -8,7 +8,9 @@ sys.path.append(os.getcwd())
 
 from cli.script_executor import ScriptExecutor
 from engine.api import EngineAPI
+from engine.components.animator import Animator
 from engine.components.camera2d import Camera2D
+from engine.components.collider import Collider
 from engine.components.inputmap import InputMap
 from engine.components.rigidbody import RigidBody
 from engine.components.scriptbehaviour import ScriptBehaviour
@@ -90,6 +92,7 @@ class UnityCoreAuthoringTests(unittest.TestCase):
         self.assertEqual(entity["components"]["InputMap"]["action_2"], "SHIFT")
         audio_state = self.api.get_audio_state("MusicPlayer")
         self.assertEqual(audio_state["asset_path"], "assets/jump.wav")
+        self.assertEqual(audio_state["asset"]["path"], "assets/jump.wav")
         self.assertEqual(self.api.get_feature_metadata()["input_profile"]["source"], "code")
         self.assertEqual(self.api.get_input_state("PlayerSettings"), {"horizontal": 0.0, "vertical": 0.0, "action_1": 0.0, "action_2": 0.0})
 
@@ -218,6 +221,7 @@ class UnityCoreAuthoringTests(unittest.TestCase):
         self.assertEqual(entity["layer"], "Gameplay")
         self.assertEqual(entity["components"]["Transform"]["x"], 12.0)
         self.assertEqual(entity["components"]["Sprite"]["texture_path"], "assets/box.png")
+        self.assertEqual(entity["components"]["Sprite"]["texture"]["path"], "assets/box.png")
 
     def test_player_controller_moves_and_jumps(self) -> None:
         self.assertTrue(
@@ -247,6 +251,86 @@ class UnityCoreAuthoringTests(unittest.TestCase):
         self.assertLess(rigidbody.velocity_y, 0.0)
         self.assertGreater(transform.x, start_x)
         self.assertLess(transform.y, start_y)
+
+    def test_physics_resolves_platform_collisions_instead_of_crossing_platforms(self) -> None:
+        self.assertTrue(
+            self.api.create_entity(
+                "PlatformCollisionPlayer",
+                {
+                    "Transform": {"enabled": True, "x": 100.0, "y": 160.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                    "Collider": {"enabled": True, "width": 28.0, "height": 28.0, "offset_x": 0.0, "offset_y": 0.0, "is_trigger": False},
+                    "RigidBody": {"enabled": True, "velocity_x": 0.0, "velocity_y": 0.0, "gravity_scale": 1.0, "is_grounded": False},
+                },
+            )["success"]
+        )
+        self.assertTrue(
+            self.api.create_entity(
+                "PlatformCollisionFloor",
+                {
+                    "Transform": {"enabled": True, "x": 100.0, "y": 220.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                    "Collider": {"enabled": True, "width": 140.0, "height": 20.0, "offset_x": 0.0, "offset_y": 0.0, "is_trigger": False},
+                },
+            )["success"]
+        )
+
+        self.api.play()
+        self.api.step(40)
+
+        player = self.api.game.world.get_entity_by_name("PlatformCollisionPlayer")
+        transform = player.get_component(Transform)
+        rigidbody = player.get_component(RigidBody)
+        collider = player.get_component(Collider)
+        floor = self.api.game.world.get_entity_by_name("PlatformCollisionFloor")
+        floor_transform = floor.get_component(Transform)
+        floor_collider = floor.get_component(Collider)
+
+        player_bottom = transform.y + collider.height / 2
+        floor_top = floor_transform.y - floor_collider.height / 2
+
+        self.assertAlmostEqual(player_bottom, floor_top, delta=1.1)
+        self.assertTrue(rigidbody.is_grounded)
+        self.assertEqual(rigidbody.velocity_y, 0.0)
+
+    def test_platformer_test_scene_switches_animator_state_with_controller_motion(self) -> None:
+        self.api.load_level("levels/platformer_test_scene.json")
+        player = self.api.game.world.get_entity_by_name("Player")
+        rigidbody = player.get_component(RigidBody)
+        input_map = player.get_component(InputMap)
+        animator = player.get_component(Animator)
+
+        rigidbody.is_grounded = True
+        input_map.last_state = {"horizontal": 1.0, "vertical": 0.0, "action_1": 0.0, "action_2": 0.0}
+        self.api.game._player_controller_system.update(self.api.game.world)
+        self.assertEqual(animator.current_state, "run")
+        self.assertFalse(animator.flip_x)
+
+        input_map.last_state = {"horizontal": -1.0, "vertical": 0.0, "action_1": 0.0, "action_2": 0.0}
+        self.api.game._player_controller_system.update(self.api.game.world)
+        self.assertEqual(animator.current_state, "run")
+        self.assertTrue(animator.flip_x)
+
+        rigidbody.is_grounded = False
+        rigidbody.velocity_y = -50.0
+        input_map.last_state = {"horizontal": 0.0, "vertical": 0.0, "action_1": 0.0, "action_2": 0.0}
+        self.api.game._player_controller_system.update(self.api.game.world)
+        self.assertEqual(animator.current_state, "jump")
+        self.assertTrue(animator.flip_x)
+
+    def test_animator_flip_x_round_trips_through_serialization(self) -> None:
+        animator = Animator.from_dict(
+            {
+                "sprite_sheet": "assets/player.png",
+                "frame_width": 32,
+                "frame_height": 32,
+                "flip_x": True,
+                "animations": {"idle": {"frames": [0], "fps": 8.0, "loop": True}},
+                "default_state": "idle",
+                "current_state": "idle",
+            }
+        )
+        self.assertTrue(animator.flip_x)
+        self.assertTrue(animator.to_dict()["flip_x"])
+        self.assertEqual(animator.to_dict()["sprite_sheet"]["path"], "assets/player.png")
 
     def test_tag_layer_filters_and_camera_helpers_use_serializable_data(self) -> None:
         created = self.api.create_camera2d(
@@ -295,6 +379,7 @@ class UnityCoreAuthoringTests(unittest.TestCase):
 
         entity = self.api.get_entity("ScriptedActor")
         self.assertEqual(entity["components"]["ScriptBehaviour"]["module_path"], "platformer_character")
+        self.assertEqual(entity["components"]["ScriptBehaviour"]["script"]["path"], "")
         self.assertEqual(entity["components"]["ScriptBehaviour"]["public_data"]["health"], 3)
 
         self.assertTrue(self.api.set_script_public_data("ScriptedActor", {"health": 5, "coins": 2})["success"])

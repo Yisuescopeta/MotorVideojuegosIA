@@ -7,13 +7,22 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
-@dataclass
+@dataclass(frozen=True)
 class ProjectManifest:
     """Manifiesto serializable del proyecto activo."""
+
+    DEFAULT_PATHS = {
+        "assets": "assets",
+        "levels": "levels",
+        "prefabs": "prefabs",
+        "scripts": "scripts",
+        "meta": ".motor/meta",
+    }
 
     name: str
     version: int
@@ -28,30 +37,47 @@ class ProjectManifest:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ProjectManifest":
-        return cls(
-            name=str(data.get("name", "Untitled Project")),
-            version=int(data.get("version", 1)),
-            paths={
-                "assets": str(data.get("paths", {}).get("assets", "assets")),
-                "levels": str(data.get("paths", {}).get("levels", "levels")),
-                "scripts": str(data.get("paths", {}).get("scripts", "scripts")),
-                "meta": str(data.get("paths", {}).get("meta", ".motor/meta")),
-            },
-        )
+        if not isinstance(data, dict):
+            raise ValueError("Project manifest must be a JSON object")
+
+        raw_paths = data.get("paths", {})
+        if raw_paths is None:
+            raw_paths = {}
+        if not isinstance(raw_paths, dict):
+            raise ValueError("Project manifest paths must be an object")
+
+        try:
+            version = int(data.get("version", 1))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Project manifest version must be an integer") from exc
+
+        name = str(data.get("name", "")).strip() or "Untitled Project"
+        paths = {
+            key: str(raw_paths.get(key, default)).strip().replace("\\", "/") or default
+            for key, default in cls.DEFAULT_PATHS.items()
+        }
+        return cls(name=name, version=version, paths=paths)
 
 
 class ProjectService:
     """Resuelve proyecto activo, paths, recientes y estado local del editor."""
 
-    GLOBAL_DIR = Path.home() / ".motorvideojuegosia"
-    RECENTS_FILE = GLOBAL_DIR / "recent_projects.json"
+    GLOBAL_DIR_NAME = ".motorvideojuegosia"
+    RECENTS_FILE_NAME = "recent_projects.json"
     PROJECT_FILE = "project.json"
     PROJECT_STATE_DIR = ".motor"
     EDITOR_STATE_FILE = "editor_state.json"
+    RECENTS_LIMIT = 10
 
-    def __init__(self, project_root: str | os.PathLike[str] = ".") -> None:
+    def __init__(
+        self,
+        project_root: str | os.PathLike[str] = ".",
+        global_state_dir: str | os.PathLike[str] | None = None,
+    ) -> None:
         self._project_root = Path(project_root).resolve()
         self._manifest: ProjectManifest | None = None
+        self._global_dir = self._resolve_global_dir(global_state_dir)
+        self._recents_file = self._global_dir / self.RECENTS_FILE_NAME
         self._ensure_global_storage()
         self.ensure_project(self._project_root)
 
@@ -69,6 +95,10 @@ class ProjectService:
     def project_name(self) -> str:
         return self.manifest.name
 
+    @property
+    def global_state_dir(self) -> Path:
+        return self._global_dir
+
     def ensure_project(self, project_root: str | os.PathLike[str] | None = None) -> ProjectManifest:
         root = Path(project_root).resolve() if project_root is not None else self._project_root
         root.mkdir(parents=True, exist_ok=True)
@@ -77,12 +107,7 @@ class ProjectService:
             manifest = ProjectManifest(
                 name=root.name or "MotorVideojuegosIA Project",
                 version=1,
-                paths={
-                    "assets": "assets",
-                    "levels": "levels",
-                    "scripts": "scripts",
-                    "meta": ".motor/meta",
-                },
+                paths=dict(ProjectManifest.DEFAULT_PATHS),
             )
             self._write_json(manifest_path, manifest.to_dict())
         manifest = self._load_manifest(manifest_path)
@@ -106,13 +131,30 @@ class ProjectService:
 
     def validate_project(self, project_root: str | os.PathLike[str]) -> bool:
         try:
-            self._load_manifest(Path(project_root).resolve() / self.PROJECT_FILE)
+            manifest_path = Path(project_root).resolve() / self.PROJECT_FILE
+            if not manifest_path.exists():
+                return False
+            self._load_manifest(manifest_path)
             return True
         except Exception:
             return False
 
     def get_manifest_path(self) -> Path:
         return self._project_root / self.PROJECT_FILE
+
+    def get_recent_projects_path(self) -> Path:
+        return self._recents_file
+
+    def get_editor_state_path(self) -> Path:
+        return self._get_editor_state_path()
+
+    def get_project_summary(self) -> Dict[str, Any]:
+        return {
+            "name": self.project_name,
+            "root": self.project_root.as_posix(),
+            "manifest_path": self.get_manifest_path().as_posix(),
+            "paths": dict(self.manifest.paths),
+        }
 
     def get_project_path(self, key: str) -> Path:
         relative = self.manifest.paths.get(key, key)
@@ -125,6 +167,8 @@ class ProjectService:
         return (self._project_root / candidate).resolve()
 
     def to_relative_path(self, path: str | os.PathLike[str]) -> str:
+        if not path:
+            return ""
         candidate = self.resolve_path(path)
         try:
             return candidate.relative_to(self._project_root).as_posix()
@@ -140,27 +184,33 @@ class ProjectService:
                 data = json.load(handle)
         except Exception:
             return self._default_editor_state()
-        data.setdefault("recent_assets", {})
-        data.setdefault("last_scene", "")
-        data.setdefault("preferences", {})
-        return data
+        return self._normalize_editor_state(data)
 
     def save_editor_state(self, data: Dict[str, Any]) -> None:
         state_path = self._get_editor_state_path()
         state_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = self._default_editor_state()
-        payload.update(data)
-        self._write_json(state_path, payload)
+        self._write_json(state_path, self._normalize_editor_state(data))
 
     def set_last_scene(self, path: str) -> None:
         state = self.load_editor_state()
-        state["last_scene"] = self.to_relative_path(path)
+        state["last_scene"] = self.to_relative_path(path) if path else ""
         self.save_editor_state(state)
 
     def get_last_scene(self) -> str:
         return str(self.load_editor_state().get("last_scene", ""))
 
+    def set_preference(self, key: str, value: Any) -> None:
+        state = self.load_editor_state()
+        preferences = state.setdefault("preferences", {})
+        preferences[str(key)] = value
+        self.save_editor_state(state)
+
+    def get_preference(self, key: str, default: Any = None) -> Any:
+        return self.load_editor_state().get("preferences", {}).get(key, default)
+
     def push_recent_asset(self, category: str, asset_path: str, limit: int = 8) -> None:
+        if not asset_path:
+            return
         state = self.load_editor_state()
         rel_path = self.to_relative_path(asset_path)
         recent_assets = state.setdefault("recent_assets", {})
@@ -174,30 +224,54 @@ class ProjectService:
         return list(state.get("recent_assets", {}).get(category, []))
 
     def list_recent_projects(self) -> List[Dict[str, Any]]:
-        if not self.RECENTS_FILE.exists():
+        if not self._recents_file.exists():
             return []
         try:
-            with self.RECENTS_FILE.open("r", encoding="utf-8") as handle:
+            with self._recents_file.open("r", encoding="utf-8") as handle:
                 data = json.load(handle)
         except Exception:
             return []
-        projects = data.get("projects", [])
+
+        items = data.get("projects", [])
+        if not isinstance(items, list):
+            return []
+
         result: List[Dict[str, Any]] = []
-        for item in projects:
-            path = Path(item.get("path", ""))
-            if path.exists():
-                result.append(item)
-        return result
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            path_value = str(item.get("path", "")).strip()
+            if not path_value:
+                continue
+            root = Path(path_value).expanduser()
+            manifest_path = root / self.PROJECT_FILE
+            if not root.exists() or not manifest_path.exists():
+                continue
+            try:
+                manifest = self._load_manifest(manifest_path)
+            except Exception:
+                continue
+            result.append(
+                {
+                    "name": str(item.get("name", "")).strip() or manifest.name,
+                    "path": root.resolve().as_posix(),
+                    "manifest_path": manifest_path.resolve().as_posix(),
+                    "last_opened_utc": str(item.get("last_opened_utc", "")),
+                }
+            )
+        return result[: self.RECENTS_LIMIT]
 
     def record_recent_project(self) -> None:
         projects = self.list_recent_projects()
         entry = {
             "name": self.project_name,
             "path": self.project_root.as_posix(),
+            "manifest_path": self.get_manifest_path().as_posix(),
+            "last_opened_utc": datetime.now(timezone.utc).isoformat(),
         }
         projects = [item for item in projects if item.get("path") != entry["path"]]
         projects.insert(0, entry)
-        self._write_json(self.RECENTS_FILE, {"projects": projects[:10]})
+        self._write_json(self._recents_file, {"projects": projects[: self.RECENTS_LIMIT]})
 
     def list_assets(
         self,
@@ -230,15 +304,15 @@ class ProjectService:
         return result
 
     def clear_recent_projects(self) -> None:
-        self._write_json(self.RECENTS_FILE, {"projects": []})
+        self._write_json(self._recents_file, {"projects": []})
 
     def _ensure_global_storage(self) -> None:
-        self.GLOBAL_DIR.mkdir(parents=True, exist_ok=True)
-        if not self.RECENTS_FILE.exists():
-            self._write_json(self.RECENTS_FILE, {"projects": []})
+        self._global_dir.mkdir(parents=True, exist_ok=True)
+        if not self._recents_file.exists():
+            self._write_json(self._recents_file, {"projects": []})
 
     def _ensure_project_layout(self) -> None:
-        for key in ("assets", "levels", "scripts", "meta"):
+        for key in ("assets", "levels", "prefabs", "scripts", "meta"):
             self.get_project_path(key).mkdir(parents=True, exist_ok=True)
         state_path = self._get_editor_state_path()
         if not state_path.exists():
@@ -258,6 +332,36 @@ class ProjectService:
             "last_scene": "",
             "preferences": {},
         }
+
+    def _normalize_editor_state(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        state = self._default_editor_state()
+        if not isinstance(data, dict):
+            return state
+
+        raw_recent_assets = data.get("recent_assets", {})
+        if isinstance(raw_recent_assets, dict):
+            normalized_assets: Dict[str, List[str]] = {}
+            for category, items in raw_recent_assets.items():
+                if isinstance(items, list):
+                    normalized_assets[str(category)] = [str(item) for item in items if str(item).strip()]
+            state["recent_assets"] = normalized_assets
+
+        last_scene = data.get("last_scene", "")
+        state["last_scene"] = str(last_scene) if last_scene else ""
+
+        preferences = data.get("preferences", {})
+        if isinstance(preferences, dict):
+            state["preferences"] = dict(preferences)
+
+        return state
+
+    def _resolve_global_dir(self, global_state_dir: str | os.PathLike[str] | None) -> Path:
+        if global_state_dir is not None:
+            return Path(global_state_dir).expanduser().resolve()
+        env_override = os.environ.get("MOTORVIDEOJUEGOSIA_HOME", "").strip()
+        if env_override:
+            return Path(env_override).expanduser().resolve()
+        return (Path.home() / self.GLOBAL_DIR_NAME).resolve()
 
     def _write_json(self, path: Path, data: Dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
