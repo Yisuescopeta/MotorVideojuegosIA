@@ -75,6 +75,7 @@ class Sprite(Component):
             flip_y: Si es True, invierte verticalmente
             tint: Color de tinte RGBA
         """
+        self.enabled: bool = True
         self.texture_path: str = texture_path
         self.width: int = width
         self.height: int = height
@@ -87,6 +88,7 @@ class Sprite(Component):
     def to_dict(self) -> dict[str, Any]:
         """Serializa el Sprite a diccionario."""
         return {
+            "enabled": self.enabled,
             "texture_path": self.texture_path,
             "width": self.width,
             "height": self.height,
@@ -101,7 +103,7 @@ class Sprite(Component):
     def from_dict(cls, data: dict[str, Any]) -> "Sprite":
         """Crea un Sprite desde un diccionario."""
         tint = data.get("tint", [255, 255, 255, 255])
-        return cls(
+        component = cls(
             texture_path=data.get("texture_path", ""),
             width=data.get("width", 0),
             height=data.get("height", 0),
@@ -111,3 +113,5 @@ class Sprite(Component):
             flip_y=data.get("flip_y", False),
             tint=tuple(tint)  # type: ignore
         )
+        component.enabled = data.get("enabled", True)
+        return component

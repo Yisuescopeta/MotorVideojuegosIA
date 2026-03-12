@@ -60,8 +60,10 @@ class World:
         """Busca entidades que tengan TODOS los componentes especificados."""
         result = []
         for entity in self._entities.values():
+            if not entity.active:
+                continue
             has_all = all(
-                entity.has_component(comp_type)
+                entity.has_enabled_component(comp_type)
                 for comp_type in component_types
             )
             if has_all:
@@ -90,6 +92,9 @@ class World:
         for entity in self._entities.values():
             # Crear nueva entidad con el mismo nombre
             new_entity = Entity(entity.name)
+            new_entity.active = entity.active
+            new_entity.tag = entity.tag
+            new_entity.layer = entity.layer
             
             # Clonar cada componente
             for component in entity.get_all_components():
@@ -153,6 +158,9 @@ class World:
         for entity in self._entities.values():
             ent_data = {
                 "name": entity.name,
+                "active": entity.active,
+                "tag": entity.tag,
+                "layer": entity.layer,
                 "components": {}
             }
             

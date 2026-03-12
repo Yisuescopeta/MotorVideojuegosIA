@@ -21,6 +21,9 @@ class ComponentData(TypedDict):
 class EntityData(TypedDict):
     """Representación serializable de una entidad."""
     name: str
+    active: bool
+    tag: str
+    layer: str
     components: Dict[str, Any]  # map component_name -> specific properties
 
 class ActionResult(TypedDict):

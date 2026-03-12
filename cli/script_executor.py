@@ -7,8 +7,23 @@ PROPÓSITO:
 
 COMANDOS SOPORTADOS:
     - LOAD_SCENE <path>
+    - CREATE_ENTITY <name>
+    - DELETE_ENTITY <name>
+    - ADD_COMPONENT <entity> <component>
+    - REMOVE_COMPONENT <entity> <component>
+    - SET_COMPONENT_ENABLED <entity> <component> <enabled>
+    - SET_ENTITY_META <entity> <property> <value>
+    - CREATE_CAMERA2D <name>
+    - CREATE_INPUT_MAP <name>
+    - SET_INPUT_BINDING <entity> <action> <value>
+    - INJECT_INPUT <entity> <state> <frames>
+    - CREATE_AUDIO_SOURCE <name>
+    - ADD_SCRIPT_BEHAVIOUR <entity>
+    - SET_SCRIPT_PUBLIC_DATA <entity> <public_data>
     - SELECT <entity_name>
     - INSPECT_EDIT <entity:component:property> <value>
+    - AUDIO_PLAY <entity_name>
+    - AUDIO_STOP <entity_name>
     - WAIT <frames>
     - SNAPSHOT_SAVE
     - SNAPSHOT_LOAD
@@ -99,10 +114,146 @@ class ScriptExecutor:
                     data = json.load(f)
                 if self.game._scene_manager:
                     self.game._scene_manager.load_scene(data)
+
+            elif action == "CREATE_ENTITY":
+                name = args.get("name", "New Entity")
+                if not self.game._scene_manager or not self.game._scene_manager.create_entity(name):
+                    raise Exception(f"No se pudo crear entidad: {name}")
+
+            elif action == "DELETE_ENTITY":
+                name = args.get("name")
+                if not self.game._scene_manager or not self.game._scene_manager.remove_entity(name):
+                    raise Exception(f"No se pudo eliminar entidad: {name}")
+
+            elif action == "ADD_COMPONENT":
+                entity_name = args.get("entity")
+                component_name = args.get("component")
+                component_data = args.get("data", {})
+                if not self.game._scene_manager or not self.game._scene_manager.add_component_to_entity(entity_name, component_name, component_data):
+                    raise Exception(f"No se pudo añadir componente {component_name} a {entity_name}")
+
+            elif action == "REMOVE_COMPONENT":
+                entity_name = args.get("entity")
+                component_name = args.get("component")
+                if not self.game._scene_manager or not self.game._scene_manager.remove_component_from_entity(entity_name, component_name):
+                    raise Exception(f"No se pudo eliminar componente {component_name} de {entity_name}")
+
+            elif action == "SET_COMPONENT_ENABLED":
+                entity_name = args.get("entity")
+                component_name = args.get("component")
+                enabled = bool(args.get("enabled", True))
+                if not self.game._scene_manager or not self.game._scene_manager.set_component_enabled(entity_name, component_name, enabled):
+                    raise Exception(f"No se pudo cambiar enabled de {entity_name}.{component_name}")
+
+            elif action == "SET_ENTITY_META":
+                entity_name = args.get("entity")
+                property_name = args.get("property")
+                value = args.get("value")
+                if not self.game._scene_manager or not self.game._scene_manager.update_entity_property(entity_name, property_name, value):
+                    raise Exception(f"No se pudo actualizar {entity_name}.{property_name}")
+
+            elif action == "CREATE_CAMERA2D":
+                name = args.get("name", "MainCamera")
+                components = {
+                    "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                    "Camera2D": {
+                        "enabled": True,
+                        "offset_x": 0.0,
+                        "offset_y": 0.0,
+                        "zoom": 1.0,
+                        "rotation": 0.0,
+                        "is_primary": True,
+                        "follow_entity": "",
+                        "framing_mode": "platformer",
+                        "dead_zone_width": 0.0,
+                        "dead_zone_height": 0.0,
+                        "clamp_left": None,
+                        "clamp_right": None,
+                        "clamp_top": None,
+                        "clamp_bottom": None,
+                        "recenter_on_play": True,
+                    },
+                }
+                components["Transform"].update(args.get("transform", {}))
+                components["Camera2D"].update(args.get("camera", {}))
+                if not self.game._scene_manager or not self.game._scene_manager.create_entity(name, components):
+                    raise Exception(f"No se pudo crear Camera2D: {name}")
+
+            elif action == "CREATE_INPUT_MAP":
+                name = args.get("name", "InputMap")
+                components = {
+                    "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                    "InputMap": {
+                        "enabled": True,
+                        "move_left": "A,LEFT",
+                        "move_right": "D,RIGHT",
+                        "move_up": "W,UP",
+                        "move_down": "S,DOWN",
+                        "action_1": "SPACE",
+                        "action_2": "ENTER",
+                    },
+                }
+                components["InputMap"].update(args.get("bindings", {}))
+                if not self.game._scene_manager or not self.game._scene_manager.create_entity(name, components):
+                    raise Exception(f"No se pudo crear InputMap: {name}")
+
+            elif action == "SET_INPUT_BINDING":
+                entity_name = args.get("entity")
+                action_name = args.get("binding")
+                value = args.get("value")
+                if not self.game._scene_manager or not self.game._scene_manager.apply_edit_to_world(entity_name, "InputMap", action_name, value):
+                    raise Exception(f"No se pudo editar InputMap {entity_name}.{action_name}")
+
+            elif action == "INJECT_INPUT":
+                entity_name = args.get("entity")
+                state = args.get("state", {})
+                frames = int(args.get("frames", 1))
+                if self.game._input_system is None:
+                    raise Exception("No hay InputSystem para inyectar input")
+                self.game._input_system.inject_state(entity_name, state, frames)
+
+            elif action == "CREATE_AUDIO_SOURCE":
+                name = args.get("name", "AudioSource")
+                components = {
+                    "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                    "AudioSource": {
+                        "enabled": True,
+                        "asset_path": "",
+                        "volume": 1.0,
+                        "pitch": 1.0,
+                        "loop": False,
+                        "play_on_awake": False,
+                        "spatial_blend": 0.0,
+                    },
+                }
+                components["Transform"].update(args.get("transform", {}))
+                components["AudioSource"].update(args.get("audio", {}))
+                if not self.game._scene_manager or not self.game._scene_manager.create_entity(name, components):
+                    raise Exception(f"No se pudo crear AudioSource: {name}")
+
+            elif action == "ADD_SCRIPT_BEHAVIOUR":
+                entity_name = args.get("entity")
+                module_path = args.get("module_path", "")
+                component_data = {
+                    "enabled": bool(args.get("enabled", True)),
+                    "module_path": module_path,
+                    "run_in_edit_mode": bool(args.get("run_in_edit_mode", False)),
+                    "public_data": args.get("public_data", {}),
+                }
+                if not self.game._scene_manager or not self.game._scene_manager.add_component_to_entity(entity_name, "ScriptBehaviour", component_data):
+                    raise Exception(f"No se pudo añadir ScriptBehaviour a {entity_name}")
+
+            elif action == "SET_SCRIPT_PUBLIC_DATA":
+                entity_name = args.get("entity")
+                public_data = args.get("public_data", {})
+                if not self.game._scene_manager or not self.game._scene_manager.apply_edit_to_world(entity_name, "ScriptBehaviour", "public_data", public_data):
+                    raise Exception(f"No se pudo actualizar public_data de {entity_name}")
                     
             elif action == "SELECT":
                 name = args.get("name")
-                if self.game.world:
+                if self.game._scene_manager:
+                    self.game._scene_manager.set_selected_entity(name)
+                elif self.game.world:
                     self.game.world.selected_entity_name = name
                     
             elif action == "INSPECT_EDIT":
@@ -129,6 +280,16 @@ class ScriptExecutor:
             elif action == "SAVE":
                 if hasattr(self.game, "save_current_scene"):
                     self.game.save_current_scene()
+
+            elif action == "AUDIO_PLAY":
+                name = args.get("entity")
+                if self.game.world is None or self.game.audio_system is None or not self.game.audio_system.play(self.game.world, name):
+                    raise Exception(f"No se pudo reproducir audio en {name}")
+
+            elif action == "AUDIO_STOP":
+                name = args.get("entity")
+                if self.game.world is None or self.game.audio_system is None or not self.game.audio_system.stop(self.game.world, name):
+                    raise Exception(f"No se pudo detener audio en {name}")
             
             elif action == "WAIT":
                 frames = args.get("frames", 1)

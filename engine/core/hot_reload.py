@@ -112,6 +112,29 @@ class HotReloadManager:
         
         self._last_check_time = time.time()
         return reloaded
+
+    def ensure_module_loaded(self, module_name: str) -> Optional[Any]:
+        """
+        Garantiza que un modulo este cargado y actualizado antes de usarlo.
+        """
+        normalized = module_name.strip().replace("\\", "/")
+        if normalized.endswith(".py"):
+            normalized = normalized[:-3]
+        normalized = normalized.strip("/").replace("/", ".")
+        if not normalized:
+            return None
+
+        filepath = self._module_filepath(normalized)
+        if filepath is None:
+            self._errors.append(f"[HOT-RELOAD] Modulo no encontrado: {normalized}")
+            return None
+
+        current_mtime = os.path.getmtime(filepath)
+        last_mtime = self._module_timestamps.get(normalized, 0.0)
+        if normalized not in self._loaded_modules or current_mtime > last_mtime:
+            if self._reload_module(normalized):
+                self._module_timestamps[normalized] = current_mtime
+        return self._loaded_modules.get(normalized)
     
     def _reload_module(self, module_name: str) -> bool:
         """
@@ -146,6 +169,13 @@ class HotReloadManager:
             print(error_msg)
             self._errors.append(error_msg)
             return False
+
+    def _module_filepath(self, module_name: str) -> Optional[str]:
+        filename = module_name.replace(".", os.sep) + ".py"
+        filepath = os.path.join(self.scripts_dir, filename)
+        if os.path.isfile(filepath):
+            return filepath
+        return None
     
     def get_module(self, module_name: str) -> Optional[Any]:
         """

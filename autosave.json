@@ -2,8 +2,12 @@
     "entities": [
         {
             "name": "Player",
+            "active": true,
+            "tag": "Untagged",
+            "layer": "Default",
             "components": {
                 "Transform": {
+                    "enabled": true,
                     "x": 150,
                     "y": 100,
                     "rotation": 0.0,
@@ -11,6 +15,7 @@
                     "scale_y": 1.0
                 },
                 "Collider": {
+                    "enabled": true,
                     "width": 30,
                     "height": 30,
                     "offset_x": 0.0,
@@ -18,12 +23,14 @@
                     "is_trigger": false
                 },
                 "RigidBody": {
+                    "enabled": true,
                     "velocity_x": 0.0,
                     "velocity_y": 0.0,
                     "gravity_scale": 1.0,
                     "is_grounded": false
                 },
                 "Animator": {
+                    "enabled": true,
                     "sprite_sheet": "assets/test_spritesheet.png",
                     "frame_width": 32,
                     "frame_height": 32,
@@ -35,6 +42,7 @@
                                 2,
                                 3
                             ],
+                            "slice_names": [],
                             "fps": 4,
                             "loop": true
                         },
@@ -45,6 +53,7 @@
                                 6,
                                 7
                             ],
+                            "slice_names": [],
                             "fps": 8,
                             "loop": true
                         },
@@ -55,11 +64,13 @@
                                 0,
                                 4
                             ],
+                            "slice_names": [],
                             "fps": 10,
                             "loop": false,
                             "on_complete": "idle"
                         }
                     },
+                    "default_state": "idle",
                     "current_state": "idle",
                     "current_frame": 2,
                     "is_finished": false
@@ -68,22 +79,35 @@
         },
         {
             "name": "Enemy",
+            "active": true,
+            "tag": "Untagged",
+            "layer": "Default",
             "components": {
                 "Transform": {
-                    "x": 300.0,
+                    "enabled": true,
+                    "x": 350,
                     "y": 100,
                     "rotation": 0.0,
                     "scale_x": 1.2,
                     "scale_y": 1.2
                 },
                 "Collider": {
+                    "enabled": true,
                     "width": 35,
                     "height": 35,
                     "offset_x": 0.0,
                     "offset_y": 0.0,
                     "is_trigger": false
                 },
+                "RigidBody": {
+                    "enabled": true,
+                    "velocity_x": 0.0,
+                    "velocity_y": 0.0,
+                    "gravity_scale": 0.8,
+                    "is_grounded": false
+                },
                 "Animator": {
+                    "enabled": true,
                     "sprite_sheet": "assets/test_spritesheet.png",
                     "frame_width": 32,
                     "frame_height": 32,
@@ -99,26 +123,26 @@
                                 1,
                                 0
                             ],
+                            "slice_names": [],
                             "fps": 10,
                             "loop": true
                         }
                     },
+                    "default_state": "spin",
                     "current_state": "spin",
                     "current_frame": 7,
                     "is_finished": false
-                },
-                "RigidBody": {
-                    "velocity_x": 0.0,
-                    "velocity_y": 0.0,
-                    "gravity_scale": 1.0,
-                    "is_grounded": false
                 }
             }
         },
         {
             "name": "Coin",
+            "active": true,
+            "tag": "Untagged",
+            "layer": "Default",
             "components": {
                 "Transform": {
+                    "enabled": true,
                     "x": 250,
                     "y": 350,
                     "rotation": 0.0,
@@ -126,6 +150,7 @@
                     "scale_y": 0.8
                 },
                 "Collider": {
+                    "enabled": true,
                     "width": 24,
                     "height": 24,
                     "offset_x": 0.0,
@@ -136,8 +161,12 @@
         },
         {
             "name": "Ground",
+            "active": true,
+            "tag": "Untagged",
+            "layer": "Default",
             "components": {
                 "Transform": {
+                    "enabled": true,
                     "x": 250,
                     "y": 570,
                     "rotation": 0.0,
@@ -145,6 +174,7 @@
                     "scale_y": 1.0
                 },
                 "Collider": {
+                    "enabled": true,
                     "width": 400,
                     "height": 32,
                     "offset_x": 0.0,
@@ -155,8 +185,12 @@
         },
         {
             "name": "Platform",
+            "active": true,
+            "tag": "Untagged",
+            "layer": "Default",
             "components": {
                 "Transform": {
+                    "enabled": true,
                     "x": 250,
                     "y": 400,
                     "rotation": 0.0,
@@ -164,6 +198,7 @@
                     "scale_y": 1.0
                 },
                 "Collider": {
+                    "enabled": true,
                     "width": 120,
                     "height": 20,
                     "offset_x": 0.0,
@@ -171,8 +206,46 @@
                     "is_trigger": false
                 }
             }
+        },
+        {
+            "name": "New Entity 5",
+            "active": true,
+            "tag": "Untagged",
+            "layer": "Default",
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 250.0,
+                    "y": 0.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 32.0,
+                    "height": 32.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": false
+                },
+                "RigidBody": {
+                    "enabled": true,
+                    "velocity_x": 0.0,
+                    "velocity_y": 0.0,
+                    "gravity_scale": 1.0,
+                    "is_grounded": false
+                },
+                "PlayerController2D": {
+                    "enabled": true,
+                    "move_speed": 180.0,
+                    "jump_velocity": -320.0,
+                    "air_control": 0.75
+                }
+            }
         }
     ],
     "rules": [],
-    "name": "Demo Level (con Reglas)"
+    "name": "Demo Level (con Reglas)",
+    "feature_metadata": {}
 }

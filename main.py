@@ -26,12 +26,17 @@ from engine.systems.render_system import RenderSystem
 from engine.systems.physics_system import PhysicsSystem
 from engine.systems.collision_system import CollisionSystem
 from engine.systems.animation_system import AnimationSystem
+from engine.systems.audio_system import AudioSystem
+from engine.systems.input_system import InputSystem
+from engine.systems.player_controller_system import PlayerControllerSystem
+from engine.systems.script_behaviour_system import ScriptBehaviourSystem
 from engine.inspector.inspector_system import InspectorSystem
 from engine.events.event_bus import EventBus
 from engine.events.rule_system import RuleSystem
 from engine.systems.selection_system import SelectionSystem
 from engine.scenes.scene_manager import SceneManager
 from engine.levels.component_registry import create_default_registry
+from engine.project.project_service import ProjectService
 
 
 from engine.levels.component_registry import create_default_registry
@@ -92,12 +97,13 @@ def main() -> None:
     
     # Crear registro de componentes
     registry = create_default_registry()
+    project_service = ProjectService(os.getcwd())
     
     # Crear SceneManager
     scene_manager = SceneManager(registry)
     
     # Cargar escena
-    level_path = args.level
+    level_path = project_service.resolve_path(args.level).as_posix() if not os.path.isabs(args.level) else args.level
     try:
         level_data = load_level_data(level_path)
         world = scene_manager.load_scene(level_data)
@@ -114,6 +120,10 @@ def main() -> None:
     physics_system = PhysicsSystem(gravity=600)
     collision_system = CollisionSystem(event_bus)
     animation_system = AnimationSystem(event_bus)
+    audio_system = AudioSystem()
+    input_system = InputSystem()
+    player_controller_system = PlayerControllerSystem()
+    script_behaviour_system = ScriptBehaviourSystem()
     inspector_system = InspectorSystem()
     selection_system = SelectionSystem()
     
@@ -126,11 +136,16 @@ def main() -> None:
     )
     
     game.set_world(world)
+    game.set_project_service(project_service)
     game.set_scene_manager(scene_manager)
     game.set_render_system(render_system)
     game.set_physics_system(physics_system)
     game.set_collision_system(collision_system)
     game.set_animation_system(animation_system)
+    game.set_audio_system(audio_system)
+    game.set_input_system(input_system)
+    game.set_player_controller_system(player_controller_system)
+    game.set_script_behaviour_system(script_behaviour_system)
     game.set_inspector_system(inspector_system)
     game.set_event_bus(event_bus)
     game.set_rule_system(rule_system)

@@ -107,6 +107,11 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.collider import Collider
     from engine.components.rigidbody import RigidBody
     from engine.components.animator import Animator
+    from engine.components.camera2d import Camera2D
+    from engine.components.audiosource import AudioSource
+    from engine.components.inputmap import InputMap
+    from engine.components.playercontroller2d import PlayerController2D
+    from engine.components.scriptbehaviour import ScriptBehaviour
     
     registry = ComponentRegistry()
     registry.register("Transform", Transform)
@@ -114,5 +119,10 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("Collider", Collider)
     registry.register("RigidBody", RigidBody)
     registry.register("Animator", Animator)
+    registry.register("Camera2D", Camera2D)
+    registry.register("AudioSource", AudioSource)
+    registry.register("InputMap", InputMap)
+    registry.register("PlayerController2D", PlayerController2D)
+    registry.register("ScriptBehaviour", ScriptBehaviour)
     
     return registry

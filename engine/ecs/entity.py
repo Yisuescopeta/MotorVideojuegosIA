@@ -56,6 +56,9 @@ class Entity:
         """
         self.id: int = _generate_entity_id()
         self.name: str = name
+        self.active: bool = True
+        self.tag: str = "Untagged"
+        self.layer: str = "Default"
         self._components: dict[type, Component] = {}
     
     def add_component(self, component: Component) -> None:
@@ -94,6 +97,12 @@ class Entity:
             True si el componente existe, False en caso contrario
         """
         return component_type in self._components
+
+    def has_enabled_component(self, component_type: type) -> bool:
+        component = self._components.get(component_type)
+        if component is None:
+            return False
+        return bool(getattr(component, "enabled", True))
     
     def remove_component(self, component_type: type) -> None:
         """
@@ -124,6 +133,9 @@ class Entity:
         return {
             "id": self.id,
             "name": self.name,
+            "active": self.active,
+            "tag": self.tag,
+            "layer": self.layer,
             "components": {
                 comp_type.__name__: comp.to_dict()
                 for comp_type, comp in self._components.items()

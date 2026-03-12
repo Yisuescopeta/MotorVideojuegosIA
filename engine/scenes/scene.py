@@ -40,7 +40,16 @@ class Scene:
             data: Datos del nivel en formato JSON
         """
         self._name: str = name
-        self._data: Dict[str, Any] = data or {"name": name, "entities": [], "rules": []}
+        self._data: Dict[str, Any] = data or {
+            "name": name,
+            "entities": [],
+            "rules": [],
+            "feature_metadata": {},
+        }
+        self._data.setdefault("name", name)
+        self._data.setdefault("entities", [])
+        self._data.setdefault("rules", [])
+        self._data.setdefault("feature_metadata", {})
     
     @property
     def name(self) -> str:
@@ -61,6 +70,11 @@ class Scene:
     def rules_data(self) -> list:
         """Lista de reglas."""
         return self._data.get("rules", [])
+
+    @property
+    def feature_metadata(self) -> Dict[str, Any]:
+        """Metadatos adicionales de la escena."""
+        return self._data.setdefault("feature_metadata", {})
     
     def create_world(self, registry: "ComponentRegistry") -> "World":
         """
@@ -81,6 +95,9 @@ class Scene:
             components_data = entity_data.get("components", {})
             
             entity = world.create_entity(entity_name)
+            entity.active = entity_data.get("active", True)
+            entity.tag = entity_data.get("tag", "Untagged")
+            entity.layer = entity_data.get("layer", "Default")
             
             for comp_name, comp_props in components_data.items():
                 component = registry.create(comp_name, comp_props)
@@ -119,6 +136,61 @@ class Scene:
                     print(f"[EDIT] Scene: {entity_name}.{component_name}.{property_name} = {value}")
                     return True
         return False
+
+    def update_entity_property(self, entity_name: str, property_name: str, value: Any) -> bool:
+        """Actualiza un metadato de entidad serializable."""
+        for entity_data in self._data.get("entities", []):
+            if entity_data.get("name") == entity_name:
+                entity_data[property_name] = value
+                return True
+        return False
+
+    def add_entity(self, entity_data: Dict[str, Any]) -> bool:
+        """Añade una nueva entidad a la escena."""
+        if self.find_entity(entity_data.get("name", "")) is not None:
+            return False
+        self._data.setdefault("entities", []).append(entity_data)
+        return True
+
+    def remove_entity(self, entity_name: str) -> bool:
+        """Elimina una entidad por nombre."""
+        entities = self._data.get("entities", [])
+        for index, entity_data in enumerate(entities):
+            if entity_data.get("name") == entity_name:
+                del entities[index]
+                return True
+        return False
+
+    def add_component(self, entity_name: str, component_name: str, component_data: Dict[str, Any]) -> bool:
+        """Añade o reemplaza un componente en una entidad."""
+        entity_data = self.find_entity(entity_name)
+        if entity_data is None:
+            return False
+        components = entity_data.setdefault("components", {})
+        components[component_name] = component_data
+        return True
+
+    def remove_component(self, entity_name: str, component_name: str) -> bool:
+        """Elimina un componente de una entidad."""
+        entity_data = self.find_entity(entity_name)
+        if entity_data is None:
+            return False
+        components = entity_data.setdefault("components", {})
+        if component_name not in components:
+            return False
+        del components[component_name]
+        return True
+
+    def set_feature_metadata(self, key: str, value: Any) -> None:
+        """Registra metadatos de escena usados por la orquestacion o tooling."""
+        self.feature_metadata[key] = value
+
+    def find_entity(self, entity_name: str) -> Optional[Dict[str, Any]]:
+        """Busca una entidad serializada por nombre."""
+        for entity_data in self._data.get("entities", []):
+            if entity_data.get("name") == entity_name:
+                return entity_data
+        return None
     
     def to_dict(self) -> Dict[str, Any]:
         """Serializa la escena a diccionario."""

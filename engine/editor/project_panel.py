@@ -15,6 +15,8 @@ import os
 import pyray as rl
 from typing import List, Tuple, Optional
 
+from engine.project.project_service import ProjectService
+
 class ProjectPanel:
     
     # Unity Colors (Exactos)
@@ -36,6 +38,9 @@ class ProjectPanel:
         self.root_path = os.path.abspath(root_path)
         self.current_path = self.root_path
         self.items: List[Tuple[str, str]] = [] # (name, type: 'dir'|'file')
+        self.project_service: Optional[ProjectService] = None
+        self.selected_file: Optional[str] = None
+        self.request_open_sprite_editor_for: Optional[str] = None
         
         self.scroll_offset: float = 0
         self.sidebar_scroll: float = 0
@@ -48,6 +53,13 @@ class ProjectPanel:
         from typing import Set
         self.expanded_folders: Set[str] = {self.root_path}
         
+        self.refresh()
+
+    def set_project_service(self, project_service: ProjectService) -> None:
+        self.project_service = project_service
+        self.root_path = project_service.get_project_path("assets").as_posix()
+        self.current_path = self.root_path
+        self.selected_file = None
         self.refresh()
         
     def refresh(self) -> None:
@@ -182,6 +194,7 @@ class ProjectPanel:
                         self.refresh()
                         self.scroll_offset = 0
                     else:
+                        self.selected_file = os.path.join(self.current_path, name)
                         self.drag_start_pos = mouse_pos
             
             # Visuales del Icono
@@ -207,5 +220,12 @@ class ProjectPanel:
             self.drag_start_pos = None
             self.dragging_file = None
 
-        rl.end_scissor_mode()
+        if self.selected_file and self.selected_file.lower().endswith(".png"):
+            button_rect = rl.Rectangle(x + width - 140, y + 6, 120, 20)
+            if rl.gui_button(button_rect, "Sprite Editor"):
+                if self.project_service is not None:
+                    self.request_open_sprite_editor_for = self.project_service.to_relative_path(self.selected_file)
+                else:
+                    self.request_open_sprite_editor_for = self.selected_file
 
+        rl.end_scissor_mode()

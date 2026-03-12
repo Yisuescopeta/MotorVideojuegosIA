@@ -60,6 +60,7 @@ class Transform(Component):
         """
         Inicializa el Transform con valores por defecto.
         """
+        self.enabled: bool = True
         # Posición y escala LOCAL
         self.local_x: float = x
         self.local_y: float = y
@@ -191,6 +192,7 @@ class Transform(Component):
     def to_dict(self) -> dict[str, Any]:
         """Serializa el Transform (guarda valores LOCALES)."""
         return {
+            "enabled": self.enabled,
             "x": self.local_x,
             "y": self.local_y,
             "rotation": self.local_rotation,
@@ -202,10 +204,12 @@ class Transform(Component):
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Transform":
         """Crea un Transform desde un diccionario."""
-        return cls(
+        component = cls(
             x=data.get("x", 0.0),
             y=data.get("y", 0.0),
             rotation=data.get("rotation", 0.0),
             scale_x=data.get("scale_x", 1.0),
             scale_y=data.get("scale_y", 1.0)
         )
+        component.enabled = data.get("enabled", True)
+        return component

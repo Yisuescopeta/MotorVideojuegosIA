@@ -95,9 +95,16 @@ class EditorLayout:
         self.request_new_scene: bool = False
         self.request_save_scene: bool = False
         self.request_load_scene: bool = False
+        self.request_open_project: bool = False
+        self.request_browse_project: bool = False
         
         # Tool selection (Q=Hand, W=Move, E=Rotate, R=Scale, T=Rect)
         self.current_tool: str = "Move"
+        self.recent_projects: list[dict] = []
+        self.show_project_modal: bool = False
+        self.show_project_dirty_modal: bool = False
+        self.pending_project_path: str = ""
+        self.project_switch_decision: str = ""
         
         # Anchos dinámicos
         self.hierarchy_width = 200
@@ -141,6 +148,9 @@ class EditorLayout:
         self.console_panel = ConsolePanel()
         
         self.update_layout(screen_width, screen_height)
+
+    def set_recent_projects(self, recent_projects: list[dict]) -> None:
+        self.recent_projects = list(recent_projects)
 
     def update_layout(self, width: int, height: int, update_texture: bool = True) -> None:
         """Recalcula layout."""
@@ -482,6 +492,11 @@ class EditorLayout:
                 int(self.bottom_rect.height)
             )
 
+        if self.show_project_modal:
+            self._draw_project_modal()
+        if self.show_project_dirty_modal:
+            self._draw_project_dirty_modal()
+
     def _draw_splitters(self) -> None:
         mouse_pos = rl.get_mouse_position()
         hover_left = rl.check_collision_point_rec(mouse_pos, self.splitter_left_rect)
@@ -601,6 +616,10 @@ class EditorLayout:
         file_x += file_btn_w + 5
         if rl.gui_button(rl.Rectangle(file_x, play_y, file_btn_w, btn_height), "Save"):
             self.request_save_scene = True
+
+        file_x += file_btn_w + 5
+        if rl.gui_button(rl.Rectangle(file_x, play_y, 52, btn_height), "Project"):
+            self.show_project_modal = True
         
     def _draw_menu_bar(self) -> None:
         """Dibuja la barra de menú estilo Unity."""
@@ -645,6 +664,56 @@ class EditorLayout:
         text_x = rect.x + (rect.width - text_width) // 2
         text_y = rect.y + (rect.height - 10) // 2
         rl.draw_text(text, int(text_x), int(text_y), 10, self.UNITY_TEXT)
+
+    def _draw_project_modal(self) -> None:
+        rl.draw_rectangle(0, 0, self.screen_width, self.screen_height, rl.Color(0, 0, 0, 150))
+        modal = rl.Rectangle(self.screen_width / 2 - 220, self.screen_height / 2 - 160, 440, 320)
+        rl.draw_rectangle_rec(modal, self.UNITY_BG_DARK)
+        rl.draw_rectangle_lines_ex(modal, 1, self.UNITY_BORDER)
+        rl.draw_text("Open Project", int(modal.x + 12), int(modal.y + 12), 14, self.UNITY_TEXT_BRIGHT)
+
+        item_y = int(modal.y + 44)
+        if not self.recent_projects:
+            rl.draw_text("No recent projects", int(modal.x + 12), item_y, 10, self.UNITY_TEXT_DIM)
+
+        for item in self.recent_projects[:6]:
+            path = str(item.get("path", ""))
+            name = str(item.get("name", "Project"))
+            row_rect = rl.Rectangle(modal.x + 12, item_y, modal.width - 24, 34)
+            hover = rl.check_collision_point_rec(rl.get_mouse_position(), row_rect)
+            rl.draw_rectangle_rec(row_rect, self.UNITY_BG_LIGHT if hover else self.UNITY_BG_MID)
+            rl.draw_text(name, int(row_rect.x + 8), int(row_rect.y + 6), 12, self.UNITY_TEXT)
+            rl.draw_text(path, int(row_rect.x + 8), int(row_rect.y + 20), 10, self.UNITY_TEXT_DIM)
+            if hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                self.pending_project_path = path
+                self.show_project_modal = False
+            item_y += 40
+
+        browse_rect = rl.Rectangle(modal.x + 12, modal.y + modal.height - 40, 120, 24)
+        close_rect = rl.Rectangle(modal.x + modal.width - 92, modal.y + modal.height - 40, 80, 24)
+        if rl.gui_button(browse_rect, "Browse Folder"):
+            self.request_browse_project = True
+            self.show_project_modal = False
+        if rl.gui_button(close_rect, "Close"):
+            self.show_project_modal = False
+
+    def _draw_project_dirty_modal(self) -> None:
+        rl.draw_rectangle(0, 0, self.screen_width, self.screen_height, rl.Color(0, 0, 0, 150))
+        modal = rl.Rectangle(self.screen_width / 2 - 180, self.screen_height / 2 - 80, 360, 160)
+        rl.draw_rectangle_rec(modal, self.UNITY_BG_DARK)
+        rl.draw_rectangle_lines_ex(modal, 1, self.UNITY_BORDER)
+        rl.draw_text("Unsaved changes", int(modal.x + 12), int(modal.y + 12), 14, self.UNITY_TEXT_BRIGHT)
+        rl.draw_text("Save current scene before switching project?", int(modal.x + 12), int(modal.y + 50), 10, self.UNITY_TEXT)
+
+        if rl.gui_button(rl.Rectangle(modal.x + 12, modal.y + modal.height - 38, 80, 24), "Save"):
+            self.project_switch_decision = "save"
+            self.show_project_dirty_modal = False
+        if rl.gui_button(rl.Rectangle(modal.x + 102, modal.y + modal.height - 38, 80, 24), "Discard"):
+            self.project_switch_decision = "discard"
+            self.show_project_dirty_modal = False
+        if rl.gui_button(rl.Rectangle(modal.x + 192, modal.y + modal.height - 38, 80, 24), "Cancel"):
+            self.project_switch_decision = "cancel"
+            self.show_project_dirty_modal = False
 
     def _draw_grid_2d(self) -> None:
         # Unity Style Grid

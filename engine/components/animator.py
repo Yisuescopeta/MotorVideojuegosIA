@@ -60,6 +60,7 @@ class AnimationData:
         on_complete: Estado al que cambiar cuando termina (solo si loop=False)
     """
     frames: List[int] = field(default_factory=lambda: [0])
+    slice_names: List[str] = field(default_factory=list)
     fps: float = 8.0
     loop: bool = True
     on_complete: Optional[str] = None
@@ -68,6 +69,7 @@ class AnimationData:
         """Serializa AnimationData a diccionario."""
         result: dict[str, Any] = {
             "frames": self.frames,
+            "slice_names": self.slice_names,
             "fps": self.fps,
             "loop": self.loop
         }
@@ -80,10 +82,16 @@ class AnimationData:
         """Crea AnimationData desde un diccionario."""
         return cls(
             frames=data.get("frames", [0]),
+            slice_names=data.get("slice_names", []),
             fps=data.get("fps", 8.0),
             loop=data.get("loop", True),
             on_complete=data.get("on_complete")
         )
+
+    def get_frame_count(self) -> int:
+        if self.slice_names:
+            return len(self.slice_names)
+        return len(self.frames)
 
 
 class Animator(Component):
@@ -122,10 +130,12 @@ class Animator(Component):
             animations: Diccionario de animaciones por estado
             default_state: Estado inicial de la animación
         """
+        self.enabled: bool = True
         self.sprite_sheet: str = sprite_sheet
         self.frame_width: int = frame_width
         self.frame_height: int = frame_height
         self.animations: Dict[str, AnimationData] = animations or {}
+        self.default_state: str = default_state
         
         # Estado de reproducción
         self.current_state: str = default_state
@@ -177,6 +187,14 @@ class Animator(Component):
         # Asegurar que current_frame está en rango
         frame_index = min(self.current_frame, len(anim.frames) - 1)
         return anim.frames[frame_index]
+
+    def get_current_slice_name(self) -> Optional[str]:
+        """Devuelve el slice nombrado actual si la animacion usa metadata de slicing."""
+        anim = self.get_current_animation()
+        if anim is None or not anim.slice_names:
+            return None
+        frame_index = min(self.current_frame, len(anim.slice_names) - 1)
+        return anim.slice_names[frame_index]
     
     def get_source_rect(self, sheet_columns: int) -> tuple[int, int, int, int]:
         """
@@ -207,6 +225,7 @@ class Animator(Component):
     def to_dict(self) -> dict[str, Any]:
         """Serializa el Animator a diccionario."""
         return {
+            "enabled": self.enabled,
             "sprite_sheet": self.sprite_sheet,
             "frame_width": self.frame_width,
             "frame_height": self.frame_height,
@@ -214,6 +233,7 @@ class Animator(Component):
                 name: anim.to_dict()
                 for name, anim in self.animations.items()
             },
+            "default_state": self.default_state,
             "current_state": self.current_state,
             "current_frame": self.current_frame,
             "is_finished": self.is_finished
@@ -231,8 +251,10 @@ class Animator(Component):
             frame_width=data.get("frame_width", 32),
             frame_height=data.get("frame_height", 32),
             animations=animations,
-            default_state=data.get("current_state", "idle")
+            default_state=data.get("default_state", data.get("current_state", "idle"))
         )
+        animator.enabled = data.get("enabled", True)
+        animator.current_state = data.get("current_state", animator.default_state)
         animator.current_frame = data.get("current_frame", 0)
         animator.is_finished = data.get("is_finished", False)
         return animator

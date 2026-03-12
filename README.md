@@ -118,6 +118,11 @@ player.add_component(RigidBody(gravity_scale=1.0))
 | `Collider` | Área de colisión AABB |
 | `RigidBody` | Física (gravedad, velocidad) |
 | `Animator` | Animaciones por sprite sheet |
+| `Camera2D` | Camara serializable para Game View |
+| `AudioSource` | Audio 2D basico editable |
+| `InputMap` | Bindings declarativos entendibles por IA |
+| `PlayerController2D` | Movimiento lateral y salto sobre `RigidBody` |
+| `ScriptBehaviour` | Script adjunto serializable con `public_data` e hot-reload |
 
 ### Estados del Motor
 
@@ -191,21 +196,24 @@ Al presionar **ESC**, el mundo vuelve exactamente al estado original.
 ## 🛠️ API para IA
 
 ```python
-from engine import Game, World, Transform, Collider
+from engine.api import EngineAPI
 
-# Crear mundo
-world = World()
-
-# Crear entidad programáticamente
-enemy = world.create_entity("Enemy")
-enemy.add_component(Transform(x=200, y=100))
-enemy.add_component(Collider(width=32, height=32))
-
-# Control del motor
-game.play()   # EDIT → PLAY
-game.pause()  # PLAY ↔ PAUSED
-game.stop()   # → EDIT + restaurar
+api = EngineAPI()
+api.load_level("levels/demo_level.json")
+api.set_entity_tag("Player", "Hero")
+api.set_entity_layer("Player", "Gameplay")
+api.set_component_enabled("Ground", "Collider", False)
+api.create_camera2d("MainCamera", camera={"follow_entity": "Player", "framing_mode": "platformer"})
+api.add_script_behaviour("Player", "platformer_character", {"lives": 3})
+gameplay_entities = api.list_entities(tag="Hero", layer="Gameplay", active=True)
 ```
+
+## Flujo IA-First Actual
+
+- `SceneManager` mantiene la seleccion de entidad entre `EDIT`, `PLAY` y `STOP`.
+- `Camera2D` soporta follow serializable, framing `platformer`, dead-zones y clamp.
+- `ScriptBehaviour` permite adjuntar scripts desde datos/API con hooks `on_play`, `on_update`, `on_stop`.
+- `public_data` es la bolsa persistente y serializable compartida entre runtime, API e inspector.
 
 ## 📊 Fases Completadas
 
@@ -257,11 +265,34 @@ from engine.config import GRAVITY_DEFAULT, WINDOW_WIDTH, TARGET_FPS
 py -3 tools/create_mechanic.py double_jump "Doble salto" Transform,RigidBody
 ```
 
+### Orquestacion Multiagente
+```bash
+python tools/agent_workflow.py create-brief ^
+  --title "Investigar regresion de escenas" ^
+  --goal "Determinar por que STOP no restaura el estado original del World" ^
+  --subsystems scenes core api ^
+  --files engine/scenes/scene_manager.py engine/core/game.py engine/api/engine_api.py
+```
+
+Documentacion operativa:
+
+- `docs/agent-orchestration/README.md`
+- `docs/agent-orchestration/unity-2d-core-matrix.md`
+- `docs/agent-orchestration/task-brief-template.md`
+- `docs/agent-orchestration/result-bundle-template.md`
+- `docs/agent-orchestration/definition-of-done.md`
+- `docs/agent-orchestration/agents/`
+
 ### Inspeccionar Mundo
 ```python
 from tools.introspect import inspect_world, inspect_entity
 print(inspect_world(world))      # Resumen completo
 print(inspect_entity(world, "Player"))  # Entidad específica
+```
+
+### Auditar gaps de Unity 2D core
+```bash
+py -3 tools/agent_workflow.py list-gaps --status parcial
 ```
 
 ## 🔧 Dependencias

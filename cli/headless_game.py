@@ -62,6 +62,8 @@ class HeadlessGame(Game):
                 # Nota: SelectionSystem usa mouse, en headless no hará nada útil
                 # pero lo mantenemos por compatibilidad
                 pass
+            if self._script_behaviour_system is not None and active_world is not None:
+                self._script_behaviour_system.update(active_world, dt, is_edit_mode=True)
         
         # Actualización de gameplay
         if self._state.allows_physics() or self._state.allows_gameplay():
@@ -69,6 +71,9 @@ class HeadlessGame(Game):
             
         # Animación (avanza lógica interna)
         self._update_animation(active_world, dt)
+
+        if self._state.is_edit() and self._scene_manager is not None:
+            self._scene_manager.sync_from_edit_world()
     
     def step_frame(self, dt: float = 1.0/60.0) -> None:
         """Avanza manualmente un frame (útil para tests deterministicos)."""

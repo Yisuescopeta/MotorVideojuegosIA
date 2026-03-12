@@ -47,6 +47,7 @@ class InspectorSystem:
         self.drag_start_value: float = 0.0
         
         self.editing_text_field: Optional[str] = None
+        self.editing_value_type: str = "float"
         self.text_buffer: bytearray = bytearray(64) # Buffer para Raygui
         
         # Add Component Menu
@@ -77,34 +78,20 @@ class InspectorSystem:
 
     def _commit_text_edit(self, world: "World") -> None:
         """Alica el valor del buffer al componente."""
-        if not self.editing_text_field: return
-        
+        if not self.editing_text_field:
+            return
+
         try:
-            # Parsear "EntityID:CompName:PropName"
-            parts = self.editing_text_field.split(":")
-            # Format: "{entity_id}:{comp_name}:{prop_name}"
-            
-            if len(parts) >= 3:
-                entity_id = int(parts[0])
-                comp_name = parts[1]
-                prop_name = parts[2]
-                
-                # Buscar entidad y componente
-                entity = world.get_entity(entity_id)
-                if entity:
-                    for comp in entity.get_all_components():
-                        if type(comp).__name__ == comp_name:
-                            # Parse value
-                            # Raygui modifies buffer in C. decoding...
-                            val_str = self.text_buffer.decode('utf-8').rstrip('\x00')
-                            # Handle empty string
-                            if not val_str: val_str = "0.0"
-                            new_val = float(val_str)
-                            setattr(comp, prop_name, new_val)
-                            break
+            value_text = self.text_buffer.decode("utf-8").rstrip("\x00")
+            if self.editing_value_type == "float":
+                if not value_text:
+                    value_text = "0.0"
+                value: Any = float(value_text)
+            else:
+                value = value_text
+            self._apply_property_change(world, self.editing_text_field, value)
         except Exception as e:
             print(f"Error commiting text edit: {e}")
-            pass
 
     def render(self, world: "World", x: int, y: int, width: int, height: int, is_edit_mode: bool) -> None:
         """Dibuja el inspector estilo Unity."""
@@ -163,25 +150,29 @@ class InspectorSystem:
         active_rect = rl.Rectangle(panel_x + 10, content_y, 14, 14)
         rl.draw_rectangle_rec(active_rect, rl.Color(42, 42, 42, 255))
         rl.draw_rectangle_lines_ex(active_rect, 1, rl.Color(80, 80, 80, 255))
-        rl.draw_rectangle(int(panel_x + 13), int(content_y + 3), 8, 8, rl.Color(70, 130, 200, 255))
+        if entity.active:
+            rl.draw_rectangle(int(panel_x + 13), int(content_y + 3), 8, 8, rl.Color(70, 130, 200, 255))
         
         # Nombre de la entidad  
         rl.draw_text(entity.name, int(panel_x + 32), int(content_y + 2), 12, rl.Color(230, 230, 230, 255))
+        if rl.check_collision_point_rec(rl.get_mouse_position(), active_rect) and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+            self._apply_property_change(world, f"entity:{entity.id}:active", not entity.active)
         
         content_y += 22
         
         # Separador
         rl.draw_line(panel_x, int(content_y), panel_x + panel_w, int(content_y), UNITY_BORDER)
         content_y += 5
+
+        content_y = self._draw_entity_property("Active", entity.active, f"entity:{entity.id}:active", panel_x, content_y, panel_w, is_edit_mode, world)
+        content_y = self._draw_entity_property("Tag", entity.tag, f"entity:{entity.id}:tag", panel_x, content_y, panel_w, is_edit_mode, world)
+        content_y = self._draw_entity_property("Layer", entity.layer, f"entity:{entity.id}:layer", panel_x, content_y, panel_w, is_edit_mode, world)
+        content_y += 4
         
         # ========================================
         # Componentes
         # ========================================
         components = entity.get_all_components()
-        for comp in components:
-            content_y = self._draw_component(comp, entity.id, panel_x, content_y, panel_w, is_edit_mode, world)
-            content_y += 5
-            
         for comp in components:
             content_y = self._draw_component(comp, entity.id, panel_x, content_y, panel_w, is_edit_mode, world)
             content_y += 5
@@ -237,10 +228,7 @@ class InspectorSystem:
             rl.draw_text("x", int(x + width - 15), int(y + 3), 10, rl.WHITE)
             
             if is_hover_remove and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-                entity = world.get_entity(entity_id)
-                if entity:
-                    entity.remove_component(type(component))
-                    print(f"[INSPECTOR] Removed {comp_name} from {entity.name}")
+                if self._remove_component(world, entity_id, comp_name):
                     return y + 20 # Return early, component removed
         
         # Toggle Logic (if not clicking remove)
@@ -279,7 +267,7 @@ class InspectorSystem:
         # IMPORTANT: Check bool BEFORE int, because isinstance(True, int) is True in Python
         # IMPORTANT: Check bool BEFORE int, because isinstance(True, int) is True in Python
         if isinstance(value, bool):
-            self._draw_bool_field(value, prop_id, component, label, field_x, y, field_w, row_height, is_edit)
+            self._draw_bool_field(value, prop_id, component, label, field_x, y, field_w, row_height, is_edit, world)
         elif isinstance(value, (float, int)):
             # LABEL DRAG LOGIC
             if is_edit:
@@ -308,7 +296,7 @@ class InspectorSystem:
                     
             self._draw_float_field(float(value), prop_id, component, label, field_x, y, field_w, row_height, is_edit, world)
         elif isinstance(value, str):
-            rl.gui_label(rl.Rectangle(field_x, y, field_w, row_height), value)
+            self._draw_text_field(value, prop_id, field_x, y, field_w, row_height, is_edit, world)
         else:
             rl.gui_label(rl.Rectangle(field_x, y, field_w, row_height), str(value))
             
@@ -375,11 +363,55 @@ class InspectorSystem:
                 
                 # Click to Edit
                 if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-                     self.editing_text_field = prop_id
-                     # Init buffer
-                     self.text_buffer[:] = b'\x00' * len(self.text_buffer)
+                     self._begin_text_edit(prop_id, value, "float")
 
-    def _draw_bool_field(self, value: bool, prop_id: str, component: Any, prop_name: str, x: int, y: int, w: int, h: int, is_edit: bool) -> None:
+    def _draw_text_field(self, value: str, prop_id: str, x: int, y: int, w: int, h: int, is_edit: bool, world: "World") -> None:
+        """Campo de texto simple para metadatos o propiedades string."""
+        val_rect = rl.Rectangle(x, y + 1, w, h - 2)
+
+        if self.editing_text_field == prop_id:
+            rl.draw_rectangle_rec(val_rect, rl.Color(30, 30, 30, 255))
+            rl.draw_rectangle_lines_ex(val_rect, 1, rl.Color(0, 200, 255, 255))
+
+            current_text = self.text_buffer.decode("utf-8").rstrip("\x00")
+            rl.draw_text(current_text + "_", int(x + 5), int(y + 4), 10, rl.WHITE)
+
+            key = rl.get_char_pressed()
+            while key > 0:
+                if (32 <= key <= 125) and len(current_text) < 63:
+                    self.text_buffer[len(current_text)] = key
+                    current_text += chr(key)
+                key = rl.get_char_pressed()
+
+            if rl.is_key_pressed(rl.KEY_BACKSPACE):
+                length = len(current_text)
+                if length > 0:
+                    self.text_buffer[length - 1] = 0
+
+            if rl.is_key_pressed(rl.KEY_ENTER) or rl.is_key_pressed(rl.KEY_KP_ENTER):
+                self._commit_text_edit(world)
+                self.editing_text_field = None
+
+            if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                mouse_pos = rl.get_mouse_position()
+                if not rl.check_collision_point_rec(mouse_pos, val_rect):
+                    self._commit_text_edit(world)
+                    self.editing_text_field = None
+            return
+
+        rl.draw_rectangle_rec(val_rect, rl.Color(42, 42, 42, 255))
+        rl.draw_text(value, int(x + 5), int(y + 4), 10, rl.Color(200, 200, 200, 255))
+
+        if is_edit:
+            mouse_pos = rl.get_mouse_position()
+            is_hover = rl.check_collision_point_rec(mouse_pos, val_rect)
+            if is_hover:
+                rl.draw_rectangle_lines_ex(val_rect, 1, rl.Color(70, 130, 200, 255))
+                rl.set_mouse_cursor(rl.MOUSE_CURSOR_IBEAM)
+                if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                    self._begin_text_edit(prop_id, value, "string")
+
+    def _draw_bool_field(self, value: bool, prop_id: str, component: Any, prop_name: str, x: int, y: int, w: int, h: int, is_edit: bool, world: "World") -> None:
         """Checkbox manual estilo Unity."""
         check_rect = rl.Rectangle(x, y + 2, 14, 14)
         
@@ -397,7 +429,7 @@ class InspectorSystem:
             if rl.check_collision_point_rec(mouse_pos, check_rect):
                 rl.draw_rectangle_lines_ex(check_rect, 1, rl.Color(100, 150, 220, 255))
                 if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-                    setattr(component, prop_name, not value)
+                    self._apply_property_change(world, prop_id, not value)
 
 
 
@@ -472,15 +504,108 @@ class InspectorSystem:
             if is_hover:
                 rl.draw_rectangle_rec(rect, rl.Color(60, 60, 60, 255))
                 if rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
-                    # Add Component
-                    comp_cls = self.registry.get(name)
-                    if comp_cls:
-                        # Instantiate defaults
-                        # We use registry.create with empty dict
-                        new_comp = self.registry.create(name, {})
-                        if new_comp:
-                            entity.add_component(new_comp)
-                            print(f"[INSPECTOR] Component {name} added to {entity.name}")
+                    self._add_component(world, entity.id, name)
                     self.show_add_menu = False
             
             rl.draw_text(name, int(x + 10), int(y + i * item_height + 6), 10, rl.Color(200, 200, 200, 255))
+
+    def _draw_entity_property(
+        self,
+        label: str,
+        value: Any,
+        prop_id: str,
+        x: int,
+        y: int,
+        width: int,
+        is_edit: bool,
+        world: "World",
+    ) -> int:
+        """Dibuja una propiedad serializable de entidad con el mismo estilo del inspector."""
+        row_height = self.LINE_HEIGHT
+        padding = 5
+
+        rl.gui_label(rl.Rectangle(x + padding, y, self.LABEL_WIDTH, row_height), label)
+
+        field_x = x + self.LABEL_WIDTH + padding
+        field_w = width - self.LABEL_WIDTH - (padding * 2)
+
+        if isinstance(value, bool):
+            self._draw_bool_field(value, prop_id, None, label, field_x, y, field_w, row_height, is_edit, world)
+        else:
+            self._draw_text_field(str(value), prop_id, field_x, y, field_w, row_height, is_edit, world)
+
+        return y + row_height
+
+    def _begin_text_edit(self, prop_id: str, value: Any, value_type: str) -> None:
+        """Inicializa el buffer para edición manual de texto."""
+        self.editing_text_field = prop_id
+        self.editing_value_type = value_type
+        self.text_buffer[:] = b"\x00" * len(self.text_buffer)
+        encoded = str(value).encode("utf-8")[: len(self.text_buffer) - 1]
+        self.text_buffer[:len(encoded)] = encoded
+
+    def _apply_property_change(self, world: "World", prop_id: str, value: Any) -> bool:
+        """Aplica un cambio usando SceneManager si existe; si no, muta el World actual."""
+        parts = prop_id.split(":")
+
+        if parts[0] == "entity" and len(parts) >= 3:
+            entity = world.get_entity(int(parts[1]))
+            if entity is None:
+                return False
+            property_name = parts[2]
+            if self._scene_manager is not None:
+                return self._scene_manager.update_entity_property(entity.name, property_name, value)
+            setattr(entity, property_name, value)
+            return True
+
+        if len(parts) < 3:
+            return False
+
+        entity = world.get_entity(int(parts[0]))
+        if entity is None:
+            return False
+
+        component_name = parts[1]
+        property_name = parts[2]
+        if self._scene_manager is not None:
+            return self._scene_manager.apply_edit_to_world(entity.name, component_name, property_name, value)
+
+        for comp in entity.get_all_components():
+            if type(comp).__name__ == component_name:
+                setattr(comp, property_name, value)
+                return True
+        return False
+
+    def _remove_component(self, world: "World", entity_id: int, component_name: str) -> bool:
+        entity = world.get_entity(entity_id)
+        if entity is None:
+            return False
+        if self._scene_manager is not None:
+            removed = self._scene_manager.remove_component_from_entity(entity.name, component_name)
+            if removed:
+                print(f"[INSPECTOR] Removed {component_name} from {entity.name}")
+            return removed
+
+        for component in entity.get_all_components():
+            if type(component).__name__ == component_name:
+                entity.remove_component(type(component))
+                print(f"[INSPECTOR] Removed {component_name} from {entity.name}")
+                return True
+        return False
+
+    def _add_component(self, world: "World", entity_id: int, component_name: str) -> bool:
+        entity = world.get_entity(entity_id)
+        if entity is None:
+            return False
+        if self._scene_manager is not None:
+            added = self._scene_manager.add_component_to_entity(entity.name, component_name, {"enabled": True})
+            if added:
+                print(f"[INSPECTOR] Component {component_name} added to {entity.name}")
+            return added
+
+        new_comp = self.registry.create(component_name, {})
+        if new_comp is None:
+            return False
+        entity.add_component(new_comp)
+        print(f"[INSPECTOR] Component {component_name} added to {entity.name}")
+        return True

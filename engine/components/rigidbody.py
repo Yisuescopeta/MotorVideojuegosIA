@@ -59,6 +59,7 @@ class RigidBody(Component):
             gravity_scale: Multiplicador de gravedad (0=sin gravedad)
             is_grounded: Estado inicial de contacto con suelo
         """
+        self.enabled: bool = True
         self.velocity_x: float = velocity_x
         self.velocity_y: float = velocity_y
         self.gravity_scale: float = gravity_scale
@@ -67,6 +68,7 @@ class RigidBody(Component):
     def to_dict(self) -> dict[str, Any]:
         """Serializa el RigidBody a diccionario."""
         return {
+            "enabled": self.enabled,
             "velocity_x": self.velocity_x,
             "velocity_y": self.velocity_y,
             "gravity_scale": self.gravity_scale,
@@ -76,9 +78,11 @@ class RigidBody(Component):
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "RigidBody":
         """Crea un RigidBody desde un diccionario."""
-        return cls(
+        component = cls(
             velocity_x=data.get("velocity_x", 0.0),
             velocity_y=data.get("velocity_y", 0.0),
             gravity_scale=data.get("gravity_scale", 1.0),
             is_grounded=data.get("is_grounded", False)
         )
+        component.enabled = data.get("enabled", True)
+        return component

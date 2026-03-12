@@ -24,15 +24,22 @@ import os
 from engine.core.time_manager import TimeManager
 from engine.core.engine_state import EngineState
 from engine.core.hot_reload import HotReloadManager
+from engine.editor.undo_redo import UndoRedoManager
+from engine.project.project_service import ProjectService
 from engine.config import EDIT_ANIMATION_SPEED, TIMELINE_CAPACITY, SCRIPTS_DIRECTORY, AUTOSAVE_INTERVAL
 from engine.editor.console_panel import log_info, log_err
 
 if TYPE_CHECKING:
     from engine.ecs.world import World
+    from engine.components.camera2d import Camera2D
     from engine.systems.render_system import RenderSystem
     from engine.systems.physics_system import PhysicsSystem
     from engine.systems.collision_system import CollisionSystem
     from engine.systems.animation_system import AnimationSystem
+    from engine.systems.audio_system import AudioSystem
+    from engine.systems.input_system import InputSystem
+    from engine.systems.player_controller_system import PlayerControllerSystem
+    from engine.systems.script_behaviour_system import ScriptBehaviourSystem
     from engine.inspector.inspector_system import InspectorSystem
     from engine.levels.level_loader import LevelLoader
     from engine.events.event_bus import EventBus
@@ -79,6 +86,10 @@ class Game:
         self._physics_system: Optional["PhysicsSystem"] = None
         self._collision_system: Optional["CollisionSystem"] = None
         self._animation_system: Optional["AnimationSystem"] = None
+        self._audio_system: Optional["AudioSystem"] = None
+        self._input_system: Optional["InputSystem"] = None
+        self._player_controller_system: Optional["PlayerControllerSystem"] = None
+        self._script_behaviour_system: Optional["ScriptBehaviourSystem"] = None
         self._inspector_system: Optional["InspectorSystem"] = None
         self._level_loader: Optional["LevelLoader"] = None
         self._event_bus: Optional["EventBus"] = None
@@ -108,6 +119,9 @@ class Game:
         # Hot-Reload
         self.hot_reload_manager: HotReloadManager = HotReloadManager(SCRIPTS_DIRECTORY)
         self.hot_reload_manager.scan_directory()
+
+        self._project_service: Optional[ProjectService] = None
+        self._history_manager: UndoRedoManager = UndoRedoManager()
         
         self.autosave_timer: float = 0.0
     
@@ -135,15 +149,19 @@ class Game:
         if self._scene_manager is not None:
             return self._scene_manager.active_world
         return self._world
+
+    @property
+    def audio_system(self) -> Optional["AudioSystem"]:
+        return self._audio_system
     
     # === MÉTODOS DE CONTROL DE ESTADO ===
     
     def play(self) -> None:
-        """Inicia el juego (EDIT → PLAY)."""
+        """Inicia el juego (EDIT -> PLAY)."""
         if self._state != EngineState.EDIT:
             return
         
-        print("[INFO] Estado: EDIT → PLAY")
+        print("[INFO] Estado: EDIT -> PLAY")
         
         # Crear RuntimeWorld desde Scene
         if self._scene_manager is not None:
@@ -158,6 +176,8 @@ class Game:
                     scene = self._scene_manager.current_scene
                     if scene is not None:
                         self._rule_system.load_rules(scene.rules_data)
+                if self._script_behaviour_system is not None:
+                    self._script_behaviour_system.on_play(runtime_world)
         
         self._state = EngineState.PLAY
         
@@ -165,12 +185,12 @@ class Game:
             self._event_bus.emit("on_play", {})
     
     def pause(self) -> None:
-        """Pausa/Resume el juego (PLAY ↔ PAUSED)."""
+        """Pausa/Resume el juego (PLAY <-> PAUSED)."""
         if self._state == EngineState.PLAY:
-            print("[INFO] Estado: PLAY → PAUSED")
+            print("[INFO] Estado: PLAY -> PAUSED")
             self._state = EngineState.PAUSED
         elif self._state == EngineState.PAUSED:
-            print("[INFO] Estado: PAUSED → PLAY")
+            print("[INFO] Estado: PAUSED -> PLAY")
             self._state = EngineState.PLAY
     
     def stop(self) -> None:
@@ -178,13 +198,15 @@ class Game:
         if self._state not in (EngineState.PLAY, EngineState.PAUSED):
             return
         
-        print("[INFO] Estado: → EDIT (restaurando escena)")
+        print("[INFO] Estado: -> EDIT (restaurando escena)")
         
         # Limpiar reglas y eventos
         if self._rule_system is not None:
             self._rule_system.clear_rules()
         if self._event_bus is not None:
             self._event_bus.clear_history()
+        if self._script_behaviour_system is not None and self.world is not None:
+            self._script_behaviour_system.on_stop(self.world)
         
         # Restaurar World desde Scene
         if self._scene_manager is not None:
@@ -201,6 +223,8 @@ class Game:
     
     def set_render_system(self, system: "RenderSystem") -> None:
         self._render_system = system
+        if self._project_service is not None:
+            self._render_system.set_project_service(self._project_service)
     
     def set_physics_system(self, system: "PhysicsSystem") -> None:
         self._physics_system = system
@@ -210,6 +234,21 @@ class Game:
     
     def set_animation_system(self, system: "AnimationSystem") -> None:
         self._animation_system = system
+
+    def set_audio_system(self, system: "AudioSystem") -> None:
+        self._audio_system = system
+
+    def set_input_system(self, system: "InputSystem") -> None:
+        self._input_system = system
+
+    def set_player_controller_system(self, system: "PlayerControllerSystem") -> None:
+        self._player_controller_system = system
+
+    def set_script_behaviour_system(self, system: "ScriptBehaviourSystem") -> None:
+        self._script_behaviour_system = system
+        self._script_behaviour_system.set_hot_reload_manager(self.hot_reload_manager)
+        if self._scene_manager is not None:
+            self._script_behaviour_system.set_scene_manager(self._scene_manager)
     
     def set_inspector_system(self, system: "InspectorSystem") -> None:
         self._inspector_system = system
@@ -228,9 +267,14 @@ class Game:
     
     def set_scene_manager(self, manager: "SceneManager") -> None:
         self._scene_manager = manager
+        self._scene_manager.set_history_manager(self._history_manager)
         # Conectar inspector al scene_manager para edición
         if self._inspector_system is not None:
             self._inspector_system.set_scene_manager(manager)
+        if self._script_behaviour_system is not None:
+            self._script_behaviour_system.set_scene_manager(manager)
+        if self.hierarchy_panel is not None:
+            self.hierarchy_panel.set_scene_manager(manager)
             
     def set_selection_system(self, system: "SelectionSystem") -> None:
         self._selection_system = system
@@ -238,6 +282,56 @@ class Game:
     def set_script_executor(self, executor: "ScriptExecutor") -> None:
         """Asigna un ejecutor de scripts para automatización visual."""
         self.script_executor = executor
+
+    def set_project_service(self, service: ProjectService) -> None:
+        self._project_service = service
+        if self._render_system is not None:
+            self._render_system.set_project_service(service)
+        self.hot_reload_manager.scripts_dir = service.get_project_path("scripts").as_posix()
+        self.hot_reload_manager.scan_directory()
+        if self._script_behaviour_system is not None:
+            self._script_behaviour_system.set_hot_reload_manager(self.hot_reload_manager)
+        if self.editor_layout is not None and self.editor_layout.project_panel is not None:
+            self.editor_layout.project_panel.set_project_service(service)
+            self.editor_layout.set_recent_projects(service.list_recent_projects())
+        last_scene = service.get_last_scene()
+        if last_scene:
+            self.current_scene_path = service.resolve_path(last_scene).as_posix()
+
+    def open_project(self, path: str) -> bool:
+        if self._project_service is None or self._scene_manager is None:
+            return False
+        try:
+            manifest = self._project_service.open_project(path)
+        except Exception as exc:
+            log_err(f"Open Project failed: {exc}")
+            return False
+
+        self._history_manager.clear()
+        self.set_project_service(self._project_service)
+        levels_root = self._project_service.get_project_path("levels")
+        last_scene = self._project_service.get_last_scene()
+        scene_path = self._project_service.resolve_path(last_scene).as_posix() if last_scene else ""
+        if not scene_path or not os.path.exists(scene_path):
+            candidates = sorted(levels_root.glob("*.json"))
+            scene_path = candidates[0].as_posix() if candidates else ""
+
+        self.stop()
+        if scene_path:
+            world = self._scene_manager.load_scene_from_file(scene_path)
+            if world is not None:
+                self._world = world
+                self.current_scene_path = scene_path
+                self._project_service.set_last_scene(scene_path)
+        else:
+            self._world = self._scene_manager.create_new_scene(manifest.name)
+            self.current_scene_path = ""
+
+        if self.editor_layout is not None:
+            self.editor_layout.project_panel.set_project_service(self._project_service)
+            self.editor_layout.set_recent_projects(self._project_service.list_recent_projects())
+        log_info(f"Proyecto activo: {manifest.name}")
+        return True
     
     # === GAME LOOP ===
     
@@ -252,6 +346,9 @@ class Game:
         # Crear EditorLayout (necesita ventana Raylib inicializada)
         if self.editor_layout is None:
             self.editor_layout = EditorLayout(self.width, self.height)
+            if self._project_service is not None:
+                self.editor_layout.project_panel.set_project_service(self._project_service)
+                self.editor_layout.set_recent_projects(self._project_service.list_recent_projects())
         
         self.running = True
         print(f"[INFO] Motor iniciado en modo: {self._state}")
@@ -329,9 +426,19 @@ class Game:
                                 # Instantiate Prefab
                                 print(f"[DROP] Instantiating Prefab '{name}' from {file_path}")
                                 from engine.assets.prefab import PrefabManager
-                                new_ent = PrefabManager.instantiate_prefab(file_path, active_world, (drop_pos.x, drop_pos.y))
-                                if new_ent:
-                                    active_world.selected_entity_name = new_ent.name
+                                prefab_data = PrefabManager.load_prefab_data(file_path)
+                                if prefab_data and self._scene_manager is not None:
+                                    unique_name = name
+                                    count = 1
+                                    while active_world.get_entity_by_name(unique_name):
+                                        unique_name = f"{name}_{count}"
+                                        count += 1
+                                    prefab_data["name"] = unique_name
+                                    transform_data = prefab_data.setdefault("components", {}).setdefault("Transform", {})
+                                    transform_data["x"] = drop_pos.x
+                                    transform_data["y"] = drop_pos.y
+                                    if self._scene_manager.create_entity_from_data(prefab_data):
+                                        active_world.selected_entity_name = unique_name
                             else:
                                 # Default: Create Sprite Entity
                                 base_name = name
@@ -341,14 +448,50 @@ class Game:
                                     count += 1
                                     
                                 print(f"[DROP] Creating Sprite Entity '{name}' from {file_path}")
-                                new_ent = active_world.create_entity(name)
-                                from engine.components.transform import Transform
-                                from engine.components.sprite import Sprite
-                                from engine.components.collider import Collider
-                                new_ent.add_component(Transform(drop_pos.x, drop_pos.y))
-                                new_ent.add_component(Sprite(file_path)) 
-                                new_ent.add_component(Collider(32, 32)) 
-                                active_world.selected_entity_name = name
+                                if self._scene_manager is not None:
+                                    created = self._scene_manager.create_entity(
+                                        name,
+                                        {
+                                            "Transform": {
+                                                "enabled": True,
+                                                "x": drop_pos.x,
+                                                "y": drop_pos.y,
+                                                "rotation": 0.0,
+                                                "scale_x": 1.0,
+                                                "scale_y": 1.0,
+                                            },
+                                            "Sprite": {
+                                                "enabled": True,
+                                                "texture_path": file_path,
+                                                "width": 0,
+                                                "height": 0,
+                                                "origin_x": 0.5,
+                                                "origin_y": 0.5,
+                                                "flip_x": False,
+                                                "flip_y": False,
+                                                "tint": [255, 255, 255, 255],
+                                            },
+                                            "Collider": {
+                                                "enabled": True,
+                                                "width": 32,
+                                                "height": 32,
+                                                "offset_x": 0.0,
+                                                "offset_y": 0.0,
+                                                "is_trigger": False,
+                                            },
+                                        },
+                                    )
+                                    if created:
+                                        active_world.selected_entity_name = name
+                                else:
+                                    new_ent = active_world.create_entity(name)
+                                    from engine.components.transform import Transform
+                                    from engine.components.sprite import Sprite
+                                    from engine.components.collider import Collider
+                                    new_ent.add_component(Transform(drop_pos.x, drop_pos.y))
+                                    new_ent.add_component(Sprite(file_path)) 
+                                    new_ent.add_component(Collider(32, 32)) 
+                                    active_world.selected_entity_name = name
 
             # 2. Gizmos & Selection (Only if interaction enabled)
             if enable_scene_interaction:
@@ -392,10 +535,20 @@ class Game:
                 except Exception as e:
                     from engine.editor.console_panel import log_err
                     log_err(f"Gameplay error: {e}")
+
+            if self._state == EngineState.EDIT and active_world is not None and self._script_behaviour_system is not None:
+                try:
+                    self._script_behaviour_system.update(active_world, dt, is_edit_mode=True)
+                except Exception as e:
+                    from engine.editor.console_panel import log_err
+                    log_err(f"ScriptBehaviour error: {e}")
             
             # Si estábamos en STEPPING, volvemos a PAUSED después de un frame
             if self._state == EngineState.STEPPING:
                 self._state = EngineState.PAUSED
+
+            if self._state == EngineState.EDIT and self._scene_manager is not None:
+                self._scene_manager.sync_from_edit_world()
             
             # Renderizar FRAME (Safe)
             try:
@@ -487,6 +640,10 @@ class Game:
         # Ctrl+S: Save
         if rl.is_key_down(rl.KEY_LEFT_CONTROL) and rl.is_key_pressed(rl.KEY_S):
             self.save_current_scene()
+        if rl.is_key_down(rl.KEY_LEFT_CONTROL) and rl.is_key_pressed(rl.KEY_Z):
+            self._history_manager.undo()
+        if rl.is_key_down(rl.KEY_LEFT_CONTROL) and rl.is_key_pressed(rl.KEY_Y):
+            self._history_manager.redo()
             
     def save_current_scene(self) -> None:
         """Guarda la escena actual a disco."""
@@ -497,6 +654,9 @@ class Game:
         print(f"[INFO] Guardando escena en: {self.current_scene_path}")
         success = self._scene_manager.save_scene_to_file(self.current_scene_path)
         if success:
+             if self._project_service is not None and self.current_scene_path:
+                 self._project_service.set_last_scene(self.current_scene_path)
+             self._scene_manager.clear_dirty()
              # Feedback visual simple (Flash o log)
              print("[INFO] Guardado completado.")
         else:
@@ -518,11 +678,19 @@ class Game:
 
     def _update_gameplay(self, world: "World", dt: float) -> None:
         """Actualiza la lógica del juego (Física, Colisiones, Reglas)."""
+        if self._input_system is not None:
+            self._input_system.update(world)
+        if self._player_controller_system is not None:
+            self._player_controller_system.update(world)
+        if self._script_behaviour_system is not None:
+            self._script_behaviour_system.update(world, dt, is_edit_mode=False)
         if self._physics_system is not None and self._state.allows_physics():
             self._physics_system.update(world, dt)
             
         if self._collision_system is not None and self._state.allows_gameplay():
             self._collision_system.update(world)
+        if self._audio_system is not None:
+            self._audio_system.update(world)
             
     def step(self) -> None:
         """Avanza exactamente un frame de simulación."""
@@ -623,7 +791,7 @@ class Game:
                 
                 # Render World (Editor Camera)
                 if self._render_system is not None and active_world is not None:
-                     self._render_system.render(active_world, override_camera=None)
+                     self._render_system.render(active_world, use_world_camera=False)
 
                 # Render Gizmos
                 if self.gizmo_system is not None and active_world is not None:
@@ -637,7 +805,9 @@ class Game:
                 
                 self.editor_layout.begin_game_render()
                 if target_world and self._render_system:
-                    self._render_system.render(target_world)
+                    texture = self.editor_layout.game_texture.texture
+                    viewport_size = (float(texture.width), float(texture.height))
+                    self._render_system.render(target_world, viewport_size=viewport_size)
                 else:
                     rl.draw_text("Press PLAY to start", 10, 10, 20, rl.GRAY)
                     
@@ -660,7 +830,7 @@ class Game:
                         active_world, 
                         int(rect.x), int(rect.y), 
                         int(rect.width), int(rect.height),
-                        is_edit_mode=True
+                        is_edit_mode=self.is_edit_mode
                     )
 
             self._draw_debug_info()
@@ -686,6 +856,51 @@ class Game:
         """Procesa peticiones de UI (Escenas, Menús de archivo)."""
         if self.editor_layout is None or self._scene_manager is None: return
 
+        if self.editor_layout.project_panel and self.editor_layout.project_panel.request_open_sprite_editor_for:
+            target_asset = self.editor_layout.project_panel.request_open_sprite_editor_for
+            self.editor_layout.project_panel.request_open_sprite_editor_for = None
+            if self._inspector_system is not None and hasattr(self._inspector_system, "open_sprite_editor"):
+                self._inspector_system.open_sprite_editor(target_asset)
+
+        if self.editor_layout.request_browse_project:
+            self.editor_layout.request_browse_project = False
+            try:
+                import tkinter
+                from tkinter import filedialog
+                root = tkinter.Tk()
+                root.withdraw()
+                path = filedialog.askdirectory(initialdir=os.getcwd(), title="Open Project")
+                root.destroy()
+                if path:
+                    self.editor_layout.pending_project_path = path
+            except Exception as e:
+                print(f"[ERROR] Open Project browse failed: {e}")
+
+        if self.editor_layout.pending_project_path and not self.editor_layout.show_project_dirty_modal:
+            target_project = self.editor_layout.pending_project_path
+            if self._scene_manager.is_dirty:
+                self.editor_layout.show_project_dirty_modal = True
+            else:
+                self.editor_layout.pending_project_path = ""
+                self.open_project(target_project)
+
+        if self.editor_layout.project_switch_decision:
+            decision = self.editor_layout.project_switch_decision
+            self.editor_layout.project_switch_decision = ""
+            target_project = self.editor_layout.pending_project_path
+            if decision == "save":
+                self.save_current_scene()
+                if target_project:
+                    self.editor_layout.pending_project_path = ""
+                    self.open_project(target_project)
+            elif decision == "discard":
+                self._scene_manager.clear_dirty()
+                if target_project:
+                    self.editor_layout.pending_project_path = ""
+                    self.open_project(target_project)
+            else:
+                self.editor_layout.pending_project_path = ""
+
         # NEW SCENE
         if self.editor_layout.request_new_scene:
             self.editor_layout.request_new_scene = False
@@ -704,11 +919,12 @@ class Game:
                 path = filedialog.asksaveasfilename(
                     defaultextension=".json",
                     filetypes=[("Scene Files", "*.json"), ("All Files", "*.*")],
-                    initialdir=os.path.join(os.getcwd(), "engine", "scenes"),
+                    initialdir=self._project_service.get_project_path("levels").as_posix() if self._project_service is not None else os.getcwd(),
                     title="Save Scene As"
                 )
                 root.destroy()
                 if path:
+                    self.current_scene_path = path
                     self._scene_manager.save_scene_to_file(path)
             except Exception as e:
                 print(f"[ERROR] Save Dialog failed: {e}")
@@ -725,12 +941,15 @@ class Game:
                 root.withdraw()
                 path = filedialog.askopenfilename(
                     filetypes=[("Scene Files", "*.json"), ("All Files", "*.*")],
-                    initialdir=os.path.join(os.getcwd(), "engine", "scenes"),
+                    initialdir=self._project_service.get_project_path("levels").as_posix() if self._project_service is not None else os.getcwd(),
                     title="Open Scene"
                 )
                 root.destroy()
                 if path:
                     self.stop() # Ensure Edit Mode
                     self._world = self._scene_manager.load_scene_from_file(path)
+                    self.current_scene_path = path
+                    if self._project_service is not None:
+                        self._project_service.set_last_scene(path)
             except Exception as e:
                 print(f"[ERROR] Load Dialog failed: {e}")
