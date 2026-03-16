@@ -1,0 +1,27 @@
+{
+    "id": "genre_platformer_planner",
+    "version": 1,
+    "domain": "genre",
+    "summary": "Planifica un plataformas 2D usando jugador, colisiones, cámara e input ya soportados por el motor.",
+    "trigger_keywords": ["plataformas", "plataforma", "platformer"],
+    "capabilities": ["component:playercontroller2d", "component:rigidbody", "component:collider", "component:camera2d"],
+    "planning_questions": [
+        {
+            "id": "enemies",
+            "text": "¿Quieres enemigos desde el primer slice?",
+            "rationale": "Define si se crean actores hostiles desde el principio."
+        },
+        {
+            "id": "obstacles",
+            "text": "¿Qué obstáculos quieres en la primera versión?",
+            "rationale": "Permite decidir layout y colisiones."
+        },
+        {
+            "id": "asset_strategy",
+            "text": "¿Usamos placeholders o assets del proyecto?",
+            "rationale": "Define la estrategia visual inicial."
+        }
+    ],
+    "allowed_operations": ["plan_platformer", "create_platformer_slice"],
+    "validations": ["player_exists", "play_cycle"]
+}

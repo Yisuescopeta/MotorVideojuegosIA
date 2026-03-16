@@ -401,5 +401,10 @@
         }
     ],
     "name": "Platformer Test Scene",
-    "feature_metadata": {}
+    "feature_metadata": {
+        "scene_flow": {
+            "menu_scene": "levels/main_menu_scene.json",
+            "previous_scene": "levels/main_menu_scene.json"
+        }
+    }
 }

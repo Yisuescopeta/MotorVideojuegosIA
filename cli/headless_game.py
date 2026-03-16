@@ -71,6 +71,8 @@ class HeadlessGame(Game):
             
         # Animación (avanza lógica interna)
         self._update_animation(active_world, dt)
+        if active_world is not None:
+            self._update_ui_overlay(active_world, (float(self.width), float(self.height)))
 
         if self._state.is_edit() and self._scene_manager is not None:
             self._scene_manager.sync_from_edit_world()

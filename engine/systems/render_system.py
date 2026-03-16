@@ -12,6 +12,7 @@ from engine.assets.asset_service import AssetService
 from engine.components.animator import Animator
 from engine.components.camera2d import Camera2D
 from engine.components.collider import Collider
+from engine.components.renderorder2d import RenderOrder2D
 from engine.components.sprite import Sprite
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
@@ -55,7 +56,7 @@ class RenderSystem:
         if camera is not None:
             rl.begin_mode_2d(camera)
 
-        for entity in world.get_entities_with(Transform):
+        for entity in self._sorted_render_entities(world):
             transform = entity.get_component(Transform)
             if transform is None:
                 continue
@@ -72,6 +73,22 @@ class RenderSystem:
 
         if camera is not None:
             rl.end_mode_2d()
+
+    def _sorted_render_entities(self, world: World) -> list[Entity]:
+        entities = world.get_entities_with(Transform)
+        sorting_layers = world.feature_metadata.get("render_2d", {}).get("sorting_layers", ["Default"])
+        sorting_index = {name: index for index, name in enumerate(sorting_layers)}
+
+        def sort_key(entity: Entity) -> tuple[int, int, int, int]:
+            render_order = entity.get_component(RenderOrder2D)
+            transform = entity.get_component(Transform)
+            layer_name = render_order.sorting_layer if render_order is not None and render_order.enabled else "Default"
+            order_in_layer = render_order.order_in_layer if render_order is not None and render_order.enabled else 0
+            layer_index = sorting_index.get(layer_name, len(sorting_index))
+            depth = transform.depth if transform is not None else 0
+            return (layer_index, order_in_layer, depth, entity.id)
+
+        return sorted(entities, key=sort_key)
 
     def _build_camera_from_world(
         self,

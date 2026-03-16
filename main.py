@@ -15,10 +15,8 @@ CONTROLES:
 """
 
 import os
-import json
 import pyray as rl
 from engine.core.game import Game
-from engine.ecs.world import World
 from engine.systems.render_system import RenderSystem
 from engine.systems.physics_system import PhysicsSystem
 from engine.systems.collision_system import CollisionSystem
@@ -31,9 +29,12 @@ from engine.inspector.inspector_system import InspectorSystem
 from engine.events.event_bus import EventBus
 from engine.events.rule_system import RuleSystem
 from engine.systems.selection_system import SelectionSystem
+from engine.systems.ui_render_system import UIRenderSystem
+from engine.systems.ui_system import UISystem
 from engine.scenes.scene_manager import SceneManager
 from engine.levels.component_registry import create_default_registry
 from engine.project.project_service import ProjectService
+from engine.api import EngineAPI
 
 
 from engine.levels.component_registry import create_default_registry
@@ -60,14 +61,6 @@ def ensure_sprite_sheet() -> None:
         gen.generate_spritesheet_raylib()
     except Exception as e:
         print(f"[WARNING] Sprite sheet: {e}")
-
-
-def load_level_data(path: str) -> dict:
-    """Carga datos del nivel desde JSON."""
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
 def main() -> None:
     """Funcion principal."""
     args = parse_args()
@@ -94,23 +87,14 @@ def main() -> None:
 
     # Crear registro de componentes
     registry = create_default_registry()
-    project_service = ProjectService(os.getcwd())
+    project_service = ProjectService(os.getcwd(), auto_ensure=False)
 
     # Crear SceneManager
     scene_manager = SceneManager(registry)
 
-    # Cargar escena
-    level_path = project_service.resolve_path(args.level).as_posix() if not os.path.isabs(args.level) else args.level
-    try:
-        level_data = load_level_data(level_path)
-        world = scene_manager.load_scene(level_data)
-    except Exception as e:
-        print(f"[ERROR] No se pudo cargar {level_path}: {e}")
-        return
-
     # Crear bus de eventos y sistema de reglas
     event_bus = EventBus()
-    rule_system = RuleSystem(event_bus, world)
+    rule_system = RuleSystem(event_bus, None)
 
     # Crear sistemas
     render_system = RenderSystem()
@@ -123,6 +107,8 @@ def main() -> None:
     script_behaviour_system = ScriptBehaviourSystem()
     inspector_system = InspectorSystem()
     selection_system = SelectionSystem()
+    ui_system = UISystem()
+    ui_render_system = UIRenderSystem()
 
     # Configurar juego
     game = Game(
@@ -132,7 +118,6 @@ def main() -> None:
         target_fps=60,
     )
 
-    game.set_world(world)
     game.set_project_service(project_service)
     game.set_scene_manager(scene_manager)
     game.set_render_system(render_system)
@@ -148,6 +133,12 @@ def main() -> None:
     game.set_rule_system(rule_system)
     game.set_rule_system(rule_system)
     game.set_selection_system(selection_system)
+    game.set_ui_system(ui_system)
+    game.set_ui_render_system(ui_render_system)
+
+    assistant_api = EngineAPI(project_root=project_service.project_root.as_posix())
+    assistant_api.attach_runtime(game, scene_manager, project_service)
+    game.set_assistant_api(assistant_api)
 
     # Configurar ScriptExecutor si se solicito (Visual Automation)
     if args.script:
@@ -166,8 +157,8 @@ def main() -> None:
     print("  [TAB]     Inspector")
     print()
     print("Prueba:")
-    print("  1. Usa los botones superiores para iniciar y pausar")
-    print("  2. Verifica que Stop devuelve el editor a su estado normal")
+    print("  1. Selecciona o crea un proyecto desde el launcher inicial")
+    print("  2. Abre una escena del proyecto y usa los botones superiores para iniciar y pausar")
     print("-" * 60)
 
     # Ejecutar

@@ -5,6 +5,7 @@ engine/systems/script_behaviour_system.py - Ejecucion de ScriptBehaviour.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 from typing import Any, Optional
 
 from engine.assets.asset_service import AssetService
@@ -21,6 +22,7 @@ class ScriptBehaviourContext:
     entity_name: str
     public_data: dict[str, Any]
     scene_manager: Any = None
+    scene_flow_loader: Optional[Callable[[str], bool]] = None
 
     def get_entity(self):
         return self.world.get_entity_by_name(self.entity_name)
@@ -40,6 +42,12 @@ class ScriptBehaviourContext:
     def log_error(self, message: str) -> None:
         log_err(f"[Script:{self.entity_name}] {message}")
 
+    def load_scene_flow_target(self, key: str) -> bool:
+        """Carga una escena conectada por `feature_metadata.scene_flow`."""
+        if self.scene_flow_loader is None:
+            return False
+        return bool(self.scene_flow_loader(str(key)))
+
 
 class ScriptBehaviourSystem:
     """Ejecuta hooks simples de modulos Python sobre entidades serializables."""
@@ -49,6 +57,7 @@ class ScriptBehaviourSystem:
         self._scene_manager: Any = None
         self._asset_service: AssetService | None = None
         self._asset_resolver: Any = None
+        self._scene_flow_loader: Optional[Callable[[str], bool]] = None
 
     def set_hot_reload_manager(self, manager: Any) -> None:
         self._hot_reload_manager = manager
@@ -59,6 +68,9 @@ class ScriptBehaviourSystem:
     def set_project_service(self, project_service: Any) -> None:
         self._asset_service = AssetService(project_service) if project_service is not None else None
         self._asset_resolver = self._asset_service.get_asset_resolver() if self._asset_service is not None else None
+
+    def set_scene_flow_loader(self, loader: Optional[Callable[[str], bool]]) -> None:
+        self._scene_flow_loader = loader
 
     def on_play(self, world: World) -> None:
         self._invoke_for_world(world, "on_play", None, is_edit_mode=False)
@@ -110,6 +122,7 @@ class ScriptBehaviourSystem:
             entity_name=entity_name,
             public_data=script_behaviour.public_data,
             scene_manager=self._scene_manager,
+            scene_flow_loader=self._scene_flow_loader,
         )
 
         try:

@@ -33,6 +33,8 @@ sin depender de contexto informal entre agentes.
 - `definition-of-done.md`: criterio comun de cierre.
 - `agents/`: especificacion operativa de cada agente.
 - `unity-2d-core-matrix.md`: matriz base de gaps para el scout.
+- `registro-automatizacion-unity.md`: memoria editable para sesiones
+  automatizadas recurrentes.
 
 ## Regla global IA-first
 
@@ -75,3 +77,13 @@ python tools/agent_workflow.py create-brief ^
   --subsystems scenes core api ^
   --files engine/scenes/scene_manager.py engine/core/game.py engine/api/engine_api.py
 ```
+
+## Automatizacion horaria orientada a Unity
+
+Si quieres usar siempre el mismo prompt en una automatizacion recurrente:
+
+- usa `prompts/hourly-unity-automation.md` como prompt base
+- usa `registro-automatizacion-unity.md` como memoria editable de trabajo
+
+La idea es que el prompt permanezca estable y que el control fino del flujo se
+haga editando el registro.

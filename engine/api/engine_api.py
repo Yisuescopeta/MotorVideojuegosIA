@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from cli.headless_game import HeadlessGame
@@ -21,6 +22,7 @@ from engine.inspector.inspector_system import InspectorSystem
 from engine.levels.component_registry import create_default_registry
 from engine.project.project_service import ProjectService
 from engine.scenes.scene_manager import SceneManager
+from engine.assets.prefab import PrefabManager
 from engine.systems.animation_system import AnimationSystem
 from engine.systems.audio_system import AudioSystem
 from engine.systems.collision_system import CollisionSystem
@@ -29,7 +31,15 @@ from engine.systems.physics_system import PhysicsSystem
 from engine.systems.player_controller_system import PlayerControllerSystem
 from engine.systems.script_behaviour_system import ScriptBehaviourSystem
 from engine.systems.selection_system import SelectionSystem
+from engine.systems.ui_render_system import UIRenderSystem
+from engine.systems.ui_system import UISystem
 from engine.assets.asset_service import AssetService
+from engine.components.renderorder2d import RenderOrder2D
+from engine.components.rigidbody import RigidBody
+from engine.components.canvas import Canvas
+from engine.components.recttransform import RectTransform
+from engine.components.uibutton import UIButton
+from engine.components.uitext import UIText
 
 _UNSET = object()
 
@@ -48,6 +58,7 @@ class EngineAPI:
         self.scene_manager: Optional[SceneManager] = None
         self.project_service: Optional[ProjectService] = None
         self.asset_service: Optional[AssetService] = None
+        self.ai_orchestrator: Any = None
         self._registry = create_default_registry()
         self._project_root = project_root or os.getcwd()
         self._global_state_dir = global_state_dir
@@ -72,19 +83,38 @@ class EngineAPI:
         self.game.set_player_controller_system(PlayerControllerSystem())
         self.game.set_script_behaviour_system(ScriptBehaviourSystem())
         self.game.set_audio_system(AudioSystem())
+        self.game.set_ui_system(UISystem())
+        self.game.set_ui_render_system(UIRenderSystem())
+        self._initialize_ai()
+
+    def _initialize_ai(self) -> None:
+        from engine.ai import AIOrchestrator
+
+        self.ai_orchestrator = AIOrchestrator(self)
+
+    def attach_runtime(self, game: Any, scene_manager: SceneManager, project_service: ProjectService) -> None:
+        self.game = game
+        self.scene_manager = scene_manager
+        self.project_service = project_service
+        self.asset_service = AssetService(project_service)
+        if hasattr(self.game, "set_project_service"):
+            self.game.set_project_service(project_service)
+        self._initialize_ai()
 
     def load_level(self, path: str) -> None:
         """Carga una escena JSON en el motor."""
         try:
-            resolved_path = self.project_service.resolve_path(path).as_posix() if self.project_service is not None else path
-            with open(resolved_path, "r", encoding="utf-8") as file:
-                data = json.load(file)
             if self.scene_manager is None or self.game is None:
                 raise RuntimeError("Engine not initialized")
-            world = self.scene_manager.load_scene(data)
-            self.game.set_world(world)
-            if self.project_service is not None:
-                self.project_service.set_last_scene(resolved_path)
+            if not self.game.load_scene_by_path(path):
+                resolved_path = self.project_service.resolve_path(path).as_posix() if self.project_service is not None else path
+                with open(resolved_path, "r", encoding="utf-8") as file:
+                    data = json.load(file)
+                world = self.scene_manager.load_scene(data, source_path=resolved_path)
+                self.game.set_world(world)
+                self.game.current_scene_path = resolved_path
+                if self.project_service is not None:
+                    self.project_service.set_last_scene(resolved_path)
         except Exception as exc:
             raise LevelLoadError(f"Fallo al cargar {path}: {exc}")
 
@@ -157,6 +187,8 @@ class EngineAPI:
             "active": entity.active,
             "tag": entity.tag,
             "layer": entity.layer,
+            "parent": entity.parent_name,
+            "prefab_instance": entity.prefab_instance,
             "components": components_data,
         }
 
@@ -185,6 +217,25 @@ class EngineAPI:
     def set_entity_layer(self, name: str, layer: str) -> ActionResult:
         self._ensure_edit_mode()
         return self._apply_entity_property(name, "layer", layer, "Entity layer updated")
+
+    def set_entity_parent(self, name: str, parent_name: Optional[str]) -> ActionResult:
+        self._ensure_edit_mode()
+        if self.scene_manager is None:
+            return self._fail("SceneManager not ready")
+        success = self.scene_manager.set_entity_parent(name, parent_name)
+        return self._ok("Entity parent updated", {"entity": name, "parent": parent_name}) if success else self._fail("Entity parent update failed")
+
+    def create_child_entity(
+        self,
+        parent_name: str,
+        name: str,
+        components: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> ActionResult:
+        self._ensure_edit_mode()
+        if self.scene_manager is None:
+            return self._fail("SceneManager not ready")
+        success = self.scene_manager.create_child_entity(parent_name, name, components=components)
+        return self._ok("Child entity created", {"entity": name, "parent": parent_name}) if success else self._fail("Child entity creation failed")
 
     def add_component(self, entity_name: str, component_name: str, data: Optional[Dict[str, Any]] = None) -> ActionResult:
         self._ensure_edit_mode()
@@ -428,13 +479,314 @@ class EngineAPI:
         if self.scene_manager is None or self.scene_manager.current_scene is None:
             return self._fail("No scene loaded")
         self.scene_manager.current_scene.set_feature_metadata(key, value)
+        if self.game is not None and self.game.world is not None:
+            self.game.world.feature_metadata[key] = value
         return self._ok("Feature metadata updated", {"key": key})
+
+    def set_sorting_layers(self, order: list[str]) -> ActionResult:
+        self._ensure_edit_mode()
+        metadata = self.get_feature_metadata()
+        render_2d = dict(metadata.get("render_2d", {}))
+        render_2d["sorting_layers"] = self._normalize_sorting_layers(order)
+        return self.set_feature_metadata("render_2d", render_2d)
+
+    def set_render_order(self, entity_name: str, sorting_layer: str, order_in_layer: int) -> ActionResult:
+        self._ensure_edit_mode()
+        entity = self._require_entity(entity_name)
+        layer_name = sorting_layer.strip() or "Default"
+        current_layers = self._normalize_sorting_layers(
+            self.get_feature_metadata().get("render_2d", {}).get("sorting_layers", ["Default"])
+        )
+        if layer_name not in current_layers:
+            return self._fail(f"Sorting layer '{layer_name}' is not configured")
+        clamped_order = self._clamp_render_order(order_in_layer)
+        has_component = any(comp.__name__ == "RenderOrder2D" for comp in entity._components.keys())
+        if not has_component:
+            result = self.add_component(
+                entity_name,
+                "RenderOrder2D",
+                {"enabled": True, "sorting_layer": layer_name, "order_in_layer": clamped_order},
+            )
+            return result
+        result = self.edit_component(entity_name, "RenderOrder2D", "sorting_layer", layer_name)
+        if not result["success"]:
+            return result
+        return self.edit_component(entity_name, "RenderOrder2D", "order_in_layer", clamped_order)
+
+    def set_physics_layer_collision(self, layer_a: str, layer_b: str, enabled: bool) -> ActionResult:
+        self._ensure_edit_mode()
+        metadata = self.get_feature_metadata()
+        physics_2d = dict(metadata.get("physics_2d", {}))
+        matrix = dict(physics_2d.get("layer_matrix", {}))
+        matrix[f"{layer_a}|{layer_b}"] = bool(enabled)
+        matrix[f"{layer_b}|{layer_a}"] = bool(enabled)
+        physics_2d["layer_matrix"] = matrix
+        return self.set_feature_metadata("physics_2d", physics_2d)
+
+    def set_rigidbody_constraints(self, entity_name: str, constraints: list[str]) -> ActionResult:
+        """Configura constraints estilo Unity para RigidBody usando estado serializable."""
+        self._ensure_edit_mode()
+        normalized = RigidBody.normalize_constraints(constraints)
+        invalid = [value for value in constraints if str(value).strip() not in RigidBody.VALID_CONSTRAINTS]
+        if invalid:
+            return self._fail(f"Unsupported constraints: {invalid}")
+        if not normalized:
+            normalized = ["None"]
+        freeze_x = "FreezePositionX" in normalized
+        freeze_y = "FreezePositionY" in normalized
+
+        result = self.edit_component(entity_name, "RigidBody", "freeze_x", freeze_x)
+        if not result["success"]:
+            return result
+        result = self.edit_component(entity_name, "RigidBody", "freeze_y", freeze_y)
+        if not result["success"]:
+            return result
+        return self.edit_component(entity_name, "RigidBody", "constraints", normalized)
+
+    def instantiate_prefab(
+        self,
+        path: str,
+        name: Optional[str] = None,
+        parent: Optional[str] = None,
+        overrides: Optional[Dict[str, Any]] = None,
+    ) -> ActionResult:
+        self._ensure_edit_mode()
+        if self.scene_manager is None or self.project_service is None:
+            return self._fail("SceneManager not ready")
+        resolved_path = self.project_service.resolve_path(path)
+        prefab_data = PrefabManager.load_prefab_data(resolved_path.as_posix())
+        if prefab_data is None:
+            return self._fail("Prefab not found")
+        entity_name = name or prefab_data.get("root_name", "Prefab")
+        scene_source_path = self.scene_manager.current_scene.source_path if self.scene_manager.current_scene is not None else None
+        if scene_source_path:
+            prefab_locator = Path(os.path.relpath(resolved_path.as_posix(), Path(scene_source_path).resolve().parent.as_posix())).as_posix()
+        else:
+            prefab_locator = self.project_service.to_relative_path(resolved_path)
+        success = self.scene_manager.instantiate_prefab(
+            entity_name,
+            prefab_path=prefab_locator,
+            parent=parent,
+            overrides=overrides,
+            root_name=prefab_data.get("root_name", entity_name),
+        )
+        return self._ok("Prefab instantiated", {"entity": entity_name}) if success else self._fail("Prefab instantiation failed")
+
+    def unpack_prefab(self, entity_name: str) -> ActionResult:
+        self._ensure_edit_mode()
+        if self.scene_manager is None:
+            return self._fail("SceneManager not ready")
+        success = self.scene_manager.unpack_prefab(entity_name)
+        return self._ok("Prefab unpacked", {"entity": entity_name}) if success else self._fail("Prefab unpack failed")
+
+    def apply_prefab_overrides(self, entity_name: str) -> ActionResult:
+        self._ensure_edit_mode()
+        if self.scene_manager is None:
+            return self._fail("SceneManager not ready")
+        success = self.scene_manager.apply_prefab_overrides(entity_name)
+        return self._ok("Prefab overrides applied", {"entity": entity_name}) if success else self._fail("Prefab apply failed")
 
     def get_feature_metadata(self) -> Dict[str, Any]:
         """Devuelve la metadata extendida de la escena."""
         if self.scene_manager is None or self.scene_manager.current_scene is None:
             return {}
         return self.scene_manager.current_scene.feature_metadata
+
+    def get_scene_connections(self) -> Dict[str, str]:
+        if self.scene_manager is None:
+            return {}
+        return self.scene_manager.get_scene_flow()
+
+    def create_canvas(
+        self,
+        name: str = "Canvas",
+        reference_width: int = 800,
+        reference_height: int = 600,
+        sort_order: int = 0,
+    ) -> ActionResult:
+        self._ensure_edit_mode()
+        components = {
+            "Canvas": {
+                "enabled": True,
+                "render_mode": "screen_space_overlay",
+                "reference_width": reference_width,
+                "reference_height": reference_height,
+                "match_mode": "stretch",
+                "sort_order": sort_order,
+            },
+            "RectTransform": {
+                "enabled": True,
+                "anchor_min_x": 0.0,
+                "anchor_min_y": 0.0,
+                "anchor_max_x": 1.0,
+                "anchor_max_y": 1.0,
+                "pivot_x": 0.0,
+                "pivot_y": 0.0,
+                "anchored_x": 0.0,
+                "anchored_y": 0.0,
+                "width": 0.0,
+                "height": 0.0,
+                "rotation": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0,
+            },
+        }
+        return self.create_entity(name, components=components)
+
+    def create_ui_element(
+        self,
+        name: str,
+        parent: str,
+        rect_transform: Optional[Dict[str, Any]] = None,
+    ) -> ActionResult:
+        self._ensure_edit_mode()
+        components = {
+            "RectTransform": {
+                "enabled": True,
+                "anchor_min_x": 0.5,
+                "anchor_min_y": 0.5,
+                "anchor_max_x": 0.5,
+                "anchor_max_y": 0.5,
+                "pivot_x": 0.5,
+                "pivot_y": 0.5,
+                "anchored_x": 0.0,
+                "anchored_y": 0.0,
+                "width": 100.0,
+                "height": 40.0,
+                "rotation": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0,
+            }
+        }
+        if rect_transform:
+            components["RectTransform"].update(rect_transform)
+        return self.create_child_entity(parent, name, components=components)
+
+    def set_rect_transform(self, entity_name: str, properties: Dict[str, Any]) -> ActionResult:
+        self._ensure_edit_mode()
+        for property_name, value in properties.items():
+            result = self.edit_component(entity_name, "RectTransform", property_name, value)
+            if not result["success"]:
+                return result
+        return self._ok("RectTransform updated", {"entity": entity_name})
+
+    def create_ui_text(
+        self,
+        name: str,
+        text: str,
+        parent: str,
+        rect_transform: Optional[Dict[str, Any]] = None,
+        font_size: int = 24,
+        alignment: str = "center",
+    ) -> ActionResult:
+        self._ensure_edit_mode()
+        result = self.create_ui_element(name=name, parent=parent, rect_transform=rect_transform)
+        if not result["success"]:
+            return result
+        add_result = self.add_component(
+            name,
+            "UIText",
+            {
+                "enabled": True,
+                "text": text,
+                "font_size": font_size,
+                "color": [255, 255, 255, 255],
+                "alignment": alignment,
+                "wrap": False,
+            },
+        )
+        return add_result if not add_result["success"] else self._ok("UIText created", {"entity": name})
+
+    def create_ui_button(
+        self,
+        name: str,
+        label: str,
+        parent: str,
+        rect_transform: Optional[Dict[str, Any]] = None,
+        on_click: Optional[Dict[str, Any]] = None,
+    ) -> ActionResult:
+        self._ensure_edit_mode()
+        result = self.create_ui_element(name=name, parent=parent, rect_transform=rect_transform)
+        if not result["success"]:
+            return result
+        add_result = self.add_component(
+            name,
+            "UIButton",
+            {
+                "enabled": True,
+                "interactable": True,
+                "label": label,
+                "normal_color": [72, 72, 72, 255],
+                "hover_color": [92, 92, 92, 255],
+                "pressed_color": [56, 56, 56, 255],
+                "disabled_color": [48, 48, 48, 200],
+                "transition_scale_pressed": 0.96,
+                "on_click": on_click or {"type": "emit_event", "name": "ui.button_clicked"},
+            },
+        )
+        return add_result if not add_result["success"] else self._ok("UIButton created", {"entity": name})
+
+    def set_button_on_click(self, entity_name: str, on_click: Dict[str, Any]) -> ActionResult:
+        self._ensure_edit_mode()
+        return self.edit_component(entity_name, "UIButton", "on_click", on_click)
+
+    def list_ui_nodes(self) -> list[EntityData]:
+        if self.game is None or self.game.world is None:
+            return []
+        nodes: list[EntityData] = []
+        for entity in self.game.world.get_all_entities():
+            if any(entity.has_component(component) for component in (Canvas, RectTransform, UIText, UIButton)):
+                nodes.append(self.get_entity(entity.name))
+        return nodes
+
+    def get_ui_layout(self, entity_name: str) -> Dict[str, Any]:
+        if self.game is None or self.game.world is None or self.game._ui_system is None:
+            return {}
+        self.game._update_ui_overlay(self.game.world, (float(self.game.width), float(self.game.height)))
+        return self.game._ui_system.get_entity_screen_rect(entity_name) or {}
+
+    def click_ui_button(self, entity_name: str) -> ActionResult:
+        if self.game is None or self.game.world is None or self.game._ui_system is None:
+            return self._fail("UI system not ready")
+        clicked = self.game._ui_system.click_entity(self.game.world, entity_name, (float(self.game.width), float(self.game.height)))
+        return self._ok("UIButton clicked", {"entity": entity_name}) if clicked else self._fail("UIButton click failed")
+
+    def set_scene_connection(self, key: str, path: str) -> ActionResult:
+        self._ensure_edit_mode()
+        if self.scene_manager is None:
+            return self._fail("SceneManager not ready")
+        normalized = ""
+        if path and self.project_service is not None:
+            normalized = self.project_service.to_relative_path(path)
+        success = self.scene_manager.set_scene_flow_target(key, normalized)
+        return self._ok("Scene connection updated", {"key": key, "path": normalized}) if success else self._fail("Scene connection update failed")
+
+    def set_next_scene(self, path: str) -> ActionResult:
+        return self.set_scene_connection("next_scene", path)
+
+    def set_menu_scene(self, path: str) -> ActionResult:
+        return self.set_scene_connection("menu_scene", path)
+
+    def set_previous_scene(self, path: str) -> ActionResult:
+        return self.set_scene_connection("previous_scene", path)
+
+    def load_scene(self, path: str) -> ActionResult:
+        if self.game is None:
+            return self._fail("Engine not initialized")
+        success = self.game.load_scene_by_path(path)
+        return self._ok("Scene loaded", {"path": self.game.current_scene_path}) if success else self._fail("Scene load failed")
+
+    def load_next_scene(self) -> ActionResult:
+        if self.game is None:
+            return self._fail("Engine not initialized")
+        success = self.game.load_scene_flow_target("next_scene")
+        return self._ok("Next scene loaded", {"path": self.game.current_scene_path}) if success else self._fail("Next scene is not configured")
+
+    def load_menu_scene(self) -> ActionResult:
+        if self.game is None:
+            return self._fail("Engine not initialized")
+        success = self.game.load_scene_flow_target("menu_scene")
+        return self._ok("Menu scene loaded", {"path": self.game.current_scene_path}) if success else self._fail("Menu scene is not configured")
 
     def play_audio(self, entity_name: str) -> ActionResult:
         """Dispara un AudioSource por nombre de entidad."""
@@ -482,6 +834,85 @@ class EngineAPI:
             return self._fail("Project service not ready")
         self.project_service.save_editor_state(data)
         return self._ok("Editor state saved", self.project_service.load_editor_state())
+
+    def handle_ai_request(
+        self,
+        prompt: str,
+        mode: str = "auto",
+        answers: Optional[Dict[str, Any]] = None,
+        confirmed: bool = False,
+        allow_python: bool = False,
+        allow_engine_changes: bool = False,
+    ) -> Dict[str, Any]:
+        if self.ai_orchestrator is None:
+            return {"status": "error", "message": "AI orchestrator not initialized"}
+        from engine.ai import AIRequest
+
+        request = AIRequest(
+            prompt=prompt,
+            mode=mode,
+            answers=answers or {},
+            confirmed=confirmed,
+            allow_python=allow_python,
+            allow_engine_changes=allow_engine_changes,
+        )
+        return self.ai_orchestrator.handle(request).to_dict()
+
+    def get_ai_project_memory(self) -> Dict[str, Any]:
+        if self.ai_orchestrator is None:
+            return {}
+        return self.ai_orchestrator.get_memory()
+
+    def update_ai_project_memory(self, patch: Dict[str, Any]) -> ActionResult:
+        if self.ai_orchestrator is None:
+            return self._fail("AI orchestrator not initialized")
+        memory = self.ai_orchestrator.update_memory(patch)
+        return self._ok("AI project memory updated", memory)
+
+    def set_ai_provider_policy(
+        self,
+        mode: str = "local",
+        preferred_provider: str = "ollama_local",
+        model_name: str = "",
+        endpoint: str = "http://127.0.0.1:11434",
+    ) -> ActionResult:
+        return self.update_ai_project_memory(
+            {
+                "provider_policy": {
+                    "mode": mode,
+                    "preferred_provider": preferred_provider,
+                    "model_name": model_name,
+                    "endpoint": endpoint,
+                }
+            }
+        )
+
+    def list_ai_skills(self) -> list[Dict[str, Any]]:
+        if self.ai_orchestrator is None:
+            return []
+        return self.ai_orchestrator.list_skills()
+
+    def list_ai_providers(self) -> list[Dict[str, Any]]:
+        if self.ai_orchestrator is None:
+            return []
+        return self.ai_orchestrator.list_providers()
+
+    def get_ai_provider_diagnostics(self) -> Dict[str, Any]:
+        if self.ai_orchestrator is None:
+            return {}
+        return self.ai_orchestrator.get_provider_diagnostics()
+
+    def get_engine_capabilities(self) -> list[Dict[str, Any]]:
+        if self.project_service is None:
+            return []
+        from engine.ai.capabilities import build_capability_registry
+
+        return [item.to_dict() for item in build_capability_registry(self.project_service, self)]
+
+    def get_ai_context(self, prompt: str) -> Dict[str, Any]:
+        if self.ai_orchestrator is None:
+            return {}
+        return self.ai_orchestrator.assemble_context(prompt)
 
     def list_project_assets(self, search: str = "") -> list[Dict[str, Any]]:
         if self.asset_service is None:
@@ -730,3 +1161,17 @@ class EngineAPI:
 
     def _fail(self, message: str) -> ActionResult:
         return {"success": False, "message": message, "data": None}
+
+    def _normalize_sorting_layers(self, order: list[str]) -> list[str]:
+        normalized: list[str] = ["Default"]
+        seen = {"Default"}
+        for entry in order:
+            layer_name = str(entry).strip()
+            if not layer_name or layer_name in seen:
+                continue
+            seen.add(layer_name)
+            normalized.append(layer_name)
+        return normalized
+
+    def _clamp_render_order(self, value: int) -> int:
+        return max(RenderOrder2D.MIN_ORDER_IN_LAYER, min(RenderOrder2D.MAX_ORDER_IN_LAYER, int(value)))

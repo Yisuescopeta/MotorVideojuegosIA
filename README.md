@@ -181,6 +181,24 @@ player.add_component(RigidBody(gravity_scale=1.0))
 | `emit_event` | Dispara otro evento |
 | `log_message` | Imprime en consola |
 
+## 🤖 Authoring con IA
+
+El motor incluye una primera base de IA integrada para planificar y ejecutar cambios de authoring usando `EngineAPI`, memoria de proyecto, skills versionadas y un registro de capacidades reales del motor.
+
+```python
+from engine.api import EngineAPI
+
+api = EngineAPI()
+api.load_level("levels/demo_level.json")
+
+response = api.handle_ai_request("Crea un juego de plataformas", mode="plan")
+print(response["plan"]["questions"])
+```
+
+En modo editor, el panel `AI Assistant` aparece a la derecha del Inspector.
+
+Documentación breve: `docs/AI_AUTHORING.md`
+
 ## 🔄 Gestión de Escenas
 
 ```

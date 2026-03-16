@@ -111,7 +111,12 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.audiosource import AudioSource
     from engine.components.inputmap import InputMap
     from engine.components.playercontroller2d import PlayerController2D
+    from engine.components.renderorder2d import RenderOrder2D
     from engine.components.scriptbehaviour import ScriptBehaviour
+    from engine.components.canvas import Canvas
+    from engine.components.recttransform import RectTransform
+    from engine.components.uitext import UIText
+    from engine.components.uibutton import UIButton
     
     registry = ComponentRegistry()
     registry.register("Transform", Transform)
@@ -123,6 +128,11 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("AudioSource", AudioSource)
     registry.register("InputMap", InputMap)
     registry.register("PlayerController2D", PlayerController2D)
+    registry.register("RenderOrder2D", RenderOrder2D)
     registry.register("ScriptBehaviour", ScriptBehaviour)
+    registry.register("Canvas", Canvas)
+    registry.register("RectTransform", RectTransform)
+    registry.register("UIText", UIText)
+    registry.register("UIButton", UIButton)
     
     return registry

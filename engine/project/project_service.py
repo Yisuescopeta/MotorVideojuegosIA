@@ -73,13 +73,15 @@ class ProjectService:
         self,
         project_root: str | os.PathLike[str] = ".",
         global_state_dir: str | os.PathLike[str] | None = None,
+        auto_ensure: bool = True,
     ) -> None:
         self._project_root = Path(project_root).resolve()
         self._manifest: ProjectManifest | None = None
         self._global_dir = self._resolve_global_dir(global_state_dir)
         self._recents_file = self._global_dir / self.RECENTS_FILE_NAME
         self._ensure_global_storage()
-        self.ensure_project(self._project_root)
+        if auto_ensure:
+            self.ensure_project(self._project_root)
 
     @property
     def project_root(self) -> Path:
@@ -90,6 +92,10 @@ class ProjectService:
         if self._manifest is None:
             raise RuntimeError("Project manifest not loaded")
         return self._manifest
+
+    @property
+    def has_project(self) -> bool:
+        return self._manifest is not None
 
     @property
     def project_name(self) -> str:
@@ -116,6 +122,28 @@ class ProjectService:
         self._ensure_project_layout()
         self.record_recent_project()
         return manifest
+
+    def create_project(
+        self,
+        project_root: str | os.PathLike[str],
+        name: str | None = None,
+    ) -> ProjectManifest:
+        root = Path(project_root).resolve()
+        manifest = self.ensure_project(root)
+        if name is not None and name.strip():
+            custom_manifest = ProjectManifest(
+                name=name.strip(),
+                version=manifest.version,
+                paths=dict(manifest.paths),
+            )
+            self._write_json(root / self.PROJECT_FILE, custom_manifest.to_dict())
+            self._manifest = custom_manifest
+            manifest = custom_manifest
+            self.record_recent_project()
+        return manifest
+
+    def clear_active_project(self) -> None:
+        self._manifest = None
 
     def open_project(self, project_root: str | os.PathLike[str]) -> ProjectManifest:
         root = Path(project_root).resolve()

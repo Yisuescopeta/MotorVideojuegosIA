@@ -1,103 +1,102 @@
 """
-engine/systems/physics_system.py - Sistema de física
-
-PROPÓSITO:
-    Aplica física básica a entidades con RigidBody:
-    - Gravedad
-    - Integración de velocidad (Euler)
-    - Actualización de posición
-
-DEPENDENCIAS:
-    - Transform: Para modificar la posición
-    - RigidBody: Para leer velocidad y gravedad
-
-EJEMPLO DE USO:
-    from engine.config import GRAVITY_DEFAULT
-    physics = PhysicsSystem(gravity=GRAVITY_DEFAULT)
-    physics.update(world, delta_time)
+engine/systems/physics_system.py - Sistema de fÃ­sica
 """
 
-from engine.ecs.world import World
-from engine.components.transform import Transform
-from engine.components.rigidbody import RigidBody
+from __future__ import annotations
+
 from engine.components.collider import Collider
-from engine.config import GRAVITY_DEFAULT, GROUND_Y_TEMP
+from engine.components.rigidbody import RigidBody
+from engine.components.transform import Transform
+from engine.config import GROUND_Y_TEMP, GRAVITY_DEFAULT
+from engine.ecs.entity import Entity
+from engine.ecs.world import World
 
 
 class PhysicsSystem:
-    """
-    Sistema que aplica física básica (gravedad y movimiento).
-    
-    Usa integración Euler simple:
-    velocity += gravity * dt
-    position += velocity * dt
-    """
-    
+    """Sistema que aplica fÃ­sica 2D determinista y simple."""
+
     def __init__(self, gravity: float = GRAVITY_DEFAULT) -> None:
-        """
-        Inicializa el sistema de física.
-        
-        Args:
-            gravity: Aceleración de gravedad (px/s²)
-        """
         self.gravity: float = gravity
-    
+
     def update(self, world: World, delta_time: float) -> None:
-        """
-        Actualiza la física de todas las entidades con RigidBody.
-        
-        Args:
-            world: Mundo con las entidades
-            delta_time: Tiempo desde el último frame (segundos)
-        """
-        # Obtener entidades con Transform y RigidBody
         entities = world.get_entities_with(Transform, RigidBody)
         solids = [
-            entity for entity in world.get_entities_with(Transform, Collider)
-            if entity.get_component(Collider) is not None and not entity.get_component(Collider).is_trigger
+            entity
+            for entity in world.get_entities_with(Transform, Collider)
+            if self._is_solid_body(entity) and entity.get_component(Collider) is not None and not entity.get_component(Collider).is_trigger
         ]
-        
+
         for entity in entities:
             transform = entity.get_component(Transform)
             rigidbody = entity.get_component(RigidBody)
-            
-            if transform is None or rigidbody is None:
+            if transform is None or rigidbody is None or not rigidbody.simulated:
                 continue
-            
-            collider = entity.get_component(Collider)
+            if rigidbody.body_type == "static":
+                rigidbody.velocity_x = 0.0
+                rigidbody.velocity_y = 0.0
+                continue
 
-            # Aplicar gravedad (solo si no está en el suelo)
-            if not rigidbody.is_grounded:
+            collider = entity.get_component(Collider)
+            if rigidbody.body_type == "dynamic" and not rigidbody.is_grounded:
                 rigidbody.velocity_y += self.gravity * rigidbody.gravity_scale * delta_time
 
-            transform.x += rigidbody.velocity_x * delta_time
-            if collider is not None and collider.enabled:
-                self._resolve_horizontal(world, entity, transform, rigidbody, collider, solids)
+            if rigidbody.freeze_x:
+                rigidbody.velocity_x = 0.0
+            else:
+                transform.x += rigidbody.velocity_x * delta_time
+                if collider is not None and collider.enabled:
+                    self._resolve_horizontal(world, entity, transform, rigidbody, collider, solids)
 
-            transform.y += rigidbody.velocity_y * delta_time
-            rigidbody.is_grounded = False
-            if collider is not None and collider.enabled:
-                self._resolve_vertical(world, entity, transform, rigidbody, collider, solids)
-                if not rigidbody.is_grounded:
-                    rigidbody.is_grounded = self._has_ground_support(entity, transform, collider, solids)
+            if rigidbody.freeze_y:
+                rigidbody.velocity_y = 0.0
+            else:
+                transform.y += rigidbody.velocity_y * delta_time
+                rigidbody.is_grounded = False
+                if collider is not None and collider.enabled:
+                    self._resolve_vertical(world, entity, transform, rigidbody, collider, solids)
+                    if not rigidbody.is_grounded:
+                        rigidbody.is_grounded = self._has_ground_support(world, entity, transform, collider, solids)
 
-            if not rigidbody.is_grounded and transform.y > GROUND_Y_TEMP:
+            if rigidbody.body_type == "dynamic" and not rigidbody.is_grounded and transform.y > GROUND_Y_TEMP:
                 transform.y = GROUND_Y_TEMP
-                rigidbody.velocity_y = 0
+                rigidbody.velocity_y = 0.0
                 rigidbody.is_grounded = True
+
+    def _is_solid_body(self, entity: Entity) -> bool:
+        rigidbody = entity.get_component(RigidBody)
+        if rigidbody is None:
+            return True
+        return rigidbody.simulated and rigidbody.body_type in ("dynamic", "kinematic", "static")
+
+    def _layers_can_collide(self, world: World, entity: Entity, other: Entity) -> bool:
+        matrix = world.feature_metadata.get("physics_2d", {}).get("layer_matrix", {})
+        if not matrix:
+            return True
+        return bool(matrix.get(f"{entity.layer}|{other.layer}", True))
+
+    def _should_resolve(self, world: World, entity: Entity, rigidbody: RigidBody, other: Entity) -> bool:
+        if not self._layers_can_collide(world, entity, other):
+            return False
+        other_rigidbody = other.get_component(RigidBody)
+        if rigidbody.body_type == "kinematic":
+            if other_rigidbody is None:
+                return rigidbody.use_full_kinematic_contacts
+            if other_rigidbody.body_type == "static":
+                return rigidbody.use_full_kinematic_contacts
+        return True
 
     def _resolve_horizontal(
         self,
         world: World,
-        entity,
+        entity: Entity,
         transform: Transform,
         rigidbody: RigidBody,
         collider: Collider,
-        solids: list,
+        solids: list[Entity],
     ) -> None:
         left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
         for other in solids:
-            if other.id == entity.id:
+            if other.id == entity.id or not self._should_resolve(world, entity, rigidbody, other):
                 continue
             other_transform = other.get_component(Transform)
             other_collider = other.get_component(Collider)
@@ -118,15 +117,15 @@ class PhysicsSystem:
     def _resolve_vertical(
         self,
         world: World,
-        entity,
+        entity: Entity,
         transform: Transform,
         rigidbody: RigidBody,
         collider: Collider,
-        solids: list,
+        solids: list[Entity],
     ) -> None:
         left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
         for other in solids:
-            if other.id == entity.id:
+            if other.id == entity.id or not self._should_resolve(world, entity, rigidbody, other):
                 continue
             other_transform = other.get_component(Transform)
             other_collider = other.get_component(Collider)
@@ -147,16 +146,17 @@ class PhysicsSystem:
 
     def _has_ground_support(
         self,
-        entity,
+        world: World,
+        entity: Entity,
         transform: Transform,
         collider: Collider,
-        solids: list,
+        solids: list[Entity],
     ) -> bool:
         left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
         probe_top = bottom
         probe_bottom = bottom + 1.0
         for other in solids:
-            if other.id == entity.id:
+            if other.id == entity.id or not self._layers_can_collide(world, entity, other):
                 continue
             other_transform = other.get_component(Transform)
             other_collider = other.get_component(Collider)

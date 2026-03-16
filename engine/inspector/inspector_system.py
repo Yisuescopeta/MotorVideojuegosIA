@@ -113,6 +113,10 @@ class InspectorSystem:
         self.component_editors.register("InputMap", self._draw_input_map_editor)
         self.component_editors.register("PlayerController2D", self._draw_player_controller_editor)
         self.component_editors.register("ScriptBehaviour", self._draw_script_behaviour_editor)
+        self.component_editors.register("Canvas", self._draw_canvas_editor)
+        self.component_editors.register("RectTransform", self._draw_rect_transform_editor)
+        self.component_editors.register("UIText", self._draw_ui_text_editor)
+        self.component_editors.register("UIButton", self._draw_ui_button_editor)
 
     def update(self, dt: float, world: "World", is_edit_mode: bool) -> None:
         """Processes keyboard-only inspector input."""
@@ -1043,6 +1047,97 @@ class InspectorSystem:
             current_y = self._draw_script_public_data_row(entity_id, entity_name, key, value, x, current_y, width, is_edit, world)
         return current_y
 
+    def _draw_canvas_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:
+        current_y = y
+        for label, prop_name in (
+            ("Enabled", "enabled"),
+            ("Render", "render_mode"),
+            ("Ref Width", "reference_width"),
+            ("Ref Height", "reference_height"),
+            ("Match", "match_mode"),
+            ("Sort Order", "sort_order"),
+        ):
+            current_y = self._draw_component_field(label, getattr(component, prop_name), entity_id, "Canvas", prop_name, x, current_y, width, is_edit, world)
+        return current_y
+
+    def _draw_rect_transform_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:
+        current_y = y
+        for label, prop_name in (
+            ("Enabled", "enabled"),
+            ("Anchor Min X", "anchor_min_x"),
+            ("Anchor Min Y", "anchor_min_y"),
+            ("Anchor Max X", "anchor_max_x"),
+            ("Anchor Max Y", "anchor_max_y"),
+            ("Pivot X", "pivot_x"),
+            ("Pivot Y", "pivot_y"),
+            ("Anchored X", "anchored_x"),
+            ("Anchored Y", "anchored_y"),
+            ("Width", "width"),
+            ("Height", "height"),
+            ("Rotation", "rotation"),
+            ("Scale X", "scale_x"),
+            ("Scale Y", "scale_y"),
+        ):
+            current_y = self._draw_component_field(label, getattr(component, prop_name), entity_id, "RectTransform", prop_name, x, current_y, width, is_edit, world)
+        return current_y
+
+    def _draw_ui_text_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:
+        current_y = y
+        for label, prop_name in (
+            ("Enabled", "enabled"),
+            ("Text", "text"),
+            ("Font Size", "font_size"),
+            ("Align", "alignment"),
+            ("Wrap", "wrap"),
+        ):
+            current_y = self._draw_component_field(label, getattr(component, prop_name), entity_id, "UIText", prop_name, x, current_y, width, is_edit, world)
+        current_y = self._draw_readonly_row("Color", str(tuple(component.color)), x, current_y, width)
+        return current_y
+
+    def _draw_ui_button_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:
+        current_y = y
+        for label, prop_name in (
+            ("Enabled", "enabled"),
+            ("Interactable", "interactable"),
+            ("Label", "label"),
+            ("Pressed Scale", "transition_scale_pressed"),
+        ):
+            current_y = self._draw_component_field(label, getattr(component, prop_name), entity_id, "UIButton", prop_name, x, current_y, width, is_edit, world)
+
+        entity_name = self._entity_name_from_id(world, entity_id)
+        action = dict(component.on_click or {})
+        action_type = str(action.get("type", ""))
+        current_y = self._draw_component_field("Action", action_type, entity_id, "UIButton", "on_click_type", x, current_y, width, False, world)
+        current_y = self._draw_readonly_row("Colors", f"n={tuple(component.normal_color)} h={tuple(component.hover_color)}", x, current_y, width)
+
+        if entity_name is None:
+            return current_y
+
+        action_prop_id = f"{entity_id}:UIButton:on_click:type"
+        target_key = "target" if action_type == "load_scene_flow" else "path" if action_type == "load_scene" else "name"
+        target_value = str(action.get(target_key, ""))
+        target_prop_id = f"{entity_id}:UIButton:on_click:{target_key}"
+
+        def commit_action_type(new_value: Any) -> bool:
+            return self.update_component_payload(
+                world,
+                entity_name,
+                "UIButton",
+                lambda payload, new_value=new_value: self._set_ui_button_action_type(payload, str(new_value)),
+            )
+
+        def commit_target_value(new_value: Any, target_key: str = target_key) -> bool:
+            return self.update_component_payload(
+                world,
+                entity_name,
+                "UIButton",
+                lambda payload, new_value=new_value, target_key=target_key: self._set_ui_button_action_value(payload, target_key, str(new_value)),
+            )
+
+        current_y = self._draw_text_row("Action Type", action_type, action_prop_id, x, current_y, width, is_edit, world, on_commit=commit_action_type)
+        current_y = self._draw_text_row("Action Value", target_value, target_prop_id, x, current_y, width, is_edit, world, on_commit=commit_target_value)
+        return current_y
+
     def _draw_script_public_data_row(
         self,
         entity_id: int,
@@ -1264,6 +1359,23 @@ class InspectorSystem:
     def _remove_script_public_data_key(self, payload: Dict[str, Any], key: str) -> None:
         public_data = payload.setdefault("public_data", {})
         public_data.pop(key, None)
+
+    def _set_ui_button_action_type(self, payload: Dict[str, Any], action_type: str) -> None:
+        normalized = str(action_type).strip() or "emit_event"
+        action: Dict[str, Any] = {"type": normalized}
+        if normalized == "load_scene_flow":
+            action["target"] = "next_scene"
+        elif normalized == "load_scene":
+            action["path"] = ""
+        else:
+            action["type"] = "emit_event"
+            action["name"] = "ui.button_clicked"
+        payload["on_click"] = action
+
+    def _set_ui_button_action_value(self, payload: Dict[str, Any], key: str, value: str) -> None:
+        action = dict(payload.get("on_click", {}))
+        action[str(key)] = str(value)
+        payload["on_click"] = action
 
     def _remove_component(self, world: "World", entity_id: int, component_name: str) -> bool:
         entity = world.get_entity(entity_id)

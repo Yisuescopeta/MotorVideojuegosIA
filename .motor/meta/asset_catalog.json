@@ -1,6 +1,6 @@
 {
     "version": 1,
-    "generated_at_utc": "2026-03-12T21:33:40.576798+00:00",
+    "generated_at_utc": "2026-03-16T21:51:32.244690+00:00",
     "assets": [
         {
             "guid": "ast_2c6f30e04ba7458b9e8d6da1bf97444e",
@@ -136,6 +136,25 @@
             }
         },
         {
+            "guid": "ast_597251e8033d45e7ad42d229973f763f",
+            "guid_short": "ast_5972",
+            "name": "main_menu_scene.json",
+            "path": "levels/main_menu_scene.json",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/levels/main_menu_scene.json",
+            "folder": "levels",
+            "asset_kind": "scene_data",
+            "importer": "scene_data",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1773679595.847845,
+            "reference": {
+                "guid": "ast_597251e8033d45e7ad42d229973f763f",
+                "path": "levels/main_menu_scene.json"
+            }
+        },
+        {
             "guid": "ast_0a0f68b252014c979074814c28cd1c75",
             "guid_short": "ast_0a0f",
             "name": "platformer_test_scene.json",
@@ -148,7 +167,7 @@
             "dependencies": [],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1773346052.8632226,
+            "last_seen_mtime": 1773678376.5158787,
             "reference": {
                 "guid": "ast_0a0f68b252014c979074814c28cd1c75",
                 "path": "levels/platformer_test_scene.json"
@@ -193,6 +212,25 @@
             }
         },
         {
+            "guid": "ast_1dfc9299941948a0b23fde950616951e",
+            "guid_short": "ast_1dfc",
+            "name": "main_menu_controller.py",
+            "path": "scripts/main_menu_controller.py",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/scripts/main_menu_controller.py",
+            "folder": "scripts",
+            "asset_kind": "script",
+            "importer": "script",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1773678729.3462722,
+            "reference": {
+                "guid": "ast_1dfc9299941948a0b23fde950616951e",
+                "path": "scripts/main_menu_controller.py"
+            }
+        },
+        {
             "guid": "ast_7e176944aca447dfb85cac00bc23db9e",
             "guid_short": "ast_7e17",
             "name": "platformer_character.py",
@@ -209,6 +247,25 @@
             "reference": {
                 "guid": "ast_7e176944aca447dfb85cac00bc23db9e",
                 "path": "scripts/platformer_character.py"
+            }
+        },
+        {
+            "guid": "ast_8a1b91c96c7046e8a0b6fbfbd4011ab8",
+            "guid_short": "ast_8a1b",
+            "name": "player_movement_generated.py",
+            "path": "scripts/player_movement_generated.py",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/scripts/player_movement_generated.py",
+            "folder": "scripts",
+            "asset_kind": "script",
+            "importer": "script",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1773697512.1180015,
+            "reference": {
+                "guid": "ast_8a1b91c96c7046e8a0b6fbfbd4011ab8",
+                "path": "scripts/player_movement_generated.py"
             }
         }
     ]

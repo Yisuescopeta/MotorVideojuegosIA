@@ -95,7 +95,7 @@ class HierarchyPanel:
         if is_hover_plus and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
             new_name = f"New Entity {world.entity_count()}"
             if self._scene_manager is not None and self._scene_manager.create_entity(new_name):
-                world.selected_entity_name = new_name
+                self._scene_manager.set_selected_entity(new_name)
             else:
                 new_entity = world.create_entity(new_name)
                 new_entity.add_component(Transform())
@@ -177,7 +177,10 @@ class HierarchyPanel:
             rl.draw_rectangle(panel_x, y, self.panel_width, row_height, self.UNITY_HOVER)
             
             if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-                world.selected_entity_name = entity.name
+                if self._scene_manager is not None:
+                    self._scene_manager.set_selected_entity(entity.name)
+                else:
+                    world.selected_entity_name = entity.name
                 if has_children:
                     # Toggle expand
                     if entity.id in self.expanded_ids:
@@ -308,7 +311,7 @@ class HierarchyPanel:
         if action == "Create Entity":
             new_name = f"New Entity {world.entity_count()}"
             if self._scene_manager is not None and self._scene_manager.create_entity(new_name):
-                world.selected_entity_name = new_name
+                self._scene_manager.set_selected_entity(new_name)
             else:
                 new_ent = world.create_entity(new_name)
                 new_ent.add_component(Transform())
@@ -323,11 +326,15 @@ class HierarchyPanel:
                     world.destroy_entity(entity.id)
                 # Si era el seleccionado, deseleccionar
                 if world.selected_entity_name == entity.name:
-                    world.selected_entity_name = None
+                    if self._scene_manager is not None:
+                        self._scene_manager.set_selected_entity(None)
+                    else:
+                        world.selected_entity_name = None
                     
         elif action == "Duplicate Entity" and self.context_target_id is not None:
-             # TODO: Implement duplicate
-             print(f"[TODO] Duplicar entidad {self.context_target_id}")
+            entity = world.get_entity(self.context_target_id)
+            if entity is not None and self._scene_manager is not None:
+                self._scene_manager.duplicate_entity_subtree(entity.name)
 
         elif action == "Save as Prefab" and self.context_target_id is not None:
             entity = world.get_entity(self.context_target_id)
@@ -348,6 +355,6 @@ class HierarchyPanel:
                     
                     if path:
                         from engine.assets.prefab import PrefabManager
-                        PrefabManager.save_prefab(entity, path)
+                        PrefabManager.save_prefab(entity, path, world=world)
                 except Exception as e:
                     print(f"[ERROR] Save Prefab dialog failed: {e}")

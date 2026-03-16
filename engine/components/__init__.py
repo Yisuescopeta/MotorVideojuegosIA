@@ -22,6 +22,7 @@ from engine.components.camera2d import Camera2D
 from engine.components.audiosource import AudioSource
 from engine.components.inputmap import InputMap
 from engine.components.playercontroller2d import PlayerController2D
+from engine.components.renderorder2d import RenderOrder2D
 from engine.components.scriptbehaviour import ScriptBehaviour
 
 __all__ = [
@@ -35,5 +36,6 @@ __all__ = [
     "AudioSource",
     "InputMap",
     "PlayerController2D",
+    "RenderOrder2D",
     "ScriptBehaviour",
 ]

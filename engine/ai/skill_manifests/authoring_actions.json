@@ -1,0 +1,11 @@
+{
+    "id": "authoring_actions",
+    "version": 1,
+    "domain": "authoring",
+    "summary": "Agrupa operaciones seguras para crear entidades, componentes, cámara, UI y prefabs desde EngineAPI.",
+    "trigger_keywords": ["crear", "añadir", "agregar", "cambiar", "modificar"],
+    "capabilities": ["authoring:engine_api", "project:assets"],
+    "planning_questions": [],
+    "allowed_operations": ["create_entity", "add_component", "create_camera2d", "instantiate_prefab"],
+    "validations": ["entity_exists"]
+}

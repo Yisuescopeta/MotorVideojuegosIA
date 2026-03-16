@@ -93,7 +93,7 @@ class SceneManager:
             return self._runtime_world
         return self._edit_world
     
-    def load_scene(self, data: Dict[str, Any]) -> "World":
+    def load_scene(self, data: Dict[str, Any], source_path: Optional[str] = None) -> "World":
         """
         Carga una escena desde datos JSON.
         
@@ -103,7 +103,7 @@ class SceneManager:
         Returns:
             World creado desde la escena
         """
-        self._scene = Scene.from_dict(data)
+        self._scene = Scene.from_dict(data, source_path=source_path)
         self._rebuild_edit_world()
         self._runtime_world = None
         self._is_playing = False
@@ -228,23 +228,59 @@ class SceneManager:
         self._flush_pending_edit_world()
         before = copy.deepcopy(self._scene.to_dict())
         if not self._scene.update_component(entity_name, component_name, property_name, value):
-            return False
+            if not self._update_prefab_component_override(entity_name, component_name, property_name, value):
+                return False
         self._rebuild_edit_world()
         self._dirty = True
         self._record_scene_change(f"{entity_name}.{component_name}.{property_name}", before)
+        return True
+
+    def _update_prefab_component_override(self, entity_name: str, component_name: str, property_name: str, value: Any) -> bool:
+        if self._scene is None or self._edit_world is None:
+            return False
+        entity = self._edit_world.get_entity_by_name(entity_name)
+        if entity is None or entity.prefab_root_name is None:
+            return False
+        root_scene_data = self._scene.find_entity(entity.prefab_root_name)
+        if root_scene_data is None or "prefab_instance" not in root_scene_data:
+            return False
+        overrides = root_scene_data["prefab_instance"].setdefault("overrides", {})
+        path_key = entity.prefab_source_path or ""
+        path_override = overrides.setdefault(path_key, {})
+        components_override = path_override.setdefault("components", {})
+        component_override = components_override.setdefault(component_name, {})
+        component_override[property_name] = value
         return True
 
     def update_entity_property(self, entity_name: str, property_name: str, value: Any) -> bool:
         """Actualiza un metadato de entidad y reconstruye el mundo de edicion."""
         if self._is_playing or self._scene is None:
             return False
+        if property_name == "parent" and value is not None and not self._validate_parent(entity_name, value):
+            return False
         self._flush_pending_edit_world()
         before = copy.deepcopy(self._scene.to_dict())
         if not self._scene.update_entity_property(entity_name, property_name, value):
-            return False
+            if not self._update_prefab_entity_override(entity_name, property_name, value):
+                return False
         self._rebuild_edit_world()
         self._dirty = True
         self._record_scene_change(f"{entity_name}.{property_name}", before)
+        return True
+
+    def _update_prefab_entity_override(self, entity_name: str, property_name: str, value: Any) -> bool:
+        if self._scene is None or self._edit_world is None:
+            return False
+        entity = self._edit_world.get_entity_by_name(entity_name)
+        if entity is None or entity.prefab_root_name is None:
+            return False
+        root_scene_data = self._scene.find_entity(entity.prefab_root_name)
+        if root_scene_data is None or "prefab_instance" not in root_scene_data:
+            return False
+        overrides = root_scene_data["prefab_instance"].setdefault("overrides", {})
+        path_key = entity.prefab_source_path or ""
+        path_override = overrides.setdefault(path_key, {})
+        path_override[property_name] = value
         return True
 
     def replace_component_data(self, entity_name: str, component_name: str, component_data: Dict[str, Any]) -> bool:
@@ -254,10 +290,27 @@ class SceneManager:
         self._flush_pending_edit_world()
         before = copy.deepcopy(self._scene.to_dict())
         if not self._scene.replace_component_data(entity_name, component_name, copy.deepcopy(component_data)):
-            return False
+            if not self._replace_prefab_component_override(entity_name, component_name, component_data):
+                return False
         self._rebuild_edit_world()
         self._dirty = True
         self._record_scene_change(f"{entity_name}.{component_name}", before)
+        return True
+
+    def _replace_prefab_component_override(self, entity_name: str, component_name: str, component_data: Dict[str, Any]) -> bool:
+        if self._scene is None or self._edit_world is None:
+            return False
+        entity = self._edit_world.get_entity_by_name(entity_name)
+        if entity is None or entity.prefab_root_name is None:
+            return False
+        root_scene_data = self._scene.find_entity(entity.prefab_root_name)
+        if root_scene_data is None or "prefab_instance" not in root_scene_data:
+            return False
+        overrides = root_scene_data["prefab_instance"].setdefault("overrides", {})
+        path_key = entity.prefab_source_path or ""
+        path_override = overrides.setdefault(path_key, {})
+        components_override = path_override.setdefault("components", {})
+        components_override[component_name] = copy.deepcopy(component_data)
         return True
 
     def set_entity_active(self, entity_name: str, active: bool) -> bool:
@@ -282,6 +335,7 @@ class SceneManager:
             "active": True,
             "tag": "Untagged",
             "layer": "Default",
+            "parent": None,
             "components": components or {"Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0}},
         }
         before = copy.deepcopy(self._scene.to_dict())
@@ -301,6 +355,7 @@ class SceneManager:
         payload.setdefault("active", True)
         payload.setdefault("tag", "Untagged")
         payload.setdefault("layer", "Default")
+        payload.setdefault("parent", None)
         payload.setdefault("components", {})
         before = copy.deepcopy(self._scene.to_dict())
         if not self._scene.add_entity(payload):
@@ -316,7 +371,8 @@ class SceneManager:
             return False
         self._flush_pending_edit_world()
         before = copy.deepcopy(self._scene.to_dict())
-        if not self._scene.remove_entity(entity_name):
+        removed = self._remove_entity_subtree(entity_name)
+        if not removed:
             return False
         self._rebuild_edit_world()
         self._dirty = True
@@ -336,7 +392,8 @@ class SceneManager:
         data = component_data or {"enabled": True}
         before = copy.deepcopy(self._scene.to_dict())
         if not self._scene.add_component(entity_name, component_name, data):
-            return False
+            if not self._replace_prefab_component_override(entity_name, component_name, data):
+                return False
         self._rebuild_edit_world()
         self._dirty = True
         self._record_scene_change(f"add_component:{entity_name}.{component_name}", before)
@@ -349,10 +406,29 @@ class SceneManager:
         self._flush_pending_edit_world()
         before = copy.deepcopy(self._scene.to_dict())
         if not self._scene.remove_component(entity_name, component_name):
-            return False
+            if not self._remove_prefab_component_override(entity_name, component_name):
+                return False
         self._rebuild_edit_world()
         self._dirty = True
         self._record_scene_change(f"remove_component:{entity_name}.{component_name}", before)
+        return True
+
+    def _remove_prefab_component_override(self, entity_name: str, component_name: str) -> bool:
+        if self._scene is None or self._edit_world is None:
+            return False
+        entity = self._edit_world.get_entity_by_name(entity_name)
+        if entity is None or entity.prefab_root_name is None:
+            return False
+        root_scene_data = self._scene.find_entity(entity.prefab_root_name)
+        if root_scene_data is None or "prefab_instance" not in root_scene_data:
+            return False
+        overrides = root_scene_data["prefab_instance"].setdefault("overrides", {})
+        path_key = entity.prefab_source_path or ""
+        path_override = overrides.setdefault(path_key, {})
+        components_override = path_override.setdefault("components", {})
+        if component_name not in components_override:
+            return False
+        del components_override[component_name]
         return True
 
     def set_component_enabled(self, entity_name: str, component_name: str, enabled: bool) -> bool:
@@ -377,7 +453,7 @@ class SceneManager:
         data["name"] = self._scene.name
         data["rules"] = self._scene.rules_data
         data["feature_metadata"] = self._scene.feature_metadata
-        self._scene = Scene(data["name"], data)
+        self._scene = Scene(data["name"], data, source_path=self._scene.source_path)
         self._edit_world_sync_pending = False
         return True
 
@@ -420,12 +496,12 @@ class SceneManager:
              data = self._scene.to_dict() if self._scene is not None else self._edit_world.serialize()
              data["name"] = self._scene.name if self._scene else "Untitled"
              
-             with open(path, 'w') as f:
+             with open(path, 'w', encoding='utf-8') as f:
                  json.dump(data, f, indent=4)
                  
              print(f"[SCENE] Guardado exitoso en {path}")
              # Actualizar objeto Scene interno también
-             self._scene = Scene(data["name"], data)
+             self._scene = Scene(data["name"], data, source_path=path)
              self._rebuild_edit_world()
              self._dirty = False
              self._edit_world_sync_pending = False
@@ -466,9 +542,9 @@ class SceneManager:
         """
         try:
             import json
-            with open(path, 'r') as f:
+            with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            return self.load_scene(data)
+            return self.load_scene(data, source_path=path)
         except Exception as e:
             log_err(f"SceneManager: Error cargando {path}: {e}")
             return None
@@ -491,14 +567,214 @@ class SceneManager:
     def restore_scene_data(self, data: Dict[str, Any]) -> bool:
         if self._is_playing:
             return False
-        self._scene = Scene(data.get("name", self.scene_name), copy.deepcopy(data))
+        source_path = self._scene.source_path if self._scene is not None else None
+        self._scene = Scene(data.get("name", self.scene_name), copy.deepcopy(data), source_path=source_path)
         self._rebuild_edit_world()
         self._dirty = True
         self._edit_world_sync_pending = False
         return True
 
+    def set_entity_parent(self, entity_name: str, parent_name: Optional[str]) -> bool:
+        return self.update_entity_property(entity_name, "parent", parent_name)
+
+    def create_child_entity(
+        self,
+        parent_name: str,
+        name: str,
+        components: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> bool:
+        if not self.create_entity(name, components=components):
+            return False
+        return self.set_entity_parent(name, parent_name)
+
+    def instantiate_prefab(
+        self,
+        name: str,
+        prefab_path: str,
+        parent: Optional[str] = None,
+        overrides: Optional[Dict[str, Any]] = None,
+        root_name: Optional[str] = None,
+    ) -> bool:
+        payload = {
+            "name": name,
+            "active": True,
+            "tag": "Untagged",
+            "layer": "Default",
+            "parent": parent,
+            "prefab_instance": {
+                "prefab_path": prefab_path,
+                "root_name": root_name or name,
+                "overrides": copy.deepcopy(overrides or {}),
+            },
+            "components": {},
+        }
+        return self.create_entity_from_data(payload)
+
+    def unpack_prefab(self, entity_name: str) -> bool:
+        if self._is_playing or self._scene is None or self._edit_world is None:
+            return False
+        self._flush_pending_edit_world()
+        root = self._edit_world.get_entity_by_name(entity_name)
+        if root is None or root.prefab_instance is None:
+            return False
+        before = copy.deepcopy(self._scene.to_dict())
+        subtree = [root] + self._edit_world.get_descendants(root.name)
+        explicit_entities = []
+        for entity in subtree:
+            payload = entity.to_dict()
+            payload.pop("id", None)
+            payload.pop("prefab_instance", None)
+            payload.pop("prefab_source_path", None)
+            payload.pop("prefab_root_name", None)
+            explicit_entities.append(payload)
+        if not self._remove_entity_subtree(entity_name):
+            return False
+        for payload in explicit_entities:
+            self._scene.add_entity(payload)
+        self._rebuild_edit_world()
+        self._dirty = True
+        self._record_scene_change(f"unpack_prefab:{entity_name}", before)
+        return True
+
+    def apply_prefab_overrides(self, entity_name: str) -> bool:
+        if self._is_playing or self._edit_world is None:
+            return False
+        from engine.assets.prefab import PrefabManager
+
+        self._flush_pending_edit_world()
+        root = self._edit_world.get_entity_by_name(entity_name)
+        if root is None or root.prefab_instance is None or self._scene is None:
+            return False
+        prefab_path = root.prefab_instance.get("prefab_path", "")
+        if self._scene.source_path:
+            from pathlib import Path
+
+            resolved_path = (Path(self._scene.source_path).resolve().parent / prefab_path).resolve().as_posix()
+        else:
+            resolved_path = prefab_path
+        before = copy.deepcopy(self._scene.to_dict())
+        if not PrefabManager.save_prefab(root, resolved_path, world=self._edit_world):
+            return False
+        entity_data = self._scene.find_entity(entity_name)
+        if entity_data is None:
+            return False
+        entity_data["prefab_instance"]["overrides"] = {}
+        self._rebuild_edit_world()
+        self._dirty = True
+        self._record_scene_change(f"apply_prefab_overrides:{entity_name}", before)
+        return True
+
+    def duplicate_entity_subtree(self, entity_name: str, new_root_name: Optional[str] = None) -> bool:
+        if self._is_playing or self._edit_world is None or self._scene is None:
+            return False
+        self._flush_pending_edit_world()
+        root = self._edit_world.get_entity_by_name(entity_name)
+        if root is None:
+            return False
+        before = copy.deepcopy(self._scene.to_dict())
+        subtree = [root] + self._edit_world.get_descendants(root.name)
+        new_root_name = new_root_name or f"{root.name}_copy"
+        mapping = {root.name: new_root_name}
+        for entity in subtree[1:]:
+            suffix = entity.name[len(root.name):] if entity.name.startswith(root.name) else f"_{entity.name}"
+            mapping[entity.name] = f"{new_root_name}{suffix}"
+        for entity in subtree:
+            payload = entity.to_dict()
+            payload.pop("id", None)
+            payload["name"] = mapping[entity.name]
+            if payload.get("parent") in mapping:
+                payload["parent"] = mapping[payload["parent"]]
+            if payload.get("prefab_root_name") in mapping:
+                payload["prefab_root_name"] = mapping[payload["prefab_root_name"]]
+            self._scene.add_entity(payload)
+        self._rebuild_edit_world()
+        self._dirty = True
+        self._record_scene_change(f"duplicate_entity:{entity_name}", before)
+        return True
+
+    def _remove_entity_subtree(self, entity_name: str) -> bool:
+        if self._scene is None:
+            return False
+        entities = self._scene.data.get("entities", [])
+        names_to_remove = {entity_name}
+        changed = True
+        while changed:
+            changed = False
+            for entity_data in entities:
+                parent_name = entity_data.get("parent")
+                name = entity_data.get("name")
+                if parent_name in names_to_remove and name not in names_to_remove:
+                    names_to_remove.add(name)
+                    changed = True
+        before_count = len(entities)
+        self._scene.data["entities"] = [entity_data for entity_data in entities if entity_data.get("name") not in names_to_remove]
+        return len(self._scene.data["entities"]) != before_count
+
+    def _validate_parent(self, entity_name: str, parent_name: str) -> bool:
+        if self._scene is None:
+            return False
+        if entity_name == parent_name:
+            return False
+        target = self._scene.find_entity(entity_name)
+        parent = self._scene.find_entity(parent_name)
+        if target is None or parent is None:
+            return False
+        visited = {entity_name}
+        current = parent_name
+        while current is not None:
+            if current in visited:
+                return False
+            visited.add(current)
+            current_entity = self._scene.find_entity(current)
+            current = current_entity.get("parent") if current_entity is not None else None
+        return True
+
     def clear_dirty(self) -> None:
         self._dirty = False
+
+    def get_scene_flow(self) -> Dict[str, str]:
+        if self._scene is None:
+            return {}
+        scene_flow = self._scene.feature_metadata.get("scene_flow", {})
+        if not isinstance(scene_flow, dict):
+            return {}
+        return {
+            str(key): str(value)
+            for key, value in scene_flow.items()
+            if str(key).strip() and str(value).strip()
+        }
+
+    def set_scene_flow_target(self, key: str, target_path: str) -> bool:
+        if self._is_playing or self._scene is None:
+            return False
+        scene_key = str(key).strip()
+        if not scene_key:
+            return False
+
+        before = copy.deepcopy(self._scene.to_dict())
+        scene_flow = self._scene.feature_metadata.setdefault("scene_flow", {})
+        if not isinstance(scene_flow, dict):
+            scene_flow = {}
+            self._scene.feature_metadata["scene_flow"] = scene_flow
+
+        if target_path:
+            scene_flow[scene_key] = target_path
+        else:
+            scene_flow.pop(scene_key, None)
+
+        if self._edit_world is not None:
+            world_scene_flow = self._edit_world.feature_metadata.setdefault("scene_flow", {})
+            if not isinstance(world_scene_flow, dict):
+                world_scene_flow = {}
+                self._edit_world.feature_metadata["scene_flow"] = world_scene_flow
+            if target_path:
+                world_scene_flow[scene_key] = target_path
+            else:
+                world_scene_flow.pop(scene_key, None)
+
+        self._dirty = True
+        self._record_scene_change(f"scene_flow:{scene_key}", before)
+        return True
 
     def _record_scene_change(self, label: str, before: Dict[str, Any]) -> None:
         if self._history is None or self._scene is None:

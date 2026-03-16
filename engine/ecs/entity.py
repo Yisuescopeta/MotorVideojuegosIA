@@ -59,6 +59,10 @@ class Entity:
         self.active: bool = True
         self.tag: str = "Untagged"
         self.layer: str = "Default"
+        self.parent_name: str | None = None
+        self.prefab_instance: dict[str, Any] | None = None
+        self.prefab_source_path: str | None = None
+        self.prefab_root_name: str | None = None
         self._components: dict[type, Component] = {}
     
     def add_component(self, component: Component) -> None:
@@ -130,7 +134,7 @@ class Entity:
         Returns:
             Diccionario con id, name y componentes serializados
         """
-        return {
+        data = {
             "id": self.id,
             "name": self.name,
             "active": self.active,
@@ -141,6 +145,15 @@ class Entity:
                 for comp_type, comp in self._components.items()
             }
         }
+        if self.parent_name is not None:
+            data["parent"] = self.parent_name
+        if self.prefab_instance is not None:
+            data["prefab_instance"] = self.prefab_instance
+        if self.prefab_source_path is not None:
+            data["prefab_source_path"] = self.prefab_source_path
+        if self.prefab_root_name is not None:
+            data["prefab_root_name"] = self.prefab_root_name
+        return data
     
     def __repr__(self) -> str:
         """Representación legible de la entidad para debug."""
