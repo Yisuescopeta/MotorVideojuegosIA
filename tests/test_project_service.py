@@ -53,7 +53,10 @@ class ProjectServiceTests(unittest.TestCase):
         self.assertTrue(service.get_project_path("scripts").exists())
         self.assertTrue(service.get_project_path("meta").exists())
         self.assertEqual(service.manifest.name, "ProjectAlpha")
-        self.assertEqual(service.load_editor_state(), {"recent_assets": {}, "last_scene": "", "preferences": {}})
+        self.assertEqual(
+            service.load_editor_state(),
+            {"recent_assets": {}, "last_scene": "", "active_ai_session_id": "", "preferences": {}},
+        )
 
     def test_recent_projects_are_global_sorted_and_filter_invalid_entries(self) -> None:
         _, first_service = self._make_project("ProjectOne")

@@ -98,18 +98,17 @@ class AIOrchestrationTests(unittest.TestCase):
         entity_names = {entity["name"] for entity in self.api.list_entities()}
         self.assertTrue({"Player", "Ground", "MainCamera", "Enemy_01", "Obstacle_01", "HUDCanvas", "HUDLabel"}.issubset(entity_names))
 
-    def test_general_plan_stops_asking_when_required_answers_are_present(self) -> None:
+    def test_plan_mode_for_concrete_movement_prompt_prepares_reviewable_proposal(self) -> None:
         response = self.api.handle_ai_request(
             "Anademe un script con el movimiento del Player",
             mode="plan",
-            answers={
-                "goal": "prototipo_jugable",
-                "scope": "escena_existente",
-            },
         )
 
         self.assertEqual(response["status"], "planned")
         self.assertEqual(response["plan"]["questions"], [])
+        self.assertIsNone(response["proposal"])
+        self.assertTrue(response["context_summary"]["plan_response"]["can_build_now"])
+        self.assertIn("Plan de movimiento listo", response["context_summary"]["plan_response"]["summary"])
 
     def test_direct_mode_skips_question_gate_and_returns_proposal(self) -> None:
         response = self.api.handle_ai_request(
@@ -130,6 +129,16 @@ class AIOrchestrationTests(unittest.TestCase):
 
         self.assertEqual(response["status"], "proposal_ready")
         self.assertEqual(response["plan"]["execution_intent"], "attach_player_movement_script")
+
+    def test_plan_mode_detects_personaje_prompt_without_generic_questions(self) -> None:
+        response = self.api.handle_ai_request(
+            "anademe movilidad al personaje",
+            mode="plan",
+        )
+
+        self.assertEqual(response["status"], "needs_input")
+        self.assertEqual(response["plan"]["questions"][0]["id"], "target_entity")
+        self.assertEqual(response["context_summary"]["plan_response"]["blocking_questions"][0]["id"], "target_entity")
 
     def test_direct_apply_writes_player_script_scaffold(self) -> None:
         self.api.create_entity(

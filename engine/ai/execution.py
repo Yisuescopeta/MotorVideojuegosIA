@@ -34,15 +34,18 @@ class ExecutionEngine:
             )
 
         if plan.execution_intent == "attach_player_movement_script":
+            target_entity = str(plan.metadata.get("target_entity", "") or "Player")
+            script_target = self._movement_script_target(target_entity)
+            module_path = Path(script_target).stem
             actions = [
                 ExecutionAction(
                     id="ensure_player_input_map",
                     action_type="api_call",
-                    summary="Asegurar InputMap base en Player para capturar movimiento y salto",
+                    summary=f"Asegurar InputMap base en {target_entity} para capturar movimiento y salto",
                     args={
                         "method": "add_component",
                         "kwargs": {
-                            "entity_name": "Player",
+                            "entity_name": target_entity,
                             "component_name": "InputMap",
                             "data": {
                                 "enabled": True,
@@ -57,11 +60,11 @@ class ExecutionEngine:
                 ExecutionAction(
                     id="ensure_player_rigidbody",
                     action_type="api_call",
-                    summary="Asegurar RigidBody base en Player para movimiento scriptado",
+                    summary=f"Asegurar RigidBody base en {target_entity} para movimiento scriptado",
                     args={
                         "method": "add_component",
                         "kwargs": {
-                            "entity_name": "Player",
+                            "entity_name": target_entity,
                             "component_name": "RigidBody",
                             "data": {
                                 "enabled": True,
@@ -77,12 +80,12 @@ class ExecutionEngine:
                 ExecutionAction(
                     id="attach_player_script_behaviour",
                     action_type="api_call",
-                    summary="Adjuntar ScriptBehaviour al Player con datos base de movimiento",
+                    summary=f"Adjuntar ScriptBehaviour a {target_entity} con datos base de movimiento",
                     args={
                         "method": "add_script_behaviour",
                         "kwargs": {
-                            "entity_name": "Player",
-                            "module_path": "player_movement_generated",
+                            "entity_name": target_entity,
+                            "module_path": module_path,
                             "public_data": {"speed": 180, "jump_force": 320},
                             "run_in_edit_mode": False,
                             "enabled": True,
@@ -93,25 +96,25 @@ class ExecutionEngine:
                 ExecutionAction(
                     id="player_script_scaffold",
                     action_type="python_write",
-                    summary="Escribir scaffold Python para el movimiento del Player",
-                    args={"target": "scripts/player_movement_generated.py"},
+                    summary=f"Escribir scaffold Python para el movimiento de {target_entity}",
+                    args={"target": script_target},
                     risk="elevated",
                     requires_confirmation=True,
                 ),
             ]
             return ExecutionProposal(
-                summary="Propuesta para anadir un script de movimiento al Player.",
+                summary=f"Propuesta para anadir un script de movimiento a {target_entity}.",
                 actions=actions,
                 validation_plan=[
-                    "Comprobar que Player tiene InputMap, RigidBody y ScriptBehaviour",
-                    "Validar que scripts/player_movement_generated.py existe",
+                    f"Comprobar que {target_entity} tiene InputMap, RigidBody y ScriptBehaviour",
+                    f"Validar que {script_target} existe",
                     "Entrar en PLAY y asegurar que el ciclo PLAY/STOP sigue funcionando",
                 ],
                 blocked_by_gaps=False,
                 requires_confirmation=True,
                 risk_notes=[
                     "Requiere habilitar cambios Python para escribir el scaffold automaticamente.",
-                    "La entidad Player debe existir en la escena actual.",
+                    f"La entidad {target_entity} debe existir en la escena actual.",
                 ],
             )
 
@@ -167,7 +170,7 @@ class ExecutionEngine:
         if not target:
             return {"success": False, "message": "Python scaffold target is missing."}
 
-        content = self._player_movement_script_template() if target == "scripts/player_movement_generated.py" else self._generic_script_template(target)
+        content = self.build_script_content(target)
         target_path = project_service.resolve_path(target)
         target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_text(content, encoding="utf-8")
@@ -182,6 +185,21 @@ class ExecutionEngine:
             "message": "Python scaffold written.",
             "data": {"path": target_path.as_posix()},
         }
+
+    def build_script_content(self, target: str) -> str:
+        target = str(target or "").strip()
+        if target.endswith("_movement_generated.py"):
+            return self._player_movement_script_template()
+        if target == "scripts/generated_platformer_logic.py":
+            return self._generic_platformer_script_template()
+        return self._generic_script_template(target)
+
+    def _movement_script_target(self, target_entity: str) -> str:
+        normalized = "".join(char.lower() if char.isalnum() else "_" for char in target_entity.strip())
+        while "__" in normalized:
+            normalized = normalized.replace("__", "_")
+        normalized = normalized.strip("_") or "player"
+        return f"scripts/{normalized}_movement_generated.py"
 
     def _player_movement_script_template(self) -> str:
         return """from __future__ import annotations
@@ -226,6 +244,20 @@ def on_play(context) -> None:
 
 
 def on_update(context, dt: float) -> None:
+    pass
+"""
+
+    def _generic_platformer_script_template(self) -> str:
+        return """from __future__ import annotations
+
+
+def on_play(context) -> None:
+    context.public_data.setdefault("spawned", True)
+    context.public_data.setdefault("notes", "Generated platformer logic scaffold")
+
+
+def on_update(context, dt: float) -> None:
+    # Extend this scaffold with enemy waves, checkpoints or game flow rules.
     pass
 """
 

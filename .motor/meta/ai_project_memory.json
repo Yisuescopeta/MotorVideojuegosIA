@@ -22,6 +22,7 @@
         "preferred_provider": "ollama_local",
         "model_name": "qwen2.5-coder:latest",
         "endpoint": "http://127.0.0.1:11434",
+        "api_key": "",
         "allow_remote_context": false,
         "remote_redaction_enabled": true
     },

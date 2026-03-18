@@ -358,6 +358,7 @@ class ProjectService:
         return {
             "recent_assets": {},
             "last_scene": "",
+            "active_ai_session_id": "",
             "preferences": {},
         }
 
@@ -376,6 +377,9 @@ class ProjectService:
 
         last_scene = data.get("last_scene", "")
         state["last_scene"] = str(last_scene) if last_scene else ""
+
+        active_ai_session_id = data.get("active_ai_session_id", "")
+        state["active_ai_session_id"] = str(active_ai_session_id) if active_ai_session_id else ""
 
         preferences = data.get("preferences", {})
         if isinstance(preferences, dict):

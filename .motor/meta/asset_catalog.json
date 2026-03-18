@@ -1,6 +1,6 @@
 {
     "version": 1,
-    "generated_at_utc": "2026-03-16T21:51:32.244690+00:00",
+    "generated_at_utc": "2026-03-18T21:35:48.360298+00:00",
     "assets": [
         {
             "guid": "ast_2c6f30e04ba7458b9e8d6da1bf97444e",
@@ -76,6 +76,25 @@
             "reference": {
                 "guid": "ast_00c4ead1dc834e7aa9e8bb9ea2a7d13a",
                 "path": "assets/images_3.png"
+            }
+        },
+        {
+            "guid": "ast_6bc97bfd726d412f9f6d1a451cd62dc0",
+            "guid_short": "ast_6bc9",
+            "name": "test_animator_generate.png",
+            "path": "assets/test_animator_generate.png",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/assets/test_animator_generate.png",
+            "folder": "assets",
+            "asset_kind": "texture",
+            "importer": "texture",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1773869748.1944578,
+            "reference": {
+                "guid": "ast_6bc97bfd726d412f9f6d1a451cd62dc0",
+                "path": "assets/test_animator_generate.png"
             }
         },
         {
@@ -262,7 +281,7 @@
             "dependencies": [],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1773697512.1180015,
+            "last_seen_mtime": 1773869578.4634736,
             "reference": {
                 "guid": "ast_8a1b91c96c7046e8a0b6fbfbd4011ab8",
                 "path": "scripts/player_movement_generated.py"

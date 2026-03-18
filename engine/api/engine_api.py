@@ -141,8 +141,13 @@ class EngineAPI:
     def step(self, frames: int = 1) -> None:
         if self.game is None:
             return
-        for _ in range(frames):
-            self.game.step_frame()
+        if hasattr(self.game, "step_frame"):
+            for _ in range(frames):
+                self.game.step_frame()
+            return
+        if hasattr(self.game, "step"):
+            for _ in range(frames):
+                self.game.step()
 
     def get_status(self) -> EngineStatus:
         if self.game is None:
@@ -858,6 +863,95 @@ class EngineAPI:
         )
         return self.ai_orchestrator.handle(request).to_dict()
 
+    def start_ai_session(self, title: str = "", mode: str = "plan", activate: bool = True) -> Dict[str, Any]:
+        if self.ai_orchestrator is None:
+            return {}
+        return self.ai_orchestrator.start_session(title=title, mode=mode, activate=activate)
+
+    def submit_ai_message(
+        self,
+        prompt: str,
+        session_id: Optional[str] = None,
+        mode: str = "plan",
+        answers: Optional[Dict[str, Any]] = None,
+        allow_python: bool = False,
+        allow_engine_changes: bool = False,
+        activate: bool = True,
+    ) -> Dict[str, Any]:
+        if self.ai_orchestrator is None:
+            return {}
+        return self.ai_orchestrator.submit_message(
+            session_id=session_id,
+            prompt=prompt,
+            mode=mode,
+            answers=answers,
+            allow_python=allow_python,
+            allow_engine_changes=allow_engine_changes,
+            activate=activate,
+        )
+
+    def answer_ai_question(
+        self,
+        answer: str,
+        session_id: Optional[str] = None,
+        question_id: Optional[str] = None,
+        mode: Optional[str] = None,
+        allow_python: bool = False,
+        allow_engine_changes: bool = False,
+    ) -> Dict[str, Any]:
+        if self.ai_orchestrator is None:
+            return {}
+        resolved_session_id = session_id or self.get_editor_state().get("active_ai_session_id", "")
+        if not resolved_session_id:
+            return {}
+        return self.ai_orchestrator.answer_question(
+            session_id=resolved_session_id,
+            answer=answer,
+            question_id=question_id,
+            mode=mode,
+            allow_python=allow_python,
+            allow_engine_changes=allow_engine_changes,
+        )
+
+    def approve_ai_proposal(
+        self,
+        session_id: Optional[str] = None,
+        allow_python: bool = False,
+        allow_engine_changes: bool = False,
+    ) -> Dict[str, Any]:
+        if self.ai_orchestrator is None:
+            return {}
+        resolved_session_id = session_id or self.get_editor_state().get("active_ai_session_id", "")
+        if not resolved_session_id:
+            return {}
+        return self.ai_orchestrator.approve_proposal(
+            session_id=resolved_session_id,
+            allow_python=allow_python,
+            allow_engine_changes=allow_engine_changes,
+        )
+
+    def reject_ai_proposal(self, session_id: Optional[str] = None) -> Dict[str, Any]:
+        if self.ai_orchestrator is None:
+            return {}
+        resolved_session_id = session_id or self.get_editor_state().get("active_ai_session_id", "")
+        if not resolved_session_id:
+            return {}
+        return self.ai_orchestrator.reject_proposal(resolved_session_id)
+
+    def get_ai_session(self, session_id: Optional[str] = None) -> Dict[str, Any]:
+        if self.ai_orchestrator is None:
+            return {}
+        resolved_session_id = session_id or self.get_editor_state().get("active_ai_session_id", "")
+        return self.ai_orchestrator.get_session(resolved_session_id or None)
+
+    def undo_ai_last_apply(self, session_id: Optional[str] = None) -> Dict[str, Any]:
+        if self.ai_orchestrator is None:
+            return {}
+        resolved_session_id = session_id or self.get_editor_state().get("active_ai_session_id", "")
+        if not resolved_session_id:
+            return {}
+        return self.ai_orchestrator.undo_last_apply(resolved_session_id)
+
     def get_ai_project_memory(self) -> Dict[str, Any]:
         if self.ai_orchestrator is None:
             return {}
@@ -897,10 +991,20 @@ class EngineAPI:
             return []
         return self.ai_orchestrator.list_providers()
 
+    def list_ai_tools(self) -> list[Dict[str, Any]]:
+        if self.ai_orchestrator is None:
+            return []
+        return self.ai_orchestrator.list_tools()
+
     def get_ai_provider_diagnostics(self) -> Dict[str, Any]:
         if self.ai_orchestrator is None:
             return {}
         return self.ai_orchestrator.get_provider_diagnostics()
+
+    def get_ai_diagnostics(self, session_id: Optional[str] = None) -> Dict[str, Any]:
+        if self.ai_orchestrator is None:
+            return {}
+        return self.ai_orchestrator.get_diagnostics(session_id=session_id)
 
     def get_engine_capabilities(self) -> list[Dict[str, Any]]:
         if self.project_service is None:
@@ -918,6 +1022,26 @@ class EngineAPI:
         if self.asset_service is None:
             return []
         return self.asset_service.list_assets(search=search)
+
+    def list_project_prefabs(self) -> list[str]:
+        if self.project_service is None or not self.project_service.has_project:
+            return []
+        prefabs_root = self.project_service.get_project_path("prefabs")
+        return [
+            self.project_service.to_relative_path(path)
+            for path in sorted(prefabs_root.rglob("*.json"))
+            if path.is_file()
+        ]
+
+    def list_project_scripts(self) -> list[str]:
+        if self.project_service is None or not self.project_service.has_project:
+            return []
+        scripts_root = self.project_service.get_project_path("scripts")
+        return [
+            self.project_service.to_relative_path(path)
+            for path in sorted(scripts_root.rglob("*.py"))
+            if path.is_file()
+        ]
 
     def refresh_asset_catalog(self) -> ActionResult:
         if self.asset_service is None:
