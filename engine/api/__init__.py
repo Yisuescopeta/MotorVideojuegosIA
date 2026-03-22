@@ -6,6 +6,11 @@ Permite importar:
 """
 
 from engine.api.engine_api import EngineAPI
+from engine.api.ai_context import (
+    build_ai_context,
+    build_ai_context_examples,
+    format_ai_context_for_chat,
+)
 from engine.api.errors import (
     EngineError,
     EntityNotFoundError,
@@ -23,6 +28,9 @@ from engine.api.types import (
 
 __all__ = [
     "EngineAPI",
+    "build_ai_context",
+    "build_ai_context_examples",
+    "format_ai_context_for_chat",
     "EngineError",
     "EntityNotFoundError",
     "ComponentNotFoundError",

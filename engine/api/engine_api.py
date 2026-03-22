@@ -11,6 +11,11 @@ import json
 
 from cli.headless_game import HeadlessGame
 from cli.runner import CLIRunner
+from engine.api.ai_context import (
+    build_ai_context,
+    build_ai_context_examples,
+    format_ai_context_for_chat,
+)
 from engine.core.engine_state import EngineState
 from engine.scenes.scene_manager import SceneManager
 from engine.levels.component_registry import create_default_registry
@@ -115,6 +120,41 @@ class EngineAPI:
 
     # === INSPECCIÓN Y EDICIÓN ===
 
+    def build_ai_context(
+        self,
+        level: str = "minimal",
+        include_world_fallback: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Construye un contexto resumido y estable para asistentes IA.
+
+        Integracion tipica:
+        - Chat: serializar con build_ai_context_message().
+        - Command bus o script runner: consultar antes de decidir la siguiente accion.
+        """
+        return build_ai_context(
+            game=self.game,
+            scene_manager=self.scene_manager,
+            level=level,  # type: ignore[arg-type]
+            include_world_fallback=include_world_fallback,
+        )
+
+    def build_ai_context_message(
+        self,
+        level: str = "minimal",
+        include_world_fallback: bool = False,
+    ) -> str:
+        """Devuelve el contexto listo para adjuntar a chat o command bus."""
+        context = self.build_ai_context(
+            level=level,
+            include_world_fallback=include_world_fallback,
+        )
+        return format_ai_context_for_chat(context)
+
+    def get_ai_context_examples(self) -> Dict[str, Dict[str, Any]]:
+        """Expone ejemplos del formato resumido."""
+        return build_ai_context_examples()
+
     def get_entity(self, name: str) -> EntityData:
         """Obtiene datos de una entidad."""
         if not self.game or not self.game.world:
@@ -124,11 +164,11 @@ class EngineAPI:
         if not entity:
             raise EntityNotFoundError(f"Entity '{name}' not found")
             
-        # Serializar componentes
+        # Serializar componentes sin depender del almacenamiento interno
         components_data = {}
-        for comp_type, comp in entity._components.items():
+        for comp in entity.get_all_components():
             if hasattr(comp, "to_dict"):
-                components_data[comp_type.__name__] = comp.to_dict()
+                components_data[type(comp).__name__] = comp.to_dict()
                 
         return {
             "name": entity.name,
