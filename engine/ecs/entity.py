@@ -56,6 +56,13 @@ class Entity:
         """
         self.id: int = _generate_entity_id()
         self.name: str = name
+        self.active: bool = True
+        self.tag: str = "Untagged"
+        self.layer: str = "Default"
+        self.parent_name: str | None = None
+        self.prefab_instance: dict[str, Any] | None = None
+        self.prefab_source_path: str | None = None
+        self.prefab_root_name: str | None = None
         self._components: dict[type, Component] = {}
     
     def add_component(self, component: Component) -> None:
@@ -94,6 +101,12 @@ class Entity:
             True si el componente existe, False en caso contrario
         """
         return component_type in self._components
+
+    def has_enabled_component(self, component_type: type) -> bool:
+        component = self._components.get(component_type)
+        if component is None:
+            return False
+        return bool(getattr(component, "enabled", True))
     
     def remove_component(self, component_type: type) -> None:
         """
@@ -121,14 +134,26 @@ class Entity:
         Returns:
             Diccionario con id, name y componentes serializados
         """
-        return {
+        data = {
             "id": self.id,
             "name": self.name,
+            "active": self.active,
+            "tag": self.tag,
+            "layer": self.layer,
             "components": {
                 comp_type.__name__: comp.to_dict()
                 for comp_type, comp in self._components.items()
             }
         }
+        if self.parent_name is not None:
+            data["parent"] = self.parent_name
+        if self.prefab_instance is not None:
+            data["prefab_instance"] = self.prefab_instance
+        if self.prefab_source_path is not None:
+            data["prefab_source_path"] = self.prefab_source_path
+        if self.prefab_root_name is not None:
+            data["prefab_root_name"] = self.prefab_root_name
+        return data
     
     def __repr__(self) -> str:
         """Representación legible de la entidad para debug."""

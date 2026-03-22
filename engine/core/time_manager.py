@@ -31,6 +31,7 @@ class TimeManager:
         self._delta_time: float = 0.0
         self._total_time: float = 0.0
         self._fps: int = 0
+        self._frame_count: int = 0
     
     def update(self) -> None:
         """
@@ -40,6 +41,7 @@ class TimeManager:
         self._delta_time = rl.get_frame_time()
         self._total_time += self._delta_time
         self._fps = rl.get_fps()
+        self._frame_count += 1
         
     def update_manual(self, dt: float) -> None:
         """
@@ -51,6 +53,7 @@ class TimeManager:
         self._delta_time = dt
         self._total_time += dt
         self._fps = int(1.0 / dt) if dt > 0 else 0
+        self._frame_count += 1
     
     @property
     def delta_time(self) -> float:
@@ -65,4 +68,14 @@ class TimeManager:
     @property
     def total_time(self) -> float:
         """Tiempo total transcurrido desde el inicio del juego."""
+        return self._total_time
+
+    @property
+    def frame_count(self) -> int:
+        """Numero de frames actualizados."""
+        return self._frame_count
+
+    @property
+    def time(self) -> float:
+        """Alias compatible con codigo existente."""
         return self._total_time

@@ -38,12 +38,17 @@ class HierarchyPanel:
         self.scroll_offset: int = 0
         self.expanded_ids: Set[int] = set()
         self.panel_width: int = 200
+        self._scene_manager = None
         
         # Context Menu State
         self.context_menu_active: bool = False
         self.context_menu_pos = rl.Vector2(0, 0)
         self.context_target_id: Optional[int] = None
         self.hovered_entity_id: Optional[int] = None
+
+    def set_scene_manager(self, manager: object) -> None:
+        """Permite que la UI use el mismo camino serializable que la API."""
+        self._scene_manager = manager
         
     def render(self, world: "World", x: int, y: int, width: int, height: int) -> None:
         """Renderiza el panel de jerarquía estilo Unity."""
@@ -88,10 +93,13 @@ class HierarchyPanel:
         rl.draw_text("+", int(x + width - 17), int(y + 4), 14, self.UNITY_TEXT)
         
         if is_hover_plus and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-            # Crear nueva entidad
-            new_entity = world.create_entity(f"New Entity {world.entity_count()}")
-            new_entity.add_component(Transform())
-            world.selected_entity_name = new_entity.name
+            new_name = f"New Entity {world.entity_count()}"
+            if self._scene_manager is not None and self._scene_manager.create_entity(new_name):
+                self._scene_manager.set_selected_entity(new_name)
+            else:
+                new_entity = world.create_entity(new_name)
+                new_entity.add_component(Transform())
+                world.selected_entity_name = new_entity.name
         
         # Línea separadora
         rl.draw_line(x, int(y + self.HEADER_HEIGHT), x + width, int(y + self.HEADER_HEIGHT), self.UNITY_BORDER)
@@ -169,7 +177,10 @@ class HierarchyPanel:
             rl.draw_rectangle(panel_x, y, self.panel_width, row_height, self.UNITY_HOVER)
             
             if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-                world.selected_entity_name = entity.name
+                if self._scene_manager is not None:
+                    self._scene_manager.set_selected_entity(entity.name)
+                else:
+                    world.selected_entity_name = entity.name
                 if has_children:
                     # Toggle expand
                     if entity.id in self.expanded_ids:
@@ -228,6 +239,10 @@ class HierarchyPanel:
 
     def _find_entity_by_transform(self, world: "World", transform: Transform) -> Optional[Entity]:
         """Ayuda ineficiente para encontrar entidad dado un transform."""
+        for entity in world.get_all_entities():
+            entity_transform = entity.get_component(Transform)
+            if entity_transform is transform:
+                return entity
         return None
 
     def _handle_context_input(self, world: "World", x: int, y: int, w: int, h: int) -> None:
@@ -294,21 +309,32 @@ class HierarchyPanel:
                 
     def _execute_context_action(self, world: "World", action: str) -> None:
         if action == "Create Entity":
-            new_ent = world.create_entity(f"New Entity {world.entity_count()}")
-            new_ent.add_component(Transform())
-            world.selected_entity_name = new_ent.name
+            new_name = f"New Entity {world.entity_count()}"
+            if self._scene_manager is not None and self._scene_manager.create_entity(new_name):
+                self._scene_manager.set_selected_entity(new_name)
+            else:
+                new_ent = world.create_entity(new_name)
+                new_ent.add_component(Transform())
+                world.selected_entity_name = new_ent.name
             
         elif action == "Delete Entity" and self.context_target_id is not None:
             entity = world.get_entity(self.context_target_id)
             if entity:
-                world.destroy_entity(entity.id)
+                if self._scene_manager is not None:
+                    self._scene_manager.remove_entity(entity.name)
+                else:
+                    world.destroy_entity(entity.id)
                 # Si era el seleccionado, deseleccionar
                 if world.selected_entity_name == entity.name:
-                    world.selected_entity_name = None
+                    if self._scene_manager is not None:
+                        self._scene_manager.set_selected_entity(None)
+                    else:
+                        world.selected_entity_name = None
                     
         elif action == "Duplicate Entity" and self.context_target_id is not None:
-             # TODO: Implement duplicate
-             print(f"[TODO] Duplicar entidad {self.context_target_id}")
+            entity = world.get_entity(self.context_target_id)
+            if entity is not None and self._scene_manager is not None:
+                self._scene_manager.duplicate_entity_subtree(entity.name)
 
         elif action == "Save as Prefab" and self.context_target_id is not None:
             entity = world.get_entity(self.context_target_id)
@@ -329,6 +355,6 @@ class HierarchyPanel:
                     
                     if path:
                         from engine.assets.prefab import PrefabManager
-                        PrefabManager.save_prefab(entity, path)
+                        PrefabManager.save_prefab(entity, path, world=world)
                 except Exception as e:
                     print(f"[ERROR] Save Prefab dialog failed: {e}")

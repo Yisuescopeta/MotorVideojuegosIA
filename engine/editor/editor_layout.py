@@ -82,7 +82,7 @@ class EditorLayout:
         self.screen_height = screen_height
         
         # Tabs
-        self.active_tab: str = "SCENE" # "SCENE" | "GAME"
+        self.active_tab: str = "SCENE" # "SCENE" | "GAME" | "ANIMATOR"
         self.active_bottom_tab: str = "PROJECT" # "PROJECT" | "CONSOLE"
         
         # Requests (Game.py lee esto)
@@ -95,13 +95,30 @@ class EditorLayout:
         self.request_new_scene: bool = False
         self.request_save_scene: bool = False
         self.request_load_scene: bool = False
+        self.request_open_project: bool = False
+        self.request_browse_project: bool = False
+        self.request_create_project: bool = False
+        self.request_exit_launcher: bool = False
+        self.request_create_canvas: bool = False
+        self.request_create_ui_text: bool = False
+        self.request_create_ui_button: bool = False
         
         # Tool selection (Q=Hand, W=Move, E=Rotate, R=Scale, T=Rect)
         self.current_tool: str = "Move"
+        self.recent_projects: list[dict] = []
+        self.show_project_modal: bool = False
+        self.show_project_launcher: bool = False
+        self.show_project_dirty_modal: bool = False
+        self.pending_project_path: str = ""
+        self.project_switch_decision: str = ""
         
         # Anchos dinámicos
         self.hierarchy_width = 200
         self.inspector_width = 280
+        self.assistant_width = 320
+        self.assistant_previous_width = self.assistant_width
+        self.assistant_minimized: bool = False
+        self.assistant_minimized_width = 44
         
         # Estado de Resize/Drag
         self.dragging_splitter: Optional[str] = None 
@@ -123,6 +140,7 @@ class EditorLayout:
         # Rects
         self.hierarchy_rect = rl.Rectangle(0,0,0,0)
         self.inspector_rect = rl.Rectangle(0,0,0,0)
+        self.assistant_rect = rl.Rectangle(0,0,0,0)
         self.center_rect = rl.Rectangle(0,0,0,0) # Scene/Game container
         self.bottom_rect = rl.Rectangle(0,0,0,0)
         self.splitter_left_rect = rl.Rectangle(0,0,0,0)
@@ -131,6 +149,7 @@ class EditorLayout:
         # Tab Rects
         self.tab_scene_rect = rl.Rectangle(0,0,0,0)
         self.tab_game_rect = rl.Rectangle(0,0,0,0)
+        self.tab_animator_rect = rl.Rectangle(0,0,0,0)
         self.btn_play_rect = rl.Rectangle(0,0,0,0)
         
         self.tab_game_rect = rl.Rectangle(0,0,0,0)
@@ -142,10 +161,15 @@ class EditorLayout:
         
         self.update_layout(screen_width, screen_height)
 
+    def set_recent_projects(self, recent_projects: list[dict]) -> None:
+        self.recent_projects = list(recent_projects)
+
     def update_layout(self, width: int, height: int, update_texture: bool = True) -> None:
         """Recalcula layout."""
         self.screen_width = width
         self.screen_height = height
+        if self.assistant_minimized:
+            self.assistant_width = self.assistant_minimized_width
         
         # Menu Bar takes top space (24px)
         # Toolbar is below Menu Bar
@@ -156,9 +180,10 @@ class EditorLayout:
         content_height = height - top_offset - self.BOTTOM_HEIGHT
         
         # Toolbar layout (Tabs & Buttons)
-        self.tab_scene_rect = rl.Rectangle(width/2 - 100, tab_y, 80, 30)
-        self.tab_game_rect = rl.Rectangle(width/2, tab_y, 80, 30)
-        self.btn_play_rect = rl.Rectangle(width/2 + 100, tab_y, 60, 30)
+        self.tab_scene_rect = rl.Rectangle(width/2 - 145, tab_y, 80, 30)
+        self.tab_game_rect = rl.Rectangle(width/2 - 55, tab_y, 80, 30)
+        self.tab_animator_rect = rl.Rectangle(width/2 + 35, tab_y, 90, 30)
+        self.btn_play_rect = rl.Rectangle(width/2 + 135, tab_y, 60, 30)
         
         # 1. Hierarchy (Left) - Starts below Toolbar
         self.hierarchy_rect = rl.Rectangle(
@@ -174,19 +199,23 @@ class EditorLayout:
         
         # 2. Inspector (Right)
         self.inspector_rect = rl.Rectangle(
-            width - self.inspector_width, top_offset,
+            width - self.assistant_width - self.inspector_width, top_offset,
             self.inspector_width, content_height
+        )
+        self.assistant_rect = rl.Rectangle(
+            width - self.assistant_width, top_offset,
+            self.assistant_width, content_height
         )
         
         # Splitter Right
         self.splitter_right_rect = rl.Rectangle(
-            width - self.inspector_width - self.SPLITTER_WIDTH, top_offset,
+            width - self.assistant_width - self.inspector_width - self.SPLITTER_WIDTH, top_offset,
             self.SPLITTER_WIDTH, content_height
         )
         
         # 3. Center View (Reference for Scene and Game)
         center_x = self.hierarchy_width + self.SPLITTER_WIDTH
-        center_right = width - self.inspector_width - self.SPLITTER_WIDTH
+        center_right = width - self.assistant_width - self.inspector_width - self.SPLITTER_WIDTH
         center_width = center_right - center_x
         
         self.center_rect = rl.Rectangle(
@@ -212,16 +241,19 @@ class EditorLayout:
         
         # Guard: Skip toolbar/tab processing if mouse is in inspector or hierarchy
         mouse_in_inspector = rl.check_collision_point_rec(mouse_pos, self.inspector_rect)
+        mouse_in_assistant = rl.check_collision_point_rec(mouse_pos, self.assistant_rect)
         mouse_in_hierarchy = rl.check_collision_point_rec(mouse_pos, self.hierarchy_rect)
         mouse_in_bottom = rl.check_collision_point_rec(mouse_pos, self.bottom_rect)
         
         # A. Toolbar / Tabs interaction (only if NOT clicking in panels)
-        if not mouse_in_inspector and not mouse_in_hierarchy and not mouse_in_bottom:
+        if not mouse_in_inspector and not mouse_in_assistant and not mouse_in_hierarchy and not mouse_in_bottom:
             if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 if rl.check_collision_point_rec(mouse_pos, self.tab_scene_rect):
                     self.active_tab = "SCENE"
                 elif rl.check_collision_point_rec(mouse_pos, self.tab_game_rect):
                     self.active_tab = "GAME"
+                elif rl.check_collision_point_rec(mouse_pos, self.tab_animator_rect):
+                    self.active_tab = "ANIMATOR"
                 elif rl.check_collision_point_rec(mouse_pos, self.btn_play_rect):
                     self.request_play = True
         
@@ -311,6 +343,21 @@ class EditorLayout:
         """Returns True if the mouse is over the inspector panel."""
         return rl.check_collision_point_rec(rl.get_mouse_position(), self.inspector_rect)
 
+    def is_mouse_in_assistant_panel(self) -> bool:
+        return rl.check_collision_point_rec(rl.get_mouse_position(), self.assistant_rect)
+
+    def set_assistant_minimized(self, minimized: bool) -> None:
+        minimized = bool(minimized)
+        if minimized == self.assistant_minimized:
+            return
+        if minimized:
+            self.assistant_previous_width = max(self.MIN_PANEL_WIDTH, self.assistant_width)
+            self.assistant_width = self.assistant_minimized_width
+        else:
+            restored_width = self.assistant_previous_width or 320
+            self.assistant_width = max(self.MIN_PANEL_WIDTH, restored_width)
+        self.assistant_minimized = minimized
+
     def _resize_render_textures(self, width: int, height: int) -> None:
         if width <= 0 or height <= 0: return
         
@@ -384,6 +431,8 @@ class EditorLayout:
                      int(self.inspector_rect.x),
                      int(self.inspector_rect.y + self.inspector_rect.height),
                      self.UNITY_BORDER)
+        rl.draw_rectangle_rec(self.assistant_rect, self.UNITY_BG_DARK)
+        rl.draw_line(int(self.assistant_rect.x), int(self.assistant_rect.y), int(self.assistant_rect.x), int(self.assistant_rect.y + self.assistant_rect.height), self.UNITY_BORDER)
         
         # ========================================
         # 4. Scene/Game View Tabs
@@ -409,6 +458,12 @@ class EditorLayout:
         if rl.check_collision_point_rec(rl.get_mouse_position(), game_tab_rect):
             if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 self.active_tab = "GAME"
+
+        animator_tab_rect = rl.Rectangle(tab_bar_x + 155, tab_bar_y + 2, 86, tab_bar_height - 4)
+        self._draw_tab("Animator", animator_tab_rect, self.active_tab == "ANIMATOR")
+        if rl.check_collision_point_rec(rl.get_mouse_position(), animator_tab_rect):
+            if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                self.active_tab = "ANIMATOR"
         
         # ========================================
         # 5. Scene/Game View Content
@@ -421,11 +476,17 @@ class EditorLayout:
             self.center_rect.height - self.TAB_HEIGHT
         )
         
-        target_tex = self.scene_texture if self.active_tab == "SCENE" else self.game_texture
-        
+        target_tex = None
+        if self.active_tab == "SCENE":
+            target_tex = self.scene_texture
+        elif self.active_tab == "GAME":
+            target_tex = self.game_texture
+
         if target_tex:
             source = rl.Rectangle(0, 0, target_tex.texture.width, -target_tex.texture.height)
             rl.draw_texture_pro(target_tex.texture, source, view_rect, rl.Vector2(0,0), 0.0, rl.WHITE)
+        else:
+            rl.draw_rectangle_rec(view_rect, self.VIEW_BG_COLOR)
         
         rl.draw_rectangle_lines_ex(view_rect, 1, self.UNITY_BORDER)
         
@@ -481,6 +542,44 @@ class EditorLayout:
                 int(self.bottom_rect.width), 
                 int(self.bottom_rect.height)
             )
+
+        if self.show_project_modal:
+            self._draw_project_modal()
+        if self.show_project_dirty_modal:
+            self._draw_project_dirty_modal()
+
+    def draw_project_launcher(self) -> None:
+        rl.clear_background(self.UNITY_BG_DARKEST)
+        panel = rl.Rectangle(self.screen_width / 2 - 280, self.screen_height / 2 - 210, 560, 420)
+        rl.draw_rectangle_rec(panel, self.UNITY_BG_DARK)
+        rl.draw_rectangle_lines_ex(panel, 1, self.UNITY_BORDER)
+        rl.draw_text("Motor 2D", int(panel.x + 20), int(panel.y + 18), 24, self.UNITY_TEXT_BRIGHT)
+        rl.draw_text("Select or create a project to enter the editor", int(panel.x + 20), int(panel.y + 52), 10, self.UNITY_TEXT_DIM)
+
+        item_y = int(panel.y + 94)
+        rl.draw_text("Recent projects", int(panel.x + 20), item_y - 20, 12, self.UNITY_TEXT)
+        if not self.recent_projects:
+            rl.draw_text("No recent projects", int(panel.x + 20), item_y, 10, self.UNITY_TEXT_DIM)
+
+        for item in self.recent_projects[:7]:
+            path = str(item.get("path", ""))
+            name = str(item.get("name", "Project"))
+            row_rect = rl.Rectangle(panel.x + 20, item_y, panel.width - 40, 42)
+            hover = rl.check_collision_point_rec(rl.get_mouse_position(), row_rect)
+            rl.draw_rectangle_rec(row_rect, self.UNITY_BG_LIGHT if hover else self.UNITY_BG_MID)
+            rl.draw_text(name, int(row_rect.x + 10), int(row_rect.y + 8), 12, self.UNITY_TEXT)
+            rl.draw_text(path, int(row_rect.x + 10), int(row_rect.y + 24), 10, self.UNITY_TEXT_DIM)
+            if hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                self.pending_project_path = path
+            item_y += 48
+
+        button_y = panel.y + panel.height - 50
+        if rl.gui_button(rl.Rectangle(panel.x + 20, button_y, 120, 28), "Open Folder"):
+            self.request_browse_project = True
+        if rl.gui_button(rl.Rectangle(panel.x + 150, button_y, 120, 28), "Create Project"):
+            self.request_create_project = True
+        if rl.gui_button(rl.Rectangle(panel.x + panel.width - 100, button_y, 80, 28), "Exit"):
+            self.request_exit_launcher = True
 
     def _draw_splitters(self) -> None:
         mouse_pos = rl.get_mouse_position()
@@ -601,6 +700,19 @@ class EditorLayout:
         file_x += file_btn_w + 5
         if rl.gui_button(rl.Rectangle(file_x, play_y, file_btn_w, btn_height), "Save"):
             self.request_save_scene = True
+
+        file_x += file_btn_w + 5
+        if rl.gui_button(rl.Rectangle(file_x, play_y, 52, btn_height), "Project"):
+            self.show_project_modal = True
+        file_x += 57
+        if rl.gui_button(rl.Rectangle(file_x, play_y, 52, btn_height), "Canvas"):
+            self.request_create_canvas = True
+        file_x += 57
+        if rl.gui_button(rl.Rectangle(file_x, play_y, 44, btn_height), "Text"):
+            self.request_create_ui_text = True
+        file_x += 49
+        if rl.gui_button(rl.Rectangle(file_x, play_y, 56, btn_height), "Button"):
+            self.request_create_ui_button = True
         
     def _draw_menu_bar(self) -> None:
         """Dibuja la barra de menú estilo Unity."""
@@ -645,6 +757,64 @@ class EditorLayout:
         text_x = rect.x + (rect.width - text_width) // 2
         text_y = rect.y + (rect.height - 10) // 2
         rl.draw_text(text, int(text_x), int(text_y), 10, self.UNITY_TEXT)
+
+    def get_center_view_rect(self) -> rl.Rectangle:
+        return rl.Rectangle(
+            self.center_rect.x,
+            self.center_rect.y + self.TAB_HEIGHT,
+            self.center_rect.width,
+            self.center_rect.height - self.TAB_HEIGHT
+        )
+
+    def _draw_project_modal(self) -> None:
+        rl.draw_rectangle(0, 0, self.screen_width, self.screen_height, rl.Color(0, 0, 0, 150))
+        modal = rl.Rectangle(self.screen_width / 2 - 220, self.screen_height / 2 - 160, 440, 320)
+        rl.draw_rectangle_rec(modal, self.UNITY_BG_DARK)
+        rl.draw_rectangle_lines_ex(modal, 1, self.UNITY_BORDER)
+        rl.draw_text("Open Project", int(modal.x + 12), int(modal.y + 12), 14, self.UNITY_TEXT_BRIGHT)
+
+        item_y = int(modal.y + 44)
+        if not self.recent_projects:
+            rl.draw_text("No recent projects", int(modal.x + 12), item_y, 10, self.UNITY_TEXT_DIM)
+
+        for item in self.recent_projects[:6]:
+            path = str(item.get("path", ""))
+            name = str(item.get("name", "Project"))
+            row_rect = rl.Rectangle(modal.x + 12, item_y, modal.width - 24, 34)
+            hover = rl.check_collision_point_rec(rl.get_mouse_position(), row_rect)
+            rl.draw_rectangle_rec(row_rect, self.UNITY_BG_LIGHT if hover else self.UNITY_BG_MID)
+            rl.draw_text(name, int(row_rect.x + 8), int(row_rect.y + 6), 12, self.UNITY_TEXT)
+            rl.draw_text(path, int(row_rect.x + 8), int(row_rect.y + 20), 10, self.UNITY_TEXT_DIM)
+            if hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                self.pending_project_path = path
+                self.show_project_modal = False
+            item_y += 40
+
+        browse_rect = rl.Rectangle(modal.x + 12, modal.y + modal.height - 40, 120, 24)
+        close_rect = rl.Rectangle(modal.x + modal.width - 92, modal.y + modal.height - 40, 80, 24)
+        if rl.gui_button(browse_rect, "Browse Folder"):
+            self.request_browse_project = True
+            self.show_project_modal = False
+        if rl.gui_button(close_rect, "Close"):
+            self.show_project_modal = False
+
+    def _draw_project_dirty_modal(self) -> None:
+        rl.draw_rectangle(0, 0, self.screen_width, self.screen_height, rl.Color(0, 0, 0, 150))
+        modal = rl.Rectangle(self.screen_width / 2 - 180, self.screen_height / 2 - 80, 360, 160)
+        rl.draw_rectangle_rec(modal, self.UNITY_BG_DARK)
+        rl.draw_rectangle_lines_ex(modal, 1, self.UNITY_BORDER)
+        rl.draw_text("Unsaved changes", int(modal.x + 12), int(modal.y + 12), 14, self.UNITY_TEXT_BRIGHT)
+        rl.draw_text("Save current scene before switching project?", int(modal.x + 12), int(modal.y + 50), 10, self.UNITY_TEXT)
+
+        if rl.gui_button(rl.Rectangle(modal.x + 12, modal.y + modal.height - 38, 80, 24), "Save"):
+            self.project_switch_decision = "save"
+            self.show_project_dirty_modal = False
+        if rl.gui_button(rl.Rectangle(modal.x + 102, modal.y + modal.height - 38, 80, 24), "Discard"):
+            self.project_switch_decision = "discard"
+            self.show_project_dirty_modal = False
+        if rl.gui_button(rl.Rectangle(modal.x + 192, modal.y + modal.height - 38, 80, 24), "Cancel"):
+            self.project_switch_decision = "cancel"
+            self.show_project_dirty_modal = False
 
     def _draw_grid_2d(self) -> None:
         # Unity Style Grid

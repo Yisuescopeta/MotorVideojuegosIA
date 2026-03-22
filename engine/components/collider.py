@@ -61,6 +61,7 @@ class Collider(Component):
             offset_y: Offset vertical desde la posición
             is_trigger: Si solo detecta sin bloquear
         """
+        self.enabled: bool = True
         self.width: float = width
         self.height: float = height
         self.offset_x: float = offset_x
@@ -95,6 +96,7 @@ class Collider(Component):
     def to_dict(self) -> dict[str, Any]:
         """Serializa el Collider a diccionario."""
         return {
+            "enabled": self.enabled,
             "width": self.width,
             "height": self.height,
             "offset_x": self.offset_x,
@@ -105,10 +107,12 @@ class Collider(Component):
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Collider":
         """Crea un Collider desde un diccionario."""
-        return cls(
+        component = cls(
             width=data.get("width", 32.0),
             height=data.get("height", 32.0),
             offset_x=data.get("offset_x", 0.0),
             offset_y=data.get("offset_y", 0.0),
             is_trigger=data.get("is_trigger", False)
         )
+        component.enabled = data.get("enabled", True)
+        return component

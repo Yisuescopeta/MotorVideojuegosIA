@@ -1,0 +1,272 @@
+{
+    "version": 1,
+    "generated_at_utc": "2026-03-22T11:03:14.226791+00:00",
+    "assets": [
+        {
+            "guid": "ast_2c6f30e04ba7458b9e8d6da1bf97444e",
+            "guid_short": "ast_2c6f",
+            "name": "images.png",
+            "path": "assets/images.png",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/assets/images.png",
+            "folder": "assets",
+            "asset_kind": "texture",
+            "importer": "texture",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1774177157.970912,
+            "reference": {
+                "guid": "ast_2c6f30e04ba7458b9e8d6da1bf97444e",
+                "path": "assets/images.png"
+            }
+        },
+        {
+            "guid": "ast_3fe01594895f4c4081f1ef623dbd31f8",
+            "guid_short": "ast_3fe0",
+            "name": "images_1.png",
+            "path": "assets/images_1.png",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/assets/images_1.png",
+            "folder": "assets",
+            "asset_kind": "texture",
+            "importer": "texture",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1774177157.9736052,
+            "reference": {
+                "guid": "ast_3fe01594895f4c4081f1ef623dbd31f8",
+                "path": "assets/images_1.png"
+            }
+        },
+        {
+            "guid": "ast_1e334ed5ddaa4454bb8174415bdaa5e6",
+            "guid_short": "ast_1e33",
+            "name": "images_2.png",
+            "path": "assets/images_2.png",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/assets/images_2.png",
+            "folder": "assets",
+            "asset_kind": "texture",
+            "importer": "texture",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1774177157.9736052,
+            "reference": {
+                "guid": "ast_1e334ed5ddaa4454bb8174415bdaa5e6",
+                "path": "assets/images_2.png"
+            }
+        },
+        {
+            "guid": "ast_00c4ead1dc834e7aa9e8bb9ea2a7d13a",
+            "guid_short": "ast_00c4",
+            "name": "images_3.png",
+            "path": "assets/images_3.png",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/assets/images_3.png",
+            "folder": "assets",
+            "asset_kind": "texture",
+            "importer": "texture",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1774177157.976148,
+            "reference": {
+                "guid": "ast_00c4ead1dc834e7aa9e8bb9ea2a7d13a",
+                "path": "assets/images_3.png"
+            }
+        },
+        {
+            "guid": "ast_4b39dcc9f7c84d3aaa435429284d42aa",
+            "guid_short": "ast_4b39",
+            "name": "test_spritesheet.png",
+            "path": "assets/test_spritesheet.png",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/assets/test_spritesheet.png",
+            "folder": "assets",
+            "asset_kind": "texture",
+            "importer": "texture",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1770831320.8688715,
+            "reference": {
+                "guid": "ast_4b39dcc9f7c84d3aaa435429284d42aa",
+                "path": "assets/test_spritesheet.png"
+            }
+        },
+        {
+            "guid": "ast_ca105968cf6d4d94bfe5d40e25a667b5",
+            "guid_short": "ast_ca10",
+            "name": "demo_level.json",
+            "path": "levels/demo_level.json",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/levels/demo_level.json",
+            "folder": "levels",
+            "asset_kind": "scene_data",
+            "importer": "scene_data",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1774177158.0972989,
+            "reference": {
+                "guid": "ast_ca105968cf6d4d94bfe5d40e25a667b5",
+                "path": "levels/demo_level.json"
+            }
+        },
+        {
+            "guid": "ast_0a1cfe5901b94d30b23b593639735daa",
+            "guid_short": "ast_0a1c",
+            "name": "lol.json",
+            "path": "levels/lol.json",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/levels/lol.json",
+            "folder": "levels",
+            "asset_kind": "scene_data",
+            "importer": "scene_data",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1774177158.1017444,
+            "reference": {
+                "guid": "ast_0a1cfe5901b94d30b23b593639735daa",
+                "path": "levels/lol.json"
+            }
+        },
+        {
+            "guid": "ast_597251e8033d45e7ad42d229973f763f",
+            "guid_short": "ast_5972",
+            "name": "main_menu_scene.json",
+            "path": "levels/main_menu_scene.json",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/levels/main_menu_scene.json",
+            "folder": "levels",
+            "asset_kind": "scene_data",
+            "importer": "scene_data",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1774177158.1040926,
+            "reference": {
+                "guid": "ast_597251e8033d45e7ad42d229973f763f",
+                "path": "levels/main_menu_scene.json"
+            }
+        },
+        {
+            "guid": "ast_0a0f68b252014c979074814c28cd1c75",
+            "guid_short": "ast_0a0f",
+            "name": "platformer_test_scene.json",
+            "path": "levels/platformer_test_scene.json",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/levels/platformer_test_scene.json",
+            "folder": "levels",
+            "asset_kind": "scene_data",
+            "importer": "scene_data",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1774177158.1056995,
+            "reference": {
+                "guid": "ast_0a0f68b252014c979074814c28cd1c75",
+                "path": "levels/platformer_test_scene.json"
+            }
+        },
+        {
+            "guid": "ast_cce65bdcbc634e99bf978b194dcb0675",
+            "guid_short": "ast_cce6",
+            "name": "__init__.py",
+            "path": "scripts/__init__.py",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/scripts/__init__.py",
+            "folder": "scripts",
+            "asset_kind": "script",
+            "importer": "script",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1770832361.048399,
+            "reference": {
+                "guid": "ast_cce65bdcbc634e99bf978b194dcb0675",
+                "path": "scripts/__init__.py"
+            }
+        },
+        {
+            "guid": "ast_3860b2b5a2f74411999e98b577ea9918",
+            "guid_short": "ast_3860",
+            "name": "example_script.py",
+            "path": "scripts/example_script.py",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/scripts/example_script.py",
+            "folder": "scripts",
+            "asset_kind": "script",
+            "importer": "script",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1770832386.22833,
+            "reference": {
+                "guid": "ast_3860b2b5a2f74411999e98b577ea9918",
+                "path": "scripts/example_script.py"
+            }
+        },
+        {
+            "guid": "ast_1dfc9299941948a0b23fde950616951e",
+            "guid_short": "ast_1dfc",
+            "name": "main_menu_controller.py",
+            "path": "scripts/main_menu_controller.py",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/scripts/main_menu_controller.py",
+            "folder": "scripts",
+            "asset_kind": "script",
+            "importer": "script",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1774177158.1123738,
+            "reference": {
+                "guid": "ast_1dfc9299941948a0b23fde950616951e",
+                "path": "scripts/main_menu_controller.py"
+            }
+        },
+        {
+            "guid": "ast_7e176944aca447dfb85cac00bc23db9e",
+            "guid_short": "ast_7e17",
+            "name": "platformer_character.py",
+            "path": "scripts/platformer_character.py",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/scripts/platformer_character.py",
+            "folder": "scripts",
+            "asset_kind": "script",
+            "importer": "script",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1774177158.1138864,
+            "reference": {
+                "guid": "ast_7e176944aca447dfb85cac00bc23db9e",
+                "path": "scripts/platformer_character.py"
+            }
+        },
+        {
+            "guid": "ast_8a1b91c96c7046e8a0b6fbfbd4011ab8",
+            "guid_short": "ast_8a1b",
+            "name": "player_movement_generated.py",
+            "path": "scripts/player_movement_generated.py",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/scripts/player_movement_generated.py",
+            "folder": "scripts",
+            "asset_kind": "script",
+            "importer": "script",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1774177158.1138864,
+            "reference": {
+                "guid": "ast_8a1b91c96c7046e8a0b6fbfbd4011ab8",
+                "path": "scripts/player_movement_generated.py"
+            }
+        }
+    ]
+}

@@ -1,0 +1,10 @@
+{
+    "name": "MotorVideojuegosIA",
+    "version": 1,
+    "paths": {
+        "assets": "assets",
+        "levels": "levels",
+        "scripts": "scripts",
+        "meta": ".motor/meta"
+    }
+}

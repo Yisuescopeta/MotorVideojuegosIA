@@ -51,7 +51,7 @@ class AnimationSystem:
         """Actualiza un animator individual."""
         anim = animator.get_current_animation()
         
-        if anim is None or not anim.frames:
+        if anim is None or anim.get_frame_count() <= 0:
             return
         
         if animator.is_finished and not anim.loop:
@@ -67,11 +67,11 @@ class AnimationSystem:
             animator.elapsed_time -= frame_duration
             animator.current_frame += 1
             
-            if animator.current_frame >= len(anim.frames):
+            if animator.current_frame >= anim.get_frame_count():
                 if anim.loop:
                     animator.current_frame = 0
                 else:
-                    animator.current_frame = len(anim.frames) - 1
+                    animator.current_frame = anim.get_frame_count() - 1
                     animator.is_finished = True
                     
                     # Emitir evento de animación terminada

@@ -1,0 +1,11 @@
+{
+    "id": "snapshot_e67991477a9f",
+    "scene": {},
+    "files": [
+        {
+            "path": "scripts/player_movement_generated.py",
+            "existed": false,
+            "content": ""
+        }
+    ]
+}

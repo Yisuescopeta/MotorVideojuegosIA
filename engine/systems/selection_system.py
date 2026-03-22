@@ -82,7 +82,7 @@ class SelectionSystem:
             
         # 1. Usar Collider si existe (prioridad gameplay)
         collider = entity.get_component(Collider)
-        if collider is not None:
+        if collider is not None and collider.enabled:
             left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
             return left <= x <= right and top <= y <= bottom
             
@@ -94,7 +94,7 @@ class SelectionSystem:
         offset_y = 0.5
         
         sprite = entity.get_component(Sprite)
-        if sprite is not None:
+        if sprite is not None and sprite.enabled:
             # Si tiene dimensiones explícitas, usarlas
             if sprite.width > 0: width = sprite.width
             if sprite.height > 0: height = sprite.height
@@ -103,7 +103,7 @@ class SelectionSystem:
             
         # 3. Usar Animator (frame size)
         animator = entity.get_component(Animator)
-        if animator is not None:
+        if animator is not None and animator.enabled:
             if animator.frame_width > 0: width = animator.frame_width
             if animator.frame_height > 0: height = animator.frame_height
         

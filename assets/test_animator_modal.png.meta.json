@@ -1,0 +1,21 @@
+{
+    "guid": "ast_4ee1e2f2b16240149de241c0c45490ec",
+    "source_path": "assets/test_animator_modal.png",
+    "path": "assets/test_animator_modal.png",
+    "asset_kind": "texture",
+    "importer": "texture",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "sprite_sheet",
+        "import_mode": "grid",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "sprite_sheet",
+    "import_mode": "grid",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

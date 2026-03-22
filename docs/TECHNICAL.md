@@ -10,6 +10,7 @@
 6. [Gestión de Escenas](#gestión-de-escenas)
 7. [Inspector Visual](#inspector-visual)
 8. [Guía de Uso para IA](#guía-de-uso-para-ia)
+9. [Orquestacion Multiagente](#orquestacion-multiagente)
 
 ---
 
@@ -87,6 +88,10 @@ class World:
     def clone() -> World  # Copia profunda
     def clear() -> None
 ```
+
+`World.get_entities_with()` solo devuelve entidades activas cuyos componentes
+requeridos estan `enabled`. Los sistemas que usan componentes opcionales deben
+respetar tambien su flag `enabled`.
 
 ---
 
@@ -171,6 +176,42 @@ AnimationData(
 )
 ```
 
+### PlayerController2D
+
+Control lateral y salto serializable apoyado en `InputMap` y `RigidBody`.
+
+```python
+PlayerController2D(
+    move_speed: float = 180.0,
+    jump_velocity: float = -320.0,
+    air_control: float = 0.75
+)
+```
+
+### ScriptBehaviour
+
+Script adjunto serializable con hot-reload y hooks simples por modulo.
+
+```python
+ScriptBehaviour(
+    module_path: str = "",
+    run_in_edit_mode: bool = False,
+    public_data: dict[str, Any] = {}
+)
+```
+
+Contrato del modulo:
+
+```python
+def on_play(context): ...
+def on_update(context, dt): ...
+def on_stop(context): ...
+```
+
+`public_data` es la unica bolsa de estado persistente del script. El contexto
+expone `world`, `entity_name`, `scene_manager` y helpers de log/lectura de
+componentes.
+
 ---
 
 ## Sistemas
@@ -200,6 +241,18 @@ AnimationData(
 - **Función**: Avanza frames de animación
 - **Eventos**: `on_animation_end`
 - **Dependencias**: Animator
+
+### PlayerControllerSystem
+
+- **Activo**: PLAY
+- **Función**: Convierte `InputMap.last_state` en movimiento lateral y salto
+- **Dependencias**: InputMap + RigidBody + PlayerController2D
+
+### ScriptBehaviourSystem
+
+- **Activo**: PLAY y opcionalmente EDIT (`run_in_edit_mode`)
+- **FunciÃ³n**: Ejecuta `ScriptBehaviour` con hot-reload sin romper el runtime
+- **Dependencias**: ScriptBehaviour
 
 ---
 
@@ -276,6 +329,14 @@ runtime = manager.enter_play()  # Crea copia
 world = manager.exit_play()     # Restaura original
 ```
 
+Durante EDIT, `SceneManager` es la via comun de authoring para API y editor:
+
+- `update_entity_property()` para `active`, `tag` y `layer`
+- `apply_edit_to_world()` para props de componentes serializables
+- `add_component_to_entity()` y `remove_component_from_entity()`
+
+La UI no debe introducir rutas paralelas con estado exclusivo fuera de `Scene`.
+
 ### Flujo de Estados
 
 ```
@@ -295,6 +356,17 @@ EngineState.EDIT (restaurado)
 ## Inspector Visual
 
 Panel lateral que muestra el estado de todas las entidades.
+
+La seleccion activa se conserva entre `EDIT`, `PLAY` y `STOP` mediante
+`SceneManager`, de modo que el inspector sigue anclado a la misma entidad
+aunque la pestaÃ±a visible sea `Game View`.
+
+`Camera2D` expone follow y framing solo con datos serializables:
+
+- `framing_mode = "platformer"`
+- `dead_zone_width` / `dead_zone_height`
+- `clamp_left`, `clamp_right`, `clamp_top`, `clamp_bottom`
+- `recenter_on_play`
 
 ### Controles
 
@@ -345,12 +417,15 @@ world = scene_manager.load_scene(level_data)
 ### Modificar Entidad Programáticamente
 
 ```python
-# Obtener entidad
-player = world.get_entity_by_name("Player")
+from engine.api import EngineAPI
 
-# Modificar componente
-transform = player.get_component(Transform)
-transform.x = 200
+api = EngineAPI()
+api.load_level("levels/demo_level.json")
+api.set_entity_tag("Player", "Hero")
+api.set_entity_layer("Player", "Gameplay")
+api.set_component_enabled("Ground", "Collider", False)
+api.create_camera2d("MainCamera", camera={"follow_entity": "Player"})
+filtered = api.list_entities(tag="Hero", layer="Gameplay", active=True)
 ```
 
 ### Añadir Nueva Regla
@@ -438,6 +513,45 @@ inspect_world(world)           # Resumen del mundo
 inspect_entity(world, "Player") # Detalle de entidad
 list_systems()                 # Sistemas disponibles
 ```
+
+---
+
+## Orquestacion Multiagente
+
+El repo incluye una capa inicial para coordinar agentes con foco en `core`,
+`API`, `escenas` y `pruebas`.
+
+### Roles base
+
+- `Agente Orquestador`: entrada unica, crea briefs y valida handoffs.
+- `Core Architect`: acota diseno tecnico y contratos.
+- `Core Implementer`: aplica cambios en el motor.
+- `QA & Regression`: valida smoke tests y regresiones.
+- `Debugger`: investiga fallos por causa raiz.
+- `Docs & Contracts`: mantiene prompts, limites y documentacion operativa.
+
+### Contratos
+
+Los agentes se coordinan con tres artefactos:
+
+- `docs/agent-orchestration/task-brief-template.md`
+- `docs/agent-orchestration/result-bundle-template.md`
+- `docs/agent-orchestration/definition-of-done.md`
+
+### Utilidad de apoyo
+
+`tools/agent_workflow.py` puede generar un `Task Brief` inicial y sugerir
+validaciones segun subsistemas afectados.
+
+La matriz base de paridad para `Unity 2D core` vive en:
+
+- `docs/agent-orchestration/unity-2d-core-matrix.md`
+
+Regla obligatoria:
+
+- ninguna feature puede existir solo en UI
+- toda accion editable por el usuario debe existir tambien por API o datos
+- la UI actua como traductor del modelo serializable
 
 ---
 

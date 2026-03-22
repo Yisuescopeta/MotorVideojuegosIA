@@ -15,6 +15,9 @@ import os
 import pyray as rl
 from typing import List, Tuple, Optional
 
+from engine.assets.asset_service import AssetService
+from engine.project.project_service import ProjectService
+
 class ProjectPanel:
     
     # Unity Colors (Exactos)
@@ -31,11 +34,18 @@ class ProjectPanel:
     HEADER_HEIGHT: int = 22
     SIDEBAR_WIDTH: int = 180
     ITEM_HEIGHT: int = 18
+    MENU_WIDTH: int = 140
     
     def __init__(self, root_path: str = ".") -> None:
         self.root_path = os.path.abspath(root_path)
         self.current_path = self.root_path
         self.items: List[Tuple[str, str]] = [] # (name, type: 'dir'|'file')
+        self.project_service: Optional[ProjectService] = None
+        self.asset_service: Optional[AssetService] = None
+        self.selected_file: Optional[str] = None
+        self.request_open_sprite_editor_for: Optional[str] = None
+        self.show_context_menu: bool = False
+        self.context_menu_pos: Optional[rl.Vector2] = None
         
         self.scroll_offset: float = 0
         self.sidebar_scroll: float = 0
@@ -48,6 +58,28 @@ class ProjectPanel:
         from typing import Set
         self.expanded_folders: Set[str] = {self.root_path}
         
+        self.refresh()
+
+    def set_project_service(self, project_service: ProjectService) -> None:
+        self.project_service = project_service
+        self.asset_service = AssetService(project_service)
+        self.asset_service.refresh_catalog()
+        self.root_path = project_service.get_project_path("assets").as_posix()
+        self.current_path = self.root_path
+        self.selected_file = None
+        self.request_open_sprite_editor_for = None
+        self.show_context_menu = False
+        self.context_menu_pos = None
+        self.scroll_offset = 0
+        self.sidebar_scroll = 0
+        self.dragging_file = None
+        self.drag_start_pos = None
+        self.expanded_folders = {self.root_path}
+        self.refresh()
+
+    def refresh_asset_catalog(self) -> None:
+        if self.asset_service is not None:
+            self.asset_service.refresh_catalog()
         self.refresh()
         
     def refresh(self) -> None:
@@ -69,11 +101,22 @@ class ProjectPanel:
                 if os.path.isdir(full_path):
                     self.items.append((entry, "dir"))
                 else:
-                    if not entry.endswith(".pyc"):
+                    if not entry.endswith(".pyc") and not entry.endswith(".meta.json"):
                         self.items.append((entry, "file"))
                         
         except Exception:
             self.items = []
+
+    def create_folder(self, base_name: str = "New Folder") -> str:
+        target_dir = self.current_path
+        candidate = os.path.join(target_dir, base_name)
+        suffix = 1
+        while os.path.exists(candidate):
+            candidate = os.path.join(target_dir, f"{base_name} {suffix}")
+            suffix += 1
+        os.makedirs(candidate, exist_ok=True)
+        self.refresh()
+        return candidate
 
     def render(self, x: int, y: int, width: int, height: int) -> None:
         """Renderiza el panel de proyecto estilo Unity."""
@@ -118,6 +161,7 @@ class ProjectPanel:
         rl.draw_rectangle(content_x, main_y, content_w, main_h, rl.Color(32, 32, 32, 255))
         
         self._render_content(content_x, main_y, content_w, main_h)
+        self._render_context_menu(content_x, main_y, content_w, main_h)
 
     def _render_sidebar(self, x: int, y: int, width: int, height: int) -> None:
         """Dibuja el árbol de carpetas lateral."""
@@ -151,6 +195,9 @@ class ProjectPanel:
         if is_mouse_in:
             self.scroll_offset -= rl.get_mouse_wheel_move() * 20
             self.scroll_offset = max(0, self.scroll_offset)
+            if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_RIGHT):
+                self.show_context_menu = True
+                self.context_menu_pos = rl.get_mouse_position()
             
         # Layout de iconos (Unity style grid)
         icon_w, icon_h = 60, 70
@@ -182,6 +229,7 @@ class ProjectPanel:
                         self.refresh()
                         self.scroll_offset = 0
                     else:
+                        self.selected_file = os.path.join(self.current_path, name)
                         self.drag_start_pos = mouse_pos
             
             # Visuales del Icono
@@ -197,6 +245,12 @@ class ProjectPanel:
             trunc_name = name if len(name) < 10 else name[:7] + "..."
             text_w = rl.measure_text(trunc_name, 10)
             rl.draw_text(trunc_name, int(ix + (icon_w - text_w)//2), int(iy + 50), 10, self.UNITY_TEXT)
+            if entry_type == "file" and self.project_service is not None and self.asset_service is not None:
+                rel_path = self.project_service.to_relative_path(os.path.join(self.current_path, name))
+                entry = self.asset_service.get_asset_entry(rel_path)
+                if entry is not None:
+                    meta = f"{entry.get('asset_kind', '?')} {entry.get('guid_short', '')}"
+                    rl.draw_text(meta[:13], int(ix + 2), int(iy + 61), 8, self.UNITY_TEXT_DIM)
             
             # Drag logic
             if entry_type == "file" and self.drag_start_pos and is_hover:
@@ -207,5 +261,40 @@ class ProjectPanel:
             self.drag_start_pos = None
             self.dragging_file = None
 
+        if self.selected_file and self.selected_file.lower().endswith((".png", ".jpg", ".jpeg", ".bmp")):
+            button_rect = rl.Rectangle(x + width - 140, y + 6, 120, 20)
+            if rl.gui_button(button_rect, "Sprite Editor"):
+                if self.project_service is not None:
+                    self.request_open_sprite_editor_for = self.project_service.to_relative_path(self.selected_file)
+                else:
+                    self.request_open_sprite_editor_for = self.selected_file
+
         rl.end_scissor_mode()
 
+    def _render_context_menu(self, x: int, y: int, width: int, height: int) -> None:
+        if not self.show_context_menu or self.context_menu_pos is None:
+            return
+
+        menu_x = int(min(self.context_menu_pos.x, x + width - self.MENU_WIDTH - 4))
+        menu_y = int(min(self.context_menu_pos.y, y + height - 78))
+        menu_rect = rl.Rectangle(menu_x, menu_y, self.MENU_WIDTH, 52)
+        rl.draw_rectangle_rec(menu_rect, self.UNITY_HEADER)
+        rl.draw_rectangle_lines_ex(menu_rect, 1, self.UNITY_BORDER)
+
+        create_rect = rl.Rectangle(menu_rect.x + 4, menu_rect.y + 4, menu_rect.width - 8, 20)
+        refresh_rect = rl.Rectangle(menu_rect.x + 4, menu_rect.y + 28, menu_rect.width - 8, 20)
+        if rl.gui_button(create_rect, "Create Folder"):
+            self.create_folder()
+            self.show_context_menu = False
+            self.context_menu_pos = None
+            return
+        if rl.gui_button(refresh_rect, "Refresh Assets"):
+            self.refresh_asset_catalog()
+            self.show_context_menu = False
+            self.context_menu_pos = None
+            return
+
+        mouse_pos = rl.get_mouse_position()
+        if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT) and not rl.check_collision_point_rec(mouse_pos, menu_rect):
+            self.show_context_menu = False
+            self.context_menu_pos = None

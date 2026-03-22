@@ -1,0 +1,11 @@
+{
+    "id": "gap_detection",
+    "version": 1,
+    "domain": "analysis",
+    "summary": "Detecta peticiones que requieren capacidades no soportadas todavía por el motor actual.",
+    "trigger_keywords": ["tilemap", "pathfinding", "navmesh", "multiplayer", "network", "particles"],
+    "capabilities": [],
+    "planning_questions": [],
+    "allowed_operations": ["detect_gap", "plan_engine_extension"],
+    "validations": ["gap_report"]
+}

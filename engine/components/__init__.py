@@ -18,6 +18,12 @@ from engine.components.sprite import Sprite
 from engine.components.collider import Collider
 from engine.components.rigidbody import RigidBody
 from engine.components.animator import Animator, AnimationData
+from engine.components.camera2d import Camera2D
+from engine.components.audiosource import AudioSource
+from engine.components.inputmap import InputMap
+from engine.components.playercontroller2d import PlayerController2D
+from engine.components.renderorder2d import RenderOrder2D
+from engine.components.scriptbehaviour import ScriptBehaviour
 
 __all__ = [
     "Transform",
@@ -26,4 +32,10 @@ __all__ = [
     "RigidBody",
     "Animator",
     "AnimationData",
+    "Camera2D",
+    "AudioSource",
+    "InputMap",
+    "PlayerController2D",
+    "RenderOrder2D",
+    "ScriptBehaviour",
 ]

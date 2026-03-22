@@ -1,0 +1,4 @@
+interface:
+  display_name: "Unity Feature Adapter"
+  short_description: "Adapt Unity features for this engine"
+  default_prompt: "Use $unity-feature-adapter to research the requested Unity feature and implement an AI-friendly version for this engine."

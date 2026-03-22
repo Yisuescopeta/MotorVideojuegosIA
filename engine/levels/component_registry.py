@@ -107,6 +107,16 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.collider import Collider
     from engine.components.rigidbody import RigidBody
     from engine.components.animator import Animator
+    from engine.components.camera2d import Camera2D
+    from engine.components.audiosource import AudioSource
+    from engine.components.inputmap import InputMap
+    from engine.components.playercontroller2d import PlayerController2D
+    from engine.components.renderorder2d import RenderOrder2D
+    from engine.components.scriptbehaviour import ScriptBehaviour
+    from engine.components.canvas import Canvas
+    from engine.components.recttransform import RectTransform
+    from engine.components.uitext import UIText
+    from engine.components.uibutton import UIButton
     
     registry = ComponentRegistry()
     registry.register("Transform", Transform)
@@ -114,5 +124,15 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("Collider", Collider)
     registry.register("RigidBody", RigidBody)
     registry.register("Animator", Animator)
+    registry.register("Camera2D", Camera2D)
+    registry.register("AudioSource", AudioSource)
+    registry.register("InputMap", InputMap)
+    registry.register("PlayerController2D", PlayerController2D)
+    registry.register("RenderOrder2D", RenderOrder2D)
+    registry.register("ScriptBehaviour", ScriptBehaviour)
+    registry.register("Canvas", Canvas)
+    registry.register("RectTransform", RectTransform)
+    registry.register("UIText", UIText)
+    registry.register("UIButton", UIButton)
     
     return registry

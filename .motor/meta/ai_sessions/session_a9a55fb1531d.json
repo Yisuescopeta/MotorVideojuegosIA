@@ -1,0 +1,870 @@
+{
+    "id": "session_a9a55fb1531d",
+    "title": "a\u00f1ademe movilidada al jugador",
+    "status": "blocked",
+    "mode": "build",
+    "provider": "ollama_local",
+    "model_name": "qwen2.5-coder:latest",
+    "created_at": "2026-03-18T21:31:20.252831+00:00",
+    "updated_at": "2026-03-18T21:33:38.716450+00:00",
+    "prompt": "a\u00f1ademe que el enemigo persiga al jugador",
+    "messages": [
+        {
+            "id": "msg_24cfb58383",
+            "role": "user",
+            "content": "a\u00f1ademe movilidada al jugador",
+            "kind": "text",
+            "created_at": "2026-03-18T21:31:20.256912+00:00",
+            "metadata": {}
+        },
+        {
+            "id": "msg_57437177ce",
+            "role": "assistant",
+            "content": "Plan de movimiento listo para Player. Preparare una propuesta revisable sin preguntas genericas.\nAnalisis: He detectado una intencion concreta y ya puedo traducirla a cambios sobre entidades, componentes o scripts del proyecto.\nContexto: Entidades visibles en escena: 5 | Scripts recientes: scripts/player_movement_generated.py, scripts/main_menu_controller.py | Proveedor activo: ollama_local\nSiguientes pasos: Asegurar InputMap y RigidBody en la entidad objetivo -> Adjuntar ScriptBehaviour con parametros editables -> Validar PLAY/STOP antes de aplicar\nPuedes pasar a Build para ejecutarlo sobre el proyecto.",
+            "kind": "plan",
+            "created_at": "2026-03-18T21:31:40.311434+00:00",
+            "metadata": {}
+        },
+        {
+            "id": "msg_c5abe614e8",
+            "role": "user",
+            "content": "a\u00f1ademe movilidad al jugador",
+            "kind": "text",
+            "created_at": "2026-03-18T21:32:38.414129+00:00",
+            "metadata": {}
+        },
+        {
+            "id": "msg_de37a2ce1a",
+            "role": "assistant",
+            "content": "Changes applied and validated.",
+            "kind": "text",
+            "created_at": "2026-03-18T21:32:58.473834+00:00",
+            "metadata": {}
+        },
+        {
+            "id": "msg_c30219489f",
+            "role": "user",
+            "content": "a\u00f1ademe movilidad al jugador",
+            "kind": "text",
+            "created_at": "2026-03-18T21:33:13.837812+00:00",
+            "metadata": {}
+        },
+        {
+            "id": "msg_634d9d6c10",
+            "role": "assistant",
+            "content": "Apply bloqueado: Create a new script for player movement.: Script writes must stay inside scripts/. Se ha restaurado el estado anterior.",
+            "kind": "text",
+            "created_at": "2026-03-18T21:33:26.744224+00:00",
+            "metadata": {}
+        },
+        {
+            "id": "msg_d1d9f3a677",
+            "role": "user",
+            "content": "a\u00f1ademe que el enemigo persiga al jugador",
+            "kind": "text",
+            "created_at": "2026-03-18T21:33:33.593084+00:00",
+            "metadata": {}
+        },
+        {
+            "id": "msg_34c045a5a1",
+            "role": "assistant",
+            "content": "Apply bloqueado: Create the AI script for enemies to chase the player.: Script writes must stay inside scripts/. Se ha restaurado el estado anterior.",
+            "kind": "text",
+            "created_at": "2026-03-18T21:33:38.716450+00:00",
+            "metadata": {}
+        }
+    ],
+    "pending_questions": [],
+    "answers": {},
+    "approval": {
+        "id": "approval_5395ac64dd",
+        "summary": "No hay una receta de ejecucion automatica para esta peticion todavia.",
+        "diff": {
+            "summary": "2 tool call(s) prepared for review.",
+            "entities": [],
+            "files": [],
+            "assets": [],
+            "tools": [
+                "write_script",
+                "add_component"
+            ],
+            "risk_notes": []
+        },
+        "tool_calls": [
+            {
+                "id": "provider_cc524c16",
+                "tool_name": "write_script",
+                "arguments": {
+                    "path": "scripts/enemy_ai.py"
+                },
+                "summary": "Create the AI script for enemies to chase the player.",
+                "status": "planned",
+                "read_only": false,
+                "write_scope": "script",
+                "risk": "standard",
+                "requires_confirmation": true,
+                "result": {}
+            },
+            {
+                "id": "provider_516f69c1",
+                "tool_name": "add_component",
+                "arguments": {
+                    "entity": "Enemy",
+                    "component": "ScriptBehaviour"
+                },
+                "summary": "Add a component to the enemy entity to handle the new script.",
+                "status": "planned",
+                "read_only": false,
+                "write_scope": "scene",
+                "risk": "standard",
+                "requires_confirmation": true,
+                "result": {}
+            }
+        ],
+        "status": "blocked",
+        "mode": "build",
+        "requires_confirmation": true,
+        "allowed_scopes": [
+            "scene",
+            "prefab",
+            "script",
+            "asset_meta"
+        ],
+        "metadata": {
+            "legacy_summary": "No hay una receta de ejecucion automatica para esta peticion todavia."
+        }
+    },
+    "last_apply": {
+        "success": false,
+        "applied_tool_calls": [],
+        "results": [
+            {
+                "tool_call_id": "provider_cc524c16",
+                "tool_name": "write_script",
+                "result": {
+                    "success": false,
+                    "message": "Script writes must stay inside scripts/."
+                }
+            }
+        ],
+        "errors": [
+            "Create the AI script for enemies to chase the player.: Script writes must stay inside scripts/."
+        ],
+        "validation": {
+            "success": true,
+            "checks": [
+                {
+                    "name": "play_cycle",
+                    "success": true,
+                    "details": "La escena entro en PLAY y volvio a EDIT correctamente."
+                }
+            ],
+            "warnings": [],
+            "errors": []
+        },
+        "snapshot_id": "snapshot_2e8df6afaebf",
+        "undo_summary": "Restore scene and scripts from the snapshot taken before apply."
+    },
+    "context_window": {
+        "prompt": "a\u00f1ademe que el enemigo persiga al jugador",
+        "scene_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/levels/demo_level.json",
+        "selected_entity": "",
+        "entity_count": 5,
+        "recent_assets": [
+            "assets/images.png",
+            "assets/images_1.png",
+            "assets/images_2.png",
+            "assets/images_3.png",
+            "assets/test_spritesheet.png",
+            "levels/demo_level.json",
+            "levels/lol.json",
+            "levels/main_menu_scene.json",
+            "levels/platformer_test_scene.json",
+            "scripts/__init__.py",
+            "scripts/example_script.py",
+            "scripts/main_menu_controller.py"
+        ],
+        "recent_scripts": [
+            "scripts/player_movement_generated.py",
+            "scripts/main_menu_controller.py",
+            "scripts/platformer_character.py",
+            "scripts/example_script.py",
+            "scripts/__init__.py"
+        ],
+        "capabilities": [
+            {
+                "id": "component:animator",
+                "name": "Animator",
+                "category": "component",
+                "available": true,
+                "description": "Componente serializable Animator",
+                "evidence": [
+                    "engine.levels.component_registry.create_default_registry"
+                ],
+                "tags": [
+                    "ecs",
+                    "serializable"
+                ]
+            },
+            {
+                "id": "component:audiosource",
+                "name": "AudioSource",
+                "category": "component",
+                "available": true,
+                "description": "Componente serializable AudioSource",
+                "evidence": [
+                    "engine.levels.component_registry.create_default_registry"
+                ],
+                "tags": [
+                    "ecs",
+                    "serializable"
+                ]
+            },
+            {
+                "id": "component:camera2d",
+                "name": "Camera2D",
+                "category": "component",
+                "available": true,
+                "description": "Componente serializable Camera2D",
+                "evidence": [
+                    "engine.levels.component_registry.create_default_registry"
+                ],
+                "tags": [
+                    "ecs",
+                    "serializable"
+                ]
+            },
+            {
+                "id": "component:canvas",
+                "name": "Canvas",
+                "category": "component",
+                "available": true,
+                "description": "Componente serializable Canvas",
+                "evidence": [
+                    "engine.levels.component_registry.create_default_registry"
+                ],
+                "tags": [
+                    "ecs",
+                    "serializable"
+                ]
+            },
+            {
+                "id": "component:collider",
+                "name": "Collider",
+                "category": "component",
+                "available": true,
+                "description": "Componente serializable Collider",
+                "evidence": [
+                    "engine.levels.component_registry.create_default_registry"
+                ],
+                "tags": [
+                    "ecs",
+                    "serializable"
+                ]
+            },
+            {
+                "id": "component:inputmap",
+                "name": "InputMap",
+                "category": "component",
+                "available": true,
+                "description": "Componente serializable InputMap",
+                "evidence": [
+                    "engine.levels.component_registry.create_default_registry"
+                ],
+                "tags": [
+                    "ecs",
+                    "serializable"
+                ]
+            },
+            {
+                "id": "component:playercontroller2d",
+                "name": "PlayerController2D",
+                "category": "component",
+                "available": true,
+                "description": "Componente serializable PlayerController2D",
+                "evidence": [
+                    "engine.levels.component_registry.create_default_registry"
+                ],
+                "tags": [
+                    "ecs",
+                    "serializable"
+                ]
+            },
+            {
+                "id": "component:recttransform",
+                "name": "RectTransform",
+                "category": "component",
+                "available": true,
+                "description": "Componente serializable RectTransform",
+                "evidence": [
+                    "engine.levels.component_registry.create_default_registry"
+                ],
+                "tags": [
+                    "ecs",
+                    "serializable"
+                ]
+            },
+            {
+                "id": "component:renderorder2d",
+                "name": "RenderOrder2D",
+                "category": "component",
+                "available": true,
+                "description": "Componente serializable RenderOrder2D",
+                "evidence": [
+                    "engine.levels.component_registry.create_default_registry"
+                ],
+                "tags": [
+                    "ecs",
+                    "serializable"
+                ]
+            },
+            {
+                "id": "component:rigidbody",
+                "name": "RigidBody",
+                "category": "component",
+                "available": true,
+                "description": "Componente serializable RigidBody",
+                "evidence": [
+                    "engine.levels.component_registry.create_default_registry"
+                ],
+                "tags": [
+                    "ecs",
+                    "serializable"
+                ]
+            },
+            {
+                "id": "component:scriptbehaviour",
+                "name": "ScriptBehaviour",
+                "category": "component",
+                "available": true,
+                "description": "Componente serializable ScriptBehaviour",
+                "evidence": [
+                    "engine.levels.component_registry.create_default_registry"
+                ],
+                "tags": [
+                    "ecs",
+                    "serializable"
+                ]
+            },
+            {
+                "id": "component:sprite",
+                "name": "Sprite",
+                "category": "component",
+                "available": true,
+                "description": "Componente serializable Sprite",
+                "evidence": [
+                    "engine.levels.component_registry.create_default_registry"
+                ],
+                "tags": [
+                    "ecs",
+                    "serializable"
+                ]
+            },
+            {
+                "id": "component:transform",
+                "name": "Transform",
+                "category": "component",
+                "available": true,
+                "description": "Componente serializable Transform",
+                "evidence": [
+                    "engine.levels.component_registry.create_default_registry"
+                ],
+                "tags": [
+                    "ecs",
+                    "serializable"
+                ]
+            },
+            {
+                "id": "component:uibutton",
+                "name": "UIButton",
+                "category": "component",
+                "available": true,
+                "description": "Componente serializable UIButton",
+                "evidence": [
+                    "engine.levels.component_registry.create_default_registry"
+                ],
+                "tags": [
+                    "ecs",
+                    "serializable"
+                ]
+            },
+            {
+                "id": "component:uitext",
+                "name": "UIText",
+                "category": "component",
+                "available": true,
+                "description": "Componente serializable UIText",
+                "evidence": [
+                    "engine.levels.component_registry.create_default_registry"
+                ],
+                "tags": [
+                    "ecs",
+                    "serializable"
+                ]
+            },
+            {
+                "id": "system:animation_system",
+                "name": "animation_system",
+                "category": "system",
+                "available": true,
+                "description": "Sistema runtime/editor disponible: animation_system",
+                "evidence": [
+                    "engine/systems/animation_system.py"
+                ],
+                "tags": [
+                    "runtime"
+                ]
+            },
+            {
+                "id": "system:audio_system",
+                "name": "audio_system",
+                "category": "system",
+                "available": true,
+                "description": "Sistema runtime/editor disponible: audio_system",
+                "evidence": [
+                    "engine/systems/audio_system.py"
+                ],
+                "tags": [
+                    "runtime"
+                ]
+            },
+            {
+                "id": "system:collision_system",
+                "name": "collision_system",
+                "category": "system",
+                "available": true,
+                "description": "Sistema runtime/editor disponible: collision_system",
+                "evidence": [
+                    "engine/systems/collision_system.py"
+                ],
+                "tags": [
+                    "runtime"
+                ]
+            },
+            {
+                "id": "system:input_system",
+                "name": "input_system",
+                "category": "system",
+                "available": true,
+                "description": "Sistema runtime/editor disponible: input_system",
+                "evidence": [
+                    "engine/systems/input_system.py"
+                ],
+                "tags": [
+                    "runtime"
+                ]
+            },
+            {
+                "id": "system:physics_system",
+                "name": "physics_system",
+                "category": "system",
+                "available": true,
+                "description": "Sistema runtime/editor disponible: physics_system",
+                "evidence": [
+                    "engine/systems/physics_system.py"
+                ],
+                "tags": [
+                    "runtime"
+                ]
+            },
+            {
+                "id": "system:player_controller_system",
+                "name": "player_controller_system",
+                "category": "system",
+                "available": true,
+                "description": "Sistema runtime/editor disponible: player_controller_system",
+                "evidence": [
+                    "engine/systems/player_controller_system.py"
+                ],
+                "tags": [
+                    "runtime"
+                ]
+            },
+            {
+                "id": "system:render_system",
+                "name": "render_system",
+                "category": "system",
+                "available": true,
+                "description": "Sistema runtime/editor disponible: render_system",
+                "evidence": [
+                    "engine/systems/render_system.py"
+                ],
+                "tags": [
+                    "runtime"
+                ]
+            },
+            {
+                "id": "system:script_behaviour_system",
+                "name": "script_behaviour_system",
+                "category": "system",
+                "available": true,
+                "description": "Sistema runtime/editor disponible: script_behaviour_system",
+                "evidence": [
+                    "engine/systems/script_behaviour_system.py"
+                ],
+                "tags": [
+                    "runtime"
+                ]
+            },
+            {
+                "id": "system:selection_system",
+                "name": "selection_system",
+                "category": "system",
+                "available": true,
+                "description": "Sistema runtime/editor disponible: selection_system",
+                "evidence": [
+                    "engine/systems/selection_system.py"
+                ],
+                "tags": [
+                    "runtime"
+                ]
+            },
+            {
+                "id": "system:ui_render_system",
+                "name": "ui_render_system",
+                "category": "system",
+                "available": true,
+                "description": "Sistema runtime/editor disponible: ui_render_system",
+                "evidence": [
+                    "engine/systems/ui_render_system.py"
+                ],
+                "tags": [
+                    "runtime"
+                ]
+            },
+            {
+                "id": "system:ui_system",
+                "name": "ui_system",
+                "category": "system",
+                "available": true,
+                "description": "Sistema runtime/editor disponible: ui_system",
+                "evidence": [
+                    "engine/systems/ui_system.py"
+                ],
+                "tags": [
+                    "runtime"
+                ]
+            },
+            {
+                "id": "authoring:engine_api",
+                "name": "EngineAPI authoring",
+                "category": "api",
+                "available": true,
+                "description": "Authoring por API para escenas, componentes, assets y prefabs",
+                "evidence": [
+                    "engine.api.EngineAPI"
+                ],
+                "tags": [
+                    "api",
+                    "authoring"
+                ]
+            },
+            {
+                "id": "project:assets",
+                "name": "Project assets",
+                "category": "project",
+                "available": true,
+                "description": "Assets listables desde el proyecto activo",
+                "evidence": [
+                    "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main"
+                ],
+                "tags": [
+                    "project",
+                    "assets"
+                ]
+            },
+            {
+                "id": "project:prefabs",
+                "name": "Project prefabs",
+                "category": "project",
+                "available": true,
+                "description": "Instanciaci\u00f3n y lectura de prefabs del proyecto",
+                "evidence": [
+                    "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/prefabs"
+                ],
+                "tags": [
+                    "project",
+                    "prefabs"
+                ]
+            }
+        ],
+        "memory": {
+            "version": 1,
+            "project_name": "MotorVideojuegosIA",
+            "game_profile": {
+                "genre": "",
+                "target_audience": "",
+                "visual_style": "",
+                "placeholder_strategy": "project_assets_or_placeholders"
+            },
+            "confirmed_decisions": [
+                "Objetivo: editar_proyecto_existente",
+                "Alcance: sistema_existente"
+            ],
+            "pending_questions": [],
+            "conventions": {},
+            "important_assets": [],
+            "important_prefabs": [],
+            "restrictions": {},
+            "notes": [],
+            "provider_policy": {
+                "mode": "local",
+                "preferred_provider": "ollama_local",
+                "model_name": "qwen2.5-coder:latest",
+                "endpoint": "http://127.0.0.1:11434",
+                "api_key": "",
+                "allow_remote_context": false,
+                "remote_redaction_enabled": true
+            },
+            "mutation_policy": {
+                "allow_scene_changes": true,
+                "allow_prefab_changes": true,
+                "allow_script_changes": false,
+                "allow_engine_changes": false,
+                "require_confirmation": true,
+                "require_python_confirmation": true
+            },
+            "last_plan_summary": "Plan general listo para pasar a propuesta de ejecuci\u00f3n."
+        },
+        "tool_results": [
+            {
+                "tool_call_id": "ensure_player_input_map",
+                "tool_name": "add_component",
+                "result": {
+                    "success": true,
+                    "message": "Component added",
+                    "data": {
+                        "entity": "Player",
+                        "component": "InputMap"
+                    }
+                }
+            },
+            {
+                "tool_call_id": "ensure_player_rigidbody",
+                "tool_name": "add_component",
+                "result": {
+                    "success": true,
+                    "message": "Component added",
+                    "data": {
+                        "entity": "Player",
+                        "component": "RigidBody"
+                    }
+                }
+            },
+            {
+                "tool_call_id": "attach_player_script_behaviour",
+                "tool_name": "add_script_behaviour",
+                "result": {
+                    "success": true,
+                    "message": "Component added",
+                    "data": {
+                        "entity": "Player",
+                        "component": "ScriptBehaviour"
+                    }
+                }
+            },
+            {
+                "tool_call_id": "player_script_scaffold",
+                "tool_name": "write_script",
+                "result": {
+                    "success": true,
+                    "message": "Script written.",
+                    "data": {
+                        "path": "scripts/player_movement_generated.py"
+                    }
+                }
+            },
+            {
+                "tool_call_id": "provider_9ccc45ce",
+                "tool_name": "write_script",
+                "result": {
+                    "success": false,
+                    "message": "Script writes must stay inside scripts/."
+                }
+            },
+            {
+                "tool_call_id": "provider_cc524c16",
+                "tool_name": "write_script",
+                "result": {
+                    "success": false,
+                    "message": "Script writes must stay inside scripts/."
+                }
+            }
+        ],
+        "summary": {
+            "matched_skill_ids": [
+                "core_engine_capabilities"
+            ],
+            "project_name": "MotorVideojuegosIA",
+            "asset_count": 14,
+            "recent_assets": [
+                "assets/images.png",
+                "assets/images_1.png",
+                "assets/images_2.png",
+                "assets/images_3.png",
+                "assets/test_spritesheet.png"
+            ],
+            "recent_scripts": [
+                "scripts/player_movement_generated.py",
+                "scripts/main_menu_controller.py",
+                "scripts/platformer_character.py",
+                "scripts/example_script.py",
+                "scripts/__init__.py"
+            ]
+        }
+    },
+    "plan_response": {
+        "summary": "The player should be able to move and interact with the environment.",
+        "reasoning": "Adding a script for enemy AI will allow the enemies to chase the player, enhancing gameplay experience.",
+        "project_findings": [
+            "There is no current script handling enemy behavior."
+        ],
+        "next_steps": [
+            "Write a new script that defines enemy AI logic.",
+            "Attach this script to an enemy entity."
+        ],
+        "blocking_questions": [],
+        "can_build_now": true
+    },
+    "last_intent_resolution": {
+        "prompt": "a\u00f1ademe que el enemigo persiga al jugador",
+        "mode": "build",
+        "execution_intent": null,
+        "can_build_now": true,
+        "answers": {}
+    },
+    "tool_results": [
+        {
+            "tool_call_id": "ensure_player_input_map",
+            "tool_name": "add_component",
+            "result": {
+                "success": true,
+                "message": "Component added",
+                "data": {
+                    "entity": "Player",
+                    "component": "InputMap"
+                }
+            }
+        },
+        {
+            "tool_call_id": "ensure_player_rigidbody",
+            "tool_name": "add_component",
+            "result": {
+                "success": true,
+                "message": "Component added",
+                "data": {
+                    "entity": "Player",
+                    "component": "RigidBody"
+                }
+            }
+        },
+        {
+            "tool_call_id": "attach_player_script_behaviour",
+            "tool_name": "add_script_behaviour",
+            "result": {
+                "success": true,
+                "message": "Component added",
+                "data": {
+                    "entity": "Player",
+                    "component": "ScriptBehaviour"
+                }
+            }
+        },
+        {
+            "tool_call_id": "player_script_scaffold",
+            "tool_name": "write_script",
+            "result": {
+                "success": true,
+                "message": "Script written.",
+                "data": {
+                    "path": "scripts/player_movement_generated.py"
+                }
+            }
+        },
+        {
+            "tool_call_id": "provider_9ccc45ce",
+            "tool_name": "write_script",
+            "result": {
+                "success": false,
+                "message": "Script writes must stay inside scripts/."
+            }
+        },
+        {
+            "tool_call_id": "provider_cc524c16",
+            "tool_name": "write_script",
+            "result": {
+                "success": false,
+                "message": "Script writes must stay inside scripts/."
+            }
+        }
+    ],
+    "gaps": [],
+    "metadata": {
+        "legacy_plan": {
+            "session_type": "general_plan",
+            "summary": "Puedo analizar esta petici\u00f3n y, en Build, intentar implementarla generando cambios sobre escena y scripts del proyecto con rollback si algo falla.",
+            "assumptions": [
+                "Se usar\u00e1 authoring sobre EngineAPI y datos serializables como flujo principal."
+            ],
+            "questions": [],
+            "milestones": [
+                "Inspeccionar el proyecto actual y localizar el sistema afectado",
+                "Definir el cambio jugable y los archivos o entidades implicadas",
+                "Traducirlo a cambios serializables y scripts editables dentro del proyecto"
+            ],
+            "gaps": [],
+            "selected_skills": [
+                "core_engine_capabilities"
+            ],
+            "execution_intent": null,
+            "metadata": {
+                "genre": "general",
+                "prompt": "a\u00f1ademe que el enemigo persiga al jugador",
+                "answers": {},
+                "generic_build_candidate": true,
+                "can_build_now": true
+            }
+        },
+        "legacy_proposal": {
+            "summary": "No hay una receta de ejecucion automatica para esta peticion todavia.",
+            "actions": [],
+            "validation_plan": [],
+            "blocked_by_gaps": false,
+            "requires_confirmation": true,
+            "risk_notes": [
+                "La planificacion existe, pero la traduccion automatica a acciones no esta implementada para este caso."
+            ]
+        },
+        "provider_plan": {
+            "summary": "The player should be able to move and interact with the environment.",
+            "questions": [],
+            "reasoning": "Adding a script for enemy AI will allow the enemies to chase the player, enhancing gameplay experience.",
+            "project_findings": [
+                "There is no current script handling enemy behavior."
+            ],
+            "next_steps": [
+                "Write a new script that defines enemy AI logic.",
+                "Attach this script to an enemy entity."
+            ],
+            "blocking_questions": [],
+            "can_build_now": false,
+            "tool_calls": [
+                {
+                    "tool_name": "write_script",
+                    "summary": "Create the AI script for enemies to chase the player.",
+                    "arguments": {
+                        "path": "scripts/enemy_ai.py"
+                    }
+                },
+                {
+                    "tool_name": "add_component",
+                    "summary": "Add a component to the enemy entity to handle the new script.",
+                    "arguments": {
+                        "entity": "Enemy",
+                        "component": "ScriptBehaviour"
+                    }
+                }
+            ]
+        }
+    }
+}

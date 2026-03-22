@@ -1,0 +1,178 @@
+{
+    "name": "Main Menu Scene",
+    "entities": [
+        {
+            "name": "MainCanvas",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "components": {
+                "Canvas": {
+                    "enabled": true,
+                    "render_mode": "screen_space_overlay",
+                    "reference_width": 800,
+                    "reference_height": 600,
+                    "match_mode": "stretch",
+                    "sort_order": 0
+                },
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 1.0,
+                    "anchor_max_y": 1.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 0.0,
+                    "anchored_x": 0.0,
+                    "anchored_y": 0.0,
+                    "width": 0.0,
+                    "height": 0.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                }
+            }
+        },
+        {
+            "name": "TitleText",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "MainCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.5,
+                    "anchor_min_y": 0.18,
+                    "anchor_max_x": 0.5,
+                    "anchor_max_y": 0.18,
+                    "pivot_x": 0.5,
+                    "pivot_y": 0.5,
+                    "anchored_x": 0.0,
+                    "anchored_y": 0.0,
+                    "width": 520.0,
+                    "height": 80.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIText": {
+                    "enabled": true,
+                    "text": "PLATFORMER TEST",
+                    "font_size": 42,
+                    "color": [
+                        245,
+                        245,
+                        245,
+                        255
+                    ],
+                    "alignment": "center",
+                    "wrap": false
+                }
+            }
+        },
+        {
+            "name": "SubtitleText",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "MainCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.5,
+                    "anchor_min_y": 0.31,
+                    "anchor_max_x": 0.5,
+                    "anchor_max_y": 0.31,
+                    "pivot_x": 0.5,
+                    "pivot_y": 0.5,
+                    "anchored_x": 0.0,
+                    "anchored_y": 0.0,
+                    "width": 460.0,
+                    "height": 40.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIText": {
+                    "enabled": true,
+                    "text": "Pulsa el boton para entrar a platformer_test_scene",
+                    "font_size": 18,
+                    "color": [
+                        185,
+                        185,
+                        185,
+                        255
+                    ],
+                    "alignment": "center",
+                    "wrap": false
+                }
+            }
+        },
+        {
+            "name": "PlayButton",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "MainCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.5,
+                    "anchor_min_y": 0.56,
+                    "anchor_max_x": 0.5,
+                    "anchor_max_y": 0.56,
+                    "pivot_x": 0.5,
+                    "pivot_y": 0.5,
+                    "anchored_x": 0.0,
+                    "anchored_y": 0.0,
+                    "width": 280.0,
+                    "height": 84.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIButton": {
+                    "enabled": true,
+                    "interactable": true,
+                    "label": "JUGAR",
+                    "normal_color": [
+                        52,
+                        89,
+                        149,
+                        255
+                    ],
+                    "hover_color": [
+                        74,
+                        117,
+                        186,
+                        255
+                    ],
+                    "pressed_color": [
+                        40,
+                        68,
+                        117,
+                        255
+                    ],
+                    "disabled_color": [
+                        48,
+                        48,
+                        48,
+                        200
+                    ],
+                    "transition_scale_pressed": 0.95,
+                    "on_click": {
+                        "type": "load_scene_flow",
+                        "target": "next_scene"
+                    }
+                }
+            }
+        }
+    ],
+    "rules": [],
+    "feature_metadata": {
+        "scene_flow": {
+            "next_scene": "levels/platformer_test_scene.json"
+        }
+    }
+}
