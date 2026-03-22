@@ -28,7 +28,6 @@ from engine.inspector.inspector_system import InspectorSystem
 from engine.scenes.scene_manager import SceneManager
 from engine.levels.component_registry import create_default_registry
 from engine.project.project_service import ProjectService
-from engine.scenes.scene_manager import SceneManager
 from engine.assets.prefab import PrefabManager
 from engine.systems.animation_system import AnimationSystem
 from engine.systems.audio_system import AudioSystem
