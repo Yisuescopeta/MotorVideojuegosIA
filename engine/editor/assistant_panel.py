@@ -12,6 +12,7 @@ class AssistantPanel:
     PADDING = 8
     MODEL_PICKER_HEIGHT = 176
     PROPOSAL_PREVIEW_HEIGHT = 132
+    MINIMIZED_WIDTH = 44
 
     BG = rl.Color(36, 36, 36, 255)
     BG_MID = rl.Color(48, 48, 48, 255)
@@ -49,6 +50,7 @@ class AssistantPanel:
         self.interaction_mode: str = "plan"
         self.status_line: str = "Idle"
         self.provider_target: str = "ollama_local"
+        self.is_minimized: bool = False
         self._worker_thread: threading.Thread | None = None
         self._worker_lock = threading.Lock()
         self._worker_pending: Dict[str, Any] | None = None
@@ -66,6 +68,10 @@ class AssistantPanel:
 
     def update(self, rect: rl.Rectangle) -> None:
         self._consume_worker_result()
+        if self.is_minimized:
+            self.input_focused = False
+            return
+
         mouse = rl.get_mouse_position()
         input_rect = self._input_rect(rect)
         if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
@@ -111,6 +117,9 @@ class AssistantPanel:
         rect = rl.Rectangle(float(x), float(y), float(width), float(height))
         rl.draw_rectangle_rec(rect, self.BG)
         rl.draw_line(int(rect.x), int(rect.y), int(rect.x), int(rect.y + rect.height), self.BORDER)
+        if self.is_minimized:
+            self._draw_minimized(rect)
+            return
         self._draw_header(rect)
         if self.show_model_picker:
             self._draw_model_picker(rect)
@@ -148,6 +157,11 @@ class AssistantPanel:
         if self.connection_hint:
             self._draw_text_fit(self.connection_hint, info_x, info_y + 48, 9, self.WARNING, info_width)
 
+        minimize_label = "Min"
+        minimize_rect = rl.Rectangle(header.x + header.width - 52, header.y + 6, 44, 18)
+        if self._draw_button(minimize_rect, minimize_label):
+            self.toggle_minimized()
+
         narrow = header.width < 320
         row_1, row_2, row_3 = self._header_button_rows(header, narrow)
 
@@ -179,6 +193,24 @@ class AssistantPanel:
 
         if self._draw_button(row_2[1], "Undo", active=self._can_undo_last_apply()):
             self._undo_last_apply()
+
+    def _draw_minimized(self, rect: rl.Rectangle) -> None:
+        header_height = min(64.0, rect.height)
+        header = rl.Rectangle(rect.x, rect.y, rect.width, header_height)
+        rl.draw_rectangle_rec(header, self.BG_MID)
+        rl.draw_line(int(rect.x), int(rect.y + header_height - 1), int(rect.x + rect.width), int(rect.y + header_height - 1), self.BORDER)
+
+        title = str(self.session_data.get("title", "") or "AI")
+        self._draw_text_fit(title, int(header.x + self.PADDING), int(header.y + 6), 12, self.TEXT, int(header.width - 12))
+        self._draw_text_fit(self.status_line, int(header.x + self.PADDING), int(header.y + 22), 9, self.TEXT_DIM, int(header.width - 12))
+        if self._busy_label:
+            self._draw_text_fit(self._busy_label, int(header.x + self.PADDING), int(header.y + 36), 9, self.WARNING, int(header.width - 12))
+
+        button_width = max(28, int(header.width - self.PADDING * 2))
+        button_label = ">" if header.width < 64 else "Max"
+        button_rect = rl.Rectangle(header.x + self.PADDING, header.y + header_height - 26, button_width, 18)
+        if self._draw_button(button_rect, button_label):
+            self.toggle_minimized()
 
     def _draw_messages(self, rect: rl.Rectangle) -> None:
         messages_rect = self._messages_rect(rect)
@@ -665,6 +697,18 @@ class AssistantPanel:
     def _can_undo_last_apply(self) -> bool:
         last_apply = self.session_data.get("last_apply", {}) or {}
         return bool(last_apply.get("snapshot_id"))
+
+    def toggle_minimized(self) -> None:
+        self.is_minimized = not self.is_minimized
+        if self.is_minimized:
+            self.show_model_picker = False
+            self.input_focused = False
+
+    def set_minimized(self, minimized: bool) -> None:
+        self.is_minimized = bool(minimized)
+        if self.is_minimized:
+            self.show_model_picker = False
+            self.input_focused = False
 
     def _build_proposal_details(self, diff: Dict[str, Any], tool_calls: List[Dict[str, Any]]) -> List[str]:
         details: List[str] = []

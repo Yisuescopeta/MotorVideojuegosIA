@@ -116,6 +116,9 @@ class EditorLayout:
         self.hierarchy_width = 200
         self.inspector_width = 280
         self.assistant_width = 320
+        self.assistant_previous_width = self.assistant_width
+        self.assistant_minimized: bool = False
+        self.assistant_minimized_width = 44
         
         # Estado de Resize/Drag
         self.dragging_splitter: Optional[str] = None 
@@ -165,6 +168,8 @@ class EditorLayout:
         """Recalcula layout."""
         self.screen_width = width
         self.screen_height = height
+        if self.assistant_minimized:
+            self.assistant_width = self.assistant_minimized_width
         
         # Menu Bar takes top space (24px)
         # Toolbar is below Menu Bar
@@ -340,6 +345,18 @@ class EditorLayout:
 
     def is_mouse_in_assistant_panel(self) -> bool:
         return rl.check_collision_point_rec(rl.get_mouse_position(), self.assistant_rect)
+
+    def set_assistant_minimized(self, minimized: bool) -> None:
+        minimized = bool(minimized)
+        if minimized == self.assistant_minimized:
+            return
+        if minimized:
+            self.assistant_previous_width = max(self.MIN_PANEL_WIDTH, self.assistant_width)
+            self.assistant_width = self.assistant_minimized_width
+        else:
+            restored_width = self.assistant_previous_width or 320
+            self.assistant_width = max(self.MIN_PANEL_WIDTH, restored_width)
+        self.assistant_minimized = minimized
 
     def _resize_render_textures(self, width: int, height: int) -> None:
         if width <= 0 or height <= 0: return

@@ -1,6 +1,6 @@
 {
     "version": 1,
-    "generated_at_utc": "2026-03-18T21:35:48.360298+00:00",
+    "generated_at_utc": "2026-03-22T11:03:14.226791+00:00",
     "assets": [
         {
             "guid": "ast_2c6f30e04ba7458b9e8d6da1bf97444e",
@@ -15,7 +15,7 @@
             "dependencies": [],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1773340232.3919783,
+            "last_seen_mtime": 1774177157.970912,
             "reference": {
                 "guid": "ast_2c6f30e04ba7458b9e8d6da1bf97444e",
                 "path": "assets/images.png"
@@ -34,7 +34,7 @@
             "dependencies": [],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1773340232.3919783,
+            "last_seen_mtime": 1774177157.9736052,
             "reference": {
                 "guid": "ast_3fe01594895f4c4081f1ef623dbd31f8",
                 "path": "assets/images_1.png"
@@ -53,7 +53,7 @@
             "dependencies": [],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1773340232.3919783,
+            "last_seen_mtime": 1774177157.9736052,
             "reference": {
                 "guid": "ast_1e334ed5ddaa4454bb8174415bdaa5e6",
                 "path": "assets/images_2.png"
@@ -72,29 +72,10 @@
             "dependencies": [],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1773340232.3919783,
+            "last_seen_mtime": 1774177157.976148,
             "reference": {
                 "guid": "ast_00c4ead1dc834e7aa9e8bb9ea2a7d13a",
                 "path": "assets/images_3.png"
-            }
-        },
-        {
-            "guid": "ast_6bc97bfd726d412f9f6d1a451cd62dc0",
-            "guid_short": "ast_6bc9",
-            "name": "test_animator_generate.png",
-            "path": "assets/test_animator_generate.png",
-            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/assets/test_animator_generate.png",
-            "folder": "assets",
-            "asset_kind": "texture",
-            "importer": "texture",
-            "labels": [],
-            "dependencies": [],
-            "has_meta": true,
-            "import_status": "ready",
-            "last_seen_mtime": 1773869748.1944578,
-            "reference": {
-                "guid": "ast_6bc97bfd726d412f9f6d1a451cd62dc0",
-                "path": "assets/test_animator_generate.png"
             }
         },
         {
@@ -129,7 +110,7 @@
             "dependencies": [],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1773341321.6584477,
+            "last_seen_mtime": 1774177158.0972989,
             "reference": {
                 "guid": "ast_ca105968cf6d4d94bfe5d40e25a667b5",
                 "path": "levels/demo_level.json"
@@ -148,7 +129,7 @@
             "dependencies": [],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1773334850.0819542,
+            "last_seen_mtime": 1774177158.1017444,
             "reference": {
                 "guid": "ast_0a1cfe5901b94d30b23b593639735daa",
                 "path": "levels/lol.json"
@@ -167,7 +148,7 @@
             "dependencies": [],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1773679595.847845,
+            "last_seen_mtime": 1774177158.1040926,
             "reference": {
                 "guid": "ast_597251e8033d45e7ad42d229973f763f",
                 "path": "levels/main_menu_scene.json"
@@ -186,7 +167,7 @@
             "dependencies": [],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1773678376.5158787,
+            "last_seen_mtime": 1774177158.1056995,
             "reference": {
                 "guid": "ast_0a0f68b252014c979074814c28cd1c75",
                 "path": "levels/platformer_test_scene.json"
@@ -243,7 +224,7 @@
             "dependencies": [],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1773678729.3462722,
+            "last_seen_mtime": 1774177158.1123738,
             "reference": {
                 "guid": "ast_1dfc9299941948a0b23fde950616951e",
                 "path": "scripts/main_menu_controller.py"
@@ -262,7 +243,7 @@
             "dependencies": [],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1773270570.911729,
+            "last_seen_mtime": 1774177158.1138864,
             "reference": {
                 "guid": "ast_7e176944aca447dfb85cac00bc23db9e",
                 "path": "scripts/platformer_character.py"
@@ -281,7 +262,7 @@
             "dependencies": [],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1773869578.4634736,
+            "last_seen_mtime": 1774177158.1138864,
             "reference": {
                 "guid": "ast_8a1b91c96c7046e8a0b6fbfbd4011ab8",
                 "path": "scripts/player_movement_generated.py"

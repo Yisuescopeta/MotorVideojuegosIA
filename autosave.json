@@ -94,28 +94,6 @@
                     "current_state": "idle",
                     "current_frame": 2,
                     "is_finished": false
-                },
-                "InputMap": {
-                    "enabled": true,
-                    "move_left": "A,LEFT",
-                    "move_right": "D,RIGHT",
-                    "move_up": "W,UP",
-                    "move_down": "S,DOWN",
-                    "action_1": "SPACE",
-                    "action_2": "ENTER"
-                },
-                "ScriptBehaviour": {
-                    "enabled": true,
-                    "script": {
-                        "guid": "",
-                        "path": ""
-                    },
-                    "module_path": "player_movement_generated",
-                    "run_in_edit_mode": false,
-                    "public_data": {
-                        "speed": 180,
-                        "jump_force": 320
-                    }
                 }
             }
         },

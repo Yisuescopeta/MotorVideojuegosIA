@@ -359,6 +359,17 @@ class Game:
         if self.assistant_panel is not None:
             self.assistant_panel.set_api(api)
 
+    def _sync_assistant_panel_layout(self, force: bool = False) -> None:
+        if self.editor_layout is None or self.assistant_panel is None:
+            return
+        desired_minimized = bool(getattr(self.assistant_panel, "is_minimized", False))
+        if not force and getattr(self.editor_layout, "assistant_minimized", False) == desired_minimized:
+            return
+        self.editor_layout.set_assistant_minimized(desired_minimized)
+        self.editor_layout.update_layout(rl.get_screen_width(), rl.get_screen_height())
+        self.width = rl.get_screen_width()
+        self.height = rl.get_screen_height()
+
     def _reset_project_bound_state(self) -> None:
         if self._state == EngineState.STEPPING:
             self._state = EngineState.PAUSED
@@ -478,6 +489,7 @@ class Game:
                     self.editor_layout.project_panel.set_project_service(self._project_service)
                 else:
                     self.editor_layout.show_project_launcher = True
+        self._sync_assistant_panel_layout(force=True)
         
         self.running = True
         print(f"[INFO] Motor iniciado en modo: {self._state}")
@@ -530,6 +542,8 @@ class Game:
                      self.editor_layout.update_layout(rl.get_screen_width(), rl.get_screen_height())
                      self.width = rl.get_screen_width()
                      self.height = rl.get_screen_height()
+
+                self._sync_assistant_panel_layout()
 
                 if self.sprite_editor_modal is None or not self.sprite_editor_modal.is_open:
                     self.editor_layout.update_input()
