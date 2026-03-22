@@ -11,7 +11,20 @@ from typing import Any, Dict, Optional
 
 from cli.headless_game import HeadlessGame
 from cli.runner import CLIRunner
+from engine.api.ai_context import (
+    build_ai_context as build_ai_context_data,
+    build_ai_context_examples,
+    format_ai_context_for_chat,
+)
+from engine.api.errors import (
+    EntityNotFoundError,
+    InvalidOperationError,
+    LevelLoadError,
+)
+from engine.api.types import ActionResult, EngineStatus, EntityData
 from engine.core.engine_state import EngineState
+from engine.events.event_bus import EventBus
+from engine.inspector.inspector_system import InspectorSystem
 from engine.scenes.scene_manager import SceneManager
 from engine.levels.component_registry import create_default_registry
 from engine.project.project_service import ProjectService
@@ -187,7 +200,7 @@ class EngineAPI:
         - Chat: serializar con build_ai_context_message().
         - Command bus o script runner: consultar antes de decidir la siguiente accion.
         """
-        return build_ai_context(
+        return build_ai_context_data(
             game=self.game,
             scene_manager=self.scene_manager,
             level=level,  # type: ignore[arg-type]
