@@ -21,6 +21,7 @@ from engine.api.errors import (
     InvalidOperationError,
     LevelLoadError,
 )
+from engine.authoring.changes import Change
 from engine.api.types import ActionResult, EngineStatus, EntityData
 from engine.core.engine_state import EngineState
 from engine.events.event_bus import EventBus
@@ -32,6 +33,7 @@ from engine.assets.prefab import PrefabManager
 from engine.systems.animation_system import AnimationSystem
 from engine.systems.audio_system import AudioSystem
 from engine.systems.collision_system import CollisionSystem
+from engine.systems.character_controller_system import CharacterControllerSystem
 from engine.systems.input_system import InputSystem
 from engine.systems.physics_system import PhysicsSystem
 from engine.systems.player_controller_system import PlayerControllerSystem
@@ -41,9 +43,11 @@ from engine.systems.ui_render_system import UIRenderSystem
 from engine.systems.ui_system import UISystem
 from engine.assets.asset_service import AssetService
 from engine.components.renderorder2d import RenderOrder2D
+from engine.physics.box2d_backend import Box2DPhysicsBackend
 from engine.components.rigidbody import RigidBody
 from engine.components.canvas import Canvas
 from engine.components.recttransform import RectTransform
+from engine.components.tilemap import Tilemap
 from engine.components.uibutton import UIButton
 from engine.components.uitext import UIText
 
@@ -86,11 +90,20 @@ class EngineAPI:
         self.game.set_selection_system(SelectionSystem())
         self.game.set_event_bus(event_bus)
         self.game.set_input_system(InputSystem())
+        self.game.set_character_controller_system(CharacterControllerSystem())
         self.game.set_player_controller_system(PlayerControllerSystem())
         self.game.set_script_behaviour_system(ScriptBehaviourSystem())
         self.game.set_audio_system(AudioSystem())
         self.game.set_ui_system(UISystem())
         self.game.set_ui_render_system(UIRenderSystem())
+        if self.game._physics_system is not None and self.game._event_bus is not None:
+            try:
+                self.game.set_physics_backend(
+                    Box2DPhysicsBackend(gravity=self.game._physics_system.gravity, event_bus=self.game._event_bus),
+                    backend_name="box2d",
+                )
+            except Exception:
+                pass
         self._initialize_ai()
 
     def _initialize_ai(self) -> None:
@@ -131,6 +144,36 @@ class EngineAPI:
     def stop(self) -> None:
         if self.game is not None:
             self.game.stop()
+
+    def set_seed(self, seed: int | None) -> ActionResult:
+        if self.game is None:
+            return self._fail("Engine not initialized")
+        self.game.set_seed(seed)
+        return self._ok("Seed updated", {"seed": self.game.random_seed})
+
+    def begin_transaction(self, label: str = "transaction") -> ActionResult:
+        if self.scene_manager is None:
+            return self._fail("SceneManager not ready")
+        success = self.scene_manager.begin_transaction(label=label)
+        return self._ok("Transaction started", {"label": label}) if success else self._fail("Transaction start failed")
+
+    def apply_change(self, change: Dict[str, Any]) -> ActionResult:
+        if self.scene_manager is None:
+            return self._fail("SceneManager not ready")
+        success = self.scene_manager.apply_change(Change.from_dict(change))
+        return self._ok("Change applied", {"change": change}) if success else self._fail("Change apply failed")
+
+    def commit_transaction(self) -> ActionResult:
+        if self.scene_manager is None:
+            return self._fail("SceneManager not ready")
+        result = self.scene_manager.commit_transaction()
+        return self._ok("Transaction committed", result) if result is not None else self._fail("Transaction commit failed")
+
+    def rollback_transaction(self) -> ActionResult:
+        if self.scene_manager is None:
+            return self._fail("SceneManager not ready")
+        success = self.scene_manager.rollback_transaction()
+        return self._ok("Transaction rolled back") if success else self._fail("Transaction rollback failed")
 
     def undo(self) -> ActionResult:
         if self.game is None:
@@ -581,6 +624,52 @@ class EngineAPI:
         matrix[f"{layer_b}|{layer_a}"] = bool(enabled)
         physics_2d["layer_matrix"] = matrix
         return self.set_feature_metadata("physics_2d", physics_2d)
+
+    def set_physics_backend(self, backend_name: str) -> ActionResult:
+        self._ensure_edit_mode()
+        normalized = str(backend_name or "").strip() or "legacy_aabb"
+        if normalized not in {"legacy_aabb", "box2d"}:
+            return self._fail(f"Unsupported physics backend: {normalized}")
+        available_backends = getattr(self.game, "_physics_backends", {}) if self.game is not None else {}
+        if normalized not in available_backends:
+            return self._fail(f"Physics backend not available in this runtime: {normalized}")
+        metadata = self.get_feature_metadata()
+        physics_2d = dict(metadata.get("physics_2d", {}))
+        physics_2d["backend"] = normalized
+        result = self.set_feature_metadata("physics_2d", physics_2d)
+        if result["success"] and self.game is not None and hasattr(self.game, "_refresh_default_physics_backend"):
+            self.game._refresh_default_physics_backend()
+        return result
+
+    def query_physics_aabb(self, left: float, top: float, right: float, bottom: float) -> list[Dict[str, Any]]:
+        if self.game is None or self.game.world is None:
+            return []
+        backend_name = self.game._resolve_physics_backend_name(self.game.world) if hasattr(self.game, "_resolve_physics_backend_name") else "legacy_aabb"
+        backend = getattr(self.game, "_physics_backends", {}).get(backend_name)
+        if backend is None:
+            return []
+        return backend.query_aabb(self.game.world, (left, top, right, bottom))
+
+    def query_physics_ray(
+        self,
+        origin_x: float,
+        origin_y: float,
+        direction_x: float,
+        direction_y: float,
+        max_distance: float,
+    ) -> list[Dict[str, Any]]:
+        if self.game is None or self.game.world is None:
+            return []
+        backend_name = self.game._resolve_physics_backend_name(self.game.world) if hasattr(self.game, "_resolve_physics_backend_name") else "legacy_aabb"
+        backend = getattr(self.game, "_physics_backends", {}).get(backend_name)
+        if backend is None:
+            return []
+        return backend.query_ray(
+            self.game.world,
+            (origin_x, origin_y),
+            (direction_x, direction_y),
+            max_distance,
+        )
 
     def set_rigidbody_constraints(self, entity_name: str, constraints: list[str]) -> ActionResult:
         """Configura constraints estilo Unity para RigidBody usando estado serializable."""
@@ -1201,6 +1290,18 @@ class EngineAPI:
         catalog = self.asset_service.refresh_catalog()
         return self._ok("Asset catalog refreshed", {"count": len(catalog.get("assets", [])), "catalog": catalog})
 
+    def build_asset_artifacts(self) -> ActionResult:
+        if self.asset_service is None:
+            return self._fail("Asset service not ready")
+        report = self.asset_service.build_asset_artifacts()
+        return self._ok("Asset artifacts built", report)
+
+    def create_asset_bundle(self) -> ActionResult:
+        if self.asset_service is None:
+            return self._fail("Asset service not ready")
+        report = self.asset_service.create_bundle()
+        return self._ok("Asset bundle created", report)
+
     def find_assets(
         self,
         search: str = "",
@@ -1275,6 +1376,87 @@ class EngineAPI:
         if self.asset_service is None:
             return []
         return self.asset_service.list_slices(asset_path)
+
+    def create_tilemap(
+        self,
+        entity_name: str,
+        *,
+        cell_width: int = 16,
+        cell_height: int = 16,
+        orientation: str = "orthogonal",
+        tileset: str = "",
+        layers: Optional[list[Dict[str, Any]]] = None,
+    ) -> ActionResult:
+        self._ensure_edit_mode()
+        entity = self._require_entity(entity_name)
+        has_tilemap = any(comp.__name__ == "Tilemap" for comp in entity._components.keys())
+        tileset_ref = self.get_asset_reference(tileset) if tileset else {"guid": "", "path": ""}
+        payload = Tilemap(
+            cell_width=cell_width,
+            cell_height=cell_height,
+            orientation=orientation,
+            tileset=tileset_ref if (tileset_ref.get("guid") or tileset_ref.get("path")) else tileset,
+            tileset_path=tileset_ref.get("path", "") or tileset,
+            layers=layers or [],
+        ).to_dict()
+        if self.scene_manager is None:
+            return self._fail("SceneManager not ready")
+        success = (
+            self.scene_manager.replace_component_data(entity_name, "Tilemap", payload)
+            if has_tilemap
+            else self.scene_manager.add_component_to_entity(entity_name, "Tilemap", payload)
+        )
+        return self._ok("Tilemap updated", {"entity": entity_name}) if success else self._fail("Tilemap update failed")
+
+    def set_tilemap_tile(
+        self,
+        entity_name: str,
+        layer_name: str,
+        x: int,
+        y: int,
+        tile_id: str,
+        *,
+        source: str = "",
+        flags: Optional[list[str]] = None,
+        tags: Optional[list[str]] = None,
+        custom: Optional[Dict[str, Any]] = None,
+    ) -> ActionResult:
+        self._ensure_edit_mode()
+        if self.scene_manager is None:
+            return self._fail("SceneManager not ready")
+        payload = self._load_tilemap_payload(entity_name)
+        if payload is None:
+            return self._fail("Tilemap not found")
+        tilemap = Tilemap.from_dict(payload)
+        source_ref = self.get_asset_reference(source) if source else {}
+        tilemap.set_tile(
+            layer_name,
+            x,
+            y,
+            tile_id,
+            source=source_ref if (source_ref.get("guid") or source_ref.get("path")) else source,
+            flags=flags,
+            tags=tags,
+            custom=custom,
+        )
+        success = self.scene_manager.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
+        return self._ok("Tilemap tile updated", {"entity": entity_name, "layer": layer_name, "x": x, "y": y}) if success else self._fail("Tilemap tile update failed")
+
+    def clear_tilemap_tile(self, entity_name: str, layer_name: str, x: int, y: int) -> ActionResult:
+        self._ensure_edit_mode()
+        if self.scene_manager is None:
+            return self._fail("SceneManager not ready")
+        payload = self._load_tilemap_payload(entity_name)
+        if payload is None:
+            return self._fail("Tilemap not found")
+        tilemap = Tilemap.from_dict(payload)
+        tilemap.clear_tile(layer_name, x, y)
+        success = self.scene_manager.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
+        return self._ok("Tilemap tile cleared", {"entity": entity_name, "layer": layer_name, "x": x, "y": y}) if success else self._fail("Tilemap tile clear failed")
+
+    def get_tilemap(self, entity_name: str) -> Dict[str, Any]:
+        payload = self._load_tilemap_payload(entity_name)
+        return payload or {}
 
     def list_animator_states(self, entity_name: str) -> list[Dict[str, Any]]:
         entity = self._require_entity(entity_name)
@@ -1424,6 +1606,17 @@ class EngineAPI:
         if entity_data is None:
             return None
         component_data = entity_data.get("components", {}).get("Animator")
+        if component_data is None:
+            return None
+        return json.loads(json.dumps(component_data))
+
+    def _load_tilemap_payload(self, entity_name: str) -> Optional[Dict[str, Any]]:
+        if self.scene_manager is None or self.scene_manager.current_scene is None:
+            return None
+        entity_data = self.scene_manager.current_scene.find_entity(entity_name)
+        if entity_data is None:
+            return None
+        component_data = entity_data.get("components", {}).get("Tilemap")
         if component_data is None:
             return None
         return json.loads(json.dumps(component_data))

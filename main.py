@@ -24,6 +24,7 @@ from engine.systems.animation_system import AnimationSystem
 from engine.systems.audio_system import AudioSystem
 from engine.systems.input_system import InputSystem
 from engine.systems.player_controller_system import PlayerControllerSystem
+from engine.systems.character_controller_system import CharacterControllerSystem
 from engine.systems.script_behaviour_system import ScriptBehaviourSystem
 from engine.inspector.inspector_system import InspectorSystem
 from engine.events.event_bus import EventBus
@@ -35,6 +36,7 @@ from engine.scenes.scene_manager import SceneManager
 from engine.levels.component_registry import create_default_registry
 from engine.project.project_service import ProjectService
 from engine.api import EngineAPI
+from engine.physics.box2d_backend import Box2DPhysicsBackend
 
 
 from engine.levels.component_registry import create_default_registry
@@ -49,6 +51,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--script", type=str, help="Ruta al script de automatizacion")
     parser.add_argument("--frames", type=int, default=0, help="Numero de frames a ejecutar")
     parser.add_argument("--level", type=str, default="levels/demo_level.json", help="Ruta al nivel a cargar")
+    parser.add_argument("--seed", type=int, default=None, help="Seed para ejecucion headless reproducible")
+    parser.add_argument("--golden-output", type=str, default="", help="Ruta para guardar un reporte de golden run")
+    parser.add_argument("--golden-compare", type=str, default="", help="Ruta de un golden run esperado para comparar")
+    parser.add_argument("--capture-every", type=int, default=1, help="Capturar estado cada N frames en golden runs")
     return parser.parse_args()
 
 
@@ -104,6 +110,7 @@ def main() -> None:
     audio_system = AudioSystem()
     input_system = InputSystem()
     player_controller_system = PlayerControllerSystem()
+    character_controller_system = CharacterControllerSystem()
     script_behaviour_system = ScriptBehaviourSystem()
     inspector_system = InspectorSystem()
     selection_system = SelectionSystem()
@@ -126,6 +133,7 @@ def main() -> None:
     game.set_animation_system(animation_system)
     game.set_audio_system(audio_system)
     game.set_input_system(input_system)
+    game.set_character_controller_system(character_controller_system)
     game.set_player_controller_system(player_controller_system)
     game.set_script_behaviour_system(script_behaviour_system)
     game.set_inspector_system(inspector_system)
@@ -135,6 +143,10 @@ def main() -> None:
     game.set_selection_system(selection_system)
     game.set_ui_system(ui_system)
     game.set_ui_render_system(ui_render_system)
+    try:
+        game.set_physics_backend(Box2DPhysicsBackend(gravity=physics_system.gravity, event_bus=event_bus), backend_name="box2d")
+    except Exception:
+        pass
 
     assistant_api = EngineAPI(project_root=project_service.project_root.as_posix())
     assistant_api.attach_runtime(game, scene_manager, project_service)

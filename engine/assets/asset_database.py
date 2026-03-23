@@ -5,6 +5,7 @@ engine/assets/asset_database.py - Catalogo persistente y metadata unificada.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import shutil
 import uuid
@@ -37,6 +38,16 @@ class AssetDatabase:
 
     def get_catalog_path(self) -> Path:
         return self._project_service.get_project_path("meta") / self.CATALOG_FILE_NAME
+
+    def get_import_artifacts_root(self) -> Path:
+        root = self._project_service.get_project_path("meta") / "imported_assets"
+        root.mkdir(parents=True, exist_ok=True)
+        return root
+
+    def get_build_root(self) -> Path:
+        root = self._project_service.get_project_path("build")
+        root.mkdir(parents=True, exist_ok=True)
+        return root
 
     def ensure_catalog(self) -> Dict[str, Any]:
         if self._catalog_cache is not None:
@@ -74,6 +85,16 @@ class AssetDatabase:
                     self.save_metadata(asset_path, metadata, refresh_catalog=False)
                 seen_guids.add(str(metadata["guid"]))
                 entries.append(self._build_catalog_entry(asset_path, metadata))
+
+        by_path = {entry["path"]: entry for entry in entries}
+        for entry in entries:
+            referenced_by: list[str] = []
+            for dependency in entry.get("dependencies", []):
+                if dependency in by_path:
+                    by_path[dependency].setdefault("referenced_by", []).append(entry["path"])
+            entry.setdefault("referenced_by", referenced_by)
+        for entry in entries:
+            entry["referenced_by"] = sorted(set(entry.get("referenced_by", [])))
 
         payload = {
             "version": 1,
@@ -196,6 +217,66 @@ class AssetDatabase:
         self.save_metadata(entry["path"], self.load_metadata(entry["path"]))
         return self.get_asset_entry(entry["guid"])
 
+    def build_asset_artifacts(self) -> Dict[str, Any]:
+        catalog = self.refresh_catalog()
+        artifacts_root = self.get_import_artifacts_root()
+        artifacts: list[dict[str, Any]] = []
+        total_bytes = 0
+        for entry in catalog.get("assets", []):
+            artifact = self._build_asset_artifact(entry["path"])
+            artifacts.append(artifact)
+            total_bytes += int(artifact.get("artifact_size_bytes", 0))
+        payload = {
+            "version": 1,
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "artifact_count": len(artifacts),
+            "total_artifact_bytes": total_bytes,
+            "artifacts_root": artifacts_root.as_posix(),
+            "artifacts": sorted(artifacts, key=lambda item: item["path"]),
+        }
+        self._write_json(self.get_build_root() / "asset_build_report.json", payload)
+        return payload
+
+    def create_bundle(self) -> Dict[str, Any]:
+        catalog = self.ensure_catalog()
+        build_report = self.build_asset_artifacts()
+        bundle_assets: list[dict[str, Any]] = []
+        for entry in catalog.get("assets", []):
+            artifact_path = self.get_import_artifacts_root() / f"{entry['guid']}.json"
+            bundle_assets.append(
+                {
+                    "guid": entry["guid"],
+                    "path": entry["path"],
+                    "asset_kind": entry["asset_kind"],
+                    "artifact_path": self._project_service.to_relative_path(artifact_path),
+                    "dependencies": list(entry.get("dependencies", [])),
+                }
+            )
+        bundle = {
+            "version": 1,
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "asset_count": len(bundle_assets),
+            "build_report": "build/asset_build_report.json",
+            "assets": sorted(bundle_assets, key=lambda item: item["path"]),
+        }
+        bundle_path = self.get_build_root() / "content_bundle.json"
+        self._write_json(bundle_path, bundle)
+        report = {
+            "version": 1,
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "bundle_path": bundle_path.as_posix(),
+            "asset_count": len(bundle_assets),
+            "total_input_bytes": sum(
+                int(self._project_service.resolve_path(entry["path"]).stat().st_size)
+                for entry in catalog.get("assets", [])
+                if self._project_service.resolve_path(entry["path"]).exists()
+            ),
+            "top_assets_by_size": self._top_assets_by_size(catalog.get("assets", [])),
+            "artifacts": build_report["artifacts"],
+        }
+        self._write_json(self.get_build_root() / "bundle_report.json", report)
+        return report
+
     def move_asset(self, locator: Any, destination_path: str) -> Optional[Dict[str, Any]]:
         entry = self.get_asset_entry(locator)
         if entry is None:
@@ -233,6 +314,9 @@ class AssetDatabase:
 
     def _build_catalog_entry(self, asset_path: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
         resolved = self._project_service.resolve_path(asset_path)
+        dependencies = self._collect_dependencies(asset_path, metadata)
+        source_hash = self._compute_file_hash(resolved)
+        import_settings_hash = self._compute_json_hash(metadata.get("import_settings", {}))
         return {
             "guid": str(metadata.get("guid", "")),
             "guid_short": str(metadata.get("guid", ""))[:8],
@@ -243,12 +327,63 @@ class AssetDatabase:
             "asset_kind": str(metadata.get("asset_kind", "unknown")),
             "importer": str(metadata.get("importer", "unknown")),
             "labels": list(metadata.get("labels", [])),
-            "dependencies": list(metadata.get("dependencies", [])),
+            "dependencies": dependencies,
             "has_meta": self.get_metadata_path(asset_path).exists(),
             "import_status": "ready",
             "last_seen_mtime": resolved.stat().st_mtime if resolved.exists() else 0.0,
+            "source_hash": source_hash,
+            "import_settings_hash": import_settings_hash,
             "reference": build_asset_reference(asset_path, metadata.get("guid", "")),
         }
+
+    def _collect_dependencies(self, asset_path: str, metadata: Dict[str, Any]) -> List[str]:
+        declared = [normalize_asset_path(item) for item in metadata.get("dependencies", []) if str(item).strip()]
+        inferred: set[str] = set(declared)
+        asset_kind = str(metadata.get("asset_kind", "unknown"))
+        if asset_kind not in {"scene_data", "prefab"}:
+            return sorted(inferred)
+        file_path = self._project_service.resolve_path(asset_path)
+        if not file_path.exists():
+            return sorted(inferred)
+        try:
+            payload = json.loads(file_path.read_text(encoding="utf-8"))
+        except Exception:
+            return sorted(inferred)
+        self._collect_dependencies_from_value(payload, inferred)
+        inferred.discard(normalize_asset_path(asset_path))
+        return sorted(inferred)
+
+    def _collect_dependencies_from_value(self, value: Any, dependencies: set[str]) -> None:
+        if isinstance(value, dict):
+            ref_path = str(value.get("path", "")).strip() if "path" in value else ""
+            ref_guid = str(value.get("guid", "")).strip() if "guid" in value else ""
+            if ref_path and (ref_guid or self._looks_like_project_asset_path(ref_path)):
+                dependencies.add(normalize_asset_path(ref_path))
+            for key, nested in value.items():
+                if isinstance(nested, str) and self._is_dependency_field(str(key), nested):
+                    dependencies.add(normalize_asset_path(nested))
+                else:
+                    self._collect_dependencies_from_value(nested, dependencies)
+            return
+        if isinstance(value, list):
+            for nested in value:
+                self._collect_dependencies_from_value(nested, dependencies)
+
+    def _looks_like_project_asset_path(self, value: str) -> bool:
+        normalized = normalize_asset_path(value)
+        if not normalized:
+            return False
+        return normalized.startswith(("assets/", "scripts/", "prefabs/", "levels/"))
+
+    def _is_dependency_field(self, key: str, value: str) -> bool:
+        normalized = normalize_asset_path(value)
+        if not normalized:
+            return False
+        if key in {"texture_path", "asset_path", "sprite_sheet", "prefab_path", "target_path", "script_path", "material_path", "shader_path"}:
+            return self._looks_like_project_asset_path(normalized)
+        if normalized.endswith((".png", ".jpg", ".jpeg", ".bmp", ".wav", ".ogg", ".mp3", ".prefab", ".json", ".py", ".material.json")):
+            return self._looks_like_project_asset_path(normalized)
+        return False
 
     def _normalize_metadata(self, asset_path: str, raw: Dict[str, Any]) -> Dict[str, Any]:
         asset_kind = self._infer_asset_kind(asset_path)
@@ -283,6 +418,9 @@ class AssetDatabase:
     def _infer_asset_kind(self, asset_path: str) -> str:
         suffix = Path(asset_path).suffix.lower()
         parts = Path(asset_path).parts
+        normalized_path = normalize_asset_path(asset_path)
+        if normalized_path.endswith(".material.json") or "materials" in parts:
+            return "material"
         if "scripts" in parts or suffix in self.SCRIPT_EXTENSIONS:
             return "script"
         if "prefabs" in parts or suffix in self.PREFAB_EXTENSIONS:
@@ -296,12 +434,87 @@ class AssetDatabase:
         return "unknown"
 
     def _infer_importer(self, asset_kind: str) -> str:
-        if asset_kind in {"texture", "audio", "script", "prefab", "scene_data"}:
+        if asset_kind in {"texture", "audio", "script", "prefab", "scene_data", "material"}:
             return asset_kind
         return "unknown"
 
     def _generate_guid(self) -> str:
         return f"ast_{uuid.uuid4().hex}"
+
+    def _compute_file_hash(self, path: Path) -> str:
+        if not path.exists() or not path.is_file():
+            return ""
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(65536), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _compute_json_hash(self, value: Any) -> str:
+        raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def _artifact_payload_for_entry(self, entry: Dict[str, Any]) -> Dict[str, Any]:
+        resolved = self._project_service.resolve_path(entry["path"])
+        metadata = self.load_metadata(entry["path"])
+        return {
+            "version": 1,
+            "guid": entry["guid"],
+            "path": entry["path"],
+            "asset_kind": entry["asset_kind"],
+            "importer": entry["importer"],
+            "source_hash": entry.get("source_hash", ""),
+            "import_settings_hash": entry.get("import_settings_hash", ""),
+            "dependencies": list(entry.get("dependencies", [])),
+            "metadata": metadata,
+            "source_size_bytes": resolved.stat().st_size if resolved.exists() else 0,
+        }
+
+    def _build_asset_artifact(self, asset_path: str) -> Dict[str, Any]:
+        entry = self.get_asset_entry(asset_path)
+        if entry is None:
+            raise FileNotFoundError(f"Asset entry not found for {asset_path}")
+        artifact_path = self.get_import_artifacts_root() / f"{entry['guid']}.json"
+        artifact_payload = self._artifact_payload_for_entry(entry)
+        previous_payload: Dict[str, Any] | None = None
+        if artifact_path.exists():
+            try:
+                previous_payload = json.loads(artifact_path.read_text(encoding="utf-8"))
+            except Exception:
+                previous_payload = None
+        cache_hit = previous_payload is not None and (
+            previous_payload.get("source_hash") == artifact_payload["source_hash"]
+            and previous_payload.get("import_settings_hash") == artifact_payload["import_settings_hash"]
+        )
+        if not cache_hit:
+            self._write_json(artifact_path, artifact_payload)
+        artifact_size = artifact_path.stat().st_size if artifact_path.exists() else 0
+        return {
+            "guid": entry["guid"],
+            "path": entry["path"],
+            "asset_kind": entry["asset_kind"],
+            "artifact_path": self._project_service.to_relative_path(artifact_path),
+            "source_hash": artifact_payload["source_hash"],
+            "import_settings_hash": artifact_payload["import_settings_hash"],
+            "cache_hit": cache_hit,
+            "artifact_size_bytes": artifact_size,
+        }
+
+    def _top_assets_by_size(self, entries: List[Dict[str, Any]], limit: int = 10) -> List[Dict[str, Any]]:
+        sized_entries: list[dict[str, Any]] = []
+        for entry in entries:
+            resolved = self._project_service.resolve_path(entry["path"])
+            size = resolved.stat().st_size if resolved.exists() else 0
+            sized_entries.append(
+                {
+                    "guid": entry["guid"],
+                    "path": entry["path"],
+                    "asset_kind": entry["asset_kind"],
+                    "size_bytes": size,
+                }
+            )
+        sized_entries.sort(key=lambda item: (-item["size_bytes"], item["path"]))
+        return sized_entries[:limit]
 
     def _normalize_locator_path(self, path: Any) -> str:
         normalized = normalize_asset_path(path)

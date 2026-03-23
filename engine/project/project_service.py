@@ -35,6 +35,7 @@ class ProjectManifest:
         "scripts": "scripts",
         "settings": "settings",
         "meta": ".motor/meta",
+        "build": ".motor/build",
     }
 
     name: str
@@ -498,7 +499,7 @@ class ProjectService:
         manifest: ProjectManifest,
         create_bootstrap: bool,
     ) -> None:
-        for key in ("assets", "levels", "prefabs", "scripts", "settings", "meta"):
+        for key in ("assets", "levels", "prefabs", "scripts", "settings", "meta", "build"):
             (root / manifest.paths.get(key, key)).mkdir(parents=True, exist_ok=True)
 
         state_path = root / self.PROJECT_STATE_DIR / self.EDITOR_STATE_FILE

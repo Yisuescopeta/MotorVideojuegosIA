@@ -1,0 +1,13 @@
+{
+  "backend": "box2d",
+  "frames": 180,
+  "boxes": 20,
+  "ccd": true,
+  "total_step_ms": 105.0824,
+  "avg_step_ms": 0.583791,
+  "backend_metrics": {
+    "substeps": 1,
+    "contacts": 20,
+    "ccd_bodies": 20
+  }
+}

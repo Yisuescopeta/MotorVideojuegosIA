@@ -1,0 +1,12 @@
+{
+  "backend": "legacy_aabb",
+  "frames": 180,
+  "boxes": 20,
+  "ccd": true,
+  "total_step_ms": 413.621,
+  "avg_step_ms": 2.297894,
+  "backend_metrics": {
+    "ccd_bodies": 20,
+    "swept_checks": 400
+  }
+}

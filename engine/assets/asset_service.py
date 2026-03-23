@@ -17,6 +17,7 @@ from engine.assets.asset_database import AssetDatabase
 from engine.assets.asset_reference import build_asset_reference, normalize_asset_reference
 from engine.assets.asset_resolver import AssetResolver
 from engine.project.project_service import ProjectService
+from engine.rendering.materials import Material2D
 
 
 class AssetService:
@@ -115,6 +116,41 @@ class AssetService:
 
     def reimport_asset(self, locator: Any) -> Optional[Dict[str, Any]]:
         return self._database.reimport_asset(locator)
+
+    def build_asset_artifacts(self) -> Dict[str, Any]:
+        return self._database.build_asset_artifacts()
+
+    def create_bundle(self) -> Dict[str, Any]:
+        return self._database.create_bundle()
+
+    def load_material_definition(self, locator: Any) -> Material2D:
+        material_path = self._resolve_locator_path(locator)
+        if not material_path:
+            return Material2D()
+        file_path = self.resolve_asset_path(material_path)
+        if not file_path.exists():
+            return Material2D()
+        try:
+            payload = json.loads(file_path.read_text(encoding="utf-8"))
+        except Exception:
+            return Material2D()
+        return Material2D.from_dict(payload)
+
+    def save_material_definition(self, locator: Any, material: Material2D) -> Dict[str, Any]:
+        material_path = self._resolve_locator_path(locator)
+        if not material_path:
+            raise ValueError("Material path is required")
+        file_path = self.resolve_asset_path(material_path)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(json.dumps(material.to_dict(), indent=2), encoding="utf-8")
+        metadata = self.load_metadata(material_path)
+        metadata["asset_kind"] = "material"
+        metadata["importer"] = "material"
+        self.save_metadata(material_path, metadata, record_history=False)
+        return {
+            "path": material_path,
+            "material": material.to_dict(),
+        }
 
     def move_asset(self, locator: Any, destination_path: str) -> Optional[Dict[str, Any]]:
         return self._database.move_asset(locator, destination_path)

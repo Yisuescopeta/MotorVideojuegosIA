@@ -12,6 +12,7 @@ from typing import Any, Optional
 
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
+from engine.serialization.schema import migrate_prefab_data, validate_prefab_data
 
 
 def _deep_merge(base: Any, override: Any) -> Any:
@@ -21,6 +22,99 @@ def _deep_merge(base: Any, override: Any) -> Any:
             merged[key] = _deep_merge(merged.get(key), value) if key in merged else copy.deepcopy(value)
         return merged
     return copy.deepcopy(override)
+
+
+def _normalize_legacy_overrides(overrides: dict[str, Any]) -> dict[str, Any]:
+    if "operations" in overrides:
+        return copy.deepcopy(overrides)
+    operations: list[dict[str, Any]] = []
+    for target_path, payload in overrides.items():
+        if not isinstance(payload, dict):
+            continue
+        for field_name in ("active", "tag", "layer", "parent"):
+            if field_name in payload:
+                operations.append(
+                    {
+                        "op": "set_entity_property",
+                        "target": target_path,
+                        "field": field_name,
+                        "value": copy.deepcopy(payload[field_name]),
+                    }
+                )
+        components = payload.get("components", {})
+        if isinstance(components, dict):
+            for component_name, component_payload in components.items():
+                if not isinstance(component_payload, dict):
+                    continue
+                operations.append(
+                    {
+                        "op": "replace_component",
+                        "target": target_path,
+                        "component": component_name,
+                        "data": copy.deepcopy(component_payload),
+                    }
+                )
+    return {"operations": operations}
+
+
+def _reorder_entities(entities: list[dict[str, Any]], parent: str | None, child_name: str, index: int) -> None:
+    matching = [item for item in entities if item.get("parent") == parent]
+    target = next((item for item in matching if item.get("name") == child_name), None)
+    if target is None:
+        return
+    entities.remove(target)
+    siblings = [item for item in entities if item.get("parent") == parent]
+    insertion_index = 0
+    if siblings:
+        bounded_index = max(0, min(index, len(siblings)))
+        if bounded_index >= len(siblings):
+            insertion_index = max(i for i, item in enumerate(entities) if item.get("parent") == parent) + 1
+        else:
+            sibling = siblings[bounded_index]
+            insertion_index = entities.index(sibling)
+    entities.insert(insertion_index, target)
+
+
+def _apply_override_operations(entities: list[dict[str, Any]], overrides: dict[str, Any]) -> list[dict[str, Any]]:
+    normalized = _normalize_legacy_overrides(overrides)
+    operations = normalized.get("operations", [])
+    by_name = {entity["name"]: entity for entity in entities}
+    for operation in operations:
+        if not isinstance(operation, dict):
+            continue
+        op_name = str(operation.get("op", "")).strip()
+        target = operation.get("target", "")
+        target_name = None
+        for entity_name, entity_payload in by_name.items():
+            if entity_payload.get("prefab_source_path", "") == target:
+                target_name = entity_name
+                break
+        if target_name is None and target in ("", None):
+            target_name = next((entity["name"] for entity in entities if entity.get("prefab_source_path", "") == ""), None)
+        entity_payload = by_name.get(target_name) if target_name is not None else None
+        if op_name == "reorder_child":
+            _reorder_entities(
+                entities,
+                operation.get("parent"),
+                str(operation.get("child", "")),
+                int(operation.get("index", 0)),
+            )
+            continue
+        if entity_payload is None:
+            continue
+        if op_name == "set_field":
+            component_name = str(operation.get("component", ""))
+            field_name = str(operation.get("field", ""))
+            entity_payload.setdefault("components", {}).setdefault(component_name, {})[field_name] = copy.deepcopy(operation.get("value"))
+        elif op_name == "set_entity_property":
+            entity_payload[str(operation.get("field", ""))] = copy.deepcopy(operation.get("value"))
+        elif op_name == "add_component":
+            entity_payload.setdefault("components", {})[str(operation.get("component", ""))] = copy.deepcopy(operation.get("data", {}))
+        elif op_name == "replace_component":
+            entity_payload.setdefault("components", {})[str(operation.get("component", ""))] = copy.deepcopy(operation.get("data", {}))
+        elif op_name == "remove_component":
+            entity_payload.setdefault("components", {}).pop(str(operation.get("component", "")), None)
+    return entities
 
 
 class PrefabManager:
@@ -70,7 +164,7 @@ class PrefabManager:
                 else:
                     data.pop("parent", None)
             entities.append(data)
-        return {"root_name": entities[0]["name"], "entities": entities}
+        return migrate_prefab_data({"root_name": entities[0]["name"], "entities": entities})
 
     @staticmethod
     def _relative_prefab_path(entity: Entity, root_name: str) -> str:
@@ -100,17 +194,12 @@ class PrefabManager:
             return None
 
         if isinstance(raw, dict) and "entities" in raw:
-            payload = copy.deepcopy(raw)
-            payload.setdefault("root_name", payload.get("entities", [{}])[0].get("name", "Prefab"))
-            return payload
+            payload = migrate_prefab_data(copy.deepcopy(raw))
+            return payload if not validate_prefab_data(payload) else None
 
         if isinstance(raw, dict):
-            legacy = copy.deepcopy(raw)
-            legacy.pop("id", None)
-            legacy.pop("prefab_instance", None)
-            legacy.pop("prefab_source_path", None)
-            legacy.pop("prefab_root_name", None)
-            return {"root_name": legacy.get("name", "Prefab"), "entities": [legacy]}
+            payload = migrate_prefab_data(copy.deepcopy(raw))
+            return payload if not validate_prefab_data(payload) else None
         return None
 
     @staticmethod
@@ -137,7 +226,8 @@ class PrefabManager:
             else:
                 world_parent = f"{instance_name}/{relative_parent}"
 
-            merged = _deep_merge(entity_data, overrides.get(relative_path, {}))
+            normalized_overrides = _normalize_legacy_overrides(overrides)
+            merged = _deep_merge(entity_data, {})
             merged["name"] = world_name
             if world_parent is not None:
                 merged["parent"] = world_parent
@@ -154,7 +244,7 @@ class PrefabManager:
                 merged["prefab_root_name"] = instance_name
             merged["prefab_source_path"] = relative_path
             expanded.append(merged)
-        return expanded
+        return _apply_override_operations(expanded, normalized_overrides)
 
     @staticmethod
     def _entity_relative_path(entity_data: dict[str, Any]) -> str:

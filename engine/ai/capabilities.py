@@ -8,7 +8,6 @@ from engine.levels.component_registry import create_default_registry
 
 
 UNSUPPORTED_FEATURES = {
-    "tilemap": ("tilemap_support", "El motor no expone un sistema Tilemap serializable"),
     "navmesh": ("navmesh_support", "No existe navegación o navmesh en runtime"),
     "pathfinding": ("pathfinding_support", "No existe pathfinding declarativo para NPCs"),
     "multiplayer": ("multiplayer_support", "No existe red/multiplayer en la arquitectura actual"),

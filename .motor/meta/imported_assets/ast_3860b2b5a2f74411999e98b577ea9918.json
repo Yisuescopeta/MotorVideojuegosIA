@@ -1,0 +1,32 @@
+{
+    "version": 1,
+    "guid": "ast_3860b2b5a2f74411999e98b577ea9918",
+    "path": "scripts/example_script.py",
+    "asset_kind": "script",
+    "importer": "script",
+    "source_hash": "deb31e5d8ecc3911bf32ab2fc10dfd0ed76ab7320ba018b49e250ec5c89e5c93",
+    "import_settings_hash": "523830a9e675093e53983a28d15e46898df0bf5cc1dfb94129cd01d2fc33beab",
+    "dependencies": [],
+    "metadata": {
+        "guid": "ast_3860b2b5a2f74411999e98b577ea9918",
+        "source_path": "scripts/example_script.py",
+        "path": "scripts/example_script.py",
+        "asset_kind": "script",
+        "importer": "script",
+        "labels": [],
+        "dependencies": [],
+        "import_settings": {
+            "asset_type": "script",
+            "import_mode": "raw",
+            "grid": {},
+            "automatic": {},
+            "slices": []
+        },
+        "asset_type": "script",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "source_size_bytes": 898
+}

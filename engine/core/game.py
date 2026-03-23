@@ -20,6 +20,7 @@ CONTROLES:
 from typing import TYPE_CHECKING, Any, Optional
 import pyray as rl
 import os
+import random
 import time
 from pathlib import Path
 
@@ -41,6 +42,7 @@ if TYPE_CHECKING:
     from engine.systems.audio_system import AudioSystem
     from engine.systems.input_system import InputSystem
     from engine.systems.player_controller_system import PlayerControllerSystem
+    from engine.systems.character_controller_system import CharacterControllerSystem
     from engine.systems.script_behaviour_system import ScriptBehaviourSystem
     from engine.inspector.inspector_system import InspectorSystem
     from engine.levels.level_loader import LevelLoader
@@ -64,6 +66,7 @@ from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
 from engine.editor.assistant_panel import AssistantPanel
 from engine.editor.sprite_editor_modal import SpriteEditorModal
 from engine.editor.raygui_theme import apply_unity_dark_theme
+from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
 
 
 class Game:
@@ -96,10 +99,13 @@ class Game:
         self._render_system: Optional["RenderSystem"] = None
         self._physics_system: Optional["PhysicsSystem"] = None
         self._collision_system: Optional["CollisionSystem"] = None
+        self._physics_backends: dict[str, Any] = {}
+        self._physics_backend_name: str = "legacy_aabb"
         self._animation_system: Optional["AnimationSystem"] = None
         self._audio_system: Optional["AudioSystem"] = None
         self._input_system: Optional["InputSystem"] = None
         self._player_controller_system: Optional["PlayerControllerSystem"] = None
+        self._character_controller_system: Optional["CharacterControllerSystem"] = None
         self._script_behaviour_system: Optional["ScriptBehaviourSystem"] = None
         self._inspector_system: Optional["InspectorSystem"] = None
         self._level_loader: Optional["LevelLoader"] = None
@@ -161,12 +167,18 @@ class Game:
         }
         self.debug_draw_colliders: bool = False
         self.debug_draw_labels: bool = False
+        self.random_seed: int | None = None
     
     # === PROPIEDADES ===
     
     @property
     def state(self) -> EngineState:
         return self._state
+
+    def set_seed(self, seed: int | None) -> None:
+        self.random_seed = None if seed is None else int(seed)
+        if self.random_seed is not None:
+            random.seed(self.random_seed)
     
     @property
     def is_edit_mode(self) -> bool:
@@ -274,9 +286,11 @@ class Game:
     
     def set_physics_system(self, system: "PhysicsSystem") -> None:
         self._physics_system = system
+        self._refresh_default_physics_backend()
     
     def set_collision_system(self, system: "CollisionSystem") -> None:
         self._collision_system = system
+        self._refresh_default_physics_backend()
     
     def set_animation_system(self, system: "AnimationSystem") -> None:
         self._animation_system = system
@@ -291,6 +305,9 @@ class Game:
 
     def set_player_controller_system(self, system: "PlayerControllerSystem") -> None:
         self._player_controller_system = system
+
+    def set_character_controller_system(self, system: "CharacterControllerSystem") -> None:
+        self._character_controller_system = system
 
     def set_script_behaviour_system(self, system: "ScriptBehaviourSystem") -> None:
         self._script_behaviour_system = system
@@ -312,8 +329,17 @@ class Game:
     
     def set_event_bus(self, event_bus: "EventBus") -> None:
         self._event_bus = event_bus
+        for backend in self._physics_backends.values():
+            if hasattr(backend, "set_event_bus"):
+                backend.set_event_bus(event_bus)
         if self._ui_system is not None:
             self._ui_system.set_event_bus(event_bus)
+
+    def set_physics_backend(self, backend: Any, backend_name: str = "legacy_aabb") -> None:
+        normalized_name = str(backend_name or "legacy_aabb")
+        self._physics_backends[normalized_name] = backend
+        if hasattr(backend, "set_event_bus"):
+            backend.set_event_bus(self._event_bus)
     
     def set_rule_system(self, rule_system: "RuleSystem") -> None:
         self._rule_system = rule_system
@@ -1207,17 +1233,36 @@ class Game:
         """Actualiza la lógica del juego (Física, Colisiones, Reglas)."""
         if self._input_system is not None:
             self._input_system.update(world)
+        if self._character_controller_system is not None:
+            self._character_controller_system.update(world, dt)
         if self._player_controller_system is not None:
             self._player_controller_system.update(world)
         if self._script_behaviour_system is not None:
             self._script_behaviour_system.update(world, dt, is_edit_mode=False)
-        if self._physics_system is not None and self._state.allows_physics():
-            self._physics_system.update(world, dt)
-            
-        if self._collision_system is not None and self._state.allows_gameplay():
-            self._collision_system.update(world)
+        backend_name = self._resolve_physics_backend_name(world)
+        backend = self._physics_backends.get(backend_name)
+        if backend is not None and self._state.allows_physics():
+            backend.step(world, dt)
+        else:
+            if self._physics_system is not None and self._state.allows_physics():
+                self._physics_system.update(world, dt)
+            if self._collision_system is not None and self._state.allows_gameplay():
+                self._collision_system.update(world)
         if self._audio_system is not None:
             self._audio_system.update(world)
+
+    def _resolve_physics_backend_name(self, world: Optional["World"]) -> str:
+        metadata = world.feature_metadata if world is not None else {}
+        physics_2d = metadata.get("physics_2d", {}) if isinstance(metadata, dict) else {}
+        return str(physics_2d.get("backend", self._physics_backend_name or "legacy_aabb"))
+
+    def _refresh_default_physics_backend(self) -> None:
+        if self._physics_system is None or self._collision_system is None:
+            return
+        self.set_physics_backend(
+            LegacyAABBPhysicsBackend(self._physics_system, self._collision_system, event_bus=self._event_bus),
+            backend_name="legacy_aabb",
+        )
             
     def step(self) -> None:
         """Avanza exactamente un frame de simulación."""
@@ -1312,6 +1357,10 @@ class Game:
             self._perf_counters = {
                 "entities": 0,
                 "render_entities": 0,
+                "draw_calls": 0,
+                "batches": 0,
+                "render_target_passes": 0,
+                "physics_ccd_bodies": 0,
                 "canvases": 0,
                 "buttons": 0,
                 "scripts": 0,
@@ -1319,12 +1368,28 @@ class Game:
             return
 
         render_entities = 0
+        draw_calls = 0
+        batches = 0
+        render_target_passes = 0
+        physics_ccd_bodies = 0
         if self._render_system is not None and hasattr(self._render_system, "get_last_render_stats"):
-            render_entities = int(self._render_system.get_last_render_stats().get("render_entities", 0))
+            render_stats = self._render_system.get_last_render_stats()
+            render_entities = int(render_stats.get("render_entities", 0))
+            draw_calls = int(render_stats.get("draw_calls", 0))
+            batches = int(render_stats.get("batches", 0))
+            render_target_passes = int(render_stats.get("render_target_passes", 0))
+        backend_name = self._resolve_physics_backend_name(active_world)
+        backend = self._physics_backends.get(backend_name)
+        if backend is not None and hasattr(backend, "get_step_metrics"):
+            physics_ccd_bodies = int(backend.get_step_metrics().get("ccd_bodies", 0))
 
         self._perf_counters = {
             "entities": active_world.entity_count(),
             "render_entities": render_entities,
+            "draw_calls": draw_calls,
+            "batches": batches,
+            "render_target_passes": render_target_passes,
+            "physics_ccd_bodies": physics_ccd_bodies,
             "canvases": len(active_world.get_entities_with(Canvas)),
             "buttons": len(active_world.get_entities_with(UIButton)),
             "scripts": len(active_world.get_entities_with(ScriptBehaviour)),
@@ -1335,7 +1400,7 @@ class Game:
             return
 
         panel_width = 260
-        panel_height = 190
+        panel_height = 246
         panel_x = self.width - panel_width - 12
         panel_y = 12
         panel_rect = rl.Rectangle(panel_x, panel_y, panel_width, panel_height)
@@ -1362,6 +1427,12 @@ class Game:
         rl.draw_text(f"entities: {self._perf_counters.get('entities', 0)}", panel_x + 10, text_y, 10, rl.SKYBLUE)
         text_y += 14
         rl.draw_text(f"drawables: {self._perf_counters.get('render_entities', 0)}", panel_x + 10, text_y, 10, rl.SKYBLUE)
+        text_y += 14
+        rl.draw_text(f"draws/batches: {self._perf_counters.get('draw_calls', 0)}/{self._perf_counters.get('batches', 0)}", panel_x + 10, text_y, 10, rl.SKYBLUE)
+        text_y += 14
+        rl.draw_text(f"rt passes: {self._perf_counters.get('render_target_passes', 0)}", panel_x + 10, text_y, 10, rl.SKYBLUE)
+        text_y += 14
+        rl.draw_text(f"ccd bodies: {self._perf_counters.get('physics_ccd_bodies', 0)}", panel_x + 10, text_y, 10, rl.SKYBLUE)
         text_y += 14
         rl.draw_text(f"canvases/buttons: {self._perf_counters.get('canvases', 0)}/{self._perf_counters.get('buttons', 0)}", panel_x + 10, text_y, 10, rl.SKYBLUE)
         text_y += 14

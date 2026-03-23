@@ -1,0 +1,38 @@
+{
+  "scene": "synthetic_render_benchmark",
+  "sprite_count": 5000,
+  "texture_path": "assets/bench_shared.png",
+  "metrics": {
+    "render_entities": 5000,
+    "draw_calls": 5000,
+    "batches": 1,
+    "state_changes": 0,
+    "pass_count": 3,
+    "render_target_passes": 0,
+    "render_target_composites": 0,
+    "sort_cache": {
+      "hits": 0,
+      "misses": 1
+    },
+    "passes": {
+      "World": {
+        "render_entities": 5000,
+        "draw_calls": 5000,
+        "batches": 1,
+        "state_changes": 0
+      },
+      "Overlay": {
+        "render_entities": 0,
+        "draw_calls": 0,
+        "batches": 0,
+        "state_changes": 0
+      },
+      "Debug": {
+        "render_entities": 0,
+        "draw_calls": 0,
+        "batches": 0,
+        "state_changes": 0
+      }
+    }
+  }
+}

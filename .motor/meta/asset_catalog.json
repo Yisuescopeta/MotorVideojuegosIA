@@ -1,6 +1,6 @@
 {
     "version": 1,
-    "generated_at_utc": "2026-03-23T21:58:12.024463+00:00",
+    "generated_at_utc": "2026-03-23T23:01:30.139617+00:00",
     "assets": [
         {
             "guid": "ast_2c6f30e04ba7458b9e8d6da1bf97444e",
@@ -16,10 +16,13 @@
             "has_meta": true,
             "import_status": "ready",
             "last_seen_mtime": 1774178348.240201,
+            "source_hash": "b0e9b2fb807efb1d9139b1fa3c099135dfa5995c756b583b90046dea5927fac1",
+            "import_settings_hash": "930c90b925eb3e9f670d4b90863b6105b624ab627aeb708f8cd82552ecbb8e8f",
             "reference": {
                 "guid": "ast_2c6f30e04ba7458b9e8d6da1bf97444e",
                 "path": "assets/images.png"
-            }
+            },
+            "referenced_by": []
         },
         {
             "guid": "ast_3fe01594895f4c4081f1ef623dbd31f8",
@@ -35,10 +38,15 @@
             "has_meta": true,
             "import_status": "ready",
             "last_seen_mtime": 1774178348.240201,
+            "source_hash": "b0e9b2fb807efb1d9139b1fa3c099135dfa5995c756b583b90046dea5927fac1",
+            "import_settings_hash": "930c90b925eb3e9f670d4b90863b6105b624ab627aeb708f8cd82552ecbb8e8f",
             "reference": {
                 "guid": "ast_3fe01594895f4c4081f1ef623dbd31f8",
                 "path": "assets/images_1.png"
-            }
+            },
+            "referenced_by": [
+                "levels/demo_level.json"
+            ]
         },
         {
             "guid": "ast_1e334ed5ddaa4454bb8174415bdaa5e6",
@@ -54,10 +62,13 @@
             "has_meta": true,
             "import_status": "ready",
             "last_seen_mtime": 1774178348.241569,
+            "source_hash": "b0e9b2fb807efb1d9139b1fa3c099135dfa5995c756b583b90046dea5927fac1",
+            "import_settings_hash": "930c90b925eb3e9f670d4b90863b6105b624ab627aeb708f8cd82552ecbb8e8f",
             "reference": {
                 "guid": "ast_1e334ed5ddaa4454bb8174415bdaa5e6",
                 "path": "assets/images_2.png"
-            }
+            },
+            "referenced_by": []
         },
         {
             "guid": "ast_00c4ead1dc834e7aa9e8bb9ea2a7d13a",
@@ -73,29 +84,15 @@
             "has_meta": true,
             "import_status": "ready",
             "last_seen_mtime": 1774178348.2425747,
+            "source_hash": "b0e9b2fb807efb1d9139b1fa3c099135dfa5995c756b583b90046dea5927fac1",
+            "import_settings_hash": "930c90b925eb3e9f670d4b90863b6105b624ab627aeb708f8cd82552ecbb8e8f",
             "reference": {
                 "guid": "ast_00c4ead1dc834e7aa9e8bb9ea2a7d13a",
                 "path": "assets/images_3.png"
-            }
-        },
-        {
-            "guid": "ast_51cc7ac9b79a46be8b870561e7f3e331",
-            "guid_short": "ast_51cc",
-            "name": "test_animator_generate.png",
-            "path": "assets/test_animator_generate.png",
-            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/assets/test_animator_generate.png",
-            "folder": "assets",
-            "asset_kind": "texture",
-            "importer": "texture",
-            "labels": [],
-            "dependencies": [],
-            "has_meta": true,
-            "import_status": "ready",
-            "last_seen_mtime": 1774303091.8863595,
-            "reference": {
-                "guid": "ast_51cc7ac9b79a46be8b870561e7f3e331",
-                "path": "assets/test_animator_generate.png"
-            }
+            },
+            "referenced_by": [
+                "levels/platformer_test_scene.json"
+            ]
         },
         {
             "guid": "ast_4b39dcc9f7c84d3aaa435429284d42aa",
@@ -111,10 +108,15 @@
             "has_meta": true,
             "import_status": "ready",
             "last_seen_mtime": 1770831320.8688715,
+            "source_hash": "6ce00d75fef06b1c0c8484c1bb57c3434695ac6be17d58d1207056fb308352e8",
+            "import_settings_hash": "930c90b925eb3e9f670d4b90863b6105b624ab627aeb708f8cd82552ecbb8e8f",
             "reference": {
                 "guid": "ast_4b39dcc9f7c84d3aaa435429284d42aa",
                 "path": "assets/test_spritesheet.png"
-            }
+            },
+            "referenced_by": [
+                "levels/demo_level.json"
+            ]
         },
         {
             "guid": "ast_63ae5f26a1264f66b1486715352b1676",
@@ -130,10 +132,13 @@
             "has_meta": true,
             "import_status": "ready",
             "last_seen_mtime": 1774208775.3526359,
+            "source_hash": "92b6bbb0bbec251ab26c32ccbd4aa07e4b63c2fed84dac5926d020a6e606073c",
+            "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
             "reference": {
                 "guid": "ast_63ae5f26a1264f66b1486715352b1676",
                 "path": "levels/EscenaSuelo.json"
-            }
+            },
+            "referenced_by": []
         },
         {
             "guid": "ast_ca105968cf6d4d94bfe5d40e25a667b5",
@@ -145,14 +150,20 @@
             "asset_kind": "scene_data",
             "importer": "scene_data",
             "labels": [],
-            "dependencies": [],
+            "dependencies": [
+                "assets/images_1.png",
+                "assets/test_spritesheet.png"
+            ],
             "has_meta": true,
             "import_status": "ready",
             "last_seen_mtime": 1774178348.3300996,
+            "source_hash": "95de2ff0aea144bdee6e8429b2900e174d1d4c3791b95d140369b9e9a3c061e5",
+            "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
             "reference": {
                 "guid": "ast_ca105968cf6d4d94bfe5d40e25a667b5",
                 "path": "levels/demo_level.json"
-            }
+            },
+            "referenced_by": []
         },
         {
             "guid": "ast_0a1cfe5901b94d30b23b593639735daa",
@@ -168,10 +179,13 @@
             "has_meta": true,
             "import_status": "ready",
             "last_seen_mtime": 1774178348.331319,
+            "source_hash": "2ee45b01d46d8ee416a794fda45ce5edf85a928a40857d70ce5d877151ed534d",
+            "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
             "reference": {
                 "guid": "ast_0a1cfe5901b94d30b23b593639735daa",
                 "path": "levels/lol.json"
-            }
+            },
+            "referenced_by": []
         },
         {
             "guid": "ast_597251e8033d45e7ad42d229973f763f",
@@ -183,14 +197,21 @@
             "asset_kind": "scene_data",
             "importer": "scene_data",
             "labels": [],
-            "dependencies": [],
+            "dependencies": [
+                "levels/platformer_test_scene.json"
+            ],
             "has_meta": true,
             "import_status": "ready",
             "last_seen_mtime": 1774178348.3337252,
+            "source_hash": "606a2be438e23b2611ad2b84de08e65419ac60fdb68fddcfcb537e1e1f9c4b1c",
+            "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
             "reference": {
                 "guid": "ast_597251e8033d45e7ad42d229973f763f",
                 "path": "levels/main_menu_scene.json"
-            }
+            },
+            "referenced_by": [
+                "levels/platformer_test_scene.json"
+            ]
         },
         {
             "guid": "ast_0a0f68b252014c979074814c28cd1c75",
@@ -202,14 +223,22 @@
             "asset_kind": "scene_data",
             "importer": "scene_data",
             "labels": [],
-            "dependencies": [],
+            "dependencies": [
+                "assets/images_3.png",
+                "levels/main_menu_scene.json"
+            ],
             "has_meta": true,
             "import_status": "ready",
             "last_seen_mtime": 1774178348.3348558,
+            "source_hash": "a8abb2744ca5e1b937362ab2cf306ebc0aef4b2789814a487b96dbda00793088",
+            "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
             "reference": {
                 "guid": "ast_0a0f68b252014c979074814c28cd1c75",
                 "path": "levels/platformer_test_scene.json"
-            }
+            },
+            "referenced_by": [
+                "levels/main_menu_scene.json"
+            ]
         },
         {
             "guid": "ast_cce65bdcbc634e99bf978b194dcb0675",
@@ -225,10 +254,13 @@
             "has_meta": true,
             "import_status": "ready",
             "last_seen_mtime": 1770832361.048399,
+            "source_hash": "08744d0ada2921034c8defe59389bbf1974493f5d424cd0387f6ad4655bae36b",
+            "import_settings_hash": "523830a9e675093e53983a28d15e46898df0bf5cc1dfb94129cd01d2fc33beab",
             "reference": {
                 "guid": "ast_cce65bdcbc634e99bf978b194dcb0675",
                 "path": "scripts/__init__.py"
-            }
+            },
+            "referenced_by": []
         },
         {
             "guid": "ast_3860b2b5a2f74411999e98b577ea9918",
@@ -244,10 +276,13 @@
             "has_meta": true,
             "import_status": "ready",
             "last_seen_mtime": 1770832386.22833,
+            "source_hash": "deb31e5d8ecc3911bf32ab2fc10dfd0ed76ab7320ba018b49e250ec5c89e5c93",
+            "import_settings_hash": "523830a9e675093e53983a28d15e46898df0bf5cc1dfb94129cd01d2fc33beab",
             "reference": {
                 "guid": "ast_3860b2b5a2f74411999e98b577ea9918",
                 "path": "scripts/example_script.py"
-            }
+            },
+            "referenced_by": []
         },
         {
             "guid": "ast_1dfc9299941948a0b23fde950616951e",
@@ -263,10 +298,13 @@
             "has_meta": true,
             "import_status": "ready",
             "last_seen_mtime": 1774178348.3397293,
+            "source_hash": "b11a47e597b30166d54d19cf6fa29f64d0b8e686f2f1fe0957fcef32a13f6f26",
+            "import_settings_hash": "523830a9e675093e53983a28d15e46898df0bf5cc1dfb94129cd01d2fc33beab",
             "reference": {
                 "guid": "ast_1dfc9299941948a0b23fde950616951e",
                 "path": "scripts/main_menu_controller.py"
-            }
+            },
+            "referenced_by": []
         },
         {
             "guid": "ast_7e176944aca447dfb85cac00bc23db9e",
@@ -282,10 +320,13 @@
             "has_meta": true,
             "import_status": "ready",
             "last_seen_mtime": 1774178348.340738,
+            "source_hash": "d16c37dad24b5a798cbd43f7f55a5d1bcde2a8367ad1f792b08e871dd97ccd99",
+            "import_settings_hash": "523830a9e675093e53983a28d15e46898df0bf5cc1dfb94129cd01d2fc33beab",
             "reference": {
                 "guid": "ast_7e176944aca447dfb85cac00bc23db9e",
                 "path": "scripts/platformer_character.py"
-            }
+            },
+            "referenced_by": []
         },
         {
             "guid": "ast_8a1b91c96c7046e8a0b6fbfbd4011ab8",
@@ -301,10 +342,13 @@
             "has_meta": true,
             "import_status": "ready",
             "last_seen_mtime": 1774178348.3417425,
+            "source_hash": "0fb1eea751bd5826f4fe4e6297d317041f393dfbbba5c81d5b6090224cab9fcd",
+            "import_settings_hash": "523830a9e675093e53983a28d15e46898df0bf5cc1dfb94129cd01d2fc33beab",
             "reference": {
                 "guid": "ast_8a1b91c96c7046e8a0b6fbfbd4011ab8",
                 "path": "scripts/player_movement_generated.py"
-            }
+            },
+            "referenced_by": []
         }
     ]
 }

@@ -49,7 +49,13 @@ class Collider(Component):
         height: float = 32.0,
         offset_x: float = 0.0,
         offset_y: float = 0.0,
-        is_trigger: bool = False
+        is_trigger: bool = False,
+        shape_type: str = "box",
+        radius: float = 16.0,
+        points: list[list[float]] | None = None,
+        friction: float = 0.2,
+        restitution: float = 0.0,
+        density: float = 1.0,
     ) -> None:
         """
         Inicializa el Collider.
@@ -67,6 +73,12 @@ class Collider(Component):
         self.offset_x: float = offset_x
         self.offset_y: float = offset_y
         self.is_trigger: bool = is_trigger
+        self.shape_type: str = str(shape_type or "box")
+        self.radius: float = radius
+        self.points: list[list[float]] = [list(point) for point in (points or [])]
+        self.friction: float = friction
+        self.restitution: float = restitution
+        self.density: float = density
     
     def get_bounds(self, x: float, y: float) -> tuple[float, float, float, float]:
         """
@@ -101,7 +113,13 @@ class Collider(Component):
             "height": self.height,
             "offset_x": self.offset_x,
             "offset_y": self.offset_y,
-            "is_trigger": self.is_trigger
+            "is_trigger": self.is_trigger,
+            "shape_type": self.shape_type,
+            "radius": self.radius,
+            "points": [list(point) for point in self.points],
+            "friction": self.friction,
+            "restitution": self.restitution,
+            "density": self.density,
         }
     
     @classmethod
@@ -112,7 +130,13 @@ class Collider(Component):
             height=data.get("height", 32.0),
             offset_x=data.get("offset_x", 0.0),
             offset_y=data.get("offset_y", 0.0),
-            is_trigger=data.get("is_trigger", False)
+            is_trigger=data.get("is_trigger", False),
+            shape_type=data.get("shape_type", "box"),
+            radius=data.get("radius", data.get("width", 32.0) / 2),
+            points=data.get("points", []),
+            friction=data.get("friction", 0.2),
+            restitution=data.get("restitution", 0.0),
+            density=data.get("density", 1.0),
         )
         component.enabled = data.get("enabled", True)
         return component

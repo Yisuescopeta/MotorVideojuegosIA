@@ -1,0 +1,32 @@
+{
+    "version": 1,
+    "guid": "ast_4b39dcc9f7c84d3aaa435429284d42aa",
+    "path": "assets/test_spritesheet.png",
+    "asset_kind": "texture",
+    "importer": "texture",
+    "source_hash": "6ce00d75fef06b1c0c8484c1bb57c3434695ac6be17d58d1207056fb308352e8",
+    "import_settings_hash": "930c90b925eb3e9f670d4b90863b6105b624ab627aeb708f8cd82552ecbb8e8f",
+    "dependencies": [],
+    "metadata": {
+        "guid": "ast_4b39dcc9f7c84d3aaa435429284d42aa",
+        "source_path": "assets/test_spritesheet.png",
+        "path": "assets/test_spritesheet.png",
+        "asset_kind": "texture",
+        "importer": "texture",
+        "labels": [],
+        "dependencies": [],
+        "import_settings": {
+            "asset_type": "sprite_sheet",
+            "import_mode": "grid",
+            "grid": {},
+            "automatic": {},
+            "slices": []
+        },
+        "asset_type": "sprite_sheet",
+        "import_mode": "grid",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "source_size_bytes": 781
+}

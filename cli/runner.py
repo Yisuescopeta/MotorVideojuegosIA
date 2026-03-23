@@ -30,6 +30,7 @@ from engine.systems.script_behaviour_system import ScriptBehaviourSystem
 from engine.inspector.inspector_system import InspectorSystem
 from engine.systems.selection_system import SelectionSystem
 from engine.project.project_service import ProjectService
+from engine.debug.golden_run import capture_headless_run, compare_golden_runs, load_golden_run, write_golden_run
 
 
 class CLIRunner:
@@ -76,6 +77,8 @@ class CLIRunner:
         game.set_inspector_system(inspector_system)
         game.set_event_bus(event_bus)
         game.set_selection_system(selection_system)
+        if getattr(args, "seed", None) is not None:
+            game.set_seed(args.seed)
         
         # 3. Cargar nivel inicial si se especifica
         if hasattr(args, 'level') and args.level:
@@ -111,11 +114,30 @@ class CLIRunner:
         # 5. Si no hay script, tal vez solo ejecutar N frames
         if hasattr(args, 'frames') and args.frames > 0:
             print(f"[INFO] Ejecutando {args.frames} frames...")
-            game.headless_running = True
-            for i in range(args.frames):
-                game.step_frame()
-                if i % 60 == 0:
-                    print(f"Frame {i}/{args.frames}")
+            if getattr(args, "golden_output", "") or getattr(args, "golden_compare", ""):
+                report = capture_headless_run(
+                    game,
+                    frames=args.frames,
+                    capture_every=max(1, int(getattr(args, "capture_every", 1))),
+                )
+                if getattr(args, "golden_output", ""):
+                    write_golden_run(report, args.golden_output)
+                    print(f"[INFO] Golden run guardado en: {args.golden_output}")
+                if getattr(args, "golden_compare", ""):
+                    expected = load_golden_run(args.golden_compare)
+                    mismatches = compare_golden_runs(expected, report)
+                    if mismatches:
+                        print("[ERROR] Golden run mismatch:")
+                        for mismatch in mismatches:
+                            print(f" - {mismatch}")
+                        sys.exit(1)
+                    print("[INFO] Golden run coincide con el baseline esperado.")
+            else:
+                game.headless_running = True
+                for i in range(args.frames):
+                    game.step_frame()
+                    if i % 60 == 0:
+                        print(f"Frame {i}/{args.frames}")
             print("[INFO] Finalizado.")
             return
             

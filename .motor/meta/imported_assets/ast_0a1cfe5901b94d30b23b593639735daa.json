@@ -1,0 +1,32 @@
+{
+    "version": 1,
+    "guid": "ast_0a1cfe5901b94d30b23b593639735daa",
+    "path": "levels/lol.json",
+    "asset_kind": "scene_data",
+    "importer": "scene_data",
+    "source_hash": "2ee45b01d46d8ee416a794fda45ce5edf85a928a40857d70ce5d877151ed534d",
+    "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
+    "dependencies": [],
+    "metadata": {
+        "guid": "ast_0a1cfe5901b94d30b23b593639735daa",
+        "source_path": "levels/lol.json",
+        "path": "levels/lol.json",
+        "asset_kind": "scene_data",
+        "importer": "scene_data",
+        "labels": [],
+        "dependencies": [],
+        "import_settings": {
+            "asset_type": "scene_data",
+            "import_mode": "raw",
+            "grid": {},
+            "automatic": {},
+            "slices": []
+        },
+        "asset_type": "scene_data",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "source_size_bytes": 1024
+}

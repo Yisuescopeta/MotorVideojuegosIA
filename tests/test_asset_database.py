@@ -233,6 +233,63 @@ class AssetDatabaseTests(unittest.TestCase):
         self.assertIsNotNone(entry)
         self.assertEqual(entry["path"], "assets/player.png")
 
+    def test_catalog_infers_scene_and_prefab_dependencies_and_reverse_references(self) -> None:
+        self._write_png("assets/player.png")
+        self._write_script("scripts/brain.py")
+        self._write_prefab("prefabs/enemy.prefab")
+        self._write_level(
+            "levels/deps.json",
+            [
+                {
+                    "name": "Player",
+                    "components": {
+                        "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                        "Sprite": {"enabled": True, "texture_path": "assets/player.png"},
+                        "ScriptBehaviour": {"enabled": True, "module_path": "brain", "script": {"path": "scripts/brain.py", "guid": ""}, "public_data": {}},
+                    },
+                    "prefab_instance": {"prefab_path": "prefabs/enemy.prefab", "root_name": "Enemy", "overrides": {}},
+                }
+            ],
+        )
+
+        catalog = self.asset_service.refresh_catalog()
+        by_path = {item["path"]: item for item in catalog["assets"]}
+
+        self.assertIn("assets/player.png", by_path["levels/deps.json"]["dependencies"])
+        self.assertIn("scripts/brain.py", by_path["levels/deps.json"]["dependencies"])
+        self.assertIn("prefabs/enemy.prefab", by_path["levels/deps.json"]["dependencies"])
+        self.assertIn("levels/deps.json", by_path["assets/player.png"]["referenced_by"])
+
+    def test_build_asset_artifacts_uses_hashes_and_cache_hits(self) -> None:
+        self._write_png("assets/player.png")
+        self.asset_service.refresh_catalog()
+
+        first = self.asset_service.build_asset_artifacts()
+        artifact = next(item for item in first["artifacts"] if item["path"] == "assets/player.png")
+        self.assertFalse(artifact["cache_hit"])
+
+        second = self.asset_service.build_asset_artifacts()
+        artifact_second = next(item for item in second["artifacts"] if item["path"] == "assets/player.png")
+        self.assertTrue(artifact_second["cache_hit"])
+
+        metadata = self.asset_service.load_metadata("assets/player.png")
+        metadata["import_settings"]["compression"] = "none"
+        self.asset_service.save_metadata("assets/player.png", metadata)
+        third = self.asset_service.build_asset_artifacts()
+        artifact_third = next(item for item in third["artifacts"] if item["path"] == "assets/player.png")
+        self.assertFalse(artifact_third["cache_hit"])
+
+    def test_bundle_report_is_generated_with_top_assets(self) -> None:
+        self._write_png("assets/player.png")
+        self._write_script("scripts/brain.py")
+        self.asset_service.refresh_catalog()
+
+        report = self.asset_service.create_bundle()
+
+        self.assertTrue(Path(report["bundle_path"]).exists())
+        self.assertGreaterEqual(report["asset_count"], 2)
+        self.assertTrue(report["top_assets_by_size"])
+
 
 if __name__ == "__main__":
     unittest.main()

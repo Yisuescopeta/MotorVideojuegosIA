@@ -1,0 +1,32 @@
+{
+    "version": 1,
+    "guid": "ast_8a1b91c96c7046e8a0b6fbfbd4011ab8",
+    "path": "scripts/player_movement_generated.py",
+    "asset_kind": "script",
+    "importer": "script",
+    "source_hash": "0fb1eea751bd5826f4fe4e6297d317041f393dfbbba5c81d5b6090224cab9fcd",
+    "import_settings_hash": "523830a9e675093e53983a28d15e46898df0bf5cc1dfb94129cd01d2fc33beab",
+    "dependencies": [],
+    "metadata": {
+        "guid": "ast_8a1b91c96c7046e8a0b6fbfbd4011ab8",
+        "source_path": "scripts/player_movement_generated.py",
+        "path": "scripts/player_movement_generated.py",
+        "asset_kind": "script",
+        "importer": "script",
+        "labels": [],
+        "dependencies": [],
+        "import_settings": {
+            "asset_type": "script",
+            "import_mode": "raw",
+            "grid": {},
+            "automatic": {},
+            "slices": []
+        },
+        "asset_type": "script",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "source_size_bytes": 1068
+}

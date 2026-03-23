@@ -61,6 +61,7 @@ class RigidBody(Component):
         freeze_x: bool = False,
         freeze_y: bool = False,
         use_full_kinematic_contacts: bool = False,
+        collision_detection_mode: str = "discrete",
         constraints: list[str] | None = None,
     ) -> None:
         """
@@ -87,6 +88,7 @@ class RigidBody(Component):
         self.freeze_y: bool = freeze_y
         self.constraints: list[str] = self.constraints_from_freeze(self.freeze_x, self.freeze_y)
         self.use_full_kinematic_contacts: bool = use_full_kinematic_contacts
+        self.collision_detection_mode: str = str(collision_detection_mode or "discrete")
     
     def to_dict(self) -> dict[str, Any]:
         """Serializa el RigidBody a diccionario."""
@@ -103,6 +105,7 @@ class RigidBody(Component):
             "freeze_y": self.freeze_y,
             "constraints": list(self.constraints),
             "use_full_kinematic_contacts": self.use_full_kinematic_contacts,
+            "collision_detection_mode": self.collision_detection_mode,
         }
     
     @classmethod
@@ -119,6 +122,7 @@ class RigidBody(Component):
             freeze_x=data.get("freeze_x", False),
             freeze_y=data.get("freeze_y", False),
             use_full_kinematic_contacts=data.get("use_full_kinematic_contacts", False),
+            collision_detection_mode=data.get("collision_detection_mode", "discrete"),
             constraints=data.get("constraints") if not has_explicit_freeze else None,
         )
         component.enabled = data.get("enabled", True)

@@ -8,6 +8,8 @@ import copy
 from pathlib import Path
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
+from engine.serialization.schema import migrate_scene_data
+
 if TYPE_CHECKING:
     from engine.ecs.world import World
     from engine.levels.component_registry import ComponentRegistry
@@ -18,12 +20,14 @@ class Scene:
 
     def __init__(self, name: str = "Untitled", data: Optional[Dict[str, Any]] = None, source_path: Optional[str] = None) -> None:
         self._name: str = name
-        self._data: Dict[str, Any] = data or {
+        initial_data = data or {
             "name": name,
+            "schema_version": 1,
             "entities": [],
             "rules": [],
             "feature_metadata": {},
         }
+        self._data: Dict[str, Any] = migrate_scene_data(initial_data)
         self._data.setdefault("name", name)
         self._data.setdefault("entities", [])
         self._data.setdefault("rules", [])
@@ -231,7 +235,7 @@ class Scene:
         return None
 
     def to_dict(self) -> Dict[str, Any]:
-        return copy.deepcopy(self._data)
+        return migrate_scene_data(copy.deepcopy(self._data))
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any], source_path: Optional[str] = None) -> "Scene":

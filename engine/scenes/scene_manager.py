@@ -6,10 +6,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from engine.authoring.changes import Change
 from engine.components.recttransform import RectTransform
 from engine.components.transform import Transform
 from engine.editor.console_panel import log_err, log_info, log_warn
 from engine.scenes.scene import Scene
+from engine.serialization.schema import migrate_scene_data, validate_scene_data
 
 if TYPE_CHECKING:
     from engine.ecs.world import World
@@ -43,6 +45,8 @@ class SceneManager:
         self._entries: dict[str, SceneWorkspaceEntry] = {}
         self._active_scene_key: str = ""
         self._history: Any = None
+        self._suspend_history: bool = False
+        self._active_transaction: dict[str, Any] | None = None
         self._untitled_counter: int = 1
         self._clipboard: list[dict[str, Any]] = []
         self._clipboard_root_name: str = ""
@@ -150,6 +154,10 @@ class SceneManager:
         self._clipboard_root_name = ""
 
     def load_scene(self, data: Dict[str, Any], source_path: Optional[str] = None, activate: bool = True) -> "World":
+        data = migrate_scene_data(data)
+        validation_errors = validate_scene_data(data)
+        if validation_errors:
+            raise ValueError(f"Invalid scene payload: {'; '.join(validation_errors)}")
         key = self._build_scene_key(source_path, data.get("name", "Untitled"))
         entry = SceneWorkspaceEntry(key=key, scene=Scene.from_dict(copy.deepcopy(data), source_path=source_path))
         self._sync_scene_links_from_feature_metadata(entry)
@@ -515,8 +523,11 @@ class SceneManager:
             # Saving should always serialize the live edit world so legacy
             # fields normalize into the canonical asset-reference shape.
             self._sync_entry_from_edit_world(entry)
-            data = entry.scene.to_dict()
+            data = migrate_scene_data(entry.scene.to_dict())
             data["name"] = entry.scene.name
+            validation_errors = validate_scene_data(data)
+            if validation_errors:
+                raise ValueError("; ".join(validation_errors))
             with open(path, "w", encoding="utf-8") as handle:
                 json.dump(data, handle, indent=4)
             entry.scene = Scene(data["name"], data, source_path=path)
@@ -690,6 +701,74 @@ class SceneManager:
         for entry in self._entries.values():
             entry.dirty = False
 
+    def begin_transaction(self, label: str = "transaction", key: Optional[str] = None) -> bool:
+        entry = self._resolve_entry(key)
+        if entry is None or entry.is_playing or self._active_transaction is not None:
+            return False
+        self._active_transaction = {
+            "label": label,
+            "key": entry.key,
+            "before": copy.deepcopy(entry.scene.to_dict()),
+            "changes": [],
+        }
+        self._suspend_history = True
+        return True
+
+    def apply_change(self, change: Change | dict[str, Any], key: Optional[str] = None) -> bool:
+        payload = change if isinstance(change, Change) else Change.from_dict(change)
+        if payload.kind == "edit_component":
+            success = self.apply_edit_to_world(payload.entity, payload.component, payload.field, payload.value)
+        elif payload.kind == "set_entity_property":
+            success = self.update_entity_property(payload.entity, payload.field, payload.value)
+        elif payload.kind == "add_component":
+            success = self.add_component_to_entity(payload.entity, payload.component, payload.data)
+        elif payload.kind == "remove_component":
+            success = self.remove_component_from_entity(payload.entity, payload.component)
+        elif payload.kind == "create_entity":
+            success = self.create_entity(payload.entity, payload.data.get("components"))
+        elif payload.kind == "delete_entity":
+            success = self.remove_entity(payload.entity)
+        else:
+            success = False
+        if success and self._active_transaction is not None:
+            self._active_transaction["changes"].append(payload.to_dict())
+        return success
+
+    def commit_transaction(self) -> Optional[Dict[str, Any]]:
+        if self._active_transaction is None:
+            return None
+        transaction = self._active_transaction
+        entry = self._resolve_entry(transaction["key"])
+        if entry is None:
+            self._active_transaction = None
+            self._suspend_history = False
+            return None
+        after = copy.deepcopy(entry.scene.to_dict())
+        label = str(transaction["label"])
+        key = str(transaction["key"])
+        if self._history is not None and transaction["before"] != after:
+            self._history.push(
+                label=label,
+                undo=lambda key=key, before=transaction["before"]: self._restore_scene_data_for_key(key, before),
+                redo=lambda key=key, after=after: self._restore_scene_data_for_key(key, after),
+            )
+        result = {
+            "label": label,
+            "scene_key": key,
+            "changes": copy.deepcopy(transaction["changes"]),
+        }
+        self._active_transaction = None
+        self._suspend_history = False
+        return result
+
+    def rollback_transaction(self) -> bool:
+        if self._active_transaction is None:
+            return False
+        transaction = self._active_transaction
+        self._active_transaction = None
+        self._suspend_history = False
+        return self._restore_scene_data_for_key(str(transaction["key"]), copy.deepcopy(transaction["before"]))
+
     def get_scene_flow(self) -> Dict[str, str]:
         entry = self._get_active_entry()
         if entry is None:
@@ -782,7 +861,7 @@ class SceneManager:
         return True
 
     def _record_scene_change(self, entry: SceneWorkspaceEntry, label: str, before: Dict[str, Any]) -> None:
-        if self._history is None:
+        if self._history is None or self._suspend_history:
             return
         after = copy.deepcopy(entry.scene.to_dict())
         key = entry.key
@@ -839,10 +918,18 @@ class SceneManager:
         root_scene_data = entry.scene.find_entity(entity.prefab_root_name)
         if root_scene_data is None or "prefab_instance" not in root_scene_data:
             return False
-        overrides = root_scene_data["prefab_instance"].setdefault("overrides", {})
-        path_override = overrides.setdefault(entity.prefab_source_path or "", {})
-        component_override = path_override.setdefault("components", {}).setdefault(component_name, {})
-        component_override[property_name] = value
+        overrides = self._ensure_prefab_override_ops(root_scene_data)
+        self._upsert_prefab_override_operation(
+            overrides,
+            {
+                "op": "set_field",
+                "target": entity.prefab_source_path or "",
+                "component": component_name,
+                "field": property_name,
+                "value": copy.deepcopy(value),
+            },
+            match_keys=("op", "target", "component", "field"),
+        )
         return True
 
     def _update_prefab_entity_override(self, entry: SceneWorkspaceEntry, entity_name: str, property_name: str, value: Any) -> bool:
@@ -854,8 +941,17 @@ class SceneManager:
         root_scene_data = entry.scene.find_entity(entity.prefab_root_name)
         if root_scene_data is None or "prefab_instance" not in root_scene_data:
             return False
-        overrides = root_scene_data["prefab_instance"].setdefault("overrides", {})
-        overrides.setdefault(entity.prefab_source_path or "", {})[property_name] = value
+        overrides = self._ensure_prefab_override_ops(root_scene_data)
+        self._upsert_prefab_override_operation(
+            overrides,
+            {
+                "op": "set_entity_property",
+                "target": entity.prefab_source_path or "",
+                "field": property_name,
+                "value": copy.deepcopy(value),
+            },
+            match_keys=("op", "target", "field"),
+        )
         return True
 
     def _replace_prefab_component_override(self, entry: SceneWorkspaceEntry, entity_name: str, component_name: str, component_data: Dict[str, Any]) -> bool:
@@ -867,9 +963,17 @@ class SceneManager:
         root_scene_data = entry.scene.find_entity(entity.prefab_root_name)
         if root_scene_data is None or "prefab_instance" not in root_scene_data:
             return False
-        overrides = root_scene_data["prefab_instance"].setdefault("overrides", {})
-        path_override = overrides.setdefault(entity.prefab_source_path or "", {})
-        path_override.setdefault("components", {})[component_name] = copy.deepcopy(component_data)
+        overrides = self._ensure_prefab_override_ops(root_scene_data)
+        self._upsert_prefab_override_operation(
+            overrides,
+            {
+                "op": "replace_component",
+                "target": entity.prefab_source_path or "",
+                "component": component_name,
+                "data": copy.deepcopy(component_data),
+            },
+            match_keys=("op", "target", "component"),
+        )
         return True
 
     def _remove_prefab_component_override(self, entry: SceneWorkspaceEntry, entity_name: str, component_name: str) -> bool:
@@ -881,11 +985,90 @@ class SceneManager:
         root_scene_data = entry.scene.find_entity(entity.prefab_root_name)
         if root_scene_data is None or "prefab_instance" not in root_scene_data:
             return False
-        components_override = root_scene_data["prefab_instance"].setdefault("overrides", {}).setdefault(entity.prefab_source_path or "", {}).setdefault("components", {})
-        if component_name not in components_override:
-            return False
-        del components_override[component_name]
+        overrides = self._ensure_prefab_override_ops(root_scene_data)
+        self._remove_prefab_override_operations(
+            overrides,
+            target=entity.prefab_source_path or "",
+            component=component_name,
+        )
+        overrides.setdefault("operations", []).append(
+            {
+                "op": "remove_component",
+                "target": entity.prefab_source_path or "",
+                "component": component_name,
+            }
+        )
         return True
+
+    def _ensure_prefab_override_ops(self, root_scene_data: Dict[str, Any]) -> Dict[str, Any]:
+        prefab_instance = root_scene_data.setdefault("prefab_instance", {})
+        overrides = prefab_instance.setdefault("overrides", {})
+        if "operations" in overrides:
+            return overrides
+        operations: list[dict[str, Any]] = []
+        for target_path, payload in list(overrides.items()):
+            if not isinstance(payload, dict):
+                continue
+            for field_name in ("active", "tag", "layer", "parent"):
+                if field_name in payload:
+                    operations.append(
+                        {
+                            "op": "set_entity_property",
+                            "target": target_path,
+                            "field": field_name,
+                            "value": copy.deepcopy(payload[field_name]),
+                        }
+                    )
+            components = payload.get("components", {})
+            if isinstance(components, dict):
+                for component_name, component_payload in components.items():
+                    operations.append(
+                        {
+                            "op": "replace_component",
+                            "target": target_path,
+                            "component": component_name,
+                            "data": copy.deepcopy(component_payload),
+                        }
+                    )
+        prefab_instance["overrides"] = {"operations": operations}
+        return prefab_instance["overrides"]
+
+    def _upsert_prefab_override_operation(
+        self,
+        overrides: Dict[str, Any],
+        operation: Dict[str, Any],
+        *,
+        match_keys: tuple[str, ...],
+    ) -> None:
+        operations = overrides.setdefault("operations", [])
+        for index, existing in enumerate(operations):
+            if not isinstance(existing, dict):
+                continue
+            if all(existing.get(key) == operation.get(key) for key in match_keys):
+                operations[index] = operation
+                return
+        operations.append(operation)
+
+    def _remove_prefab_override_operations(
+        self,
+        overrides: Dict[str, Any],
+        *,
+        target: str,
+        component: str | None = None,
+    ) -> None:
+        operations = overrides.setdefault("operations", [])
+        filtered = []
+        for operation in operations:
+            if not isinstance(operation, dict):
+                filtered.append(operation)
+                continue
+            if operation.get("target") != target:
+                filtered.append(operation)
+                continue
+            if component is not None and operation.get("component") != component:
+                filtered.append(operation)
+                continue
+        overrides["operations"] = filtered
 
     def _sync_feature_metadata_from_scene_links(self, entry: SceneWorkspaceEntry) -> None:
         scene_flow = self.get_scene_flow() if entry.key == self._active_scene_key else {}

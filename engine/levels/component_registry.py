@@ -86,16 +86,20 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.audiosource import AudioSource
     from engine.components.animator import Animator
     from engine.components.camera2d import Camera2D
+    from engine.components.charactercontroller2d import CharacterController2D
     from engine.components.canvas import Canvas
     from engine.components.collider import Collider
     from engine.components.inputmap import InputMap
+    from engine.components.joint2d import Joint2D
     from engine.components.playercontroller2d import PlayerController2D
     from engine.components.recttransform import RectTransform
     from engine.components.renderorder2d import RenderOrder2D
+    from engine.components.renderstyle2d import RenderStyle2D
     from engine.components.rigidbody import RigidBody
     from engine.components.scene_link import SceneLink
     from engine.components.scriptbehaviour import ScriptBehaviour
     from engine.components.sprite import Sprite
+    from engine.components.tilemap import Tilemap
     from engine.components.transform import Transform
     from engine.components.uibutton import UIButton
     from engine.components.uitext import UIText
@@ -104,6 +108,8 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("Transform", Transform)
     registry.register("Sprite", Sprite)
     registry.register("Collider", Collider)
+    registry.register("CharacterController2D", CharacterController2D)
+    registry.register("Joint2D", Joint2D)
     registry.register("RigidBody", RigidBody)
     registry.register("Animator", Animator)
     registry.register("Camera2D", Camera2D)
@@ -111,8 +117,10 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("InputMap", InputMap)
     registry.register("PlayerController2D", PlayerController2D)
     registry.register("RenderOrder2D", RenderOrder2D)
+    registry.register("RenderStyle2D", RenderStyle2D)
     registry.register("SceneLink", SceneLink)
     registry.register("ScriptBehaviour", ScriptBehaviour)
+    registry.register("Tilemap", Tilemap)
     registry.register("Canvas", Canvas)
     registry.register("RectTransform", RectTransform)
     registry.register("UIText", UIText)
