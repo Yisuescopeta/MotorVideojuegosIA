@@ -27,13 +27,18 @@ class RenderSystem:
     PLACEHOLDER_HEIGHT: int = 32
     PLACEHOLDER_COLOR = rl.SKYBLUE
 
-    DEBUG_DRAW_COLLIDERS: bool = True
+    DEBUG_DRAW_COLLIDERS: bool = False
 
     def __init__(self) -> None:
         self._texture_manager: TextureManager = TextureManager()
         self._project_service: Any = None
         self._asset_service: AssetService | None = None
         self._asset_resolver: Any = None
+        self.debug_draw_colliders: bool = self.DEBUG_DRAW_COLLIDERS
+        self.debug_draw_labels: bool = False
+        self._sorted_entities_cache_key: tuple[int, int, tuple[str, ...]] | None = None
+        self._sorted_entities_cache: list[Entity] = []
+        self._last_rendered_entities: int = 0
 
     def set_project_service(self, project_service: Any) -> None:
         self._project_service = project_service
@@ -42,6 +47,15 @@ class RenderSystem:
 
     def reset_project_resources(self) -> None:
         self._texture_manager.unload_all()
+
+    def set_debug_options(self, *, draw_colliders: bool | None = None, draw_labels: bool | None = None) -> None:
+        if draw_colliders is not None:
+            self.debug_draw_colliders = bool(draw_colliders)
+        if draw_labels is not None:
+            self.debug_draw_labels = bool(draw_labels)
+
+    def get_last_render_stats(self) -> dict[str, int]:
+        return {"render_entities": self._last_rendered_entities}
 
     def render(
         self,
@@ -56,12 +70,14 @@ class RenderSystem:
         if camera is not None:
             rl.begin_mode_2d(camera)
 
-        for entity in self._sorted_render_entities(world):
+        sorted_entities = self._sorted_render_entities(world)
+        self._last_rendered_entities = len(sorted_entities)
+        for entity in sorted_entities:
             transform = entity.get_component(Transform)
             if transform is None:
                 continue
             self._render_entity(entity, transform)
-            if self.DEBUG_DRAW_COLLIDERS:
+            if self.debug_draw_colliders:
                 collider = entity.get_component(Collider)
                 if collider is not None and collider.enabled:
                     self._draw_collider(transform, collider)
@@ -75,8 +91,12 @@ class RenderSystem:
             rl.end_mode_2d()
 
     def _sorted_render_entities(self, world: World) -> list[Entity]:
-        entities = world.get_entities_with(Transform)
         sorting_layers = world.feature_metadata.get("render_2d", {}).get("sorting_layers", ["Default"])
+        cache_key = (id(world), int(getattr(world, "version", -1)), tuple(str(layer) for layer in sorting_layers))
+        if self._sorted_entities_cache_key == cache_key:
+            return self._sorted_entities_cache
+
+        entities = world.get_entities_with(Transform)
         sorting_index = {name: index for index, name in enumerate(sorting_layers)}
 
         def sort_key(entity: Entity) -> tuple[int, int, int, int]:
@@ -88,7 +108,9 @@ class RenderSystem:
             depth = transform.depth if transform is not None else 0
             return (layer_index, order_in_layer, depth, entity.id)
 
-        return sorted(entities, key=sort_key)
+        self._sorted_entities_cache = sorted(entities, key=sort_key)
+        self._sorted_entities_cache_key = cache_key
+        return self._sorted_entities_cache
 
     def _build_camera_from_world(
         self,
@@ -206,11 +228,6 @@ class RenderSystem:
         if sprite is not None and sprite.enabled:
             if sprite.width > 0:
                 width = sprite.width
-            elif sprite.texture_path:
-                texture = self._load_texture(sprite.get_texture_reference(), sprite.texture_path, sync_callback=sprite.sync_texture_reference)
-                if texture.id != 0:
-                    width = texture.width
-                    height = texture.height
             if sprite.height > 0:
                 height = sprite.height
             offset_x = sprite.origin_x
@@ -240,7 +257,8 @@ class RenderSystem:
         alpha = int(150 + (pulse / 255) * 100)
         color = rl.Color(255, 255, 0, alpha)
         rl.draw_rectangle_lines_ex(rl.Rectangle(left, top, width, height), 2, color)
-        rl.draw_text(entity.name, int(left), int(top - 20), 10, rl.YELLOW)
+        if self.debug_draw_labels:
+            rl.draw_text(entity.name, int(left), int(top - 20), 10, rl.YELLOW)
 
     def _render_entity(self, entity: Entity, transform: Transform) -> None:
         animator = entity.get_component(Animator)
@@ -280,8 +298,9 @@ class RenderSystem:
             source_rect = rl.Rectangle(src_x, src_y, src_w, src_h)
         dest_rect = rl.Rectangle(dest_x, dest_y, dest_w, dest_h)
         rl.draw_texture_pro(texture, source_rect, dest_rect, rl.Vector2(0, 0), transform.rotation, rl.WHITE)
-        state_text = f"{animator.current_state}[{animator.current_frame}]"
-        rl.draw_text(state_text, int(dest_x), int(dest_y - 15), 10, rl.YELLOW)
+        if self.debug_draw_labels:
+            state_text = f"{animator.current_state}[{animator.current_frame}]"
+            rl.draw_text(state_text, int(dest_x), int(dest_y - 15), 10, rl.YELLOW)
 
     def _draw_sprite(self, transform: Transform, sprite: Sprite) -> None:
         texture = self._load_texture(sprite.get_texture_reference(), sprite.texture_path, sync_callback=sprite.sync_texture_reference)
@@ -308,7 +327,8 @@ class RenderSystem:
         rect_x = int(transform.x - width / 2)
         rect_y = int(transform.y - height / 2)
         rl.draw_rectangle(rect_x, rect_y, width, height, self.PLACEHOLDER_COLOR)
-        rl.draw_text(name, rect_x, rect_y - 15, 10, rl.WHITE)
+        if self.debug_draw_labels:
+            rl.draw_text(name, rect_x, rect_y - 15, 10, rl.WHITE)
 
     def _draw_collider(self, transform: Transform, collider: Collider) -> None:
         left, top, right, bottom = collider.get_bounds(transform.x, transform.y)

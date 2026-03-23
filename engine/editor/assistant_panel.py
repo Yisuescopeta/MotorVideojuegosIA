@@ -56,6 +56,9 @@ class AssistantPanel:
         self._worker_pending: Dict[str, Any] | None = None
         self._worker_result: Dict[str, Any] | None = None
         self._busy_label: str = ""
+        self._fit_cache: Dict[tuple[str, int, int], str] = {}
+        self._wrap_cache: Dict[tuple[str, int], List[str]] = {}
+        self._message_layout_cache: Dict[tuple[str, str, str, int], tuple[List[str], int]] = {}
 
     def set_api(self, api) -> None:
         self.api = api
@@ -220,14 +223,19 @@ class AssistantPanel:
         try:
             cursor_y = int(messages_rect.y + self.PADDING - self.scroll_offset)
             max_width = int(messages_rect.width - self.PADDING * 2)
+            visible_bottom = int(messages_rect.y + messages_rect.height)
             for entry in self.messages:
                 role = entry.get("role", "assistant")
                 kind = entry.get("kind", "text")
                 text = entry.get("content", "")
                 prefix = "You" if role == "user" else ("Plan" if kind == "plan" else "AI")
                 color = self.USER if role == "user" else (self.WARNING if kind == "question" else (self.TEXT_DIM if kind == "plan" else self.ASSISTANT))
-                wrapped = self._wrap_text(text, max_chars=max(18, max_width // 7))
-                box_height = 18 + len(wrapped) * 14 + 8
+                wrapped, box_height = self._get_message_layout(role, kind, text, max_width)
+                if cursor_y > visible_bottom:
+                    break
+                if cursor_y + box_height < messages_rect.y:
+                    cursor_y += box_height + 6
+                    continue
                 background = self.BG_LIGHT if role == "user" else (rl.Color(44, 46, 52, 255) if kind == "plan" else (self.BG_MID if kind != "question" else rl.Color(72, 58, 34, 255)))
                 rl.draw_rectangle(int(messages_rect.x + self.PADDING), cursor_y, max_width, box_height, background)
                 rl.draw_text(prefix, int(messages_rect.x + self.PADDING + 6), cursor_y + 4, 10, color)
@@ -398,6 +406,7 @@ class AssistantPanel:
         self.current_session_id = str(session.get("id", "") or self.current_session_id)
         self.messages = [dict(item) for item in session.get("messages", [])] or self.messages
         self.status_line = str(session.get("status", "Idle") or "Idle")
+        self._invalidate_text_caches()
         self._refresh_provider_info()
 
     def _toggle_model_picker(self) -> None:
@@ -554,12 +563,27 @@ class AssistantPanel:
         if not text or max_width <= 0:
             return ""
         text = str(text)
+        cache_key = (text, int(max_width), int(size))
+        cached = self._fit_cache.get(cache_key)
+        if cached is not None:
+            return cached
         if self._text_width(text, size) <= max_width:
+            self._fit_cache[cache_key] = text
             return text
-        trimmed = text
-        while trimmed and self._text_width(f"{trimmed}...", size) > max_width:
-            trimmed = trimmed[:-1]
-        return f"{trimmed}..." if trimmed else "..."
+
+        low = 0
+        high = len(text)
+        best = "..."
+        while low <= high:
+            mid = (low + high) // 2
+            candidate = f"{text[:mid]}..."
+            if self._text_width(candidate, size) <= max_width:
+                best = candidate
+                low = mid + 1
+            else:
+                high = mid - 1
+        self._fit_cache[cache_key] = best
+        return best
 
     def _text_width(self, text: str, size: int) -> int:
         measure = getattr(rl, "measure_text", None)
@@ -601,7 +625,12 @@ class AssistantPanel:
         ]
 
     def _wrap_text(self, text: str, max_chars: int) -> List[str]:
+        cache_key = (str(text or ""), int(max_chars))
+        cached = self._wrap_cache.get(cache_key)
+        if cached is not None:
+            return list(cached)
         if not text:
+            self._wrap_cache[cache_key] = [""]
             return [""]
         lines: List[str] = []
         for paragraph in text.replace("\r", "").split("\n"):
@@ -617,6 +646,7 @@ class AssistantPanel:
                     lines.append(current)
                     current = word
             lines.append(current)
+        self._wrap_cache[cache_key] = list(lines)
         return lines
 
     def _format_choice_label(self, value: str) -> str:
@@ -633,6 +663,7 @@ class AssistantPanel:
     def _append_local_message(self, role: str, content: str, kind: str = "text") -> None:
         self.messages.append({"role": role, "content": content, "kind": kind})
         self.scroll_offset = 0.0
+        self._invalidate_text_caches()
 
     def _start_background_call(self, busy_label: str, fn, **kwargs: Any) -> None:
         if self._is_busy():
@@ -727,3 +758,20 @@ class AssistantPanel:
         if risks:
             details.append("Risk: " + str(risks[0]))
         return details
+
+    def _get_message_layout(self, role: str, kind: str, text: str, max_width: int) -> tuple[List[str], int]:
+        max_chars = max(18, max_width // 7)
+        cache_key = (str(role), str(kind), str(text), int(max_chars))
+        cached = self._message_layout_cache.get(cache_key)
+        if cached is not None:
+            wrapped, box_height = cached
+            return list(wrapped), int(box_height)
+        wrapped = self._wrap_text(text, max_chars=max_chars)
+        box_height = 18 + len(wrapped) * 14 + 8
+        self._message_layout_cache[cache_key] = (list(wrapped), box_height)
+        return wrapped, box_height
+
+    def _invalidate_text_caches(self) -> None:
+        self._fit_cache.clear()
+        self._wrap_cache.clear()
+        self._message_layout_cache.clear()

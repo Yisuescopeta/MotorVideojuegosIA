@@ -22,6 +22,8 @@ WINDOW_TITLE: str = "Motor 2D - AI First Engine"
 WINDOW_WIDTH: int = 800
 WINDOW_HEIGHT: int = 600
 TARGET_FPS: int = 60
+ENGINE_VERSION: str = "2026.03"
+"""Version visible del editor/motor para asociar proyectos en el launcher."""
 
 # === FÍSICA ===
 GRAVITY_DEFAULT: float = 980.0

@@ -245,6 +245,10 @@ class EngineAPI:
             "parent": entity.parent_name,
             "prefab_instance": entity.prefab_instance,
             "components": components_data,
+            "component_metadata": {
+                comp_type.__name__: dict(entity.get_component_metadata(comp_type))
+                for comp_type in entity._components.keys()
+            },
         }
 
     def create_entity(self, name: str, components: Optional[Dict[str, Dict[str, Any]]] = None) -> ActionResult:
@@ -652,6 +656,95 @@ class EngineAPI:
             return {}
         return self.scene_manager.get_scene_flow()
 
+    def list_open_scenes(self) -> list[Dict[str, Any]]:
+        if self.scene_manager is None:
+            return []
+        return self.scene_manager.list_open_scenes()
+
+    def get_active_scene(self) -> Dict[str, Any]:
+        if self.scene_manager is None or self.scene_manager.current_scene is None:
+            return {}
+        return {
+            "key": self.scene_manager.active_scene_key,
+            "name": self.scene_manager.current_scene.name,
+            "path": self.scene_manager.current_scene.source_path or "",
+            "dirty": self.scene_manager.is_dirty,
+        }
+
+    def activate_scene(self, key_or_path: str) -> ActionResult:
+        if self.game is None:
+            return self._fail("Engine not initialized")
+        success = self.game._activate_scene_workspace_tab(self._resolve_scene_reference(key_or_path))
+        return self._ok("Scene activated", self.get_active_scene()) if success else self._fail("Scene activation failed")
+
+    def close_scene(self, key_or_path: str, discard_changes: bool = False) -> ActionResult:
+        if self.game is None or self.scene_manager is None:
+            return self._fail("Engine not initialized")
+        resolved_ref = self._resolve_scene_reference(key_or_path)
+        if not discard_changes:
+            entry = self.scene_manager._resolve_entry(resolved_ref)  # type: ignore[attr-defined]
+            if entry is not None and entry.dirty:
+                return self._fail("Scene has unsaved changes")
+        success = self.game._close_scene_workspace_tab(resolved_ref, discard_changes=discard_changes)
+        return self._ok("Scene closed", {"open_scenes": self.list_open_scenes()}) if success else self._fail("Scene close failed")
+
+    def save_scene(self, key_or_path: Optional[str] = None, path: Optional[str] = None) -> ActionResult:
+        if self.scene_manager is None:
+            return self._fail("SceneManager not ready")
+        target = self._resolve_scene_reference(key_or_path or self.scene_manager.active_scene_key)
+        entry = self.scene_manager._resolve_entry(target)  # type: ignore[attr-defined]
+        if entry is None:
+            return self._fail("Scene not found")
+        target_path = path or entry.source_path
+        if not target_path:
+            return self._fail("Scene has no save path")
+        success = self.scene_manager.save_scene_to_file(target_path, key=entry.key)
+        if not success:
+            return self._fail("Scene save failed")
+        if self.game is not None:
+            self.game._sync_scene_workspace_ui(apply_view_state=True)
+        return self._ok("Scene saved", {"path": target_path, "scene": self.get_active_scene()})
+
+    def copy_entity_to_scene(self, entity_name: str, target_scene: str) -> ActionResult:
+        self._ensure_edit_mode()
+        if self.scene_manager is None:
+            return self._fail("SceneManager not ready")
+        if not self.scene_manager.copy_entity_subtree(entity_name):
+            return self._fail("Entity copy failed")
+        if not self.scene_manager.paste_copied_entities(self._resolve_scene_reference(target_scene)):
+            return self._fail("Entity paste failed")
+        if self.game is not None:
+            self.game._sync_scene_workspace_ui(apply_view_state=False)
+        return self._ok("Entity copied to scene", {"entity": entity_name, "target_scene": target_scene})
+
+    def set_scene_link(
+        self,
+        entity_name: str,
+        target_path: str,
+        flow_key: str = "",
+        preview_label: str = "",
+    ) -> ActionResult:
+        self._ensure_edit_mode()
+        if self.scene_manager is None or self.project_service is None:
+            return self._fail("SceneManager not ready")
+        normalized_target = self.project_service.to_relative_path(target_path) if target_path else ""
+        payload = {
+            "enabled": True,
+            "target_path": normalized_target,
+            "flow_key": str(flow_key or "").strip(),
+            "preview_label": str(preview_label or "").strip(),
+        }
+        entity = self.scene_manager.find_entity_data(entity_name)
+        if entity is None:
+            return self._fail("Entity not found")
+        has_link = "SceneLink" in entity.get("components", {})
+        success = (
+            self.scene_manager.replace_component_data(entity_name, "SceneLink", payload)
+            if has_link
+            else self.scene_manager.add_component_to_entity(entity_name, "SceneLink", payload)
+        )
+        return self._ok("SceneLink updated", {"entity": entity_name, "target_path": normalized_target}) if success else self._fail("SceneLink update failed")
+
     def create_canvas(
         self,
         name: str = "Canvas",
@@ -830,6 +923,15 @@ class EngineAPI:
             return self._fail("Engine not initialized")
         success = self.game.load_scene_by_path(path)
         return self._ok("Scene loaded", {"path": self.game.current_scene_path}) if success else self._fail("Scene load failed")
+
+    def create_scene(self, name: str) -> ActionResult:
+        if self.game is None:
+            return self._fail("Engine not initialized")
+        success = self.game.create_scene(name)
+        return self._ok("Scene created", {"path": self.game.current_scene_path}) if success else self._fail("Scene creation failed")
+
+    def open_scene(self, path: str) -> ActionResult:
+        return self.load_scene(path)
 
     def load_next_scene(self) -> ActionResult:
         if self.game is None:
@@ -1349,3 +1451,13 @@ class EngineAPI:
 
     def _clamp_render_order(self, value: int) -> int:
         return max(RenderOrder2D.MIN_ORDER_IN_LAYER, min(RenderOrder2D.MAX_ORDER_IN_LAYER, int(value)))
+
+    def _resolve_scene_reference(self, key_or_path: str) -> str:
+        if not key_or_path:
+            return ""
+        value = str(key_or_path)
+        if self.project_service is None:
+            return value
+        if value.endswith(".json") or "/" in value or "\\" in value:
+            return self.project_service.resolve_path(value).as_posix()
+        return value

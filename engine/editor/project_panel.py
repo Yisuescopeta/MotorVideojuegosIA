@@ -13,7 +13,7 @@ FUNCIONALIDADES:
 
 import os
 import pyray as rl
-from typing import List, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional
 
 from engine.assets.asset_service import AssetService
 from engine.project.project_service import ProjectService
@@ -44,6 +44,7 @@ class ProjectPanel:
         self.asset_service: Optional[AssetService] = None
         self.selected_file: Optional[str] = None
         self.request_open_sprite_editor_for: Optional[str] = None
+        self.request_open_scene_for: Optional[str] = None
         self.show_context_menu: bool = False
         self.context_menu_pos: Optional[rl.Vector2] = None
         
@@ -57,6 +58,8 @@ class ProjectPanel:
         # Folder tree state
         from typing import Set
         self.expanded_folders: Set[str] = {self.root_path}
+        self._item_display_cache: Dict[tuple[str, str], Dict[str, Any]] = {}
+        self._breadcrumb_cache: List[tuple[str, int]] = []
         
         self.refresh()
 
@@ -64,10 +67,11 @@ class ProjectPanel:
         self.project_service = project_service
         self.asset_service = AssetService(project_service)
         self.asset_service.refresh_catalog()
-        self.root_path = project_service.get_project_path("assets").as_posix()
+        self.root_path = project_service.project_root.as_posix()
         self.current_path = self.root_path
         self.selected_file = None
         self.request_open_sprite_editor_for = None
+        self.request_open_scene_for = None
         self.show_context_menu = False
         self.context_menu_pos = None
         self.scroll_offset = 0
@@ -103,9 +107,12 @@ class ProjectPanel:
                 else:
                     if not entry.endswith(".pyc") and not entry.endswith(".meta.json"):
                         self.items.append((entry, "file"))
+            self._rebuild_display_cache()
                         
         except Exception:
             self.items = []
+            self._item_display_cache = {}
+            self._breadcrumb_cache = []
 
     def create_folder(self, base_name: str = "New Folder") -> str:
         target_dir = self.current_path
@@ -134,13 +141,10 @@ class ProjectPanel:
         rl.draw_line(x, breadcrumb_y + breadcrumb_h - 1, x + width, breadcrumb_y + breadcrumb_h - 1, self.UNITY_BORDER)
         
         # Breadcrumbs
-        rel_path = os.path.relpath(self.current_path, self.root_path)
-        path_parts = ["Assets"] + ([p for p in rel_path.split(os.sep) if p and p != "."])
         bc_x = x + 10
-        for part in path_parts:
-            text = part + " >"
+        for text, text_width in self._breadcrumb_cache:
             rl.draw_text(text, bc_x, int(breadcrumb_y + 6), 10, self.UNITY_TEXT_DIM)
-            bc_x += rl.measure_text(text, 10) + 5
+            bc_x += text_width + 5
             
         # ========================================
         # 2. Main Area (Split into Sidebar and Content)
@@ -176,7 +180,7 @@ class ProjectPanel:
             rl.draw_rectangle_rec(root_rect, self.UNITY_HOVER)
             
         rl.draw_text("v", int(x + 5), int(y + 8), 10, self.UNITY_TEXT) 
-        rl.draw_text("Assets", int(x + 20), int(y + 9), 10, self.UNITY_TEXT)
+        rl.draw_text("Project", int(x + 20), int(y + 9), 10, self.UNITY_TEXT)
         
         if is_hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
             self.current_path = self.root_path
@@ -205,6 +209,7 @@ class ProjectPanel:
         cols = max(1, width // (icon_w + padding))
         
         for i, (name, entry_type) in enumerate(self.items):
+            display = self._item_display_cache.get((name, entry_type), {})
             row = i // cols
             col = i % cols
             
@@ -242,15 +247,12 @@ class ProjectPanel:
                 rl.draw_rectangle_lines_ex(icon_rect, 1, rl.Color(100, 100, 100, 255))
             
             # Nombre truncado
-            trunc_name = name if len(name) < 10 else name[:7] + "..."
-            text_w = rl.measure_text(trunc_name, 10)
+            trunc_name = str(display.get("trunc_name", name if len(name) < 10 else name[:7] + "..."))
+            text_w = int(display.get("text_width", rl.measure_text(trunc_name, 10)))
             rl.draw_text(trunc_name, int(ix + (icon_w - text_w)//2), int(iy + 50), 10, self.UNITY_TEXT)
-            if entry_type == "file" and self.project_service is not None and self.asset_service is not None:
-                rel_path = self.project_service.to_relative_path(os.path.join(self.current_path, name))
-                entry = self.asset_service.get_asset_entry(rel_path)
-                if entry is not None:
-                    meta = f"{entry.get('asset_kind', '?')} {entry.get('guid_short', '')}"
-                    rl.draw_text(meta[:13], int(ix + 2), int(iy + 61), 8, self.UNITY_TEXT_DIM)
+            meta = str(display.get("meta", ""))
+            if meta:
+                rl.draw_text(meta, int(ix + 2), int(iy + 61), 8, self.UNITY_TEXT_DIM)
             
             # Drag logic
             if entry_type == "file" and self.drag_start_pos and is_hover:
@@ -261,15 +263,35 @@ class ProjectPanel:
             self.drag_start_pos = None
             self.dragging_file = None
 
-        if self.selected_file and self.selected_file.lower().endswith((".png", ".jpg", ".jpeg", ".bmp")):
-            button_rect = rl.Rectangle(x + width - 140, y + 6, 120, 20)
-            if rl.gui_button(button_rect, "Sprite Editor"):
-                if self.project_service is not None:
-                    self.request_open_sprite_editor_for = self.project_service.to_relative_path(self.selected_file)
-                else:
-                    self.request_open_sprite_editor_for = self.selected_file
+        if self.selected_file:
+            button_x = x + width - 140
+            if self.selected_file.lower().endswith((".png", ".jpg", ".jpeg", ".bmp")):
+                button_rect = rl.Rectangle(button_x, y + 6, 120, 20)
+                if rl.gui_button(button_rect, "Sprite Editor"):
+                    if self.project_service is not None:
+                        self.request_open_sprite_editor_for = self.project_service.to_relative_path(self.selected_file)
+                    else:
+                        self.request_open_sprite_editor_for = self.selected_file
+                button_x -= 128
+
+            if self._is_scene_file(self.selected_file):
+                scene_rect = rl.Rectangle(button_x, y + 6, 120, 20)
+                if rl.gui_button(scene_rect, "Open Scene"):
+                    if self.project_service is not None:
+                        self.request_open_scene_for = self.project_service.to_relative_path(self.selected_file)
+                    else:
+                        self.request_open_scene_for = self.selected_file
 
         rl.end_scissor_mode()
+
+    def _is_scene_file(self, file_path: str) -> bool:
+        if self.project_service is None or not file_path.lower().endswith(".json"):
+            return False
+        levels_root = self.project_service.get_project_path("levels").as_posix()
+        try:
+            return os.path.commonpath([os.path.abspath(file_path), levels_root]) == os.path.abspath(levels_root)
+        except ValueError:
+            return False
 
     def _render_context_menu(self, x: int, y: int, width: int, height: int) -> None:
         if not self.show_context_menu or self.context_menu_pos is None:
@@ -298,3 +320,26 @@ class ProjectPanel:
         if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT) and not rl.check_collision_point_rec(mouse_pos, menu_rect):
             self.show_context_menu = False
             self.context_menu_pos = None
+
+    def _rebuild_display_cache(self) -> None:
+        self._item_display_cache = {}
+        rel_path = os.path.relpath(self.current_path, self.root_path)
+        path_parts = ["Project"] + ([p for p in rel_path.split(os.sep) if p and p != "."])
+        self._breadcrumb_cache = []
+        for part in path_parts:
+            text = part + " >"
+            self._breadcrumb_cache.append((text, rl.measure_text(text, 10)))
+
+        for name, entry_type in self.items:
+            trunc_name = name if len(name) < 10 else name[:7] + "..."
+            cached: Dict[str, Any] = {
+                "trunc_name": trunc_name,
+                "text_width": rl.measure_text(trunc_name, 10),
+                "meta": "",
+            }
+            if entry_type == "file" and self.project_service is not None and self.asset_service is not None:
+                rel_path = self.project_service.to_relative_path(os.path.join(self.current_path, name))
+                entry = self.asset_service.get_asset_entry(rel_path)
+                if entry is not None:
+                    cached["meta"] = f"{entry.get('asset_kind', '?')} {entry.get('guid_short', '')}"[:13]
+            self._item_display_cache[(name, entry_type)] = cached

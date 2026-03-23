@@ -21,19 +21,14 @@ class UIRenderSystem:
     """Dibuja la UI en overlay usando el layout calculado por UISystem."""
 
     def render(self, world: World, ui_system: UISystem) -> None:
-        layouts = ui_system.get_layout_snapshot()
+        layouts = ui_system.get_layout_snapshot(copy_result=False)
         if not layouts:
             return
 
-        canvases = []
-        for entity in world.get_entities_with(Canvas):
-            canvas = entity.get_component(Canvas)
-            if canvas is None or not canvas.enabled:
+        for canvas_name in ui_system.get_canvas_order():
+            canvas_entity = world.get_entity_by_name(canvas_name)
+            if canvas_entity is None:
                 continue
-            canvases.append(entity)
-        canvases.sort(key=lambda entity: (entity.get_component(Canvas).sort_order, entity.id))  # type: ignore[union-attr]
-
-        for canvas_entity in canvases:
             self._render_subtree(world, canvas_entity, layouts, ui_system)
 
     def _render_subtree(

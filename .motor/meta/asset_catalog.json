@@ -1,6 +1,6 @@
 {
     "version": 1,
-    "generated_at_utc": "2026-03-22T11:40:17.118638+00:00",
+    "generated_at_utc": "2026-03-23T21:58:12.024463+00:00",
     "assets": [
         {
             "guid": "ast_2c6f30e04ba7458b9e8d6da1bf97444e",
@@ -79,6 +79,25 @@
             }
         },
         {
+            "guid": "ast_51cc7ac9b79a46be8b870561e7f3e331",
+            "guid_short": "ast_51cc",
+            "name": "test_animator_generate.png",
+            "path": "assets/test_animator_generate.png",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/assets/test_animator_generate.png",
+            "folder": "assets",
+            "asset_kind": "texture",
+            "importer": "texture",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1774303091.8863595,
+            "reference": {
+                "guid": "ast_51cc7ac9b79a46be8b870561e7f3e331",
+                "path": "assets/test_animator_generate.png"
+            }
+        },
+        {
             "guid": "ast_4b39dcc9f7c84d3aaa435429284d42aa",
             "guid_short": "ast_4b39",
             "name": "test_spritesheet.png",
@@ -95,6 +114,25 @@
             "reference": {
                 "guid": "ast_4b39dcc9f7c84d3aaa435429284d42aa",
                 "path": "assets/test_spritesheet.png"
+            }
+        },
+        {
+            "guid": "ast_63ae5f26a1264f66b1486715352b1676",
+            "guid_short": "ast_63ae",
+            "name": "EscenaSuelo.json",
+            "path": "levels/EscenaSuelo.json",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/levels/EscenaSuelo.json",
+            "folder": "levels",
+            "asset_kind": "scene_data",
+            "importer": "scene_data",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1774208775.3526359,
+            "reference": {
+                "guid": "ast_63ae5f26a1264f66b1486715352b1676",
+                "path": "levels/EscenaSuelo.json"
             }
         },
         {

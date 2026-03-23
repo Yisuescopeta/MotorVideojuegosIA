@@ -35,3 +35,6 @@ htmlcov/
 # Temporary
 *.tmp
 *.temp
+
+# Local projects created from the launcher
+projects/

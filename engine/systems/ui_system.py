@@ -26,8 +26,12 @@ class UISystem:
         self._scene_flow_loader: Any = None
         self._layout_cache: dict[str, dict[str, Any]] = {}
         self._canvas_order: list[str] = []
+        self._draw_order: list[str] = []
         self._button_runtime: dict[int, dict[str, bool]] = {}
         self._pointer_override: Optional[dict[str, Any]] = None
+        self._layout_world_id: int = -1
+        self._layout_world_version: int = -1
+        self._layout_viewport_size: tuple[float, float] = (0.0, 0.0)
 
     def set_event_bus(self, event_bus: Optional[EventBus]) -> None:
         self._event_bus = event_bus
@@ -56,8 +60,17 @@ class UISystem:
             "frames": max(1, int(frames)),
         }
 
-    def get_layout_snapshot(self) -> dict[str, dict[str, Any]]:
-        return copy.deepcopy(self._layout_cache)
+    def get_layout_snapshot(self, copy_result: bool = True) -> dict[str, dict[str, Any]]:
+        return copy.deepcopy(self._layout_cache) if copy_result else self._layout_cache
+
+    def get_canvas_order(self) -> list[str]:
+        return list(self._canvas_order)
+
+    def get_draw_order(self) -> list[str]:
+        return list(self._draw_order)
+
+    def ensure_layout_cache(self, world: World, viewport_size: tuple[float, float]) -> None:
+        self._ensure_layout_cache(world, viewport_size)
 
     def get_entity_screen_rect(self, entity_name: str) -> Optional[dict[str, float]]:
         layout = self._layout_cache.get(entity_name)
@@ -69,6 +82,42 @@ class UISystem:
             "width": float(layout["width"]),
             "height": float(layout["height"]),
         }
+
+    def get_layout_entry(self, entity_name: str, copy_result: bool = True) -> Optional[dict[str, Any]]:
+        layout = self._layout_cache.get(entity_name)
+        if layout is None:
+            return None
+        return copy.deepcopy(layout) if copy_result else layout
+
+    def get_parent_layout_entry(self, world: World, entity_name: str, copy_result: bool = True) -> Optional[dict[str, Any]]:
+        entity = world.get_entity_by_name(entity_name)
+        if entity is None or not entity.parent_name:
+            return None
+        return self.get_layout_entry(entity.parent_name, copy_result=copy_result)
+
+    def find_topmost_entity_at_point(
+        self,
+        world: World,
+        x: float,
+        y: float,
+        viewport_size: tuple[float, float],
+        *,
+        include_canvas_roots: bool = False,
+    ) -> Optional[Entity]:
+        self._ensure_layout_cache(world, viewport_size)
+        for entity_name in reversed(self._draw_order):
+            entity = world.get_entity_by_name(entity_name)
+            if entity is None:
+                continue
+            layout = self._layout_cache.get(entity_name)
+            if layout is None or not self._point_in_rect(x, y, layout):
+                continue
+            has_rect_transform = entity.get_component(RectTransform) is not None
+            if has_rect_transform:
+                return entity
+            if include_canvas_roots and entity.get_component(Canvas) is not None and not entity.parent_name:
+                return entity
+        return None
 
     def click_entity(self, world: World, entity_name: str, viewport_size: tuple[float, float]) -> bool:
         entity = world.get_entity_by_name(entity_name)
@@ -82,34 +131,7 @@ class UISystem:
 
     def update(self, world: World, viewport_size: tuple[float, float]) -> None:
         pointer = self._resolve_pointer_state()
-        self._layout_cache = {}
-        self._canvas_order = []
-
-        canvas_entities = []
-        for entity in world.get_entities_with(Canvas):
-            canvas = entity.get_component(Canvas)
-            if canvas is None or not canvas.enabled:
-                continue
-            canvas_entities.append(entity)
-
-        canvas_entities.sort(key=lambda entity: (entity.get_component(Canvas).sort_order, entity.id))  # type: ignore[union-attr]
-
-        for canvas_entity in canvas_entities:
-            canvas = canvas_entity.get_component(Canvas)
-            if canvas is None:
-                continue
-            canvas_rect = {
-                "x": 0.0,
-                "y": 0.0,
-                "width": float(viewport_size[0]),
-                "height": float(viewport_size[1]),
-                "canvas": canvas_entity.name,
-                "scale_x": float(viewport_size[0]) / max(1.0, float(canvas.reference_width)),
-                "scale_y": float(viewport_size[1]) / max(1.0, float(canvas.reference_height)),
-            }
-            self._canvas_order.append(canvas_entity.name)
-            self._layout_cache[canvas_entity.name] = dict(canvas_rect)
-            self._layout_children(world, canvas_entity.name, canvas_rect)
+        self._ensure_layout_cache(world, viewport_size)
 
         visible_buttons = {
             entity.id
@@ -146,6 +168,52 @@ class UISystem:
                 if should_fire:
                     self._execute_button_action(entity, button)
 
+    def _ensure_layout_cache(self, world: World, viewport_size: tuple[float, float]) -> None:
+        world_id = id(world)
+        world_version = int(getattr(world, "version", -1))
+        normalized_viewport = (float(viewport_size[0]), float(viewport_size[1]))
+        if (
+            self._layout_world_id == world_id
+            and self._layout_world_version == world_version
+            and self._layout_viewport_size == normalized_viewport
+        ):
+            return
+
+        self._layout_cache = {}
+        self._canvas_order = []
+        self._draw_order = []
+
+        canvas_entities = []
+        for entity in world.get_entities_with(Canvas):
+            canvas = entity.get_component(Canvas)
+            if canvas is None or not canvas.enabled:
+                continue
+            canvas_entities.append(entity)
+
+        canvas_entities.sort(key=lambda entity: (entity.get_component(Canvas).sort_order, entity.id))  # type: ignore[union-attr]
+
+        for canvas_entity in canvas_entities:
+            canvas = canvas_entity.get_component(Canvas)
+            if canvas is None:
+                continue
+            canvas_rect = {
+                "x": 0.0,
+                "y": 0.0,
+                "width": normalized_viewport[0],
+                "height": normalized_viewport[1],
+                "canvas": canvas_entity.name,
+                "scale_x": normalized_viewport[0] / max(1.0, float(canvas.reference_width)),
+                "scale_y": normalized_viewport[1] / max(1.0, float(canvas.reference_height)),
+            }
+            self._canvas_order.append(canvas_entity.name)
+            self._layout_cache[canvas_entity.name] = dict(canvas_rect)
+            self._draw_order.append(canvas_entity.name)
+            self._layout_children(world, canvas_entity.name, canvas_rect)
+
+        self._layout_world_id = world_id
+        self._layout_world_version = world_version
+        self._layout_viewport_size = normalized_viewport
+
     def get_button_state(self, entity: Entity) -> dict[str, bool]:
         return dict(self._button_runtime.get(entity.id, {"hovered": False, "pressed": False}))
 
@@ -157,6 +225,7 @@ class UISystem:
                 child_rect = self._compute_rect(rect_transform, parent_rect)
             child_rect["canvas"] = parent_rect["canvas"]
             self._layout_cache[child.name] = child_rect
+            self._draw_order.append(child.name)
             self._layout_children(world, child.name, child_rect)
 
     def _compute_rect(self, rect_transform: RectTransform, parent_rect: dict[str, Any]) -> dict[str, Any]:

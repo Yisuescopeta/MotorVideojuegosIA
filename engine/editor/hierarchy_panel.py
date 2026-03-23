@@ -39,6 +39,9 @@ class HierarchyPanel:
         self.expanded_ids: Set[int] = set()
         self.panel_width: int = 200
         self._scene_manager = None
+        self._cached_world_id: int = -1
+        self._cached_world_version: int = -1
+        self._cached_roots: List[Entity] = []
         
         # Context Menu State
         self.context_menu_active: bool = False
@@ -115,15 +118,7 @@ class HierarchyPanel:
         rl.draw_rectangle(x, int(y + self.HEADER_HEIGHT), width, int(content_height), self.UNITY_BG)
         
         # Obtener entidades raíz
-        roots = []
-        all_entities = world.get_all_entities()
-        
-        for entity in all_entities:
-            transform = entity.get_component(Transform)
-            if transform is None or transform.parent is None:
-                roots.append(entity)
-                
-        roots.sort(key=lambda e: e.id)
+        roots = self._get_root_entities(world)
         
         # Renderizar árbol
         for entity in roots:
@@ -238,12 +233,25 @@ class HierarchyPanel:
         return current_y
 
     def _find_entity_by_transform(self, world: "World", transform: Transform) -> Optional[Entity]:
-        """Ayuda ineficiente para encontrar entidad dado un transform."""
+        return world.get_entity_by_component_instance(transform)
+
+    def _get_root_entities(self, world: "World") -> List[Entity]:
+        world_id = id(world)
+        world_version = int(getattr(world, "version", -1))
+        if self._cached_world_id == world_id and self._cached_world_version == world_version:
+            return self._cached_roots
+
+        roots: List[Entity] = []
         for entity in world.get_all_entities():
-            entity_transform = entity.get_component(Transform)
-            if entity_transform is transform:
-                return entity
-        return None
+            transform = entity.get_component(Transform)
+            if transform is None or transform.parent is None:
+                roots.append(entity)
+        roots.sort(key=lambda item: item.id)
+
+        self._cached_world_id = world_id
+        self._cached_world_version = world_version
+        self._cached_roots = roots
+        return roots
 
     def _handle_context_input(self, world: "World", x: int, y: int, w: int, h: int) -> None:
         """Maneja el input para abrir el menú contextual en el panel."""

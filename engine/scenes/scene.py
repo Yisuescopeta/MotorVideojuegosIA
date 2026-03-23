@@ -96,11 +96,12 @@ class Scene:
                 entity.prefab_instance = copy.deepcopy(expanded_data.get("prefab_instance"))
                 entity.prefab_source_path = expanded_data.get("prefab_source_path")
                 entity.prefab_root_name = expanded_data.get("prefab_root_name")
+                component_metadata = copy.deepcopy(expanded_data.get("component_metadata", {}))
 
                 for comp_name, comp_props in expanded_data.get("components", {}).items():
                     component = registry.create(comp_name, comp_props)
                     if component is not None:
-                        entity.add_component(component)
+                        entity.add_component(component, metadata=component_metadata.get(comp_name, {}))
 
                 created_entities[entity_name] = entity
                 if entity.parent_name:
@@ -155,6 +156,34 @@ class Scene:
         components[component_name] = component_data
         return True
 
+    def get_component_metadata(self, entity_name: str, component_name: str) -> Dict[str, Any]:
+        entity_data = self.find_entity(entity_name)
+        if entity_data is None:
+            return {}
+        metadata = entity_data.get("component_metadata", {})
+        if not isinstance(metadata, dict):
+            return {}
+        value = metadata.get(component_name, {})
+        return copy.deepcopy(value) if isinstance(value, dict) else {}
+
+    def set_component_metadata(self, entity_name: str, component_name: str, metadata: Dict[str, Any]) -> bool:
+        entity_data = self.find_entity(entity_name)
+        if entity_data is None:
+            return False
+        if component_name not in entity_data.setdefault("components", {}):
+            return False
+        entity_metadata = entity_data.setdefault("component_metadata", {})
+        if not isinstance(entity_metadata, dict):
+            entity_metadata = {}
+            entity_data["component_metadata"] = entity_metadata
+        if metadata:
+            entity_metadata[component_name] = copy.deepcopy(metadata)
+        else:
+            entity_metadata.pop(component_name, None)
+        if not entity_metadata:
+            entity_data.pop("component_metadata", None)
+        return True
+
     def add_entity(self, entity_data: Dict[str, Any]) -> bool:
         if self.find_entity(entity_data.get("name", "")) is not None:
             return False
@@ -185,6 +214,11 @@ class Scene:
         if component_name not in components:
             return False
         del components[component_name]
+        component_metadata = entity_data.get("component_metadata", {})
+        if isinstance(component_metadata, dict):
+            component_metadata.pop(component_name, None)
+            if not component_metadata:
+                entity_data.pop("component_metadata", None)
         return True
 
     def set_feature_metadata(self, key: str, value: Any) -> None:

@@ -1,6 +1,18 @@
 {
     "recent_assets": {},
     "last_scene": "levels/demo_level.json",
+    "open_scenes": [
+        "levels/demo_level.json"
+    ],
+    "active_scene": "levels/demo_level.json",
+    "scene_view_states": {},
     "active_ai_session_id": "session_bfbfc4dcac3f",
-    "preferences": {}
+    "preferences": {
+        "editor_active_tool": "Move",
+        "editor_transform_space": "world",
+        "editor_pivot_mode": "pivot",
+        "editor_snap_move_step": 10.0,
+        "editor_snap_rotate_step": 15.0,
+        "editor_snap_scale_step": 0.1
+    }
 }

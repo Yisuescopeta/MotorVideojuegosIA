@@ -315,6 +315,25 @@ class AssistantPanelSmokeTests(unittest.TestCase):
         panel._drain_background_tasks_for_tests()
         self.assertEqual(panel.status_line, "applied")
 
+    def test_text_layout_caches_are_reused_and_invalidated(self) -> None:
+        panel = AssistantPanel()
+
+        fitted = panel._fit_text("abcdefghijklmnopqrstuvwxyz", 10, 10)
+        wrapped, box_height = panel._get_message_layout("assistant", "text", "uno dos tres cuatro", 120)
+
+        self.assertTrue(fitted)
+        self.assertTrue(panel._fit_cache)
+        self.assertTrue(panel._wrap_cache)
+        self.assertTrue(panel._message_layout_cache)
+        self.assertGreater(box_height, 0)
+        self.assertTrue(wrapped)
+
+        panel._invalidate_text_caches()
+
+        self.assertFalse(panel._fit_cache)
+        self.assertFalse(panel._wrap_cache)
+        self.assertFalse(panel._message_layout_cache)
+
 
 if __name__ == "__main__":
     unittest.main()

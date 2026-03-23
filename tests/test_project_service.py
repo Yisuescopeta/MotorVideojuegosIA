@@ -51,11 +51,31 @@ class ProjectServiceTests(unittest.TestCase):
         self.assertTrue(service.get_project_path("levels").exists())
         self.assertTrue(service.get_project_path("prefabs").exists())
         self.assertTrue(service.get_project_path("scripts").exists())
+        self.assertTrue(service.get_project_path("settings").exists())
         self.assertTrue(service.get_project_path("meta").exists())
         self.assertEqual(service.manifest.name, "ProjectAlpha")
+        self.assertEqual(service.manifest.version, 2)
+        self.assertEqual(service.manifest.template, "empty")
+        self.assertEqual(service.manifest.engine_version, "2026.03")
+        self.assertTrue((project_root / "levels" / "main_scene.json").exists())
+        self.assertEqual(
+            service.load_project_settings(),
+            {
+                "startup_scene": "levels/main_scene.json",
+                "template": "empty",
+            },
+        )
         self.assertEqual(
             service.load_editor_state(),
-            {"recent_assets": {}, "last_scene": "", "active_ai_session_id": "", "preferences": {}},
+            {
+                "recent_assets": {},
+                "last_scene": "",
+                "open_scenes": [],
+                "active_scene": "",
+                "scene_view_states": {},
+                "active_ai_session_id": "",
+                "preferences": {},
+            },
         )
 
     def test_recent_projects_are_global_sorted_and_filter_invalid_entries(self) -> None:
@@ -76,6 +96,37 @@ class ProjectServiceTests(unittest.TestCase):
         self.assertTrue(bool(recents[0]["last_opened_utc"]))
         self.assertEqual(first_service.global_state_dir, self.global_state_dir.resolve())
 
+    def test_launcher_lists_internal_and_invalid_registered_projects(self) -> None:
+        bootstrap = ProjectService(self.workspace, global_state_dir=self.global_state_dir, auto_ensure=False)
+        internal_root = bootstrap.build_internal_project_path("InternalProject")
+        bootstrap.create_project(internal_root, name="InternalProject")
+        missing_path = (self.workspace / "GhostProject").resolve()
+        registry_path = bootstrap.get_recent_projects_path()
+        registry_path.write_text(
+            json.dumps(
+                {
+                    "projects": [
+                        {
+                            "name": "GhostProject",
+                            "path": missing_path.as_posix(),
+                            "manifest_path": (missing_path / "project.json").as_posix(),
+                            "last_opened_utc": "2026-03-20T12:00:00+00:00",
+                            "engine_version": "2026.03",
+                        }
+                    ]
+                },
+                indent=4,
+            ),
+            encoding="utf-8",
+        )
+
+        launcher_projects = bootstrap.list_launcher_projects()
+
+        self.assertEqual(launcher_projects[0]["name"], "InternalProject")
+        self.assertEqual(launcher_projects[0]["status"], "valid")
+        self.assertEqual(launcher_projects[1]["name"], "GhostProject")
+        self.assertEqual(launcher_projects[1]["status"], "missing")
+
     def test_editor_state_round_trip_tracks_scene_recent_assets_and_preferences(self) -> None:
         project_root, service = self._make_project("ProjectState")
         asset_path = project_root / "assets" / "hero.png"
@@ -89,6 +140,9 @@ class ProjectServiceTests(unittest.TestCase):
         state = service.load_editor_state()
 
         self.assertEqual(state["last_scene"], "levels/intro.json")
+        self.assertEqual(state["open_scenes"], [])
+        self.assertEqual(state["active_scene"], "")
+        self.assertEqual(state["scene_view_states"], {})
         self.assertEqual(state["recent_assets"]["sprite"], ["assets/hero.png"])
         self.assertEqual(state["preferences"]["active_tab"], "GAME")
 
@@ -116,7 +170,71 @@ class ProjectServiceTests(unittest.TestCase):
         self.assertEqual(manifest.name, "Created Project")
         self.assertTrue((self.workspace / "CreatedProject" / "project.json").exists())
         self.assertTrue((self.workspace / "CreatedProject" / "assets").exists())
+        self.assertTrue((self.workspace / "CreatedProject" / "settings" / "project_settings.json").exists())
+        self.assertTrue((self.workspace / "CreatedProject" / "levels" / "main_scene.json").exists())
         self.assertEqual(bootstrap.list_recent_projects()[0]["name"], "Created Project")
+
+    def test_register_project_migrates_manifest_and_creates_settings(self) -> None:
+        external_root = self.workspace / "LegacyProject"
+        external_root.mkdir(parents=True, exist_ok=True)
+        (external_root / "project.json").write_text(
+            json.dumps(
+                {
+                    "name": "LegacyProject",
+                    "version": 1,
+                    "paths": {
+                        "assets": "assets",
+                        "levels": "levels",
+                        "prefabs": "prefabs",
+                        "scripts": "scripts",
+                        "meta": ".motor/meta",
+                    },
+                },
+                indent=4,
+            ),
+            encoding="utf-8",
+        )
+        bootstrap = ProjectService(self.workspace, global_state_dir=self.global_state_dir, auto_ensure=False)
+
+        bootstrap.register_project(external_root)
+
+        migrated = json.loads((external_root / "project.json").read_text(encoding="utf-8"))
+        self.assertEqual(migrated["version"], 2)
+        self.assertEqual(migrated["template"], "empty")
+        self.assertEqual(migrated["engine_version"], "2026.03")
+        self.assertIn("settings", migrated["paths"])
+        self.assertTrue((external_root / "settings" / "project_settings.json").exists())
+
+    def test_list_project_scenes_returns_project_levels_with_names(self) -> None:
+        project_root, service = self._make_project("SceneCatalog")
+        self._write_level(project_root, "intro_scene.json", "Intro Scene")
+        nested_path = project_root / "levels" / "boss" / "finale.json"
+        nested_path.parent.mkdir(parents=True, exist_ok=True)
+        nested_path.write_text(json.dumps({"entities": [], "rules": []}, indent=4), encoding="utf-8")
+
+        scenes = service.list_project_scenes()
+
+        self.assertEqual(
+            [item["path"] for item in scenes],
+            [
+                "levels/boss/finale.json",
+                "levels/intro_scene.json",
+                "levels/main_scene.json",
+            ],
+        )
+        self.assertEqual(scenes[0]["name"], "finale")
+        self.assertEqual(scenes[1]["name"], "Intro Scene")
+        self.assertEqual(scenes[2]["name"], "Main Scene")
+
+    def test_build_scene_file_path_sanitizes_name_and_avoids_collisions(self) -> None:
+        project_root, service = self._make_project("ScenePaths")
+        first = service.build_scene_file_path("Boss Intro")
+        first.write_text("{}", encoding="utf-8")
+
+        second = service.build_scene_file_path("Boss Intro")
+
+        self.assertEqual(first, project_root / "levels" / "boss_intro.json")
+        self.assertEqual(second, project_root / "levels" / "boss_intro_2.json")
 
 
 class ProjectSwitchIntegrationTests(unittest.TestCase):
@@ -217,8 +335,8 @@ class ProjectSwitchIntegrationTests(unittest.TestCase):
         result = self.api.open_project(project_root.as_posix())
 
         self.assertTrue(result["success"])
-        self.assertEqual(self.api.scene_manager.scene_name, "A Scene")
-        self.assertTrue(self.api.game.current_scene_path.endswith("levels/a_scene.json"))
+        self.assertEqual(self.api.scene_manager.scene_name, "Main Scene")
+        self.assertTrue(self.api.game.current_scene_path.endswith("levels/main_scene.json"))
 
     def test_open_project_without_levels_creates_empty_scene(self) -> None:
         project_root, _ = self._make_project("EmptyProject")
@@ -228,8 +346,62 @@ class ProjectSwitchIntegrationTests(unittest.TestCase):
         result = self.api.open_project(project_root.as_posix())
 
         self.assertTrue(result["success"])
-        self.assertEqual(self.api.scene_manager.scene_name, "EmptyProject")
-        self.assertEqual(self.api.game.current_scene_path, "")
+        self.assertEqual(self.api.scene_manager.scene_name, "Main Scene")
+        self.assertTrue(self.api.game.current_scene_path.endswith("levels/main_scene.json"))
+
+    def test_workspace_state_round_trip_restores_multiple_open_scenes(self) -> None:
+        project_root, _ = self._make_project("WorkspaceProject")
+        self._write_level(project_root, "intro.json", "Intro")
+        self._write_level(project_root, "boss.json", "Boss")
+
+        self.api = EngineAPI(project_root=project_root.as_posix(), global_state_dir=self.global_state_dir.as_posix())
+        self.api.load_level("levels/intro.json")
+        self.assertTrue(self.api.open_scene("levels/boss.json")["success"])
+        self.assertTrue(self.api.activate_scene("levels/intro.json")["success"])
+
+        state = self.api.get_editor_state()
+        self.assertEqual(state["open_scenes"], ["levels/intro.json", "levels/boss.json"])
+        self.assertEqual(state["active_scene"], "levels/intro.json")
+
+        restored_api = EngineAPI(project_root=project_root.as_posix(), global_state_dir=self.global_state_dir.as_posix())
+        self.addCleanup(restored_api.shutdown)
+
+        result = restored_api.open_project(project_root.as_posix())
+
+        self.assertTrue(result["success"])
+        self.assertEqual(len(restored_api.list_open_scenes()), 2)
+        self.assertTrue(restored_api.get_active_scene()["path"].endswith("levels/intro.json"))
+
+    def test_create_scene_persists_named_file_immediately(self) -> None:
+        project_root, _ = self._make_project("CreateSceneProject")
+
+        self.api = EngineAPI(project_root=project_root.as_posix(), global_state_dir=self.global_state_dir.as_posix())
+
+        result = self.api.create_scene("Boss Intro")
+
+        self.assertTrue(result["success"])
+        created_path = project_root / "levels" / "boss_intro.json"
+        self.assertTrue(created_path.exists())
+        raw = json.loads(created_path.read_text(encoding="utf-8"))
+        self.assertEqual(raw["name"], "Boss Intro")
+        self.assertTrue(self.api.game.current_scene_path.endswith("levels/boss_intro.json"))
+
+    def test_dirty_scene_changes_autosave_to_active_scene_file(self) -> None:
+        project_root, _ = self._make_project("AutosaveProject")
+
+        self.api = EngineAPI(project_root=project_root.as_posix(), global_state_dir=self.global_state_dir.as_posix())
+        self.assertTrue(self.api.create_scene("Autosave Scene")["success"])
+        scene_path = project_root / "levels" / "autosave_scene.json"
+
+        self.assertTrue(self.api.create_entity("Hero")["success"])
+        self.assertTrue(self.api.edit_component("Hero", "Transform", "x", 128.0)["success"])
+
+        self.api.game._autosave_dirty_scenes()
+
+        raw = json.loads(scene_path.read_text(encoding="utf-8"))
+        hero = next(entity for entity in raw["entities"] if entity["name"] == "Hero")
+        self.assertEqual(hero["components"]["Transform"]["x"], 128.0)
+        self.assertFalse(self.api.scene_manager.is_dirty)
 
     def test_scene_flow_connections_are_serialized_and_can_load_next_scene(self) -> None:
         project_root, _ = self._make_project("FlowProject")

@@ -5,6 +5,8 @@ engine/inspector/inspector_system.py - Dedicated inspector editors.
 from __future__ import annotations
 
 import copy
+from pathlib import Path
+import time
 
 import pyray as rl
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
@@ -29,6 +31,9 @@ class InspectorSystem:
     TEXT_COLOR = rl.Color(220, 220, 220, 255)
     LABEL_COLOR = rl.Color(180, 180, 180, 255)
     HIGHLIGHT_COLOR = rl.Color(60, 100, 150, 255)
+    ORIGIN_NATIVE_COLOR = rl.Color(79, 152, 209, 255)
+    ORIGIN_AI_COLOR = rl.Color(206, 142, 58, 255)
+    ORIGIN_UNKNOWN_COLOR = rl.Color(110, 110, 110, 255)
 
     FONT_SIZE: int = 10
     LINE_HEIGHT: int = 18
@@ -48,10 +53,16 @@ class InspectorSystem:
         self.registry = create_default_registry()
         self.component_editors = ComponentEditorRegistry()
         self.request_open_sprite_editor_for: Optional[str] = None
+        self._scene_path_cache: List[str] = []
+        self._scene_path_cache_root: str = ""
+        self._scene_path_cache_time: float = 0.0
         self._register_default_component_editors()
 
     def set_scene_manager(self, manager: Any) -> None:
         self._scene_manager = manager
+        self._scene_path_cache = []
+        self._scene_path_cache_root = ""
+        self._scene_path_cache_time = 0.0
 
     def open_sprite_editor(self, asset_path: str) -> None:
         self.request_open_sprite_editor_for = asset_path
@@ -113,6 +124,7 @@ class InspectorSystem:
         self.component_editors.register("InputMap", self._draw_input_map_editor)
         self.component_editors.register("PlayerController2D", self._draw_player_controller_editor)
         self.component_editors.register("ScriptBehaviour", self._draw_script_behaviour_editor)
+        self.component_editors.register("SceneLink", self._draw_scene_link_editor)
         self.component_editors.register("Canvas", self._draw_canvas_editor)
         self.component_editors.register("RectTransform", self._draw_rect_transform_editor)
         self.component_editors.register("UIText", self._draw_ui_text_editor)
@@ -224,15 +236,24 @@ class InspectorSystem:
         unique_id = f"{entity_id}:{comp_name}"
         is_expanded = unique_id in self.expanded_components
         header_rect = rl.Rectangle(x + 2, y, width - 4, 20)
+        entity = world.get_entity(entity_id)
+        origin = self._get_component_origin(entity, comp_name, component)
+        accent_color = self._origin_color(origin)
 
         mouse_pos = rl.get_mouse_position()
         is_hover = rl.check_collision_point_rec(mouse_pos, header_rect)
         bg_color = rl.Color(70, 70, 70, 255) if is_hover else rl.Color(60, 60, 60, 255)
         rl.draw_rectangle_rec(header_rect, bg_color)
+        rl.draw_rectangle(int(header_rect.x), int(header_rect.y), 3, int(header_rect.height), accent_color)
 
         arrow = "v" if is_expanded else ">"
         rl.draw_text(arrow, int(x + 8), int(y + 5), 10, rl.Color(200, 200, 200, 255))
         rl.draw_text(comp_name, int(x + 22), int(y + 5), 10, rl.Color(220, 220, 220, 255))
+        badge = self._origin_badge(origin)
+        badge_w = rl.measure_text(badge, 10) + 10
+        badge_rect = rl.Rectangle(x + width - badge_w - 26, y + 3, badge_w, 14)
+        rl.draw_rectangle_rec(badge_rect, accent_color)
+        rl.draw_text(badge, int(badge_rect.x + 5), int(badge_rect.y + 2), 10, rl.BLACK)
 
         remove_rect = rl.Rectangle(x + width - 20, y + 2, 16, 16)
         remove_hover = False
@@ -460,15 +481,13 @@ class InspectorSystem:
         return props
 
     def _draw_add_menu(self, world: "World", entity: Entity, x: int, y: int) -> None:
-        all_components = self.registry.list_registered()
-        available: List[str] = []
-        for name in all_components:
-            component_cls = self.registry.get(name)
-            if component_cls is not None and not entity.has_component(component_cls):
-                available.append(name)
+        available = []
+        for descriptor in self.registry.list_descriptors():
+            if not entity.has_component(descriptor.component_class):
+                available.append(descriptor)
 
         item_height = 24
-        menu_w = 160
+        menu_w = 200
         menu_h = max(1, len(available)) * item_height
         if y + menu_h > rl.get_screen_height():
             y -= menu_h + 30
@@ -483,15 +502,19 @@ class InspectorSystem:
                 self.show_add_menu = False
                 return
 
-        for index, name in enumerate(available):
+        for index, descriptor in enumerate(available):
             rect = rl.Rectangle(x, y + index * item_height, menu_w, item_height)
             is_hover = rl.check_collision_point_rec(mouse, rect)
             if is_hover:
                 rl.draw_rectangle_rec(rect, rl.Color(60, 60, 60, 255))
                 if rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
-                    self._add_component(world, entity.id, name)
+                    self._add_component(world, entity.id, descriptor.name)
                     self.show_add_menu = False
-            rl.draw_text(name, int(x + 10), int(y + index * item_height + 6), 10, rl.Color(200, 200, 200, 255))
+            badge_color = self._origin_color(descriptor.origin)
+            badge_rect = rl.Rectangle(x + 8, y + index * item_height + 4, 28, 14)
+            rl.draw_rectangle_rec(badge_rect, badge_color)
+            rl.draw_text(descriptor.badge, int(badge_rect.x + 4), int(badge_rect.y + 2), 10, rl.BLACK)
+            rl.draw_text(descriptor.name, int(x + 44), int(y + index * item_height + 6), 10, rl.Color(200, 200, 200, 255))
 
     def _draw_entity_property(
         self,
@@ -602,6 +625,35 @@ class InspectorSystem:
             if type(component).__name__ == component_name:
                 return component
         return None
+
+    def _get_component_origin(self, entity: Optional[Entity], component_name: str, component: Optional[Component] = None) -> str:
+        if entity is not None:
+            metadata = entity.get_component_metadata_by_name(component_name)
+            origin = str(metadata.get("origin", "") or "").strip().lower()
+            if origin:
+                return origin
+            if component is not None:
+                metadata = entity.get_component_metadata(type(component))
+                origin = str(metadata.get("origin", "") or "").strip().lower()
+                if origin:
+                    return origin
+        return self.registry.get_origin(component_name)
+
+    def _origin_color(self, origin: str) -> rl.Color:
+        normalized = str(origin or "").strip().lower()
+        if normalized == "ai_custom":
+            return self.ORIGIN_AI_COLOR
+        if normalized == "native":
+            return self.ORIGIN_NATIVE_COLOR
+        return self.ORIGIN_UNKNOWN_COLOR
+
+    def _origin_badge(self, origin: str) -> str:
+        normalized = str(origin or "").strip().lower()
+        if normalized == "ai_custom":
+            return "AI"
+        if normalized == "native":
+            return "CORE"
+        return "UNK"
 
     def _label_and_field_rect(self, label: str, x: int, y: int, width: int) -> Tuple[int, int, int]:
         row_height = self.LINE_HEIGHT
@@ -1046,6 +1098,56 @@ class InspectorSystem:
         for key, value in public_data.items():
             current_y = self._draw_script_public_data_row(entity_id, entity_name, key, value, x, current_y, width, is_edit, world)
         return current_y
+
+    def _draw_scene_link_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:
+        current_y = y
+        current_y = self._draw_component_field("Enabled", component.enabled, entity_id, "SceneLink", "enabled", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("Target", component.target_path, entity_id, "SceneLink", "target_path", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("Flow Key", component.flow_key, entity_id, "SceneLink", "flow_key", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("Preview", component.preview_label, entity_id, "SceneLink", "preview_label", x, current_y, width, is_edit, world)
+
+        available_scenes = self._list_available_scene_paths()
+        current_y = self._draw_section_title("Available Scenes", x, current_y, width)
+        if not available_scenes:
+            return self._draw_readonly_row("Scenes", "No level files found", x, current_y, width)
+
+        entity_name = self._entity_name_from_id(world, entity_id)
+        selected_target = str(component.target_path or "").strip()
+        for scene_path in available_scenes[:6]:
+            label = scene_path
+            button_rect = rl.Rectangle(x + self.LABEL_WIDTH + 5, current_y + 1, width - self.LABEL_WIDTH - 10, self.LINE_HEIGHT - 2)
+            is_selected = scene_path == selected_target
+            if is_selected:
+                rl.draw_rectangle_rec(button_rect, rl.Color(62, 96, 128, 255))
+            if rl.gui_button(button_rect, label) and entity_name is not None:
+                self.update_component_payload(
+                    world,
+                    entity_name,
+                    "SceneLink",
+                    lambda payload, scene_path=scene_path: payload.update({"target_path": scene_path}),
+                )
+            current_y += self.LINE_HEIGHT
+        return current_y
+
+    def _list_available_scene_paths(self) -> List[str]:
+        if self._scene_manager is None:
+            return []
+        current_scene = getattr(self._scene_manager, "current_scene", None)
+        source_path = getattr(current_scene, "source_path", None)
+        if not source_path:
+            return []
+        project_root = Path(source_path).resolve().parent.parent
+        levels_root = project_root / "levels"
+        if not levels_root.exists():
+            return []
+        cache_root = levels_root.as_posix()
+        now = time.monotonic()
+        if self._scene_path_cache_root == cache_root and (now - self._scene_path_cache_time) < 2.0:
+            return list(self._scene_path_cache)
+        self._scene_path_cache = sorted(path.relative_to(project_root).as_posix() for path in levels_root.rglob("*.json"))
+        self._scene_path_cache_root = cache_root
+        self._scene_path_cache_time = now
+        return list(self._scene_path_cache)
 
     def _draw_canvas_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:
         current_y = y

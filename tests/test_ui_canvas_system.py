@@ -160,6 +160,82 @@ class CanvasUISystemTests(unittest.TestCase):
         self.assertEqual(base_layout, {"x": 260.0, "y": 258.0, "width": 280.0, "height": 84.0})
         self.assertEqual(scaled_layout, {"x": 520.0, "y": 516.0, "width": 560.0, "height": 168.0})
 
+    def test_ui_hit_testing_prefers_rect_transform_nodes_over_canvas_root(self) -> None:
+        scene_path = self._write_scene(
+            "ui_hit_test.json",
+            {
+                "name": "UI Hit Test",
+                "entities": [
+                    {
+                        "name": "CanvasRoot",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "components": {
+                            "Canvas": {
+                                "enabled": True,
+                                "render_mode": "screen_space_overlay",
+                                "reference_width": 800,
+                                "reference_height": 600,
+                                "match_mode": "stretch",
+                                "sort_order": 0,
+                            },
+                            "RectTransform": {
+                                "enabled": True,
+                                "anchor_min_x": 0.0,
+                                "anchor_min_y": 0.0,
+                                "anchor_max_x": 1.0,
+                                "anchor_max_y": 1.0,
+                                "pivot_x": 0.0,
+                                "pivot_y": 0.0,
+                                "anchored_x": 0.0,
+                                "anchored_y": 0.0,
+                                "width": 0.0,
+                                "height": 0.0,
+                                "rotation": 0.0,
+                                "scale_x": 1.0,
+                                "scale_y": 1.0,
+                            },
+                        },
+                    },
+                    {
+                        "name": "Panel",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "parent": "CanvasRoot",
+                        "components": {
+                            "RectTransform": {
+                                "enabled": True,
+                                "anchor_min_x": 0.5,
+                                "anchor_min_y": 0.5,
+                                "anchor_max_x": 0.5,
+                                "anchor_max_y": 0.5,
+                                "pivot_x": 0.5,
+                                "pivot_y": 0.5,
+                                "anchored_x": 0.0,
+                                "anchored_y": 0.0,
+                                "width": 200.0,
+                                "height": 80.0,
+                                "rotation": 0.0,
+                                "scale_x": 1.0,
+                                "scale_y": 1.0,
+                            },
+                        },
+                    },
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+
+        ui_system = self.api.game._ui_system
+        world = self.api.game.world
+        hit = ui_system.find_topmost_entity_at_point(world, 400.0, 300.0, (800.0, 600.0))
+        self.assertIsNotNone(hit)
+        self.assertEqual(hit.name, "Panel")
+
     def test_button_click_release_inside_fires_and_release_outside_does_not(self) -> None:
         scene_path = self._write_scene(
             "ui_interaction.json",

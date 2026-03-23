@@ -1,123 +1,105 @@
 """
-engine/levels/component_registry.py - Registro de componentes para instanciación dinámica
-
-PROPÓSITO:
-    Mantiene un diccionario de nombre -> clase para poder crear
-    componentes desde datos JSON sin hardcodear tipos.
-
-EJEMPLO DE USO:
-    registry = ComponentRegistry()
-    registry.register("Transform", Transform)
-    
-    # Crear componente desde datos
-    component = registry.create("Transform", {"x": 100, "y": 200})
-
-COMPORTAMIENTO:
-    - Registro global por defecto con componentes del motor
-    - Permite añadir componentes personalizados
-    - Errores claros si el componente no existe
+engine/levels/component_registry.py - Registro de componentes para instanciacion dinamica
 """
 
+from __future__ import annotations
+
+from dataclasses import dataclass
 from typing import Any, Dict, Optional, Type
 
 from engine.ecs.component import Component
 
 
+@dataclass(frozen=True)
+class ComponentDescriptor:
+    """Describe un componente registrable y su origen visual."""
+
+    name: str
+    component_class: Type[Component]
+    origin: str = "native"
+    badge: str = "CORE"
+
+
 class ComponentRegistry:
     """
-    Registro de tipos de componentes para instanciación dinámica.
-    
-    Permite crear componentes por nombre desde datos JSON.
+    Registro de tipos de componentes para instanciacion dinamica.
+
+    Permite crear componentes por nombre desde datos JSON y consultar
+    metadata ligera para la UI del editor.
     """
-    
+
     def __init__(self) -> None:
-        """Inicializa el registro vacío."""
-        self._components: Dict[str, Type[Component]] = {}
-    
-    def register(self, name: str, component_class: Type[Component]) -> None:
-        """
-        Registra un tipo de componente.
-        
-        Args:
-            name: Nombre del componente (usado en JSON)
-            component_class: Clase del componente
-        """
-        self._components[name] = component_class
-    
+        self._components: Dict[str, ComponentDescriptor] = {}
+
+    def register(
+        self,
+        name: str,
+        component_class: Type[Component],
+        *,
+        origin: str = "native",
+        badge: str | None = None,
+    ) -> None:
+        normalized_origin = str(origin or "native").strip().lower() or "native"
+        resolved_badge = badge or ("AI" if normalized_origin == "ai_custom" else "CORE")
+        self._components[name] = ComponentDescriptor(
+            name=name,
+            component_class=component_class,
+            origin=normalized_origin,
+            badge=resolved_badge,
+        )
+
     def get(self, name: str) -> Optional[Type[Component]]:
-        """
-        Obtiene una clase de componente por nombre.
-        
-        Args:
-            name: Nombre del componente
-            
-        Returns:
-            Clase del componente o None si no existe
-        """
+        descriptor = self._components.get(name)
+        return descriptor.component_class if descriptor is not None else None
+
+    def get_descriptor(self, name: str) -> Optional[ComponentDescriptor]:
         return self._components.get(name)
-    
+
+    def get_origin(self, name: str) -> str:
+        descriptor = self.get_descriptor(name)
+        return descriptor.origin if descriptor is not None else "unknown"
+
     def create(self, name: str, data: Dict[str, Any]) -> Optional[Component]:
-        """
-        Crea una instancia de componente desde datos.
-        
-        Args:
-            name: Nombre del componente
-            data: Diccionario con propiedades del componente
-            
-        Returns:
-            Instancia del componente o None si hay error
-        """
         component_class = self.get(name)
-        
+
         if component_class is None:
             print(f"[ERROR] ComponentRegistry: componente '{name}' no registrado")
             return None
-        
+
         try:
-            # Intentar crear con from_dict si existe
-            if hasattr(component_class, 'from_dict'):
+            if hasattr(component_class, "from_dict"):
                 return component_class.from_dict(data)
-            
-            # Fallback: pasar datos como kwargs al constructor
             return component_class(**data)
-            
-        except Exception as e:
-            print(f"[ERROR] ComponentRegistry: error creando '{name}': {e}")
+        except Exception as exc:
+            print(f"[ERROR] ComponentRegistry: error creando '{name}': {exc}")
             return None
-    
+
     def list_registered(self) -> list[str]:
-        """
-        Lista todos los componentes registrados.
-        
-        Returns:
-            Lista de nombres de componentes
-        """
         return list(self._components.keys())
+
+    def list_descriptors(self) -> list[ComponentDescriptor]:
+        return list(self._components.values())
 
 
 def create_default_registry() -> ComponentRegistry:
-    """
-    Crea un registro con los componentes predeterminados del motor.
-    
-    Returns:
-        ComponentRegistry con Transform, Sprite, Collider, RigidBody, Animator
-    """
-    from engine.components.transform import Transform
-    from engine.components.sprite import Sprite
-    from engine.components.collider import Collider
-    from engine.components.rigidbody import RigidBody
+    """Crea un registro con los componentes predeterminados del motor."""
+    from engine.components.audiosource import AudioSource
     from engine.components.animator import Animator
     from engine.components.camera2d import Camera2D
-    from engine.components.audiosource import AudioSource
+    from engine.components.canvas import Canvas
+    from engine.components.collider import Collider
     from engine.components.inputmap import InputMap
     from engine.components.playercontroller2d import PlayerController2D
-    from engine.components.renderorder2d import RenderOrder2D
-    from engine.components.scriptbehaviour import ScriptBehaviour
-    from engine.components.canvas import Canvas
     from engine.components.recttransform import RectTransform
-    from engine.components.uitext import UIText
+    from engine.components.renderorder2d import RenderOrder2D
+    from engine.components.rigidbody import RigidBody
+    from engine.components.scene_link import SceneLink
+    from engine.components.scriptbehaviour import ScriptBehaviour
+    from engine.components.sprite import Sprite
+    from engine.components.transform import Transform
     from engine.components.uibutton import UIButton
-    
+    from engine.components.uitext import UIText
+
     registry = ComponentRegistry()
     registry.register("Transform", Transform)
     registry.register("Sprite", Sprite)
@@ -129,10 +111,10 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("InputMap", InputMap)
     registry.register("PlayerController2D", PlayerController2D)
     registry.register("RenderOrder2D", RenderOrder2D)
+    registry.register("SceneLink", SceneLink)
     registry.register("ScriptBehaviour", ScriptBehaviour)
     registry.register("Canvas", Canvas)
     registry.register("RectTransform", RectTransform)
     registry.register("UIText", UIText)
     registry.register("UIButton", UIButton)
-    
     return registry

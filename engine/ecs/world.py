@@ -1,7 +1,7 @@
 """
 engine/ecs/world.py - Contenedor de entidades del juego
 
-PROPÃ“SITO:
+PROPÓSITO:
     World es el contenedor principal que almacena todas las entidades.
     Incluye clone() para crear copias para RuntimeWorld.
 """
@@ -9,6 +9,7 @@ PROPÃ“SITO:
 from __future__ import annotations
 
 import copy
+from collections import defaultdict
 from typing import TypeVar
 
 from engine.ecs.component import Component
@@ -21,47 +22,85 @@ class World:
     """Contenedor principal de todas las entidades del juego."""
 
     def __init__(self) -> None:
-        """Inicializa un mundo vacÃ­o."""
         self._entities: dict[int, Entity] = {}
-        self.selected_entity_name: str | None = None
+        self._name_index: dict[str, int] = {}
+        self._children_index: dict[str | None, set[int]] = defaultdict(set)
+        self._component_index: dict[type, set[int]] = defaultdict(set)
+        self._component_owner_index: dict[int, int] = {}
+        self._version: int = 0
+        self._selection_version: int = 0
+        self._selected_entity_name: str | None = None
         self.feature_metadata: dict = {}
 
+    @property
+    def version(self) -> int:
+        return self._version
+
+    @property
+    def selection_version(self) -> int:
+        return self._selection_version
+
+    @property
+    def selected_entity_name(self) -> str | None:
+        return self._selected_entity_name
+
+    @selected_entity_name.setter
+    def selected_entity_name(self, value: str | None) -> None:
+        normalized = str(value) if value else None
+        if self._selected_entity_name == normalized:
+            return
+        self._selected_entity_name = normalized
+        self._selection_version += 1
+
+    def touch(self) -> None:
+        self._version += 1
+
     def create_entity(self, name: str = "Entity") -> Entity:
-        """Crea una nueva entidad y la registra."""
         entity = Entity(name)
-        self._entities[entity.id] = entity
+        self.add_entity(entity)
         return entity
 
     def add_entity(self, entity: Entity) -> None:
-        """AÃ±ade una entidad existente al mundo."""
+        existing = self._entities.get(entity.id)
+        if existing is not None:
+            self._deindex_entity(existing)
+            existing._set_owner_world(None)
         self._entities[entity.id] = entity
+        entity._set_owner_world(self)
+        self._index_entity(entity)
+        self.touch()
 
     def remove_entity(self, entity_id: int) -> None:
-        """Elimina una entidad del mundo por su ID."""
-        if entity_id in self._entities:
-            del self._entities[entity_id]
+        entity = self._entities.get(entity_id)
+        if entity is None:
+            return
+        self._deindex_entity(entity)
+        entity._set_owner_world(None)
+        del self._entities[entity_id]
+        if self._selected_entity_name == entity.name:
+            self.selected_entity_name = None
+        self.touch()
 
     def destroy_entity(self, entity_id: int) -> None:
-        """Alias de remove_entity para compatibilidad."""
         self.remove_entity(entity_id)
 
     def get_entity(self, entity_id: int) -> Entity | None:
-        """Obtiene una entidad por su ID."""
         return self._entities.get(entity_id)
 
     def get_entity_by_name(self, name: str) -> Entity | None:
-        """Busca una entidad por su nombre."""
-        for entity in self._entities.values():
-            if entity.name == name:
-                return entity
-        return None
+        entity_id = self._name_index.get(name)
+        return self._entities.get(entity_id) if entity_id is not None else None
+
+    def get_entity_by_component_instance(self, component: Component) -> Entity | None:
+        entity_id = self._component_owner_index.get(id(component))
+        return self._entities.get(entity_id) if entity_id is not None else None
 
     def get_all_entities(self) -> list[Entity]:
-        """Retorna lista con todas las entidades."""
         return list(self._entities.values())
 
-    def get_children(self, parent_name: str) -> list[Entity]:
-        return [entity for entity in self._entities.values() if entity.parent_name == parent_name]
+    def get_children(self, parent_name: str | None) -> list[Entity]:
+        child_ids = self._children_index.get(parent_name, set())
+        return [self._entities[entity_id] for entity_id in sorted(child_ids) if entity_id in self._entities]
 
     def get_descendants(self, parent_name: str) -> list[Entity]:
         descendants: list[Entity] = []
@@ -74,30 +113,37 @@ class World:
         return descendants
 
     def get_entities_with(self, *component_types: type) -> list[Entity]:
-        """Busca entidades que tengan TODOS los componentes especificados."""
-        result = []
-        for entity in self._entities.values():
-            if not entity.active:
-                continue
-            has_all = all(entity.has_enabled_component(comp_type) for comp_type in component_types)
-            if has_all:
-                result.append(entity)
-        return result
+        if not component_types:
+            return [entity for entity in self._entities.values() if entity.active]
+
+        candidate_ids: set[int] | None = None
+        for component_type in component_types:
+            indexed_ids = self._component_index.get(component_type, set())
+            candidate_ids = set(indexed_ids) if candidate_ids is None else candidate_ids.intersection(indexed_ids)
+            if not candidate_ids:
+                return []
+
+        return [
+            self._entities[entity_id]
+            for entity_id in sorted(candidate_ids or set())
+            if entity_id in self._entities and self._entities[entity_id].active and all(self._entities[entity_id].has_enabled_component(comp_type) for comp_type in component_types)
+        ]
 
     def entity_count(self) -> int:
-        """Retorna el nÃºmero total de entidades."""
         return len(self._entities)
 
     def clear(self) -> None:
-        """Elimina todas las entidades."""
+        for entity in self._entities.values():
+            entity._set_owner_world(None)
         self._entities.clear()
+        self._name_index.clear()
+        self._children_index.clear()
+        self._component_index.clear()
+        self._component_owner_index.clear()
+        self.selected_entity_name = None
+        self.touch()
 
     def clone(self) -> "World":
-        """
-        Crea una copia profunda del World.
-
-        Usado para crear RuntimeWorld en modo PLAY.
-        """
         new_world = World()
         new_world.feature_metadata = copy.deepcopy(self.feature_metadata)
         pending_links: list[tuple[Entity, str]] = []
@@ -115,9 +161,12 @@ class World:
             for component in entity.get_all_components():
                 cloned_component = self._clone_component(component)
                 if cloned_component is not None:
-                    new_entity.add_component(cloned_component)
+                    new_entity.add_component(
+                        cloned_component,
+                        metadata=entity.get_component_metadata(type(component)),
+                    )
 
-            new_world._entities[new_entity.id] = new_entity
+            new_world.add_entity(new_entity)
             if new_entity.parent_name:
                 pending_links.append((new_entity, new_entity.parent_name))
 
@@ -143,7 +192,6 @@ class World:
                 parent_transform.children.append(child_transform)
 
     def _clone_component(self, component: Component) -> Component | None:
-        """Clona un componente usando to_dict/from_dict."""
         component_class = type(component)
         if hasattr(component, "to_dict") and hasattr(component_class, "from_dict"):
             try:
@@ -173,11 +221,85 @@ class World:
             print(f"[WARNING] World.clone: no se pudo clonar {type(component).__name__}: {exc}")
             return None
 
+    def _index_entity(self, entity: Entity) -> None:
+        self._name_index[entity.name] = entity.id
+        self._children_index[entity.parent_name].add(entity.id)
+        for component in entity.get_all_components():
+            self._index_component(entity, type(component), component)
+
+    def _deindex_entity(self, entity: Entity) -> None:
+        if self._name_index.get(entity.name) == entity.id:
+            del self._name_index[entity.name]
+        child_ids = self._children_index.get(entity.parent_name)
+        if child_ids is not None:
+            child_ids.discard(entity.id)
+            if not child_ids:
+                self._children_index.pop(entity.parent_name, None)
+        for component in entity.get_all_components():
+            self._deindex_component(entity, type(component), component)
+
+    def _index_component(self, entity: Entity, component_type: type, component: Component) -> None:
+        self._component_index[component_type].add(entity.id)
+        self._component_owner_index[id(component)] = entity.id
+
+    def _deindex_component(self, entity: Entity, component_type: type, component: Component) -> None:
+        component_ids = self._component_index.get(component_type)
+        if component_ids is not None:
+            component_ids.discard(entity.id)
+            if not component_ids:
+                self._component_index.pop(component_type, None)
+        self._component_owner_index.pop(id(component), None)
+
+    def _on_entity_changed(self, entity: Entity, event: str, **payload: object) -> None:
+        if entity.id not in self._entities:
+            return
+
+        if event == "entity_field_changed":
+            field = str(payload.get("field", ""))
+            previous = payload.get("previous")
+            current = payload.get("current")
+            if field == "name":
+                if previous is not None and self._name_index.get(str(previous)) == entity.id:
+                    del self._name_index[str(previous)]
+                self._name_index[str(current)] = entity.id
+                if self._selected_entity_name == previous:
+                    self.selected_entity_name = str(current)
+            elif field == "parent_name":
+                previous_children = self._children_index.get(previous)
+                if previous_children is not None:
+                    previous_children.discard(entity.id)
+                    if not previous_children:
+                        self._children_index.pop(previous, None)
+                self._children_index[current].add(entity.id)
+            self.touch()
+            return
+
+        if event == "component_added":
+            component_type = payload.get("component_type")
+            previous_component = payload.get("previous_component")
+            component = payload.get("component")
+            if previous_component is not None and component_type is not None:
+                self._deindex_component(entity, component_type, previous_component)
+            if component_type is not None and component is not None:
+                self._index_component(entity, component_type, component)
+            self.touch()
+            return
+
+        if event == "component_removed":
+            component_type = payload.get("component_type")
+            component = payload.get("component")
+            if component_type is not None and component is not None:
+                self._deindex_component(entity, component_type, component)
+            self.touch()
+            return
+
+        if event == "component_metadata_changed":
+            self.touch()
+
     def __repr__(self) -> str:
-        return f"World(entities={self.entity_count()})"
+        return f"World(entities={self.entity_count()}, version={self.version})"
 
     def serialize(self) -> dict:
-        """Serializa el World actual para guardado."""
         entities_data = []
         consumed_prefab_entities: set[str] = set()
         for entity in self._entities.values():
@@ -247,6 +369,10 @@ class World:
                             if isinstance(val, (int, float, str, bool, list, dict)):
                                 data[attr] = val
                     ent_data["components"][comp_name] = data
+
+                metadata = entity.get_component_metadata(type(component))
+                if metadata:
+                    ent_data.setdefault("component_metadata", {})[comp_name] = copy.deepcopy(metadata)
 
             entities_data.append(ent_data)
 
