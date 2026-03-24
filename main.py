@@ -55,6 +55,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--golden-output", type=str, default="", help="Ruta para guardar un reporte de golden run")
     parser.add_argument("--golden-compare", type=str, default="", help="Ruta de un golden run esperado para comparar")
     parser.add_argument("--capture-every", type=int, default=1, help="Capturar estado cada N frames en golden runs")
+    parser.add_argument("--debug-colliders", action="store_true", help="Activa overlay de colliders en CLI/headless")
+    parser.add_argument("--debug-labels", action="store_true", help="Activa labels debug en CLI/headless")
+    parser.add_argument("--debug-tile-chunks", action="store_true", help="Activa overlay de chunks de tilemap en CLI/headless")
+    parser.add_argument("--debug-camera", action="store_true", help="Activa overlay de volumen de camara en CLI/headless")
+    parser.add_argument("--debug-dump", type=str, default="", help="Exporta geometria del pass Debug a JSON en modo headless")
     return parser.parse_args()
 
 

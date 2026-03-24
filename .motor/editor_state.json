@@ -6,9 +6,9 @@
     ],
     "active_scene": "levels/demo_level.json",
     "scene_view_states": {},
-    "active_ai_session_id": "session_bfbfc4dcac3f",
+    "active_ai_session_id": "session_599e74cff212",
     "preferences": {
-        "editor_active_tool": "Move",
+        "editor_active_tool": "Rotate",
         "editor_transform_space": "world",
         "editor_pivot_mode": "pivot",
         "editor_snap_move_step": 10.0,

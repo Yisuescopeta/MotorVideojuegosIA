@@ -1,6 +1,6 @@
 {
     "version": 1,
-    "generated_at_utc": "2026-03-23T23:01:30.139617+00:00",
+    "generated_at_utc": "2026-03-24T16:12:15.457390+00:00",
     "assets": [
         {
             "guid": "ast_2c6f30e04ba7458b9e8d6da1bf97444e",
@@ -212,6 +212,28 @@
             "referenced_by": [
                 "levels/platformer_test_scene.json"
             ]
+        },
+        {
+            "guid": "ast_b8a67818097d429da9674325af151200",
+            "guid_short": "ast_b8a6",
+            "name": "multiagent_toy_scene.json",
+            "path": "levels/multiagent_toy_scene.json",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/levels/multiagent_toy_scene.json",
+            "folder": "levels",
+            "asset_kind": "scene_data",
+            "importer": "scene_data",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1774367926.44673,
+            "source_hash": "a21e200e282cb5022c014c7ec2c11da65440713787150905bfcfd19ceefa4e11",
+            "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
+            "reference": {
+                "guid": "ast_b8a67818097d429da9674325af151200",
+                "path": "levels/multiagent_toy_scene.json"
+            },
+            "referenced_by": []
         },
         {
             "guid": "ast_0a0f68b252014c979074814c28cd1c75",

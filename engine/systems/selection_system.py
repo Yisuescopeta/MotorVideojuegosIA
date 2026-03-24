@@ -37,7 +37,7 @@ class SelectionSystem:
     # Tamaño por defecto para entidades sin tamaño explícito
     DEFAULT_SIZE: int = 32
     
-    def update(self, world: World, mouse_world_pos: rl.Vector2) -> None:
+    def update(self, world: World, mouse_world_pos: rl.Vector2) -> Optional[str]:
         """
         Actualiza el sistema de selección.
         Should be called only in EDIT mode and if mouse is in scene view.
@@ -48,7 +48,7 @@ class SelectionSystem:
         """
         # Solo procesar si hay click izquierdo
         if not rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-            return
+            return world.selected_entity_name
             
         mouse_x = mouse_world_pos.x
         mouse_y = mouse_world_pos.y
@@ -73,6 +73,7 @@ class SelectionSystem:
         if world.selected_entity_name != clicked_entity_name:
             world.selected_entity_name = clicked_entity_name
             print(f"[SELECTION] Selected: {clicked_entity_name}")
+        return clicked_entity_name
     
     def _is_point_in_entity(self, x: float, y: float, entity: Entity) -> bool:
         """Comprueba si un punto (x,y) está dentro de los límites de una entidad."""

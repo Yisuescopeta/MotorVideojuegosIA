@@ -9,6 +9,7 @@ PROPÓSITO:
 import sys
 import os
 import traceback
+import json
 from typing import Optional, Any
 
 from cli.headless_game import HeadlessGame
@@ -24,6 +25,7 @@ from engine.systems.animation_system import AnimationSystem
 from engine.systems.audio_system import AudioSystem
 from engine.systems.input_system import InputSystem
 from engine.systems.player_controller_system import PlayerControllerSystem
+from engine.systems.render_system import RenderSystem
 from engine.systems.script_behaviour_system import ScriptBehaviourSystem
 # Importamos InspectorSystem solo para que no falle la dependencia, 
 # aunque en headless no se usa visualmente
@@ -55,6 +57,7 @@ class CLIRunner:
         scene_manager = SceneManager(registry)
         
         event_bus = EventBus() # type: ignore
+        render_system = RenderSystem()
         physics_system = PhysicsSystem(gravity=600)
         collision_system = CollisionSystem(event_bus)
         animation_system = AnimationSystem(event_bus)
@@ -67,6 +70,7 @@ class CLIRunner:
         
         game.set_scene_manager(scene_manager)
         game.set_project_service(project_service)
+        game.set_render_system(render_system)
         game.set_physics_system(physics_system)
         game.set_collision_system(collision_system)
         game.set_animation_system(animation_system)
@@ -77,6 +81,12 @@ class CLIRunner:
         game.set_inspector_system(inspector_system)
         game.set_event_bus(event_bus)
         game.set_selection_system(selection_system)
+        render_system.set_debug_options(
+            draw_colliders=bool(getattr(args, "debug_colliders", False)),
+            draw_labels=bool(getattr(args, "debug_labels", False)),
+            draw_tile_chunks=bool(getattr(args, "debug_tile_chunks", False)),
+            draw_camera=bool(getattr(args, "debug_camera", False)),
+        )
         if getattr(args, "seed", None) is not None:
             game.set_seed(args.seed)
         
@@ -138,6 +148,15 @@ class CLIRunner:
                     game.step_frame()
                     if i % 60 == 0:
                         print(f"Frame {i}/{args.frames}")
+            if getattr(args, "debug_dump", "") and game.world is not None and game._render_system is not None:
+                dump = game._render_system.get_debug_geometry_dump(game.world, viewport_size=(float(game.width), float(game.height)))
+                dump_path = args.debug_dump
+                dump_dir = os.path.dirname(dump_path)
+                if dump_dir:
+                    os.makedirs(dump_dir, exist_ok=True)
+                with open(dump_path, "w", encoding="utf-8") as file:
+                    json.dump(dump, file, indent=2, ensure_ascii=True)
+                print(f"[INFO] Debug dump guardado en: {dump_path}")
             print("[INFO] Finalizado.")
             return
             

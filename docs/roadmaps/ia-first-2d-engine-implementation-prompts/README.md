@@ -2,6 +2,13 @@
 
 Prompts extraidos de `docs/roadmaps/ia-first-2d-engine-master-roadmap.md` en el mismo orden recomendado por el informe.
 
+## Estado
+
+Estado actual de ejecucion del roadmap:
+
+- `A.1` a `H.4`: completados
+- cierre consolidado: [ia-first-2d-engine-roadmap-closeout.md](../ia-first-2d-engine-roadmap-closeout.md)
+
 ## Orden de ejecucion
 
 - `A.1`: [01-a-1-inventario-tecnico-contrato-arquitectura.md](./01-a-1-inventario-tecnico-contrato-arquitectura.md)

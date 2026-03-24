@@ -1,0 +1,7 @@
+{
+  "episode_id": "episode_0000",
+  "scene_path": "levels/platformer_test_scene.json",
+  "expected_world_hash": "684d4d6f7862e6a232b3e46ee684f8c9b9326210034fc77f085e5dc40f69e6a1",
+  "replayed_world_hash": "684d4d6f7862e6a232b3e46ee684f8c9b9326210034fc77f085e5dc40f69e6a1",
+  "match": true
+}

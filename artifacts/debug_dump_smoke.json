@@ -1,0 +1,14 @@
+{
+  "pass": "Debug",
+  "viewport": {
+    "width": 800,
+    "height": 600
+  },
+  "commands": [],
+  "stats": {
+    "render_entities": 0,
+    "draw_calls": 0,
+    "batches": 0,
+    "state_changes": 0
+  }
+}

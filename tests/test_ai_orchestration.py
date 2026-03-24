@@ -60,7 +60,7 @@ class AIOrchestrationTests(unittest.TestCase):
         response = self.api.handle_ai_request("Crea un plataformas con tilemap y pathfinding", mode="plan")
 
         gap_ids = {gap["id"] for gap in response["gaps"]}
-        self.assertIn("tilemap_support", gap_ids)
+        self.assertNotIn("tilemap_support", gap_ids)
         self.assertIn("pathfinding_support", gap_ids)
         self.assertEqual(response["plan"]["session_type"], "gap_analysis")
 

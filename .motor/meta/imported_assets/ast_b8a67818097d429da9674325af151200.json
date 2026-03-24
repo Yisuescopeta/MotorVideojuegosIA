@@ -1,0 +1,32 @@
+{
+    "version": 1,
+    "guid": "ast_b8a67818097d429da9674325af151200",
+    "path": "levels/multiagent_toy_scene.json",
+    "asset_kind": "scene_data",
+    "importer": "scene_data",
+    "source_hash": "a21e200e282cb5022c014c7ec2c11da65440713787150905bfcfd19ceefa4e11",
+    "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
+    "dependencies": [],
+    "metadata": {
+        "guid": "ast_b8a67818097d429da9674325af151200",
+        "source_path": "levels/multiagent_toy_scene.json",
+        "path": "levels/multiagent_toy_scene.json",
+        "asset_kind": "scene_data",
+        "importer": "scene_data",
+        "labels": [],
+        "dependencies": [],
+        "import_settings": {
+            "asset_type": "scene_data",
+            "import_mode": "raw",
+            "grid": {},
+            "automatic": {},
+            "slices": []
+        },
+        "asset_type": "scene_data",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "source_size_bytes": 3365
+}

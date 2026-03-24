@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any, Optional
+
 from engine.components.charactercontroller2d import CharacterController2D
 from engine.components.collider import Collider
 from engine.components.inputmap import InputMap
@@ -11,7 +13,15 @@ from engine.ecs.world import World
 class CharacterControllerSystem:
     """Ejecuta movimiento de personaje data-driven sin depender del editor."""
 
+    def __init__(self, event_bus: Optional[Any] = None) -> None:
+        self._event_bus = event_bus
+        self._emitted_contacts: set[tuple[int, int]] = set()
+
+    def set_event_bus(self, event_bus: Optional[Any]) -> None:
+        self._event_bus = event_bus
+
     def update(self, world: World, delta_time: float) -> None:
+        self._emitted_contacts = set()
         solids = [
             entity
             for entity in world.get_entities_with(Transform, Collider)
@@ -30,7 +40,7 @@ class CharacterControllerSystem:
             if not entity.active or not collider.enabled or not controller.enabled:
                 continue
             self._apply_inputs(controller, input_map)
-            self._move_entity(entity, transform, collider, controller, solids, float(delta_time))
+            self._move_entity(world, entity, transform, collider, controller, solids, float(delta_time))
 
     def _apply_inputs(self, controller: CharacterController2D, input_map: InputMap | None) -> None:
         controller.collision_normal_x = 0.0
@@ -51,6 +61,7 @@ class CharacterControllerSystem:
 
     def _move_entity(
         self,
+        world: World,
         entity: Entity,
         transform: Transform,
         collider: Collider,
@@ -62,20 +73,21 @@ class CharacterControllerSystem:
             controller.velocity_y = min(controller.max_fall_speed, controller.velocity_y + controller.gravity * delta_time)
 
         delta_x = controller.velocity_x * delta_time
-        transform.x += self._sweep_horizontal(entity, transform, collider, controller, solids, delta_x)
+        transform.x += self._sweep_horizontal(world, entity, transform, collider, controller, solids, delta_x)
 
         controller.on_floor = False
         delta_y = controller.velocity_y * delta_time
-        transform.y += self._sweep_vertical(entity, transform, collider, controller, solids, delta_y)
+        transform.y += self._sweep_vertical(world, entity, transform, collider, controller, solids, delta_y)
 
         if not controller.on_floor and abs(controller.velocity_y) <= 1e-5 and controller.floor_snap_distance > 0.0:
-            snap_distance = self._floor_snap(entity, transform, collider, controller, solids)
+            snap_distance = self._floor_snap(world, entity, transform, collider, controller, solids)
             if snap_distance is not None:
                 transform.y += snap_distance
                 controller.on_floor = True
 
     def _sweep_horizontal(
         self,
+        world: World,
         entity: Entity,
         transform: Transform,
         collider: Collider,
@@ -90,6 +102,8 @@ class CharacterControllerSystem:
         hit_entity: Entity | None = None
         for other in solids:
             if other.id == entity.id:
+                continue
+            if not self._layers_can_collide(world, entity, other):
                 continue
             other_transform = other.get_component(Transform)
             other_collider = other.get_component(Collider)
@@ -115,10 +129,12 @@ class CharacterControllerSystem:
             controller.velocity_x = 0.0
             if controller.move_mode == "move_and_collide":
                 controller.velocity_y = 0.0
+            self._emit_collision(entity, hit_entity)
         return safe_delta
 
     def _sweep_vertical(
         self,
+        world: World,
         entity: Entity,
         transform: Transform,
         collider: Collider,
@@ -133,6 +149,8 @@ class CharacterControllerSystem:
         hit_entity: Entity | None = None
         for other in solids:
             if other.id == entity.id:
+                continue
+            if not self._layers_can_collide(world, entity, other):
                 continue
             other_transform = other.get_component(Transform)
             other_collider = other.get_component(Collider)
@@ -159,10 +177,12 @@ class CharacterControllerSystem:
             controller.velocity_y = 0.0
             if controller.move_mode == "move_and_collide":
                 controller.velocity_x = 0.0
+            self._emit_collision(entity, hit_entity)
         return safe_delta
 
     def _floor_snap(
         self,
+        world: World,
         entity: Entity,
         transform: Transform,
         collider: Collider,
@@ -174,6 +194,8 @@ class CharacterControllerSystem:
         best_snap: float | None = None
         for other in solids:
             if other.id == entity.id:
+                continue
+            if not self._layers_can_collide(world, entity, other):
                 continue
             other_transform = other.get_component(Transform)
             other_collider = other.get_component(Collider)
@@ -187,4 +209,29 @@ class CharacterControllerSystem:
                 best_snap = gap
                 controller.collision_normal_y = -1.0
                 controller.last_hit_entity = other.name
+                self._emit_collision(entity, other)
         return best_snap
+
+    def _layers_can_collide(self, world: World, entity: Entity, other: Entity) -> bool:
+        matrix = world.feature_metadata.get("physics_2d", {}).get("layer_matrix", {})
+        if not matrix:
+            return True
+        return bool(matrix.get(f"{entity.layer}|{other.layer}", True))
+
+    def _emit_collision(self, entity: Entity, other: Entity) -> None:
+        if self._event_bus is None:
+            return
+        pair = tuple(sorted((int(entity.id), int(other.id))))
+        if pair in self._emitted_contacts:
+            return
+        self._emitted_contacts.add(pair)
+        self._event_bus.emit(
+            "on_collision",
+            {
+                "entity_a": entity.name,
+                "entity_b": other.name,
+                "entity_a_id": int(entity.id),
+                "entity_b_id": int(other.id),
+                "is_trigger": False,
+            },
+        )

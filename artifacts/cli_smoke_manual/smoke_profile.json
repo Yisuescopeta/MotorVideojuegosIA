@@ -1,0 +1,133 @@
+{
+  "profile_version": 1,
+  "run_label": "play_session",
+  "frames": 3,
+  "systems": {
+    "animation": {
+      "avg_ms": 0.009566666903992882,
+      "min_ms": 0.00560000034965924,
+      "max_ms": 0.013200000012147939,
+      "total_ms": 0.028700000711978646
+    },
+    "frame": {
+      "avg_ms": 0.20206666643692492,
+      "min_ms": 0.12149999975008541,
+      "max_ms": 0.3038999998352665,
+      "total_ms": 0.6061999993107747
+    },
+    "gameplay": {
+      "avg_ms": 0.14076666684559314,
+      "min_ms": 0.09170000021185842,
+      "max_ms": 0.2023000001827313,
+      "total_ms": 0.4223000005367794
+    },
+    "hierarchy": {
+      "avg_ms": 0.0,
+      "min_ms": 0.0,
+      "max_ms": 0.0,
+      "total_ms": 0.0
+    },
+    "inspector": {
+      "avg_ms": 0.0,
+      "min_ms": 0.0,
+      "max_ms": 0.0,
+      "total_ms": 0.0
+    },
+    "render": {
+      "avg_ms": 0.0,
+      "min_ms": 0.0,
+      "max_ms": 0.0,
+      "total_ms": 0.0
+    },
+    "scripts": {
+      "avg_ms": 0.0,
+      "min_ms": 0.0,
+      "max_ms": 0.0,
+      "total_ms": 0.0
+    },
+    "selection_gizmo": {
+      "avg_ms": 0.0,
+      "min_ms": 0.0,
+      "max_ms": 0.0,
+      "total_ms": 0.0
+    },
+    "ui": {
+      "avg_ms": 0.03576666661804969,
+      "min_ms": 0.018199999885837315,
+      "max_ms": 0.054399999953602673,
+      "total_ms": 0.10729999985414906
+    }
+  },
+  "counters": {
+    "avg": {
+      "entities": 5.0,
+      "render_entities": 0.0,
+      "draw_calls": 0.0,
+      "batches": 0.0,
+      "tilemap_chunks": 0.0,
+      "tilemap_chunk_rebuilds": 0.0,
+      "render_target_passes": 0.0,
+      "physics_ccd_bodies": 0.0,
+      "physics_contacts": 0.0,
+      "canvases": 0.0,
+      "buttons": 0.0,
+      "scripts": 0.0,
+      "world_json_bytes": 3349.6666666666665,
+      "entity_avg_json_bytes": 669.9333333333333
+    },
+    "max": {
+      "batches": 0.0,
+      "buttons": 0.0,
+      "canvases": 0.0,
+      "draw_calls": 0.0,
+      "entities": 5.0,
+      "entity_avg_json_bytes": 672.4,
+      "physics_ccd_bodies": 0.0,
+      "physics_contacts": 0.0,
+      "render_entities": 0.0,
+      "render_target_passes": 0.0,
+      "scripts": 0.0,
+      "tilemap_chunk_rebuilds": 0.0,
+      "tilemap_chunks": 0.0,
+      "world_json_bytes": 3362.0
+    }
+  },
+  "last_frame": {
+    "frame": 3,
+    "mode": "PLAY",
+    "backend": "legacy_aabb",
+    "timings_ms": {
+      "frame": 0.3038999998352665,
+      "render": 0.0,
+      "inspector": 0.0,
+      "hierarchy": 0.0,
+      "ui": 0.054399999953602673,
+      "scripts": 0.0,
+      "selection_gizmo": 0.0,
+      "animation": 0.013200000012147939,
+      "gameplay": 0.2023000001827313
+    },
+    "counters": {
+      "entities": 5,
+      "render_entities": 0,
+      "draw_calls": 0,
+      "batches": 0,
+      "tilemap_chunks": 0,
+      "tilemap_chunk_rebuilds": 0,
+      "render_target_passes": 0,
+      "physics_ccd_bodies": 0,
+      "physics_contacts": 0,
+      "canvases": 0,
+      "buttons": 0,
+      "scripts": 0
+    },
+    "memory": {
+      "world_json_bytes": 3350.0,
+      "entity_avg_json_bytes": 670.0
+    },
+    "backend_metrics": {
+      "ccd_bodies": 0,
+      "swept_checks": 0
+    }
+  }
+}

@@ -169,7 +169,7 @@ class GizmoSystem:
             self._draw_translate_gizmo(origin_x, origin_y, transform)
         if active_tool in (EditorTool.ROTATE, EditorTool.TRANSFORM):
             self._draw_rotate_gizmo(origin_x, origin_y, transform.rotation)
-        if active_tool == EditorTool.SCALE:
+        if active_tool in (EditorTool.SCALE, EditorTool.TRANSFORM):
             self._draw_scale_gizmo(origin_x, origin_y, transform)
 
     def render_ui_overlay(

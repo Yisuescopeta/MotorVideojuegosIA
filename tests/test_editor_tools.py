@@ -3,7 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.path.append(os.getcwd())
 
@@ -61,6 +61,49 @@ class EditorLayoutToolStateTests(unittest.TestCase):
             layout.center_rect.x + layout.center_rect.width,
         )
 
+    def test_scene_render_textures_match_visible_viewport_height(self) -> None:
+        resize_calls: list[tuple[int, int]] = []
+
+        def _capture_resize(self, width: int, height: int) -> None:
+            resize_calls.append((width, height))
+
+        with patch.object(EditorLayout, "_resize_render_textures", _capture_resize):
+            layout = EditorLayout(1280, 720)
+
+        self.assertTrue(resize_calls)
+        self.assertEqual(
+            resize_calls[-1],
+            (int(layout.get_center_view_rect().width), int(layout.get_center_view_rect().height)),
+        )
+
+    def test_editor_camera_offset_tracks_visible_scene_view_center(self) -> None:
+        with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
+            layout = EditorLayout(1280, 720)
+
+        view_rect = layout.get_center_view_rect()
+        self.assertEqual(layout.editor_camera.offset.x, view_rect.width / 2)
+        self.assertEqual(layout.editor_camera.offset.y, view_rect.height / 2)
+
+        layout.update_layout(1440, 900, update_texture=False)
+        resized_view_rect = layout.get_center_view_rect()
+        self.assertEqual(layout.editor_camera.offset.x, resized_view_rect.width / 2)
+        self.assertEqual(layout.editor_camera.offset.y, resized_view_rect.height / 2)
+
+    def test_scene_mouse_world_pos_uses_visible_viewport_origin(self) -> None:
+        with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
+            layout = EditorLayout(1280, 720)
+
+        layout.editor_camera.target = rl.Vector2(25.0, -10.0)
+        layout.editor_camera.zoom = 1.0
+        view_rect = layout.get_center_view_rect()
+        screen_pos = rl.Vector2(view_rect.x + view_rect.width / 2, view_rect.y + view_rect.height / 2)
+
+        with patch("pyray.get_mouse_position", return_value=screen_pos):
+            world_pos = layout.get_scene_mouse_pos()
+
+        self.assertAlmostEqual(world_pos.x, 25.0)
+        self.assertAlmostEqual(world_pos.y, -10.0)
+
 
 class SceneViewFocusRegressionTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -101,6 +144,55 @@ class SceneViewFocusRegressionTests(unittest.TestCase):
         self.game._process_ui_requests()
 
         self.assertEqual(self.game.editor_layout.active_tab, "SCENE")
+
+    def test_autosave_preserves_live_scene_selection_and_camera(self) -> None:
+        self.game._scene_manager.load_scene(
+            {
+                "name": "AutosaveProbe",
+                "entities": [
+                    {
+                        "name": "Player",
+                        "active": True,
+                        "tag": "Untagged",
+                        "layer": "Default",
+                        "components": {
+                            "Transform": {
+                                "enabled": True,
+                                "x": 32.0,
+                                "y": 48.0,
+                                "rotation": 0.0,
+                                "scale_x": 1.0,
+                                "scale_y": 1.0,
+                            }
+                        },
+                    }
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            },
+            source_path=self.scene_path.as_posix(),
+        )
+        self.game.editor_layout.editor_camera.target = rl.Vector2(125.0, -75.0)
+        self.game.editor_layout.editor_camera.zoom = 1.75
+        self.game._scene_manager.set_selected_entity("Player")
+        self.game._scene_manager.set_scene_view_state(
+            self.game._scene_manager.active_scene_key,
+            {
+                "selected_entity": None,
+                "camera_target": {"x": 0.0, "y": 0.0},
+                "camera_zoom": 1.0,
+            },
+        )
+
+        entry = self.game._scene_manager._resolve_entry(self.game._scene_manager.active_scene_key)  # type: ignore[attr-defined]
+        entry.dirty = True
+
+        self.game._autosave_dirty_scenes()
+
+        self.assertEqual(self.game._scene_manager.get_edit_world().selected_entity_name, "Player")
+        self.assertEqual(self.game.editor_layout.editor_camera.target.x, 125.0)
+        self.assertEqual(self.game.editor_layout.editor_camera.target.y, -75.0)
+        self.assertEqual(self.game.editor_layout.editor_camera.zoom, 1.75)
 
 
 class GizmoSystemMathTests(unittest.TestCase):
@@ -170,6 +262,44 @@ class GizmoSystemMathTests(unittest.TestCase):
         self.assertEqual(rect_transform.anchored_y, 10.0)
         self.assertEqual(rect_transform.width, 320.0)
         self.assertEqual(rect_transform.height, 120.0)
+
+    def test_transform_tool_renders_translate_rotate_and_scale_handles(self) -> None:
+        gizmo = GizmoSystem()
+        world = SceneManager(create_default_registry()).load_scene(
+            {
+                "name": "GizmoProbe",
+                "entities": [
+                    {
+                        "name": "Player",
+                        "active": True,
+                        "tag": "Untagged",
+                        "layer": "Default",
+                        "components": {
+                            "Transform": {
+                                "enabled": True,
+                                "x": 32.0,
+                                "y": 64.0,
+                                "rotation": 15.0,
+                                "scale_x": 1.0,
+                                "scale_y": 1.0,
+                            }
+                        },
+                    }
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+        world.selected_entity_name = "Player"
+        gizmo._draw_translate_gizmo = Mock()
+        gizmo._draw_rotate_gizmo = Mock()
+        gizmo._draw_scale_gizmo = Mock()
+
+        gizmo.render(world, EditorTool.TRANSFORM, TransformSpace.WORLD, PivotMode.PIVOT)
+
+        gizmo._draw_translate_gizmo.assert_called_once()
+        gizmo._draw_rotate_gizmo.assert_called_once()
+        gizmo._draw_scale_gizmo.assert_called_once()
 
 
 class SceneManagerTransformStateTests(unittest.TestCase):

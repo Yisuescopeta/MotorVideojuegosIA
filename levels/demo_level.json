@@ -8,7 +8,7 @@
             "components": {
                 "Transform": {
                     "enabled": true,
-                    "x": 150,
+                    "x": 180,
                     "y": 100,
                     "rotation": 0.0,
                     "scale_x": 1.0,
@@ -20,20 +20,40 @@
                     "height": 30,
                     "offset_x": 0.0,
                     "offset_y": 0.0,
-                    "is_trigger": false
+                    "is_trigger": false,
+                    "shape_type": "box",
+                    "radius": 15.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
                 },
                 "RigidBody": {
                     "enabled": true,
                     "velocity_x": 0.0,
                     "velocity_y": 0.0,
                     "gravity_scale": 1.0,
-                    "is_grounded": false
+                    "is_grounded": false,
+                    "body_type": "dynamic",
+                    "simulated": true,
+                    "freeze_x": false,
+                    "freeze_y": false,
+                    "constraints": [
+                        "None"
+                    ],
+                    "use_full_kinematic_contacts": false,
+                    "collision_detection_mode": "discrete"
                 },
                 "Animator": {
                     "enabled": true,
-                    "sprite_sheet": "assets/images_1.png",
+                    "sprite_sheet": {
+                        "guid": "ast_3fe01594895f4c4081f1ef623dbd31f8",
+                        "path": "assets/images_1.png"
+                    },
+                    "sprite_sheet_path": "assets/images_1.png",
                     "frame_width": 32,
                     "frame_height": 32,
+                    "flip_x": false,
                     "animations": {
                         "idle": {
                             "frames": [
@@ -104,20 +124,40 @@
                     "height": 35,
                     "offset_x": 0.0,
                     "offset_y": 0.0,
-                    "is_trigger": false
+                    "is_trigger": false,
+                    "shape_type": "box",
+                    "radius": 17.5,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
                 },
                 "RigidBody": {
                     "enabled": true,
                     "velocity_x": 0.0,
                     "velocity_y": 0.0,
                     "gravity_scale": 0.8,
-                    "is_grounded": false
+                    "is_grounded": false,
+                    "body_type": "dynamic",
+                    "simulated": true,
+                    "freeze_x": false,
+                    "freeze_y": false,
+                    "constraints": [
+                        "None"
+                    ],
+                    "use_full_kinematic_contacts": false,
+                    "collision_detection_mode": "discrete"
                 },
                 "Animator": {
                     "enabled": true,
-                    "sprite_sheet": "assets/test_spritesheet.png",
+                    "sprite_sheet": {
+                        "guid": "ast_4b39dcc9f7c84d3aaa435429284d42aa",
+                        "path": "assets/test_spritesheet.png"
+                    },
+                    "sprite_sheet_path": "assets/test_spritesheet.png",
                     "frame_width": 32,
                     "frame_height": 32,
+                    "flip_x": false,
                     "animations": {
                         "spin": {
                             "frames": [
@@ -162,7 +202,13 @@
                     "height": 24,
                     "offset_x": 0.0,
                     "offset_y": 0.0,
-                    "is_trigger": true
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 12.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
                 }
             }
         },
@@ -186,7 +232,13 @@
                     "height": 32,
                     "offset_x": 0.0,
                     "offset_y": 0.0,
-                    "is_trigger": false
+                    "is_trigger": false,
+                    "shape_type": "box",
+                    "radius": 200.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
                 }
             }
         },
@@ -210,12 +262,19 @@
                     "height": 20,
                     "offset_x": 0.0,
                     "offset_y": 0.0,
-                    "is_trigger": false
+                    "is_trigger": false,
+                    "shape_type": "box",
+                    "radius": 60.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
                 }
             }
         }
     ],
     "rules": [],
+    "feature_metadata": {},
     "name": "Demo Level (con Reglas)",
-    "feature_metadata": {}
+    "schema_version": 1
 }

@@ -22,6 +22,7 @@ import pyray as rl
 import os
 import random
 import time
+import json
 from pathlib import Path
 
 from engine.core.time_manager import TimeManager
@@ -55,6 +56,7 @@ if TYPE_CHECKING:
     from cli.script_executor import ScriptExecutor
 
 from engine.debug.timeline import Timeline
+from engine.debug.profiler import EngineProfiler
 from engine.components.canvas import Canvas
 from engine.components.uibutton import UIButton
 from engine.components.scriptbehaviour import ScriptBehaviour
@@ -67,6 +69,7 @@ from engine.editor.assistant_panel import AssistantPanel
 from engine.editor.sprite_editor_modal import SpriteEditorModal
 from engine.editor.raygui_theme import apply_unity_dark_theme
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
+from engine.tilemap.collision_builder import bake_tilemap_colliders
 
 
 class Game:
@@ -165,6 +168,7 @@ class Game:
             "buttons": 0,
             "scripts": 0,
         }
+        self._profiler: EngineProfiler = EngineProfiler()
         self.debug_draw_colliders: bool = False
         self.debug_draw_labels: bool = False
         self.random_seed: int | None = None
@@ -215,12 +219,14 @@ class Game:
             return
         
         print("[INFO] Estado: EDIT -> PLAY")
+        self.reset_profiler(run_label="play_session")
         
         # Crear RuntimeWorld desde Scene
         if self._scene_manager is not None:
             runtime_world = self._scene_manager.enter_play()
             if runtime_world is not None:
                 self._world = runtime_world
+                bake_tilemap_colliders(runtime_world, merge_shapes=True)
                 
                 # Reconfigurar RuleSystem con nuevo World
                 if self._rule_system is not None:
@@ -268,6 +274,12 @@ class Game:
                 self._world = edit_world
         
         self._state = EngineState.EDIT
+
+    def reset_profiler(self, run_label: str = "default") -> None:
+        self._profiler.begin_run(run_label=run_label)
+
+    def get_profiler_report(self) -> dict[str, Any]:
+        return self._profiler.to_report()
     
     # === SETTERS ===
     
@@ -308,6 +320,8 @@ class Game:
 
     def set_character_controller_system(self, system: "CharacterControllerSystem") -> None:
         self._character_controller_system = system
+        if self._event_bus is not None and hasattr(self._character_controller_system, "set_event_bus"):
+            self._character_controller_system.set_event_bus(self._event_bus)
 
     def set_script_behaviour_system(self, system: "ScriptBehaviourSystem") -> None:
         self._script_behaviour_system = system
@@ -332,6 +346,8 @@ class Game:
         for backend in self._physics_backends.values():
             if hasattr(backend, "set_event_bus"):
                 backend.set_event_bus(event_bus)
+        if self._character_controller_system is not None and hasattr(self._character_controller_system, "set_event_bus"):
+            self._character_controller_system.set_event_bus(event_bus)
         if self._ui_system is not None:
             self._ui_system.set_event_bus(event_bus)
 
@@ -586,9 +602,11 @@ class Game:
             path = self._prompt_scene_save_path(entry.scene.name)
         if not path:
             return False
+        if entry.key == self._scene_manager.active_scene_key:
+            self._capture_active_scene_view_state()
         success = self._scene_manager.save_scene_to_file(path, key=entry.key)
         if success:
-            self._sync_scene_workspace_ui(apply_view_state=True)
+            self._sync_scene_workspace_ui(apply_view_state=False)
             print(f"[INFO] Guardado completado: {path}")
         return success
 
@@ -610,8 +628,10 @@ class Game:
             key = str(scene.get("key", "") or "")
             if not path or not key:
                 continue
+            if key == self._scene_manager.active_scene_key:
+                self._capture_active_scene_view_state()
             if self._scene_manager.save_scene_to_file(path, key=key):
-                self._sync_scene_workspace_ui(apply_view_state=True)
+                self._sync_scene_workspace_ui(apply_view_state=False)
 
     def create_scene(self, scene_name: str) -> bool:
         if self._scene_manager is None or self._project_service is None or not self._project_service.has_project:
@@ -1040,24 +1060,30 @@ class Game:
                             else:
                                 active_world.selected_entity_name = ui_hit.name
                         else:
-                            self._selection_system.update(active_world, mouse_world)
+                            selected_name = self._selection_system.update(active_world, mouse_world)
+                            if self._scene_manager is not None:
+                                self._scene_manager.set_selected_entity(selected_name)
             self._perf_stats["selection_gizmo"] = (time.perf_counter() - selection_gizmo_start) * 1000.0
 
             # Update Animation (Only in Play/Step mode)
             if self._state.allows_gameplay():
+                animation_start = time.perf_counter()
                 try:
                     self._update_animation(active_world, dt)
                 except Exception as e:
                     from engine.editor.console_panel import log_err
                     log_err(f"Animation error: {e}")
+                self._perf_stats["animation"] = (time.perf_counter() - animation_start) * 1000.0
             
             # Actualización de gameplay (Física, Colisiones, Reglas)
             if self._state.allows_physics() or self._state.allows_gameplay():
+                gameplay_start = time.perf_counter()
                 try:
                     self._update_gameplay(active_world, dt)
                 except Exception as e:
                     from engine.editor.console_panel import log_err
                     log_err(f"Gameplay error: {e}")
+                self._perf_stats["gameplay"] = (time.perf_counter() - gameplay_start) * 1000.0
 
             scripts_start = time.perf_counter()
             if self._state == EngineState.EDIT and active_world is not None and self._script_behaviour_system is not None:
@@ -1096,6 +1122,7 @@ class Game:
                 log_err(f"CRITICAL RENDER ERROR: {e}")
             self._perf_stats["frame"] = (time.perf_counter() - frame_start) * 1000.0
             self._update_perf_counters(active_world)
+            self._record_profiler_frame(active_world)
         
         self._cleanup()
     
@@ -1359,8 +1386,11 @@ class Game:
                 "render_entities": 0,
                 "draw_calls": 0,
                 "batches": 0,
+                "tilemap_chunks": 0,
+                "tilemap_chunk_rebuilds": 0,
                 "render_target_passes": 0,
                 "physics_ccd_bodies": 0,
+                "physics_contacts": 0,
                 "canvases": 0,
                 "buttons": 0,
                 "scripts": 0,
@@ -1370,30 +1400,81 @@ class Game:
         render_entities = 0
         draw_calls = 0
         batches = 0
+        tilemap_chunks = 0
+        tilemap_chunk_rebuilds = 0
         render_target_passes = 0
         physics_ccd_bodies = 0
+        physics_contacts = 0
         if self._render_system is not None and hasattr(self._render_system, "get_last_render_stats"):
             render_stats = self._render_system.get_last_render_stats()
             render_entities = int(render_stats.get("render_entities", 0))
             draw_calls = int(render_stats.get("draw_calls", 0))
             batches = int(render_stats.get("batches", 0))
+            tilemap_chunks = int(render_stats.get("tilemap_chunks", 0))
+            tilemap_chunk_rebuilds = int(render_stats.get("tilemap_chunk_rebuilds", 0))
             render_target_passes = int(render_stats.get("render_target_passes", 0))
         backend_name = self._resolve_physics_backend_name(active_world)
         backend = self._physics_backends.get(backend_name)
         if backend is not None and hasattr(backend, "get_step_metrics"):
-            physics_ccd_bodies = int(backend.get_step_metrics().get("ccd_bodies", 0))
+            backend_metrics = backend.get_step_metrics()
+            physics_ccd_bodies = int(backend_metrics.get("ccd_bodies", 0))
+            physics_contacts = int(backend_metrics.get("contacts", 0))
 
         self._perf_counters = {
             "entities": active_world.entity_count(),
             "render_entities": render_entities,
             "draw_calls": draw_calls,
             "batches": batches,
+            "tilemap_chunks": tilemap_chunks,
+            "tilemap_chunk_rebuilds": tilemap_chunk_rebuilds,
             "render_target_passes": render_target_passes,
             "physics_ccd_bodies": physics_ccd_bodies,
+            "physics_contacts": physics_contacts,
             "canvases": len(active_world.get_entities_with(Canvas)),
             "buttons": len(active_world.get_entities_with(UIButton)),
             "scripts": len(active_world.get_entities_with(ScriptBehaviour)),
         }
+
+    def _approximate_memory_counters(self, active_world: Optional["World"]) -> dict[str, float]:
+        if active_world is None:
+            return {"world_json_bytes": 0.0, "entity_avg_json_bytes": 0.0}
+        try:
+            payload = active_world.serialize()
+            encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
+            total_bytes = float(len(encoded.encode("utf-8")))
+        except Exception:
+            total_bytes = 0.0
+        entity_count = max(1, active_world.entity_count())
+        return {
+            "world_json_bytes": total_bytes,
+            "entity_avg_json_bytes": total_bytes / entity_count,
+        }
+
+    def _record_profiler_frame(self, active_world: Optional["World"], *, frame_time_ms: float | None = None) -> None:
+        backend_name = self._resolve_physics_backend_name(active_world)
+        backend = self._physics_backends.get(backend_name)
+        backend_metrics = backend.get_step_metrics() if backend is not None and hasattr(backend, "get_step_metrics") else {}
+        timings_ms = {
+            "frame": float(frame_time_ms if frame_time_ms is not None else self._perf_stats.get("frame", 0.0)),
+            "render": float(self._perf_stats.get("render", 0.0)),
+            "inspector": float(self._perf_stats.get("inspector", 0.0)),
+            "hierarchy": float(self._perf_stats.get("hierarchy", 0.0)),
+            "ui": float(self._perf_stats.get("ui", 0.0)),
+            "scripts": float(self._perf_stats.get("scripts", 0.0)),
+            "selection_gizmo": float(self._perf_stats.get("selection_gizmo", 0.0)),
+        }
+        if active_world is not None:
+            timings_ms["animation"] = float(self._perf_stats.get("animation", 0.0))
+            timings_ms["gameplay"] = float(self._perf_stats.get("gameplay", 0.0))
+        self._profiler.record_frame(
+            timings_ms=timings_ms,
+            counters=dict(self._perf_counters),
+            memory=self._approximate_memory_counters(active_world),
+            mode=str(self._state),
+            frame_index=int(self.time.frame_count),
+            backend=backend_name,
+            backend_metrics=backend_metrics,
+        )
 
     def _draw_performance_overlay(self) -> None:
         if not self.show_performance_overlay:
@@ -1465,17 +1546,28 @@ class Game:
             # Renderizar Scene siempre que la pestaña esté activa (Edit o Play)
             if self.editor_layout and self.editor_layout.active_tab == "SCENE":
                 self.editor_layout.begin_scene_render()
-                
+
                 # Render World (Editor Camera)
+                scene_viewport_size = self._current_scene_viewport_size()
+                self.editor_layout.begin_scene_camera_pass(draw_grid=True)
+                self.editor_layout.end_scene_camera_pass()
                 if self._render_system is not None and active_world is not None:
-                     self._render_system.render(active_world, use_world_camera=False)
+                    self._render_system.render(
+                        active_world,
+                        override_camera=self.editor_layout.editor_camera,
+                        use_world_camera=False,
+                        viewport_size=scene_viewport_size,
+                        allow_render_targets=False,
+                    )
 
                 # Render Gizmos
                 if self.gizmo_system is not None and active_world is not None:
                     active_tool = self.editor_layout.active_tool if self.editor_layout else EditorTool.MOVE
                     transform_space = self.editor_layout.transform_space if self.editor_layout else TransformSpace.WORLD
                     pivot_mode = self.editor_layout.pivot_mode if self.editor_layout else PivotMode.PIVOT
+                    self.editor_layout.begin_scene_camera_pass()
                     self.gizmo_system.render(active_world, active_tool, transform_space, pivot_mode)
+                    self.editor_layout.end_scene_camera_pass()
                     
                 self.editor_layout.end_scene_render()
                 if active_world is not None and self.editor_layout.scene_texture is not None:

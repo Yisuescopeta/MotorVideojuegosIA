@@ -1,5 +1,7 @@
 # Roadmap maestro para un motor 2D experimental IA-first en Python
 
+> Estado de ejecucion: completado. Ver cierre en [ia-first-2d-engine-roadmap-closeout.md](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/docs/roadmaps/ia-first-2d-engine-roadmap-closeout.md).
+
 ## Mapa de funcionalidades fundamentales de un motor 2D moderno
 
 La siguiente tabla resume **capacidades “esperables”** en un motor 2D moderno (o stack engine+framework), extraídas de documentación técnica de motores y librerías consolidadas. Se agrupan por categorías y se clasifican por **núcleo mínimo**, **nivel medio importante** y **avanzado recomendable**.  

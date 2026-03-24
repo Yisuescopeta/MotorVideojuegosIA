@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.append(os.getcwd())
 
@@ -47,6 +48,28 @@ class RenderTargetsTests(unittest.TestCase):
         self.assertEqual(stats["render_target_passes"], 2)
         self.assertEqual(stats["render_target_composites"], 2)
         self.assertEqual(stats["render_entities"], 1)
+
+    def test_render_without_render_targets_skips_overlay_composites(self) -> None:
+        world = World()
+        entity = world.create_entity("Player")
+        entity.add_component(Transform(x=24.0, y=36.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        entity.add_component(Sprite(texture_path="assets/player.png", width=32, height=32))
+        entity.add_component(RenderOrder2D(sorting_layer="Default", order_in_layer=0, render_pass="World"))
+        world.selected_entity_name = "Player"
+
+        render_system = RenderSystem()
+        with patch("pyray.begin_mode_2d"), patch("pyray.end_mode_2d"):
+            render_system.render(
+                world,
+                override_camera=rl.Camera2D(),
+                use_world_camera=False,
+                viewport_size=(320.0, 180.0),
+                allow_render_targets=False,
+            )
+
+        stats = render_system.get_last_render_stats()
+        self.assertEqual(stats["render_target_passes"], 0)
+        self.assertEqual(stats["render_target_composites"], 0)
 
 
 if __name__ == "__main__":

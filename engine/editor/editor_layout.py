@@ -334,8 +334,11 @@ class EditorLayout:
             width, self.BOTTOM_HEIGHT
         )
 
+        self._sync_editor_camera_offset()
+
         if update_texture:
-            self._resize_render_textures(int(center_width), int(content_height))
+            view_rect = self.get_center_view_rect()
+            self._resize_render_textures(int(view_rect.width), int(view_rect.height))
 
     def update_input(self) -> None:
         """Procesa input general (Tabs, Splitters, Camara)."""
@@ -401,7 +404,7 @@ class EditorLayout:
 
         # C. Camera Logic (Only if SCENE tab active)
         if self.active_tab == "SCENE":
-            is_hover_view = rl.check_collision_point_rec(mouse_pos, self.center_rect)
+            is_hover_view = rl.check_collision_point_rec(mouse_pos, self.get_center_view_rect())
             
             if is_hover_view or self.is_panning:
                 wheel = rl.get_mouse_wheel_move()
@@ -540,32 +543,26 @@ class EditorLayout:
 
     def get_scene_mouse_pos(self) -> rl.Vector2:
         screen_mouse = rl.get_mouse_position()
-        # The actual scene view starts at center_rect.y + TAB_HEIGHT (tabs are drawn over center_rect)
+        view_rect = self.get_center_view_rect()
         local_pos = rl.Vector2(
-            screen_mouse.x - self.center_rect.x,
-            screen_mouse.y - (self.center_rect.y + self.TAB_HEIGHT)
+            screen_mouse.x - view_rect.x,
+            screen_mouse.y - view_rect.y
         )
         return rl.get_screen_to_world_2d(local_pos, self.editor_camera)
 
     def get_scene_overlay_mouse_pos(self) -> rl.Vector2:
         screen_mouse = rl.get_mouse_position()
+        view_rect = self.get_center_view_rect()
         return rl.Vector2(
-            screen_mouse.x - self.center_rect.x,
-            screen_mouse.y - (self.center_rect.y + self.TAB_HEIGHT),
+            screen_mouse.x - view_rect.x,
+            screen_mouse.y - view_rect.y,
         )
 
     def is_mouse_in_scene_view(self) -> bool:
         if self.active_tab != "SCENE":
             return False
         mouse = rl.get_mouse_position()
-        # The actual view area is below the tab bar
-        view_rect = rl.Rectangle(
-            self.center_rect.x,
-            self.center_rect.y + self.TAB_HEIGHT,
-            self.center_rect.width,
-            self.center_rect.height - self.TAB_HEIGHT
-        )
-        return rl.check_collision_point_rec(mouse, view_rect)
+        return rl.check_collision_point_rec(mouse, self.get_center_view_rect())
     
     def is_mouse_in_inspector(self) -> bool:
         """Returns True if the mouse is over the inspector panel."""
@@ -600,21 +597,25 @@ class EditorLayout:
             
             if self.game_texture: rl.unload_render_texture(self.game_texture)
             self.game_texture = rl.load_render_texture(width, height)
-            
-            if self.editor_camera.offset.x == 0:
-                 self.editor_camera.offset = rl.Vector2(width/2, height/2)
 
     def begin_scene_render(self) -> None:
         if self.scene_texture:
             rl.begin_texture_mode(self.scene_texture)
             rl.clear_background(self.VIEW_BG_COLOR)
-            rl.begin_mode_2d(self.editor_camera)
-            self._draw_grid_2d()
 
     def end_scene_render(self) -> None:
         if self.scene_texture:
-            rl.end_mode_2d()
             rl.end_texture_mode()
+
+    def begin_scene_camera_pass(self, draw_grid: bool = False) -> None:
+        if self.scene_texture:
+            rl.begin_mode_2d(self.editor_camera)
+            if draw_grid:
+                self._draw_grid_2d()
+
+    def end_scene_camera_pass(self) -> None:
+        if self.scene_texture:
+            rl.end_mode_2d()
 
     def begin_game_render(self) -> None:
         if self.game_texture:
@@ -1302,6 +1303,10 @@ class EditorLayout:
             self.center_rect.width,
             self.center_rect.height - self.TAB_HEIGHT
         )
+
+    def _sync_editor_camera_offset(self) -> None:
+        view_rect = self.get_center_view_rect()
+        self.editor_camera.offset = rl.Vector2(view_rect.width / 2, view_rect.height / 2)
 
     def _draw_project_modal(self) -> None:
         rl.draw_rectangle(0, 0, self.screen_width, self.screen_height, rl.Color(0, 0, 0, 150))

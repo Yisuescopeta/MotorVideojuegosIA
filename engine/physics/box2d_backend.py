@@ -65,7 +65,10 @@ class Box2DPhysicsBackend(PhysicsBackend):
             return
         rigidbody = entity.get_component(RigidBody)
         signature = self._signature(entity, transform, collider, rigidbody)
+        body = self._bodies.get(int(entity.id))
         if self._signatures.get(entity.id) == signature:
+            if body is not None:
+                self._sync_body_runtime_state(body, transform, rigidbody)
             return
         self.destroy_body(entity.id)
         body = self._create_body_for_entity(entity, transform, collider, rigidbody)
@@ -194,6 +197,27 @@ class Box2DPhysicsBackend(PhysicsBackend):
         else:
             body.CreatePolygonFixture(box=(float(collider.width) / 2.0, float(collider.height) / 2.0, (float(collider.offset_x), float(collider.offset_y)), 0.0), **fixture_kwargs)
         return body
+
+    def _sync_body_runtime_state(self, body: Any, transform: Transform, rigidbody: Optional[RigidBody]) -> None:
+        if abs(float(body.position[0]) - float(transform.x)) > 1e-5 or abs(float(body.position[1]) - float(transform.y)) > 1e-5:
+            body.position = (float(transform.x), float(transform.y))
+        desired_angle = math.radians(float(transform.rotation))
+        if abs(float(body.angle) - desired_angle) > 1e-5:
+            body.angle = desired_angle
+        if rigidbody is None:
+            body.linearVelocity = (0.0, 0.0)
+            return
+        desired_velocity = (float(rigidbody.velocity_x), float(rigidbody.velocity_y))
+        if (
+            abs(float(body.linearVelocity[0]) - desired_velocity[0]) > 1e-5
+            or abs(float(body.linearVelocity[1]) - desired_velocity[1]) > 1e-5
+        ):
+            body.linearVelocity = desired_velocity
+        if abs(float(getattr(body, "gravityScale", 1.0)) - float(rigidbody.gravity_scale)) > 1e-5:
+            body.gravityScale = float(rigidbody.gravity_scale)
+        desired_bullet = rigidbody.collision_detection_mode == "continuous"
+        if bool(getattr(body, "bullet", False)) != desired_bullet:
+            body.bullet = desired_bullet
 
     def _sync_world_from_box2d(self, world: Any) -> None:
         for entity in world.get_all_entities():

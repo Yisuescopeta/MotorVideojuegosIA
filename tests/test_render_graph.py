@@ -8,6 +8,9 @@ from engine.components.renderorder2d import RenderOrder2D
 from engine.components.renderstyle2d import RenderStyle2D
 from engine.components.sprite import Sprite
 from engine.components.joint2d import Joint2D
+from engine.components.camera2d import Camera2D
+from engine.components.collider import Collider
+from engine.components.tilemap import Tilemap
 from engine.components.transform import Transform
 from engine.ecs.world import World
 from engine.systems.render_system import RenderSystem
@@ -113,6 +116,112 @@ class RenderGraphTests(unittest.TestCase):
 
         self.assertEqual([command["debug_kind"] for command in debug_commands], ["joint"])
         self.assertEqual(debug_commands[0]["entity_name"], "Pendulum")
+
+    def test_tilemap_render_graph_chunks_tiles_and_rebuilds_incrementally(self) -> None:
+        world = World()
+        tilemap_entity = world.create_entity("Map")
+        tilemap_entity.add_component(Transform(x=0.0, y=0.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        tilemap_entity.add_component(
+            Tilemap(
+                cell_width=16,
+                cell_height=16,
+                layers=[
+                    {
+                        "name": "Ground",
+                        "tiles": [
+                            {"x": 0, "y": 0, "tile_id": "grass"},
+                            {"x": 1, "y": 0, "tile_id": "grass"},
+                            {"x": 20, "y": 20, "tile_id": "stone"},
+                        ],
+                    }
+                ],
+            )
+        )
+        tilemap_entity.add_component(RenderOrder2D(sorting_layer="Default", order_in_layer=0, render_pass="World"))
+
+        render_system = RenderSystem()
+        first_stats = render_system.profile_world(world)
+        self.assertEqual(first_stats["tilemap_chunks"], 2)
+        self.assertEqual(first_stats["tilemap_chunk_rebuilds"], 2)
+
+        second_stats = render_system.profile_world(world)
+        self.assertEqual(second_stats["tilemap_chunks"], 2)
+        self.assertEqual(second_stats["tilemap_chunk_rebuilds"], 0)
+
+        tilemap = tilemap_entity.get_component(Tilemap)
+        tilemap.set_tile("Ground", 2, 0, "grass_edge")
+        world.touch()
+        third_stats = render_system.profile_world(world)
+        self.assertEqual(third_stats["tilemap_chunks"], 2)
+        self.assertEqual(third_stats["tilemap_chunk_rebuilds"], 1)
+
+    def test_large_tilemap_profile_reports_chunked_batches(self) -> None:
+        world = World()
+        tilemap_entity = world.create_entity("LargeMap")
+        tilemap_entity.add_component(Transform(x=0.0, y=0.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        layers = []
+        for layer_name in ("Ground", "Deco", "Overlay"):
+            tiles = []
+            for y in range(256):
+                for x in range(256):
+                    tiles.append({"x": x, "y": y, "tile_id": f"{layer_name}_{(x + y) % 4}"})
+            layers.append({"name": layer_name, "tiles": tiles})
+        tilemap_entity.add_component(Tilemap(cell_width=8, cell_height=8, layers=layers))
+        tilemap_entity.add_component(RenderOrder2D(sorting_layer="Default", order_in_layer=0, render_pass="World"))
+
+        render_system = RenderSystem()
+        stats = render_system.profile_world(world)
+
+        self.assertEqual(stats["tilemap_chunks"], 768)
+        self.assertEqual(stats["tilemap_chunk_rebuilds"], 768)
+        self.assertEqual(stats["draw_calls"], 768)
+        self.assertEqual(stats["batches"], 768)
+
+    def test_debug_dump_includes_tile_chunks_camera_and_manual_primitives(self) -> None:
+        world = World()
+        camera_entity = world.create_entity("Camera")
+        camera_entity.add_component(Transform(x=64.0, y=64.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        camera_entity.add_component(Camera2D(is_primary=True, zoom=1.0))
+
+        hero = world.create_entity("Hero")
+        hero.add_component(Transform(x=16.0, y=16.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        hero.add_component(Collider(width=16.0, height=16.0))
+        world.selected_entity_name = "Hero"
+
+        tilemap_entity = world.create_entity("Map")
+        tilemap_entity.add_component(Transform(x=0.0, y=0.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        tilemap_entity.add_component(
+            Tilemap(
+                cell_width=16,
+                cell_height=16,
+                layers=[{"name": "Ground", "tiles": [{"x": 0, "y": 0, "tile_id": "grass"}]}],
+            )
+        )
+        tilemap_entity.add_component(RenderOrder2D(sorting_layer="Default", order_in_layer=0, render_pass="World"))
+
+        render_system = RenderSystem()
+        render_system.set_debug_options(draw_colliders=True, draw_tile_chunks=True, draw_camera=True)
+        render_system.set_debug_primitives(
+            [
+                {
+                    "kind": "line",
+                    "start": {"x": 0.0, "y": 0.0},
+                    "end": {"x": 32.0, "y": 32.0},
+                    "color": [255, 0, 255, 255],
+                    "entity_name": "Guide",
+                }
+            ]
+        )
+
+        dump = render_system.get_debug_geometry_dump(world, viewport_size=(128.0, 128.0))
+        debug_kinds = [command["debug_kind"] for command in dump["commands"]]
+
+        self.assertIn("collider", debug_kinds)
+        self.assertIn("selection", debug_kinds)
+        self.assertIn("tile_chunk", debug_kinds)
+        self.assertIn("camera", debug_kinds)
+        self.assertIn("line", debug_kinds)
+        self.assertEqual(dump["viewport"], {"width": 128, "height": 128})
 
 
 if __name__ == "__main__":

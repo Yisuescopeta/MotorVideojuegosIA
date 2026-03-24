@@ -16,6 +16,7 @@ from engine.components.joint2d import Joint2D
 from engine.components.renderorder2d import RenderOrder2D
 from engine.components.renderstyle2d import RenderStyle2D
 from engine.components.sprite import Sprite
+from engine.components.tilemap import Tilemap
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
@@ -32,6 +33,7 @@ class RenderSystem:
 
     DEBUG_DRAW_COLLIDERS: bool = False
     PASS_SEQUENCE: tuple[str, ...] = ("World", "Overlay", "Debug")
+    TILEMAP_CHUNK_SIZE: int = 16
 
     def __init__(self) -> None:
         self._texture_manager: TextureManager = TextureManager()
@@ -41,15 +43,21 @@ class RenderSystem:
         self._render_targets: RenderTargetPool = RenderTargetPool()
         self.debug_draw_colliders: bool = self.DEBUG_DRAW_COLLIDERS
         self.debug_draw_labels: bool = False
+        self.debug_draw_tile_chunks: bool = False
+        self.debug_draw_camera: bool = False
+        self._debug_primitives: list[dict[str, Any]] = []
         self._sorted_entities_cache_key: tuple[int, int, tuple[str, ...]] | None = None
         self._sorted_entities_cache: list[Entity] = []
-        self._render_graph_cache_key: tuple[int, int, int, tuple[str, ...], bool, bool] | None = None
+        self._render_graph_cache_key: tuple[int, int, int, tuple[str, ...], bool, bool, bool, bool, tuple[Any, ...], tuple[int, int]] | None = None
         self._render_graph_cache: dict[str, Any] = {"passes": [], "totals": {}}
+        self._tilemap_chunk_cache: dict[tuple[int, str, int, int], dict[str, Any]] = {}
         self._last_render_stats: dict[str, Any] = {
             "render_entities": 0,
             "draw_calls": 0,
             "batches": 0,
             "state_changes": 0,
+            "tilemap_chunks": 0,
+            "tilemap_chunk_rebuilds": 0,
             "pass_count": len(self.PASS_SEQUENCE),
             "render_target_passes": 0,
             "render_target_composites": 0,
@@ -67,17 +75,47 @@ class RenderSystem:
     def reset_project_resources(self) -> None:
         self._texture_manager.unload_all()
 
-    def set_debug_options(self, *, draw_colliders: bool | None = None, draw_labels: bool | None = None) -> None:
+    def set_debug_options(
+        self,
+        *,
+        draw_colliders: bool | None = None,
+        draw_labels: bool | None = None,
+        draw_tile_chunks: bool | None = None,
+        draw_camera: bool | None = None,
+    ) -> None:
         if draw_colliders is not None:
             self.debug_draw_colliders = bool(draw_colliders)
         if draw_labels is not None:
             self.debug_draw_labels = bool(draw_labels)
+        if draw_tile_chunks is not None:
+            self.debug_draw_tile_chunks = bool(draw_tile_chunks)
+        if draw_camera is not None:
+            self.debug_draw_camera = bool(draw_camera)
+
+    def set_debug_primitives(self, primitives: list[dict[str, Any]]) -> None:
+        self._debug_primitives = [self._normalize_debug_primitive(item) for item in primitives]
+
+    def clear_debug_primitives(self) -> None:
+        self._debug_primitives = []
 
     def get_last_render_stats(self) -> dict[str, Any]:
         return self._copy_stats(self._last_render_stats)
 
     def get_last_render_graph(self) -> dict[str, Any]:
         return self._public_graph(self._render_graph_cache)
+
+    def get_debug_geometry_dump(self, world: World, viewport_size: Optional[tuple[float, float]] = None) -> dict[str, Any]:
+        graph = self._public_graph(self._build_render_graph(world, viewport_size=viewport_size))
+        debug_pass = next((entry for entry in graph.get("passes", []) if entry.get("name") == "Debug"), {"commands": [], "stats": {}})
+        return {
+            "pass": "Debug",
+            "viewport": {
+                "width": int(self._normalize_viewport_size(viewport_size)[0]),
+                "height": int(self._normalize_viewport_size(viewport_size)[1]),
+            },
+            "commands": list(debug_pass.get("commands", [])),
+            "stats": dict(debug_pass.get("stats", {})),
+        }
 
     def profile_world(self, world: World, viewport_size: Optional[tuple[float, float]] = None) -> dict[str, Any]:
         frame_plan = self._build_frame_plan(world, viewport_size=viewport_size)
@@ -89,6 +127,7 @@ class RenderSystem:
         override_camera: Optional[rl.Camera2D] = None,
         use_world_camera: bool = True,
         viewport_size: Optional[tuple[float, float]] = None,
+        allow_render_targets: bool = True,
     ) -> None:
         frame_plan = self._build_frame_plan(world, viewport_size=viewport_size)
         graph = frame_plan["graph"]
@@ -101,6 +140,16 @@ class RenderSystem:
 
         self._render_pass(graph, "World")
         self._render_pass(graph, "Overlay")
+
+        if not allow_render_targets:
+            self._render_pass(graph, "Debug")
+            if camera is not None:
+                rl.end_mode_2d()
+            totals = self._copy_stats(frame_plan["totals"])
+            totals["render_target_passes"] = 0
+            totals["render_target_composites"] = 0
+            self._last_render_stats = totals
+            return
 
         if camera is not None:
             rl.end_mode_2d()
@@ -140,8 +189,9 @@ class RenderSystem:
         self._sorted_entities_cache_key = cache_key
         return self._sorted_entities_cache
 
-    def _build_render_graph(self, world: World) -> dict[str, Any]:
+    def _build_render_graph(self, world: World, viewport_size: Optional[tuple[float, float]] = None) -> dict[str, Any]:
         sorting_layers = self._get_sorting_layers(world)
+        normalized_viewport = self._normalize_viewport_size(viewport_size)
         cache_key = (
             id(world),
             int(getattr(world, "version", -1)),
@@ -149,21 +199,55 @@ class RenderSystem:
             tuple(sorting_layers),
             bool(self.debug_draw_colliders),
             bool(self.debug_draw_labels),
+            bool(self.debug_draw_tile_chunks),
+            bool(self.debug_draw_camera),
+            self._debug_overlay_signature(),
+            normalized_viewport,
         )
         if self._render_graph_cache_key == cache_key:
-            return self._render_graph_cache
+            return {
+                "passes": self._render_graph_cache.get("passes", []),
+                "totals": {
+                    **dict(self._render_graph_cache.get("totals", {})),
+                    "tilemap_chunk_rebuilds": 0,
+                },
+            }
 
         sorted_entities = self._sorted_render_entities(world)
         pass_commands: dict[str, list[dict[str, Any]]] = {name: [] for name in self.PASS_SEQUENCE}
+        tilemap_chunks = 0
+        tilemap_chunk_rebuilds = 0
 
         for entity in sorted_entities:
             transform = entity.get_component(Transform)
             if transform is None:
                 continue
+            tilemap = entity.get_component(Tilemap)
             render_order = entity.get_component(RenderOrder2D)
             pass_name = self._get_render_pass(render_order)
             sorting_layer = self._get_sorting_layer(render_order)
             order_in_layer = self._get_order_in_layer(render_order)
+            if tilemap is not None and tilemap.enabled:
+                chunk_commands, rebuilds = self._build_tilemap_commands(entity, transform, tilemap, sorting_layer, order_in_layer)
+                pass_commands[pass_name].extend(chunk_commands)
+                tilemap_chunks += len(chunk_commands)
+                tilemap_chunk_rebuilds += rebuilds
+                if self.debug_draw_tile_chunks:
+                    for chunk_command in chunk_commands:
+                        geometry = self._build_tile_chunk_geometry(entity, chunk_command)
+                        if geometry is not None:
+                            self._append_debug_command(
+                                pass_commands["Debug"],
+                                {
+                                    "kind": "debug",
+                                    "debug_kind": "tile_chunk",
+                                    "entity": entity,
+                                    "entity_name": entity.name,
+                                    "chunk_id": chunk_command.get("chunk_id", ""),
+                                    "geometry": geometry,
+                                },
+                            )
+                continue
             pass_commands[pass_name].append(
                 {
                     "kind": "entity",
@@ -181,19 +265,14 @@ class RenderSystem:
                 collider = entity.get_component(Collider)
                 if transform is None or collider is None or not collider.enabled:
                     continue
-                pass_commands["Debug"].append(
+                self._append_debug_command(
+                    pass_commands["Debug"],
                     {
                         "kind": "debug",
                         "debug_kind": "collider",
                         "entity": entity,
                         "entity_name": entity.name,
-                        "batch_key": {
-                            "atlas_id": "__debug__",
-                            "material_id": "debug_lines",
-                            "shader_id": "default",
-                            "blend_mode": "alpha",
-                            "layer": "Debug",
-                        },
+                        "geometry": self._build_collider_geometry(transform, collider),
                     }
                 )
             for entity in sorted_entities:
@@ -203,40 +282,54 @@ class RenderSystem:
                     continue
                 if world.get_entity_by_name(joint.connected_entity) is None:
                     continue
-                pass_commands["Debug"].append(
+                self._append_debug_command(
+                    pass_commands["Debug"],
                     {
                         "kind": "debug",
                         "debug_kind": "joint",
                         "entity": entity,
                         "entity_name": entity.name,
-                        "batch_key": {
-                            "atlas_id": "__debug__",
-                            "material_id": "debug_lines",
-                            "shader_id": "default",
-                            "blend_mode": "alpha",
-                            "layer": "Debug",
-                        },
+                        "geometry": self._build_joint_geometry(entity),
                     }
                 )
 
         if world.selected_entity_name:
             selected_entity = world.get_entity_by_name(world.selected_entity_name)
             if selected_entity is not None:
-                pass_commands["Debug"].append(
+                self._append_debug_command(
+                    pass_commands["Debug"],
                     {
                         "kind": "debug",
                         "debug_kind": "selection",
                         "entity": selected_entity,
                         "entity_name": selected_entity.name,
-                        "batch_key": {
-                            "atlas_id": "__debug__",
-                            "material_id": "debug_lines",
-                            "shader_id": "default",
-                            "blend_mode": "alpha",
-                            "layer": "Debug",
-                        },
+                        "geometry": self._build_selection_geometry(selected_entity),
                     }
                 )
+
+        if self.debug_draw_camera:
+            camera_geometry = self._build_camera_geometry(world, normalized_viewport)
+            if camera_geometry is not None:
+                self._append_debug_command(
+                    pass_commands["Debug"],
+                    {
+                        "kind": "debug",
+                        "debug_kind": "camera",
+                        "entity_name": "__camera__",
+                        "geometry": camera_geometry,
+                    },
+                )
+
+        for primitive in self._debug_primitives:
+            self._append_debug_command(
+                pass_commands["Debug"],
+                {
+                    "kind": "debug",
+                    "debug_kind": primitive.get("kind", "primitive"),
+                    "entity_name": primitive.get("entity_name", "__debug__"),
+                    "geometry": primitive,
+                },
+            )
 
         passes: list[dict[str, Any]] = []
         total_draw_calls = 0
@@ -274,6 +367,8 @@ class RenderSystem:
             "draw_calls": total_draw_calls,
             "batches": total_batches,
             "state_changes": total_state_changes,
+            "tilemap_chunks": tilemap_chunks,
+            "tilemap_chunk_rebuilds": tilemap_chunk_rebuilds,
             "pass_count": len(self.PASS_SEQUENCE),
             "sort_cache": {"hits": self._sort_cache_hits, "misses": self._sort_cache_misses},
             "passes": {
@@ -295,7 +390,7 @@ class RenderSystem:
         *,
         viewport_size: Optional[tuple[float, float]],
     ) -> dict[str, Any]:
-        graph = self._build_render_graph(world)
+        graph = self._build_render_graph(world, viewport_size=viewport_size)
         minimap_config = self._get_minimap_config(world)
         debug_commands = next((entry["commands"] for entry in graph["passes"] if entry["name"] == "Debug"), [])
         target_jobs: list[dict[str, Any]] = []
@@ -356,6 +451,8 @@ class RenderSystem:
                         if transform is None:
                             continue
                         self._render_entity(entity, transform)
+                    elif command["kind"] == "tilemap_chunk":
+                        self._draw_tilemap_chunk(command)
                     elif command["debug_kind"] == "collider":
                         entity = command["entity"]
                         transform = entity.get_component(Transform)
@@ -366,6 +463,8 @@ class RenderSystem:
                         self._draw_joint(command["entity"])
                     elif command["debug_kind"] == "selection":
                         self._draw_selection_highlight(command["entity"])
+                    else:
+                        self._draw_debug_primitive(command.get("geometry", {}))
             finally:
                 self._end_batch_state(batch["key"])
 
@@ -395,6 +494,8 @@ class RenderSystem:
                     self._draw_joint(command["entity"])
                 elif command["debug_kind"] == "selection":
                     self._draw_selection_highlight(command["entity"])
+                else:
+                    self._draw_debug_primitive(command.get("geometry", {}))
             if camera is not None:
                 rl.end_mode_2d()
         finally:
@@ -470,6 +571,140 @@ class RenderSystem:
             "blend_mode": blend_mode,
             "layer": sorting_layer,
         }
+
+    def _build_tilemap_commands(
+        self,
+        entity: Entity,
+        transform: Transform,
+        tilemap: Tilemap,
+        sorting_layer: str,
+        order_in_layer: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        del transform
+        commands: list[dict[str, Any]] = []
+        rebuilds = 0
+        live_keys: set[tuple[int, str, int, int]] = set()
+        tileset_ref = tilemap.get_tileset_reference()
+        atlas_id = self._resolve_atlas_id(tileset_ref)
+        if not atlas_id:
+            atlas_id = str(tileset_ref.get("guid") or tileset_ref.get("path") or "__tilemap__")
+        for layer_index, layer in enumerate(tilemap.layers):
+            if not bool(layer.get("visible", True)):
+                continue
+            chunks = self._partition_tilemap_layer(tilemap, layer)
+            for (chunk_x, chunk_y), chunk_tiles in sorted(chunks.items()):
+                cache_key = (int(entity.id), str(layer.get("name", f"Layer_{layer_index}")), int(chunk_x), int(chunk_y))
+                live_keys.add(cache_key)
+                signature = self._tilemap_chunk_signature(tilemap, layer, chunk_tiles)
+                cached = self._tilemap_chunk_cache.get(cache_key)
+                if cached is None or cached.get("signature") != signature:
+                    cached = {
+                        "signature": signature,
+                        "data": self._build_tilemap_chunk_data(tilemap, layer, chunk_x, chunk_y, chunk_tiles),
+                    }
+                    self._tilemap_chunk_cache[cache_key] = cached
+                    rebuilds += 1
+                commands.append(
+                    {
+                        "kind": "tilemap_chunk",
+                        "entity": entity,
+                        "entity_name": entity.name,
+                        "sorting_layer": sorting_layer,
+                        "order_in_layer": order_in_layer + layer_index,
+                        "chunk_id": f"{layer.get('name', f'Layer_{layer_index}')}/{chunk_x},{chunk_y}",
+                        "chunk_data": cached["data"],
+                        "batch_key": {
+                            "atlas_id": atlas_id,
+                            "material_id": "tilemap_chunk",
+                            "shader_id": "default",
+                            "blend_mode": "alpha",
+                            "layer": sorting_layer,
+                            "chunk": f"{chunk_x},{chunk_y}",
+                        },
+                    }
+                )
+        stale_keys = [key for key in self._tilemap_chunk_cache.keys() if key[0] == int(entity.id) and key not in live_keys]
+        for key in stale_keys:
+            self._tilemap_chunk_cache.pop(key, None)
+        return commands, rebuilds
+
+    def _partition_tilemap_layer(self, tilemap: Tilemap, layer: dict[str, Any]) -> dict[tuple[int, int], list[dict[str, Any]]]:
+        chunks: dict[tuple[int, int], list[dict[str, Any]]] = {}
+        for key, tile in layer.get("tiles", {}).items():
+            x_value, y_value = key.split(",", 1)
+            tile_x = int(x_value)
+            tile_y = int(y_value)
+            chunk = (tile_x // self.TILEMAP_CHUNK_SIZE, tile_y // self.TILEMAP_CHUNK_SIZE)
+            chunks.setdefault(chunk, []).append(
+                {
+                    "x": tile_x,
+                    "y": tile_y,
+                    "tile_id": str(tile.get("tile_id", "")),
+                    "flags": list(tile.get("flags", [])),
+                    "tags": list(tile.get("tags", [])),
+                    "custom": dict(tile.get("custom", {})),
+                    "source": dict(tile.get("source", {})),
+                }
+            )
+        return chunks
+
+    def _tilemap_chunk_signature(self, tilemap: Tilemap, layer: dict[str, Any], chunk_tiles: list[dict[str, Any]]) -> tuple[Any, ...]:
+        return (
+            int(tilemap.cell_width),
+            int(tilemap.cell_height),
+            str(tilemap.orientation),
+            str(layer.get("name", "")),
+            bool(layer.get("visible", True)),
+            float(layer.get("opacity", 1.0)),
+            tuple(
+                (
+                    int(tile["x"]),
+                    int(tile["y"]),
+                    str(tile["tile_id"]),
+                    tuple(tile.get("flags", [])),
+                    tuple(tile.get("tags", [])),
+                    tuple(sorted(tile.get("custom", {}).items())),
+                    str(tile.get("source", {}).get("guid", "")),
+                    str(tile.get("source", {}).get("path", "")),
+                )
+                for tile in sorted(chunk_tiles, key=lambda item: (int(item["y"]), int(item["x"]), str(item["tile_id"])))
+            ),
+        )
+
+    def _build_tilemap_chunk_data(
+        self,
+        tilemap: Tilemap,
+        layer: dict[str, Any],
+        chunk_x: int,
+        chunk_y: int,
+        chunk_tiles: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        opacity = max(0.0, min(1.0, float(layer.get("opacity", 1.0))))
+        tiles = []
+        for tile in sorted(chunk_tiles, key=lambda item: (int(item["y"]), int(item["x"]), str(item["tile_id"]))):
+            tiles.append(
+                {
+                    "x": int(tile["x"]),
+                    "y": int(tile["y"]),
+                    "width": int(tilemap.cell_width),
+                    "height": int(tilemap.cell_height),
+                    "color": self._tile_color(str(tile["tile_id"]), opacity),
+                }
+            )
+        return {
+            "layer_name": str(layer.get("name", "")),
+            "chunk_x": int(chunk_x),
+            "chunk_y": int(chunk_y),
+            "tiles": tiles,
+        }
+
+    def _tile_color(self, tile_id: str, opacity: float) -> tuple[int, int, int, int]:
+        hashed = abs(hash(tile_id or "tile"))
+        red = 60 + (hashed % 160)
+        green = 60 + ((hashed // 13) % 160)
+        blue = 60 + ((hashed // 29) % 160)
+        alpha = int(255 * opacity)
+        return (red, green, blue, alpha)
 
     def _resolve_material_payload(self, style: RenderStyle2D) -> dict[str, Any]:
         material_ref = style.get_material_reference()
@@ -592,9 +827,11 @@ class RenderSystem:
                             "kind": command.get("kind", ""),
                             "debug_kind": command.get("debug_kind", ""),
                             "entity_name": command.get("entity_name", ""),
+                            "chunk_id": command.get("chunk_id", ""),
                             "sorting_layer": command.get("sorting_layer", ""),
                             "order_in_layer": command.get("order_in_layer", 0),
                             "batch_key": dict(command.get("batch_key", {})),
+                            "geometry": self._clone_geometry(command.get("geometry")),
                         }
                         for command in pass_data.get("commands", [])
                     ],
@@ -619,6 +856,8 @@ class RenderSystem:
             "draw_calls": int(payload.get("draw_calls", 0)),
             "batches": int(payload.get("batches", 0)),
             "state_changes": int(payload.get("state_changes", 0)),
+            "tilemap_chunks": int(payload.get("tilemap_chunks", 0)),
+            "tilemap_chunk_rebuilds": int(payload.get("tilemap_chunk_rebuilds", 0)),
             "pass_count": int(payload.get("pass_count", len(self.PASS_SEQUENCE))),
             "render_target_passes": int(payload.get("render_target_passes", 0)),
             "render_target_composites": int(payload.get("render_target_composites", 0)),
@@ -740,52 +979,22 @@ class RenderSystem:
         return target_x, target_y
 
     def _draw_selection_highlight(self, entity: Entity) -> None:
-        transform = entity.get_component(Transform)
-        if transform is None:
+        bounds = self._selection_bounds(entity)
+        if bounds is None:
             return
-
-        width = self.PLACEHOLDER_WIDTH
-        height = self.PLACEHOLDER_HEIGHT
-        offset_x = 0.5
-        offset_y = 0.5
-
-        sprite = entity.get_component(Sprite)
-        if sprite is not None and sprite.enabled:
-            if sprite.width > 0:
-                width = sprite.width
-            if sprite.height > 0:
-                height = sprite.height
-            offset_x = sprite.origin_x
-            offset_y = sprite.origin_y
-
-        animator = entity.get_component(Animator)
-        if animator is not None and animator.enabled:
-            current_slice = animator.get_current_slice_name()
-            slice_rect = self._asset_service.get_slice_rect(animator.get_sprite_sheet_reference(), current_slice) if (self._asset_service is not None and current_slice) else None
-            if slice_rect is not None:
-                width = int(slice_rect["width"])
-                height = int(slice_rect["height"])
-            else:
-                if animator.frame_width > 0:
-                    width = animator.frame_width
-                if animator.frame_height > 0:
-                    height = animator.frame_height
-
-        width *= transform.scale_x
-        height *= transform.scale_y
-        left = transform.x - (width * offset_x)
-        top = transform.y - (height * offset_y)
 
         import time
 
         pulse = (time.time() * 10) % 255
         alpha = int(150 + (pulse / 255) * 100)
         color = rl.Color(255, 255, 0, alpha)
-        rl.draw_rectangle_lines_ex(rl.Rectangle(left, top, width, height), 2, color)
+        rl.draw_rectangle_lines_ex(rl.Rectangle(bounds["left"], bounds["top"], bounds["width"], bounds["height"]), 2, color)
         if self.debug_draw_labels:
-            rl.draw_text(entity.name, int(left), int(top - 20), 10, rl.YELLOW)
+            rl.draw_text(entity.name, int(bounds["left"]), int(bounds["top"] - 20), 10, rl.YELLOW)
 
     def _render_entity(self, entity: Entity, transform: Transform) -> None:
+        if entity.name.startswith("__tilecollider__"):
+            return
         animator = entity.get_component(Animator)
         sprite = entity.get_component(Sprite)
         if animator is not None and animator.enabled and animator.sprite_sheet:
@@ -858,6 +1067,241 @@ class RenderSystem:
     def _draw_collider(self, transform: Transform, collider: Collider) -> None:
         left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
         rl.draw_rectangle_lines(int(left), int(top), int(right - left), int(bottom - top), rl.GREEN)
+
+    def _draw_debug_primitive(self, geometry: dict[str, Any]) -> None:
+        kind = geometry.get("kind", "")
+        color = self._color_from_payload(geometry.get("color", [255, 255, 255, 255]))
+        if kind == "line":
+            start = geometry.get("start", {})
+            end = geometry.get("end", {})
+            rl.draw_line(
+                int(start.get("x", 0.0)),
+                int(start.get("y", 0.0)),
+                int(end.get("x", 0.0)),
+                int(end.get("y", 0.0)),
+                color,
+            )
+            return
+        if kind == "rect":
+            rl.draw_rectangle_lines_ex(
+                rl.Rectangle(
+                    float(geometry.get("x", 0.0)),
+                    float(geometry.get("y", 0.0)),
+                    float(geometry.get("width", 0.0)),
+                    float(geometry.get("height", 0.0)),
+                ),
+                int(geometry.get("thickness", 1)),
+                color,
+            )
+            return
+        if kind == "circle":
+            rl.draw_circle_lines(
+                int(geometry.get("x", 0.0)),
+                int(geometry.get("y", 0.0)),
+                float(geometry.get("radius", 0.0)),
+                color,
+            )
+
+    def _append_debug_command(self, commands: list[dict[str, Any]], command: dict[str, Any]) -> None:
+        payload = dict(command)
+        payload.setdefault(
+            "batch_key",
+            {
+                "atlas_id": "__debug__",
+                "material_id": "debug_lines",
+                "shader_id": "default",
+                "blend_mode": "alpha",
+                "layer": "Debug",
+            },
+        )
+        commands.append(payload)
+
+    def _build_collider_geometry(self, transform: Transform, collider: Collider) -> dict[str, Any]:
+        left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
+        return {
+            "kind": "rect",
+            "x": float(left),
+            "y": float(top),
+            "width": float(right - left),
+            "height": float(bottom - top),
+            "thickness": 1,
+            "color": [0, 255, 0, 255],
+        }
+
+    def _build_tile_chunk_geometry(self, entity: Entity, command: dict[str, Any]) -> dict[str, Any] | None:
+        transform = entity.get_component(Transform)
+        if transform is None:
+            return None
+        bounds = command.get("chunk_data", {}).get("bounds", {})
+        return {
+            "kind": "rect",
+            "x": float(transform.x) + float(bounds.get("x", 0.0)),
+            "y": float(transform.y) + float(bounds.get("y", 0.0)),
+            "width": float(bounds.get("width", 0.0)),
+            "height": float(bounds.get("height", 0.0)),
+            "thickness": 1,
+            "color": [255, 128, 0, 255],
+        }
+
+    def _build_joint_geometry(self, entity: Entity) -> dict[str, Any] | None:
+        transform = entity.get_component(Transform)
+        joint = entity.get_component(Joint2D)
+        if transform is None or joint is None or not joint.enabled or not joint.connected_entity:
+            return None
+        owner_world = getattr(entity, "_owner_world", None)
+        if owner_world is None or not hasattr(owner_world, "get_entity_by_name"):
+            return None
+        connected_entity = owner_world.get_entity_by_name(joint.connected_entity)
+        if connected_entity is None:
+            return None
+        connected_transform = connected_entity.get_component(Transform)
+        if connected_transform is None:
+            return None
+        color = [255, 165, 0, 255] if joint.joint_type == "fixed" else [135, 206, 235, 255]
+        return {
+            "kind": "line",
+            "start": {"x": float(transform.x + joint.anchor_x), "y": float(transform.y + joint.anchor_y)},
+            "end": {
+                "x": float(connected_transform.x + joint.connected_anchor_x),
+                "y": float(connected_transform.y + joint.connected_anchor_y),
+            },
+            "color": color,
+        }
+
+    def _build_selection_geometry(self, entity: Entity) -> dict[str, Any] | None:
+        bounds = self._selection_bounds(entity)
+        if bounds is None:
+            return None
+        return {
+            "kind": "rect",
+            "x": float(bounds["left"]),
+            "y": float(bounds["top"]),
+            "width": float(bounds["width"]),
+            "height": float(bounds["height"]),
+            "thickness": 2,
+            "color": [255, 255, 0, 220],
+        }
+
+    def _selection_bounds(self, entity: Entity) -> dict[str, float] | None:
+        transform = entity.get_component(Transform)
+        if transform is None:
+            return None
+
+        width = self.PLACEHOLDER_WIDTH
+        height = self.PLACEHOLDER_HEIGHT
+        offset_x = 0.5
+        offset_y = 0.5
+
+        sprite = entity.get_component(Sprite)
+        if sprite is not None and sprite.enabled:
+            if sprite.width > 0:
+                width = sprite.width
+            if sprite.height > 0:
+                height = sprite.height
+            offset_x = sprite.origin_x
+            offset_y = sprite.origin_y
+
+        animator = entity.get_component(Animator)
+        if animator is not None and animator.enabled:
+            current_slice = animator.get_current_slice_name()
+            slice_rect = self._asset_service.get_slice_rect(animator.get_sprite_sheet_reference(), current_slice) if (self._asset_service is not None and current_slice) else None
+            if slice_rect is not None:
+                width = int(slice_rect["width"])
+                height = int(slice_rect["height"])
+            else:
+                if animator.frame_width > 0:
+                    width = animator.frame_width
+                if animator.frame_height > 0:
+                    height = animator.frame_height
+
+        width *= transform.scale_x
+        height *= transform.scale_y
+        left = transform.x - (width * offset_x)
+        top = transform.y - (height * offset_y)
+        return {"left": float(left), "top": float(top), "width": float(width), "height": float(height)}
+
+    def _build_camera_geometry(self, world: World, viewport_size: tuple[float, float]) -> dict[str, Any] | None:
+        camera = self._build_camera_from_world(world, viewport_size=viewport_size)
+        if camera is None:
+            return None
+        zoom = max(float(camera.zoom), 0.0001)
+        width = float(viewport_size[0]) / zoom
+        height = float(viewport_size[1]) / zoom
+        center_x = float(camera.target.x)
+        center_y = float(camera.target.y)
+        return {
+            "kind": "rect",
+            "x": center_x - (width * 0.5),
+            "y": center_y - (height * 0.5),
+            "width": width,
+            "height": height,
+            "thickness": 1,
+            "color": [64, 224, 208, 255],
+        }
+
+    def _normalize_debug_primitive(self, primitive: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(primitive)
+        payload["kind"] = str(payload.get("kind", "")).lower()
+        payload["color"] = list(payload.get("color", [255, 255, 255, 255]))
+        if payload["kind"] == "line":
+            payload["start"] = {
+                "x": float(payload.get("start", {}).get("x", 0.0)),
+                "y": float(payload.get("start", {}).get("y", 0.0)),
+            }
+            payload["end"] = {
+                "x": float(payload.get("end", {}).get("x", 0.0)),
+                "y": float(payload.get("end", {}).get("y", 0.0)),
+            }
+        elif payload["kind"] == "rect":
+            payload["x"] = float(payload.get("x", 0.0))
+            payload["y"] = float(payload.get("y", 0.0))
+            payload["width"] = float(payload.get("width", 0.0))
+            payload["height"] = float(payload.get("height", 0.0))
+            payload["thickness"] = int(payload.get("thickness", 1))
+        elif payload["kind"] == "circle":
+            payload["x"] = float(payload.get("x", 0.0))
+            payload["y"] = float(payload.get("y", 0.0))
+            payload["radius"] = float(payload.get("radius", 0.0))
+        return payload
+
+    def _debug_overlay_signature(self) -> tuple[Any, ...]:
+        signature: list[Any] = []
+        for primitive in self._debug_primitives:
+            item = self._normalize_debug_primitive(primitive)
+            signature.append(
+                (
+                    item.get("kind", ""),
+                    tuple(item.get("color", [])),
+                    tuple(sorted((key, repr(value)) for key, value in item.items() if key != "color")),
+                )
+            )
+        return tuple(signature)
+
+    def _clone_geometry(self, geometry: Any) -> Any:
+        if isinstance(geometry, dict):
+            return {key: self._clone_geometry(value) for key, value in geometry.items()}
+        if isinstance(geometry, list):
+            return [self._clone_geometry(value) for value in geometry]
+        return geometry
+
+    def _color_from_payload(self, color: Any) -> rl.Color:
+        values = list(color) if isinstance(color, (list, tuple)) else [255, 255, 255, 255]
+        while len(values) < 4:
+            values.append(255)
+        return rl.Color(int(values[0]), int(values[1]), int(values[2]), int(values[3]))
+
+    def _draw_tilemap_chunk(self, command: dict[str, Any]) -> None:
+        entity = command["entity"]
+        transform = entity.get_component(Transform)
+        if transform is None:
+            return
+        chunk_data = command.get("chunk_data", {})
+        for tile in chunk_data.get("tiles", []):
+            x = float(transform.x) + int(tile["x"]) * int(tile["width"])
+            y = float(transform.y) + int(tile["y"]) * int(tile["height"])
+            color = rl.Color(*tile["color"])
+            rl.draw_rectangle(int(x), int(y), int(tile["width"]), int(tile["height"]), color)
+            rl.draw_rectangle_lines(int(x), int(y), int(tile["width"]), int(tile["height"]), rl.Color(0, 0, 0, min(255, color.a)))
 
     def _draw_joint(self, entity: Entity) -> None:
         transform = entity.get_component(Transform)

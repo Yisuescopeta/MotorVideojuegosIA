@@ -3,8 +3,11 @@ import sys
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.append(os.getcwd())
+
+import pyray as rl
 
 from cli.script_executor import ScriptExecutor
 from engine.api import EngineAPI
@@ -477,6 +480,18 @@ class UnityCoreAuthoringTests(unittest.TestCase):
         self.api.stop()
         self.assertEqual(self.api.game.world.selected_entity_name, "Player")
         self.assertEqual(self.api.scene_manager.get_edit_world().selected_entity_name, "Player")
+
+    def test_selection_system_returns_clicked_entity_name(self) -> None:
+        selection_system = SelectionSystem()
+        player = self.api.game.world.get_entity_by_name("Player")
+        transform = player.get_component(Transform)
+        self.assertIsNotNone(transform)
+
+        with patch("pyray.is_mouse_button_pressed", return_value=True):
+            selected_name = selection_system.update(self.api.game.world, rl.Vector2(transform.x, transform.y))
+
+        self.assertEqual(selected_name, "Player")
+        self.assertEqual(self.api.game.world.selected_entity_name, "Player")
 
     def test_camera_platformer_framing_recenters_and_clamps(self) -> None:
         self.assertTrue(

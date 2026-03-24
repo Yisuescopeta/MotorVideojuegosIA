@@ -95,6 +95,55 @@ class CharacterControllerTests(unittest.TestCase):
         hero_after_jump = self.api.get_entity("Hero")
         self.assertLess(hero_after_jump["components"]["Transform"]["y"], hero["components"]["Transform"]["y"])
 
+    def test_character_controller_emits_collision_and_respects_layer_matrix(self) -> None:
+        scene_path = self._write_scene(
+            {
+                "name": "Character Layers",
+                "entities": [
+                    {
+                        "name": "Hero",
+                        "active": True,
+                        "tag": "",
+                        "layer": "Gameplay",
+                        "components": {
+                            "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                            "Collider": {"enabled": True, "width": 12.0, "height": 24.0, "offset_x": 0.0, "offset_y": 0.0, "is_trigger": False},
+                            "CharacterController2D": {"enabled": True, "use_input_map": False, "velocity_x": 120.0, "gravity": 0.0, "max_fall_speed": 0.0},
+                        },
+                    },
+                    {
+                        "name": "Wall",
+                        "active": True,
+                        "tag": "",
+                        "layer": "Gameplay",
+                        "components": {
+                            "Transform": {"enabled": True, "x": 30.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                            "Collider": {"enabled": True, "width": 12.0, "height": 40.0, "offset_x": 0.0, "offset_y": 0.0, "is_trigger": False},
+                        },
+                    },
+                ],
+                "rules": [],
+                "feature_metadata": {"physics_2d": {"backend": "legacy_aabb"}},
+            }
+        )
+        self.api.load_level(scene_path.as_posix())
+        self.api.play()
+        self.api.step(20)
+        event_names = [event.name for event in self.api.game._event_bus.get_recent_events()]
+        self.assertIn("on_collision", event_names)
+
+        self.api.stop()
+        result = self.api.set_physics_layer_collision("Gameplay", "Gameplay", False)
+        self.assertTrue(result["success"])
+        hero_entity = self.api.game.world.get_entity_by_name("Hero")
+        controller_component = hero_entity.get_component(CharacterController2D)
+        hero_entity.get_component(type(hero_entity.get_component(CharacterController2D))).velocity_x = 120.0
+        controller_component.velocity_x = 120.0
+        self.api.play()
+        self.api.step(20)
+        hero = self.api.get_entity("Hero")
+        self.assertGreater(hero["components"]["Transform"]["x"], 30.0)
+
 
 if __name__ == "__main__":
     unittest.main()

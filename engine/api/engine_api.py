@@ -37,6 +37,7 @@ from engine.systems.character_controller_system import CharacterControllerSystem
 from engine.systems.input_system import InputSystem
 from engine.systems.physics_system import PhysicsSystem
 from engine.systems.player_controller_system import PlayerControllerSystem
+from engine.systems.render_system import RenderSystem
 from engine.systems.script_behaviour_system import ScriptBehaviourSystem
 from engine.systems.selection_system import SelectionSystem
 from engine.systems.ui_render_system import UIRenderSystem
@@ -83,6 +84,7 @@ class EngineAPI:
         event_bus = EventBus()  # type: ignore
         self.game.set_scene_manager(self.scene_manager)
         self.game.set_project_service(self.project_service)
+        self.game.set_render_system(RenderSystem())
         self.game.set_physics_system(PhysicsSystem(gravity=600))
         self.game.set_collision_system(CollisionSystem(event_bus))
         self.game.set_animation_system(AnimationSystem(event_bus))
@@ -197,6 +199,67 @@ class EngineAPI:
         if hasattr(self.game, "step"):
             for _ in range(frames):
                 self.game.step()
+
+    def reset_profiler(self, run_label: str = "default") -> ActionResult:
+        if self.game is None:
+            return self._fail("Engine not initialized")
+        self.game.reset_profiler(run_label=run_label)
+        return self._ok("Profiler reset", {"run_label": run_label})
+
+    def get_profiler_report(self) -> Dict[str, Any]:
+        if self.game is None:
+            return {}
+        return self.game.get_profiler_report()
+
+    def configure_debug_overlay(
+        self,
+        *,
+        draw_colliders: Optional[bool] = None,
+        draw_labels: Optional[bool] = None,
+        draw_tile_chunks: Optional[bool] = None,
+        draw_camera: Optional[bool] = None,
+        primitives: Optional[list[Dict[str, Any]]] = None,
+    ) -> ActionResult:
+        if self.game is None or self.game._render_system is None:
+            return self._fail("Render system not ready")
+        self.game.debug_draw_colliders = self.game.debug_draw_colliders if draw_colliders is None else bool(draw_colliders)
+        self.game.debug_draw_labels = self.game.debug_draw_labels if draw_labels is None else bool(draw_labels)
+        self.game._render_system.set_debug_options(
+            draw_colliders=draw_colliders,
+            draw_labels=draw_labels,
+            draw_tile_chunks=draw_tile_chunks,
+            draw_camera=draw_camera,
+        )
+        if primitives is not None:
+            self.game._render_system.set_debug_primitives(primitives)
+        return self._ok(
+            "Debug overlay configured",
+            {
+                "draw_colliders": self.game._render_system.debug_draw_colliders,
+                "draw_labels": self.game._render_system.debug_draw_labels,
+                "draw_tile_chunks": self.game._render_system.debug_draw_tile_chunks,
+                "draw_camera": self.game._render_system.debug_draw_camera,
+                "primitive_count": len(getattr(self.game._render_system, "_debug_primitives", [])),
+            },
+        )
+
+    def clear_debug_primitives(self) -> ActionResult:
+        if self.game is None or self.game._render_system is None:
+            return self._fail("Render system not ready")
+        self.game._render_system.clear_debug_primitives()
+        return self._ok("Debug primitives cleared")
+
+    def get_debug_geometry_dump(
+        self,
+        viewport_width: int = 800,
+        viewport_height: int = 600,
+    ) -> Dict[str, Any]:
+        if self.game is None or self.game._render_system is None or self.game.world is None:
+            return {}
+        return self.game._render_system.get_debug_geometry_dump(
+            self.game.world,
+            viewport_size=(float(viewport_width), float(viewport_height)),
+        )
 
     def get_status(self) -> EngineStatus:
         if self.game is None:
