@@ -1,0 +1,34 @@
+{
+  "name": "Checkpoint_A",
+  "active": true,
+  "tag": "Checkpoint",
+  "layer": "Gameplay",
+  "components": {
+    "Transform": {
+      "enabled": true,
+      "x": 320.0,
+      "y": 500.0,
+      "rotation": 0.0,
+      "scale_x": 1.0,
+      "scale_y": 1.0
+    },
+    "Collider": {
+      "enabled": true,
+      "width": 24.0,
+      "height": 48.0,
+      "offset_x": 0.0,
+      "offset_y": 0.0,
+      "is_trigger": true
+    },
+    "ScriptBehaviour": {
+      "enabled": true,
+      "module_path": "scripts.platformer_checkpoint",
+      "run_in_edit_mode": false,
+      "public_data": {
+        "checkpoint_name": "Checkpoint_A",
+        "respawn_x": 320.0,
+        "respawn_y": 500.0
+      }
+    }
+  }
+}

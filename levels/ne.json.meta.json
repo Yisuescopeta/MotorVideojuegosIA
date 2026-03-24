@@ -1,0 +1,21 @@
+{
+    "guid": "ast_c59673048a124c3db24c29a50c2d9ce6",
+    "source_path": "levels/ne.json",
+    "path": "levels/ne.json",
+    "asset_kind": "scene_data",
+    "importer": "scene_data",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "scene_data",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "scene_data",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

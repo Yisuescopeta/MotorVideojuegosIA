@@ -1,16 +1,16 @@
 {
     "version": 1,
-    "guid": "ast_b8a67818097d429da9674325af151200",
-    "path": "levels/multiagent_toy_scene.json",
+    "guid": "ast_c59673048a124c3db24c29a50c2d9ce6",
+    "path": "levels/ne.json",
     "asset_kind": "scene_data",
     "importer": "scene_data",
-    "source_hash": "ff59867ae394346884fb7fdb940be90064d9b8276dca4eeaea24129ee2e67a39",
+    "source_hash": "76266664f924f6dfab249d6806e13b60722dc33499571793931de7cdfc4799be",
     "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
     "dependencies": [],
     "metadata": {
-        "guid": "ast_b8a67818097d429da9674325af151200",
-        "source_path": "levels/multiagent_toy_scene.json",
-        "path": "levels/multiagent_toy_scene.json",
+        "guid": "ast_c59673048a124c3db24c29a50c2d9ce6",
+        "source_path": "levels/ne.json",
+        "path": "levels/ne.json",
         "asset_kind": "scene_data",
         "importer": "scene_data",
         "labels": [],
@@ -28,5 +28,5 @@
         "automatic": {},
         "slices": []
     },
-    "source_size_bytes": 3427
+    "source_size_bytes": 116
 }

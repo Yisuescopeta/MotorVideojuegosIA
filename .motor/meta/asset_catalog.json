@@ -1,6 +1,6 @@
 {
     "version": 1,
-    "generated_at_utc": "2026-03-24T16:12:15.457390+00:00",
+    "generated_at_utc": "2026-03-24T21:53:12.558267+00:00",
     "assets": [
         {
             "guid": "ast_2c6f30e04ba7458b9e8d6da1bf97444e",
@@ -156,8 +156,8 @@
             ],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1774178348.3300996,
-            "source_hash": "95de2ff0aea144bdee6e8429b2900e174d1d4c3791b95d140369b9e9a3c061e5",
+            "last_seen_mtime": 1774375588.4918432,
+            "source_hash": "bf9c7c67c39cfaf14fd6169cea0f3cc566b2aec094232a94ade63757b2236e99",
             "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
             "reference": {
                 "guid": "ast_ca105968cf6d4d94bfe5d40e25a667b5",
@@ -226,12 +226,34 @@
             "dependencies": [],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1774367926.44673,
-            "source_hash": "a21e200e282cb5022c014c7ec2c11da65440713787150905bfcfd19ceefa4e11",
+            "last_seen_mtime": 1774375588.492887,
+            "source_hash": "ff59867ae394346884fb7fdb940be90064d9b8276dca4eeaea24129ee2e67a39",
             "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
             "reference": {
                 "guid": "ast_b8a67818097d429da9674325af151200",
                 "path": "levels/multiagent_toy_scene.json"
+            },
+            "referenced_by": []
+        },
+        {
+            "guid": "ast_c59673048a124c3db24c29a50c2d9ce6",
+            "guid_short": "ast_c596",
+            "name": "ne.json",
+            "path": "levels/ne.json",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/levels/ne.json",
+            "folder": "levels",
+            "asset_kind": "scene_data",
+            "importer": "scene_data",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1774375588.4942346,
+            "source_hash": "76266664f924f6dfab249d6806e13b60722dc33499571793931de7cdfc4799be",
+            "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
+            "reference": {
+                "guid": "ast_c59673048a124c3db24c29a50c2d9ce6",
+                "path": "levels/ne.json"
             },
             "referenced_by": []
         },

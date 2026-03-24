@@ -1,0 +1,160 @@
+{
+  "name": "Platformer Vertical Slice Template",
+  "entities": [
+    {
+      "name": "Player",
+      "active": true,
+      "tag": "Player",
+      "layer": "Gameplay",
+      "components": {
+        "Transform": {
+          "enabled": true,
+          "x": 120.0,
+          "y": 518.0,
+          "rotation": 0.0,
+          "scale_x": 1.0,
+          "scale_y": 1.0
+        },
+        "Collider": {
+          "enabled": true,
+          "width": 12.0,
+          "height": 24.0,
+          "offset_x": 0.0,
+          "offset_y": 0.0,
+          "is_trigger": false
+        },
+        "CharacterController2D": {
+          "enabled": true,
+          "move_mode": "move_and_slide",
+          "move_speed": 180.0,
+          "jump_velocity": -320.0,
+          "gravity": 600.0,
+          "max_fall_speed": 900.0,
+          "air_control": 0.75,
+          "floor_snap_distance": 2.0,
+          "use_input_map": true
+        },
+        "InputMap": {
+          "enabled": true,
+          "move_left": "A,LEFT",
+          "move_right": "D,RIGHT",
+          "move_up": "W,UP",
+          "move_down": "S,DOWN",
+          "action_1": "SPACE",
+          "action_2": "ENTER"
+        }
+      }
+    },
+    {
+      "name": "MainCamera",
+      "active": true,
+      "tag": "Camera",
+      "layer": "System",
+      "components": {
+        "Transform": {
+          "enabled": true,
+          "x": 400.0,
+          "y": 300.0,
+          "rotation": 0.0,
+          "scale_x": 1.0,
+          "scale_y": 1.0
+        },
+        "Camera2D": {
+          "enabled": true,
+          "offset_x": 400.0,
+          "offset_y": 220.0,
+          "zoom": 1.0,
+          "rotation": 0.0,
+          "is_primary": true,
+          "follow_entity": "Player",
+          "framing_mode": "platformer",
+          "dead_zone_width": 120.0,
+          "dead_zone_height": 80.0,
+          "clamp_left": 120.0,
+          "clamp_right": 680.0,
+          "clamp_top": 120.0,
+          "clamp_bottom": 560.0,
+          "recenter_on_play": true
+        }
+      }
+    },
+    {
+      "name": "Ground",
+      "active": true,
+      "tag": "Ground",
+      "layer": "Gameplay",
+      "components": {
+        "Transform": {
+          "enabled": true,
+          "x": 400.0,
+          "y": 560.0,
+          "rotation": 0.0,
+          "scale_x": 1.0,
+          "scale_y": 1.0
+        },
+        "Collider": {
+          "enabled": true,
+          "width": 800.0,
+          "height": 40.0,
+          "offset_x": 0.0,
+          "offset_y": 0.0,
+          "is_trigger": false
+        }
+      }
+    },
+    {
+      "name": "HazardZone",
+      "active": true,
+      "tag": "Hazard",
+      "layer": "Gameplay",
+      "components": {
+        "Transform": {
+          "enabled": true,
+          "x": 520.0,
+          "y": 544.0,
+          "rotation": 0.0,
+          "scale_x": 1.0,
+          "scale_y": 1.0
+        },
+        "Collider": {
+          "enabled": true,
+          "width": 64.0,
+          "height": 16.0,
+          "offset_x": 0.0,
+          "offset_y": 0.0,
+          "is_trigger": true
+        }
+      }
+    },
+    {
+      "name": "GoalFlag",
+      "active": true,
+      "tag": "Goal",
+      "layer": "Gameplay",
+      "components": {
+        "Transform": {
+          "enabled": true,
+          "x": 720.0,
+          "y": 500.0,
+          "rotation": 0.0,
+          "scale_x": 1.0,
+          "scale_y": 1.0
+        },
+        "Collider": {
+          "enabled": true,
+          "width": 24.0,
+          "height": 80.0,
+          "offset_x": 0.0,
+          "offset_y": 0.0,
+          "is_trigger": true
+        }
+      }
+    }
+  ],
+  "rules": [],
+  "feature_metadata": {
+    "physics_2d": {
+      "backend": "legacy_aabb"
+    }
+  }
+}

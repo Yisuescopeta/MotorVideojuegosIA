@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "name": "VNVerticalSlice",
+  "entities": [
+    {
+      "name": "NarrativeCanvas",
+      "active": true,
+      "tag": "UI",
+      "layer": "UI",
+      "components": {
+        "Canvas": {
+          "enabled": true,
+          "reference_width": 1280,
+          "reference_height": 720,
+          "sort_order": 0
+        }
+      }
+    },
+    {
+      "name": "DialogueText",
+      "active": true,
+      "tag": "UI",
+      "layer": "UI",
+      "parent_name": "NarrativeCanvas",
+      "components": {
+        "RectTransform": {
+          "enabled": true,
+          "anchor_min_x": 0.1,
+          "anchor_min_y": 0.7,
+          "anchor_max_x": 0.9,
+          "anchor_max_y": 0.92,
+          "anchored_x": 0.0,
+          "anchored_y": 0.0,
+          "width": 0.0,
+          "height": 0.0,
+          "pivot_x": 0.5,
+          "pivot_y": 0.5,
+          "rotation": 0.0,
+          "scale_x": 1.0,
+          "scale_y": 1.0
+        },
+        "UIText": {
+          "enabled": true,
+          "text": "Placeholder dialogue line",
+          "font_size": 28,
+          "color": [255, 255, 255, 255],
+          "alignment": "left",
+          "wrap": true
+        }
+      }
+    },
+    {
+      "name": "ChoiceLibrary",
+      "active": true,
+      "tag": "UI",
+      "layer": "UI",
+      "parent_name": "NarrativeCanvas",
+      "components": {
+        "RectTransform": {
+          "enabled": true,
+          "anchor_min_x": 0.1,
+          "anchor_min_y": 0.5,
+          "anchor_max_x": 0.45,
+          "anchor_max_y": 0.62,
+          "anchored_x": 0.0,
+          "anchored_y": 0.0,
+          "width": 0.0,
+          "height": 0.0,
+          "pivot_x": 0.5,
+          "pivot_y": 0.5,
+          "rotation": 0.0,
+          "scale_x": 1.0,
+          "scale_y": 1.0
+        },
+        "UIButton": {
+          "enabled": true,
+          "interactable": true,
+          "label": "Go to the library",
+          "on_click": {
+            "action": "emit_event",
+            "event": "vn_choice_selected",
+            "data": {
+              "choice_id": "library"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "ChoiceRooftop",
+      "active": true,
+      "tag": "UI",
+      "layer": "UI",
+      "parent_name": "NarrativeCanvas",
+      "components": {
+        "RectTransform": {
+          "enabled": true,
+          "anchor_min_x": 0.55,
+          "anchor_min_y": 0.5,
+          "anchor_max_x": 0.9,
+          "anchor_max_y": 0.62,
+          "anchored_x": 0.0,
+          "anchored_y": 0.0,
+          "width": 0.0,
+          "height": 0.0,
+          "pivot_x": 0.5,
+          "pivot_y": 0.5,
+          "rotation": 0.0,
+          "scale_x": 1.0,
+          "scale_y": 1.0
+        },
+        "UIButton": {
+          "enabled": true,
+          "interactable": true,
+          "label": "Go to the rooftop",
+          "on_click": {
+            "action": "emit_event",
+            "event": "vn_choice_selected",
+            "data": {
+              "choice_id": "rooftop"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "BgmSource",
+      "active": true,
+      "tag": "Audio",
+      "layer": "System",
+      "components": {
+        "AudioSource": {
+          "enabled": true,
+          "asset_path": "assets/audio/bgm/prologue.ogg",
+          "volume": 0.7,
+          "pitch": 1.0,
+          "loop": true,
+          "play_on_awake": false,
+          "spatial_blend": 0.0
+        }
+      }
+    },
+    {
+      "name": "NarrativeRuntime",
+      "active": true,
+      "tag": "System",
+      "layer": "System",
+      "components": {
+        "ScriptBehaviour": {
+          "enabled": true,
+          "module_path": "scripts.vn_runtime",
+          "run_in_edit_mode": false,
+          "public_data": {
+            "runtime_key": "vn_runtime"
+          }
+        }
+      }
+    }
+  ],
+  "rules": [],
+  "feature_metadata": {
+    "vn_runtime": {
+      "version": 1,
+      "entry_node": "intro",
+      "current_node": "intro",
+      "flag_store": {
+        "route": null,
+        "met.alex": true
+      },
+      "save_slots": {
+        "slot_1": {
+          "scene_id": "VNVerticalSlice",
+          "current_node": "intro",
+          "flags": {
+            "route": null,
+            "met.alex": true
+          }
+        }
+      },
+      "dialogue_graph": {
+        "nodes": {
+          "intro": {
+            "type": "line",
+            "speaker": "Alex",
+            "text": "The train is late again.",
+            "portrait": "alex_neutral",
+            "audio": {
+              "bgm_entity": "BgmSource"
+            },
+            "next": "choice_route"
+          },
+          "choice_route": {
+            "type": "choice",
+            "prompt": "Where do we go after class?",
+            "choices": [
+              {
+                "id": "library",
+                "text": "Go to the library",
+                "next": "library_scene",
+                "set_flags": {
+                  "route": "library"
+                }
+              },
+              {
+                "id": "rooftop",
+                "text": "Go to the rooftop",
+                "next": "rooftop_scene",
+                "set_flags": {
+                  "route": "rooftop"
+                }
+              }
+            ]
+          },
+          "library_scene": {
+            "type": "line",
+            "speaker": "Alex",
+            "text": "Library route selected.",
+            "conditions": [
+              {
+                "flag": "route",
+                "equals": "library"
+              }
+            ],
+            "next": "end"
+          },
+          "rooftop_scene": {
+            "type": "line",
+            "speaker": "Alex",
+            "text": "Rooftop route selected.",
+            "conditions": [
+              {
+                "flag": "route",
+                "equals": "rooftop"
+              }
+            ],
+            "next": "end"
+          },
+          "end": {
+            "type": "end"
+          }
+        }
+      }
+    }
+  }
+}

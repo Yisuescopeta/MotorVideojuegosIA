@@ -1,0 +1,93 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // Reglas e instrucciones centralizadas del repo.
+  // OpenCode combina estos archivos con AGENTS.md.
+  "instructions": [
+    "docs/architecture.md",
+    "docs/cli.md",
+    "docs/rl.md",
+    "docs/opencode/*.md"
+  ],
+
+  // Politica de permisos:
+  // - base "ask" para no abrir herramientas peligrosas por defecto
+  // - allow explicito solo para comandos usados de verdad por el motor
+  // - edicion libre solo en documentacion; codigo y datos piden confirmacion
+  "permission": {
+    "*": "ask",
+
+    "bash": {
+      "*": "ask",
+
+      // Git de inspeccion local
+      "git status": "allow",
+      "git status *": "allow",
+      "git diff": "allow",
+      "git diff *": "allow",
+      "git rev-parse *": "allow",
+
+      // Bloqueos explicitos
+      "git push *": "deny",
+      "git push": "deny",
+      "rm": "deny",
+      "rm *": "deny",
+      "rmdir": "deny",
+      "rmdir *": "deny",
+      "del": "deny",
+      "del *": "deny",
+      "Remove-Item *": "deny",
+
+      // Tests y validacion local
+      "python -m unittest discover": "allow",
+      "python -m unittest discover *": "allow",
+      "py -3 -m unittest discover": "allow",
+      "py -3 -m unittest discover *": "allow",
+      "python -m pytest *": "allow",
+      "py -3 -m pytest *": "allow",
+
+      // CLI unificada del motor
+      "py -3 tools/engine_cli.py *": "allow",
+      "python tools/engine_cli.py *": "allow",
+
+      // Tooling real de datasets, replay y paralelo
+      "py -3 tools/scenario_dataset_cli.py *": "allow",
+      "python tools/scenario_dataset_cli.py *": "allow",
+      "py -3 tools/parallel_rollout_runner.py *": "allow",
+      "python tools/parallel_rollout_runner.py *": "allow",
+      "py -3 tools/random_rollout_dataset.py *": "allow",
+      "python tools/random_rollout_dataset.py *": "allow",
+      "py -3 tools/multiagent_rollout_dataset.py *": "allow",
+      "python tools/multiagent_rollout_dataset.py *": "allow"
+    },
+
+    "edit": {
+      "*": "deny",
+      "docs/**": "allow",
+      ".opencode/**": "ask",
+      "README.md": "ask",
+      "opencode.json": "ask",
+      "opencode.jsonc": "ask",
+      "AGENTS.md": "ask",
+      "levels/**": "ask",
+      "prefabs/**": "ask",
+      "settings/**": "ask",
+      "scripts/**": "ask",
+      "assets/**": "ask",
+      "engine/**": "ask",
+      "cli/**": "ask",
+      "tools/**": "ask",
+      "tests/**": "ask"
+    },
+
+    "read": {
+      "*": "allow",
+      "*.env": "deny",
+      "*.env.*": "deny",
+      "*.env.example": "allow"
+    },
+
+    "external_directory": "deny",
+    "doom_loop": "ask"
+  }
+}

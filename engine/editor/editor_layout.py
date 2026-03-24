@@ -22,6 +22,7 @@ import os
 from typing import Optional
 from engine.editor.project_panel import ProjectPanel
 from engine.editor.console_panel import ConsolePanel
+from engine.editor.opencode_panel import OpenCodePanel
 from engine.editor.editor_tools import EditorTool, PivotMode, SnapSettings, TransformSpace
 
 class EditorLayout:
@@ -89,7 +90,7 @@ class EditorLayout:
         
         # Tabs
         self.active_tab: str = "SCENE" # "SCENE" | "GAME" | "ANIMATOR"
-        self.active_bottom_tab: str = "PROJECT" # "PROJECT" | "CONSOLE"
+        self.active_bottom_tab: str = "PROJECT" # "PROJECT" | "CONSOLE" | "OPENCODE"
         
         # Requests (Game.py lee esto)
         self.request_play: bool = False
@@ -192,6 +193,7 @@ class EditorLayout:
         # Project / Console Panel
         self.project_panel = ProjectPanel("assets") 
         self.console_panel = ConsolePanel()
+        self.opencode_panel = OpenCodePanel()
         self._text_measure_cache: dict[tuple[str, int], int] = {}
         self.launcher_search_rect = rl.Rectangle(0, 0, 0, 0)
         self.launcher_table_rect = rl.Rectangle(0, 0, 0, 0)
@@ -730,6 +732,11 @@ class EditorLayout:
         if rl.check_collision_point_rec(rl.get_mouse_position(), cons_tab_rect):
             if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 self.active_bottom_tab = "CONSOLE"
+        opencode_tab_rect = rl.Rectangle(self.bottom_rect.x + 148, bottom_tab_y, 82, bottom_tab_h)
+        self._draw_tab("OpenCode", opencode_tab_rect, self.active_bottom_tab == "OPENCODE")
+        if rl.check_collision_point_rec(rl.get_mouse_position(), opencode_tab_rect):
+            if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                self.active_bottom_tab = "OPENCODE"
         
         # Draw Content
         if self.active_bottom_tab == "PROJECT" and self.project_panel:
@@ -753,6 +760,13 @@ class EditorLayout:
                 int(self.bottom_rect.y), 
                 int(self.bottom_rect.width), 
                 int(self.bottom_rect.height)
+            )
+        elif self.active_bottom_tab == "OPENCODE" and self.opencode_panel:
+            self.opencode_panel.render_bottom_summary(
+                int(self.bottom_rect.x),
+                int(self.bottom_rect.y),
+                int(self.bottom_rect.width),
+                int(self.bottom_rect.height),
             )
 
         if self.show_project_modal:

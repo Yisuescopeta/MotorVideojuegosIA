@@ -30,6 +30,7 @@ from engine.core.engine_state import EngineState
 from engine.core.hot_reload import HotReloadManager
 from engine.editor.undo_redo import UndoRedoManager
 from engine.project.project_service import ProjectService
+from engine.integrations.opencode import OpenCodeBridge
 from engine.config import EDIT_ANIMATION_SPEED, TIMELINE_CAPACITY, SCRIPTS_DIRECTORY
 from engine.editor.console_panel import log_info, log_err
 
@@ -65,7 +66,6 @@ from engine.editor.hierarchy_panel import HierarchyPanel
 from engine.editor.gizmo_system import GizmoSystem
 from engine.editor.editor_layout import EditorLayout
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
-from engine.editor.assistant_panel import AssistantPanel
 from engine.editor.sprite_editor_modal import SpriteEditorModal
 from engine.editor.raygui_theme import apply_unity_dark_theme
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
@@ -130,7 +130,7 @@ class Game:
         self.sprite_editor_modal: Optional["SpriteEditorModal"] = SpriteEditorModal()
         self.gizmo_system: Optional["GizmoSystem"] = GizmoSystem()
         self.editor_layout: Optional["EditorLayout"] = None
-        self.assistant_panel: Optional[AssistantPanel] = AssistantPanel()
+        self.assistant_panel: Any = None
         self.assistant_api: Any = None
         
         # Gestión de escenas
@@ -422,6 +422,8 @@ class Game:
                 self._script_behaviour_system.set_project_service(service)
         if self.editor_layout is not None and self.editor_layout.project_panel is not None:
             self.editor_layout.project_panel.set_project_service(service)
+            if hasattr(self.editor_layout, "opencode_panel") and self.editor_layout.opencode_panel is not None:
+                self.editor_layout.opencode_panel.set_bridge(OpenCodeBridge(service.project_root))
             self.editor_layout.set_recent_projects(service.list_launcher_projects())
             if self._scene_manager is not None:
                 self.editor_layout.set_scene_tabs(self._scene_manager.list_open_scenes(), self._scene_manager.active_scene_key)
@@ -468,13 +470,11 @@ class Game:
 
     def set_assistant_api(self, api: Any) -> None:
         self.assistant_api = api
-        if self.assistant_panel is not None:
-            self.assistant_panel.set_api(api)
 
     def _sync_assistant_panel_layout(self, force: bool = False) -> None:
-        if self.editor_layout is None or self.assistant_panel is None:
+        if self.editor_layout is None or self.editor_layout.opencode_panel is None:
             return
-        desired_minimized = bool(getattr(self.assistant_panel, "is_minimized", False))
+        desired_minimized = bool(getattr(self.editor_layout.opencode_panel, "is_minimized", False))
         if not force and getattr(self.editor_layout, "assistant_minimized", False) == desired_minimized:
             return
         self.editor_layout.set_assistant_minimized(desired_minimized)
@@ -834,6 +834,8 @@ class Game:
                 self._refresh_launcher_projects()
                 if self._project_service.has_project:
                     self.editor_layout.project_panel.set_project_service(self._project_service)
+                    if self.editor_layout.opencode_panel is not None:
+                        self.editor_layout.opencode_panel.set_bridge(OpenCodeBridge(self._project_service.project_root))
                 else:
                     self.editor_layout.show_project_launcher = True
             if self._scene_manager is not None:
@@ -892,8 +894,8 @@ class Game:
                     self._persist_editor_preferences()
                 if self.animator_panel is not None and active_world is not None:
                     self.animator_panel.update(active_world, dt)
-                if self.assistant_panel is not None:
-                    self.assistant_panel.update(self.editor_layout.assistant_rect)
+                if self.editor_layout.opencode_panel is not None:
+                    self.editor_layout.opencode_panel.update(self.editor_layout.assistant_rect)
                 
                 # Procesar requests de UI
                 if self.editor_layout.request_play:
@@ -1614,9 +1616,9 @@ class Game:
                     )
                     self._perf_stats["inspector"] = (time.perf_counter() - inspector_start) * 1000.0
 
-            if self.assistant_panel is not None and self.editor_layout is not None:
+            if self.editor_layout is not None and self.editor_layout.opencode_panel is not None:
                 rect = self.editor_layout.assistant_rect
-                self.assistant_panel.render(int(rect.x), int(rect.y), int(rect.width), int(rect.height))
+                self.editor_layout.opencode_panel.render(int(rect.x), int(rect.y), int(rect.width), int(rect.height))
 
             if self.animator_panel is not None and active_world is not None and self.editor_layout and self.editor_layout.active_tab == "ANIMATOR":
                 rect = self.editor_layout.get_center_view_rect()

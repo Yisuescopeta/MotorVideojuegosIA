@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "name": "BattleVerticalSlice",
+  "entities": [
+    {
+      "name": "BattleRuntime",
+      "active": true,
+      "tag": "System",
+      "layer": "System",
+      "components": {
+        "ScriptBehaviour": {
+          "enabled": true,
+          "module_path": "scripts.turn_based_battle_runtime",
+          "run_in_edit_mode": false,
+          "public_data": {
+            "runtime_key": "turn_based_battle"
+          }
+        }
+      }
+    },
+    {
+      "name": "BattleCanvas",
+      "active": true,
+      "tag": "UI",
+      "layer": "UI",
+      "components": {
+        "Canvas": {
+          "enabled": true,
+          "render_mode": "screen_space_overlay",
+          "reference_width": 1280,
+          "reference_height": 720,
+          "match_mode": "stretch",
+          "sort_order": 0
+        }
+      }
+    },
+    {
+      "name": "BattleLogText",
+      "active": true,
+      "tag": "UI",
+      "layer": "UI",
+      "parent_name": "BattleCanvas",
+      "components": {
+        "RectTransform": {
+          "enabled": true,
+          "anchor_min_x": 0.05,
+          "anchor_min_y": 0.7,
+          "anchor_max_x": 0.95,
+          "anchor_max_y": 0.95,
+          "anchored_x": 0.0,
+          "anchored_y": 0.0,
+          "width": 0.0,
+          "height": 0.0,
+          "pivot_x": 0.5,
+          "pivot_y": 0.5,
+          "rotation": 0.0,
+          "scale_x": 1.0,
+          "scale_y": 1.0
+        },
+        "UIText": {
+          "enabled": true,
+          "text": "Battle log placeholder",
+          "font_size": 26,
+          "color": [255, 255, 255, 255],
+          "alignment": "left",
+          "wrap": true
+        }
+      }
+    },
+    {
+      "name": "BattleBgm",
+      "active": true,
+      "tag": "Audio",
+      "layer": "System",
+      "components": {
+        "AudioSource": {
+          "enabled": true,
+          "asset_path": "assets/audio/bgm/battle_theme.ogg",
+          "volume": 0.7,
+          "pitch": 1.0,
+          "loop": true,
+          "play_on_awake": false,
+          "spatial_blend": 0.0
+        }
+      }
+    }
+  ],
+  "rules": [],
+  "feature_metadata": {
+    "turn_based_battle": {
+      "version": 1,
+      "battle_context": {
+        "phase": "StartTurn",
+        "turn_index": 1,
+        "rng_seed": 123,
+        "log": []
+      },
+      "parties": {
+        "heroes": ["hero_knight"],
+        "enemies": ["slime_a"]
+      },
+      "combatants": {
+        "hero_knight": {
+          "party": "heroes",
+          "hp": 20,
+          "max_hp": 20,
+          "speed": 5,
+          "status_effects": []
+        },
+        "slime_a": {
+          "party": "enemies",
+          "hp": 12,
+          "max_hp": 12,
+          "speed": 2,
+          "status_effects": []
+        }
+      },
+      "abilities": {
+        "slash": {
+          "priority": 0,
+          "power": 7,
+          "targeting": "single_enemy"
+        },
+        "quick_sting": {
+          "priority": 1,
+          "power": 3,
+          "targeting": "single_enemy"
+        }
+      },
+      "planned_actions": [
+        {
+          "actor": "hero_knight",
+          "ability": "slash",
+          "target": "slime_a"
+        },
+        {
+          "actor": "slime_a",
+          "ability": "quick_sting",
+          "target": "hero_knight"
+        }
+      ]
+    }
+  }
+}
