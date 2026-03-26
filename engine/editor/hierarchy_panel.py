@@ -12,6 +12,7 @@ from typing import List, Optional, Tuple, Set
 from engine.ecs.world import World
 from engine.ecs.entity import Entity
 from engine.components.transform import Transform
+from engine.editor.cursor_manager import CursorVisualState
 
 class HierarchyPanel:
     """
@@ -48,6 +49,7 @@ class HierarchyPanel:
         self.context_menu_pos = rl.Vector2(0, 0)
         self.context_target_id: Optional[int] = None
         self.hovered_entity_id: Optional[int] = None
+        self._cursor_interactive_rects: List[rl.Rectangle] = []
 
     def set_scene_manager(self, manager: object) -> None:
         """Permite que la UI use el mismo camino serializable que la API."""
@@ -57,7 +59,8 @@ class HierarchyPanel:
         """Renderiza el panel de jerarquía estilo Unity."""
         if not self.visible:
             return
-            
+        self._cursor_interactive_rects = []
+
         self.panel_width = width
         
         # Input: Close menu if clicking elsewhere (logic inside _draw_context_menu handles its own clicks)
@@ -90,6 +93,7 @@ class HierarchyPanel:
         
         # Botón + (crear objeto)
         plus_rect = rl.Rectangle(x + width - 22, y + 2, 18, 18)
+        self._register_cursor_rect(plus_rect)
         is_hover_plus = rl.check_collision_point_rec(rl.get_mouse_position(), plus_rect)
         plus_color = self.UNITY_HOVER if is_hover_plus else self.UNITY_HEADER
         rl.draw_rectangle_rec(plus_rect, plus_color)
@@ -166,6 +170,8 @@ class HierarchyPanel:
                              
         is_hover = (panel_x <= mouse_pos.x <= panel_x + self.panel_width and 
                     y <= mouse_pos.y < y + row_height) and is_mouse_in_panel
+        if y + row_height >= panel_y and y <= panel_y + panel_h:
+            self._register_cursor_rect(rl.Rectangle(panel_x, y, self.panel_width, row_height))
             
         if is_hover:
             self.hovered_entity_id = entity.id
@@ -285,6 +291,7 @@ class HierarchyPanel:
         if my + menu_height > rl.get_screen_height(): my -= menu_height
         
         menu_rect = rl.Rectangle(mx, my, menu_width, menu_height)
+        self._register_cursor_rect(menu_rect)
         
         # Check close (Click outside)
         if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
@@ -302,6 +309,7 @@ class HierarchyPanel:
         for i, option in enumerate(options):
             item_y = my + (i * item_height)
             item_rect = rl.Rectangle(mx, item_y, menu_width, item_height)
+            self._register_cursor_rect(item_rect)
             
             is_hover = rl.check_collision_point_rec(mouse, item_rect)
             
@@ -366,3 +374,13 @@ class HierarchyPanel:
                         PrefabManager.save_prefab(entity, path, world=world)
                 except Exception as e:
                     print(f"[ERROR] Save Prefab dialog failed: {e}")
+
+    def get_cursor_intent(self, mouse_pos: Optional[rl.Vector2] = None) -> CursorVisualState:
+        mouse = rl.get_mouse_position() if mouse_pos is None else mouse_pos
+        for rect in self._cursor_interactive_rects:
+            if rl.check_collision_point_rec(mouse, rect):
+                return CursorVisualState.INTERACTIVE
+        return CursorVisualState.DEFAULT
+
+    def _register_cursor_rect(self, rect: rl.Rectangle) -> None:
+        self._cursor_interactive_rects.append(rl.Rectangle(rect.x, rect.y, rect.width, rect.height))

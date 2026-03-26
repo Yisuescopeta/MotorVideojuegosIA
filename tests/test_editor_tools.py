@@ -14,6 +14,7 @@ from engine.components.sprite import Sprite
 from engine.components.transform import Transform
 from engine.core.game import Game
 from engine.ecs.entity import Entity
+from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.editor_layout import EditorLayout
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
 from engine.editor.gizmo_system import GizmoSystem
@@ -104,6 +105,29 @@ class EditorLayoutToolStateTests(unittest.TestCase):
         self.assertAlmostEqual(world_pos.x, 25.0)
         self.assertAlmostEqual(world_pos.y, -10.0)
 
+    def test_cursor_intent_returns_text_for_manual_inputs(self) -> None:
+        with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
+            layout = EditorLayout(1280, 720)
+
+        shared_rect = rl.Rectangle(120, 80, 180, 32)
+        layout.launcher_search_rect = shared_rect
+        layout.tab_scene_rect = shared_rect
+
+        with patch("pyray.get_mouse_position", return_value=rl.Vector2(140, 96)):
+            self.assertEqual(layout.get_cursor_intent(), CursorVisualState.TEXT)
+
+    def test_cursor_intent_returns_interactive_for_tabs_and_splitters(self) -> None:
+        with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
+            layout = EditorLayout(1280, 720)
+
+        tab_mouse = rl.Vector2(layout.tab_scene_rect.x + 4, layout.tab_scene_rect.y + 4)
+        splitter_mouse = rl.Vector2(layout.splitter_left_rect.x + 1, layout.splitter_left_rect.y + 8)
+
+        with patch("pyray.get_mouse_position", return_value=tab_mouse):
+            self.assertEqual(layout.get_cursor_intent(), CursorVisualState.INTERACTIVE)
+        with patch("pyray.get_mouse_position", return_value=splitter_mouse):
+            self.assertEqual(layout.get_cursor_intent(), CursorVisualState.INTERACTIVE)
+
 
 class SceneViewFocusRegressionTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -193,6 +217,43 @@ class SceneViewFocusRegressionTests(unittest.TestCase):
         self.assertEqual(self.game.editor_layout.editor_camera.target.x, 125.0)
         self.assertEqual(self.game.editor_layout.editor_camera.target.y, -75.0)
         self.assertEqual(self.game.editor_layout.editor_camera.zoom, 1.75)
+
+
+class GameCursorRenderTests(unittest.TestCase):
+    def test_render_frame_draws_custom_cursor_after_layout(self) -> None:
+        game = Game()
+        layout = Mock()
+        layout.active_tab = "TEST"
+        layout.draw_layout = Mock()
+        layout.get_cursor_intent = Mock(return_value=CursorVisualState.INTERACTIVE)
+        game.editor_layout = layout
+        game.hierarchy_panel = None
+        game.animator_panel = None
+        game._inspector_system = None
+        game._draw_debug_info = Mock()
+        game._draw_performance_overlay = Mock()
+        game._cursor_renderer.render = Mock()
+
+        with patch("pyray.begin_drawing"), patch("pyray.end_drawing"), patch("pyray.clear_background"), patch(
+            "pyray.get_mouse_position", return_value=rl.Vector2(64, 48)
+        ):
+            game._render_frame(Mock())
+
+        game._cursor_renderer.render.assert_called_once()
+        _, state = game._cursor_renderer.render.call_args.args
+        self.assertEqual(state, CursorVisualState.INTERACTIVE)
+
+    def test_cleanup_restores_system_cursor(self) -> None:
+        game = Game()
+        game.terminal_panel = Mock()
+        game.animator_panel = Mock()
+        game.sprite_editor_modal = Mock()
+        game._cursor_renderer = Mock()
+
+        with patch("pyray.close_window"):
+            game._cleanup()
+
+        game._cursor_renderer.show_system_cursor.assert_called_once()
 
 
 class GizmoSystemMathTests(unittest.TestCase):

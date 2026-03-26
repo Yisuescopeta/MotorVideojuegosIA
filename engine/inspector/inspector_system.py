@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from engine.ecs.component import Component
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
+from engine.editor.cursor_manager import CursorVisualState
 from engine.inspector.component_editor_registry import ComponentEditorRegistry
 from engine.levels.component_registry import create_default_registry
 
@@ -56,6 +57,8 @@ class InspectorSystem:
         self._scene_path_cache: List[str] = []
         self._scene_path_cache_root: str = ""
         self._scene_path_cache_time: float = 0.0
+        self._cursor_interactive_rects: List[rl.Rectangle] = []
+        self._cursor_text_rects: List[rl.Rectangle] = []
         self._register_default_component_editors()
 
     def set_scene_manager(self, manager: Any) -> None:
@@ -162,6 +165,8 @@ class InspectorSystem:
 
     def render(self, world: "World", x: int, y: int, width: int, height: int, is_edit_mode: bool) -> None:
         """Draws the inspector."""
+        self._cursor_interactive_rects = []
+        self._cursor_text_rects = []
         panel_x = x
         panel_y = y
         panel_w = width
@@ -200,6 +205,7 @@ class InspectorSystem:
             return
 
         active_rect = rl.Rectangle(panel_x + 10, content_y, 14, 14)
+        self._register_cursor_rect(active_rect)
         rl.draw_rectangle_rec(active_rect, rl.Color(42, 42, 42, 255))
         rl.draw_rectangle_lines_ex(active_rect, 1, rl.Color(80, 80, 80, 255))
         if entity.active:
@@ -223,6 +229,7 @@ class InspectorSystem:
             content_y += 5
 
         add_btn_rect = rl.Rectangle(panel_x + 10, content_y + 10, panel_w - 20, 24)
+        self._register_cursor_rect(add_btn_rect)
         if rl.gui_button(add_btn_rect, "Add Component"):
             self.show_add_menu = not self.show_add_menu
 
@@ -242,6 +249,7 @@ class InspectorSystem:
 
         mouse_pos = rl.get_mouse_position()
         is_hover = rl.check_collision_point_rec(mouse_pos, header_rect)
+        self._register_cursor_rect(header_rect)
         bg_color = rl.Color(70, 70, 70, 255) if is_hover else rl.Color(60, 60, 60, 255)
         rl.draw_rectangle_rec(header_rect, bg_color)
         rl.draw_rectangle(int(header_rect.x), int(header_rect.y), 3, int(header_rect.height), accent_color)
@@ -259,6 +267,7 @@ class InspectorSystem:
         remove_hover = False
         if comp_name != "Transform":
             remove_hover = rl.check_collision_point_rec(mouse_pos, remove_rect)
+            self._register_cursor_rect(remove_rect)
             remove_color = rl.Color(200, 60, 60, 255) if remove_hover else rl.Color(150, 80, 80, 255)
             rl.draw_rectangle_rec(remove_rect, remove_color)
             rl.draw_text("x", int(x + width - 15), int(y + 3), 10, rl.WHITE)
@@ -349,9 +358,9 @@ class InspectorSystem:
         if not is_edit:
             return
         mouse_pos = rl.get_mouse_position()
+        self._register_text_rect(val_rect)
         if rl.check_collision_point_rec(mouse_pos, val_rect):
             rl.draw_rectangle_lines_ex(val_rect, 1, rl.Color(70, 130, 200, 255))
-            rl.set_mouse_cursor(rl.MOUSE_CURSOR_IBEAM)
             if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 self._begin_text_edit(prop_id, value_text, value_type, on_commit)
 
@@ -378,9 +387,9 @@ class InspectorSystem:
         if not is_edit:
             return
         mouse_pos = rl.get_mouse_position()
+        self._register_text_rect(val_rect)
         if rl.check_collision_point_rec(mouse_pos, val_rect):
             rl.draw_rectangle_lines_ex(val_rect, 1, rl.Color(70, 130, 200, 255))
-            rl.set_mouse_cursor(rl.MOUSE_CURSOR_IBEAM)
             if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 self._begin_text_edit(prop_id, value, "string", on_commit)
 
@@ -407,6 +416,7 @@ class InspectorSystem:
         if not is_edit:
             return
         mouse_pos = rl.get_mouse_position()
+        self._register_cursor_rect(check_rect)
         if rl.check_collision_point_rec(mouse_pos, check_rect):
             rl.draw_rectangle_lines_ex(check_rect, 1, rl.Color(100, 150, 220, 255))
             if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
@@ -423,6 +433,7 @@ class InspectorSystem:
         rect: rl.Rectangle,
         world: "World",
     ) -> None:
+        self._register_text_rect(rect)
         rl.draw_rectangle_rec(rect, rl.Color(30, 30, 30, 255))
         rl.draw_rectangle_lines_ex(rect, 1, rl.Color(0, 200, 255, 255))
 
@@ -493,6 +504,7 @@ class InspectorSystem:
             y -= menu_h + 30
 
         menu_rect = rl.Rectangle(x, y, menu_w, menu_h)
+        self._register_cursor_rect(menu_rect)
         rl.draw_rectangle_rec(menu_rect, rl.Color(40, 40, 40, 255))
         rl.draw_rectangle_lines_ex(menu_rect, 1, rl.Color(80, 80, 80, 255))
 
@@ -504,6 +516,7 @@ class InspectorSystem:
 
         for index, descriptor in enumerate(available):
             rect = rl.Rectangle(x, y + index * item_height, menu_w, item_height)
+            self._register_cursor_rect(rect)
             is_hover = rl.check_collision_point_rec(mouse, rect)
             if is_hover:
                 rl.draw_rectangle_rec(rect, rl.Color(60, 60, 60, 255))
@@ -548,6 +561,22 @@ class InspectorSystem:
         self.editing_value_type = "float"
         self._editing_commit = None
         self.text_buffer[:] = b"\x00" * len(self.text_buffer)
+
+    def get_cursor_intent(self, mouse_pos: Optional[rl.Vector2] = None) -> CursorVisualState:
+        mouse = rl.get_mouse_position() if mouse_pos is None else mouse_pos
+        for rect in self._cursor_text_rects:
+            if rl.check_collision_point_rec(mouse, rect):
+                return CursorVisualState.TEXT
+        for rect in self._cursor_interactive_rects:
+            if rl.check_collision_point_rec(mouse, rect):
+                return CursorVisualState.INTERACTIVE
+        return CursorVisualState.DEFAULT
+
+    def _register_cursor_rect(self, rect: rl.Rectangle) -> None:
+        self._cursor_interactive_rects.append(rl.Rectangle(rect.x, rect.y, rect.width, rect.height))
+
+    def _register_text_rect(self, rect: rl.Rectangle) -> None:
+        self._cursor_text_rects.append(rl.Rectangle(rect.x, rect.y, rect.width, rect.height))
 
     def _apply_property_change(self, world: "World", prop_id: str, value: Any) -> bool:
         parts = prop_id.split(":")
