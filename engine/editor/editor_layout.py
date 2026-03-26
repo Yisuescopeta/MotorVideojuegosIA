@@ -151,11 +151,6 @@ class EditorLayout:
         # Anchos dinámicos
         self.hierarchy_width = 200
         self.inspector_width = 280
-        self.assistant_width = 320
-        self.assistant_previous_width = self.assistant_width
-        self.assistant_minimized: bool = False
-        self.assistant_minimized_width = 44
-        
         # Estado de Resize/Drag
         self.dragging_splitter: Optional[str] = None 
         self.is_panning = False
@@ -177,7 +172,6 @@ class EditorLayout:
         # Rects
         self.hierarchy_rect = rl.Rectangle(0,0,0,0)
         self.inspector_rect = rl.Rectangle(0,0,0,0)
-        self.assistant_rect = rl.Rectangle(0,0,0,0)
         self.center_rect = rl.Rectangle(0,0,0,0) # Scene/Game container
         self.bottom_rect = rl.Rectangle(0,0,0,0)
         self.bottom_header_rect = rl.Rectangle(0,0,0,0)
@@ -281,8 +275,6 @@ class EditorLayout:
         """Recalcula layout."""
         self.screen_width = width
         self.screen_height = height
-        if self.assistant_minimized:
-            self.assistant_width = self.assistant_minimized_width
         
         # Menu Bar takes top space (24px)
         # Toolbar is below Menu Bar
@@ -306,23 +298,19 @@ class EditorLayout:
         
         # 2. Inspector (Right)
         self.inspector_rect = rl.Rectangle(
-            width - self.assistant_width - self.inspector_width, top_offset,
+            width - self.inspector_width, top_offset,
             self.inspector_width, content_height
-        )
-        self.assistant_rect = rl.Rectangle(
-            width - self.assistant_width, top_offset,
-            self.assistant_width, content_height
         )
         
         # Splitter Right
         self.splitter_right_rect = rl.Rectangle(
-            width - self.assistant_width - self.inspector_width - self.SPLITTER_WIDTH, top_offset,
+            width - self.inspector_width - self.SPLITTER_WIDTH, top_offset,
             self.SPLITTER_WIDTH, content_height
         )
         
         # 3. Center View (Reference for Scene and Game)
         center_x = self.hierarchy_width + self.SPLITTER_WIDTH
-        center_right = width - self.assistant_width - self.inspector_width - self.SPLITTER_WIDTH
+        center_right = width - self.inspector_width - self.SPLITTER_WIDTH
         center_width = center_right - center_x
         
         self.center_rect = rl.Rectangle(
@@ -382,13 +370,12 @@ class EditorLayout:
         
         # Guard: Skip toolbar/tab processing if mouse is in inspector or hierarchy
         mouse_in_inspector = rl.check_collision_point_rec(mouse_pos, self.inspector_rect)
-        mouse_in_assistant = rl.check_collision_point_rec(mouse_pos, self.assistant_rect)
         mouse_in_hierarchy = rl.check_collision_point_rec(mouse_pos, self.hierarchy_rect)
         mouse_in_bottom = rl.check_collision_point_rec(mouse_pos, self.bottom_rect)
         self.handle_bottom_tab_input(mouse_pos)
         
         # A. Toolbar / Tabs interaction (only if NOT clicking in panels)
-        if not mouse_in_inspector and not mouse_in_assistant and not mouse_in_hierarchy and not mouse_in_bottom:
+        if not mouse_in_inspector and not mouse_in_hierarchy and not mouse_in_bottom:
             if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 if rl.check_collision_point_rec(mouse_pos, self.tab_scene_rect):
                     self.active_tab = "SCENE"
@@ -601,21 +588,6 @@ class EditorLayout:
         """Returns True if the mouse is over the inspector panel."""
         return rl.check_collision_point_rec(rl.get_mouse_position(), self.inspector_rect)
 
-    def is_mouse_in_assistant_panel(self) -> bool:
-        return rl.check_collision_point_rec(rl.get_mouse_position(), self.assistant_rect)
-
-    def set_assistant_minimized(self, minimized: bool) -> None:
-        minimized = bool(minimized)
-        if minimized == self.assistant_minimized:
-            return
-        if minimized:
-            self.assistant_previous_width = max(self.MIN_PANEL_WIDTH, self.assistant_width)
-            self.assistant_width = self.assistant_minimized_width
-        else:
-            restored_width = self.assistant_previous_width or 320
-            self.assistant_width = max(self.MIN_PANEL_WIDTH, restored_width)
-        self.assistant_minimized = minimized
-
     def _resize_render_textures(self, width: int, height: int) -> None:
         if width <= 0 or height <= 0: return
         
@@ -693,8 +665,6 @@ class EditorLayout:
                      int(self.inspector_rect.x),
                      int(self.inspector_rect.y + self.inspector_rect.height),
                      self.UNITY_BORDER)
-        rl.draw_rectangle_rec(self.assistant_rect, self.UNITY_BG_DARK)
-        rl.draw_line(int(self.assistant_rect.x), int(self.assistant_rect.y), int(self.assistant_rect.x), int(self.assistant_rect.y + self.assistant_rect.height), self.UNITY_BORDER)
         
         # ========================================
         # 4. Scene Workspace Tabs

@@ -1,5 +1,5 @@
 """
-engine/api/engine_api.py - Fachada publica del motor y del authoring IA-first
+engine/api/engine_api.py - Fachada publica del motor
 """
 
 from __future__ import annotations
@@ -11,11 +11,6 @@ from typing import Any, Dict, Optional
 
 from cli.headless_game import HeadlessGame
 from cli.runner import CLIRunner
-from engine.api.ai_context import (
-    build_ai_context as build_ai_context_data,
-    build_ai_context_examples,
-    format_ai_context_for_chat,
-)
 from engine.api.errors import (
     EntityNotFoundError,
     InvalidOperationError,
@@ -69,7 +64,6 @@ class EngineAPI:
         self.scene_manager: Optional[SceneManager] = None
         self.project_service: Optional[ProjectService] = None
         self.asset_service: Optional[AssetService] = None
-        self.ai_orchestrator: Any = None
         self._registry = create_default_registry()
         self._project_root = project_root or os.getcwd()
         self._global_state_dir = global_state_dir
@@ -106,12 +100,6 @@ class EngineAPI:
                 )
             except Exception:
                 pass
-        self._initialize_ai()
-
-    def _initialize_ai(self) -> None:
-        from engine.ai import AIOrchestrator
-
-        self.ai_orchestrator = AIOrchestrator(self)
 
     def attach_runtime(self, game: Any, scene_manager: SceneManager, project_service: ProjectService) -> None:
         self.game = game
@@ -120,7 +108,6 @@ class EngineAPI:
         self.asset_service = AssetService(project_service)
         if hasattr(self.game, "set_project_service"):
             self.game.set_project_service(project_service)
-        self._initialize_ai()
 
     def load_level(self, path: str) -> None:
         """Carga una escena JSON en el motor."""
@@ -292,41 +279,6 @@ class EngineAPI:
                 continue
             entities.append(self.get_entity(entity.name))
         return entities
-
-    def build_ai_context(
-        self,
-        level: str = "minimal",
-        include_world_fallback: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        Construye un contexto resumido y estable para asistentes IA.
-
-        Integracion tipica:
-        - Chat: serializar con build_ai_context_message().
-        - Command bus o script runner: consultar antes de decidir la siguiente accion.
-        """
-        return build_ai_context_data(
-            game=self.game,
-            scene_manager=self.scene_manager,
-            level=level,  # type: ignore[arg-type]
-            include_world_fallback=include_world_fallback,
-        )
-
-    def build_ai_context_message(
-        self,
-        level: str = "minimal",
-        include_world_fallback: bool = False,
-    ) -> str:
-        """Devuelve el contexto listo para adjuntar a chat o command bus."""
-        context = self.build_ai_context(
-            level=level,
-            include_world_fallback=include_world_fallback,
-        )
-        return format_ai_context_for_chat(context)
-
-    def get_ai_context_examples(self) -> Dict[str, Dict[str, Any]]:
-        """Expone ejemplos del formato resumido."""
-        return build_ai_context_examples()
 
     def get_entity(self, name: str) -> EntityData:
         """Obtiene datos de una entidad."""
@@ -1143,184 +1095,6 @@ class EngineAPI:
             return self._fail("Project service not ready")
         self.project_service.save_editor_state(data)
         return self._ok("Editor state saved", self.project_service.load_editor_state())
-
-    def handle_ai_request(
-        self,
-        prompt: str,
-        mode: str = "auto",
-        answers: Optional[Dict[str, Any]] = None,
-        confirmed: bool = False,
-        allow_python: bool = False,
-        allow_engine_changes: bool = False,
-    ) -> Dict[str, Any]:
-        if self.ai_orchestrator is None:
-            return {"status": "error", "message": "AI orchestrator not initialized"}
-        from engine.ai import AIRequest
-
-        request = AIRequest(
-            prompt=prompt,
-            mode=mode,
-            answers=answers or {},
-            confirmed=confirmed,
-            allow_python=allow_python,
-            allow_engine_changes=allow_engine_changes,
-        )
-        return self.ai_orchestrator.handle(request).to_dict()
-
-    def start_ai_session(self, title: str = "", mode: str = "plan", activate: bool = True) -> Dict[str, Any]:
-        if self.ai_orchestrator is None:
-            return {}
-        return self.ai_orchestrator.start_session(title=title, mode=mode, activate=activate)
-
-    def submit_ai_message(
-        self,
-        prompt: str,
-        session_id: Optional[str] = None,
-        mode: str = "plan",
-        answers: Optional[Dict[str, Any]] = None,
-        allow_python: bool = False,
-        allow_engine_changes: bool = False,
-        activate: bool = True,
-    ) -> Dict[str, Any]:
-        if self.ai_orchestrator is None:
-            return {}
-        return self.ai_orchestrator.submit_message(
-            session_id=session_id,
-            prompt=prompt,
-            mode=mode,
-            answers=answers,
-            allow_python=allow_python,
-            allow_engine_changes=allow_engine_changes,
-            activate=activate,
-        )
-
-    def answer_ai_question(
-        self,
-        answer: str,
-        session_id: Optional[str] = None,
-        question_id: Optional[str] = None,
-        mode: Optional[str] = None,
-        allow_python: bool = False,
-        allow_engine_changes: bool = False,
-    ) -> Dict[str, Any]:
-        if self.ai_orchestrator is None:
-            return {}
-        resolved_session_id = session_id or self.get_editor_state().get("active_ai_session_id", "")
-        if not resolved_session_id:
-            return {}
-        return self.ai_orchestrator.answer_question(
-            session_id=resolved_session_id,
-            answer=answer,
-            question_id=question_id,
-            mode=mode,
-            allow_python=allow_python,
-            allow_engine_changes=allow_engine_changes,
-        )
-
-    def approve_ai_proposal(
-        self,
-        session_id: Optional[str] = None,
-        allow_python: bool = False,
-        allow_engine_changes: bool = False,
-    ) -> Dict[str, Any]:
-        if self.ai_orchestrator is None:
-            return {}
-        resolved_session_id = session_id or self.get_editor_state().get("active_ai_session_id", "")
-        if not resolved_session_id:
-            return {}
-        return self.ai_orchestrator.approve_proposal(
-            session_id=resolved_session_id,
-            allow_python=allow_python,
-            allow_engine_changes=allow_engine_changes,
-        )
-
-    def reject_ai_proposal(self, session_id: Optional[str] = None) -> Dict[str, Any]:
-        if self.ai_orchestrator is None:
-            return {}
-        resolved_session_id = session_id or self.get_editor_state().get("active_ai_session_id", "")
-        if not resolved_session_id:
-            return {}
-        return self.ai_orchestrator.reject_proposal(resolved_session_id)
-
-    def get_ai_session(self, session_id: Optional[str] = None) -> Dict[str, Any]:
-        if self.ai_orchestrator is None:
-            return {}
-        resolved_session_id = session_id or self.get_editor_state().get("active_ai_session_id", "")
-        return self.ai_orchestrator.get_session(resolved_session_id or None)
-
-    def undo_ai_last_apply(self, session_id: Optional[str] = None) -> Dict[str, Any]:
-        if self.ai_orchestrator is None:
-            return {}
-        resolved_session_id = session_id or self.get_editor_state().get("active_ai_session_id", "")
-        if not resolved_session_id:
-            return {}
-        return self.ai_orchestrator.undo_last_apply(resolved_session_id)
-
-    def get_ai_project_memory(self) -> Dict[str, Any]:
-        if self.ai_orchestrator is None:
-            return {}
-        return self.ai_orchestrator.get_memory()
-
-    def update_ai_project_memory(self, patch: Dict[str, Any]) -> ActionResult:
-        if self.ai_orchestrator is None:
-            return self._fail("AI orchestrator not initialized")
-        memory = self.ai_orchestrator.update_memory(patch)
-        return self._ok("AI project memory updated", memory)
-
-    def set_ai_provider_policy(
-        self,
-        mode: str = "local",
-        preferred_provider: str = "ollama_local",
-        model_name: str = "",
-        endpoint: str = "http://127.0.0.1:11434",
-    ) -> ActionResult:
-        return self.update_ai_project_memory(
-            {
-                "provider_policy": {
-                    "mode": mode,
-                    "preferred_provider": preferred_provider,
-                    "model_name": model_name,
-                    "endpoint": endpoint,
-                }
-            }
-        )
-
-    def list_ai_skills(self) -> list[Dict[str, Any]]:
-        if self.ai_orchestrator is None:
-            return []
-        return self.ai_orchestrator.list_skills()
-
-    def list_ai_providers(self) -> list[Dict[str, Any]]:
-        if self.ai_orchestrator is None:
-            return []
-        return self.ai_orchestrator.list_providers()
-
-    def list_ai_tools(self) -> list[Dict[str, Any]]:
-        if self.ai_orchestrator is None:
-            return []
-        return self.ai_orchestrator.list_tools()
-
-    def get_ai_provider_diagnostics(self) -> Dict[str, Any]:
-        if self.ai_orchestrator is None:
-            return {}
-        return self.ai_orchestrator.get_provider_diagnostics()
-
-    def get_ai_diagnostics(self, session_id: Optional[str] = None) -> Dict[str, Any]:
-        if self.ai_orchestrator is None:
-            return {}
-        return self.ai_orchestrator.get_diagnostics(session_id=session_id)
-
-    def get_engine_capabilities(self) -> list[Dict[str, Any]]:
-        if self.project_service is None:
-            return []
-        from engine.ai.capabilities import build_capability_registry
-
-        return [item.to_dict() for item in build_capability_registry(self.project_service, self)]
-
-    def get_ai_context(self, prompt: str) -> Dict[str, Any]:
-        if self.ai_orchestrator is None:
-            return {}
-        return self.ai_orchestrator.assemble_context(prompt)
 
     def list_project_assets(self, search: str = "") -> list[Dict[str, Any]]:
         if self.asset_service is None:

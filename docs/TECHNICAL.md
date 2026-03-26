@@ -9,7 +9,7 @@
 5. [Eventos y Reglas](#eventos-y-reglas)
 6. [Gestión de Escenas](#gestión-de-escenas)
 7. [Inspector Visual](#inspector-visual)
-8. [Guía de Uso para IA](#guía-de-uso-para-ia)
+8. [Guia de Uso de API](#guia-de-uso-de-api)
 9. [Orquestacion Multiagente](#orquestacion-multiagente)
 
 ---
@@ -385,7 +385,7 @@ aunque la pestaÃ±a visible sea `Game View`.
 
 ---
 
-## Guía de Uso para IA
+## Guia de Uso de API
 
 ### Crear un Nivel
 
@@ -455,7 +455,7 @@ game.stop()
 
 ---
 
-## Notas para IA
+## Notas de Diseno
 
 1. **Todo es serializable**: Componentes tienen `to_dict()`/`from_dict()`
 2. **Sin lógica oculta**: Cada acción es explícita
@@ -492,7 +492,7 @@ def on_reload():
 
 ---
 
-## Herramientas IA
+## Herramientas de Desarrollo
 
 ### create_mechanic
 

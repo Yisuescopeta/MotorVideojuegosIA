@@ -35,7 +35,6 @@ from engine.systems.ui_system import UISystem
 from engine.scenes.scene_manager import SceneManager
 from engine.levels.component_registry import create_default_registry
 from engine.project.project_service import ProjectService
-from engine.api import EngineAPI
 from engine.physics.box2d_backend import Box2DPhysicsBackend
 
 
@@ -152,10 +151,6 @@ def main() -> None:
         game.set_physics_backend(Box2DPhysicsBackend(gravity=physics_system.gravity, event_bus=event_bus), backend_name="box2d")
     except Exception:
         pass
-
-    assistant_api = EngineAPI(project_root=project_service.project_root.as_posix())
-    assistant_api.attach_runtime(game, scene_manager, project_service)
-    game.set_assistant_api(assistant_api)
 
     # Configurar ScriptExecutor si se solicito (Visual Automation)
     if args.script:

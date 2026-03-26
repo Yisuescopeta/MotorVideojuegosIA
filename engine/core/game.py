@@ -65,7 +65,6 @@ from engine.editor.hierarchy_panel import HierarchyPanel
 from engine.editor.gizmo_system import GizmoSystem
 from engine.editor.editor_layout import EditorLayout
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
-from engine.editor.assistant_panel import AssistantPanel
 from engine.editor.sprite_editor_modal import SpriteEditorModal
 from engine.editor.terminal_panel import TerminalPanel
 from engine.editor.raygui_theme import apply_unity_dark_theme
@@ -132,8 +131,6 @@ class Game:
         self.terminal_panel: Optional["TerminalPanel"] = TerminalPanel()
         self.gizmo_system: Optional["GizmoSystem"] = GizmoSystem()
         self.editor_layout: Optional["EditorLayout"] = None
-        self.assistant_panel: Optional[AssistantPanel] = AssistantPanel()
-        self.assistant_api: Any = None
         
         # Gestión de escenas
              
@@ -471,22 +468,6 @@ class Game:
             undo=lambda key=active_key, entity_name=drag.entity_name, before=drag.before_state, apply_state=apply_state: apply_state(entity_name, before, key_or_path=key, record_history=False),
             redo=lambda key=active_key, entity_name=drag.entity_name, after=drag.after_state, apply_state=apply_state: apply_state(entity_name, after, key_or_path=key, record_history=False),
         )
-
-    def set_assistant_api(self, api: Any) -> None:
-        self.assistant_api = api
-        if self.assistant_panel is not None:
-            self.assistant_panel.set_api(api)
-
-    def _sync_assistant_panel_layout(self, force: bool = False) -> None:
-        if self.editor_layout is None or self.assistant_panel is None:
-            return
-        desired_minimized = bool(getattr(self.assistant_panel, "is_minimized", False))
-        if not force and getattr(self.editor_layout, "assistant_minimized", False) == desired_minimized:
-            return
-        self.editor_layout.set_assistant_minimized(desired_minimized)
-        self.editor_layout.update_layout(rl.get_screen_width(), rl.get_screen_height())
-        self.width = rl.get_screen_width()
-        self.height = rl.get_screen_height()
 
     def _reset_project_bound_state(self) -> None:
         if self._state == EngineState.STEPPING:
@@ -845,7 +826,6 @@ class Game:
                     self.editor_layout.show_project_launcher = True
             if self._scene_manager is not None:
                 self.editor_layout.set_scene_tabs(self._scene_manager.list_open_scenes(), self._scene_manager.active_scene_key)
-        self._sync_assistant_panel_layout(force=True)
         
         self.running = True
         print(f"[INFO] Motor iniciado en modo: {self._state}")
@@ -899,8 +879,6 @@ class Game:
                      self.width = rl.get_screen_width()
                      self.height = rl.get_screen_height()
 
-                self._sync_assistant_panel_layout()
-
                 if self.sprite_editor_modal is None or not self.sprite_editor_modal.is_open:
                     self.editor_layout.update_input()
                     if self.terminal_panel is not None:
@@ -908,8 +886,6 @@ class Game:
                     self._persist_editor_preferences()
                 if self.animator_panel is not None and active_world is not None:
                     self.animator_panel.update(active_world, dt)
-                if self.assistant_panel is not None:
-                    self.assistant_panel.update(self.editor_layout.assistant_rect)
                 
                 # Procesar requests de UI
                 if self.editor_layout.request_play:
@@ -1028,7 +1004,7 @@ class Game:
                     mouse_ui = self.editor_layout.get_scene_overlay_mouse_pos()
                     mouse_in_scene = self.editor_layout.is_mouse_in_scene_view()
                     # CRITICAL: Prevent scene interaction (selection/gizmo) if mouse is over Inspector
-                    if self.editor_layout.is_mouse_in_inspector() or self.editor_layout.is_mouse_in_assistant_panel():
+                    if self.editor_layout.is_mouse_in_inspector():
                         mouse_in_scene = False
                 if self._ui_system is not None and active_world is not None:
                     self._ui_system.ensure_layout_cache(active_world, scene_viewport_size)
@@ -1629,10 +1605,6 @@ class Game:
                         is_edit_mode=self.is_edit_mode
                     )
                     self._perf_stats["inspector"] = (time.perf_counter() - inspector_start) * 1000.0
-
-            if self.assistant_panel is not None and self.editor_layout is not None:
-                rect = self.editor_layout.assistant_rect
-                self.assistant_panel.render(int(rect.x), int(rect.y), int(rect.width), int(rect.height))
 
             if self.animator_panel is not None and active_world is not None and self.editor_layout and self.editor_layout.active_tab == "ANIMATOR":
                 rect = self.editor_layout.get_center_view_rect()

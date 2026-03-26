@@ -569,7 +569,6 @@ class ProjectService:
             "open_scenes": [],
             "active_scene": "",
             "scene_view_states": {},
-            "active_ai_session_id": "",
             "preferences": {},
         }
 
@@ -603,9 +602,6 @@ class ProjectService:
                 if isinstance(value, dict):
                     normalized_view_states[str(key)] = dict(value)
             state["scene_view_states"] = normalized_view_states
-
-        active_ai_session_id = data.get("active_ai_session_id", "")
-        state["active_ai_session_id"] = str(active_ai_session_id) if active_ai_session_id else ""
 
         preferences = data.get("preferences", {})
         if isinstance(preferences, dict):

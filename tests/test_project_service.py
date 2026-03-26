@@ -73,7 +73,6 @@ class ProjectServiceTests(unittest.TestCase):
                 "open_scenes": [],
                 "active_scene": "",
                 "scene_view_states": {},
-                "active_ai_session_id": "",
                 "preferences": {},
             },
         )
