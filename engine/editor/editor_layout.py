@@ -35,6 +35,8 @@ class EditorLayout:
     BOTTOM_HEIGHT: int = 180       # Panel inferior (Project + Console)
     SPLITTER_WIDTH: int = 4        # Separadores
     MIN_PANEL_WIDTH: int = 150
+    MIN_BOTTOM_HEIGHT: int = 120
+    MAX_BOTTOM_HEIGHT_MARGIN: int = 120
     
     # ========================================
     # Unity Colors (Exactos)
@@ -89,7 +91,7 @@ class EditorLayout:
         
         # Tabs
         self.active_tab: str = "SCENE" # "SCENE" | "GAME" | "ANIMATOR"
-        self.active_bottom_tab: str = "PROJECT" # "PROJECT" | "CONSOLE"
+        self.active_bottom_tab: str = "PROJECT" # "PROJECT" | "CONSOLE" | "TERMINAL"
         
         # Requests (Game.py lee esto)
         self.request_play: bool = False
@@ -158,6 +160,7 @@ class EditorLayout:
         self.dragging_splitter: Optional[str] = None 
         self.is_panning = False
         self.last_mouse_pos = rl.Vector2(0, 0)
+        self.bottom_height = self.BOTTOM_HEIGHT
         
         # Render texture (Shared or Scene specific)
         self.scene_texture: Optional[rl.RenderTexture] = None
@@ -177,6 +180,9 @@ class EditorLayout:
         self.assistant_rect = rl.Rectangle(0,0,0,0)
         self.center_rect = rl.Rectangle(0,0,0,0) # Scene/Game container
         self.bottom_rect = rl.Rectangle(0,0,0,0)
+        self.bottom_header_rect = rl.Rectangle(0,0,0,0)
+        self.bottom_content_rect = rl.Rectangle(0,0,0,0)
+        self.bottom_splitter_rect = rl.Rectangle(0,0,0,0)
         self.splitter_left_rect = rl.Rectangle(0,0,0,0)
         self.splitter_right_rect = rl.Rectangle(0,0,0,0)
         
@@ -192,6 +198,7 @@ class EditorLayout:
         # Project / Console Panel
         self.project_panel = ProjectPanel("assets") 
         self.console_panel = ConsolePanel()
+        self.terminal_panel = None
         self._text_measure_cache: dict[tuple[str, int], int] = {}
         self.launcher_search_rect = rl.Rectangle(0, 0, 0, 0)
         self.launcher_table_rect = rl.Rectangle(0, 0, 0, 0)
@@ -251,6 +258,8 @@ class EditorLayout:
         self.transform_space = TransformSpace.from_value(preferences.get("editor_transform_space", TransformSpace.WORLD.value))
         self.pivot_mode = PivotMode.from_value(preferences.get("editor_pivot_mode", PivotMode.PIVOT.value))
         self.snap_settings = SnapSettings.from_preferences(preferences)
+        self.bottom_height = int(preferences.get("editor_bottom_panel_height", self.BOTTOM_HEIGHT) or self.BOTTOM_HEIGHT)
+        self.bottom_height = self._clamp_bottom_height(self.bottom_height)
         self._editor_preferences_dirty = False
 
     def export_editor_preferences(self) -> dict[str, object]:
@@ -258,6 +267,7 @@ class EditorLayout:
             "editor_active_tool": self.active_tool.value,
             "editor_transform_space": self.transform_space.value,
             "editor_pivot_mode": self.pivot_mode.value,
+            "editor_bottom_panel_height": int(self.bottom_height),
         }
         data.update(self.snap_settings.to_preferences())
         return data
@@ -278,7 +288,9 @@ class EditorLayout:
         # Toolbar is below Menu Bar
         
         top_offset = self.MENU_HEIGHT + self.TOOLBAR_HEIGHT
-        content_height = height - top_offset - self.BOTTOM_HEIGHT
+        bottom_height = self._clamp_bottom_height(self.bottom_height, screen_height=height)
+        self.bottom_height = bottom_height
+        content_height = height - top_offset - bottom_height
         
         # 1. Hierarchy (Left) - Starts below Toolbar
         self.hierarchy_rect = rl.Rectangle(
@@ -330,8 +342,20 @@ class EditorLayout:
         
         # 4. Bottom
         self.bottom_rect = rl.Rectangle(
-            0, height - self.BOTTOM_HEIGHT,
-            width, self.BOTTOM_HEIGHT
+            0, height - bottom_height,
+            width, bottom_height
+        )
+        self.bottom_header_rect = rl.Rectangle(
+            0, height - bottom_height,
+            width, self.TAB_HEIGHT
+        )
+        self.bottom_content_rect = rl.Rectangle(
+            0, self.bottom_header_rect.y + self.bottom_header_rect.height,
+            width, bottom_height - self.TAB_HEIGHT
+        )
+        self.bottom_splitter_rect = rl.Rectangle(
+            0, self.bottom_rect.y - self.SPLITTER_WIDTH,
+            width, self.SPLITTER_WIDTH
         )
 
         self._sync_editor_camera_offset()
@@ -361,6 +385,7 @@ class EditorLayout:
         mouse_in_assistant = rl.check_collision_point_rec(mouse_pos, self.assistant_rect)
         mouse_in_hierarchy = rl.check_collision_point_rec(mouse_pos, self.hierarchy_rect)
         mouse_in_bottom = rl.check_collision_point_rec(mouse_pos, self.bottom_rect)
+        self.handle_bottom_tab_input(mouse_pos)
         
         # A. Toolbar / Tabs interaction (only if NOT clicking in panels)
         if not mouse_in_inspector and not mouse_in_assistant and not mouse_in_hierarchy and not mouse_in_bottom:
@@ -391,15 +416,23 @@ class EditorLayout:
                     if new_width < self.MIN_PANEL_WIDTH: new_width = self.MIN_PANEL_WIDTH
                     if new_width > self.screen_width - self.hierarchy_width - 100: new_width = self.screen_width - self.hierarchy_width - 100
                     self.inspector_width = int(new_width)
+                elif self.dragging_splitter == 'bottom':
+                    new_height = self.screen_height - mouse_pos.y
+                    self.bottom_height = self._clamp_bottom_height(int(new_height))
+                    self._editor_preferences_dirty = True
                     
                 self.update_layout(self.screen_width, self.screen_height, update_texture=True)
                 return 
 
         hover_left = rl.check_collision_point_rec(mouse_pos, self.splitter_left_rect)
         hover_right = rl.check_collision_point_rec(mouse_pos, self.splitter_right_rect)
+        hover_bottom = rl.check_collision_point_rec(mouse_pos, self.bottom_splitter_rect)
         
-        if (hover_left or hover_right) and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-            self.dragging_splitter = 'left' if hover_left else 'right'
+        if (hover_left or hover_right or hover_bottom) and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+            if hover_bottom:
+                self.dragging_splitter = 'bottom'
+            else:
+                self.dragging_splitter = 'left' if hover_left else 'right'
             return
 
         # C. Camera Logic (Only if SCENE tab active)
@@ -708,36 +741,18 @@ class EditorLayout:
         self._draw_splitters()
         
         # ========================================
-        # 7. Bottom Area (Project / Console)
+        # 7. Bottom Area (Project / Console / Terminal)
         # ========================================
         rl.draw_rectangle_rec(self.bottom_rect, self.UNITY_BG_DARK)
         rl.draw_line(0, int(self.bottom_rect.y), self.screen_width, int(self.bottom_rect.y), self.UNITY_BORDER)
         
-        # Tabs for Bottom Area (drawn over the panel header)
-        bottom_tab_y = int(self.bottom_rect.y) + 2
-        bottom_tab_h = self.TAB_HEIGHT - 4
-        
-        # Project Tab
-        proj_tab_rect = rl.Rectangle(self.bottom_rect.x + 2, bottom_tab_y, 70, bottom_tab_h)
-        self._draw_tab("Project", proj_tab_rect, self.active_bottom_tab == "PROJECT")
-        if rl.check_collision_point_rec(rl.get_mouse_position(), proj_tab_rect):
-            if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-                self.active_bottom_tab = "PROJECT"
-                
-        # Console Tab
-        cons_tab_rect = rl.Rectangle(self.bottom_rect.x + 75, bottom_tab_y, 70, bottom_tab_h)
-        self._draw_tab("Console", cons_tab_rect, self.active_bottom_tab == "CONSOLE")
-        if rl.check_collision_point_rec(rl.get_mouse_position(), cons_tab_rect):
-            if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-                self.active_bottom_tab = "CONSOLE"
-        
         # Draw Content
         if self.active_bottom_tab == "PROJECT" and self.project_panel:
             self.project_panel.render(
-                int(self.bottom_rect.x), 
-                int(self.bottom_rect.y), 
-                int(self.bottom_rect.width), 
-                int(self.bottom_rect.height)
+                int(self.bottom_content_rect.x), 
+                int(self.bottom_content_rect.y), 
+                int(self.bottom_content_rect.width), 
+                int(self.bottom_content_rect.height)
             )
             # Drag Ghost
             if self.project_panel.dragging_file:
@@ -749,11 +764,20 @@ class EditorLayout:
                 )
         elif self.active_bottom_tab == "CONSOLE" and self.console_panel:
             self.console_panel.render(
-                int(self.bottom_rect.x), 
-                int(self.bottom_rect.y), 
-                int(self.bottom_rect.width), 
-                int(self.bottom_rect.height)
+                int(self.bottom_content_rect.x), 
+                int(self.bottom_content_rect.y), 
+                int(self.bottom_content_rect.width), 
+                int(self.bottom_content_rect.height)
             )
+        elif self.active_bottom_tab == "TERMINAL" and self.terminal_panel is not None:
+            self.terminal_panel.render(
+                int(self.bottom_content_rect.x),
+                int(self.bottom_content_rect.y),
+                int(self.bottom_content_rect.width),
+                int(self.bottom_content_rect.height),
+            )
+
+        self.draw_bottom_tabs()
 
         if self.show_project_modal:
             self._draw_project_modal()
@@ -1037,12 +1061,15 @@ class EditorLayout:
         mouse_pos = rl.get_mouse_position()
         hover_left = rl.check_collision_point_rec(mouse_pos, self.splitter_left_rect)
         hover_right = rl.check_collision_point_rec(mouse_pos, self.splitter_right_rect)
+        hover_bottom = rl.check_collision_point_rec(mouse_pos, self.bottom_splitter_rect)
         
         col_left = self.SPLITTER_HOVER_COLOR if hover_left or self.dragging_splitter == 'left' else self.SPLITTER_COLOR
         col_right = self.SPLITTER_HOVER_COLOR if hover_right or self.dragging_splitter == 'right' else self.SPLITTER_COLOR
+        col_bottom = self.SPLITTER_HOVER_COLOR if hover_bottom or self.dragging_splitter == 'bottom' else self.SPLITTER_COLOR
         
         rl.draw_rectangle_rec(self.splitter_left_rect, col_left)
         rl.draw_rectangle_rec(self.splitter_right_rect, col_right)
+        rl.draw_rectangle_rec(self.bottom_splitter_rect, col_bottom)
 
     def _draw_toolbar(self, is_playing: bool) -> None:
         """Dibuja el toolbar estilo Unity con herramientas y controles de play."""
@@ -1236,6 +1263,53 @@ class EditorLayout:
         text_x = rect.x + (rect.width - text_width) // 2
         text_y = rect.y + (rect.height - 10) // 2
         rl.draw_text(text, int(text_x), int(text_y), 10, self.UNITY_TEXT)
+
+    def get_bottom_content_rect(self) -> rl.Rectangle:
+        return self.bottom_content_rect
+
+    def handle_bottom_tab_input(self, mouse_pos: rl.Vector2) -> None:
+        if not rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+            return
+        if not rl.check_collision_point_rec(mouse_pos, self.bottom_header_rect):
+            return
+
+        bottom_tab_y = int(self.bottom_header_rect.y) + 2
+        bottom_tab_h = self.TAB_HEIGHT - 4
+        proj_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 2, bottom_tab_y, 70, bottom_tab_h)
+        cons_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 75, bottom_tab_y, 70, bottom_tab_h)
+        term_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 148, bottom_tab_y, 70, bottom_tab_h)
+
+        if rl.check_collision_point_rec(mouse_pos, proj_tab_rect):
+            self.active_bottom_tab = "PROJECT"
+        elif rl.check_collision_point_rec(mouse_pos, cons_tab_rect):
+            self.active_bottom_tab = "CONSOLE"
+        elif rl.check_collision_point_rec(mouse_pos, term_tab_rect):
+            self.active_bottom_tab = "TERMINAL"
+
+    def draw_bottom_tabs(self) -> None:
+        rl.draw_rectangle_rec(self.bottom_header_rect, self.UNITY_BG_DARK)
+        rl.draw_line(
+            int(self.bottom_header_rect.x),
+            int(self.bottom_header_rect.y + self.bottom_header_rect.height - 1),
+            int(self.bottom_header_rect.x + self.bottom_header_rect.width),
+            int(self.bottom_header_rect.y + self.bottom_header_rect.height - 1),
+            self.UNITY_BORDER,
+        )
+
+        bottom_tab_y = int(self.bottom_header_rect.y) + 2
+        bottom_tab_h = self.TAB_HEIGHT - 4
+        proj_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 2, bottom_tab_y, 70, bottom_tab_h)
+        cons_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 75, bottom_tab_y, 70, bottom_tab_h)
+        term_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 148, bottom_tab_y, 70, bottom_tab_h)
+
+        self._draw_tab("Project", proj_tab_rect, self.active_bottom_tab == "PROJECT")
+        self._draw_tab("Console", cons_tab_rect, self.active_bottom_tab == "CONSOLE")
+        self._draw_tab("Terminal", term_tab_rect, self.active_bottom_tab == "TERMINAL")
+
+    def _clamp_bottom_height(self, value: int, screen_height: int | None = None) -> int:
+        height = self.screen_height if screen_height is None else int(screen_height)
+        max_height = max(self.MIN_BOTTOM_HEIGHT, height - self.MENU_HEIGHT - self.TOOLBAR_HEIGHT - self.MAX_BOTTOM_HEIGHT_MARGIN)
+        return max(self.MIN_BOTTOM_HEIGHT, min(int(value), max_height))
 
     def _draw_center_view_tabs(self, x: int, y: int, height: int) -> int:
         self._draw_tab("Scene", self.tab_scene_rect, self.active_tab == "SCENE")

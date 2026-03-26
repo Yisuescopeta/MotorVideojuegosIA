@@ -4,7 +4,7 @@
     "path": "levels/demo_level.json",
     "asset_kind": "scene_data",
     "importer": "scene_data",
-    "source_hash": "95de2ff0aea144bdee6e8429b2900e174d1d4c3791b95d140369b9e9a3c061e5",
+    "source_hash": "bf9c7c67c39cfaf14fd6169cea0f3cc566b2aec094232a94ade63757b2236e99",
     "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
     "dependencies": [
         "assets/images_1.png",
@@ -31,5 +31,5 @@
         "automatic": {},
         "slices": []
     },
-    "source_size_bytes": 7335
+    "source_size_bytes": 9746
 }

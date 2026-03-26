@@ -31,7 +31,6 @@ class ProjectPanel:
     UNITY_TAB_LINE = rl.Color(58, 121, 187, 255)
     UNITY_FOLDER_ICON = rl.Color(220, 200, 100, 255)
     
-    HEADER_HEIGHT: int = 22
     SIDEBAR_WIDTH: int = 180
     ITEM_HEIGHT: int = 18
     MENU_WIDTH: int = 140
@@ -127,15 +126,9 @@ class ProjectPanel:
 
     def render(self, x: int, y: int, width: int, height: int) -> None:
         """Renderiza el panel de proyecto estilo Unity."""
-        
-        # ========================================
-        # 1. Header (Solo el fondo, tabs las dibuja EditorLayout)
-        # ========================================
-        header_rect = rl.Rectangle(x, y, width, self.HEADER_HEIGHT)
-        rl.draw_rectangle_rec(header_rect, self.UNITY_HEADER)
-        
+
         # Breadcrumb area / Search
-        breadcrumb_y = y + self.HEADER_HEIGHT
+        breadcrumb_y = y
         breadcrumb_h = 24
         rl.draw_rectangle(x, breadcrumb_y, width, breadcrumb_h, self.UNITY_BG_DARK)
         rl.draw_line(x, breadcrumb_y + breadcrumb_h - 1, x + width, breadcrumb_y + breadcrumb_h - 1, self.UNITY_BORDER)
@@ -150,7 +143,7 @@ class ProjectPanel:
         # 2. Main Area (Split into Sidebar and Content)
         # ========================================
         main_y = breadcrumb_y + breadcrumb_h
-        main_h = height - (self.HEADER_HEIGHT + breadcrumb_h)
+        main_h = height - breadcrumb_h
         
         # Sidebar (Folder Tree)
         sidebar_rect = rl.Rectangle(x, main_y, self.SIDEBAR_WIDTH, main_h)

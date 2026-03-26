@@ -67,6 +67,7 @@ from engine.editor.editor_layout import EditorLayout
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
 from engine.editor.assistant_panel import AssistantPanel
 from engine.editor.sprite_editor_modal import SpriteEditorModal
+from engine.editor.terminal_panel import TerminalPanel
 from engine.editor.raygui_theme import apply_unity_dark_theme
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
 from engine.tilemap.collision_builder import bake_tilemap_colliders
@@ -128,6 +129,7 @@ class Game:
         self.hierarchy_panel: Optional["HierarchyPanel"] = HierarchyPanel()
         self.animator_panel: Optional["AnimatorPanel"] = AnimatorPanel()
         self.sprite_editor_modal: Optional["SpriteEditorModal"] = SpriteEditorModal()
+        self.terminal_panel: Optional["TerminalPanel"] = TerminalPanel()
         self.gizmo_system: Optional["GizmoSystem"] = GizmoSystem()
         self.editor_layout: Optional["EditorLayout"] = None
         self.assistant_panel: Optional[AssistantPanel] = AssistantPanel()
@@ -396,6 +398,10 @@ class Game:
 
     def set_project_service(self, service: ProjectService) -> None:
         self._project_service = service
+        if self.terminal_panel is not None:
+            self.terminal_panel.set_project_service(service)
+        if self.editor_layout is not None:
+            self.editor_layout.terminal_panel = self.terminal_panel
         if self.editor_layout is not None:
             self.editor_layout.set_recent_projects(service.list_launcher_projects())
             self.editor_layout.set_project_scene_entries(service.list_project_scenes() if service.has_project else [])
@@ -830,6 +836,7 @@ class Game:
         # Crear EditorLayout (necesita ventana Raylib inicializada)
         if self.editor_layout is None:
             self.editor_layout = EditorLayout(self.width, self.height)
+            self.editor_layout.terminal_panel = self.terminal_panel
             if self._project_service is not None:
                 self._refresh_launcher_projects()
                 if self._project_service.has_project:
@@ -866,7 +873,14 @@ class Game:
             # World activo
             active_world = self.world
             
-            self._process_input()
+            terminal_captures_keyboard = (
+                self.terminal_panel is not None
+                and self.editor_layout is not None
+                and self.editor_layout.active_bottom_tab == "TERMINAL"
+                and self.terminal_panel.captures_keyboard()
+            )
+            if not terminal_captures_keyboard:
+                self._process_input()
             
             # Script Update (Visual Automation)
             if self.script_executor:
@@ -889,6 +903,8 @@ class Game:
 
                 if self.sprite_editor_modal is None or not self.sprite_editor_modal.is_open:
                     self.editor_layout.update_input()
+                    if self.terminal_panel is not None:
+                        self.terminal_panel.update_input(self.editor_layout.active_bottom_tab == "TERMINAL")
                     self._persist_editor_preferences()
                 if self.animator_panel is not None and active_world is not None:
                     self.animator_panel.update(active_world, dt)
@@ -1649,6 +1665,8 @@ class Game:
 
     def _cleanup(self) -> None:
         self.running = False
+        if self.terminal_panel is not None:
+            self.terminal_panel.shutdown()
         if self._render_system is not None:
             self._render_system.cleanup()
         if self.animator_panel is not None:
