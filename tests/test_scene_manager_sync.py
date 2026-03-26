@@ -1,7 +1,10 @@
 import os
 import sys
+import json
+import tempfile
 import unittest
 from unittest.mock import patch
+from pathlib import Path
 
 sys.path.append(os.getcwd())
 
@@ -68,6 +71,86 @@ class SceneManagerSyncTests(unittest.TestCase):
         refreshed_transform = refreshed_player.get_component(Transform)
         self.assertEqual(refreshed_transform.x, 144.0)
         self.assertEqual(refreshed_transform.y, 88.0)
+
+    def test_reload_scene_from_disk_rereads_open_scene_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            scene_path = Path(temp_dir) / "scene.json"
+            scene_path.write_text(
+                json.dumps(
+                    {
+                        "name": "Disk Scene",
+                        "entities": [
+                            {
+                                "name": "Player",
+                                "active": True,
+                                "tag": "Untagged",
+                                "layer": "Default",
+                                "components": {
+                                    "Transform": {
+                                        "enabled": True,
+                                        "x": 10.0,
+                                        "y": 20.0,
+                                        "rotation": 0.0,
+                                        "scale_x": 1.0,
+                                        "scale_y": 1.0,
+                                    }
+                                },
+                            }
+                        ],
+                        "rules": [],
+                        "feature_metadata": {},
+                    },
+                    indent=4,
+                ),
+                encoding="utf-8",
+            )
+
+            self.scene_manager.load_scene_from_file(scene_path.as_posix())
+            self.scene_manager.set_selected_entity("Player")
+
+            scene_path.write_text(
+                json.dumps(
+                    {
+                        "name": "Disk Scene",
+                        "entities": [
+                            {
+                                "name": "Player",
+                                "active": True,
+                                "tag": "Untagged",
+                                "layer": "Default",
+                                "components": {
+                                    "Transform": {
+                                        "enabled": True,
+                                        "x": 99.0,
+                                        "y": 77.0,
+                                        "rotation": 0.0,
+                                        "scale_x": 1.0,
+                                        "scale_y": 1.0,
+                                    }
+                                },
+                            }
+                        ],
+                        "rules": [],
+                        "feature_metadata": {},
+                    },
+                    indent=4,
+                ),
+                encoding="utf-8",
+            )
+
+            cached_world = self.scene_manager.load_scene_from_file(scene_path.as_posix())
+            cached_player = cached_world.get_entity_by_name("Player")
+            cached_transform = cached_player.get_component(Transform)
+            self.assertEqual(cached_transform.x, 10.0)
+
+            reloaded_world = self.scene_manager.reload_scene_from_disk(scene_path.as_posix())
+
+            self.assertIsNotNone(reloaded_world)
+            reloaded_player = reloaded_world.get_entity_by_name("Player")
+            reloaded_transform = reloaded_player.get_component(Transform)
+            self.assertEqual(reloaded_transform.x, 99.0)
+            self.assertEqual(reloaded_transform.y, 77.0)
+            self.assertEqual(reloaded_world.selected_entity_name, "Player")
 
 
 if __name__ == "__main__":

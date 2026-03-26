@@ -15,12 +15,15 @@ class PlayerController2D(Component):
         move_speed: float = 180.0,
         jump_velocity: float = -320.0,
         air_control: float = 0.75,
+        max_jumps: int = 1,
     ) -> None:
         self.enabled: bool = True
         self.move_speed: float = move_speed
         self.jump_velocity: float = jump_velocity
         self.air_control: float = air_control
+        self.max_jumps: int = max_jumps
         self._jump_was_pressed: bool = False
+        self._jump_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -28,6 +31,7 @@ class PlayerController2D(Component):
             "move_speed": self.move_speed,
             "jump_velocity": self.jump_velocity,
             "air_control": self.air_control,
+            "max_jumps": self.max_jumps,
         }
 
     @classmethod
@@ -36,6 +40,9 @@ class PlayerController2D(Component):
             move_speed=data.get("move_speed", 180.0),
             jump_velocity=data.get("jump_velocity", -320.0),
             air_control=data.get("air_control", 0.75),
+            max_jumps=data.get("max_jumps", 1),
         )
         component.enabled = data.get("enabled", True)
+        component._jump_count = 0
+        component._jump_was_pressed = False
         return component

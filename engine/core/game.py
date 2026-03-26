@@ -31,7 +31,7 @@ from engine.core.hot_reload import HotReloadManager
 from engine.editor.undo_redo import UndoRedoManager
 from engine.project.project_service import ProjectService
 from engine.config import EDIT_ANIMATION_SPEED, TIMELINE_CAPACITY, SCRIPTS_DIRECTORY
-from engine.editor.console_panel import log_info, log_err
+from engine.editor.console_panel import log_info, log_err, log_warn
 
 if TYPE_CHECKING:
     from engine.ecs.world import World
@@ -173,6 +173,11 @@ class Game:
         self.debug_draw_colliders: bool = False
         self.debug_draw_labels: bool = False
         self.random_seed: int | None = None
+        self._external_change_poll_interval: float = 0.35
+        self._external_last_poll_time: float = 0.0
+        self._external_file_state: dict[str, int] = {}
+        self._external_change_applied_count: int = 0
+        self._external_conflict_paths: set[str] = set()
     
     # === PROPIEDADES ===
     
@@ -408,6 +413,7 @@ class Game:
         if not service.has_project:
             self._project_loaded = False
             self.current_scene_path = ""
+            self._reset_external_change_tracking()
             return
 
         if self._render_system is not None:
@@ -432,6 +438,7 @@ class Game:
                 self.editor_layout.set_scene_tabs(self._scene_manager.list_open_scenes(), self._scene_manager.active_scene_key)
             self.editor_layout.apply_editor_preferences(service.load_editor_state().get("preferences", {}))
         self._project_loaded = True
+        self._prime_external_change_snapshot()
 
     def _refresh_launcher_projects(self) -> None:
         if self._project_service is None or self.editor_layout is None:
@@ -487,6 +494,179 @@ class Game:
         if self._render_system is not None and hasattr(self._render_system, "reset_project_resources"):
             self._render_system.reset_project_resources()
         self.timeline.clear()
+        self._reset_external_change_tracking()
+
+    def _reset_external_change_tracking(self) -> None:
+        self._external_last_poll_time = 0.0
+        self._external_file_state = {}
+        self._external_change_applied_count = 0
+        self._external_conflict_paths.clear()
+
+    def _clear_external_conflict(self, path: str) -> None:
+        if not path:
+            return
+        self._external_conflict_paths.discard(Path(path).resolve().as_posix())
+
+    def _iter_tracked_project_files(self) -> dict[str, int]:
+        if self._project_service is None or not self._project_service.has_project:
+            return {}
+        tracked: dict[str, int] = {}
+        for root_key in ("levels", "scripts", "assets", "prefabs"):
+            root = self._project_service.get_project_path(root_key)
+            if not root.exists():
+                continue
+            for candidate in root.rglob("*"):
+                if not candidate.is_file():
+                    continue
+                if "__pycache__" in candidate.parts or candidate.suffix.lower() == ".pyc":
+                    continue
+                suffix = candidate.suffix.lower()
+                if root_key == "levels" and suffix != ".json":
+                    continue
+                if root_key == "scripts" and suffix != ".py":
+                    continue
+                if root_key == "prefabs" and suffix not in {".prefab", ".json"}:
+                    continue
+                try:
+                    tracked[candidate.resolve().as_posix()] = candidate.stat().st_mtime_ns
+                except OSError:
+                    continue
+        return tracked
+
+    def _prime_external_change_snapshot(self) -> None:
+        self._external_file_state = self._iter_tracked_project_files()
+
+    def _refresh_project_asset_bindings(self, *, reset_render_resources: bool = True) -> None:
+        if self._project_service is None or not self._project_service.has_project:
+            return
+        service = self._project_service
+        if reset_render_resources and self._render_system is not None and hasattr(self._render_system, "reset_project_resources"):
+            self._render_system.reset_project_resources()
+        if self._render_system is not None:
+            self._render_system.set_project_service(service)
+        if self._audio_system is not None and hasattr(self._audio_system, "set_project_service"):
+            self._audio_system.set_project_service(service)
+        if self._script_behaviour_system is not None and hasattr(self._script_behaviour_system, "set_project_service"):
+            self._script_behaviour_system.set_project_service(service)
+        if self.animator_panel is not None:
+            self.animator_panel.set_project_service(service)
+        if self.sprite_editor_modal is not None:
+            self.sprite_editor_modal.set_project_service(service)
+            self.sprite_editor_modal.set_history_manager(self._history_manager)
+        if self.editor_layout is not None and self.editor_layout.project_panel is not None:
+            self.editor_layout.project_panel.set_project_service(service)
+        self._refresh_project_scene_entries()
+
+    def _poll_external_project_changes(self) -> None:
+        if self._project_service is None or not self._project_service.has_project:
+            return
+        now = time.perf_counter()
+        if self._external_last_poll_time and (now - self._external_last_poll_time) < self._external_change_poll_interval:
+            return
+        self._external_last_poll_time = now
+        if not self._external_file_state:
+            self._prime_external_change_snapshot()
+            return
+        current_state = self._iter_tracked_project_files()
+        changed_paths = sorted(
+            path
+            for path in set(self._external_file_state) | set(current_state)
+            if self._external_file_state.get(path) != current_state.get(path)
+        )
+        if not changed_paths:
+            return
+        self._apply_external_changes(changed_paths)
+        self._external_file_state = current_state
+
+    def _apply_external_changes(self, changed_paths: list[str]) -> None:
+        if self._project_service is None or self._scene_manager is None or not self._project_service.has_project:
+            return
+        scene_paths: list[str] = []
+        script_paths: list[str] = []
+        asset_paths: list[str] = []
+        prefab_paths: list[str] = []
+        for path in changed_paths:
+            relative_path = self._project_service.to_relative_path(path)
+            if relative_path.startswith("levels/"):
+                scene_paths.append(path)
+            elif relative_path.startswith("scripts/"):
+                script_paths.append(path)
+            elif relative_path.startswith("prefabs/"):
+                prefab_paths.append(path)
+            elif relative_path.startswith("assets/"):
+                asset_paths.append(path)
+
+        applied_count = 0
+        scene_keys_to_reload: set[str] = set()
+        active_key = self._scene_manager.active_scene_key
+
+        for path in scene_paths:
+            entry = self._scene_manager._resolve_entry(path)  # type: ignore[attr-defined]
+            if entry is None:
+                continue
+            normalized_path = Path(path).resolve().as_posix()
+            if entry.dirty:
+                self._external_conflict_paths.add(normalized_path)
+                log_warn(f"External change skipped for dirty scene: {entry.scene.name}")
+                continue
+            scene_keys_to_reload.add(entry.key)
+
+        if prefab_paths:
+            for scene in self._scene_manager.list_open_scenes():
+                key = str(scene.get("key", "") or "")
+                path = str(scene.get("path", "") or "")
+                if not key or not path:
+                    continue
+                entry = self._scene_manager._resolve_entry(key)  # type: ignore[attr-defined]
+                if entry is None:
+                    continue
+                normalized_path = Path(path).resolve().as_posix()
+                if entry.dirty:
+                    self._external_conflict_paths.add(normalized_path)
+                    log_warn(f"External prefab change skipped for dirty scene: {entry.scene.name}")
+                    continue
+                scene_keys_to_reload.add(entry.key)
+
+        if script_paths:
+            self.hot_reload_manager.scan_directory()
+            reloaded = self.hot_reload_manager.check_for_changes()
+            if reloaded:
+                for mod_name in reloaded:
+                    log_info(f"Hot-reload: {mod_name} recargado")
+            for err in self.hot_reload_manager.get_errors():
+                log_err(err)
+            applied_count += len(script_paths)
+
+        if asset_paths or prefab_paths:
+            self._refresh_project_asset_bindings(reset_render_resources=True)
+            applied_count += len(asset_paths)
+
+        if scene_keys_to_reload:
+            if self._state in (EngineState.PLAY, EngineState.PAUSED, EngineState.STEPPING):
+                self.stop()
+            active_reload = active_key in scene_keys_to_reload
+            if active_reload:
+                self._capture_active_scene_view_state()
+            if self._rule_system is not None:
+                self._rule_system.clear_rules()
+            if self._event_bus is not None:
+                self._event_bus.clear_history()
+            for key in sorted(scene_keys_to_reload):
+                world = self._scene_manager.reload_scene_from_disk(key)
+                if world is None:
+                    continue
+                entry = self._scene_manager._resolve_entry(key)  # type: ignore[attr-defined]
+                if entry is not None and entry.source_path:
+                    self._clear_external_conflict(entry.source_path)
+                applied_count += 1
+            self._sync_scene_workspace_ui(apply_view_state=active_reload)
+
+        if scene_paths or prefab_paths:
+            self._refresh_project_scene_entries()
+
+        if applied_count > 0:
+            self._external_change_applied_count += applied_count
+            log_info(f"External changes applied: {applied_count}")
 
     def _sync_current_scene_path(self) -> None:
         if self._scene_manager is None or self._scene_manager.current_scene is None:
@@ -595,7 +775,9 @@ class Game:
             self._capture_active_scene_view_state()
         success = self._scene_manager.save_scene_to_file(path, key=entry.key)
         if success:
+            self._clear_external_conflict(path)
             self._sync_scene_workspace_ui(apply_view_state=False)
+            self._prime_external_change_snapshot()
             print(f"[INFO] Guardado completado: {path}")
         return success
 
@@ -620,7 +802,9 @@ class Game:
             if key == self._scene_manager.active_scene_key:
                 self._capture_active_scene_view_state()
             if self._scene_manager.save_scene_to_file(path, key=key):
+                self._clear_external_conflict(path)
                 self._sync_scene_workspace_ui(apply_view_state=False)
+                self._prime_external_change_snapshot()
 
     def create_scene(self, scene_name: str) -> bool:
         if self._scene_manager is None or self._project_service is None or not self._project_service.has_project:
@@ -638,6 +822,7 @@ class Game:
         self._project_loaded = True
         self._sync_scene_workspace_ui(apply_view_state=True)
         self._refresh_project_scene_entries()
+        self._prime_external_change_snapshot()
         if self.editor_layout is not None:
             self.editor_layout.active_tab = "SCENE"
         return True
@@ -853,6 +1038,8 @@ class Game:
                 finally:
                     rl.end_drawing()
                 continue
+
+            self._poll_external_project_changes()
             
             # World activo
             active_world = self.world
@@ -1241,16 +1428,24 @@ class Game:
     def _reload_scene(self) -> None:
         """Recarga la escena actual."""
         print("[INFO] Recargando escena...")
-        
+
+        if self._scene_manager is None:
+            if self._level_loader is not None and self._world is not None:
+                self._level_loader.reload(self._world)
+            return
+        if self._state in (EngineState.PLAY, EngineState.PAUSED, EngineState.STEPPING):
+            self.stop()
+        self._capture_active_scene_view_state()
         if self._rule_system is not None:
             self._rule_system.clear_rules()
         if self._event_bus is not None:
             self._event_bus.clear_history()
-        
-        if self._scene_manager is not None:
-            self._world = self._scene_manager.reload_scene()
-        elif self._level_loader is not None and self._world is not None:
-            self._level_loader.reload(self._world)
+        self._refresh_project_asset_bindings(reset_render_resources=True)
+        self._world = self._scene_manager.reload_scene_from_disk()
+        self._sync_scene_workspace_ui(apply_view_state=True)
+        if self.current_scene_path:
+            self._clear_external_conflict(self.current_scene_path)
+        self._prime_external_change_snapshot()
 
     def _update_gameplay(self, world: "World", dt: float) -> None:
         """Actualiza la lógica del juego (Física, Colisiones, Reglas)."""
@@ -1368,11 +1563,20 @@ class Game:
             rl.draw_text(f"Scene: {self._scene_manager.scene_name}", 10, 75, 14, rl.SKYBLUE)
         elif self._level_loader is not None:
             rl.draw_text(f"Level: {self._level_loader.current_level_name}", 10, 75, 14, rl.SKYBLUE)
+
+        external_color = rl.ORANGE if self._external_conflict_paths else rl.LIGHTGRAY
+        rl.draw_text(
+            f"External: {self._external_change_applied_count} applied | {len(self._external_conflict_paths)} pending",
+            10,
+            95,
+            12,
+            external_color,
+        )
         
         if self._rule_system is not None and self._state == EngineState.PLAY:
             rl.draw_text(
                 f"Rules: {self._rule_system.rules_count} | Exec: {self._rule_system.rules_executed_count}",
-                10, 95, 12, rl.ORANGE
+                10, 111, 12, rl.ORANGE
             )
 
     def _update_perf_counters(self, active_world: Optional["World"]) -> None:

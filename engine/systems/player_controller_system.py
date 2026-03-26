@@ -29,9 +29,16 @@ class PlayerControllerSystem:
             rigidbody.velocity_x = horizontal * controller.move_speed * control
 
             jump_pressed = float(input_map.last_state.get("action_1", 0.0)) > 0.5
-            if jump_pressed and not controller._jump_was_pressed and rigidbody.is_grounded:
-                rigidbody.velocity_y = controller.jump_velocity
-                rigidbody.is_grounded = False
+            
+            if jump_pressed and not controller._jump_was_pressed:
+                can_jump = rigidbody.is_grounded or controller._jump_count < controller.max_jumps
+                if can_jump:
+                    rigidbody.velocity_y = controller.jump_velocity
+                    rigidbody.is_grounded = False
+                    controller._jump_count += 1
+
+            if rigidbody.is_grounded:
+                controller._jump_count = 0
 
             controller._jump_was_pressed = jump_pressed
             self._update_animator_facing(animator, horizontal)

@@ -240,6 +240,42 @@ class SceneManager:
         entry.edit_world_sync_pending = False
         return entry.edit_world
 
+    def reload_scene_from_disk(self, key_or_path: Optional[str] = None) -> Optional["World"]:
+        entry = self._resolve_entry(key_or_path)
+        if entry is None:
+            return None
+        source_path = entry.source_path
+        if not source_path:
+            entry.runtime_world = None
+            entry.is_playing = False
+            self._rebuild_edit_world(entry)
+            entry.dirty = False
+            entry.edit_world_sync_pending = False
+            return entry.edit_world
+        try:
+            with open(source_path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except Exception as exc:
+            log_err(f"SceneManager: Error recargando {source_path}: {exc}")
+            return None
+
+        data = migrate_scene_data(data)
+        validation_errors = validate_scene_data(data)
+        if validation_errors:
+            log_err(f"SceneManager: Invalid scene payload in {source_path}: {'; '.join(validation_errors)}")
+            return None
+
+        selected_name = entry.selected_entity_name or (entry.edit_world.selected_entity_name if entry.edit_world is not None else None)
+        entry.runtime_world = None
+        entry.is_playing = False
+        entry.scene = Scene(data.get("name", entry.scene.name), copy.deepcopy(data), source_path=source_path)
+        entry.selected_entity_name = selected_name
+        self._sync_scene_links_from_feature_metadata(entry)
+        self._rebuild_edit_world(entry)
+        entry.dirty = False
+        entry.edit_world_sync_pending = False
+        return entry.edit_world
+
     def apply_edit_to_world(self, entity_name: str, component_name: str, property_name: str, value: Any) -> bool:
         entry = self._get_active_entry()
         if entry is None or entry.is_playing or entry.edit_world is None:
