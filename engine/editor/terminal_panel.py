@@ -16,6 +16,10 @@ from pathlib import Path
 from typing import Callable, Optional
 
 import pyray as rl
+try:
+    from PIL import ImageFont
+except ImportError:  # pragma: no cover - optional dependency at runtime
+    ImageFont = None
 
 from engine.project.project_service import ProjectService
 
@@ -384,6 +388,20 @@ class _TerminalCell:
     style: _TerminalStyle
 
 
+@dataclass
+class _TerminalSnapshot:
+    cursor: _CursorState
+    saved_cursor: _CursorState
+    show_cursor: bool
+    wrap_pending: bool
+    default_style: _TerminalStyle
+    current_style: _TerminalStyle
+    scrollback: list[list[_TerminalCell]]
+    main_buffer: list[list[_TerminalCell]]
+    alt_buffer: list[list[_TerminalCell]]
+    use_alt_buffer: bool
+
+
 class _TerminalScreen:
     DEFAULT_FG = _rgba(242, 242, 242)
     DEFAULT_BG = _rgba(24, 24, 24)
@@ -400,6 +418,7 @@ class _TerminalScreen:
         self.cursor = _CursorState()
         self.saved_cursor = _CursorState()
         self.show_cursor = True
+        self._wrap_pending = False
         self.default_style = _TerminalStyle(self.DEFAULT_FG, self.DEFAULT_BG)
         self.current_style = self.default_style
         self.scrollback: list[list[_TerminalCell]] = []
@@ -410,6 +429,8 @@ class _TerminalScreen:
         self._csi_buffer = ""
         self._osc_buffer = ""
         self._osc_pending_escape = False
+        self._sync_update_active = False
+        self._sync_visible_state: Optional[_TerminalSnapshot] = None
 
     def _blank_cell(self, style: Optional[_TerminalStyle] = None) -> _TerminalCell:
         return _TerminalCell(" ", style or self.default_style)
@@ -424,6 +445,46 @@ class _TerminalScreen:
     def buffer(self) -> list[list[_TerminalCell]]:
         return self.alt_buffer if self.use_alt_buffer else self.main_buffer
 
+    def _clone_rows(self, rows: list[list[_TerminalCell]]) -> list[list[_TerminalCell]]:
+        return [[cell for cell in row] for row in rows]
+
+    def _capture_snapshot(self) -> _TerminalSnapshot:
+        return _TerminalSnapshot(
+            cursor=_CursorState(self.cursor.row, self.cursor.col),
+            saved_cursor=_CursorState(self.saved_cursor.row, self.saved_cursor.col),
+            show_cursor=self.show_cursor,
+            wrap_pending=self._wrap_pending,
+            default_style=self.default_style,
+            current_style=self.current_style,
+            scrollback=self._clone_rows(self.scrollback),
+            main_buffer=self._clone_rows(self.main_buffer),
+            alt_buffer=self._clone_rows(self.alt_buffer),
+            use_alt_buffer=self.use_alt_buffer,
+        )
+
+    def _resize_snapshot(self, snapshot: _TerminalSnapshot, cols: int, rows: int) -> _TerminalSnapshot:
+        resized_main = self._resize_buffer(snapshot.main_buffer, cols, rows)
+        resized_alt = self._resize_buffer(snapshot.alt_buffer, cols, rows)
+        row_offset = max(0, len(snapshot.scrollback) - 2000)
+        trimmed_scrollback = snapshot.scrollback[row_offset:]
+        return _TerminalSnapshot(
+            cursor=_CursorState(min(snapshot.cursor.row, rows - 1), min(snapshot.cursor.col, cols - 1)),
+            saved_cursor=_CursorState(min(snapshot.saved_cursor.row, rows - 1), min(snapshot.saved_cursor.col, cols - 1)),
+            show_cursor=snapshot.show_cursor,
+            wrap_pending=snapshot.wrap_pending,
+            default_style=snapshot.default_style,
+            current_style=snapshot.current_style,
+            scrollback=self._clone_rows(trimmed_scrollback),
+            main_buffer=resized_main,
+            alt_buffer=resized_alt,
+            use_alt_buffer=snapshot.use_alt_buffer,
+        )
+
+    def _visible_snapshot(self) -> _TerminalSnapshot:
+        if self._sync_update_active and self._sync_visible_state is not None:
+            return self._sync_visible_state
+        return self._capture_snapshot()
+
     def resize(self, cols: int, rows: int) -> None:
         cols = max(40, cols)
         rows = max(12, rows)
@@ -435,6 +496,10 @@ class _TerminalScreen:
         self.rows = rows
         self.cursor.col = min(self.cursor.col, self.cols - 1)
         self.cursor.row = min(self.cursor.row, self.rows - 1)
+        self.saved_cursor.col = min(self.saved_cursor.col, self.cols - 1)
+        self.saved_cursor.row = min(self.saved_cursor.row, self.rows - 1)
+        if self._sync_update_active and self._sync_visible_state is not None:
+            self._sync_visible_state = self._resize_snapshot(self._sync_visible_state, cols, rows)
 
     def _resize_buffer(self, source: list[list[_TerminalCell]], cols: int, rows: int) -> list[list[_TerminalCell]]:
         resized = [[self._blank_cell() for _ in range(cols)] for _ in range(rows)]
@@ -449,14 +514,19 @@ class _TerminalScreen:
         for ch in text:
             if self._state == "normal":
                 if ch == "\x1b":
+                    self._clear_wrap_pending()
                     self._state = "esc"
                 elif ch == "\r":
+                    self._clear_wrap_pending()
                     self.cursor.col = 0
                 elif ch == "\n":
+                    self._clear_wrap_pending()
                     self._linefeed()
                 elif ch == "\b":
+                    self._clear_wrap_pending()
                     self.cursor.col = max(0, self.cursor.col - 1)
                 elif ch == "\t":
+                    self._clear_wrap_pending()
                     spaces = 4 - (self.cursor.col % 4)
                     for _ in range(spaces):
                         self._put_char(" ")
@@ -471,9 +541,11 @@ class _TerminalScreen:
                     self._osc_buffer = ""
                     self._osc_pending_escape = False
                 elif ch == "7":
+                    self._clear_wrap_pending()
                     self.saved_cursor = _CursorState(self.cursor.row, self.cursor.col)
                     self._state = "normal"
                 elif ch == "8":
+                    self._clear_wrap_pending()
                     self.cursor = _CursorState(self.saved_cursor.row, self.saved_cursor.col)
                     self._state = "normal"
                 else:
@@ -496,15 +568,23 @@ class _TerminalScreen:
                     self._osc_buffer += ch
                     self._osc_pending_escape = ch == "\x1b"
 
+    def _clear_wrap_pending(self) -> None:
+        self._wrap_pending = False
+
     def _put_char(self, ch: str) -> None:
+        if self._wrap_pending:
+            self.cursor.col = 0
+            self._linefeed()
+            self._wrap_pending = False
         if self.cursor.col >= self.cols:
             self.cursor.col = 0
             self._linefeed()
         self.buffer[self.cursor.row][self.cursor.col] = _TerminalCell(ch, self.current_style)
-        self.cursor.col += 1
-        if self.cursor.col >= self.cols:
-            self.cursor.col = 0
-            self._linefeed()
+        if self.cursor.col >= self.cols - 1:
+            self._wrap_pending = True
+        else:
+            self.cursor.col += 1
+            self._wrap_pending = False
 
     def _linefeed(self) -> None:
         if self.cursor.row >= self.rows - 1:
@@ -541,6 +621,7 @@ class _TerminalScreen:
         return prefix, params, values, final
 
     def _handle_csi(self, seq: str) -> None:
+        self._clear_wrap_pending()
         prefix, raw_params, values, final = self._parse_csi(seq)
         if raw_params and not values and all(part and not part.lstrip("-").isdigit() for part in raw_params.split(";")):
             if self.sequence_handler is not None:
@@ -613,6 +694,14 @@ class _TerminalScreen:
             self.sequence_handler("osc", "", payload, [], "")
 
     def _handle_private_mode(self, values: list[int], enabled: bool) -> None:
+        if 2026 in values:
+            if enabled:
+                if not self._sync_update_active:
+                    self._sync_visible_state = self._capture_snapshot()
+                    self._sync_update_active = True
+            elif self._sync_update_active:
+                self._sync_update_active = False
+                self._sync_visible_state = None
         if 1049 in values:
             self.use_alt_buffer = enabled
             if enabled:
@@ -770,12 +859,24 @@ class _TerminalScreen:
             self.cursor.row = min(self.cursor.row + 1, self.rows - 1)
 
     def visible_rows(self) -> list[list[_TerminalCell]]:
-        if self.use_alt_buffer:
-            return [[cell for cell in row] for row in self.buffer]
-        return [[cell for cell in row] for row in self.scrollback] + [[cell for cell in row] for row in self.buffer]
+        snapshot = self._visible_snapshot()
+        buffer = snapshot.alt_buffer if snapshot.use_alt_buffer else snapshot.main_buffer
+        if snapshot.use_alt_buffer:
+            return self._clone_rows(buffer)
+        return self._clone_rows(snapshot.scrollback) + self._clone_rows(buffer)
 
     def visible_lines(self) -> list[str]:
         return ["".join(cell.char for cell in row) for row in self.visible_rows()]
+
+    def visible_cursor(self) -> _CursorState:
+        snapshot = self._visible_snapshot()
+        return _CursorState(snapshot.cursor.row, snapshot.cursor.col)
+
+    def visible_show_cursor(self) -> bool:
+        return self._visible_snapshot().show_cursor
+
+    def visible_use_alt_buffer(self) -> bool:
+        return self._visible_snapshot().use_alt_buffer
 
 
 class TerminalPanel:
@@ -793,11 +894,13 @@ class TerminalPanel:
     FONT_SPACING = 0.0
     TEXT_PADDING_X = 6
     TEXT_PADDING_Y = 2
+    ALT_BUFFER_TOP_PADDING = 4
     FALLBACK_LINE_HEIGHT = 16.0
     FALLBACK_CHAR_WIDTH = 8.0
     FALLBACK_ROW_STEP = 16.0
     FONT_PRIMARY_PATH = Path(__file__).resolve().parents[2] / "assets" / "fonts" / "CascadiaMono.ttf"
     FONT_FALLBACK_PATH = Path(__file__).resolve().parents[2] / "assets" / "fonts" / "DejaVuSansMono.ttf"
+    REPLACEMENT_CODEPOINT = 0xFFFD
 
     def __init__(self) -> None:
         self.project_service: Optional[ProjectService] = None
@@ -821,33 +924,76 @@ class TerminalPanel:
         self.cell_width = self.FALLBACK_CHAR_WIDTH
         self.line_height = self.FALLBACK_LINE_HEIGHT
         self.row_step = self.FALLBACK_ROW_STEP
+        self.text_baseline_offset = 12.0
+        self.glyph_draw_offset_y = 0.0
+        self._glyph_support_cache: dict[int, bool] = {}
+        self._question_glyph_index: Optional[int] = None
+        self._replacement_glyph_index: Optional[int] = None
+
+    @classmethod
+    def build_text_font_codepoints(cls) -> list[int]:
+        codepoints = set(range(32, 127))
+        codepoints.update(range(160, 256))
+        codepoints.update({
+            0x00A1,
+            0x00BF,
+            0x2022,
+            0x2026,
+            0x2018,
+            0x2019,
+            0x201C,
+            0x201D,
+            cls.REPLACEMENT_CODEPOINT,
+        })
+        return sorted(codepoints)
+
+    @classmethod
+    def build_minimal_text_font_codepoints(cls) -> list[int]:
+        return sorted(set(range(32, 127)) | {cls.REPLACEMENT_CODEPOINT})
 
     @classmethod
     def build_font_codepoints(cls) -> list[int]:
-        codepoints = set(range(32, 127))
-        codepoints.update(range(160, 256))
-        codepoints.update(range(0x2500, 0x2580))
-        codepoints.update(range(0x2580, 0x25A0))
-        codepoints.update(range(0x2800, 0x2900))
-        codepoints.update({
-            0x2022,
-            0x2026,
-            0x2190,
-            0x2191,
-            0x2192,
-            0x2193,
-            0x2713,
-            0x2714,
-            0x2717,
-            0x2718,
-        })
-        return sorted(codepoints)
+        return cls.build_text_font_codepoints()
 
     def _resolve_font_path(self) -> Optional[Path]:
         for candidate in (self.FONT_PRIMARY_PATH, self.FONT_FALLBACK_PATH):
             if candidate.exists():
                 return candidate
         return None
+
+    def _load_font_from_codepoints(self, font_path: Path, codepoints: list[int]):
+        codepoints_ptr = rl.ffi.cast("int *", rl.ffi.new("int[]", codepoints))
+        return rl.load_font_ex(str(font_path), self.FONT_SIZE, codepoints_ptr, len(codepoints))
+
+    def _reset_font_support_cache(self) -> None:
+        self._glyph_support_cache.clear()
+        self._question_glyph_index = None
+        self._replacement_glyph_index = None
+        if not self._font_ready or self.render_font is None:
+            return
+        try:
+            self._question_glyph_index = int(rl.get_glyph_index(self.render_font, ord("?")))
+        except Exception:
+            self._question_glyph_index = None
+        try:
+            self._replacement_glyph_index = int(rl.get_glyph_index(self.render_font, self.REPLACEMENT_CODEPOINT))
+        except Exception:
+            self._replacement_glyph_index = None
+
+    def _font_has_critical_glyphs(self) -> bool:
+        if not self._font_ready or self.render_font is None:
+            return False
+        required = ("A", "a", "0", "?")
+        for ch in required:
+            try:
+                glyph_index = int(rl.get_glyph_index(self.render_font, ord(ch)))
+            except Exception:
+                return False
+            if glyph_index < 0:
+                return False
+            if ch != "?" and self._question_glyph_index is not None and glyph_index == self._question_glyph_index:
+                return False
+        return True
 
     def _ensure_render_font(self) -> None:
         if self._font_load_attempted:
@@ -857,13 +1003,15 @@ class TerminalPanel:
         if font_path is None:
             self._font_status_suffix = " | fallback font"
             return
-
-        codepoints = self.build_font_codepoints()
-        codepoints_ptr = rl.ffi.cast("int *", rl.ffi.new("int[]", codepoints))
         try:
-            self.render_font = rl.load_font_ex(str(font_path), self.FONT_SIZE, codepoints_ptr, len(codepoints))
+            self.render_font = self._load_font_from_codepoints(font_path, self.build_text_font_codepoints())
             self._font_ready = True
             self._font_status_suffix = "" if font_path == self.FONT_PRIMARY_PATH else " | fallback font"
+            self._reset_font_support_cache()
+            if not self._font_has_critical_glyphs():
+                self.render_font = self._load_font_from_codepoints(font_path, self.build_minimal_text_font_codepoints())
+                self._font_status_suffix = " | minimal font atlas"
+                self._reset_font_support_cache()
             self._update_font_metrics()
         except Exception:
             self.render_font = None
@@ -873,30 +1021,103 @@ class TerminalPanel:
             self.line_height = self.FALLBACK_LINE_HEIGHT
             self.row_step = self.FALLBACK_ROW_STEP
 
-    def _update_font_metrics(self) -> None:
-        if not self._font_ready or self.render_font is None:
-            self.cell_width = self.FALLBACK_CHAR_WIDTH
-            self.line_height = self.FALLBACK_LINE_HEIGHT
-            self.row_step = self.FALLBACK_ROW_STEP
-            return
-        samples = ("M", "█", "│", "▀", "▄", "⣿")
+    def _measure_font_metrics_with_pillow(self, font_path: Path) -> Optional[tuple[float, float, float, float]]:
+        if ImageFont is None:
+            return None
+        try:
+            pil_font = ImageFont.truetype(str(font_path), self.FONT_SIZE)
+        except Exception:
+            return None
+
+        width_samples = ("M", "W", " ", "A")
+        text_samples = ("M", "A", "g", "y")
+        measured_width = 0.0
+        bbox_top: Optional[int] = None
+        bbox_bottom: Optional[int] = None
+        for sample in width_samples:
+            try:
+                measured_width = max(measured_width, float(pil_font.getlength(sample)))
+            except Exception:
+                continue
+        for sample in text_samples:
+            try:
+                bbox = pil_font.getbbox(sample)
+            except Exception:
+                continue
+            bbox_top = int(bbox[1]) if bbox_top is None else min(bbox_top, int(bbox[1]))
+            bbox_bottom = int(bbox[3]) if bbox_bottom is None else max(bbox_bottom, int(bbox[3]))
+
+        try:
+            ascent, descent = pil_font.getmetrics()
+        except Exception:
+            ascent, descent = self.FONT_SIZE, max(2, self.FONT_SIZE // 4)
+
+        if bbox_top is None or bbox_bottom is None:
+            bbox_top = 0
+            bbox_bottom = self.FONT_SIZE
+        visible_height = max(1, bbox_bottom - bbox_top)
+        row_height = max(int(math.ceil(ascent + descent)), visible_height, self.FONT_SIZE)
+        cell_width = max(self.FALLBACK_CHAR_WIDTH, int(math.ceil(measured_width or self.FALLBACK_CHAR_WIDTH)))
+        glyph_draw_offset_y = int(round((row_height - visible_height) / 2 - bbox_top))
+        baseline_offset = glyph_draw_offset_y + ascent
+        return float(cell_width), float(row_height), float(baseline_offset), float(glyph_draw_offset_y)
+
+    def _measure_font_metrics_with_raylib(self) -> tuple[float, float]:
+        samples = ("M", "\u2588", "\u2502", "\u2580", "\u2584", "\u28ff")
         measured_width = 0.0
         measured_height = 0.0
         for sample in samples:
             measured = rl.measure_text_ex(self.render_font, sample, float(self.FONT_SIZE), self.FONT_SPACING)
             measured_width = max(measured_width, float(getattr(measured, "x", 0.0) or 0.0))
             measured_height = max(measured_height, float(getattr(measured, "y", 0.0) or 0.0))
+        return measured_width, measured_height
 
+    def _update_font_metrics(self) -> None:
+        if not self._font_ready or self.render_font is None:
+            self.cell_width = self.FALLBACK_CHAR_WIDTH
+            self.line_height = self.FALLBACK_LINE_HEIGHT
+            self.row_step = self.FALLBACK_ROW_STEP
+            self.text_baseline_offset = 12.0
+            self.glyph_draw_offset_y = 0.0
+            return
+        font_path = self._resolve_font_path()
+        pillow_metrics = self._measure_font_metrics_with_pillow(font_path) if font_path is not None else None
+        if pillow_metrics is not None:
+            self.cell_width, self.line_height, self.text_baseline_offset, self.glyph_draw_offset_y = pillow_metrics
+            self.row_step = self.line_height
+            return
+
+        measured_width, measured_height = self._measure_font_metrics_with_raylib()
         self.cell_width = float(max(self.FALLBACK_CHAR_WIDTH, math.ceil(measured_width)))
         self.line_height = float(max(self.render_font.baseSize, math.ceil(measured_height)))
         self.row_step = self.line_height
+        self.text_baseline_offset = max(12.0, self.line_height - 3.0)
+        self.glyph_draw_offset_y = 0.0
 
     def _calculate_terminal_size(self) -> tuple[int, int]:
+        drawable_rect = self.get_terminal_drawable_rect()
         cell_width = max(1.0, self.cell_width)
         line_height = max(1.0, self.row_step)
-        cols = max(80, int(max(1.0, self.content_rect.width - self.TEXT_PADDING_X * 2) // cell_width))
-        rows = max(12, int(max(1.0, self.content_rect.height - self.TEXT_PADDING_Y * 2) // line_height))
+        cols = max(80, int(max(1.0, drawable_rect.width) // cell_width))
+        rows = max(12, int(max(1.0, drawable_rect.height) // line_height))
         return cols, rows
+
+    def _current_terminal_insets(self, use_visible_state: bool = False) -> tuple[float, float, float, float]:
+        use_alt_buffer = self.screen.visible_use_alt_buffer() if use_visible_state else self.screen.use_alt_buffer
+        if use_alt_buffer:
+            return 0.0, float(self.ALT_BUFFER_TOP_PADDING), 0.0, 0.0
+        return (
+            float(self.TEXT_PADDING_X),
+            float(self.TEXT_PADDING_Y),
+            float(self.TEXT_PADDING_X),
+            float(self.TEXT_PADDING_Y),
+        )
+
+    def get_terminal_drawable_rect(self, use_visible_state: bool = False) -> rl.Rectangle:
+        inset_left, inset_top, inset_right, inset_bottom = self._current_terminal_insets(use_visible_state)
+        width = max(0.0, float(self.content_rect.width) - inset_left - inset_right)
+        height = max(0.0, float(self.content_rect.height) - inset_top - inset_bottom)
+        return rl.Rectangle(float(self.content_rect.x) + inset_left, float(self.content_rect.y) + inset_top, width, height)
 
     def _display_status_text(self) -> str:
         return f"{self.status_text}{self._font_status_suffix}"
@@ -1055,23 +1276,25 @@ class TerminalPanel:
             return
 
         visible_rows = self.screen.visible_rows()
-        rl.begin_scissor_mode(int(self.content_rect.x), int(self.content_rect.y), int(self.content_rect.width), int(self.content_rect.height))
-        start_y = float(self.content_rect.y) + self.TEXT_PADDING_Y - self.scroll_offset
-        text_x = float(self.content_rect.x) + self.TEXT_PADDING_X
+        drawable_rect = self.get_terminal_drawable_rect(use_visible_state=True)
+        rl.begin_scissor_mode(int(drawable_rect.x), int(drawable_rect.y), int(drawable_rect.width), int(drawable_rect.height))
+        start_y = float(drawable_rect.y) - self.scroll_offset
+        text_x = float(drawable_rect.x)
         for row_index, row in enumerate(visible_rows):
             line_y = start_y + row_index * self.row_step
-            if line_y + self.row_step < self.content_rect.y:
+            if line_y + self.row_step < drawable_rect.y:
                 continue
-            if line_y > self.content_rect.y + self.content_rect.height:
+            if line_y > drawable_rect.y + drawable_rect.height:
                 break
             self._draw_row_backgrounds(row, text_x, line_y)
             self._draw_row_text(row, text_x, line_y)
 
-        if self.has_focus and self.screen.show_cursor:
-            visible_index = self.screen.cursor.row if self.screen.use_alt_buffer else len(visible_rows) - self.screen.rows + self.screen.cursor.row
-            cursor_x = int(text_x + self.screen.cursor.col * self.cell_width)
+        visible_cursor = self.screen.visible_cursor()
+        if self.has_focus and self.screen.visible_show_cursor():
+            visible_index = visible_cursor.row if self.screen.visible_use_alt_buffer() else len(visible_rows) - self.screen.rows + visible_cursor.row
+            cursor_x = int(text_x + visible_cursor.col * self.cell_width)
             cursor_y = int(start_y + visible_index * self.row_step)
-            if self.content_rect.y <= cursor_y <= self.content_rect.y + self.content_rect.height:
+            if drawable_rect.y <= cursor_y <= drawable_rect.y + drawable_rect.height:
                 rl.draw_rectangle(cursor_x, cursor_y + int(self.row_step) - 2, max(2, int(self.cell_width)), 2, _to_ray_color(self.UNITY_ACCENT))
         rl.end_scissor_mode()
 
@@ -1089,8 +1312,9 @@ class TerminalPanel:
             return
         response: Optional[str] = None
         if kind == "csi":
+            drawable_rect = self.get_terminal_drawable_rect()
             if final == "t" and values == [14]:
-                response = f"\x1b[4;{int(self.content_rect.height)};{int(self.content_rect.width)}t"
+                response = f"\x1b[4;{int(drawable_rect.height)};{int(drawable_rect.width)}t"
             elif prefix == "?" and final == "u":
                 response = "\x1b[?0u"
             elif prefix == "?" and final == "n" and values == [996]:
@@ -1114,6 +1338,205 @@ class TerminalPanel:
             fg = _blend(fg, bg, 0.55)
         return fg, bg
 
+    def _is_block_element(self, ch: str) -> bool:
+        codepoint = ord(ch)
+        return 0x2580 <= codepoint <= 0x259F
+
+    def _is_box_drawing(self, ch: str) -> bool:
+        return ch in {"\u2500", "\u2502", "\u2503", "\u250c", "\u2510", "\u2514", "\u2518", "\u251c", "\u2524", "\u252c", "\u2534", "\u253c", "\u2579"}
+
+    def _is_braille(self, ch: str) -> bool:
+        codepoint = ord(ch)
+        return 0x2800 <= codepoint <= 0x28FF
+
+    def _cell_requires_shape_renderer(self, ch: str) -> bool:
+        return self._is_block_element(ch) or self._is_box_drawing(ch) or self._is_braille(ch)
+
+    def _font_supports_char(self, ch: str) -> bool:
+        if not self._font_ready or self.render_font is None:
+            return False
+        codepoint = ord(ch)
+        cached = self._glyph_support_cache.get(codepoint)
+        if cached is not None:
+            return cached
+        try:
+            glyph_index = int(rl.get_glyph_index(self.render_font, codepoint))
+        except Exception:
+            glyph_index = -1
+        supported = glyph_index >= 0
+        if supported and ch != "?" and self._question_glyph_index is not None and glyph_index == self._question_glyph_index:
+            supported = False
+        self._glyph_support_cache[codepoint] = supported
+        return supported
+
+    def _renderable_text_char(self, ch: str) -> str:
+        if self._font_supports_char(ch):
+            return ch
+        replacement = "\uFFFD"
+        if self._font_supports_char(replacement):
+            return replacement
+        return "?"
+
+    def _line_thickness(self) -> int:
+        return max(1, int(round(min(self.cell_width, self.row_step) / 7.0)))
+
+    def _draw_special_cell(self, ch: str, style: _TerminalStyle, x: float, y: float) -> bool:
+        fg, bg = self._resolve_style_colors(style)
+        if self._is_block_element(ch):
+            return self._draw_block_element(ch, fg, bg, x, y)
+        if self._is_box_drawing(ch):
+            return self._draw_box_drawing_char(ch, fg, x, y)
+        if self._is_braille(ch):
+            return self._draw_braille_char(ch, fg, x, y)
+        return False
+
+    def _draw_block_rect(self, x: int, y: int, width: int, height: int, color: ColorTuple) -> None:
+        if width <= 0 or height <= 0:
+            return
+        rl.draw_rectangle(x, y, width, height, _to_ray_color(color))
+
+    def _draw_block_element(self, ch: str, fg: ColorTuple, bg: ColorTuple, x: float, y: float) -> bool:
+        left = int(round(x))
+        top = int(round(y))
+        width = max(1, int(round(self.cell_width)))
+        height = max(1, int(round(self.row_step)))
+        codepoint = ord(ch)
+
+        if codepoint == 0x2588:
+            self._draw_block_rect(left, top, width, height, fg)
+            return True
+        if codepoint == 0x2580:
+            self._draw_block_rect(left, top, width, max(1, height // 2), fg)
+            return True
+        if codepoint == 0x2584:
+            half = max(1, height // 2)
+            self._draw_block_rect(left, top + height - half, width, half, fg)
+            return True
+        if codepoint == 0x258C:
+            self._draw_block_rect(left, top, max(1, width // 2), height, fg)
+            return True
+        if codepoint == 0x2590:
+            half = max(1, width // 2)
+            self._draw_block_rect(left + width - half, top, half, height, fg)
+            return True
+        if 0x2581 <= codepoint <= 0x2587:
+            units = codepoint - 0x2580
+            block_height = max(1, int(round(height * units / 8.0)))
+            self._draw_block_rect(left, top + height - block_height, width, block_height, fg)
+            return True
+        if 0x2589 <= codepoint <= 0x258F:
+            units = 0x2590 - codepoint
+            block_width = max(1, int(round(width * units / 8.0)))
+            self._draw_block_rect(left, top, block_width, height, fg)
+            return True
+        if codepoint == 0x2591:
+            self._draw_block_rect(left, top, width, height, _blend(fg, bg, 0.28))
+            return True
+        if codepoint == 0x2592:
+            self._draw_block_rect(left, top, width, height, _blend(fg, bg, 0.5))
+            return True
+        if codepoint == 0x2593:
+            self._draw_block_rect(left, top, width, height, _blend(fg, bg, 0.72))
+            return True
+        if codepoint == 0x2594:
+            block_height = max(1, int(round(height / 8.0)))
+            self._draw_block_rect(left, top, width, block_height, fg)
+            return True
+        if codepoint == 0x2595:
+            block_width = max(1, int(round(width / 8.0)))
+            self._draw_block_rect(left + width - block_width, top, block_width, height, fg)
+            return True
+        return False
+
+    def _draw_box_drawing_char(self, ch: str, fg: ColorTuple, x: float, y: float) -> bool:
+        left = int(round(x))
+        top = int(round(y))
+        right = left + max(1, int(round(self.cell_width)))
+        bottom = top + max(1, int(round(self.row_step)))
+        mid_x = left + max(0, (right - left - self._line_thickness()) // 2)
+        mid_y = top + max(0, (bottom - top - self._line_thickness()) // 2)
+        thickness = self._line_thickness()
+        heavy_thickness = max(thickness, int(round(thickness * 1.8)))
+
+        def horiz(x1: int, x2: int) -> None:
+            self._draw_block_rect(x1, mid_y, max(1, x2 - x1), thickness, fg)
+
+        def vert(y1: int, y2: int, line_thickness: int = thickness) -> None:
+            offset_x = left + max(0, (right - left - line_thickness) // 2)
+            self._draw_block_rect(offset_x, y1, line_thickness, max(1, y2 - y1), fg)
+
+        if ch == "\u2500":
+            horiz(left, right)
+        elif ch == "\u2502":
+            vert(top, bottom)
+        elif ch == "\u2503":
+            vert(top, bottom, heavy_thickness)
+        elif ch == "\u250c":
+            horiz(mid_x, right)
+            vert(mid_y, bottom)
+        elif ch == "\u2510":
+            horiz(left, mid_x + thickness)
+            vert(mid_y, bottom)
+        elif ch == "\u2514":
+            horiz(mid_x, right)
+            vert(top, mid_y + thickness)
+        elif ch == "\u2518":
+            horiz(left, mid_x + thickness)
+            vert(top, mid_y + thickness)
+        elif ch == "\u251c":
+            horiz(mid_x, right)
+            vert(top, bottom)
+        elif ch == "\u2524":
+            horiz(left, mid_x + thickness)
+            vert(top, bottom)
+        elif ch == "\u252c":
+            horiz(left, right)
+            vert(mid_y, bottom)
+        elif ch == "\u2534":
+            horiz(left, right)
+            vert(top, mid_y + thickness)
+        elif ch == "\u253c":
+            horiz(left, right)
+            vert(top, bottom)
+        elif ch == "\u2579":
+            vert(top, mid_y + heavy_thickness, heavy_thickness)
+        else:
+            return False
+        return True
+
+    def _draw_braille_char(self, ch: str, fg: ColorTuple, x: float, y: float) -> bool:
+        pattern = ord(ch) - 0x2800
+        if pattern <= 0:
+            return True
+
+        left = int(round(x))
+        top = int(round(y))
+        width = max(2, int(round(self.cell_width)))
+        height = max(4, int(round(self.row_step)))
+        dot_width = max(1, width // 5)
+        dot_height = max(1, height // 9)
+        x_positions = (left + dot_width, left + width - 2 * dot_width)
+        y_positions = (
+            top + dot_height,
+            top + height // 3,
+            top + (2 * height) // 3 - dot_height,
+            top + height - 2 * dot_height,
+        )
+        dot_map = {
+            0: (0, 0),
+            1: (0, 1),
+            2: (0, 2),
+            3: (1, 0),
+            4: (1, 1),
+            5: (1, 2),
+            6: (0, 3),
+            7: (1, 3),
+        }
+        for bit, (col_idx, row_idx) in dot_map.items():
+            if pattern & (1 << bit):
+                self._draw_block_rect(x_positions[col_idx], y_positions[row_idx], dot_width, dot_height, fg)
+        return True
+
     def _draw_row_backgrounds(self, row: list[_TerminalCell], x: float, y: float) -> None:
         default_bg = self.screen.default_style.bg or self.UNITY_BG
         start = 0
@@ -1133,21 +1556,20 @@ class TerminalPanel:
             start = end
 
     def _draw_row_text(self, row: list[_TerminalCell], x: float, y: float) -> None:
-        start = 0
-        while start < len(row):
-            fg, _ = self._resolve_style_colors(row[start].style)
-            underline = row[start].style.underline
-            end = start + 1
-            while end < len(row):
-                next_fg, _ = self._resolve_style_colors(row[end].style)
-                if next_fg != fg or row[end].style.underline != underline:
-                    break
-                end += 1
+        run_text: list[str] = []
+        run_start = 0
+        run_fg: Optional[ColorTuple] = None
+        run_underline = False
 
-            text = "".join(cell.char for cell in row[start:end])
+        def flush_run(end_index: int) -> None:
+            nonlocal run_text, run_start, run_fg, run_underline
+            if not run_text or run_fg is None:
+                run_text = []
+                return
+            text = "".join(run_text)
             if text.strip():
-                run_x = float(round(x + start * self.cell_width))
-                draw_y = float(round(y))
+                run_x = float(round(x + run_start * self.cell_width))
+                draw_y = float(round(y + self.glyph_draw_offset_y))
                 if self._font_ready and self.render_font is not None:
                     rl.draw_text_ex(
                         self.render_font,
@@ -1155,13 +1577,39 @@ class TerminalPanel:
                         rl.Vector2(run_x, draw_y),
                         float(self.FONT_SIZE),
                         self.FONT_SPACING,
-                        _to_ray_color(fg),
+                        _to_ray_color(run_fg),
                     )
-                    if underline:
-                        rl.draw_rectangle(int(run_x), int(draw_y + self.row_step - 2), max(1, int((end - start) * self.cell_width)), 1, _to_ray_color(fg))
                 else:
-                    rl.draw_text(text, int(run_x), int(draw_y), self.FONT_SIZE, _to_ray_color(fg))
-            start = end
+                    rl.draw_text(text, int(run_x), int(draw_y), self.FONT_SIZE, _to_ray_color(run_fg))
+                if run_underline:
+                    underline_y = int(round(y + min(self.row_step - 2.0, self.text_baseline_offset + 1.0)))
+                    rl.draw_rectangle(int(run_x), underline_y, max(1, int((end_index - run_start) * self.cell_width)), 1, _to_ray_color(run_fg))
+            run_text = []
+            run_fg = None
+            run_underline = False
+
+        for index, cell in enumerate(row):
+            fg, _ = self._resolve_style_colors(cell.style)
+            if self._cell_requires_shape_renderer(cell.char):
+                flush_run(index)
+                self._draw_special_cell(cell.char, cell.style, x + index * self.cell_width, y)
+                continue
+
+            render_char = self._renderable_text_char(cell.char)
+
+            if run_fg is None:
+                run_start = index
+                run_fg = fg
+                run_underline = cell.style.underline
+            elif fg != run_fg or cell.style.underline != run_underline:
+                flush_run(index)
+                run_start = index
+                run_fg = fg
+                run_underline = cell.style.underline
+
+            run_text.append(render_char)
+
+        flush_run(len(row))
 
     def _drain_output_queue(self) -> None:
         drained = False
@@ -1186,4 +1634,5 @@ class TerminalPanel:
 
     def _max_scroll(self) -> float:
         visible_rows = self.screen.visible_rows()
-        return max(0.0, len(visible_rows) * self.row_step - self.content_rect.height + self.TEXT_PADDING_Y * 2)
+        drawable_rect = self.get_terminal_drawable_rect(use_visible_state=True)
+        return max(0.0, len(visible_rows) * self.row_step - drawable_rect.height)

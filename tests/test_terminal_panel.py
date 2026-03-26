@@ -179,27 +179,158 @@ class TerminalPanelTests(unittest.TestCase):
 
         self.assertTrue(any(line.startswith("hello world") for line in screen.visible_lines()))
 
-    def test_font_codepoints_cover_terminal_unicode_blocks(self) -> None:
-        codepoints = TerminalPanel.build_font_codepoints()
+    def test_terminal_screen_uses_wrap_pending_instead_of_immediate_line_wrap(self) -> None:
+        screen = _TerminalScreen(40, 6)
+
+        screen.feed("1234567890123456789012345678901234567890")
+
+        self.assertTrue(screen.visible_lines()[0].startswith("1234567890123456789012345678901234567890"))
+        cursor = screen.visible_cursor()
+        self.assertEqual((cursor.row, cursor.col), (0, 39))
+
+        screen.feed("A")
+
+        self.assertTrue(screen.visible_lines()[1].startswith("A"))
+        cursor = screen.visible_cursor()
+        self.assertEqual((cursor.row, cursor.col), (1, 1))
+
+    def test_terminal_screen_defers_visible_updates_during_synchronized_output(self) -> None:
+        screen = _TerminalScreen(30, 6)
+
+        screen.feed("\x1b[1;1Hplaceholder")
+        visible_before = screen.visible_lines()[0]
+
+        screen.feed("\x1b[?2026h")
+        screen.feed("\x1b[1;1Hhola")
+
+        self.assertTrue(screen.visible_lines()[0].startswith(visible_before.strip()))
+        self.assertFalse(screen.visible_lines()[0].startswith("hola"))
+
+        screen.feed("\x1b[?2026l")
+
+        self.assertTrue(screen.visible_lines()[0].startswith("hola"))
+
+    def test_terminal_screen_commits_cursor_and_visibility_atomically_after_synchronized_output(self) -> None:
+        screen = _TerminalScreen(30, 6)
+
+        screen.feed("\x1b[1;1Hstart")
+        initial_cursor = screen.visible_cursor()
+        self.assertTrue(screen.visible_show_cursor())
+
+        screen.feed("\x1b[?2026h")
+        screen.feed("\x1b[4;6H\x1b[?25l")
+
+        visible_during = screen.visible_cursor()
+        self.assertEqual((visible_during.row, visible_during.col), (initial_cursor.row, initial_cursor.col))
+        self.assertTrue(screen.visible_show_cursor())
+
+        screen.feed("\x1b[?2026l")
+
+        committed_cursor = screen.visible_cursor()
+        self.assertEqual((committed_cursor.row, committed_cursor.col), (3, 5))
+        self.assertFalse(screen.visible_show_cursor())
+
+    def test_terminal_screen_replays_input_without_exposing_intermediate_placeholder_frame(self) -> None:
+        screen = _TerminalScreen(40, 8)
+
+        screen.feed("\x1b[2;3HAsk anything...")
+        self.assertIn("Ask anything...", screen.visible_lines()[1])
+
+        screen.feed("\x1b[?2026h")
+        screen.feed("\x1b[2;3H\x1b[20X")
+        screen.feed("\x1b[2;3Hhola")
+
+        lines_during = screen.visible_lines()
+        self.assertIn("Ask anything...", lines_during[1])
+        self.assertNotIn("hola", lines_during[1])
+
+        screen.feed("\x1b[?2026l")
+
+        committed_line = screen.visible_lines()[1]
+        self.assertIn("hola", committed_line)
+        self.assertNotIn("Ask anything...", committed_line)
+
+    def test_text_font_codepoints_cover_terminal_text_and_exclude_shapes(self) -> None:
+        codepoints = TerminalPanel.build_text_font_codepoints()
 
         self.assertIn(ord("A"), codepoints)
-        self.assertIn(ord("ó"), codepoints)
-        self.assertIn(ord("│"), codepoints)
-        self.assertIn(ord("█"), codepoints)
-        self.assertIn(ord("✓"), codepoints)
-        self.assertIn(ord("⣿"), codepoints)
+        self.assertIn(ord("\u00f3"), codepoints)
+        self.assertIn(ord("\u00bf"), codepoints)
+        self.assertIn(ord("\u2026"), codepoints)
+        self.assertIn(ord("\u2022"), codepoints)
+        self.assertIn(TerminalPanel.REPLACEMENT_CODEPOINT, codepoints)
+        self.assertNotIn(ord("\u2502"), codepoints)
+        self.assertNotIn(ord("\u2588"), codepoints)
+        self.assertNotIn(ord("\u28ff"), codepoints)
 
-    def test_font_metrics_use_loaded_font_measurements(self) -> None:
+    def test_font_metrics_prefer_pillow_measurements_when_available(self) -> None:
         panel = TerminalPanel()
         panel.render_font = Mock(baseSize=18)
         panel._font_ready = True
 
-        with patch("pyray.measure_text_ex", return_value=rl.Vector2(11.0, 18.0)):
-            panel._update_font_metrics()
+        with patch.object(panel, "_resolve_font_path", return_value=Path("dummy.ttf")):
+            with patch.object(panel, "_measure_font_metrics_with_pillow", return_value=(9.0, 19.0, 15.0, 0.0)):
+                panel._update_font_metrics()
+
+        self.assertEqual(panel.cell_width, 9.0)
+        self.assertEqual(panel.line_height, 19.0)
+        self.assertEqual(panel.row_step, 19.0)
+        self.assertEqual(panel.text_baseline_offset, 15.0)
+        self.assertEqual(panel.glyph_draw_offset_y, 0.0)
+
+    def test_font_metrics_fall_back_to_raylib_when_pillow_is_unavailable(self) -> None:
+        panel = TerminalPanel()
+        panel.render_font = Mock(baseSize=18)
+        panel._font_ready = True
+
+        with patch.object(panel, "_resolve_font_path", return_value=Path("dummy.ttf")):
+            with patch.object(panel, "_measure_font_metrics_with_pillow", return_value=None):
+                with patch("pyray.measure_text_ex", return_value=rl.Vector2(11.0, 18.0)):
+                    panel._update_font_metrics()
 
         self.assertEqual(panel.cell_width, 11.0)
         self.assertEqual(panel.line_height, 18.0)
         self.assertEqual(panel.row_step, 18.0)
+
+    def test_terminal_panel_flags_special_render_cells(self) -> None:
+        panel = TerminalPanel()
+
+        self.assertTrue(panel._cell_requires_shape_renderer("\u2580"))
+        self.assertTrue(panel._cell_requires_shape_renderer("\u2502"))
+        self.assertTrue(panel._cell_requires_shape_renderer("\u2503"))
+        self.assertTrue(panel._cell_requires_shape_renderer("\u2579"))
+        self.assertTrue(panel._cell_requires_shape_renderer("\u28ff"))
+        self.assertFalse(panel._cell_requires_shape_renderer("A"))
+
+    def test_terminal_drawable_rect_uses_padding_in_main_buffer_and_top_inset_in_alt_buffer(self) -> None:
+        panel = TerminalPanel()
+        panel.content_rect = rl.Rectangle(10, 20, 300, 200)
+
+        panel.screen.use_alt_buffer = False
+        main_rect = panel.get_terminal_drawable_rect()
+        self.assertEqual((main_rect.x, main_rect.y, main_rect.width, main_rect.height), (16.0, 22.0, 288.0, 196.0))
+
+        panel.screen.use_alt_buffer = True
+        alt_rect = panel.get_terminal_drawable_rect()
+        self.assertEqual((alt_rect.x, alt_rect.y, alt_rect.width, alt_rect.height), (10.0, 24.0, 300.0, 196.0))
+
+    def test_renderable_text_char_uses_replacement_when_glyph_is_missing(self) -> None:
+        panel = TerminalPanel()
+        panel._font_ready = True
+        panel.render_font = Mock()
+        panel._question_glyph_index = 31
+
+        with patch("pyray.get_glyph_index", side_effect=[31, 42]):
+            self.assertEqual(panel._renderable_text_char("\u00E1"), "\uFFFD")
+
+    def test_renderable_text_char_keeps_supported_ascii(self) -> None:
+        panel = TerminalPanel()
+        panel._font_ready = True
+        panel.render_font = Mock()
+        panel._question_glyph_index = 31
+
+        with patch("pyray.get_glyph_index", return_value=12):
+            self.assertEqual(panel._renderable_text_char("A"), "A")
 
     def test_terminal_screen_applies_sgr_styles_to_cells(self) -> None:
         screen = _TerminalScreen(20, 6)
@@ -230,9 +361,20 @@ class TerminalPanelTests(unittest.TestCase):
 
         panel.screen.feed("\x1b[14t\x1b[?u\x1b[?996n\x1b]66;ignored\x07")
 
-        self.assertEqual(backend.writes[0], "\x1b[4;320;960t")
+        self.assertEqual(backend.writes[0], "\x1b[4;316;948t")
         self.assertEqual(backend.writes[1], "\x1b[?0u")
         self.assertEqual(backend.writes[2], "\x1b[?996;10;18n")
+
+    def test_terminal_sequence_handler_reports_alt_buffer_drawable_size_with_top_inset(self) -> None:
+        panel = TerminalPanel()
+        backend = _FakeBackend("C:/demo", 120, 30, panel._on_backend_output)
+        panel.backend = backend
+        panel.content_rect = rl.Rectangle(0, 0, 960, 320)
+        panel.screen.use_alt_buffer = True
+
+        panel.screen.feed("\x1b[14t")
+
+        self.assertEqual(backend.writes[0], "\x1b[4;316;960t")
 
 
 class GameTerminalIntegrationTests(unittest.TestCase):
