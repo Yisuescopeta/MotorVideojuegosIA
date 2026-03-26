@@ -61,6 +61,7 @@ from engine.components.canvas import Canvas
 from engine.components.uibutton import UIButton
 from engine.components.scriptbehaviour import ScriptBehaviour
 from engine.editor.animator_panel import AnimatorPanel
+from engine.editor.cursor_manager import CursorVisualState, CustomCursorRenderer
 from engine.editor.hierarchy_panel import HierarchyPanel
 from engine.editor.gizmo_system import GizmoSystem
 from engine.editor.editor_layout import EditorLayout
@@ -131,6 +132,7 @@ class Game:
         self.terminal_panel: Optional["TerminalPanel"] = TerminalPanel()
         self.gizmo_system: Optional["GizmoSystem"] = GizmoSystem()
         self.editor_layout: Optional["EditorLayout"] = None
+        self._cursor_renderer: CustomCursorRenderer = CustomCursorRenderer()
         
         # Gestión de escenas
              
@@ -810,6 +812,7 @@ class Game:
         "Inicia el game loop."
         rl.init_window(self.width, self.height, self.title)
         rl.set_target_fps(self.target_fps)
+        self._cursor_renderer.hide_system_cursor()
         
         # Aplicar tema Raygui
         apply_unity_dark_theme()
@@ -846,6 +849,7 @@ class Game:
                 try:
                     rl.clear_background(rl.DARKGRAY)
                     self.editor_layout.draw_project_launcher()
+                    self._cursor_renderer.render(rl.get_mouse_position(), self.editor_layout.get_cursor_intent())
                 finally:
                     rl.end_drawing()
                 continue
@@ -1632,11 +1636,15 @@ class Game:
                     self.hierarchy_panel.render(active_world, 0, 0, 200, self.height)
                 self._perf_stats["hierarchy"] = (time.perf_counter() - hierarchy_start) * 1000.0
 
+            cursor_state = self._resolve_cursor_state(active_world)
+            self._cursor_renderer.render(rl.get_mouse_position(), cursor_state)
+
         finally:
             rl.end_drawing()
 
     def _cleanup(self) -> None:
         self.running = False
+        self._cursor_renderer.show_system_cursor()
         if self.terminal_panel is not None:
             self.terminal_panel.shutdown()
         if self._render_system is not None:
@@ -1646,6 +1654,46 @@ class Game:
         if self.sprite_editor_modal is not None:
             self.sprite_editor_modal.cleanup()
         rl.close_window()
+
+    def _resolve_cursor_state(self, active_world: Optional["World"]) -> CursorVisualState:
+        state = CursorVisualState.DEFAULT
+        mouse = rl.get_mouse_position()
+
+        if self.editor_layout is not None:
+            state = max(state, self.editor_layout.get_cursor_intent())
+
+        if self.hierarchy_panel is not None:
+            state = max(state, self.hierarchy_panel.get_cursor_intent(mouse))
+
+        if self.editor_layout is not None and self.editor_layout.active_bottom_tab == "PROJECT" and self.editor_layout.project_panel is not None:
+            state = max(state, self.editor_layout.project_panel.get_cursor_intent(mouse))
+
+        if self._inspector_system is not None:
+            state = max(state, self._inspector_system.get_cursor_intent(mouse))
+
+        if self.gizmo_system is not None and self.gizmo_system.is_hot():
+            state = max(state, CursorVisualState.INTERACTIVE)
+
+        if self._ui_system is not None and active_world is not None and self.editor_layout is not None:
+            view_rect = self.editor_layout.get_center_view_rect()
+            if self.editor_layout.active_tab in ("SCENE", "GAME") and rl.check_collision_point_rec(mouse, view_rect):
+                mouse_ui = self.editor_layout.get_scene_overlay_mouse_pos()
+                viewport_size = (
+                    self._current_scene_viewport_size()
+                    if self.editor_layout.active_tab == "SCENE"
+                    else self._current_viewport_size()
+                )
+                state = max(
+                    state,
+                    self._ui_system.get_cursor_intent(
+                        active_world,
+                        viewport_size,
+                        float(mouse_ui.x),
+                        float(mouse_ui.y),
+                    ),
+                )
+
+        return state
 
     def _open_sprite_editor(self, asset_path: str) -> None:
         if self.sprite_editor_modal is None or not asset_path:

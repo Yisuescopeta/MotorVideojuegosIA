@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 import pyray as rl
 import os
 from typing import Optional
+from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.project_panel import ProjectPanel
 from engine.editor.console_panel import ConsolePanel
 from engine.editor.editor_tools import EditorTool, PivotMode, SnapSettings, TransformSpace
@@ -199,6 +200,8 @@ class EditorLayout:
         self.launcher_create_name_rect = rl.Rectangle(0, 0, 0, 0)
         self.scene_create_name_rect = rl.Rectangle(0, 0, 0, 0)
         self.scene_browser_list_rect = rl.Rectangle(0, 0, 0, 0)
+        self._cursor_interactive_rects: list[rl.Rectangle] = []
+        self._cursor_text_rects: list[rl.Rectangle] = []
         
         self.update_layout(screen_width, screen_height)
 
@@ -635,6 +638,7 @@ class EditorLayout:
 
     def draw_layout(self, is_playing: bool) -> None:
         """Dibuja el layout completo del editor."""
+        self._reset_cursor_regions()
         rl.clear_background(self.UNITY_BG_DARKEST)
         
         # ========================================
@@ -759,6 +763,7 @@ class EditorLayout:
             self._draw_project_dirty_modal()
 
     def draw_project_launcher(self) -> None:
+        self._reset_cursor_regions()
         rl.clear_background(self.UNITY_BG_DARKEST)
         padding = 24
         top_y = 28
@@ -835,6 +840,7 @@ class EditorLayout:
                 continue
 
             row_rect = rl.Rectangle(table_rect.x, row_y, table_rect.width, float(row_h))
+            self._register_cursor_rect(row_rect)
             hover = rl.check_collision_point_rec(mouse, row_rect)
             bg = self.UNITY_BG_LIGHT if hover else self.UNITY_BG_DARK
             rl.draw_rectangle_rec(row_rect, bg)
@@ -892,6 +898,7 @@ class EditorLayout:
         self.scene_browser_scroll_offset = max(0.0, min(self.scene_browser_scroll_offset, max_scroll))
 
     def _draw_launcher_button(self, rect: rl.Rectangle, label: str, bg: rl.Color, hover_bg: rl.Color) -> bool:
+        self._register_cursor_rect(rect)
         hover = rl.check_collision_point_rec(rl.get_mouse_position(), rect)
         rl.draw_rectangle_rec(rect, hover_bg if hover else bg)
         rl.draw_rectangle_lines_ex(rect, 1, self.UNITY_BORDER)
@@ -900,6 +907,7 @@ class EditorLayout:
         return hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT)
 
     def _draw_launcher_text_input(self, rect: rl.Rectangle, value: str, placeholder: str, focused: bool) -> None:
+        self._register_text_rect(rect)
         border = self.UNITY_BLUE_HOVER if focused else self.UNITY_BORDER
         rl.draw_rectangle_rec(rect, self.UNITY_BG_DARK)
         rl.draw_rectangle_lines_ex(rect, 1, border)
@@ -1010,6 +1018,7 @@ class EditorLayout:
                 continue
             if row_rect.y > visible_bottom:
                 break
+            self._register_cursor_rect(row_rect)
             hover = rl.check_collision_point_rec(mouse, row_rect)
             rl.draw_rectangle_rec(row_rect, self.UNITY_BG_LIGHT if hover else self.UNITY_BG_DARK)
             rl.draw_text(str(scene.get("name", "Scene")), int(row_rect.x + 10), int(row_rect.y + 8), 12, self.UNITY_TEXT_BRIGHT)
@@ -1021,6 +1030,8 @@ class EditorLayout:
 
         add_rect = rl.Rectangle(modal.x + 16, modal.y + modal.height - 40, 110, 24)
         close_rect = rl.Rectangle(modal.x + modal.width - 92, modal.y + modal.height - 40, 76, 24)
+        self._register_cursor_rect(add_rect)
+        self._register_cursor_rect(close_rect)
         if rl.gui_button(add_rect, "Add Scene"):
             self.request_browse_scene_file = True
             self.show_scene_browser_modal = False
@@ -1028,6 +1039,9 @@ class EditorLayout:
             self.show_scene_browser_modal = False
 
     def _draw_splitters(self) -> None:
+        self._register_cursor_rect(self.splitter_left_rect)
+        self._register_cursor_rect(self.splitter_right_rect)
+        self._register_cursor_rect(self.bottom_splitter_rect)
         mouse_pos = rl.get_mouse_position()
         hover_left = rl.check_collision_point_rec(mouse_pos, self.splitter_left_rect)
         hover_right = rl.check_collision_point_rec(mouse_pos, self.splitter_right_rect)
@@ -1068,6 +1082,7 @@ class EditorLayout:
         
         for shortcut, tool in tools:
             rect = rl.Rectangle(tool_x, tool_y, tool_size, tool_size)
+            self._register_cursor_rect(rect)
             is_active = self.active_tool == tool
             
             # Toggle manual (sin punteros)
@@ -1118,17 +1133,20 @@ class EditorLayout:
         
         # Play button
         play_rect = rl.Rectangle(center_x - btn_width - 20, play_y, btn_width, btn_height)
+        self._register_cursor_rect(play_rect)
         play_text = "||" if is_playing else ">"  # Pause o Play symbol
         if rl.gui_button(play_rect, play_text):
             self.request_play = True
         
         # Pause button (solo visible durante play)
         pause_rect = rl.Rectangle(center_x - btn_width//2, play_y, btn_width, btn_height)
+        self._register_cursor_rect(pause_rect)
         if rl.gui_button(pause_rect, "||"):
             self.request_pause = True
         
         # Step button
         step_rect = rl.Rectangle(center_x + 20, play_y, btn_width, btn_height)
+        self._register_cursor_rect(step_rect)
         if rl.gui_button(step_rect, ">|"):
             self.request_step = True
         
@@ -1180,6 +1198,7 @@ class EditorLayout:
     def _draw_toolbar_toggle(self, x: int, y: int, label: str, is_active: bool, on_click, height: int = 20) -> int:
         width = self._measure_text(label, 10) + 16
         rect = rl.Rectangle(x, y, width, height)
+        self._register_cursor_rect(rect)
         hover = rl.check_collision_point_rec(rl.get_mouse_position(), rect)
         bg_color = self.UNITY_BLUE if is_active else (self.UNITY_BUTTON_HOVER if hover else self.UNITY_BUTTON)
         rl.draw_rectangle_rec(rect, bg_color)
@@ -1203,6 +1222,7 @@ class EditorLayout:
             text_width = self._measure_text(item, 10)
             item_width = text_width + 12
             rect = rl.Rectangle(x, 1, item_width, self.MENU_HEIGHT - 2)
+            self._register_cursor_rect(rect)
             
             # Hover detection
             mouse = rl.get_mouse_position()
@@ -1220,6 +1240,7 @@ class EditorLayout:
     def _draw_tab(self, text: str, rect: rl.Rectangle, is_active: bool) -> None:
         """Dibuja un tab estilo Unity con línea azul inferior si está activo."""
         # Fondo del tab
+        self._register_cursor_rect(rect)
         bg_color = self.UNITY_TAB_ACTIVE if is_active else self.UNITY_TAB_INACTIVE
         rl.draw_rectangle_rec(rect, bg_color)
         
@@ -1248,6 +1269,9 @@ class EditorLayout:
         proj_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 2, bottom_tab_y, 70, bottom_tab_h)
         cons_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 75, bottom_tab_y, 70, bottom_tab_h)
         term_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 148, bottom_tab_y, 70, bottom_tab_h)
+        self._register_cursor_rect(proj_tab_rect)
+        self._register_cursor_rect(cons_tab_rect)
+        self._register_cursor_rect(term_tab_rect)
 
         if rl.check_collision_point_rec(mouse_pos, proj_tab_rect):
             self.active_bottom_tab = "PROJECT"
@@ -1317,6 +1341,7 @@ class EditorLayout:
                 rl.draw_circle(int(badge_x), int(rect.y + rect.height / 2), 4, self.UNITY_INVALID_BADGE)
 
             close_rect = rl.Rectangle(rect.x + rect.width - 16, rect.y + 3, 12, rect.height - 6)
+            self._register_cursor_rect(close_rect)
             close_hover = rl.check_collision_point_rec(mouse, close_rect)
             rl.draw_text("x", int(close_rect.x + 2), int(close_rect.y + 1), 10, self.UNITY_TEXT_BRIGHT if close_hover else self.UNITY_TEXT_DIM)
 
@@ -1339,6 +1364,44 @@ class EditorLayout:
         measured = rl.measure_text(str(text), int(size))
         self._text_measure_cache[cache_key] = int(measured)
         return int(measured)
+
+    def get_cursor_intent(self) -> CursorVisualState:
+        mouse = rl.get_mouse_position()
+        if (
+            rl.check_collision_point_rec(mouse, self.launcher_search_rect)
+            or rl.check_collision_point_rec(mouse, self.launcher_create_name_rect)
+            or rl.check_collision_point_rec(mouse, self.scene_create_name_rect)
+        ):
+            return CursorVisualState.TEXT
+        for rect in self._cursor_text_rects:
+            if rl.check_collision_point_rec(mouse, rect):
+                return CursorVisualState.TEXT
+        static_interactive = (
+            self.tab_scene_rect,
+            self.tab_game_rect,
+            self.tab_animator_rect,
+            self.btn_play_rect,
+            self.splitter_left_rect,
+            self.splitter_right_rect,
+            self.bottom_splitter_rect,
+        )
+        for rect in static_interactive:
+            if rect.width > 0 and rect.height > 0 and rl.check_collision_point_rec(mouse, rect):
+                return CursorVisualState.INTERACTIVE
+        for rect in self._cursor_interactive_rects:
+            if rl.check_collision_point_rec(mouse, rect):
+                return CursorVisualState.INTERACTIVE
+        return CursorVisualState.DEFAULT
+
+    def _reset_cursor_regions(self) -> None:
+        self._cursor_interactive_rects = []
+        self._cursor_text_rects = []
+
+    def _register_cursor_rect(self, rect: rl.Rectangle) -> None:
+        self._cursor_interactive_rects.append(rl.Rectangle(rect.x, rect.y, rect.width, rect.height))
+
+    def _register_text_rect(self, rect: rl.Rectangle) -> None:
+        self._cursor_text_rects.append(rl.Rectangle(rect.x, rect.y, rect.width, rect.height))
 
     def get_center_view_rect(self) -> rl.Rectangle:
         return rl.Rectangle(
@@ -1369,6 +1432,7 @@ class EditorLayout:
             name = str(item.get("name", "Project"))
             version = str(item.get("engine_version", ""))
             row_rect = rl.Rectangle(modal.x + 12, item_y, modal.width - 24, 40)
+            self._register_cursor_rect(row_rect)
             hover = rl.check_collision_point_rec(rl.get_mouse_position(), row_rect)
             rl.draw_rectangle_rec(row_rect, self.UNITY_BG_LIGHT if hover else self.UNITY_BG_MID)
             rl.draw_text(name, int(row_rect.x + 8), int(row_rect.y + 6), 12, self.UNITY_TEXT)
@@ -1381,6 +1445,8 @@ class EditorLayout:
 
         browse_rect = rl.Rectangle(modal.x + 12, modal.y + modal.height - 40, 120, 24)
         close_rect = rl.Rectangle(modal.x + modal.width - 92, modal.y + modal.height - 40, 80, 24)
+        self._register_cursor_rect(browse_rect)
+        self._register_cursor_rect(close_rect)
         if rl.gui_button(browse_rect, "Add Project"):
             self.request_browse_project = True
             self.show_project_modal = False
@@ -1401,13 +1467,19 @@ class EditorLayout:
         rl.draw_text(title, int(modal.x + 12), int(modal.y + 12), 14, self.UNITY_TEXT_BRIGHT)
         rl.draw_text(message, int(modal.x + 12), int(modal.y + 50), 10, self.UNITY_TEXT)
 
-        if rl.gui_button(rl.Rectangle(modal.x + 12, modal.y + modal.height - 38, 80, 24), "Save"):
+        save_rect = rl.Rectangle(modal.x + 12, modal.y + modal.height - 38, 80, 24)
+        discard_rect = rl.Rectangle(modal.x + 102, modal.y + modal.height - 38, 80, 24)
+        cancel_rect = rl.Rectangle(modal.x + 192, modal.y + modal.height - 38, 80, 24)
+        self._register_cursor_rect(save_rect)
+        self._register_cursor_rect(discard_rect)
+        self._register_cursor_rect(cancel_rect)
+        if rl.gui_button(save_rect, "Save"):
             self.project_switch_decision = "save"
             self.show_project_dirty_modal = False
-        if rl.gui_button(rl.Rectangle(modal.x + 102, modal.y + modal.height - 38, 80, 24), "Discard"):
+        if rl.gui_button(discard_rect, "Discard"):
             self.project_switch_decision = "discard"
             self.show_project_dirty_modal = False
-        if rl.gui_button(rl.Rectangle(modal.x + 192, modal.y + modal.height - 38, 80, 24), "Cancel"):
+        if rl.gui_button(cancel_rect, "Cancel"):
             self.project_switch_decision = "cancel"
             self.show_project_dirty_modal = False
 
