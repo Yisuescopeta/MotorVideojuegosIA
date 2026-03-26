@@ -1,0 +1,32 @@
+{
+    "version": 1,
+    "guid": "ast_1dfc9299941948a0b23fde950616951e",
+    "path": "scripts/main_menu_controller.py",
+    "asset_kind": "script",
+    "importer": "script",
+    "source_hash": "b11a47e597b30166d54d19cf6fa29f64d0b8e686f2f1fe0957fcef32a13f6f26",
+    "import_settings_hash": "523830a9e675093e53983a28d15e46898df0bf5cc1dfb94129cd01d2fc33beab",
+    "dependencies": [],
+    "metadata": {
+        "guid": "ast_1dfc9299941948a0b23fde950616951e",
+        "source_path": "scripts/main_menu_controller.py",
+        "path": "scripts/main_menu_controller.py",
+        "asset_kind": "script",
+        "importer": "script",
+        "labels": [],
+        "dependencies": [],
+        "import_settings": {
+            "asset_type": "script",
+            "import_mode": "raw",
+            "grid": {},
+            "automatic": {},
+            "slices": []
+        },
+        "asset_type": "script",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "source_size_bytes": 2969
+}

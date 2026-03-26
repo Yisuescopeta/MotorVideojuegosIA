@@ -1,0 +1,21 @@
+{
+    "guid": "ast_63ae5f26a1264f66b1486715352b1676",
+    "source_path": "levels/EscenaSuelo.json",
+    "path": "levels/EscenaSuelo.json",
+    "asset_kind": "scene_data",
+    "importer": "scene_data",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "scene_data",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "scene_data",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

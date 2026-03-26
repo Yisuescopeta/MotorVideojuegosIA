@@ -1,0 +1,39 @@
+{
+    "entities": [
+        {
+            "name": "New Entity 0",
+            "active": true,
+            "tag": "Untagged",
+            "layer": "Default",
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 0.0,
+                    "y": 197.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                }
+            }
+        },
+        {
+            "name": "New Entity 1",
+            "active": true,
+            "tag": "Untagged",
+            "layer": "Default",
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 0.0,
+                    "y": 0.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                }
+            }
+        }
+    ],
+    "rules": [],
+    "name": "New Scene",
+    "feature_metadata": {}
+}

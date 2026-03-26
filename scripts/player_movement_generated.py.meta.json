@@ -1,0 +1,21 @@
+{
+    "guid": "ast_8a1b91c96c7046e8a0b6fbfbd4011ab8",
+    "source_path": "scripts/player_movement_generated.py",
+    "path": "scripts/player_movement_generated.py",
+    "asset_kind": "script",
+    "importer": "script",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "script",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "script",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

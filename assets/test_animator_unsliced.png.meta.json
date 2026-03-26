@@ -1,0 +1,21 @@
+{
+    "guid": "ast_c3ab1435cfdf4a5383ce06d8def36a61",
+    "source_path": "assets/test_animator_unsliced.png",
+    "path": "assets/test_animator_unsliced.png",
+    "asset_kind": "texture",
+    "importer": "texture",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "sprite_sheet",
+        "import_mode": "grid",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "sprite_sheet",
+    "import_mode": "grid",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

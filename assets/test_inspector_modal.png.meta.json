@@ -1,0 +1,21 @@
+{
+    "guid": "ast_7b7c74816c23412b984832d95bb506c4",
+    "source_path": "assets/test_inspector_modal.png",
+    "path": "assets/test_inspector_modal.png",
+    "asset_kind": "texture",
+    "importer": "texture",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "sprite_sheet",
+        "import_mode": "grid",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "sprite_sheet",
+    "import_mode": "grid",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

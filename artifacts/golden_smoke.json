@@ -1,0 +1,785 @@
+{
+  "capture_every": 1,
+  "captures": [
+    {
+      "entity_count": 5,
+      "frame": 0,
+      "selected_entity_name": null,
+      "state": {
+        "entities": [
+          {
+            "active": true,
+            "components": {
+              "Collider": {
+                "enabled": true,
+                "height": 24,
+                "is_trigger": true,
+                "offset_x": 0.0,
+                "offset_y": 0.0,
+                "width": 24
+              },
+              "Transform": {
+                "enabled": true,
+                "rotation": 0.0,
+                "scale_x": 0.8,
+                "scale_y": 0.8,
+                "x": 250,
+                "y": 350
+              }
+            },
+            "layer": "Default",
+            "name": "Coin",
+            "parent": null,
+            "tag": "Untagged"
+          },
+          {
+            "active": true,
+            "components": {
+              "Animator": {
+                "animations": {
+                  "spin": {
+                    "fps": 10,
+                    "frames": [
+                      7,
+                      6,
+                      5,
+                      4,
+                      3,
+                      2,
+                      1,
+                      0
+                    ],
+                    "loop": true,
+                    "slice_names": []
+                  }
+                },
+                "current_frame": 7,
+                "current_state": "spin",
+                "default_state": "spin",
+                "enabled": true,
+                "flip_x": false,
+                "frame_height": 32,
+                "frame_width": 32,
+                "is_finished": false,
+                "sprite_sheet": {
+                  "guid": "",
+                  "path": "assets/test_spritesheet.png"
+                },
+                "sprite_sheet_path": "assets/test_spritesheet.png"
+              },
+              "Collider": {
+                "enabled": true,
+                "height": 35,
+                "is_trigger": false,
+                "offset_x": 0.0,
+                "offset_y": 0.0,
+                "width": 35
+              },
+              "RigidBody": {
+                "body_type": "dynamic",
+                "constraints": [
+                  "None"
+                ],
+                "enabled": true,
+                "freeze_x": false,
+                "freeze_y": false,
+                "gravity_scale": 0.8,
+                "is_grounded": false,
+                "simulated": true,
+                "use_full_kinematic_contacts": false,
+                "velocity_x": 0.0,
+                "velocity_y": 0.0
+              },
+              "Transform": {
+                "enabled": true,
+                "rotation": 0.0,
+                "scale_x": 1.2,
+                "scale_y": 1.2,
+                "x": 350,
+                "y": 100
+              }
+            },
+            "layer": "Default",
+            "name": "Enemy",
+            "parent": null,
+            "tag": "Untagged"
+          },
+          {
+            "active": true,
+            "components": {
+              "Collider": {
+                "enabled": true,
+                "height": 32,
+                "is_trigger": false,
+                "offset_x": 0.0,
+                "offset_y": 0.0,
+                "width": 400
+              },
+              "Transform": {
+                "enabled": true,
+                "rotation": 0.0,
+                "scale_x": 12.0,
+                "scale_y": 1.0,
+                "x": 250,
+                "y": 570
+              }
+            },
+            "layer": "Default",
+            "name": "Ground",
+            "parent": null,
+            "tag": "Untagged"
+          },
+          {
+            "active": true,
+            "components": {
+              "Collider": {
+                "enabled": true,
+                "height": 20,
+                "is_trigger": false,
+                "offset_x": 0.0,
+                "offset_y": 0.0,
+                "width": 120
+              },
+              "Transform": {
+                "enabled": true,
+                "rotation": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0,
+                "x": 250,
+                "y": 400
+              }
+            },
+            "layer": "Default",
+            "name": "Platform",
+            "parent": null,
+            "tag": "Untagged"
+          },
+          {
+            "active": true,
+            "components": {
+              "Animator": {
+                "animations": {
+                  "hit": {
+                    "fps": 10,
+                    "frames": [
+                      0,
+                      4,
+                      0,
+                      4
+                    ],
+                    "loop": false,
+                    "on_complete": "idle",
+                    "slice_names": []
+                  },
+                  "idle": {
+                    "fps": 4,
+                    "frames": [
+                      0,
+                      1,
+                      2,
+                      3
+                    ],
+                    "loop": true,
+                    "slice_names": [
+                      "images_1_0",
+                      "images_1_1"
+                    ]
+                  },
+                  "run": {
+                    "fps": 8,
+                    "frames": [
+                      4,
+                      5,
+                      6,
+                      7
+                    ],
+                    "loop": true,
+                    "slice_names": [
+                      "images_1_13",
+                      "images_1_14",
+                      "images_1_15"
+                    ]
+                  }
+                },
+                "current_frame": 2,
+                "current_state": "idle",
+                "default_state": "idle",
+                "enabled": true,
+                "flip_x": false,
+                "frame_height": 32,
+                "frame_width": 32,
+                "is_finished": false,
+                "sprite_sheet": {
+                  "guid": "",
+                  "path": "assets/images_1.png"
+                },
+                "sprite_sheet_path": "assets/images_1.png"
+              },
+              "Collider": {
+                "enabled": true,
+                "height": 30,
+                "is_trigger": false,
+                "offset_x": 0.0,
+                "offset_y": 0.0,
+                "width": 30
+              },
+              "RigidBody": {
+                "body_type": "dynamic",
+                "constraints": [
+                  "None"
+                ],
+                "enabled": true,
+                "freeze_x": false,
+                "freeze_y": false,
+                "gravity_scale": 1.0,
+                "is_grounded": false,
+                "simulated": true,
+                "use_full_kinematic_contacts": false,
+                "velocity_x": 0.0,
+                "velocity_y": 0.0
+              },
+              "Transform": {
+                "enabled": true,
+                "rotation": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0,
+                "x": 150,
+                "y": 100
+              }
+            },
+            "layer": "Default",
+            "name": "Player",
+            "parent": null,
+            "tag": "Untagged"
+          }
+        ],
+        "feature_metadata": {},
+        "selected_entity_name": null
+      },
+      "time": 0.0,
+      "world_hash": "7b3f0bd3cb19928c0f17a8af2cc3818e9e9834d0da2cd0c9653502d282973daa"
+    },
+    {
+      "entity_count": 5,
+      "frame": 1,
+      "selected_entity_name": null,
+      "state": {
+        "entities": [
+          {
+            "active": true,
+            "components": {
+              "Collider": {
+                "enabled": true,
+                "height": 24,
+                "is_trigger": true,
+                "offset_x": 0.0,
+                "offset_y": 0.0,
+                "width": 24
+              },
+              "Transform": {
+                "enabled": true,
+                "rotation": 0.0,
+                "scale_x": 0.8,
+                "scale_y": 0.8,
+                "x": 250,
+                "y": 350
+              }
+            },
+            "layer": "Default",
+            "name": "Coin",
+            "parent": null,
+            "tag": "Untagged"
+          },
+          {
+            "active": true,
+            "components": {
+              "Animator": {
+                "animations": {
+                  "spin": {
+                    "fps": 10,
+                    "frames": [
+                      7,
+                      6,
+                      5,
+                      4,
+                      3,
+                      2,
+                      1,
+                      0
+                    ],
+                    "loop": true,
+                    "slice_names": []
+                  }
+                },
+                "current_frame": 7,
+                "current_state": "spin",
+                "default_state": "spin",
+                "enabled": true,
+                "flip_x": false,
+                "frame_height": 32,
+                "frame_width": 32,
+                "is_finished": false,
+                "sprite_sheet": {
+                  "guid": "",
+                  "path": "assets/test_spritesheet.png"
+                },
+                "sprite_sheet_path": "assets/test_spritesheet.png"
+              },
+              "Collider": {
+                "enabled": true,
+                "height": 35,
+                "is_trigger": false,
+                "offset_x": 0.0,
+                "offset_y": 0.0,
+                "width": 35
+              },
+              "RigidBody": {
+                "body_type": "dynamic",
+                "constraints": [
+                  "None"
+                ],
+                "enabled": true,
+                "freeze_x": false,
+                "freeze_y": false,
+                "gravity_scale": 0.8,
+                "is_grounded": false,
+                "simulated": true,
+                "use_full_kinematic_contacts": false,
+                "velocity_x": 0.0,
+                "velocity_y": 0.0
+              },
+              "Transform": {
+                "enabled": true,
+                "rotation": 0.0,
+                "scale_x": 1.2,
+                "scale_y": 1.2,
+                "x": 350,
+                "y": 100
+              }
+            },
+            "layer": "Default",
+            "name": "Enemy",
+            "parent": null,
+            "tag": "Untagged"
+          },
+          {
+            "active": true,
+            "components": {
+              "Collider": {
+                "enabled": true,
+                "height": 32,
+                "is_trigger": false,
+                "offset_x": 0.0,
+                "offset_y": 0.0,
+                "width": 400
+              },
+              "Transform": {
+                "enabled": true,
+                "rotation": 0.0,
+                "scale_x": 12.0,
+                "scale_y": 1.0,
+                "x": 250,
+                "y": 570
+              }
+            },
+            "layer": "Default",
+            "name": "Ground",
+            "parent": null,
+            "tag": "Untagged"
+          },
+          {
+            "active": true,
+            "components": {
+              "Collider": {
+                "enabled": true,
+                "height": 20,
+                "is_trigger": false,
+                "offset_x": 0.0,
+                "offset_y": 0.0,
+                "width": 120
+              },
+              "Transform": {
+                "enabled": true,
+                "rotation": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0,
+                "x": 250,
+                "y": 400
+              }
+            },
+            "layer": "Default",
+            "name": "Platform",
+            "parent": null,
+            "tag": "Untagged"
+          },
+          {
+            "active": true,
+            "components": {
+              "Animator": {
+                "animations": {
+                  "hit": {
+                    "fps": 10,
+                    "frames": [
+                      0,
+                      4,
+                      0,
+                      4
+                    ],
+                    "loop": false,
+                    "on_complete": "idle",
+                    "slice_names": []
+                  },
+                  "idle": {
+                    "fps": 4,
+                    "frames": [
+                      0,
+                      1,
+                      2,
+                      3
+                    ],
+                    "loop": true,
+                    "slice_names": [
+                      "images_1_0",
+                      "images_1_1"
+                    ]
+                  },
+                  "run": {
+                    "fps": 8,
+                    "frames": [
+                      4,
+                      5,
+                      6,
+                      7
+                    ],
+                    "loop": true,
+                    "slice_names": [
+                      "images_1_13",
+                      "images_1_14",
+                      "images_1_15"
+                    ]
+                  }
+                },
+                "current_frame": 2,
+                "current_state": "idle",
+                "default_state": "idle",
+                "enabled": true,
+                "flip_x": false,
+                "frame_height": 32,
+                "frame_width": 32,
+                "is_finished": false,
+                "sprite_sheet": {
+                  "guid": "",
+                  "path": "assets/images_1.png"
+                },
+                "sprite_sheet_path": "assets/images_1.png"
+              },
+              "Collider": {
+                "enabled": true,
+                "height": 30,
+                "is_trigger": false,
+                "offset_x": 0.0,
+                "offset_y": 0.0,
+                "width": 30
+              },
+              "RigidBody": {
+                "body_type": "dynamic",
+                "constraints": [
+                  "None"
+                ],
+                "enabled": true,
+                "freeze_x": false,
+                "freeze_y": false,
+                "gravity_scale": 1.0,
+                "is_grounded": false,
+                "simulated": true,
+                "use_full_kinematic_contacts": false,
+                "velocity_x": 0.0,
+                "velocity_y": 0.0
+              },
+              "Transform": {
+                "enabled": true,
+                "rotation": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0,
+                "x": 150,
+                "y": 100
+              }
+            },
+            "layer": "Default",
+            "name": "Player",
+            "parent": null,
+            "tag": "Untagged"
+          }
+        ],
+        "feature_metadata": {},
+        "selected_entity_name": null
+      },
+      "time": 0.016667,
+      "world_hash": "7b3f0bd3cb19928c0f17a8af2cc3818e9e9834d0da2cd0c9653502d282973daa"
+    },
+    {
+      "entity_count": 5,
+      "frame": 2,
+      "selected_entity_name": null,
+      "state": {
+        "entities": [
+          {
+            "active": true,
+            "components": {
+              "Collider": {
+                "enabled": true,
+                "height": 24,
+                "is_trigger": true,
+                "offset_x": 0.0,
+                "offset_y": 0.0,
+                "width": 24
+              },
+              "Transform": {
+                "enabled": true,
+                "rotation": 0.0,
+                "scale_x": 0.8,
+                "scale_y": 0.8,
+                "x": 250,
+                "y": 350
+              }
+            },
+            "layer": "Default",
+            "name": "Coin",
+            "parent": null,
+            "tag": "Untagged"
+          },
+          {
+            "active": true,
+            "components": {
+              "Animator": {
+                "animations": {
+                  "spin": {
+                    "fps": 10,
+                    "frames": [
+                      7,
+                      6,
+                      5,
+                      4,
+                      3,
+                      2,
+                      1,
+                      0
+                    ],
+                    "loop": true,
+                    "slice_names": []
+                  }
+                },
+                "current_frame": 7,
+                "current_state": "spin",
+                "default_state": "spin",
+                "enabled": true,
+                "flip_x": false,
+                "frame_height": 32,
+                "frame_width": 32,
+                "is_finished": false,
+                "sprite_sheet": {
+                  "guid": "",
+                  "path": "assets/test_spritesheet.png"
+                },
+                "sprite_sheet_path": "assets/test_spritesheet.png"
+              },
+              "Collider": {
+                "enabled": true,
+                "height": 35,
+                "is_trigger": false,
+                "offset_x": 0.0,
+                "offset_y": 0.0,
+                "width": 35
+              },
+              "RigidBody": {
+                "body_type": "dynamic",
+                "constraints": [
+                  "None"
+                ],
+                "enabled": true,
+                "freeze_x": false,
+                "freeze_y": false,
+                "gravity_scale": 0.8,
+                "is_grounded": false,
+                "simulated": true,
+                "use_full_kinematic_contacts": false,
+                "velocity_x": 0.0,
+                "velocity_y": 0.0
+              },
+              "Transform": {
+                "enabled": true,
+                "rotation": 0.0,
+                "scale_x": 1.2,
+                "scale_y": 1.2,
+                "x": 350,
+                "y": 100
+              }
+            },
+            "layer": "Default",
+            "name": "Enemy",
+            "parent": null,
+            "tag": "Untagged"
+          },
+          {
+            "active": true,
+            "components": {
+              "Collider": {
+                "enabled": true,
+                "height": 32,
+                "is_trigger": false,
+                "offset_x": 0.0,
+                "offset_y": 0.0,
+                "width": 400
+              },
+              "Transform": {
+                "enabled": true,
+                "rotation": 0.0,
+                "scale_x": 12.0,
+                "scale_y": 1.0,
+                "x": 250,
+                "y": 570
+              }
+            },
+            "layer": "Default",
+            "name": "Ground",
+            "parent": null,
+            "tag": "Untagged"
+          },
+          {
+            "active": true,
+            "components": {
+              "Collider": {
+                "enabled": true,
+                "height": 20,
+                "is_trigger": false,
+                "offset_x": 0.0,
+                "offset_y": 0.0,
+                "width": 120
+              },
+              "Transform": {
+                "enabled": true,
+                "rotation": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0,
+                "x": 250,
+                "y": 400
+              }
+            },
+            "layer": "Default",
+            "name": "Platform",
+            "parent": null,
+            "tag": "Untagged"
+          },
+          {
+            "active": true,
+            "components": {
+              "Animator": {
+                "animations": {
+                  "hit": {
+                    "fps": 10,
+                    "frames": [
+                      0,
+                      4,
+                      0,
+                      4
+                    ],
+                    "loop": false,
+                    "on_complete": "idle",
+                    "slice_names": []
+                  },
+                  "idle": {
+                    "fps": 4,
+                    "frames": [
+                      0,
+                      1,
+                      2,
+                      3
+                    ],
+                    "loop": true,
+                    "slice_names": [
+                      "images_1_0",
+                      "images_1_1"
+                    ]
+                  },
+                  "run": {
+                    "fps": 8,
+                    "frames": [
+                      4,
+                      5,
+                      6,
+                      7
+                    ],
+                    "loop": true,
+                    "slice_names": [
+                      "images_1_13",
+                      "images_1_14",
+                      "images_1_15"
+                    ]
+                  }
+                },
+                "current_frame": 2,
+                "current_state": "idle",
+                "default_state": "idle",
+                "enabled": true,
+                "flip_x": false,
+                "frame_height": 32,
+                "frame_width": 32,
+                "is_finished": false,
+                "sprite_sheet": {
+                  "guid": "",
+                  "path": "assets/images_1.png"
+                },
+                "sprite_sheet_path": "assets/images_1.png"
+              },
+              "Collider": {
+                "enabled": true,
+                "height": 30,
+                "is_trigger": false,
+                "offset_x": 0.0,
+                "offset_y": 0.0,
+                "width": 30
+              },
+              "RigidBody": {
+                "body_type": "dynamic",
+                "constraints": [
+                  "None"
+                ],
+                "enabled": true,
+                "freeze_x": false,
+                "freeze_y": false,
+                "gravity_scale": 1.0,
+                "is_grounded": false,
+                "simulated": true,
+                "use_full_kinematic_contacts": false,
+                "velocity_x": 0.0,
+                "velocity_y": 0.0
+              },
+              "Transform": {
+                "enabled": true,
+                "rotation": 0.0,
+                "scale_x": 1.0,
+                "scale_y": 1.0,
+                "x": 150,
+                "y": 100
+              }
+            },
+            "layer": "Default",
+            "name": "Player",
+            "parent": null,
+            "tag": "Untagged"
+          }
+        ],
+        "feature_metadata": {},
+        "selected_entity_name": null
+      },
+      "time": 0.033333,
+      "world_hash": "7b3f0bd3cb19928c0f17a8af2cc3818e9e9834d0da2cd0c9653502d282973daa"
+    }
+  ],
+  "dt": 0.016667,
+  "final_frame": 2,
+  "final_time": 0.033333,
+  "final_world_hash": "7b3f0bd3cb19928c0f17a8af2cc3818e9e9834d0da2cd0c9653502d282973daa",
+  "frames_requested": 2,
+  "seed": 123
+}

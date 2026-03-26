@@ -1,0 +1,204 @@
+{
+  "name": "Multiagent Toy Scene",
+  "entities": [
+    {
+      "name": "AgentA",
+      "active": true,
+      "tag": "Agent",
+      "layer": "Gameplay",
+      "components": {
+        "Transform": {
+          "enabled": true,
+          "x": 197.57343406300075,
+          "y": 482.0,
+          "rotation": 0.0,
+          "scale_x": 1.0,
+          "scale_y": 1.0
+        },
+        "Collider": {
+          "enabled": true,
+          "width": 32.0,
+          "height": 48.0,
+          "offset_x": 0.0,
+          "offset_y": 0.0,
+          "is_trigger": false
+        },
+        "RigidBody": {
+          "enabled": true,
+          "velocity_x": 0.0,
+          "velocity_y": 0.0,
+          "gravity_scale": 1.0,
+          "is_grounded": false
+        },
+        "InputMap": {
+          "enabled": true,
+          "move_left": "A",
+          "move_right": "D",
+          "move_up": "W",
+          "move_down": "S",
+          "action_1": "SPACE",
+          "action_2": "Q"
+        },
+        "PlayerController2D": {
+          "enabled": true,
+          "move_speed": 180.0,
+          "jump_velocity": -360.0,
+          "air_control": 0.8
+        }
+      }
+    },
+    {
+      "name": "AgentB",
+      "active": true,
+      "tag": "Agent",
+      "layer": "Gameplay",
+      "components": {
+        "Transform": {
+          "enabled": true,
+          "x": 640.6188896962669,
+          "y": 482.0,
+          "rotation": 0.0,
+          "scale_x": 1.0,
+          "scale_y": 1.0
+        },
+        "Collider": {
+          "enabled": true,
+          "width": 32.0,
+          "height": 48.0,
+          "offset_x": 0.0,
+          "offset_y": 0.0,
+          "is_trigger": false
+        },
+        "RigidBody": {
+          "enabled": true,
+          "velocity_x": 0.0,
+          "velocity_y": 0.0,
+          "gravity_scale": 1.0,
+          "is_grounded": false
+        },
+        "InputMap": {
+          "enabled": true,
+          "move_left": "J",
+          "move_right": "L",
+          "move_up": "I",
+          "move_down": "K",
+          "action_1": "RIGHT_SHIFT",
+          "action_2": "U"
+        },
+        "PlayerController2D": {
+          "enabled": true,
+          "move_speed": 180.0,
+          "jump_velocity": -360.0,
+          "air_control": 0.8
+        }
+      }
+    },
+    {
+      "name": "GoalOrb",
+      "active": true,
+      "tag": "Goal",
+      "layer": "Gameplay",
+      "components": {
+        "Transform": {
+          "enabled": true,
+          "x": 370.0132211650835,
+          "y": 482.0,
+          "rotation": 0.0,
+          "scale_x": 1.0,
+          "scale_y": 1.0
+        },
+        "Collider": {
+          "enabled": true,
+          "width": 28.0,
+          "height": 28.0,
+          "offset_x": 0.0,
+          "offset_y": 0.0,
+          "is_trigger": true
+        }
+      }
+    },
+    {
+      "name": "Ground",
+      "active": true,
+      "tag": "Ground",
+      "layer": "Gameplay",
+      "components": {
+        "Transform": {
+          "enabled": true,
+          "x": 400.0,
+          "y": 540.0,
+          "rotation": 0.0,
+          "scale_x": 1.0,
+          "scale_y": 1.0
+        },
+        "Collider": {
+          "enabled": true,
+          "width": 900.0,
+          "height": 68.0,
+          "offset_x": 0.0,
+          "offset_y": 0.0,
+          "is_trigger": false
+        }
+      }
+    }
+  ],
+  "rules": [
+    {
+      "event": "on_trigger_enter",
+      "when": {
+        "entity_a": "AgentA",
+        "entity_b": "GoalOrb"
+      },
+      "do": [
+        {
+          "action": "destroy_entity",
+          "entity": "GoalOrb"
+        }
+      ]
+    },
+    {
+      "event": "on_trigger_enter",
+      "when": {
+        "entity_a": "GoalOrb",
+        "entity_b": "AgentA"
+      },
+      "do": [
+        {
+          "action": "destroy_entity",
+          "entity": "GoalOrb"
+        }
+      ]
+    },
+    {
+      "event": "on_trigger_enter",
+      "when": {
+        "entity_a": "AgentB",
+        "entity_b": "GoalOrb"
+      },
+      "do": [
+        {
+          "action": "destroy_entity",
+          "entity": "GoalOrb"
+        }
+      ]
+    },
+    {
+      "event": "on_trigger_enter",
+      "when": {
+        "entity_a": "GoalOrb",
+        "entity_b": "AgentB"
+      },
+      "do": [
+        {
+          "action": "destroy_entity",
+          "entity": "GoalOrb"
+        }
+      ]
+    }
+  ],
+  "feature_metadata": {
+    "physics_2d": {
+      "backend": "legacy_aabb"
+    }
+  }
+}

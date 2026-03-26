@@ -1,0 +1,40 @@
+"""
+engine/components/scene_link.py - Enlace declarativo a otra escena.
+"""
+
+from __future__ import annotations
+
+from engine.ecs.component import Component
+
+
+class SceneLink(Component):
+    """Referencia serializable a otra escena del proyecto."""
+
+    def __init__(
+        self,
+        target_path: str = "",
+        flow_key: str = "",
+        preview_label: str = "",
+    ) -> None:
+        self.enabled: bool = True
+        self.target_path: str = str(target_path or "").strip()
+        self.flow_key: str = str(flow_key or "").strip()
+        self.preview_label: str = str(preview_label or "").strip()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "enabled": self.enabled,
+            "target_path": self.target_path,
+            "flow_key": self.flow_key,
+            "preview_label": self.preview_label,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object]) -> "SceneLink":
+        component = cls(
+            target_path=str(data.get("target_path", "") or ""),
+            flow_key=str(data.get("flow_key", "") or ""),
+            preview_label=str(data.get("preview_label", "") or ""),
+        )
+        component.enabled = bool(data.get("enabled", True))
+        return component

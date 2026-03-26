@@ -1,0 +1,17 @@
+{
+    "recent_assets": {},
+    "last_scene": "levels/demo_level.json",
+    "open_scenes": [
+        "levels/demo_level.json"
+    ],
+    "active_scene": "levels/demo_level.json",
+    "scene_view_states": {},
+    "preferences": {
+        "editor_active_tool": "Rotate",
+        "editor_transform_space": "world",
+        "editor_pivot_mode": "pivot",
+        "editor_snap_move_step": 10.0,
+        "editor_snap_rotate_step": 15.0,
+        "editor_snap_scale_step": 0.1
+    }
+}

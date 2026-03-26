@@ -1,0 +1,112 @@
+{
+  "workers": 8,
+  "episodes": 8,
+  "max_steps": 1250,
+  "elapsed_seconds": 2.026201300000139,
+  "steps": 10000,
+  "throughput_steps_per_second": 4935.343788398179,
+  "failures": [],
+  "summaries": [
+    {
+      "episode_log_version": 1,
+      "scene_path": "levels/multiagent_toy_scene.json",
+      "episodes": 1,
+      "max_steps": 1250,
+      "seed": 123,
+      "env_kind": "auto",
+      "completed_episodes": 1,
+      "steps": 1250,
+      "terminated": 0,
+      "truncated": 1
+    },
+    {
+      "episode_log_version": 1,
+      "scene_path": "levels/multiagent_toy_scene.json",
+      "episodes": 1,
+      "max_steps": 1250,
+      "seed": 1123,
+      "env_kind": "auto",
+      "completed_episodes": 1,
+      "steps": 1250,
+      "terminated": 0,
+      "truncated": 1
+    },
+    {
+      "episode_log_version": 1,
+      "scene_path": "levels/multiagent_toy_scene.json",
+      "episodes": 1,
+      "max_steps": 1250,
+      "seed": 2123,
+      "env_kind": "auto",
+      "completed_episodes": 1,
+      "steps": 1250,
+      "terminated": 0,
+      "truncated": 1
+    },
+    {
+      "episode_log_version": 1,
+      "scene_path": "levels/multiagent_toy_scene.json",
+      "episodes": 1,
+      "max_steps": 1250,
+      "seed": 3123,
+      "env_kind": "auto",
+      "completed_episodes": 1,
+      "steps": 1250,
+      "terminated": 0,
+      "truncated": 1
+    },
+    {
+      "episode_log_version": 1,
+      "scene_path": "levels/multiagent_toy_scene.json",
+      "episodes": 1,
+      "max_steps": 1250,
+      "seed": 4123,
+      "env_kind": "auto",
+      "completed_episodes": 1,
+      "steps": 1250,
+      "terminated": 0,
+      "truncated": 1
+    },
+    {
+      "episode_log_version": 1,
+      "scene_path": "levels/multiagent_toy_scene.json",
+      "episodes": 1,
+      "max_steps": 1250,
+      "seed": 5123,
+      "env_kind": "auto",
+      "completed_episodes": 1,
+      "steps": 1250,
+      "terminated": 0,
+      "truncated": 1
+    },
+    {
+      "episode_log_version": 1,
+      "scene_path": "levels/multiagent_toy_scene.json",
+      "episodes": 1,
+      "max_steps": 1250,
+      "seed": 6123,
+      "env_kind": "auto",
+      "completed_episodes": 1,
+      "steps": 1250,
+      "terminated": 0,
+      "truncated": 1
+    },
+    {
+      "episode_log_version": 1,
+      "scene_path": "levels/multiagent_toy_scene.json",
+      "episodes": 1,
+      "max_steps": 1250,
+      "seed": 7123,
+      "env_kind": "auto",
+      "completed_episodes": 1,
+      "steps": 1250,
+      "terminated": 0,
+      "truncated": 1
+    }
+  ],
+  "resource_limits": {
+    "max_workers": 8,
+    "worker_timeout_seconds": 120,
+    "memory_strategy": "subprocess_shards"
+  }
+}

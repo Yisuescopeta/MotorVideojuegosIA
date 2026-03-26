@@ -1,0 +1,4 @@
+{
+    "startup_scene": "levels/main_scene.json",
+    "template": "empty"
+}

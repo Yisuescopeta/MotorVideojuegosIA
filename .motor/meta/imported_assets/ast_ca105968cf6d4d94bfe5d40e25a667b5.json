@@ -1,0 +1,35 @@
+{
+    "version": 1,
+    "guid": "ast_ca105968cf6d4d94bfe5d40e25a667b5",
+    "path": "levels/demo_level.json",
+    "asset_kind": "scene_data",
+    "importer": "scene_data",
+    "source_hash": "bf9c7c67c39cfaf14fd6169cea0f3cc566b2aec094232a94ade63757b2236e99",
+    "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
+    "dependencies": [
+        "assets/images_1.png",
+        "assets/test_spritesheet.png"
+    ],
+    "metadata": {
+        "guid": "ast_ca105968cf6d4d94bfe5d40e25a667b5",
+        "source_path": "levels/demo_level.json",
+        "path": "levels/demo_level.json",
+        "asset_kind": "scene_data",
+        "importer": "scene_data",
+        "labels": [],
+        "dependencies": [],
+        "import_settings": {
+            "asset_type": "scene_data",
+            "import_mode": "raw",
+            "grid": {},
+            "automatic": {},
+            "slices": []
+        },
+        "asset_type": "scene_data",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "source_size_bytes": 9746
+}

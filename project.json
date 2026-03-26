@@ -1,0 +1,15 @@
+{
+    "name": "MotorVideojuegosIA",
+    "version": 2,
+    "engine_version": "2026.03",
+    "template": "empty",
+    "paths": {
+        "assets": "assets",
+        "levels": "levels",
+        "prefabs": "prefabs",
+        "scripts": "scripts",
+        "settings": "settings",
+        "meta": ".motor/meta",
+        "build": ".motor/build"
+    }
+}

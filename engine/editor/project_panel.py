@@ -13,7 +13,10 @@ FUNCIONALIDADES:
 
 import os
 import pyray as rl
-from typing import List, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional
+
+from engine.assets.asset_service import AssetService
+from engine.project.project_service import ProjectService
 
 class ProjectPanel:
     
@@ -28,14 +31,21 @@ class ProjectPanel:
     UNITY_TAB_LINE = rl.Color(58, 121, 187, 255)
     UNITY_FOLDER_ICON = rl.Color(220, 200, 100, 255)
     
-    HEADER_HEIGHT: int = 22
     SIDEBAR_WIDTH: int = 180
     ITEM_HEIGHT: int = 18
+    MENU_WIDTH: int = 140
     
     def __init__(self, root_path: str = ".") -> None:
         self.root_path = os.path.abspath(root_path)
         self.current_path = self.root_path
         self.items: List[Tuple[str, str]] = [] # (name, type: 'dir'|'file')
+        self.project_service: Optional[ProjectService] = None
+        self.asset_service: Optional[AssetService] = None
+        self.selected_file: Optional[str] = None
+        self.request_open_sprite_editor_for: Optional[str] = None
+        self.request_open_scene_for: Optional[str] = None
+        self.show_context_menu: bool = False
+        self.context_menu_pos: Optional[rl.Vector2] = None
         
         self.scroll_offset: float = 0
         self.sidebar_scroll: float = 0
@@ -47,7 +57,32 @@ class ProjectPanel:
         # Folder tree state
         from typing import Set
         self.expanded_folders: Set[str] = {self.root_path}
+        self._item_display_cache: Dict[tuple[str, str], Dict[str, Any]] = {}
+        self._breadcrumb_cache: List[tuple[str, int]] = []
         
+        self.refresh()
+
+    def set_project_service(self, project_service: ProjectService) -> None:
+        self.project_service = project_service
+        self.asset_service = AssetService(project_service)
+        self.asset_service.refresh_catalog()
+        self.root_path = project_service.project_root.as_posix()
+        self.current_path = self.root_path
+        self.selected_file = None
+        self.request_open_sprite_editor_for = None
+        self.request_open_scene_for = None
+        self.show_context_menu = False
+        self.context_menu_pos = None
+        self.scroll_offset = 0
+        self.sidebar_scroll = 0
+        self.dragging_file = None
+        self.drag_start_pos = None
+        self.expanded_folders = {self.root_path}
+        self.refresh()
+
+    def refresh_asset_catalog(self) -> None:
+        if self.asset_service is not None:
+            self.asset_service.refresh_catalog()
         self.refresh()
         
     def refresh(self) -> None:
@@ -69,41 +104,46 @@ class ProjectPanel:
                 if os.path.isdir(full_path):
                     self.items.append((entry, "dir"))
                 else:
-                    if not entry.endswith(".pyc"):
+                    if not entry.endswith(".pyc") and not entry.endswith(".meta.json"):
                         self.items.append((entry, "file"))
+            self._rebuild_display_cache()
                         
         except Exception:
             self.items = []
+            self._item_display_cache = {}
+            self._breadcrumb_cache = []
+
+    def create_folder(self, base_name: str = "New Folder") -> str:
+        target_dir = self.current_path
+        candidate = os.path.join(target_dir, base_name)
+        suffix = 1
+        while os.path.exists(candidate):
+            candidate = os.path.join(target_dir, f"{base_name} {suffix}")
+            suffix += 1
+        os.makedirs(candidate, exist_ok=True)
+        self.refresh()
+        return candidate
 
     def render(self, x: int, y: int, width: int, height: int) -> None:
         """Renderiza el panel de proyecto estilo Unity."""
-        
-        # ========================================
-        # 1. Header (Solo el fondo, tabs las dibuja EditorLayout)
-        # ========================================
-        header_rect = rl.Rectangle(x, y, width, self.HEADER_HEIGHT)
-        rl.draw_rectangle_rec(header_rect, self.UNITY_HEADER)
-        
+
         # Breadcrumb area / Search
-        breadcrumb_y = y + self.HEADER_HEIGHT
+        breadcrumb_y = y
         breadcrumb_h = 24
         rl.draw_rectangle(x, breadcrumb_y, width, breadcrumb_h, self.UNITY_BG_DARK)
         rl.draw_line(x, breadcrumb_y + breadcrumb_h - 1, x + width, breadcrumb_y + breadcrumb_h - 1, self.UNITY_BORDER)
         
         # Breadcrumbs
-        rel_path = os.path.relpath(self.current_path, self.root_path)
-        path_parts = ["Assets"] + ([p for p in rel_path.split(os.sep) if p and p != "."])
         bc_x = x + 10
-        for part in path_parts:
-            text = part + " >"
+        for text, text_width in self._breadcrumb_cache:
             rl.draw_text(text, bc_x, int(breadcrumb_y + 6), 10, self.UNITY_TEXT_DIM)
-            bc_x += rl.measure_text(text, 10) + 5
+            bc_x += text_width + 5
             
         # ========================================
         # 2. Main Area (Split into Sidebar and Content)
         # ========================================
         main_y = breadcrumb_y + breadcrumb_h
-        main_h = height - (self.HEADER_HEIGHT + breadcrumb_h)
+        main_h = height - breadcrumb_h
         
         # Sidebar (Folder Tree)
         sidebar_rect = rl.Rectangle(x, main_y, self.SIDEBAR_WIDTH, main_h)
@@ -118,6 +158,7 @@ class ProjectPanel:
         rl.draw_rectangle(content_x, main_y, content_w, main_h, rl.Color(32, 32, 32, 255))
         
         self._render_content(content_x, main_y, content_w, main_h)
+        self._render_context_menu(content_x, main_y, content_w, main_h)
 
     def _render_sidebar(self, x: int, y: int, width: int, height: int) -> None:
         """Dibuja el árbol de carpetas lateral."""
@@ -132,7 +173,7 @@ class ProjectPanel:
             rl.draw_rectangle_rec(root_rect, self.UNITY_HOVER)
             
         rl.draw_text("v", int(x + 5), int(y + 8), 10, self.UNITY_TEXT) 
-        rl.draw_text("Assets", int(x + 20), int(y + 9), 10, self.UNITY_TEXT)
+        rl.draw_text("Project", int(x + 20), int(y + 9), 10, self.UNITY_TEXT)
         
         if is_hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
             self.current_path = self.root_path
@@ -151,6 +192,9 @@ class ProjectPanel:
         if is_mouse_in:
             self.scroll_offset -= rl.get_mouse_wheel_move() * 20
             self.scroll_offset = max(0, self.scroll_offset)
+            if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_RIGHT):
+                self.show_context_menu = True
+                self.context_menu_pos = rl.get_mouse_position()
             
         # Layout de iconos (Unity style grid)
         icon_w, icon_h = 60, 70
@@ -158,6 +202,7 @@ class ProjectPanel:
         cols = max(1, width // (icon_w + padding))
         
         for i, (name, entry_type) in enumerate(self.items):
+            display = self._item_display_cache.get((name, entry_type), {})
             row = i // cols
             col = i % cols
             
@@ -182,6 +227,7 @@ class ProjectPanel:
                         self.refresh()
                         self.scroll_offset = 0
                     else:
+                        self.selected_file = os.path.join(self.current_path, name)
                         self.drag_start_pos = mouse_pos
             
             # Visuales del Icono
@@ -194,9 +240,12 @@ class ProjectPanel:
                 rl.draw_rectangle_lines_ex(icon_rect, 1, rl.Color(100, 100, 100, 255))
             
             # Nombre truncado
-            trunc_name = name if len(name) < 10 else name[:7] + "..."
-            text_w = rl.measure_text(trunc_name, 10)
+            trunc_name = str(display.get("trunc_name", name if len(name) < 10 else name[:7] + "..."))
+            text_w = int(display.get("text_width", rl.measure_text(trunc_name, 10)))
             rl.draw_text(trunc_name, int(ix + (icon_w - text_w)//2), int(iy + 50), 10, self.UNITY_TEXT)
+            meta = str(display.get("meta", ""))
+            if meta:
+                rl.draw_text(meta, int(ix + 2), int(iy + 61), 8, self.UNITY_TEXT_DIM)
             
             # Drag logic
             if entry_type == "file" and self.drag_start_pos and is_hover:
@@ -207,5 +256,83 @@ class ProjectPanel:
             self.drag_start_pos = None
             self.dragging_file = None
 
+        if self.selected_file:
+            button_x = x + width - 140
+            if self.selected_file.lower().endswith((".png", ".jpg", ".jpeg", ".bmp")):
+                button_rect = rl.Rectangle(button_x, y + 6, 120, 20)
+                if rl.gui_button(button_rect, "Sprite Editor"):
+                    if self.project_service is not None:
+                        self.request_open_sprite_editor_for = self.project_service.to_relative_path(self.selected_file)
+                    else:
+                        self.request_open_sprite_editor_for = self.selected_file
+                button_x -= 128
+
+            if self._is_scene_file(self.selected_file):
+                scene_rect = rl.Rectangle(button_x, y + 6, 120, 20)
+                if rl.gui_button(scene_rect, "Open Scene"):
+                    if self.project_service is not None:
+                        self.request_open_scene_for = self.project_service.to_relative_path(self.selected_file)
+                    else:
+                        self.request_open_scene_for = self.selected_file
+
         rl.end_scissor_mode()
 
+    def _is_scene_file(self, file_path: str) -> bool:
+        if self.project_service is None or not file_path.lower().endswith(".json"):
+            return False
+        levels_root = self.project_service.get_project_path("levels").as_posix()
+        try:
+            return os.path.commonpath([os.path.abspath(file_path), levels_root]) == os.path.abspath(levels_root)
+        except ValueError:
+            return False
+
+    def _render_context_menu(self, x: int, y: int, width: int, height: int) -> None:
+        if not self.show_context_menu or self.context_menu_pos is None:
+            return
+
+        menu_x = int(min(self.context_menu_pos.x, x + width - self.MENU_WIDTH - 4))
+        menu_y = int(min(self.context_menu_pos.y, y + height - 78))
+        menu_rect = rl.Rectangle(menu_x, menu_y, self.MENU_WIDTH, 52)
+        rl.draw_rectangle_rec(menu_rect, self.UNITY_HEADER)
+        rl.draw_rectangle_lines_ex(menu_rect, 1, self.UNITY_BORDER)
+
+        create_rect = rl.Rectangle(menu_rect.x + 4, menu_rect.y + 4, menu_rect.width - 8, 20)
+        refresh_rect = rl.Rectangle(menu_rect.x + 4, menu_rect.y + 28, menu_rect.width - 8, 20)
+        if rl.gui_button(create_rect, "Create Folder"):
+            self.create_folder()
+            self.show_context_menu = False
+            self.context_menu_pos = None
+            return
+        if rl.gui_button(refresh_rect, "Refresh Assets"):
+            self.refresh_asset_catalog()
+            self.show_context_menu = False
+            self.context_menu_pos = None
+            return
+
+        mouse_pos = rl.get_mouse_position()
+        if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT) and not rl.check_collision_point_rec(mouse_pos, menu_rect):
+            self.show_context_menu = False
+            self.context_menu_pos = None
+
+    def _rebuild_display_cache(self) -> None:
+        self._item_display_cache = {}
+        rel_path = os.path.relpath(self.current_path, self.root_path)
+        path_parts = ["Project"] + ([p for p in rel_path.split(os.sep) if p and p != "."])
+        self._breadcrumb_cache = []
+        for part in path_parts:
+            text = part + " >"
+            self._breadcrumb_cache.append((text, rl.measure_text(text, 10)))
+
+        for name, entry_type in self.items:
+            trunc_name = name if len(name) < 10 else name[:7] + "..."
+            cached: Dict[str, Any] = {
+                "trunc_name": trunc_name,
+                "text_width": rl.measure_text(trunc_name, 10),
+                "meta": "",
+            }
+            if entry_type == "file" and self.project_service is not None and self.asset_service is not None:
+                rel_path = self.project_service.to_relative_path(os.path.join(self.current_path, name))
+                entry = self.asset_service.get_asset_entry(rel_path)
+                if entry is not None:
+                    cached["meta"] = f"{entry.get('asset_kind', '?')} {entry.get('guid_short', '')}"[:13]
+            self._item_display_cache[(name, entry_type)] = cached

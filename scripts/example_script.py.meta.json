@@ -1,0 +1,21 @@
+{
+    "guid": "ast_3860b2b5a2f74411999e98b577ea9918",
+    "source_path": "scripts/example_script.py",
+    "path": "scripts/example_script.py",
+    "asset_kind": "script",
+    "importer": "script",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "script",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "script",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

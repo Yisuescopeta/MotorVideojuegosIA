@@ -1,0 +1,22 @@
+start
+imported
+backend_created
+chunk:'\x1b[?9001h\x1b[?1004h'
+chunk:'\x1b[?25l\x1b[2J\x1b[m\x1b[HPS C:\\Users\\usuario\\Downloads\\MotorVideojuegosIA-main\\MotorVideojuegosIA-main\\projects\\Juego1>\x1b[1C\x1b]0;C:\\Windows\\System32\\WindowsPowerShell\\v1.0'
+wrote1
+chunk:'\x1b[?25l'
+chunk:'\x1b[93mGe\x1b[?25h'
+chunk:'\x1b[?25l\x1b[m\x1b[93m\x1b[1;96HGet-Location\r\n\x1b[?25h'
+chunk:'\x1b[m\r\n'
+chunk:'\x1b[?25lPath\x1b[86X\r\n----\x1b[86X\r\nC:\\Users\\usuario\\Downloads\\MotorVideojuegosIA-main\\MotorVideojuegosIA-main\\projects\\Juego1\x1b[8;1H\x1b[?25h'
+chunk:'PS C:\\Users\\usuario\\Downloads\\MotorVideojuegosIA-main\\MotorVideojuegosIA-main\\projects\\Juego1> '
+wrote2
+chunk:'\x1b[?25l'
+chunk:'\x1b[93mdir\r\n\x1b[?25h'
+chunk:'\x1b[m\r\n'
+chunk:'\x1b[?25l\r\n    Directorio: C:\\Users\\usuario\\Downloads\\MotorVideojuegosIA-main\\MotorVideojuegosIA-main\\projects\\Juego1\x1b[14;1HMode                 LastWriteTime     '
+chunk:'d-----        24/03/2026     18:31                scripts\x1b[62X\r\nd-----        24/03/2026     18:31                settings\x1b[61X\r\n'
+chunk:'-a----        24/03/2026     18:31            347 project.json\x1b[57X\x1b[57C'
+chunk:'\x1b[?25l\x1b[26;1HPS C:\\Users\\usuario\\Downloads\\MotorVideojuegosIA-main\\MotorVideojuegosIA-main\\projects\\Juego1> \x1b[?25h'
+count=15
+poll=None

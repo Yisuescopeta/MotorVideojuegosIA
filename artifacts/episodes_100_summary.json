@@ -1,0 +1,12 @@
+{
+  "episode_log_version": 1,
+  "scene_path": "levels/platformer_test_scene.json",
+  "episodes": 100,
+  "max_steps": 60,
+  "seed": 123,
+  "env_kind": "auto",
+  "completed_episodes": 100,
+  "steps": 6000,
+  "terminated": 0,
+  "truncated": 100
+}

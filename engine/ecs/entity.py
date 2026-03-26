@@ -21,6 +21,7 @@ EJEMPLO DE USO:
 """
 
 from typing import Any, TypeVar
+import copy
 
 from engine.ecs.component import Component
 
@@ -47,6 +48,17 @@ class Entity:
     No contiene lógica de juego, solo organiza datos.
     """
     
+    _TRACKED_FIELDS = {
+        "name",
+        "active",
+        "tag",
+        "layer",
+        "parent_name",
+        "prefab_instance",
+        "prefab_source_path",
+        "prefab_root_name",
+    }
+
     def __init__(self, name: str = "Entity") -> None:
         """
         Crea una nueva entidad con un ID único.
@@ -54,11 +66,43 @@ class Entity:
         Args:
             name: Nombre legible para identificar la entidad (debug)
         """
+        object.__setattr__(self, "_owner_world", None)
+        object.__setattr__(self, "_notifications_suspended", True)
         self.id: int = _generate_entity_id()
         self.name: str = name
+        self.active: bool = True
+        self.tag: str = "Untagged"
+        self.layer: str = "Default"
+        self.parent_name: str | None = None
+        self.prefab_instance: dict[str, Any] | None = None
+        self.prefab_source_path: str | None = None
+        self.prefab_root_name: str | None = None
         self._components: dict[type, Component] = {}
+        self._component_metadata: dict[type, dict[str, Any]] = {}
+        object.__setattr__(self, "_notifications_suspended", False)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        notifications_suspended = bool(getattr(self, "_notifications_suspended", True))
+        tracked = name in self._TRACKED_FIELDS and not notifications_suspended and hasattr(self, name)
+        previous = getattr(self, name, None) if tracked else None
+        object.__setattr__(self, name, value)
+        if tracked and previous != value:
+            self._notify_owner_world(
+                "entity_field_changed",
+                field=name,
+                previous=previous,
+                current=value,
+            )
+
+    def _set_owner_world(self, world: Any | None) -> None:
+        object.__setattr__(self, "_owner_world", world)
+
+    def _notify_owner_world(self, event: str, **payload: Any) -> None:
+        owner_world = getattr(self, "_owner_world", None)
+        if owner_world is not None and hasattr(owner_world, "_on_entity_changed"):
+            owner_world._on_entity_changed(self, event, **payload)
     
-    def add_component(self, component: Component) -> None:
+    def add_component(self, component: Component, metadata: dict[str, Any] | None = None) -> None:
         """
         Añade un componente a la entidad.
         
@@ -69,7 +113,15 @@ class Entity:
             component: Instancia del componente a añadir
         """
         component_type = type(component)
+        previous_component = self._components.get(component_type)
         self._components[component_type] = component
+        self._component_metadata[component_type] = copy.deepcopy(metadata or {})
+        self._notify_owner_world(
+            "component_added",
+            component_type=component_type,
+            previous_component=previous_component,
+            component=component,
+        )
     
     def get_component(self, component_type: type[T]) -> T | None:
         """
@@ -94,6 +146,12 @@ class Entity:
             True si el componente existe, False en caso contrario
         """
         return component_type in self._components
+
+    def has_enabled_component(self, component_type: type) -> bool:
+        component = self._components.get(component_type)
+        if component is None:
+            return False
+        return bool(getattr(component, "enabled", True))
     
     def remove_component(self, component_type: type) -> None:
         """
@@ -103,7 +161,15 @@ class Entity:
             component_type: Clase del componente a eliminar
         """
         if component_type in self._components:
+            removed_component = self._components[component_type]
             del self._components[component_type]
+            self._notify_owner_world(
+                "component_removed",
+                component_type=component_type,
+                component=removed_component,
+            )
+        if component_type in self._component_metadata:
+            del self._component_metadata[component_type]
     
     def get_all_components(self) -> list[Component]:
         """
@@ -113,6 +179,24 @@ class Entity:
             Lista de todos los componentes
         """
         return list(self._components.values())
+
+    def get_component_metadata(self, component_type: type[T]) -> dict[str, Any]:
+        return copy.deepcopy(self._component_metadata.get(component_type, {}))
+
+    def set_component_metadata(self, component_type: type[T], metadata: dict[str, Any] | None) -> None:
+        if component_type not in self._components:
+            return
+        self._component_metadata[component_type] = copy.deepcopy(metadata or {})
+        self._notify_owner_world(
+            "component_metadata_changed",
+            component_type=component_type,
+        )
+
+    def get_component_metadata_by_name(self, component_name: str) -> dict[str, Any]:
+        for component_type in self._components.keys():
+            if component_type.__name__ == component_name:
+                return self.get_component_metadata(component_type)
+        return {}
     
     def to_dict(self) -> dict[str, Any]:
         """
@@ -121,14 +205,33 @@ class Entity:
         Returns:
             Diccionario con id, name y componentes serializados
         """
-        return {
+        data = {
             "id": self.id,
             "name": self.name,
+            "active": self.active,
+            "tag": self.tag,
+            "layer": self.layer,
             "components": {
                 comp_type.__name__: comp.to_dict()
                 for comp_type, comp in self._components.items()
-            }
+            },
+            "component_metadata": {
+                comp_type.__name__: copy.deepcopy(self._component_metadata.get(comp_type, {}))
+                for comp_type in self._components.keys()
+                if self._component_metadata.get(comp_type)
+            },
         }
+        if self.parent_name is not None:
+            data["parent"] = self.parent_name
+        if self.prefab_instance is not None:
+            data["prefab_instance"] = self.prefab_instance
+        if self.prefab_source_path is not None:
+            data["prefab_source_path"] = self.prefab_source_path
+        if self.prefab_root_name is not None:
+            data["prefab_root_name"] = self.prefab_root_name
+        if not data["component_metadata"]:
+            del data["component_metadata"]
+        return data
     
     def __repr__(self) -> str:
         """Representación legible de la entidad para debug."""

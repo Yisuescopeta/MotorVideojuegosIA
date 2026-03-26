@@ -1,0 +1,21 @@
+{
+    "guid": "ast_1dfc9299941948a0b23fde950616951e",
+    "source_path": "scripts/main_menu_controller.py",
+    "path": "scripts/main_menu_controller.py",
+    "asset_kind": "script",
+    "importer": "script",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "script",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "script",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

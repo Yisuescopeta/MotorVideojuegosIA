@@ -1,0 +1,35 @@
+{
+    "version": 1,
+    "guid": "ast_0a0f68b252014c979074814c28cd1c75",
+    "path": "levels/platformer_test_scene.json",
+    "asset_kind": "scene_data",
+    "importer": "scene_data",
+    "source_hash": "a8abb2744ca5e1b937362ab2cf306ebc0aef4b2789814a487b96dbda00793088",
+    "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
+    "dependencies": [
+        "assets/images_3.png",
+        "levels/main_menu_scene.json"
+    ],
+    "metadata": {
+        "guid": "ast_0a0f68b252014c979074814c28cd1c75",
+        "source_path": "levels/platformer_test_scene.json",
+        "path": "levels/platformer_test_scene.json",
+        "asset_kind": "scene_data",
+        "importer": "scene_data",
+        "labels": [],
+        "dependencies": [],
+        "import_settings": {
+            "asset_type": "scene_data",
+            "import_mode": "raw",
+            "grid": {},
+            "automatic": {},
+            "slices": []
+        },
+        "asset_type": "scene_data",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "source_size_bytes": 13105
+}

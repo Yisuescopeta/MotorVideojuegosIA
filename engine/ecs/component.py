@@ -46,11 +46,13 @@ class Component:
             Las claves deben ser strings, los valores tipos básicos.
         """
         # Implementación por defecto: retorna todos los atributos públicos
-        return {
+        data = {
             key: value
             for key, value in self.__dict__.items()
             if not key.startswith("_")
         }
+        data.setdefault("enabled", getattr(self, "enabled", True))
+        return data
     
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Component":
@@ -64,6 +66,8 @@ class Component:
             Nueva instancia del componente con los datos cargados
         """
         instance = cls()
+        if not hasattr(instance, "enabled"):
+            setattr(instance, "enabled", True)
         for key, value in data.items():
             if hasattr(instance, key):
                 setattr(instance, key, value)

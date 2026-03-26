@@ -65,6 +65,48 @@ def main():
     except Exception as e:
         print(f"[FAIL] Excepción editando: {e}")
 
+    # 4b. Authoring compartido de metadatos y Camera2D
+    try:
+        print("[INFO] Creando Camera2D serializable...")
+        camera_result = api.create_camera2d(
+            "MainCamera",
+            transform={"x": 320.0, "y": 180.0},
+            camera={"offset_x": 320.0, "offset_y": 180.0, "zoom": 1.5, "follow_entity": "Player", "framing_mode": "platformer"},
+        )
+        if not camera_result["success"]:
+            print(f"[FAIL] No se pudo crear Camera2D: {camera_result['message']}")
+        else:
+            api.set_camera_framing("MainCamera", {"clamp_left": 0.0, "clamp_right": 1024.0, "recenter_on_play": True})
+            api.set_entity_tag("MainCamera", "MainCamera")
+            api.set_entity_layer("MainCamera", "Gameplay")
+            filtered = api.list_entities(tag="MainCamera", layer="Gameplay", active=True)
+            primary_camera = api.get_primary_camera()
+            print(f"[OK] Filtro tag/layer encontró {len(filtered)} entidad(es)")
+            print(f"[OK] Cámara primaria: {primary_camera['name'] if primary_camera else 'ninguna'}")
+    except Exception as e:
+        print(f"[FAIL] Error creando o consultando Camera2D: {e}")
+
+    try:
+        print("[INFO] Creando InputMap y AudioSource serializables...")
+        api.create_input_map("PlayerInput", {"move_left": "J", "move_right": "L", "action_1": "SPACE"})
+        api.create_audio_source("MusicPlayer", audio={"asset_path": "assets/theme.wav", "play_on_awake": False})
+        api.update_audio_source("MusicPlayer", {"loop": True, "volume": 0.25})
+        audio_state = api.get_audio_state("MusicPlayer")
+        input_state = api.get_input_state("PlayerInput")
+        print(f"[OK] AudioSource editable: loop={audio_state.get('loop')} volume={audio_state.get('volume')}")
+        print(f"[OK] InputMap expone estado serializable: {input_state}")
+    except Exception as e:
+        print(f"[FAIL] Error con InputMap o AudioSource: {e}")
+
+    try:
+        print("[INFO] Añadiendo ScriptBehaviour serializable...")
+        api.create_entity("AgentDrivenActor")
+        api.add_script_behaviour("AgentDrivenActor", "platformer_character", {"health": 3, "coins": 0})
+        script_data = api.get_script_public_data("AgentDrivenActor")
+        print(f"[OK] ScriptBehaviour visible por API: {script_data}")
+    except Exception as e:
+        print(f"[FAIL] Error creando ScriptBehaviour: {e}")
+
     # 5. Control de Ejecución (Play/Step)
     try:
         print("[INFO] Iniciando simulación (PLAY)...")

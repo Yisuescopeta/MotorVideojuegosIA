@@ -1,0 +1,21 @@
+{
+    "guid": "ast_b8a67818097d429da9674325af151200",
+    "source_path": "levels/multiagent_toy_scene.json",
+    "path": "levels/multiagent_toy_scene.json",
+    "asset_kind": "scene_data",
+    "importer": "scene_data",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "scene_data",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "scene_data",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

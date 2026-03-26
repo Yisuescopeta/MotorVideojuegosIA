@@ -1,0 +1,12 @@
+{
+  "episode_log_version": 1,
+  "scene_path": "levels/multiagent_toy_scene.json",
+  "episodes": 1,
+  "max_steps": 1250,
+  "seed": 2123,
+  "env_kind": "auto",
+  "completed_episodes": 1,
+  "steps": 1250,
+  "terminated": 0,
+  "truncated": 1
+}

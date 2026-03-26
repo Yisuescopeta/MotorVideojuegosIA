@@ -1,0 +1,21 @@
+{
+    "guid": "ast_0a1cfe5901b94d30b23b593639735daa",
+    "source_path": "levels/lol.json",
+    "path": "levels/lol.json",
+    "asset_kind": "scene_data",
+    "importer": "scene_data",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "scene_data",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "scene_data",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

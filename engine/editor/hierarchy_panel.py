@@ -38,6 +38,20 @@ class HierarchyPanel:
         self.scroll_offset: int = 0
         self.expanded_ids: Set[int] = set()
         self.panel_width: int = 200
+        self._scene_manager = None
+        self._cached_world_id: int = -1
+        self._cached_world_version: int = -1
+        self._cached_roots: List[Entity] = []
+        
+        # Context Menu State
+        self.context_menu_active: bool = False
+        self.context_menu_pos = rl.Vector2(0, 0)
+        self.context_target_id: Optional[int] = None
+        self.hovered_entity_id: Optional[int] = None
+
+    def set_scene_manager(self, manager: object) -> None:
+        """Permite que la UI use el mismo camino serializable que la API."""
+        self._scene_manager = manager
         
     def render(self, world: "World", x: int, y: int, width: int, height: int) -> None:
         """Renderiza el panel de jerarquía estilo Unity."""
@@ -45,6 +59,16 @@ class HierarchyPanel:
             return
             
         self.panel_width = width
+        
+        # Input: Close menu if clicking elsewhere (logic inside _draw_context_menu handles its own clicks)
+        if self.context_menu_active and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+            mouse = rl.get_mouse_position()
+            # Simple check: if not in menu (evaluated later), close. 
+            # Actually, let's defer closing to _draw_context_menu to check collision properly.
+            pass
+
+        # Reset hover frame state
+        self.hovered_entity_id = None
 
         # Scissor para no salir del área
         rl.begin_scissor_mode(x, y, width, height)
@@ -72,10 +96,13 @@ class HierarchyPanel:
         rl.draw_text("+", int(x + width - 17), int(y + 4), 14, self.UNITY_TEXT)
         
         if is_hover_plus and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-            # Crear nueva entidad
-            new_entity = world.create_entity(f"New Entity {world.entity_count()}")
-            new_entity.add_component(Transform())
-            world.selected_entity_name = new_entity.name
+            new_name = f"New Entity {world.entity_count()}"
+            if self._scene_manager is not None and self._scene_manager.create_entity(new_name):
+                self._scene_manager.set_selected_entity(new_name)
+            else:
+                new_entity = world.create_entity(new_name)
+                new_entity.add_component(Transform())
+                world.selected_entity_name = new_entity.name
         
         # Línea separadora
         rl.draw_line(x, int(y + self.HEADER_HEIGHT), x + width, int(y + self.HEADER_HEIGHT), self.UNITY_BORDER)
@@ -91,21 +118,19 @@ class HierarchyPanel:
         rl.draw_rectangle(x, int(y + self.HEADER_HEIGHT), width, int(content_height), self.UNITY_BG)
         
         # Obtener entidades raíz
-        roots = []
-        all_entities = world.get_all_entities()
-        
-        for entity in all_entities:
-            transform = entity.get_component(Transform)
-            if transform is None or transform.parent is None:
-                roots.append(entity)
-                
-        roots.sort(key=lambda e: e.id)
+        roots = self._get_root_entities(world)
         
         # Renderizar árbol
         for entity in roots:
             content_y = self._render_node(entity, 0, x, content_y, world, content_y_start, content_height)
             
         rl.end_scissor_mode()
+        
+        # Context Menu Logic (After scissor to draw on top)
+        self._handle_context_input(world, x, y, width, height)
+        
+        if self.context_menu_active:
+             self._draw_context_menu(world)
             
     def _render_node(self, entity: Entity, depth: int, panel_x: int, y: int, world: "World", panel_y: int, panel_h: int) -> int:
         """Renderiza un nodo y sus hijos recursivamente. Retorna la nueva Y."""
@@ -143,10 +168,14 @@ class HierarchyPanel:
                     y <= mouse_pos.y < y + row_height) and is_mouse_in_panel
             
         if is_hover:
+            self.hovered_entity_id = entity.id
             rl.draw_rectangle(panel_x, y, self.panel_width, row_height, self.UNITY_HOVER)
             
             if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-                world.selected_entity_name = entity.name
+                if self._scene_manager is not None:
+                    self._scene_manager.set_selected_entity(entity.name)
+                else:
+                    world.selected_entity_name = entity.name
                 if has_children:
                     # Toggle expand
                     if entity.id in self.expanded_ids:
@@ -204,9 +233,136 @@ class HierarchyPanel:
         return current_y
 
     def _find_entity_by_transform(self, world: "World", transform: Transform) -> Optional[Entity]:
-        """Ayuda ineficiente para encontrar entidad dado un transform."""
-        # En una implementación real, Component debería tener self.entity
-        for ent in world.get_all_entities():
-            if ent.get_component(Transform) == transform:
-                return ent
-        return None
+        return world.get_entity_by_component_instance(transform)
+
+    def _get_root_entities(self, world: "World") -> List[Entity]:
+        world_id = id(world)
+        world_version = int(getattr(world, "version", -1))
+        if self._cached_world_id == world_id and self._cached_world_version == world_version:
+            return self._cached_roots
+
+        roots: List[Entity] = []
+        for entity in world.get_all_entities():
+            transform = entity.get_component(Transform)
+            if transform is None or transform.parent is None:
+                roots.append(entity)
+        roots.sort(key=lambda item: item.id)
+
+        self._cached_world_id = world_id
+        self._cached_world_version = world_version
+        self._cached_roots = roots
+        return roots
+
+    def _handle_context_input(self, world: "World", x: int, y: int, w: int, h: int) -> None:
+        """Maneja el input para abrir el menú contextual en el panel."""
+        mouse = rl.get_mouse_position()
+        in_panel = rl.check_collision_point_rec(mouse, rl.Rectangle(x, y, w, h))
+        
+        if in_panel and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_RIGHT):
+            self.context_menu_active = True
+            self.context_menu_pos = mouse
+            self.context_target_id = self.hovered_entity_id
+            
+    def _draw_context_menu(self, world: "World") -> None:
+        """Dibuja el menú contextual y procesa sus opciones."""
+        
+        # Options
+        options = ["Create Entity"]
+        if self.context_target_id is not None:
+             options.append("Delete Entity")
+             options.append("Duplicate Entity")
+             options.append("Save as Prefab")
+             
+        item_height = 24
+        menu_width = 140
+        menu_height = len(options) * item_height
+        
+        mx = int(self.context_menu_pos.x)
+        my = int(self.context_menu_pos.y)
+        
+        # Keep in screen
+        if mx + menu_width > rl.get_screen_width(): mx -= menu_width
+        if my + menu_height > rl.get_screen_height(): my -= menu_height
+        
+        menu_rect = rl.Rectangle(mx, my, menu_width, menu_height)
+        
+        # Check close (Click outside)
+        if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+            if not rl.check_collision_point_rec(rl.get_mouse_position(), menu_rect):
+                self.context_menu_active = False
+                return
+
+        # Draw Menu Background
+        rl.draw_rectangle_rec(menu_rect, self.UNITY_BG)
+        rl.draw_rectangle_lines_ex(menu_rect, 1, self.UNITY_BORDER)
+        
+        # Draw Items
+        mouse = rl.get_mouse_position()
+        
+        for i, option in enumerate(options):
+            item_y = my + (i * item_height)
+            item_rect = rl.Rectangle(mx, item_y, menu_width, item_height)
+            
+            is_hover = rl.check_collision_point_rec(mouse, item_rect)
+            
+            if is_hover:
+                rl.draw_rectangle_rec(item_rect, self.UNITY_HOVER)
+                
+            rl.draw_text(option, mx + 10, item_y + 6, 10, self.UNITY_TEXT)
+            
+            # Click Handler
+            if is_hover and rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
+                self._execute_context_action(world, option)
+                self.context_menu_active = False
+                
+    def _execute_context_action(self, world: "World", action: str) -> None:
+        if action == "Create Entity":
+            new_name = f"New Entity {world.entity_count()}"
+            if self._scene_manager is not None and self._scene_manager.create_entity(new_name):
+                self._scene_manager.set_selected_entity(new_name)
+            else:
+                new_ent = world.create_entity(new_name)
+                new_ent.add_component(Transform())
+                world.selected_entity_name = new_ent.name
+            
+        elif action == "Delete Entity" and self.context_target_id is not None:
+            entity = world.get_entity(self.context_target_id)
+            if entity:
+                if self._scene_manager is not None:
+                    self._scene_manager.remove_entity(entity.name)
+                else:
+                    world.destroy_entity(entity.id)
+                # Si era el seleccionado, deseleccionar
+                if world.selected_entity_name == entity.name:
+                    if self._scene_manager is not None:
+                        self._scene_manager.set_selected_entity(None)
+                    else:
+                        world.selected_entity_name = None
+                    
+        elif action == "Duplicate Entity" and self.context_target_id is not None:
+            entity = world.get_entity(self.context_target_id)
+            if entity is not None and self._scene_manager is not None:
+                self._scene_manager.duplicate_entity_subtree(entity.name)
+
+        elif action == "Save as Prefab" and self.context_target_id is not None:
+            entity = world.get_entity(self.context_target_id)
+            if entity:
+                # Use tkinter for dialog (local scope)
+                import tkinter as tk
+                from tkinter import filedialog
+                try:
+                    root = tk.Tk()
+                    root.withdraw()
+                    root.attributes('-topmost', True)
+                    path = filedialog.asksaveasfilename(
+                        defaultextension=".prefab",
+                        filetypes=[("Prefab Files", "*.prefab"), ("All Files", "*.*")],
+                        title="Save Entity as Prefab"
+                    )
+                    root.destroy()
+                    
+                    if path:
+                        from engine.assets.prefab import PrefabManager
+                        PrefabManager.save_prefab(entity, path, world=world)
+                except Exception as e:
+                    print(f"[ERROR] Save Prefab dialog failed: {e}")

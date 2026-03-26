@@ -29,6 +29,10 @@ python main.py
 | **R** | Recargar nivel |
 | **TAB** | Mostrar/ocultar inspector |
 | **UP/DOWN** | Scroll del inspector |
+| **F8** | Hot-Reload scripts |
+| **F10** | Step (un frame) |
+| **F11** | Fullscreen |
+| **Ctrl+S** | Guardar escena |
 
 ## 📁 Estructura del Proyecto
 
@@ -38,7 +42,8 @@ MotorVideojuegosIA/
 │   ├── core/              # Game loop, estados, tiempo
 │   │   ├── game.py        # Clase principal del motor
 │   │   ├── engine_state.py # Estados EDIT/PLAY/PAUSED
-│   │   └── time_manager.py
+│   │   ├── time_manager.py
+│   │   └── hot_reload.py  # Sistema de recarga en caliente
 │   │
 │   ├── ecs/               # Entity-Component-System
 │   │   ├── entity.py      # Entidades con ID único
@@ -63,31 +68,31 @@ MotorVideojuegosIA/
 │   │   └── rule_system.py # Reglas declarativas
 │   │
 │   ├── scenes/            # Gestión de escenas
-│   │   ├── scene.py       # Datos originales del nivel
+│   │   ├── scene.py
 │   │   └── scene_manager.py
 │   │
-│   ├── levels/            # Carga de niveles
-│   │   ├── level_loader.py
-│   │   └── component_registry.py
+│   ├── editor/            # Editor visual (paneles)
+│   │   ├── console_panel.py  # Consola de errores/logs
+│   │   ├── hierarchy_panel.py
+│   │   └── editor_layout.py
 │   │
-│   ├── inspector/         # Inspector visual
-│   │   └── inspector_system.py
-│   │
-│   └── resources/         # Gestión de recursos
+│   ├── config.py          # Constantes centralizadas
+│   └── resources/
 │       └── texture_manager.py
 │
+├── scripts/               # Scripts recargables en caliente (F8)
+│   └── example_script.py
+│
+├── tools/                 # Herramientas IA
+│   ├── create_mechanic.py # Generador de sistemas
+│   └── introspect.py      # Reflexión/inspección
+│
 ├── levels/                # Archivos de niveles JSON
-│   └── demo_level.json
-│
 ├── assets/                # Sprites y recursos
-│   └── test_spritesheet.png
-│
-├── tools/                 # Herramientas auxiliares
-│   └── generate_test_spritesheet.py
-│
+├── tests/                 # Tests y demos
+├── .cursorrules           # Reglas globales para IA
 ├── main.py               # Punto de entrada
-├── requirements.txt
-└── README.md
+└── requirements.txt
 ```
 
 ## 🏗️ Arquitectura
@@ -113,6 +118,11 @@ player.add_component(RigidBody(gravity_scale=1.0))
 | `Collider` | Área de colisión AABB |
 | `RigidBody` | Física (gravedad, velocidad) |
 | `Animator` | Animaciones por sprite sheet |
+| `Camera2D` | Camara serializable para Game View |
+| `AudioSource` | Audio 2D basico editable |
+| `InputMap` | Bindings declarativos entendibles por IA |
+| `PlayerController2D` | Movimiento lateral y salto sobre `RigidBody` |
+| `ScriptBehaviour` | Script adjunto serializable con `public_data` e hot-reload |
 
 ### Estados del Motor
 
@@ -171,6 +181,7 @@ player.add_component(RigidBody(gravity_scale=1.0))
 | `emit_event` | Dispara otro evento |
 | `log_message` | Imprime en consola |
 
+
 ## 🔄 Gestión de Escenas
 
 ```
@@ -186,21 +197,24 @@ Al presionar **ESC**, el mundo vuelve exactamente al estado original.
 ## 🛠️ API para IA
 
 ```python
-from engine import Game, World, Transform, Collider
+from engine.api import EngineAPI
 
-# Crear mundo
-world = World()
-
-# Crear entidad programáticamente
-enemy = world.create_entity("Enemy")
-enemy.add_component(Transform(x=200, y=100))
-enemy.add_component(Collider(width=32, height=32))
-
-# Control del motor
-game.play()   # EDIT → PLAY
-game.pause()  # PLAY ↔ PAUSED
-game.stop()   # → EDIT + restaurar
+api = EngineAPI()
+api.load_level("levels/demo_level.json")
+api.set_entity_tag("Player", "Hero")
+api.set_entity_layer("Player", "Gameplay")
+api.set_component_enabled("Ground", "Collider", False)
+api.create_camera2d("MainCamera", camera={"follow_entity": "Player", "framing_mode": "platformer"})
+api.add_script_behaviour("Player", "platformer_character", {"lives": 3})
+gameplay_entities = api.list_entities(tag="Hero", layer="Gameplay", active=True)
 ```
+
+## Flujo IA-First Actual
+
+- `SceneManager` mantiene la seleccion de entidad entre `EDIT`, `PLAY` y `STOP`.
+- `Camera2D` soporta follow serializable, framing `platformer`, dead-zones y clamp.
+- `ScriptBehaviour` permite adjuntar scripts desde datos/API con hooks `on_play`, `on_update`, `on_stop`.
+- `public_data` es la bolsa persistente y serializable compartida entre runtime, API e inspector.
 
 ## 📊 Fases Completadas
 
@@ -221,6 +235,66 @@ game.stop()   # → EDIT + restaurar
 - **Fase 10**: Inspector editable
 - **Fase 11**: Sistema CLI
 - **Fase 13**: API completa para IA
+
+## 🔥 Hot-Reload (Recarga en Caliente)
+
+Modifica scripts mientras el motor está corriendo:
+
+1. Coloca scripts `.py` en la carpeta `scripts/`
+2. Presiona **F8** para recargar los scripts modificados
+3. Los errores aparecen en la consola del editor, sin crashear
+
+```python
+# scripts/mi_script.py
+def on_reload():
+    """Se ejecuta al recargar el módulo."""
+    print("Script recargado!")
+```
+
+## ⚙️ Configuración Centralizada
+
+Todas las constantes modificables están en `engine/config.py`:
+
+```python
+from engine.config import GRAVITY_DEFAULT, WINDOW_WIDTH, TARGET_FPS
+```
+
+## 🤖 Herramientas IA
+
+### Crear Mecánica
+```bash
+py -3 tools/create_mechanic.py double_jump "Doble salto" Transform,RigidBody
+```
+
+### Orquestacion Multiagente
+```bash
+python tools/agent_workflow.py create-brief ^
+  --title "Investigar regresion de escenas" ^
+  --goal "Determinar por que STOP no restaura el estado original del World" ^
+  --subsystems scenes core api ^
+  --files engine/scenes/scene_manager.py engine/core/game.py engine/api/engine_api.py
+```
+
+Documentacion operativa:
+
+- `docs/agent-orchestration/README.md`
+- `docs/agent-orchestration/unity-2d-core-matrix.md`
+- `docs/agent-orchestration/task-brief-template.md`
+- `docs/agent-orchestration/result-bundle-template.md`
+- `docs/agent-orchestration/definition-of-done.md`
+- `docs/agent-orchestration/agents/`
+
+### Inspeccionar Mundo
+```python
+from tools.introspect import inspect_world, inspect_entity
+print(inspect_world(world))      # Resumen completo
+print(inspect_entity(world, "Player"))  # Entidad específica
+```
+
+### Auditar gaps de Unity 2D core
+```bash
+py -3 tools/agent_workflow.py list-gaps --status parcial
+```
 
 ## 🔧 Dependencias
 

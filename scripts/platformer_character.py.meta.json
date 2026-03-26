@@ -1,0 +1,21 @@
+{
+    "guid": "ast_7e176944aca447dfb85cac00bc23db9e",
+    "source_path": "scripts/platformer_character.py",
+    "path": "scripts/platformer_character.py",
+    "asset_kind": "script",
+    "importer": "script",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "script",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "script",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

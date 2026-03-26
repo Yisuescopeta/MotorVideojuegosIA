@@ -16,10 +16,20 @@ from engine.systems.render_system import RenderSystem
 from engine.systems.physics_system import PhysicsSystem
 from engine.systems.collision_system import CollisionSystem
 from engine.systems.animation_system import AnimationSystem
+from engine.systems.audio_system import AudioSystem
+from engine.systems.input_system import InputSystem
+from engine.systems.player_controller_system import PlayerControllerSystem
+from engine.systems.character_controller_system import CharacterControllerSystem
+from engine.systems.script_behaviour_system import ScriptBehaviourSystem
 
 __all__ = [
     "RenderSystem",
     "PhysicsSystem",
     "CollisionSystem",
     "AnimationSystem",
+    "AudioSystem",
+    "InputSystem",
+    "PlayerControllerSystem",
+    "CharacterControllerSystem",
+    "ScriptBehaviourSystem",
 ]
