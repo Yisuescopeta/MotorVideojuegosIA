@@ -1,0 +1,32 @@
+{
+    "version": 1,
+    "guid": "ast_0b7ae53a555a4a4195ebd4d98c82fe8d",
+    "path": "assets/fonts/DejaVuSansMono.ttf",
+    "asset_kind": "unknown",
+    "importer": "unknown",
+    "source_hash": "b4a6c3e4faab8773f4ff761d56451646409f29abedd68f05d38c2df667d3c582",
+    "import_settings_hash": "dfa13fa203bb109940dc22234f8755b64c6bf8405b4521c83e014d23f6cfd71d",
+    "dependencies": [],
+    "metadata": {
+        "guid": "ast_0b7ae53a555a4a4195ebd4d98c82fe8d",
+        "source_path": "assets/fonts/DejaVuSansMono.ttf",
+        "path": "assets/fonts/DejaVuSansMono.ttf",
+        "asset_kind": "unknown",
+        "importer": "unknown",
+        "labels": [],
+        "dependencies": [],
+        "import_settings": {
+            "asset_type": "unknown",
+            "import_mode": "raw",
+            "grid": {},
+            "automatic": {},
+            "slices": []
+        },
+        "asset_type": "unknown",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "source_size_bytes": 340712
+}

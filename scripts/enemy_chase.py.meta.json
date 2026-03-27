@@ -1,0 +1,21 @@
+{
+    "guid": "ast_09075da760ef4aebabb88b9b78afb76a",
+    "source_path": "scripts/enemy_chase.py",
+    "path": "scripts/enemy_chase.py",
+    "asset_kind": "script",
+    "importer": "script",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "script",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "script",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

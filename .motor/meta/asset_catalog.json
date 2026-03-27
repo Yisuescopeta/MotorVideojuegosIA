@@ -1,7 +1,51 @@
 {
     "version": 1,
-    "generated_at_utc": "2026-03-26T18:33:28.066635+00:00",
+    "generated_at_utc": "2026-03-27T18:19:05.412665+00:00",
     "assets": [
+        {
+            "guid": "ast_fef5e92ecb3a4153af3e993ad33973ec",
+            "guid_short": "ast_fef5",
+            "name": "CascadiaMono.ttf",
+            "path": "assets/fonts/CascadiaMono.ttf",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/assets/fonts/CascadiaMono.ttf",
+            "folder": "assets/fonts",
+            "asset_kind": "unknown",
+            "importer": "unknown",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1668578224.0,
+            "source_hash": "0e141cb99609f6f10ad05313fd1807d5cc9e28658dcbb35ab162e52ff67dc718",
+            "import_settings_hash": "dfa13fa203bb109940dc22234f8755b64c6bf8405b4521c83e014d23f6cfd71d",
+            "reference": {
+                "guid": "ast_fef5e92ecb3a4153af3e993ad33973ec",
+                "path": "assets/fonts/CascadiaMono.ttf"
+            },
+            "referenced_by": []
+        },
+        {
+            "guid": "ast_0b7ae53a555a4a4195ebd4d98c82fe8d",
+            "guid_short": "ast_0b7a",
+            "name": "DejaVuSansMono.ttf",
+            "path": "assets/fonts/DejaVuSansMono.ttf",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/assets/fonts/DejaVuSansMono.ttf",
+            "folder": "assets/fonts",
+            "asset_kind": "unknown",
+            "importer": "unknown",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1668730812.0,
+            "source_hash": "b4a6c3e4faab8773f4ff761d56451646409f29abedd68f05d38c2df667d3c582",
+            "import_settings_hash": "dfa13fa203bb109940dc22234f8755b64c6bf8405b4521c83e014d23f6cfd71d",
+            "reference": {
+                "guid": "ast_0b7ae53a555a4a4195ebd4d98c82fe8d",
+                "path": "assets/fonts/DejaVuSansMono.ttf"
+            },
+            "referenced_by": []
+        },
         {
             "guid": "ast_2c6f30e04ba7458b9e8d6da1bf97444e",
             "guid_short": "ast_2c6f",
@@ -303,6 +347,28 @@
             "reference": {
                 "guid": "ast_cce65bdcbc634e99bf978b194dcb0675",
                 "path": "scripts/__init__.py"
+            },
+            "referenced_by": []
+        },
+        {
+            "guid": "ast_09075da760ef4aebabb88b9b78afb76a",
+            "guid_short": "ast_0907",
+            "name": "enemy_chase.py",
+            "path": "scripts/enemy_chase.py",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/scripts/enemy_chase.py",
+            "folder": "scripts",
+            "asset_kind": "script",
+            "importer": "script",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1774564356.9004006,
+            "source_hash": "55fcfbea75424a7dd02e3eeecfb9111a948a828336ca81ab603aa78a3ae05070",
+            "import_settings_hash": "523830a9e675093e53983a28d15e46898df0bf5cc1dfb94129cd01d2fc33beab",
+            "reference": {
+                "guid": "ast_09075da760ef4aebabb88b9b78afb76a",
+                "path": "scripts/enemy_chase.py"
             },
             "referenced_by": []
         },
