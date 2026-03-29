@@ -85,6 +85,18 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertIs(self.world_holder["world"], edit_world)
         self.assertEqual(self.state["value"], EngineState.EDIT)
 
+    def test_stop_from_stepping_restores_edit_state(self) -> None:
+        runtime_world = SimpleNamespace(feature_metadata={})
+        edit_world = SimpleNamespace(feature_metadata={})
+        self.state["value"] = EngineState.STEPPING
+        self.world_holder["world"] = runtime_world
+        self.scene_manager.exit_play.return_value = edit_world
+
+        self.controller.stop()
+
+        self.assertEqual(self.state["value"], EngineState.EDIT)
+        self.assertIs(self.world_holder["world"], edit_world)
+
     def test_step_pauses_play_and_enters_stepping(self) -> None:
         self.state["value"] = EngineState.PLAY
 
