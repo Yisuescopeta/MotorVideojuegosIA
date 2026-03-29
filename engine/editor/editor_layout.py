@@ -85,7 +85,63 @@ class EditorLayout:
     TAB_INACTIVE_COLOR = UNITY_TAB_INACTIVE
     MENU_BAR_COLOR = UNITY_BG_DARK
     TEXT_COLOR = UNITY_TEXT
-    
+
+    # ========================================
+    # Menu Definitions
+    # ========================================
+    _MENU_DEFINITIONS: dict = {
+        "File": [
+            ("New Scene",        "Ctrl+N",       "new_scene"),
+            ("Open Scene",       "Ctrl+O",       "open_scene"),
+            ("Save",             "Ctrl+S",       "save_scene"),
+            None,
+            ("Project Settings", "",             "project_settings"),
+            None,
+            ("Exit",             "Alt+F4",       "exit"),
+        ],
+        "Edit": [
+            ("Undo",             "Ctrl+Z",       "undo"),
+            ("Redo",             "Ctrl+Y",       "redo"),
+            None,
+            ("Duplicate",        "Ctrl+D",       "duplicate"),
+            ("Delete",           "Del",          "delete"),
+            None,
+            ("Select All",       "Ctrl+A",       "select_all"),
+        ],
+        "Assets": [
+            ("Refresh Assets",   "",             "refresh_assets"),
+            ("Create Folder",    "",             "create_folder"),
+            None,
+            ("Import Asset...",  "",             "import_asset"),
+        ],
+        "GameObject": [
+            ("Create Empty",     "Ctrl+Shift+N", "create_entity"),
+            None,
+            ("Canvas",           "",             "create_canvas"),
+            ("UI Text",          "",             "create_ui_text"),
+            ("UI Button",        "",             "create_ui_button"),
+        ],
+        "Component": [
+            ("Add Component",    "",             "add_component"),
+        ],
+        "Window": [
+            ("Scene",            "",             "tab_scene"),
+            ("Game",             "",             "tab_game"),
+            ("Animator",         "",             "tab_animator"),
+            None,
+            ("Project",          "",             "bottom_project"),
+            ("Console",          "",             "bottom_console"),
+            ("Terminal",         "",             "bottom_terminal"),
+        ],
+        "Help": [
+            ("About Motor 2D",   "",             "about"),
+            ("Documentation",    "",             "docs"),
+        ],
+    }
+
+    _LAYERS_OPTIONS = ["Default", "Gameplay", "UI", "Physics", "Editor"]
+    _LAYOUT_OPTIONS = ["Default", "2 by 3", "4 Split", "Wide", "Tall"]
+
     def __init__(self, screen_width: int, screen_height: int) -> None:
         self.screen_width = screen_width
         self.screen_height = screen_height
@@ -94,6 +150,15 @@ class EditorLayout:
         self.active_tab: str = "SCENE" # "SCENE" | "GAME" | "ANIMATOR"
         self.active_bottom_tab: str = "PROJECT" # "PROJECT" | "CONSOLE" | "TERMINAL"
         
+        # Menu dropdown state
+        self._active_menu: str | None = None
+        self._menu_item_rects: dict[str, rl.Rectangle] = {}
+        # Toolbar dropdown state
+        self._layers_dropdown_open: bool = False
+        self._layout_dropdown_open: bool = False
+        self._layers_rect: rl.Rectangle = rl.Rectangle(0, 0, 0, 0)
+        self._layout_rect: rl.Rectangle = rl.Rectangle(0, 0, 0, 0)
+
         # Requests (Game.py lee esto)
         self.request_play: bool = False
         self.request_stop: bool = False
@@ -116,6 +181,13 @@ class EditorLayout:
         self.request_create_canvas: bool = False
         self.request_create_ui_text: bool = False
         self.request_create_ui_button: bool = False
+        self.request_exit: bool = False
+        self.request_undo: bool = False
+        self.request_redo: bool = False
+        self.request_duplicate_entity: bool = False
+        self.request_delete_entity: bool = False
+        self.request_create_entity: bool = False
+        self.show_about_modal: bool = False
         
         # Tool selection
         self.active_tool: EditorTool = EditorTool.MOVE
@@ -761,6 +833,21 @@ class EditorLayout:
             self._draw_scene_browser_modal()
         if self.show_project_dirty_modal:
             self._draw_project_dirty_modal()
+        if self.show_about_modal:
+            self._draw_about_modal()
+
+    @property
+    def dropdown_active(self) -> bool:
+        """True si algún dropdown está abierto (bloquea input de paneles subyacentes)."""
+        return (self._active_menu is not None or
+                self._layers_dropdown_open or
+                self._layout_dropdown_open)
+
+    def draw_top_dropdowns(self) -> None:
+        """Dibuja los dropdowns de menú y toolbar encima de TODOS los paneles.
+        Debe llamarse en game.py después de renderizar Hierarchy e Inspector."""
+        self._draw_menu_dropdown()
+        self._draw_toolbar_dropdowns()
 
     def draw_project_launcher(self) -> None:
         self._reset_cursor_regions()
@@ -1155,12 +1242,34 @@ class EditorLayout:
         # ========================================
         right_x = self.screen_width - 200
         
-        # Layers dropdown (placeholder)
-        rl.gui_label(rl.Rectangle(right_x, play_y, 50, btn_height), "Layers")
-        right_x += 55
-        
-        # Layout dropdown (placeholder)
-        rl.gui_label(rl.Rectangle(right_x, play_y, 50, btn_height), "Default")
+        # Layers dropdown
+        layers_rect = rl.Rectangle(right_x, play_y, 66, btn_height)
+        self._layers_rect = layers_rect
+        self._register_cursor_rect(layers_rect)
+        layers_hover = rl.check_collision_point_rec(rl.get_mouse_position(), layers_rect)
+        layers_bg = self.UNITY_BLUE if self._layers_dropdown_open else (self.UNITY_BUTTON_HOVER if layers_hover else self.UNITY_BUTTON)
+        rl.draw_rectangle_rec(layers_rect, layers_bg)
+        rl.draw_rectangle_lines_ex(layers_rect, 1, self.UNITY_BORDER)
+        rl.draw_text("Layers v", right_x + 6, int(play_y + (btn_height - 10) / 2), 10, self.UNITY_TEXT)
+        if layers_hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+            self._layers_dropdown_open = not self._layers_dropdown_open
+            self._layout_dropdown_open = False
+            self._active_menu = None
+        right_x += 70
+
+        # Layout dropdown
+        layout_rect = rl.Rectangle(right_x, play_y, 72, btn_height)
+        self._layout_rect = layout_rect
+        self._register_cursor_rect(layout_rect)
+        layout_hover = rl.check_collision_point_rec(rl.get_mouse_position(), layout_rect)
+        layout_bg = self.UNITY_BLUE if self._layout_dropdown_open else (self.UNITY_BUTTON_HOVER if layout_hover else self.UNITY_BUTTON)
+        rl.draw_rectangle_rec(layout_rect, layout_bg)
+        rl.draw_rectangle_lines_ex(layout_rect, 1, self.UNITY_BORDER)
+        rl.draw_text("Default v", right_x + 6, int(play_y + (btn_height - 10) / 2), 10, self.UNITY_TEXT)
+        if layout_hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+            self._layout_dropdown_open = not self._layout_dropdown_open
+            self._layers_dropdown_open = False
+            self._active_menu = None
         
         # ========================================
         # SCENE FILE BUTTONS (Right Side)
@@ -1208,33 +1317,239 @@ class EditorLayout:
             on_click()
         return int(x + width)
         
+    def _execute_menu_action(self, action_id: str) -> None:
+        """Ejecuta la acción correspondiente al ID de elemento de menú."""
+        if action_id == "new_scene":
+            self.show_create_scene_modal = True
+            self.scene_create_name = "New Scene"
+            self.scene_create_name_focused = True
+        elif action_id == "open_scene":
+            self.request_load_scene = True
+        elif action_id == "save_scene":
+            self.request_save_scene = True
+        elif action_id == "project_settings":
+            self.show_project_modal = True
+        elif action_id == "exit":
+            self.request_exit = True
+        elif action_id == "undo":
+            self.request_undo = True
+        elif action_id == "redo":
+            self.request_redo = True
+        elif action_id == "duplicate":
+            self.request_duplicate_entity = True
+        elif action_id == "delete":
+            self.request_delete_entity = True
+        elif action_id == "refresh_assets":
+            if self.project_panel is not None:
+                self.project_panel.refresh_asset_catalog()
+        elif action_id == "create_folder":
+            if self.project_panel is not None:
+                self.project_panel.create_folder()
+        elif action_id == "create_entity":
+            self.request_create_entity = True
+        elif action_id == "create_canvas":
+            self.request_create_canvas = True
+        elif action_id == "create_ui_text":
+            self.request_create_ui_text = True
+        elif action_id == "create_ui_button":
+            self.request_create_ui_button = True
+        elif action_id == "tab_scene":
+            self.active_tab = "SCENE"
+        elif action_id == "tab_game":
+            self.active_tab = "GAME"
+        elif action_id == "tab_animator":
+            self.active_tab = "ANIMATOR"
+        elif action_id == "bottom_project":
+            self.active_bottom_tab = "PROJECT"
+        elif action_id == "bottom_console":
+            self.active_bottom_tab = "CONSOLE"
+        elif action_id == "bottom_terminal":
+            self.active_bottom_tab = "TERMINAL"
+        elif action_id == "about":
+            self.show_about_modal = True
+
+    def _draw_menu_dropdown(self) -> None:
+        """Dibuja el dropdown del menú activo encima de todo el resto de la UI."""
+        if self._active_menu is None:
+            return
+        anchor = self._menu_item_rects.get(self._active_menu)
+        if anchor is None:
+            return
+
+        items = self._MENU_DEFINITIONS.get(self._active_menu, [])
+        ITEM_H = 22
+        SEP_H = 8
+        PADDING_X = 10
+        SHORTCUT_MARGIN = 12
+        MIN_W = 200
+
+        # Calcular ancho necesario
+        max_label_w = 0
+        max_shortcut_w = 0
+        for entry in items:
+            if entry is None:
+                continue
+            label, shortcut, _ = entry
+            max_label_w = max(max_label_w, self._measure_text(label, 10))
+            if shortcut:
+                max_shortcut_w = max(max_shortcut_w, self._measure_text(shortcut, 10))
+        shortcut_col_w = (SHORTCUT_MARGIN + max_shortcut_w) if max_shortcut_w > 0 else 0
+        drop_w = max(MIN_W, PADDING_X * 2 + max_label_w + shortcut_col_w + 8)
+
+        # Calcular altura total
+        total_h = 4
+        for entry in items:
+            total_h += SEP_H if entry is None else ITEM_H
+        total_h += 4
+
+        drop_x = int(anchor.x)
+        drop_y = int(anchor.y + anchor.height + 1)
+        # Ajustar si se sale de la pantalla por la derecha
+        if drop_x + drop_w > self.screen_width:
+            drop_x = self.screen_width - drop_w - 2
+
+        drop_rect = rl.Rectangle(drop_x, drop_y, drop_w, total_h)
+
+        # Fondo y borde
+        rl.draw_rectangle_rec(drop_rect, self.UNITY_BG_MID)
+        rl.draw_rectangle_lines_ex(drop_rect, 1, self.UNITY_BORDER)
+
+        mouse = rl.get_mouse_position()
+        clicked = rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT)
+
+        # Cerrar si se hace clic fuera del dropdown y fuera del menú activo
+        if clicked and not rl.check_collision_point_rec(mouse, drop_rect):
+            # Si el clic tampoco está en la barra de menú, cerrar
+            menu_bar_rect = rl.Rectangle(0, 0, float(self.screen_width), float(self.MENU_HEIGHT))
+            if not rl.check_collision_point_rec(mouse, menu_bar_rect):
+                self._active_menu = None
+            return
+
+        # Dibujar items
+        cy = drop_y + 4
+        for entry in items:
+            if entry is None:
+                # Separador
+                sep_y = cy + SEP_H // 2
+                rl.draw_line(drop_x + 4, sep_y, drop_x + int(drop_w) - 4, sep_y, self.UNITY_BORDER)
+                cy += SEP_H
+                continue
+
+            label, shortcut, action_id = entry
+            item_rect = rl.Rectangle(drop_x + 1, cy, drop_w - 2, ITEM_H)
+            is_hover = rl.check_collision_point_rec(mouse, item_rect)
+            if is_hover:
+                rl.draw_rectangle_rec(item_rect, self.UNITY_BLUE)
+
+            text_y = cy + (ITEM_H - 10) // 2
+            rl.draw_text(label, drop_x + PADDING_X, text_y, 10, self.UNITY_TEXT)
+            if shortcut:
+                shortcut_w = self._measure_text(shortcut, 10)
+                rl.draw_text(shortcut, drop_x + int(drop_w) - shortcut_w - PADDING_X, text_y, 10, self.UNITY_TEXT_DIM)
+
+            if is_hover and clicked:
+                self._execute_menu_action(action_id)
+                self._active_menu = None
+
+            cy += ITEM_H
+
+    def _draw_toolbar_dropdowns(self) -> None:
+        """Dibuja los dropdowns de Layers y Layout del toolbar."""
+        mouse = rl.get_mouse_position()
+        clicked = rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT)
+        ITEM_H = 22
+        DROP_W = 110
+
+        for is_open_attr, rect_attr, options, label_attr in [
+            ("_layers_dropdown_open", "_layers_rect", self._LAYERS_OPTIONS, "Layers"),
+            ("_layout_dropdown_open", "_layout_rect", self._LAYOUT_OPTIONS, "Default"),
+        ]:
+            if not getattr(self, is_open_attr):
+                continue
+            anchor = getattr(self, rect_attr)
+            drop_x = int(anchor.x)
+            drop_y = int(anchor.y + anchor.height + 1)
+            total_h = len(options) * ITEM_H + 8
+            drop_rect = rl.Rectangle(drop_x, drop_y, DROP_W, total_h)
+
+            # Cerrar si clic fuera
+            if clicked and not rl.check_collision_point_rec(mouse, drop_rect):
+                setattr(self, is_open_attr, False)
+                continue
+
+            rl.draw_rectangle_rec(drop_rect, self.UNITY_BG_MID)
+            rl.draw_rectangle_lines_ex(drop_rect, 1, self.UNITY_BORDER)
+
+            cy = drop_y + 4
+            for option in options:
+                item_rect = rl.Rectangle(drop_x + 1, cy, DROP_W - 2, ITEM_H)
+                is_hover = rl.check_collision_point_rec(mouse, item_rect)
+                if is_hover:
+                    rl.draw_rectangle_rec(item_rect, self.UNITY_BLUE)
+                rl.draw_text(option, drop_x + 10, cy + (ITEM_H - 10) // 2, 10, self.UNITY_TEXT)
+                if is_hover and clicked:
+                    setattr(self, is_open_attr, False)
+                cy += ITEM_H
+
+    def _draw_about_modal(self) -> None:
+        """Dibuja el modal 'Acerca de Motor 2D'."""
+        W, H = 320, 160
+        x = (self.screen_width - W) // 2
+        y = (self.screen_height - H) // 2
+        modal_rect = rl.Rectangle(x, y, W, H)
+
+        # Fondo semitransparente
+        rl.draw_rectangle(0, 0, self.screen_width, self.screen_height, rl.Color(0, 0, 0, 140))
+        rl.draw_rectangle_rec(modal_rect, self.UNITY_BG_MID)
+        rl.draw_rectangle_lines_ex(modal_rect, 1, self.UNITY_BORDER)
+
+        rl.draw_text("Motor 2D", x + 16, y + 18, 20, self.UNITY_TEXT_BRIGHT)
+        rl.draw_text("Motor de videojuegos 2D con IA integrada", x + 16, y + 46, 10, self.UNITY_TEXT_DIM)
+        rl.draw_text("Powered by Raylib + Python", x + 16, y + 62, 10, self.UNITY_TEXT_DIM)
+        rl.draw_text("(c) 2025 – Motor IA-First", x + 16, y + 78, 10, self.UNITY_TEXT_DIM)
+
+        close_rect = rl.Rectangle(x + W - 90, y + H - 36, 74, 24)
+        self._register_cursor_rect(close_rect)
+        if rl.gui_button(close_rect, "Cerrar"):
+            self.show_about_modal = False
+
     def _draw_menu_bar(self) -> None:
-        """Dibuja la barra de menú estilo Unity."""
+        """Dibuja la barra de menú estilo Unity con dropdowns funcionales."""
         # Fondo
         rl.draw_rectangle(0, 0, self.screen_width, self.MENU_HEIGHT, self.UNITY_BG_DARK)
         rl.draw_line(0, self.MENU_HEIGHT - 1, self.screen_width, self.MENU_HEIGHT - 1, self.UNITY_BORDER)
-        
-        # Items de menú
-        items = ["File", "Edit", "Assets", "GameObject", "Component", "Window", "Help"]
+
+        items = list(self._MENU_DEFINITIONS.keys())
+        mouse = rl.get_mouse_position()
+        clicked = rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT)
         x = 8
-        
+
         for item in items:
             text_width = self._measure_text(item, 10)
             item_width = text_width + 12
             rect = rl.Rectangle(x, 1, item_width, self.MENU_HEIGHT - 2)
+            self._menu_item_rects[item] = rect
             self._register_cursor_rect(rect)
-            
-            # Hover detection
-            mouse = rl.get_mouse_position()
+
             is_hover = rl.check_collision_point_rec(mouse, rect)
-            
-            if is_hover:
+            is_active = self._active_menu == item
+
+            if is_active:
+                rl.draw_rectangle_rec(rect, self.UNITY_BLUE)
+            elif is_hover:
                 rl.draw_rectangle_rec(rect, self.UNITY_BG_LIGHT)
-            
-            # Texto centrado
+
             text_x = x + (item_width - text_width) // 2
             rl.draw_text(item, int(text_x), 5, 10, self.UNITY_TEXT)
-            
+
+            if is_hover and clicked:
+                if self._active_menu == item:
+                    self._active_menu = None
+                else:
+                    self._active_menu = item
+                    self._layers_dropdown_open = False
+                    self._layout_dropdown_open = False
+
             x += item_width + 2
         
     def _draw_tab(self, text: str, rect: rl.Rectangle, is_active: bool) -> None:

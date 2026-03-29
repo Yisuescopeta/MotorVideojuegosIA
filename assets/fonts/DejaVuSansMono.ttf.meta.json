@@ -1,0 +1,21 @@
+{
+    "guid": "ast_0b7ae53a555a4a4195ebd4d98c82fe8d",
+    "source_path": "assets/fonts/DejaVuSansMono.ttf",
+    "path": "assets/fonts/DejaVuSansMono.ttf",
+    "asset_kind": "unknown",
+    "importer": "unknown",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "unknown",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "unknown",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

@@ -123,7 +123,7 @@ def main() -> None:
 
     # Configurar juego
     game = Game(
-        title="Motor 2D - Fase 12: Escenas",
+        title="Motor 2D",
         width=800,
         height=600,
         target_fps=60,
