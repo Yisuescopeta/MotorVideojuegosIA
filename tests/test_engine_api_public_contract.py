@@ -2,14 +2,39 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from engine.api import EngineAPI
 
 
 class EngineAPIPublicContractTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp_dir = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._temp_dir.name)
+        self.project_root = self.workspace / "project"
+        self.project_root.mkdir(parents=True, exist_ok=True)
+        self.global_state_dir = self.workspace / "global_state"
+        self.scene_path = self.project_root / "levels" / "platformer_test_scene.json"
+        self.scene_path.parent.mkdir(parents=True, exist_ok=True)
+        self.scene_path.write_text(
+            (Path(__file__).resolve().parents[1] / "levels" / "platformer_test_scene.json").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+
+    def tearDown(self) -> None:
+        self._temp_dir.cleanup()
+
+    def _make_api(self) -> EngineAPI:
+        api = EngineAPI(
+            project_root=self.project_root.as_posix(),
+            global_state_dir=self.global_state_dir.as_posix(),
+        )
+        self.addCleanup(api.shutdown)
+        return api
+
     def test_inject_input_state_applies_runtime_override(self) -> None:
-        api = EngineAPI()
-        api.load_level("levels/platformer_test_scene.json")
+        api = self._make_api()
+        api.load_level(self.scene_path.as_posix())
         api.play()
 
         result = api.inject_input_state(
@@ -25,10 +50,8 @@ class EngineAPIPublicContractTests(unittest.TestCase):
         input_state = api.get_input_state("Player")
         self.assertEqual(input_state["horizontal"], 1.0)
         self.assertEqual(input_state["action_1"], 0.0)
-        api.shutdown()
-
     def test_inject_input_state_fails_without_runtime(self) -> None:
-        api = EngineAPI()
+        api = self._make_api()
         api.game = None
 
         result = api.inject_input_state("Player", {"horizontal": 1.0}, frames=0)
@@ -37,7 +60,7 @@ class EngineAPIPublicContractTests(unittest.TestCase):
         self.assertEqual(result["message"], "Engine not initialized")
 
     def test_inject_input_state_fails_without_input_system(self) -> None:
-        api = EngineAPI()
+        api = self._make_api()
         self.assertIsNotNone(api.game)
         api.game._input_system = None
 
@@ -47,7 +70,7 @@ class EngineAPIPublicContractTests(unittest.TestCase):
         self.assertEqual(result["message"], "Input system not ready")
 
     def test_get_recent_events_returns_serializable_payloads(self) -> None:
-        api = EngineAPI()
+        api = self._make_api()
         self.assertIsNotNone(api.game)
         self.assertIsNotNone(api.game._event_bus)
         api.game._event_bus.clear_history()
@@ -72,6 +95,30 @@ class RLPublicContractRegressionTests(unittest.TestCase):
             source = path.read_text(encoding="utf-8")
             for token in forbidden_tokens:
                 self.assertNotIn(token, source, msg=f"{path.as_posix()} still references {token}")
+
+
+class EngineAPIOptionalBox2DTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp_dir = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._temp_dir.name)
+        self.project_root = self.workspace / "project"
+        self.project_root.mkdir(parents=True, exist_ok=True)
+        self.global_state_dir = self.workspace / "global_state"
+
+    def tearDown(self) -> None:
+        self._temp_dir.cleanup()
+
+    @patch("engine.api.engine_api.Box2DPhysicsBackend", side_effect=RuntimeError("box2d init failed"))
+    @patch("builtins.print")
+    def test_initialize_engine_warns_when_box2d_backend_is_unavailable(self, print_mock, _box2d_backend_mock) -> None:
+        api = EngineAPI(
+            project_root=self.project_root.as_posix(),
+            global_state_dir=self.global_state_dir.as_posix(),
+        )
+        self.addCleanup(api.shutdown)
+
+        self.assertIsNotNone(api.game)
+        print_mock.assert_any_call("[WARNING] Box2D backend unavailable: box2d init failed")
 
 
 class EngineAPISandboxTests(unittest.TestCase):

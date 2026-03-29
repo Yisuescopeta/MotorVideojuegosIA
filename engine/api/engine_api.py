@@ -94,14 +94,18 @@ class EngineAPI:
         self.game.set_audio_system(AudioSystem())
         self.game.set_ui_system(UISystem())
         self.game.set_ui_render_system(UIRenderSystem())
-        if self.game._physics_system is not None and self.game._event_bus is not None:
-            try:
-                self.game.set_physics_backend(
-                    Box2DPhysicsBackend(gravity=self.game._physics_system.gravity, event_bus=self.game._event_bus),
-                    backend_name="box2d",
-                )
-            except Exception:
-                pass
+        self._register_optional_box2d_backend()
+
+    def _register_optional_box2d_backend(self) -> None:
+        if self.game is None or self.game._physics_system is None or self.game._event_bus is None:
+            return
+        try:
+            self.game.set_physics_backend(
+                Box2DPhysicsBackend(gravity=self.game._physics_system.gravity, event_bus=self.game._event_bus),
+                backend_name="box2d",
+            )
+        except Exception as exc:
+            print(f"[WARNING] Box2D backend unavailable: {exc}")
 
     def attach_runtime(self, game: Any, scene_manager: SceneManager, project_service: ProjectService) -> None:
         self.game = game

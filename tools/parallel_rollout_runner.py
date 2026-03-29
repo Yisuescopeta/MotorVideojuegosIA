@@ -9,6 +9,8 @@ import sys
 import time
 from pathlib import Path
 
+from engine.project.project_service import ProjectService
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Parallel headless rollout runner using subprocess workers.")
@@ -18,6 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-steps", type=int, default=120)
     parser.add_argument("--seed", type=int, default=123)
     parser.add_argument("--out-dir", required=True)
+    parser.add_argument("--project-root", default="")
     parser.add_argument("--worker-timeout", type=int, default=120)
     parser.add_argument("--stop-on-error", action="store_true")
     return parser.parse_args()
@@ -27,6 +30,9 @@ def main() -> int:
     args = parse_args()
     out_root = Path(args.out_dir)
     out_root.mkdir(parents=True, exist_ok=True)
+    resolved_project_root = Path(args.project_root).resolve() if args.project_root else None
+    if resolved_project_root is not None:
+        ProjectService(resolved_project_root.as_posix())
     worker_count = max(1, min(int(args.workers), int(args.episodes)))
     episodes_per_worker = int(math.ceil(int(args.episodes) / worker_count))
     processes: list[tuple[int, subprocess.Popen[str], Path, int]] = []
@@ -57,7 +63,10 @@ def main() -> int:
             "--env-kind",
             "auto",
         ]
-        process = subprocess.Popen(command, cwd=os.getcwd(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if args.project_root:
+            command.extend(["--project-root", str(args.project_root)])
+        process_cwd = str(resolved_project_root) if resolved_project_root is not None else os.getcwd()
+        process = subprocess.Popen(command, cwd=process_cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         processes.append((worker_index, process, summary_path, worker_episodes))
 
     failures: list[dict[str, object]] = []

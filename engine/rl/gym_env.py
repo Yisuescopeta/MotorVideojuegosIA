@@ -18,6 +18,19 @@ ACTION_SPEC_VERSION = 1
 OBSERVATION_SPEC_VERSION = 1
 
 
+def _resolve_project_root(scene_path: str, project_root: str | None) -> str | None:
+    if project_root:
+        return Path(project_root).expanduser().resolve().as_posix()
+
+    scene_file = Path(scene_path).expanduser().resolve()
+    for candidate in (scene_file.parent, *scene_file.parents):
+        if (candidate / "project.json").exists():
+            return candidate.as_posix()
+    if scene_file.parent.name.lower() == "levels" and scene_file.parent.parent != scene_file.parent:
+        return scene_file.parent.parent.as_posix()
+    return scene_file.parent.as_posix()
+
+
 @dataclass
 class SingleAgentConfig:
     agent_entity: str
@@ -46,7 +59,7 @@ class MotorGymEnv(GymEnvBase):
         frame_skip: int = 1,
     ) -> None:
         self.scene_path = str(scene_path)
-        self.project_root = project_root
+        self.project_root = _resolve_project_root(self.scene_path, project_root)
         self.max_steps = max(1, int(max_steps))
         self.frame_skip = max(1, int(frame_skip))
         self.action_space = spaces.Discrete(6)

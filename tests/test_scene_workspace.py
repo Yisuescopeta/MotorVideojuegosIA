@@ -1,10 +1,6 @@
-import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
-
-sys.path.append(os.getcwd())
 
 from engine.levels.component_registry import create_default_registry
 from engine.scenes.scene_manager import SceneManager

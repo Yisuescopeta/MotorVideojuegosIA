@@ -1,9 +1,6 @@
-import os
-import sys
+import tempfile
 import unittest
 from pathlib import Path
-
-sys.path.append(os.getcwd())
 
 import pyray as rl
 
@@ -25,7 +22,18 @@ MINIMAL_PNG_BYTES = (
 
 class AnimatorPanelTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.api = EngineAPI()
+        self._temp_dir = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._temp_dir.name)
+        self.project_root = self.workspace / "project"
+        self.project_root.mkdir(parents=True, exist_ok=True)
+        self.global_state_dir = self.workspace / "global_state"
+        self._previous_cwd = Path.cwd()
+        self._copy_repo_file("levels/demo_level.json")
+        self._change_cwd(self.project_root)
+        self.api = EngineAPI(
+            project_root=self.project_root.as_posix(),
+            global_state_dir=self.global_state_dir.as_posix(),
+        )
         self.api.load_level("levels/demo_level.json")
         self.panel = self.api.game.animator_panel
         self.modal = self.api.game.sprite_editor_modal
@@ -34,23 +42,32 @@ class AnimatorPanelTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.api.shutdown()
-        for path in reversed(self._temp_files):
-            if path.exists():
-                path.unlink()
-        for path in reversed(self._temp_dirs):
-            if path.exists():
-                path.rmdir()
+        self._change_cwd(self._previous_cwd)
+        self._temp_dir.cleanup()
+
+    def _change_cwd(self, path: Path) -> None:
+        import os
+        os.chdir(path)
+
+    def _copy_repo_file(self, relative_path: str) -> Path:
+        source = Path(__file__).resolve().parents[1] / relative_path
+        target = self.project_root / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+        return target
 
     def _write_temp_png(self, relative_path: str) -> str:
-        file_path = Path(relative_path)
+        file_path = self.project_root / relative_path
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_bytes(MINIMAL_PNG_BYTES)
         self._temp_files.append(file_path)
+        if file_path.is_relative_to(self.project_root):
+            return file_path.relative_to(self.project_root).as_posix()
         return file_path.as_posix()
 
     def _write_sheet_with_slices(self, relative_path: str, slice_names: list[str]) -> str:
         asset_path = self._write_temp_png(relative_path)
-        metadata_path = Path(f"{asset_path}.meta.json")
+        metadata_path = self.project_root / f"{asset_path}.meta.json"
         self._temp_files.append(metadata_path)
         result = self.api.save_asset_metadata(
             asset_path,
@@ -76,7 +93,7 @@ class AnimatorPanelTests(unittest.TestCase):
         return asset_path
 
     def _write_auto_slice_png(self, relative_path: str) -> str:
-        asset_path = Path(relative_path)
+        asset_path = self.workspace / relative_path
         asset_path.parent.mkdir(parents=True, exist_ok=True)
         self._temp_dirs.append(asset_path.parent)
         image = rl.gen_image_color(6, 3, rl.BLANK)
@@ -88,7 +105,7 @@ class AnimatorPanelTests(unittest.TestCase):
         return asset_path.as_posix()
 
     def _write_opaque_background_sheet(self, relative_path: str) -> str:
-        asset_path = Path(relative_path)
+        asset_path = self.workspace / relative_path
         asset_path.parent.mkdir(parents=True, exist_ok=True)
         self._temp_dirs.append(asset_path.parent)
         image = rl.gen_image_color(10, 4, rl.Color(254, 254, 254, 255))

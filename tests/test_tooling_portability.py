@@ -2,25 +2,36 @@ import unittest
 from pathlib import Path
 
 
-class ToolingPortabilityRegressionTests(unittest.TestCase):
-    def test_selected_subprocess_tests_do_not_use_os_system_or_py_launcher(self) -> None:
-        targets = [
-            Path("tests/test_engine_cli.py"),
-            Path("tests/test_gym_env.py"),
-            Path("tests/test_pettingzoo_env.py"),
-            Path("tests/test_profiler_api.py"),
-            Path("tests/test_scenario_dataset.py"),
-        ]
+ROOT = Path(__file__).resolve().parents[1]
+FORBIDDEN_CWD_PATH_MUTATION = "sys.path.append(" + "os.getcwd())"
+FORBIDDEN_OS_SYSTEM = "os." + "system("
+FORBIDDEN_PY_LAUNCHER = "py -3" + " "
 
-        for path in targets:
+
+class ToolingPortabilityRegressionTests(unittest.TestCase):
+    def test_all_tests_do_not_use_os_system_or_py_launcher(self) -> None:
+        for path in sorted((ROOT / "tests").glob("test_*.py")):
             source = path.read_text(encoding="utf-8")
-            self.assertNotIn("os.system(", source, msg=f"{path.as_posix()} still uses os.system")
-            self.assertNotIn("py -3 ", source, msg=f"{path.as_posix()} still uses the Windows py launcher")
+            self.assertNotIn(FORBIDDEN_OS_SYSTEM, source, msg=f"{path.as_posix()} still uses os.system")
+            self.assertNotIn(FORBIDDEN_PY_LAUNCHER, source, msg=f"{path.as_posix()} still uses the Windows py launcher")
+
+    def test_all_tests_do_not_mutate_sys_path_via_cwd(self) -> None:
+        for path in sorted((ROOT / "tests").glob("test_*.py")):
+            source = path.read_text(encoding="utf-8")
+            self.assertNotIn(
+                FORBIDDEN_CWD_PATH_MUTATION,
+                source,
+                msg=f"{path.as_posix()} still mutates sys.path",
+            )
 
     def test_tools_modules_do_not_mutate_sys_path(self) -> None:
-        for path in sorted(Path("tools").glob("*.py")):
+        for path in sorted((ROOT / "tools").glob("*.py")):
             source = path.read_text(encoding="utf-8")
-            self.assertNotIn("sys.path.append(os.getcwd())", source, msg=f"{path.as_posix()} still mutates sys.path")
+            self.assertNotIn(
+                FORBIDDEN_CWD_PATH_MUTATION,
+                source,
+                msg=f"{path.as_posix()} still mutates sys.path",
+            )
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ from engine.api import EngineAPI
 from engine.components.inputmap import InputMap
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
-from engine.rl.gym_env import ACTION_SPEC_VERSION, OBSERVATION_SPEC_VERSION
+from engine.rl.gym_env import ACTION_SPEC_VERSION, OBSERVATION_SPEC_VERSION, _resolve_project_root
 from engine.rl.gym_compat import spaces
 from engine.rl.pettingzoo_compat import ParallelEnv
 
@@ -25,7 +25,7 @@ class MotorParallelEnv(ParallelEnv):
         max_steps: int = 600,
     ) -> None:
         self.scene_path = str(scene_path)
-        self.project_root = project_root
+        self.project_root = _resolve_project_root(self.scene_path, project_root)
         self.max_steps = max(1, int(max_steps))
         self._scene_payload = json.loads(Path(self.scene_path).read_text(encoding="utf-8"))
         self.possible_agents = self._discover_agents()

@@ -1,8 +1,6 @@
-import os
-import sys
+import tempfile
 import unittest
-
-sys.path.append(os.getcwd())
+from pathlib import Path
 
 from cli.script_executor import ScriptExecutor
 from engine.api import EngineAPI
@@ -10,12 +8,25 @@ from engine.api import EngineAPI
 
 class InspectorCoreTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.api = EngineAPI()
+        self._temp_dir = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._temp_dir.name)
+        self.project_root = self.workspace / "project"
+        self.project_root.mkdir(parents=True, exist_ok=True)
+        self.global_state_dir = self.workspace / "global_state"
+        demo_level = Path(__file__).resolve().parents[1] / "levels" / "demo_level.json"
+        target_level = self.project_root / "levels" / "demo_level.json"
+        target_level.parent.mkdir(parents=True, exist_ok=True)
+        target_level.write_text(demo_level.read_text(encoding="utf-8"), encoding="utf-8")
+        self.api = EngineAPI(
+            project_root=self.project_root.as_posix(),
+            global_state_dir=self.global_state_dir.as_posix(),
+        )
         self.api.load_level("levels/demo_level.json")
         self.inspector = self.api.game._inspector_system
 
     def tearDown(self) -> None:
         self.api.shutdown()
+        self._temp_dir.cleanup()
 
     def _create_probe(self, name: str, components: dict) -> None:
         result = self.api.create_entity(name, components=components)

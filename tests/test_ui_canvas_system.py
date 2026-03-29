@@ -1,14 +1,13 @@
 import json
-import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.append(os.getcwd())
-
 from engine.api import EngineAPI
 from engine.editor.cursor_manager import CursorVisualState
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class CanvasUISystemTests(unittest.TestCase):
@@ -29,7 +28,7 @@ class CanvasUISystemTests(unittest.TestCase):
         return path
 
     def _copy_real_scene(self, filename: str) -> Path:
-        source = Path(os.getcwd()) / "levels" / filename
+        source = REPO_ROOT / "levels" / filename
         target = self.project_root / "levels" / filename
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")

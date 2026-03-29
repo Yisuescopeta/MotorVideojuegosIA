@@ -26,6 +26,7 @@ def parse_args() -> argparse.Namespace:
     run_parser.add_argument("--out", required=True)
     run_parser.add_argument("--summary-out", default="")
     run_parser.add_argument("--env-kind", choices=("auto", "single", "parallel"), default="auto")
+    run_parser.add_argument("--project-root", default="")
 
     replay_parser = subparsers.add_parser("replay-episode")
     replay_parser.add_argument("dataset")
@@ -56,6 +57,7 @@ def main() -> int:
             max_steps=args.max_steps,
             seed=args.seed,
             env_kind=args.env_kind,
+            project_root=args.project_root or None,
         )
         if args.summary_out:
             write_json(args.summary_out, summary)

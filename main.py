@@ -71,6 +71,19 @@ def ensure_sprite_sheet() -> None:
         gen.generate_spritesheet_raylib()
     except Exception as e:
         print(f"[WARNING] Sprite sheet: {e}")
+
+
+def _register_optional_box2d_backend(game: Game, gravity: float, event_bus: EventBus) -> bool:
+    """Registra Box2D si esta disponible, sin bloquear el arranque."""
+    try:
+        backend = Box2DPhysicsBackend(gravity=gravity, event_bus=event_bus)
+        game.set_physics_backend(backend, backend_name="box2d")
+        return True
+    except Exception as exc:
+        print(f"[WARNING] Box2D backend unavailable: {exc}")
+        return False
+
+
 def main() -> None:
     """Funcion principal."""
     args = parse_args()
@@ -146,10 +159,7 @@ def main() -> None:
     game.set_selection_system(selection_system)
     game.set_ui_system(ui_system)
     game.set_ui_render_system(ui_render_system)
-    try:
-        game.set_physics_backend(Box2DPhysicsBackend(gravity=physics_system.gravity, event_bus=event_bus), backend_name="box2d")
-    except Exception:
-        pass
+    _register_optional_box2d_backend(game, gravity=physics_system.gravity, event_bus=event_bus)
 
     # Configurar ScriptExecutor si se solicito (Visual Automation)
     if args.script:

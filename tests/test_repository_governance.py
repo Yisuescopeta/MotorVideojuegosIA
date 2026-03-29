@@ -33,6 +33,14 @@ class RepositoryGovernanceTests(unittest.TestCase):
             source = path.read_text(encoding="utf-8")
             self.assertTrue(source.startswith("---\n"), msg=f"Missing front matter in {path.name}")
 
+    def test_security_policy_uses_private_reporting_without_placeholder(self) -> None:
+        source = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+        self.assertNotIn("TODO", source)
+        self.assertTrue(
+            "GitHub Security Advisories" in source or "private vulnerability reporting" in source,
+            msg="SECURITY.md should point to a private reporting channel",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

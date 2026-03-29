@@ -1,9 +1,5 @@
-import os
-import sys
 import unittest
 from unittest.mock import patch
-
-sys.path.append(os.getcwd())
 
 import pyray as rl
 

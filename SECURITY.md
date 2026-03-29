@@ -4,28 +4,29 @@
 
 Se aceptan reportes relacionados con:
 
-- ejecución no intencionada de código
+- ejecucion no intencionada de codigo
 - lectura o escritura de rutas fuera del alcance esperado
-- exposición indebida de datos del proyecto
+- exposicion indebida de datos del proyecto
 - bypasses de restricciones de seguridad del editor, terminal o API
 
-## Cómo reportar
+## Como reportar
 
-No abras issues públicos para vulnerabilidades sensibles.
+No abras issues publicos para vulnerabilidades sensibles.
 
-Canal inicial de contacto del mantenedor: `TODO: completar contacto privado`.
+Canal recomendado: GitHub Security Advisories o el mecanismo de private
+vulnerability reporting del repositorio cuando este alojado en GitHub.
 
-Hasta que ese contacto se complete, usa el mecanismo privado disponible en la
-plataforma donde esté alojado el repositorio, si existe.
+Antes de una publicacion publica, el mantenedor debe habilitar ese canal
+privado en la plataforma si todavia no esta activo.
 
 ## Expectativas de respuesta
 
 - La respuesta es `best effort`.
 - No se garantiza SLA ni soporte comercial.
-- Incluye pasos de reproducción, impacto estimado y versión/commit afectado si
+- Incluye pasos de reproduccion, impacto estimado y version/commit afectado si
   lo conoces.
 
-## Divulgación responsable
+## Divulgacion responsable
 
-Espera confirmación antes de publicar detalles técnicos o pruebas de concepto
-que faciliten explotación.
+Espera confirmacion antes de publicar detalles tecnicos o pruebas de concepto
+que faciliten explotacion.
