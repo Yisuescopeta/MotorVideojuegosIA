@@ -28,10 +28,10 @@ def generate_spritesheet_raylib() -> None:
     frame_height = 32
     columns = 4
     rows = 2
-    
+
     total_width = frame_width * columns
     total_height = frame_height * rows
-    
+
     # Colores para cada frame (8 frames)
     colors = [
         rl.RED,
@@ -43,49 +43,49 @@ def generate_spritesheet_raylib() -> None:
         rl.PURPLE,
         rl.PINK
     ]
-    
+
     # Crear directorio de assets si no existe
     os.makedirs("assets", exist_ok=True)
-    
+
     # Inicializar ventana oculta
-    rl.set_config_flags(rl.FLAG_WINDOW_HIDDEN)
+    rl.set_config_flags(getattr(rl, "FLAG_WINDOW_HIDDEN", 0))
     rl.init_window(1, 1, "Generator")
-    
+
     # Crear render texture
     target = rl.load_render_texture(total_width, total_height)
-    
+
     # Dibujar frames en la textura
     rl.begin_texture_mode(target)
     rl.clear_background(rl.BLANK)
-    
+
     for i, color in enumerate(colors):
         col = i % columns
         row = i // columns
-        
+
         x = col * frame_width
         y = row * frame_height
-        
+
         # Dibujar rectángulo de color
         rl.draw_rectangle(x + 2, y + 2, frame_width - 4, frame_height - 4, color)
-        
+
         # Dibujar borde
         rl.draw_rectangle_lines(x, y, frame_width, frame_height, rl.WHITE)
-        
+
         # Dibujar número de frame
         rl.draw_text(str(i), x + 12, y + 10, 14, rl.WHITE)
-    
+
     rl.end_texture_mode()
-    
+
     # Guardar imagen
     image = rl.load_image_from_texture(target.texture)
     rl.image_flip_vertical(image)  # Raylib invierte Y
     rl.export_image(image, "assets/test_spritesheet.png")
-    
+
     # Limpiar
     rl.unload_image(image)
     rl.unload_render_texture(target)
     rl.close_window()
-    
+
     print("✅ Generado: assets/test_spritesheet.png")
     print(f"   Tamaño: {total_width}x{total_height}")
     print(f"   Frames: {len(colors)} ({columns} columnas x {rows} filas)")

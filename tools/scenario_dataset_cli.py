@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 
 from engine.rl.scenario_dataset import generate_scenarios, load_json, replay_episode, run_episode_dataset, write_json
 

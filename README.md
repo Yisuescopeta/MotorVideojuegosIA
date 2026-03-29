@@ -15,8 +15,8 @@ Motor de videojuegos 2D experimental diseñado para ser **comprendido, modificad
 # Instalar dependencias
 pip install -r requirements.txt
 
-# Instalar el proyecto en modo editable
-pip install -e .
+# Instalar el proyecto y las herramientas de desarrollo
+pip install -e .[dev]
 
 # Ejecutar
 python main.py
@@ -26,10 +26,16 @@ python main.py
 
 ```bash
 # Ejecutar tests
-python -m unittest -q
+python -m unittest discover -s tests
 
 # Ejecutar CLI por modulo
 python -m tools.engine_cli validate --target scene --path levels/demo_level.json
+
+# Ejecutar checks de calidad
+python -m ruff check engine/api engine/project engine/rl engine/serialization engine/events cli tools main.py
+python -m mypy engine/api engine/project engine/rl engine/serialization engine/events cli tools main.py
+python -m bandit -q -c .bandit -r engine cli tools main.py
+python -m pip_audit --skip-editable --ignore-vuln CVE-2026-4539
 ```
 
 ## Licencia
@@ -291,12 +297,12 @@ from engine.config import GRAVITY_DEFAULT, WINDOW_WIDTH, TARGET_FPS
 
 ### Crear Mecánica
 ```bash
-py -3 tools/create_mechanic.py double_jump "Doble salto" Transform,RigidBody
+python -m tools.create_mechanic double_jump "Doble salto" Transform,RigidBody
 ```
 
 ### Orquestacion Multiagente
 ```bash
-python tools/agent_workflow.py create-brief ^
+python -m tools.agent_workflow create-brief ^
   --title "Investigar regresion de escenas" ^
   --goal "Determinar por que STOP no restaura el estado original del World" ^
   --subsystems scenes core api ^
@@ -321,14 +327,15 @@ print(inspect_entity(world, "Player"))  # Entidad específica
 
 ### Auditar gaps de Unity 2D core
 ```bash
-py -3 tools/agent_workflow.py list-gaps --status parcial
+python -m tools.agent_workflow list-gaps --status parcial
 ```
 
 ## 🔧 Dependencias
 
-- Python 3.10+
+- Python 3.11+
 - raylib-py
 
 ## 📝 Licencia
 
-Proyecto académico - Universidad
+Este repositorio se distribuye bajo licencia MIT. El texto completo está en
+[LICENSE](LICENSE).

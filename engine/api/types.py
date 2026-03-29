@@ -1,40 +1,47 @@
 """
-engine/api/types.py - Tipos de datos para la API
-
-PROPÓSITO:
-    Define las estructuras de datos que la API intercambia con el exterior.
-    Usa TypedDict para garantizar contratos de datos claros sin obligar 
-    al consumidor a importar clases internas del motor.
+engine/api/types.py - Data contracts for the public API.
 """
 
-from typing import TypedDict, List, Any, Optional, Dict
+from typing import Any, Dict, Optional, TypedDict
+
 
 class Vector2D(TypedDict):
     x: float
     y: float
 
+
 class ComponentData(TypedDict):
-    """Datos genéricos de un componente."""
+    """Generic component payload."""
+
     type: str
     properties: Dict[str, Any]
 
+
 class EntityData(TypedDict):
-    """Representación serializable de una entidad."""
+    """Serializable entity snapshot returned by EngineAPI."""
+
     name: str
     active: bool
     tag: str
     layer: str
-    components: Dict[str, Any]  # map component_name -> specific properties
+    parent: Optional[str]
+    prefab_instance: Optional[Any]
+    components: Dict[str, Any]
+    component_metadata: Dict[str, Dict[str, Any]]
+
 
 class ActionResult(TypedDict):
-    """Resultado de una operación de la API."""
+    """Outcome for an EngineAPI action."""
+
     success: bool
     message: Optional[str]
     data: Optional[Any]
 
+
 class EngineStatus(TypedDict):
-    """Estado actual del motor."""
-    state: str  # EDIT, PLAY, PAUSED, STEPPING
+    """Current runtime status."""
+
+    state: str
     frame: int
     time: float
     fps: int

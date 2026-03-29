@@ -17,7 +17,6 @@ import argparse
 from pathlib import Path
 from typing import Dict, List, Sequence, Set
 
-
 PRIORITY_ORDER = [
     "core-stability",
     "test-automation",

@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from engine.project.project_service import ProjectService
 
@@ -70,7 +71,7 @@ def main() -> int:
         processes.append((worker_index, process, summary_path, worker_episodes))
 
     failures: list[dict[str, object]] = []
-    summaries: list[dict[str, object]] = []
+    summaries: list[dict[str, Any]] = []
     for worker_index, process, summary_path, worker_episodes in processes:
         try:
             stdout, stderr = process.communicate(timeout=int(args.worker_timeout))

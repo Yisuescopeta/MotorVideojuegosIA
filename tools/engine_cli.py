@@ -10,7 +10,7 @@ from cli.runner import CLIRunner
 from engine.api import EngineAPI
 from engine.assets.asset_service import AssetService
 from engine.project.project_service import ProjectService
-from tools.schema_cli import migrate_path, validate_all, validate_path
+from tools.schema_cli import migrate_path, validate_path
 
 
 def _validate_assets(search: str = "") -> int:

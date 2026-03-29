@@ -8,7 +8,6 @@ from typing import Any
 from engine.debug.state_fingerprint import world_fingerprint
 from engine.rl import MotorGymEnv, MotorParallelEnv
 
-
 SCENARIO_SPEC_VERSION = 1
 EPISODE_LOG_VERSION = 1
 
@@ -114,18 +113,10 @@ def run_episode_dataset(
 ) -> dict[str, Any]:
     output = Path(out_jsonl)
     output.parent.mkdir(parents=True, exist_ok=True)
-    summary = {
-        "episode_log_version": EPISODE_LOG_VERSION,
-        "scene_path": scene_path,
-        "episodes": int(episodes),
-        "max_steps": int(max_steps),
-        "seed": int(seed),
-        "env_kind": env_kind,
-        "completed_episodes": 0,
-        "steps": 0,
-        "terminated": 0,
-        "truncated": 0,
-    }
+    completed_episodes = 0
+    total_steps = 0
+    terminated_count = 0
+    truncated_count = 0
     with output.open("w", encoding="utf-8") as handle:
         for episode_index in range(max(1, int(episodes))):
             episode_seed = int(seed) + episode_index
@@ -158,11 +149,16 @@ def run_episode_dataset(
                     recent = runtime_api.get_recent_events(50)
                     events = recent[last_event_count:]
                     last_event_count = len(recent)
-                fingerprint = world_fingerprint(
-                    runtime_world,
-                    frame=getattr(runtime_api.game.time, "frame_count", None) if runtime_api is not None and runtime_api.game is not None else None,
-                    time=getattr(runtime_api.game.time, "total_time", None) if runtime_api is not None and runtime_api.game is not None else None,
-                ) if runtime_world is not None else {}
+                game = runtime_api.game if runtime_api is not None else None
+                fingerprint = (
+                    world_fingerprint(
+                        runtime_world,
+                        frame=getattr(game.time, "frame_count", None) if game is not None else None,
+                        time=getattr(game.time, "total_time", None) if game is not None else None,
+                    )
+                    if runtime_world is not None
+                    else {}
+                )
                 handle.write(
                     json.dumps(
                         {
@@ -186,12 +182,23 @@ def run_episode_dataset(
                 )
                 obs = next_obs
                 step_index += 1
-            summary["completed_episodes"] += 1
-            summary["steps"] += step_index
-            summary["terminated"] += int(any(bool(value) for value in terminated_payload.values()))
-            summary["truncated"] += int(any(bool(value) for value in truncated_payload.values()))
+            completed_episodes += 1
+            total_steps += step_index
+            terminated_count += int(any(bool(value) for value in terminated_payload.values()))
+            truncated_count += int(any(bool(value) for value in truncated_payload.values()))
             env.close()
-    return summary
+    return {
+        "episode_log_version": EPISODE_LOG_VERSION,
+        "scene_path": scene_path,
+        "episodes": int(episodes),
+        "max_steps": int(max_steps),
+        "seed": int(seed),
+        "env_kind": env_kind,
+        "completed_episodes": completed_episodes,
+        "steps": total_steps,
+        "terminated": terminated_count,
+        "truncated": truncated_count,
+    }
 
 
 def replay_episode(dataset_jsonl: str, episode_id: str) -> dict[str, Any]:
@@ -213,12 +220,13 @@ def replay_episode(dataset_jsonl: str, episode_id: str) -> dict[str, Any]:
         actions = item["actions"]
         env.step(actions if env_kind == "parallel" else int(actions["agent_0"]))
         runtime_api = getattr(env, "_api", None)
-        runtime_world = runtime_api.game.world if runtime_api is not None and runtime_api.game is not None else None
-        if runtime_world is not None:
+        game = runtime_api.game if runtime_api is not None else None
+        runtime_world = game.world if game is not None else None
+        if runtime_world is not None and game is not None:
             final_fingerprint = world_fingerprint(
                 runtime_world,
-                frame=getattr(runtime_api.game.time, "frame_count", None),
-                time=getattr(runtime_api.game.time, "total_time", None),
+                frame=getattr(game.time, "frame_count", None),
+                time=getattr(game.time, "total_time", None),
             )
     env.close()
     expected = episode_steps[-1].get("fingerprint", {})

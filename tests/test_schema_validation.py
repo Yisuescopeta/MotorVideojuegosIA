@@ -1,4 +1,7 @@
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -12,6 +15,8 @@ from engine.serialization.schema import (
     migrate_scene_data,
     validate_scene_data,
 )
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class SchemaValidationTests(unittest.TestCase):
@@ -68,6 +73,86 @@ class SchemaValidationTests(unittest.TestCase):
         }
         migrated = migrate_scene_data(legacy)
         self.assertEqual(validate_scene_data(migrated), [])
+
+    def test_scene_validation_rejects_rule_without_event(self) -> None:
+        payload = migrate_scene_data(
+            {
+                "name": "BrokenRules",
+                "entities": [],
+                "rules": [{"do": [{"action": "log_message", "message": "hi"}]}],
+                "feature_metadata": {},
+            }
+        )
+        errors = validate_scene_data(payload)
+        self.assertIn("$.rules[0].event: expected non-empty string", errors)
+
+    def test_scene_validation_rejects_unknown_rule_action(self) -> None:
+        payload = migrate_scene_data(
+            {
+                "name": "BrokenRules",
+                "entities": [],
+                "rules": [{"event": "tick", "do": [{"action": "teleport"}]}],
+                "feature_metadata": {},
+            }
+        )
+        errors = validate_scene_data(payload)
+        self.assertIn("$.rules[0].do[0].action: unsupported action 'teleport'", errors)
+
+    def test_scene_validation_rejects_invalid_set_position_action(self) -> None:
+        payload = migrate_scene_data(
+            {
+                "name": "BrokenRules",
+                "entities": [],
+                "rules": [{"event": "tick", "do": [{"action": "set_position", "entity": "Player"}]}],
+                "feature_metadata": {},
+            }
+        )
+        errors = validate_scene_data(payload)
+        self.assertIn("$.rules[0].do[0]: expected x or y", errors)
+
+    def test_schema_cli_validate_all_marks_invalid_rules(self) -> None:
+        env = os.environ.copy()
+        python_path = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = str(ROOT) if not python_path else str(ROOT) + os.pathsep + python_path
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            valid_scene = root / "valid.json"
+            invalid_scene = root / "invalid.json"
+            valid_scene.write_text(
+                json.dumps(
+                    {
+                        "schema_version": CURRENT_SCENE_SCHEMA_VERSION,
+                        "name": "ValidScene",
+                        "entities": [],
+                        "rules": [{"event": "tick", "do": [{"action": "log_message", "message": "ok"}]}],
+                        "feature_metadata": {},
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            invalid_scene.write_text(
+                json.dumps(
+                    {
+                        "schema_version": CURRENT_SCENE_SCHEMA_VERSION,
+                        "name": "InvalidScene",
+                        "entities": [],
+                        "rules": [{"event": "tick", "do": [{"action": "emit_event"}]}],
+                        "feature_metadata": {},
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [sys.executable, "-m", "tools.schema_cli", "validate_all", root.as_posix()],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("$.rules[0].do[0].event: expected non-empty string", result.stdout)
 
 
 if __name__ == "__main__":

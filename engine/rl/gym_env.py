@@ -8,11 +8,9 @@ from typing import Any
 
 from engine.api import EngineAPI
 from engine.components.charactercontroller2d import CharacterController2D
-from engine.components.inputmap import InputMap
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
 from engine.rl.gym_compat import GymEnvBase, spaces
-
 
 ACTION_SPEC_VERSION = 1
 OBSERVATION_SPEC_VERSION = 1
@@ -46,7 +44,7 @@ class MotorGymEnv(GymEnvBase):
     Gymnasium-style wrapper sobre el runtime headless existente.
     """
 
-    metadata = {"render_modes": []}
+    metadata: dict[str, list[str]] = {"render_modes": []}
 
     def __init__(
         self,

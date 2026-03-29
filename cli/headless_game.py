@@ -2,7 +2,6 @@
 cli/headless_game.py - Headless runtime entrypoint
 """
 
-from typing import Optional
 import time
 
 from engine.core.game import Game
@@ -58,7 +57,7 @@ class HeadlessGame(Game):
                 self._script_behaviour_system.update(active_world, dt, is_edit_mode=True)
                 self._perf_stats["scripts"] = (time.perf_counter() - scripts_start) * 1000.0
 
-        if self._state.allows_physics() or self._state.allows_gameplay():
+        if active_world is not None and (self._state.allows_physics() or self._state.allows_gameplay()):
             gameplay_start = time.perf_counter()
             self._update_gameplay(active_world, dt)
             self._perf_stats["gameplay"] = (time.perf_counter() - gameplay_start) * 1000.0

@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 from typing import Any
 
 CURRENT_SCENE_SCHEMA_VERSION = 1
 CURRENT_PREFAB_SCHEMA_VERSION = 1
+SUPPORTED_RULE_ACTIONS = {
+    "set_animation",
+    "set_position",
+    "destroy_entity",
+    "emit_event",
+    "log_message",
+}
 
 
 def migrate_scene_data(data: dict[str, Any]) -> dict[str, Any]:
@@ -94,6 +102,70 @@ def _validate_tilemap(tilemap: Any, *, path: str) -> list[str]:
     return errors
 
 
+def _is_json_serializable(value: Any) -> bool:
+    try:
+        json.dumps(value, ensure_ascii=True)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def _validate_rule_action(action: Any, *, path: str) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(action, dict):
+        return [f"{path}: expected object"]
+    action_name = str(action.get("action", "")).strip()
+    if not action_name:
+        errors.append(f"{path}.action: expected non-empty string")
+        return errors
+    if action_name not in SUPPORTED_RULE_ACTIONS:
+        errors.append(f"{path}.action: unsupported action '{action_name}'")
+        return errors
+    if action_name == "set_animation":
+        if not str(action.get("entity", "")).strip():
+            errors.append(f"{path}.entity: expected non-empty string")
+        if not str(action.get("state", "")).strip():
+            errors.append(f"{path}.state: expected non-empty string")
+    elif action_name == "set_position":
+        if not str(action.get("entity", "")).strip():
+            errors.append(f"{path}.entity: expected non-empty string")
+        if action.get("x") is None and action.get("y") is None:
+            errors.append(f"{path}: expected x or y")
+    elif action_name == "destroy_entity":
+        if not str(action.get("entity", "")).strip():
+            errors.append(f"{path}.entity: expected non-empty string")
+    elif action_name == "emit_event":
+        if not str(action.get("event", "")).strip():
+            errors.append(f"{path}.event: expected non-empty string")
+        if "data" in action and not _is_json_serializable(action.get("data")):
+            errors.append(f"{path}.data: expected JSON-serializable value")
+    elif action_name == "log_message":
+        if not str(action.get("message", "")).strip():
+            errors.append(f"{path}.message: expected non-empty string")
+    return errors
+
+
+def _validate_rule(rule: Any, *, path: str) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(rule, dict):
+        return [f"{path}: expected object"]
+    if not str(rule.get("event", "")).strip():
+        errors.append(f"{path}.event: expected non-empty string")
+    when = rule.get("when", {})
+    if when is not None and not isinstance(when, dict):
+        errors.append(f"{path}.when: expected object")
+    actions = rule.get("do")
+    if not isinstance(actions, list):
+        errors.append(f"{path}.do: expected non-empty array")
+        return errors
+    if not actions:
+        errors.append(f"{path}.do: expected non-empty array")
+        return errors
+    for index, action in enumerate(actions):
+        errors.extend(_validate_rule_action(action, path=f"{path}.do[{index}]"))
+    return errors
+
+
 def validate_scene_data(data: Any) -> list[str]:
     errors: list[str] = []
     if not isinstance(data, dict):
@@ -113,6 +185,9 @@ def validate_scene_data(data: Any) -> list[str]:
     rules = data.get("rules")
     if not isinstance(rules, list):
         errors.append("$.rules: expected array")
+    else:
+        for index, rule in enumerate(rules):
+            errors.extend(_validate_rule(rule, path=f"$.rules[{index}]"))
     feature_metadata = data.get("feature_metadata")
     if not isinstance(feature_metadata, dict):
         errors.append("$.feature_metadata: expected object")

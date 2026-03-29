@@ -16,6 +16,7 @@ def main():
     print("=== INICIANDO PRUEBA DE API FORMAL ===")
 
     with tempfile.TemporaryDirectory() as temp_dir:
+        # Ejecutar la demo sobre una copia temporal evita mutar el workspace real.
         project_root = Path(temp_dir) / "project"
         project_root.mkdir(parents=True, exist_ok=True)
         source_level = Path(__file__).resolve().parents[1] / "levels" / "demo_level.json"

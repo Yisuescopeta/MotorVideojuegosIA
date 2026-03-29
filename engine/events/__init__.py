@@ -6,7 +6,7 @@ PROPÓSITO:
     Incluye EventBus y RuleSystem para reglas declarativas.
 """
 
-from engine.events.event_bus import EventBus, Event
+from engine.events.event_bus import Event, EventBus
 from engine.events.rule_system import RuleSystem
 
 __all__ = [

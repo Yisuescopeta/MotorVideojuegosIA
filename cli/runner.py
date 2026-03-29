@@ -6,40 +6,38 @@ PROPÓSITO:
     Parsea argumentos y configura el entorno headless.
 """
 
-import sys
 import os
+import sys
 import traceback
-import json
-from typing import Optional, Any
+from typing import Any
 
 from cli.headless_game import HeadlessGame
 from cli.script_executor import ScriptExecutor
-
-from engine.scenes.scene_manager import SceneManager
-from engine.levels.component_registry import create_default_registry
+from engine.debug.golden_run import capture_headless_run, compare_golden_runs, load_golden_run, write_golden_run
 from engine.events.event_bus import EventBus
-from engine.events.rule_system import RuleSystem
-from engine.systems.physics_system import PhysicsSystem
-from engine.systems.collision_system import CollisionSystem
+
+# Importamos InspectorSystem solo para que no falle la dependencia,
+# aunque en headless no se usa visualmente
+from engine.inspector.inspector_system import InspectorSystem
+from engine.levels.component_registry import create_default_registry
+from engine.project.project_service import ProjectService
+from engine.scenes.scene_manager import SceneManager
 from engine.systems.animation_system import AnimationSystem
 from engine.systems.audio_system import AudioSystem
+from engine.systems.collision_system import CollisionSystem
 from engine.systems.input_system import InputSystem
+from engine.systems.physics_system import PhysicsSystem
 from engine.systems.player_controller_system import PlayerControllerSystem
 from engine.systems.render_system import RenderSystem
 from engine.systems.script_behaviour_system import ScriptBehaviourSystem
-# Importamos InspectorSystem solo para que no falle la dependencia, 
-# aunque en headless no se usa visualmente
-from engine.inspector.inspector_system import InspectorSystem
 from engine.systems.selection_system import SelectionSystem
-from engine.project.project_service import ProjectService
-from engine.debug.golden_run import capture_headless_run, compare_golden_runs, load_golden_run, write_golden_run
 
 
 class CLIRunner:
     """
     Gestor principal para la ejecución desde línea de comandos.
     """
-    
+
     def run(self, args: Any) -> None:
         """
         Ejecuta el motor según los argumentos proporcionados.
@@ -47,15 +45,15 @@ class CLIRunner:
         print("=" * 60)
         print("   MOTOR 2D - CLI MODE")
         print("=" * 60)
-        
+
         # 1. Inicializar Game (Headless)
         game = HeadlessGame()
         project_service = ProjectService(os.getcwd())
-        
+
         # 2. Configurar sistemas
         registry = create_default_registry()
         scene_manager = SceneManager(registry)
-        
+
         event_bus = EventBus() # type: ignore
         render_system = RenderSystem()
         physics_system = PhysicsSystem(gravity=600)
@@ -67,7 +65,7 @@ class CLIRunner:
         script_behaviour_system = ScriptBehaviourSystem()
         inspector_system = InspectorSystem()
         selection_system = SelectionSystem()
-        
+
         game.set_scene_manager(scene_manager)
         game.set_project_service(project_service)
         game.set_render_system(render_system)
@@ -89,7 +87,7 @@ class CLIRunner:
         )
         if getattr(args, "seed", None) is not None:
             game.set_seed(args.seed)
-        
+
         # 3. Cargar nivel inicial si se especifica
         if hasattr(args, 'level') and args.level:
             try:
@@ -116,7 +114,7 @@ class CLIRunner:
                 print(f"[ERROR] Error ejecutando script: {e}")
                 traceback.print_exc()
                 sys.exit(1)
-            
+
             # Si el script termina y tuvo éxito
             print("[INFO] Script finalizado correctamente.")
             return
@@ -159,5 +157,5 @@ class CLIRunner:
                 print(f"[INFO] Debug dump guardado en: {dump_path}")
             print("[INFO] Finalizado.")
             return
-            
+
         print("[INFO] Modo interactivo no soportado en CLI (usa scripts o --frames).")

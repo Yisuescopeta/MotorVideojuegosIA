@@ -9,8 +9,8 @@ acotados, revisables y alineados con el comportamiento observable del motor.
 
 ```bash
 pip install -r requirements.txt
-pip install -e .
-python -m unittest -q
+pip install -e .[dev]
+python -m unittest discover -s tests
 ```
 
 ## Reglas de trabajo
@@ -30,6 +30,10 @@ python -m unittest -q
 
 ## Validación mínima antes de abrir PR
 
-- Ejecuta `python -m unittest -q`.
+- Ejecuta `python -m unittest discover -s tests`.
+- Ejecuta `python -m ruff check engine/api engine/project engine/rl engine/serialization engine/events cli tools main.py`.
+- Ejecuta `python -m mypy engine/api engine/project engine/rl engine/serialization engine/events cli tools main.py`.
+- Ejecuta `python -m bandit -q -c .bandit -r engine cli tools main.py`.
+- Ejecuta `python -m pip_audit --skip-editable --ignore-vuln CVE-2026-4539`.
 - Verifica manualmente cualquier flujo que hayas tocado en editor, CLI o API.
 - Revisa que el README o la doc técnica sigan siendo coherentes con el cambio.

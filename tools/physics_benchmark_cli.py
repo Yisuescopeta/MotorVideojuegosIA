@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import time
 
 from engine.api import EngineAPI
@@ -71,8 +70,14 @@ def main() -> int:
             start = time.perf_counter()
             api.step(int(args.frames))
             elapsed_ms = (time.perf_counter() - start) * 1000.0
-            backend_name = api.game._resolve_physics_backend_name(api.game.world) if hasattr(api.game, "_resolve_physics_backend_name") else args.backend
-            backend = getattr(api.game, "_physics_backends", {}).get(backend_name)
+            game = api.game
+            world = game.world if game is not None else None
+            backend_name = (
+                game._resolve_physics_backend_name(world)
+                if game is not None and world is not None and hasattr(game, "_resolve_physics_backend_name")
+                else args.backend
+            )
+            backend = getattr(game, "_physics_backends", {}).get(backend_name) if game is not None else None
             backend_metrics = backend.get_step_metrics() if backend is not None and hasattr(backend, "get_step_metrics") else {}
             report = {
                 "backend": args.backend,

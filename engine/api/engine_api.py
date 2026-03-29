@@ -10,25 +10,32 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from cli.headless_game import HeadlessGame
-from cli.runner import CLIRunner
 from engine.api.errors import (
     EntityNotFoundError,
     InvalidOperationError,
     LevelLoadError,
 )
-from engine.authoring.changes import Change
 from engine.api.types import ActionResult, EngineStatus, EntityData
-from engine.core.engine_state import EngineState
+from engine.assets.asset_service import AssetService
+from engine.assets.prefab import PrefabManager
+from engine.authoring.changes import Change
+from engine.components.canvas import Canvas
+from engine.components.recttransform import RectTransform
+from engine.components.renderorder2d import RenderOrder2D
+from engine.components.rigidbody import RigidBody
+from engine.components.tilemap import Tilemap
+from engine.components.uibutton import UIButton
+from engine.components.uitext import UIText
 from engine.events.event_bus import EventBus
 from engine.inspector.inspector_system import InspectorSystem
-from engine.scenes.scene_manager import SceneManager
 from engine.levels.component_registry import create_default_registry
+from engine.physics.box2d_backend import Box2DPhysicsBackend
 from engine.project.project_service import ProjectService
-from engine.assets.prefab import PrefabManager
+from engine.scenes.scene_manager import SceneManager
 from engine.systems.animation_system import AnimationSystem
 from engine.systems.audio_system import AudioSystem
-from engine.systems.collision_system import CollisionSystem
 from engine.systems.character_controller_system import CharacterControllerSystem
+from engine.systems.collision_system import CollisionSystem
 from engine.systems.input_system import InputSystem
 from engine.systems.physics_system import PhysicsSystem
 from engine.systems.player_controller_system import PlayerControllerSystem
@@ -37,15 +44,6 @@ from engine.systems.script_behaviour_system import ScriptBehaviourSystem
 from engine.systems.selection_system import SelectionSystem
 from engine.systems.ui_render_system import UIRenderSystem
 from engine.systems.ui_system import UISystem
-from engine.assets.asset_service import AssetService
-from engine.components.renderorder2d import RenderOrder2D
-from engine.physics.box2d_backend import Box2DPhysicsBackend
-from engine.components.rigidbody import RigidBody
-from engine.components.canvas import Canvas
-from engine.components.recttransform import RectTransform
-from engine.components.tilemap import Tilemap
-from engine.components.uibutton import UIButton
-from engine.components.uitext import UIText
 
 _UNSET = object()
 
@@ -305,17 +303,17 @@ class EngineAPI:
         """Obtiene datos de una entidad."""
         if not self.game or not self.game.world:
             raise RuntimeError("No world loaded")
-            
+
         entity = self.game.world.get_entity_by_name(name)
         if not entity:
             raise EntityNotFoundError(f"Entity '{name}' not found")
-            
+
         # Serializar componentes
-        components_data = {}
+        components_data: Dict[str, Any] = {}
         for comp_type, comp in entity._components.items():
             if hasattr(comp, "to_dict"):
                 components_data[comp_type.__name__] = comp.to_dict()
-                
+
         return {
             "name": entity.name,
             "active": entity.active,
@@ -906,7 +904,7 @@ class EngineAPI:
         sort_order: int = 0,
     ) -> ActionResult:
         self._ensure_edit_mode()
-        components = {
+        components: Dict[str, Dict[str, Any]] = {
             "Canvas": {
                 "enabled": True,
                 "render_mode": "screen_space_overlay",
@@ -941,7 +939,7 @@ class EngineAPI:
         rect_transform: Optional[Dict[str, Any]] = None,
     ) -> ActionResult:
         self._ensure_edit_mode()
-        components = {
+        components: Dict[str, Dict[str, Any]] = {
             "RectTransform": {
                 "enabled": True,
                 "anchor_min_x": 0.5,

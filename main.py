@@ -14,34 +14,33 @@ CONTROLES:
     - TAB: Inspector
 """
 
+import argparse
 import os
+
 import pyray as rl
+
+from cli.runner import CLIRunner
+from cli.script_executor import ScriptExecutor
 from engine.core.game import Game
-from engine.systems.render_system import RenderSystem
-from engine.systems.physics_system import PhysicsSystem
-from engine.systems.collision_system import CollisionSystem
-from engine.systems.animation_system import AnimationSystem
-from engine.systems.audio_system import AudioSystem
-from engine.systems.input_system import InputSystem
-from engine.systems.player_controller_system import PlayerControllerSystem
-from engine.systems.character_controller_system import CharacterControllerSystem
-from engine.systems.script_behaviour_system import ScriptBehaviourSystem
-from engine.inspector.inspector_system import InspectorSystem
 from engine.events.event_bus import EventBus
 from engine.events.rule_system import RuleSystem
+from engine.inspector.inspector_system import InspectorSystem
+from engine.levels.component_registry import create_default_registry
+from engine.physics.box2d_backend import Box2DPhysicsBackend
+from engine.project.project_service import ProjectService
+from engine.scenes.scene_manager import SceneManager
+from engine.systems.animation_system import AnimationSystem
+from engine.systems.audio_system import AudioSystem
+from engine.systems.character_controller_system import CharacterControllerSystem
+from engine.systems.collision_system import CollisionSystem
+from engine.systems.input_system import InputSystem
+from engine.systems.physics_system import PhysicsSystem
+from engine.systems.player_controller_system import PlayerControllerSystem
+from engine.systems.render_system import RenderSystem
+from engine.systems.script_behaviour_system import ScriptBehaviourSystem
 from engine.systems.selection_system import SelectionSystem
 from engine.systems.ui_render_system import UIRenderSystem
 from engine.systems.ui_system import UISystem
-from engine.scenes.scene_manager import SceneManager
-from engine.levels.component_registry import create_default_registry
-from engine.project.project_service import ProjectService
-from engine.physics.box2d_backend import Box2DPhysicsBackend
-
-
-from engine.levels.component_registry import create_default_registry
-from cli.runner import CLIRunner
-from cli.script_executor import ScriptExecutor
-import argparse
 
 
 def parse_args() -> argparse.Namespace:
@@ -183,7 +182,8 @@ def main() -> None:
     print("-" * 60)
 
     # Ejecutar
-    rl.set_config_flags(rl.FLAG_WINDOW_RESIZABLE | rl.FLAG_VSYNC_HINT)
+    window_flags = getattr(rl, "FLAG_WINDOW_RESIZABLE", 0) | getattr(rl, "FLAG_VSYNC_HINT", 0)
+    rl.set_config_flags(window_flags)
     game.run()
 
     print()

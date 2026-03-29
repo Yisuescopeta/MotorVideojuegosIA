@@ -39,6 +39,19 @@ def _run_module(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     return result
 
 
+def _run_module_result(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    python_path = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = str(ROOT) if not python_path else str(ROOT) + os.pathsep + python_path
+    return subprocess.run(
+        [sys.executable, "-m", *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
 class EngineCliTests(unittest.TestCase):
     def test_validate_scene_subcommand(self) -> None:
         root_editor_state = _read_root_editor_state()
@@ -56,6 +69,39 @@ class EngineCliTests(unittest.TestCase):
                 cwd=project_root,
             )
             self.assertIn("[OK]", result.stdout)
+        self.assertEqual(_read_root_editor_state(), root_editor_state)
+
+    def test_validate_scene_subcommand_fails_for_invalid_rule_payload(self) -> None:
+        root_editor_state = _read_root_editor_state()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "project"
+            project_root.mkdir(parents=True, exist_ok=True)
+            invalid_scene = project_root / "levels" / "invalid_rules.json"
+            invalid_scene.parent.mkdir(parents=True, exist_ok=True)
+            invalid_scene.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "name": "BrokenRules",
+                        "entities": [],
+                        "rules": [{"event": "tick", "do": [{"action": "emit_event"}]}],
+                        "feature_metadata": {},
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            result = _run_module_result(
+                "tools.engine_cli",
+                "validate",
+                "--target",
+                "scene",
+                "--path",
+                "levels/invalid_rules.json",
+                cwd=project_root,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("$.rules[0].do[0].event: expected non-empty string", result.stdout)
         self.assertEqual(_read_root_editor_state(), root_editor_state)
 
     def test_smoke_subcommand_produces_expected_artifacts(self) -> None:
@@ -88,6 +134,45 @@ class EngineCliTests(unittest.TestCase):
 
         self.assertEqual(profile_report["frames"], 2)
         self.assertEqual(debug_dump["pass"], "Debug")
+        self.assertEqual(_read_root_editor_state(), root_editor_state)
+
+    def test_smoke_subcommand_stops_before_artifacts_when_scene_is_invalid(self) -> None:
+        root_editor_state = _read_root_editor_state()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "project"
+            project_root.mkdir(parents=True, exist_ok=True)
+            invalid_scene = project_root / "levels" / "invalid_rules.json"
+            invalid_scene.parent.mkdir(parents=True, exist_ok=True)
+            invalid_scene.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "name": "BrokenRules",
+                        "entities": [],
+                        "rules": [{"event": "", "do": [{"action": "log_message", "message": "hi"}]}],
+                        "feature_metadata": {},
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            out_dir = Path(temp_dir) / "smoke"
+            result = _run_module_result(
+                "tools.engine_cli",
+                "smoke",
+                "--scene",
+                "levels/invalid_rules.json",
+                "--frames",
+                "2",
+                "--seed",
+                "7",
+                "--out-dir",
+                out_dir.as_posix(),
+                cwd=project_root,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("$.rules[0].event: expected non-empty string", result.stdout)
+            self.assertFalse((out_dir / "smoke_profile.json").exists())
         self.assertEqual(_read_root_editor_state(), root_editor_state)
 
 

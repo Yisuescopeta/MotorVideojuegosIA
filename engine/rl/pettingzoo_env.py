@@ -6,11 +6,10 @@ from pathlib import Path
 from typing import Any
 
 from engine.api import EngineAPI
-from engine.components.inputmap import InputMap
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
-from engine.rl.gym_env import ACTION_SPEC_VERSION, OBSERVATION_SPEC_VERSION, _resolve_project_root
 from engine.rl.gym_compat import spaces
+from engine.rl.gym_env import ACTION_SPEC_VERSION, OBSERVATION_SPEC_VERSION, _resolve_project_root
 from engine.rl.pettingzoo_compat import ParallelEnv
 
 

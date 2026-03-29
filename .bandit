@@ -1,0 +1,15 @@
+exclude_dirs:
+  - tests
+  - .claude
+  - .motor
+  - artifacts
+  - build
+  - dist
+skips:
+  - B105
+  - B106
+  - B110
+  - B112
+  - B311
+  - B404
+  - B603
