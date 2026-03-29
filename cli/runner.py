@@ -13,6 +13,7 @@ from typing import Any
 
 from cli.headless_game import HeadlessGame
 from cli.script_executor import ScriptExecutor
+from engine.api.errors import EngineError
 from engine.debug.golden_run import capture_headless_run, compare_golden_runs, load_golden_run, write_golden_run
 from engine.events.event_bus import EventBus
 
@@ -109,7 +110,12 @@ class CLIRunner:
                 executor.load_script(args.script)
                 success = executor.run_all()
                 if not success:
+                    if executor.last_error is not None:
+                        raise executor.last_error
                     sys.exit(1)
+            except EngineError as e:
+                print(f"[ERROR] Error ejecutando script: {e}")
+                sys.exit(1)
             except Exception as e:
                 print(f"[ERROR] Error ejecutando script: {e}")
                 traceback.print_exc()

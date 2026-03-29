@@ -38,6 +38,12 @@ COMANDOS SOPORTADOS:
 import json
 from typing import Any, Dict, List
 
+from engine.api.errors import (
+    ComponentNotFoundError,
+    EntityNotFoundError,
+    InvalidOperationError,
+    LevelLoadError,
+)
 from engine.core.game import Game
 
 
@@ -53,6 +59,11 @@ class ScriptExecutor:
         self.wait_frames: int = 0
         self.finished: bool = False
         self.failed: bool = False
+        self._last_error: Exception | None = None
+
+    @property
+    def last_error(self) -> Exception | None:
+        return self._last_error
 
     def load_script(self, path: str) -> None:
         """Carga un script JSON."""
@@ -62,6 +73,7 @@ class ScriptExecutor:
         self.wait_frames = 0
         self.finished = False
         self.failed = False
+        self._last_error = None
         print(f"[SCRIPT] Script cargado: {len(self.commands)} comandos")
 
     def _resolve_project_scene_path(self, path: str) -> str:
@@ -111,6 +123,7 @@ class ScriptExecutor:
         """Ejecuta todos los comandos (bloqueante). Retorna True si todo OK."""
         self.finished = False
         self.failed = False
+        self._last_error = None
         while not self.finished:
             # En modo bloqueante, si hay wait frames, simulamos el paso del tiempo manualmente
             # OJO: Esto solo funciona bien si el caller maneja el tiempo o si es headless
@@ -136,50 +149,57 @@ class ScriptExecutor:
             if action == "OPEN_PROJECT":
                 path = args.get("path", "")
                 if not path or not self.game.open_project(path):
-                    raise Exception(f"No se pudo abrir proyecto: {path}")
+                    raise LevelLoadError(f"No se pudo abrir proyecto: {path}")
 
             elif action == "LOAD_SCENE":
-                path = self._resolve_project_scene_path(str(args.get("path", "")))
-                scene_manager = getattr(self.game, "_scene_manager", None)
-                if scene_manager is None or scene_manager.load_scene_from_file(path) is None:
-                    raise Exception(f"No se pudo cargar escena: {path}")
+                try:
+                    path = self._resolve_project_scene_path(str(args.get("path", "")))
+                    scene_manager = getattr(self.game, "_scene_manager", None)
+                    if scene_manager is None or scene_manager.load_scene_from_file(path) is None:
+                        raise LevelLoadError(f"No se pudo cargar escena: {path}")
+                except LevelLoadError:
+                    raise
+                except Exception as exc:
+                    raise LevelLoadError(f"No se pudo cargar escena: {args.get('path', '')}") from exc
 
             elif action == "CREATE_ENTITY":
                 name = args.get("name", "New Entity")
                 if not self.game._scene_manager or not self.game._scene_manager.create_entity(name):
-                    raise Exception(f"No se pudo crear entidad: {name}")
+                    raise InvalidOperationError(f"No se pudo crear entidad: {name}")
 
             elif action == "DELETE_ENTITY":
                 name = args.get("name")
-                if not self.game._scene_manager or not self.game._scene_manager.remove_entity(name):
-                    raise Exception(f"No se pudo eliminar entidad: {name}")
+                if not self.game._scene_manager:
+                    raise InvalidOperationError("No hay SceneManager activo")
+                if not self.game._scene_manager.remove_entity(name):
+                    raise EntityNotFoundError(f"Entidad no encontrada: {name}")
 
             elif action == "ADD_COMPONENT":
                 entity_name = args.get("entity")
                 component_name = args.get("component")
                 component_data = args.get("data", {})
                 if not self.game._scene_manager or not self.game._scene_manager.add_component_to_entity(entity_name, component_name, component_data):
-                    raise Exception(f"No se pudo aÃ±adir componente {component_name} a {entity_name}")
+                    raise InvalidOperationError(f"No se pudo aÃ±adir componente {component_name} a {entity_name}")
 
             elif action == "REMOVE_COMPONENT":
                 entity_name = args.get("entity")
                 component_name = args.get("component")
                 if not self.game._scene_manager or not self.game._scene_manager.remove_component_from_entity(entity_name, component_name):
-                    raise Exception(f"No se pudo eliminar componente {component_name} de {entity_name}")
+                    raise InvalidOperationError(f"No se pudo eliminar componente {component_name} de {entity_name}")
 
             elif action == "SET_COMPONENT_ENABLED":
                 entity_name = args.get("entity")
                 component_name = args.get("component")
                 enabled = bool(args.get("enabled", True))
                 if not self.game._scene_manager or not self.game._scene_manager.set_component_enabled(entity_name, component_name, enabled):
-                    raise Exception(f"No se pudo cambiar enabled de {entity_name}.{component_name}")
+                    raise InvalidOperationError(f"No se pudo cambiar enabled de {entity_name}.{component_name}")
 
             elif action == "SET_ENTITY_META":
                 entity_name = args.get("entity")
                 property_name = args.get("property")
                 value = args.get("value")
                 if not self.game._scene_manager or not self.game._scene_manager.update_entity_property(entity_name, property_name, value):
-                    raise Exception(f"No se pudo actualizar {entity_name}.{property_name}")
+                    raise InvalidOperationError(f"No se pudo actualizar {entity_name}.{property_name}")
 
             elif action == "CREATE_CAMERA2D":
                 name = args.get("name", "MainCamera")
@@ -206,7 +226,7 @@ class ScriptExecutor:
                 camera_components["Transform"].update(args.get("transform", {}))
                 camera_components["Camera2D"].update(args.get("camera", {}))
                 if not self.game._scene_manager or not self.game._scene_manager.create_entity(name, camera_components):
-                    raise Exception(f"No se pudo crear Camera2D: {name}")
+                    raise InvalidOperationError(f"No se pudo crear Camera2D: {name}")
 
             elif action == "CREATE_INPUT_MAP":
                 name = args.get("name", "InputMap")
@@ -224,21 +244,21 @@ class ScriptExecutor:
                 }
                 input_components["InputMap"].update(args.get("bindings", {}))
                 if not self.game._scene_manager or not self.game._scene_manager.create_entity(name, input_components):
-                    raise Exception(f"No se pudo crear InputMap: {name}")
+                    raise InvalidOperationError(f"No se pudo crear InputMap: {name}")
 
             elif action == "SET_INPUT_BINDING":
                 entity_name = args.get("entity")
                 action_name = args.get("binding")
                 value = args.get("value")
                 if not self.game._scene_manager or not self.game._scene_manager.apply_edit_to_world(entity_name, "InputMap", action_name, value):
-                    raise Exception(f"No se pudo editar InputMap {entity_name}.{action_name}")
+                    raise InvalidOperationError(f"No se pudo editar InputMap {entity_name}.{action_name}")
 
             elif action == "INJECT_INPUT":
                 entity_name = args.get("entity")
                 state = args.get("state", {})
                 frames = int(args.get("frames", 1))
                 if self.game._input_system is None:
-                    raise Exception("No hay InputSystem para inyectar input")
+                    raise InvalidOperationError("No hay InputSystem para inyectar input")
                 self.game._input_system.inject_state(entity_name, state, frames)
 
             elif action == "CREATE_AUDIO_SOURCE":
@@ -259,7 +279,7 @@ class ScriptExecutor:
                 audio_components["Transform"].update(args.get("transform", {}))
                 audio_components["AudioSource"].update(args.get("audio", {}))
                 if not self.game._scene_manager or not self.game._scene_manager.create_entity(name, audio_components):
-                    raise Exception(f"No se pudo crear AudioSource: {name}")
+                    raise InvalidOperationError(f"No se pudo crear AudioSource: {name}")
 
             elif action == "ADD_SCRIPT_BEHAVIOUR":
                 entity_name = args.get("entity")
@@ -272,13 +292,13 @@ class ScriptExecutor:
                     "public_data": args.get("public_data", {}),
                 }
                 if not self.game._scene_manager or not self.game._scene_manager.add_component_to_entity(entity_name, "ScriptBehaviour", component_data):
-                    raise Exception(f"No se pudo aÃ±adir ScriptBehaviour a {entity_name}")
+                    raise InvalidOperationError(f"No se pudo aÃ±adir ScriptBehaviour a {entity_name}")
 
             elif action == "SET_SCRIPT_PUBLIC_DATA":
                 entity_name = args.get("entity")
                 public_data = args.get("public_data", {})
                 if not self.game._scene_manager or not self.game._scene_manager.apply_edit_to_world(entity_name, "ScriptBehaviour", "public_data", public_data):
-                    raise Exception(f"No se pudo actualizar public_data de {entity_name}")
+                    raise InvalidOperationError(f"No se pudo actualizar public_data de {entity_name}")
 
             elif action == "SELECT":
                 name = args.get("name")
@@ -296,7 +316,9 @@ class ScriptExecutor:
                 if self.game._scene_manager:
                     success = self.game._scene_manager.apply_edit_to_world(ent, comp, prop, val)
                     if not success:
-                        raise Exception(f"Fallo al editar {ent}.{comp}.{prop} = {val}")
+                        raise InvalidOperationError(f"Fallo al editar {ent}.{comp}.{prop} = {val}")
+                else:
+                    raise InvalidOperationError("No hay SceneManager activo")
 
             elif action == "PLAY":
                 self.game.play()
@@ -315,12 +337,12 @@ class ScriptExecutor:
             elif action == "AUDIO_PLAY":
                 name = args.get("entity")
                 if self.game.world is None or self.game.audio_system is None or not self.game.audio_system.play(self.game.world, name):
-                    raise Exception(f"No se pudo reproducir audio en {name}")
+                    raise InvalidOperationError(f"No se pudo reproducir audio en {name}")
 
             elif action == "AUDIO_STOP":
                 name = args.get("entity")
                 if self.game.world is None or self.game.audio_system is None or not self.game.audio_system.stop(self.game.world, name):
-                    raise Exception(f"No se pudo detener audio en {name}")
+                    raise InvalidOperationError(f"No se pudo detener audio en {name}")
 
             elif action == "WAIT":
                 frames = args.get("frames", 1)
@@ -329,16 +351,16 @@ class ScriptExecutor:
             elif action == "SET_EDITOR_STATE":
                 project_service = getattr(self.game, "project_service", None)
                 if project_service is None:
-                    raise Exception("No hay ProjectService activo")
+                    raise InvalidOperationError("No hay ProjectService activo")
                 project_service.save_editor_state(args.get("state", {}))
 
             elif action == "UNDO":
                 if not self.game.undo():
-                    raise Exception("No se pudo deshacer")
+                    raise InvalidOperationError("No se pudo deshacer")
 
             elif action == "REDO":
                 if not self.game.redo():
-                    raise Exception("No se pudo rehacer")
+                    raise InvalidOperationError("No se pudo rehacer")
 
             elif action == "ASSERT_POS":
                 name = args.get("entity")
@@ -347,16 +369,16 @@ class ScriptExecutor:
                 tol = args.get("tolerance", 0.1)
 
                 if not self.game.world:
-                    raise Exception("No hay world activo")
+                    raise InvalidOperationError("No hay world activo")
 
                 entity = self.game.world.get_entity_by_name(name)
                 if not entity:
-                    raise Exception(f"Entidad no encontrada: {name}")
+                    raise EntityNotFoundError(f"Entidad no encontrada: {name}")
 
                 from engine.components.transform import Transform
                 trans = entity.get_component(Transform)
                 if trans is None:
-                    raise Exception(f"Transform no encontrado: {name}")
+                    raise ComponentNotFoundError(f"Transform no encontrado en {name}")
 
                 dist_sq = (trans.x - expected_x)**2 + (trans.y - expected_y)**2
                 if dist_sq > tol**2:
@@ -367,24 +389,24 @@ class ScriptExecutor:
                 parent_name = args.get("parent")
 
                 if not self.game.world:
-                    raise Exception("No hay world activo")
+                    raise InvalidOperationError("No hay world activo")
 
                 child = self.game.world.get_entity_by_name(child_name)
                 if not child:
-                    raise Exception(f"Child no encontrado: {child_name}")
+                    raise EntityNotFoundError(f"Entidad no encontrada: {child_name}")
 
                 from engine.components.transform import Transform
                 child_transform = child.get_component(Transform)
                 if child_transform is None:
-                    raise Exception(f"Transform no encontrado: {child_name}")
+                    raise ComponentNotFoundError(f"Transform no encontrado en {child_name}")
 
                 if parent_name:
                     parent = self.game.world.get_entity_by_name(parent_name)
                     if not parent:
-                        raise Exception(f"Parent no encontrado: {parent_name}")
+                        raise EntityNotFoundError(f"Entidad no encontrada: {parent_name}")
                     parent_transform = parent.get_component(Transform)
                     if parent_transform is None:
-                        raise Exception(f"Transform no encontrado: {parent_name}")
+                        raise ComponentNotFoundError(f"Transform no encontrado en {parent_name}")
                     child_transform.set_parent(parent_transform)
                 else:
                     # Desemparentar
@@ -401,11 +423,13 @@ class ScriptExecutor:
             return True
 
         except AssertionError as e:
+            self._last_error = e
             print(f"[SCRIPT] FALLO DE ASSERT: {e}")
             self.finished = True
             self.failed = True
             return False
         except Exception as e:
+            self._last_error = e
             print(f"[SCRIPT] ERROR DE EJECUCION: {e}")
             self.finished = True
             self.failed = True

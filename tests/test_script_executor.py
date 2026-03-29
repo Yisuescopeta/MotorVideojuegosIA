@@ -4,7 +4,14 @@ import unittest
 from pathlib import Path
 
 from cli.script_executor import ScriptExecutor
-from engine.api import EngineAPI
+from engine.api import (
+    ComponentNotFoundError,
+    EngineAPI,
+    EntityNotFoundError,
+    InvalidOperationError,
+    LevelLoadError,
+)
+from engine.ecs.entity import Entity
 
 
 class ScriptExecutorTests(unittest.TestCase):
@@ -63,6 +70,7 @@ class ScriptExecutorTests(unittest.TestCase):
         self.assertFalse(success)
         self.assertTrue(executor.failed)
         self.assertTrue(executor.finished)
+        self.assertIsInstance(executor.last_error, LevelLoadError)
 
     def test_unknown_command_marks_execution_as_failed(self) -> None:
         executor = ScriptExecutor(self.api.game)
@@ -72,6 +80,7 @@ class ScriptExecutorTests(unittest.TestCase):
 
         self.assertFalse(success)
         self.assertTrue(executor.failed)
+        self.assertIsInstance(executor.last_error, ValueError)
 
     def test_run_all_returns_false_when_command_execution_fails(self) -> None:
         executor = ScriptExecutor(self.api.game)
@@ -81,6 +90,40 @@ class ScriptExecutorTests(unittest.TestCase):
 
         self.assertFalse(success)
         self.assertTrue(executor.failed)
+        self.assertIsInstance(executor.last_error, EntityNotFoundError)
+
+    def test_assert_pos_missing_entity_records_entity_not_found(self) -> None:
+        world = self.api.scene_manager.create_new_scene("Assert Pos Missing Entity")
+        self.api.game.set_world(world)
+        executor = ScriptExecutor(self.api.game)
+        executor.commands = [{"action": "ASSERT_POS", "args": {"entity": "Ghost", "x": 0, "y": 0}}]
+
+        success = executor.run_all()
+
+        self.assertFalse(success)
+        self.assertIsInstance(executor.last_error, EntityNotFoundError)
+
+    def test_assert_pos_missing_transform_records_component_not_found(self) -> None:
+        world = self.api.scene_manager.create_new_scene("Assert Pos Missing Transform")
+        world.add_entity(Entity("NoTransform"))
+        self.api.game.set_world(world)
+        executor = ScriptExecutor(self.api.game)
+        executor.commands = [{"action": "ASSERT_POS", "args": {"entity": "NoTransform", "x": 0, "y": 0}}]
+
+        success = executor.run_all()
+
+        self.assertFalse(success)
+        self.assertIsInstance(executor.last_error, ComponentNotFoundError)
+
+    def test_inject_input_without_input_system_records_invalid_operation(self) -> None:
+        self.api.game._input_system = None
+        executor = ScriptExecutor(self.api.game)
+        executor.commands = [{"action": "INJECT_INPUT", "args": {"entity": "Player", "state": {"jump": True}, "frames": 1}}]
+
+        success = executor.run_all()
+
+        self.assertFalse(success)
+        self.assertIsInstance(executor.last_error, InvalidOperationError)
 
 
 if __name__ == "__main__":
