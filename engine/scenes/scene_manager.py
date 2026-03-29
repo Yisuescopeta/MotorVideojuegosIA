@@ -365,7 +365,39 @@ class SceneManager:
             return False
         self._flush_pending_edit_world(entry)
         before = copy.deepcopy(entry.scene.to_dict())
-        if not self._remove_entity_subtree(entry, entity_name):
+
+        # Orphan direct children: reparent them to the deleted entity's parent
+        deleted_data = entry.scene.find_entity(entity_name)
+        grandparent = deleted_data.get("parent") if deleted_data is not None else None
+        for child_data in list(entry.scene.entities_data):
+            if child_data.get("parent") != entity_name:
+                continue
+            child_name = child_data.get("name", "")
+            # Compute child's current world transform before reparenting
+            child_world = self._compute_world_transform_from_scene_data(entry, child_name)
+            # Point child to grandparent (or None for root)
+            child_data["parent"] = grandparent
+            # Recalculate child's local transform to preserve world position
+            if child_world is not None:
+                cwx, cwy, cwr, cwsx, cwsy = child_world
+                if grandparent is not None:
+                    gp_world = self._compute_world_transform_from_scene_data(entry, grandparent)
+                    if gp_world is not None:
+                        gpx, gpy, gpr, gpsx, gpsy = gp_world
+                        cwx -= gpx
+                        cwy -= gpy
+                        cwr -= gpr
+                        cwsx = cwsx / gpsx if gpsx != 0 else cwsx
+                        cwsy = cwsy / gpsy if gpsy != 0 else cwsy
+                ct = child_data.get("components", {}).get("Transform")
+                if ct is not None:
+                    ct["x"] = cwx
+                    ct["y"] = cwy
+                    ct["rotation"] = cwr
+                    ct["scale_x"] = cwsx
+                    ct["scale_y"] = cwsy
+
+        if not self._remove_single_entity(entry, entity_name):
             return False
         self._sync_feature_metadata_from_scene_links(entry)
         self._rebuild_edit_world(entry)
@@ -557,10 +589,65 @@ class SceneManager:
         return True
 
     def set_entity_parent(self, entity_name: str, parent_name: Optional[str]) -> bool:
-        return self.update_entity_property(entity_name, "parent", parent_name)
+        """Reparent an entity, preserving its world-space transform."""
+        entry = self._get_active_entry()
+        if entry is None or entry.is_playing:
+            return False
+        if parent_name is not None and not self._validate_parent(entry, entity_name, parent_name):
+            return False
+        self._flush_pending_edit_world(entry)
+        before = copy.deepcopy(entry.scene.to_dict())
+
+        # Compute current world transform from scene data
+        world_tx = self._compute_world_transform_from_scene_data(entry, entity_name)
+        if world_tx is None:
+            return self.update_entity_property(entity_name, "parent", parent_name)
+
+        wx, wy, w_rot, w_sx, w_sy = world_tx
+
+        # Update parent in scene data
+        if not entry.scene.update_entity_property(entity_name, "parent", parent_name):
+            return False
+
+        # Compute new parent's world transform (if any)
+        if parent_name is not None:
+            parent_world = self._compute_world_transform_from_scene_data(entry, parent_name)
+            if parent_world is not None:
+                px, py, p_rot, p_sx, p_sy = parent_world
+                new_local_x = wx - px
+                new_local_y = wy - py
+                new_local_rot = w_rot - p_rot
+                new_local_sx = w_sx / p_sx if p_sx != 0 else w_sx
+                new_local_sy = w_sy / p_sy if p_sy != 0 else w_sy
+            else:
+                new_local_x, new_local_y = wx, wy
+                new_local_rot, new_local_sx, new_local_sy = w_rot, w_sx, w_sy
+        else:
+            new_local_x, new_local_y = wx, wy
+            new_local_rot, new_local_sx, new_local_sy = w_rot, w_sx, w_sy
+
+        # Write recalculated local transform back to scene data
+        entity_data = entry.scene.find_entity(entity_name)
+        if entity_data is not None:
+            transform_data = entity_data.get("components", {}).get("Transform")
+            if transform_data is not None:
+                transform_data["x"] = new_local_x
+                transform_data["y"] = new_local_y
+                transform_data["rotation"] = new_local_rot
+                transform_data["scale_x"] = new_local_sx
+                transform_data["scale_y"] = new_local_sy
+
+        self._rebuild_edit_world(entry)
+        entry.dirty = True
+        self._record_scene_change(entry, f"reparent:{entity_name}", before)
+        return True
 
     def create_child_entity(self, parent_name: str, name: str, components: Optional[Dict[str, Dict[str, Any]]] = None) -> bool:
-        return self.create_entity(name, components=components) and self.set_entity_parent(name, parent_name)
+        """Create a new entity as a child. The provided component coords are local (no world-position preservation)."""
+        if not self.create_entity(name, components=components):
+            return False
+        # Set parent directly without recalculating transform (coords are already local)
+        return self.update_entity_property(name, "parent", parent_name)
 
     def instantiate_prefab(self, name: str, prefab_path: str, parent: Optional[str] = None, overrides: Optional[Dict[str, Any]] = None, root_name: Optional[str] = None) -> bool:
         return self.create_entity_from_data(
@@ -897,6 +984,54 @@ class SceneManager:
                     changed = True
         before_count = len(entities)
         entry.scene.data["entities"] = [entity_data for entity_data in entities if entity_data.get("name") not in names_to_remove]
+        return len(entry.scene.data["entities"]) != before_count
+
+    def _compute_world_transform_from_scene_data(
+        self, entry: SceneWorkspaceEntry, entity_name: str
+    ) -> Optional[tuple[float, float, float, float, float]]:
+        """Walk the parent chain in scene data to compute world transform.
+
+        Returns (world_x, world_y, world_rotation, world_scale_x, world_scale_y)
+        or None if the entity or its Transform component is missing.
+        """
+        entity_data = entry.scene.find_entity(entity_name)
+        if entity_data is None:
+            return None
+        transform = entity_data.get("components", {}).get("Transform")
+        if transform is None:
+            return None
+        tx = float(transform.get("x", 0.0))
+        ty = float(transform.get("y", 0.0))
+        t_rot = float(transform.get("rotation", 0.0))
+        t_sx = float(transform.get("scale_x", 1.0))
+        t_sy = float(transform.get("scale_y", 1.0))
+        parent_name = entity_data.get("parent")
+        visited: set[str] = {entity_name}
+        while parent_name is not None:
+            if parent_name in visited:
+                break
+            visited.add(parent_name)
+            parent_data = entry.scene.find_entity(parent_name)
+            if parent_data is None:
+                break
+            pt = parent_data.get("components", {}).get("Transform")
+            if pt is None:
+                break
+            tx += float(pt.get("x", 0.0))
+            ty += float(pt.get("y", 0.0))
+            t_rot += float(pt.get("rotation", 0.0))
+            t_sx *= float(pt.get("scale_x", 1.0))
+            t_sy *= float(pt.get("scale_y", 1.0))
+            parent_name = parent_data.get("parent")
+        return tx, ty, t_rot, t_sx, t_sy
+
+    def _remove_single_entity(self, entry: SceneWorkspaceEntry, entity_name: str) -> bool:
+        """Remove only the named entity from scene data (no cascade)."""
+        entities = entry.scene.data.get("entities", [])
+        before_count = len(entities)
+        entry.scene.data["entities"] = [
+            ed for ed in entities if ed.get("name") != entity_name
+        ]
         return len(entry.scene.data["entities"]) != before_count
 
     def _validate_parent(self, entry: SceneWorkspaceEntry, entity_name: str, parent_name: str) -> bool:

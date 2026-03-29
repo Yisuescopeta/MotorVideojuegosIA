@@ -235,6 +235,10 @@ class GizmoSystem:
             return
 
         self.hover_mode = self._check_transform_intersection(mouse_x, mouse_y, origin_x, origin_y, transform, self._resolve_effective_tool(entity))
+        # Fallback: click anywhere on entity body to free-drag (MOVE tool)
+        if self.hover_mode == GizmoMode.NONE and self.current_tool in (EditorTool.MOVE, EditorTool.TRANSFORM):
+            if self._is_point_in_entity_bounds(entity, transform, mouse_x, mouse_y):
+                self.hover_mode = GizmoMode.TRANSLATE_FREE
         if self.hover_mode != GizmoMode.NONE and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
             self._start_transform_drag(entity, transform, mouse_x, mouse_y, origin_x, origin_y, self.hover_mode)
 
@@ -872,6 +876,16 @@ class GizmoSystem:
         center_x = transform.x + center_offset_x
         center_y = transform.y + center_offset_y
         return center_x - width * 0.5, center_y - height * 0.5, width, height
+
+    def _is_point_in_entity_bounds(self, entity: Entity, transform: Transform, mx: float, my: float) -> bool:
+        """Check if a point is inside the entity's visual bounds (for free drag)."""
+        bounds = self._compute_entity_bounds(entity, transform)
+        if bounds is None:
+            # Fallback: 32x32 centered on transform position
+            half = 16.0
+            return abs(mx - transform.x) <= half and abs(my - transform.y) <= half
+        left, top, width, height = bounds
+        return left <= mx <= left + width and top <= my <= top + height
 
     def _rect_center(self, layout: dict[str, Any]) -> tuple[float, float]:
         return (

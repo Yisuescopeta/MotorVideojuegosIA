@@ -52,6 +52,14 @@ class HierarchyPanel:
         self._cursor_interactive_rects: List[rl.Rectangle] = []
         self._input_blocked: bool = False
 
+        # Drag-and-drop reparenting state
+        self._drag_entity_id: Optional[int] = None
+        self._drag_start_y: float = 0.0
+        self._is_dragging_entity: bool = False
+        self._drop_target_name: Optional[str] = None
+        self._drop_as_root: bool = False
+        self._DRAG_THRESHOLD: int = 5
+
     def set_scene_manager(self, manager: object) -> None:
         """Permite que la UI use el mismo camino serializable que la API."""
         self._scene_manager = manager
@@ -131,15 +139,47 @@ class HierarchyPanel:
         # Obtener entidades raíz
         roots = self._get_root_entities(world)
         
+        # Reset drop target each frame
+        self._drop_target_name = None
+        self._drop_as_root = False
+
         # Renderizar árbol
         for entity in roots:
             content_y = self._render_node(entity, 0, x, content_y, world, content_y_start, content_height)
-            
+
+        # Drag-and-drop reparenting logic
+        mouse_pos = rl.get_mouse_position()
+        if self._drag_entity_id is not None and not self._is_dragging_entity:
+            if rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT) and abs(mouse_pos.y - self._drag_start_y) > self._DRAG_THRESHOLD:
+                self._is_dragging_entity = True
+
+        if self._is_dragging_entity:
+            # If not hovering over any entity, drop as root (unparent)
+            in_content = (x <= mouse_pos.x <= x + width and
+                          content_y_start <= mouse_pos.y <= y + height)
+            if in_content and self._drop_target_name is None:
+                self._drop_as_root = True
+                rl.draw_line(x + 4, int(mouse_pos.y), x + width - 4, int(mouse_pos.y), rl.Color(58, 121, 187, 200))
+
+            # Draw drag label near cursor
+            drag_entity = world.get_entity(self._drag_entity_id) if self._drag_entity_id is not None else None
+            if drag_entity is not None:
+                label = drag_entity.name
+                rl.draw_rectangle(int(mouse_pos.x + 12), int(mouse_pos.y - 8), len(label) * 7 + 8, 18, rl.Color(50, 50, 50, 200))
+                rl.draw_text(label, int(mouse_pos.x + 16), int(mouse_pos.y - 5), 10, self.UNITY_TEXT)
+
+            if rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
+                self._complete_hierarchy_drag(world)
+
+        if not rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT):
+            self._drag_entity_id = None
+            self._is_dragging_entity = False
+
         rl.end_scissor_mode()
-        
+
         # Context Menu Logic (After scissor to draw on top)
         self._handle_context_input(world, x, y, width, height)
-        
+
         if self.context_menu_active:
              self._draw_context_menu(world)
             
@@ -182,19 +222,35 @@ class HierarchyPanel:
             
         if is_hover:
             self.hovered_entity_id = entity.id
-            rl.draw_rectangle(panel_x, y, self.panel_width, row_height, self.UNITY_HOVER)
-            
-            if not self._input_blocked and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-                if self._scene_manager is not None:
-                    self._scene_manager.set_selected_entity(entity.name)
-                else:
-                    world.selected_entity_name = entity.name
-                if has_children:
-                    # Toggle expand
-                    if entity.id in self.expanded_ids:
-                        self.expanded_ids.remove(entity.id)
+            if not self._is_dragging_entity:
+                rl.draw_rectangle(panel_x, y, self.panel_width, row_height, self.UNITY_HOVER)
+
+            # Drag-and-drop: track potential drag start
+            if not self._input_blocked and not self._is_dragging_entity and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                self._drag_entity_id = entity.id
+                self._drag_start_y = mouse_pos.y
+
+            if not self._input_blocked and not self._is_dragging_entity and rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
+                # Normal click (no drag occurred)
+                if self._drag_entity_id == entity.id:
+                    if self._scene_manager is not None:
+                        self._scene_manager.set_selected_entity(entity.name)
                     else:
-                        self.expanded_ids.add(entity.id)
+                        world.selected_entity_name = entity.name
+                    if has_children:
+                        if entity.id in self.expanded_ids:
+                            self.expanded_ids.remove(entity.id)
+                        else:
+                            self.expanded_ids.add(entity.id)
+                self._drag_entity_id = None
+
+        # During drag: highlight drop targets
+        if self._is_dragging_entity and is_hover:
+            drag_entity = world.get_entity(self._drag_entity_id) if self._drag_entity_id is not None else None
+            if drag_entity is not None and entity.id != self._drag_entity_id:
+                self._drop_target_name = entity.name
+                self._drop_as_root = False
+                rl.draw_rectangle(panel_x, y, self.panel_width, row_height, rl.Color(44, 93, 135, 100))
 
         # Highlight Selection
         if world.selected_entity_name == entity.name:
@@ -266,6 +322,28 @@ class HierarchyPanel:
         self._cached_roots = roots
         return roots
 
+    def _complete_hierarchy_drag(self, world: "World") -> None:
+        """Finish a drag-and-drop reparenting operation."""
+        drag_entity = world.get_entity(self._drag_entity_id) if self._drag_entity_id is not None else None
+        if drag_entity is None or self._scene_manager is None:
+            self._is_dragging_entity = False
+            self._drag_entity_id = None
+            return
+
+        if self._drop_target_name is not None and self._drop_target_name != drag_entity.name:
+            self._scene_manager.set_entity_parent(drag_entity.name, self._drop_target_name)
+            # Auto-expand the drop target so user sees the child
+            target = world.get_entity_by_name(self._drop_target_name)
+            if target is not None:
+                self.expanded_ids.add(target.id)
+        elif self._drop_as_root and drag_entity.parent_name is not None:
+            self._scene_manager.set_entity_parent(drag_entity.name, None)
+
+        self._is_dragging_entity = False
+        self._drag_entity_id = None
+        self._drop_target_name = None
+        self._drop_as_root = False
+
     def _handle_context_input(self, world: "World", x: int, y: int, w: int, h: int) -> None:
         """Maneja el input para abrir el menú contextual en el panel."""
         mouse = rl.get_mouse_position()
@@ -282,8 +360,12 @@ class HierarchyPanel:
         # Options
         options = ["Create Entity"]
         if self.context_target_id is not None:
+             options.append("Create Child Entity")
              options.append("Delete Entity")
              options.append("Duplicate Entity")
+             entity = world.get_entity(self.context_target_id)
+             if entity is not None and entity.parent_name is not None:
+                 options.append("Unparent")
              options.append("Save as Prefab")
              
         item_height = 24
@@ -354,6 +436,19 @@ class HierarchyPanel:
                     else:
                         world.selected_entity_name = None
                     
+        elif action == "Create Child Entity" and self.context_target_id is not None:
+            parent_entity = world.get_entity(self.context_target_id)
+            if parent_entity is not None and self._scene_manager is not None:
+                child_name = f"New Child {world.entity_count()}"
+                if self._scene_manager.create_child_entity(parent_entity.name, child_name):
+                    self._scene_manager.set_selected_entity(child_name)
+                    self.expanded_ids.add(self.context_target_id)
+
+        elif action == "Unparent" and self.context_target_id is not None:
+            entity = world.get_entity(self.context_target_id)
+            if entity is not None and self._scene_manager is not None:
+                self._scene_manager.set_entity_parent(entity.name, None)
+
         elif action == "Duplicate Entity" and self.context_target_id is not None:
             entity = world.get_entity(self.context_target_id)
             if entity is not None and self._scene_manager is not None:
