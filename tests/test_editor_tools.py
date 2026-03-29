@@ -219,6 +219,88 @@ class SceneViewFocusRegressionTests(unittest.TestCase):
         self.assertEqual(self.game.editor_layout.editor_camera.zoom, 1.75)
 
 
+class GameUiAuthoringRequestTests(unittest.TestCase):
+    def _make_layout(self) -> Mock:
+        layout = Mock()
+        layout.project_panel = Mock()
+        layout.project_panel.request_open_sprite_editor_for = None
+        layout.project_panel.request_open_scene_for = None
+        layout.request_create_canvas = False
+        layout.request_create_ui_text = False
+        layout.request_create_ui_button = False
+        return layout
+
+    def _stub_ui_request_controllers(self, game: Game) -> None:
+        game._scene_workflow_controller.handle_scene_tab_requests = Mock()
+        game._scene_workflow_controller.handle_scene_ui_requests = Mock()
+        game._project_workspace_controller.handle_project_launcher_requests = Mock(return_value=False)
+        game._project_workspace_controller.handle_project_switch_requests = Mock()
+
+    def test_process_ui_requests_creates_canvas_entity(self) -> None:
+        game = Game()
+        game.editor_layout = self._make_layout()
+        game.editor_layout.request_create_canvas = True
+        game._scene_manager = Mock()
+        game._scene_manager.active_world = None
+        self._stub_ui_request_controllers(game)
+
+        game._process_ui_requests()
+
+        game._scene_manager.create_entity.assert_called_once()
+        entity_name = game._scene_manager.create_entity.call_args.args[0]
+        components = game._scene_manager.create_entity.call_args.kwargs["components"]
+        self.assertEqual(entity_name, "Canvas")
+        self.assertIn("Canvas", components)
+        self.assertIn("RectTransform", components)
+
+    def test_process_ui_requests_uses_selected_entity_as_default_ui_parent(self) -> None:
+        game = Game()
+        game.editor_layout = self._make_layout()
+        game.editor_layout.request_create_ui_text = True
+        active_world = Mock()
+        active_world.selected_entity_name = "HudRoot"
+        game._scene_manager = Mock()
+        game._scene_manager.active_world = active_world
+        self._stub_ui_request_controllers(game)
+
+        game._process_ui_requests()
+
+        game._scene_manager.create_child_entity.assert_called_once()
+        parent_name, entity_name = game._scene_manager.create_child_entity.call_args.args[:2]
+        components = game._scene_manager.create_child_entity.call_args.kwargs["components"]
+        self.assertEqual(parent_name, "HudRoot")
+        self.assertEqual(entity_name, "Text")
+        self.assertIn("UIText", components)
+
+    def test_process_ui_requests_falls_back_to_first_canvas_for_button_parent(self) -> None:
+        game = Game()
+        game.editor_layout = self._make_layout()
+        game.editor_layout.request_create_ui_button = True
+
+        non_canvas_entity = Mock()
+        non_canvas_entity.has_component.return_value = False
+        canvas_entity = Mock()
+        canvas_entity.name = "MainCanvas"
+        canvas_entity.has_component.return_value = True
+
+        active_world = Mock()
+        active_world.selected_entity_name = None
+        active_world.get_all_entities.return_value = [non_canvas_entity, canvas_entity]
+
+        game._scene_manager = Mock()
+        game._scene_manager.active_world = active_world
+        self._stub_ui_request_controllers(game)
+
+        game._process_ui_requests()
+
+        game._scene_manager.create_child_entity.assert_called_once()
+        parent_name, entity_name = game._scene_manager.create_child_entity.call_args.args[:2]
+        components = game._scene_manager.create_child_entity.call_args.kwargs["components"]
+        self.assertEqual(parent_name, "MainCanvas")
+        self.assertEqual(entity_name, "Button")
+        self.assertIn("UIButton", components)
+
+
 class GameCursorRenderTests(unittest.TestCase):
     def test_render_frame_draws_custom_cursor_after_layout(self) -> None:
         game = Game()
