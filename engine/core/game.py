@@ -313,8 +313,6 @@ class Game:
         return self._project_loaded
 
     def _stop_runtime_flow(self) -> None:
-        if self._state == EngineState.STEPPING:
-            self._state = EngineState.PAUSED
         self.stop()
 
     def _toggle_fullscreen(self) -> None:

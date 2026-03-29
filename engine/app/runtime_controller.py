@@ -102,7 +102,7 @@ class RuntimeController:
 
     def stop(self) -> None:
         """Detiene el juego y vuelve a edición."""
-        if self._get_state() not in (EngineState.PLAY, EngineState.PAUSED):
+        if self._get_state() not in (EngineState.PLAY, EngineState.PAUSED, EngineState.STEPPING):
             return
 
         log_info("Estado: -> EDIT (restaurando escena)")

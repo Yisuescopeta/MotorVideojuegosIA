@@ -271,7 +271,8 @@ class DebugToolsController:
             payload = active_world.serialize()
             encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
             total_bytes = float(len(encoded.encode("utf-8")))
-        except Exception:
+        except Exception as exc:
+            log_err(f"approximate_memory_counters: serialización fallida: {exc}")
             total_bytes = 0.0
         entity_count = max(1, active_world.entity_count())
         return {
