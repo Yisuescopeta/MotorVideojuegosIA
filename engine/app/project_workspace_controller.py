@@ -308,7 +308,8 @@ class ProjectWorkspaceController:
 
         if editor_layout is not None:
             editor_layout.active_tab = "SCENE"
-            editor_layout.project_panel.set_project_service(project_service)
+            if editor_layout.project_panel is not None:
+                editor_layout.project_panel.set_project_service(project_service)
             self.refresh_launcher_projects()
             editor_layout.show_project_launcher = False
         log_info(f"Proyecto activo: {manifest.name}")
@@ -325,19 +326,23 @@ class ProjectWorkspaceController:
             try:
                 import tkinter
                 from tkinter import filedialog
-
-                root = tkinter.Tk()
-                root.withdraw()
-                initial_dir = project_service.editor_root.as_posix() if project_service is not None else os.getcwd()
-                path = filedialog.askdirectory(initialdir=initial_dir, title="Add Existing Project")
-                root.destroy()
-                if path and project_service is not None:
-                    project_service.register_project(path)
-                    self.refresh_launcher_projects()
-                    editor_layout.set_launcher_feedback("Project added to launcher")
-            except Exception as exc:
-                editor_layout.set_launcher_feedback(f"Add project failed: {exc}", is_error=True)
-                print(f"[ERROR] Open Project browse failed: {exc}")
+            except ImportError:
+                log_err("Diálogo de archivo no disponible (tkinter no instalado).")
+                editor_layout.set_launcher_feedback("File dialog not available (tkinter missing)", is_error=True)
+            else:
+                try:
+                    root = tkinter.Tk()
+                    root.withdraw()
+                    initial_dir = project_service.editor_root.as_posix() if project_service is not None else os.getcwd()
+                    path = filedialog.askdirectory(initialdir=initial_dir, title="Add Existing Project")
+                    root.destroy()
+                    if path and project_service is not None:
+                        project_service.register_project(path)
+                        self.refresh_launcher_projects()
+                        editor_layout.set_launcher_feedback("Project added to launcher")
+                except Exception as exc:
+                    editor_layout.set_launcher_feedback(f"Add project failed: {exc}", is_error=True)
+                    log_err(f"Open Project browse failed: {exc}")
 
         if editor_layout.request_exit_launcher:
             editor_layout.request_exit_launcher = False
@@ -361,7 +366,7 @@ class ProjectWorkspaceController:
                 editor_layout.pending_project_path = project_root.as_posix()
             except Exception as exc:
                 editor_layout.set_launcher_feedback(f"Create project failed: {exc}", is_error=True)
-                print(f"[ERROR] Create Project failed: {exc}")
+                log_err(f"Create Project failed: {exc}")
 
         if editor_layout.request_remove_project_path:
             path = editor_layout.request_remove_project_path

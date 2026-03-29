@@ -34,6 +34,9 @@ class _FakeSceneManager:
         resolved_key = key or self.active_scene_key
         return self._entries.get(resolved_key)
 
+    def resolve_entry(self, key: str | None):
+        return self._resolve_entry(key)
+
     def save_scene_to_file(self, path: str, *, key: str | None = None) -> bool:
         resolved_key = key or self.active_scene_key
         self.saved_calls.append((path, resolved_key))

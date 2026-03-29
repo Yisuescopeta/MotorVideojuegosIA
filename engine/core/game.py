@@ -133,9 +133,6 @@ class Game:
         self._cursor_renderer: CustomCursorRenderer = CustomCursorRenderer()
         
         # Gestión de escenas
-             
-        # Gestión de escenas
-        # Gestión de escenas
         self._scene_manager: Optional["SceneManager"] = None
         
         # Estado de Persistencia

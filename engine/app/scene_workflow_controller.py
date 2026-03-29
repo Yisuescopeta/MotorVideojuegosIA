@@ -4,6 +4,7 @@ import os
 from typing import Any, Callable, Optional
 
 from engine.core.engine_state import EngineState
+from engine.editor.console_panel import log_err, log_info
 
 
 class SceneWorkflowController:
@@ -53,7 +54,11 @@ class SceneWorkflowController:
         try:
             import tkinter
             from tkinter import filedialog
+        except ImportError:
+            log_err("Diálogo de archivo no disponible (tkinter no instalado).")
+            return ""
 
+        try:
             root = tkinter.Tk()
             root.withdraw()
             project_service = self._get_project_service()
@@ -68,14 +73,14 @@ class SceneWorkflowController:
             root.destroy()
             return str(path or "")
         except Exception as exc:
-            print(f"[ERROR] Save Dialog failed: {exc}")
+            log_err(f"Save Dialog failed: {exc}")
             return ""
 
     def save_scene_entry(self, key: Optional[str] = None, prompt_if_needed: bool = True) -> bool:
         scene_manager = self._get_scene_manager()
         if scene_manager is None:
             return False
-        entry = scene_manager._resolve_entry(key)  # type: ignore[attr-defined]
+        entry = scene_manager.resolve_entry(key)
         if entry is None:
             return False
         path = entry.source_path
@@ -88,7 +93,7 @@ class SceneWorkflowController:
         success = scene_manager.save_scene_to_file(path, key=entry.key)
         if success:
             self._sync_scene_workspace_ui(False)
-            print(f"[INFO] Guardado completado: {path}")
+            log_info(f"Guardado completado: {path}")
         return success
 
     def save_all_dirty_scenes(self) -> bool:
@@ -160,7 +165,7 @@ class SceneWorkflowController:
         scene_manager = self._get_scene_manager()
         if scene_manager is None:
             return False
-        entry = scene_manager._resolve_entry(key_or_path)  # type: ignore[attr-defined]
+        entry = scene_manager.resolve_entry(key_or_path)
         if entry is None:
             return False
         if entry.key == scene_manager.active_scene_key:
@@ -197,13 +202,13 @@ class SceneWorkflowController:
 
     def save_current_scene(self) -> None:
         if self._get_scene_manager() is None:
-            print("[ERROR] No hay SceneManager activo, no se puede guardar.")
+            log_err("No hay SceneManager activo, no se puede guardar.")
             return
         if not self.save_scene_entry(prompt_if_needed=True):
-            print("[ERROR] Fallo al guardar.")
+            log_err("Fallo al guardar.")
 
     def reload_scene(self) -> None:
-        print("[INFO] Recargando escena...")
+        log_info("Recargando escena...")
         self._clear_rules_and_events()
         scene_manager = self._get_scene_manager()
         if scene_manager is not None:
@@ -242,7 +247,7 @@ class SceneWorkflowController:
         if editor_layout.request_close_scene_key:
             target_key = editor_layout.request_close_scene_key
             editor_layout.request_close_scene_key = ""
-            entry = scene_manager._resolve_entry(target_key)  # type: ignore[attr-defined]
+            entry = scene_manager.resolve_entry(target_key)
             if entry is not None:
                 if entry.dirty:
                     editor_layout.pending_scene_close_key = entry.key
@@ -283,7 +288,7 @@ class SceneWorkflowController:
             if self.create_scene(scene_name):
                 editor_layout.show_create_scene_modal = False
                 editor_layout.scene_create_name_focused = False
-                print(f"[GUI] Scene created: {scene_name}")
+                log_info(f"Scene created: {scene_name}")
 
         if editor_layout.request_save_scene:
             editor_layout.request_save_scene = False
@@ -305,7 +310,11 @@ class SceneWorkflowController:
             try:
                 import tkinter
                 from tkinter import filedialog
+            except ImportError:
+                log_err("Diálogo de archivo no disponible (tkinter no instalado).")
+                return
 
+            try:
                 root = tkinter.Tk()
                 root.withdraw()
                 path = filedialog.askopenfilename(
@@ -317,4 +326,4 @@ class SceneWorkflowController:
                 if path:
                     self.load_scene_by_path(path)
             except Exception as exc:
-                print(f"[ERROR] Load Dialog failed: {exc}")
+                log_err(f"Load Dialog failed: {exc}")

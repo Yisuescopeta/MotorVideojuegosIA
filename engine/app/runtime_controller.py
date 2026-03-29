@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from engine.core.engine_state import EngineState
+from engine.editor.console_panel import log_info
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
 from engine.tilemap.collision_builder import bake_tilemap_colliders
 
@@ -63,7 +64,7 @@ class RuntimeController:
         if self._get_state() != EngineState.EDIT:
             return
 
-        print("[INFO] Estado: EDIT -> PLAY")
+        log_info("Estado: EDIT -> PLAY")
         self._reset_profiler(run_label="play_session")
 
         scene_manager = self._get_scene_manager()
@@ -93,10 +94,10 @@ class RuntimeController:
     def pause(self) -> None:
         """Pausa/Resume el juego (PLAY <-> PAUSED)."""
         if self._get_state() == EngineState.PLAY:
-            print("[INFO] Estado: PLAY -> PAUSED")
+            log_info("Estado: PLAY -> PAUSED")
             self._set_state(EngineState.PAUSED)
         elif self._get_state() == EngineState.PAUSED:
-            print("[INFO] Estado: PAUSED -> PLAY")
+            log_info("Estado: PAUSED -> PLAY")
             self._set_state(EngineState.PLAY)
 
     def stop(self) -> None:
@@ -104,7 +105,7 @@ class RuntimeController:
         if self._get_state() not in (EngineState.PLAY, EngineState.PAUSED):
             return
 
-        print("[INFO] Estado: -> EDIT (restaurando escena)")
+        log_info("Estado: -> EDIT (restaurando escena)")
 
         rule_system = self._get_rule_system()
         if rule_system is not None:
@@ -135,7 +136,7 @@ class RuntimeController:
         if self._get_state() == EngineState.PLAY:
             self.pause()
 
-        print("[DEBUG] Step frame")
+        log_info("Step frame")
         self._set_state(EngineState.STEPPING)
 
     def update_animation(self, world: Optional["World"], dt: float) -> None:
