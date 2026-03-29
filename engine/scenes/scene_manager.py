@@ -204,7 +204,13 @@ class SceneManager:
             log_warn("SceneManager: no hay world para play")
             return None
         entry.selected_entity_name = entry.edit_world.selected_entity_name
-        entry.runtime_world = entry.edit_world.clone()
+        try:
+            entry.runtime_world = entry.edit_world.clone()
+        except Exception as exc:
+            entry.runtime_world = None
+            entry.is_playing = False
+            log_err(f"SceneManager: no se pudo entrar en PLAY por fallo de clonacion: {exc}")
+            return None
         if entry.selected_entity_name and entry.runtime_world.get_entity_by_name(entry.selected_entity_name) is not None:
             entry.runtime_world.selected_entity_name = entry.selected_entity_name
         entry.is_playing = True
@@ -574,7 +580,7 @@ class SceneManager:
             entry.edit_world_sync_pending = False
             return True
         except Exception as exc:
-            print(f"[SCENE] Error al guardar en {path}: {exc}")
+            log_err(f"SceneManager: error al guardar en {path}: {exc}")
             return False
 
     def restore_scene_data(self, data: Dict[str, Any]) -> bool:

@@ -62,6 +62,7 @@ class EngineAPIPublicContractTests(unittest.TestCase):
     def test_inject_input_state_fails_without_input_system(self) -> None:
         api = self._make_api()
         self.assertIsNotNone(api.game)
+        self.assertIsNotNone(api.game.input_system)
         api.game._input_system = None
 
         result = api.inject_input_state("Player", {"horizontal": 1.0}, frames=0)
@@ -72,14 +73,23 @@ class EngineAPIPublicContractTests(unittest.TestCase):
     def test_get_recent_events_returns_serializable_payloads(self) -> None:
         api = self._make_api()
         self.assertIsNotNone(api.game)
-        self.assertIsNotNone(api.game._event_bus)
-        api.game._event_bus.clear_history()
-        api.game._event_bus.emit("event_a", {"value": 1})
-        api.game._event_bus.emit("event_b", {"value": 2})
+        self.assertIsNotNone(api.game.event_bus)
+        api.game.event_bus.clear_history()
+        api.game.event_bus.emit("event_a", {"value": 1})
+        api.game.event_bus.emit("event_b", {"value": 2})
 
         events = api.get_recent_events(count=1)
 
         self.assertEqual(events, [{"name": "event_b", "data": {"value": 2}}])
+
+    def test_game_exposes_public_runtime_accessors_needed_by_api(self) -> None:
+        api = self._make_api()
+        self.assertIsNotNone(api.game)
+        self.assertIsNotNone(api.game.event_bus)
+        self.assertIsNotNone(api.game.physics_system)
+        self.assertIsNotNone(api.game.render_system)
+        self.assertIsNotNone(api.game.input_system)
+        self.assertIsNotNone(api.game.project_service)
 
 
 class RLPublicContractRegressionTests(unittest.TestCase):

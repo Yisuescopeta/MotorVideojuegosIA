@@ -7,7 +7,7 @@ from __future__ import annotations
 from engine.components.collider import Collider
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
-from engine.config import GROUND_Y_TEMP, GRAVITY_DEFAULT
+from engine.config import GRAVITY_DEFAULT, GROUND_Y_TEMP
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 
@@ -19,10 +19,12 @@ class PhysicsSystem:
         self.gravity: float = gravity
         self._step_metrics: dict[str, float] = {"ccd_bodies": 0, "swept_checks": 0}
         self._swept_contacts: list[tuple[int, int]] = []
+        self._swept_contact_set: set[tuple[int, int]] = set()
 
     def update(self, world: World, delta_time: float) -> None:
         self._step_metrics = {"ccd_bodies": 0, "swept_checks": 0}
         self._swept_contacts = []
+        self._swept_contact_set = set()
         entities = world.get_entities_with(Transform, RigidBody)
         solids = [
             entity
@@ -79,6 +81,7 @@ class PhysicsSystem:
     def consume_swept_contacts(self) -> list[tuple[int, int]]:
         contacts = list(self._swept_contacts)
         self._swept_contacts = []
+        self._swept_contact_set = set()
         return contacts
 
     def _is_solid_body(self, entity: Entity) -> bool:
@@ -241,7 +244,8 @@ class PhysicsSystem:
 
     def _record_swept_contact(self, entity: Entity, other: Entity) -> None:
         pair = tuple(sorted((int(entity.id), int(other.id))))
-        if pair not in self._swept_contacts:
+        if pair not in self._swept_contact_set:
+            self._swept_contact_set.add(pair)
             self._swept_contacts.append(pair)
 
     def _has_ground_support(

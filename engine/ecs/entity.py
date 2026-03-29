@@ -20,8 +20,9 @@ EJEMPLO DE USO:
     print(transform.x)  # 100
 """
 
-from typing import Any, TypeVar
 import copy
+import itertools
+from typing import Any, TypeVar
 
 from engine.ecs.component import Component
 
@@ -29,15 +30,12 @@ from engine.ecs.component import Component
 T = TypeVar("T", bound=Component)
 
 # Contador global para IDs únicos
-_next_entity_id: int = 0
+_ENTITY_ID_COUNTER = itertools.count()
 
 
 def _generate_entity_id() -> int:
     """Genera un ID único para una nueva entidad."""
-    global _next_entity_id
-    entity_id = _next_entity_id
-    _next_entity_id += 1
-    return entity_id
+    return next(_ENTITY_ID_COUNTER)
 
 
 class Entity:

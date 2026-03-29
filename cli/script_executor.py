@@ -52,6 +52,7 @@ class ScriptExecutor:
         self.current_index: int = 0
         self.wait_frames: int = 0
         self.finished: bool = False
+        self.failed: bool = False
 
     def load_script(self, path: str) -> None:
         """Carga un script JSON."""
@@ -60,7 +61,27 @@ class ScriptExecutor:
         self.current_index = 0
         self.wait_frames = 0
         self.finished = False
+        self.failed = False
         print(f"[SCRIPT] Script cargado: {len(self.commands)} comandos")
+
+    def _resolve_project_scene_path(self, path: str) -> str:
+        project_service = getattr(self.game, "project_service", None)
+        if project_service is None:
+            raise RuntimeError("No hay ProjectService activo para resolver escenas")
+
+        candidate = str(path or "").strip()
+        if not candidate:
+            raise ValueError("LOAD_SCENE requiere una ruta no vacia")
+
+        resolved = project_service.resolve_path(candidate)
+        project_root = project_service.project_root
+        try:
+            resolved.relative_to(project_root)
+        except ValueError as exc:
+            raise ValueError(f"Ruta fuera del proyecto bloqueada: {resolved.as_posix()}") from exc
+        if not resolved.exists() or not resolved.is_file():
+            raise FileNotFoundError(f"Escena no encontrada: {resolved.as_posix()}")
+        return resolved.as_posix()
 
     def update(self) -> bool:
         """
@@ -89,6 +110,7 @@ class ScriptExecutor:
     def run_all(self) -> bool:
         """Ejecuta todos los comandos (bloqueante). Retorna True si todo OK."""
         self.finished = False
+        self.failed = False
         while not self.finished:
             # En modo bloqueante, si hay wait frames, simulamos el paso del tiempo manualmente
             # OJO: Esto solo funciona bien si el caller maneja el tiempo o si es headless
@@ -102,7 +124,7 @@ class ScriptExecutor:
             if not self.update():
                 break
 
-        return True
+        return not self.failed
 
     def _execute_command(self, cmd: Dict[str, Any]) -> bool:
         action = cmd.get("action", "").upper()
@@ -117,11 +139,10 @@ class ScriptExecutor:
                     raise Exception(f"No se pudo abrir proyecto: {path}")
 
             elif action == "LOAD_SCENE":
-                path = args.get("path")
-                with open(path, 'r') as f:
-                    data = json.load(f)
-                if self.game._scene_manager:
-                    self.game._scene_manager.load_scene(data)
+                path = self._resolve_project_scene_path(str(args.get("path", "")))
+                scene_manager = getattr(self.game, "_scene_manager", None)
+                if scene_manager is None or scene_manager.load_scene_from_file(path) is None:
+                    raise Exception(f"No se pudo cargar escena: {path}")
 
             elif action == "CREATE_ENTITY":
                 name = args.get("name", "New Entity")
@@ -306,9 +327,10 @@ class ScriptExecutor:
                 self.wait_frames = frames
 
             elif action == "SET_EDITOR_STATE":
-                if self.game._project_service is None:
+                project_service = getattr(self.game, "project_service", None)
+                if project_service is None:
                     raise Exception("No hay ProjectService activo")
-                self.game._project_service.save_editor_state(args.get("state", {}))
+                project_service.save_editor_state(args.get("state", {}))
 
             elif action == "UNDO":
                 if not self.game.undo():
@@ -374,15 +396,17 @@ class ScriptExecutor:
                     self.game.headless_running = False # type: ignore
 
             else:
-                print(f"[SCRIPT] Comando desconocido: {action}")
+                raise ValueError(f"Comando desconocido: {action}")
 
             return True
 
         except AssertionError as e:
             print(f"[SCRIPT] FALLO DE ASSERT: {e}")
             self.finished = True
+            self.failed = True
             return False
         except Exception as e:
-            print(f"[SCRIPT] ERROR DE EJECUCIÃ“N: {e}")
+            print(f"[SCRIPT] ERROR DE EJECUCION: {e}")
             self.finished = True
+            self.failed = True
             return False

@@ -72,6 +72,18 @@ class RuntimeControllerTests(unittest.TestCase):
         self.event_bus.emit.assert_called_once_with("on_play", {})
         self.assertEqual(self.state["value"], EngineState.PLAY)
 
+    def test_play_aborts_when_runtime_world_cannot_be_created(self) -> None:
+        self.scene_manager.enter_play.return_value = None
+
+        with patch("engine.app.runtime_controller.bake_tilemap_colliders") as bake_tilemap_colliders:
+            self.controller.play()
+
+        bake_tilemap_colliders.assert_not_called()
+        self.rule_system.set_world.assert_not_called()
+        self.script_behaviour_system.on_play.assert_not_called()
+        self.event_bus.emit.assert_not_called()
+        self.assertEqual(self.state["value"], EngineState.EDIT)
+
     def test_stop_restores_edit_world_and_clears_runtime_state(self) -> None:
         runtime_world = SimpleNamespace(feature_metadata={})
         edit_world = SimpleNamespace(feature_metadata={})

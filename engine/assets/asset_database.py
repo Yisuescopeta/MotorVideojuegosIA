@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from engine.assets.asset_reference import build_asset_reference, normalize_asset_path, normalize_asset_reference
+from engine.project.project_service import ProjectService
 
 
 class AssetDatabase:
@@ -27,7 +28,7 @@ class AssetDatabase:
     PREFAB_EXTENSIONS = {".prefab"}
     SCENE_EXTENSIONS = {".json"}
 
-    def __init__(self, project_service: Any) -> None:
+    def __init__(self, project_service: ProjectService) -> None:
         self._project_service = project_service
         self._catalog_cache: Optional[Dict[str, Any]] = None
         self._guid_index: Dict[str, Dict[str, Any]] = {}
@@ -59,8 +60,8 @@ class AssetDatabase:
                     payload = json.load(handle)
                 self._set_catalog_cache(payload)
                 return self._catalog_cache or payload
-            except Exception:
-                pass
+            except Exception as exc:
+                print(f"[WARNING] AssetDatabase: catalogo invalido en {catalog_path.as_posix()}, reconstruyendo: {exc}")
         return self.refresh_catalog()
 
     def refresh_catalog(self) -> Dict[str, Any]:

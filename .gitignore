@@ -36,6 +36,11 @@ htmlcov/
 *.tmp
 *.temp
 .claude/worktrees/
+autosave.json
+close_debug.txt
+pty_debug*.txt
+screenshot*.png
+zzz_test.txt
 
 # Local projects created from the launcher
 projects/

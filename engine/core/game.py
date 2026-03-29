@@ -17,10 +17,11 @@ CONTROLES:
     - TAB: Inspector
 """
 
-from typing import TYPE_CHECKING, Any, Optional
-import pyray as rl
 import random
 import time
+from typing import TYPE_CHECKING, Any, Optional
+
+import pyray as rl
 
 from engine.app import (
     DebugToolsController,
@@ -29,47 +30,45 @@ from engine.app import (
     RuntimeController,
     SceneWorkflowController,
 )
-from engine.core.time_manager import TimeManager
+from engine.components.canvas import Canvas
+from engine.config import EDIT_ANIMATION_SPEED, SCRIPTS_DIRECTORY, TIMELINE_CAPACITY
 from engine.core.engine_state import EngineState
 from engine.core.hot_reload import HotReloadManager
+from engine.core.time_manager import TimeManager
+from engine.debug.profiler import EngineProfiler
+from engine.debug.timeline import Timeline
+from engine.editor.animator_panel import AnimatorPanel
+from engine.editor.cursor_manager import CustomCursorRenderer
+from engine.editor.editor_layout import EditorLayout
+from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
+from engine.editor.gizmo_system import GizmoSystem
+from engine.editor.hierarchy_panel import HierarchyPanel
+from engine.editor.raygui_theme import apply_unity_dark_theme
+from engine.editor.sprite_editor_modal import SpriteEditorModal
+from engine.editor.terminal_panel import TerminalPanel
 from engine.editor.undo_redo import UndoRedoManager
 from engine.project.project_service import ProjectService
-from engine.config import EDIT_ANIMATION_SPEED, TIMELINE_CAPACITY, SCRIPTS_DIRECTORY
 
 if TYPE_CHECKING:
+    from cli.script_executor import ScriptExecutor
     from engine.ecs.world import World
-    from engine.components.camera2d import Camera2D
-    from engine.systems.render_system import RenderSystem
-    from engine.systems.physics_system import PhysicsSystem
-    from engine.systems.collision_system import CollisionSystem
-    from engine.systems.animation_system import AnimationSystem
-    from engine.systems.audio_system import AudioSystem
-    from engine.systems.input_system import InputSystem
-    from engine.systems.player_controller_system import PlayerControllerSystem
-    from engine.systems.character_controller_system import CharacterControllerSystem
-    from engine.systems.script_behaviour_system import ScriptBehaviourSystem
-    from engine.inspector.inspector_system import InspectorSystem
-    from engine.levels.level_loader import LevelLoader
     from engine.events.event_bus import EventBus
     from engine.events.rule_system import RuleSystem
+    from engine.inspector.inspector_system import InspectorSystem
+    from engine.levels.level_loader import LevelLoader
     from engine.scenes.scene_manager import SceneManager
+    from engine.systems.animation_system import AnimationSystem
+    from engine.systems.audio_system import AudioSystem
+    from engine.systems.character_controller_system import CharacterControllerSystem
+    from engine.systems.collision_system import CollisionSystem
+    from engine.systems.input_system import InputSystem
+    from engine.systems.physics_system import PhysicsSystem
+    from engine.systems.player_controller_system import PlayerControllerSystem
+    from engine.systems.render_system import RenderSystem
+    from engine.systems.script_behaviour_system import ScriptBehaviourSystem
     from engine.systems.selection_system import SelectionSystem
     from engine.systems.ui_render_system import UIRenderSystem
     from engine.systems.ui_system import UISystem
-    from cli.script_executor import ScriptExecutor
-
-from engine.debug.timeline import Timeline
-from engine.debug.profiler import EngineProfiler
-from engine.components.canvas import Canvas
-from engine.editor.animator_panel import AnimatorPanel
-from engine.editor.cursor_manager import CustomCursorRenderer
-from engine.editor.hierarchy_panel import HierarchyPanel
-from engine.editor.gizmo_system import GizmoSystem
-from engine.editor.editor_layout import EditorLayout
-from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
-from engine.editor.sprite_editor_modal import SpriteEditorModal
-from engine.editor.terminal_panel import TerminalPanel
-from engine.editor.raygui_theme import apply_unity_dark_theme
 
 
 class Game:
@@ -307,6 +306,26 @@ class Game:
     @property
     def audio_system(self) -> Optional["AudioSystem"]:
         return self._audio_system
+
+    @property
+    def event_bus(self) -> Optional["EventBus"]:
+        return self._event_bus
+
+    @property
+    def physics_system(self) -> Optional["PhysicsSystem"]:
+        return self._physics_system
+
+    @property
+    def render_system(self) -> Optional["RenderSystem"]:
+        return self._render_system
+
+    @property
+    def input_system(self) -> Optional["InputSystem"]:
+        return self._input_system
+
+    @property
+    def project_service(self) -> Optional[ProjectService]:
+        return self._project_service
 
     @property
     def has_project_loaded(self) -> bool:

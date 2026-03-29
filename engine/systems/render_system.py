@@ -98,6 +98,15 @@ class RenderSystem:
     def clear_debug_primitives(self) -> None:
         self._debug_primitives = []
 
+    def get_debug_state(self) -> dict[str, Any]:
+        return {
+            "draw_colliders": bool(self.debug_draw_colliders),
+            "draw_labels": bool(self.debug_draw_labels),
+            "draw_tile_chunks": bool(self.debug_draw_tile_chunks),
+            "draw_camera": bool(self.debug_draw_camera),
+            "primitive_count": len(self._debug_primitives),
+        }
+
     def get_last_render_stats(self) -> dict[str, Any]:
         return self._copy_stats(self._last_render_stats)
 

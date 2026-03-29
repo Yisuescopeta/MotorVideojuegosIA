@@ -9,13 +9,21 @@ PROPÓSITO:
 from __future__ import annotations
 
 import copy
-from collections import defaultdict
-from typing import TypeVar
+from collections import defaultdict, deque
+from typing import Any, TypeVar
 
 from engine.ecs.component import Component
 from engine.ecs.entity import Entity
 
 T = TypeVar("T", bound=Component)
+
+
+class WorldCloneError(RuntimeError):
+    """Se lanza cuando el runtime world no puede clonarse de forma segura."""
+
+
+class WorldSerializationError(RuntimeError):
+    """Se lanza cuando la serializacion de la escena perderia datos."""
 
 
 class World:
@@ -104,9 +112,9 @@ class World:
 
     def get_descendants(self, parent_name: str) -> list[Entity]:
         descendants: list[Entity] = []
-        pending = [parent_name]
+        pending = deque([parent_name])
         while pending:
-            current = pending.pop(0)
+            current = pending.popleft()
             children = self.get_children(current)
             descendants.extend(children)
             pending.extend(child.name for child in children)
@@ -159,12 +167,11 @@ class World:
             new_entity.prefab_root_name = entity.prefab_root_name
 
             for component in entity.get_all_components():
-                cloned_component = self._clone_component(component)
-                if cloned_component is not None:
-                    new_entity.add_component(
-                        cloned_component,
-                        metadata=entity.get_component_metadata(type(component)),
-                    )
+                cloned_component = self._clone_component(component, entity_name=entity.name)
+                new_entity.add_component(
+                    cloned_component,
+                    metadata=entity.get_component_metadata(type(component)),
+                )
 
             new_world.add_entity(new_entity)
             if new_entity.parent_name:
@@ -191,35 +198,53 @@ class World:
             if parent_transform is not None and child_transform not in parent_transform.children:
                 parent_transform.children.append(child_transform)
 
-    def _clone_component(self, component: Component) -> Component | None:
+    def _clone_component(self, component: Component, *, entity_name: str) -> Component:
         component_class = type(component)
+        serialize_error: Exception | None = None
         if hasattr(component, "to_dict") and hasattr(component_class, "from_dict"):
             try:
                 data = component.to_dict()
                 return component_class.from_dict(data)
-            except Exception:
-                pass
+            except Exception as exc:
+                serialize_error = exc
 
         try:
-            new_component = component_class.__new__(component_class)
-            for attr_name in dir(component):
-                if attr_name.startswith("_"):
-                    continue
-                if callable(getattr(component, attr_name)):
-                    continue
-                try:
-                    value = getattr(component, attr_name)
-                    if isinstance(value, dict):
-                        value = value.copy()
-                    elif isinstance(value, list):
-                        value = value.copy()
-                    setattr(new_component, attr_name, value)
-                except Exception:
-                    pass
-            return new_component
+            return copy.deepcopy(component)
         except Exception as exc:
-            print(f"[WARNING] World.clone: no se pudo clonar {type(component).__name__}: {exc}")
-            return None
+            detail = f"{entity_name}.{component_class.__name__}"
+            if serialize_error is not None:
+                raise WorldCloneError(
+                    f"World.clone: no se pudo clonar {detail}; to_dict/from_dict fallo: {serialize_error}; deepcopy fallo: {exc}"
+                ) from exc
+            raise WorldCloneError(
+                f"World.clone: no se pudo clonar {detail}; deepcopy fallo: {exc}"
+            ) from exc
+
+    def _serialize_component(self, entity: Entity, component: Component) -> dict[str, Any]:
+        component_name = type(component).__name__
+        if hasattr(component, "to_dict"):
+            try:
+                return component.to_dict()
+            except Exception as exc:
+                raise WorldSerializationError(
+                    f"World.serialize: no se pudo serializar {entity.name}.{component_name}: {exc}"
+                ) from exc
+
+        data: dict[str, Any] = {}
+        for attr in dir(component):
+            if attr.startswith("_"):
+                continue
+            try:
+                value = getattr(component, attr)
+            except Exception as exc:
+                raise WorldSerializationError(
+                    f"World.serialize: no se pudo leer {entity.name}.{component_name}.{attr}: {exc}"
+                ) from exc
+            if callable(value):
+                continue
+            if isinstance(value, (int, float, str, bool, list, dict)):
+                data[attr] = value
+        return data
 
     def _index_entity(self, entity: Entity) -> None:
         self._name_index[entity.name] = entity.id
@@ -316,9 +341,8 @@ class World:
                         "tag": node.tag,
                         "layer": node.layer,
                         "components": {
-                            type(component).__name__: component.to_dict()
+                            type(component).__name__: self._serialize_component(node, component)
                             for component in node.get_all_components()
-                            if hasattr(component, "to_dict")
                         },
                     }
                     consumed_prefab_entities.add(node.name)
@@ -356,19 +380,7 @@ class World:
 
             for component in entity.get_all_components():
                 comp_name = type(component).__name__
-                if hasattr(component, "to_dict"):
-                    try:
-                        ent_data["components"][comp_name] = component.to_dict()
-                    except Exception:
-                        pass
-                else:
-                    data = {}
-                    for attr in dir(component):
-                        if not attr.startswith("_") and not callable(getattr(component, attr)):
-                            val = getattr(component, attr)
-                            if isinstance(val, (int, float, str, bool, list, dict)):
-                                data[attr] = val
-                    ent_data["components"][comp_name] = data
+                ent_data["components"][comp_name] = self._serialize_component(entity, component)
 
                 metadata = entity.get_component_metadata(type(component))
                 if metadata:

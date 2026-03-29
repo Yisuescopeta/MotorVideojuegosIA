@@ -95,11 +95,11 @@ class EngineAPI:
         self._register_optional_box2d_backend()
 
     def _register_optional_box2d_backend(self) -> None:
-        if self.game is None or self.game._physics_system is None or self.game._event_bus is None:
+        if self.game is None or self.game.physics_system is None or self.game.event_bus is None:
             return
         try:
             self.game.set_physics_backend(
-                Box2DPhysicsBackend(gravity=self.game._physics_system.gravity, event_bus=self.game._event_bus),
+                Box2DPhysicsBackend(gravity=self.game.physics_system.gravity, event_bus=self.game.event_bus),
                 backend_name="box2d",
             )
         except Exception as exc:
@@ -194,10 +194,10 @@ class EngineAPI:
 
     def get_recent_events(self, count: int = 50) -> list[Dict[str, Any]]:
         """Devuelve eventos recientes en formato serializable sin exponer internals."""
-        if self.game is None or self.game._event_bus is None:
+        if self.game is None or self.game.event_bus is None:
             return []
         limit = max(0, int(count))
-        events = self.game._event_bus.get_recent_events(limit)
+        events = self.game.event_bus.get_recent_events(limit)
         return [
             {
                 "name": str(event.name),
@@ -226,33 +226,28 @@ class EngineAPI:
         draw_camera: Optional[bool] = None,
         primitives: Optional[list[Dict[str, Any]]] = None,
     ) -> ActionResult:
-        if self.game is None or self.game._render_system is None:
+        if self.game is None or self.game.render_system is None:
             return self._fail("Render system not ready")
         self.game.debug_draw_colliders = self.game.debug_draw_colliders if draw_colliders is None else bool(draw_colliders)
         self.game.debug_draw_labels = self.game.debug_draw_labels if draw_labels is None else bool(draw_labels)
-        self.game._render_system.set_debug_options(
+        self.game.render_system.set_debug_options(
             draw_colliders=draw_colliders,
             draw_labels=draw_labels,
             draw_tile_chunks=draw_tile_chunks,
             draw_camera=draw_camera,
         )
         if primitives is not None:
-            self.game._render_system.set_debug_primitives(primitives)
+            self.game.render_system.set_debug_primitives(primitives)
+        debug_state = self.game.render_system.get_debug_state()
         return self._ok(
             "Debug overlay configured",
-            {
-                "draw_colliders": self.game._render_system.debug_draw_colliders,
-                "draw_labels": self.game._render_system.debug_draw_labels,
-                "draw_tile_chunks": self.game._render_system.debug_draw_tile_chunks,
-                "draw_camera": self.game._render_system.debug_draw_camera,
-                "primitive_count": len(getattr(self.game._render_system, "_debug_primitives", [])),
-            },
+            debug_state,
         )
 
     def clear_debug_primitives(self) -> ActionResult:
-        if self.game is None or self.game._render_system is None:
+        if self.game is None or self.game.render_system is None:
             return self._fail("Render system not ready")
-        self.game._render_system.clear_debug_primitives()
+        self.game.render_system.clear_debug_primitives()
         return self._ok("Debug primitives cleared")
 
     def get_debug_geometry_dump(
@@ -260,9 +255,9 @@ class EngineAPI:
         viewport_width: int = 800,
         viewport_height: int = 600,
     ) -> Dict[str, Any]:
-        if self.game is None or self.game._render_system is None or self.game.world is None:
+        if self.game is None or self.game.render_system is None or self.game.world is None:
             return {}
-        return self.game._render_system.get_debug_geometry_dump(
+        return self.game.render_system.get_debug_geometry_dump(
             self.game.world,
             viewport_size=(float(viewport_width), float(viewport_height)),
         )
@@ -514,13 +509,13 @@ class EngineAPI:
         """Inyecta input en el runtime usando la API publica."""
         if self.game is None:
             return self._fail("Engine not initialized")
-        if self.game._input_system is None:
+        if self.game.input_system is None:
             return self._fail("Input system not ready")
         normalized_name = str(entity_name).strip()
         if not normalized_name:
             return self._fail("Entity name is required")
         normalized_frames = max(1, int(frames))
-        self.game._input_system.inject_state(normalized_name, dict(state), frames=normalized_frames)
+        self.game.input_system.inject_state(normalized_name, dict(state), frames=normalized_frames)
         return self._ok(
             "Input injected",
             {

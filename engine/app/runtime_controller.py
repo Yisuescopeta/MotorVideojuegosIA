@@ -70,20 +70,21 @@ class RuntimeController:
         scene_manager = self._get_scene_manager()
         if scene_manager is not None:
             runtime_world = scene_manager.enter_play()
-            if runtime_world is not None:
-                self._set_world(runtime_world)
-                bake_tilemap_colliders(runtime_world, merge_shapes=True)
+            if runtime_world is None:
+                return
+            self._set_world(runtime_world)
+            bake_tilemap_colliders(runtime_world, merge_shapes=True)
 
-                rule_system = self._get_rule_system()
-                if rule_system is not None:
-                    rule_system.set_world(runtime_world)
-                    scene = scene_manager.current_scene
-                    if scene is not None:
-                        rule_system.load_rules(scene.rules_data)
+            rule_system = self._get_rule_system()
+            if rule_system is not None:
+                rule_system.set_world(runtime_world)
+                scene = scene_manager.current_scene
+                if scene is not None:
+                    rule_system.load_rules(scene.rules_data)
 
-                script_behaviour_system = self._get_script_behaviour_system()
-                if script_behaviour_system is not None:
-                    script_behaviour_system.on_play(runtime_world)
+            script_behaviour_system = self._get_script_behaviour_system()
+            if script_behaviour_system is not None:
+                script_behaviour_system.on_play(runtime_world)
 
         self._set_state(EngineState.PLAY)
 
