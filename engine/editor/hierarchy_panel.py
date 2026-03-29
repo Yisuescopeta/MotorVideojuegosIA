@@ -50,19 +50,26 @@ class HierarchyPanel:
         self.context_target_id: Optional[int] = None
         self.hovered_entity_id: Optional[int] = None
         self._cursor_interactive_rects: List[rl.Rectangle] = []
+        self._input_blocked: bool = False
 
     def set_scene_manager(self, manager: object) -> None:
         """Permite que la UI use el mismo camino serializable que la API."""
         self._scene_manager = manager
         
-    def render(self, world: "World", x: int, y: int, width: int, height: int) -> None:
-        """Renderiza el panel de jerarquía estilo Unity."""
+    def render(self, world: "World", x: int, y: int, width: int, height: int, input_blocked: bool = False) -> None:
+        """Renderiza el panel de jerarquía estilo Unity.
+
+        Args:
+            input_blocked: Si True, dibuja el panel pero ignora todos los clicks de ratón.
+                           Usar cuando hay un dropdown/modal sobre el panel.
+        """
         if not self.visible:
             return
         self._cursor_interactive_rects = []
+        self._input_blocked = input_blocked
 
         self.panel_width = width
-        
+
         # Input: Close menu if clicking elsewhere (logic inside _draw_context_menu handles its own clicks)
         if self.context_menu_active and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
             mouse = rl.get_mouse_position()
@@ -99,7 +106,7 @@ class HierarchyPanel:
         rl.draw_rectangle_rec(plus_rect, plus_color)
         rl.draw_text("+", int(x + width - 17), int(y + 4), 14, self.UNITY_TEXT)
         
-        if is_hover_plus and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+        if is_hover_plus and not self._input_blocked and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
             new_name = f"New Entity {world.entity_count()}"
             if self._scene_manager is not None and self._scene_manager.create_entity(new_name):
                 self._scene_manager.set_selected_entity(new_name)
@@ -177,7 +184,7 @@ class HierarchyPanel:
             self.hovered_entity_id = entity.id
             rl.draw_rectangle(panel_x, y, self.panel_width, row_height, self.UNITY_HOVER)
             
-            if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+            if not self._input_blocked and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 if self._scene_manager is not None:
                     self._scene_manager.set_selected_entity(entity.name)
                 else:
@@ -264,7 +271,7 @@ class HierarchyPanel:
         mouse = rl.get_mouse_position()
         in_panel = rl.check_collision_point_rec(mouse, rl.Rectangle(x, y, w, h))
         
-        if in_panel and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_RIGHT):
+        if in_panel and not self._input_blocked and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_RIGHT):
             self.context_menu_active = True
             self.context_menu_pos = mouse
             self.context_target_id = self.hovered_entity_id

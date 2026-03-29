@@ -536,6 +536,17 @@ class Game:
         "Inicia el game loop."
         rl.init_window(self.width, self.height, self.title)
         rl.set_target_fps(self.target_fps)
+        # Título de barra oscuro (Windows 11) para coherencia visual con el tema dark
+        try:
+            import ctypes
+            hwnd = ctypes.windll.user32.GetForegroundWindow()
+            DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                ctypes.byref(ctypes.c_int(1)), ctypes.sizeof(ctypes.c_int)
+            )
+        except Exception:
+            pass
         self._cursor_renderer.hide_system_cursor()
         
         # Aplicar tema Raygui
@@ -916,12 +927,17 @@ class Game:
             # Hierachy Panel Overlay
             if self.hierarchy_panel is not None and active_world is not None:
                 hierarchy_start = time.perf_counter()
+                dropdown_open = self.editor_layout.dropdown_active if self.editor_layout else False
                 if self.editor_layout:
                     rect = self.editor_layout.hierarchy_rect
-                    self.hierarchy_panel.render(active_world, int(rect.x), int(rect.y), int(rect.width), int(rect.height))
+                    self.hierarchy_panel.render(active_world, int(rect.x), int(rect.y), int(rect.width), int(rect.height), input_blocked=dropdown_open)
                 else:
                     self.hierarchy_panel.render(active_world, 0, 0, 200, self.height)
                 self._perf_stats["hierarchy"] = (time.perf_counter() - hierarchy_start) * 1000.0
+
+            # Dropdowns de menú y toolbar — siempre encima de todo (incluyendo hierarchy e inspector)
+            if self.editor_layout:
+                self.editor_layout.draw_top_dropdowns()
 
             cursor_state = self._editor_interaction_controller.resolve_cursor_state(active_world)
             self._cursor_renderer.render(rl.get_mouse_position(), cursor_state)
@@ -1106,3 +1122,52 @@ class Game:
         self._handle_local_ui_authoring_requests(default_ui_parent)
         self._project_workspace_controller.handle_project_switch_requests()
         self._scene_workflow_controller.handle_scene_ui_requests()
+
+        # EXIT
+        if self.editor_layout.request_exit:
+            self.editor_layout.request_exit = False
+            self.running = False
+            return
+
+        # UNDO / REDO
+        if self.editor_layout.request_undo:
+            self.editor_layout.request_undo = False
+            self.undo()
+
+        if self.editor_layout.request_redo:
+            self.editor_layout.request_redo = False
+            self.redo()
+
+        # DUPLICATE ENTITY
+        if self.editor_layout.request_duplicate_entity:
+            self.editor_layout.request_duplicate_entity = False
+            active_world = self.world
+            if active_world is not None and active_world.selected_entity_name:
+                self._scene_manager.duplicate_entity_subtree(active_world.selected_entity_name)
+
+        # DELETE ENTITY
+        if self.editor_layout.request_delete_entity:
+            self.editor_layout.request_delete_entity = False
+            active_world = self.world
+            if active_world is not None and active_world.selected_entity_name:
+                self._scene_manager.remove_entity(active_world.selected_entity_name)
+
+        # CREATE EMPTY ENTITY
+        if self.editor_layout.request_create_entity:
+            self.editor_layout.request_create_entity = False
+            from engine.components.transform import Transform
+            active_world = self.world
+            if active_world is not None:
+                name = "New Entity"
+                base = name
+                idx = 1
+                while active_world.get_entity(name) is not None:
+                    name = f"{base} ({idx})"
+                    idx += 1
+                if self._scene_manager is not None:
+                    self._scene_manager.create_entity(name, components={"Transform": {}})
+                    self._scene_manager.set_selected_entity(name)
+                else:
+                    e = active_world.create_entity(name)
+                    e.add_component(Transform())
+                    active_world.selected_entity_name = name
