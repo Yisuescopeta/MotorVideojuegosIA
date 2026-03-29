@@ -1,15 +1,14 @@
 import json
-import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.append(os.getcwd())
-
 from cli.script_executor import ScriptExecutor
 from engine.api import EngineAPI
 from engine.project.project_service import ProjectService
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class ProjectServiceTests(unittest.TestCase):
@@ -302,14 +301,14 @@ class ProjectSwitchIntegrationTests(unittest.TestCase):
         return level_path
 
     def _copy_real_scene(self, project_root: Path, filename: str) -> Path:
-        source = Path(os.getcwd()) / "levels" / filename
+        source = REPO_ROOT / "levels" / filename
         target = project_root / "levels" / filename
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
         return target
 
     def _copy_real_script(self, project_root: Path, filename: str) -> Path:
-        source = Path(os.getcwd()) / "scripts" / filename
+        source = REPO_ROOT / "scripts" / filename
         target = project_root / "scripts" / filename
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")

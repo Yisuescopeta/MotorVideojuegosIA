@@ -10,6 +10,7 @@ from engine.rl import MotorGymEnv
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run random Gym-style rollouts and export a JSONL dataset.")
     parser.add_argument("scene", type=str, help="Scene used to create the environment")
+    parser.add_argument("--project-root", type=str, default="", help="Project root used to resolve the scene and local state")
     parser.add_argument("--episodes", type=int, default=10, help="Number of episodes to execute")
     parser.add_argument("--max-steps", type=int, default=120, help="Maximum steps per episode")
     parser.add_argument("--seed", type=int, default=123, help="Base seed for reproducible rollouts")
@@ -19,7 +20,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    env = MotorGymEnv(args.scene, max_steps=args.max_steps)
+    env = MotorGymEnv(args.scene, project_root=args.project_root or None, max_steps=args.max_steps)
     output_path = Path(args.out)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 

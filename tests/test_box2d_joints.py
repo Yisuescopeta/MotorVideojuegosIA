@@ -1,12 +1,8 @@
 import json
 import math
-import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
-
-sys.path.append(os.getcwd())
 
 from engine.api import EngineAPI
 

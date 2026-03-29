@@ -131,6 +131,15 @@ class RenderSystem:
     ) -> None:
         frame_plan = self._build_frame_plan(world, viewport_size=viewport_size)
         graph = frame_plan["graph"]
+        backend_ready = bool(hasattr(rl, "is_window_ready") and rl.is_window_ready())
+
+        if not backend_ready:
+            totals = self._copy_stats(frame_plan["totals"])
+            if not allow_render_targets:
+                totals["render_target_passes"] = 0
+                totals["render_target_composites"] = 0
+            self._last_render_stats = totals
+            return
 
         camera = override_camera
         if camera is None and use_world_camera:

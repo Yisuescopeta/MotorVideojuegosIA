@@ -1,12 +1,8 @@
-import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
-
-sys.path.append(os.getcwd())
 
 from engine.app.scene_workflow_controller import SceneWorkflowController
 from engine.core.engine_state import EngineState

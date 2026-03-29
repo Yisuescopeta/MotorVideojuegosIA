@@ -1,11 +1,9 @@
 import os
-import sys
+import tempfile
 import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-
-sys.path.append(os.getcwd())
 
 import pyray as rl
 
@@ -25,7 +23,23 @@ from engine.systems.selection_system import SelectionSystem
 
 class UnityCoreAuthoringTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.api = EngineAPI()
+        self._temp_dir = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._temp_dir.name)
+        self.project_root = self.workspace / "project"
+        self.project_root.mkdir(parents=True, exist_ok=True)
+        self.global_state_dir = self.workspace / "global_state"
+        self._previous_cwd = Path.cwd()
+        repo_levels = Path(__file__).resolve().parents[1] / "levels"
+        target_levels = self.project_root / "levels"
+        target_levels.mkdir(parents=True, exist_ok=True)
+        for level_name in ("demo_level.json", "platformer_test_scene.json"):
+            source_level = repo_levels / level_name
+            (target_levels / level_name).write_text(source_level.read_text(encoding="utf-8"), encoding="utf-8")
+        os.chdir(self.project_root)
+        self.api = EngineAPI(
+            project_root=self.project_root.as_posix(),
+            global_state_dir=self.global_state_dir.as_posix(),
+        )
         self.api.load_level("levels/demo_level.json")
         self._temp_scripts: list[Path] = []
         GLOBAL_LOGS.clear()
@@ -35,6 +49,8 @@ class UnityCoreAuthoringTests(unittest.TestCase):
             if path.exists():
                 path.unlink()
         self.api.shutdown()
+        os.chdir(self._previous_cwd)
+        self._temp_dir.cleanup()
 
     def _write_temp_script(self, name: str, contents: str, mtime_offset: int = 0) -> str:
         path = Path("scripts") / f"{name}.py"

@@ -110,6 +110,7 @@ def run_episode_dataset(
     max_steps: int,
     seed: int,
     env_kind: str = "auto",
+    project_root: str | None = None,
 ) -> dict[str, Any]:
     output = Path(out_jsonl)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -129,7 +130,7 @@ def run_episode_dataset(
         for episode_index in range(max(1, int(episodes))):
             episode_seed = int(seed) + episode_index
             episode_id = f"episode_{episode_index:04d}"
-            env = _make_env(scene_path, max_steps=max_steps, env_kind=env_kind)
+            env = _make_env(scene_path, max_steps=max_steps, env_kind=env_kind, project_root=project_root)
             obs, infos = env.reset(seed=episode_seed)
             last_event_count = 0
             step_index = 0
@@ -230,13 +231,13 @@ def replay_episode(dataset_jsonl: str, episode_id: str) -> dict[str, Any]:
     }
 
 
-def _make_env(scene_path: str, *, max_steps: int, env_kind: str):
+def _make_env(scene_path: str, *, max_steps: int, env_kind: str, project_root: str | None = None):
     if env_kind == "parallel":
-        return MotorParallelEnv(scene_path, max_steps=max_steps)
+        return MotorParallelEnv(scene_path, project_root=project_root, max_steps=max_steps)
     if env_kind == "single":
-        return MotorGymEnv(scene_path, max_steps=max_steps)
+        return MotorGymEnv(scene_path, project_root=project_root, max_steps=max_steps)
     payload = load_json(scene_path)
     agent_count = sum(1 for entity in payload.get("entities", []) if "InputMap" in entity.get("components", {}))
     if agent_count >= 2:
-        return MotorParallelEnv(scene_path, max_steps=max_steps)
-    return MotorGymEnv(scene_path, max_steps=max_steps)
+        return MotorParallelEnv(scene_path, project_root=project_root, max_steps=max_steps)
+    return MotorGymEnv(scene_path, project_root=project_root, max_steps=max_steps)

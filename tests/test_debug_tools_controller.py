@@ -1,10 +1,6 @@
-import os
-import sys
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
-
-sys.path.append(os.getcwd())
 
 import pyray as rl
 

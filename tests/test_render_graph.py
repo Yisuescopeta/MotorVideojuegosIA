@@ -1,8 +1,4 @@
-import os
-import sys
 import unittest
-
-sys.path.append(os.getcwd())
 
 from engine.components.renderorder2d import RenderOrder2D
 from engine.components.renderstyle2d import RenderStyle2D
