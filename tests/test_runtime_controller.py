@@ -1,10 +1,6 @@
-import os
-import sys
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
-
-sys.path.append(os.getcwd())
+from unittest.mock import Mock, call, patch
 
 from engine.app.runtime_controller import RuntimeController
 from engine.core.engine_state import EngineState
@@ -65,6 +61,13 @@ class RuntimeControllerTests(unittest.TestCase):
         bake_tilemap_colliders.assert_called_once_with(runtime_world, merge_shapes=True)
         self.rule_system.set_world.assert_called_once_with(runtime_world)
         self.rule_system.load_rules.assert_called_once_with(self.scene_manager.current_scene.rules_data)
+        self.assertEqual(
+            self.rule_system.method_calls[:2],
+            [
+                call.set_world(runtime_world),
+                call.load_rules(self.scene_manager.current_scene.rules_data),
+            ],
+        )
         self.script_behaviour_system.on_play.assert_called_once_with(runtime_world)
         self.event_bus.emit.assert_called_once_with("on_play", {})
         self.assertEqual(self.state["value"], EngineState.PLAY)

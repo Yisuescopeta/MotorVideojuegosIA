@@ -26,7 +26,8 @@ ACCIONES SOPORTADAS:
     - log_message: Imprime un mensaje en consola
 
 EJEMPLO DE USO:
-    rule_system = RuleSystem(event_bus, world)
+    rule_system = RuleSystem(event_bus)
+    rule_system.set_world(world)
     rule_system.load_rules(rules_list)
 """
 
@@ -43,13 +44,13 @@ class RuleSystem:
     Sistema que ejecuta reglas declarativas basadas en eventos.
     """
     
-    def __init__(self, event_bus: EventBus, world: World) -> None:
+    def __init__(self, event_bus: EventBus, world: Optional[World] = None) -> None:
         """
         Inicializa el sistema de reglas.
         
         Args:
             event_bus: Bus de eventos para suscribirse
-            world: Mundo con las entidades
+            world: Mundo con las entidades. Puede enlazarse mas tarde.
         """
         self._event_bus = event_bus
         self._world = world
@@ -89,9 +90,16 @@ class RuleSystem:
         self._rules = []
         self._rules_executed = 0
     
-    def set_world(self, world: World) -> None:
+    def set_world(self, world: Optional[World]) -> None:
         """Actualiza la referencia al mundo."""
         self._world = world
+
+    def _get_world_for_action(self, action_type: str) -> Optional[World]:
+        """Devuelve el world actual o reporta que la accion se omite."""
+        if self._world is None:
+            print(f"[WARNING] RuleSystem: accion '{action_type}' ignorada porque no hay world enlazado")
+            return None
+        return self._world
     
     def _on_event(self, event: Event) -> None:
         """
@@ -187,7 +195,11 @@ class RuleSystem:
             print("[WARNING] set_animation: falta entity o state")
             return
         
-        entity = self._world.get_entity_by_name(entity_name)
+        world = self._get_world_for_action("set_animation")
+        if world is None:
+            return
+
+        entity = world.get_entity_by_name(entity_name)
         if entity is None:
             return
         
@@ -204,7 +216,11 @@ class RuleSystem:
         if not entity_name:
             return
         
-        entity = self._world.get_entity_by_name(entity_name)
+        world = self._get_world_for_action("set_position")
+        if world is None:
+            return
+
+        entity = world.get_entity_by_name(entity_name)
         if entity is None:
             return
         
@@ -222,9 +238,13 @@ class RuleSystem:
         if not entity_name:
             return
         
-        entity = self._world.get_entity_by_name(entity_name)
+        world = self._get_world_for_action("destroy_entity")
+        if world is None:
+            return
+
+        entity = world.get_entity_by_name(entity_name)
         if entity is not None:
-            self._world.destroy_entity(entity.id)
+            world.destroy_entity(entity.id)
     
     def _action_emit_event(self, params: Dict[str, Any]) -> None:
         """Emite otro evento."""

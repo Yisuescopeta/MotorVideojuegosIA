@@ -152,11 +152,10 @@ def run_episode_dataset(
                     done = bool(terminated or truncated)
                 runtime_api = getattr(env, "_api", None)
                 runtime_world = runtime_api.game.world if runtime_api is not None and runtime_api.game is not None else None
-                event_bus = runtime_api.game._event_bus if runtime_api is not None and runtime_api.game is not None else None
                 events = []
-                if event_bus is not None:
-                    recent = event_bus.get_recent_events(50)
-                    events = [{"name": item.name, "data": item.data} for item in recent[last_event_count:]]
+                if runtime_api is not None:
+                    recent = runtime_api.get_recent_events(50)
+                    events = recent[last_event_count:]
                     last_event_count = len(recent)
                 fingerprint = world_fingerprint(
                     runtime_world,

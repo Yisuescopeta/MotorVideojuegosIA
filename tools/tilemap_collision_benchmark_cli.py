@@ -2,11 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import sys
 from pathlib import Path
-
-sys.path.append(os.getcwd())
 
 from engine.components.tilemap import Tilemap
 from engine.components.transform import Transform

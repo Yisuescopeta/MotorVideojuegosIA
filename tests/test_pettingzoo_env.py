@@ -1,13 +1,27 @@
 import json
-import os
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.append(os.getcwd())
-
 from engine.rl import MotorParallelEnv
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _run_module(*args: str) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        [sys.executable, "-m", *args],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"Subprocess failed: {' '.join(args)}\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
+    return result
 
 
 class MotorParallelEnvTests(unittest.TestCase):
@@ -40,10 +54,19 @@ class MotorParallelEnvTests(unittest.TestCase):
     def test_multiagent_rollout_dataset_script_writes_jsonl(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "multiagent.jsonl"
-            exit_code = os.system(
-                f'py -3 tools/multiagent_rollout_dataset.py levels/multiagent_toy_scene.json --episodes 2 --max-steps 10 --seed 55 --out "{output_path.as_posix()}"'
+            result = _run_module(
+                "tools.multiagent_rollout_dataset",
+                "levels/multiagent_toy_scene.json",
+                "--episodes",
+                "2",
+                "--max-steps",
+                "10",
+                "--seed",
+                "55",
+                "--out",
+                output_path.as_posix(),
             )
-            self.assertEqual(exit_code, 0)
+            self.assertIn("[OK]", result.stdout)
             lines = output_path.read_text(encoding="utf-8").strip().splitlines()
 
         self.assertGreater(len(lines), 0)

@@ -99,6 +99,60 @@ class Box2DBackendTests(unittest.TestCase):
         finally:
             api.shutdown()
 
+    def _run_constraint_scene(
+        self,
+        constraints: list[str],
+        *,
+        velocity_x: float,
+        velocity_y: float,
+        gravity_scale: float = 1.0,
+        steps: int = 20,
+    ) -> dict[str, float]:
+        scene_path = self._write_scene(
+            {
+                "name": "Box2D Constraints",
+                "entities": [
+                    {
+                        "name": "ConstrainedBody",
+                        "active": True,
+                        "tag": "",
+                        "layer": "Gameplay",
+                        "components": {
+                            "Transform": {"enabled": True, "x": 10.0, "y": 15.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                            "RigidBody": {
+                                "enabled": True,
+                                "body_type": "dynamic",
+                                "gravity_scale": gravity_scale,
+                                "velocity_x": velocity_x,
+                                "velocity_y": velocity_y,
+                                "constraints": constraints,
+                                "is_grounded": False,
+                            },
+                            "Collider": {"enabled": True, "shape_type": "box", "width": 8.0, "height": 8.0, "density": 1.0, "offset_x": 0.0, "offset_y": 0.0, "is_trigger": False},
+                        },
+                    }
+                ],
+                "rules": [],
+                "feature_metadata": {"physics_2d": {"backend": "box2d"}},
+            }
+        )
+        api = EngineAPI(project_root=self.project_root.as_posix(), global_state_dir=(self.root / "global_state_constraints").as_posix())
+        try:
+            api.load_level(scene_path.as_posix())
+            api.play()
+            api.step(steps)
+            entity = api.get_entity("ConstrainedBody")
+            transform = entity["components"]["Transform"]
+            rigidbody = entity["components"]["RigidBody"]
+            return {
+                "x": float(transform["x"]),
+                "y": float(transform["y"]),
+                "vx": float(rigidbody["velocity_x"]),
+                "vy": float(rigidbody["velocity_y"]),
+            }
+        finally:
+            api.shutdown()
+
     def test_box2d_scene_is_reproducible_on_same_machine(self) -> None:
         first = self._run_scene()
         second = self._run_scene()
@@ -180,6 +234,46 @@ class Box2DBackendTests(unittest.TestCase):
             self.assertGreater(api.get_entity("Mover")["components"]["Transform"]["x"], 0.0)
         finally:
             api.shutdown()
+
+    def test_box2d_freeze_position_x_blocks_horizontal_translation_only(self) -> None:
+        result = self._run_constraint_scene(
+            ["FreezePositionX"],
+            velocity_x=120.0,
+            velocity_y=0.0,
+            gravity_scale=1.0,
+            steps=15,
+        )
+
+        self.assertAlmostEqual(result["x"], 10.0, places=4)
+        self.assertGreater(result["y"], 15.0)
+        self.assertEqual(result["vx"], 0.0)
+
+    def test_box2d_freeze_position_y_blocks_vertical_translation_only(self) -> None:
+        result = self._run_constraint_scene(
+            ["FreezePositionY"],
+            velocity_x=120.0,
+            velocity_y=80.0,
+            gravity_scale=1.0,
+            steps=15,
+        )
+
+        self.assertGreater(result["x"], 10.0)
+        self.assertAlmostEqual(result["y"], 15.0, places=4)
+        self.assertEqual(result["vy"], 0.0)
+
+    def test_box2d_freeze_position_blocks_both_axes(self) -> None:
+        result = self._run_constraint_scene(
+            ["FreezePosition"],
+            velocity_x=120.0,
+            velocity_y=80.0,
+            gravity_scale=1.0,
+            steps=15,
+        )
+
+        self.assertAlmostEqual(result["x"], 10.0, places=4)
+        self.assertAlmostEqual(result["y"], 15.0, places=4)
+        self.assertEqual(result["vx"], 0.0)
+        self.assertEqual(result["vy"], 0.0)
 
 
 if __name__ == "__main__":

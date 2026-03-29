@@ -155,11 +155,12 @@ class _WinConPtyBackend(_TerminalBackend):
     STARTF_USESTDHANDLES = 0x00000100
     STILL_ACTIVE = 259
 
-    def __init__(self, cwd: str, cols: int, rows: int, on_output: Callable[[str], None]) -> None:
+    def __init__(self, cwd: str, cols: int, rows: int, on_output: Callable[[str], None], command_line: str | None = None) -> None:
         self.cwd = cwd
         self.cols = max(40, cols)
         self.rows = max(12, rows)
         self.on_output = on_output
+        self.command_line = command_line or "powershell.exe -NoLogo -NoProfile"
         self._kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         self._hpc = c_void_p()
         self._input_write = wintypes.HANDLE()
@@ -272,7 +273,7 @@ class _WinConPtyBackend(_TerminalBackend):
         ):
             raise ctypes.WinError(ctypes.get_last_error())
 
-        command = ctypes.create_unicode_buffer("powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass")
+        command = ctypes.create_unicode_buffer(self.command_line)
         if not self._kernel32.CreateProcessW(
             None,
             command,
@@ -901,6 +902,9 @@ class TerminalPanel:
     FONT_PRIMARY_PATH = Path(__file__).resolve().parents[2] / "assets" / "fonts" / "CascadiaMono.ttf"
     FONT_FALLBACK_PATH = Path(__file__).resolve().parents[2] / "assets" / "fonts" / "DejaVuSansMono.ttf"
     REPLACEMENT_CODEPOINT = 0xFFFD
+    TERMINAL_POLICY_INHERIT = "inherit"
+    TERMINAL_POLICY_REMOTE_SIGNED = "RemoteSigned"
+    TERMINAL_POLICY_BYPASS = "Bypass"
 
     def __init__(self) -> None:
         self.project_service: Optional[ProjectService] = None
@@ -911,6 +915,7 @@ class TerminalPanel:
         self.has_focus: bool = False
         self.last_project_root: str = ""
         self.current_cwd: str = ""
+        self.current_execution_policy: str = self.TERMINAL_POLICY_INHERIT
         self.status_text: str = "Terminal idle"
         self._session_started: bool = False
         self.toolbar_rect = rl.Rectangle(0, 0, 0, 0)
@@ -1122,6 +1127,32 @@ class TerminalPanel:
     def _display_status_text(self) -> str:
         return f"{self.status_text}{self._font_status_suffix}"
 
+    def _get_terminal_execution_policy(self) -> str:
+        if self.project_service is None or not self.project_service.has_project:
+            return self.TERMINAL_POLICY_INHERIT
+        settings = self.project_service.load_project_settings()
+        terminal = settings.get("terminal", {})
+        if not isinstance(terminal, dict):
+            return self.TERMINAL_POLICY_INHERIT
+        policy = str(terminal.get("execution_policy", self.TERMINAL_POLICY_INHERIT)).strip() or self.TERMINAL_POLICY_INHERIT
+        if policy not in {self.TERMINAL_POLICY_INHERIT, self.TERMINAL_POLICY_REMOTE_SIGNED, self.TERMINAL_POLICY_BYPASS}:
+            return self.TERMINAL_POLICY_INHERIT
+        return policy
+
+    def _format_terminal_status(self, state: str) -> str:
+        if not self.current_cwd:
+            return state
+        return f"{state} in {self.current_cwd} [policy: {self.current_execution_policy}]"
+
+    def _build_terminal_command(self, execution_policy: Optional[str] = None) -> str:
+        policy = execution_policy or self._get_terminal_execution_policy()
+        command_parts = ["powershell.exe", "-NoLogo", "-NoProfile"]
+        if policy == self.TERMINAL_POLICY_REMOTE_SIGNED:
+            command_parts.extend(["-ExecutionPolicy", self.TERMINAL_POLICY_REMOTE_SIGNED])
+        elif policy == self.TERMINAL_POLICY_BYPASS:
+            command_parts.extend(["-ExecutionPolicy", self.TERMINAL_POLICY_BYPASS])
+        return " ".join(command_parts)
+
     def set_project_service(self, project_service: Optional[ProjectService]) -> None:
         next_root = ""
         if project_service is not None and project_service.has_project:
@@ -1130,12 +1161,13 @@ class TerminalPanel:
         self.project_service = project_service
         self.last_project_root = next_root
         self.current_cwd = next_root
+        self.current_execution_policy = self._get_terminal_execution_policy()
         if project_changed and self._session_started:
             self.restart_session()
         elif not next_root:
             self.status_text = "No active project"
         else:
-            self.status_text = f"PowerShell ready in {self.current_cwd}" if self._session_started else f"Terminal idle for {self.current_cwd}"
+            self.status_text = self._format_terminal_status("PowerShell ready" if self._session_started else "Terminal idle")
 
     def ensure_session(self) -> None:
         if self.backend is not None and self.backend.poll() is None:
@@ -1154,7 +1186,8 @@ class TerminalPanel:
         self.scroll_offset = 0.0
         self._follow_output = True
         self.current_cwd = project_root
-        self.status_text = f"PowerShell ready in {self.current_cwd}"
+        self.current_execution_policy = self._get_terminal_execution_policy()
+        self.status_text = self._format_terminal_status("PowerShell ready")
 
         try:
             self.backend = self._create_backend(project_root, cols, rows)
@@ -1302,7 +1335,7 @@ class TerminalPanel:
         return self.has_focus
 
     def _create_backend(self, cwd: str, cols: int, rows: int) -> _TerminalBackend:
-        return _WinConPtyBackend(cwd, cols, rows, self._on_backend_output)
+        return _WinConPtyBackend(cwd, cols, rows, self._on_backend_output, command_line=self._build_terminal_command(self.current_execution_policy))
 
     def _on_backend_output(self, chunk: str) -> None:
         self.output_queue.put(chunk)

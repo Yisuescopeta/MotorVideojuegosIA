@@ -59,6 +59,7 @@ class EngineAPI:
         self,
         project_root: str | None = None,
         global_state_dir: str | None = None,
+        sandbox_paths: bool = False,
     ) -> None:
         self.game: Optional[HeadlessGame] = None
         self.scene_manager: Optional[SceneManager] = None
@@ -67,6 +68,7 @@ class EngineAPI:
         self._registry = create_default_registry()
         self._project_root = project_root or os.getcwd()
         self._global_state_dir = global_state_dir
+        self._sandbox_paths = bool(sandbox_paths)
         self._initialize_engine()
 
     def _initialize_engine(self) -> None:
@@ -114,8 +116,9 @@ class EngineAPI:
         try:
             if self.scene_manager is None or self.game is None:
                 raise RuntimeError("Engine not initialized")
-            if not self.game.load_scene_by_path(path):
-                resolved_path = self.project_service.resolve_path(path).as_posix() if self.project_service is not None else path
+            resolved_path = self._resolve_api_path(path, purpose="load level").as_posix()
+            load_target = resolved_path if self._sandbox_paths else path
+            if not self.game.load_scene_by_path(load_target):
                 with open(resolved_path, "r", encoding="utf-8") as file:
                     data = json.load(file)
                 world = self.scene_manager.load_scene(data, source_path=resolved_path)
@@ -186,6 +189,20 @@ class EngineAPI:
         if hasattr(self.game, "step"):
             for _ in range(frames):
                 self.game.step()
+
+    def get_recent_events(self, count: int = 50) -> list[Dict[str, Any]]:
+        """Devuelve eventos recientes en formato serializable sin exponer internals."""
+        if self.game is None or self.game._event_bus is None:
+            return []
+        limit = max(0, int(count))
+        events = self.game._event_bus.get_recent_events(limit)
+        return [
+            {
+                "name": str(event.name),
+                "data": json.loads(json.dumps(event.data, ensure_ascii=True, default=str)),
+            }
+            for event in events
+        ]
 
     def reset_profiler(self, run_label: str = "default") -> ActionResult:
         if self.game is None:
@@ -491,6 +508,26 @@ class EngineAPI:
             return {}
         return dict(input_map.last_state)
 
+    def inject_input_state(self, entity_name: str, state: Dict[str, float], frames: int = 1) -> ActionResult:
+        """Inyecta input en el runtime usando la API publica."""
+        if self.game is None:
+            return self._fail("Engine not initialized")
+        if self.game._input_system is None:
+            return self._fail("Input system not ready")
+        normalized_name = str(entity_name).strip()
+        if not normalized_name:
+            return self._fail("Entity name is required")
+        normalized_frames = max(1, int(frames))
+        self.game._input_system.inject_state(normalized_name, dict(state), frames=normalized_frames)
+        return self._ok(
+            "Input injected",
+            {
+                "entity": normalized_name,
+                "state": dict(state),
+                "frames": normalized_frames,
+            },
+        )
+
     def create_audio_source(
         self,
         name: str,
@@ -716,7 +753,10 @@ class EngineAPI:
         self._ensure_edit_mode()
         if self.scene_manager is None or self.project_service is None:
             return self._fail("SceneManager not ready")
-        resolved_path = self.project_service.resolve_path(path)
+        try:
+            resolved_path = self._resolve_api_path(path, purpose="instantiate prefab")
+        except InvalidOperationError as exc:
+            return self._fail(str(exc))
         prefab_data = PrefabManager.load_prefab_data(resolved_path.as_posix())
         if prefab_data is None:
             return self._fail("Prefab not found")
@@ -802,6 +842,11 @@ class EngineAPI:
         target_path = path or entry.source_path
         if not target_path:
             return self._fail("Scene has no save path")
+        try:
+            if path:
+                target_path = self._resolve_api_path(path, purpose="save scene").as_posix()
+        except InvalidOperationError as exc:
+            return self._fail(str(exc))
         success = self.scene_manager.save_scene_to_file(target_path, key=entry.key)
         if not success:
             return self._fail("Scene save failed")
@@ -1491,3 +1536,19 @@ class EngineAPI:
         if value.endswith(".json") or "/" in value or "\\" in value:
             return self.project_service.resolve_path(value).as_posix()
         return value
+
+    def _resolve_api_path(self, path: str | os.PathLike[str], *, purpose: str) -> Path:
+        candidate = Path(path)
+        if self.project_service is not None:
+            resolved = self.project_service.resolve_path(candidate)
+            project_root = self.project_service.project_root
+        else:
+            resolved = candidate.expanduser().resolve()
+            project_root = Path(self._project_root).resolve()
+        if not self._sandbox_paths:
+            return resolved
+        try:
+            resolved.relative_to(project_root)
+        except ValueError as exc:
+            raise InvalidOperationError(f"Sandbox blocked path outside project root during {purpose}: {resolved.as_posix()}") from exc
+        return resolved

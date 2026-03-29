@@ -2,11 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import sys
 from pathlib import Path
-
-sys.path.append(os.getcwd())
 
 from engine.serialization.schema import (
     detect_payload_kind,

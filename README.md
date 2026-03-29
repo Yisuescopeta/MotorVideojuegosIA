@@ -15,9 +15,37 @@ Motor de videojuegos 2D experimental diseñado para ser **comprendido, modificad
 # Instalar dependencias
 pip install -r requirements.txt
 
+# Instalar el proyecto en modo editable
+pip install -e .
+
 # Ejecutar
 python main.py
 ```
+
+## Testing y CLI
+
+```bash
+# Ejecutar tests
+python -m unittest -q
+
+# Ejecutar CLI por modulo
+python -m tools.engine_cli validate --target scene --path levels/demo_level.json
+```
+
+## Licencia
+
+Este repositorio se distribuye bajo licencia MIT. El texto completo está en
+[LICENSE](LICENSE).
+
+## Contribución y seguridad
+
+El proyecto sigue siendo experimental y académico, pero ya incluye una base de
+gobernanza para cambios externos:
+
+- guía de contribución: [CONTRIBUTING.md](CONTRIBUTING.md)
+- política de seguridad: [SECURITY.md](SECURITY.md)
+
+No se promete soporte comercial ni SLA.
 
 ## 🎮 Controles
 

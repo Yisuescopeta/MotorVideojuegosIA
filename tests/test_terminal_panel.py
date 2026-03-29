@@ -98,6 +98,44 @@ class TerminalPanelTests(unittest.TestCase):
 
         self.assertEqual(created[0].cwd, service.project_root.as_posix())
         self.assertEqual(panel.current_cwd, service.project_root.as_posix())
+        self.assertIn("[policy: inherit]", panel.status_text)
+
+    def test_terminal_builds_inherit_command_by_default(self) -> None:
+        service = self._make_project("TerminalDefaultPolicy")
+        panel = TerminalPanel()
+        panel.set_project_service(service)
+
+        self.assertEqual(panel._build_terminal_command(), "powershell.exe -NoLogo -NoProfile")
+
+    def test_terminal_builds_remotesigned_command_when_enabled(self) -> None:
+        service = self._make_project("TerminalRemoteSigned")
+        service.save_project_settings(
+            {
+                "startup_scene": "levels/main_scene.json",
+                "template": "empty",
+                "terminal": {"execution_policy": "RemoteSigned"},
+                "api": {"path_sandbox": False},
+            }
+        )
+        panel = TerminalPanel()
+        panel.set_project_service(service)
+
+        self.assertEqual(panel._build_terminal_command(), "powershell.exe -NoLogo -NoProfile -ExecutionPolicy RemoteSigned")
+
+    def test_terminal_builds_bypass_command_only_when_enabled(self) -> None:
+        service = self._make_project("TerminalBypass")
+        service.save_project_settings(
+            {
+                "startup_scene": "levels/main_scene.json",
+                "template": "empty",
+                "terminal": {"execution_policy": "Bypass"},
+                "api": {"path_sandbox": False},
+            }
+        )
+        panel = TerminalPanel()
+        panel.set_project_service(service)
+
+        self.assertEqual(panel._build_terminal_command(), "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass")
 
     def test_switching_projects_restarts_terminal_session(self) -> None:
         first_service = self._make_project("FirstProject")
@@ -120,6 +158,25 @@ class TerminalPanelTests(unittest.TestCase):
         self.assertEqual(len(created), 2)
         self.assertTrue(first_backend.closed)
         self.assertEqual(created[-1].cwd, second_service.project_root.as_posix())
+
+    def test_terminal_status_displays_active_policy_from_project_settings(self) -> None:
+        service = self._make_project("TerminalPolicyStatus")
+        service.save_project_settings(
+            {
+                "startup_scene": "levels/main_scene.json",
+                "template": "empty",
+                "terminal": {"execution_policy": "RemoteSigned"},
+                "api": {"path_sandbox": False},
+            }
+        )
+        panel = TerminalPanel()
+        panel.set_project_service(service)
+        panel.content_rect = rl.Rectangle(0, 0, 800, 240)
+
+        with patch.object(panel, "_create_backend", return_value=_FakeBackend(service.project_root.as_posix(), 80, 24, panel._on_backend_output)):
+            panel.ensure_session()
+
+        self.assertIn("[policy: RemoteSigned]", panel.status_text)
 
     def test_terminal_does_not_start_without_active_project(self) -> None:
         service = ProjectService(self.workspace, global_state_dir=self.global_state_dir, auto_ensure=False)

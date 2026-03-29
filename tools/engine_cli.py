@@ -3,11 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 from pathlib import Path
 from types import SimpleNamespace
-
-sys.path.append(os.getcwd())
 
 from cli.runner import CLIRunner
 from engine.api import EngineAPI

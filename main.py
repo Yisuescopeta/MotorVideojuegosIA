@@ -104,7 +104,7 @@ def main() -> None:
 
     # Crear bus de eventos y sistema de reglas
     event_bus = EventBus()
-    rule_system = RuleSystem(event_bus, None)
+    rule_system = RuleSystem(event_bus)
 
     # Crear sistemas
     render_system = RenderSystem()
@@ -142,7 +142,6 @@ def main() -> None:
     game.set_script_behaviour_system(script_behaviour_system)
     game.set_inspector_system(inspector_system)
     game.set_event_bus(event_bus)
-    game.set_rule_system(rule_system)
     game.set_rule_system(rule_system)
     game.set_selection_system(selection_system)
     game.set_ui_system(ui_system)
