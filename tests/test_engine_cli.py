@@ -1,25 +1,48 @@
 import json
-import os
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.append(os.getcwd())
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _run_module(*args: str) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        [sys.executable, "-m", *args],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"Subprocess failed: {' '.join(args)}\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
+    return result
 
 
 class EngineCliTests(unittest.TestCase):
     def test_validate_scene_subcommand(self) -> None:
-        exit_code = os.system("py -3 tools/engine_cli.py validate --target scene --path levels/demo_level.json")
-        self.assertEqual(exit_code, 0)
+        result = _run_module("tools.engine_cli", "validate", "--target", "scene", "--path", "levels/demo_level.json")
+        self.assertIn("[OK]", result.stdout)
 
     def test_smoke_subcommand_produces_expected_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             out_dir = Path(temp_dir) / "smoke"
-            exit_code = os.system(
-                f'py -3 tools/engine_cli.py smoke --scene levels/demo_level.json --frames 2 --seed 7 --out-dir "{out_dir.as_posix()}"'
+            result = _run_module(
+                "tools.engine_cli",
+                "smoke",
+                "--scene",
+                "levels/demo_level.json",
+                "--frames",
+                "2",
+                "--seed",
+                "7",
+                "--out-dir",
+                out_dir.as_posix(),
             )
-            self.assertEqual(exit_code, 0)
+            self.assertIn("[OK]", result.stdout)
             self.assertTrue((out_dir / "smoke_migrated_scene.json").exists())
             self.assertTrue((out_dir / "smoke_debug_dump.json").exists())
             self.assertTrue((out_dir / "smoke_profile.json").exists())

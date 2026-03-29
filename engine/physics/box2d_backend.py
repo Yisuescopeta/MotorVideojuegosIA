@@ -177,11 +177,9 @@ class Box2DPhysicsBackend(PhysicsBackend):
         if body_type == "kinematic":
             body.type = 1  # b2_kinematicBody
         if rigidbody is not None:
-            body.linearVelocity = (rigidbody.velocity_x, rigidbody.velocity_y)
+            body.linearVelocity = self._constrained_linear_velocity(rigidbody)
             body.gravityScale = rigidbody.gravity_scale
             body.bullet = rigidbody.collision_detection_mode == "continuous"
-            if rigidbody.freeze_x and rigidbody.freeze_y:
-                body.fixedRotation = True
         body.userData = {"entity_id": int(entity.id), "entity_name": entity.name}
         fixture_kwargs = {
             "density": float(collider.density),
@@ -207,7 +205,7 @@ class Box2DPhysicsBackend(PhysicsBackend):
         if rigidbody is None:
             body.linearVelocity = (0.0, 0.0)
             return
-        desired_velocity = (float(rigidbody.velocity_x), float(rigidbody.velocity_y))
+        desired_velocity = self._constrained_linear_velocity(rigidbody)
         if (
             abs(float(body.linearVelocity[0]) - desired_velocity[0]) > 1e-5
             or abs(float(body.linearVelocity[1]) - desired_velocity[1]) > 1e-5
@@ -227,14 +225,34 @@ class Box2DPhysicsBackend(PhysicsBackend):
             transform = entity.get_component(Transform)
             rigidbody = entity.get_component(RigidBody)
             if transform is not None:
-                transform.x = float(body.position[0])
-                transform.y = float(body.position[1])
+                frozen_x = float(transform.x)
+                frozen_y = float(transform.y)
+                next_x = float(body.position[0])
+                next_y = float(body.position[1])
+                if rigidbody is not None:
+                    if rigidbody.freeze_x:
+                        next_x = frozen_x
+                    if rigidbody.freeze_y:
+                        next_y = frozen_y
+                    if next_x != float(body.position[0]) or next_y != float(body.position[1]):
+                        body.position = (next_x, next_y)
+                transform.x = next_x
+                transform.y = next_y
                 transform.rotation = math.degrees(float(body.angle))
             if rigidbody is not None:
-                rigidbody.velocity_x = float(body.linearVelocity[0])
-                rigidbody.velocity_y = float(body.linearVelocity[1])
+                velocity_x = 0.0 if rigidbody.freeze_x else float(body.linearVelocity[0])
+                velocity_y = 0.0 if rigidbody.freeze_y else float(body.linearVelocity[1])
+                if velocity_x != float(body.linearVelocity[0]) or velocity_y != float(body.linearVelocity[1]):
+                    body.linearVelocity = (velocity_x, velocity_y)
+                rigidbody.velocity_x = velocity_x
+                rigidbody.velocity_y = velocity_y
                 if rigidbody.collision_detection_mode == "continuous":
                     self._step_metrics["ccd_bodies"] += 1
+
+    def _constrained_linear_velocity(self, rigidbody: RigidBody) -> tuple[float, float]:
+        velocity_x = 0.0 if rigidbody.freeze_x else float(rigidbody.velocity_x)
+        velocity_y = 0.0 if rigidbody.freeze_y else float(rigidbody.velocity_y)
+        return (velocity_x, velocity_y)
 
     def _signature(
         self,

@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import sys
-
-sys.path.append(os.getcwd())
 
 from engine.assets.asset_service import AssetService
 from engine.project.project_service import ProjectService

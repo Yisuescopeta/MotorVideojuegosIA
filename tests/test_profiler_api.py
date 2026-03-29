@@ -1,19 +1,33 @@
 import json
-import os
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.append(os.getcwd())
-
 from engine.api import EngineAPI
 from engine.debug.profiler import PROFILE_REPORT_VERSION
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _run_module(*args: str) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        [sys.executable, "-m", *args],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"Subprocess failed: {' '.join(args)}\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
+    return result
 
 
 class ProfilerApiTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.api = EngineAPI(project_root=os.getcwd())
+        self.api = EngineAPI(project_root=ROOT.as_posix())
         self.api.load_level("levels/demo_level.json")
 
     def test_headless_step_populates_versioned_profiler_report(self) -> None:
@@ -36,10 +50,15 @@ class ProfilerApiTests(unittest.TestCase):
     def test_profile_run_cli_writes_stable_report_schema(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "profile_report.json"
-            exit_code = os.system(
-                f'py -3 tools/profile_run.py levels/demo_level.json --frames 2 --out "{output_path.as_posix()}"'
+            result = _run_module(
+                "tools.profile_run",
+                "levels/demo_level.json",
+                "--frames",
+                "2",
+                "--out",
+                output_path.as_posix(),
             )
-            self.assertEqual(exit_code, 0)
+            self.assertIn("[INFO]", result.stdout)
             report = json.loads(output_path.read_text(encoding="utf-8"))
 
         self.assertEqual(

@@ -1,13 +1,27 @@
 import json
-import os
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.append(os.getcwd())
-
 from engine.rl.scenario_dataset import generate_scenarios, replay_episode, run_episode_dataset
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _run_module(*args: str) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        [sys.executable, "-m", *args],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"Subprocess failed: {' '.join(args)}\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
+    return result
 
 
 class ScenarioDatasetTests(unittest.TestCase):
@@ -40,10 +54,21 @@ class ScenarioDatasetTests(unittest.TestCase):
 
     def test_parallel_runner_cli_produces_report(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            exit_code = os.system(
-                f'py -3 tools/parallel_rollout_runner.py levels/multiagent_toy_scene.json --workers 2 --episodes 4 --max-steps 12 --seed 10 --out-dir "{temp_dir}"'
+            result = _run_module(
+                "tools.parallel_rollout_runner",
+                "levels/multiagent_toy_scene.json",
+                "--workers",
+                "2",
+                "--episodes",
+                "4",
+                "--max-steps",
+                "12",
+                "--seed",
+                "10",
+                "--out-dir",
+                temp_dir,
             )
-            self.assertEqual(exit_code, 0)
+            self.assertIn("[OK]", result.stdout)
             report = json.loads((Path(temp_dir) / "parallel_report.json").read_text(encoding="utf-8"))
         self.assertEqual(report["workers"], 2)
         self.assertEqual(report["episodes"], 4)

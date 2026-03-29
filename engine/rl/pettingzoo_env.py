@@ -89,13 +89,15 @@ class MotorParallelEnv(ParallelEnv):
         self,
         actions: dict[str, int],
     ) -> tuple[dict[str, Any], dict[str, float], dict[str, bool], dict[str, bool], dict[str, Any]]:
-        if self._api is None or self._api.game is None or self._api.game._input_system is None:
+        if self._api is None:
             raise RuntimeError("Environment not reset")
         acting_agents = [agent for agent in self.agents if agent in actions]
         for agent in acting_agents:
             state = self._action_to_state(int(actions[agent]))
             self._last_action_states[agent] = state
-            self._api.game._input_system.inject_state(agent, state, frames=1)
+            injection = self._api.inject_input_state(agent, state, frames=1)
+            if not injection["success"]:
+                raise RuntimeError(injection["message"] or "Input injection failed")
         self._api.step(frames=1)
         self._episode_step += 1
 

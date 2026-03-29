@@ -141,11 +141,13 @@ class MotorGymEnv(GymEnvBase):
         return observation, info
 
     def step(self, action: int) -> tuple[dict[str, Any], float, bool, bool, dict[str, Any]]:
-        if self._api is None or self._api.game is None or self._api.game._input_system is None:
+        if self._api is None:
             raise RuntimeError("Environment not reset")
         action_index = int(action)
         self._last_action_state = self._action_to_state(action_index)
-        self._api.game._input_system.inject_state(self._config.agent_entity, self._last_action_state, frames=self.frame_skip)
+        injection = self._api.inject_input_state(self._config.agent_entity, self._last_action_state, frames=self.frame_skip)
+        if not injection["success"]:
+            raise RuntimeError(injection["message"] or "Input injection failed")
         self._api.step(frames=self.frame_skip)
         self._episode_step += 1
 

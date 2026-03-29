@@ -9,8 +9,6 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.append(os.getcwd())
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Parallel headless rollout runner using subprocess workers.")
@@ -42,7 +40,8 @@ def main() -> int:
         summary_path = out_root / f"worker_{worker_index:02d}_summary.json"
         command = [
             sys.executable,
-            "tools/scenario_dataset_cli.py",
+            "-m",
+            "tools.scenario_dataset_cli",
             "run-episodes",
             args.scene,
             "--episodes",

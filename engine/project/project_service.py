@@ -548,6 +548,12 @@ class ProjectService:
         return {
             "startup_scene": "levels/main_scene.json",
             "template": ProjectManifest.DEFAULT_TEMPLATE,
+            "terminal": {
+                "execution_policy": "inherit",
+            },
+            "api": {
+                "path_sandbox": False,
+            },
         }
 
     def _normalize_project_settings(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -557,9 +563,23 @@ class ProjectService:
         startup_scene = str(data.get("startup_scene", defaults["startup_scene"])).strip() or defaults["startup_scene"]
         startup_scene = startup_scene.replace("\\", "/")
         template = str(data.get("template", defaults["template"])).strip() or defaults["template"]
+        raw_terminal = data.get("terminal", {})
+        terminal = raw_terminal if isinstance(raw_terminal, dict) else {}
+        execution_policy = str(terminal.get("execution_policy", defaults["terminal"]["execution_policy"])).strip() or defaults["terminal"]["execution_policy"]
+        if execution_policy not in {"inherit", "RemoteSigned", "Bypass"}:
+            execution_policy = defaults["terminal"]["execution_policy"]
+        raw_api = data.get("api", {})
+        api_settings = raw_api if isinstance(raw_api, dict) else {}
+        path_sandbox = bool(api_settings.get("path_sandbox", defaults["api"]["path_sandbox"]))
         return {
             "startup_scene": startup_scene,
             "template": template,
+            "terminal": {
+                "execution_policy": execution_policy,
+            },
+            "api": {
+                "path_sandbox": path_sandbox,
+            },
         }
 
     def _default_editor_state(self) -> Dict[str, Any]:

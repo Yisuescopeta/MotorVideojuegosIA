@@ -127,6 +127,48 @@ class PhysicsBackendTests(unittest.TestCase):
         self.assertLess(bullet["components"]["Transform"]["x"], 40.0)
         self.assertIn("on_collision", event_names)
 
+    def test_legacy_backend_respects_freeze_position_axes(self) -> None:
+        scene_path = self._write_scene(
+            "freeze_scene.json",
+            {
+                "name": "Freeze Scene",
+                "entities": [
+                    {
+                        "name": "Constrained",
+                        "active": True,
+                        "tag": "",
+                        "layer": "Gameplay",
+                        "components": {
+                            "Transform": {"enabled": True, "x": 10.0, "y": 15.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                            "RigidBody": {
+                                "enabled": True,
+                                "body_type": "dynamic",
+                                "gravity_scale": 1.0,
+                                "velocity_x": 120.0,
+                                "velocity_y": 80.0,
+                                "constraints": ["FreezePositionX"],
+                                "is_grounded": False,
+                            },
+                            "Collider": {"enabled": True, "width": 8.0, "height": 8.0, "offset_x": 0.0, "offset_y": 0.0, "is_trigger": False},
+                        },
+                    }
+                ],
+                "rules": [],
+                "feature_metadata": {"physics_2d": {"backend": "legacy_aabb"}},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+        self.api.play()
+        self.api.step(15)
+
+        constrained = self.api.get_entity("Constrained")
+        transform = constrained["components"]["Transform"]
+        rigidbody = constrained["components"]["RigidBody"]
+
+        self.assertAlmostEqual(transform["x"], 10.0, places=4)
+        self.assertGreater(transform["y"], 15.0)
+        self.assertEqual(rigidbody["velocity_x"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

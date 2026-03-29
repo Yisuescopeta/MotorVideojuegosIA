@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "motorvideojuegosia"
+version = "2026.03"
+description = "Motor de videojuegos 2D IA-first en Python"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "raylib-py>=5.0.0.0",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["engine*", "cli*", "tools*"]

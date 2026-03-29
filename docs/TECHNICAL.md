@@ -155,6 +155,15 @@ RigidBody(
 )
 ```
 
+Constraints serializables soportadas hoy:
+
+- `FreezePositionX`: bloquea traslacion horizontal
+- `FreezePositionY`: bloquea traslacion vertical
+- `FreezePosition`: bloquea ambas traslaciones
+
+Estas constraints no implican bloqueo de rotacion. `FreezeRotation` sigue fuera
+del contrato publico actual.
+
 ### Animator
 
 Animaciones por sprite sheet.
@@ -276,6 +285,15 @@ event_bus.emit("on_collision", {
 ### RuleSystem
 
 Ejecuta reglas declarativas desde JSON.
+
+El contrato actual admite **two-phase binding**:
+
+- `RuleSystem(event_bus)` para construir el sistema durante bootstrap
+- `set_world(world)` para enlazar el `World` activo cuando existe uno
+
+Las acciones que requieren entidades (`set_animation`, `set_position`,
+`destroy_entity`) se omiten con warning si todavia no hay `world`. Las acciones
+sin dependencia de entidades (`emit_event`, `log_message`) siguen funcionando.
 
 ```json
 {
@@ -427,6 +445,37 @@ api.set_component_enabled("Ground", "Collider", False)
 api.create_camera2d("MainCamera", camera={"follow_entity": "Player"})
 filtered = api.list_entities(tag="Hero", layer="Gameplay", active=True)
 ```
+
+
+### Contrato Publico IA/RL
+
+La integracion IA/RL debe apoyarse en `EngineAPI`, no en `_input_system` ni en
+`_event_bus` del runtime. Esta fase expone dos puntos de entrada estables para
+wrappers, datasets y automatizacion:
+
+```python
+from engine.api import EngineAPI
+
+api = EngineAPI(project_root=".")
+api.load_level("levels/platformer_test_scene.json")
+api.play()
+
+api.inject_input_state(
+    "Player",
+    {"horizontal": 1.0, "vertical": 0.0, "action_1": 0.0, "action_2": 0.0},
+    frames=2,
+)
+api.step(2)
+
+events = api.get_recent_events(count=10)
+```
+
+- `inject_input_state(...)` delega en el `InputSystem` activo y devuelve
+  `ActionResult`.
+- `get_recent_events(...)` devuelve eventos serializables (`name`, `data`) en
+  orden cronologico actual.
+- El informe de referencia para estas fases vive en
+  `docs/research/motor_ia_deep_research_report.md`.
 
 ### Añadir Nueva Regla
 

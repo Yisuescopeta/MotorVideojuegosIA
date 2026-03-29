@@ -2,11 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import sys
 from pathlib import Path
-
-sys.path.append(os.getcwd())
 
 from engine.rl.scenario_dataset import generate_scenarios, load_json, replay_episode, run_episode_dataset, write_json
 

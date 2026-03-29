@@ -63,6 +63,12 @@ class ProjectServiceTests(unittest.TestCase):
             {
                 "startup_scene": "levels/main_scene.json",
                 "template": "empty",
+                "terminal": {
+                    "execution_policy": "inherit",
+                },
+                "api": {
+                    "path_sandbox": False,
+                },
             },
         )
         self.assertEqual(
@@ -147,6 +153,32 @@ class ProjectServiceTests(unittest.TestCase):
 
         service.set_last_scene("")
         self.assertEqual(service.get_last_scene(), "")
+
+    def test_project_settings_round_trip_normalizes_security_defaults(self) -> None:
+        _, service = self._make_project("ProjectSecurity")
+
+        service.save_project_settings(
+            {
+                "startup_scene": "levels/custom_scene.json",
+                "template": "empty",
+                "terminal": {"execution_policy": "RemoteSigned"},
+                "api": {"path_sandbox": True},
+            }
+        )
+
+        self.assertEqual(
+            service.load_project_settings(),
+            {
+                "startup_scene": "levels/custom_scene.json",
+                "template": "empty",
+                "terminal": {
+                    "execution_policy": "RemoteSigned",
+                },
+                "api": {
+                    "path_sandbox": True,
+                },
+            },
+        )
 
     def test_validate_project_rejects_missing_or_invalid_manifest(self) -> None:
         missing_root = self.workspace / "MissingProject"
