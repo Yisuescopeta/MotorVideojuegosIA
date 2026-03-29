@@ -35,6 +35,7 @@ htmlcov/
 # Temporary
 *.tmp
 *.temp
+.claude/worktrees/
 
 # Local projects created from the launcher
 projects/
