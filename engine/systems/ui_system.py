@@ -14,6 +14,7 @@ from engine.components.recttransform import RectTransform
 from engine.components.uibutton import UIButton
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
+from engine.editor.cursor_manager import CursorVisualState
 from engine.events.event_bus import EventBus
 
 
@@ -216,6 +217,25 @@ class UISystem:
 
     def get_button_state(self, entity: Entity) -> dict[str, bool]:
         return dict(self._button_runtime.get(entity.id, {"hovered": False, "pressed": False}))
+
+    def get_cursor_intent(
+        self,
+        world: World,
+        viewport_size: tuple[float, float],
+        x: float,
+        y: float,
+    ) -> CursorVisualState:
+        self._ensure_layout_cache(world, viewport_size)
+        for entity in world.get_entities_with(UIButton):
+            button = entity.get_component(UIButton)
+            layout = self._layout_cache.get(entity.name)
+            if button is None or layout is None:
+                continue
+            if not button.enabled or not button.interactable:
+                continue
+            if self._point_in_rect(float(x), float(y), layout):
+                return CursorVisualState.INTERACTIVE
+        return CursorVisualState.DEFAULT
 
     def _layout_children(self, world: World, parent_name: str, parent_rect: dict[str, Any]) -> None:
         for child in world.get_children(parent_name):

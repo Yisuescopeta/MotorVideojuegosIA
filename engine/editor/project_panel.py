@@ -16,6 +16,7 @@ import pyray as rl
 from typing import Any, Dict, List, Tuple, Optional
 
 from engine.assets.asset_service import AssetService
+from engine.editor.cursor_manager import CursorVisualState
 from engine.project.project_service import ProjectService
 
 class ProjectPanel:
@@ -59,6 +60,7 @@ class ProjectPanel:
         self.expanded_folders: Set[str] = {self.root_path}
         self._item_display_cache: Dict[tuple[str, str], Dict[str, Any]] = {}
         self._breadcrumb_cache: List[tuple[str, int]] = []
+        self._cursor_interactive_rects: List[rl.Rectangle] = []
         
         self.refresh()
 
@@ -126,6 +128,7 @@ class ProjectPanel:
 
     def render(self, x: int, y: int, width: int, height: int) -> None:
         """Renderiza el panel de proyecto estilo Unity."""
+        self._cursor_interactive_rects = []
 
         # Breadcrumb area / Search
         breadcrumb_y = y
@@ -165,6 +168,7 @@ class ProjectPanel:
         rl.begin_scissor_mode(x, y, width, height)
         # Por ahora solo mostramos "Assets" como raíz
         root_rect = rl.Rectangle(x, y + 5, width, self.ITEM_HEIGHT)
+        self._register_cursor_rect(root_rect)
         is_hover = rl.check_collision_point_rec(rl.get_mouse_position(), root_rect)
         
         if self.current_path == self.root_path:
@@ -214,6 +218,7 @@ class ProjectPanel:
             if iy > y + height: break
             
             rect = rl.Rectangle(ix, iy, icon_w, icon_h)
+            self._register_cursor_rect(rect)
             is_hover = rl.check_collision_point_rec(mouse_pos, rect) and is_mouse_in
             
             if is_hover:
@@ -260,6 +265,7 @@ class ProjectPanel:
             button_x = x + width - 140
             if self.selected_file.lower().endswith((".png", ".jpg", ".jpeg", ".bmp")):
                 button_rect = rl.Rectangle(button_x, y + 6, 120, 20)
+                self._register_cursor_rect(button_rect)
                 if rl.gui_button(button_rect, "Sprite Editor"):
                     if self.project_service is not None:
                         self.request_open_sprite_editor_for = self.project_service.to_relative_path(self.selected_file)
@@ -269,6 +275,7 @@ class ProjectPanel:
 
             if self._is_scene_file(self.selected_file):
                 scene_rect = rl.Rectangle(button_x, y + 6, 120, 20)
+                self._register_cursor_rect(scene_rect)
                 if rl.gui_button(scene_rect, "Open Scene"):
                     if self.project_service is not None:
                         self.request_open_scene_for = self.project_service.to_relative_path(self.selected_file)
@@ -293,11 +300,14 @@ class ProjectPanel:
         menu_x = int(min(self.context_menu_pos.x, x + width - self.MENU_WIDTH - 4))
         menu_y = int(min(self.context_menu_pos.y, y + height - 78))
         menu_rect = rl.Rectangle(menu_x, menu_y, self.MENU_WIDTH, 52)
+        self._register_cursor_rect(menu_rect)
         rl.draw_rectangle_rec(menu_rect, self.UNITY_HEADER)
         rl.draw_rectangle_lines_ex(menu_rect, 1, self.UNITY_BORDER)
 
         create_rect = rl.Rectangle(menu_rect.x + 4, menu_rect.y + 4, menu_rect.width - 8, 20)
         refresh_rect = rl.Rectangle(menu_rect.x + 4, menu_rect.y + 28, menu_rect.width - 8, 20)
+        self._register_cursor_rect(create_rect)
+        self._register_cursor_rect(refresh_rect)
         if rl.gui_button(create_rect, "Create Folder"):
             self.create_folder()
             self.show_context_menu = False
@@ -333,6 +343,16 @@ class ProjectPanel:
             if entry_type == "file" and self.project_service is not None and self.asset_service is not None:
                 rel_path = self.project_service.to_relative_path(os.path.join(self.current_path, name))
                 entry = self.asset_service.get_asset_entry(rel_path)
-                if entry is not None:
-                    cached["meta"] = f"{entry.get('asset_kind', '?')} {entry.get('guid_short', '')}"[:13]
+            if entry is not None:
+                cached["meta"] = f"{entry.get('asset_kind', '?')} {entry.get('guid_short', '')}"[:13]
             self._item_display_cache[(name, entry_type)] = cached
+
+    def get_cursor_intent(self, mouse_pos: Optional[rl.Vector2] = None) -> CursorVisualState:
+        mouse = rl.get_mouse_position() if mouse_pos is None else mouse_pos
+        for rect in self._cursor_interactive_rects:
+            if rl.check_collision_point_rec(mouse, rect):
+                return CursorVisualState.INTERACTIVE
+        return CursorVisualState.DEFAULT
+
+    def _register_cursor_rect(self, rect: rl.Rectangle) -> None:
+        self._cursor_interactive_rects.append(rl.Rectangle(rect.x, rect.y, rect.width, rect.height))

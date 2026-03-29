@@ -823,6 +823,13 @@ class SceneManager:
                 return entry
         return None
 
+    def resolve_entry(self, key_or_path: Optional[str]) -> Optional[SceneWorkspaceEntry]:
+        """Retorna la entrada de workspace para una clave o ruta dada.
+
+        Si key_or_path es None o vacío, retorna la entrada activa.
+        """
+        return self._resolve_entry(key_or_path)
+
     def _entry_path_or_key(self, entry: Optional[SceneWorkspaceEntry]) -> str:
         return "" if entry is None else (entry.source_path or entry.key)
 

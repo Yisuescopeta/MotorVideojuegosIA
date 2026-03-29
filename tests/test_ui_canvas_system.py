@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.append(os.getcwd())
 
 from engine.api import EngineAPI
+from engine.editor.cursor_manager import CursorVisualState
 
 
 class CanvasUISystemTests(unittest.TestCase):
@@ -376,6 +377,59 @@ class CanvasUISystemTests(unittest.TestCase):
 
         self.assertFalse(result["success"])
         self.assertEqual([event.name for event in self.api.game._event_bus.get_recent_events()], [])
+
+    def test_cursor_intent_marks_enabled_button_as_interactive(self) -> None:
+        scene_path = self._write_scene(
+            "ui_cursor_enabled.json",
+            {
+                "name": "Cursor Enabled",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+        self.assertTrue(self.api.create_canvas(name="CanvasRoot")["success"])
+        self.assertTrue(
+            self.api.create_ui_button(
+                "PlayButton",
+                "Play",
+                "CanvasRoot",
+                {"width": 280.0, "height": 84.0},
+                {"type": "emit_event", "name": "ui.play_clicked"},
+            )["success"]
+        )
+
+        intent = self.api.game._ui_system.get_cursor_intent(self.api.game.world, (800.0, 600.0), 400.0, 300.0)
+
+        self.assertEqual(intent, CursorVisualState.INTERACTIVE)
+
+    def test_cursor_intent_ignores_non_interactable_buttons(self) -> None:
+        scene_path = self._write_scene(
+            "ui_cursor_disabled.json",
+            {
+                "name": "Cursor Disabled",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+        self.assertTrue(self.api.create_canvas(name="CanvasRoot")["success"])
+        self.assertTrue(
+            self.api.create_ui_button(
+                "PlayButton",
+                "Play",
+                "CanvasRoot",
+                {"width": 280.0, "height": 84.0},
+                {"type": "emit_event", "name": "ui.play_clicked"},
+            )["success"]
+        )
+        self.assertTrue(self.api.edit_component("PlayButton", "UIButton", "interactable", False)["success"])
+
+        intent = self.api.game._ui_system.get_cursor_intent(self.api.game.world, (800.0, 600.0), 400.0, 300.0)
+
+        self.assertEqual(intent, CursorVisualState.DEFAULT)
 
     def test_real_main_menu_canvas_button_loads_platformer_scene(self) -> None:
         self._copy_real_scene("main_menu_scene.json")
