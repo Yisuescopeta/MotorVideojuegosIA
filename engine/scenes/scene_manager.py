@@ -278,7 +278,8 @@ class SceneManager:
         rollback_selected_name = entry.selected_entity_name
         rollback_dirty = entry.dirty
         rollback_pending_reason = entry.pending_edit_world_sync_reason
-        if not entry.scene.replace_component_data(entity_name, component_name, copy.deepcopy(component_data)):
+        normalized_component_data = self._canonicalize_component_payload(component_name, component_data)
+        if not entry.scene.replace_component_data(entity_name, component_name, normalized_component_data):
             if not self._structural_authoring.replace_prefab_component_override(entry, entity_name, component_name, component_data):
                 return False
         if component_name == "SceneLink":
@@ -406,7 +407,7 @@ class SceneManager:
         rollback_selected_name = entry.selected_entity_name
         rollback_dirty = entry.dirty
         rollback_pending_reason = entry.pending_edit_world_sync_reason
-        data = component_data or {"enabled": True}
+        data = self._canonicalize_component_payload(component_name, component_data or {"enabled": True})
         if not entry.scene.add_component(entity_name, component_name, data):
             if not self._structural_authoring.replace_prefab_component_override(entry, entity_name, component_name, data):
                 return False
@@ -673,6 +674,8 @@ class SceneManager:
             scene_flow[scene_key] = target_path
         else:
             scene_flow.pop(scene_key, None)
+            if not scene_flow:
+                entry.scene.feature_metadata.pop("scene_flow", None)
         self._sync_scene_links_from_feature_metadata(entry)
         if not self._commit_serializable_scene_mutation(
             entry,
@@ -722,6 +725,14 @@ class SceneManager:
         if validation_errors:
             raise ValueError(f"Invalid scene payload: {'; '.join(validation_errors)}")
         return payload
+
+    def _canonicalize_component_payload(self, component_name: str, component_data: Dict[str, Any]) -> Dict[str, Any]:
+        payload = copy.deepcopy(component_data)
+        rebuilt_component = self._registry.create(component_name, payload)
+        if rebuilt_component is None or not hasattr(rebuilt_component, "to_dict"):
+            return payload
+        rebuilt_payload = rebuilt_component.to_dict()
+        return copy.deepcopy(rebuilt_payload) if isinstance(rebuilt_payload, dict) else payload
 
     def _build_canonical_scene_payload(
         self,
@@ -1001,7 +1012,7 @@ class SceneManager:
             scene_link = entity_data.get("components", {}).get("SceneLink")
             if isinstance(scene_link, dict):
                 flow_key = str(scene_link.get("flow_key", "") or "").strip()
-                if flow_key and flow_key in scene_flow:
+                if flow_key:
                     scene_link["target_path"] = str(scene_flow.get(flow_key, "") or "")
 
     def _entry_has_invalid_links(self, entry: SceneWorkspaceEntry) -> bool:

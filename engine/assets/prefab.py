@@ -46,14 +46,16 @@ def _normalize_legacy_overrides(overrides: dict[str, Any]) -> dict[str, Any]:
             for component_name, component_payload in components.items():
                 if not isinstance(component_payload, dict):
                     continue
-                operations.append(
-                    {
-                        "op": "replace_component",
-                        "target": target_path,
-                        "component": component_name,
-                        "data": copy.deepcopy(component_payload),
-                    }
-                )
+                for field_name, field_value in component_payload.items():
+                    operations.append(
+                        {
+                            "op": "set_field",
+                            "target": target_path,
+                            "component": component_name,
+                            "field": field_name,
+                            "value": copy.deepcopy(field_value),
+                        }
+                    )
     return {"operations": operations}
 
 
