@@ -13,8 +13,15 @@ from engine.api.errors import (
     InvalidOperationError,
     LevelLoadError,
 )
-from engine.api.types import ActionResult, ComponentData, EngineStatus, EntityData, Vector2D
-from engine.api.types import PhysicsBackendInfo, PhysicsBackendSelection
+from engine.api.types import (
+    ActionResult,
+    ComponentData,
+    EngineStatus,
+    EntityData,
+    PhysicsBackendInfo,
+    PhysicsBackendSelection,
+    Vector2D,
+)
 
 __all__ = [
     "EngineAPI",

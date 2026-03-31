@@ -6,6 +6,16 @@ from typing import Any, Dict, Optional, TypedDict
 
 from engine.physics.backend import PhysicsBackendInfo, PhysicsBackendSelection
 
+__all__ = [
+    "Vector2D",
+    "ComponentData",
+    "EntityData",
+    "ActionResult",
+    "EngineStatus",
+    "PhysicsBackendInfo",
+    "PhysicsBackendSelection",
+]
+
 
 class Vector2D(TypedDict):
     x: float

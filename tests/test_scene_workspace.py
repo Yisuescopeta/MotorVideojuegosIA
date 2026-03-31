@@ -64,7 +64,7 @@ class SceneWorkspaceTests(unittest.TestCase):
                 {
                     "enabled": True,
                     "target_path": "",
-                    "flow_key": "menu_scene",
+                    "flow_key": "",
                     "preview_label": "Broken",
                 },
             )

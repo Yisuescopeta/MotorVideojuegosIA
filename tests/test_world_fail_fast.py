@@ -93,7 +93,7 @@ class SceneManagerFailFastTests(unittest.TestCase):
         player = edit_world.get_entity_by_name("Player")
         player.add_component(BrokenCloneComponent())
 
-        with patch("engine.scenes.scene_manager.log_err") as log_err:
+        with patch("engine.scenes.workspace_lifecycle.log_err") as log_err:
             runtime_world = self.scene_manager.enter_play()
 
         self.assertIsNone(runtime_world)
@@ -101,14 +101,12 @@ class SceneManagerFailFastTests(unittest.TestCase):
         log_err.assert_called_once()
 
     def test_save_scene_to_file_returns_false_when_serialization_fails(self) -> None:
-        edit_world = self.scene_manager.get_edit_world()
-        player = edit_world.get_entity_by_name("Player")
-        player.add_component(BrokenSerializeComponent())
-
         with tempfile.TemporaryDirectory() as temp_dir:
             target_path = Path(temp_dir) / "broken_scene.json"
-            with patch("engine.scenes.scene_manager.log_err") as log_err:
-                success = self.scene_manager.save_scene_to_file(target_path.as_posix())
+            current_scene = self.scene_manager.current_scene
+            with patch.object(current_scene, "to_dict", side_effect=RuntimeError("serialize failed")):
+                with patch("engine.scenes.scene_manager.log_err") as log_err:
+                    success = self.scene_manager.save_scene_to_file(target_path.as_posix())
             self.assertFalse(target_path.exists())
 
         self.assertFalse(success)

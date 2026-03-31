@@ -159,6 +159,8 @@ def _canonicalize_script_behaviour(payload: dict[str, Any], *, entity_path: str)
     script_ref = normalize_asset_reference(script_value)
     script_path = script_ref.get("path", "")
     module_path = normalize_asset_path(module_path_value) if isinstance(module_path_value, str) else ""
+    if not script_path and (module_path.endswith(".py") or module_path.startswith("scripts/")):
+        script_path = module_path
     normalized_module = _normalize_module_name(script_path) if script_path else ""
     if script_path and module_path and module_path not in {script_path, normalized_module}:
         raise ValueError(
@@ -822,15 +824,6 @@ def _validate_audio_source(data: dict[str, Any], *, path: str) -> list[str]:
         if key in data:
             _expect_bool(data[key], path=f"{path}.{key}", errors=errors)
     return errors
-
-
-def _normalize_module_name(module_path: str) -> str:
-    value = normalize_asset_path(module_path)
-    if value.endswith(".py"):
-        if value.startswith("scripts/"):
-            value = value[len("scripts/") :]
-        value = value[:-3]
-    return value.strip("/").replace("/", ".")
 
 
 def _validate_script_behaviour(data: dict[str, Any], *, path: str) -> list[str]:
