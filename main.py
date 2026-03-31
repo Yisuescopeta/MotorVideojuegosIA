@@ -79,6 +79,7 @@ def _register_optional_box2d_backend(game: Game, gravity: float, event_bus: Even
         game.set_physics_backend(backend, backend_name="box2d")
         return True
     except Exception as exc:
+        game.set_physics_backend_unavailable("box2d", str(exc))
         print(f"[WARNING] Box2D backend unavailable: {exc}")
         return False
 

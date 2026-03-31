@@ -255,6 +255,15 @@ class ProjectWorkspaceControllerTests(unittest.TestCase):
         )
         self.assertEqual(self.scene_manager.activated_keys, [boss_path.as_posix()])
         self.assertIn(intro_path.as_posix(), self.scene_manager.scene_view_states)
+        self.assertEqual(self.scene_manager.active_scene_key, boss_path.as_posix())
+        self.assertEqual(
+            self.scene_manager.get_scene_view_state(),
+            {},
+        )
+        self.assertEqual(
+            self.scene_manager.scene_view_states[intro_path.as_posix()]["camera_zoom"],
+            1.5,
+        )
         self.sync_scene_workspace_ui.assert_called_once_with(True)
 
     def test_open_project_resets_workspace_and_focuses_scene(self) -> None:

@@ -1,4 +1,5 @@
 {
+    "schema_version": 2,
     "name": "Main Menu Scene",
     "entities": [
         {
@@ -38,7 +39,6 @@
             "active": true,
             "tag": "UI",
             "layer": "UI",
-            "parent": "MainCanvas",
             "components": {
                 "RectTransform": {
                     "enabled": true,
@@ -69,14 +69,14 @@
                     "alignment": "center",
                     "wrap": false
                 }
-            }
+            },
+            "parent": "MainCanvas"
         },
         {
             "name": "SubtitleText",
             "active": true,
             "tag": "UI",
             "layer": "UI",
-            "parent": "MainCanvas",
             "components": {
                 "RectTransform": {
                     "enabled": true,
@@ -107,14 +107,14 @@
                     "alignment": "center",
                     "wrap": false
                 }
-            }
+            },
+            "parent": "MainCanvas"
         },
         {
             "name": "PlayButton",
             "active": true,
             "tag": "UI",
             "layer": "UI",
-            "parent": "MainCanvas",
             "components": {
                 "RectTransform": {
                     "enabled": true,
@@ -166,7 +166,8 @@
                         "target": "next_scene"
                     }
                 }
-            }
+            },
+            "parent": "MainCanvas"
         }
     ],
     "rules": [],

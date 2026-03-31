@@ -1,341 +1,144 @@
 # Motor de Videojuegos 2D - IA First
 
-Motor de videojuegos 2D experimental diseñado para ser **comprendido, modificado y utilizado por una IA** para generar juegos simples.
+Motor/editor 2D experimental en Python orientado a trabajar con un modelo
+serializable comun para editor, runtime y API. El proyecto no intenta ocultar
+estado en la UI: la fuente de verdad vive en escenas, prefabs y metadatos
+serializables.
 
-## 🎯 Objetivos del Proyecto
+## Estado actual
 
-- **Code-first**: Todo el juego se define por código y datos JSON
-- **IA-friendly**: Arquitectura explícita y serializable
-- **Sin magia**: Comportamiento predecible y observable
-- **Académico**: Proyecto de ~3 meses
+La base tecnica mas estable del repositorio hoy es:
 
-## 🚀 Inicio Rápido
+- `scene schema_version = 2`
+- `prefab schema_version = 2`
+- la carga migra payloads legacy y `v1` a `v2` antes de validar
+- el guardado emite payload canonico `v2`
+- `SceneManager`, `Game`/`HeadlessGame` y `EngineAPI` operan sobre el mismo
+  contrato de datos
+- existe una matriz de regresion del core que protege invariantes de
+  serializacion, workspace, authoring, `EDIT -> PLAY -> STOP` y API publica
+
+El proyecto sigue siendo experimental. Hay capacidades reales de authoring,
+runtime, headless y tooling, pero no se documenta como motor cerrado ni como
+producto listo para produccion.
+
+## Inicio rapido
 
 ```bash
-# Instalar dependencias
 pip install -r requirements.txt
-
-# Instalar el proyecto y las herramientas de desarrollo
 pip install -e .[dev]
-
-# Ejecutar
 python main.py
 ```
 
 ## Testing y CLI
 
 ```bash
-# Ejecutar tests
 python -m unittest discover -s tests
 
-# Ejecutar CLI por modulo
 python -m tools.engine_cli validate --target scene --path levels/demo_level.json
+python -m tools.engine_cli smoke --scene levels/demo_level.json --frames 5 --out-dir artifacts/cli_smoke
 
-# Ejecutar checks de calidad
 python -m ruff check engine/api engine/project engine/rl engine/serialization engine/events cli tools main.py
 python -m mypy engine/api engine/project engine/rl engine/serialization engine/events cli tools main.py
 python -m bandit -q -c .bandit -r engine cli tools main.py
 python -m pip_audit --skip-editable --ignore-vuln CVE-2026-4539
 ```
 
-## Licencia
+## Taxonomia del motor
 
-Este repositorio se distribuye bajo licencia MIT. El texto completo está en
-[LICENSE](LICENSE).
+La referencia canonica de clasificacion vive en
+[docs/module_taxonomy.md](docs/module_taxonomy.md). El resumen operativo es:
 
-## Contribución y seguridad
+### Core obligatorio
 
-El proyecto sigue siendo experimental y académico, pero ya incluye una base de
-gobernanza para cambios externos:
+- ECS, `Scene`, `SceneManager`, serializacion y schema/migraciones
+- editor base y jerarquia como parte del authoring compartido
+- `EngineAPI` y contrato fisico base con fallback `legacy_aabb`
+- pruebas de regresion que protegen ese nucleo
 
-- guía de contribución: [CONTRIBUTING.md](CONTRIBUTING.md)
-- política de seguridad: [SECURITY.md](SECURITY.md)
+### Modulos oficiales opcionales
+
+- assets y prefabs
+- tilemap, audio y UI serializable
+- `box2d` y otras capacidades oficiales no necesarias para el contrato minimo
+
+### Experimental/tooling
+
+- `engine/rl`
+- datasets, runners, multiagente y debug avanzado
+- tooling de investigacion y benchmarking fuera del contrato base
+
+## Contrato de datos
+
+La escena serializable es la fuente de verdad. `Scene` contiene el payload
+editable y persistible; `SceneManager.edit_world` es una proyeccion editable de
+ese payload; `SceneManager.runtime_world` es un clon temporal para `PLAY`.
+`Game.world` y `HeadlessGame.world` exponen el `active_world`, pero no
+sustituyen al modelo serializable.
+
+El payload canonico de escena contiene como minimo:
+
+- `name`
+- `schema_version`
+- `entities`
+- `rules`
+- `feature_metadata`
+
+`feature_metadata` concentra configuracion transversal soportada por el core,
+como `render_2d`, `physics_2d` y `scene_flow`, siempre validada desde schema.
+
+## Capas principales
+
+- `Scene`: guarda datos serializables, resuelve prefabs y reconstruye `World`
+  desde datos.
+- `SceneManager`: coordina workspace, authoring estructural, transacciones,
+  historial, dirty state y la transicion `EDIT -> PLAY -> STOP`.
+- `Game` / `HeadlessGame`: coordinan estado del motor, tiempo y sistemas sobre
+  el mundo activo.
+- `EngineAPI`: fachada publica para agentes, tests, CLI y scripts. Internamente
+  esta delegada por dominios, pero la fachada publica sigue siendo unica.
+- UI/editor: traduce interacciones de usuario al mismo contrato compartido. No
+  debe crear fuente de verdad paralela.
+
+## EngineAPI actual
+
+`EngineAPI` expone dominios publicos de trabajo sin depender de internals
+privados del runtime:
+
+- authoring de entidades, componentes y `feature_metadata`
+- runtime (`play`, `stop`, `step`, eventos e input inyectado)
+- workspace y scene flow
+- assets y proyecto
+- debug/profiler
+- UI serializable
+
+La documentacion tecnica completa esta en:
+
+- [docs/architecture.md](docs/architecture.md)
+- [docs/TECHNICAL.md](docs/TECHNICAL.md)
+- [docs/schema_serialization.md](docs/schema_serialization.md)
+
+## Controles del editor
+
+| Tecla | Accion |
+|---|---|
+| `SPACE` | Play |
+| `P` | Pause / Resume |
+| `ESC` | Stop |
+| `R` | Recargar escena |
+| `TAB` | Mostrar u ocultar inspector |
+| `UP` / `DOWN` | Scroll del inspector |
+| `F8` | Hot-reload de scripts |
+| `F10` | Step |
+| `F11` | Fullscreen |
+| `Ctrl+S` | Guardar escena |
+
+## Contribucion y seguridad
+
+El repositorio mantiene documentacion minima de gobernanza:
+
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [SECURITY.md](SECURITY.md)
+- [LICENSE](LICENSE)
 
 No se promete soporte comercial ni SLA.
-
-## 🎮 Controles
-
-| Tecla | Acción |
-|-------|--------|
-| **ESPACIO** | Play (iniciar juego) |
-| **P** | Pause/Resume |
-| **ESC** | Stop (volver a edición) |
-| **R** | Recargar nivel |
-| **TAB** | Mostrar/ocultar inspector |
-| **UP/DOWN** | Scroll del inspector |
-| **F8** | Hot-Reload scripts |
-| **F10** | Step (un frame) |
-| **F11** | Fullscreen |
-| **Ctrl+S** | Guardar escena |
-
-## 📁 Estructura del Proyecto
-
-```
-MotorVideojuegosIA/
-├── engine/                 # Motor principal
-│   ├── core/              # Game loop, estados, tiempo
-│   │   ├── game.py        # Clase principal del motor
-│   │   ├── engine_state.py # Estados EDIT/PLAY/PAUSED
-│   │   ├── time_manager.py
-│   │   └── hot_reload.py  # Sistema de recarga en caliente
-│   │
-│   ├── ecs/               # Entity-Component-System
-│   │   ├── entity.py      # Entidades con ID único
-│   │   ├── component.py   # Clase base de componentes
-│   │   └── world.py       # Contenedor de entidades
-│   │
-│   ├── components/        # Componentes de datos
-│   │   ├── transform.py   # Posición, rotación, escala
-│   │   ├── sprite.py      # Textura y renderizado
-│   │   ├── collider.py    # Colisión AABB
-│   │   ├── rigidbody.py   # Física básica
-│   │   └── animator.py    # Animaciones sprite sheet
-│   │
-│   ├── systems/           # Sistemas que procesan componentes
-│   │   ├── render_system.py
-│   │   ├── physics_system.py
-│   │   ├── collision_system.py
-│   │   └── animation_system.py
-│   │
-│   ├── events/            # Sistema de eventos
-│   │   ├── event_bus.py   # Publish-subscribe
-│   │   └── rule_system.py # Reglas declarativas
-│   │
-│   ├── scenes/            # Gestión de escenas
-│   │   ├── scene.py
-│   │   └── scene_manager.py
-│   │
-│   ├── editor/            # Editor visual (paneles)
-│   │   ├── console_panel.py  # Consola de errores/logs
-│   │   ├── hierarchy_panel.py
-│   │   └── editor_layout.py
-│   │
-│   ├── config.py          # Constantes centralizadas
-│   └── resources/
-│       └── texture_manager.py
-│
-├── scripts/               # Scripts recargables en caliente (F8)
-│   └── example_script.py
-│
-├── tools/                 # Herramientas IA
-│   ├── create_mechanic.py # Generador de sistemas
-│   └── introspect.py      # Reflexión/inspección
-│
-├── levels/                # Archivos de niveles JSON
-├── assets/                # Sprites y recursos
-├── tests/                 # Tests y demos
-├── .cursorrules           # Reglas globales para IA
-├── main.py               # Punto de entrada
-└── requirements.txt
-```
-
-## 🏗️ Arquitectura
-
-### Entity-Component-System (ECS)
-
-```python
-# Crear entidad
-player = world.create_entity("Player")
-
-# Añadir componentes
-player.add_component(Transform(x=100, y=200))
-player.add_component(Collider(width=32, height=32))
-player.add_component(RigidBody(gravity_scale=1.0))
-```
-
-### Componentes Disponibles
-
-| Componente | Propósito |
-|------------|-----------|
-| `Transform` | Posición, rotación, escala |
-| `Sprite` | Textura para renderizado |
-| `Collider` | Área de colisión AABB |
-| `RigidBody` | Física (gravedad, velocidad) |
-| `Animator` | Animaciones por sprite sheet |
-| `Camera2D` | Camara serializable para Game View |
-| `AudioSource` | Audio 2D basico editable |
-| `InputMap` | Bindings declarativos entendibles por IA |
-| `PlayerController2D` | Movimiento lateral y salto sobre `RigidBody` |
-| `ScriptBehaviour` | Script adjunto serializable con `public_data` e hot-reload |
-
-### Estados del Motor
-
-| Estado | Física | Reglas | Animación |
-|--------|--------|--------|-----------|
-| **EDIT** | ❌ | ❌ | Preview (lento) |
-| **PLAY** | ✔️ | ✔️ | Normal |
-| **PAUSED** | ❌ | ❌ | ❌ |
-
-## 📄 Formato de Nivel (JSON)
-
-```json
-{
-    "name": "Mi Nivel",
-    "entities": [
-        {
-            "name": "Player",
-            "components": {
-                "Transform": {"x": 100, "y": 200},
-                "Collider": {"width": 32, "height": 32},
-                "RigidBody": {"gravity_scale": 1.0}
-            }
-        }
-    ],
-    "rules": [
-        {
-            "event": "on_collision",
-            "when": {"entity_a": "Player", "entity_b": "Enemy"},
-            "do": [
-                {"action": "set_animation", "entity": "Player", "state": "hit"}
-            ]
-        }
-    ]
-}
-```
-
-## 📡 Sistema de Eventos
-
-### Eventos Emitidos
-
-| Evento | Origen | Datos |
-|--------|--------|-------|
-| `on_collision` | CollisionSystem | entity_a, entity_b |
-| `on_trigger_enter` | CollisionSystem | entity_a, entity_b |
-| `on_animation_end` | AnimationSystem | entity, animation |
-| `on_level_loaded` | Game | level_name |
-| `on_play` | Game | - |
-
-### Acciones de Reglas
-
-| Acción | Efecto |
-|--------|--------|
-| `set_animation` | Cambia estado de animación |
-| `set_position` | Mueve entidad |
-| `destroy_entity` | Elimina entidad |
-| `emit_event` | Dispara otro evento |
-| `log_message` | Imprime en consola |
-
-
-## 🔄 Gestión de Escenas
-
-```
-[EDIT] Scene → World (editable)
-         ↓ SPACE (play)
-[PLAY] World.clone() → RuntimeWorld (temporal)
-         ↓ ESC (stop)
-[EDIT] Scene → World (restaurado)
-```
-
-Al presionar **ESC**, el mundo vuelve exactamente al estado original.
-
-## 🛠️ API para IA
-
-```python
-from engine.api import EngineAPI
-
-api = EngineAPI()
-api.load_level("levels/demo_level.json")
-api.set_entity_tag("Player", "Hero")
-api.set_entity_layer("Player", "Gameplay")
-api.set_component_enabled("Ground", "Collider", False)
-api.create_camera2d("MainCamera", camera={"follow_entity": "Player", "framing_mode": "platformer"})
-api.add_script_behaviour("Player", "platformer_character", {"lives": 3})
-gameplay_entities = api.list_entities(tag="Hero", layer="Gameplay", active=True)
-```
-
-## Flujo IA-First Actual
-
-- `SceneManager` mantiene la seleccion de entidad entre `EDIT`, `PLAY` y `STOP`.
-- `Camera2D` soporta follow serializable, framing `platformer`, dead-zones y clamp.
-- `ScriptBehaviour` permite adjuntar scripts desde datos/API con hooks `on_play`, `on_update`, `on_stop`.
-- `public_data` es la bolsa persistente y serializable compartida entre runtime, API e inspector.
-
-## 📊 Fases Completadas
-
-| Fase | Descripción | Estado |
-|------|-------------|--------|
-| 1 | Entorno y setup | ✅ |
-| 3 | ECS, Física, Colisiones | ✅ |
-| 4 | Animaciones | ✅ |
-| 5 | Inspector Visual | ✅ |
-| 6 | Niveles JSON | ✅ |
-| 7 | Eventos y Reglas | ✅ |
-| 8 | Estados del Motor | ✅ |
-| 12 | Gestión de Escenas | ✅ |
-
-## 📋 Próximas Fases
-
-- **Fase 9**: Controles de ejecución avanzados
-- **Fase 10**: Inspector editable
-- **Fase 11**: Sistema CLI
-- **Fase 13**: API completa para IA
-
-## 🔥 Hot-Reload (Recarga en Caliente)
-
-Modifica scripts mientras el motor está corriendo:
-
-1. Coloca scripts `.py` en la carpeta `scripts/`
-2. Presiona **F8** para recargar los scripts modificados
-3. Los errores aparecen en la consola del editor, sin crashear
-
-```python
-# scripts/mi_script.py
-def on_reload():
-    """Se ejecuta al recargar el módulo."""
-    print("Script recargado!")
-```
-
-## ⚙️ Configuración Centralizada
-
-Todas las constantes modificables están en `engine/config.py`:
-
-```python
-from engine.config import GRAVITY_DEFAULT, WINDOW_WIDTH, TARGET_FPS
-```
-
-## 🤖 Herramientas IA
-
-### Crear Mecánica
-```bash
-python -m tools.create_mechanic double_jump "Doble salto" Transform,RigidBody
-```
-
-### Orquestacion Multiagente
-```bash
-python -m tools.agent_workflow create-brief ^
-  --title "Investigar regresion de escenas" ^
-  --goal "Determinar por que STOP no restaura el estado original del World" ^
-  --subsystems scenes core api ^
-  --files engine/scenes/scene_manager.py engine/core/game.py engine/api/engine_api.py
-```
-
-Documentacion operativa:
-
-- `docs/agent-orchestration/README.md`
-- `docs/agent-orchestration/unity-2d-core-matrix.md`
-- `docs/agent-orchestration/task-brief-template.md`
-- `docs/agent-orchestration/result-bundle-template.md`
-- `docs/agent-orchestration/definition-of-done.md`
-- `docs/agent-orchestration/agents/`
-
-### Inspeccionar Mundo
-```python
-from tools.introspect import inspect_world, inspect_entity
-print(inspect_world(world))      # Resumen completo
-print(inspect_entity(world, "Player"))  # Entidad específica
-```
-
-### Auditar gaps de Unity 2D core
-```bash
-python -m tools.agent_workflow list-gaps --status parcial
-```
-
-## 🔧 Dependencias
-
-- Python 3.11+
-- raylib-py
-
-## 📝 Licencia
-
-Este repositorio se distribuye bajo licencia MIT. El texto completo está en
-[LICENSE](LICENSE).

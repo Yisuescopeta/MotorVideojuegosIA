@@ -816,13 +816,21 @@ class InspectorSystem:
         return self._draw_text_row(label, display_value, prop_id, x, y, width, is_edit, world, on_commit=on_commit)
 
     def _draw_transform_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:
+        entity_name = self._entity_name_from_id(world, entity_id)
+        payload = self._current_component_payload(world, entity_name, "Transform") if entity_name is not None else None
         current_y = y
-        current_y = self._draw_component_field("Enabled", component.enabled, entity_id, "Transform", "enabled", x, current_y, width, is_edit, world)
-        current_y = self._draw_component_field("X", component.x, entity_id, "Transform", "x", x, current_y, width, is_edit, world)
-        current_y = self._draw_component_field("Y", component.y, entity_id, "Transform", "y", x, current_y, width, is_edit, world)
-        current_y = self._draw_component_field("Rotation", component.rotation, entity_id, "Transform", "rotation", x, current_y, width, is_edit, world)
-        current_y = self._draw_component_field("Scale X", component.scale_x, entity_id, "Transform", "scale_x", x, current_y, width, is_edit, world)
-        current_y = self._draw_component_field("Scale Y", component.scale_y, entity_id, "Transform", "scale_y", x, current_y, width, is_edit, world)
+        enabled = payload.get("enabled", component.enabled) if payload is not None else component.enabled
+        x_value = payload.get("x", component.x) if payload is not None else component.x
+        y_value = payload.get("y", component.y) if payload is not None else component.y
+        rotation = payload.get("rotation", component.rotation) if payload is not None else component.rotation
+        scale_x = payload.get("scale_x", component.scale_x) if payload is not None else component.scale_x
+        scale_y = payload.get("scale_y", component.scale_y) if payload is not None else component.scale_y
+        current_y = self._draw_component_field("Enabled", enabled, entity_id, "Transform", "enabled", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("X", x_value, entity_id, "Transform", "x", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("Y", y_value, entity_id, "Transform", "y", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("Rotation", rotation, entity_id, "Transform", "rotation", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("Scale X", scale_x, entity_id, "Transform", "scale_x", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("Scale Y", scale_y, entity_id, "Transform", "scale_y", x, current_y, width, is_edit, world)
         return current_y
 
     def _draw_sprite_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:

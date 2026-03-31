@@ -137,6 +137,130 @@ class SceneWorkspaceTests(unittest.TestCase):
         self.assertIsNotNone(scene_a_world.get_entity_by_name("Root"))
         self.assertIsNotNone(scene_a_world.get_entity_by_name("Child"))
 
+    def test_copy_paste_subtree_preserves_internal_parent_and_renames_conflicts(self) -> None:
+        self.scene_manager.create_new_scene("Source")
+        self.assertTrue(self.scene_manager.create_entity("Root", components={"Transform": self._transform_payload()}))
+        self.assertTrue(self.scene_manager.create_child_entity("Root", "Child", {"Transform": self._transform_payload()}))
+        source_key = self.scene_manager.active_scene_key
+
+        self.assertTrue(self.scene_manager.copy_entity_subtree("Root"))
+
+        self.scene_manager.create_new_scene("Target", activate=False)
+        target_key = next(scene["key"] for scene in self.scene_manager.list_open_scenes() if scene["name"] == "Target")
+        self.assertIsNotNone(self.scene_manager.activate_scene(target_key))
+        self.assertTrue(self.scene_manager.create_entity("Root", components={"Transform": self._transform_payload()}))
+
+        pasted = self.scene_manager.paste_copied_entities()
+
+        self.assertTrue(pasted)
+        target_world = self.scene_manager.get_edit_world()
+        pasted_root = target_world.get_entity_by_name("Root_copy")
+        pasted_child = target_world.get_entity_by_name("Child")
+        self.assertIsNotNone(pasted_root)
+        self.assertIsNotNone(pasted_child)
+        self.assertEqual(pasted_child.parent_name, "Root_copy")
+
+        self.assertIsNotNone(self.scene_manager.activate_scene(source_key))
+        source_world = self.scene_manager.get_edit_world()
+        self.assertIsNotNone(source_world.get_entity_by_name("Root"))
+        self.assertIsNotNone(source_world.get_entity_by_name("Child"))
+        self.assertIsNone(source_world.get_entity_by_name("Root_copy"))
+
+    def test_workspace_activate_and_close_preserves_expected_active_scene(self) -> None:
+        self.scene_manager.create_new_scene("Scene A")
+        scene_a_key = self.scene_manager.active_scene_key
+        self.scene_manager.create_new_scene("Scene B", activate=False)
+        scene_b_key = next(scene["key"] for scene in self.scene_manager.list_open_scenes() if scene["name"] == "Scene B")
+
+        self.assertEqual(self.scene_manager.active_scene_key, scene_a_key)
+        self.assertTrue(self.scene_manager.close_scene(scene_b_key, discard_changes=True))
+        self.assertEqual(self.scene_manager.active_scene_key, scene_a_key)
+
+        self.scene_manager.create_new_scene("Scene C", activate=False)
+        scene_c_key = next(scene["key"] for scene in self.scene_manager.list_open_scenes() if scene["name"] == "Scene C")
+        self.assertIsNotNone(self.scene_manager.activate_scene(scene_c_key))
+        self.assertEqual(self.scene_manager.active_scene_key, scene_c_key)
+
+        self.assertTrue(self.scene_manager.close_scene(scene_c_key, discard_changes=True))
+        self.assertEqual(self.scene_manager.active_scene_key, scene_a_key)
+
+    def test_activate_scene_is_blocked_while_active_scene_is_playing(self) -> None:
+        self.scene_manager.create_new_scene("Scene A")
+        scene_a_key = self.scene_manager.active_scene_key
+        self.scene_manager.create_new_scene("Scene B", activate=False)
+        scene_b_key = next(scene["key"] for scene in self.scene_manager.list_open_scenes() if scene["name"] == "Scene B")
+
+        runtime_world = self.scene_manager.enter_play()
+
+        self.assertIsNotNone(runtime_world)
+        self.assertIsNone(self.scene_manager.activate_scene(scene_b_key))
+        self.assertEqual(self.scene_manager.active_scene_key, scene_a_key)
+        self.assertTrue(self.scene_manager.is_playing)
+
+    def test_workspace_state_tracks_active_scene_and_view_state(self) -> None:
+        self.scene_manager.create_new_scene("Scene A")
+        scene_a_key = self.scene_manager.active_scene_key
+        self.scene_manager.set_scene_view_state(
+            scene_a_key,
+            {
+                "selected_entity": "Hero",
+                "camera_target": {"x": 12.0, "y": 24.0},
+                "camera_zoom": 1.75,
+            },
+        )
+        self.scene_manager.create_new_scene("Scene B", activate=False)
+        scene_b_key = next(scene["key"] for scene in self.scene_manager.list_open_scenes() if scene["name"] == "Scene B")
+        self.assertIsNotNone(self.scene_manager.activate_scene(scene_b_key))
+
+        workspace_state = self.scene_manager.get_workspace_state()
+
+        self.assertEqual(workspace_state["active_scene"], scene_b_key)
+        self.assertEqual(workspace_state["open_scenes"], [scene_a_key, scene_b_key])
+        self.assertEqual(
+            workspace_state["scene_view_states"][scene_a_key],
+            {
+                "selected_entity": "Hero",
+                "camera_target": {"x": 12.0, "y": 24.0},
+                "camera_zoom": 1.75,
+            },
+        )
+
+    def test_edit_play_stop_cycle_restores_edit_world_without_dirtying_scene(self) -> None:
+        self.scene_manager.load_scene(
+            {
+                "name": "PlayProbe",
+                "entities": [
+                    {
+                        "name": "Player",
+                        "active": True,
+                        "tag": "Untagged",
+                        "layer": "Default",
+                        "components": {"Transform": self._transform_payload()},
+                    }
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+        edit_world = self.scene_manager.get_edit_world()
+        self.scene_manager.set_selected_entity("Player")
+
+        runtime_world = self.scene_manager.enter_play()
+
+        self.assertIsNotNone(runtime_world)
+        self.assertTrue(self.scene_manager.is_playing)
+        self.assertFalse(self.scene_manager.is_dirty)
+        runtime_world.selected_entity_name = "Player"
+
+        restored_world = self.scene_manager.exit_play()
+
+        self.assertIs(restored_world, self.scene_manager.get_edit_world())
+        self.assertIsNot(restored_world, runtime_world)
+        self.assertIsNot(restored_world, edit_world)
+        self.assertFalse(self.scene_manager.is_playing)
+        self.assertFalse(self.scene_manager.is_dirty)
+        self.assertEqual(restored_world.selected_entity_name, "Player")
+
     def test_save_scene_preserves_component_metadata(self) -> None:
         self.scene_manager.load_scene(
             {

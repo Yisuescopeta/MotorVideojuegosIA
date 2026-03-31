@@ -375,7 +375,7 @@ class CanvasUISystemTests(unittest.TestCase):
         result = self.api.click_ui_button("PlayButton")
 
         self.assertFalse(result["success"])
-        self.assertEqual([event.name for event in self.api.game._event_bus.get_recent_events()], [])
+        self.assertEqual([event.name for event in self.api.game.event_bus.get_recent_events()], [])
 
     def test_cursor_intent_marks_enabled_button_as_interactive(self) -> None:
         scene_path = self._write_scene(

@@ -105,6 +105,7 @@ class UnityCoreAuthoringTests(unittest.TestCase):
             )["success"]
         )
         self.assertTrue(self.api.set_feature_metadata("input_profile", {"source": "code"})["success"])
+        self.assertTrue(self.api.scene_manager.is_dirty)
 
         entity = self.api.get_entity("PlayerSettings")
         self.assertEqual(entity["components"]["InputMap"]["move_left"], "A,LEFT")
@@ -114,6 +115,17 @@ class UnityCoreAuthoringTests(unittest.TestCase):
         self.assertEqual(audio_state["asset"]["path"], "assets/jump.wav")
         self.assertEqual(self.api.get_feature_metadata()["input_profile"]["source"], "code")
         self.assertEqual(self.api.get_input_state("PlayerSettings"), {"horizontal": 0.0, "vertical": 0.0, "action_1": 0.0, "action_2": 0.0})
+
+        save_path = self.project_root / "levels" / "feature_metadata_roundtrip.json"
+        self.assertTrue(self.api.save_scene(path=save_path.as_posix())["success"])
+
+        reloaded_api = EngineAPI(
+            project_root=self.project_root.as_posix(),
+            global_state_dir=self.global_state_dir.as_posix(),
+        )
+        self.addCleanup(reloaded_api.shutdown)
+        reloaded_api.load_level("levels/feature_metadata_roundtrip.json")
+        self.assertEqual(reloaded_api.get_feature_metadata()["input_profile"]["source"], "code")
 
     def test_component_enablement_round_trip(self) -> None:
         result = self.api.set_component_enabled("Ground", "Collider", False)
@@ -485,6 +497,32 @@ class UnityCoreAuthoringTests(unittest.TestCase):
 
         self.api.step(2)
         self.assertGreaterEqual(self.api.get_script_public_data("EditScriptEntity")["edit_ticks"], 2)
+
+    def test_edit_mode_script_changes_persist_via_legacy_world_sync_on_save(self) -> None:
+        self.assertTrue(self.api.create_entity("EditScriptSaveEntity")["success"])
+        self.assertTrue(
+            self.api.add_script_behaviour(
+                "EditScriptSaveEntity",
+                "platformer_character",
+                {"edit_ticks": 0},
+                run_in_edit_mode=True,
+            )["success"]
+        )
+
+        entity = self.api.game.world.get_entity_by_name("EditScriptSaveEntity")
+        transform = entity.get_component(Transform)
+        script_behaviour = entity.get_component(ScriptBehaviour)
+        transform.x = 10.0
+        script_behaviour.public_data["edit_ticks"] = 2
+        self.api.scene_manager.mark_edit_world_dirty(reason="legacy_authoring")
+
+        save_path = self.project_root / "levels" / "edit_mode_script_save.json"
+        self.assertTrue(self.api.save_scene(path=save_path.as_posix())["success"])
+        self.api.load_level(save_path.as_posix())
+
+        reloaded = self.api.get_entity("EditScriptSaveEntity")
+        self.assertEqual(reloaded["components"]["Transform"]["x"], 10.0)
+        self.assertEqual(reloaded["components"]["ScriptBehaviour"]["public_data"]["edit_ticks"], 2)
 
     def test_selection_persists_from_edit_to_play_and_back(self) -> None:
         self.assertTrue(self.api.scene_manager.set_selected_entity("Player"))

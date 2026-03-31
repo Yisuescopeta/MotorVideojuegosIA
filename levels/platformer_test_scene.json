@@ -1,4 +1,6 @@
 {
+    "schema_version": 2,
+    "name": "Platformer Test Scene",
     "entities": [
         {
             "name": "Player",
@@ -20,14 +22,29 @@
                     "height": 100,
                     "offset_x": 0.0,
                     "offset_y": 0.0,
-                    "is_trigger": false
+                    "is_trigger": false,
+                    "shape_type": "box",
+                    "radius": 40.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
                 },
                 "RigidBody": {
                     "enabled": true,
                     "velocity_x": 0.0,
                     "velocity_y": 0.0,
                     "gravity_scale": 1.0,
-                    "is_grounded": false
+                    "is_grounded": false,
+                    "body_type": "dynamic",
+                    "simulated": true,
+                    "freeze_x": false,
+                    "freeze_y": false,
+                    "constraints": [
+                        "None"
+                    ],
+                    "use_full_kinematic_contacts": false,
+                    "collision_detection_mode": "discrete"
                 },
                 "InputMap": {
                     "enabled": true,
@@ -46,7 +63,11 @@
                 },
                 "Animator": {
                     "enabled": true,
-                    "sprite_sheet": "assets/images_3.png",
+                    "sprite_sheet": {
+                        "guid": "",
+                        "path": "assets/images_3.png"
+                    },
+                    "sprite_sheet_path": "assets/images_3.png",
                     "frame_width": 32,
                     "frame_height": 32,
                     "flip_x": false,
@@ -153,7 +174,13 @@
                     "height": 68,
                     "offset_x": 0.0,
                     "offset_y": 0.0,
-                    "is_trigger": false
+                    "is_trigger": false,
+                    "shape_type": "box",
+                    "radius": 1100.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
                 }
             }
         },
@@ -177,7 +204,13 @@
                     "height": 22,
                     "offset_x": 0.0,
                     "offset_y": 0.0,
-                    "is_trigger": false
+                    "is_trigger": false,
+                    "shape_type": "box",
+                    "radius": 85.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
                 }
             }
         },
@@ -201,7 +234,13 @@
                     "height": 22,
                     "offset_x": 0.0,
                     "offset_y": 0.0,
-                    "is_trigger": false
+                    "is_trigger": false,
+                    "shape_type": "box",
+                    "radius": 70.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
                 }
             }
         },
@@ -225,7 +264,13 @@
                     "height": 22,
                     "offset_x": 0.0,
                     "offset_y": 0.0,
-                    "is_trigger": false
+                    "is_trigger": false,
+                    "shape_type": "box",
+                    "radius": 70.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
                 }
             }
         },
@@ -249,7 +294,13 @@
                     "height": 22,
                     "offset_x": 0.0,
                     "offset_y": 0.0,
-                    "is_trigger": false
+                    "is_trigger": false,
+                    "shape_type": "box",
+                    "radius": 95.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
                 }
             }
         },
@@ -273,7 +324,13 @@
                     "height": 20,
                     "offset_x": 0.0,
                     "offset_y": 0.0,
-                    "is_trigger": true
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 46.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
                 }
             }
         },
@@ -297,7 +354,13 @@
                     "height": 96,
                     "offset_x": 0.0,
                     "offset_y": 0.0,
-                    "is_trigger": true
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 17.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
                 }
             }
         },
@@ -321,7 +384,13 @@
                     "height": 28,
                     "offset_x": 0.0,
                     "offset_y": 0.0,
-                    "is_trigger": false
+                    "is_trigger": false,
+                    "shape_type": "box",
+                    "radius": 48.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
                 }
             }
         }
@@ -400,7 +469,6 @@
             ]
         }
     ],
-    "name": "Platformer Test Scene",
     "feature_metadata": {
         "scene_flow": {
             "menu_scene": "levels/main_menu_scene.json",

@@ -46,14 +46,16 @@ def _normalize_legacy_overrides(overrides: dict[str, Any]) -> dict[str, Any]:
             for component_name, component_payload in components.items():
                 if not isinstance(component_payload, dict):
                     continue
-                operations.append(
-                    {
-                        "op": "replace_component",
-                        "target": target_path,
-                        "component": component_name,
-                        "data": copy.deepcopy(component_payload),
-                    }
-                )
+                for field_name, field_value in component_payload.items():
+                    operations.append(
+                        {
+                            "op": "set_field",
+                            "target": target_path,
+                            "component": component_name,
+                            "field": field_name,
+                            "value": copy.deepcopy(field_value),
+                        }
+                    )
     return {"operations": operations}
 
 
@@ -123,7 +125,7 @@ class PrefabManager:
     @staticmethod
     def save_prefab(entity: Entity, path: str, world: Optional[World] = None) -> bool:
         try:
-            payload = PrefabManager._build_prefab_payload(entity, world)
+            payload = migrate_prefab_data(PrefabManager._build_prefab_payload(entity, world))
             directory = os.path.dirname(path)
             if directory:
                 os.makedirs(directory, exist_ok=True)
@@ -140,7 +142,7 @@ class PrefabManager:
         if world is None:
             entity_data = entity.to_dict()
             entity_data.pop("id", None)
-            return {"root_name": entity.name, "entities": [entity_data]}
+            return migrate_prefab_data({"root_name": entity.name, "entities": [entity_data]})
 
         subtree = [entity] + world.get_descendants(entity.name)
         subtree.sort(key=lambda item: (0 if item.name == entity.name else 1, item.name))
@@ -189,18 +191,13 @@ class PrefabManager:
         try:
             with open(path, "r", encoding="utf-8") as handle:
                 raw = json.load(handle)
+            payload = migrate_prefab_data(copy.deepcopy(raw))
+            if validate_prefab_data(payload):
+                return None
+            return payload
         except Exception as exc:
             print(f"[PREFAB] Error loading prefab {path}: {exc}")
             return None
-
-        if isinstance(raw, dict) and "entities" in raw:
-            payload = migrate_prefab_data(copy.deepcopy(raw))
-            return payload if not validate_prefab_data(payload) else None
-
-        if isinstance(raw, dict):
-            payload = migrate_prefab_data(copy.deepcopy(raw))
-            return payload if not validate_prefab_data(payload) else None
-        return None
 
     @staticmethod
     def expand_prefab_instance(

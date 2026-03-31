@@ -14,6 +14,7 @@ from engine.api.errors import (
     LevelLoadError,
 )
 from engine.api.types import ActionResult, ComponentData, EngineStatus, EntityData, Vector2D
+from engine.api.types import PhysicsBackendInfo, PhysicsBackendSelection
 
 __all__ = [
     "EngineAPI",
@@ -26,5 +27,7 @@ __all__ = [
     "EntityData",
     "ComponentData",
     "ActionResult",
-    "Vector2D"
+    "Vector2D",
+    "PhysicsBackendInfo",
+    "PhysicsBackendSelection",
 ]

@@ -65,9 +65,9 @@ class Box2DJointTests(unittest.TestCase):
             api.step(120)
             bob = api.get_entity("Bob")["components"]["Transform"]
             distance = math.hypot(float(bob["x"]), float(bob["y"]))
-            metrics = api.game._physics_backends["box2d"].get_step_metrics()
+            selection = api.get_physics_backend_selection()
             self.assertAlmostEqual(distance, 30.0, delta=1.5)
-            self.assertEqual(int(metrics.get("joints", 0)), 1)
+            self.assertEqual(selection["effective_backend"], "box2d")
         finally:
             api.shutdown()
 

@@ -1,6 +1,14 @@
 # Roadmap maestro para un motor 2D experimental IA-first en Python
 
-> Estado de ejecucion: completado. Ver cierre en [ia-first-2d-engine-roadmap-closeout.md](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/docs/roadmaps/ia-first-2d-engine-roadmap-closeout.md).
+> Documento historico de planificacion. No es la fuente de verdad del estado
+> tecnico actual del repositorio.
+>
+> Para el estado real del codigo y sus limites actuales ver:
+> `README.md`, `docs/architecture.md`, `docs/TECHNICAL.md`,
+> `docs/schema_serialization.md` y la suite de tests del core.
+>
+> El cierre historico del roadmap esta en
+> [ia-first-2d-engine-roadmap-closeout.md](./ia-first-2d-engine-roadmap-closeout.md).
 
 ## Mapa de funcionalidades fundamentales de un motor 2D moderno
 

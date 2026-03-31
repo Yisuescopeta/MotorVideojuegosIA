@@ -1,619 +1,287 @@
-# Documentación Técnica del Motor 2D
+# Documentacion tecnica del motor 2D
 
-## Índice
+## Resumen tecnico
 
-1. [Arquitectura General](#arquitectura-general)
-2. [Sistema ECS](#sistema-ecs)
-3. [Componentes](#componentes)
-4. [Sistemas](#sistemas)
-5. [Eventos y Reglas](#eventos-y-reglas)
-6. [Gestión de Escenas](#gestión-de-escenas)
-7. [Inspector Visual](#inspector-visual)
-8. [Guia de Uso de API](#guia-de-uso-de-api)
-9. [Orquestacion Multiagente](#orquestacion-multiagente)
+El motor se organiza alrededor de un modelo ECS y de un contrato serializable de
+escena/prefab. El punto importante no es solo que exista editor, runtime o CLI,
+sino que las tres capas operan sobre el mismo modelo de datos.
 
----
+Contrato base vigente:
 
-## Arquitectura General
+- `scene schema_version = 2`
+- `prefab schema_version = 2`
+- migraciones explicitas de payloads legacy y `v1`
+- guardado siempre en payload canonico `v2`
 
-El motor sigue una arquitectura **Entity-Component-System (ECS)** con las siguientes características:
+La fuente de verdad persistente es `Scene`. `World` es una proyeccion operativa
+del mismo contenido.
 
-- **Entidades**: Contenedores con ID único y nombre
-- **Componentes**: Datos puros sin lógica
-- **Sistemas**: Procesan entidades con ciertos componentes
-- **World**: Contenedor de todas las entidades
-
-### Diagrama de Flujo
-
-```
-main.py
-   │
-   ▼
-Game (game loop)
-   │
-   ├── SceneManager (gestión de estados)
-   │       │
-   │       ├── Scene (datos originales)
-   │       └── World/RuntimeWorld
-   │
-   ├── Sistemas
-   │       ├── RenderSystem (siempre)
-   │       ├── AnimationSystem (PLAY/preview)
-   │       ├── PhysicsSystem (solo PLAY)
-   │       └── CollisionSystem (solo PLAY)
-   │
-   ├── EventBus (comunicación)
-   │       └── RuleSystem (reglas declarativas)
-   │
-   └── InspectorSystem (debug visual)
-```
-
----
-
-## Sistema ECS
-
-### Entity
-
-```python
-class Entity:
-    id: int           # ID único auto-generado
-    name: str         # Nombre legible
-    
-    def add_component(component: Component) -> None
-    def get_component(type) -> Component | None
-    def has_component(type) -> bool
-    def get_all_components() -> list[Component]
-```
-
-### Component
-
-```python
-class Component:
-    """Clase base. Los componentes son datos puros."""
-    
-    def to_dict() -> dict       # Serialización
-    @classmethod
-    def from_dict(data) -> Self # Deserialización
-```
-
-### World
-
-```python
-class World:
-    def create_entity(name: str) -> Entity
-    def get_entity(id: int) -> Entity | None
-    def get_entity_by_name(name: str) -> Entity | None
-    def get_entities_with(*types) -> list[Entity]
-    def destroy_entity(id: int) -> None
-    def clone() -> World  # Copia profunda
-    def clear() -> None
-```
-
-`World.get_entities_with()` solo devuelve entidades activas cuyos componentes
-requeridos estan `enabled`. Los sistemas que usan componentes opcionales deben
-respetar tambien su flag `enabled`.
-
----
-
-## Componentes
-
-### Transform
-
-Posición, rotación y escala de la entidad.
-
-```python
-Transform(
-    x: float = 0.0,
-    y: float = 0.0,
-    rotation: float = 0.0,  # grados
-    scale_x: float = 1.0,
-    scale_y: float = 1.0
-)
-```
-
-### Sprite
-
-Textura para renderizado.
-
-```python
-Sprite(
-    texture_path: str,
-    width: int = 0,      # 0 = auto
-    height: int = 0,
-    origin_x: float = 0.5,  # centro
-    origin_y: float = 0.5,
-    flip_x: bool = False,
-    flip_y: bool = False,
-    tint: tuple = (255, 255, 255, 255)
-)
-```
-
-### Collider
-
-Área de colisión AABB.
-
-```python
-Collider(
-    width: float,
-    height: float,
-    offset_x: float = 0.0,
-    offset_y: float = 0.0,
-    is_trigger: bool = False  # True = sin física
-)
-```
-
-### RigidBody
-
-Física básica.
-
-```python
-RigidBody(
-    velocity_x: float = 0.0,
-    velocity_y: float = 0.0,
-    gravity_scale: float = 1.0,
-    is_grounded: bool = False
-)
-```
-
-Constraints serializables soportadas hoy:
-
-- `FreezePositionX`: bloquea traslacion horizontal
-- `FreezePositionY`: bloquea traslacion vertical
-- `FreezePosition`: bloquea ambas traslaciones
-
-Estas constraints no implican bloqueo de rotacion. `FreezeRotation` sigue fuera
-del contrato publico actual.
-
-### Animator
-
-Animaciones por sprite sheet.
-
-```python
-Animator(
-    sprite_sheet: str,
-    frame_width: int,
-    frame_height: int,
-    animations: dict[str, AnimationData],
-    current_state: str = "idle"
-)
-
-AnimationData(
-    frames: list[int],
-    fps: float = 10,
-    loop: bool = True,
-    on_complete: str | None = None
-)
-```
-
-### PlayerController2D
-
-Control lateral y salto serializable apoyado en `InputMap` y `RigidBody`.
-
-```python
-PlayerController2D(
-    move_speed: float = 180.0,
-    jump_velocity: float = -320.0,
-    air_control: float = 0.75
-)
-```
-
-### ScriptBehaviour
-
-Script adjunto serializable con hot-reload y hooks simples por modulo.
-
-```python
-ScriptBehaviour(
-    module_path: str = "",
-    run_in_edit_mode: bool = False,
-    public_data: dict[str, Any] = {}
-)
-```
-
-Contrato del modulo:
-
-```python
-def on_play(context): ...
-def on_update(context, dt): ...
-def on_stop(context): ...
-```
-
-`public_data` es la unica bolsa de estado persistente del script. El contexto
-expone `world`, `entity_name`, `scene_manager` y helpers de log/lectura de
-componentes.
-
----
-
-## Sistemas
-
-### RenderSystem
-
-- **Activo**: Siempre
-- **Función**: Dibuja entidades con Sprite o Animator
-- **Dependencias**: Transform + (Sprite | Animator)
-
-### PhysicsSystem
-
-- **Activo**: Solo en PLAY
-- **Función**: Aplica gravedad y actualiza posiciones
-- **Dependencias**: Transform + RigidBody
-
-### CollisionSystem
-
-- **Activo**: Solo en PLAY
-- **Función**: Detecta colisiones AABB
-- **Eventos**: `on_collision`, `on_trigger_enter`
-- **Dependencias**: Transform + Collider
-
-### AnimationSystem
-
-- **Activo**: PLAY (normal) / EDIT (0.25x)
-- **Función**: Avanza frames de animación
-- **Eventos**: `on_animation_end`
-- **Dependencias**: Animator
-
-### PlayerControllerSystem
-
-- **Activo**: PLAY
-- **Función**: Convierte `InputMap.last_state` en movimiento lateral y salto
-- **Dependencias**: InputMap + RigidBody + PlayerController2D
-
-### ScriptBehaviourSystem
-
-- **Activo**: PLAY y opcionalmente EDIT (`run_in_edit_mode`)
-- **FunciÃ³n**: Ejecuta `ScriptBehaviour` con hot-reload sin romper el runtime
-- **Dependencias**: ScriptBehaviour
-
----
-
-## Eventos y Reglas
-
-### EventBus
-
-```python
-event_bus = EventBus()
-
-# Suscribirse
-event_bus.subscribe("on_collision", callback)
-
-# Emitir
-event_bus.emit("on_collision", {
-    "entity_a": "Player",
-    "entity_b": "Enemy"
-})
-```
-
-### RuleSystem
-
-Ejecuta reglas declarativas desde JSON.
-
-El contrato actual admite **two-phase binding**:
-
-- `RuleSystem(event_bus)` para construir el sistema durante bootstrap
-- `set_world(world)` para enlazar el `World` activo cuando existe uno
-
-Las acciones que requieren entidades (`set_animation`, `set_position`,
-`destroy_entity`) se omiten con warning si todavia no hay `world`. Las acciones
-sin dependencia de entidades (`emit_event`, `log_message`) siguen funcionando.
-
-```json
-{
-    "event": "on_collision",
-    "when": {
-        "entity_a": "Player",
-        "entity_b": "Enemy"
-    },
-    "do": [
-        {"action": "set_animation", "entity": "Player", "state": "hit"},
-        {"action": "log_message", "message": "¡Colisión!"}
-    ]
-}
-```
-
-### Acciones Disponibles
-
-| Acción | Parámetros |
-|--------|------------|
-| `set_animation` | entity, state |
-| `set_position` | entity, x, y |
-| `destroy_entity` | entity |
-| `emit_event` | event, data |
-| `log_message` | message |
-
----
-
-## Gestión de Escenas
+## Modelo de datos
 
 ### Scene
 
-Almacena datos originales del nivel (inmutable durante PLAY).
+`Scene` encapsula el payload editable y persistible:
 
-```python
-scene = Scene("Demo", level_data)
-world = scene.create_world(registry)
-```
+- `name`
+- `schema_version`
+- `entities`
+- `rules`
+- `feature_metadata`
+
+Ademas:
+
+- resuelve prefabs al reconstruir `World`
+- preserva `feature_metadata`
+- permite actualizar entidad, componente y metadata serializable sin depender de
+  UI
+
+### World
+
+`World` es el contenedor de entidades activas utilizado por editor y runtime.
+No es la fuente de verdad persistente.
+
+Propiedades relevantes del contrato operativo:
+
+- entidades con nombre unico
+- filtrado por componentes via `get_entities_with(...)`
+- `feature_metadata` accesible desde el mundo activo
+- seleccion activa (`selected_entity_name`) como estado de workspace/runtime,
+  no como dato persistente de escena
 
 ### SceneManager
 
-Gestiona transiciones entre EDIT y PLAY.
+`SceneManager` coordina la vida de la escena editable:
 
-```python
-manager = SceneManager(registry)
-world = manager.load_scene(level_data)
+- `load_scene(...)` y `load_scene_from_file(...)`
+- workspace multi-escena
+- `enter_play()` y `exit_play()`
+- dirty state por escena
+- historial y transacciones
+- seleccion persistente entre `EDIT`, `PLAY`, `STOP` y cambios de pestaña
 
-# PLAY
-runtime = manager.enter_play()  # Crea copia
+Internamente esta separado por responsabilidades:
 
-# STOP
-world = manager.exit_play()     # Restaura original
+- `workspace_lifecycle.py`
+- `structural_authoring.py`
+- `change_history.py`
+
+La fachada publica sigue centralizada en `SceneManager`.
+
+## Componentes registrados hoy
+
+La fuente de verdad sobre componentes registrados es
+`engine/levels/component_registry.py`. Las familias activas hoy son:
+
+### Espacial y render
+
+- `Transform`
+- `RectTransform`
+- `Sprite`
+- `Animator`
+- `Camera2D`
+- `RenderOrder2D`
+- `RenderStyle2D`
+
+### Gameplay y fisica
+
+- `Collider`
+- `RigidBody`
+- `CharacterController2D`
+- `PlayerController2D`
+- `Joint2D`
+- `InputMap`
+- `AudioSource`
+- `ScriptBehaviour`
+
+### Escena, tilemap y UI serializable
+
+- `Tilemap`
+- `SceneLink`
+- `Canvas`
+- `UIText`
+- `UIButton`
+
+No se debe asumir soporte publico para componentes fuera de ese registry.
+
+## Sistemas y runtime
+
+### RenderSystem
+
+`RenderSystem` no solo dibuja sprites. Hoy tambien:
+
+- construye un render graph publico con passes `World`, `Overlay` y `Debug`
+- ordena por sorting layer y `order_in_layer`
+- agrupa entidades contiguas por material, atlas y capa
+- soporta `Tilemap` por chunks con cache y rebuild incremental
+- puede emitir debug geometry dump y metricas de profiling
+- usa render targets con fallback seguro cuando no hay backend grafico
+
+### Physics y collision
+
+El runtime fisico opera contra un contrato comun de backend:
+
+- backend efectivo por defecto `legacy_aabb`
+- `box2d` opcional cuando la dependencia esta disponible
+- fallback explicito a `legacy_aabb` si `box2d` no puede activarse
+- la fachada publica expone `query_physics_ray` y `query_physics_aabb`
+- `query_shape` permanece como parte del contrato interno de backend, no como
+  API publica del motor
+
+El backend solicitado se expresa en `feature_metadata.physics_2d.backend`. El
+fallback no debe sobrescribir ese valor pedido; solo cambia la seleccion
+efectiva en runtime.
+
+### Animation, input, scripts y UI
+
+Tambien forman parte del runtime actual:
+
+- `AnimationSystem`
+- `InputSystem`
+- `CharacterControllerSystem`
+- `PlayerControllerSystem`
+- `ScriptBehaviourSystem`
+- `AudioSystem`
+- `UISystem`
+- `UIRenderSystem`
+
+`ScriptBehaviour.public_data` sigue siendo la unica bolsa persistente del
+script. El resto del estado de modulo es runtime.
+
+## Reglas y eventos
+
+`EventBus` y `RuleSystem` permiten gameplay declarativo desde datos de escena.
+
+Acciones soportadas por contrato:
+
+- `set_animation`
+- `set_position`
+- `destroy_entity`
+- `emit_event`
+- `log_message`
+
+`RuleSystem` admite binding por fases:
+
+- se construye con `event_bus`
+- enlaza el `World` activo despues mediante `set_world(world)`
+
+Las acciones que requieren entidad se omiten con warning si aun no hay `world`.
+
+## Flujo de escenas y workspace
+
+### Ciclo `EDIT -> PLAY -> STOP`
+
+El flujo correcto hoy es:
+
+```text
+Scene (serializable)
+  -> edit_world (editable)
+  -> runtime_world (clon temporal para PLAY)
+  -> reconstruccion de edit_world al volver a STOP
 ```
 
-Durante EDIT, `SceneManager` es la via comun de authoring para API y editor:
+Invariantes operativos:
 
-- `update_entity_property()` para `active`, `tag` y `layer`
-- `apply_edit_to_world()` para props de componentes serializables
-- `add_component_to_entity()` y `remove_component_from_entity()`
+- las mutaciones runtime no deben contaminar `Scene`
+- la seleccion puede sobrevivir al cambio de modo
+- dirty/save/autosave no deben contaminarse con previews transitorios de gizmos
 
-La UI no debe introducir rutas paralelas con estado exclusivo fuera de `Scene`.
+### Rutas de authoring recomendadas
 
-### Flujo de Estados
+Las rutas compartidas de authoring siguen siendo:
 
-```
-EngineState.EDIT
-    │
-    │ game.play()
-    ▼
-EngineState.PLAY ◄──► EngineState.PAUSED
-    │                     │
-    │ game.stop()         │ game.stop()
-    ▼                     ▼
-EngineState.EDIT (restaurado)
-```
+- `SceneManager.apply_edit_to_world()`
+- `SceneManager.update_entity_property()`
+- `SceneManager.replace_component_data()`
+- `SceneManager.add_component_to_entity()`
+- `SceneManager.remove_component_from_entity()`
+- operaciones estructurales como crear entidad, duplicar subarbol o reparentar
+- `EngineAPI` como fachada publica equivalente
 
----
+`sync_from_edit_world()` queda como compatibilidad legacy explicita, no como via
+principal para authoring nuevo.
 
-## Inspector Visual
+## EngineAPI publica
 
-Panel lateral que muestra el estado de todas las entidades.
+`EngineAPI` es la fachada publica que el repositorio considera estable.
+Internamente delega por dominios, pero el punto de entrada publico sigue siendo
+uno.
 
-La seleccion activa se conserva entre `EDIT`, `PLAY` y `STOP` mediante
-`SceneManager`, de modo que el inspector sigue anclado a la misma entidad
-aunque la pestaÃ±a visible sea `Game View`.
+Dominios actuales:
 
-`Camera2D` expone follow y framing solo con datos serializables:
+- authoring
+- runtime
+- workspace y scene flow
+- assets y proyecto
+- debug/profiler
+- UI serializable
 
-- `framing_mode = "platformer"`
-- `dead_zone_width` / `dead_zone_height`
-- `clamp_left`, `clamp_right`, `clamp_top`, `clamp_bottom`
-- `recenter_on_play`
-
-### Controles
-
-| Tecla | Acción |
-|-------|--------|
-| TAB | Mostrar/ocultar |
-| UP/DOWN | Scroll |
-| PAGE_UP/DOWN | Scroll rápido |
-
-### Características
-
-- Lista todas las entidades con ID y nombre
-- Muestra componentes y propiedades en tiempo real
-- Usa introspección (`to_dict()` o reflexión)
-- Panel semitransparente a la derecha
-
----
-
-## Guia de Uso de API
-
-### Crear un Nivel
-
-1. Crear archivo `levels/mi_nivel.json`:
-
-```json
-{
-    "name": "Mi Nivel",
-    "entities": [
-        {
-            "name": "Player",
-            "components": {
-                "Transform": {"x": 100, "y": 200},
-                "RigidBody": {"gravity_scale": 1.0}
-            }
-        }
-    ],
-    "rules": []
-}
-```
-
-2. Cargar en `main.py`:
-
-```python
-level_data = load_level_data("levels/mi_nivel.json")
-world = scene_manager.load_scene(level_data)
-```
-
-### Modificar Entidad Programáticamente
-
-```python
-from engine.api import EngineAPI
-
-api = EngineAPI()
-api.load_level("levels/demo_level.json")
-api.set_entity_tag("Player", "Hero")
-api.set_entity_layer("Player", "Gameplay")
-api.set_component_enabled("Ground", "Collider", False)
-api.create_camera2d("MainCamera", camera={"follow_entity": "Player"})
-filtered = api.list_entities(tag="Hero", layer="Gameplay", active=True)
-```
-
-
-### Contrato Publico IA/RL
-
-La integracion IA/RL debe apoyarse en `EngineAPI`, no en `_input_system` ni en
-`_event_bus` del runtime. Esta fase expone dos puntos de entrada estables para
-wrappers, datasets y automatizacion:
+Ejemplos de superficie publica ya fijada por tests:
 
 ```python
 from engine.api import EngineAPI
 
 api = EngineAPI(project_root=".")
 api.load_level("levels/platformer_test_scene.json")
+api.set_entity_tag("Hero", "Player")
 api.play()
-
-api.inject_input_state(
-    "Player",
-    {"horizontal": 1.0, "vertical": 0.0, "action_1": 0.0, "action_2": 0.0},
-    frames=2,
-)
 api.step(2)
-
 events = api.get_recent_events(count=10)
+selection = api.get_physics_backend_selection()
 ```
 
-- `inject_input_state(...)` delega en el `InputSystem` activo y devuelve
-  `ActionResult`.
-- `get_recent_events(...)` devuelve eventos serializables (`name`, `data`) en
-  orden cronologico actual.
-- El informe de referencia para estas fases vive en
-  `docs/research/motor_ia_deep_research_report.md`.
+Regla importante:
 
-### Añadir Nueva Regla
+- wrappers RL, CLI y automatizacion deben usar `EngineAPI`
+- no deben tocar hooks privados del runtime
 
-```json
-{
-    "event": "on_trigger_enter",
-    "when": {"entity_b": "Coin"},
-    "do": [
-        {"action": "destroy_entity", "entity": "Coin"}
-    ]
-}
-```
+## Invariantes realmente cubiertos por tests
 
-### Estados del Motor
+La documentacion principal debe leerse junto con estas suites:
 
-```python
-# Iniciar juego
-game.play()
+- `tests/test_core_regression_matrix.py`
+- `tests/test_schema_validation.py`
+- `tests/test_scene_workspace.py`
+- `tests/test_engine_api_public_contract.py`
+- `tests/test_physics_backend.py`
 
-# Pausar
-game.pause()
+Cobertura relevante hoy:
 
-# Detener y restaurar
-game.stop()
-```
+- roundtrip `load -> edit -> save -> load`
+- preservacion de `feature_metadata`
+- compatibilidad de migracion `legacy/v1 -> v2`
+- aislamiento de `PLAY` respecto a la escena editable
+- seleccion persistente por workspace
+- equivalencia funcional entre authoring directo y authoring via `EngineAPI`
+- fallback fisico y contrato publico comparable entre backends
 
----
+## Clasificacion tecnica del repo
 
-## Notas de Diseno
+La referencia canonica por subsistema vive en
+[module_taxonomy.md](./module_taxonomy.md). El resumen tecnico es:
 
-1. **Todo es serializable**: Componentes tienen `to_dict()`/`from_dict()`
-2. **Sin lógica oculta**: Cada acción es explícita
-3. **Datos sobre código**: Preferir modificar JSON a código
-4. **Estados claros**: EDIT, PLAY, PAUSED son mutuamente excluyentes
-5. **Scene es inmutable**: Los cambios en PLAY no afectan la Scene
-6. **Config centralizado**: Todas las constantes en `engine/config.py`
-7. **Errores no crashean**: Los try/except en el game loop capturan errores y los envían a la consola
+### Core obligatorio
 
----
+- ECS, `Scene`, `SceneManager`, serializacion y schema/migraciones
+- editor base, jerarquia y `EngineAPI`
+- contrato comun de physics backends con fallback `legacy_aabb`
 
-## Hot-Reload
+### Modulos oficiales opcionales
 
-### HotReloadManager
+- assets y prefabs
+- tilemap, audio y UI serializable
+- `box2d` y otras capacidades oficiales no necesarias para el contrato minimo
 
-Monitoriza `scripts/` y recarga módulos modificados con `importlib.reload()`.
+### Experimental/tooling
 
-```python
-from engine.core.hot_reload import HotReloadManager
+- `engine/rl`
+- datasets, runners y multiagente
+- debug avanzado, benchmarking y tooling de investigacion
 
-manager = HotReloadManager("scripts")
-manager.scan_directory()         # Descubrir scripts
-changed = manager.check_for_changes()  # Detectar y recargar
-```
+## Limites actuales
 
-### Crear Scripts Recargables
-
-```python
-# scripts/mi_script.py
-def on_reload():
-    """Se ejecuta al recargar (F8)."""
-    print("Recargado!")
-```
-
----
-
-## Herramientas de Desarrollo
-
-### create_mechanic
-
-Genera un nuevo System con boilerplate ECS:
-
-```bash
-py -3 tools/create_mechanic.py <nombre> <descripción> <componentes>
-```
-
-### introspect
-
-Inspección de estado en tiempo de ejecución:
-
-```python
-from tools.introspect import inspect_world, inspect_entity, list_systems
-
-inspect_world(world)           # Resumen del mundo
-inspect_entity(world, "Player") # Detalle de entidad
-list_systems()                 # Sistemas disponibles
-```
-
----
-
-## Orquestacion Multiagente
-
-El repo incluye una capa inicial para coordinar agentes con foco en `core`,
-`API`, `escenas` y `pruebas`.
-
-### Roles base
-
-- `Agente Orquestador`: entrada unica, crea briefs y valida handoffs.
-- `Core Architect`: acota diseno tecnico y contratos.
-- `Core Implementer`: aplica cambios en el motor.
-- `QA & Regression`: valida smoke tests y regresiones.
-- `Debugger`: investiga fallos por causa raiz.
-- `Docs & Contracts`: mantiene prompts, limites y documentacion operativa.
-
-### Contratos
-
-Los agentes se coordinan con tres artefactos:
-
-- `docs/agent-orchestration/task-brief-template.md`
-- `docs/agent-orchestration/result-bundle-template.md`
-- `docs/agent-orchestration/definition-of-done.md`
-
-### Utilidad de apoyo
-
-`tools/agent_workflow.py` puede generar un `Task Brief` inicial y sugerir
-validaciones segun subsistemas afectados.
-
-La matriz base de paridad para `Unity 2D core` vive en:
-
-- `docs/agent-orchestration/unity-2d-core-matrix.md`
-
-Regla obligatoria:
-
-- ninguna feature puede existir solo en UI
-- toda accion editable por el usuario debe existir tambien por API o datos
-- la UI actua como traductor del modelo serializable
-
----
-
-## Configuración Centralizada
-
-`engine/config.py` contiene todas las constantes del motor:
-
-| Constante | Valor | Descripción |
-|-----------|-------|-------------|
-| `GRAVITY_DEFAULT` | 980.0 | Gravedad en px/s² |
-| `GROUND_Y_TEMP` | 550.0 | Suelo temporal |
-| `WINDOW_WIDTH` | 800 | Ancho ventana |
-| `WINDOW_HEIGHT` | 600 | Alto ventana |
-| `TARGET_FPS` | 60 | FPS objetivo |
-| `EDIT_ANIMATION_SPEED` | 0.25 | Velocidad preview |
-| `SCRIPTS_DIRECTORY` | "scripts" | Dir hot-reload |
+- el determinismo no se promete como garantia cross-platform estricta
+- existen rutas legacy de edicion directa sobre `edit_world` que deben seguir
+  acotadas
+- RL y datasets existen, pero no forman parte del core obligatorio
+- el proyecto sigue siendo experimental aunque varias bases del core ya esten
+  cubiertas por tests
