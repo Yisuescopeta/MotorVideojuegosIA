@@ -49,19 +49,15 @@ class EditorInteractionController:
         active_key = scene_manager.active_scene_key
         if not active_key:
             return
-        scene_manager.sync_from_edit_world(force=True)
         apply_state = scene_manager.apply_transform_state
         if getattr(drag, "component_name", "") == "RectTransform":
             apply_state = scene_manager.apply_rect_transform_state
-
-        history_manager = self._get_history_manager()
-        if history_manager is None:
-            return
-
-        history_manager.push(
+        apply_state(
+            drag.entity_name,
+            drag.after_state,
+            key_or_path=active_key,
+            record_history=True,
             label=drag.label,
-            undo=lambda key=active_key, entity_name=drag.entity_name, before=drag.before_state, apply_state=apply_state: apply_state(entity_name, before, key_or_path=key, record_history=False),
-            redo=lambda key=active_key, entity_name=drag.entity_name, after=drag.after_state, apply_state=apply_state: apply_state(entity_name, after, key_or_path=key, record_history=False),
         )
 
     def handle_scene_view_drag_drop(self, active_world: Optional["World"]) -> None:
@@ -80,6 +76,7 @@ class EditorInteractionController:
             return
 
         file_path = layout.project_panel.dragging_file
+        sprite_locator = self._build_project_asset_locator(file_path)
         drop_pos = layout.get_scene_mouse_pos()
         filename = os.path.basename(file_path)
         name, ext = os.path.splitext(filename)
@@ -91,6 +88,7 @@ class EditorInteractionController:
 
             prefab_data = PrefabManager.load_prefab_data(file_path)
             if prefab_data and scene_manager is not None:
+                prefab_locator = self._build_prefab_locator(file_path, scene_manager)
                 unique_name = name
                 count = 1
                 while active_world.get_entity_by_name(unique_name):
@@ -98,7 +96,7 @@ class EditorInteractionController:
                     count += 1
                 if scene_manager.instantiate_prefab(
                     unique_name,
-                    prefab_path=file_path,
+                    prefab_path=prefab_locator,
                     overrides={"": {"components": {"Transform": {"x": drop_pos.x, "y": drop_pos.y}}}},
                     root_name=prefab_data.get("root_name", unique_name),
                 ):
@@ -115,10 +113,10 @@ class EditorInteractionController:
         if scene_manager is not None:
             created = scene_manager.create_entity(
                 name,
-                self._build_sprite_entity_payload(file_path, drop_pos.x, drop_pos.y),
+                self._build_sprite_entity_payload(sprite_locator, drop_pos.x, drop_pos.y),
             )
             if created:
-                active_world.selected_entity_name = name
+                scene_manager.set_selected_entity(name)
             return
 
         new_entity = active_world.create_entity(name)
@@ -169,7 +167,7 @@ class EditorInteractionController:
                     ui_viewport_size=scene_viewport_size,
                 )
                 if (was_dragging or gizmo_system.is_dragging) and scene_manager is not None:
-                    scene_manager.mark_edit_world_dirty()
+                    scene_manager.mark_edit_world_dirty(reason="transient_preview")
                 drag = gizmo_system.consume_completed_drag()
                 if drag is not None:
                     self.commit_gizmo_drag(drag)
@@ -275,3 +273,22 @@ class EditorInteractionController:
                 "is_trigger": False,
             },
         }
+
+    def _build_project_asset_locator(self, file_path: str) -> str:
+        project_service = self._get_project_service()
+        if project_service is None:
+            return file_path
+        return project_service.to_relative_path(file_path)
+
+    def _build_prefab_locator(self, file_path: str, scene_manager: Any) -> str:
+        project_service = self._get_project_service()
+        if project_service is None:
+            return file_path
+        active_scene = scene_manager.get_active_scene_summary() if hasattr(scene_manager, "get_active_scene_summary") else {}
+        scene_source_path = str(active_scene.get("path", "")).strip() or None
+        return project_service.to_scene_locator(file_path, scene_source_path=scene_source_path)
+
+    def _get_project_service(self) -> Any:
+        layout = self._get_editor_layout()
+        project_panel = getattr(layout, "project_panel", None) if layout is not None else None
+        return getattr(project_panel, "project_service", None)

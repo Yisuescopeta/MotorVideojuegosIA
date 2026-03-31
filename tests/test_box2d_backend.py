@@ -191,7 +191,7 @@ class Box2DBackendTests(unittest.TestCase):
             api.play()
             api.step(1)
             bullet_x = api.get_entity("Bullet")["components"]["Transform"]["x"]
-            event_names = [event.name for event in api.game._event_bus.get_recent_events()]
+            event_names = [event["name"] for event in api.get_recent_events(count=20)]
             self.assertLess(bullet_x, 2.1)
             self.assertIn("on_collision", event_names)
         finally:

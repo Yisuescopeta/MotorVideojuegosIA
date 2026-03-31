@@ -6,7 +6,7 @@ from typing import Any, Optional
 from engine.components.collider import Collider
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
-from engine.physics.backend import PhysicsBackend, PhysicsContact
+from engine.physics.backend import PhysicsAABBHit, PhysicsBackend, PhysicsContact, PhysicsRayHit
 
 
 class LegacyAABBPhysicsBackend(PhysicsBackend):
@@ -60,7 +60,13 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         self._latest_contacts.extend(self._build_overlap_contacts())
         self._append_swept_contacts(world)
 
-    def query_ray(self, world: Any, origin: tuple[float, float], direction: tuple[float, float], max_distance: float) -> list[dict[str, Any]]:
+    def query_ray(
+        self,
+        world: Any,
+        origin: tuple[float, float],
+        direction: tuple[float, float],
+        max_distance: float,
+    ) -> list[PhysicsRayHit]:
         ox, oy = float(origin[0]), float(origin[1])
         dx, dy = float(direction[0]), float(direction[1])
         length = math.hypot(dx, dy)
@@ -68,7 +74,7 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             return []
         dx /= length
         dy /= length
-        hits: list[dict[str, Any]] = []
+        hits: list[PhysicsRayHit] = []
         for entity in world.get_entities_with(Transform, Collider):
             transform = entity.get_component(Transform)
             collider = entity.get_component(Collider)
@@ -89,9 +95,9 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             )
         return sorted(hits, key=lambda item: (float(item["distance"]), int(item["entity_id"])))
 
-    def query_aabb(self, world: Any, bounds: tuple[float, float, float, float]) -> list[dict[str, Any]]:
+    def query_aabb(self, world: Any, bounds: tuple[float, float, float, float]) -> list[PhysicsAABBHit]:
         left, top, right, bottom = [float(value) for value in bounds]
-        hits: list[dict[str, Any]] = []
+        hits: list[PhysicsAABBHit] = []
         for entity in world.get_entities_with(Transform, Collider):
             transform = entity.get_component(Transform)
             collider = entity.get_component(Collider)

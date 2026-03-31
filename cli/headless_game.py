@@ -81,3 +81,7 @@ class HeadlessGame(Game):
     def step_frame(self, dt: float = 1.0 / 60.0) -> None:
         """Avanza manualmente un frame."""
         self.update_headless(dt)
+
+    def request_shutdown(self) -> None:
+        super().request_shutdown()
+        self.headless_running = False

@@ -4,6 +4,7 @@ from unittest.mock import Mock, call, patch
 
 from engine.app.runtime_controller import RuntimeController
 from engine.core.engine_state import EngineState
+from engine.physics.registry import PhysicsBackendRegistry
 
 
 class RuntimeControllerTests(unittest.TestCase):
@@ -22,7 +23,7 @@ class RuntimeControllerTests(unittest.TestCase):
         self.physics_system = Mock()
         self.collision_system = Mock()
         self.audio_system = Mock()
-        self.physics_backends: dict[str, object] = {}
+        self.physics_backend_registry = PhysicsBackendRegistry()
         self.reset_profiler = Mock()
         self.set_physics_backend = Mock()
         self.controller = RuntimeController(
@@ -41,8 +42,7 @@ class RuntimeControllerTests(unittest.TestCase):
             get_physics_system=lambda: self.physics_system,
             get_collision_system=lambda: self.collision_system,
             get_audio_system=lambda: self.audio_system,
-            get_physics_backends=lambda: self.physics_backends,
-            get_physics_backend_name=lambda: "legacy_aabb",
+            get_physics_backend_registry=lambda: self.physics_backend_registry,
             reset_profiler=self.reset_profiler,
             set_physics_backend=self.set_physics_backend,
             edit_animation_speed=0.35,
@@ -100,6 +100,25 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertIs(self.world_holder["world"], edit_world)
         self.assertEqual(self.state["value"], EngineState.EDIT)
 
+    def test_play_then_stop_round_trip_switches_between_runtime_and_edit_worlds(self) -> None:
+        runtime_world = SimpleNamespace(feature_metadata={})
+        edit_world = SimpleNamespace(feature_metadata={})
+        self.scene_manager.enter_play.return_value = runtime_world
+        self.scene_manager.exit_play.return_value = edit_world
+
+        with patch("engine.app.runtime_controller.bake_tilemap_colliders"):
+            self.controller.play()
+
+        self.assertIs(self.world_holder["world"], runtime_world)
+        self.assertEqual(self.state["value"], EngineState.PLAY)
+
+        self.controller.stop()
+
+        self.scene_manager.enter_play.assert_called_once_with()
+        self.scene_manager.exit_play.assert_called_once_with()
+        self.assertIs(self.world_holder["world"], edit_world)
+        self.assertEqual(self.state["value"], EngineState.EDIT)
+
     def test_stop_from_stepping_restores_edit_state(self) -> None:
         runtime_world = SimpleNamespace(feature_metadata={})
         edit_world = SimpleNamespace(feature_metadata={})
@@ -130,8 +149,9 @@ class RuntimeControllerTests(unittest.TestCase):
 
     def test_update_gameplay_prefers_registered_backend(self) -> None:
         backend = Mock()
+        backend.backend_name = "box2d"
         world = SimpleNamespace(feature_metadata={"physics_2d": {"backend": "box2d"}})
-        self.physics_backends["box2d"] = backend
+        self.physics_backend_registry.register_backend(backend, backend_name="box2d")
         self.state["value"] = EngineState.PLAY
 
         self.controller.update_gameplay(world, 0.25)
@@ -145,15 +165,41 @@ class RuntimeControllerTests(unittest.TestCase):
         self.collision_system.update.assert_not_called()
         self.audio_system.update.assert_called_once_with(world)
 
-    def test_update_gameplay_falls_back_to_legacy_physics_and_collision(self) -> None:
+    def test_update_gameplay_falls_back_to_registered_legacy_backend(self) -> None:
+        legacy_backend = Mock()
+        legacy_backend.backend_name = "legacy_aabb"
+        world = SimpleNamespace(feature_metadata={"physics_2d": {"backend": "box2d"}})
+        self.physics_backend_registry.register_backend(legacy_backend, backend_name="legacy_aabb")
+        self.state["value"] = EngineState.PLAY
+
+        self.controller.update_gameplay(world, 0.1)
+
+        legacy_backend.step.assert_called_once_with(world, 0.1)
+        self.physics_system.update.assert_not_called()
+        self.collision_system.update.assert_not_called()
+        self.audio_system.update.assert_called_once_with(world)
+
+    def test_update_gameplay_is_noop_when_no_effective_backend_exists(self) -> None:
         world = SimpleNamespace(feature_metadata={"physics_2d": {"backend": "box2d"}})
         self.state["value"] = EngineState.PLAY
 
         self.controller.update_gameplay(world, 0.1)
 
-        self.physics_system.update.assert_called_once_with(world, 0.1)
-        self.collision_system.update.assert_called_once_with(world)
+        self.physics_system.update.assert_not_called()
+        self.collision_system.update.assert_not_called()
         self.audio_system.update.assert_called_once_with(world)
+
+    def test_get_physics_backend_selection_reports_fallback(self) -> None:
+        legacy_backend = Mock()
+        legacy_backend.backend_name = "legacy_aabb"
+        world = SimpleNamespace(feature_metadata={"physics_2d": {"backend": "box2d"}})
+        self.physics_backend_registry.register_backend(legacy_backend, backend_name="legacy_aabb")
+
+        selection = self.controller.get_physics_backend_selection(world)
+
+        self.assertEqual(selection["requested_backend"], "box2d")
+        self.assertEqual(selection["effective_backend"], "legacy_aabb")
+        self.assertTrue(selection["used_fallback"])
 
     def test_update_animation_uses_preview_speed_in_edit_mode(self) -> None:
         world = SimpleNamespace(feature_metadata={})
@@ -191,8 +237,7 @@ class RuntimeControllerTests(unittest.TestCase):
             get_physics_system=lambda: None,
             get_collision_system=lambda: self.collision_system,
             get_audio_system=lambda: self.audio_system,
-            get_physics_backends=lambda: self.physics_backends,
-            get_physics_backend_name=lambda: "legacy_aabb",
+            get_physics_backend_registry=lambda: self.physics_backend_registry,
             reset_profiler=self.reset_profiler,
             set_physics_backend=self.set_physics_backend,
             edit_animation_speed=0.35,

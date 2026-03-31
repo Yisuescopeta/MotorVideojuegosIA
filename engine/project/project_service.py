@@ -324,6 +324,21 @@ class ProjectService:
         except ValueError:
             return candidate.as_posix()
 
+    def to_scene_locator(
+        self,
+        path: str | os.PathLike[str],
+        *,
+        scene_source_path: str | os.PathLike[str] | None = None,
+    ) -> str:
+        """Return a portable locator suitable for scene serialization."""
+        if not path:
+            return ""
+        candidate = self.resolve_path(path)
+        if scene_source_path:
+            scene_dir = self.resolve_path(scene_source_path).parent
+            return Path(os.path.relpath(candidate.as_posix(), scene_dir.as_posix())).as_posix()
+        return self.to_relative_path(candidate)
+
     def load_editor_state(self) -> Dict[str, Any]:
         state_path = self._get_editor_state_path()
         if not state_path.exists():

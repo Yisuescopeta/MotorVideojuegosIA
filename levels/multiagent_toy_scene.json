@@ -1,4 +1,5 @@
 {
+    "schema_version": 2,
     "name": "Multiagent Toy Scene",
     "entities": [
         {
@@ -7,11 +8,59 @@
             "tag": "Agent",
             "layer": "Gameplay",
             "components": {
-                "Transform": {"enabled": true, "x": 180.0, "y": 482.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
-                "Collider": {"enabled": true, "width": 32.0, "height": 48.0, "offset_x": 0.0, "offset_y": 0.0, "is_trigger": false},
-                "RigidBody": {"enabled": true, "velocity_x": 0.0, "velocity_y": 0.0, "gravity_scale": 1.0, "is_grounded": false},
-                "InputMap": {"enabled": true, "move_left": "A", "move_right": "D", "move_up": "W", "move_down": "S", "action_1": "SPACE", "action_2": "Q"},
-                "PlayerController2D": {"enabled": true, "move_speed": 180.0, "jump_velocity": -360.0, "air_control": 0.8}
+                "Transform": {
+                    "enabled": true,
+                    "x": 180.0,
+                    "y": 482.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 32.0,
+                    "height": 48.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": false,
+                    "shape_type": "box",
+                    "radius": 16.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RigidBody": {
+                    "enabled": true,
+                    "velocity_x": 0.0,
+                    "velocity_y": 0.0,
+                    "gravity_scale": 1.0,
+                    "is_grounded": false,
+                    "body_type": "dynamic",
+                    "simulated": true,
+                    "freeze_x": false,
+                    "freeze_y": false,
+                    "constraints": [
+                        "None"
+                    ],
+                    "use_full_kinematic_contacts": false,
+                    "collision_detection_mode": "discrete"
+                },
+                "InputMap": {
+                    "enabled": true,
+                    "move_left": "A",
+                    "move_right": "D",
+                    "move_up": "W",
+                    "move_down": "S",
+                    "action_1": "SPACE",
+                    "action_2": "Q"
+                },
+                "PlayerController2D": {
+                    "enabled": true,
+                    "move_speed": 180.0,
+                    "jump_velocity": -360.0,
+                    "air_control": 0.8
+                }
             }
         },
         {
@@ -20,11 +69,59 @@
             "tag": "Agent",
             "layer": "Gameplay",
             "components": {
-                "Transform": {"enabled": true, "x": 620.0, "y": 482.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
-                "Collider": {"enabled": true, "width": 32.0, "height": 48.0, "offset_x": 0.0, "offset_y": 0.0, "is_trigger": false},
-                "RigidBody": {"enabled": true, "velocity_x": 0.0, "velocity_y": 0.0, "gravity_scale": 1.0, "is_grounded": false},
-                "InputMap": {"enabled": true, "move_left": "J", "move_right": "L", "move_up": "I", "move_down": "K", "action_1": "RIGHT_SHIFT", "action_2": "U"},
-                "PlayerController2D": {"enabled": true, "move_speed": 180.0, "jump_velocity": -360.0, "air_control": 0.8}
+                "Transform": {
+                    "enabled": true,
+                    "x": 620.0,
+                    "y": 482.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 32.0,
+                    "height": 48.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": false,
+                    "shape_type": "box",
+                    "radius": 16.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RigidBody": {
+                    "enabled": true,
+                    "velocity_x": 0.0,
+                    "velocity_y": 0.0,
+                    "gravity_scale": 1.0,
+                    "is_grounded": false,
+                    "body_type": "dynamic",
+                    "simulated": true,
+                    "freeze_x": false,
+                    "freeze_y": false,
+                    "constraints": [
+                        "None"
+                    ],
+                    "use_full_kinematic_contacts": false,
+                    "collision_detection_mode": "discrete"
+                },
+                "InputMap": {
+                    "enabled": true,
+                    "move_left": "J",
+                    "move_right": "L",
+                    "move_up": "I",
+                    "move_down": "K",
+                    "action_1": "RIGHT_SHIFT",
+                    "action_2": "U"
+                },
+                "PlayerController2D": {
+                    "enabled": true,
+                    "move_speed": 180.0,
+                    "jump_velocity": -360.0,
+                    "air_control": 0.8
+                }
             }
         },
         {
@@ -33,8 +130,28 @@
             "tag": "Goal",
             "layer": "Gameplay",
             "components": {
-                "Transform": {"enabled": true, "x": 400.0, "y": 482.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
-                "Collider": {"enabled": true, "width": 28.0, "height": 28.0, "offset_x": 0.0, "offset_y": 0.0, "is_trigger": true}
+                "Transform": {
+                    "enabled": true,
+                    "x": 400.0,
+                    "y": 482.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 28.0,
+                    "height": 28.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 14.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                }
             }
         },
         {
@@ -43,16 +160,84 @@
             "tag": "Ground",
             "layer": "Gameplay",
             "components": {
-                "Transform": {"enabled": true, "x": 400.0, "y": 540.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
-                "Collider": {"enabled": true, "width": 900.0, "height": 68.0, "offset_x": 0.0, "offset_y": 0.0, "is_trigger": false}
+                "Transform": {
+                    "enabled": true,
+                    "x": 400.0,
+                    "y": 540.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 900.0,
+                    "height": 68.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": false,
+                    "shape_type": "box",
+                    "radius": 450.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                }
             }
         }
     ],
     "rules": [
-        {"event": "on_trigger_enter", "when": {"entity_a": "AgentA", "entity_b": "GoalOrb"}, "do": [{"action": "destroy_entity", "entity": "GoalOrb"}]},
-        {"event": "on_trigger_enter", "when": {"entity_a": "GoalOrb", "entity_b": "AgentA"}, "do": [{"action": "destroy_entity", "entity": "GoalOrb"}]},
-        {"event": "on_trigger_enter", "when": {"entity_a": "AgentB", "entity_b": "GoalOrb"}, "do": [{"action": "destroy_entity", "entity": "GoalOrb"}]},
-        {"event": "on_trigger_enter", "when": {"entity_a": "GoalOrb", "entity_b": "AgentB"}, "do": [{"action": "destroy_entity", "entity": "GoalOrb"}]}
+        {
+            "event": "on_trigger_enter",
+            "when": {
+                "entity_a": "AgentA",
+                "entity_b": "GoalOrb"
+            },
+            "do": [
+                {
+                    "action": "destroy_entity",
+                    "entity": "GoalOrb"
+                }
+            ]
+        },
+        {
+            "event": "on_trigger_enter",
+            "when": {
+                "entity_a": "GoalOrb",
+                "entity_b": "AgentA"
+            },
+            "do": [
+                {
+                    "action": "destroy_entity",
+                    "entity": "GoalOrb"
+                }
+            ]
+        },
+        {
+            "event": "on_trigger_enter",
+            "when": {
+                "entity_a": "AgentB",
+                "entity_b": "GoalOrb"
+            },
+            "do": [
+                {
+                    "action": "destroy_entity",
+                    "entity": "GoalOrb"
+                }
+            ]
+        },
+        {
+            "event": "on_trigger_enter",
+            "when": {
+                "entity_a": "GoalOrb",
+                "entity_b": "AgentB"
+            },
+            "do": [
+                {
+                    "action": "destroy_entity",
+                    "entity": "GoalOrb"
+                }
+            ]
+        }
     ],
     "feature_metadata": {
         "physics_2d": {

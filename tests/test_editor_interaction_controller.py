@@ -1,4 +1,8 @@
 import unittest
+import json
+import os
+import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -8,12 +12,19 @@ from engine.app.editor_interaction_controller import EditorInteractionController
 from engine.core.engine_state import EngineState
 from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
+from engine.levels.component_registry import create_default_registry
+from engine.project.project_service import ProjectService
+from engine.scenes.scene_manager import SceneManager
 
 
 class EditorInteractionControllerTests(unittest.TestCase):
     def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.project_root = Path(self.temp_dir.name) / "project"
+        self.project_service = ProjectService(self.project_root)
         self.state = EngineState.EDIT
         self.scene_manager = Mock()
+        self.scene_manager.get_active_scene_summary.return_value = {}
         self.selection_system = Mock()
         self.gizmo_system = Mock()
         self.gizmo_system.is_dragging = False
@@ -26,7 +37,11 @@ class EditorInteractionControllerTests(unittest.TestCase):
         self.inspector_system.get_cursor_intent.return_value = CursorVisualState.DEFAULT
         self.history_manager = Mock()
         self.layout = Mock()
-        self.layout.project_panel = SimpleNamespace(dragging_file=None)
+        self.layout.project_panel = SimpleNamespace(
+            dragging_file=None,
+            project_service=self.project_service,
+            asset_service=None,
+        )
         self.layout.active_tool = EditorTool.MOVE
         self.layout.transform_space = TransformSpace.WORLD
         self.layout.pivot_mode = PivotMode.PIVOT
@@ -55,6 +70,9 @@ class EditorInteractionControllerTests(unittest.TestCase):
             get_current_viewport_size=lambda: (640.0, 360.0),
         )
 
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
     def test_handle_selection_and_gizmos_blocks_interaction_over_inspector(self) -> None:
         world = Mock()
         self.layout.is_mouse_in_inspector.return_value = True
@@ -76,7 +94,7 @@ class EditorInteractionControllerTests(unittest.TestCase):
         self.selection_system.update.assert_not_called()
         self.scene_manager.set_selected_entity.assert_called_with("PlayButton")
 
-    def test_handle_selection_and_gizmos_marks_dirty_and_commits_completed_drag(self) -> None:
+    def test_handle_selection_and_gizmos_marks_transient_preview_and_commits_completed_drag(self) -> None:
         world = Mock()
         drag = SimpleNamespace(
             label="Move Entity",
@@ -94,8 +112,29 @@ class EditorInteractionControllerTests(unittest.TestCase):
         ) as commit:
             self.controller.handle_selection_and_gizmos(world)
 
-        self.scene_manager.mark_edit_world_dirty.assert_called_once_with()
+        self.scene_manager.mark_edit_world_dirty.assert_called_once_with(reason="transient_preview")
         commit.assert_called_once_with(drag)
+
+    def test_commit_gizmo_drag_uses_scene_manager_canonical_transform_route(self) -> None:
+        drag = SimpleNamespace(
+            label="Move Entity",
+            entity_name="Player",
+            before_state={"x": 0.0, "y": 0.0},
+            after_state={"x": 10.0, "y": 12.0},
+            component_name="Transform",
+        )
+        self.scene_manager.active_scene_key = "scene-a"
+
+        self.controller.commit_gizmo_drag(drag)
+
+        self.scene_manager.sync_from_edit_world.assert_not_called()
+        self.scene_manager.apply_transform_state.assert_called_once_with(
+            "Player",
+            {"x": 10.0, "y": 12.0},
+            key_or_path="scene-a",
+            record_history=True,
+            label="Move Entity",
+        )
 
     def test_resolve_cursor_state_returns_interactive_when_ui_requests_it(self) -> None:
         world = Mock()
@@ -114,7 +153,10 @@ class EditorInteractionControllerTests(unittest.TestCase):
         world = Mock()
         world.get_entity_by_name.return_value = None
         world.selected_entity_name = None
-        self.layout.project_panel.dragging_file = "C:/assets/player.png"
+        texture_path = self.project_root / "assets" / "player.png"
+        texture_path.parent.mkdir(parents=True, exist_ok=True)
+        texture_path.write_bytes(b"")
+        self.layout.project_panel.dragging_file = texture_path.as_posix()
         self.scene_manager.create_entity.return_value = True
 
         with patch("pyray.is_mouse_button_released", return_value=True):
@@ -125,10 +167,10 @@ class EditorInteractionControllerTests(unittest.TestCase):
         self.assertEqual(name, "player")
         self.assertEqual(payload["Transform"]["x"], 10)
         self.assertEqual(payload["Transform"]["y"], 20)
-        self.assertEqual(payload["Sprite"]["texture_path"], "C:/assets/player.png")
-        self.assertEqual(world.selected_entity_name, "player")
+        self.assertEqual(payload["Sprite"]["texture_path"], "assets/player.png")
+        self.scene_manager.set_selected_entity.assert_called_with("player")
 
-    def test_handle_scene_view_drag_drop_instantiates_prefab_with_unique_name(self) -> None:
+    def test_handle_scene_view_drag_drop_instantiates_prefab_with_project_relative_locator_when_scene_has_no_path(self) -> None:
         world = Mock()
 
         def _get_entity(name: str):
@@ -137,7 +179,10 @@ class EditorInteractionControllerTests(unittest.TestCase):
             return None
 
         world.get_entity_by_name.side_effect = _get_entity
-        self.layout.project_panel.dragging_file = "C:/assets/enemy.prefab"
+        prefab_path = self.project_root / "prefabs" / "enemy.prefab"
+        prefab_path.parent.mkdir(parents=True, exist_ok=True)
+        prefab_path.write_text("{}", encoding="utf-8")
+        self.layout.project_panel.dragging_file = prefab_path.as_posix()
         self.scene_manager.instantiate_prefab.return_value = True
 
         with patch("pyray.is_mouse_button_released", return_value=True), patch(
@@ -150,11 +195,134 @@ class EditorInteractionControllerTests(unittest.TestCase):
         unique_name = self.scene_manager.instantiate_prefab.call_args.args[0]
         self.assertEqual(unique_name, "enemy_1")
         self.assertEqual(
+            self.scene_manager.instantiate_prefab.call_args.kwargs["prefab_path"],
+            "prefabs/enemy.prefab",
+        )
+        self.assertEqual(
             self.scene_manager.instantiate_prefab.call_args.kwargs["overrides"],
             {"": {"components": {"Transform": {"x": 10, "y": 20}}}},
         )
         self.assertEqual(self.scene_manager.instantiate_prefab.call_args.kwargs["root_name"], "EnemyRoot")
         self.scene_manager.set_selected_entity.assert_called_once_with("enemy_1")
+
+    def test_handle_scene_view_drag_drop_instantiates_prefab_with_scene_relative_locator_when_scene_is_saved(self) -> None:
+        world = Mock()
+        world.get_entity_by_name.return_value = None
+        prefab_path = self.project_root / "prefabs" / "enemy.prefab"
+        scene_path = self.project_root / "levels" / "main_scene.json"
+        prefab_path.parent.mkdir(parents=True, exist_ok=True)
+        scene_path.parent.mkdir(parents=True, exist_ok=True)
+        prefab_path.write_text("{}", encoding="utf-8")
+        self.layout.project_panel.dragging_file = prefab_path.as_posix()
+        self.scene_manager.get_active_scene_summary.return_value = {"path": scene_path.as_posix()}
+        self.scene_manager.instantiate_prefab.return_value = True
+
+        with patch("pyray.is_mouse_button_released", return_value=True), patch(
+            "engine.assets.prefab.PrefabManager.load_prefab_data",
+            return_value={"root_name": "EnemyRoot"},
+        ) as load_prefab:
+            self.controller.handle_scene_view_drag_drop(world)
+
+        load_prefab.assert_called_once_with(prefab_path.as_posix())
+        self.assertEqual(
+            self.scene_manager.instantiate_prefab.call_args.kwargs["prefab_path"],
+            "../prefabs/enemy.prefab",
+        )
+
+    def test_drag_drop_save_load_persists_portable_sprite_and_prefab_locators(self) -> None:
+        scene_manager = SceneManager(create_default_registry())
+        scene_path = self.project_root / "levels" / "drag_drop_scene.json"
+        texture_path = self.project_root / "assets" / "player.png"
+        prefab_path = self.project_root / "prefabs" / "enemy.prefab"
+        scene_path.parent.mkdir(parents=True, exist_ok=True)
+        texture_path.parent.mkdir(parents=True, exist_ok=True)
+        prefab_path.parent.mkdir(parents=True, exist_ok=True)
+        texture_path.write_bytes(b"")
+        prefab_path.write_text(
+            json.dumps(
+                {
+                    "root_name": "EnemyRoot",
+                    "entities": [
+                        {
+                            "name": "EnemyRoot",
+                            "active": True,
+                            "tag": "Untagged",
+                            "layer": "Default",
+                            "components": {
+                                "Transform": {
+                                    "enabled": True,
+                                    "x": 0.0,
+                                    "y": 0.0,
+                                    "rotation": 0.0,
+                                    "scale_x": 1.0,
+                                    "scale_y": 1.0,
+                                }
+                            },
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        scene_manager.load_scene(
+            {
+                "name": "DragDropScene",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+            source_path=scene_path.as_posix(),
+        )
+
+        layout = Mock()
+        layout.project_panel = SimpleNamespace(
+            dragging_file=texture_path.as_posix(),
+            project_service=self.project_service,
+            asset_service=None,
+        )
+        layout.get_scene_mouse_pos.return_value = rl.Vector2(10, 20)
+        layout.is_mouse_in_scene_view.return_value = True
+
+        controller = EditorInteractionController(
+            get_state=lambda: EngineState.EDIT,
+            get_editor_layout=lambda: layout,
+            get_scene_manager=lambda: scene_manager,
+            get_selection_system=lambda: Mock(),
+            get_gizmo_system=lambda: Mock(),
+            get_ui_system=lambda: Mock(),
+            get_hierarchy_panel=lambda: Mock(),
+            get_inspector_system=lambda: Mock(),
+            get_history_manager=lambda: Mock(),
+            get_current_scene_viewport_size=lambda: (320.0, 180.0),
+            get_current_viewport_size=lambda: (640.0, 360.0),
+        )
+
+        with patch("pyray.is_mouse_button_released", return_value=True):
+            controller.handle_scene_view_drag_drop(scene_manager.get_edit_world())
+
+        layout.project_panel.dragging_file = prefab_path.as_posix()
+        with patch("pyray.is_mouse_button_released", return_value=True):
+            controller.handle_scene_view_drag_drop(scene_manager.get_edit_world())
+
+        self.assertTrue(scene_manager.save_scene_to_file(scene_path.as_posix()))
+        persisted = json.loads(scene_path.read_text(encoding="utf-8"))
+        raw_json = scene_path.read_text(encoding="utf-8")
+        sprite_entity = next(entity for entity in persisted["entities"] if entity["name"] == "player")
+        prefab_entity = next(entity for entity in persisted["entities"] if entity["name"] == "enemy")
+
+        self.assertEqual(sprite_entity["components"]["Sprite"]["texture_path"], "assets/player.png")
+        self.assertFalse(os.path.isabs(sprite_entity["components"]["Sprite"]["texture_path"]))
+        self.assertEqual(prefab_entity["prefab_instance"]["prefab_path"], "../prefabs/enemy.prefab")
+        self.assertFalse(os.path.isabs(prefab_entity["prefab_instance"]["prefab_path"]))
+        self.assertNotIn(self.project_root.as_posix(), raw_json)
+
+        reloaded = SceneManager(create_default_registry())
+        self.assertIsNotNone(reloaded.load_scene_from_file(scene_path.as_posix()))
+        reloaded_sprite = reloaded.current_scene.find_entity("player")
+        reloaded_prefab = reloaded.current_scene.find_entity("enemy")
+
+        self.assertEqual(reloaded_sprite["components"]["Sprite"]["texture_path"], "assets/player.png")
+        self.assertEqual(reloaded_prefab["prefab_instance"]["prefab_path"], "../prefabs/enemy.prefab")
 
 
 if __name__ == "__main__":

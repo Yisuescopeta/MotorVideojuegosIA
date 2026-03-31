@@ -47,6 +47,8 @@ from engine.editor.raygui_theme import apply_unity_dark_theme
 from engine.editor.sprite_editor_modal import SpriteEditorModal
 from engine.editor.terminal_panel import TerminalPanel
 from engine.editor.undo_redo import UndoRedoManager
+from engine.physics.backend import PhysicsBackendInfo, PhysicsBackendSelection
+from engine.physics.registry import PhysicsBackendRegistry
 from engine.project.project_service import ProjectService
 
 if TYPE_CHECKING:
@@ -101,7 +103,7 @@ class Game:
         self._render_system: Optional["RenderSystem"] = None
         self._physics_system: Optional["PhysicsSystem"] = None
         self._collision_system: Optional["CollisionSystem"] = None
-        self._physics_backends: dict[str, Any] = {}
+        self._physics_backend_registry: PhysicsBackendRegistry = PhysicsBackendRegistry(default_backend_name="legacy_aabb")
         self._physics_backend_name: str = "legacy_aabb"
         self._animation_system: Optional["AnimationSystem"] = None
         self._audio_system: Optional["AudioSystem"] = None
@@ -183,8 +185,7 @@ class Game:
             get_physics_system=lambda: self._physics_system,
             get_collision_system=lambda: self._collision_system,
             get_audio_system=lambda: self._audio_system,
-            get_physics_backends=lambda: self._physics_backends,
-            get_physics_backend_name=lambda: self._physics_backend_name,
+            get_physics_backend_registry=lambda: self._physics_backend_registry,
             reset_profiler=self.reset_profiler,
             set_physics_backend=self.set_physics_backend,
             edit_animation_speed=self.EDIT_ANIMATION_SPEED,
@@ -204,8 +205,7 @@ class Game:
             get_rule_system=lambda: self._rule_system,
             get_collision_system=lambda: self._collision_system,
             get_render_system=lambda: self._render_system,
-            get_physics_backends=lambda: self._physics_backends,
-            resolve_physics_backend_name=self._resolve_physics_backend_name,
+            get_physics_backend_registry=lambda: self._physics_backend_registry,
             get_width=lambda: self.width,
             get_show_performance_overlay=lambda: self.show_performance_overlay,
             set_show_performance_overlay=lambda value: setattr(self, "show_performance_overlay", value),
@@ -425,9 +425,8 @@ class Game:
     
     def set_event_bus(self, event_bus: "EventBus") -> None:
         self._event_bus = event_bus
-        for backend in self._physics_backends.values():
-            if hasattr(backend, "set_event_bus"):
-                backend.set_event_bus(event_bus)
+        for backend in self._physics_backend_registry.iter_available_backends():
+            backend.set_event_bus(event_bus)
         if self._character_controller_system is not None and hasattr(self._character_controller_system, "set_event_bus"):
             self._character_controller_system.set_event_bus(event_bus)
         if self._ui_system is not None:
@@ -435,9 +434,11 @@ class Game:
 
     def set_physics_backend(self, backend: Any, backend_name: str = "legacy_aabb") -> None:
         normalized_name = str(backend_name or "legacy_aabb")
-        self._physics_backends[normalized_name] = backend
-        if hasattr(backend, "set_event_bus"):
-            backend.set_event_bus(self._event_bus)
+        self._physics_backend_registry.register_backend(backend, backend_name=normalized_name)
+        backend.set_event_bus(self._event_bus)
+
+    def set_physics_backend_unavailable(self, backend_name: str, reason: str) -> None:
+        self._physics_backend_registry.mark_backend_unavailable(backend_name, reason=reason)
     
     def set_rule_system(self, rule_system: "RuleSystem") -> None:
         self._rule_system = rule_system
@@ -523,19 +524,28 @@ class Game:
     def create_scene(self, scene_name: str) -> bool:
         return self._scene_workflow_controller.create_scene(scene_name)
 
-    def _activate_scene_workspace_tab(self, key_or_path: str) -> bool:
+    def activate_scene_workspace_tab(self, key_or_path: str) -> bool:
         return self._scene_workflow_controller.activate_scene_workspace_tab(key_or_path)
 
-    def _close_scene_workspace_tab(self, key_or_path: str, discard_changes: bool = False) -> bool:
+    def _activate_scene_workspace_tab(self, key_or_path: str) -> bool:
+        return self.activate_scene_workspace_tab(key_or_path)
+
+    def close_scene_workspace_tab(self, key_or_path: str, discard_changes: bool = False) -> bool:
         return self._scene_workflow_controller.close_scene_workspace_tab(key_or_path, discard_changes)
+
+    def _close_scene_workspace_tab(self, key_or_path: str, discard_changes: bool = False) -> bool:
+        return self.close_scene_workspace_tab(key_or_path, discard_changes)
+
+    def sync_scene_workspace(self, apply_view_state: bool = False) -> None:
+        self._sync_scene_workspace_ui(apply_view_state=apply_view_state)
 
     def load_scene_by_path(self, path: str) -> bool:
         return self._scene_workflow_controller.load_scene_by_path(path)
 
     def get_scene_flow(self) -> dict:
-        if self._scene_manager is None or self._scene_manager.current_scene is None:
+        if self._scene_manager is None:
             return {}
-        metadata = self._scene_manager.current_scene.feature_metadata
+        metadata = self._scene_manager.get_feature_metadata()
         scene_flow = metadata.get("scene_flow", {})
         return dict(scene_flow) if isinstance(scene_flow, dict) else {}
 
@@ -548,6 +558,92 @@ class Game:
 
     def open_project(self, path: str) -> bool:
         return self._project_workspace_controller.open_project(path)
+
+    def has_physics_backend(self, backend_name: str) -> bool:
+        return self._physics_backend_registry.has_available_backend(backend_name)
+
+    def knows_physics_backend(self, backend_name: str) -> bool:
+        return self._physics_backend_registry.knows_backend(backend_name)
+
+    def list_physics_backends(self) -> list[PhysicsBackendInfo]:
+        return self._physics_backend_registry.list_backends()
+
+    def get_physics_backend_selection(self, world: Optional["World"] = None) -> PhysicsBackendSelection:
+        target_world = self.world if world is None else world
+        return self._physics_backend_registry.resolve(
+            target_world,
+            default_backend_name=self._physics_backend_name,
+        ).selection
+
+    def refresh_runtime_physics_backend(self) -> None:
+        self._refresh_default_physics_backend()
+
+    def query_physics_aabb(self, left: float, top: float, right: float, bottom: float) -> list[dict[str, Any]]:
+        active_world = self.world
+        if active_world is None:
+            return []
+        resolved_backend = self._physics_backend_registry.resolve(
+            active_world,
+            default_backend_name=self._physics_backend_name,
+        )
+        if resolved_backend.backend is None:
+            return []
+        return resolved_backend.backend.query_aabb(active_world, (left, top, right, bottom))
+
+    def query_physics_ray(
+        self,
+        origin_x: float,
+        origin_y: float,
+        direction_x: float,
+        direction_y: float,
+        max_distance: float,
+    ) -> list[dict[str, Any]]:
+        active_world = self.world
+        if active_world is None:
+            return []
+        resolved_backend = self._physics_backend_registry.resolve(
+            active_world,
+            default_backend_name=self._physics_backend_name,
+        )
+        if resolved_backend.backend is None:
+            return []
+        return resolved_backend.backend.query_ray(
+            active_world,
+            (origin_x, origin_y),
+            (direction_x, direction_y),
+            max_distance,
+        )
+
+    def refresh_ui_layout(self, viewport_size: Optional[tuple[float, float]] = None) -> bool:
+        active_world = self.world
+        if self._ui_system is None or active_world is None:
+            return False
+        target_viewport = viewport_size or (float(self.width), float(self.height))
+        self._update_ui_overlay(active_world, target_viewport)
+        return True
+
+    def get_ui_entity_screen_rect(
+        self,
+        entity_name: str,
+        viewport_size: Optional[tuple[float, float]] = None,
+    ) -> Optional[dict[str, float]]:
+        if not self.refresh_ui_layout(viewport_size):
+            return None
+        return self._ui_system.get_entity_screen_rect(entity_name) if self._ui_system is not None else None
+
+    def click_ui_entity(
+        self,
+        entity_name: str,
+        viewport_size: Optional[tuple[float, float]] = None,
+    ) -> bool:
+        active_world = self.world
+        if self._ui_system is None or active_world is None:
+            return False
+        target_viewport = viewport_size or (float(self.width), float(self.height))
+        return self._ui_system.click_entity(active_world, entity_name, target_viewport)
+
+    def request_shutdown(self) -> None:
+        self.running = False
     
     # === GAME LOOP ===
     
@@ -701,7 +797,7 @@ class Game:
                 try:
                     ran_edit_scripts = self._script_behaviour_system.update(active_world, dt, is_edit_mode=True)
                     if ran_edit_scripts and self._scene_manager is not None:
-                        self._scene_manager.mark_edit_world_dirty()
+                        self._scene_manager.mark_edit_world_dirty(reason="legacy_authoring")
                 except Exception as e:
                     from engine.editor.console_panel import log_err
                     log_err(f"ScriptBehaviour error: {e}")

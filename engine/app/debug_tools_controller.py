@@ -12,6 +12,7 @@ from engine.core.engine_state import EngineState
 from engine.debug.profiler import EngineProfiler
 from engine.debug.timeline import Timeline
 from engine.editor.console_panel import log_err, log_info
+from engine.physics.registry import PhysicsBackendRegistry
 
 if TYPE_CHECKING:
     from engine.core.hot_reload import HotReloadManager
@@ -39,8 +40,7 @@ class DebugToolsController:
         get_rule_system: Callable[[], Any],
         get_collision_system: Callable[[], Any],
         get_render_system: Callable[[], Any],
-        get_physics_backends: Callable[[], dict[str, Any]],
-        resolve_physics_backend_name: Callable[[Optional["World"]], str],
+        get_physics_backend_registry: Callable[[], PhysicsBackendRegistry],
         get_width: Callable[[], int],
         get_show_performance_overlay: Callable[[], bool],
         set_show_performance_overlay: Callable[[bool], None],
@@ -63,8 +63,7 @@ class DebugToolsController:
         self._get_rule_system = get_rule_system
         self._get_collision_system = get_collision_system
         self._get_render_system = get_render_system
-        self._get_physics_backends = get_physics_backends
-        self._resolve_physics_backend_name = resolve_physics_backend_name
+        self._get_physics_backend_registry = get_physics_backend_registry
         self._get_width = get_width
         self._get_show_performance_overlay = get_show_performance_overlay
         self._set_show_performance_overlay = set_show_performance_overlay
@@ -240,9 +239,9 @@ class DebugToolsController:
             tilemap_chunk_rebuilds = int(render_stats.get("tilemap_chunk_rebuilds", 0))
             render_target_passes = int(render_stats.get("render_target_passes", 0))
 
-        backend_name = self._resolve_physics_backend_name(active_world)
-        backend = self._get_physics_backends().get(backend_name)
-        if backend is not None and hasattr(backend, "get_step_metrics"):
+        resolved_backend = self._get_physics_backend_registry().resolve(active_world)
+        backend = resolved_backend.backend
+        if backend is not None:
             backend_metrics = backend.get_step_metrics()
             physics_ccd_bodies = int(backend_metrics.get("ccd_bodies", 0))
             physics_contacts = int(backend_metrics.get("contacts", 0))
@@ -281,9 +280,9 @@ class DebugToolsController:
         }
 
     def record_profiler_frame(self, active_world: Optional["World"], *, frame_time_ms: float | None = None) -> None:
-        backend_name = self._resolve_physics_backend_name(active_world)
-        backend = self._get_physics_backends().get(backend_name)
-        backend_metrics = backend.get_step_metrics() if backend is not None and hasattr(backend, "get_step_metrics") else {}
+        resolved_backend = self._get_physics_backend_registry().resolve(active_world)
+        backend_name = resolved_backend.effective_backend or resolved_backend.requested_backend
+        backend_metrics = resolved_backend.backend.get_step_metrics() if resolved_backend.backend is not None else {}
         timings_ms = {
             "frame": float(frame_time_ms if frame_time_ms is not None else self._perf_stats.get("frame", 0.0)),
             "render": float(self._perf_stats.get("render", 0.0)),

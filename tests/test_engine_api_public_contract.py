@@ -63,7 +63,7 @@ class EngineAPIPublicContractTests(unittest.TestCase):
         api = self._make_api()
         self.assertIsNotNone(api.game)
         self.assertIsNotNone(api.game.input_system)
-        api.game._input_system = None
+        api.game.set_input_system(None)  # type: ignore[arg-type]
 
         result = api.inject_input_state("Player", {"horizontal": 1.0}, frames=0)
 
@@ -90,6 +90,38 @@ class EngineAPIPublicContractTests(unittest.TestCase):
         self.assertIsNotNone(api.game.render_system)
         self.assertIsNotNone(api.game.input_system)
         self.assertIsNotNone(api.game.project_service)
+        self.assertTrue(hasattr(api.game, "activate_scene_workspace_tab"))
+        self.assertTrue(hasattr(api.game, "close_scene_workspace_tab"))
+        self.assertTrue(hasattr(api.game, "sync_scene_workspace"))
+        self.assertTrue(hasattr(api.game, "refresh_runtime_physics_backend"))
+        self.assertTrue(hasattr(api.game, "query_physics_aabb"))
+        self.assertTrue(hasattr(api.game, "query_physics_ray"))
+        self.assertTrue(hasattr(api.game, "list_physics_backends"))
+        self.assertTrue(hasattr(api.game, "get_physics_backend_selection"))
+        self.assertTrue(hasattr(api.game, "get_ui_entity_screen_rect"))
+        self.assertTrue(hasattr(api.game, "click_ui_entity"))
+        self.assertTrue(hasattr(api.game, "request_shutdown"))
+
+    def test_scene_manager_exposes_public_serializable_accessors_needed_by_api(self) -> None:
+        api = self._make_api()
+        api.load_level(self.scene_path.as_posix())
+
+        self.assertIsNotNone(api.scene_manager)
+        active_scene = api.scene_manager.get_active_scene_summary()
+
+        self.assertEqual(active_scene["name"], "Platformer Test Scene")
+        self.assertTrue(active_scene["path"].endswith("platformer_test_scene.json"))
+        self.assertIsInstance(api.scene_manager.get_feature_metadata(), dict)
+        self.assertEqual(api.scene_manager.get_component_data("Player", "Transform")["x"], 120.0)
+
+    def test_shutdown_uses_public_runtime_shutdown_hook(self) -> None:
+        api = self._make_api()
+        self.assertIsNotNone(api.game)
+        api.game.headless_running = True
+
+        api.shutdown()
+
+        self.assertFalse(api.game.headless_running)
 
 
 class RLPublicContractRegressionTests(unittest.TestCase):
@@ -105,6 +137,25 @@ class RLPublicContractRegressionTests(unittest.TestCase):
             source = path.read_text(encoding="utf-8")
             for token in forbidden_tokens:
                 self.assertNotIn(token, source, msg=f"{path.as_posix()} still references {token}")
+
+    def test_engine_api_does_not_reference_removed_private_runtime_hooks(self) -> None:
+        source = Path("engine/api/engine_api.py").read_text(encoding="utf-8")
+        forbidden_tokens = (
+            "._activate_scene_workspace_tab(",
+            "._close_scene_workspace_tab(",
+            "._sync_scene_workspace_ui(",
+            "._physics_backends",
+            "._resolve_physics_backend_name(",
+            "._refresh_default_physics_backend(",
+            "._ui_system",
+            "._update_ui_overlay(",
+            "headless_running",
+            "._components",
+            ".current_scene.",
+        )
+
+        for token in forbidden_tokens:
+            self.assertNotIn(token, source, msg=f"engine/api/engine_api.py still references {token}")
 
 
 class EngineAPIOptionalBox2DTests(unittest.TestCase):
@@ -129,6 +180,13 @@ class EngineAPIOptionalBox2DTests(unittest.TestCase):
 
         self.assertIsNotNone(api.game)
         print_mock.assert_any_call("[WARNING] Box2D backend unavailable: box2d init failed")
+        self.assertEqual(
+            api.list_physics_backends(),
+            [
+                {"name": "box2d", "available": False, "unavailable_reason": "box2d init failed"},
+                {"name": "legacy_aabb", "available": True, "unavailable_reason": None},
+            ],
+        )
 
 
 class EngineAPISandboxTests(unittest.TestCase):

@@ -7,6 +7,7 @@ from engine.api import EngineAPI
 from engine.components.renderorder2d import RenderOrder2D
 from engine.components.transform import Transform
 from engine.project.project_service import ProjectService
+from engine.serialization.schema import CURRENT_PREFAB_SCHEMA_VERSION, CURRENT_SCENE_SCHEMA_VERSION
 from engine.systems.render_system import RenderSystem
 
 
@@ -46,6 +47,7 @@ class UnityRuntimeBaseTests(unittest.TestCase):
         self.assertTrue(self.api.scene_manager.save_scene_to_file(self.level_path.as_posix()))
 
         saved = json.loads(self.level_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["schema_version"], CURRENT_SCENE_SCHEMA_VERSION)
         child_data = next(entity for entity in saved["entities"] if entity["name"] == "Child")
         self.assertEqual(child_data["parent"], "Parent")
 
@@ -64,6 +66,64 @@ class UnityRuntimeBaseTests(unittest.TestCase):
         reloaded_transform = reloaded_child.get_component(Transform)
         self.assertEqual(reloaded_transform.x, 112.0)
         self.assertEqual(reloaded_transform.y, 208.0)
+
+    def test_child_transform_edit_preserves_authoring_across_play_stop_and_reload(self) -> None:
+        self.assertTrue(
+            self.api.create_entity(
+                "Parent",
+                {"Transform": {"enabled": True, "x": 100.0, "y": 200.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0}},
+            )["success"]
+        )
+        self.assertTrue(
+            self.api.create_child_entity(
+                "Parent",
+                "Child",
+                {"Transform": {"enabled": True, "x": 12.0, "y": 8.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0}},
+            )["success"]
+        )
+        self.assertTrue(self.api.scene_manager.set_selected_entity("Child"))
+        self.assertTrue(self.api.edit_component("Child", "Transform", "x", 30.0)["success"])
+        self.assertTrue(self.api.edit_component("Child", "Transform", "y", 40.0)["success"])
+
+        child_data = self.api.scene_manager.current_scene.find_entity("Child")
+        self.assertEqual(child_data["components"]["Transform"]["x"], 30.0)
+        self.assertEqual(child_data["components"]["Transform"]["y"], 40.0)
+
+        child = self.api.game.world.get_entity_by_name("Child")
+        transform = child.get_component(Transform)
+        self.assertEqual(transform.local_x, 30.0)
+        self.assertEqual(transform.local_y, 40.0)
+        self.assertEqual(transform.x, 130.0)
+        self.assertEqual(transform.y, 240.0)
+
+        self.api.play()
+        runtime_child = self.api.game.world.get_entity_by_name("Child")
+        runtime_transform = runtime_child.get_component(Transform)
+        runtime_transform.x = 999.0
+        runtime_transform.y = 888.0
+
+        self.api.stop()
+        stopped_child = self.api.game.world.get_entity_by_name("Child")
+        stopped_transform = stopped_child.get_component(Transform)
+        self.assertEqual(stopped_transform.local_x, 30.0)
+        self.assertEqual(stopped_transform.local_y, 40.0)
+        self.assertEqual(stopped_transform.x, 130.0)
+        self.assertEqual(stopped_transform.y, 240.0)
+        self.assertEqual(self.api.game.world.selected_entity_name, "Child")
+
+        self.assertTrue(self.api.scene_manager.save_scene_to_file(self.level_path.as_posix()))
+        saved = json.loads(self.level_path.read_text(encoding="utf-8"))
+        saved_child = next(entity for entity in saved["entities"] if entity["name"] == "Child")
+        self.assertEqual(saved_child["components"]["Transform"]["x"], 30.0)
+        self.assertEqual(saved_child["components"]["Transform"]["y"], 40.0)
+
+        self.api.load_level(self.level_path.as_posix())
+        reloaded_child = self.api.game.world.get_entity_by_name("Child")
+        reloaded_transform = reloaded_child.get_component(Transform)
+        self.assertEqual(reloaded_transform.local_x, 30.0)
+        self.assertEqual(reloaded_transform.local_y, 40.0)
+        self.assertEqual(reloaded_transform.x, 130.0)
+        self.assertEqual(reloaded_transform.y, 240.0)
 
     def test_prefab_instance_save_apply_and_unpack(self) -> None:
         prefab_path = self.root / "prefabs" / "enemy.prefab"
@@ -115,10 +175,18 @@ class UnityRuntimeBaseTests(unittest.TestCase):
         self.assertEqual(saved["entities"][0]["name"], "EnemyA")
         self.assertIn("prefab_instance", saved["entities"][0])
 
+        self.api.load_level(self.level_path.as_posix())
+        reloaded_root = self.api.game.world.get_entity_by_name("EnemyA")
+        reloaded_weapon = self.api.game.world.get_entity_by_name("EnemyA/Weapon")
+        self.assertIsNotNone(reloaded_root)
+        self.assertIsNotNone(reloaded_weapon)
+        self.assertEqual(reloaded_weapon.parent_name, "EnemyA")
+
         self.assertTrue(self.api.edit_component("EnemyA/Weapon", "Transform", "x", 12.0)["success"])
         self.assertTrue(self.api.apply_prefab_overrides("EnemyA")["success"])
 
         prefab_data = json.loads(prefab_path.read_text(encoding="utf-8"))
+        self.assertEqual(prefab_data["schema_version"], CURRENT_PREFAB_SCHEMA_VERSION)
         weapon_data = next(entity for entity in prefab_data["entities"] if entity["name"] == "Weapon")
         self.assertEqual(weapon_data["components"]["Transform"]["x"], 12.0)
         root_scene = self.api.scene_manager.current_scene.find_entity("EnemyA")
@@ -130,6 +198,71 @@ class UnityRuntimeBaseTests(unittest.TestCase):
         self.assertIn("EnemyA", explicit_names)
         self.assertIn("EnemyA/Weapon", explicit_names)
         self.assertTrue(all("prefab_instance" not in entity for entity in explicit_scene["entities"]))
+
+    def test_prefab_instance_simple_edits_are_recorded_as_override_operations(self) -> None:
+        prefab_path = self.root / "prefabs" / "enemy.prefab"
+        prefab_path.write_text(
+            json.dumps(
+                {
+                    "root_name": "Enemy",
+                    "entities": [
+                        {
+                            "name": "Enemy",
+                            "active": True,
+                            "tag": "Enemy",
+                            "layer": "Actors",
+                            "components": {
+                                "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0}
+                            },
+                        },
+                        {
+                            "name": "Weapon",
+                            "parent": "",
+                            "active": True,
+                            "tag": "Weapon",
+                            "layer": "Actors",
+                            "components": {
+                                "Transform": {"enabled": True, "x": 4.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0}
+                            },
+                        },
+                    ],
+                },
+                indent=4,
+            ),
+            encoding="utf-8",
+        )
+
+        self.assertTrue(self.api.instantiate_prefab("prefabs/enemy.prefab", name="EnemyB")["success"])
+        self.assertTrue(self.api.edit_component("EnemyB/Weapon", "Transform", "x", 12.0)["success"])
+        self.assertTrue(self.api.scene_manager.update_entity_property("EnemyB/Weapon", "tag", "Blade"))
+
+        root_scene = self.api.scene_manager.current_scene.find_entity("EnemyB")
+        operations = root_scene["prefab_instance"]["overrides"]["operations"]
+        self.assertIn(
+            {
+                "op": "replace_component",
+                "target": "Weapon",
+                "component": "Transform",
+                "data": {
+                    "enabled": True,
+                    "x": 12.0,
+                    "y": 0.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0,
+                },
+            },
+            operations,
+        )
+        self.assertIn(
+            {
+                "op": "set_entity_property",
+                "target": "Weapon",
+                "field": "tag",
+                "value": "Blade",
+            },
+            operations,
+        )
 
     def test_render_sorting_uses_sorting_layer_and_order_in_layer(self) -> None:
         for name in ("Back", "Mid", "Front"):

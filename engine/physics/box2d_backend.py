@@ -7,13 +7,15 @@ from engine.components.collider import Collider
 from engine.components.joint2d import Joint2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
-from engine.physics.backend import PhysicsBackend, PhysicsContact
+from engine.physics.backend import PhysicsAABBHit, PhysicsBackend, PhysicsContact, PhysicsRayHit
 
 try:
     from Box2D import (
         b2AABB,
         b2ContactListener,
         b2PolygonShape,
+        b2QueryCallback,
+        b2RayCastCallback,
         b2Vec2,
         b2World,
     )
@@ -21,6 +23,8 @@ except Exception:  # pragma: no cover - optional dependency path
     b2AABB = None
     b2ContactListener = object
     b2PolygonShape = None
+    b2QueryCallback = object
+    b2RayCastCallback = object
     b2Vec2 = None
     b2World = None
 
@@ -32,6 +36,44 @@ class _ContactListener(b2ContactListener):  # type: ignore[misc]
 
     def BeginContact(self, contact: Any) -> None:  # noqa: N802
         self._owner._on_begin_contact(contact)
+
+
+class _RayCastCollector(b2RayCastCallback):  # type: ignore[misc]
+    def __init__(self, hits: list[PhysicsRayHit], max_distance: float) -> None:
+        super().__init__()
+        self._hits = hits
+        self._max_distance = float(max_distance)
+
+    def ReportFixture(self, fixture: Any, point: Any, normal: Any, fraction: float) -> float:  # noqa: N802
+        body = fixture.body
+        entity_id = int(body.userData["entity_id"])
+        self._hits.append(
+            {
+                "entity": body.userData["entity_name"],
+                "entity_id": entity_id,
+                "distance": float(self._max_distance * fraction),
+                "point": {"x": float(point[0]), "y": float(point[1])},
+                "normal": {"x": float(normal[0]), "y": float(normal[1])},
+                "is_trigger": bool(fixture.sensor),
+            }
+        )
+        return 1.0
+
+
+class _AABBQueryCollector(b2QueryCallback):  # type: ignore[misc]
+    def __init__(self, hits: dict[int, PhysicsAABBHit]) -> None:
+        super().__init__()
+        self._hits = hits
+
+    def ReportFixture(self, fixture: Any) -> bool:  # noqa: N802
+        body = fixture.body
+        entity_id = int(body.userData["entity_id"])
+        self._hits[entity_id] = {
+            "entity": body.userData["entity_name"],
+            "entity_id": entity_id,
+            "is_trigger": bool(fixture.sensor),
+        }
+        return True
 
 
 class Box2DPhysicsBackend(PhysicsBackend):
@@ -114,7 +156,13 @@ class Box2DPhysicsBackend(PhysicsBackend):
         self._sync_world_from_box2d(world)
         self._step_metrics["contacts"] = len(self._latest_contacts)
 
-    def query_ray(self, world: Any, origin: tuple[float, float], direction: tuple[float, float], max_distance: float) -> list[dict[str, Any]]:
+    def query_ray(
+        self,
+        world: Any,
+        origin: tuple[float, float],
+        direction: tuple[float, float],
+        max_distance: float,
+    ) -> list[PhysicsRayHit]:
         self.sync_world(world)
         ox, oy = float(origin[0]), float(origin[1])
         dx, dy = float(direction[0]), float(direction[1])
@@ -122,44 +170,17 @@ class Box2DPhysicsBackend(PhysicsBackend):
         if length <= 1e-6:
             return []
         target = (ox + (dx / length) * max_distance, oy + (dy / length) * max_distance)
-        hits: list[dict[str, Any]] = []
-
-        def callback(fixture: Any, point: Any, normal: Any, fraction: float) -> float:
-            body = fixture.body
-            entity_id = int(body.userData["entity_id"])
-            hits.append(
-                {
-                    "entity": body.userData["entity_name"],
-                    "entity_id": entity_id,
-                    "distance": float(max_distance * fraction),
-                    "point": {"x": float(point[0]), "y": float(point[1])},
-                    "normal": {"x": float(normal[0]), "y": float(normal[1])},
-                    "is_trigger": bool(fixture.sensor),
-                }
-            )
-            return fraction
-
-        self._world.RayCast(callback, (ox, oy), target)
+        hits: list[PhysicsRayHit] = []
+        self._world.RayCast(_RayCastCollector(hits, max_distance), (ox, oy), target)
         return sorted(hits, key=lambda item: (item["distance"], item["entity_id"]))
 
-    def query_aabb(self, world: Any, bounds: tuple[float, float, float, float]) -> list[dict[str, Any]]:
+    def query_aabb(self, world: Any, bounds: tuple[float, float, float, float]) -> list[PhysicsAABBHit]:
         self.sync_world(world)
         lower = b2Vec2(float(bounds[0]), float(bounds[1]))
         upper = b2Vec2(float(bounds[2]), float(bounds[3]))
         box = b2AABB(lowerBound=lower, upperBound=upper)
-        hits: dict[int, dict[str, Any]] = {}
-
-        def callback(fixture: Any) -> bool:
-            body = fixture.body
-            entity_id = int(body.userData["entity_id"])
-            hits[entity_id] = {
-                "entity": body.userData["entity_name"],
-                "entity_id": entity_id,
-                "is_trigger": bool(fixture.sensor),
-            }
-            return True
-
-        self._world.QueryAABB(callback, box)
+        hits: dict[int, PhysicsAABBHit] = {}
+        self._world.QueryAABB(_AABBQueryCollector(hits), box)
         return [hits[key] for key in sorted(hits)]
 
     def collect_contacts(self, world: Any) -> list[PhysicsContact]:

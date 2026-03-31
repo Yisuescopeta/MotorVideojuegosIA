@@ -1,9 +1,12 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from cli.script_executor import ScriptExecutor
 from engine.api import EngineAPI
+from engine.components.recttransform import RectTransform
+from engine.components.transform import Transform
 
 
 class InspectorCoreTests(unittest.TestCase):
@@ -184,6 +187,111 @@ class InspectorCoreTests(unittest.TestCase):
         script_data = self.api.get_entity("InspectorScriptProbe")["components"]["ScriptBehaviour"]
         self.assertEqual(script_data["module_path"], "enemy_brain")
         self.assertEqual(script_data["public_data"]["alive"], True)
+
+    def test_transform_editor_uses_serializable_local_values_for_child_entity(self) -> None:
+        self.assertTrue(
+            self.api.create_entity(
+                "InspectorParent",
+                {"Transform": {"enabled": True, "x": 100.0, "y": 200.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0}},
+            )["success"]
+        )
+        self.assertTrue(
+            self.api.create_child_entity(
+                "InspectorParent",
+                "InspectorChild",
+                {"Transform": {"enabled": True, "x": 12.0, "y": 8.0, "rotation": 15.0, "scale_x": 1.5, "scale_y": 0.75}},
+            )["success"]
+        )
+
+        child = self.api.game.world.get_entity_by_name("InspectorChild")
+        transform = child.get_component(Transform)
+        rendered_values: dict[str, float | bool] = {}
+
+        def capture(label, value, *args, **kwargs):
+            rendered_values[label] = value
+            return args[4] + 1
+
+        with patch.object(self.inspector, "_draw_component_field", side_effect=capture):
+            self.inspector._draw_transform_editor(transform, child.id, 0, 0, 240, True, self.api.game.world)
+
+        self.assertEqual(rendered_values["X"], 12.0)
+        self.assertEqual(rendered_values["Y"], 8.0)
+        self.assertEqual(rendered_values["Rotation"], 15.0)
+        self.assertEqual(rendered_values["Scale X"], 1.5)
+        self.assertEqual(rendered_values["Scale Y"], 0.75)
+
+    def test_inspector_transform_edit_persists_local_transform_after_save_and_reload(self) -> None:
+        self.assertTrue(
+            self.api.create_entity(
+                "InspectorParent",
+                {"Transform": {"enabled": True, "x": 100.0, "y": 50.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0}},
+            )["success"]
+        )
+        self.assertTrue(
+            self.api.create_child_entity(
+                "InspectorParent",
+                "InspectorChild",
+                {"Transform": {"enabled": True, "x": 12.0, "y": 8.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0}},
+            )["success"]
+        )
+        self.assertTrue(self.api.scene_manager.set_selected_entity("InspectorChild"))
+        self.assertTrue(self.inspector._apply_component_property(self.api.game.world, "InspectorChild", "Transform", "x", 30.0))
+        self.assertTrue(self.inspector._apply_component_property(self.api.game.world, "InspectorChild", "Transform", "y", 40.0))
+
+        child_data = self.api.scene_manager.current_scene.find_entity("InspectorChild")
+        self.assertEqual(child_data["components"]["Transform"]["x"], 30.0)
+        self.assertEqual(child_data["components"]["Transform"]["y"], 40.0)
+        self.assertEqual(self.api.game.world.selected_entity_name, "InspectorChild")
+
+        save_path = self.project_root / "levels" / "inspector_transform_scene.json"
+        self.assertTrue(self.api.save_scene(path=save_path.as_posix())["success"])
+        self.api.load_level(save_path.as_posix())
+
+        child = self.api.game.world.get_entity_by_name("InspectorChild")
+        transform = child.get_component(Transform)
+        self.assertEqual(transform.local_x, 30.0)
+        self.assertEqual(transform.local_y, 40.0)
+        self.assertEqual(transform.x, 130.0)
+        self.assertEqual(transform.y, 90.0)
+
+    def test_inspector_rect_transform_edit_persists_after_save_and_reload(self) -> None:
+        self._create_probe(
+            "InspectorButton",
+            {
+                "RectTransform": {
+                    "enabled": True,
+                    "anchor_min_x": 0.5,
+                    "anchor_min_y": 0.5,
+                    "anchor_max_x": 0.5,
+                    "anchor_max_y": 0.5,
+                    "pivot_x": 0.5,
+                    "pivot_y": 0.5,
+                    "anchored_x": 0.0,
+                    "anchored_y": 0.0,
+                    "width": 200.0,
+                    "height": 80.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0,
+                }
+            },
+        )
+
+        self.assertTrue(self.inspector._apply_component_property(self.api.game.world, "InspectorButton", "RectTransform", "anchored_x", 32.0))
+        self.assertTrue(self.inspector._apply_component_property(self.api.game.world, "InspectorButton", "RectTransform", "height", 96.0))
+
+        button_data = self.api.scene_manager.current_scene.find_entity("InspectorButton")
+        self.assertEqual(button_data["components"]["RectTransform"]["anchored_x"], 32.0)
+        self.assertEqual(button_data["components"]["RectTransform"]["height"], 96.0)
+
+        save_path = self.project_root / "levels" / "inspector_rect_scene.json"
+        self.assertTrue(self.api.save_scene(path=save_path.as_posix())["success"])
+        self.api.load_level(save_path.as_posix())
+
+        button = self.api.game.world.get_entity_by_name("InspectorButton")
+        rect_transform = button.get_component(RectTransform)
+        self.assertEqual(rect_transform.anchored_x, 32.0)
+        self.assertEqual(rect_transform.height, 96.0)
 
     def test_script_executor_exposes_undo_redo_commands(self) -> None:
         executor = ScriptExecutor(self.api.game)

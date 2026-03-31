@@ -1,4 +1,6 @@
 {
+    "schema_version": 2,
+    "name": "New Scene",
     "entities": [
         {
             "name": "New Entity 0",
@@ -34,6 +36,5 @@
         }
     ],
     "rules": [],
-    "name": "New Scene",
     "feature_metadata": {}
 }

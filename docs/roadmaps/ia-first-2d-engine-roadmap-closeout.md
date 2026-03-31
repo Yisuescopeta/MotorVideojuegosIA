@@ -1,86 +1,59 @@
-# Cierre del Roadmap IA-First 2D Engine
+# Cierre del roadmap IA-first 2D engine
 
-## Estado final
+## Nota de lectura
 
-El roadmap importado en [ia-first-2d-engine-master-roadmap.md](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/docs/roadmaps/ia-first-2d-engine-master-roadmap.md) ha sido ejecutado de forma secuencial hasta completar las fases `A` a `H`.
+Este documento se conserva como cierre historico del roadmap importado. No debe
+leerse como fuente de verdad tecnica actual ni como auditoria completa del estado
+del repositorio.
 
-Resultado consolidado:
+La referencia vigente para el estado real del codigo es:
 
-- contrato base de arquitectura y determinismo operativo
-- schema versionado con migraciones y validacion offline
-- asset DB, import pipeline, bundling y build reports reproducibles
-- render graph, batching, render targets, materiales y overlays debug
-- fisica pluggable con `legacy_aabb` y `box2d`
-- `CharacterController2D`, joints, CCD y tilemap collision baking
-- profiler headless, debug dump serializable y CLI unificado
-- wrappers RL `Gymnasium` y `PettingZoo`
-- generacion de escenarios, datasets versionados, replay por episodio y runner paralelo
+- `README.md`
+- `docs/architecture.md`
+- `docs/TECHNICAL.md`
+- `docs/schema_serialization.md`
+- la suite de tests del core
 
-## Estado por fases
+## Lo que hoy si es verificable en codigo y tests
 
-| Fase | Estado | Resultado principal |
-|---|---|---|
-| `A` | completada | arquitectura, harness headless, golden runs, fingerprints |
-| `B` | completada | schema `vNext`, migraciones, validacion y transacciones |
-| `C` | completada | asset DB, import cache, bundle y build report |
-| `D` | completada | render graph, batching, render targets, materiales |
-| `E` | completada | backend de fisica pluggable, Box2D opcional, CCD, joints |
-| `F` | completada | tilemap serializable, chunked renderer y colisiones por tile |
-| `G` | completada | profiler, debug primitives, CLI consolidado |
-| `H` | completada | wrappers RL, scenario generator, datasets y runner paralelo |
+Revisado contra el estado actual del repositorio:
 
-## Validacion final
+- contrato de datos serializable con `scene schema_version = 2` y
+  `prefab schema_version = 2`
+- migraciones explicitas `legacy/v1 -> v2`
+- `SceneManager` con workspace, lifecycle `EDIT -> PLAY -> STOP`, dirty state,
+  historial y transacciones
+- `EngineAPI` con fachada publica delegada por dominios y sin depender de hooks
+  privados del runtime
+- render 2D con sorting layers, passes, batching, render targets y tilemap
+  chunks
+- contrato comun de physics backends con `legacy_aabb`, `box2d` opcional y
+  fallback publico
+- tooling headless, profiler y CLI util para validacion
+- wrappers RL y tooling de datasets presentes, pero posicionados como
+  `experimental/tooling`
 
-Senal final de integracion:
+## Lo que este documento ya no afirma como cierre "total"
 
-- suite global: `py -3 -m unittest discover -s tests`
-- resultado: `204 tests OK`
+Para evitar sobredocumentar el proyecto, este cierre no presenta como garantia
+auditada:
 
-Validaciones pesadas ejecutadas durante el cierre:
+- que todas las fases historicas del roadmap sigan "completadas" con el mismo
+  grado de madurez
+- que cada claim del roadmap equivalga hoy a feature completamente endurecida
+- que los artefactos historicos de `artifacts/` representen la salud actual del
+  repo
 
-- `py -3 tools/engine_cli.py smoke --scene levels/demo_level.json --frames 3 --seed 123 --out-dir artifacts/cli_smoke_manual`
-- `py -3 tools/scenario_dataset_cli.py generate-scenarios levels/multiagent_toy_scene.json --count 100 --seed 123 --out-dir artifacts/generated_scenarios_100`
-- `py -3 tools/scenario_dataset_cli.py run-episodes levels/platformer_test_scene.json --episodes 100 --max-steps 60 --seed 123 --out artifacts/episodes_100.jsonl --summary-out artifacts/episodes_100_summary.json`
-- `py -3 tools/scenario_dataset_cli.py replay-episode artifacts/episodes_100.jsonl --episode-id episode_0000 --out artifacts/replay_episode_0000.json`
-- `py -3 tools/parallel_rollout_runner.py levels/multiagent_toy_scene.json --workers 8 --episodes 8 --max-steps 1250 --seed 123 --out-dir artifacts/parallel_rollouts_8x1250`
+## Limites abiertos que siguen importando
 
-## Artefactos de referencia
+- el determinismo se trabaja como objetivo de misma maquina y mismo entorno
+- `box2d` sigue siendo opcional y no dependencia obligatoria del core
+- RL, datasets y runners paralelos existen, pero no forman parte del core
+  obligatorio
+- los outputs generados en `artifacts/` y `.motor/` deben tratarse como
+  resultados de validacion, no como fuente de verdad
 
-Artefactos especialmente utiles para futuros ciclos:
+## Siguiente referencia
 
-- [profile_report_smoke.json](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/artifacts/profile_report_smoke.json)
-- [debug_dump_smoke.json](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/artifacts/debug_dump_smoke.json)
-- [random_rollouts_10ep.jsonl](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/artifacts/random_rollouts_10ep.jsonl)
-- [multiagent_rollouts_5ep.jsonl](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/artifacts/multiagent_rollouts_5ep.jsonl)
-- [episodes_100.jsonl](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/artifacts/episodes_100.jsonl)
-- [episodes_100_summary.json](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/artifacts/episodes_100_summary.json)
-- [replay_episode_0000.json](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/artifacts/replay_episode_0000.json)
-- [parallel_report.json](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/artifacts/parallel_rollouts_8x1250/parallel_report.json)
-- [manifest.json](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/artifacts/generated_scenarios_100/manifest.json)
-
-## Documentacion consolidada
-
-Puntos de entrada recomendados a partir de ahora:
-
-- arquitectura: [architecture.md](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/docs/architecture.md)
-- CLI unificado: [cli.md](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/docs/cli.md)
-- capa RL y datasets: [rl.md](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/docs/rl.md)
-- roadmap maestro: [ia-first-2d-engine-master-roadmap.md](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/docs/roadmaps/ia-first-2d-engine-master-roadmap.md)
-- secuencia original de prompts: [README.md](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/docs/roadmaps/ia-first-2d-engine-implementation-prompts/README.md)
-
-## Riesgos y limites abiertos
-
-No quedan regresiones activas en la suite, pero si quedan limites practicos que conviene tratar como backlog posterior:
-
-- el wrapper RL usa una reward baseline simple, util para harness y datasets, no para entrenamiento final de una mecanica compleja
-- la reproducibilidad sigue siendo objetivo de misma maquina y mismo entorno, no garantia cross-platform estricta
-- el runner paralelo usa subprocess por seguridad y aislamiento; no es una vectorizacion intra-proceso ni un scheduler distribuido
-- los artefactos generados en `artifacts/` y `.motor/` deben tratarse como outputs de validacion, no como fuente de verdad del proyecto
-
-## Recomendacion de siguiente etapa
-
-El roadmap importado queda cerrado. La siguiente etapa razonable ya no es seguir prompts de implementacion, sino abrir un backlog nuevo de:
-
-1. endurecimiento de UX del editor sobre sistemas ya estabilizados
-2. features de gameplay de alto nivel sobre la base RL/data-driven
-3. limpieza de artefactos y politica de que outputs versionar
+Si se reabre trabajo tecnico, el punto de partida no debe ser este closeout sino
+la documentacion tecnica vigente y las suites de regresion del core.

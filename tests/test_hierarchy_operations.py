@@ -286,6 +286,76 @@ class TestMoveParentMovesChildren(unittest.TestCase):
         self.assertAlmostEqual(ct.local_y, 10.0, places=3)
 
 
+class TestHierarchyAuthoringScenarios(unittest.TestCase):
+    def test_create_child_entity_uses_local_transform_payload(self) -> None:
+        sm = SceneManager(create_default_registry())
+        sm.load_scene(
+            {
+                "name": "ChildLocal",
+                "entities": [_make_entity("Parent", x=100.0, y=200.0)],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+
+        created = sm.create_child_entity(
+            "Parent",
+            "Child",
+            {
+                "Transform": {
+                    "enabled": True,
+                    "x": 12.0,
+                    "y": 8.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0,
+                }
+            },
+        )
+
+        self.assertTrue(created)
+        child_scene = sm.current_scene.find_entity("Child")
+        self.assertEqual(child_scene["parent"], "Parent")
+        self.assertEqual(child_scene["components"]["Transform"]["x"], 12.0)
+        self.assertEqual(child_scene["components"]["Transform"]["y"], 8.0)
+
+        child = sm.get_edit_world().get_entity_by_name("Child")
+        child_transform = child.get_component(Transform)
+        self.assertEqual(child_transform.local_x, 12.0)
+        self.assertEqual(child_transform.local_y, 8.0)
+        self.assertEqual(child_transform.x, 112.0)
+        self.assertEqual(child_transform.y, 208.0)
+
+    def test_duplicate_subtree_remaps_prefab_root_name(self) -> None:
+        sm = SceneManager(create_default_registry())
+        sm.load_scene(
+            {
+                "name": "DuplicatePrefabRoot",
+                "entities": [
+                    {
+                        **_make_entity("Rig", x=0.0, y=0.0),
+                        "prefab_root_name": "Rig",
+                    },
+                    {
+                        **_make_entity("Rig/Tool", x=4.0, y=2.0, parent="Rig"),
+                        "prefab_root_name": "Rig",
+                    },
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+
+        duplicated = sm.duplicate_entity_subtree("Rig", new_root_name="RigCopy")
+
+        self.assertTrue(duplicated)
+        duplicated_root = sm.current_scene.find_entity("RigCopy")
+        duplicated_child = sm.current_scene.find_entity("RigCopy/Tool")
+        self.assertEqual(duplicated_root["prefab_root_name"], "RigCopy")
+        self.assertEqual(duplicated_child["prefab_root_name"], "RigCopy")
+        self.assertEqual(duplicated_child["parent"], "RigCopy")
+
+
 class TestTransformHierarchyCore(unittest.TestCase):
     """Test the Transform component hierarchy directly."""
 

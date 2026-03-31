@@ -15,6 +15,7 @@ class MainBootstrapTests(unittest.TestCase):
 
         self.assertFalse(result)
         game.set_physics_backend.assert_not_called()
+        game.set_physics_backend_unavailable.assert_called_once_with("box2d", "box2d gui init failed")
         print_mock.assert_any_call("[WARNING] Box2D backend unavailable: box2d gui init failed")
 
 

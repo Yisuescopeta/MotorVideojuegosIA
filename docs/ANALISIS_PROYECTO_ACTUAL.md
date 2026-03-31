@@ -1,5 +1,9 @@
 # Analisis Actual del Proyecto
 
+> Nota: este documento es una lectura complementaria. El contrato tecnico
+> vigente del repo vive en `README.md`, `docs/architecture.md`,
+> `docs/TECHNICAL.md` y `docs/schema_serialization.md`.
+
 ## 1. Resumen Ejecutivo
 
 Este proyecto es un motor/editor 2D experimental en Python orientado a ser controlado y extendido por una IA. No es solo un "runtime" de juego: combina un motor ECS, un editor visual estilo Unity, carga y guardado de escenas JSON, un modo headless para automatizacion y una API programatica para que un agente externo pueda inspeccionar y modificar el estado del juego.
@@ -120,16 +124,19 @@ Ademas muestra:
 - Resaltado de entidad seleccionada.
 - Nombre de la entidad seleccionada.
 
-### 5.5 Fisica basica
+### 5.5 Fisica y backends
 
-La fisica actual es sencilla pero funcional:
+La fisica actual ya no es solo una base monolitica minima:
 
-- Aplicacion de gravedad.
-- Integracion por velocidad.
-- Actualizacion de posicion.
-- Suelo temporal definido por `GROUND_Y_TEMP`.
+- existe un contrato comun de backends fisicos
+- `legacy_aabb` sigue siendo la base obligatoria del core
+- `box2d` puede activarse de forma opcional cuando la dependencia esta
+  disponible
+- hay queries publicas y seleccion efectiva de backend con fallback explicito
 
-No hay respuesta fisica completa de colision; la fisica esta mas cerca de una base jugable minima que de un sistema completo.
+El limite real sigue siendo de producto, no de contrato: el core garantiza una
+superficie comun y comparable, pero no documenta `box2d` como dependencia
+obligatoria ni promete determinismo cross-platform fuerte.
 
 ### 5.6 Colisiones AABB
 
@@ -239,9 +246,15 @@ El panel de jerarquia permite:
 - Crear nueva entidad con `Transform`.
 - Abrir menu contextual con acciones.
 - Eliminar entidad.
+- Duplicar subarboles de entidades.
 - Guardar entidad como prefab.
 
-Tambien existe soporte en `Transform` para relaciones padre-hijo mediante `set_parent()`.
+Tambien existe soporte consolidado para:
+
+- relaciones padre-hijo serializables
+- validacion de padres invalidos o ciclos
+- preservacion de jerarquia en save/load
+- duplicacion de subarboles y copia entre escenas de workspace
 
 ### 5.14 Panel de proyecto y drag and drop
 
@@ -350,18 +363,21 @@ Esto permite construir pruebas funcionales simples sin interactuar manualmente c
 
 ### 5.22 API programatica para IA
 
-La clase `EngineAPI` expone un contrato mas estable para control externo del motor.
+La clase `EngineAPI` expone el contrato publico estable para control externo del
+motor.
 
 Funciones actuales:
 
-- Inicializar motor en headless.
-- Cargar nivel.
-- Entrar en `PLAY`.
-- Hacer `step` de N frames.
-- Volver a `EDIT`.
-- Consultar estado general.
-- Obtener datos serializados de una entidad.
-- Editar propiedades de componentes.
+- authoring de entidades, componentes y `feature_metadata`
+- runtime (`play`, `stop`, `step`, input y eventos)
+- workspace y scene flow
+- assets y proyecto
+- debug/profiler
+- UI serializable
+
+La fachada publica esta delegada internamente por dominios, pero el punto de
+entrada sigue siendo unico. La regla vigente es que wrappers, tests y tooling
+usen `EngineAPI`, no internals privados del runtime.
 
 El repositorio incluye una prueba de uso centrada precisamente en demostrar ese flujo.
 
@@ -405,31 +421,38 @@ Durante el analisis del codigo se observan varias limitaciones importantes que c
 
 ### 7.3 Edicion persistente parcial segun el flujo
 
-- `SceneManager.apply_edit_to_world()` sincroniza de forma explicita sobre todo `Transform`.
-- El inspector modifica componentes directamente sobre el `World`.
-- El guardado final serializa el `World`, lo cual salva cambios visibles, pero la sincronizacion entre `Scene` interna y edicion en caliente no es uniforme para todos los componentes.
+- Las rutas principales de authoring ya se recondujeron a `SceneManager` y
+  `Scene`.
+- `sync_from_edit_world()` sigue existiendo, pero queda acotado a compatibilidad
+  legacy explicita; no es el flujo normal recomendado.
+- El dirty/save/autosave no deben contaminarse con previews transitorios del
+  gizmo.
 
-### 7.4 Jerarquia visual incompleta
+### 7.4 Jerarquia y workspace: limites reales
 
-- `Transform` soporta padre-hijo.
-- El script executor tambien permite `PARENT`.
-- Pero en `HierarchyPanel` el metodo `_find_entity_by_transform()` devuelve `None`, asi que la visualizacion real de hijos en el arbol no esta completa.
+- La jerarquia serializable y su roundtrip estan cubiertos por tests.
+- La seleccion y el dirty state ya son responsabilidad de `SceneManager` por
+  escena de workspace.
+- El limite actual no es "no hay jerarquia", sino que el sistema sigue
+  dependiendo de nombres unicos y de relaciones padre-hijo validas en datos.
 
-### 7.5 Funciones de menu pendientes o parciales
+### 7.5 UI y affordances de editor
 
-- La accion de duplicar entidad en el menu contextual esta marcada como `TODO`.
-- Hay elementos de toolbar como `Layers` y `Default` que son placeholders visuales.
+- Siguen existiendo affordances visuales y controles de toolbar que son UX del
+  editor, no contrato de datos.
+- Eso no debe confundirse con fuente de verdad: la capa de UI traduce al modelo
+  serializable y no debe abrir rutas funcionales paralelas.
 
 ### 7.6 Algunas inconsistencias de madurez
 
-Se aprecian duplicidades y restos de iteracion en el codigo:
+El proyecto sigue en consolidacion tecnica y convive con capas de distinta
+madurez:
 
-- imports repetidos,
-- setters repetidos,
-- comentarios de fases antiguas,
-- bucles duplicados en algunos paneles.
-
-Eso no impide usar la app, pero indica que el proyecto aun esta en fase de consolidacion tecnica.
+- el core serializable y las rutas compartidas de authoring estan bastante mas
+  endurecidos que la UX del editor
+- existen restos historicos en documentacion, comentarios y tooling auxiliar
+- RL, datasets y runners paralelos existen, pero conviene tratarlos como
+  `experimental/tooling`, no como core obligatorio
 
 ### 7.7 Inventario de features mayor en binarios que en fuente
 

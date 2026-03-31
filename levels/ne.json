@@ -1,7 +1,7 @@
 {
+    "schema_version": 2,
+    "name": "Ne",
     "entities": [],
     "rules": [],
-    "feature_metadata": {},
-    "name": "Ne",
-    "schema_version": 1
+    "feature_metadata": {}
 }

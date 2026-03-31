@@ -1,4 +1,6 @@
 {
+    "schema_version": 2,
+    "name": "Demo Level (con Reglas)",
     "entities": [
         {
             "name": "Player",
@@ -274,7 +276,5 @@
         }
     ],
     "rules": [],
-    "feature_metadata": {},
-    "name": "Demo Level (con Reglas)",
-    "schema_version": 1
+    "feature_metadata": {}
 }

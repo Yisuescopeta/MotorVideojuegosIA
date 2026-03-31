@@ -11,6 +11,7 @@ from engine.core.time_manager import TimeManager
 from engine.debug.profiler import EngineProfiler
 from engine.debug.timeline import Timeline
 from engine.ecs.world import World
+from engine.physics.registry import PhysicsBackendRegistry
 
 
 class _FakeSceneManager:
@@ -81,7 +82,10 @@ class DebugToolsControllerTests(unittest.TestCase):
             "render_target_passes": 4,
         }
         self.backend = Mock()
+        self.backend.backend_name = "stub_backend"
         self.backend.get_step_metrics.return_value = {"ccd_bodies": 8, "contacts": 7}
+        self.physics_backend_registry = PhysicsBackendRegistry(default_backend_name="stub_backend")
+        self.physics_backend_registry.register_backend(self.backend, backend_name="stub_backend")
         self.controller = DebugToolsController(
             time_manager=self.time_manager,
             timeline=self.timeline,
@@ -97,8 +101,7 @@ class DebugToolsControllerTests(unittest.TestCase):
             get_rule_system=lambda: self.rule_system,
             get_collision_system=lambda: None,
             get_render_system=lambda: self.render_system,
-            get_physics_backends=lambda: {"stub_backend": self.backend},
-            resolve_physics_backend_name=lambda world: "stub_backend",
+            get_physics_backend_registry=lambda: self.physics_backend_registry,
             get_width=lambda: 1280,
             get_show_performance_overlay=lambda: self.flags["show_overlay"],
             set_show_performance_overlay=lambda value: self.flags.__setitem__("show_overlay", value),

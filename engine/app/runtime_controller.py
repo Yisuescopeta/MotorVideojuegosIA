@@ -4,7 +4,9 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from engine.core.engine_state import EngineState
 from engine.editor.console_panel import log_info
+from engine.physics.backend import PhysicsBackendSelection
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
+from engine.physics.registry import PhysicsBackendRegistry
 from engine.tilemap.collision_builder import bake_tilemap_colliders
 
 if TYPE_CHECKING:
@@ -32,8 +34,7 @@ class RuntimeController:
         get_physics_system: Callable[[], Any],
         get_collision_system: Callable[[], Any],
         get_audio_system: Callable[[], Any],
-        get_physics_backends: Callable[[], dict[str, Any]],
-        get_physics_backend_name: Callable[[], str],
+        get_physics_backend_registry: Callable[[], PhysicsBackendRegistry],
         reset_profiler: Callable[..., None],
         set_physics_backend: Callable[[Any, str], None],
         edit_animation_speed: float,
@@ -53,8 +54,7 @@ class RuntimeController:
         self._get_physics_system = get_physics_system
         self._get_collision_system = get_collision_system
         self._get_audio_system = get_audio_system
-        self._get_physics_backends = get_physics_backends
-        self._get_physics_backend_name = get_physics_backend_name
+        self._get_physics_backend_registry = get_physics_backend_registry
         self._reset_profiler = reset_profiler
         self._set_physics_backend = set_physics_backend
         self._edit_animation_speed = float(edit_animation_speed)
@@ -169,27 +169,21 @@ class RuntimeController:
             script_behaviour_system.update(world, dt, is_edit_mode=False)
 
         state = self._get_state()
-        backend_name = self.resolve_physics_backend_name(world)
-        backend = self._get_physics_backends().get(backend_name)
+        backend = self._get_physics_backend_registry().resolve(world).backend
         if backend is not None and state.allows_physics():
             backend.step(world, dt)
-        else:
-            physics_system = self._get_physics_system()
-            if physics_system is not None and state.allows_physics():
-                physics_system.update(world, dt)
-
-            collision_system = self._get_collision_system()
-            if collision_system is not None and state.allows_gameplay():
-                collision_system.update(world)
 
         audio_system = self._get_audio_system()
         if audio_system is not None:
             audio_system.update(world)
 
+    def get_physics_backend_selection(self, world: Optional["World"]) -> PhysicsBackendSelection:
+        return self._get_physics_backend_registry().resolve(world).selection
+
     def resolve_physics_backend_name(self, world: Optional["World"]) -> str:
-        metadata = world.feature_metadata if world is not None else {}
-        physics_2d = metadata.get("physics_2d", {}) if isinstance(metadata, dict) else {}
-        return str(physics_2d.get("backend", self._get_physics_backend_name() or "legacy_aabb"))
+        selection = self.get_physics_backend_selection(world)
+        effective_backend = selection.get("effective_backend")
+        return str(effective_backend or selection["requested_backend"])
 
     def refresh_default_physics_backend(self) -> None:
         physics_system = self._get_physics_system()
