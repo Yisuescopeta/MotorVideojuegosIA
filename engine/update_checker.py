@@ -50,7 +50,7 @@ def _check() -> None:
             GITHUB_RELEASES_URL,
             headers={"Accept": "application/vnd.github.v3+json", "User-Agent": "MotorVideojuegosIA-UpdateCheck"},
         )
-        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:  # nosec B310 — URL is always HTTPS to GitHub API
             data = json.loads(resp.read().decode("utf-8"))
 
         tag = _normalize_version(data.get("tag_name", ""))
