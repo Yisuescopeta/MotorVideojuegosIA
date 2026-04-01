@@ -34,6 +34,7 @@ class RuntimeController:
         get_physics_system: Callable[[], Any],
         get_collision_system: Callable[[], Any],
         get_audio_system: Callable[[], Any],
+        get_scene_transition_controller: Callable[[], Any],
         get_physics_backend_registry: Callable[[], PhysicsBackendRegistry],
         reset_profiler: Callable[..., None],
         set_physics_backend: Callable[[Any, str], None],
@@ -54,6 +55,7 @@ class RuntimeController:
         self._get_physics_system = get_physics_system
         self._get_collision_system = get_collision_system
         self._get_audio_system = get_audio_system
+        self._get_scene_transition_controller = get_scene_transition_controller
         self._get_physics_backend_registry = get_physics_backend_registry
         self._reset_profiler = reset_profiler
         self._set_physics_backend = set_physics_backend
@@ -176,6 +178,10 @@ class RuntimeController:
         audio_system = self._get_audio_system()
         if audio_system is not None:
             audio_system.update(world)
+
+        scene_transition_controller = self._get_scene_transition_controller()
+        if scene_transition_controller is not None:
+            scene_transition_controller.update(world)
 
     def get_physics_backend_selection(self, world: Optional["World"]) -> PhysicsBackendSelection:
         return self._get_physics_backend_registry().resolve(world).selection

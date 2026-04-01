@@ -130,7 +130,7 @@ class SceneWorkflowController:
         normalized_name = str(scene_name or "").strip()
         if not normalized_name:
             return False
-        if self._get_state() in (EngineState.PLAY, EngineState.PAUSED):
+        if self._get_state() in (EngineState.PLAY, EngineState.PAUSED, EngineState.STEPPING):
             self._stop_runtime()
         self._capture_active_scene_view_state()
         target_path = project_service.build_scene_file_path(normalized_name).as_posix()

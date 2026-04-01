@@ -19,6 +19,11 @@ from engine.components.camera2d import Camera2D
 from engine.components.audiosource import AudioSource
 from engine.components.inputmap import InputMap
 from engine.components.playercontroller2d import PlayerController2D
+from engine.components.scene_entry_point import SceneEntryPoint
+from engine.components.scene_transition_action import SceneTransitionAction
+from engine.components.scene_transition_on_contact import SceneTransitionOnContact
+from engine.components.scene_transition_on_interact import SceneTransitionOnInteract
+from engine.components.scene_transition_on_player_death import SceneTransitionOnPlayerDeath
 from engine.components.scriptbehaviour import ScriptBehaviour
 from engine.components.tilemap import Tilemap
 
@@ -65,7 +70,8 @@ __all__ = [
     # Componentes
     "Transform", "Sprite", "Collider", "CharacterController2D", "Joint2D", "RigidBody", "Animator", "AnimationData",
     "Camera2D", "AudioSource", "InputMap",
-    "PlayerController2D", "ScriptBehaviour", "Tilemap",
+    "PlayerController2D", "SceneEntryPoint", "SceneTransitionAction", "SceneTransitionOnContact",
+    "SceneTransitionOnInteract", "SceneTransitionOnPlayerDeath", "ScriptBehaviour", "Tilemap",
     # Sistemas
     "RenderSystem", "PhysicsSystem", "CollisionSystem", "AnimationSystem", "AudioSystem", "InputSystem", "PlayerControllerSystem", "CharacterControllerSystem", "ScriptBehaviourSystem",
     # Inspector

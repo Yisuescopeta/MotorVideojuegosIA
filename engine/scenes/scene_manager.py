@@ -1012,7 +1012,7 @@ class SceneManager:
             scene_link = entity_data.get("components", {}).get("SceneLink")
             if isinstance(scene_link, dict):
                 flow_key = str(scene_link.get("flow_key", "") or "").strip()
-                if flow_key:
+                if flow_key and "target_path" not in scene_link:
                     scene_link["target_path"] = str(scene_flow.get(flow_key, "") or "")
 
     def _entry_has_invalid_links(self, entry: SceneWorkspaceEntry) -> bool:

@@ -13,6 +13,7 @@ from engine.ecs.world import World
 from engine.ecs.entity import Entity
 from engine.components.transform import Transform
 from engine.editor.cursor_manager import CursorVisualState
+from engine.editor.render_safety import editor_scissor
 
 class HierarchyPanel:
     """
@@ -88,94 +89,90 @@ class HierarchyPanel:
         # Reset hover frame state
         self.hovered_entity_id = None
 
-        # Scissor para no salir del área
-        rl.begin_scissor_mode(x, y, width, height)
-        
-        # ========================================
-        # 1. Header Tab
-        # ========================================
-        header_rect = rl.Rectangle(x, y, width, self.HEADER_HEIGHT)
-        rl.draw_rectangle_rec(header_rect, self.UNITY_HEADER)
-        
-        # Tab "Hierarchy" con línea azul
-        tab_width = 70
-        tab_rect = rl.Rectangle(x + 2, y + 2, tab_width, self.HEADER_HEIGHT - 4)
-        rl.draw_rectangle_rec(tab_rect, self.UNITY_BG)
-        # Línea azul inferior
-        rl.draw_rectangle(int(x + 2), int(y + self.HEADER_HEIGHT - 2), tab_width, 2, self.UNITY_TAB_LINE)
-        # Texto
-        rl.draw_text("Hierarchy", int(x + 10), int(y + 6), 10, self.UNITY_TEXT)
-        
-        # Botón + (crear objeto)
-        plus_rect = rl.Rectangle(x + width - 22, y + 2, 18, 18)
-        self._register_cursor_rect(plus_rect)
-        is_hover_plus = rl.check_collision_point_rec(rl.get_mouse_position(), plus_rect)
-        plus_color = self.UNITY_HOVER if is_hover_plus else self.UNITY_HEADER
-        rl.draw_rectangle_rec(plus_rect, plus_color)
-        rl.draw_text("+", int(x + width - 17), int(y + 4), 14, self.UNITY_TEXT)
-        
-        if is_hover_plus and not self._input_blocked and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-            new_name = f"New Entity {world.entity_count()}"
-            if self._scene_manager is not None and self._scene_manager.create_entity(new_name):
-                self._scene_manager.set_selected_entity(new_name)
-            else:
-                new_entity = world.create_entity(new_name)
-                new_entity.add_component(Transform())
-                world.selected_entity_name = new_entity.name
-        
-        # Línea separadora
-        rl.draw_line(x, int(y + self.HEADER_HEIGHT), x + width, int(y + self.HEADER_HEIGHT), self.UNITY_BORDER)
-        
-        # ========================================
-        # 2. Content Area
-        # ========================================
-        content_y_start = y + self.HEADER_HEIGHT + 5
-        content_y = content_y_start - self.scroll_offset
-        content_height = height - self.HEADER_HEIGHT
-        
-        # Fondo del contenido
-        rl.draw_rectangle(x, int(y + self.HEADER_HEIGHT), width, int(content_height), self.UNITY_BG)
-        
-        # Obtener entidades raíz
-        roots = self._get_root_entities(world)
-        
-        # Reset drop target each frame
-        self._drop_target_name = None
-        self._drop_as_root = False
+        with editor_scissor(rl.Rectangle(x, y, width, height)):
+            # ========================================
+            # 1. Header Tab
+            # ========================================
+            header_rect = rl.Rectangle(x, y, width, self.HEADER_HEIGHT)
+            rl.draw_rectangle_rec(header_rect, self.UNITY_HEADER)
+            
+            # Tab "Hierarchy" con línea azul
+            tab_width = 70
+            tab_rect = rl.Rectangle(x + 2, y + 2, tab_width, self.HEADER_HEIGHT - 4)
+            rl.draw_rectangle_rec(tab_rect, self.UNITY_BG)
+            # Línea azul inferior
+            rl.draw_rectangle(int(x + 2), int(y + self.HEADER_HEIGHT - 2), tab_width, 2, self.UNITY_TAB_LINE)
+            # Texto
+            rl.draw_text("Hierarchy", int(x + 10), int(y + 6), 10, self.UNITY_TEXT)
+            
+            # Botón + (crear objeto)
+            plus_rect = rl.Rectangle(x + width - 22, y + 2, 18, 18)
+            self._register_cursor_rect(plus_rect)
+            is_hover_plus = rl.check_collision_point_rec(rl.get_mouse_position(), plus_rect)
+            plus_color = self.UNITY_HOVER if is_hover_plus else self.UNITY_HEADER
+            rl.draw_rectangle_rec(plus_rect, plus_color)
+            rl.draw_text("+", int(x + width - 17), int(y + 4), 14, self.UNITY_TEXT)
+            
+            if is_hover_plus and not self._input_blocked and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                new_name = f"New Entity {world.entity_count()}"
+                if self._scene_manager is not None and self._scene_manager.create_entity(new_name):
+                    self._scene_manager.set_selected_entity(new_name)
+                else:
+                    new_entity = world.create_entity(new_name)
+                    new_entity.add_component(Transform())
+                    world.selected_entity_name = new_entity.name
+            
+            # Línea separadora
+            rl.draw_line(x, int(y + self.HEADER_HEIGHT), x + width, int(y + self.HEADER_HEIGHT), self.UNITY_BORDER)
+            
+            # ========================================
+            # 2. Content Area
+            # ========================================
+            content_y_start = y + self.HEADER_HEIGHT + 5
+            content_y = content_y_start - self.scroll_offset
+            content_height = height - self.HEADER_HEIGHT
+            
+            # Fondo del contenido
+            rl.draw_rectangle(x, int(y + self.HEADER_HEIGHT), width, int(content_height), self.UNITY_BG)
+            
+            # Obtener entidades raíz
+            roots = self._get_root_entities(world)
+            
+            # Reset drop target each frame
+            self._drop_target_name = None
+            self._drop_as_root = False
 
-        # Renderizar árbol
-        for entity in roots:
-            content_y = self._render_node(entity, 0, x, content_y, world, content_y_start, content_height)
+            # Renderizar árbol
+            for entity in roots:
+                content_y = self._render_node(entity, 0, x, content_y, world, content_y_start, content_height)
 
-        # Drag-and-drop reparenting logic
-        mouse_pos = rl.get_mouse_position()
-        if self._drag_entity_id is not None and not self._is_dragging_entity:
-            if rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT) and abs(mouse_pos.y - self._drag_start_y) > self._DRAG_THRESHOLD:
-                self._is_dragging_entity = True
+            # Drag-and-drop reparenting logic
+            mouse_pos = rl.get_mouse_position()
+            if self._drag_entity_id is not None and not self._is_dragging_entity:
+                if rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT) and abs(mouse_pos.y - self._drag_start_y) > self._DRAG_THRESHOLD:
+                    self._is_dragging_entity = True
 
-        if self._is_dragging_entity:
-            # If not hovering over any entity, drop as root (unparent)
-            in_content = (x <= mouse_pos.x <= x + width and
-                          content_y_start <= mouse_pos.y <= y + height)
-            if in_content and self._drop_target_name is None:
-                self._drop_as_root = True
-                rl.draw_line(x + 4, int(mouse_pos.y), x + width - 4, int(mouse_pos.y), rl.Color(58, 121, 187, 200))
+            if self._is_dragging_entity:
+                # If not hovering over any entity, drop as root (unparent)
+                in_content = (x <= mouse_pos.x <= x + width and
+                              content_y_start <= mouse_pos.y <= y + height)
+                if in_content and self._drop_target_name is None:
+                    self._drop_as_root = True
+                    rl.draw_line(x + 4, int(mouse_pos.y), x + width - 4, int(mouse_pos.y), rl.Color(58, 121, 187, 200))
 
-            # Draw drag label near cursor
-            drag_entity = world.get_entity(self._drag_entity_id) if self._drag_entity_id is not None else None
-            if drag_entity is not None:
-                label = drag_entity.name
-                rl.draw_rectangle(int(mouse_pos.x + 12), int(mouse_pos.y - 8), len(label) * 7 + 8, 18, rl.Color(50, 50, 50, 200))
-                rl.draw_text(label, int(mouse_pos.x + 16), int(mouse_pos.y - 5), 10, self.UNITY_TEXT)
+                # Draw drag label near cursor
+                drag_entity = world.get_entity(self._drag_entity_id) if self._drag_entity_id is not None else None
+                if drag_entity is not None:
+                    label = drag_entity.name
+                    rl.draw_rectangle(int(mouse_pos.x + 12), int(mouse_pos.y - 8), len(label) * 7 + 8, 18, rl.Color(50, 50, 50, 200))
+                    rl.draw_text(label, int(mouse_pos.x + 16), int(mouse_pos.y - 5), 10, self.UNITY_TEXT)
 
-            if rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
-                self._complete_hierarchy_drag(world)
+                if rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
+                    self._complete_hierarchy_drag(world)
 
-        if not rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT):
-            self._drag_entity_id = None
-            self._is_dragging_entity = False
-
-        rl.end_scissor_mode()
+            if not rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT):
+                self._drag_entity_id = None
+                self._is_dragging_entity = False
 
         # Context Menu Logic (After scissor to draw on top)
         self._handle_context_input(world, x, y, width, height)

@@ -211,6 +211,10 @@ class EditorInteractionController:
 
         if layout is not None and layout.active_bottom_tab == "PROJECT" and layout.project_panel is not None:
             state = max(state, layout.project_panel.get_cursor_intent(mouse))
+        if layout is not None and layout.active_bottom_tab == "FLOW" and getattr(layout, "flow_panel", None) is not None:
+            state = max(state, layout.flow_panel.get_cursor_intent(mouse))
+        if layout is not None and layout.active_tab == "FLOW" and getattr(layout, "flow_workspace_panel", None) is not None:
+            state = max(state, layout.flow_workspace_panel.get_cursor_intent(mouse))
 
         inspector_system = self._get_inspector_system()
         if inspector_system is not None:

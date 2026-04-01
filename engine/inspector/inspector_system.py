@@ -11,12 +11,22 @@ import time
 import pyray as rl
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+from engine.components.collider import Collider
 from engine.ecs.component import Component
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.editor.cursor_manager import CursorVisualState
 from engine.inspector.component_editor_registry import ComponentEditorRegistry
 from engine.levels.component_registry import create_default_registry
+from engine.components.playercontroller2d import PlayerController2D
+from engine.components.scene_link import SceneLink
+from engine.components.scene_transition_action import SceneTransitionAction
+from engine.components.scene_transition_on_contact import SceneTransitionOnContact
+from engine.components.scene_transition_on_interact import SceneTransitionOnInteract
+from engine.components.scene_transition_on_player_death import SceneTransitionOnPlayerDeath
+from engine.components.uibutton import UIButton
+from engine.editor.render_safety import editor_scissor
+from engine.scenes.scene_transition_support import list_scene_entry_points, validate_scene_transition_references
 
 
 PayloadUpdater = Callable[[Dict[str, Any]], None]
@@ -25,6 +35,27 @@ CommitCallback = Callable[[Any], bool]
 
 class InspectorSystem:
     """Unity-like inspector with dedicated editors for built-in components."""
+
+    SCENE_TRANSITION_TRIGGER_OPTIONS: list[tuple[str, str]] = [
+        ("none", "None"),
+        ("ui_button", "UI Button"),
+        ("interact_near", "Interact Near"),
+        ("trigger_enter", "Trigger Enter"),
+        ("collision", "Collision"),
+        ("player_death", "Player Death"),
+    ]
+    SCENE_TRANSITION_HIDDEN_COMPONENTS: Set[str] = {
+        "SceneTransitionAction",
+        "SceneTransitionOnContact",
+        "SceneTransitionOnInteract",
+        "SceneTransitionOnPlayerDeath",
+    }
+    SCENE_TRANSITION_ADD_MENU_HIDDEN_COMPONENTS: Set[str] = {
+        "SceneTransitionAction",
+        "SceneTransitionOnContact",
+        "SceneTransitionOnInteract",
+        "SceneTransitionOnPlayerDeath",
+    }
 
     BG_COLOR = rl.Color(30, 30, 30, 255)
     HEADER_COLOR = rl.Color(50, 50, 50, 255)
@@ -57,6 +88,9 @@ class InspectorSystem:
         self._scene_path_cache: List[str] = []
         self._scene_path_cache_root: str = ""
         self._scene_path_cache_time: float = 0.0
+        self._scene_entry_point_cache: List[Dict[str, str]] = []
+        self._scene_entry_point_cache_key: tuple[str, str] = ("", "")
+        self._scene_entry_point_cache_time: float = 0.0
         self._cursor_interactive_rects: List[rl.Rectangle] = []
         self._cursor_text_rects: List[rl.Rectangle] = []
         self._register_default_component_editors()
@@ -127,6 +161,7 @@ class InspectorSystem:
         self.component_editors.register("InputMap", self._draw_input_map_editor)
         self.component_editors.register("PlayerController2D", self._draw_player_controller_editor)
         self.component_editors.register("ScriptBehaviour", self._draw_script_behaviour_editor)
+        self.component_editors.register("SceneEntryPoint", self._draw_scene_entry_point_editor)
         self.component_editors.register("SceneLink", self._draw_scene_link_editor)
         self.component_editors.register("Canvas", self._draw_canvas_editor)
         self.component_editors.register("RectTransform", self._draw_rect_transform_editor)
@@ -179,61 +214,61 @@ class InspectorSystem:
         unity_border = rl.Color(25, 25, 25, 255)
         header_height = 22
 
-        rl.begin_scissor_mode(panel_x, panel_y, panel_w, panel_h)
-        rl.draw_rectangle(panel_x, panel_y, panel_w, panel_h, self.BG_COLOR)
+        with editor_scissor(rl.Rectangle(panel_x, panel_y, panel_w, panel_h)):
+            rl.draw_rectangle(panel_x, panel_y, panel_w, panel_h, self.BG_COLOR)
 
-        header_rect = rl.Rectangle(panel_x, panel_y, panel_w, header_height)
-        rl.draw_rectangle_rec(header_rect, unity_header)
+            header_rect = rl.Rectangle(panel_x, panel_y, panel_w, header_height)
+            rl.draw_rectangle_rec(header_rect, unity_header)
 
-        tab_width = 65
-        tab_rect = rl.Rectangle(panel_x + 2, panel_y + 2, tab_width, header_height - 4)
-        rl.draw_rectangle_rec(tab_rect, unity_tab_bg)
-        rl.draw_rectangle(int(panel_x + 2), int(panel_y + header_height - 2), tab_width, 2, unity_tab_line)
-        rl.draw_text("Inspector", int(panel_x + 10), int(panel_y + 6), 10, unity_text)
-        rl.draw_line(panel_x, int(panel_y + header_height), panel_x + panel_w, int(panel_y + header_height), unity_border)
+            tab_width = 65
+            tab_rect = rl.Rectangle(panel_x + 2, panel_y + 2, tab_width, header_height - 4)
+            rl.draw_rectangle_rec(tab_rect, unity_tab_bg)
+            rl.draw_rectangle(int(panel_x + 2), int(panel_y + header_height - 2), tab_width, 2, unity_tab_line)
+            rl.draw_text("Inspector", int(panel_x + 10), int(panel_y + 6), 10, unity_text)
+            rl.draw_line(panel_x, int(panel_y + header_height), panel_x + panel_w, int(panel_y + header_height), unity_border)
 
-        content_y = panel_y + header_height + 5
-        selected_name = world.selected_entity_name
-        if not selected_name:
-            rl.draw_text("No selection", int(panel_x + 10), int(content_y + 10), 10, rl.Color(128, 128, 128, 255))
-            rl.end_scissor_mode()
-            return
+            content_y = panel_y + header_height + 5
+            selected_name = world.selected_entity_name
+            if not selected_name:
+                rl.draw_text("No selection", int(panel_x + 10), int(content_y + 10), 10, rl.Color(128, 128, 128, 255))
+                return
 
-        entity = world.get_entity_by_name(selected_name)
-        if entity is None:
-            rl.end_scissor_mode()
-            return
+            entity = world.get_entity_by_name(selected_name)
+            if entity is None:
+                return
 
-        active_rect = rl.Rectangle(panel_x + 10, content_y, 14, 14)
-        self._register_cursor_rect(active_rect)
-        rl.draw_rectangle_rec(active_rect, rl.Color(42, 42, 42, 255))
-        rl.draw_rectangle_lines_ex(active_rect, 1, rl.Color(80, 80, 80, 255))
-        if entity.active:
-            rl.draw_rectangle(int(panel_x + 13), int(content_y + 3), 8, 8, rl.Color(70, 130, 200, 255))
+            active_rect = rl.Rectangle(panel_x + 10, content_y, 14, 14)
+            self._register_cursor_rect(active_rect)
+            rl.draw_rectangle_rec(active_rect, rl.Color(42, 42, 42, 255))
+            rl.draw_rectangle_lines_ex(active_rect, 1, rl.Color(80, 80, 80, 255))
+            if entity.active:
+                rl.draw_rectangle(int(panel_x + 13), int(content_y + 3), 8, 8, rl.Color(70, 130, 200, 255))
 
-        rl.draw_text(entity.name, int(panel_x + 32), int(content_y + 2), 12, rl.Color(230, 230, 230, 255))
-        if rl.check_collision_point_rec(rl.get_mouse_position(), active_rect) and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-            self._apply_property_change(world, f"entity:{entity.id}:active", not entity.active)
+            rl.draw_text(entity.name, int(panel_x + 32), int(content_y + 2), 12, rl.Color(230, 230, 230, 255))
+            if rl.check_collision_point_rec(rl.get_mouse_position(), active_rect) and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                self._apply_property_change(world, f"entity:{entity.id}:active", not entity.active)
 
-        content_y += 22
-        rl.draw_line(panel_x, int(content_y), panel_x + panel_w, int(content_y), unity_border)
-        content_y += 5
-
-        content_y = self._draw_entity_property("Active", entity.active, f"entity:{entity.id}:active", panel_x, content_y, panel_w, is_edit_mode, world)
-        content_y = self._draw_entity_property("Tag", entity.tag, f"entity:{entity.id}:tag", panel_x, content_y, panel_w, is_edit_mode, world)
-        content_y = self._draw_entity_property("Layer", entity.layer, f"entity:{entity.id}:layer", panel_x, content_y, panel_w, is_edit_mode, world)
-        content_y += 4
-
-        for component in entity.get_all_components():
-            content_y = self._draw_component(component, entity.id, panel_x, content_y, panel_w, is_edit_mode, world)
+            content_y += 22
+            rl.draw_line(panel_x, int(content_y), panel_x + panel_w, int(content_y), unity_border)
             content_y += 5
 
-        add_btn_rect = rl.Rectangle(panel_x + 10, content_y + 10, panel_w - 20, 24)
-        self._register_cursor_rect(add_btn_rect)
-        if rl.gui_button(add_btn_rect, "Add Component"):
-            self.show_add_menu = not self.show_add_menu
+            content_y = self._draw_entity_property("Active", entity.active, f"entity:{entity.id}:active", panel_x, content_y, panel_w, is_edit_mode, world)
+            content_y = self._draw_entity_property("Tag", entity.tag, f"entity:{entity.id}:tag", panel_x, content_y, panel_w, is_edit_mode, world)
+            content_y = self._draw_entity_property("Layer", entity.layer, f"entity:{entity.id}:layer", panel_x, content_y, panel_w, is_edit_mode, world)
+            content_y += 4
+            content_y = self._draw_scene_transition_block(entity, panel_x, content_y, panel_w, is_edit_mode, world)
+            content_y += 4
 
-        rl.end_scissor_mode()
+            for component in entity.get_all_components():
+                if type(component).__name__ in self.SCENE_TRANSITION_HIDDEN_COMPONENTS:
+                    continue
+                content_y = self._draw_component(component, entity.id, panel_x, content_y, panel_w, is_edit_mode, world)
+                content_y += 5
+
+            add_btn_rect = rl.Rectangle(panel_x + 10, content_y + 10, panel_w - 20, 24)
+            self._register_cursor_rect(add_btn_rect)
+            if rl.gui_button(add_btn_rect, "Add Component"):
+                self.show_add_menu = not self.show_add_menu
 
         if self.show_add_menu:
             self._draw_add_menu(world, entity, int(panel_x + 10), int(content_y + 35))
@@ -494,6 +529,8 @@ class InspectorSystem:
     def _draw_add_menu(self, world: "World", entity: Entity, x: int, y: int) -> None:
         available = []
         for descriptor in self.registry.list_descriptors():
+            if descriptor.name in self.SCENE_TRANSITION_ADD_MENU_HIDDEN_COMPONENTS:
+                continue
             if not entity.has_component(descriptor.component_class):
                 available.append(descriptor)
 
@@ -784,6 +821,116 @@ class InspectorSystem:
         rl.draw_text(title, int(x + 10), int(y + 4), 10, rl.Color(200, 200, 200, 255))
         return y + self.LINE_HEIGHT
 
+    def _draw_section_title_with_tint(self, title: str, x: int, y: int, width: int, color: rl.Color) -> int:
+        rect = rl.Rectangle(x + 4, y, width - 8, self.LINE_HEIGHT)
+        rl.draw_rectangle_rec(rect, color)
+        rl.draw_text(title, int(x + 10), int(y + 4), 10, rl.Color(230, 230, 230, 255))
+        return y + self.LINE_HEIGHT
+
+    def _draw_message_row(self, severity: str, message: str, x: int, y: int, width: int) -> int:
+        level = str(severity or "").strip().lower()
+        color = rl.Color(140, 120, 40, 255)
+        prefix = "Warning"
+        if level == "error":
+            color = rl.Color(128, 56, 56, 255)
+            prefix = "Error"
+        rect = rl.Rectangle(x + 5, y + 1, width - 10, self.LINE_HEIGHT - 2)
+        rl.draw_rectangle_rec(rect, color)
+        rl.draw_text(f"{prefix}: {message}", int(rect.x + 6), int(rect.y + 4), 10, rl.Color(240, 240, 240, 255))
+        return y + self.LINE_HEIGHT
+
+    def _draw_choice_row(
+        self,
+        label: str,
+        options: List[tuple[str, str]],
+        current_key: str,
+        x: int,
+        y: int,
+        width: int,
+        is_edit: bool,
+        on_select: Optional[Callable[[str], bool]] = None,
+    ) -> int:
+        field_x, field_w, row_height = self._label_and_field_rect(label, x, y, width)
+        option_keys = [key for key, _ in options]
+        current_index = option_keys.index(current_key) if current_key in option_keys else 0
+        left_rect = rl.Rectangle(field_x, y + 1, 22, row_height - 2)
+        value_rect = rl.Rectangle(field_x + 24, y + 1, field_w - 48, row_height - 2)
+        right_rect = rl.Rectangle(field_x + field_w - 22, y + 1, 22, row_height - 2)
+        current_label = options[current_index][1] if options else ""
+        rl.draw_rectangle_rec(value_rect, rl.Color(42, 42, 42, 255))
+        rl.draw_text(current_label, int(value_rect.x + 5), int(value_rect.y + 4), 10, rl.Color(200, 200, 200, 255))
+        self._register_cursor_rect(left_rect)
+        self._register_cursor_rect(value_rect)
+        self._register_cursor_rect(right_rect)
+        if not is_edit or not options:
+            rl.draw_rectangle_lines_ex(value_rect, 1, rl.Color(80, 80, 80, 255))
+            return y + row_height
+
+        if rl.gui_button(left_rect, "<") and current_index > 0 and on_select is not None:
+            on_select(options[current_index - 1][0])
+        if rl.gui_button(right_rect, ">") and current_index < len(options) - 1 and on_select is not None:
+            on_select(options[current_index + 1][0])
+        return y + row_height
+
+    def _draw_scene_transition_block(
+        self,
+        entity: Entity,
+        x: int,
+        y: int,
+        width: int,
+        is_edit: bool,
+        world: "World",
+    ) -> int:
+        validation = self._get_scene_transition_validation_messages(world, entity.name)
+        has_errors = any(level == "error" for level, _ in validation)
+        header_color = rl.Color(68, 56, 56, 255) if has_errors else rl.Color(44, 44, 44, 255)
+        current_y = self._draw_section_title_with_tint("Scene Transition", x, y, width, header_color)
+        trigger_options = self._get_scene_transition_trigger_options(entity)
+        current_trigger = self._detect_scene_transition_preset(entity)
+        current_y = self._draw_choice_row(
+            "Trigger",
+            trigger_options,
+            current_trigger,
+            x,
+            current_y,
+            width,
+            is_edit,
+            on_select=lambda value: self._set_scene_transition_preset(world, entity.name, value),
+        )
+
+        current_action = self._get_scene_transition_action_payload(world, entity.name)
+        current_target_scene = str(current_action.get("target_scene_path", "") or "") if current_action is not None else ""
+        scene_options = self._get_scene_transition_scene_options(current_target_scene)
+        selected_scene_key = current_target_scene if any(key == current_target_scene for key, _ in scene_options) else scene_options[0][0]
+        current_y = self._draw_choice_row(
+            "Target Scene",
+            scene_options,
+            selected_scene_key,
+            x,
+            current_y,
+            width,
+            is_edit,
+            on_select=lambda value: self._set_scene_transition_target_scene(world, entity.name, value),
+        )
+
+        current_target_entry = str(current_action.get("target_entry_id", "") or "") if current_action is not None else ""
+        spawn_options = self._get_scene_transition_spawn_options(world, entity.name)
+        selected_spawn_key = current_target_entry if any(key == current_target_entry for key, _ in spawn_options) else spawn_options[0][0]
+        current_y = self._draw_choice_row(
+            "Target Spawn",
+            spawn_options,
+            selected_spawn_key,
+            x,
+            current_y,
+            width,
+            is_edit,
+            on_select=lambda value: self._set_scene_transition_target_spawn(world, entity.name, value),
+        )
+
+        for severity, message in validation:
+            current_y = self._draw_message_row(severity, message, x, current_y, width)
+        return current_y
+
     def _draw_component_field(
         self,
         label: str,
@@ -799,6 +946,505 @@ class InspectorSystem:
     ) -> int:
         prop_id = f"{entity_id}:{component_name}:{property_name}"
         return self._draw_property(label, value, prop_id, x, y, width, is_edit, world)
+
+    def _get_scene_transition_trigger_options(self, entity: Entity) -> List[tuple[str, str]]:
+        options: List[tuple[str, str]] = [("none", "None")]
+        current = self._detect_scene_transition_preset(entity)
+        if entity.get_component(UIButton) is not None or current == "ui_button":
+            options.append(("ui_button", "UI Button"))
+        options.extend(
+            [
+                ("interact_near", "Interact Near"),
+                ("trigger_enter", "Trigger Enter"),
+                ("collision", "Collision"),
+                ("player_death", "Player Death"),
+            ]
+        )
+        return options
+
+    def _detect_scene_transition_preset(self, entity: Entity) -> str:
+        button = entity.get_component(UIButton)
+        if button is not None:
+            action = dict(button.on_click or {})
+            if str(action.get("type", "") or "").strip() == "run_scene_transition":
+                return "ui_button"
+
+        interact = entity.get_component(SceneTransitionOnInteract)
+        if interact is not None and getattr(interact, "enabled", True):
+            return "interact_near"
+
+        contact = entity.get_component(SceneTransitionOnContact)
+        if contact is not None and getattr(contact, "enabled", True):
+            mode = str(getattr(contact, "mode", "") or "").strip()
+            if mode == "collision":
+                return "collision"
+            return "trigger_enter"
+
+        death = entity.get_component(SceneTransitionOnPlayerDeath)
+        if death is not None and getattr(death, "enabled", True):
+            return "player_death"
+        return "none"
+
+    def _set_scene_transition_preset(self, world: "World", entity_name: str, preset: str) -> bool:
+        entity = world.get_entity_by_name(entity_name)
+        if entity is None:
+            return False
+        normalized = str(preset or "none").strip() or "none"
+        self._remove_scene_transition_trigger_components(world, entity_name)
+
+        if normalized == "none":
+            self._reset_ui_button_scene_transition(world, entity_name)
+            return True
+
+        if not self._ensure_scene_transition_action(world, entity_name):
+            return False
+
+        if normalized == "ui_button":
+            if entity.get_component(UIButton) is None:
+                return False
+            return self._set_ui_button_scene_transition(world, entity_name)
+
+        self._reset_ui_button_scene_transition(world, entity_name)
+        if normalized == "interact_near":
+            return self._upsert_component_payload(
+                world,
+                entity_name,
+                "SceneTransitionOnInteract",
+                {"enabled": True, "require_player": True},
+            )
+        if normalized == "trigger_enter":
+            return self._upsert_component_payload(
+                world,
+                entity_name,
+                "SceneTransitionOnContact",
+                {"enabled": True, "mode": "trigger_enter", "require_player": True},
+            )
+        if normalized == "collision":
+            return self._upsert_component_payload(
+                world,
+                entity_name,
+                "SceneTransitionOnContact",
+                {"enabled": True, "mode": "collision", "require_player": True},
+            )
+        if normalized == "player_death":
+            return self._upsert_component_payload(
+                world,
+                entity_name,
+                "SceneTransitionOnPlayerDeath",
+                {"enabled": True},
+            )
+        return False
+
+    def _set_scene_transition_target_scene(self, world: "World", entity_name: str, scene_path: str) -> bool:
+        normalized_path = str(scene_path or "").strip()
+        if not self._ensure_scene_transition_action(world, entity_name):
+            return False
+        current_entry_id = ""
+        current_action = self._get_scene_transition_action_payload(world, entity_name)
+        if current_action is not None:
+            current_entry_id = str(current_action.get("target_entry_id", "") or "").strip()
+        valid_entry_ids = {option["entry_id"] for option in self._list_scene_entry_points_for_target(normalized_path)}
+        next_entry_id = current_entry_id if current_entry_id in valid_entry_ids else ""
+        return self.update_component_payload(
+            world,
+            entity_name,
+            "SceneTransitionAction",
+            lambda payload, normalized_path=normalized_path, next_entry_id=next_entry_id: payload.update(
+                {
+                    "target_scene_path": normalized_path,
+                    "target_entry_id": next_entry_id,
+                }
+            ),
+        )
+
+    def _set_scene_transition_target_spawn(self, world: "World", entity_name: str, entry_id: str) -> bool:
+        normalized_entry_id = str(entry_id or "").strip()
+        if not self._ensure_scene_transition_action(world, entity_name):
+            return False
+        return self.update_component_payload(
+            world,
+            entity_name,
+            "SceneTransitionAction",
+            lambda payload, normalized_entry_id=normalized_entry_id: payload.update({"target_entry_id": normalized_entry_id}),
+        )
+
+    def _get_scene_transition_action_payload(self, world: "World", entity_name: str) -> Optional[Dict[str, Any]]:
+        return self._current_component_payload(world, entity_name, "SceneTransitionAction")
+
+    def _get_scene_transition_scene_options(self, current_target_scene: str = "") -> List[tuple[str, str]]:
+        options: List[tuple[str, str]] = [("", "Select scene")]
+        for scene_path in self._list_available_scene_paths():
+            options.append((scene_path, scene_path))
+        normalized_current = str(current_target_scene or "").strip()
+        if normalized_current and all(key != normalized_current for key, _ in options):
+            options.append((normalized_current, f"Invalid: {normalized_current}"))
+        return options
+
+    def _get_scene_transition_spawn_options(self, world: "World", entity_name: str) -> List[tuple[str, str]]:
+        action = self._get_scene_transition_action_payload(world, entity_name)
+        target_scene_path = str(action.get("target_scene_path", "") or "").strip() if action is not None else ""
+        options: List[tuple[str, str]] = [("", "No spawn")]
+        for item in self._list_scene_entry_points_for_target(target_scene_path):
+            label = item["label"] or item["entry_id"]
+            options.append((item["entry_id"], f"{label} ({item['entity_name']})"))
+        current_entry = str(action.get("target_entry_id", "") or "").strip() if action is not None else ""
+        if current_entry and all(key != current_entry for key, _ in options):
+            options.append((current_entry, f"Invalid: {current_entry}"))
+        return options
+
+    def _list_scene_entry_points_for_target(self, target_scene_path: str) -> List[Dict[str, str]]:
+        normalized_target = str(target_scene_path or "").strip()
+        if not normalized_target:
+            return []
+        source_path = self._current_scene_source_path()
+        cache_key = (str(source_path or ""), normalized_target)
+        now = time.monotonic()
+        if self._scene_entry_point_cache_key == cache_key and (now - self._scene_entry_point_cache_time) < 1.0:
+            return copy.deepcopy(self._scene_entry_point_cache)
+        results = list_scene_entry_points(source_path, normalized_target)
+        self._scene_entry_point_cache = copy.deepcopy(results)
+        self._scene_entry_point_cache_key = cache_key
+        self._scene_entry_point_cache_time = now
+        return copy.deepcopy(results)
+
+    def _get_scene_transition_validation_messages(self, world: "World", entity_name: str) -> List[tuple[str, str]]:
+        entity = world.get_entity_by_name(entity_name)
+        if entity is None:
+            return []
+        preset = self._detect_scene_transition_preset(entity)
+        action = self._get_scene_transition_action_payload(world, entity_name)
+        target_scene_path = str(action.get("target_scene_path", "") or "").strip() if action is not None else ""
+        messages: List[tuple[str, str]] = []
+
+        collider = entity.get_component(Collider)
+        if preset == "ui_button" and entity.get_component(UIButton) is None:
+            messages.append(("warning", "UI Button trigger requires a UIButton component"))
+        if preset == "interact_near":
+            if collider is None:
+                messages.append(("warning", "Interact Near requires a Collider component"))
+            elif not collider.is_trigger:
+                messages.append(("warning", "Interact Near requires Collider.is_trigger = true"))
+        if preset == "trigger_enter":
+            if collider is None:
+                messages.append(("warning", "Trigger Enter requires a Collider component"))
+            elif not collider.is_trigger:
+                messages.append(("warning", "Trigger Enter requires Collider.is_trigger = true"))
+        if preset == "collision" and collider is None:
+            messages.append(("warning", "Collision requires a Collider component"))
+        if preset == "player_death" and not self._is_player_like_entity(entity):
+            messages.append(("warning", "Player Death is usually expected on a player-like entity"))
+        if preset != "none" and not target_scene_path:
+            messages.append(("error", "Target scene is required"))
+
+        if preset != "none" and self._scene_manager is not None and self._scene_manager.current_scene is not None:
+            scene_payload = self._scene_manager.current_scene.to_dict()
+            scene_errors = validate_scene_transition_references(
+                scene_payload,
+                scene_path=self._current_scene_source_path(),
+            )
+            entity_index = self._scene_entity_index(entity_name)
+            for error in scene_errors:
+                if entity_index is not None and f"$.entities[{entity_index}]" not in error:
+                    continue
+                messages.append(("error", error.split(": ", 1)[-1]))
+
+        deduped: List[tuple[str, str]] = []
+        seen: Set[tuple[str, str]] = set()
+        for item in messages:
+            if item in seen:
+                continue
+            seen.add(item)
+            deduped.append(item)
+        return deduped
+
+    def _scene_entity_index(self, entity_name: str) -> Optional[int]:
+        if self._scene_manager is None or self._scene_manager.current_scene is None:
+            return None
+        entities = self._scene_manager.current_scene.to_dict().get("entities", [])
+        if not isinstance(entities, list):
+            return None
+        for index, entity in enumerate(entities):
+            if isinstance(entity, dict) and str(entity.get("name", "") or "") == entity_name:
+                return index
+        return None
+
+    def _current_scene_source_path(self) -> Optional[str]:
+        if self._scene_manager is None or self._scene_manager.current_scene is None:
+            return None
+        source_path = getattr(self._scene_manager.current_scene, "source_path", None)
+        return str(source_path) if source_path else None
+
+    def _default_scene_transition_target_path(self) -> str:
+        source_path = self._current_scene_source_path()
+        if source_path:
+            try:
+                source = Path(source_path).resolve()
+                project_root = source.parent.parent
+                return source.relative_to(project_root).as_posix()
+            except (ValueError, OSError):
+                pass
+        available_scenes = self._list_available_scene_paths()
+        return available_scenes[0] if available_scenes else ""
+
+    def _is_player_like_entity(self, entity: Entity) -> bool:
+        if entity.get_component(PlayerController2D) is not None:
+            return True
+        return str(entity.tag or "").strip().lower() in {"player", "hero"}
+
+    def _ensure_scene_transition_action(self, world: "World", entity_name: str) -> bool:
+        if self._current_component_payload(world, entity_name, "SceneTransitionAction") is not None:
+            return True
+        return self._upsert_component_payload(
+            world,
+            entity_name,
+            "SceneTransitionAction",
+            {
+                "enabled": True,
+                "target_scene_path": self._default_scene_transition_target_path(),
+                "target_entry_id": "",
+            },
+        )
+
+    def _set_ui_button_scene_transition(self, world: "World", entity_name: str) -> bool:
+        action_payload = self._current_component_payload(world, entity_name, "UIButton")
+        if action_payload is None:
+            return False
+        action_payload["on_click"] = {"type": "run_scene_transition"}
+        return self.replace_component_payload(world, entity_name, "UIButton", action_payload)
+
+    def _reset_ui_button_scene_transition(self, world: "World", entity_name: str) -> bool:
+        action_payload = self._current_component_payload(world, entity_name, "UIButton")
+        if action_payload is None:
+            return False
+        on_click = dict(action_payload.get("on_click", {}) or {})
+        if str(on_click.get("type", "") or "").strip() != "run_scene_transition":
+            return False
+        action_payload["on_click"] = {"type": "emit_event", "name": "ui.button_clicked"}
+        return self.replace_component_payload(world, entity_name, "UIButton", action_payload)
+
+    def _remove_scene_transition_trigger_components(self, world: "World", entity_name: str) -> None:
+        for component_name in ("SceneTransitionOnContact", "SceneTransitionOnInteract", "SceneTransitionOnPlayerDeath"):
+            self._remove_component_if_present(world, entity_name, component_name)
+
+    def _remove_component_if_present(self, world: "World", entity_name: str, component_name: str) -> bool:
+        payload = self._current_component_payload(world, entity_name, component_name)
+        if payload is None:
+            return False
+        if self._scene_manager is not None:
+            return self._scene_manager.remove_component_from_entity(entity_name, component_name)
+        entity = world.get_entity_by_name(entity_name)
+        if entity is None:
+            return False
+        component = self._find_component(entity, component_name)
+        if component is None:
+            return False
+        entity.remove_component(type(component))
+        return True
+
+    def _get_scene_link_payload(self, world: "World", entity_name: str) -> Optional[Dict[str, Any]]:
+        return self._current_component_payload(world, entity_name, "SceneLink")
+
+    def _ensure_scene_link(self, world: "World", entity_name: str) -> bool:
+        if self._get_scene_link_payload(world, entity_name) is not None:
+            return True
+        return self._upsert_component_payload(
+            world,
+            entity_name,
+            "SceneLink",
+            {
+                "enabled": True,
+                "target_path": "",
+                "flow_key": "",
+                "preview_label": "",
+                "link_mode": "",
+                "target_entry_id": "",
+            },
+        )
+
+    def _get_scene_link_mode_options(self, world: "World", entity_name: str) -> List[tuple[str, str]]:
+        entity = world.get_entity_by_name(entity_name)
+        options: List[tuple[str, str]] = [("", "Select trigger")]
+        if entity is None:
+            return options
+        if entity.get_component(UIButton) is not None:
+            options.append(("ui_button", "UI Button"))
+        if entity.get_component(Collider) is not None:
+            options.append(("trigger_enter", "Touch / Trigger"))
+            options.append(("collision", "Collision"))
+        return options
+
+    def _set_scene_link_mode(self, world: "World", entity_name: str, mode: str) -> bool:
+        normalized_mode = str(mode or "").strip()
+        if not self._ensure_scene_link(world, entity_name):
+            return False
+        updated = self.update_component_payload(
+            world,
+            entity_name,
+            "SceneLink",
+            lambda payload, normalized_mode=normalized_mode: payload.update({"link_mode": normalized_mode}),
+        )
+        if not updated:
+            return False
+        return self._sync_scene_link_runtime(world, entity_name)
+
+    def _set_scene_link_target_scene(self, world: "World", entity_name: str, scene_path: str) -> bool:
+        normalized_path = str(scene_path or "").strip()
+        if not self._ensure_scene_link(world, entity_name):
+            return False
+        current_link = self._get_scene_link_payload(world, entity_name) or {}
+        current_entry_id = str(current_link.get("target_entry_id", "") or "").strip()
+        valid_entry_ids = {item["entry_id"] for item in self._list_scene_entry_points_for_target(normalized_path)}
+        next_entry_id = current_entry_id if current_entry_id in valid_entry_ids else ""
+        updated = self.update_component_payload(
+            world,
+            entity_name,
+            "SceneLink",
+            lambda payload, normalized_path=normalized_path, next_entry_id=next_entry_id: payload.update(
+                {"target_path": normalized_path, "target_entry_id": next_entry_id}
+            ),
+        )
+        if not updated:
+            return False
+        return self._sync_scene_link_runtime(world, entity_name)
+
+    def _set_scene_link_target_spawn(self, world: "World", entity_name: str, entry_id: str) -> bool:
+        normalized_entry_id = str(entry_id or "").strip()
+        if not self._ensure_scene_link(world, entity_name):
+            return False
+        updated = self.update_component_payload(
+            world,
+            entity_name,
+            "SceneLink",
+            lambda payload, normalized_entry_id=normalized_entry_id: payload.update({"target_entry_id": normalized_entry_id}),
+        )
+        if not updated:
+            return False
+        return self._sync_scene_link_runtime(world, entity_name)
+
+    def _get_scene_link_spawn_options(self, world: "World", entity_name: str) -> List[tuple[str, str]]:
+        link = self._get_scene_link_payload(world, entity_name)
+        target_scene_path = str(link.get("target_path", "") or "").strip() if link is not None else ""
+        options: List[tuple[str, str]] = [("", "No spawn")]
+        for item in self._list_scene_entry_points_for_target(target_scene_path):
+            label = item["label"] or item["entry_id"]
+            options.append((item["entry_id"], f"{label} ({item['entity_name']})"))
+        current_entry = str(link.get("target_entry_id", "") or "").strip() if link is not None else ""
+        if current_entry and all(key != current_entry for key, _ in options):
+            options.append((current_entry, f"Invalid: {current_entry}"))
+        return options
+
+    def _get_scene_link_validation_messages(self, world: "World", entity_name: str) -> List[tuple[str, str]]:
+        entity = world.get_entity_by_name(entity_name)
+        if entity is None:
+            return []
+        link = self._get_scene_link_payload(world, entity_name)
+        if link is None:
+            return []
+        link_mode = str(link.get("link_mode", "") or "").strip()
+        target_path = str(link.get("target_path", "") or "").strip()
+        messages: List[tuple[str, str]] = []
+        collider = entity.get_component(Collider)
+        if link_mode == "ui_button" and entity.get_component(UIButton) is None:
+            messages.append(("warning", "UI Button mode requires a UIButton component"))
+        if link_mode == "trigger_enter":
+            if collider is None:
+                messages.append(("warning", "Touch / Trigger requires a Collider component"))
+            elif not collider.is_trigger:
+                messages.append(("warning", "Touch / Trigger requires Collider.is_trigger = true"))
+        if link_mode == "collision" and collider is None:
+            messages.append(("warning", "Collision requires a Collider component"))
+        if link_mode and not target_path:
+            messages.append(("error", "Target scene is required"))
+        for severity, message in self._get_scene_transition_validation_messages(world, entity_name):
+            if (severity, message) not in messages:
+                messages.append((severity, message))
+        return messages
+
+    def _sync_scene_link_runtime(self, world: "World", entity_name: str) -> bool:
+        entity = world.get_entity_by_name(entity_name)
+        link = self._get_scene_link_payload(world, entity_name)
+        if entity is None or link is None:
+            return False
+        link_mode = str(link.get("link_mode", "") or "").strip()
+        target_path = str(link.get("target_path", "") or "").strip()
+        target_entry_id = str(link.get("target_entry_id", "") or "").strip()
+
+        if not link_mode or not target_path:
+            self._remove_scene_transition_trigger_components(world, entity_name)
+            self._reset_ui_button_scene_transition(world, entity_name)
+            self._remove_component_if_present(world, entity_name, "SceneTransitionAction")
+            return True
+
+        if link_mode == "ui_button" and entity.get_component(UIButton) is None:
+            return False
+        if link_mode == "trigger_enter":
+            collider = entity.get_component(Collider)
+            if collider is None or not collider.is_trigger:
+                return False
+        if link_mode == "collision" and entity.get_component(Collider) is None:
+            return False
+
+        if not self._ensure_scene_transition_action(world, entity_name):
+            return False
+        updated = self.update_component_payload(
+            world,
+            entity_name,
+            "SceneTransitionAction",
+            lambda payload, target_path=target_path, target_entry_id=target_entry_id: payload.update(
+                {"target_scene_path": target_path, "target_entry_id": target_entry_id}
+            ),
+        )
+        if not updated:
+            return False
+
+        self._remove_scene_transition_trigger_components(world, entity_name)
+        if link_mode == "ui_button":
+            return self._set_ui_button_scene_transition(world, entity_name)
+
+        self._reset_ui_button_scene_transition(world, entity_name)
+        return self._upsert_component_payload(
+            world,
+            entity_name,
+            "SceneTransitionOnContact",
+            {
+                "enabled": True,
+                "mode": "collision" if link_mode == "collision" else "trigger_enter",
+                "require_player": True,
+            },
+        )
+
+    def _upsert_component_payload(
+        self,
+        world: "World",
+        entity_name: str,
+        component_name: str,
+        component_data: Dict[str, Any],
+    ) -> bool:
+        if self._scene_manager is not None and self._scene_manager.current_scene is not None:
+            entity_data = self._scene_manager.current_scene.find_entity(entity_name)
+            scene_payload = None
+            if entity_data is not None:
+                components = entity_data.get("components", {})
+                if isinstance(components, dict) and component_name in components:
+                    scene_payload = copy.deepcopy(components[component_name])
+            if scene_payload is None:
+                return self._scene_manager.add_component_to_entity(entity_name, component_name, component_data)
+            scene_payload.update(copy.deepcopy(component_data))
+            return self.replace_component_payload(world, entity_name, component_name, scene_payload)
+
+        payload = self._current_component_payload(world, entity_name, component_name)
+        if payload is None:
+            entity = world.get_entity_by_name(entity_name)
+            if entity is None:
+                return False
+            component = self.registry.create(component_name, component_data)
+            if component is None:
+                return False
+            entity.add_component(component)
+            return True
+        merged = copy.deepcopy(payload)
+        merged.update(copy.deepcopy(component_data))
+        return self.replace_component_payload(world, entity_name, component_name, merged)
 
     def _draw_nullable_float_row(
         self,
@@ -1136,34 +1782,70 @@ class InspectorSystem:
             current_y = self._draw_script_public_data_row(entity_id, entity_name, key, value, x, current_y, width, is_edit, world)
         return current_y
 
+    def _draw_scene_entry_point_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:
+        current_y = y
+        current_y = self._draw_component_field("Enabled", component.enabled, entity_id, "SceneEntryPoint", "enabled", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("Entry ID", component.entry_id, entity_id, "SceneEntryPoint", "entry_id", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("Label", component.label, entity_id, "SceneEntryPoint", "label", x, current_y, width, is_edit, world)
+        return current_y
+
     def _draw_scene_link_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:
         current_y = y
-        current_y = self._draw_component_field("Enabled", component.enabled, entity_id, "SceneLink", "enabled", x, current_y, width, is_edit, world)
-        current_y = self._draw_component_field("Target", component.target_path, entity_id, "SceneLink", "target_path", x, current_y, width, is_edit, world)
-        current_y = self._draw_component_field("Flow Key", component.flow_key, entity_id, "SceneLink", "flow_key", x, current_y, width, is_edit, world)
-        current_y = self._draw_component_field("Preview", component.preview_label, entity_id, "SceneLink", "preview_label", x, current_y, width, is_edit, world)
-
-        available_scenes = self._list_available_scene_paths()
-        current_y = self._draw_section_title("Available Scenes", x, current_y, width)
-        if not available_scenes:
-            return self._draw_readonly_row("Scenes", "No level files found", x, current_y, width)
-
         entity_name = self._entity_name_from_id(world, entity_id)
-        selected_target = str(component.target_path or "").strip()
-        for scene_path in available_scenes[:6]:
-            label = scene_path
-            button_rect = rl.Rectangle(x + self.LABEL_WIDTH + 5, current_y + 1, width - self.LABEL_WIDTH - 10, self.LINE_HEIGHT - 2)
-            is_selected = scene_path == selected_target
-            if is_selected:
-                rl.draw_rectangle_rec(button_rect, rl.Color(62, 96, 128, 255))
-            if rl.gui_button(button_rect, label) and entity_name is not None:
-                self.update_component_payload(
-                    world,
-                    entity_name,
-                    "SceneLink",
-                    lambda payload, scene_path=scene_path: payload.update({"target_path": scene_path}),
-                )
-            current_y += self.LINE_HEIGHT
+        current_y = self._draw_component_field("Enabled", component.enabled, entity_id, "SceneLink", "enabled", x, current_y, width, is_edit, world)
+        link_mode = str(getattr(component, "link_mode", "") or "").strip()
+        target_path = str(getattr(component, "target_path", "") or "").strip()
+        target_entry_id = str(getattr(component, "target_entry_id", "") or "").strip()
+        preview_label = str(getattr(component, "preview_label", "") or "").strip()
+        flow_key = str(getattr(component, "flow_key", "") or "").strip()
+
+        if entity_name is None:
+            return current_y
+
+        mode_options = self._get_scene_link_mode_options(world, entity_name)
+        selected_mode = link_mode if any(key == link_mode for key, _ in mode_options) else mode_options[0][0]
+        current_y = self._draw_choice_row(
+            "Trigger",
+            mode_options,
+            selected_mode,
+            x,
+            current_y,
+            width,
+            is_edit,
+            on_select=lambda value: self._set_scene_link_mode(world, entity_name, value),
+        )
+
+        scene_options = self._get_scene_transition_scene_options(target_path)
+        selected_scene = target_path if any(key == target_path for key, _ in scene_options) else scene_options[0][0]
+        current_y = self._draw_choice_row(
+            "Target Scene",
+            scene_options,
+            selected_scene,
+            x,
+            current_y,
+            width,
+            is_edit,
+            on_select=lambda value: self._set_scene_link_target_scene(world, entity_name, value),
+        )
+
+        spawn_options = self._get_scene_link_spawn_options(world, entity_name)
+        selected_spawn = target_entry_id if any(key == target_entry_id for key, _ in spawn_options) else spawn_options[0][0]
+        current_y = self._draw_choice_row(
+            "Target Spawn",
+            spawn_options,
+            selected_spawn,
+            x,
+            current_y,
+            width,
+            is_edit,
+            on_select=lambda value: self._set_scene_link_target_spawn(world, entity_name, value),
+        )
+
+        current_y = self._draw_component_field("Preview", preview_label, entity_id, "SceneLink", "preview_label", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("Flow Key", flow_key, entity_id, "SceneLink", "flow_key", x, current_y, width, is_edit, world)
+
+        for severity, message in self._get_scene_link_validation_messages(world, entity_name):
+            current_y = self._draw_message_row(severity, message, x, current_y, width)
         return current_y
 
     def _list_available_scene_paths(self) -> List[str]:
@@ -1274,7 +1956,10 @@ class InspectorSystem:
             )
 
         current_y = self._draw_text_row("Action Type", action_type, action_prop_id, x, current_y, width, is_edit, world, on_commit=commit_action_type)
-        current_y = self._draw_text_row("Action Value", target_value, target_prop_id, x, current_y, width, is_edit, world, on_commit=commit_target_value)
+        if action_type == "run_scene_transition":
+            current_y = self._draw_readonly_row("Action Value", "Managed by Scene Transition", x, current_y, width)
+        else:
+            current_y = self._draw_text_row("Action Value", target_value, target_prop_id, x, current_y, width, is_edit, world, on_commit=commit_target_value)
         return current_y
 
     def _draw_script_public_data_row(
@@ -1506,6 +2191,8 @@ class InspectorSystem:
             action["target"] = "next_scene"
         elif normalized == "load_scene":
             action["path"] = ""
+        elif normalized == "run_scene_transition":
+            action = {"type": "run_scene_transition"}
         else:
             action["type"] = "emit_event"
             action["name"] = "ui.button_clicked"

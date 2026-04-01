@@ -80,6 +80,14 @@ class ProjectWorkspaceController:
             editor_layout.terminal_panel = self._terminal_panel
             editor_layout.set_recent_projects(service.list_launcher_projects())
             editor_layout.set_project_scene_entries(service.list_project_scenes() if service.has_project else [])
+            if getattr(editor_layout, "flow_panel", None) is not None:
+                editor_layout.flow_panel.set_project_service(service)
+                if scene_manager is not None:
+                    editor_layout.flow_panel.set_scene_manager(scene_manager)
+            if getattr(editor_layout, "flow_workspace_panel", None) is not None:
+                editor_layout.flow_workspace_panel.set_project_service(service)
+                if scene_manager is not None:
+                    editor_layout.flow_workspace_panel.set_scene_manager(scene_manager)
 
         if not service.has_project:
             self._set_project_loaded(False)
@@ -134,6 +142,10 @@ class ProjectWorkspaceController:
         editor_layout.set_project_scene_entries(
             project_service.list_project_scenes() if project_service.has_project else []
         )
+        if getattr(editor_layout, "flow_panel", None) is not None:
+            editor_layout.flow_panel.refresh(force=True)
+        if getattr(editor_layout, "flow_workspace_panel", None) is not None:
+            editor_layout.flow_workspace_panel.refresh(force=True)
 
     def persist_editor_preferences(self) -> None:
         project_service = self._get_project_service()

@@ -25,6 +25,7 @@ class UISystem:
         self._event_bus: Optional[EventBus] = None
         self._scene_loader: Any = None
         self._scene_flow_loader: Any = None
+        self._scene_transition_runner: Any = None
         self._layout_cache: dict[str, dict[str, Any]] = {}
         self._canvas_order: list[str] = []
         self._draw_order: list[str] = []
@@ -42,6 +43,9 @@ class UISystem:
 
     def set_scene_flow_loader(self, callback: Any) -> None:
         self._scene_flow_loader = callback
+
+    def set_scene_transition_runner(self, callback: Any) -> None:
+        self._scene_transition_runner = callback
 
     def inject_pointer_state(
         self,
@@ -320,6 +324,10 @@ class UISystem:
                 return False
             self._event_bus.emit(event_name, {"entity": entity.name, "source": "UIButton"})
             return True
+        if action_type == "run_scene_transition":
+            if self._scene_transition_runner is None:
+                return False
+            return bool(self._scene_transition_runner(entity.name))
         return False
 
     def _point_in_rect(self, x: float, y: float, rect: dict[str, Any]) -> bool:

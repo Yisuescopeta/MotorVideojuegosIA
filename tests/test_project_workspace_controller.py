@@ -23,6 +23,8 @@ class _FakeProjectPanel:
 class _FakeEditorLayout:
     def __init__(self) -> None:
         self.project_panel = _FakeProjectPanel()
+        self.flow_panel = Mock()
+        self.flow_workspace_panel = Mock()
         self.terminal_panel = None
         self.active_tab = "GAME"
         self.show_project_launcher = True
@@ -210,7 +212,22 @@ class ProjectWorkspaceControllerTests(unittest.TestCase):
         self.script_behaviour_system.set_hot_reload_manager.assert_called_once_with(self.hot_reload_manager)
         self.script_behaviour_system.set_project_service.assert_called_once_with(self.project_service)
         self.assertIs(self.layout.project_panel.project_service, self.project_service)
+        self.layout.flow_panel.set_project_service.assert_called_once_with(self.project_service)
+        self.layout.flow_panel.set_scene_manager.assert_called_once_with(self.scene_manager)
+        self.layout.flow_workspace_panel.set_project_service.assert_called_once_with(self.project_service)
+        self.layout.flow_workspace_panel.set_scene_manager.assert_called_once_with(self.scene_manager)
         self.assertTrue(self.project_loaded["value"])
+
+    def test_refresh_project_scene_entries_refreshes_flow_panel_snapshot(self) -> None:
+        self.controller.set_project_service(self.project_service)
+        self.layout.flow_panel.reset_mock()
+        self.layout.flow_workspace_panel.reset_mock()
+
+        self.controller.refresh_project_scene_entries()
+
+        self.assertIsNotNone(self.layout.project_scene_entries)
+        self.layout.flow_panel.refresh.assert_called_once_with(force=True)
+        self.layout.flow_workspace_panel.refresh.assert_called_once_with(force=True)
 
     def test_persist_and_restore_workspace_state_round_trip(self) -> None:
         intro_path = self.project_root / "levels" / "intro.json"

@@ -63,10 +63,14 @@ class TerminalPanelTests(unittest.TestCase):
 
         layout.bottom_header_rect = rl.Rectangle(0, 540, 1280, layout.TAB_HEIGHT)
         with patch("pyray.is_mouse_button_pressed", return_value=True):
-            layout.handle_bottom_tab_input(rl.Vector2(80, 544))
+            layout.handle_bottom_tab_input(rl.Vector2(100, 544))
+            self.assertEqual(layout.active_bottom_tab, "FLOW")
+            layout.handle_bottom_tab_input(rl.Vector2(170, 544))
             self.assertEqual(layout.active_bottom_tab, "CONSOLE")
-            layout.handle_bottom_tab_input(rl.Vector2(152, 544))
+            layout.handle_bottom_tab_input(rl.Vector2(240, 544))
             self.assertEqual(layout.active_bottom_tab, "TERMINAL")
+            layout.handle_bottom_tab_input(rl.Vector2(20, 544))
+            self.assertEqual(layout.active_bottom_tab, "PROJECT")
 
     def test_bottom_panel_height_round_trips_preferences(self) -> None:
         with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):

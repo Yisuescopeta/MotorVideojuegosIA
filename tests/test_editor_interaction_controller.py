@@ -48,6 +48,10 @@ class EditorInteractionControllerTests(unittest.TestCase):
         self.layout.snap_settings = None
         self.layout.active_tab = "SCENE"
         self.layout.active_bottom_tab = "PROJECT"
+        self.layout.flow_panel = Mock()
+        self.layout.flow_panel.get_cursor_intent.return_value = CursorVisualState.DEFAULT
+        self.layout.flow_workspace_panel = Mock()
+        self.layout.flow_workspace_panel.get_cursor_intent.return_value = CursorVisualState.DEFAULT
         self.layout.get_scene_mouse_pos.return_value = rl.Vector2(10, 20)
         self.layout.get_scene_overlay_mouse_pos.return_value = rl.Vector2(5, 6)
         self.layout.is_mouse_in_scene_view.return_value = True
@@ -148,6 +152,32 @@ class EditorInteractionControllerTests(unittest.TestCase):
 
         self.assertEqual(state, CursorVisualState.INTERACTIVE)
         self.ui_system.get_cursor_intent.assert_called_once_with(world, (320.0, 180.0), 5.0, 6.0)
+
+    def test_resolve_cursor_state_reads_flow_panel_when_flow_tab_is_active(self) -> None:
+        self.layout.active_bottom_tab = "FLOW"
+        self.layout.flow_panel.get_cursor_intent.return_value = CursorVisualState.INTERACTIVE
+
+        with patch("pyray.get_mouse_position", return_value=rl.Vector2(12, 14)), patch(
+            "pyray.check_collision_point_rec",
+            return_value=False,
+        ):
+            state = self.controller.resolve_cursor_state(None)
+
+        self.assertEqual(state, CursorVisualState.INTERACTIVE)
+        self.layout.flow_panel.get_cursor_intent.assert_called_once()
+
+    def test_resolve_cursor_state_reads_flow_workspace_panel_when_center_flow_is_active(self) -> None:
+        self.layout.active_tab = "FLOW"
+        self.layout.flow_workspace_panel.get_cursor_intent.return_value = CursorVisualState.INTERACTIVE
+
+        with patch("pyray.get_mouse_position", return_value=rl.Vector2(12, 14)), patch(
+            "pyray.check_collision_point_rec",
+            return_value=False,
+        ):
+            state = self.controller.resolve_cursor_state(None)
+
+        self.assertEqual(state, CursorVisualState.INTERACTIVE)
+        self.layout.flow_workspace_panel.get_cursor_intent.assert_called_once()
 
     def test_handle_scene_view_drag_drop_creates_sprite_entity_via_scene_manager(self) -> None:
         world = Mock()
