@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "motorvideojuegosia"
-version = "2026.03"
+dynamic = ["version"]
 description = "Motor de videojuegos 2D IA-first en Python"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -20,6 +20,9 @@ dev = [
     "pip-audit>=2.7.3",
     "ruff>=0.7.1",
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "engine.config.ENGINE_VERSION"}
 
 [tool.setuptools]
 include-package-data = true

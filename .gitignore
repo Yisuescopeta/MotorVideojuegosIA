@@ -22,8 +22,8 @@ Thumbs.db
 # Logs
 *.log
 
-# Build
-build/
+# Build artifacts (keep build/*.py, build/*.spec, build/*.iss as source)
+build/pyinstaller_work/
 dist/
 *.egg-info/
 
