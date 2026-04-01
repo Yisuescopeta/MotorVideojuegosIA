@@ -53,6 +53,9 @@ from engine.core.game import Game
 from engine.core.time_manager import TimeManager
 from engine.core.engine_state import EngineState
 
+# Config
+from engine.config import ENGINE_VERSION
+
 # Resources
 from engine.resources.texture_manager import TextureManager
 
@@ -77,4 +80,6 @@ __all__ = [
     "Game", "TimeManager", "EngineState",
     # Resources
     "TextureManager",
+    # Config
+    "ENGINE_VERSION",
 ]

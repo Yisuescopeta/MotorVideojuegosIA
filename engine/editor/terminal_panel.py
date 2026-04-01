@@ -899,8 +899,8 @@ class TerminalPanel:
     FALLBACK_LINE_HEIGHT = 16.0
     FALLBACK_CHAR_WIDTH = 8.0
     FALLBACK_ROW_STEP = 16.0
-    FONT_PRIMARY_PATH = Path(__file__).resolve().parents[2] / "assets" / "fonts" / "CascadiaMono.ttf"
-    FONT_FALLBACK_PATH = Path(__file__).resolve().parents[2] / "assets" / "fonts" / "DejaVuSansMono.ttf"
+    FONT_PRIMARY_PATH = None  # Resolved lazily via _get_font_paths()
+    FONT_FALLBACK_PATH = None  # Resolved lazily via _get_font_paths()
     REPLACEMENT_CODEPOINT = 0xFFFD
     TERMINAL_POLICY_INHERIT = "inherit"
     TERMINAL_POLICY_REMOTE_SIGNED = "RemoteSigned"
@@ -961,7 +961,11 @@ class TerminalPanel:
         return cls.build_text_font_codepoints()
 
     def _resolve_font_path(self) -> Optional[Path]:
-        for candidate in (self.FONT_PRIMARY_PATH, self.FONT_FALLBACK_PATH):
+        from engine.config import get_engine_root
+        root = get_engine_root()
+        primary = root / "assets" / "fonts" / "CascadiaMono.ttf"
+        fallback = root / "assets" / "fonts" / "DejaVuSansMono.ttf"
+        for candidate in (primary, fallback):
             if candidate.exists():
                 return candidate
         return None
@@ -1011,7 +1015,7 @@ class TerminalPanel:
         try:
             self.render_font = self._load_font_from_codepoints(font_path, self.build_text_font_codepoints())
             self._font_ready = True
-            self._font_status_suffix = "" if font_path == self.FONT_PRIMARY_PATH else " | fallback font"
+            self._font_status_suffix = "" if font_path.name == "CascadiaMono.ttf" else " | fallback font"
             self._reset_font_support_cache()
             if not self._font_has_critical_glyphs():
                 self.render_font = self._load_font_from_codepoints(font_path, self.build_minimal_text_font_codepoints())

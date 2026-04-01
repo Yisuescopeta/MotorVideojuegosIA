@@ -17,6 +17,17 @@ EJEMPLO DE USO:
     physics = PhysicsSystem(gravity=GRAVITY_DEFAULT)
 """
 
+import sys
+from pathlib import Path
+
+
+def get_engine_root() -> Path:
+    """Raíz del motor, compatible con PyInstaller y desarrollo."""
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    return Path(__file__).resolve().parents[1]
+
+
 # === VENTANA ===
 WINDOW_TITLE: str = "Motor 2D - AI First Engine"
 WINDOW_WIDTH: int = 800

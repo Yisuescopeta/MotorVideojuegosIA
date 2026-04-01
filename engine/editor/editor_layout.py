@@ -1551,7 +1551,48 @@ class EditorLayout:
                     self._layout_dropdown_open = False
 
             x += item_width + 2
-        
+
+        # --- Versión y banner de actualización (derecha del menú) ---
+        self._draw_version_and_update_info()
+
+    def _draw_version_and_update_info(self) -> None:
+        """Dibuja la versión actual y un aviso de actualización en la barra de menú."""
+        from engine.config import ENGINE_VERSION
+        from engine.update_checker import get_update_info
+
+        info = get_update_info()
+
+        # Si hay actualización disponible, mostrar botón de update
+        if info and info.available:
+            update_text = f"Update v{info.latest}"
+            text_w = self._measure_text(update_text, 10)
+            btn_w = text_w + 16
+            btn_x = self.screen_width - btn_w - 8
+            btn_rect = rl.Rectangle(btn_x, 1, btn_w, self.MENU_HEIGHT - 2)
+            self._register_cursor_rect(btn_rect)
+
+            mouse = rl.get_mouse_position()
+            is_hover = rl.check_collision_point_rec(mouse, btn_rect)
+
+            bg = rl.Color(44, 120, 60, 255) if not is_hover else rl.Color(60, 150, 80, 255)
+            rl.draw_rectangle_rec(btn_rect, bg)
+            tx = int(btn_x + (btn_w - text_w) // 2)
+            rl.draw_text(update_text, tx, 5, 10, rl.Color(230, 230, 230, 255))
+
+            if is_hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                import webbrowser
+                webbrowser.open(info.download_url)
+
+            # Versión actual a la izquierda del botón de update
+            ver_text = f"v{ENGINE_VERSION}"
+            ver_w = self._measure_text(ver_text, 10)
+            rl.draw_text(ver_text, int(btn_x - ver_w - 12), 5, 10, self.UNITY_TEXT_DIM)
+        else:
+            # Solo versión (sin update disponible)
+            ver_text = f"v{ENGINE_VERSION}"
+            ver_w = self._measure_text(ver_text, 10)
+            rl.draw_text(ver_text, self.screen_width - ver_w - 12, 5, 10, self.UNITY_TEXT_DIM)
+
     def _draw_tab(self, text: str, rect: rl.Rectangle, is_active: bool) -> None:
         """Dibuja un tab estilo Unity con línea azul inferior si está activo."""
         # Fondo del tab

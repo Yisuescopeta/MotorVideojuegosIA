@@ -31,7 +31,7 @@ from engine.app import (
     SceneWorkflowController,
 )
 from engine.components.canvas import Canvas
-from engine.config import EDIT_ANIMATION_SPEED, SCRIPTS_DIRECTORY, TIMELINE_CAPACITY
+from engine.config import EDIT_ANIMATION_SPEED, ENGINE_VERSION, SCRIPTS_DIRECTORY, TIMELINE_CAPACITY
 from engine.core.engine_state import EngineState
 from engine.core.hot_reload import HotReloadManager
 from engine.core.time_manager import TimeManager
@@ -553,8 +553,12 @@ class Game:
     
     def run(self) -> None:
         "Inicia el game loop."
-        rl.init_window(self.width, self.height, self.title)
+        rl.init_window(self.width, self.height, f"{self.title}  —  v{ENGINE_VERSION}")
         rl.set_target_fps(self.target_fps)
+
+        # Comprobación de actualizaciones (no bloquea el arranque)
+        from engine.update_checker import start_update_check
+        start_update_check()
         # Título de barra oscuro (Windows 11) para coherencia visual con el tema dark
         try:
             import ctypes
