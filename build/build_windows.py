@@ -28,7 +28,7 @@ def read_engine_version(project_root: str) -> str:
     config_path = os.path.join(project_root, "engine", "config.py")
     with open(config_path, encoding="utf-8") as f:
         content = f.read()
-    match = re.search(r'ENGINE_VERSION\s*[:=]\s*["\']([^"\']+)["\']', content)
+    match = re.search(r'ENGINE_VERSION(?:\s*:\s*\w+)?\s*=\s*["\']([^"\']+)["\']', content)
     if not match:
         print("[ERROR] No se encontro ENGINE_VERSION en engine/config.py")
         sys.exit(1)
