@@ -98,6 +98,22 @@ class EditorInteractionControllerTests(unittest.TestCase):
         self.selection_system.update.assert_not_called()
         self.scene_manager.set_selected_entity.assert_called_with("PlayButton")
 
+    def test_handle_selection_and_gizmos_ignores_hidden_scene_ui(self) -> None:
+        world = Mock()
+        self.ui_system.should_render_scene_view_ui.return_value = False
+
+        with patch("pyray.is_mouse_button_pressed", return_value=True):
+            self.controller.handle_selection_and_gizmos(world)
+
+        self.ui_system.ensure_layout_cache.assert_not_called()
+        self.ui_system.find_topmost_entity_at_point.assert_not_called()
+        self.selection_system.update.assert_called_once()
+        selected_world, mouse_world = self.selection_system.update.call_args.args
+        self.assertIs(selected_world, world)
+        self.assertEqual(float(mouse_world.x), 10.0)
+        self.assertEqual(float(mouse_world.y), 20.0)
+        self.assertIsNone(self.gizmo_system.update.call_args.kwargs.get("ui_system"))
+
     def test_handle_selection_and_gizmos_marks_transient_preview_and_commits_completed_drag(self) -> None:
         world = Mock()
         drag = SimpleNamespace(
@@ -142,6 +158,8 @@ class EditorInteractionControllerTests(unittest.TestCase):
 
     def test_resolve_cursor_state_returns_interactive_when_ui_requests_it(self) -> None:
         world = Mock()
+        self.state = EngineState.PLAY
+        self.layout.active_tab = "GAME"
         self.ui_system.get_cursor_intent.return_value = CursorVisualState.INTERACTIVE
 
         with patch("pyray.get_mouse_position", return_value=rl.Vector2(12, 14)), patch(
@@ -151,7 +169,38 @@ class EditorInteractionControllerTests(unittest.TestCase):
             state = self.controller.resolve_cursor_state(world)
 
         self.assertEqual(state, CursorVisualState.INTERACTIVE)
-        self.ui_system.get_cursor_intent.assert_called_once_with(world, (320.0, 180.0), 5.0, 6.0)
+        self.ui_system.get_cursor_intent.assert_called_once_with(
+            world,
+            (640.0, 360.0),
+            5.0,
+            6.0,
+            allow_interaction=True,
+        )
+
+    def test_resolve_cursor_state_ignores_ui_runtime_intent_while_editing_scene(self) -> None:
+        world = Mock()
+        self.state = EngineState.EDIT
+        self.layout.active_tab = "SCENE"
+        self.ui_system.get_cursor_intent.side_effect = (
+            lambda *_args, **kwargs: CursorVisualState.INTERACTIVE
+            if kwargs.get("allow_interaction")
+            else CursorVisualState.DEFAULT
+        )
+
+        with patch("pyray.get_mouse_position", return_value=rl.Vector2(12, 14)), patch(
+            "pyray.check_collision_point_rec",
+            return_value=True,
+        ):
+            state = self.controller.resolve_cursor_state(world)
+
+        self.assertEqual(state, CursorVisualState.DEFAULT)
+        self.ui_system.get_cursor_intent.assert_called_once_with(
+            world,
+            (320.0, 180.0),
+            5.0,
+            6.0,
+            allow_interaction=False,
+        )
 
     def test_resolve_cursor_state_reads_flow_panel_when_flow_tab_is_active(self) -> None:
         self.layout.active_bottom_tab = "FLOW"

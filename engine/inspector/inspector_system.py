@@ -110,6 +110,10 @@ class InspectorSystem:
     def list_dedicated_editors(self) -> list[str]:
         return self.component_editors.list_registered()
 
+    def _component_expansion_key(self, entity_name: str, component_name: str) -> str:
+        """Returns the stable UI key used to remember component fold state."""
+        return f"{entity_name}:{component_name}"
+
     def replace_component_payload(
         self,
         world: "World",
@@ -275,10 +279,11 @@ class InspectorSystem:
 
     def _draw_component(self, component: Component, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:
         comp_name = type(component).__name__
-        unique_id = f"{entity_id}:{comp_name}"
+        entity = world.get_entity(entity_id)
+        entity_name = entity.name if entity is not None else str(entity_id)
+        unique_id = self._component_expansion_key(entity_name, comp_name)
         is_expanded = unique_id in self.expanded_components
         header_rect = rl.Rectangle(x + 2, y, width - 4, 20)
-        entity = world.get_entity(entity_id)
         origin = self._get_component_origin(entity, comp_name, component)
         accent_color = self._origin_color(origin)
 

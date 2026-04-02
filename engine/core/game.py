@@ -177,7 +177,7 @@ class Game:
             get_world=lambda: self.world,
             get_scene_manager=lambda: self._scene_manager,
             get_physics_backend_registry=lambda: self._physics_backend_registry,
-            load_scene_by_path=self.load_scene_by_path,
+            load_scene_by_path=self._load_runtime_scene_from_ui,
             play_runtime=self.play,
         )
         self._runtime_controller = RuntimeController(
@@ -483,13 +483,18 @@ class Game:
     def set_ui_system(self, system: "UISystem") -> None:
         self._ui_system = system
         self._ui_system.set_scene_loader(self.load_scene_by_path)
+        self._ui_system.set_runtime_scene_loader(self._load_runtime_scene_from_ui)
         self._ui_system.set_scene_flow_loader(self._load_scene_flow_target_from_script)
         self._ui_system.set_scene_transition_runner(self._run_scene_transition)
+        self._ui_system.set_interaction_enabled_resolver(self._is_runtime_ui_interaction_enabled)
         if self._event_bus is not None:
             self._ui_system.set_event_bus(self._event_bus)
 
     def _run_scene_transition(self, entity_name: str) -> bool:
         return self._scene_transition_controller.run_transition_for_entity(entity_name)
+
+    def _load_runtime_scene_from_ui(self, path: str) -> bool:
+        return self._scene_workflow_controller.load_scene_by_path_runtime(path)
 
     def set_ui_render_system(self, system: "UIRenderSystem") -> None:
         self._ui_render_system = system
@@ -844,7 +849,7 @@ class Game:
             active_tab = self.editor_layout.active_tab if self.editor_layout is not None else "SCENE"
             if active_world is not None and active_tab in ("SCENE", "GAME"):
                 try:
-                    self._update_ui_overlay(active_world, self._current_viewport_size())
+                    self._update_ui_overlay(active_world, self._ui_viewport_size_for_tab(active_tab), active_tab=active_tab)
                 except Exception as e:
                     from engine.editor.console_panel import log_err
                     log_err(f"UI error: {e}")
@@ -873,10 +878,27 @@ class Game:
     def _update_animation(self, world: Optional["World"], dt: float) -> None:
         self._runtime_controller.update_animation(world, dt)
 
-    def _update_ui_overlay(self, world: Optional["World"], viewport_size: tuple[float, float]) -> None:
+    def _update_ui_overlay(
+        self,
+        world: Optional["World"],
+        viewport_size: tuple[float, float],
+        *,
+        active_tab: Optional[str] = None,
+    ) -> None:
         if self._ui_system is None or world is None:
             return
-        self._ui_system.update(world, viewport_size)
+        tab = active_tab or (self.editor_layout.active_tab if self.editor_layout is not None else "GAME")
+        if self.editor_layout is not None and tab in ("SCENE", "GAME"):
+            mouse = rl.get_mouse_position()
+            view_rect = self.editor_layout.get_center_view_rect()
+            self._ui_system.inject_pointer_state(
+                float(mouse.x - view_rect.x),
+                float(mouse.y - view_rect.y),
+                bool(rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT)),
+                bool(rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT)),
+                bool(rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT)),
+            )
+        self._ui_system.update(world, viewport_size, allow_interaction=self._is_runtime_ui_interaction_enabled(active_tab=tab))
 
     def _current_viewport_size(self) -> tuple[float, float]:
         if self.editor_layout is not None and self.editor_layout.game_texture is not None:
@@ -889,6 +911,18 @@ class Game:
             texture = self.editor_layout.scene_texture.texture
             return (float(texture.width), float(texture.height))
         return (float(self.width), float(self.height))
+
+    def _ui_viewport_size_for_tab(self, active_tab: Optional[str] = None) -> tuple[float, float]:
+        tab = active_tab or (self.editor_layout.active_tab if self.editor_layout is not None else "GAME")
+        if tab == "SCENE":
+            return self._current_scene_viewport_size()
+        return self._current_viewport_size()
+
+    def _is_runtime_ui_interaction_enabled(self, *, active_tab: Optional[str] = None) -> bool:
+        tab = active_tab or (self.editor_layout.active_tab if self.editor_layout is not None else "GAME")
+        if tab != "GAME":
+            return False
+        return self._state in (EngineState.PLAY, EngineState.PAUSED, EngineState.STEPPING)
 
     def _render_ui_to_texture(self, world: Optional["World"], texture: Any, *, render_editor_overlay: bool = False) -> None:
         if self._ui_render_system is None or self._ui_system is None or world is None or texture is None:
@@ -1020,9 +1054,17 @@ class Game:
                     self.editor_layout.begin_scene_camera_pass()
                     self.gizmo_system.render(active_world, active_tool, transform_space, pivot_mode)
                     self.editor_layout.end_scene_camera_pass()
-                    
+
                 self.editor_layout.end_scene_render()
-                if active_world is not None and self.editor_layout.scene_texture is not None:
+                should_render_scene_ui = bool(
+                    self._ui_system is not None
+                    and active_world is not None
+                    and self._ui_system.should_render_scene_view_ui(
+                        active_world,
+                        allow_runtime=self._state.allows_gameplay(),
+                    )
+                )
+                if should_render_scene_ui and self.editor_layout.scene_texture is not None:
                     self._render_ui_to_texture(active_world, self.editor_layout.scene_texture, render_editor_overlay=True)
             
             # --- GAME VIEW RENDER ---

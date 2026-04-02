@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from engine.api import EngineAPI
 from engine.editor.cursor_manager import CursorVisualState
@@ -318,19 +319,59 @@ class CanvasUISystemTests(unittest.TestCase):
         self.api.load_level(scene_path.as_posix())
 
         self.api.game._ui_system.inject_pointer_state(400.0, 300.0, down=True, pressed=True, released=False)
-        self.api.step(1)
+        self.api.game._ui_system.update(self.api.game.world, (800.0, 600.0), allow_interaction=True)
         self.api.game._ui_system.inject_pointer_state(400.0, 300.0, down=False, pressed=False, released=True)
-        self.api.step(1)
+        self.api.game._ui_system.update(self.api.game.world, (800.0, 600.0), allow_interaction=True)
         event_names = [event.name for event in self.api.game._event_bus.get_recent_events()]
         self.assertIn("ui.play_clicked", event_names)
 
         self.api.game._event_bus.clear_history()
         self.api.game._ui_system.inject_pointer_state(400.0, 300.0, down=True, pressed=True, released=False)
-        self.api.step(1)
+        self.api.game._ui_system.update(self.api.game.world, (800.0, 600.0), allow_interaction=True)
         self.api.game._ui_system.inject_pointer_state(40.0, 40.0, down=False, pressed=False, released=True)
-        self.api.step(1)
+        self.api.game._ui_system.update(self.api.game.world, (800.0, 600.0), allow_interaction=True)
         event_names = [event.name for event in self.api.game._event_bus.get_recent_events()]
         self.assertNotIn("ui.play_clicked", event_names)
+
+    def test_button_does_not_fire_when_ui_overlay_is_updated_without_runtime_interaction(self) -> None:
+        scene_path = self._write_scene(
+            "ui_edit_blocked.json",
+            {
+                "name": "UI Edit Blocked",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+        self.assertTrue(self.api.create_canvas(name="CanvasRoot")["success"])
+        self.assertTrue(
+            self.api.create_ui_button(
+                "PlayButton",
+                "Play",
+                "CanvasRoot",
+                {"width": 280.0, "height": 84.0},
+                {"type": "emit_event", "name": "ui.play_clicked"},
+            )["success"]
+        )
+
+        self.api.game._ui_system.inject_pointer_state(400.0, 300.0, down=True, pressed=True, released=False)
+        self.api.game._ui_system.update(self.api.game.world, (800.0, 600.0), allow_interaction=False)
+        self.api.game._ui_system.inject_pointer_state(400.0, 300.0, down=False, pressed=False, released=True)
+        self.api.game._ui_system.update(self.api.game.world, (800.0, 600.0), allow_interaction=False)
+
+        event_names = [event.name for event in self.api.game._event_bus.get_recent_events()]
+        self.assertNotIn("ui.play_clicked", event_names)
+
+    def test_scene_viewport_size_helper_uses_scene_texture_dimensions(self) -> None:
+        self.api.game.editor_layout = SimpleNamespace(
+            active_tab="SCENE",
+            scene_texture=SimpleNamespace(texture=SimpleNamespace(width=320, height=180)),
+            game_texture=SimpleNamespace(texture=SimpleNamespace(width=640, height=360)),
+        )
+
+        self.assertEqual(self.api.game._ui_viewport_size_for_tab("SCENE"), (320.0, 180.0))
+        self.assertEqual(self.api.game._ui_viewport_size_for_tab("GAME"), (640.0, 360.0))
 
     def test_scene_without_canvas_remains_compatible(self) -> None:
         scene_path = self._write_scene(
@@ -399,7 +440,13 @@ class CanvasUISystemTests(unittest.TestCase):
             )["success"]
         )
 
-        intent = self.api.game._ui_system.get_cursor_intent(self.api.game.world, (800.0, 600.0), 400.0, 300.0)
+        intent = self.api.game._ui_system.get_cursor_intent(
+            self.api.game.world,
+            (800.0, 600.0),
+            400.0,
+            300.0,
+            allow_interaction=True,
+        )
 
         self.assertEqual(intent, CursorVisualState.INTERACTIVE)
 
@@ -445,6 +492,94 @@ class CanvasUISystemTests(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertEqual(self.api.scene_manager.scene_name, "Platformer Test Scene")
         self.assertTrue(self.api.game.current_scene_path.endswith("levels/platformer_test_scene.json"))
+
+    def test_scene_view_ui_visibility_requires_play_or_selected_root_canvas(self) -> None:
+        scene_path = self._write_scene(
+            "ui_visibility.json",
+            {
+                "name": "UI Visibility",
+                "entities": [
+                    {
+                        "name": "MainCanvas",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "components": {
+                            "Canvas": {
+                                "enabled": True,
+                                "render_mode": "screen_space_overlay",
+                                "reference_width": 800,
+                                "reference_height": 600,
+                                "match_mode": "stretch",
+                                "sort_order": 0,
+                            },
+                            "RectTransform": {
+                                "enabled": True,
+                                "anchor_min_x": 0.0,
+                                "anchor_min_y": 0.0,
+                                "anchor_max_x": 1.0,
+                                "anchor_max_y": 1.0,
+                                "pivot_x": 0.0,
+                                "pivot_y": 0.0,
+                                "anchored_x": 0.0,
+                                "anchored_y": 0.0,
+                                "width": 0.0,
+                                "height": 0.0,
+                                "rotation": 0.0,
+                                "scale_x": 1.0,
+                                "scale_y": 1.0,
+                            },
+                        },
+                    },
+                    {
+                        "name": "TitleText",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "parent": "MainCanvas",
+                        "components": {
+                            "RectTransform": {
+                                "enabled": True,
+                                "anchor_min_x": 0.5,
+                                "anchor_min_y": 0.5,
+                                "anchor_max_x": 0.5,
+                                "anchor_max_y": 0.5,
+                                "pivot_x": 0.5,
+                                "pivot_y": 0.5,
+                                "anchored_x": 0.0,
+                                "anchored_y": 0.0,
+                                "width": 240.0,
+                                "height": 64.0,
+                                "rotation": 0.0,
+                                "scale_x": 1.0,
+                                "scale_y": 1.0,
+                            },
+                            "UIText": {
+                                "enabled": True,
+                                "text": "Title",
+                                "font_size": 24,
+                                "color": [255, 255, 255, 255],
+                                "alignment": "center",
+                                "wrap": False,
+                            },
+                        },
+                    },
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+
+        ui_system = self.api.game._ui_system
+        world = self.api.game.world
+
+        self.assertFalse(ui_system.should_render_scene_view_ui(world, allow_runtime=False))
+        self.assertTrue(self.api.scene_manager.set_selected_entity("TitleText"))
+        self.assertFalse(ui_system.should_render_scene_view_ui(world, allow_runtime=False))
+        self.assertTrue(self.api.scene_manager.set_selected_entity("MainCanvas"))
+        self.assertTrue(ui_system.should_render_scene_view_ui(world, allow_runtime=False))
+        self.assertTrue(ui_system.should_render_scene_view_ui(world, allow_runtime=True))
 
 
 if __name__ == "__main__":

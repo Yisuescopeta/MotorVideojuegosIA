@@ -319,6 +319,66 @@ class InspectorCoreTests(unittest.TestCase):
         self.assertEqual(transform.x, 130.0)
         self.assertEqual(transform.y, 90.0)
 
+    def test_component_fold_state_survives_transform_commit_rebuild(self) -> None:
+        self.assertTrue(
+            self.api.create_entity(
+                "InspectorFoldProbe",
+                {"Transform": {"enabled": True, "x": 12.0, "y": 24.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0}},
+            )["success"]
+        )
+
+        before_entity = self.api.game.world.get_entity_by_name("InspectorFoldProbe")
+        expansion_key = self.inspector._component_expansion_key("InspectorFoldProbe", "Transform")
+        self.inspector.expanded_components.add(expansion_key)
+
+        self.assertTrue(
+            self.inspector._apply_component_property(self.api.game.world, "InspectorFoldProbe", "Transform", "x", 99.0)
+        )
+
+        after_entity = self.api.game.world.get_entity_by_name("InspectorFoldProbe")
+        self.assertNotEqual(before_entity.id, after_entity.id)
+        self.assertIn(expansion_key, self.inspector.expanded_components)
+        self.assertEqual(after_entity.get_component(Transform).x, 99.0)
+
+    def test_component_fold_state_survives_rect_transform_commit_rebuild(self) -> None:
+        self.assertTrue(
+            self.api.create_entity(
+                "InspectorRectProbe",
+                {
+                    "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                    "RectTransform": {
+                        "enabled": True,
+                        "anchored_x": 0.0,
+                        "anchored_y": 0.0,
+                        "width": 160.0,
+                        "height": 90.0,
+                        "rotation": 0.0,
+                        "scale_x": 1.0,
+                        "scale_y": 1.0,
+                    },
+                },
+            )["success"]
+        )
+
+        before_entity = self.api.game.world.get_entity_by_name("InspectorRectProbe")
+        expansion_key = self.inspector._component_expansion_key("InspectorRectProbe", "RectTransform")
+        self.inspector.expanded_components.add(expansion_key)
+
+        self.assertTrue(
+            self.inspector._apply_component_property(
+                self.api.game.world,
+                "InspectorRectProbe",
+                "RectTransform",
+                "width",
+                220.0,
+            )
+        )
+
+        after_entity = self.api.game.world.get_entity_by_name("InspectorRectProbe")
+        self.assertNotEqual(before_entity.id, after_entity.id)
+        self.assertIn(expansion_key, self.inspector.expanded_components)
+        self.assertEqual(after_entity.get_component(RectTransform).width, 220.0)
+
     def test_inspector_rect_transform_edit_persists_after_save_and_reload(self) -> None:
         self._create_probe(
             "InspectorButton",

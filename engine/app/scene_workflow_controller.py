@@ -178,12 +178,27 @@ class SceneWorkflowController:
         return True
 
     def load_scene_by_path(self, path: str) -> bool:
+        return self._load_scene_by_path_internal(path, force_scene_tab=True)
+
+    def load_scene_by_path_runtime(self, path: str) -> bool:
+        was_running = self._get_state() in (EngineState.PLAY, EngineState.PAUSED, EngineState.STEPPING)
+        success = self._load_scene_by_path_internal(path, force_scene_tab=False)
+        if success and was_running and self._get_state() == EngineState.EDIT:
+            self._play_runtime()
+        return success
+
+    def _load_scene_by_path_internal(
+        self,
+        path: str,
+        *,
+        force_scene_tab: bool,
+    ) -> bool:
         scene_manager = self._get_scene_manager()
         project_service = self._get_project_service()
         editor_layout = self._get_editor_layout()
         if scene_manager is None or project_service is None or not project_service.has_project:
             return False
-        if self._get_state() in (EngineState.PLAY, EngineState.PAUSED):
+        if self._get_state() in (EngineState.PLAY, EngineState.PAUSED, EngineState.STEPPING):
             self._stop_runtime()
 
         resolved_path = project_service.resolve_path(path).as_posix()
@@ -196,7 +211,7 @@ class SceneWorkflowController:
         self._clear_rules_and_events()
         self._set_project_loaded(True)
         self._sync_scene_workspace_ui(True)
-        if editor_layout is not None:
+        if editor_layout is not None and force_scene_tab:
             editor_layout.active_tab = "SCENE"
         return True
 
@@ -227,11 +242,11 @@ class SceneWorkflowController:
         return self.load_scene_by_path(target)
 
     def load_scene_flow_target_from_script(self, key: str) -> bool:
-        was_running = self._get_state() in (EngineState.PLAY, EngineState.PAUSED, EngineState.STEPPING)
-        success = self.load_scene_flow_target(key)
-        if success and was_running and self._get_state() == EngineState.EDIT:
-            self._play_runtime()
-        return success
+        scene_flow = self._get_scene_flow()
+        target = str(scene_flow.get(key, "")).strip()
+        if not target:
+            return False
+        return self.load_scene_by_path_runtime(target)
 
     def handle_scene_tab_requests(self) -> None:
         scene_manager = self._get_scene_manager()

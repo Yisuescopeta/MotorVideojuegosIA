@@ -2,6 +2,9 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+
+import pyray as rl
 
 from engine.api import EngineAPI
 from engine.editor.console_panel import GLOBAL_LOGS
@@ -61,6 +64,14 @@ class SceneTransitionRuntimeTests(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, indent=4), encoding="utf-8")
         return path
+
+    def _attach_game_tab_layout(self) -> None:
+        self.api.game.editor_layout = SimpleNamespace(
+            active_tab="GAME",
+            editor_camera=SimpleNamespace(target=rl.Vector2(0.0, 0.0), zoom=1.0),
+            get_center_view_rect=lambda: rl.Rectangle(0, 0, self.api.game.width, self.api.game.height),
+            set_scene_tabs=lambda *_args, **_kwargs: None,
+        )
 
     def _target_scene_payload(self, *, include_spawn: bool = True) -> dict:
         entities = [
@@ -183,15 +194,110 @@ class SceneTransitionRuntimeTests(unittest.TestCase):
         self._write_scene("target_scene.json", self._target_scene_payload(include_spawn=True))
 
         self.api.load_level(source_path.as_posix())
+        self._attach_game_tab_layout()
         self.api.play()
 
         result = self.api.click_ui_button("PlayButton")
 
         self.assertTrue(result["success"])
         self.assertEqual(self.api.scene_manager.scene_name, "Target Scene")
+        self.assertEqual(self.api.game.editor_layout.active_tab, "GAME")
+        self.assertTrue(self.api.game.is_play_mode)
         player = self.api.get_entity("Player")
         self.assertEqual(player["components"]["Transform"]["x"], 192.0)
         self.assertEqual(player["components"]["Transform"]["y"], 144.0)
+
+    def test_ui_button_load_scene_keeps_runtime_state_when_clicked_in_play(self) -> None:
+        source_path = self._write_scene(
+            "button_load_scene_source.json",
+            {
+                "name": "Button Load Scene Source",
+                "entities": [
+                    {
+                        "name": "CanvasRoot",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "components": {
+                            "Canvas": {
+                                "enabled": True,
+                                "render_mode": "screen_space_overlay",
+                                "reference_width": 800,
+                                "reference_height": 600,
+                                "match_mode": "stretch",
+                                "sort_order": 0,
+                            },
+                            "RectTransform": {
+                                "enabled": True,
+                                "anchor_min_x": 0.0,
+                                "anchor_min_y": 0.0,
+                                "anchor_max_x": 1.0,
+                                "anchor_max_y": 1.0,
+                                "pivot_x": 0.0,
+                                "pivot_y": 0.0,
+                                "anchored_x": 0.0,
+                                "anchored_y": 0.0,
+                                "width": 0.0,
+                                "height": 0.0,
+                                "rotation": 0.0,
+                                "scale_x": 1.0,
+                                "scale_y": 1.0,
+                            },
+                        },
+                    },
+                    {
+                        "name": "PlayButton",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "parent": "CanvasRoot",
+                        "components": {
+                            "RectTransform": {
+                                "enabled": True,
+                                "anchor_min_x": 0.5,
+                                "anchor_min_y": 0.5,
+                                "anchor_max_x": 0.5,
+                                "anchor_max_y": 0.5,
+                                "pivot_x": 0.5,
+                                "pivot_y": 0.5,
+                                "anchored_x": 0.0,
+                                "anchored_y": 0.0,
+                                "width": 280.0,
+                                "height": 84.0,
+                                "rotation": 0.0,
+                                "scale_x": 1.0,
+                                "scale_y": 1.0,
+                            },
+                            "UIButton": {
+                                "enabled": True,
+                                "interactable": True,
+                                "label": "Play",
+                                "normal_color": [72, 72, 72, 255],
+                                "hover_color": [92, 92, 92, 255],
+                                "pressed_color": [56, 56, 56, 255],
+                                "disabled_color": [48, 48, 48, 200],
+                                "transition_scale_pressed": 0.96,
+                                "on_click": {"type": "load_scene", "path": "levels/target_scene.json"},
+                            },
+                        },
+                    },
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self._write_scene("target_scene.json", self._target_scene_payload(include_spawn=True))
+
+        self.api.load_level(source_path.as_posix())
+        self._attach_game_tab_layout()
+        self.api.play()
+
+        result = self.api.click_ui_button("PlayButton")
+
+        self.assertTrue(result["success"])
+        self.assertEqual(self.api.scene_manager.scene_name, "Target Scene")
+        self.assertTrue(self.api.game.is_play_mode)
+        self.assertEqual(self.api.game.editor_layout.active_tab, "GAME")
 
     def test_contact_triggers_change_scene_for_trigger_and_collision_modes(self) -> None:
         self._write_scene("target_scene.json", self._target_scene_payload(include_spawn=False))
@@ -264,10 +370,13 @@ class SceneTransitionRuntimeTests(unittest.TestCase):
 
                 GLOBAL_LOGS.clear()
                 self.api.load_level(source_path.as_posix())
+                self._attach_game_tab_layout()
                 self.api.play()
                 self.api.step(1)
 
                 self.assertEqual(self.api.scene_manager.scene_name, "Target Scene")
+                self.assertEqual(self.api.game.editor_layout.active_tab, "GAME")
+                self.assertFalse(self.api.game.is_edit_mode)
                 self.assertEqual([level for level, _ in GLOBAL_LOGS if level == "ERR"], [])
 
     def test_interaction_trigger_changes_scene_only_when_action_2_is_pressed(self) -> None:
