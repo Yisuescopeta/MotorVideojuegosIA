@@ -16,7 +16,7 @@ class ConsolePanelRenderTests(unittest.TestCase):
         drawn_texts: list[str] = []
 
         with patch("pyray.gui_button", return_value=False), patch(
-            "pyray.gui_toggle",
+            "engine.editor.console_panel.gui_toggle_bool",
             side_effect=lambda _rect, _label, value: value,
         ), patch("pyray.draw_rectangle"), patch("pyray.draw_rectangle_rec"), patch(
             "pyray.draw_rectangle_lines_ex"
@@ -42,7 +42,7 @@ class ConsolePanelRenderTests(unittest.TestCase):
         log_err("boom")
 
         with patch("pyray.gui_button", return_value=False), patch(
-            "pyray.gui_toggle",
+            "engine.editor.console_panel.gui_toggle_bool",
             side_effect=lambda _rect, _label, value: value,
         ), patch("pyray.draw_rectangle"), patch("pyray.draw_rectangle_rec"), patch(
             "pyray.draw_rectangle_lines_ex"
@@ -75,7 +75,7 @@ class ConsolePanelRenderTests(unittest.TestCase):
         log_info("hello")
 
         with patch("pyray.gui_button", return_value=False), patch(
-            "pyray.gui_toggle",
+            "engine.editor.console_panel.gui_toggle_bool",
             side_effect=lambda _rect, _label, value: value,
         ), patch("pyray.draw_rectangle"), patch("pyray.draw_rectangle_rec"), patch(
             "pyray.draw_rectangle_lines_ex"

@@ -337,7 +337,7 @@ class SceneFlowPanelSupportTests(unittest.TestCase):
         panel = SceneFlowPanel()
         target_rect = (12, 34, 720, 180)
 
-        with patch("pyray.gui_toggle", side_effect=lambda rect, _label, value: value), patch(
+        with patch("engine.editor.scene_flow_panel.gui_toggle_bool", side_effect=lambda rect, _label, value: value), patch(
             "pyray.gui_button",
             return_value=False,
         ), patch("pyray.draw_rectangle"), patch("pyray.draw_rectangle_rec"), patch(
@@ -372,7 +372,7 @@ class SceneFlowPanelSupportTests(unittest.TestCase):
     def test_flow_panel_uses_compact_layout_without_overflow_in_small_bottom_panel(self) -> None:
         panel = SceneFlowPanel()
 
-        with patch("pyray.gui_toggle", side_effect=lambda rect, _label, value: value), patch(
+        with patch("engine.editor.scene_flow_panel.gui_toggle_bool", side_effect=lambda rect, _label, value: value), patch(
             "pyray.gui_button",
             return_value=False,
         ), patch("pyray.draw_rectangle"), patch("pyray.draw_rectangle_rec"), patch(
@@ -394,7 +394,7 @@ class SceneFlowPanelSupportTests(unittest.TestCase):
         panel = SceneFlowPanel()
         drawn_texts: list[str] = []
 
-        with patch("pyray.gui_toggle", side_effect=lambda rect, _label, value: value), patch(
+        with patch("engine.editor.scene_flow_panel.gui_toggle_bool", side_effect=lambda rect, _label, value: value), patch(
             "pyray.gui_button",
             return_value=False,
         ), patch("pyray.draw_rectangle"), patch("pyray.draw_rectangle_rec"), patch(
@@ -417,7 +417,7 @@ class SceneFlowPanelSupportTests(unittest.TestCase):
         panel = SceneFlowPanel()
         drawn_texts: list[str] = []
 
-        with patch("pyray.gui_toggle", side_effect=lambda rect, _label, value: value), patch(
+        with patch("engine.editor.scene_flow_panel.gui_toggle_bool", side_effect=lambda rect, _label, value: value), patch(
             "pyray.gui_button",
             return_value=False,
         ), patch("pyray.draw_rectangle"), patch("pyray.draw_rectangle_rec"), patch(

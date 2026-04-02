@@ -6,6 +6,8 @@ from typing import List, Tuple
 
 import pyray as rl
 
+from engine.editor.render_safety import gui_toggle_bool
+
 # Sistema de Logs Global
 GLOBAL_LOGS: List[Tuple[str, str]] = []
 
@@ -69,11 +71,11 @@ class ConsolePanel:
             self.clear()
 
         fx = x + 60
-        self.show_info = rl.gui_toggle(rl.Rectangle(float(fx), float(y + 2), 60.0, 20.0), "Info", self.show_info)
+        self.show_info = gui_toggle_bool(rl.Rectangle(float(fx), float(y + 2), 60.0, 20.0), "Info", self.show_info)
         fx += 65
-        self.show_warn = rl.gui_toggle(rl.Rectangle(float(fx), float(y + 2), 60.0, 20.0), "Warn", self.show_warn)
+        self.show_warn = gui_toggle_bool(rl.Rectangle(float(fx), float(y + 2), 60.0, 20.0), "Warn", self.show_warn)
         fx += 65
-        self.show_err = rl.gui_toggle(rl.Rectangle(float(fx), float(y + 2), 60.0, 20.0), "Error", self.show_err)
+        self.show_err = gui_toggle_bool(rl.Rectangle(float(fx), float(y + 2), 60.0, 20.0), "Error", self.show_err)
 
         if self.body_rect.width <= 0 or self.body_rect.height <= 0:
             return

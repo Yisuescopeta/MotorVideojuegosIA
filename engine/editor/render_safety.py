@@ -75,3 +75,10 @@ def safe_reset_clip_state() -> None:
         rl.end_scissor_mode()
     except Exception:
         pass
+
+
+def gui_toggle_bool(rect: rl.Rectangle, label: str, current: bool) -> bool:
+    """RayGUI toggle helper for pyray builds that expect a mutable bool*."""
+    state = rl.ffi.new("bool *", bool(current))
+    rl.gui_toggle(rect, label, state)
+    return bool(state[0])

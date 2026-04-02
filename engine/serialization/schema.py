@@ -23,7 +23,7 @@ RIGIDBODY_CONSTRAINTS = {"None", "FreezePositionX", "FreezePositionY", "FreezePo
 UI_TEXT_ALIGNMENTS = {"left", "center", "right"}
 UI_BUTTON_ACTIONS = {"emit_event", "load_scene", "load_scene_flow", "run_scene_transition"}
 SCENE_TRANSITION_CONTACT_MODES = {"trigger_enter", "collision"}
-SCENE_LINK_MODES = {"", "ui_button", "trigger_enter", "collision"}
+SCENE_LINK_MODES = {"", "ui_button", "interact_near", "trigger_enter", "collision"}
 PHYSICS_BACKENDS = {"legacy_aabb", "box2d"}
 ASSET_REFERENCE_FIELD_PAIRS = {
     "Sprite": ("texture", "texture_path"),
@@ -275,11 +275,15 @@ def _canonicalize_component_payload(component_name: str, payload: dict[str, Any]
         payload.setdefault("enabled", True)
     elif component_name == "SceneLink":
         target_path = payload.get("target_path")
+        target_entity_name = payload.get("target_entity_name")
         flow_key = payload.get("flow_key")
         preview_label = payload.get("preview_label")
         link_mode = payload.get("link_mode")
         target_entry_id = payload.get("target_entry_id")
         payload["target_path"] = "" if target_path is None else target_path.strip() if isinstance(target_path, str) else target_path
+        payload["target_entity_name"] = (
+            "" if target_entity_name is None else target_entity_name.strip() if isinstance(target_entity_name, str) else target_entity_name
+        )
         payload["flow_key"] = "" if flow_key is None else flow_key.strip() if isinstance(flow_key, str) else flow_key
         payload["preview_label"] = (
             "" if preview_label is None else preview_label.strip() if isinstance(preview_label, str) else preview_label
@@ -1019,6 +1023,8 @@ def _validate_scene_link(data: dict[str, Any], *, path: str) -> list[str]:
         _expect_bool(data["enabled"], path=f"{path}.enabled", errors=errors)
     if "target_path" in data:
         _expect_string(data["target_path"], path=f"{path}.target_path", errors=errors)
+    if "target_entity_name" in data:
+        _expect_string(data["target_entity_name"], path=f"{path}.target_entity_name", errors=errors)
     if "flow_key" in data:
         _expect_string(data["flow_key"], path=f"{path}.flow_key", errors=errors)
     if "preview_label" in data:

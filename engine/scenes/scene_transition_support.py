@@ -245,6 +245,138 @@ def collect_project_scene_links(project_service: Any, scene_manager: Any) -> dic
     }
 
 
+def collect_flow_graph_data(project_service: Any, scene_manager: Any) -> dict[str, list[dict[str, Any]]]:
+    snapshot = collect_project_scene_links(project_service, scene_manager)
+    sidebar_items: list[dict[str, Any]] = []
+    canvas_nodes: list[dict[str, Any]] = []
+    canvas_edges: list[dict[str, Any]] = []
+    issues = copy.deepcopy(snapshot.get("issues", []))
+
+    authoring_rows = [copy.deepcopy(row) for row in snapshot.get("rows", []) if bool(row.get("has_scene_link", False))]
+    runtime_only_rows = [
+        copy.deepcopy(row)
+        for row in snapshot.get("rows", [])
+        if bool(row.get("is_runtime_only", False)) and not bool(row.get("has_scene_link", False))
+    ]
+
+    source_lookup: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in authoring_rows:
+        source_ref = str(row.get("source_scene_ref", "") or row.get("source_scene_path", "") or row.get("source_scene_key", "") or "")
+        entity_name = str(row.get("source_entity_name", "") or "")
+        row["sidebar_key"] = f"sidebar::{source_ref}::{entity_name}"
+        row["node_key"] = f"entity::{source_ref}::{entity_name}"
+        row["target_entity_name"] = str(row.get("target_entity_name", "") or "")
+        row["connected"] = bool(str(row.get("target_scene_path", "") or "").strip())
+        source_lookup[(source_ref, entity_name)] = row
+        sidebar_items.append(row)
+
+    for row in runtime_only_rows:
+        row["sidebar_key"] = f"runtime::{row.get('source_scene_ref', '') or row.get('source_scene_path', '') or row.get('source_scene_key', '')}::{row.get('source_entity_name', '')}"
+
+    for row in authoring_rows:
+        source_ref = str(row.get("source_scene_ref", "") or row.get("source_scene_path", "") or row.get("source_scene_key", "") or "")
+        scene_view_state = scene_manager.get_scene_view_state(source_ref) if scene_manager is not None and hasattr(scene_manager, "get_scene_view_state") else {}
+        flow_layout = scene_view_state.get("flow_layout", {}) if isinstance(scene_view_state, dict) else {}
+        node_positions = flow_layout.get("nodes", {}) if isinstance(flow_layout, dict) else {}
+        stored_position = node_positions.get(str(row.get("source_entity_name", "") or ""), {}) if isinstance(node_positions, dict) else {}
+        canvas_nodes.append(
+            {
+                "node_key": row["node_key"],
+                "kind": "entity",
+                "scene_ref": source_ref,
+                "scene_name": row.get("source_scene_name", ""),
+                "entity_name": row.get("source_entity_name", ""),
+                "label": row.get("source_entity_name", ""),
+                "link_mode": row.get("link_mode", ""),
+                "status": row.get("status", "ok"),
+                "x": float(stored_position.get("x", 0.0) or 0.0),
+                "y": float(stored_position.get("y", 0.0) or 0.0),
+                "has_stored_position": bool(stored_position),
+                "messages": list(row.get("messages", [])),
+            }
+        )
+
+    created_target_nodes: set[str] = set()
+    for row in authoring_rows:
+        source_ref = str(row.get("source_scene_ref", "") or row.get("source_scene_path", "") or row.get("source_scene_key", "") or "")
+        source_node_key = str(row.get("node_key", "") or "")
+        target_scene_ref = str(row.get("target_scene_ref", "") or row.get("target_scene_path", "") or "")
+        target_entity_name = str(row.get("target_entity_name", "") or "")
+        target_entry_id = str(row.get("target_entry_id", "") or "")
+        target_scene_path = str(row.get("target_scene_path", "") or "")
+        if not target_scene_path:
+            continue
+
+        target_row = source_lookup.get((target_scene_ref, target_entity_name)) if target_entity_name else None
+        if target_row is not None:
+            target_node_key = str(target_row.get("node_key", "") or "")
+        else:
+            target_node_key = f"target::{target_scene_ref or target_scene_path}::{target_entity_name}::{target_entry_id}"
+            if target_node_key not in created_target_nodes:
+                scene_view_state = scene_manager.get_scene_view_state(source_ref) if scene_manager is not None and hasattr(scene_manager, "get_scene_view_state") else {}
+                flow_layout = scene_view_state.get("flow_layout", {}) if isinstance(scene_view_state, dict) else {}
+                target_positions = flow_layout.get("targets", {}) if isinstance(flow_layout, dict) else {}
+                stored_position = target_positions.get(target_node_key, {}) if isinstance(target_positions, dict) else {}
+                target_label = target_entity_name or str(row.get("target_scene_name", "") or target_scene_path)
+                if target_entry_id:
+                    target_label = f"{target_label} [{target_entry_id}]"
+                canvas_nodes.append(
+                    {
+                        "node_key": target_node_key,
+                        "kind": "target",
+                        "source_scene_ref": source_ref,
+                        "scene_ref": target_scene_ref or target_scene_path,
+                        "scene_name": row.get("target_scene_name", "") or target_scene_path,
+                        "entity_name": target_entity_name,
+                        "label": target_label,
+                        "link_mode": "",
+                        "status": row.get("status", "ok"),
+                        "x": float(stored_position.get("x", 0.0) or 0.0),
+                        "y": float(stored_position.get("y", 0.0) or 0.0),
+                        "has_stored_position": bool(stored_position),
+                        "messages": list(row.get("messages", [])),
+                    }
+                )
+                created_target_nodes.add(target_node_key)
+
+        reciprocal = False
+        if target_row is not None:
+            reciprocal = (
+                str(target_row.get("target_scene_ref", "") or target_row.get("target_scene_path", "") or "") == source_ref
+                and str(target_row.get("target_entity_name", "") or "") == str(row.get("source_entity_name", "") or "")
+            )
+        edge_key = f"{source_node_key}->{target_node_key}"
+        if reciprocal:
+            pair_key = tuple(sorted([source_node_key, target_node_key]))
+            edge_key = f"two-way::{pair_key[0]}::{pair_key[1]}"
+            if any(existing.get("edge_key") == edge_key for existing in canvas_edges):
+                continue
+        canvas_edges.append(
+            {
+                "edge_key": edge_key,
+                "source_node_key": source_node_key,
+                "target_node_key": target_node_key,
+                "connection_type": "two_way" if reciprocal else "one_way",
+                "color_key": "purple" if reciprocal else "orange",
+                "source_scene_ref": source_ref,
+                "source_entity_name": row.get("source_entity_name", ""),
+                "target_scene_ref": target_scene_ref or target_scene_path,
+                "target_entity_name": target_entity_name,
+                "target_entry_id": target_entry_id,
+                "status": row.get("status", "ok"),
+                "messages": list(row.get("messages", [])),
+            }
+        )
+
+    return {
+        "sidebar_items": sidebar_items,
+        "runtime_only_items": runtime_only_rows,
+        "canvas_nodes": canvas_nodes,
+        "canvas_edges": canvas_edges,
+        "issues": issues,
+    }
+
+
 def _collect_scene_transition_records(project_service: Any, scene_manager: Any) -> list[dict[str, Any]]:
     records_by_ref: dict[str, dict[str, Any]] = {}
 
@@ -435,6 +567,7 @@ def _build_scene_link_row(
 ) -> dict[str, Any]:
     link_mode = str(scene_link.get("link_mode", "") or "").strip()
     target_scene_path = str(scene_link.get("target_path", "") or "").strip()
+    target_entity_name = str(scene_link.get("target_entity_name", "") or "").strip()
     target_entry_id = str(scene_link.get("target_entry_id", "") or "").strip()
     preview_label = str(scene_link.get("preview_label", "") or "").strip()
     flow_key = str(scene_link.get("flow_key", "") or "").strip()
@@ -479,6 +612,7 @@ def _build_scene_link_row(
     row["scene_link_preview_label"] = preview_label
     row["scene_link_flow_key"] = flow_key
     row["target_scene_path"] = target_scene_path
+    row["target_entity_name"] = target_entity_name
     row["target_entry_id"] = target_entry_id
     return row
 
@@ -487,6 +621,8 @@ def _scene_link_mode_to_label(link_mode: str) -> str:
     normalized = str(link_mode or "").strip()
     if normalized == "ui_button":
         return "UI Button"
+    if normalized == "interact_near":
+        return "Interact Near"
     if normalized == "trigger_enter":
         return "Touch / Trigger"
     if normalized == "collision":
@@ -582,6 +718,7 @@ def _build_transition_row(
         "trigger_label": trigger_label,
         "target_scene_path": target_scene_path,
         "target_scene_name": target_scene_name,
+        "target_entity_name": "",
         "target_entry_id": target_entry_id,
         "target_scene_ref": target_scene_ref or target_scene_path,
         "status": status,

@@ -1269,6 +1269,7 @@ class InspectorSystem:
         if entity.get_component(UIButton) is not None:
             options.append(("ui_button", "UI Button"))
         if entity.get_component(Collider) is not None:
+            options.append(("interact_near", "Interact Near"))
             options.append(("trigger_enter", "Touch / Trigger"))
             options.append(("collision", "Collision"))
         return options
@@ -1321,6 +1322,17 @@ class InspectorSystem:
             return False
         return self._sync_scene_link_runtime(world, entity_name)
 
+    def _set_scene_link_target_entity(self, world: "World", entity_name: str, target_entity_name: str) -> bool:
+        normalized_target = str(target_entity_name or "").strip()
+        if not self._ensure_scene_link(world, entity_name):
+            return False
+        return self.update_component_payload(
+            world,
+            entity_name,
+            "SceneLink",
+            lambda payload, normalized_target=normalized_target: payload.update({"target_entity_name": normalized_target}),
+        )
+
     def _get_scene_link_spawn_options(self, world: "World", entity_name: str) -> List[tuple[str, str]]:
         link = self._get_scene_link_payload(world, entity_name)
         target_scene_path = str(link.get("target_path", "") or "").strip() if link is not None else ""
@@ -1351,14 +1363,40 @@ class InspectorSystem:
                 messages.append(("warning", "Touch / Trigger requires a Collider component"))
             elif not collider.is_trigger:
                 messages.append(("warning", "Touch / Trigger requires Collider.is_trigger = true"))
+        if link_mode == "interact_near":
+            if collider is None:
+                messages.append(("warning", "Interact Near requires a Collider component"))
+            elif not collider.is_trigger:
+                messages.append(("warning", "Interact Near requires Collider.is_trigger = true"))
         if link_mode == "collision" and collider is None:
             messages.append(("warning", "Collision requires a Collider component"))
         if link_mode and not target_path:
             messages.append(("error", "Target scene is required"))
+        target_entity_name = str(link.get("target_entity_name", "") or "").strip()
+        if target_entity_name and self._scene_manager is not None:
+            target_entity = self._scene_manager.find_entity_data_for_scene(target_path, target_entity_name)
+            if target_entity is None:
+                messages.append(("warning", f"Target object '{target_entity_name}' was not found in destination scene"))
         for severity, message in self._get_scene_transition_validation_messages(world, entity_name):
             if (severity, message) not in messages:
                 messages.append((severity, message))
         return messages
+
+    def _get_scene_link_connection_type(self, world: "World", entity_name: str) -> str:
+        link = self._get_scene_link_payload(world, entity_name)
+        if link is None or self._scene_manager is None:
+            return "One-way"
+        target_path = str(link.get("target_path", "") or "").strip()
+        target_entity_name = str(link.get("target_entity_name", "") or "").strip()
+        if not target_path or not target_entity_name:
+            return "One-way"
+        target_link = self._scene_manager.get_component_data_for_scene(target_path, target_entity_name, "SceneLink")
+        if not isinstance(target_link, dict):
+            return "One-way"
+        current_scene = getattr(getattr(self._scene_manager, "current_scene", None), "source_path", "") or ""
+        reciprocal_path = str(target_link.get("target_path", "") or "").strip()
+        reciprocal_entity = str(target_link.get("target_entity_name", "") or "").strip()
+        return "Two-way" if reciprocal_path == str(current_scene) and reciprocal_entity == entity_name else "One-way"
 
     def _sync_scene_link_runtime(self, world: "World", entity_name: str) -> bool:
         entity = world.get_entity_by_name(entity_name)
@@ -1377,7 +1415,7 @@ class InspectorSystem:
 
         if link_mode == "ui_button" and entity.get_component(UIButton) is None:
             return False
-        if link_mode == "trigger_enter":
+        if link_mode in {"interact_near", "trigger_enter"}:
             collider = entity.get_component(Collider)
             if collider is None or not collider.is_trigger:
                 return False
@@ -1402,6 +1440,13 @@ class InspectorSystem:
             return self._set_ui_button_scene_transition(world, entity_name)
 
         self._reset_ui_button_scene_transition(world, entity_name)
+        if link_mode == "interact_near":
+            return self._upsert_component_payload(
+                world,
+                entity_name,
+                "SceneTransitionOnInteract",
+                {"enabled": True, "require_player": True},
+            )
         return self._upsert_component_payload(
             world,
             entity_name,
@@ -1795,6 +1840,7 @@ class InspectorSystem:
         current_y = self._draw_component_field("Enabled", component.enabled, entity_id, "SceneLink", "enabled", x, current_y, width, is_edit, world)
         link_mode = str(getattr(component, "link_mode", "") or "").strip()
         target_path = str(getattr(component, "target_path", "") or "").strip()
+        target_entity_name = str(getattr(component, "target_entity_name", "") or "").strip()
         target_entry_id = str(getattr(component, "target_entry_id", "") or "").strip()
         preview_label = str(getattr(component, "preview_label", "") or "").strip()
         flow_key = str(getattr(component, "flow_key", "") or "").strip()
@@ -1841,8 +1887,11 @@ class InspectorSystem:
             on_select=lambda value: self._set_scene_link_target_spawn(world, entity_name, value),
         )
 
+        current_y = self._draw_component_field("Target Obj", target_entity_name, entity_id, "SceneLink", "target_entity_name", x, current_y, width, is_edit, world)
+        current_y = self._draw_readonly_row("Connection", self._get_scene_link_connection_type(world, entity_name), x, current_y, width)
         current_y = self._draw_component_field("Preview", preview_label, entity_id, "SceneLink", "preview_label", x, current_y, width, is_edit, world)
         current_y = self._draw_component_field("Flow Key", flow_key, entity_id, "SceneLink", "flow_key", x, current_y, width, is_edit, world)
+        current_y = self._draw_readonly_row("Custom", "Custom with AI...", x, current_y, width)
 
         for severity, message in self._get_scene_link_validation_messages(world, entity_name):
             current_y = self._draw_message_row(severity, message, x, current_y, width)

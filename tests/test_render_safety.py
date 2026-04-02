@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pyray as rl
 
 from engine.editor.console_panel import ConsolePanel
-from engine.editor.render_safety import editor_scissor, logical_rect_to_scissor_rect, safe_reset_clip_state
+from engine.editor.render_safety import editor_scissor, gui_toggle_bool, logical_rect_to_scissor_rect, safe_reset_clip_state
 from engine.editor.scene_flow_panel import SceneFlowPanel
 
 
@@ -62,11 +62,24 @@ class RenderSafetyTests(unittest.TestCase):
         ):
             safe_reset_clip_state()
 
+    def test_gui_toggle_bool_uses_mutable_cffi_bool_state(self) -> None:
+        captured = {}
+
+        def _toggle(_rect, _label, state):
+            captured["state"] = state
+            state[0] = not bool(state[0])
+
+        with patch("pyray.gui_toggle", side_effect=_toggle):
+            result = gui_toggle_bool(rl.Rectangle(0.0, 0.0, 10.0, 10.0), "Flag", True)
+
+        self.assertFalse(result)
+        self.assertEqual(bool(captured["state"][0]), False)
+
     def test_console_panel_renders_without_scissor_side_effects(self) -> None:
         panel = ConsolePanel()
 
         with patch("pyray.gui_button", return_value=False), patch(
-            "pyray.gui_toggle",
+            "engine.editor.console_panel.gui_toggle_bool",
             side_effect=lambda _rect, _label, value: value,
         ), patch("pyray.draw_rectangle"), patch("pyray.draw_rectangle_rec"), patch(
             "pyray.draw_rectangle_lines_ex"
@@ -87,7 +100,7 @@ class RenderSafetyTests(unittest.TestCase):
     def test_scene_flow_panel_renders_without_scissor_side_effects(self) -> None:
         panel = SceneFlowPanel()
 
-        with patch("pyray.gui_toggle", side_effect=lambda rect, _label, value: value), patch(
+        with patch("engine.editor.scene_flow_panel.gui_toggle_bool", side_effect=lambda rect, _label, value: value), patch(
             "pyray.gui_button",
             return_value=False,
         ), patch("pyray.draw_rectangle"), patch("pyray.draw_rectangle_rec"), patch(
@@ -102,8 +115,8 @@ class RenderSafetyTests(unittest.TestCase):
 
         self.assertEqual(begin_scissor.call_count, 0)
         self.assertEqual(end_scissor.call_count, 0)
-        self.assertGreater(panel._summary_body_rect.height, 0)
-        self.assertGreater(panel._details_body_rect.height, 0)
+        self.assertGreater(panel._sidebar_rect.height, 0)
+        self.assertGreater(panel._canvas_rect.height, 0)
 
 
 if __name__ == "__main__":
