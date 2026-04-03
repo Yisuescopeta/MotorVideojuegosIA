@@ -23,6 +23,7 @@ class RuntimeControllerTests(unittest.TestCase):
         self.physics_system = Mock()
         self.collision_system = Mock()
         self.audio_system = Mock()
+        self.scene_transition_controller = Mock()
         self.physics_backend_registry = PhysicsBackendRegistry()
         self.reset_profiler = Mock()
         self.set_physics_backend = Mock()
@@ -42,6 +43,7 @@ class RuntimeControllerTests(unittest.TestCase):
             get_physics_system=lambda: self.physics_system,
             get_collision_system=lambda: self.collision_system,
             get_audio_system=lambda: self.audio_system,
+            get_scene_transition_controller=lambda: self.scene_transition_controller,
             get_physics_backend_registry=lambda: self.physics_backend_registry,
             reset_profiler=self.reset_profiler,
             set_physics_backend=self.set_physics_backend,
@@ -164,6 +166,7 @@ class RuntimeControllerTests(unittest.TestCase):
         self.physics_system.update.assert_not_called()
         self.collision_system.update.assert_not_called()
         self.audio_system.update.assert_called_once_with(world)
+        self.scene_transition_controller.update.assert_called_once_with(world)
 
     def test_update_gameplay_falls_back_to_registered_legacy_backend(self) -> None:
         legacy_backend = Mock()
@@ -178,6 +181,7 @@ class RuntimeControllerTests(unittest.TestCase):
         self.physics_system.update.assert_not_called()
         self.collision_system.update.assert_not_called()
         self.audio_system.update.assert_called_once_with(world)
+        self.scene_transition_controller.update.assert_called_once_with(world)
 
     def test_update_gameplay_is_noop_when_no_effective_backend_exists(self) -> None:
         world = SimpleNamespace(feature_metadata={"physics_2d": {"backend": "box2d"}})
@@ -188,6 +192,7 @@ class RuntimeControllerTests(unittest.TestCase):
         self.physics_system.update.assert_not_called()
         self.collision_system.update.assert_not_called()
         self.audio_system.update.assert_called_once_with(world)
+        self.scene_transition_controller.update.assert_called_once_with(world)
 
     def test_get_physics_backend_selection_reports_fallback(self) -> None:
         legacy_backend = Mock()
@@ -237,6 +242,7 @@ class RuntimeControllerTests(unittest.TestCase):
             get_physics_system=lambda: None,
             get_collision_system=lambda: self.collision_system,
             get_audio_system=lambda: self.audio_system,
+            get_scene_transition_controller=lambda: self.scene_transition_controller,
             get_physics_backend_registry=lambda: self.physics_backend_registry,
             reset_profiler=self.reset_profiler,
             set_physics_backend=self.set_physics_backend,

@@ -103,8 +103,10 @@ class ProjectService:
         global_state_dir: str | os.PathLike[str] | None = None,
         auto_ensure: bool = True,
     ) -> None:
-        self._editor_root = Path(project_root).resolve()
+        self._editor_root = Path(project_root).expanduser().absolute()
+        self._editor_root_real = self._editor_root.resolve()
         self._project_root = self._editor_root
+        self._project_root_real = self._editor_root_real
         self._manifest: ProjectManifest | None = None
         self._global_dir = self._resolve_global_dir(global_state_dir)
         self._recents_file = self._global_dir / self.RECENTS_FILE_NAME
@@ -122,6 +124,10 @@ class ProjectService:
 
     @property
     def project_root(self) -> Path:
+        return self._project_root_real
+
+    @property
+    def project_root_display(self) -> Path:
         return self._project_root
 
     @property
@@ -142,8 +148,15 @@ class ProjectService:
     def global_state_dir(self) -> Path:
         return self._global_dir
 
+    def _normalize_project_root(self, project_root: str | os.PathLike[str]) -> Path:
+        return Path(project_root).expanduser().absolute()
+
+    def _set_project_root(self, root: Path) -> None:
+        self._project_root = root.expanduser().absolute()
+        self._project_root_real = self._project_root.resolve()
+
     def ensure_project(self, project_root: str | os.PathLike[str] | None = None) -> ProjectManifest:
-        root = Path(project_root).resolve() if project_root is not None else self._project_root
+        root = self._normalize_project_root(project_root) if project_root is not None else self._project_root_real
         root.mkdir(parents=True, exist_ok=True)
         manifest_path = root / self.PROJECT_FILE
         is_new_project = not manifest_path.exists()
@@ -157,7 +170,7 @@ class ProjectService:
             )
             self._write_json(manifest_path, manifest.to_dict())
         manifest = self._load_manifest(manifest_path)
-        self._project_root = root
+        self._set_project_root(root)
         self._manifest = manifest
         self._ensure_project_layout(create_bootstrap=is_new_project)
         self.record_recent_project()
@@ -168,7 +181,7 @@ class ProjectService:
         project_root: str | os.PathLike[str],
         name: str | None = None,
     ) -> ProjectManifest:
-        root = Path(project_root).resolve()
+        root = self._normalize_project_root(project_root)
         if root.exists() and any(root.iterdir()):
             raise FileExistsError(f"Project directory is not empty: {root}")
         manifest = self.ensure_project(root)
@@ -188,7 +201,7 @@ class ProjectService:
         return self.manifest
 
     def register_project(self, project_root: str | os.PathLike[str]) -> Dict[str, Any]:
-        root = Path(project_root).expanduser().resolve()
+        root = self._normalize_project_root(project_root)
         manifest_path = root / self.PROJECT_FILE
         if not root.exists():
             raise FileNotFoundError(f"Project path not found: {root}")
@@ -205,7 +218,7 @@ class ProjectService:
         return self._build_launcher_entry(root, "external_registered", entry)
 
     def remove_registered_project(self, project_root: str | os.PathLike[str]) -> None:
-        target_path = Path(project_root).expanduser().resolve().as_posix()
+        target_path = self._normalize_project_root(project_root).as_posix()
         items = [
             item
             for item in self._load_registry_entries()
@@ -216,14 +229,15 @@ class ProjectService:
     def clear_active_project(self) -> None:
         self._manifest = None
         self._project_root = self._editor_root
+        self._project_root_real = self._editor_root_real
 
     def open_project(self, project_root: str | os.PathLike[str]) -> ProjectManifest:
-        root = Path(project_root).resolve()
+        root = self._normalize_project_root(project_root)
         manifest_path = root / self.PROJECT_FILE
         if not manifest_path.exists():
             raise FileNotFoundError(f"project.json not found in {root}")
         manifest = self._migrate_manifest(root, self._load_manifest(manifest_path))
-        self._project_root = root
+        self._set_project_root(root)
         self._manifest = manifest
         self._ensure_project_layout(create_bootstrap=False)
         self.record_recent_project()
@@ -231,7 +245,7 @@ class ProjectService:
 
     def validate_project(self, project_root: str | os.PathLike[str]) -> bool:
         try:
-            manifest_path = Path(project_root).resolve() / self.PROJECT_FILE
+            manifest_path = self._normalize_project_root(project_root) / self.PROJECT_FILE
             if not manifest_path.exists():
                 return False
             self._load_manifest(manifest_path)
@@ -240,7 +254,7 @@ class ProjectService:
             return False
 
     def get_manifest_path(self) -> Path:
-        return self._project_root / self.PROJECT_FILE
+        return self._project_root_real / self.PROJECT_FILE
 
     def get_recent_projects_path(self) -> Path:
         return self._recents_file
@@ -268,7 +282,7 @@ class ProjectService:
     def get_project_summary(self) -> Dict[str, Any]:
         return {
             "name": self.project_name,
-            "root": self.project_root.as_posix(),
+            "root": self.project_root_display.as_posix(),
             "manifest_path": self.get_manifest_path().as_posix(),
             "engine_version": self.manifest.engine_version,
             "template": self.manifest.template,
@@ -277,7 +291,7 @@ class ProjectService:
 
     def get_project_path(self, key: str) -> Path:
         relative = self.manifest.paths.get(key, key)
-        return (self._project_root / relative).resolve()
+        return (self._project_root_real / relative).resolve()
 
     def build_internal_project_path(self, project_name: str) -> Path:
         sanitized = self._sanitize_project_name(project_name)
@@ -312,15 +326,15 @@ class ProjectService:
     def resolve_path(self, path: str | os.PathLike[str]) -> Path:
         candidate = Path(path)
         if candidate.is_absolute():
-            return candidate
-        return (self._project_root / candidate).resolve()
+            return candidate.expanduser().resolve()
+        return (self._project_root_real / candidate).resolve()
 
     def to_relative_path(self, path: str | os.PathLike[str]) -> str:
         if not path:
             return ""
         candidate = self.resolve_path(path)
         try:
-            return candidate.relative_to(self._project_root).as_posix()
+            return candidate.relative_to(self._project_root_real).as_posix()
         except ValueError:
             return candidate.as_posix()
 
@@ -455,7 +469,7 @@ class ProjectService:
                 continue
             if path.suffix.lower() not in allowed:
                 continue
-            rel = path.relative_to(self._project_root).as_posix()
+            rel = path.relative_to(self._project_root_real).as_posix()
             if search_value and search_value not in rel.lower():
                 continue
             result.append(
@@ -463,7 +477,7 @@ class ProjectService:
                     "name": path.name,
                     "path": rel,
                     "absolute_path": path.as_posix(),
-                    "folder": path.parent.relative_to(self._project_root).as_posix(),
+                    "folder": path.parent.relative_to(self._project_root_real).as_posix(),
                 }
             )
         result.sort(key=lambda item: item["path"])
@@ -506,7 +520,7 @@ class ProjectService:
             self._write_json(self._recents_file, {"projects": []})
 
     def _ensure_project_layout(self, create_bootstrap: bool) -> None:
-        self._ensure_project_layout_for(self._project_root, self.manifest, create_bootstrap=create_bootstrap)
+        self._ensure_project_layout_for(self._project_root_real, self.manifest, create_bootstrap=create_bootstrap)
 
     def _ensure_project_layout_for(
         self,
@@ -557,7 +571,7 @@ class ProjectService:
         self._write_json(root / self.PROJECT_FILE, manifest.to_dict())
 
     def _get_editor_state_path(self) -> Path:
-        return self._project_root / self.PROJECT_STATE_DIR / self.EDITOR_STATE_FILE
+        return self._project_root_real / self.PROJECT_STATE_DIR / self.EDITOR_STATE_FILE
 
     def _default_project_settings(self) -> Dict[str, Any]:
         return {

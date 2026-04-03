@@ -63,10 +63,14 @@ class TerminalPanelTests(unittest.TestCase):
 
         layout.bottom_header_rect = rl.Rectangle(0, 540, 1280, layout.TAB_HEIGHT)
         with patch("pyray.is_mouse_button_pressed", return_value=True):
-            layout.handle_bottom_tab_input(rl.Vector2(80, 544))
+            layout.handle_bottom_tab_input(rl.Vector2(100, 544))
+            self.assertEqual(layout.active_bottom_tab, "FLOW")
+            layout.handle_bottom_tab_input(rl.Vector2(170, 544))
             self.assertEqual(layout.active_bottom_tab, "CONSOLE")
-            layout.handle_bottom_tab_input(rl.Vector2(152, 544))
+            layout.handle_bottom_tab_input(rl.Vector2(240, 544))
             self.assertEqual(layout.active_bottom_tab, "TERMINAL")
+            layout.handle_bottom_tab_input(rl.Vector2(20, 544))
+            self.assertEqual(layout.active_bottom_tab, "PROJECT")
 
     def test_bottom_panel_height_round_trips_preferences(self) -> None:
         with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
@@ -92,8 +96,8 @@ class TerminalPanelTests(unittest.TestCase):
         with patch.object(panel, "_create_backend", side_effect=_fake_create_backend):
             panel.ensure_session()
 
-        self.assertEqual(created[0].cwd, service.project_root.as_posix())
-        self.assertEqual(panel.current_cwd, service.project_root.as_posix())
+        self.assertEqual(created[0].cwd, service.project_root_display.as_posix())
+        self.assertEqual(panel.current_cwd, service.project_root_display.as_posix())
         self.assertIn("[policy: inherit]", panel.status_text)
 
     def test_terminal_builds_inherit_command_by_default(self) -> None:
@@ -153,7 +157,7 @@ class TerminalPanelTests(unittest.TestCase):
 
         self.assertEqual(len(created), 2)
         self.assertTrue(first_backend.closed)
-        self.assertEqual(created[-1].cwd, second_service.project_root.as_posix())
+        self.assertEqual(created[-1].cwd, second_service.project_root_display.as_posix())
 
     def test_terminal_status_displays_active_policy_from_project_settings(self) -> None:
         service = self._make_project("TerminalPolicyStatus")

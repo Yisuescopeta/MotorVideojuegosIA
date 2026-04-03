@@ -28,6 +28,7 @@ from engine.app import (
     EditorInteractionController,
     ProjectWorkspaceController,
     RuntimeController,
+    SceneTransitionController,
     SceneWorkflowController,
 )
 from engine.components.canvas import Canvas
@@ -43,7 +44,9 @@ from engine.editor.editor_layout import EditorLayout
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
 from engine.editor.gizmo_system import GizmoSystem
 from engine.editor.hierarchy_panel import HierarchyPanel
+from engine.editor.console_panel import log_err, log_warn
 from engine.editor.raygui_theme import apply_unity_dark_theme
+from engine.editor.render_safety import safe_reset_clip_state
 from engine.editor.sprite_editor_modal import SpriteEditorModal
 from engine.editor.terminal_panel import TerminalPanel
 from engine.editor.undo_redo import UndoRedoManager
@@ -169,6 +172,14 @@ class Game:
         self.debug_draw_colliders: bool = False
         self.debug_draw_labels: bool = False
         self.random_seed: int | None = None
+        self._scene_transition_controller = SceneTransitionController(
+            get_state=lambda: self._state,
+            get_world=lambda: self.world,
+            get_scene_manager=lambda: self._scene_manager,
+            get_physics_backend_registry=lambda: self._physics_backend_registry,
+            load_scene_by_path=self._load_runtime_scene_from_ui,
+            play_runtime=self.play,
+        )
         self._runtime_controller = RuntimeController(
             get_state=lambda: self._state,
             set_state=lambda value: setattr(self, "_state", value),
@@ -185,6 +196,7 @@ class Game:
             get_physics_system=lambda: self._physics_system,
             get_collision_system=lambda: self._collision_system,
             get_audio_system=lambda: self._audio_system,
+            get_scene_transition_controller=lambda: self._scene_transition_controller,
             get_physics_backend_registry=lambda: self._physics_backend_registry,
             reset_profiler=self.reset_profiler,
             set_physics_backend=self.set_physics_backend,
@@ -431,6 +443,7 @@ class Game:
             self._character_controller_system.set_event_bus(event_bus)
         if self._ui_system is not None:
             self._ui_system.set_event_bus(event_bus)
+        self._scene_transition_controller.set_event_bus(event_bus)
 
     def set_physics_backend(self, backend: Any, backend_name: str = "legacy_aabb") -> None:
         normalized_name = str(backend_name or "legacy_aabb")
@@ -458,6 +471,10 @@ class Game:
         if self.hierarchy_panel is not None:
             self.hierarchy_panel.set_scene_manager(manager)
         if self.editor_layout is not None:
+            if getattr(self.editor_layout, "flow_panel", None) is not None:
+                self.editor_layout.flow_panel.set_scene_manager(manager)
+            if getattr(self.editor_layout, "flow_workspace_panel", None) is not None:
+                self.editor_layout.flow_workspace_panel.set_scene_manager(manager)
             self.editor_layout.set_scene_tabs(manager.list_open_scenes(), manager.active_scene_key)
             
     def set_selection_system(self, system: "SelectionSystem") -> None:
@@ -466,9 +483,18 @@ class Game:
     def set_ui_system(self, system: "UISystem") -> None:
         self._ui_system = system
         self._ui_system.set_scene_loader(self.load_scene_by_path)
+        self._ui_system.set_runtime_scene_loader(self._load_runtime_scene_from_ui)
         self._ui_system.set_scene_flow_loader(self._load_scene_flow_target_from_script)
+        self._ui_system.set_scene_transition_runner(self._run_scene_transition)
+        self._ui_system.set_interaction_enabled_resolver(self._is_runtime_ui_interaction_enabled)
         if self._event_bus is not None:
             self._ui_system.set_event_bus(self._event_bus)
+
+    def _run_scene_transition(self, entity_name: str) -> bool:
+        return self._scene_transition_controller.run_transition_for_entity(entity_name)
+
+    def _load_runtime_scene_from_ui(self, path: str) -> bool:
+        return self._scene_workflow_controller.load_scene_by_path_runtime(path)
 
     def set_ui_render_system(self, system: "UIRenderSystem") -> None:
         self._ui_render_system = system
@@ -508,6 +534,10 @@ class Game:
         self._sync_current_scene_path()
         if self.editor_layout is not None:
             self.editor_layout.set_scene_tabs(self._scene_manager.list_open_scenes(), self._scene_manager.active_scene_key)
+            if getattr(self.editor_layout, "flow_panel", None) is not None:
+                self.editor_layout.flow_panel.refresh(force=True)
+            if getattr(self.editor_layout, "flow_workspace_panel", None) is not None:
+                self.editor_layout.flow_workspace_panel.refresh(force=True)
         if apply_view_state:
             self._apply_active_scene_view_state()
         self._persist_workspace_state()
@@ -679,9 +709,17 @@ class Game:
                 self._project_workspace_controller.refresh_launcher_projects()
                 if self._project_service.has_project:
                     self.editor_layout.project_panel.set_project_service(self._project_service)
+                    if getattr(self.editor_layout, "flow_panel", None) is not None:
+                        self.editor_layout.flow_panel.set_project_service(self._project_service)
+                    if getattr(self.editor_layout, "flow_workspace_panel", None) is not None:
+                        self.editor_layout.flow_workspace_panel.set_project_service(self._project_service)
                 else:
                     self.editor_layout.show_project_launcher = True
             if self._scene_manager is not None:
+                if getattr(self.editor_layout, "flow_panel", None) is not None:
+                    self.editor_layout.flow_panel.set_scene_manager(self._scene_manager)
+                if getattr(self.editor_layout, "flow_workspace_panel", None) is not None:
+                    self.editor_layout.flow_workspace_panel.set_scene_manager(self._scene_manager)
                 self.editor_layout.set_scene_tabs(self._scene_manager.list_open_scenes(), self._scene_manager.active_scene_key)
         
         self.running = True
@@ -811,7 +849,7 @@ class Game:
             active_tab = self.editor_layout.active_tab if self.editor_layout is not None else "SCENE"
             if active_world is not None and active_tab in ("SCENE", "GAME"):
                 try:
-                    self._update_ui_overlay(active_world, self._current_viewport_size())
+                    self._update_ui_overlay(active_world, self._ui_viewport_size_for_tab(active_tab), active_tab=active_tab)
                 except Exception as e:
                     from engine.editor.console_panel import log_err
                     log_err(f"UI error: {e}")
@@ -840,10 +878,27 @@ class Game:
     def _update_animation(self, world: Optional["World"], dt: float) -> None:
         self._runtime_controller.update_animation(world, dt)
 
-    def _update_ui_overlay(self, world: Optional["World"], viewport_size: tuple[float, float]) -> None:
+    def _update_ui_overlay(
+        self,
+        world: Optional["World"],
+        viewport_size: tuple[float, float],
+        *,
+        active_tab: Optional[str] = None,
+    ) -> None:
         if self._ui_system is None or world is None:
             return
-        self._ui_system.update(world, viewport_size)
+        tab = active_tab or (self.editor_layout.active_tab if self.editor_layout is not None else "GAME")
+        if self.editor_layout is not None and tab in ("SCENE", "GAME"):
+            mouse = rl.get_mouse_position()
+            view_rect = self.editor_layout.get_center_view_rect()
+            self._ui_system.inject_pointer_state(
+                float(mouse.x - view_rect.x),
+                float(mouse.y - view_rect.y),
+                bool(rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT)),
+                bool(rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT)),
+                bool(rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT)),
+            )
+        self._ui_system.update(world, viewport_size, allow_interaction=self._is_runtime_ui_interaction_enabled(active_tab=tab))
 
     def _current_viewport_size(self) -> tuple[float, float]:
         if self.editor_layout is not None and self.editor_layout.game_texture is not None:
@@ -856,6 +911,18 @@ class Game:
             texture = self.editor_layout.scene_texture.texture
             return (float(texture.width), float(texture.height))
         return (float(self.width), float(self.height))
+
+    def _ui_viewport_size_for_tab(self, active_tab: Optional[str] = None) -> tuple[float, float]:
+        tab = active_tab or (self.editor_layout.active_tab if self.editor_layout is not None else "GAME")
+        if tab == "SCENE":
+            return self._current_scene_viewport_size()
+        return self._current_viewport_size()
+
+    def _is_runtime_ui_interaction_enabled(self, *, active_tab: Optional[str] = None) -> bool:
+        tab = active_tab or (self.editor_layout.active_tab if self.editor_layout is not None else "GAME")
+        if tab != "GAME":
+            return False
+        return self._state in (EngineState.PLAY, EngineState.PAUSED, EngineState.STEPPING)
 
     def _render_ui_to_texture(self, world: Optional["World"], texture: Any, *, render_editor_overlay: bool = False) -> None:
         if self._ui_render_system is None or self._ui_system is None or world is None or texture is None:
@@ -948,6 +1015,12 @@ class Game:
         self._perf_stats["hierarchy"] = 0.0
         
         try:
+            editor_world = self._scene_manager.get_edit_world() if self._scene_manager is not None else None
+            overlay_world = active_world
+            if overlay_world is None and editor_world is not None:
+                overlay_world = editor_world
+            elif self.is_edit_mode and editor_world is not None:
+                overlay_world = editor_world
             # --- WINDOW RESIZE HANDLING ---
             if rl.is_window_resized():
                 self.width = rl.get_screen_width()
@@ -981,9 +1054,17 @@ class Game:
                     self.editor_layout.begin_scene_camera_pass()
                     self.gizmo_system.render(active_world, active_tool, transform_space, pivot_mode)
                     self.editor_layout.end_scene_camera_pass()
-                    
+
                 self.editor_layout.end_scene_render()
-                if active_world is not None and self.editor_layout.scene_texture is not None:
+                should_render_scene_ui = bool(
+                    self._ui_system is not None
+                    and active_world is not None
+                    and self._ui_system.should_render_scene_view_ui(
+                        active_world,
+                        allow_runtime=self._state.allows_gameplay(),
+                    )
+                )
+                if should_render_scene_ui and self.editor_layout.scene_texture is not None:
                     self._render_ui_to_texture(active_world, self.editor_layout.scene_texture, render_editor_overlay=True)
             
             # --- GAME VIEW RENDER ---
@@ -1008,26 +1089,38 @@ class Game:
             # --- MAIN SCREEN RENDER (LAYOUT & OVERLAYS) ---
             if self.editor_layout:
                 is_playing = (self._state == EngineState.PLAY or self._state == EngineState.PAUSED)
-                self.editor_layout.draw_layout(is_playing)
+                safe_reset_clip_state()
+                try:
+                    self.editor_layout.draw_layout(is_playing)
+                except Exception as exc:
+                    safe_reset_clip_state()
+                    log_err(f"Editor layout render error: {exc}")
+                    self.editor_layout.draw_bottom_tabs()
             else:
                  # Fallback
                  if self._render_system is not None and active_world is not None:
                     self._render_system.render(active_world)
 
             # Inspector Render (Overlay on Layout)
-            if self._inspector_system is not None and active_world is not None:
+            if self._inspector_system is not None and overlay_world is not None:
                 if self.editor_layout:
+                    safe_reset_clip_state()
                     rect = self.editor_layout.inspector_rect
                     inspector_start = time.perf_counter()
-                    self._inspector_system.render(
-                        active_world, 
-                        int(rect.x), int(rect.y), 
-                        int(rect.width), int(rect.height),
-                        is_edit_mode=self.is_edit_mode
-                    )
+                    try:
+                        self._inspector_system.render(
+                            overlay_world, 
+                            int(rect.x), int(rect.y), 
+                            int(rect.width), int(rect.height),
+                            is_edit_mode=self.is_edit_mode
+                        )
+                    except Exception as exc:
+                        safe_reset_clip_state()
+                        log_err(f"Inspector render error: {exc}")
                     self._perf_stats["inspector"] = (time.perf_counter() - inspector_start) * 1000.0
 
             if self.animator_panel is not None and active_world is not None and self.editor_layout and self.editor_layout.active_tab == "ANIMATOR":
+                safe_reset_clip_state()
                 rect = self.editor_layout.get_center_view_rect()
                 self.animator_panel.render(
                     active_world,
@@ -1037,6 +1130,22 @@ class Game:
                     int(rect.height),
                 )
 
+            if self.editor_layout is not None and self.editor_layout.active_tab == "FLOW":
+                flow_workspace_panel = getattr(self.editor_layout, "flow_workspace_panel", None)
+                if flow_workspace_panel is not None:
+                    safe_reset_clip_state()
+                    rect = self.editor_layout.get_center_view_rect()
+                    try:
+                        flow_workspace_panel.render(
+                            int(rect.x),
+                            int(rect.y),
+                            int(rect.width),
+                            int(rect.height),
+                        )
+                    except Exception as exc:
+                        safe_reset_clip_state()
+                        log_err(f"Flow workspace render error: {exc}")
+
             if self.sprite_editor_modal is not None and self.sprite_editor_modal.is_open:
                 self.sprite_editor_modal.render(self.width, self.height)
 
@@ -1044,22 +1153,32 @@ class Game:
             self._draw_performance_overlay()
             
             # Hierachy Panel Overlay
-            if self.hierarchy_panel is not None and active_world is not None:
+            if self.hierarchy_panel is not None and overlay_world is not None:
+                safe_reset_clip_state()
                 hierarchy_start = time.perf_counter()
                 dropdown_open = self.editor_layout.dropdown_active if self.editor_layout else False
-                if self.editor_layout:
-                    rect = self.editor_layout.hierarchy_rect
-                    self.hierarchy_panel.render(active_world, int(rect.x), int(rect.y), int(rect.width), int(rect.height), input_blocked=dropdown_open)
-                else:
-                    self.hierarchy_panel.render(active_world, 0, 0, 200, self.height)
+                try:
+                    if self.editor_layout:
+                        rect = self.editor_layout.hierarchy_rect
+                        self.hierarchy_panel.render(overlay_world, int(rect.x), int(rect.y), int(rect.width), int(rect.height), input_blocked=dropdown_open)
+                    else:
+                        self.hierarchy_panel.render(overlay_world, 0, 0, 200, self.height)
+                except Exception as exc:
+                    safe_reset_clip_state()
+                    log_err(f"Hierarchy render error: {exc}")
                 self._perf_stats["hierarchy"] = (time.perf_counter() - hierarchy_start) * 1000.0
 
             # Dropdowns de menú y toolbar — siempre encima de todo (incluyendo hierarchy e inspector)
             if self.editor_layout:
+                safe_reset_clip_state()
                 self.editor_layout.draw_top_dropdowns()
 
-            cursor_state = self._editor_interaction_controller.resolve_cursor_state(active_world)
-            self._cursor_renderer.render(rl.get_mouse_position(), cursor_state)
+            try:
+                cursor_state = self._editor_interaction_controller.resolve_cursor_state(overlay_world)
+                self._cursor_renderer.render(rl.get_mouse_position(), cursor_state)
+            except Exception as exc:
+                self._cursor_renderer.show_system_cursor()
+                log_err(f"Cursor render error: {exc}")
 
         finally:
             rl.end_drawing()
@@ -1092,6 +1211,18 @@ class Game:
                 target_scene = self.editor_layout.project_panel.request_open_scene_for
                 self.editor_layout.project_panel.request_open_scene_for = None
                 self.load_scene_by_path(target_scene)
+            for panel_name in ("flow_panel", "flow_workspace_panel"):
+                flow_panel = getattr(self.editor_layout, panel_name, None)
+                request_open_source = getattr(flow_panel, "request_open_source", None) if flow_panel is not None else None
+                if isinstance(request_open_source, dict) and request_open_source:
+                    request = dict(request_open_source)
+                    flow_panel.request_open_source = None
+                    self._open_flow_source(request)
+                request_open_target = getattr(flow_panel, "request_open_target", None) if flow_panel is not None else None
+                if isinstance(request_open_target, dict) and request_open_target:
+                    request = dict(request_open_target)
+                    flow_panel.request_open_target = None
+                    self._open_flow_target(request)
 
         if self.animator_panel is not None and self.animator_panel.request_open_sprite_editor_for:
             target_asset = self.animator_panel.request_open_sprite_editor_for
@@ -1102,6 +1233,29 @@ class Game:
             target_asset = self._inspector_system.request_open_sprite_editor_for
             self._inspector_system.request_open_sprite_editor_for = None
             self._open_sprite_editor(target_asset)
+
+    def _open_flow_source(self, request: dict[str, str]) -> None:
+        if self._scene_manager is None:
+            return
+        scene_ref = str(request.get("scene_ref", "") or "").strip()
+        entity_name = str(request.get("entity_name", "") or "").strip()
+        if not scene_ref:
+            return
+        opened = self.activate_scene_workspace_tab(scene_ref)
+        if not opened and scene_ref.endswith(".json"):
+            opened = self.load_scene_by_path(scene_ref)
+        if not opened:
+            return
+        if entity_name and not self._scene_manager.set_selected_entity(entity_name):
+            log_warn(f"Scene Flow: entity '{entity_name}' was not found after opening '{scene_ref}'")
+
+    def _open_flow_target(self, request: dict[str, str]) -> None:
+        scene_ref = str(request.get("scene_ref", "") or "").strip()
+        if not scene_ref:
+            return
+        opened = self.activate_scene_workspace_tab(scene_ref)
+        if not opened and scene_ref.endswith(".json"):
+            self.load_scene_by_path(scene_ref)
 
     def _resolve_default_ui_parent(self, active_world: Optional["World"]) -> Optional[str]:
         if active_world is None:

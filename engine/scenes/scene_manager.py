@@ -144,6 +144,154 @@ class SceneManager:
             return None
         return copy.deepcopy(component_data)
 
+    def ensure_scene_open(self, scene_ref: str, activate: bool = False) -> Optional[SceneWorkspaceEntry]:
+        normalized_ref = str(scene_ref or "").strip()
+        if not normalized_ref:
+            return self._get_active_entry()
+        entry = self._resolve_entry(normalized_ref)
+        if entry is None and normalized_ref.endswith(".json"):
+            self.load_scene_from_file(normalized_ref, activate=activate)
+            entry = self._resolve_entry(normalized_ref)
+        elif activate and entry is not None:
+            self.activate_scene(normalized_ref)
+        return entry
+
+    def find_entity_data_for_scene(self, scene_ref: str | None, entity_name: str) -> Optional[Dict[str, Any]]:
+        entry = self.ensure_scene_open(str(scene_ref or ""), activate=False) if scene_ref not in (None, "") else self._get_active_entry()
+        if entry is None:
+            return None
+        entity_data = entry.scene.find_entity(entity_name)
+        return copy.deepcopy(entity_data) if isinstance(entity_data, dict) else None
+
+    def get_component_data_for_scene(
+        self,
+        scene_ref: str | None,
+        entity_name: str,
+        component_name: str,
+    ) -> Optional[Dict[str, Any]]:
+        entity_data = self.find_entity_data_for_scene(scene_ref, entity_name)
+        if entity_data is None:
+            return None
+        components = entity_data.get("components", {})
+        if not isinstance(components, dict):
+            return None
+        component_data = components.get(component_name)
+        return copy.deepcopy(component_data) if isinstance(component_data, dict) else None
+
+    def list_scene_entities(self, scene_ref: str | None = None) -> list[Dict[str, Any]]:
+        entry = self.ensure_scene_open(str(scene_ref or ""), activate=False) if scene_ref not in (None, "") else self._get_active_entry()
+        if entry is None:
+            return []
+        entities: list[Dict[str, Any]] = []
+        for entity_data in entry.scene.entities_data:
+            if not isinstance(entity_data, dict):
+                continue
+            components = entity_data.get("components", {})
+            component_names = sorted(components.keys()) if isinstance(components, dict) else []
+            entities.append(
+                {
+                    "name": str(entity_data.get("name", "") or ""),
+                    "scene_name": entry.scene.name,
+                    "scene_path": entry.source_path,
+                    "scene_key": entry.key,
+                    "scene_ref": entry.source_path or entry.key,
+                    "has_scene_link": "SceneLink" in component_names,
+                    "component_names": component_names,
+                }
+            )
+        return entities
+
+    def upsert_component_for_scene(
+        self,
+        scene_ref: str,
+        entity_name: str,
+        component_name: str,
+        component_data: Dict[str, Any],
+        *,
+        record_history: bool = True,
+    ) -> bool:
+        entry = self.ensure_scene_open(scene_ref, activate=False)
+        if entry is None or entry.is_playing:
+            return False
+        if entry.key == self._active_scene_key and not self._flush_pending_edit_world(
+            entry,
+            failure_context=f"upsert_component:{entity_name}.{component_name}",
+        ):
+            return False
+        if entry.scene.find_entity(entity_name) is None:
+            return False
+        before = copy.deepcopy(entry.scene.to_dict())
+        rollback_selected_name = entry.selected_entity_name
+        rollback_dirty = entry.dirty
+        rollback_pending_reason = entry.pending_edit_world_sync_reason
+        normalized_payload = self._canonicalize_component_payload(component_name, component_data)
+        if not entry.scene.replace_component_data(entity_name, component_name, normalized_payload):
+            if not entry.scene.add_component(entity_name, component_name, normalized_payload):
+                return False
+            entry.scene.set_component_metadata(
+                entity_name,
+                component_name,
+                {"origin": self._registry.get_origin(component_name)},
+            )
+        if component_name == "SceneLink":
+            self._sync_feature_metadata_from_scene_links(entry)
+        if not self._commit_serializable_scene_mutation(
+            entry,
+            before,
+            rollback_selected_name=rollback_selected_name,
+            rollback_dirty=rollback_dirty,
+            rollback_pending_reason=rollback_pending_reason,
+            failure_context=f"upsert_component:{entity_name}.{component_name}",
+        ):
+            return False
+        entry.dirty = True
+        if record_history and entry.key == self._active_scene_key:
+            self._record_scene_change(entry, f"{entity_name}.{component_name}", before)
+        return True
+
+    def remove_component_for_scene(
+        self,
+        scene_ref: str,
+        entity_name: str,
+        component_name: str,
+        *,
+        record_history: bool = True,
+    ) -> bool:
+        entry = self.ensure_scene_open(scene_ref, activate=False)
+        if entry is None or entry.is_playing:
+            return False
+        if entry.key == self._active_scene_key and not self._flush_pending_edit_world(
+            entry,
+            failure_context=f"remove_component:{entity_name}.{component_name}",
+        ):
+            return False
+        if entry.scene.find_entity(entity_name) is None:
+            return False
+        current = self.get_component_data_for_scene(scene_ref, entity_name, component_name)
+        if current is None:
+            return False
+        before = copy.deepcopy(entry.scene.to_dict())
+        rollback_selected_name = entry.selected_entity_name
+        rollback_dirty = entry.dirty
+        rollback_pending_reason = entry.pending_edit_world_sync_reason
+        if not entry.scene.remove_component(entity_name, component_name):
+            return False
+        if component_name == "SceneLink":
+            self._sync_feature_metadata_from_scene_links(entry)
+        if not self._commit_serializable_scene_mutation(
+            entry,
+            before,
+            rollback_selected_name=rollback_selected_name,
+            rollback_dirty=rollback_dirty,
+            rollback_pending_reason=rollback_pending_reason,
+            failure_context=f"remove_component:{entity_name}.{component_name}",
+        ):
+            return False
+        entry.dirty = True
+        if record_history and entry.key == self._active_scene_key:
+            self._record_scene_change(entry, f"remove_component:{entity_name}.{component_name}", before)
+        return True
+
     def get_scene_view_state(self, key: Optional[str] = None) -> Dict[str, Any]:
         return self._workspace.get_scene_view_state(key)
 
@@ -564,20 +712,32 @@ class SceneManager:
         entry = self._resolve_entry(key)
         if entry is None or entry.edit_world is None:
             return False
+        temp_path: Optional[Path] = None
         try:
             # Only legacy world-only authoring is flushed back into Scene before save.
             # Transient previews are intentionally discarded by the rebuild below.
-            if not self._flush_pending_edit_world(entry, failure_context=f"save_scene:{Path(path).name}"):
-                return False
+            if self._has_pending_transient_preview(entry):
+                self._rebuild_edit_world(entry)
+                self._clear_pending_edit_world_sync(entry)
+            elif self._has_pending_legacy_world_sync(entry):
+                if not self._flush_pending_edit_world(entry, failure_context=f"save_scene:{Path(path).name}"):
+                    return False
+            elif entry.edit_world.version != entry.edit_world_version:
+                self._sync_entry_from_edit_world(entry)
             data = self._validated_scene_payload(entry.scene.to_dict())
-            with open(path, "w", encoding="utf-8") as handle:
+            target_path = Path(path)
+            temp_path = target_path.with_name(f"{target_path.name}.tmp")
+            with open(temp_path, "w", encoding="utf-8") as handle:
                 json.dump(data, handle, indent=4)
             self._install_scene_payload(entry, data, source_path=path)
             self._workspace.rekey_entry(entry, self._build_scene_key(path, entry.scene.name))
+            temp_path.replace(target_path)
             entry.dirty = False
             self._clear_pending_edit_world_sync(entry)
             return True
         except Exception as exc:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
             log_err(f"SceneManager: error al guardar en {path}: {exc}")
             return False
 
@@ -777,6 +937,7 @@ class SceneManager:
         else:
             entry.selected_entity_name = None
             entry.edit_world.selected_entity_name = None
+        entry.edit_world_version = entry.edit_world.version
 
     def _has_pending_legacy_world_sync(self, entry: SceneWorkspaceEntry) -> bool:
         return entry.pending_edit_world_sync_reason == LEGACY_AUTHORING_SYNC_REASON
@@ -831,6 +992,8 @@ class SceneManager:
         data = self._build_canonical_scene_payload(entry)
         self._install_scene_payload(entry, data)
         self._sync_feature_metadata_from_scene_links(entry)
+        if entry.edit_world is not None:
+            entry.edit_world_version = entry.edit_world.version
         self._clear_pending_edit_world_sync(entry)
         return True
 
@@ -1012,7 +1175,7 @@ class SceneManager:
             scene_link = entity_data.get("components", {}).get("SceneLink")
             if isinstance(scene_link, dict):
                 flow_key = str(scene_link.get("flow_key", "") or "").strip()
-                if flow_key:
+                if flow_key and "target_path" not in scene_link:
                     scene_link["target_path"] = str(scene_flow.get(flow_key, "") or "")
 
     def _entry_has_invalid_links(self, entry: SceneWorkspaceEntry) -> bool:

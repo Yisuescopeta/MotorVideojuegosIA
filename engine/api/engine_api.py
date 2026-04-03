@@ -6,9 +6,8 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from cli.headless_game import HeadlessGame
 from engine.api._assets_project_api import AssetsProjectAPI
 from engine.api._authoring_api import AuthoringAPI
 from engine.api._context import EngineAPIContext
@@ -18,25 +17,15 @@ from engine.api._scene_workspace_api import SceneWorkspaceAPI
 from engine.api._ui_api import UIAPI
 from engine.api.errors import InvalidOperationError
 from engine.api.types import ActionResult
-from engine.assets.asset_service import AssetService
 from engine.events.event_bus import EventBus
-from engine.inspector.inspector_system import InspectorSystem
 from engine.levels.component_registry import create_default_registry
 from engine.physics.box2d_backend import Box2DPhysicsBackend
 from engine.project.project_service import ProjectService
 from engine.scenes.scene_manager import SceneManager
-from engine.systems.animation_system import AnimationSystem
-from engine.systems.audio_system import AudioSystem
-from engine.systems.character_controller_system import CharacterControllerSystem
-from engine.systems.collision_system import CollisionSystem
-from engine.systems.input_system import InputSystem
-from engine.systems.physics_system import PhysicsSystem
-from engine.systems.player_controller_system import PlayerControllerSystem
-from engine.systems.render_system import RenderSystem
-from engine.systems.script_behaviour_system import ScriptBehaviourSystem
-from engine.systems.selection_system import SelectionSystem
-from engine.systems.ui_render_system import UIRenderSystem
-from engine.systems.ui_system import UISystem
+
+if TYPE_CHECKING:
+    from cli.headless_game import HeadlessGame
+    from engine.assets.asset_service import AssetService
 
 
 class EngineAPI:
@@ -63,6 +52,22 @@ class EngineAPI:
         self._initialize_collaborators()
 
     def _initialize_engine(self) -> None:
+        from cli.headless_game import HeadlessGame
+        from engine.assets.asset_service import AssetService
+        from engine.inspector.inspector_system import InspectorSystem
+        from engine.systems.animation_system import AnimationSystem
+        from engine.systems.audio_system import AudioSystem
+        from engine.systems.character_controller_system import CharacterControllerSystem
+        from engine.systems.collision_system import CollisionSystem
+        from engine.systems.input_system import InputSystem
+        from engine.systems.physics_system import PhysicsSystem
+        from engine.systems.player_controller_system import PlayerControllerSystem
+        from engine.systems.render_system import RenderSystem
+        from engine.systems.script_behaviour_system import ScriptBehaviourSystem
+        from engine.systems.selection_system import SelectionSystem
+        from engine.systems.ui_render_system import UIRenderSystem
+        from engine.systems.ui_system import UISystem
+
         self.game = HeadlessGame()
         self.scene_manager = SceneManager(self._registry)
         self.project_service = ProjectService(self._project_root, global_state_dir=self._global_state_dir)
@@ -116,6 +121,8 @@ class EngineAPI:
             print(f"[WARNING] Box2D backend unavailable: {exc}")
 
     def attach_runtime(self, game: Any, scene_manager: SceneManager, project_service: ProjectService) -> None:
+        from engine.assets.asset_service import AssetService
+
         self.game = game
         self.scene_manager = scene_manager
         self.project_service = project_service

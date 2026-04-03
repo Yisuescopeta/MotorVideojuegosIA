@@ -26,7 +26,12 @@ from engine.components.inputmap import InputMap
 from engine.components.playercontroller2d import PlayerController2D
 from engine.components.renderorder2d import RenderOrder2D
 from engine.components.renderstyle2d import RenderStyle2D
+from engine.components.scene_entry_point import SceneEntryPoint
 from engine.components.scene_link import SceneLink
+from engine.components.scene_transition_action import SceneTransitionAction
+from engine.components.scene_transition_on_contact import SceneTransitionOnContact
+from engine.components.scene_transition_on_interact import SceneTransitionOnInteract
+from engine.components.scene_transition_on_player_death import SceneTransitionOnPlayerDeath
 from engine.components.scriptbehaviour import ScriptBehaviour
 from engine.components.tilemap import Tilemap
 
@@ -45,7 +50,12 @@ __all__ = [
     "PlayerController2D",
     "RenderOrder2D",
     "RenderStyle2D",
+    "SceneEntryPoint",
     "SceneLink",
+    "SceneTransitionAction",
+    "SceneTransitionOnContact",
+    "SceneTransitionOnInteract",
+    "SceneTransitionOnPlayerDeath",
     "ScriptBehaviour",
     "Tilemap",
 ]

@@ -96,7 +96,12 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.renderorder2d import RenderOrder2D
     from engine.components.renderstyle2d import RenderStyle2D
     from engine.components.rigidbody import RigidBody
+    from engine.components.scene_entry_point import SceneEntryPoint
     from engine.components.scene_link import SceneLink
+    from engine.components.scene_transition_action import SceneTransitionAction
+    from engine.components.scene_transition_on_contact import SceneTransitionOnContact
+    from engine.components.scene_transition_on_interact import SceneTransitionOnInteract
+    from engine.components.scene_transition_on_player_death import SceneTransitionOnPlayerDeath
     from engine.components.scriptbehaviour import ScriptBehaviour
     from engine.components.sprite import Sprite
     from engine.components.tilemap import Tilemap
@@ -118,7 +123,12 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("PlayerController2D", PlayerController2D)
     registry.register("RenderOrder2D", RenderOrder2D)
     registry.register("RenderStyle2D", RenderStyle2D)
+    registry.register("SceneEntryPoint", SceneEntryPoint)
     registry.register("SceneLink", SceneLink)
+    registry.register("SceneTransitionAction", SceneTransitionAction)
+    registry.register("SceneTransitionOnContact", SceneTransitionOnContact)
+    registry.register("SceneTransitionOnInteract", SceneTransitionOnInteract)
+    registry.register("SceneTransitionOnPlayerDeath", SceneTransitionOnPlayerDeath)
     registry.register("ScriptBehaviour", ScriptBehaviour)
     registry.register("Tilemap", Tilemap)
     registry.register("Canvas", Canvas)

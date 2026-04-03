@@ -21,7 +21,9 @@ RIGIDBODY_BODY_TYPES = {"dynamic", "kinematic", "static"}
 RIGIDBODY_COLLISION_MODES = {"discrete", "continuous"}
 RIGIDBODY_CONSTRAINTS = {"None", "FreezePositionX", "FreezePositionY", "FreezePosition"}
 UI_TEXT_ALIGNMENTS = {"left", "center", "right"}
-UI_BUTTON_ACTIONS = {"emit_event", "load_scene", "load_scene_flow"}
+UI_BUTTON_ACTIONS = {"emit_event", "load_scene", "load_scene_flow", "run_scene_transition"}
+SCENE_TRANSITION_CONTACT_MODES = {"trigger_enter", "collision"}
+SCENE_LINK_MODES = {"", "ui_button", "interact_near", "trigger_enter", "collision"}
 PHYSICS_BACKENDS = {"legacy_aabb", "box2d"}
 ASSET_REFERENCE_FIELD_PAIRS = {
     "Sprite": ("texture", "texture_path"),
@@ -159,15 +161,20 @@ def _canonicalize_script_behaviour(payload: dict[str, Any], *, entity_path: str)
     script_ref = normalize_asset_reference(script_value)
     script_path = script_ref.get("path", "")
     module_path = normalize_asset_path(module_path_value) if isinstance(module_path_value, str) else ""
-    normalized_module = _normalize_module_name(script_path) if script_path else ""
+    module_source = script_path or module_path
+    normalized_module = _normalize_module_name(module_source) if module_source else ""
+    canonical_script_path = script_path
+    if not canonical_script_path and module_source:
+        if module_source.endswith(".py") or module_source.startswith("scripts/"):
+            canonical_script_path = module_source
     if script_path and module_path and module_path not in {script_path, normalized_module}:
         raise ValueError(
             f"Cannot migrate {entity_path}.components.ScriptBehaviour: inconsistent script and module_path"
         )
 
-    if script_value is not None or script_path:
-        payload["script"] = build_asset_reference(script_path, script_ref.get("guid", ""))
-    if "module_path" in payload or script_path:
+    if script_value is not None or canonical_script_path:
+        payload["script"] = build_asset_reference(canonical_script_path, script_ref.get("guid", ""))
+    if "module_path" in payload or canonical_script_path:
         payload["module_path"] = normalized_module or module_path
 
 
@@ -241,6 +248,59 @@ def _canonicalize_component_payload(component_name: str, payload: dict[str, Any]
         _canonicalize_tilemap(payload)
     elif component_name == "Animator":
         payload.setdefault("sprite_sheet_path", normalize_asset_reference(payload.get("sprite_sheet")).get("path", ""))
+    elif component_name == "SceneEntryPoint":
+        entry_id = payload.get("entry_id")
+        label = payload.get("label")
+        payload["entry_id"] = "" if entry_id is None else entry_id.strip() if isinstance(entry_id, str) else entry_id
+        payload["label"] = "" if label is None else label.strip() if isinstance(label, str) else label
+    elif component_name == "SceneTransitionAction":
+        target_scene_path = payload.get("target_scene_path")
+        target_entry_id = payload.get("target_entry_id")
+        payload["target_scene_path"] = (
+            ""
+            if target_scene_path is None
+            else target_scene_path.strip()
+            if isinstance(target_scene_path, str)
+            else target_scene_path
+        )
+        payload["target_entry_id"] = (
+            ""
+            if target_entry_id is None
+            else target_entry_id.strip()
+            if isinstance(target_entry_id, str)
+            else target_entry_id
+        )
+    elif component_name == "SceneTransitionOnContact":
+        mode = payload.get("mode")
+        payload["mode"] = "" if mode is None else mode.strip() if isinstance(mode, str) else mode
+        payload.setdefault("require_player", True)
+    elif component_name == "SceneTransitionOnInteract":
+        payload.setdefault("require_player", True)
+    elif component_name == "SceneTransitionOnPlayerDeath":
+        payload.setdefault("enabled", True)
+    elif component_name == "SceneLink":
+        target_path = payload.get("target_path")
+        target_entity_name = payload.get("target_entity_name")
+        flow_key = payload.get("flow_key")
+        preview_label = payload.get("preview_label")
+        link_mode = payload.get("link_mode")
+        target_entry_id = payload.get("target_entry_id")
+        payload["target_path"] = "" if target_path is None else target_path.strip() if isinstance(target_path, str) else target_path
+        payload["target_entity_name"] = (
+            "" if target_entity_name is None else target_entity_name.strip() if isinstance(target_entity_name, str) else target_entity_name
+        )
+        payload["flow_key"] = "" if flow_key is None else flow_key.strip() if isinstance(flow_key, str) else flow_key
+        payload["preview_label"] = (
+            "" if preview_label is None else preview_label.strip() if isinstance(preview_label, str) else preview_label
+        )
+        payload["link_mode"] = "" if link_mode is None else link_mode.strip() if isinstance(link_mode, str) else link_mode
+        payload["target_entry_id"] = (
+            ""
+            if target_entry_id is None
+            else target_entry_id.strip()
+            if isinstance(target_entry_id, str)
+            else target_entry_id
+        )
 
 
 def _canonicalize_entity_payload(entity: dict[str, Any], *, entity_path: str) -> None:
@@ -822,17 +882,6 @@ def _validate_audio_source(data: dict[str, Any], *, path: str) -> list[str]:
         if key in data:
             _expect_bool(data[key], path=f"{path}.{key}", errors=errors)
     return errors
-
-
-def _normalize_module_name(module_path: str) -> str:
-    value = normalize_asset_path(module_path)
-    if value.endswith(".py"):
-        if value.startswith("scripts/"):
-            value = value[len("scripts/") :]
-        value = value[:-3]
-    return value.strip("/").replace("/", ".")
-
-
 def _validate_script_behaviour(data: dict[str, Any], *, path: str) -> list[str]:
     errors: list[str] = []
     if "enabled" in data:
@@ -913,15 +962,18 @@ def _validate_button_on_click(value: Any, *, path: str) -> list[str]:
     if normalized_type not in UI_BUTTON_ACTIONS:
         errors.append(f"{path}.type: expected one of {sorted(UI_BUTTON_ACTIONS)}")
         return errors
-    required_key = "name"
+    required_key: str | None = "name"
     if normalized_type == "load_scene":
         required_key = "path"
     elif normalized_type == "load_scene_flow":
         required_key = "target"
-    if required_key not in payload:
-        errors.append(f"{path}.{required_key}: expected non-empty string")
-    else:
-        _expect_string(payload.get(required_key), path=f"{path}.{required_key}", errors=errors, non_empty=True)
+    elif normalized_type == "run_scene_transition":
+        required_key = None
+    if required_key is not None:
+        if required_key not in payload:
+            errors.append(f"{path}.{required_key}: expected non-empty string")
+        else:
+            _expect_string(payload.get(required_key), path=f"{path}.{required_key}", errors=errors, non_empty=True)
     for key, item in payload.items():
         if key not in {"type", "name", "path", "target"}:
             _expect_json_serializable(item, path=f"{path}.{key}", errors=errors)
@@ -946,6 +998,82 @@ def _validate_ui_button(data: dict[str, Any], *, path: str) -> list[str]:
     return errors
 
 
+def _validate_scene_entry_point(data: dict[str, Any], *, path: str) -> list[str]:
+    errors: list[str] = []
+    if "enabled" in data:
+        _expect_bool(data["enabled"], path=f"{path}.enabled", errors=errors)
+    if "entry_id" in data:
+        _expect_string(data["entry_id"], path=f"{path}.entry_id", errors=errors, non_empty=True)
+    else:
+        errors.append(f"{path}.entry_id: expected non-empty string")
+    if "label" in data:
+        _expect_string(data["label"], path=f"{path}.label", errors=errors)
+    return errors
+
+
+def _validate_scene_link(data: dict[str, Any], *, path: str) -> list[str]:
+    errors: list[str] = []
+    if "enabled" in data:
+        _expect_bool(data["enabled"], path=f"{path}.enabled", errors=errors)
+    if "target_path" in data:
+        _expect_string(data["target_path"], path=f"{path}.target_path", errors=errors)
+    if "target_entity_name" in data:
+        _expect_string(data["target_entity_name"], path=f"{path}.target_entity_name", errors=errors)
+    if "flow_key" in data:
+        _expect_string(data["flow_key"], path=f"{path}.flow_key", errors=errors)
+    if "preview_label" in data:
+        _expect_string(data["preview_label"], path=f"{path}.preview_label", errors=errors)
+    if "target_entry_id" in data:
+        _expect_string(data["target_entry_id"], path=f"{path}.target_entry_id", errors=errors)
+    if "link_mode" in data:
+        normalized_mode = _expect_string(data["link_mode"], path=f"{path}.link_mode", errors=errors)
+        if isinstance(normalized_mode, str) and normalized_mode.strip() not in SCENE_LINK_MODES:
+            errors.append(f"{path}.link_mode: expected one of {sorted(SCENE_LINK_MODES)}")
+    return errors
+
+
+def _validate_scene_transition_action(data: dict[str, Any], *, path: str) -> list[str]:
+    errors: list[str] = []
+    if "enabled" in data:
+        _expect_bool(data["enabled"], path=f"{path}.enabled", errors=errors)
+    if "target_scene_path" in data:
+        _expect_string(data["target_scene_path"], path=f"{path}.target_scene_path", errors=errors, non_empty=True)
+    else:
+        errors.append(f"{path}.target_scene_path: expected non-empty string")
+    if "target_entry_id" in data:
+        _expect_string(data["target_entry_id"], path=f"{path}.target_entry_id", errors=errors)
+    return errors
+
+
+def _validate_scene_transition_on_contact(data: dict[str, Any], *, path: str) -> list[str]:
+    errors: list[str] = []
+    if "enabled" in data:
+        _expect_bool(data["enabled"], path=f"{path}.enabled", errors=errors)
+    mode = data.get("mode", "trigger_enter")
+    normalized_mode = _expect_string(mode, path=f"{path}.mode", errors=errors, non_empty=True)
+    if isinstance(normalized_mode, str) and normalized_mode.strip() not in SCENE_TRANSITION_CONTACT_MODES:
+        errors.append(f"{path}.mode: expected one of {sorted(SCENE_TRANSITION_CONTACT_MODES)}")
+    if "require_player" in data:
+        _expect_bool(data["require_player"], path=f"{path}.require_player", errors=errors)
+    return errors
+
+
+def _validate_scene_transition_on_interact(data: dict[str, Any], *, path: str) -> list[str]:
+    errors: list[str] = []
+    if "enabled" in data:
+        _expect_bool(data["enabled"], path=f"{path}.enabled", errors=errors)
+    if "require_player" in data:
+        _expect_bool(data["require_player"], path=f"{path}.require_player", errors=errors)
+    return errors
+
+
+def _validate_scene_transition_on_player_death(data: dict[str, Any], *, path: str) -> list[str]:
+    errors: list[str] = []
+    if "enabled" in data:
+        _expect_bool(data["enabled"], path=f"{path}.enabled", errors=errors)
+    return errors
+
+
 CORE_COMPONENT_VALIDATORS: dict[str, Callable[[dict[str, Any], str], list[str]]] = {
     "Transform": lambda data, path: _validate_transform(data, path=path),
     "RectTransform": lambda data, path: _validate_rect_transform(data, path=path),
@@ -961,6 +1089,12 @@ CORE_COMPONENT_VALIDATORS: dict[str, Callable[[dict[str, Any], str], list[str]]]
     "Canvas": lambda data, path: _validate_canvas(data, path=path),
     "UIText": lambda data, path: _validate_ui_text(data, path=path),
     "UIButton": lambda data, path: _validate_ui_button(data, path=path),
+    "SceneLink": lambda data, path: _validate_scene_link(data, path=path),
+    "SceneEntryPoint": lambda data, path: _validate_scene_entry_point(data, path=path),
+    "SceneTransitionAction": lambda data, path: _validate_scene_transition_action(data, path=path),
+    "SceneTransitionOnContact": lambda data, path: _validate_scene_transition_on_contact(data, path=path),
+    "SceneTransitionOnInteract": lambda data, path: _validate_scene_transition_on_interact(data, path=path),
+    "SceneTransitionOnPlayerDeath": lambda data, path: _validate_scene_transition_on_player_death(data, path=path),
 }
 
 
@@ -1066,6 +1200,53 @@ def _validate_entity_graph(
     for entity_name in names_to_indexes:
         walk(entity_name)
     return errors, roots
+
+
+def _validate_scene_transition_semantics(entities: list[Any], *, path: str) -> list[str]:
+    errors: list[str] = []
+    entry_ids: dict[str, int] = {}
+    for index, entity in enumerate(entities):
+        if not isinstance(entity, dict):
+            continue
+        components = entity.get("components", {})
+        if not isinstance(components, dict):
+            continue
+        entry_point = components.get("SceneEntryPoint")
+        if isinstance(entry_point, dict):
+            entry_id = str(entry_point.get("entry_id", "") or "").strip()
+            if entry_id:
+                previous_index = entry_ids.get(entry_id)
+                if previous_index is not None:
+                    errors.append(
+                        f"{path}[{index}].components.SceneEntryPoint.entry_id: duplicate entry id '{entry_id}'"
+                    )
+                else:
+                    entry_ids[entry_id] = index
+
+        has_transition_action = isinstance(components.get("SceneTransitionAction"), dict)
+        has_contact_trigger = isinstance(components.get("SceneTransitionOnContact"), dict)
+        has_interact_trigger = isinstance(components.get("SceneTransitionOnInteract"), dict)
+        has_player_death_trigger = isinstance(components.get("SceneTransitionOnPlayerDeath"), dict)
+        button_payload = components.get("UIButton")
+        button_uses_transition = (
+            isinstance(button_payload, dict)
+            and isinstance(button_payload.get("on_click"), dict)
+            and str(button_payload.get("on_click", {}).get("type", "") or "").strip() == "run_scene_transition"
+        )
+
+        if (has_contact_trigger or has_interact_trigger or has_player_death_trigger or button_uses_transition) and not has_transition_action:
+            errors.append(
+                f"{path}[{index}].components.SceneTransitionAction: required when using scene transition triggers"
+            )
+
+        if has_interact_trigger:
+            collider = components.get("Collider")
+            if not isinstance(collider, dict) or not bool(collider.get("is_trigger", False)):
+                errors.append(
+                    f"{path}[{index}].components.SceneTransitionOnInteract: requires Collider.is_trigger = true"
+                )
+
+    return errors
 
 
 def _validate_rule_action(action: Any, *, path: str) -> list[str]:
@@ -1244,6 +1425,7 @@ def validate_scene_data(data: Any) -> list[str]:
             counted_root_values={None},
         )
         errors.extend(graph_errors)
+        errors.extend(_validate_scene_transition_semantics(entities, path="$.entities"))
     rules = payload.get("rules")
     if not isinstance(rules, list):
         errors.append("$.rules: expected array")

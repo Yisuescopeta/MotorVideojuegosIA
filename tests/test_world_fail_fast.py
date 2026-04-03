@@ -93,7 +93,7 @@ class SceneManagerFailFastTests(unittest.TestCase):
         player = edit_world.get_entity_by_name("Player")
         player.add_component(BrokenCloneComponent())
 
-        with patch("engine.scenes.scene_manager.log_err") as log_err:
+        with patch("engine.scenes.workspace_lifecycle.log_err") as log_err:
             runtime_world = self.scene_manager.enter_play()
 
         self.assertIsNone(runtime_world)

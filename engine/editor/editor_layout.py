@@ -21,8 +21,10 @@ import pyray as rl
 import os
 from typing import Optional
 from engine.editor.cursor_manager import CursorVisualState
+from engine.editor.console_panel import ConsolePanel, log_err
 from engine.editor.project_panel import ProjectPanel
-from engine.editor.console_panel import ConsolePanel
+from engine.editor.render_safety import safe_reset_clip_state
+from engine.editor.scene_flow_panel import SceneFlowPanel
 from engine.editor.editor_tools import EditorTool, PivotMode, SnapSettings, TransformSpace
 
 class EditorLayout:
@@ -127,9 +129,11 @@ class EditorLayout:
         "Window": [
             ("Scene",            "",             "tab_scene"),
             ("Game",             "",             "tab_game"),
+            ("Flow",             "",             "tab_flow"),
             ("Animator",         "",             "tab_animator"),
             None,
             ("Project",          "",             "bottom_project"),
+            ("Flow Panel",       "",             "bottom_flow"),
             ("Console",          "",             "bottom_console"),
             ("Terminal",         "",             "bottom_terminal"),
         ],
@@ -147,8 +151,8 @@ class EditorLayout:
         self.screen_height = screen_height
         
         # Tabs
-        self.active_tab: str = "SCENE" # "SCENE" | "GAME" | "ANIMATOR"
-        self.active_bottom_tab: str = "PROJECT" # "PROJECT" | "CONSOLE" | "TERMINAL"
+        self.active_tab: str = "SCENE" # "SCENE" | "GAME" | "FLOW" | "ANIMATOR"
+        self.active_bottom_tab: str = "PROJECT" # "PROJECT" | "FLOW" | "CONSOLE" | "TERMINAL"
         
         # Menu dropdown state
         self._active_menu: str | None = None
@@ -256,6 +260,7 @@ class EditorLayout:
         # Tab Rects
         self.tab_scene_rect = rl.Rectangle(0,0,0,0)
         self.tab_game_rect = rl.Rectangle(0,0,0,0)
+        self.tab_flow_rect = rl.Rectangle(0,0,0,0)
         self.tab_animator_rect = rl.Rectangle(0,0,0,0)
         self.btn_play_rect = rl.Rectangle(0,0,0,0)
         
@@ -264,6 +269,8 @@ class EditorLayout:
         
         # Project / Console Panel
         self.project_panel = ProjectPanel("assets") 
+        self.flow_panel = SceneFlowPanel()
+        self.flow_workspace_panel = SceneFlowPanel()
         self.console_panel = ConsolePanel()
         self.terminal_panel = None
         self._text_measure_cache: dict[tuple[str, int], int] = {}
@@ -399,7 +406,8 @@ class EditorLayout:
         tab_x = center_x + 4
         self.tab_scene_rect = rl.Rectangle(tab_x, tab_y, 74, tab_h)
         self.tab_game_rect = rl.Rectangle(tab_x + 78, tab_y, 74, tab_h)
-        self.tab_animator_rect = rl.Rectangle(tab_x + 156, tab_y, 92, tab_h)
+        self.tab_flow_rect = rl.Rectangle(tab_x + 156, tab_y, 74, tab_h)
+        self.tab_animator_rect = rl.Rectangle(tab_x + 234, tab_y, 92, tab_h)
         # Play is handled directly by toolbar buttons; keep this rect inert.
         self.btn_play_rect = rl.Rectangle(0, 0, 0, 0)
         
@@ -456,6 +464,8 @@ class EditorLayout:
                     self.active_tab = "SCENE"
                 elif rl.check_collision_point_rec(mouse_pos, self.tab_game_rect):
                     self.active_tab = "GAME"
+                elif rl.check_collision_point_rec(mouse_pos, self.tab_flow_rect):
+                    self.active_tab = "FLOW"
                 elif rl.check_collision_point_rec(mouse_pos, self.tab_animator_rect):
                     self.active_tab = "ANIMATOR"
                 elif rl.check_collision_point_rec(mouse_pos, self.btn_play_rect):
@@ -711,6 +721,7 @@ class EditorLayout:
     def draw_layout(self, is_playing: bool) -> None:
         """Dibuja el layout completo del editor."""
         self._reset_cursor_regions()
+        safe_reset_clip_state()
         rl.clear_background(self.UNITY_BG_DARKEST)
         
         # ========================================
@@ -793,36 +804,48 @@ class EditorLayout:
         rl.draw_line(0, int(self.bottom_rect.y), self.screen_width, int(self.bottom_rect.y), self.UNITY_BORDER)
         
         # Draw Content
-        if self.active_bottom_tab == "PROJECT" and self.project_panel:
-            self.project_panel.render(
-                int(self.bottom_content_rect.x), 
-                int(self.bottom_content_rect.y), 
-                int(self.bottom_content_rect.width), 
-                int(self.bottom_content_rect.height)
-            )
-            # Drag Ghost
-            if self.project_panel.dragging_file:
-                mouse = rl.get_mouse_position()
-                rl.draw_rectangle(int(mouse.x), int(mouse.y), 20, 20, rl.Color(255, 255, 255, 128))
-                rl.draw_text(
-                    os.path.basename(self.project_panel.dragging_file), 
-                    int(mouse.x + 25), int(mouse.y), 10, rl.WHITE
+        safe_reset_clip_state()
+        try:
+            if self.active_bottom_tab == "PROJECT" and self.project_panel:
+                self.project_panel.render(
+                    int(self.bottom_content_rect.x), 
+                    int(self.bottom_content_rect.y), 
+                    int(self.bottom_content_rect.width), 
+                    int(self.bottom_content_rect.height)
                 )
-        elif self.active_bottom_tab == "CONSOLE" and self.console_panel:
-            self.console_panel.render(
-                int(self.bottom_content_rect.x), 
-                int(self.bottom_content_rect.y), 
-                int(self.bottom_content_rect.width), 
-                int(self.bottom_content_rect.height)
-            )
-        elif self.active_bottom_tab == "TERMINAL" and self.terminal_panel is not None:
-            self.terminal_panel.render(
-                int(self.bottom_content_rect.x),
-                int(self.bottom_content_rect.y),
-                int(self.bottom_content_rect.width),
-                int(self.bottom_content_rect.height),
-            )
+                if self.project_panel.dragging_file:
+                    mouse = rl.get_mouse_position()
+                    rl.draw_rectangle(int(mouse.x), int(mouse.y), 20, 20, rl.Color(255, 255, 255, 128))
+                    rl.draw_text(
+                        os.path.basename(self.project_panel.dragging_file), 
+                        int(mouse.x + 25), int(mouse.y), 10, rl.WHITE
+                    )
+            elif self.active_bottom_tab == "FLOW" and self.flow_panel is not None:
+                self.flow_panel.render(
+                    int(self.bottom_content_rect.x),
+                    int(self.bottom_content_rect.y),
+                    int(self.bottom_content_rect.width),
+                    int(self.bottom_content_rect.height),
+                )
+            elif self.active_bottom_tab == "CONSOLE" and self.console_panel:
+                self.console_panel.render(
+                    int(self.bottom_content_rect.x), 
+                    int(self.bottom_content_rect.y), 
+                    int(self.bottom_content_rect.width), 
+                    int(self.bottom_content_rect.height)
+                )
+            elif self.active_bottom_tab == "TERMINAL" and self.terminal_panel is not None:
+                self.terminal_panel.render(
+                    int(self.bottom_content_rect.x),
+                    int(self.bottom_content_rect.y),
+                    int(self.bottom_content_rect.width),
+                    int(self.bottom_content_rect.height),
+                )
+        except Exception as exc:
+            log_err(f"Bottom panel render error ({self.active_bottom_tab}): {exc}")
+            safe_reset_clip_state()
 
+        safe_reset_clip_state()
         self.draw_bottom_tabs()
 
         if self.show_project_modal:
@@ -1357,10 +1380,14 @@ class EditorLayout:
             self.active_tab = "SCENE"
         elif action_id == "tab_game":
             self.active_tab = "GAME"
+        elif action_id == "tab_flow":
+            self.active_tab = "FLOW"
         elif action_id == "tab_animator":
             self.active_tab = "ANIMATOR"
         elif action_id == "bottom_project":
             self.active_bottom_tab = "PROJECT"
+        elif action_id == "bottom_flow":
+            self.active_bottom_tab = "FLOW"
         elif action_id == "bottom_console":
             self.active_bottom_tab = "CONSOLE"
         elif action_id == "bottom_terminal":
@@ -1623,14 +1650,18 @@ class EditorLayout:
         bottom_tab_y = int(self.bottom_header_rect.y) + 2
         bottom_tab_h = self.TAB_HEIGHT - 4
         proj_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 2, bottom_tab_y, 70, bottom_tab_h)
-        cons_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 75, bottom_tab_y, 70, bottom_tab_h)
-        term_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 148, bottom_tab_y, 70, bottom_tab_h)
+        flow_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 75, bottom_tab_y, 62, bottom_tab_h)
+        cons_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 140, bottom_tab_y, 70, bottom_tab_h)
+        term_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 213, bottom_tab_y, 70, bottom_tab_h)
         self._register_cursor_rect(proj_tab_rect)
+        self._register_cursor_rect(flow_tab_rect)
         self._register_cursor_rect(cons_tab_rect)
         self._register_cursor_rect(term_tab_rect)
 
         if rl.check_collision_point_rec(mouse_pos, proj_tab_rect):
             self.active_bottom_tab = "PROJECT"
+        elif rl.check_collision_point_rec(mouse_pos, flow_tab_rect):
+            self.active_bottom_tab = "FLOW"
         elif rl.check_collision_point_rec(mouse_pos, cons_tab_rect):
             self.active_bottom_tab = "CONSOLE"
         elif rl.check_collision_point_rec(mouse_pos, term_tab_rect):
@@ -1649,10 +1680,12 @@ class EditorLayout:
         bottom_tab_y = int(self.bottom_header_rect.y) + 2
         bottom_tab_h = self.TAB_HEIGHT - 4
         proj_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 2, bottom_tab_y, 70, bottom_tab_h)
-        cons_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 75, bottom_tab_y, 70, bottom_tab_h)
-        term_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 148, bottom_tab_y, 70, bottom_tab_h)
+        flow_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 75, bottom_tab_y, 62, bottom_tab_h)
+        cons_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 140, bottom_tab_y, 70, bottom_tab_h)
+        term_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 213, bottom_tab_y, 70, bottom_tab_h)
 
         self._draw_tab("Project", proj_tab_rect, self.active_bottom_tab == "PROJECT")
+        self._draw_tab("Flow", flow_tab_rect, self.active_bottom_tab == "FLOW")
         self._draw_tab("Console", cons_tab_rect, self.active_bottom_tab == "CONSOLE")
         self._draw_tab("Terminal", term_tab_rect, self.active_bottom_tab == "TERMINAL")
 
@@ -1664,6 +1697,7 @@ class EditorLayout:
     def _draw_center_view_tabs(self, x: int, y: int, height: int) -> int:
         self._draw_tab("Scene", self.tab_scene_rect, self.active_tab == "SCENE")
         self._draw_tab("Game", self.tab_game_rect, self.active_tab == "GAME")
+        self._draw_tab("Flow", self.tab_flow_rect, self.active_tab == "FLOW")
         self._draw_tab("Animator", self.tab_animator_rect, self.active_tab == "ANIMATOR")
         separator_x = int(self.tab_animator_rect.x + self.tab_animator_rect.width + 6)
         rl.draw_line(separator_x, y + 3, separator_x, y + height - 3, self.UNITY_BORDER)
@@ -1735,6 +1769,7 @@ class EditorLayout:
         static_interactive = (
             self.tab_scene_rect,
             self.tab_game_rect,
+            self.tab_flow_rect,
             self.tab_animator_rect,
             self.btn_play_rect,
             self.splitter_left_rect,

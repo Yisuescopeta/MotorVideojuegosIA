@@ -24,7 +24,10 @@ class UISystem:
     def __init__(self) -> None:
         self._event_bus: Optional[EventBus] = None
         self._scene_loader: Any = None
+        self._runtime_scene_loader: Any = None
         self._scene_flow_loader: Any = None
+        self._scene_transition_runner: Any = None
+        self._interaction_enabled_resolver: Any = None
         self._layout_cache: dict[str, dict[str, Any]] = {}
         self._canvas_order: list[str] = []
         self._draw_order: list[str] = []
@@ -40,8 +43,17 @@ class UISystem:
     def set_scene_loader(self, callback: Any) -> None:
         self._scene_loader = callback
 
+    def set_runtime_scene_loader(self, callback: Any) -> None:
+        self._runtime_scene_loader = callback
+
     def set_scene_flow_loader(self, callback: Any) -> None:
         self._scene_flow_loader = callback
+
+    def set_scene_transition_runner(self, callback: Any) -> None:
+        self._scene_transition_runner = callback
+
+    def set_interaction_enabled_resolver(self, callback: Any) -> None:
+        self._interaction_enabled_resolver = callback
 
     def inject_pointer_state(
         self,
@@ -90,6 +102,23 @@ class UISystem:
             return None
         return copy.deepcopy(layout) if copy_result else layout
 
+    def get_selected_canvas_root(self, world: World) -> Optional[Entity]:
+        selected_name = getattr(world, "selected_entity_name", None)
+        if not selected_name:
+            return None
+        entity = world.get_entity_by_name(selected_name)
+        if entity is None or not entity.active or entity.parent_name is not None:
+            return None
+        canvas = entity.get_component(Canvas)
+        if canvas is None or not canvas.enabled:
+            return None
+        return entity
+
+    def should_render_scene_view_ui(self, world: World, *, allow_runtime: bool = False) -> bool:
+        if allow_runtime:
+            return True
+        return self.get_selected_canvas_root(world) is not None
+
     def get_parent_layout_entry(self, world: World, entity_name: str, copy_result: bool = True) -> Optional[dict[str, Any]]:
         entity = world.get_entity_by_name(entity_name)
         if entity is None or not entity.parent_name:
@@ -130,8 +159,13 @@ class UISystem:
         self.update(world, viewport_size)
         return self._execute_button_action(entity, button)
 
-    def update(self, world: World, viewport_size: tuple[float, float]) -> None:
-        pointer = self._resolve_pointer_state()
+    def update(
+        self,
+        world: World,
+        viewport_size: tuple[float, float],
+        *,
+        allow_interaction: Optional[bool] = None,
+    ) -> None:
         self._ensure_layout_cache(world, viewport_size)
 
         visible_buttons = {
@@ -147,6 +181,20 @@ class UISystem:
 
         if not visible_buttons:
             return
+
+        interaction_enabled = self._resolve_interaction_enabled(allow_interaction)
+        if not interaction_enabled:
+            for entity in world.get_entities_with(UIButton):
+                button = entity.get_component(UIButton)
+                layout = self._layout_cache.get(entity.name)
+                if button is None or layout is None:
+                    continue
+                state = self._button_runtime.setdefault(entity.id, {"hovered": False, "pressed": False})
+                state["hovered"] = False
+                state["pressed"] = False
+            return
+
+        pointer = self._resolve_pointer_state()
 
         for entity in world.get_entities_with(UIButton):
             button = entity.get_component(UIButton)
@@ -224,7 +272,11 @@ class UISystem:
         viewport_size: tuple[float, float],
         x: float,
         y: float,
+        *,
+        allow_interaction: Optional[bool] = None,
     ) -> CursorVisualState:
+        if not self._resolve_interaction_enabled(allow_interaction):
+            return CursorVisualState.DEFAULT
         self._ensure_layout_cache(world, viewport_size)
         for entity in world.get_entities_with(UIButton):
             button = entity.get_component(UIButton)
@@ -311,15 +363,20 @@ class UISystem:
             return bool(self._scene_flow_loader(target))
         if action_type == "load_scene":
             path = str(action.get("path", "")).strip()
-            if self._scene_loader is None or not path:
+            loader = self._runtime_scene_loader or self._scene_loader
+            if loader is None or not path:
                 return False
-            return bool(self._scene_loader(path))
+            return bool(loader(path))
         if action_type == "emit_event":
             event_name = str(action.get("name", "")).strip()
             if self._event_bus is None or not event_name:
                 return False
             self._event_bus.emit(event_name, {"entity": entity.name, "source": "UIButton"})
             return True
+        if action_type == "run_scene_transition":
+            if self._scene_transition_runner is None:
+                return False
+            return bool(self._scene_transition_runner(entity.name))
         return False
 
     def _point_in_rect(self, x: float, y: float, rect: dict[str, Any]) -> bool:
@@ -329,3 +386,13 @@ class UISystem:
             and y >= float(rect["y"])
             and y <= float(rect["y"]) + float(rect["height"])
         )
+
+    def _resolve_interaction_enabled(self, allow_interaction: Optional[bool]) -> bool:
+        if allow_interaction is not None:
+            return bool(allow_interaction)
+        if self._interaction_enabled_resolver is None:
+            return True
+        try:
+            return bool(self._interaction_enabled_resolver())
+        except Exception:
+            return False

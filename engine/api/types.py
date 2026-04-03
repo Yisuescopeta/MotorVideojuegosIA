@@ -4,8 +4,6 @@ engine/api/types.py - Data contracts for the public API.
 
 from typing import Any, Dict, Optional, TypedDict
 
-from engine.physics.backend import PhysicsBackendInfo, PhysicsBackendSelection
-
 
 class Vector2D(TypedDict):
     x: float

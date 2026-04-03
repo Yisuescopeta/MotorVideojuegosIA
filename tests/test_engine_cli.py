@@ -104,6 +104,26 @@ class EngineCliTests(unittest.TestCase):
             self.assertIn("$.rules[0].do[0].event: expected non-empty string", result.stdout)
         self.assertEqual(_read_root_editor_state(), root_editor_state)
 
+    def test_cli_and_schema_import_without_pyray(self) -> None:
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(ROOT) if not env.get("PYTHONPATH") else str(ROOT) + os.pathsep + env["PYTHONPATH"]
+        env["PYRAY_FORCE_STUB"] = "1"
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import tools.engine_cli; import engine.serialization.schema; from engine.api import EngineAPI",
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        if result.returncode != 0:
+            raise AssertionError(
+                f"Import smoke test failed\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+            )
+
     def test_smoke_subcommand_produces_expected_artifacts(self) -> None:
         root_editor_state = _read_root_editor_state()
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -21,6 +21,7 @@ try:
 except ImportError:  # pragma: no cover - optional dependency at runtime
     ImageFont = None
 
+from engine.editor.render_safety import editor_scissor
 from engine.project.project_service import ProjectService
 
 ColorTuple = tuple[int, int, int, int]
@@ -1160,7 +1161,7 @@ class TerminalPanel:
     def set_project_service(self, project_service: Optional[ProjectService]) -> None:
         next_root = ""
         if project_service is not None and project_service.has_project:
-            next_root = project_service.project_root.as_posix()
+            next_root = project_service.project_root_display.as_posix()
         project_changed = next_root != self.last_project_root
         self.project_service = project_service
         self.last_project_root = next_root
@@ -1183,7 +1184,7 @@ class TerminalPanel:
             self.status_text = "Embedded terminal is only available on Windows"
             return
 
-        project_root = self.project_service.project_root.as_posix()
+        project_root = self.project_service.project_root_display.as_posix()
         self.shutdown()
         cols, rows = self._calculate_terminal_size()
         self.screen = _TerminalScreen(cols, rows, sequence_handler=self._handle_terminal_sequence)
@@ -1314,26 +1315,25 @@ class TerminalPanel:
 
         visible_rows = self.screen.visible_rows()
         drawable_rect = self.get_terminal_drawable_rect(use_visible_state=True)
-        rl.begin_scissor_mode(int(drawable_rect.x), int(drawable_rect.y), int(drawable_rect.width), int(drawable_rect.height))
-        start_y = float(drawable_rect.y) - self.scroll_offset
-        text_x = float(drawable_rect.x)
-        for row_index, row in enumerate(visible_rows):
-            line_y = start_y + row_index * self.row_step
-            if line_y + self.row_step < drawable_rect.y:
-                continue
-            if line_y > drawable_rect.y + drawable_rect.height:
-                break
-            self._draw_row_backgrounds(row, text_x, line_y)
-            self._draw_row_text(row, text_x, line_y)
+        with editor_scissor(drawable_rect):
+            start_y = float(drawable_rect.y) - self.scroll_offset
+            text_x = float(drawable_rect.x)
+            for row_index, row in enumerate(visible_rows):
+                line_y = start_y + row_index * self.row_step
+                if line_y + self.row_step < drawable_rect.y:
+                    continue
+                if line_y > drawable_rect.y + drawable_rect.height:
+                    break
+                self._draw_row_backgrounds(row, text_x, line_y)
+                self._draw_row_text(row, text_x, line_y)
 
-        visible_cursor = self.screen.visible_cursor()
-        if self.has_focus and self.screen.visible_show_cursor():
-            visible_index = visible_cursor.row if self.screen.visible_use_alt_buffer() else len(visible_rows) - self.screen.rows + visible_cursor.row
-            cursor_x = int(text_x + visible_cursor.col * self.cell_width)
-            cursor_y = int(start_y + visible_index * self.row_step)
-            if drawable_rect.y <= cursor_y <= drawable_rect.y + drawable_rect.height:
-                rl.draw_rectangle(cursor_x, cursor_y + int(self.row_step) - 2, max(2, int(self.cell_width)), 2, _to_ray_color(self.UNITY_ACCENT))
-        rl.end_scissor_mode()
+            visible_cursor = self.screen.visible_cursor()
+            if self.has_focus and self.screen.visible_show_cursor():
+                visible_index = visible_cursor.row if self.screen.visible_use_alt_buffer() else len(visible_rows) - self.screen.rows + visible_cursor.row
+                cursor_x = int(text_x + visible_cursor.col * self.cell_width)
+                cursor_y = int(start_y + visible_index * self.row_step)
+                if drawable_rect.y <= cursor_y <= drawable_rect.y + drawable_rect.height:
+                    rl.draw_rectangle(cursor_x, cursor_y + int(self.row_step) - 2, max(2, int(self.cell_width)), 2, _to_ray_color(self.UNITY_ACCENT))
 
     def captures_keyboard(self) -> bool:
         return self.has_focus

@@ -4,7 +4,6 @@ from typing import Any, Dict, Optional
 
 from engine.api._context import EngineAPIComponent
 from engine.api.types import ActionResult
-from engine.assets.prefab import PrefabManager
 from engine.authoring.changes import Change
 from engine.components.rigidbody import RigidBody
 from engine.components.tilemap import Tilemap

@@ -1,0 +1,120 @@
+{
+    "version": 1,
+    "generated_at_utc": "2026-03-23T23:01:30.314152+00:00",
+    "asset_count": 16,
+    "build_report": "build/asset_build_report.json",
+    "assets": [
+        {
+            "guid": "ast_2c6f30e04ba7458b9e8d6da1bf97444e",
+            "path": "assets/images.png",
+            "asset_kind": "texture",
+            "artifact_path": ".motor/meta/imported_assets/ast_2c6f30e04ba7458b9e8d6da1bf97444e.json",
+            "dependencies": []
+        },
+        {
+            "guid": "ast_3fe01594895f4c4081f1ef623dbd31f8",
+            "path": "assets/images_1.png",
+            "asset_kind": "texture",
+            "artifact_path": ".motor/meta/imported_assets/ast_3fe01594895f4c4081f1ef623dbd31f8.json",
+            "dependencies": []
+        },
+        {
+            "guid": "ast_1e334ed5ddaa4454bb8174415bdaa5e6",
+            "path": "assets/images_2.png",
+            "asset_kind": "texture",
+            "artifact_path": ".motor/meta/imported_assets/ast_1e334ed5ddaa4454bb8174415bdaa5e6.json",
+            "dependencies": []
+        },
+        {
+            "guid": "ast_00c4ead1dc834e7aa9e8bb9ea2a7d13a",
+            "path": "assets/images_3.png",
+            "asset_kind": "texture",
+            "artifact_path": ".motor/meta/imported_assets/ast_00c4ead1dc834e7aa9e8bb9ea2a7d13a.json",
+            "dependencies": []
+        },
+        {
+            "guid": "ast_51cc7ac9b79a46be8b870561e7f3e331",
+            "path": "assets/test_animator_generate.png",
+            "asset_kind": "texture",
+            "artifact_path": ".motor/meta/imported_assets/ast_51cc7ac9b79a46be8b870561e7f3e331.json",
+            "dependencies": []
+        },
+        {
+            "guid": "ast_4b39dcc9f7c84d3aaa435429284d42aa",
+            "path": "assets/test_spritesheet.png",
+            "asset_kind": "texture",
+            "artifact_path": ".motor/meta/imported_assets/ast_4b39dcc9f7c84d3aaa435429284d42aa.json",
+            "dependencies": []
+        },
+        {
+            "guid": "ast_63ae5f26a1264f66b1486715352b1676",
+            "path": "levels/EscenaSuelo.json",
+            "asset_kind": "scene_data",
+            "artifact_path": ".motor/meta/imported_assets/ast_63ae5f26a1264f66b1486715352b1676.json",
+            "dependencies": []
+        },
+        {
+            "guid": "ast_ca105968cf6d4d94bfe5d40e25a667b5",
+            "path": "levels/demo_level.json",
+            "asset_kind": "scene_data",
+            "artifact_path": ".motor/meta/imported_assets/ast_ca105968cf6d4d94bfe5d40e25a667b5.json",
+            "dependencies": []
+        },
+        {
+            "guid": "ast_0a1cfe5901b94d30b23b593639735daa",
+            "path": "levels/lol.json",
+            "asset_kind": "scene_data",
+            "artifact_path": ".motor/meta/imported_assets/ast_0a1cfe5901b94d30b23b593639735daa.json",
+            "dependencies": []
+        },
+        {
+            "guid": "ast_597251e8033d45e7ad42d229973f763f",
+            "path": "levels/main_menu_scene.json",
+            "asset_kind": "scene_data",
+            "artifact_path": ".motor/meta/imported_assets/ast_597251e8033d45e7ad42d229973f763f.json",
+            "dependencies": []
+        },
+        {
+            "guid": "ast_0a0f68b252014c979074814c28cd1c75",
+            "path": "levels/platformer_test_scene.json",
+            "asset_kind": "scene_data",
+            "artifact_path": ".motor/meta/imported_assets/ast_0a0f68b252014c979074814c28cd1c75.json",
+            "dependencies": []
+        },
+        {
+            "guid": "ast_cce65bdcbc634e99bf978b194dcb0675",
+            "path": "scripts/__init__.py",
+            "asset_kind": "script",
+            "artifact_path": ".motor/meta/imported_assets/ast_cce65bdcbc634e99bf978b194dcb0675.json",
+            "dependencies": []
+        },
+        {
+            "guid": "ast_3860b2b5a2f74411999e98b577ea9918",
+            "path": "scripts/example_script.py",
+            "asset_kind": "script",
+            "artifact_path": ".motor/meta/imported_assets/ast_3860b2b5a2f74411999e98b577ea9918.json",
+            "dependencies": []
+        },
+        {
+            "guid": "ast_1dfc9299941948a0b23fde950616951e",
+            "path": "scripts/main_menu_controller.py",
+            "asset_kind": "script",
+            "artifact_path": ".motor/meta/imported_assets/ast_1dfc9299941948a0b23fde950616951e.json",
+            "dependencies": []
+        },
+        {
+            "guid": "ast_7e176944aca447dfb85cac00bc23db9e",
+            "path": "scripts/platformer_character.py",
+            "asset_kind": "script",
+            "artifact_path": ".motor/meta/imported_assets/ast_7e176944aca447dfb85cac00bc23db9e.json",
+            "dependencies": []
+        },
+        {
+            "guid": "ast_8a1b91c96c7046e8a0b6fbfbd4011ab8",
+            "path": "scripts/player_movement_generated.py",
+            "asset_kind": "script",
+            "artifact_path": ".motor/meta/imported_assets/ast_8a1b91c96c7046e8a0b6fbfbd4011ab8.json",
+            "dependencies": []
+        }
+    ]
+}

@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -35,6 +36,69 @@ class InspectorCoreTests(unittest.TestCase):
         result = self.api.create_entity(name, components=components)
         self.assertTrue(result["success"])
 
+    def _write_scene(self, filename: str, payload: dict) -> Path:
+        path = self.project_root / "levels" / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=4), encoding="utf-8")
+        return path
+
+    def _target_scene_payload(self, scene_name: str, entry_points: list[tuple[str, str, float, float]]) -> dict:
+        entities = [
+            {
+                "name": "Player",
+                "active": True,
+                "tag": "Player",
+                "layer": "Default",
+                "components": {
+                    "Transform": {
+                        "enabled": True,
+                        "x": 16.0,
+                        "y": 24.0,
+                        "rotation": 0.0,
+                        "scale_x": 1.0,
+                        "scale_y": 1.0,
+                    },
+                    "PlayerController2D": {
+                        "enabled": True,
+                        "move_speed": 180.0,
+                        "jump_velocity": -320.0,
+                        "air_control": 0.75,
+                    },
+                },
+            }
+        ]
+        for entry_id, label, x, y in entry_points:
+            entities.append(
+                {
+                    "name": f"{entry_id.title()}Point",
+                    "active": True,
+                    "tag": "Untagged",
+                    "layer": "Default",
+                    "components": {
+                        "Transform": {
+                            "enabled": True,
+                            "x": x,
+                            "y": y,
+                            "rotation": 0.0,
+                            "scale_x": 1.0,
+                            "scale_y": 1.0,
+                        },
+                        "SceneEntryPoint": {
+                            "enabled": True,
+                            "entry_id": entry_id,
+                            "label": label,
+                        },
+                    },
+                }
+            )
+        return {
+            "schema_version": 2,
+            "name": scene_name,
+            "entities": entities,
+            "rules": [],
+            "feature_metadata": {},
+        }
+
     def test_registry_covers_all_current_builtins(self) -> None:
         expected = {
             "Transform",
@@ -47,6 +111,7 @@ class InspectorCoreTests(unittest.TestCase):
             "InputMap",
             "PlayerController2D",
             "ScriptBehaviour",
+            "SceneEntryPoint",
         }
         self.assertTrue(expected.issubset(set(self.inspector.list_dedicated_editors())))
 
@@ -254,6 +319,66 @@ class InspectorCoreTests(unittest.TestCase):
         self.assertEqual(transform.x, 130.0)
         self.assertEqual(transform.y, 90.0)
 
+    def test_component_fold_state_survives_transform_commit_rebuild(self) -> None:
+        self.assertTrue(
+            self.api.create_entity(
+                "InspectorFoldProbe",
+                {"Transform": {"enabled": True, "x": 12.0, "y": 24.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0}},
+            )["success"]
+        )
+
+        before_entity = self.api.game.world.get_entity_by_name("InspectorFoldProbe")
+        expansion_key = self.inspector._component_expansion_key("InspectorFoldProbe", "Transform")
+        self.inspector.expanded_components.add(expansion_key)
+
+        self.assertTrue(
+            self.inspector._apply_component_property(self.api.game.world, "InspectorFoldProbe", "Transform", "x", 99.0)
+        )
+
+        after_entity = self.api.game.world.get_entity_by_name("InspectorFoldProbe")
+        self.assertNotEqual(before_entity.id, after_entity.id)
+        self.assertIn(expansion_key, self.inspector.expanded_components)
+        self.assertEqual(after_entity.get_component(Transform).x, 99.0)
+
+    def test_component_fold_state_survives_rect_transform_commit_rebuild(self) -> None:
+        self.assertTrue(
+            self.api.create_entity(
+                "InspectorRectProbe",
+                {
+                    "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                    "RectTransform": {
+                        "enabled": True,
+                        "anchored_x": 0.0,
+                        "anchored_y": 0.0,
+                        "width": 160.0,
+                        "height": 90.0,
+                        "rotation": 0.0,
+                        "scale_x": 1.0,
+                        "scale_y": 1.0,
+                    },
+                },
+            )["success"]
+        )
+
+        before_entity = self.api.game.world.get_entity_by_name("InspectorRectProbe")
+        expansion_key = self.inspector._component_expansion_key("InspectorRectProbe", "RectTransform")
+        self.inspector.expanded_components.add(expansion_key)
+
+        self.assertTrue(
+            self.inspector._apply_component_property(
+                self.api.game.world,
+                "InspectorRectProbe",
+                "RectTransform",
+                "width",
+                220.0,
+            )
+        )
+
+        after_entity = self.api.game.world.get_entity_by_name("InspectorRectProbe")
+        self.assertNotEqual(before_entity.id, after_entity.id)
+        self.assertIn(expansion_key, self.inspector.expanded_components)
+        self.assertEqual(after_entity.get_component(RectTransform).width, 220.0)
+
     def test_inspector_rect_transform_edit_persists_after_save_and_reload(self) -> None:
         self._create_probe(
             "InspectorButton",
@@ -293,6 +418,206 @@ class InspectorCoreTests(unittest.TestCase):
         self.assertEqual(rect_transform.anchored_x, 32.0)
         self.assertEqual(rect_transform.height, 96.0)
 
+    def test_inspector_scene_transition_ui_button_persists_and_supports_undo_redo(self) -> None:
+        self._write_scene(
+            "transition_target.json",
+            self._target_scene_payload("Transition Target", [("arrival", "Arrival", 192.0, 144.0)]),
+        )
+        self._create_probe(
+            "PortalButton",
+            {
+                "RectTransform": {
+                    "enabled": True,
+                    "anchor_min_x": 0.5,
+                    "anchor_min_y": 0.5,
+                    "anchor_max_x": 0.5,
+                    "anchor_max_y": 0.5,
+                    "pivot_x": 0.5,
+                    "pivot_y": 0.5,
+                    "anchored_x": 0.0,
+                    "anchored_y": 0.0,
+                    "width": 220.0,
+                    "height": 64.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0,
+                },
+                "UIButton": {
+                    "enabled": True,
+                    "interactable": True,
+                    "label": "Go",
+                    "normal_color": [72, 72, 72, 255],
+                    "hover_color": [92, 92, 92, 255],
+                    "pressed_color": [56, 56, 56, 255],
+                    "disabled_color": [48, 48, 48, 200],
+                    "transition_scale_pressed": 0.96,
+                    "on_click": {"type": "emit_event", "name": "ui.button_clicked"},
+                },
+            },
+        )
+
+        self.assertTrue(self.inspector._set_scene_transition_preset(self.api.game.world, "PortalButton", "ui_button"))
+        self.assertTrue(
+            self.inspector._set_scene_transition_target_scene(
+                self.api.game.world,
+                "PortalButton",
+                "levels/transition_target.json",
+            )
+        )
+        self.assertTrue(self.inspector._set_scene_transition_target_spawn(self.api.game.world, "PortalButton", "arrival"))
+
+        entity = self.api.get_entity("PortalButton")
+        self.assertEqual(entity["components"]["UIButton"]["on_click"]["type"], "run_scene_transition")
+        self.assertEqual(entity["components"]["SceneTransitionAction"]["target_scene_path"], "levels/transition_target.json")
+        self.assertEqual(entity["components"]["SceneTransitionAction"]["target_entry_id"], "arrival")
+
+        self.assertTrue(self.api.undo()["success"])
+        entity = self.api.get_entity("PortalButton")
+        self.assertEqual(entity["components"]["SceneTransitionAction"]["target_entry_id"], "")
+
+        self.assertTrue(self.api.redo()["success"])
+        entity = self.api.get_entity("PortalButton")
+        self.assertEqual(entity["components"]["SceneTransitionAction"]["target_entry_id"], "arrival")
+
+        save_path = self.project_root / "levels" / "inspector_transition_saved.json"
+        self.assertTrue(self.api.save_scene(path=save_path.as_posix())["success"])
+        self.api.load_level(save_path.as_posix())
+
+        entity = self.api.get_entity("PortalButton")
+        self.assertEqual(entity["components"]["UIButton"]["on_click"]["type"], "run_scene_transition")
+        self.assertEqual(entity["components"]["SceneTransitionAction"]["target_scene_path"], "levels/transition_target.json")
+        self.assertEqual(entity["components"]["SceneTransitionAction"]["target_entry_id"], "arrival")
+
+    def test_inspector_scene_transition_trigger_presets_materialize_expected_components(self) -> None:
+        self._create_probe(
+            "TransitionProbe",
+            {
+                "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                "Collider": {
+                    "enabled": True,
+                    "width": 32.0,
+                    "height": 32.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": True,
+                },
+                "UIButton": {
+                    "enabled": True,
+                    "interactable": True,
+                    "label": "Go",
+                    "normal_color": [72, 72, 72, 255],
+                    "hover_color": [92, 92, 92, 255],
+                    "pressed_color": [56, 56, 56, 255],
+                    "disabled_color": [48, 48, 48, 200],
+                    "transition_scale_pressed": 0.96,
+                    "on_click": {"type": "emit_event", "name": "ui.button_clicked"},
+                },
+            },
+        )
+
+        for preset, component_name, mode in (
+            ("interact_near", "SceneTransitionOnInteract", None),
+            ("trigger_enter", "SceneTransitionOnContact", "trigger_enter"),
+            ("collision", "SceneTransitionOnContact", "collision"),
+            ("player_death", "SceneTransitionOnPlayerDeath", None),
+        ):
+            with self.subTest(preset=preset):
+                self.assertTrue(self.inspector._set_scene_transition_preset(self.api.game.world, "TransitionProbe", preset))
+                components = self.api.get_entity("TransitionProbe")["components"]
+                self.assertIn("SceneTransitionAction", components)
+                self.assertIn(component_name, components)
+                if mode is not None:
+                    self.assertEqual(components["SceneTransitionOnContact"]["mode"], mode)
+                trigger_count = sum(
+                    1
+                    for trigger_name in (
+                        "SceneTransitionOnContact",
+                        "SceneTransitionOnInteract",
+                        "SceneTransitionOnPlayerDeath",
+                    )
+                    if trigger_name in components
+                )
+                self.assertEqual(trigger_count, 1)
+
+    def test_scene_transition_target_scene_change_refreshes_spawn_options_and_clears_invalid_spawn(self) -> None:
+        self._write_scene(
+            "transition_target_a.json",
+            self._target_scene_payload("Transition A", [("arrival", "Arrival", 100.0, 100.0)]),
+        )
+        self._write_scene(
+            "transition_target_b.json",
+            self._target_scene_payload("Transition B", [("exit", "Exit", 240.0, 140.0)]),
+        )
+        self._create_probe(
+            "Portal",
+            {
+                "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+            },
+        )
+
+        self.assertTrue(self.inspector._set_scene_transition_preset(self.api.game.world, "Portal", "collision"))
+        self.assertTrue(
+            self.inspector._set_scene_transition_target_scene(
+                self.api.game.world,
+                "Portal",
+                "levels/transition_target_a.json",
+            )
+        )
+        self.assertTrue(self.inspector._set_scene_transition_target_spawn(self.api.game.world, "Portal", "arrival"))
+
+        spawn_options = self.inspector._get_scene_transition_spawn_options(self.api.game.world, "Portal")
+        self.assertIn(("arrival", "Arrival (ArrivalPoint)"), spawn_options)
+
+        self.assertTrue(
+            self.inspector._set_scene_transition_target_scene(
+                self.api.game.world,
+                "Portal",
+                "levels/transition_target_b.json",
+            )
+        )
+
+        entity = self.api.get_entity("Portal")
+        self.assertEqual(entity["components"]["SceneTransitionAction"]["target_entry_id"], "")
+        spawn_options = self.inspector._get_scene_transition_spawn_options(self.api.game.world, "Portal")
+        self.assertIn(("exit", "Exit (ExitPoint)"), spawn_options)
+        self.assertFalse(any(key == "arrival" for key, _ in spawn_options))
+
+    def test_scene_transition_validation_messages_cover_invalid_scene_spawn_and_player_death_warning(self) -> None:
+        self._write_scene(
+            "transition_target_valid.json",
+            self._target_scene_payload("Transition Valid", [("arrival", "Arrival", 96.0, 64.0)]),
+        )
+        self._create_probe(
+            "InteractPortal",
+            {
+                "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+            },
+        )
+
+        self.assertTrue(self.inspector._set_scene_transition_preset(self.api.game.world, "InteractPortal", "player_death"))
+        self.assertTrue(
+            self.inspector._set_scene_transition_target_scene(
+                self.api.game.world,
+                "InteractPortal",
+                "levels/missing_scene.json",
+            )
+        )
+        messages = self.inspector._get_scene_transition_validation_messages(self.api.game.world, "InteractPortal")
+        self.assertTrue(any("player-like entity" in message for _, message in messages))
+        self.assertTrue(any("does not exist" in message for _, message in messages))
+
+        self.assertTrue(
+            self.inspector._set_scene_transition_target_scene(
+                self.api.game.world,
+                "InteractPortal",
+                "levels/transition_target_valid.json",
+            )
+        )
+        self.assertTrue(self.inspector._set_scene_transition_target_spawn(self.api.game.world, "InteractPortal", "ghost"))
+        messages = self.inspector._get_scene_transition_validation_messages(self.api.game.world, "InteractPortal")
+        self.assertTrue(any("player-like entity" in message for _, message in messages))
+        self.assertTrue(any("ghost" in message for _, message in messages))
+
     def test_script_executor_exposes_undo_redo_commands(self) -> None:
         executor = ScriptExecutor(self.api.game)
         executor.commands = [
@@ -304,6 +629,89 @@ class InspectorCoreTests(unittest.TestCase):
         self.assertTrue(executor.run_all())
         ground = self.api.get_entity("Ground")
         self.assertEqual(ground["components"]["Transform"]["x"], 700.0)
+
+    def test_scene_link_mode_syncs_runtime_button_transition(self) -> None:
+        self._create_probe(
+            "FlowButton",
+            {
+                "RectTransform": {
+                    "enabled": True,
+                    "anchor_min_x": 0.5,
+                    "anchor_min_y": 0.5,
+                    "anchor_max_x": 0.5,
+                    "anchor_max_y": 0.5,
+                    "pivot_x": 0.5,
+                    "pivot_y": 0.5,
+                    "anchored_x": 0.0,
+                    "anchored_y": 0.0,
+                    "width": 220.0,
+                    "height": 72.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0,
+                },
+                "UIButton": {
+                    "enabled": True,
+                    "interactable": True,
+                    "label": "Play",
+                    "normal_color": [72, 72, 72, 255],
+                    "hover_color": [92, 92, 92, 255],
+                    "pressed_color": [56, 56, 56, 255],
+                    "disabled_color": [48, 48, 48, 200],
+                    "transition_scale_pressed": 0.96,
+                    "on_click": {"type": "emit_event", "name": "ui.button_clicked"},
+                },
+                "SceneLink": {
+                    "enabled": True,
+                    "target_path": "levels/demo_level.json",
+                    "flow_key": "",
+                    "preview_label": "Demo",
+                    "link_mode": "",
+                    "target_entry_id": "",
+                },
+            },
+        )
+
+        self.assertTrue(self.inspector._set_scene_link_mode(self.api.game.world, "FlowButton", "ui_button"))
+        entity = self.api.get_entity("FlowButton")
+        self.assertEqual(entity["components"]["SceneLink"]["link_mode"], "ui_button")
+        self.assertEqual(entity["components"]["SceneTransitionAction"]["target_scene_path"], "levels/demo_level.json")
+        self.assertEqual(entity["components"]["UIButton"]["on_click"]["type"], "run_scene_transition")
+
+    def test_scene_link_target_spawn_updates_runtime_transition(self) -> None:
+        self._write_scene(
+            "flow_target.json",
+            self._target_scene_payload("FlowTarget", [("arrival", "Arrival", 48.0, 64.0)]),
+        )
+        self._create_probe(
+            "PortalFlow",
+            {
+                "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                "Collider": {
+                    "enabled": True,
+                    "width": 32.0,
+                    "height": 32.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": True,
+                },
+                "SceneLink": {
+                    "enabled": True,
+                    "target_path": "levels/flow_target.json",
+                    "flow_key": "",
+                    "preview_label": "Target",
+                    "link_mode": "trigger_enter",
+                    "target_entry_id": "",
+                },
+            },
+        )
+
+        self.assertTrue(self.inspector._sync_scene_link_runtime(self.api.game.world, "PortalFlow"))
+        self.assertTrue(self.inspector._set_scene_link_target_spawn(self.api.game.world, "PortalFlow", "arrival"))
+        entity = self.api.get_entity("PortalFlow")
+        self.assertEqual(entity["components"]["SceneLink"]["target_entry_id"], "arrival")
+        self.assertEqual(entity["components"]["SceneTransitionAction"]["target_entry_id"], "arrival")
+        self.assertEqual(entity["components"]["SceneTransitionOnContact"]["mode"], "trigger_enter")
 
 
 if __name__ == "__main__":

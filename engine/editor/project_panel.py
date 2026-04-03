@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Tuple, Optional
 
 from engine.assets.asset_service import AssetService
 from engine.editor.cursor_manager import CursorVisualState
+from engine.editor.render_safety import editor_scissor
 from engine.project.project_service import ProjectService
 
 class ProjectPanel:
@@ -68,7 +69,7 @@ class ProjectPanel:
         self.project_service = project_service
         self.asset_service = AssetService(project_service)
         self.asset_service.refresh_catalog()
-        self.root_path = project_service.project_root.as_posix()
+        self.root_path = project_service.project_root_display.as_posix()
         self.current_path = self.root_path
         self.selected_file = None
         self.request_open_sprite_editor_for = None
@@ -165,124 +166,119 @@ class ProjectPanel:
 
     def _render_sidebar(self, x: int, y: int, width: int, height: int) -> None:
         """Dibuja el árbol de carpetas lateral."""
-        rl.begin_scissor_mode(x, y, width, height)
-        # Por ahora solo mostramos "Assets" como raíz
-        root_rect = rl.Rectangle(x, y + 5, width, self.ITEM_HEIGHT)
-        self._register_cursor_rect(root_rect)
-        is_hover = rl.check_collision_point_rec(rl.get_mouse_position(), root_rect)
-        
-        if self.current_path == self.root_path:
-            rl.draw_rectangle_rec(root_rect, self.UNITY_SELECTED)
-        elif is_hover:
-            rl.draw_rectangle_rec(root_rect, self.UNITY_HOVER)
+        with editor_scissor(rl.Rectangle(x, y, width, height)):
+            # Por ahora solo mostramos "Assets" como raíz
+            root_rect = rl.Rectangle(x, y + 5, width, self.ITEM_HEIGHT)
+            self._register_cursor_rect(root_rect)
+            is_hover = rl.check_collision_point_rec(rl.get_mouse_position(), root_rect)
             
-        rl.draw_text("v", int(x + 5), int(y + 8), 10, self.UNITY_TEXT) 
-        rl.draw_text("Project", int(x + 20), int(y + 9), 10, self.UNITY_TEXT)
-        
-        if is_hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-            self.current_path = self.root_path
-            self.refresh()
+            if self.current_path == self.root_path:
+                rl.draw_rectangle_rec(root_rect, self.UNITY_SELECTED)
+            elif is_hover:
+                rl.draw_rectangle_rec(root_rect, self.UNITY_HOVER)
+                
+            rl.draw_text("v", int(x + 5), int(y + 8), 10, self.UNITY_TEXT) 
+            rl.draw_text("Project", int(x + 20), int(y + 9), 10, self.UNITY_TEXT)
             
-        rl.end_scissor_mode()
+            if is_hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                self.current_path = self.root_path
+                self.refresh()
 
     def _render_content(self, x: int, y: int, width: int, height: int) -> None:
         """Dibuja la vista de contenido (iconos de archivos)."""
-        rl.begin_scissor_mode(x, y, width, height)
-        
-        mouse_pos = rl.get_mouse_position()
-        is_mouse_in = rl.check_collision_point_rec(mouse_pos, rl.Rectangle(x, y, width, height))
-        
-        # Scroll
-        if is_mouse_in:
-            self.scroll_offset -= rl.get_mouse_wheel_move() * 20
-            self.scroll_offset = max(0, self.scroll_offset)
-            if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_RIGHT):
-                self.show_context_menu = True
-                self.context_menu_pos = rl.get_mouse_position()
+        with editor_scissor(rl.Rectangle(x, y, width, height)):
+            mouse_pos = rl.get_mouse_position()
+            is_mouse_in = rl.check_collision_point_rec(mouse_pos, rl.Rectangle(x, y, width, height))
             
-        # Layout de iconos (Unity style grid)
-        icon_w, icon_h = 60, 70
-        padding = 10
-        cols = max(1, width // (icon_w + padding))
-        
-        for i, (name, entry_type) in enumerate(self.items):
-            display = self._item_display_cache.get((name, entry_type), {})
-            row = i // cols
-            col = i % cols
+            # Scroll
+            if is_mouse_in:
+                self.scroll_offset -= rl.get_mouse_wheel_move() * 20
+                self.scroll_offset = max(0, self.scroll_offset)
+                if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_RIGHT):
+                    self.show_context_menu = True
+                    self.context_menu_pos = rl.get_mouse_position()
+                
+            # Layout de iconos (Unity style grid)
+            icon_w, icon_h = 60, 70
+            padding = 10
+            cols = max(1, width // (icon_w + padding))
             
-            ix = x + padding + col * (icon_w + padding)
-            iy = y + padding + row * (icon_h + padding) - int(self.scroll_offset)
-            
-            # Culling
-            if iy + icon_h < y: continue
-            if iy > y + height: break
-            
-            rect = rl.Rectangle(ix, iy, icon_w, icon_h)
-            self._register_cursor_rect(rect)
-            is_hover = rl.check_collision_point_rec(mouse_pos, rect) and is_mouse_in
-            
-            if is_hover:
-                rl.draw_rectangle_rec(rect, self.UNITY_HOVER)
-                if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-                    if entry_type == "dir":
-                        if name == "..":
-                            self.current_path = os.path.dirname(self.current_path)
+            for i, (name, entry_type) in enumerate(self.items):
+                display = self._item_display_cache.get((name, entry_type), {})
+                row = i // cols
+                col = i % cols
+                
+                ix = x + padding + col * (icon_w + padding)
+                iy = y + padding + row * (icon_h + padding) - int(self.scroll_offset)
+                
+                # Culling
+                if iy + icon_h < y: continue
+                if iy > y + height: break
+                
+                rect = rl.Rectangle(ix, iy, icon_w, icon_h)
+                self._register_cursor_rect(rect)
+                is_hover = rl.check_collision_point_rec(mouse_pos, rect) and is_mouse_in
+                
+                if is_hover:
+                    rl.draw_rectangle_rec(rect, self.UNITY_HOVER)
+                    if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                        if entry_type == "dir":
+                            if name == "..":
+                                self.current_path = os.path.dirname(self.current_path)
+                            else:
+                                self.current_path = os.path.join(self.current_path, name)
+                            self.refresh()
+                            self.scroll_offset = 0
                         else:
-                            self.current_path = os.path.join(self.current_path, name)
-                        self.refresh()
-                        self.scroll_offset = 0
-                    else:
-                        self.selected_file = os.path.join(self.current_path, name)
-                        self.drag_start_pos = mouse_pos
-            
-            # Visuales del Icono
-            icon_rect = rl.Rectangle(ix + 10, iy + 5, 40, 40)
-            if entry_type == "dir":
-                rl.draw_rectangle_rec(icon_rect, self.UNITY_FOLDER_ICON)
-                rl.draw_rectangle(int(ix + 10), int(iy + 5), 15, 5, self.UNITY_FOLDER_ICON)
-            else:
-                rl.draw_rectangle_rec(icon_rect, rl.Color(160, 160, 160, 255))
-                rl.draw_rectangle_lines_ex(icon_rect, 1, rl.Color(100, 100, 100, 255))
-            
-            # Nombre truncado
-            trunc_name = str(display.get("trunc_name", name if len(name) < 10 else name[:7] + "..."))
-            text_w = int(display.get("text_width", rl.measure_text(trunc_name, 10)))
-            rl.draw_text(trunc_name, int(ix + (icon_w - text_w)//2), int(iy + 50), 10, self.UNITY_TEXT)
-            meta = str(display.get("meta", ""))
-            if meta:
-                rl.draw_text(meta, int(ix + 2), int(iy + 61), 8, self.UNITY_TEXT_DIM)
-            
-            # Drag logic
-            if entry_type == "file" and self.drag_start_pos and is_hover:
-                if rl.vector2_distance(self.drag_start_pos, mouse_pos) > 5:
-                    self.dragging_file = os.path.join(self.current_path, name)
+                            self.selected_file = os.path.join(self.current_path, name)
+                            self.drag_start_pos = mouse_pos
+                
+                # Visuales del Icono
+                icon_rect = rl.Rectangle(ix + 10, iy + 5, 40, 40)
+                if entry_type == "dir":
+                    rl.draw_rectangle_rec(icon_rect, self.UNITY_FOLDER_ICON)
+                    rl.draw_rectangle(int(ix + 10), int(iy + 5), 15, 5, self.UNITY_FOLDER_ICON)
+                else:
+                    rl.draw_rectangle_rec(icon_rect, rl.Color(160, 160, 160, 255))
+                    rl.draw_rectangle_lines_ex(icon_rect, 1, rl.Color(100, 100, 100, 255))
+                
+                # Nombre truncado
+                trunc_name = str(display.get("trunc_name", name if len(name) < 10 else name[:7] + "..."))
+                text_w = int(display.get("text_width", rl.measure_text(trunc_name, 10)))
+                rl.draw_text(trunc_name, int(ix + (icon_w - text_w)//2), int(iy + 50), 10, self.UNITY_TEXT)
+                meta = str(display.get("meta", ""))
+                if meta:
+                    rl.draw_text(meta, int(ix + 2), int(iy + 61), 8, self.UNITY_TEXT_DIM)
+                
+                # Drag logic
+                if entry_type == "file" and self.drag_start_pos and is_hover:
+                    if rl.vector2_distance(self.drag_start_pos, mouse_pos) > 5:
+                        self.dragging_file = os.path.join(self.current_path, name)
 
-        if rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
-            self.drag_start_pos = None
-            self.dragging_file = None
+            if rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
+                self.drag_start_pos = None
+                self.dragging_file = None
 
-        if self.selected_file:
-            button_x = x + width - 140
-            if self.selected_file.lower().endswith((".png", ".jpg", ".jpeg", ".bmp")):
-                button_rect = rl.Rectangle(button_x, y + 6, 120, 20)
-                self._register_cursor_rect(button_rect)
-                if rl.gui_button(button_rect, "Sprite Editor"):
-                    if self.project_service is not None:
-                        self.request_open_sprite_editor_for = self.project_service.to_relative_path(self.selected_file)
-                    else:
-                        self.request_open_sprite_editor_for = self.selected_file
-                button_x -= 128
+            if self.selected_file:
+                button_x = x + width - 140
+                if self.selected_file.lower().endswith((".png", ".jpg", ".jpeg", ".bmp")):
+                    button_rect = rl.Rectangle(button_x, y + 6, 120, 20)
+                    self._register_cursor_rect(button_rect)
+                    if rl.gui_button(button_rect, "Sprite Editor"):
+                        if self.project_service is not None:
+                            self.request_open_sprite_editor_for = self.project_service.to_relative_path(self.selected_file)
+                        else:
+                            self.request_open_sprite_editor_for = self.selected_file
+                    button_x -= 128
 
-            if self._is_scene_file(self.selected_file):
-                scene_rect = rl.Rectangle(button_x, y + 6, 120, 20)
-                self._register_cursor_rect(scene_rect)
-                if rl.gui_button(scene_rect, "Open Scene"):
-                    if self.project_service is not None:
-                        self.request_open_scene_for = self.project_service.to_relative_path(self.selected_file)
-                    else:
-                        self.request_open_scene_for = self.selected_file
-
-        rl.end_scissor_mode()
+                if self._is_scene_file(self.selected_file):
+                    scene_rect = rl.Rectangle(button_x, y + 6, 120, 20)
+                    self._register_cursor_rect(scene_rect)
+                    if rl.gui_button(scene_rect, "Open Scene"):
+                        if self.project_service is not None:
+                            self.request_open_scene_for = self.project_service.to_relative_path(self.selected_file)
+                        else:
+                            self.request_open_scene_for = self.selected_file
 
     def _is_scene_file(self, file_path: str) -> bool:
         if self.project_service is None or not file_path.lower().endswith(".json"):

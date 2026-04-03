@@ -52,7 +52,8 @@ class EditorLayoutToolStateTests(unittest.TestCase):
 
         self.assertGreaterEqual(layout.tab_scene_rect.x, layout.center_rect.x)
         self.assertGreater(layout.tab_game_rect.x, layout.tab_scene_rect.x)
-        self.assertGreater(layout.tab_animator_rect.x, layout.tab_game_rect.x)
+        self.assertGreater(layout.tab_flow_rect.x, layout.tab_game_rect.x)
+        self.assertGreater(layout.tab_animator_rect.x, layout.tab_flow_rect.x)
         self.assertLessEqual(
             layout.tab_animator_rect.x + layout.tab_animator_rect.width,
             layout.center_rect.x + layout.center_rect.width,
@@ -123,6 +124,123 @@ class EditorLayoutToolStateTests(unittest.TestCase):
             self.assertEqual(layout.get_cursor_intent(), CursorVisualState.INTERACTIVE)
         with patch("pyray.get_mouse_position", return_value=splitter_mouse):
             self.assertEqual(layout.get_cursor_intent(), CursorVisualState.INTERACTIVE)
+
+    def test_bottom_tab_switching_to_flow_preserves_main_editor_layout_state(self) -> None:
+        with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
+            layout = EditorLayout(1280, 720)
+
+        original_active_tab = layout.active_tab
+        hierarchy_rect = rl.Rectangle(
+            layout.hierarchy_rect.x,
+            layout.hierarchy_rect.y,
+            layout.hierarchy_rect.width,
+            layout.hierarchy_rect.height,
+        )
+        inspector_rect = rl.Rectangle(
+            layout.inspector_rect.x,
+            layout.inspector_rect.y,
+            layout.inspector_rect.width,
+            layout.inspector_rect.height,
+        )
+        center_rect = rl.Rectangle(
+            layout.center_rect.x,
+            layout.center_rect.y,
+            layout.center_rect.width,
+            layout.center_rect.height,
+        )
+
+        layout.bottom_header_rect = rl.Rectangle(0, 540, 1280, layout.TAB_HEIGHT)
+        with patch("pyray.is_mouse_button_pressed", return_value=True):
+            layout.handle_bottom_tab_input(rl.Vector2(100, 544))
+            self.assertEqual(layout.active_bottom_tab, "FLOW")
+            layout.handle_bottom_tab_input(rl.Vector2(20, 544))
+            self.assertEqual(layout.active_bottom_tab, "PROJECT")
+
+        self.assertEqual(layout.active_tab, original_active_tab)
+        self.assertEqual((layout.hierarchy_rect.x, layout.hierarchy_rect.y, layout.hierarchy_rect.width, layout.hierarchy_rect.height), (hierarchy_rect.x, hierarchy_rect.y, hierarchy_rect.width, hierarchy_rect.height))
+        self.assertEqual((layout.inspector_rect.x, layout.inspector_rect.y, layout.inspector_rect.width, layout.inspector_rect.height), (inspector_rect.x, inspector_rect.y, inspector_rect.width, inspector_rect.height))
+        self.assertEqual((layout.center_rect.x, layout.center_rect.y, layout.center_rect.width, layout.center_rect.height), (center_rect.x, center_rect.y, center_rect.width, center_rect.height))
+
+    def test_center_tab_switching_to_flow_preserves_main_editor_layout_state(self) -> None:
+        with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
+            layout = EditorLayout(1280, 720)
+
+        original_bottom_tab = layout.active_bottom_tab
+        hierarchy_rect = rl.Rectangle(layout.hierarchy_rect.x, layout.hierarchy_rect.y, layout.hierarchy_rect.width, layout.hierarchy_rect.height)
+        inspector_rect = rl.Rectangle(layout.inspector_rect.x, layout.inspector_rect.y, layout.inspector_rect.width, layout.inspector_rect.height)
+        center_rect = rl.Rectangle(layout.center_rect.x, layout.center_rect.y, layout.center_rect.width, layout.center_rect.height)
+
+        with patch("pyray.get_mouse_position", return_value=rl.Vector2(layout.tab_flow_rect.x + 4, layout.tab_flow_rect.y + 4)), patch(
+            "pyray.is_mouse_button_pressed",
+            return_value=True,
+        ), patch(
+            "pyray.check_collision_point_rec",
+            side_effect=lambda point, rect: rect is layout.tab_flow_rect,
+        ):
+            layout.update_input()
+
+        self.assertEqual(layout.active_tab, "FLOW")
+        self.assertEqual(layout.active_bottom_tab, original_bottom_tab)
+        self.assertEqual((layout.hierarchy_rect.x, layout.hierarchy_rect.y, layout.hierarchy_rect.width, layout.hierarchy_rect.height), (hierarchy_rect.x, hierarchy_rect.y, hierarchy_rect.width, hierarchy_rect.height))
+        self.assertEqual((layout.inspector_rect.x, layout.inspector_rect.y, layout.inspector_rect.width, layout.inspector_rect.height), (inspector_rect.x, inspector_rect.y, inspector_rect.width, inspector_rect.height))
+        self.assertEqual((layout.center_rect.x, layout.center_rect.y, layout.center_rect.width, layout.center_rect.height), (center_rect.x, center_rect.y, center_rect.width, center_rect.height))
+
+    def test_draw_layout_keeps_bottom_tab_shell_when_flow_or_console_is_active(self) -> None:
+        with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
+            layout = EditorLayout(1280, 720)
+
+        layout.flow_panel = Mock()
+        layout.flow_workspace_panel = Mock()
+        layout.console_panel = Mock()
+        layout.draw_bottom_tabs = Mock()
+
+        with patch.object(layout, "_reset_cursor_regions"), patch("pyray.clear_background"), patch.object(
+            layout,
+            "_draw_menu_bar",
+        ), patch.object(layout, "_draw_toolbar"), patch("pyray.draw_rectangle_rec"), patch(
+            "pyray.draw_line"
+        ), patch(
+            "pyray.draw_rectangle"
+        ), patch(
+            "pyray.draw_texture_pro"
+        ), patch(
+            "pyray.draw_rectangle_lines_ex"
+        ), patch(
+            "pyray.end_scissor_mode"
+        ) as end_scissor_mode, patch(
+            "pyray.is_window_ready",
+            return_value=True,
+        ), patch.object(
+            layout,
+            "_draw_splitters",
+        ), patch.object(
+            layout,
+            "_draw_center_view_tabs",
+            return_value=int(layout.center_rect.x + 120),
+        ), patch.object(
+            layout,
+            "_draw_scene_workspace_tabs",
+        ):
+            layout.active_bottom_tab = "FLOW"
+            layout.draw_layout(False)
+            layout.flow_panel.render.assert_called_once()
+            self.assertEqual(layout.draw_bottom_tabs.call_count, 1)
+            self.assertGreaterEqual(end_scissor_mode.call_count, 1)
+
+            layout.flow_panel.render.reset_mock()
+            layout.active_bottom_tab = "CONSOLE"
+            layout.draw_layout(False)
+            layout.console_panel.render.assert_called_once()
+            self.assertEqual(layout.draw_bottom_tabs.call_count, 2)
+            self.assertGreaterEqual(end_scissor_mode.call_count, 2)
+
+    def test_execute_menu_action_can_activate_center_flow_tab(self) -> None:
+        with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
+            layout = EditorLayout(1280, 720)
+
+        layout._execute_menu_action("tab_flow")
+
+        self.assertEqual(layout.active_tab, "FLOW")
 
 
 class SceneViewFocusRegressionTests(unittest.TestCase):
@@ -221,6 +339,8 @@ class GameUiAuthoringRequestTests(unittest.TestCase):
         layout.project_panel = Mock()
         layout.project_panel.request_open_sprite_editor_for = None
         layout.project_panel.request_open_scene_for = None
+        layout.flow_panel = None
+        layout.flow_workspace_panel = None
         layout.request_create_canvas = False
         layout.request_create_ui_text = False
         layout.request_create_ui_button = False
@@ -320,6 +440,63 @@ class GameCursorRenderTests(unittest.TestCase):
         game._cursor_renderer.render.assert_called_once()
         _, state = game._cursor_renderer.render.call_args.args
         self.assertEqual(state, CursorVisualState.INTERACTIVE)
+
+    def test_render_frame_draws_flow_workspace_panel_in_center_view(self) -> None:
+        game = Game()
+        layout = Mock()
+        layout.active_tab = "FLOW"
+        layout.draw_layout = Mock()
+        layout.get_cursor_intent = Mock(return_value=CursorVisualState.DEFAULT)
+        layout.get_center_view_rect = Mock(return_value=rl.Rectangle(40, 60, 800, 420))
+        layout.flow_workspace_panel = Mock()
+        layout.flow_workspace_panel.get_cursor_intent.return_value = CursorVisualState.DEFAULT
+        game.editor_layout = layout
+        game.hierarchy_panel = None
+        game.animator_panel = None
+        game._inspector_system = None
+        game._draw_debug_info = Mock()
+        game._draw_performance_overlay = Mock()
+        game._cursor_renderer.render = Mock()
+
+        with patch("pyray.begin_drawing"), patch("pyray.end_drawing"), patch("pyray.clear_background"), patch(
+            "pyray.get_mouse_position", return_value=rl.Vector2(64, 48)
+        ):
+            game._render_frame(Mock())
+
+        layout.flow_workspace_panel.render.assert_called_once_with(40, 60, 800, 420)
+
+    def test_render_frame_uses_edit_world_for_inspector_and_hierarchy_in_flow(self) -> None:
+        game = Game()
+        layout = Mock()
+        layout.active_tab = "FLOW"
+        layout.draw_layout = Mock()
+        layout.get_cursor_intent = Mock(return_value=CursorVisualState.DEFAULT)
+        layout.get_center_view_rect = Mock(return_value=rl.Rectangle(40, 60, 800, 420))
+        layout.flow_workspace_panel = Mock()
+        layout.flow_workspace_panel.get_cursor_intent.return_value = CursorVisualState.DEFAULT
+        layout.inspector_rect = rl.Rectangle(1000, 52, 280, 600)
+        layout.hierarchy_rect = rl.Rectangle(0, 52, 200, 600)
+        layout.dropdown_active = False
+        game.editor_layout = layout
+        game._draw_debug_info = Mock()
+        game._draw_performance_overlay = Mock()
+        game._cursor_renderer.render = Mock()
+        game._inspector_system = Mock()
+        game.hierarchy_panel = Mock()
+        scene_manager = Mock()
+        edit_world = Mock()
+        scene_manager.get_edit_world.return_value = edit_world
+        game._scene_manager = scene_manager
+
+        with patch("pyray.begin_drawing"), patch("pyray.end_drawing"), patch("pyray.clear_background"), patch(
+            "pyray.get_mouse_position", return_value=rl.Vector2(64, 48)
+        ):
+            game._render_frame(None)
+
+        game._inspector_system.render.assert_called_once()
+        self.assertIs(game._inspector_system.render.call_args.args[0], edit_world)
+        game.hierarchy_panel.render.assert_called_once()
+        self.assertIs(game.hierarchy_panel.render.call_args.args[0], edit_world)
 
     def test_cleanup_restores_system_cursor(self) -> None:
         game = Game()

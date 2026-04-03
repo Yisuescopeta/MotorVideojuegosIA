@@ -6,14 +6,13 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
-from cli.runner import CLIRunner
-from engine.api import EngineAPI
-from engine.assets.asset_service import AssetService
 from engine.project.project_service import ProjectService
 from tools.schema_cli import migrate_path, validate_path
 
 
 def _validate_assets(search: str = "") -> int:
+    from engine.assets.asset_service import AssetService
+
     service = AssetService(ProjectService(os.getcwd()))
     service.refresh_catalog()
     assets = service.list_assets(search=search)
@@ -27,6 +26,8 @@ def _validate_assets(search: str = "") -> int:
 
 
 def _build_assets() -> int:
+    from engine.assets.asset_service import AssetService
+
     service = AssetService(ProjectService(os.getcwd()))
     report = service.build_asset_artifacts()
     print(f"[OK] artifacts built: {report['artifact_count']}")
@@ -34,6 +35,8 @@ def _build_assets() -> int:
 
 
 def _run_headless(level: str, frames: int, seed: int | None, debug_dump: str = "") -> int:
+    from cli.runner import CLIRunner
+
     args = SimpleNamespace(
         level=level,
         frames=frames,
@@ -53,6 +56,8 @@ def _run_headless(level: str, frames: int, seed: int | None, debug_dump: str = "
 
 
 def _profile_run(scene: str, frames: int, out: str, seed: int | None, mode: str) -> int:
+    from engine.api import EngineAPI
+
     api = EngineAPI(project_root=os.getcwd())
     api.load_level(scene)
     if seed is not None:
@@ -152,6 +157,8 @@ def main() -> int:
         result = _build_assets()
         if result != 0 or not args.bundle:
             return result
+        from engine.assets.asset_service import AssetService
+
         service = AssetService(ProjectService(os.getcwd()))
         report = service.create_bundle()
         print(f"[OK] bundle created: {report['bundle_path']}")

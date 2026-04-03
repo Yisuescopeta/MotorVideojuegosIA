@@ -130,6 +130,7 @@ class EditorInteractionController:
         active_world.selected_entity_name = name
 
     def handle_selection_and_gizmos(self, active_world: Optional["World"]) -> None:
+        state = self._get_state()
         mouse_world = rl.Vector2(0, 0)
         mouse_ui = rl.Vector2(0, 0)
         mouse_in_scene = False
@@ -143,8 +144,16 @@ class EditorInteractionController:
                 mouse_in_scene = False
 
         ui_system = self._get_ui_system()
+        scene_ui_visible = False
         if ui_system is not None and active_world is not None:
-            ui_system.ensure_layout_cache(active_world, scene_viewport_size)
+            scene_ui_visible = bool(
+                ui_system.should_render_scene_view_ui(
+                    active_world,
+                    allow_runtime=state.allows_gameplay(),
+                )
+            )
+            if scene_ui_visible:
+                ui_system.ensure_layout_cache(active_world, scene_viewport_size)
 
         gizmo_system = self._get_gizmo_system()
         scene_manager = self._get_scene_manager()
@@ -162,7 +171,7 @@ class EditorInteractionController:
                     transform_space,
                     pivot_mode,
                     snap_settings,
-                    ui_system=ui_system,
+                    ui_system=ui_system if scene_ui_visible else None,
                     ui_mouse_pos=mouse_ui,
                     ui_viewport_size=scene_viewport_size,
                 )
@@ -180,7 +189,7 @@ class EditorInteractionController:
         hand_tool_active = layout is not None and layout.active_tool == EditorTool.HAND
         if not hand_tool_active and not gizmo_active and mouse_in_scene and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
             ui_hit = None
-            if ui_system is not None:
+            if ui_system is not None and scene_ui_visible:
                 ui_hit = ui_system.find_topmost_entity_at_point(
                     active_world,
                     float(mouse_ui.x),
@@ -201,6 +210,9 @@ class EditorInteractionController:
         state = CursorVisualState.DEFAULT
         mouse = rl.get_mouse_position()
         layout = self._get_editor_layout()
+        runtime_ui_visible = False
+        if active_world is not None:
+            runtime_ui_visible = bool(self._get_state().allows_gameplay())
 
         if layout is not None:
             state = max(state, layout.get_cursor_intent())
@@ -211,6 +223,10 @@ class EditorInteractionController:
 
         if layout is not None and layout.active_bottom_tab == "PROJECT" and layout.project_panel is not None:
             state = max(state, layout.project_panel.get_cursor_intent(mouse))
+        if layout is not None and layout.active_bottom_tab == "FLOW" and getattr(layout, "flow_panel", None) is not None:
+            state = max(state, layout.flow_panel.get_cursor_intent(mouse))
+        if layout is not None and layout.active_tab == "FLOW" and getattr(layout, "flow_workspace_panel", None) is not None:
+            state = max(state, layout.flow_workspace_panel.get_cursor_intent(mouse))
 
         inspector_system = self._get_inspector_system()
         if inspector_system is not None:
@@ -230,15 +246,28 @@ class EditorInteractionController:
                     if layout.active_tab == "SCENE"
                     else self._get_current_viewport_size()
                 )
-                state = max(
-                    state,
-                    ui_system.get_cursor_intent(
-                        active_world,
-                        viewport_size,
-                        float(mouse_ui.x),
-                        float(mouse_ui.y),
-                    ),
-                )
+                if layout.active_tab == "GAME":
+                    state = max(
+                        state,
+                        ui_system.get_cursor_intent(
+                            active_world,
+                            viewport_size,
+                            float(mouse_ui.x),
+                            float(mouse_ui.y),
+                            allow_interaction=bool(layout.active_tab == "GAME" and self._get_state().is_running()),
+                        ),
+                    )
+                elif runtime_ui_visible or ui_system.should_render_scene_view_ui(active_world, allow_runtime=False):
+                    state = max(
+                        state,
+                        ui_system.get_cursor_intent(
+                            active_world,
+                            viewport_size,
+                            float(mouse_ui.x),
+                            float(mouse_ui.y),
+                            allow_interaction=False,
+                        ),
+                    )
 
         return state
 

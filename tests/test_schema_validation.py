@@ -10,6 +10,7 @@ from engine.assets.prefab import PrefabManager
 from engine.levels.component_registry import create_default_registry
 from engine.scenes.scene import Scene
 from engine.scenes.scene_manager import SceneManager
+from engine.scenes.scene_transition_support import validate_scene_transition_references
 from engine.serialization.schema import (
     CURRENT_PREFAB_SCHEMA_VERSION,
     CURRENT_SCENE_SCHEMA_VERSION,
@@ -46,6 +47,22 @@ def _scene_payload(
         "entities": entities or [],
         "rules": rules or [],
         "feature_metadata": feature_metadata or {},
+    }
+
+
+def _entity_payload(
+    name: str,
+    *,
+    components: dict[str, object] | None = None,
+    tag: str = "Untagged",
+    layer: str = "Default",
+) -> dict[str, object]:
+    return {
+        "name": name,
+        "active": True,
+        "tag": tag,
+        "layer": layer,
+        "components": components or {"Transform": _transform_component()},
     }
 
 
@@ -649,6 +666,441 @@ class SchemaValidationTests(unittest.TestCase):
         )
         errors = validate_scene_data(payload)
         self.assertIn("$.rules[0].do[0]: expected x or y", errors)
+
+    def test_scene_transition_action_roundtrip_save_load(self) -> None:
+        manager = SceneManager(create_default_registry())
+        source_payload = _scene_payload(
+            name="TransitionSource",
+            entities=[
+                _entity_payload(
+                    "Portal",
+                    components={
+                        "Transform": _transform_component(),
+                        "SceneTransitionAction": {
+                            "enabled": True,
+                            "target_scene_path": "levels/target_scene.json",
+                            "target_entry_id": "arrival",
+                        },
+                    },
+                )
+            ],
+        )
+        manager.load_scene(source_payload)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            scene_path = Path(temp_dir) / "transition_source.json"
+            self.assertTrue(manager.save_scene_to_file(scene_path.as_posix()))
+            saved = json.loads(scene_path.read_text(encoding="utf-8"))
+            action = saved["entities"][0]["components"]["SceneTransitionAction"]
+            self.assertEqual(action["target_scene_path"], "levels/target_scene.json")
+            self.assertEqual(action["target_entry_id"], "arrival")
+
+            reloaded_manager = SceneManager(create_default_registry())
+            self.assertIsNotNone(reloaded_manager.load_scene_from_file(scene_path.as_posix()))
+            reloaded_entity = reloaded_manager.current_scene.find_entity("Portal")
+            self.assertIsNotNone(reloaded_entity)
+            reloaded_action = reloaded_entity["components"]["SceneTransitionAction"]
+            self.assertEqual(reloaded_action["target_scene_path"], "levels/target_scene.json")
+            self.assertEqual(reloaded_action["target_entry_id"], "arrival")
+
+    def test_scene_entry_point_roundtrip_save_load(self) -> None:
+        manager = SceneManager(create_default_registry())
+        source_payload = _scene_payload(
+            name="EntryScene",
+            entities=[
+                _entity_payload(
+                    "SpawnNorth",
+                    components={
+                        "Transform": _transform_component(),
+                        "SceneEntryPoint": {
+                            "enabled": True,
+                            "entry_id": "north_gate",
+                            "label": "North Gate",
+                        },
+                    },
+                )
+            ],
+        )
+        manager.load_scene(source_payload)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            scene_path = Path(temp_dir) / "entry_scene.json"
+            self.assertTrue(manager.save_scene_to_file(scene_path.as_posix()))
+            saved = json.loads(scene_path.read_text(encoding="utf-8"))
+            entry = saved["entities"][0]["components"]["SceneEntryPoint"]
+            self.assertEqual(entry["entry_id"], "north_gate")
+            self.assertEqual(entry["label"], "North Gate")
+
+            reloaded_manager = SceneManager(create_default_registry())
+            self.assertIsNotNone(reloaded_manager.load_scene_from_file(scene_path.as_posix()))
+            reloaded_entity = reloaded_manager.current_scene.find_entity("SpawnNorth")
+            self.assertIsNotNone(reloaded_entity)
+            reloaded_entry = reloaded_entity["components"]["SceneEntryPoint"]
+            self.assertEqual(reloaded_entry["entry_id"], "north_gate")
+            self.assertEqual(reloaded_entry["label"], "North Gate")
+
+    def test_scene_transition_validation_rejects_empty_target_scene(self) -> None:
+        payload = migrate_scene_data(
+            _scene_payload(
+                name="BrokenTransition",
+                entities=[
+                    _entity_payload(
+                        "Portal",
+                        components={
+                            "Transform": _transform_component(),
+                            "SceneTransitionAction": {
+                                "enabled": True,
+                                "target_scene_path": "",
+                                "target_entry_id": "",
+                            },
+                        },
+                    )
+                ],
+            )
+        )
+        errors = validate_scene_data(payload)
+        self.assertIn(
+            "$.entities[0].components.SceneTransitionAction.target_scene_path: expected non-empty string",
+            errors,
+        )
+
+    def test_scene_transition_reference_validation_rejects_missing_target_scene(self) -> None:
+        source_payload = _scene_payload(
+            name="Source",
+            entities=[
+                _entity_payload(
+                    "Portal",
+                    components={
+                        "Transform": _transform_component(),
+                        "SceneTransitionAction": {
+                            "enabled": True,
+                            "target_scene_path": "levels/missing_scene.json",
+                            "target_entry_id": "",
+                        },
+                    },
+                )
+            ],
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source_path = Path(temp_dir) / "levels" / "source_scene.json"
+            source_path.parent.mkdir(parents=True, exist_ok=True)
+            source_path.write_text(json.dumps(migrate_scene_data(source_payload), indent=2), encoding="utf-8")
+            errors = validate_scene_transition_references(source_payload, scene_path=source_path.as_posix())
+        self.assertIn(
+            "$.entities[0].components.SceneTransitionAction.target_scene_path: target scene 'levels/missing_scene.json' does not exist",
+            errors,
+        )
+
+    def test_scene_transition_reference_validation_rejects_missing_target_spawn(self) -> None:
+        target_payload = _scene_payload(
+            name="Target",
+            entities=[
+                _entity_payload(
+                    "SpawnArrival",
+                    components={
+                        "Transform": _transform_component(),
+                        "SceneEntryPoint": {"enabled": True, "entry_id": "arrival", "label": "Arrival"},
+                    },
+                )
+            ],
+        )
+        source_payload = _scene_payload(
+            name="Source",
+            entities=[
+                _entity_payload(
+                    "Portal",
+                    components={
+                        "Transform": _transform_component(),
+                        "SceneTransitionAction": {
+                            "enabled": True,
+                            "target_scene_path": "levels/target_scene.json",
+                            "target_entry_id": "missing_spawn",
+                        },
+                    },
+                )
+            ],
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            levels_dir = Path(temp_dir) / "levels"
+            levels_dir.mkdir(parents=True, exist_ok=True)
+            source_path = levels_dir / "source_scene.json"
+            target_path = levels_dir / "target_scene.json"
+            source_path.write_text(json.dumps(migrate_scene_data(source_payload), indent=2), encoding="utf-8")
+            target_path.write_text(json.dumps(migrate_scene_data(target_payload), indent=2), encoding="utf-8")
+            errors = validate_scene_transition_references(source_payload, scene_path=source_path.as_posix())
+        self.assertIn(
+            "$.entities[0].components.SceneTransitionAction.target_entry_id: target entry point 'missing_spawn' was not found in destination scene",
+            errors,
+        )
+
+    def test_scene_transition_reference_validation_allows_empty_target_spawn(self) -> None:
+        target_payload = _scene_payload(
+            name="Target",
+            entities=[
+                _entity_payload(
+                    "SpawnArrival",
+                    components={
+                        "Transform": _transform_component(),
+                        "SceneEntryPoint": {"enabled": True, "entry_id": "arrival", "label": "Arrival"},
+                    },
+                )
+            ],
+        )
+        source_payload = _scene_payload(
+            name="Source",
+            entities=[
+                _entity_payload(
+                    "Portal",
+                    components={
+                        "Transform": _transform_component(),
+                        "SceneTransitionAction": {
+                            "enabled": True,
+                            "target_scene_path": "levels/target_scene.json",
+                            "target_entry_id": "",
+                        },
+                    },
+                )
+            ],
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            levels_dir = Path(temp_dir) / "levels"
+            levels_dir.mkdir(parents=True, exist_ok=True)
+            source_path = levels_dir / "source_scene.json"
+            target_path = levels_dir / "target_scene.json"
+            source_path.write_text(json.dumps(migrate_scene_data(source_payload), indent=2), encoding="utf-8")
+            target_path.write_text(json.dumps(migrate_scene_data(target_payload), indent=2), encoding="utf-8")
+            errors = validate_scene_transition_references(source_payload, scene_path=source_path.as_posix())
+        self.assertEqual(errors, [])
+
+    def test_scene_with_multiple_valid_entry_points_and_transition_reference(self) -> None:
+        target_payload = _scene_payload(
+            name="Target",
+            entities=[
+                _entity_payload(
+                    "SpawnNorth",
+                    components={
+                        "Transform": _transform_component(),
+                        "SceneEntryPoint": {"enabled": True, "entry_id": "north_gate", "label": "North Gate"},
+                    },
+                ),
+                _entity_payload(
+                    "SpawnSouth",
+                    components={
+                        "Transform": _transform_component(),
+                        "SceneEntryPoint": {"enabled": True, "entry_id": "south_gate", "label": "South Gate"},
+                    },
+                ),
+            ],
+        )
+        source_payload = _scene_payload(
+            name="Source",
+            entities=[
+                _entity_payload(
+                    "Portal",
+                    components={
+                        "Transform": _transform_component(),
+                        "SceneTransitionAction": {
+                            "enabled": True,
+                            "target_scene_path": "levels/target_scene.json",
+                            "target_entry_id": "south_gate",
+                        },
+                    },
+                )
+            ],
+        )
+        self.assertEqual(validate_scene_data(migrate_scene_data(target_payload)), [])
+        with tempfile.TemporaryDirectory() as temp_dir:
+            levels_dir = Path(temp_dir) / "levels"
+            levels_dir.mkdir(parents=True, exist_ok=True)
+            source_path = levels_dir / "source_scene.json"
+            target_path = levels_dir / "target_scene.json"
+            source_path.write_text(json.dumps(migrate_scene_data(source_payload), indent=2), encoding="utf-8")
+            target_path.write_text(json.dumps(migrate_scene_data(target_payload), indent=2), encoding="utf-8")
+            errors = validate_scene_transition_references(source_payload, scene_path=source_path.as_posix())
+        self.assertEqual(errors, [])
+
+    def test_scene_entry_points_must_be_unique_within_scene(self) -> None:
+        payload = migrate_scene_data(
+            _scene_payload(
+                name="DuplicateEntryIds",
+                entities=[
+                    _entity_payload(
+                        "SpawnA",
+                        components={
+                            "Transform": _transform_component(),
+                            "SceneEntryPoint": {"enabled": True, "entry_id": "arrival", "label": "A"},
+                        },
+                    ),
+                    _entity_payload(
+                        "SpawnB",
+                        components={
+                            "Transform": _transform_component(),
+                            "SceneEntryPoint": {"enabled": True, "entry_id": "arrival", "label": "B"},
+                        },
+                    ),
+                ],
+            )
+        )
+        errors = validate_scene_data(payload)
+        self.assertTrue(any("duplicate entry id 'arrival'" in error for error in errors), errors)
+
+    def test_scene_transition_triggers_require_action_component(self) -> None:
+        payload = migrate_scene_data(
+            _scene_payload(
+                name="MissingAction",
+                entities=[
+                    _entity_payload(
+                        "Portal",
+                        components={
+                            "Transform": _transform_component(),
+                            "SceneTransitionOnContact": {
+                                "enabled": True,
+                                "mode": "trigger_enter",
+                                "require_player": True,
+                            },
+                        },
+                    )
+                ],
+            )
+        )
+        errors = validate_scene_data(payload)
+        self.assertIn(
+            "$.entities[0].components.SceneTransitionAction: required when using scene transition triggers",
+            errors,
+        )
+
+    def test_scene_transition_on_interact_requires_trigger_collider(self) -> None:
+        payload = migrate_scene_data(
+            _scene_payload(
+                name="InteractWithoutTrigger",
+                entities=[
+                    _entity_payload(
+                        "Portal",
+                        components={
+                            "Transform": _transform_component(),
+                            "Collider": {
+                                "enabled": True,
+                                "width": 32.0,
+                                "height": 32.0,
+                                "offset_x": 0.0,
+                                "offset_y": 0.0,
+                                "is_trigger": False,
+                            },
+                            "SceneTransitionAction": {
+                                "enabled": True,
+                                "target_scene_path": "levels/next_scene.json",
+                                "target_entry_id": "",
+                            },
+                            "SceneTransitionOnInteract": {
+                                "enabled": True,
+                                "require_player": True,
+                            },
+                        },
+                    )
+                ],
+            )
+        )
+        errors = validate_scene_data(payload)
+        self.assertIn(
+            "$.entities[0].components.SceneTransitionOnInteract: requires Collider.is_trigger = true",
+            errors,
+        )
+
+    def test_button_scene_transition_action_type_is_valid_when_action_component_exists(self) -> None:
+        payload = migrate_scene_data(
+            _scene_payload(
+                name="UIButtonTransition",
+                entities=[
+                    _entity_payload(
+                        "PlayButton",
+                        components={
+                            "RectTransform": {
+                                "enabled": True,
+                                "anchor_min_x": 0.5,
+                                "anchor_min_y": 0.5,
+                                "anchor_max_x": 0.5,
+                                "anchor_max_y": 0.5,
+                                "pivot_x": 0.5,
+                                "pivot_y": 0.5,
+                                "anchored_x": 0.0,
+                                "anchored_y": 0.0,
+                                "width": 280.0,
+                                "height": 84.0,
+                                "rotation": 0.0,
+                                "scale_x": 1.0,
+                                "scale_y": 1.0,
+                            },
+                            "UIButton": {
+                                "enabled": True,
+                                "interactable": True,
+                                "label": "Play",
+                                "normal_color": [72, 72, 72, 255],
+                                "hover_color": [92, 92, 92, 255],
+                                "pressed_color": [56, 56, 56, 255],
+                                "disabled_color": [48, 48, 48, 200],
+                                "transition_scale_pressed": 0.96,
+                                "on_click": {"type": "run_scene_transition"},
+                            },
+                            "SceneTransitionAction": {
+                                "enabled": True,
+                                "target_scene_path": "levels/next_scene.json",
+                                "target_entry_id": "",
+                            },
+                        },
+                    )
+                ],
+            )
+        )
+        self.assertEqual(validate_scene_data(payload), [])
+
+    def test_scene_link_is_canonicalized_with_authoring_fields(self) -> None:
+        payload = migrate_scene_data(
+            _scene_payload(
+                name="SceneLinkFacade",
+                entities=[
+                    _entity_payload(
+                        "Portal",
+                        components={
+                            "Transform": _transform_component(),
+                            "SceneLink": {
+                                "enabled": True,
+                                "target_path": " levels/next_scene.json ",
+                                "flow_key": " next ",
+                                "preview_label": " Next ",
+                                "link_mode": " collision ",
+                                "target_entry_id": " arrival ",
+                            },
+                        },
+                    )
+                ],
+            )
+        )
+        scene_link = payload["entities"][0]["components"]["SceneLink"]
+        self.assertEqual(scene_link["target_path"], "levels/next_scene.json")
+        self.assertEqual(scene_link["flow_key"], "next")
+        self.assertEqual(scene_link["preview_label"], "Next")
+        self.assertEqual(scene_link["link_mode"], "collision")
+        self.assertEqual(scene_link["target_entry_id"], "arrival")
+
+    def test_scene_link_validation_rejects_unknown_link_mode(self) -> None:
+        payload = migrate_scene_data(
+            _scene_payload(
+                name="InvalidSceneLink",
+                entities=[
+                    _entity_payload(
+                        "Portal",
+                        components={
+                            "Transform": _transform_component(),
+                            "SceneLink": {
+                                "enabled": True,
+                                "target_path": "levels/next_scene.json",
+                                "link_mode": "magic",
+                            },
+                        },
+                    )
+                ],
+            )
+        )
+        errors = validate_scene_data(payload)
+        self.assertTrue(any("SceneLink.link_mode: expected one of" in error for error in errors), errors)
 
     def test_schema_cli_validate_all_marks_invalid_rules(self) -> None:
         env = os.environ.copy()

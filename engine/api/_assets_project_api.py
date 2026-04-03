@@ -25,7 +25,7 @@ class AssetsProjectAPI(EngineAPIComponent):
         success = self.game.open_project(path)
         if not success:
             return self.fail("Open project failed")
-        return self.ok("Project opened", {"path": self.project_service.project_root.as_posix()})
+        return self.ok("Project opened", {"path": self.project_service.project_root_display.as_posix()})
 
     def get_editor_state(self) -> Dict[str, Any]:
         if self.project_service is None:

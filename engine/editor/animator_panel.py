@@ -11,6 +11,7 @@ import pyray as rl
 
 from engine.assets.asset_service import AssetService
 from engine.components.animator import Animator
+from engine.editor.render_safety import editor_scissor
 from engine.resources.texture_manager import TextureManager
 
 _UNSET = object()
@@ -365,27 +366,25 @@ class AnimatorPanel:
 
     def render(self, world: Any, x: int, y: int, width: int, height: int) -> None:
         view_rect = rl.Rectangle(x, y, width, height)
-        rl.begin_scissor_mode(int(x), int(y), int(width), int(height))
-        rl.draw_rectangle_rec(view_rect, self.BG_COLOR)
+        with editor_scissor(view_rect):
+            rl.draw_rectangle_rec(view_rect, self.BG_COLOR)
 
-        context = self.get_selection_context(world)
-        status = context.get("status")
-        if status != "ready":
-            self._draw_empty_state(status, x, y, width, height)
-            rl.end_scissor_mode()
-            return
+            context = self.get_selection_context(world)
+            status = context.get("status")
+            if status != "ready":
+                self._draw_empty_state(status, x, y, width, height)
+                return
 
-        left_w = int(width * 0.28)
-        center_w = int(width * 0.40)
-        right_w = width - left_w - center_w - 16
-        left_rect = rl.Rectangle(x + 4, y + 4, left_w, height - 8)
-        center_rect = rl.Rectangle(left_rect.x + left_rect.width + 4, y + 4, center_w, height - 8)
-        right_rect = rl.Rectangle(center_rect.x + center_rect.width + 4, y + 4, right_w, height - 8)
+            left_w = int(width * 0.28)
+            center_w = int(width * 0.40)
+            right_w = width - left_w - center_w - 16
+            left_rect = rl.Rectangle(x + 4, y + 4, left_w, height - 8)
+            center_rect = rl.Rectangle(left_rect.x + left_rect.width + 4, y + 4, center_w, height - 8)
+            right_rect = rl.Rectangle(center_rect.x + center_rect.width + 4, y + 4, right_w, height - 8)
 
-        self._draw_states_column(world, context, left_rect)
-        self._draw_state_editor(world, context, center_rect)
-        self._draw_preview_column(context, right_rect)
-        rl.end_scissor_mode()
+            self._draw_states_column(world, context, left_rect)
+            self._draw_state_editor(world, context, center_rect)
+            self._draw_preview_column(context, right_rect)
 
     def _draw_empty_state(self, status: str, x: int, y: int, width: int, height: int) -> None:
         title = "Animator"
