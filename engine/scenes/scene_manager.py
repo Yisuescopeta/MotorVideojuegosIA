@@ -712,20 +712,32 @@ class SceneManager:
         entry = self._resolve_entry(key)
         if entry is None or entry.edit_world is None:
             return False
+        temp_path: Optional[Path] = None
         try:
             # Only legacy world-only authoring is flushed back into Scene before save.
             # Transient previews are intentionally discarded by the rebuild below.
-            if not self._flush_pending_edit_world(entry, failure_context=f"save_scene:{Path(path).name}"):
-                return False
+            if self._has_pending_transient_preview(entry):
+                self._rebuild_edit_world(entry)
+                self._clear_pending_edit_world_sync(entry)
+            elif self._has_pending_legacy_world_sync(entry):
+                if not self._flush_pending_edit_world(entry, failure_context=f"save_scene:{Path(path).name}"):
+                    return False
+            elif entry.edit_world.version != entry.edit_world_version:
+                self._sync_entry_from_edit_world(entry)
             data = self._validated_scene_payload(entry.scene.to_dict())
-            with open(path, "w", encoding="utf-8") as handle:
+            target_path = Path(path)
+            temp_path = target_path.with_name(f"{target_path.name}.tmp")
+            with open(temp_path, "w", encoding="utf-8") as handle:
                 json.dump(data, handle, indent=4)
             self._install_scene_payload(entry, data, source_path=path)
             self._workspace.rekey_entry(entry, self._build_scene_key(path, entry.scene.name))
+            temp_path.replace(target_path)
             entry.dirty = False
             self._clear_pending_edit_world_sync(entry)
             return True
         except Exception as exc:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
             log_err(f"SceneManager: error al guardar en {path}: {exc}")
             return False
 
@@ -925,6 +937,7 @@ class SceneManager:
         else:
             entry.selected_entity_name = None
             entry.edit_world.selected_entity_name = None
+        entry.edit_world_version = entry.edit_world.version
 
     def _has_pending_legacy_world_sync(self, entry: SceneWorkspaceEntry) -> bool:
         return entry.pending_edit_world_sync_reason == LEGACY_AUTHORING_SYNC_REASON
@@ -979,6 +992,8 @@ class SceneManager:
         data = self._build_canonical_scene_payload(entry)
         self._install_scene_payload(entry, data)
         self._sync_feature_metadata_from_scene_links(entry)
+        if entry.edit_world is not None:
+            entry.edit_world_version = entry.edit_world.version
         self._clear_pending_edit_world_sync(entry)
         return True
 

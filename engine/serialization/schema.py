@@ -161,15 +161,20 @@ def _canonicalize_script_behaviour(payload: dict[str, Any], *, entity_path: str)
     script_ref = normalize_asset_reference(script_value)
     script_path = script_ref.get("path", "")
     module_path = normalize_asset_path(module_path_value) if isinstance(module_path_value, str) else ""
-    normalized_module = _normalize_module_name(script_path) if script_path else ""
+    module_source = script_path or module_path
+    normalized_module = _normalize_module_name(module_source) if module_source else ""
+    canonical_script_path = script_path
+    if not canonical_script_path and module_source:
+        if module_source.endswith(".py") or module_source.startswith("scripts/"):
+            canonical_script_path = module_source
     if script_path and module_path and module_path not in {script_path, normalized_module}:
         raise ValueError(
             f"Cannot migrate {entity_path}.components.ScriptBehaviour: inconsistent script and module_path"
         )
 
-    if script_value is not None or script_path:
-        payload["script"] = build_asset_reference(script_path, script_ref.get("guid", ""))
-    if "module_path" in payload or script_path:
+    if script_value is not None or canonical_script_path:
+        payload["script"] = build_asset_reference(canonical_script_path, script_ref.get("guid", ""))
+    if "module_path" in payload or canonical_script_path:
         payload["module_path"] = normalized_module or module_path
 
 
@@ -877,17 +882,6 @@ def _validate_audio_source(data: dict[str, Any], *, path: str) -> list[str]:
         if key in data:
             _expect_bool(data[key], path=f"{path}.{key}", errors=errors)
     return errors
-
-
-def _normalize_module_name(module_path: str) -> str:
-    value = normalize_asset_path(module_path)
-    if value.endswith(".py"):
-        if value.startswith("scripts/"):
-            value = value[len("scripts/") :]
-        value = value[:-3]
-    return value.strip("/").replace("/", ".")
-
-
 def _validate_script_behaviour(data: dict[str, Any], *, path: str) -> list[str]:
     errors: list[str] = []
     if "enabled" in data:

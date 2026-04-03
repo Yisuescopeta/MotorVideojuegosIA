@@ -4,7 +4,8 @@ import json
 from typing import Any, Dict, Optional
 
 from engine.api._context import EngineAPIComponent
-from engine.api.types import ActionResult, EngineStatus, EntityData, PhysicsBackendInfo, PhysicsBackendSelection
+from engine.api.types import ActionResult, EngineStatus, EntityData
+from engine.physics.backend import PhysicsBackendInfo, PhysicsBackendSelection
 
 
 class RuntimeAPI(EngineAPIComponent):

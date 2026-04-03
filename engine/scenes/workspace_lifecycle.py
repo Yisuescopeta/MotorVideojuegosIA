@@ -26,6 +26,7 @@ class SceneWorkspaceEntry:
     dirty: bool = False
     pending_edit_world_sync_reason: Optional[str] = None
     dirty_before_pending_edit_world_sync: Optional[bool] = None
+    edit_world_version: int = 0
     view_state: dict[str, Any] = field(default_factory=dict)
 
     @property
