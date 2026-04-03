@@ -257,14 +257,15 @@ class ProjectServiceTests(unittest.TestCase):
         self.assertEqual(scenes[2]["name"], "Main Scene")
 
     def test_build_scene_file_path_sanitizes_name_and_avoids_collisions(self) -> None:
-        project_root, service = self._make_project("ScenePaths")
+        _project_root, service = self._make_project("ScenePaths")
         first = service.build_scene_file_path("Boss Intro")
         first.write_text("{}", encoding="utf-8")
 
         second = service.build_scene_file_path("Boss Intro")
+        levels_root = service.get_project_path("levels")
 
-        self.assertEqual(first, project_root / "levels" / "boss_intro.json")
-        self.assertEqual(second, project_root / "levels" / "boss_intro_2.json")
+        self.assertEqual(first, levels_root / "boss_intro.json")
+        self.assertEqual(second, levels_root / "boss_intro_2.json")
 
 
 class ProjectSwitchIntegrationTests(unittest.TestCase):

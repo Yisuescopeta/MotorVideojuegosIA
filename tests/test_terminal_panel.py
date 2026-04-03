@@ -96,8 +96,8 @@ class TerminalPanelTests(unittest.TestCase):
         with patch.object(panel, "_create_backend", side_effect=_fake_create_backend):
             panel.ensure_session()
 
-        self.assertEqual(created[0].cwd, service.project_root.as_posix())
-        self.assertEqual(panel.current_cwd, service.project_root.as_posix())
+        self.assertEqual(created[0].cwd, service.project_root_display.as_posix())
+        self.assertEqual(panel.current_cwd, service.project_root_display.as_posix())
         self.assertIn("[policy: inherit]", panel.status_text)
 
     def test_terminal_builds_inherit_command_by_default(self) -> None:
@@ -157,7 +157,7 @@ class TerminalPanelTests(unittest.TestCase):
 
         self.assertEqual(len(created), 2)
         self.assertTrue(first_backend.closed)
-        self.assertEqual(created[-1].cwd, second_service.project_root.as_posix())
+        self.assertEqual(created[-1].cwd, second_service.project_root_display.as_posix())
 
     def test_terminal_status_displays_active_policy_from_project_settings(self) -> None:
         service = self._make_project("TerminalPolicyStatus")

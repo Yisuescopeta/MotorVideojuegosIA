@@ -260,25 +260,27 @@ class ProjectWorkspaceControllerTests(unittest.TestCase):
         self.sync_scene_workspace_ui.reset_mock()
 
         restored = self.controller.restore_workspace_from_project_state()
+        resolved_intro = self.project_service.resolve_path("levels/intro.json").as_posix()
+        resolved_boss = self.project_service.resolve_path("levels/boss.json").as_posix()
 
         self.assertTrue(restored)
         self.assertEqual(
             self.scene_manager.loaded_calls,
             [
-                (intro_path.as_posix(), False),
-                (boss_path.as_posix(), False),
-                (boss_path.as_posix(), False),
+                (resolved_intro, False),
+                (resolved_boss, False),
+                (resolved_boss, False),
             ],
         )
-        self.assertEqual(self.scene_manager.activated_keys, [boss_path.as_posix()])
-        self.assertIn(intro_path.as_posix(), self.scene_manager.scene_view_states)
-        self.assertEqual(self.scene_manager.active_scene_key, boss_path.as_posix())
+        self.assertEqual(self.scene_manager.activated_keys, [resolved_boss])
+        self.assertIn(resolved_intro, self.scene_manager.scene_view_states)
+        self.assertEqual(self.scene_manager.active_scene_key, resolved_boss)
         self.assertEqual(
             self.scene_manager.get_scene_view_state(),
             {},
         )
         self.assertEqual(
-            self.scene_manager.scene_view_states[intro_path.as_posix()]["camera_zoom"],
+            self.scene_manager.scene_view_states[resolved_intro]["camera_zoom"],
             1.5,
         )
         self.sync_scene_workspace_ui.assert_called_once_with(True)
