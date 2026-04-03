@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -60,7 +61,8 @@ class AIValidationDiagnosticsTests(unittest.TestCase):
         self._temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self._temp_dir.name)
         self.project_root = self.root / "project"
-        self.api = EngineAPI(project_root=self.project_root.as_posix())
+        self.global_state_dir = self.root / "global_state"
+        self.api = EngineAPI(project_root=self.project_root.as_posix(), global_state_dir=self.global_state_dir.as_posix())
         self.validator = AuthoringValidationService(self.api)
 
     def tearDown(self) -> None:
@@ -243,6 +245,38 @@ class AIValidationDiagnosticsTests(unittest.TestCase):
         self.assertEqual(report.target_reference, "levels/live_scene.json")
         self.assertEqual(report.checked_files, ["levels/live_scene.json"])
         json.dumps(report.to_dict(), sort_keys=True)
+
+    def test_validate_project_lightweight_accepts_bootstrap_project(self) -> None:
+        report = AuthoringValidationService(project_service=self.api.project_service).validate_project_lightweight()
+
+        self.assertTrue(report.valid)
+        self.assertEqual(report.target_kind, ValidationTargetKind.PROJECT)
+        self.assertEqual(report.diagnostics, [])
+
+    def test_validation_service_does_not_depend_on_external_global_home(self) -> None:
+        external_home = self.root / "external_home"
+        original_home = os.environ.get("MOTORVIDEOJUEGOSIA_HOME")
+        os.environ["MOTORVIDEOJUEGOSIA_HOME"] = external_home.as_posix()
+        try:
+            report = self.validator.validate_project_lightweight()
+        finally:
+            if original_home is None:
+                os.environ.pop("MOTORVIDEOJUEGOSIA_HOME", None)
+            else:
+                os.environ["MOTORVIDEOJUEGOSIA_HOME"] = original_home
+
+        self.assertTrue(report.valid)
+        self.assertFalse(external_home.exists())
+
+    def test_validate_scene_file_rejects_paths_outside_project_with_stable_code(self) -> None:
+        outside_scene = self.root / "outside_scene.json"
+        outside_scene.write_text(json.dumps(_scene_payload("Outside", [_entity("Player")]), indent=2), encoding="utf-8")
+
+        report = self.validator.validate_scene_file(outside_scene.as_posix())
+
+        self.assertFalse(report.valid)
+        self.assertEqual(report.diagnostics[0].code, "scene.path_outside_project")
+        self.assertEqual(report.diagnostics[0].category, ValidationDiagnosticCategory.WORKSPACE_REFERENCE)
 
 
 if __name__ == "__main__":

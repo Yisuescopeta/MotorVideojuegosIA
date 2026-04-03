@@ -7,6 +7,7 @@ from engine.api.types import ActionResult
 from engine.workflows.ai_assist.types import (
     AuthoringEntityPropertyKind,
     AuthoringExecutionDiagnostic,
+    AuthoringExecutionFailureStage,
     AuthoringExecutionMode,
     AuthoringExecutionOperation,
     AuthoringExecutionOperationKind,
@@ -17,7 +18,10 @@ from engine.workflows.ai_assist.types import (
     RollbackStatus,
 )
 
-
+# Mixed requests are intentionally rejected. Workspace operations change which
+# scene is open, active, and saved, while transactional operations rely on a
+# stable active-scene transaction boundary. Callers must split those phases
+# into separate requests to keep rollback and persistence behavior predictable.
 TRANSACTIONAL_OPERATION_KINDS = {
     AuthoringExecutionOperationKind.CREATE_ENTITY,
     AuthoringExecutionOperationKind.CREATE_CHILD_ENTITY,
@@ -59,6 +63,7 @@ class AuthoringExecutionService:
                 diagnostics=diagnostics,
                 operation_results=operation_results,
                 operations_applied=operations_applied,
+                failure_stage=AuthoringExecutionFailureStage.REQUEST_VALIDATION,
             )
 
         if not self._validate_request(normalized_request, mode, diagnostics):
@@ -68,6 +73,7 @@ class AuthoringExecutionService:
                 operation_results=operation_results,
                 operations_applied=operations_applied,
                 mode=mode,
+                failure_stage=AuthoringExecutionFailureStage.REQUEST_VALIDATION,
             )
 
         transaction_started = False
@@ -95,6 +101,8 @@ class AuthoringExecutionService:
                     operation_results=operation_results,
                     rollback_status=RollbackStatus.NOT_NEEDED,
                     final_target_scene_ref=self._current_scene_ref(),
+                    failure_stage=AuthoringExecutionFailureStage.BEGIN_TRANSACTION,
+                    failed_operation_id="",
                     validation_required_next=False,
                     diagnostics=diagnostics,
                 )
@@ -116,6 +124,11 @@ class AuthoringExecutionService:
             )
             if transaction_started:
                 rollback_status = self._rollback_transaction(diagnostics)
+                failure_stage = (
+                    AuthoringExecutionFailureStage.OPERATION
+                    if rollback_status == RollbackStatus.SUCCEEDED
+                    else AuthoringExecutionFailureStage.ROLLBACK_TRANSACTION
+                )
                 status = (
                     AuthoringExecutionStatus.ROLLED_BACK
                     if rollback_status == RollbackStatus.SUCCEEDED
@@ -124,6 +137,7 @@ class AuthoringExecutionService:
             else:
                 rollback_status = RollbackStatus.NOT_APPLICABLE
                 status = AuthoringExecutionStatus.FAILED
+                failure_stage = AuthoringExecutionFailureStage.OPERATION
             return AuthoringExecutionResult(
                 request_id=normalized_request.request_id,
                 status=status,
@@ -133,6 +147,8 @@ class AuthoringExecutionService:
                 operation_results=operation_results,
                 rollback_status=rollback_status,
                 final_target_scene_ref=self._current_scene_ref(),
+                failure_stage=failure_stage,
+                failed_operation_id=operation.operation_id,
                 validation_required_next=self._requires_validation(operations_applied, normalized_request),
                 diagnostics=diagnostics,
             )
@@ -147,6 +163,11 @@ class AuthoringExecutionService:
                     )
                 )
                 rollback_status = self._rollback_transaction(diagnostics)
+                failure_stage = (
+                    AuthoringExecutionFailureStage.COMMIT_TRANSACTION
+                    if rollback_status == RollbackStatus.SUCCEEDED
+                    else AuthoringExecutionFailureStage.ROLLBACK_TRANSACTION
+                )
                 status = (
                     AuthoringExecutionStatus.ROLLED_BACK
                     if rollback_status == RollbackStatus.SUCCEEDED
@@ -161,6 +182,8 @@ class AuthoringExecutionService:
                     operation_results=operation_results,
                     rollback_status=rollback_status,
                     final_target_scene_ref=self._current_scene_ref(),
+                    failure_stage=failure_stage,
+                    failed_operation_id="",
                     validation_required_next=self._requires_validation(operations_applied, normalized_request),
                     diagnostics=diagnostics,
                 )
@@ -174,6 +197,8 @@ class AuthoringExecutionService:
             operation_results=operation_results,
             rollback_status=rollback_status,
             final_target_scene_ref=self._current_scene_ref(),
+            failure_stage=AuthoringExecutionFailureStage.NONE,
+            failed_operation_id="",
             validation_required_next=self._requires_validation(operations_applied, normalized_request),
             diagnostics=diagnostics,
         )
@@ -240,10 +265,28 @@ class AuthoringExecutionService:
 
         kinds = {operation.kind for operation in request.operations}
         if kinds & TRANSACTIONAL_OPERATION_KINDS and kinds & WORKSPACE_OPERATION_KINDS:
+            conflicting_modes = []
+            if kinds & WORKSPACE_OPERATION_KINDS:
+                conflicting_modes.append(AuthoringExecutionMode.WORKSPACE_ONLY.value)
+            if kinds & TRANSACTIONAL_OPERATION_KINDS:
+                conflicting_modes.append(AuthoringExecutionMode.TRANSACTIONAL_SCENE_EDIT.value)
             diagnostics.append(
                 AuthoringExecutionDiagnostic(
                     code="request.mixed_execution_modes",
-                    message="Mixed workspace and transactional operations are not allowed in one execution request.",
+                    message=(
+                        "Mixed workspace and transactional operations are not allowed in one execution request. "
+                        f"Detected modes: {', '.join(conflicting_modes)}."
+                    ),
+                )
+            )
+            diagnostics.append(
+                AuthoringExecutionDiagnostic(
+                    code="request.mixed_execution_modes.operations",
+                    message="Conflicting operations: "
+                    + ", ".join(
+                        f"{operation.operation_id}:{getattr(operation.kind, 'value', operation.kind)}"
+                        for operation in request.operations
+                    ),
                 )
             )
             return None
@@ -504,6 +547,7 @@ class AuthoringExecutionService:
         operation_results: list[AuthoringExecutionOperationResult],
         operations_applied: list[str],
         mode: AuthoringExecutionMode | None = None,
+        failure_stage: AuthoringExecutionFailureStage = AuthoringExecutionFailureStage.REQUEST_VALIDATION,
     ) -> AuthoringExecutionResult:
         return AuthoringExecutionResult(
             request_id=request.request_id,
@@ -514,13 +558,22 @@ class AuthoringExecutionService:
             operation_results=operation_results,
             rollback_status=RollbackStatus.NOT_APPLICABLE,
             final_target_scene_ref=self._current_scene_ref(),
+            failure_stage=failure_stage,
+            failed_operation_id="",
             validation_required_next=False,
             diagnostics=diagnostics,
         )
 
     def _current_scene_ref(self) -> str:
         active_scene = self._api.get_active_scene()
-        return str(active_scene.get("path") or active_scene.get("key") or "")
+        current = str(active_scene.get("path") or active_scene.get("key") or "")
+        project_service = getattr(self._api, "project_service", None)
+        if not current or project_service is None:
+            return current
+        try:
+            return project_service.to_relative_path(current)
+        except Exception:
+            return current.replace("\\", "/")
 
     def _copy_dict(self, payload: dict[str, Any]) -> dict[str, Any]:
         return dict(payload) if isinstance(payload, dict) else {}

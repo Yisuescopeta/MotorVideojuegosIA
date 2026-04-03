@@ -4,7 +4,10 @@ from pathlib import Path
 from typing import Any
 
 from engine.api import EngineAPI
-from engine.project.project_service import ProjectService
+from engine.workflows.ai_assist.runtime_env import (
+    create_isolated_engine_api,
+    validate_project_manifest,
+)
 from engine.workflows.ai_assist.types import (
     HeadlessVerificationAssertion,
     HeadlessVerificationAssertionKind,
@@ -60,7 +63,7 @@ class HeadlessVerificationService:
             )
         )
 
-        api = EngineAPI(project_root=project_root.as_posix())
+        api = create_isolated_engine_api(project_root)
         try:
             setup_results.append(
                 HeadlessVerificationSetupResult(
@@ -166,11 +169,11 @@ class HeadlessVerificationService:
                         failure_summary=failure_summary,
                     )
 
-            final_status = api.get_status()
+            final_status = self._normalized_engine_status(api)
             final_active_scene = self._normalized_active_scene(api)
             recent_events = api.get_recent_events(scenario.recent_event_limit)
             context = {
-                "status": final_status,
+                "status": api.get_status(),
                 "active_scene": final_active_scene,
                 "recent_events": recent_events,
             }
@@ -205,10 +208,7 @@ class HeadlessVerificationService:
             api.shutdown()
 
     def _project_exists(self, project_root: Path) -> bool:
-        if not project_root.exists():
-            return False
-        validator = ProjectService(project_root.as_posix(), auto_ensure=False)
-        return validator.validate_project(project_root.as_posix())
+        return validate_project_manifest(project_root)
 
     def _load_scene(self, api: EngineAPI, scene_path: str) -> HeadlessVerificationSetupResult:
         try:
@@ -224,7 +224,7 @@ class HeadlessVerificationService:
             step="load_scene",
             success=True,
             message="Scene loaded successfully.",
-            data={"scene_path": scene_path, "active_scene": api.get_active_scene()},
+            data={"scene_path": scene_path, "active_scene": self._normalized_active_scene(api)},
         )
 
     def _evaluate_assertion(
@@ -397,7 +397,7 @@ class HeadlessVerificationService:
         assertion: HeadlessVerificationAssertion,
     ) -> HeadlessVerificationAssertionResult:
         project_root = Path(scenario.project_root).expanduser().resolve()
-        api = EngineAPI(project_root=project_root.as_posix())
+        api = create_isolated_engine_api(project_root)
         try:
             try:
                 api.load_level(scenario.scene_path)
@@ -520,6 +520,14 @@ class HeadlessVerificationService:
         if "path" in active_scene:
             active_scene["path"] = self._normalize_scene_path(api, str(active_scene.get("path", "") or ""))
         return active_scene
+
+    def _normalized_engine_status(self, api: EngineAPI) -> dict[str, Any]:
+        status = api.get_status()
+        return {
+            "state": str(status.get("state", "") or ""),
+            "frame": int(status.get("frame", 0) or 0),
+            "entity_count": int(status.get("entity_count", 0) or 0),
+        }
 
     def _dict_subset(self, expected: dict[str, Any], actual: Any) -> bool:
         if not expected:

@@ -79,6 +79,7 @@ class AIAssistedWorkflowFoundationTests(unittest.TestCase):
         self._temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self._temp_dir.name)
         self.project_root = self.root / "project"
+        self.global_state_dir = self.root / "global_state"
         self.project_root.mkdir(parents=True, exist_ok=True)
         self.scene_path = self.project_root / "levels" / "workflow_scene.json"
         self.scene_path.parent.mkdir(parents=True, exist_ok=True)
@@ -86,11 +87,11 @@ class AIAssistedWorkflowFoundationTests(unittest.TestCase):
         script_path = self.project_root / "scripts" / "player_logic.py"
         script_path.parent.mkdir(parents=True, exist_ok=True)
         script_path.write_text("def update(entity, dt):\n    return None\n", encoding="utf-8")
-        prefab_path = self.project_root / "prefabs" / "enemy.json"
+        prefab_path = self.project_root / "prefabs" / "enemy.prefab"
         prefab_path.parent.mkdir(parents=True, exist_ok=True)
         prefab_path.write_text(json.dumps(_prefab_payload(), indent=2), encoding="utf-8")
 
-        self.api = EngineAPI(project_root=self.project_root.as_posix())
+        self.api = EngineAPI(project_root=self.project_root.as_posix(), global_state_dir=self.global_state_dir.as_posix())
 
     def tearDown(self) -> None:
         self.api.shutdown()
@@ -106,7 +107,7 @@ class AIAssistedWorkflowFoundationTests(unittest.TestCase):
         self.assertEqual(snapshot.project_name, self.project_root.name)
         self.assertEqual(snapshot.current_scene_name, "Workflow Scene")
         self.assertIn("levels/workflow_scene.json", payload["current_scene_path"])
-        self.assertIn("prefabs/enemy.json", snapshot.prefab_paths)
+        self.assertIn("prefabs/enemy.prefab", snapshot.prefab_paths)
         self.assertIn("scripts/player_logic.py", snapshot.script_paths)
         self.assertGreaterEqual(snapshot.asset_count, 0)
         json.dumps(payload, sort_keys=True)

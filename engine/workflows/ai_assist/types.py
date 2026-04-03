@@ -139,6 +139,15 @@ class RollbackStatus(StrEnum):
     NOT_APPLICABLE = "not_applicable"
 
 
+class AuthoringExecutionFailureStage(StrEnum):
+    NONE = "none"
+    REQUEST_VALIDATION = "request_validation"
+    BEGIN_TRANSACTION = "begin_transaction"
+    OPERATION = "operation"
+    COMMIT_TRANSACTION = "commit_transaction"
+    ROLLBACK_TRANSACTION = "rollback_transaction"
+
+
 @dataclass(frozen=True)
 class SceneContextEntry:
     key: str
@@ -517,6 +526,8 @@ class AuthoringExecutionResult:
     operation_results: list[AuthoringExecutionOperationResult] = field(default_factory=list)
     rollback_status: RollbackStatus = RollbackStatus.NOT_APPLICABLE
     final_target_scene_ref: str = ""
+    failure_stage: AuthoringExecutionFailureStage = AuthoringExecutionFailureStage.NONE
+    failed_operation_id: str = ""
     validation_required_next: bool = False
     diagnostics: list[AuthoringExecutionDiagnostic] = field(default_factory=list)
 
@@ -530,6 +541,8 @@ class AuthoringExecutionResult:
             "operation_results": [result.to_dict() for result in self.operation_results],
             "rollback_status": self.rollback_status,
             "final_target_scene_ref": self.final_target_scene_ref,
+            "failure_stage": self.failure_stage,
+            "failed_operation_id": self.failed_operation_id,
             "validation_required_next": self.validation_required_next,
             "diagnostics": [diagnostic.to_dict() for diagnostic in self.diagnostics],
         }

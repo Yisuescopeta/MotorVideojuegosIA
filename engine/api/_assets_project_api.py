@@ -46,12 +46,7 @@ class AssetsProjectAPI(EngineAPIComponent):
     def list_project_prefabs(self) -> list[str]:
         if self.project_service is None or not self.project_service.has_project:
             return []
-        prefabs_root = self.project_service.get_project_path("prefabs")
-        return [
-            self.project_service.to_relative_path(path)
-            for path in sorted(prefabs_root.rglob("*.json"))
-            if path.is_file()
-        ]
+        return self.project_service.list_project_prefabs()
 
     def list_project_scripts(self) -> list[str]:
         if self.project_service is None or not self.project_service.has_project:

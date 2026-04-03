@@ -1,9 +1,11 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 
 from engine.api import EngineAPI
+from engine.project.project_service import ProjectService
 from engine.serialization.schema import migrate_scene_data
 from engine.workflows.ai_assist import (
     HeadlessVerificationAssertion,
@@ -44,7 +46,8 @@ class HeadlessVerificationHarnessTests(unittest.TestCase):
         self._temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self._temp_dir.name)
         self.project_root = self.root / "project"
-        self.api = EngineAPI(project_root=self.project_root.as_posix())
+        self.global_state_dir = self.root / "global_state"
+        self.api = EngineAPI(project_root=self.project_root.as_posix(), global_state_dir=self.global_state_dir.as_posix())
         self.service = HeadlessVerificationService()
 
     def tearDown(self) -> None:
@@ -58,6 +61,7 @@ class HeadlessVerificationHarnessTests(unittest.TestCase):
         return path
 
     def test_successful_verification_reports_pass_and_machine_friendly_results(self) -> None:
+        ProjectService(self.project_root, global_state_dir=self.global_state_dir)
         self._write_scene(
             "levels/verification_scene.json",
             _scene_payload(
@@ -121,6 +125,7 @@ class HeadlessVerificationHarnessTests(unittest.TestCase):
         json.dumps(report.to_dict(), sort_keys=True)
 
     def test_failed_assertion_marks_report_failed_and_keeps_details(self) -> None:
+        ProjectService(self.project_root, global_state_dir=self.global_state_dir)
         self._write_scene(
             "levels/failure_scene.json",
             _scene_payload(
@@ -166,6 +171,7 @@ class HeadlessVerificationHarnessTests(unittest.TestCase):
         self.assertIn("Expected 'Transform.x' to equal", report.failure_summary)
 
     def test_scene_load_failure_stops_before_assertions(self) -> None:
+        ProjectService(self.project_root, global_state_dir=self.global_state_dir)
         scenario = HeadlessVerificationScenario(
             scenario_id="scenario-missing-scene",
             project_root=self.project_root.as_posix(),
@@ -187,6 +193,7 @@ class HeadlessVerificationHarnessTests(unittest.TestCase):
         self.assertIn("Failed to load scene", report.failure_summary)
 
     def test_play_step_and_inspect_workflow(self) -> None:
+        ProjectService(self.project_root, global_state_dir=self.global_state_dir)
         self._write_scene(
             "levels/play_scene.json",
             _scene_payload(
@@ -240,6 +247,7 @@ class HeadlessVerificationHarnessTests(unittest.TestCase):
         self.assertTrue(any(event["name"] == "on_play" for event in report.recent_events))
 
     def test_scene_flow_smoke_verification_uses_isolated_sub_run(self) -> None:
+        ProjectService(self.project_root, global_state_dir=self.global_state_dir)
         self._write_scene(
             "levels/source_scene.json",
             _scene_payload(
@@ -313,6 +321,57 @@ class HeadlessVerificationHarnessTests(unittest.TestCase):
         self.assertEqual(bad_report.status, VerificationStatus.FAIL)
         self.assertFalse(bad_report.assertion_results[0].success)
         self.assertIn("not configured", bad_report.assertion_results[0].message)
+
+    def test_repeated_verification_is_deterministic_and_uses_project_local_state(self) -> None:
+        external_home = self.root / "external_home"
+        original_home = os.environ.get("MOTORVIDEOJUEGOSIA_HOME")
+        os.environ["MOTORVIDEOJUEGOSIA_HOME"] = external_home.as_posix()
+        try:
+            ProjectService(self.project_root, global_state_dir=self.global_state_dir)
+            self._write_scene(
+                "levels/deterministic_scene.json",
+                _scene_payload(
+                    "Deterministic Scene",
+                    [
+                        {
+                            "name": "Player",
+                            "active": True,
+                            "tag": "Player",
+                            "layer": "Gameplay",
+                            "components": {"Transform": _transform(5.0, 15.0)},
+                        }
+                    ],
+                ),
+            )
+            scenario = HeadlessVerificationScenario(
+                scenario_id="scenario-deterministic",
+                project_root=self.project_root.as_posix(),
+                scene_path="levels/deterministic_scene.json",
+                seed=7,
+                play=True,
+                step_frames=3,
+                assertions=[
+                    HeadlessVerificationAssertion(
+                        assertion_id="assert-status",
+                        kind=HeadlessVerificationAssertionKind.ENGINE_STATUS_SANITY,
+                        expected_state="PLAY",
+                        min_frame=3,
+                        min_entity_count=1,
+                    )
+                ],
+            )
+
+            first = self.service.run(scenario)
+            second = self.service.run(scenario)
+        finally:
+            if original_home is None:
+                os.environ.pop("MOTORVIDEOJUEGOSIA_HOME", None)
+            else:
+                os.environ["MOTORVIDEOJUEGOSIA_HOME"] = original_home
+
+        self.assertEqual(first.to_dict(), second.to_dict())
+        self.assertFalse(external_home.exists())
+        self.assertTrue((self.project_root / ".motor" / "ai_assist_state").exists())
 
 
 if __name__ == "__main__":

@@ -131,6 +131,24 @@ def _print_or_emit(payload: dict, *, as_json: bool, out_path: str, lines: list[s
         print(f"[OK] json report written: {Path(out_path).as_posix()}")
 
 
+def _emit_setup_error(*, message: str, as_json: bool, out_path: str, code: str) -> None:
+    payload = {
+        "status": "failed",
+        "error": {
+            "code": code,
+            "message": message,
+        },
+        "exit_code": EXIT_RUNTIME_ERROR,
+    }
+    rendered = write_json_output(payload, out_path)
+    if as_json:
+        print(rendered)
+        return
+    print(f"[ERROR] {message}")
+    if out_path:
+        print(f"[OK] json report written: {Path(out_path).as_posix()}")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Unified local CLI for validation, migration, assets, headless runs, and profiling.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -225,17 +243,35 @@ def main() -> int:
     if args.command == "smoke":
         return _smoke(args.scene, args.frames, args.seed, args.out_dir)
     if args.command == "ai-context":
-        payload = run_context_pack(_project_root(args.project_root))
-        _print_or_emit(payload, as_json=args.json, out_path="", lines=render_context_summary(payload))
-        return 0
+        try:
+            payload = run_context_pack(_project_root(args.project_root))
+            _print_or_emit(payload, as_json=args.json, out_path="", lines=render_context_summary(payload))
+            return 0
+        except Exception as exc:
+            _emit_setup_error(
+                message=f"context generation failed: {exc}",
+                as_json=args.json,
+                out_path="",
+                code="context.setup_failed",
+            )
+            return EXIT_RUNTIME_ERROR
     if args.command == "ai-validate":
-        exit_code, payload = run_validation(
-            project_root=_project_root(args.project_root),
-            target=args.target,
-            path=args.path,
-        )
-        _print_or_emit(payload, as_json=args.json, out_path="", lines=render_validation_summary(payload))
-        return exit_code
+        try:
+            exit_code, payload = run_validation(
+                project_root=_project_root(args.project_root),
+                target=args.target,
+                path=args.path,
+            )
+            _print_or_emit(payload, as_json=args.json, out_path="", lines=render_validation_summary(payload))
+            return exit_code
+        except Exception as exc:
+            _emit_setup_error(
+                message=f"validation setup failed: {exc}",
+                as_json=args.json,
+                out_path="",
+                code="validation.setup_failed",
+            )
+            return EXIT_RUNTIME_ERROR
     if args.command == "ai-verify":
         try:
             scenario_data = load_json_file(args.scenario)
@@ -247,7 +283,12 @@ def main() -> int:
             _print_or_emit(payload, as_json=args.json, out_path=args.out, lines=render_verification_summary(payload))
             return exit_code
         except Exception as exc:
-            print(f"[ERROR] verification setup failed: {exc}")
+            _emit_setup_error(
+                message=f"verification setup failed: {exc}",
+                as_json=args.json,
+                out_path=args.out,
+                code="verification.setup_failed",
+            )
             return EXIT_RUNTIME_ERROR
     if args.command == "ai-workflow":
         try:
@@ -257,7 +298,12 @@ def main() -> int:
             _print_or_emit(payload, as_json=args.json, out_path=args.out, lines=render_workflow_summary(payload))
             return exit_code
         except Exception as exc:
-            print(f"[ERROR] workflow setup failed: {exc}")
+            _emit_setup_error(
+                message=f"workflow setup failed: {exc}",
+                as_json=args.json,
+                out_path=args.out,
+                code="workflow.setup_failed",
+            )
             return EXIT_RUNTIME_ERROR
     return 1
 

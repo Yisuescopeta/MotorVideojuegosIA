@@ -53,6 +53,9 @@ The foundation keeps four workflow phases explicit and separate:
    - Represent intended work as a structured request and an explicit ordered
      plan.
    - Do not parse free-form instructions in this layer.
+   - Keep workspace scene lifecycle operations separate from transactional
+     scene edits. Mixed requests are intentionally rejected so rollback,
+     active-scene targeting, and persistence behavior remain explicit.
 
 3. Validation
    - Reuse existing schema migration and validation helpers for scene/prefab
@@ -80,3 +83,8 @@ This design matches the current repo shape:
 The result is intentionally small and conservative: composition over framework,
 typed reports over hidden orchestration, and reuse of existing public seams over
 new engine abstractions.
+
+Automation-owned runs should also stay self-contained. The AI-assisted workflow
+CLI and headless verification paths use project-local state under
+`.motor/ai_assist_state` instead of user-global editor state so repeated runs
+remain deterministic and isolated.

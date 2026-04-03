@@ -331,14 +331,7 @@ class ProjectContextPackGenerator:
         return metadata_records
 
     def _list_project_prefabs(self) -> list[str]:
-        prefabs_root = self._project_service.get_project_path("prefabs")
-        if not prefabs_root.exists():
-            return []
-        return [
-            self._project_service.to_relative_path(path)
-            for path in sorted(prefabs_root.rglob("*.json"))
-            if path.is_file() and not path.name.endswith(".meta.json")
-        ]
+        return self._project_service.list_project_prefabs()
 
     def _list_project_scripts(self) -> list[str]:
         scripts_root = self._project_service.get_project_path("scripts")

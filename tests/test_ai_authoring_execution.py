@@ -6,6 +6,7 @@ from pathlib import Path
 from engine.api import EngineAPI
 from engine.workflows.ai_assist import (
     AuthoringEntityPropertyKind,
+    AuthoringExecutionFailureStage,
     AuthoringExecutionOperation,
     AuthoringExecutionOperationKind,
     AuthoringExecutionRequest,
@@ -41,11 +42,12 @@ class AIAuthoringExecutionTests(unittest.TestCase):
         self._temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self._temp_dir.name)
         self.project_root = self.root / "project"
+        self.global_state_dir = self.root / "global_state"
         self.project_root.mkdir(parents=True, exist_ok=True)
         self.scene_path = self.project_root / "levels" / "execution_scene.json"
         self.scene_path.parent.mkdir(parents=True, exist_ok=True)
         self.scene_path.write_text(json.dumps(_scene_payload(), indent=2), encoding="utf-8")
-        self.api = EngineAPI(project_root=self.project_root.as_posix())
+        self.api = EngineAPI(project_root=self.project_root.as_posix(), global_state_dir=self.global_state_dir.as_posix())
         self.executor = AuthoringExecutionService(self.api)
 
     def tearDown(self) -> None:
@@ -110,6 +112,7 @@ class AIAuthoringExecutionTests(unittest.TestCase):
 
         self.assertEqual(result.status, AuthoringExecutionStatus.SUCCESS)
         self.assertEqual(result.rollback_status, RollbackStatus.NOT_NEEDED)
+        self.assertEqual(result.failure_stage, AuthoringExecutionFailureStage.NONE)
         self.assertEqual(result.operations_applied, ["op-1", "op-2", "op-3", "op-4", "op-5", "op-6"])
         self.assertTrue(result.validation_required_next)
         probe = self.api.get_entity("Probe")
@@ -154,6 +157,8 @@ class AIAuthoringExecutionTests(unittest.TestCase):
 
         self.assertEqual(result.status, AuthoringExecutionStatus.ROLLED_BACK)
         self.assertEqual(result.rollback_status, RollbackStatus.SUCCEEDED)
+        self.assertEqual(result.failure_stage, AuthoringExecutionFailureStage.OPERATION)
+        self.assertEqual(result.failed_operation_id, "op-2")
         self.assertEqual(result.operations_applied, ["op-1"])
         self.assertTrue(any(diagnostic.code == "operation.failed" for diagnostic in result.diagnostics))
         with self.assertRaises(Exception):
@@ -251,7 +256,7 @@ class AIAuthoringExecutionTests(unittest.TestCase):
         self.assertEqual(result.status, AuthoringExecutionStatus.SUCCESS)
         self.assertEqual(result.rollback_status, RollbackStatus.NOT_APPLICABLE)
         self.assertTrue(result.validation_required_next)
-        self.assertTrue(result.final_target_scene_ref.endswith("levels/created_scene.json"))
+        self.assertEqual(result.final_target_scene_ref, "levels/created_scene.json")
         open_paths = {str(scene["path"]) for scene in self.api.list_open_scenes()}
         self.assertTrue(any(path.endswith("levels/execution_scene.json") for path in open_paths))
         self.assertTrue(any(path.endswith("levels/secondary_scene.json") for path in open_paths))
@@ -281,6 +286,12 @@ class AIAuthoringExecutionTests(unittest.TestCase):
 
         self.assertEqual(result.status, AuthoringExecutionStatus.REJECTED)
         self.assertTrue(any(diagnostic.code == "request.mixed_execution_modes" for diagnostic in result.diagnostics))
+        operations_diagnostic = next(
+            diagnostic for diagnostic in result.diagnostics if diagnostic.code == "request.mixed_execution_modes.operations"
+        )
+        self.assertIn("op-1:create_entity", operations_diagnostic.message)
+        self.assertIn("op-2:save_scene", operations_diagnostic.message)
+        self.assertEqual(result.failure_stage, AuthoringExecutionFailureStage.REQUEST_VALIDATION)
 
     def test_rejects_missing_required_fields_and_invalid_property_kind(self) -> None:
         self._load_main_scene()
@@ -346,6 +357,72 @@ class AIAuthoringExecutionTests(unittest.TestCase):
 
         self.assertEqual(result.status, AuthoringExecutionStatus.REJECTED)
         self.assertTrue(any(diagnostic.code == "request.target_scene_mismatch" for diagnostic in result.diagnostics))
+
+    def test_commit_failure_reports_explicit_stage_and_rolls_back(self) -> None:
+        self._load_main_scene()
+        original_commit = self.api.commit_transaction
+        original_rollback = self.api.rollback_transaction
+        self.api.commit_transaction = lambda: {"success": False, "message": "commit exploded", "data": None}  # type: ignore[method-assign]
+        self.api.rollback_transaction = lambda: original_rollback()  # type: ignore[method-assign]
+        request = AuthoringExecutionRequest(
+            request_id="exec-commit-fail",
+            label="commit-fail",
+            operations=[
+                AuthoringExecutionOperation(
+                    operation_id="op-1",
+                    kind=AuthoringExecutionOperationKind.CREATE_ENTITY,
+                    entity_name="TransientProbe",
+                )
+            ],
+        )
+
+        try:
+            result = self.executor.execute(request)
+        finally:
+            self.api.commit_transaction = original_commit  # type: ignore[method-assign]
+            self.api.rollback_transaction = original_rollback  # type: ignore[method-assign]
+
+        self.assertEqual(result.status, AuthoringExecutionStatus.ROLLED_BACK)
+        self.assertEqual(result.rollback_status, RollbackStatus.SUCCEEDED)
+        self.assertEqual(result.failure_stage, AuthoringExecutionFailureStage.COMMIT_TRANSACTION)
+        self.assertEqual(result.failed_operation_id, "")
+        with self.assertRaises(Exception):
+            self.api.get_entity("TransientProbe")
+
+    def test_rollback_failure_reports_explicit_stage_and_failed_operation(self) -> None:
+        self._load_main_scene()
+        original_rollback = self.api.rollback_transaction
+        self.api.rollback_transaction = lambda: {"success": False, "message": "rollback exploded", "data": None}  # type: ignore[method-assign]
+        request = AuthoringExecutionRequest(
+            request_id="exec-rollback-fail",
+            label="rollback-fail",
+            operations=[
+                AuthoringExecutionOperation(
+                    operation_id="op-1",
+                    kind=AuthoringExecutionOperationKind.CREATE_ENTITY,
+                    entity_name="RollbackLeak",
+                ),
+                AuthoringExecutionOperation(
+                    operation_id="op-2",
+                    kind=AuthoringExecutionOperationKind.EDIT_COMPONENT_FIELD,
+                    entity_name="MissingEntity",
+                    component_name="Transform",
+                    field_name="x",
+                    field_value=10.0,
+                ),
+            ],
+        )
+
+        try:
+            result = self.executor.execute(request)
+        finally:
+            self.api.rollback_transaction = original_rollback  # type: ignore[method-assign]
+
+        self.assertEqual(result.status, AuthoringExecutionStatus.FAILED)
+        self.assertEqual(result.rollback_status, RollbackStatus.FAILED)
+        self.assertEqual(result.failure_stage, AuthoringExecutionFailureStage.ROLLBACK_TRANSACTION)
+        self.assertEqual(result.failed_operation_id, "op-2")
+        self.assertTrue(any(diagnostic.code == "transaction.rollback_failed" for diagnostic in result.diagnostics))
 
 
 if __name__ == "__main__":

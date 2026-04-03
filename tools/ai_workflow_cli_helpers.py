@@ -6,7 +6,6 @@ from typing import Any
 
 from engine.api import EngineAPI
 from engine.assets.asset_service import AssetService
-from engine.project.project_service import ProjectService
 from engine.workflows.ai_assist import (
     AuthoringExecutionRequest,
     AuthoringExecutionService,
@@ -18,6 +17,12 @@ from engine.workflows.ai_assist import (
     HeadlessVerificationService,
     ProjectContextPackGenerator,
     VerificationStatus,
+)
+from engine.workflows.ai_assist.runtime_env import (
+    create_isolated_engine_api,
+    create_isolated_project_service,
+    open_isolated_project_service,
+    validate_project_manifest,
 )
 from engine.workflows.ai_assist.types import (
     AuthoringEntityPropertyKind,
@@ -126,7 +131,7 @@ def parse_verification_assertion(data: dict[str, Any]) -> HeadlessVerificationAs
 
 
 def run_context_pack(project_root: str) -> dict[str, Any]:
-    project_service = ProjectService(project_root)
+    project_service = create_isolated_project_service(project_root)
     asset_service = AssetService(project_service)
     artifacts = ProjectContextPackGenerator(project_service, asset_service).generate()
     return artifacts.to_dict()
@@ -141,22 +146,26 @@ def run_validation(
     api: EngineAPI | None = None
     try:
         if target == "active-scene":
-            api = EngineAPI(project_root=project_root)
+            if not validate_project_manifest(project_root):
+                raise FileNotFoundError(f"Project not found or invalid: {project_root}")
+            api = create_isolated_engine_api(project_root)
             if path:
                 api.load_level(path)
             report = AuthoringValidationService(api).validate_active_scene()
         elif target == "scene-file":
-            report = AuthoringValidationService(project_service=ProjectService(project_root)).validate_scene_file(path)
+            report = AuthoringValidationService(project_service=open_isolated_project_service(project_root)).validate_scene_file(path)
         elif target == "prefab-file":
-            report = AuthoringValidationService(project_service=ProjectService(project_root)).validate_prefab_file(path)
+            report = AuthoringValidationService(project_service=open_isolated_project_service(project_root)).validate_prefab_file(path)
         elif target == "scene-transitions":
             if path:
-                report = AuthoringValidationService(project_service=ProjectService(project_root)).validate_scene_transition_references(path)
+                report = AuthoringValidationService(project_service=open_isolated_project_service(project_root)).validate_scene_transition_references(path)
             else:
-                api = EngineAPI(project_root=project_root)
+                if not validate_project_manifest(project_root):
+                    raise FileNotFoundError(f"Project not found or invalid: {project_root}")
+                api = create_isolated_engine_api(project_root)
                 report = AuthoringValidationService(api).validate_scene_transition_references()
         elif target == "project":
-            report = AuthoringValidationService(project_service=ProjectService(project_root)).validate_project_lightweight()
+            report = AuthoringValidationService(project_service=open_isolated_project_service(project_root)).validate_project_lightweight()
         else:
             raise ValueError(f"Unsupported validation target: {target}")
         exit_code = EXIT_OK if report.valid else EXIT_VALIDATION_FAILED
@@ -192,7 +201,7 @@ def run_workflow(spec: dict[str, Any], *, project_root: str) -> tuple[int, dict[
         verification_payload = _as_dict(spec.get("verification"))
 
         if execution_payload:
-            api = EngineAPI(project_root=project_root)
+            api = create_isolated_engine_api(project_root)
             request = parse_execution_request(execution_payload)
             if request.target_scene_ref:
                 api.load_level(request.target_scene_ref)
@@ -319,24 +328,24 @@ def _run_workflow_validation(
             api.load_level(path)
         return service.validate_active_scene()
     if target == "scene-file":
-        return AuthoringValidationService(project_service=ProjectService(project_root)).validate_scene_file(path)
+        return AuthoringValidationService(project_service=open_isolated_project_service(project_root)).validate_scene_file(path)
     if target == "prefab-file":
-        return AuthoringValidationService(project_service=ProjectService(project_root)).validate_prefab_file(path)
+        return AuthoringValidationService(project_service=open_isolated_project_service(project_root)).validate_prefab_file(path)
     if target == "scene-transitions":
         return (
-            AuthoringValidationService(project_service=ProjectService(project_root)).validate_scene_transition_references(path)
+            AuthoringValidationService(project_service=open_isolated_project_service(project_root)).validate_scene_transition_references(path)
             if path
             else service.validate_scene_transition_references()
         )
     if target == "project":
-        return AuthoringValidationService(project_service=ProjectService(project_root)).validate_project_lightweight()
+        return AuthoringValidationService(project_service=open_isolated_project_service(project_root)).validate_project_lightweight()
     raise ValueError(f"Unsupported workflow validation target: {target}")
 
 
 def _run_standalone_workflow_validation(*, project_root: str, payload: dict[str, Any]):
     target = str(payload.get("target", "") or "project").strip() or "project"
     path = str(payload.get("path", "") or "").strip()
-    service = AuthoringValidationService(project_service=ProjectService(project_root))
+    service = AuthoringValidationService(project_service=open_isolated_project_service(project_root))
     if target == "scene-file":
         return service.validate_scene_file(path)
     if target == "prefab-file":
@@ -346,7 +355,9 @@ def _run_standalone_workflow_validation(*, project_root: str, payload: dict[str,
     if target == "project":
         return service.validate_project_lightweight()
     if target == "active-scene":
-        api = EngineAPI(project_root=project_root)
+        if not validate_project_manifest(project_root):
+            raise FileNotFoundError(f"Project not found or invalid: {project_root}")
+        api = create_isolated_engine_api(project_root)
         try:
             if path:
                 api.load_level(path)

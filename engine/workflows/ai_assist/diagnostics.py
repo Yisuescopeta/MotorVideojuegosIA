@@ -29,6 +29,10 @@ from engine.workflows.ai_assist.types import (
 )
 
 
+class _ProjectBoundaryError(ValueError):
+    pass
+
+
 class AuthoringValidationService:
     """Structured validation adapter for AI-assisted authoring workflows."""
 
@@ -375,6 +379,16 @@ class AuthoringValidationService:
                 source_file=reference,
             )
             return None, [diagnostic], [diagnostic.message]
+        except _ProjectBoundaryError:
+            diagnostic = self._simple_diagnostic(
+                category=ValidationDiagnosticCategory.WORKSPACE_REFERENCE,
+                code="scene.path_outside_project",
+                message=f"Scene path '{scene_path}' is outside the active project.",
+                target_kind=target_kind,
+                reference=reference,
+                source_file=reference,
+            )
+            return None, [diagnostic], [diagnostic.message]
 
         try:
             with resolved.open("r", encoding="utf-8") as handle:
@@ -427,6 +441,16 @@ class AuthoringValidationService:
                 category=ValidationDiagnosticCategory.IO,
                 code="prefab.file_not_found",
                 message=f"Prefab file '{prefab_path}' was not found.",
+                target_kind=target_kind,
+                reference=reference,
+                source_file=reference,
+            )
+            return None, [diagnostic], [diagnostic.message]
+        except _ProjectBoundaryError:
+            diagnostic = self._simple_diagnostic(
+                category=ValidationDiagnosticCategory.WORKSPACE_REFERENCE,
+                code="prefab.path_outside_project",
+                message=f"Prefab path '{prefab_path}' is outside the active project.",
                 target_kind=target_kind,
                 reference=reference,
                 source_file=reference,
@@ -524,14 +548,26 @@ class AuthoringValidationService:
         raw_messages: list[str],
         checked_files: list[str],
     ) -> ValidationDiagnosticsReport:
-        deduped_files = list(dict.fromkeys(item for item in checked_files if item))
-        valid = not any(item.severity == ValidationDiagnosticSeverity.ERROR for item in diagnostics)
+        deduped_files = sorted({item for item in checked_files if item})
+        ordered_diagnostics = sorted(
+            diagnostics,
+            key=lambda item: (
+                str(item.source_file or "").lower(),
+                str(item.reference or "").lower(),
+                str(item.category.value if hasattr(item.category, "value") else item.category).lower(),
+                str(item.code or "").lower(),
+                str(item.path or "").lower(),
+                str(item.message or "").lower(),
+            ),
+        )
+        ordered_raw_messages = sorted(str(message) for message in raw_messages)
+        valid = not any(item.severity == ValidationDiagnosticSeverity.ERROR for item in ordered_diagnostics)
         return ValidationDiagnosticsReport(
             target_kind=target_kind,
             target_reference=target_reference,
             valid=valid,
-            diagnostics=list(diagnostics),
-            raw_messages=list(raw_messages),
+            diagnostics=ordered_diagnostics,
+            raw_messages=ordered_raw_messages,
             checked_files=deduped_files,
         )
 
@@ -552,6 +588,11 @@ class AuthoringValidationService:
 
     def _resolve_existing_path(self, path: str) -> Path:
         candidate = self.project_service.resolve_path(path) if self.project_service is not None else Path(path).expanduser().resolve()
+        if self.project_service is not None:
+            try:
+                candidate.relative_to(self.project_service.project_root)
+            except ValueError as exc:
+                raise _ProjectBoundaryError(str(candidate)) from exc
         if not candidate.exists():
             raise FileNotFoundError(candidate.as_posix())
         return candidate
@@ -640,17 +681,7 @@ class AuthoringValidationService:
     def _list_project_prefabs(self) -> list[str]:
         if self.project_service is None or not self.project_service.has_project:
             return []
-        prefabs_root = self.project_service.get_project_path("prefabs")
-        if not prefabs_root.exists():
-            return []
-        results: list[str] = []
-        for path in sorted(prefabs_root.rglob("*")):
-            if not path.is_file() or path.name.endswith(".meta.json"):
-                continue
-            if path.suffix.lower() not in {".prefab", ".json"}:
-                continue
-            results.append(self.project_service.to_relative_path(path))
-        return results
+        return self.project_service.list_project_prefabs()
 
     def _diagnostics_from_transition_snapshot(self, snapshot: dict[str, Any]) -> list[ValidationDiagnostic]:
         diagnostics: list[ValidationDiagnostic] = []
@@ -690,7 +721,15 @@ class AuthoringValidationService:
                         target_kind=ValidationTargetKind.PROJECT,
                     )
                 )
-        return diagnostics
+        return sorted(
+            diagnostics,
+            key=lambda item: (
+                str(item.source_file or "").lower(),
+                str(item.reference or "").lower(),
+                str(item.code or "").lower(),
+                str(item.message or "").lower(),
+            ),
+        )
 
     def _raw_messages_from_transition_snapshot(self, snapshot: dict[str, Any]) -> list[str]:
         messages: list[str] = []
@@ -701,4 +740,4 @@ class AuthoringValidationService:
             if status not in {"error", "warning"}:
                 continue
             messages.extend(str(message) for message in row.get("messages", []))
-        return messages
+        return sorted(messages)

@@ -225,7 +225,7 @@ class ProjectContextPackGeneratorTests(unittest.TestCase):
             },
         )
         self._write_prefab(
-            "prefabs/enemy.json",
+            "prefabs/enemy.prefab",
             {
                 "root_name": "EnemyPrefab",
                 "entities": [
@@ -276,7 +276,7 @@ class ProjectContextPackGeneratorTests(unittest.TestCase):
         self._write_asset("assets/hero.png")
         self._write_script("scripts/player_logic.py")
         self._write_prefab(
-            "prefabs/player.json",
+            "prefabs/player.prefab",
             {
                 "root_name": "PlayerPrefab",
                 "entities": [
@@ -306,7 +306,7 @@ class ProjectContextPackGeneratorTests(unittest.TestCase):
         payload = self._load_json_artifact(artifacts.json_path)
 
         self.assertTrue(any(item["path"] == "assets/hero.png" for item in payload["assets"]["catalog"]))
-        self.assertEqual(payload["assets"]["prefabs"], ["prefabs/player.json"])
+        self.assertEqual(payload["assets"]["prefabs"], ["prefabs/player.prefab"])
         self.assertEqual(payload["assets"]["scripts"], ["scripts/player_logic.py"])
         self.assertTrue(
             any(
@@ -316,6 +316,21 @@ class ProjectContextPackGeneratorTests(unittest.TestCase):
                 for item in payload["assets"]["relevant_metadata"]
             )
         )
+
+    def test_prefab_listing_supports_prefab_and_json_conventions(self) -> None:
+        self._write_prefab(
+            "prefabs/new_style.prefab",
+            {"root_name": "NewStyle", "entities": [{"name": "NewStyle", "components": {"Transform": _transform()}}]},
+        )
+        self._write_prefab(
+            "prefabs/legacy.json",
+            {"root_name": "Legacy", "entities": [{"name": "Legacy", "components": {"Transform": _transform()}}]},
+        )
+
+        artifacts = ProjectContextPackGenerator(self.project_service, self.asset_service).generate()
+        payload = self._load_json_artifact(artifacts.json_path)
+
+        self.assertEqual(payload["assets"]["prefabs"], ["prefabs/legacy.json", "prefabs/new_style.prefab"])
 
     def test_live_workspace_state_is_included_when_api_is_available(self) -> None:
         self._write_scene(

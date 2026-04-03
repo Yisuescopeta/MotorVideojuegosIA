@@ -71,12 +71,15 @@ class AIWorkflowCliTests(unittest.TestCase):
             second_payload = json.loads(second.stdout)
             self.assertEqual(second_payload["json_path"], ".motor/meta/ai_context_pack.json")
             self.assertEqual(first_contents, json_path.read_text(encoding="utf-8"))
+            self.assertFalse(global_home.exists())
+            self.assertTrue((project_root / ".motor" / "ai_assist_state").exists())
 
     def test_ai_validate_handles_valid_scene_and_invalid_prefab(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             project_root = workspace / "project"
             global_home = workspace / "global"
+            ProjectService(project_root, global_state_dir=workspace / "bootstrap_state")
             levels = project_root / "levels"
             prefabs = project_root / "prefabs"
             levels.mkdir(parents=True, exist_ok=True)
@@ -124,13 +127,15 @@ class AIWorkflowCliTests(unittest.TestCase):
             invalid_payload = json.loads(invalid.stdout)
             self.assertFalse(invalid_payload["valid"])
             self.assertTrue(any(item["category"] == "prefab_schema" for item in invalid_payload["diagnostics"]))
+            self.assertFalse(global_home.exists())
+            self.assertTrue((project_root / ".motor" / "ai_assist_state").exists())
 
     def test_ai_verify_reports_pass_fail_and_setup_failure_exit_codes(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             project_root = workspace / "project"
             global_home = workspace / "global"
-            ProjectService(project_root, global_state_dir=global_home)
+            ProjectService(project_root, global_state_dir=workspace / "bootstrap_state")
             levels = project_root / "levels"
             levels.mkdir(parents=True, exist_ok=True)
             (levels / "verify_scene.json").write_text(
@@ -235,6 +240,8 @@ class AIWorkflowCliTests(unittest.TestCase):
             self.assertIn("[ERROR] verification failed", failed.stdout)
             self.assertEqual(missing.returncode, 1, missing.stdout + missing.stderr)
             self.assertIn("Failed to load scene", missing.stdout)
+            self.assertFalse(global_home.exists())
+            self.assertTrue((project_root / ".motor" / "ai_assist_state").exists())
 
     def test_ai_workflow_runs_context_execution_validation_and_verification(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -310,6 +317,8 @@ class AIWorkflowCliTests(unittest.TestCase):
             self.assertEqual(payload["verification"]["status"], "pass")
             self.assertTrue((project_root / "levels" / "workflow_scene.json").exists())
             self.assertTrue(out_path.exists())
+            self.assertFalse(global_home.exists())
+            self.assertTrue((project_root / ".motor" / "ai_assist_state").exists())
 
     def test_ai_workflow_returns_step_specific_failure_codes(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -417,11 +426,39 @@ class AIWorkflowCliTests(unittest.TestCase):
             )
 
             self.assertEqual(execution_result.returncode, 4, execution_result.stdout + execution_result.stderr)
-            self.assertEqual(json.loads(execution_result.stdout)["exit_code"], 4)
+            execution_payload = json.loads(execution_result.stdout)
+            self.assertEqual(execution_payload["exit_code"], 4)
+            self.assertTrue(
+                any(
+                    diagnostic["code"] == "request.mixed_execution_modes.operations"
+                    for diagnostic in execution_payload["execution"]["diagnostics"]
+                )
+            )
             self.assertEqual(validation_result.returncode, 2, validation_result.stdout + validation_result.stderr)
             self.assertEqual(json.loads(validation_result.stdout)["exit_code"], 2)
             self.assertEqual(verification_result.returncode, 3, verification_result.stdout + verification_result.stderr)
             self.assertEqual(json.loads(verification_result.stdout)["exit_code"], 3)
+
+    def test_ai_validate_json_setup_failure_is_machine_friendly(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            project_root = workspace / "missing_project"
+
+            result = _run_module_result(
+                "tools.engine_cli",
+                "ai-validate",
+                "--target",
+                "project",
+                "--project-root",
+                project_root.as_posix(),
+                "--json",
+                cwd=workspace,
+            )
+
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["status"], "failed")
+            self.assertEqual(payload["error"]["code"], "validation.setup_failed")
 
 
 if __name__ == "__main__":
