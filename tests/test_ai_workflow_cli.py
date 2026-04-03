@@ -68,6 +68,7 @@ class AIWorkflowCliTests(unittest.TestCase):
             self.assertTrue(json_path.exists())
             self.assertTrue(markdown_path.exists())
             first_contents = json_path.read_text(encoding="utf-8")
+            self.assertTrue(second.stdout.lstrip().startswith("{"))
             second_payload = json.loads(second.stdout)
             self.assertEqual(second_payload["json_path"], ".motor/meta/ai_context_pack.json")
             self.assertEqual(first_contents, json_path.read_text(encoding="utf-8"))
@@ -235,7 +236,10 @@ class AIWorkflowCliTests(unittest.TestCase):
             )
 
             self.assertEqual(passed.returncode, 0, passed.stdout + passed.stderr)
+            self.assertTrue(passed.stdout.lstrip().startswith("{"))
             self.assertEqual(json.loads(passed.stdout)["status"], "pass")
+            self.assertFalse(passed.stdout.startswith("RAYLIB"))
+            self.assertTrue(isinstance(passed.stderr, str))
             self.assertEqual(failed.returncode, 3, failed.stdout + failed.stderr)
             self.assertIn("[ERROR] verification failed", failed.stdout)
             self.assertEqual(missing.returncode, 1, missing.stdout + missing.stderr)
@@ -309,6 +313,7 @@ class AIWorkflowCliTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertTrue(result.stdout.lstrip().startswith("{"))
             payload = json.loads(result.stdout)
             self.assertEqual(payload["status"], "success")
             self.assertIsNotNone(payload["context"])

@@ -2,33 +2,23 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from engine.api import EngineAPI
-from engine.assets.asset_service import AssetService
-from engine.workflows.ai_assist import (
-    AuthoringExecutionRequest,
-    AuthoringExecutionService,
-    AuthoringExecutionStatus,
-    AuthoringValidationService,
-    HeadlessVerificationAssertion,
-    HeadlessVerificationAssertionKind,
-    HeadlessVerificationScenario,
-    HeadlessVerificationService,
-    ProjectContextPackGenerator,
-    VerificationStatus,
-)
 from engine.workflows.ai_assist.runtime_env import (
     create_isolated_engine_api,
     create_isolated_project_service,
     open_isolated_project_service,
     validate_project_manifest,
 )
-from engine.workflows.ai_assist.types import (
-    AuthoringEntityPropertyKind,
-    AuthoringExecutionOperation,
-    AuthoringExecutionOperationKind,
-)
+
+if TYPE_CHECKING:
+    from engine.api import EngineAPI
+    from engine.workflows.ai_assist import (
+        AuthoringExecutionRequest,
+        HeadlessVerificationAssertion,
+        HeadlessVerificationScenario,
+    )
+    from engine.workflows.ai_assist.types import AuthoringExecutionOperation
 
 
 EXIT_OK = 0
@@ -54,7 +44,9 @@ def write_json_output(payload: Any, out_path: str = "") -> str:
     return rendered
 
 
-def parse_execution_request(data: dict[str, Any]) -> AuthoringExecutionRequest:
+def parse_execution_request(data: dict[str, Any]) -> "AuthoringExecutionRequest":
+    from engine.workflows.ai_assist import AuthoringExecutionRequest
+
     operations = [parse_execution_operation(item) for item in _as_list(data.get("operations"))]
     return AuthoringExecutionRequest(
         request_id=str(data.get("request_id", "") or "").strip(),
@@ -65,7 +57,13 @@ def parse_execution_request(data: dict[str, Any]) -> AuthoringExecutionRequest:
     )
 
 
-def parse_execution_operation(data: dict[str, Any]) -> AuthoringExecutionOperation:
+def parse_execution_operation(data: dict[str, Any]) -> "AuthoringExecutionOperation":
+    from engine.workflows.ai_assist.types import (
+        AuthoringEntityPropertyKind,
+        AuthoringExecutionOperation,
+        AuthoringExecutionOperationKind,
+    )
+
     kind = data.get("kind", "")
     property_kind = data.get("property_kind", None)
     return AuthoringExecutionOperation(
@@ -95,7 +93,9 @@ def parse_execution_operation(data: dict[str, Any]) -> AuthoringExecutionOperati
     )
 
 
-def parse_verification_scenario(data: dict[str, Any], *, default_project_root: str = "") -> HeadlessVerificationScenario:
+def parse_verification_scenario(data: dict[str, Any], *, default_project_root: str = "") -> "HeadlessVerificationScenario":
+    from engine.workflows.ai_assist import HeadlessVerificationScenario
+
     assertions = [parse_verification_assertion(item) for item in _as_list(data.get("assertions"))]
     project_root = str(data.get("project_root", "") or "").strip() or default_project_root
     return HeadlessVerificationScenario(
@@ -110,7 +110,10 @@ def parse_verification_scenario(data: dict[str, Any], *, default_project_root: s
     )
 
 
-def parse_verification_assertion(data: dict[str, Any]) -> HeadlessVerificationAssertion:
+def parse_verification_assertion(data: dict[str, Any]) -> "HeadlessVerificationAssertion":
+    from engine.workflows.ai_assist import HeadlessVerificationAssertion
+    from engine.workflows.ai_assist.types import HeadlessVerificationAssertionKind
+
     kind = data.get("kind", "")
     return HeadlessVerificationAssertion(
         assertion_id=str(data.get("assertion_id", "") or "").strip(),
@@ -131,6 +134,9 @@ def parse_verification_assertion(data: dict[str, Any]) -> HeadlessVerificationAs
 
 
 def run_context_pack(project_root: str) -> dict[str, Any]:
+    from engine.assets.asset_service import AssetService
+    from engine.workflows.ai_assist import ProjectContextPackGenerator
+
     project_service = create_isolated_project_service(project_root)
     asset_service = AssetService(project_service)
     artifacts = ProjectContextPackGenerator(project_service, asset_service).generate()
@@ -143,6 +149,8 @@ def run_validation(
     target: str,
     path: str = "",
 ) -> tuple[int, dict[str, Any]]:
+    from engine.workflows.ai_assist import AuthoringValidationService
+
     api: EngineAPI | None = None
     try:
         if target == "active-scene":
@@ -153,19 +161,23 @@ def run_validation(
                 api.load_level(path)
             report = AuthoringValidationService(api).validate_active_scene()
         elif target == "scene-file":
-            report = AuthoringValidationService(project_service=open_isolated_project_service(project_root)).validate_scene_file(path)
+            service = open_isolated_project_service(project_root)
+            report = AuthoringValidationService(project_service=service).validate_scene_file(path)
         elif target == "prefab-file":
-            report = AuthoringValidationService(project_service=open_isolated_project_service(project_root)).validate_prefab_file(path)
+            service = open_isolated_project_service(project_root)
+            report = AuthoringValidationService(project_service=service).validate_prefab_file(path)
         elif target == "scene-transitions":
             if path:
-                report = AuthoringValidationService(project_service=open_isolated_project_service(project_root)).validate_scene_transition_references(path)
+                service = open_isolated_project_service(project_root)
+                report = AuthoringValidationService(project_service=service).validate_scene_transition_references(path)
             else:
                 if not validate_project_manifest(project_root):
                     raise FileNotFoundError(f"Project not found or invalid: {project_root}")
                 api = create_isolated_engine_api(project_root)
                 report = AuthoringValidationService(api).validate_scene_transition_references()
         elif target == "project":
-            report = AuthoringValidationService(project_service=open_isolated_project_service(project_root)).validate_project_lightweight()
+            service = open_isolated_project_service(project_root)
+            report = AuthoringValidationService(project_service=service).validate_project_lightweight()
         else:
             raise ValueError(f"Unsupported validation target: {target}")
         exit_code = EXIT_OK if report.valid else EXIT_VALIDATION_FAILED
@@ -175,13 +187,21 @@ def run_validation(
             api.shutdown()
 
 
-def run_verification(scenario: HeadlessVerificationScenario) -> tuple[int, dict[str, Any]]:
+def run_verification(scenario: "HeadlessVerificationScenario") -> tuple[int, dict[str, Any]]:
+    from engine.workflows.ai_assist import HeadlessVerificationService
+
     report = HeadlessVerificationService().run(scenario)
     exit_code = verification_exit_code(report.to_dict())
     return exit_code, report.to_dict()
 
 
 def run_workflow(spec: dict[str, Any], *, project_root: str) -> tuple[int, dict[str, Any]]:
+    from engine.workflows.ai_assist import (
+        AuthoringExecutionService,
+        HeadlessVerificationService,
+    )
+    from engine.workflows.ai_assist.types import AuthoringExecutionStatus
+
     result: dict[str, Any] = {
         "status": "success",
         "exit_code": EXIT_OK,
@@ -277,7 +297,7 @@ def render_verification_summary(payload: dict[str, Any]) -> list[str]:
     lines = [
         (
             f"[OK] verification passed: {payload.get('scene_path', '')}"
-            if payload.get("status") == VerificationStatus.PASS
+            if payload.get("status") == "pass"
             else f"[ERROR] verification failed: {payload.get('scene_path', '')}"
         ),
         f"[OK] setup steps: {len(setup_results)}",
@@ -316,10 +336,12 @@ def render_workflow_summary(payload: dict[str, Any]) -> list[str]:
 
 def _run_workflow_validation(
     *,
-    api: EngineAPI,
+    api: "EngineAPI",
     project_root: str,
     payload: dict[str, Any],
 ):
+    from engine.workflows.ai_assist import AuthoringValidationService
+
     target = str(payload.get("target", "") or "active-scene").strip() or "active-scene"
     path = str(payload.get("path", "") or "").strip()
     service = AuthoringValidationService(api)
@@ -328,9 +350,11 @@ def _run_workflow_validation(
             api.load_level(path)
         return service.validate_active_scene()
     if target == "scene-file":
-        return AuthoringValidationService(project_service=open_isolated_project_service(project_root)).validate_scene_file(path)
+        project_service = open_isolated_project_service(project_root)
+        return AuthoringValidationService(project_service=project_service).validate_scene_file(path)
     if target == "prefab-file":
-        return AuthoringValidationService(project_service=open_isolated_project_service(project_root)).validate_prefab_file(path)
+        project_service = open_isolated_project_service(project_root)
+        return AuthoringValidationService(project_service=project_service).validate_prefab_file(path)
     if target == "scene-transitions":
         return (
             AuthoringValidationService(project_service=open_isolated_project_service(project_root)).validate_scene_transition_references(path)
@@ -338,11 +362,14 @@ def _run_workflow_validation(
             else service.validate_scene_transition_references()
         )
     if target == "project":
-        return AuthoringValidationService(project_service=open_isolated_project_service(project_root)).validate_project_lightweight()
+        project_service = open_isolated_project_service(project_root)
+        return AuthoringValidationService(project_service=project_service).validate_project_lightweight()
     raise ValueError(f"Unsupported workflow validation target: {target}")
 
 
 def _run_standalone_workflow_validation(*, project_root: str, payload: dict[str, Any]):
+    from engine.workflows.ai_assist import AuthoringValidationService
+
     target = str(payload.get("target", "") or "project").strip() or "project"
     path = str(payload.get("path", "") or "").strip()
     service = AuthoringValidationService(project_service=open_isolated_project_service(project_root))
@@ -391,6 +418,6 @@ def _as_optional_int(value: Any) -> int | None:
 def verification_exit_code(payload: dict[str, Any]) -> int:
     if any(not bool(_as_dict(item).get("success")) for item in _as_list(payload.get("setup_results"))):
         return EXIT_RUNTIME_ERROR
-    if payload.get("status") == VerificationStatus.PASS:
+    if payload.get("status") == "pass":
         return EXIT_OK
     return EXIT_VERIFICATION_FAILED
