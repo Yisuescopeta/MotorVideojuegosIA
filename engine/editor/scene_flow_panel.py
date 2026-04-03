@@ -44,6 +44,8 @@ class SceneFlowPanel:
     NODE_WIDTH = 176
     NODE_HEIGHT = 56
     CONNECTOR_RADIUS = 6
+    CONTEXT_MENU_WIDTH = 128
+    CONTEXT_MENU_ITEM_HEIGHT = 24
 
     def __init__(self) -> None:
         self.project_service: Any = None
@@ -71,6 +73,9 @@ class SceneFlowPanel:
         self._drag_node_key: str = ""
         self._drag_offset = rl.Vector2(0.0, 0.0)
         self._connecting_from_node_key: str = ""
+        self._context_menu_active: bool = False
+        self._context_menu_pos = rl.Vector2(0.0, 0.0)
+        self._context_menu_node_key: str = ""
         self._list_scroll: float = 0.0
         self._panel_rect = rl.Rectangle(0, 0, 0, 0)
         self._toolbar_rect = rl.Rectangle(0, 0, 0, 0)
@@ -126,6 +131,8 @@ class SceneFlowPanel:
             self._draw_toolbar(snapshot)
             self._draw_sidebar(snapshot)
             self._draw_canvas(snapshot)
+            if self._context_menu_active:
+                self._draw_canvas_context_menu(snapshot)
             if self._modal_open:
                 self._draw_add_modal()
             self._finalize_drag(snapshot)
@@ -301,6 +308,7 @@ class SceneFlowPanel:
             visible_nodes.append(dict(node))
 
         self._place_default_nodes(visible_nodes)
+        self._prepare_node_rects(visible_nodes)
         visible_node_keys = {str(node.get("node_key", "") or "") for node in visible_nodes}
         edges = [
             edge
@@ -727,8 +735,8 @@ class SceneFlowPanel:
         if source_rect is None or target_rect is None:
             return
         color = self.TWO_WAY if str(edge.get("connection_type", "")) == "two_way" else self.ONE_WAY
-        start = rl.Vector2(source_rect.x + source_rect.width, source_rect.y + (source_rect.height / 2))
-        end = rl.Vector2(target_rect.x, target_rect.y + (target_rect.height / 2))
+        start = self._edge_anchor(source_rect, "right")
+        end = self._edge_anchor(target_rect, "left")
         if str(edge.get("connection_type", "")) == "two_way":
             self._draw_arrow(start, end, color, offset=5.0)
             self._draw_arrow(end, start, color, offset=-5.0)
@@ -756,9 +764,8 @@ class SceneFlowPanel:
         rl.draw_triangle(rl.Vector2(ex, ey), left, right, color)
 
     def _draw_node(self, node: dict[str, Any]) -> None:
-        rect = self._resolve_node_rect(node)
+        rect = self._node_rect_for(node)
         node_key = str(node.get("node_key", "") or "")
-        self._node_rects[node_key] = rect
         selected = node_key == self._selected_node_key
         bg = self.SELECTED_BG if selected else self.NODE_BG if str(node.get("kind", "")) == "entity" else self.TARGET_NODE_BG
         border = self._status_color(str(node.get("status", "ok")))
@@ -773,12 +780,23 @@ class SceneFlowPanel:
 
     def _handle_canvas_interactions(self, nodes: list[dict[str, Any]], snapshot: dict[str, list[dict[str, Any]]]) -> None:
         mouse = rl.get_mouse_position()
+        if self._context_menu_active:
+            return
         for node in nodes:
             rect = self._node_rects.get(str(node.get("node_key", "") or ""))
             if rect is None:
                 continue
             connector = self._connector_rect(rect)
             node_key = str(node.get("node_key", "") or "")
+            if rl.check_collision_point_rec(mouse, rect) and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_RIGHT):
+                self._selected_node_key = node_key
+                self._selected_sidebar_key = self._sidebar_key_for_node(node_key, snapshot)
+                self._drag_node_key = ""
+                self._connecting_from_node_key = ""
+                self._context_menu_active = True
+                self._context_menu_pos = rl.Vector2(mouse.x, mouse.y)
+                self._context_menu_node_key = node_key
+                return
             if rl.check_collision_point_rec(mouse, connector) and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 self._connecting_from_node_key = node_key
                 self._selected_node_key = node_key
@@ -788,13 +806,6 @@ class SceneFlowPanel:
                 self._selected_sidebar_key = self._sidebar_key_for_node(node_key, snapshot)
                 self._drag_node_key = node_key
                 self._drag_offset = rl.Vector2(mouse.x - rect.x, mouse.y - rect.y)
-                if str(node.get("kind", "")) == "entity":
-                    self.request_open_source = {
-                        "scene_ref": str(node.get("scene_ref", "") or ""),
-                        "entity_name": str(node.get("entity_name", "") or ""),
-                    }
-                elif str(node.get("scene_ref", "") or ""):
-                    self.request_open_target = {"scene_ref": str(node.get("scene_ref", "") or "")}
                 return
 
         if self._drag_node_key and rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT):
@@ -826,8 +837,81 @@ class SceneFlowPanel:
         if self._connecting_from_node_key:
             source_rect = self._node_rects.get(self._connecting_from_node_key)
             if source_rect is not None:
-                source = rl.Vector2(source_rect.x + source_rect.width, source_rect.y + source_rect.height / 2)
+                source = self._edge_anchor(source_rect, "right")
                 self._draw_arrow(source, mouse, self.ACCENT, offset=0.0)
+
+    def _prepare_node_rects(self, nodes: list[dict[str, Any]]) -> None:
+        self._node_rects = {}
+        for node in nodes:
+            node_key = str(node.get("node_key", "") or "")
+            if not node_key:
+                continue
+            self._node_rects[node_key] = self._resolve_node_rect(node)
+
+    def _node_rect_for(self, node: dict[str, Any]) -> rl.Rectangle:
+        node_key = str(node.get("node_key", "") or "")
+        return self._node_rects.get(node_key) or self._resolve_node_rect(node)
+
+    def _edge_anchor(self, rect: rl.Rectangle, side: str) -> rl.Vector2:
+        inset = 2.0
+        x = rect.x + rect.width - inset if side == "right" else rect.x + inset
+        return rl.Vector2(x, rect.y + (rect.height / 2))
+
+    def _draw_canvas_context_menu(self, snapshot: dict[str, list[dict[str, Any]]]) -> None:
+        node = self._context_menu_node(snapshot)
+        if node is None:
+            self._close_context_menu()
+            return
+        menu_rect = self._context_menu_rect()
+        self._register_cursor_rect(menu_rect)
+        if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT) and not rl.check_collision_point_rec(rl.get_mouse_position(), menu_rect):
+            self._close_context_menu()
+            return
+
+        rl.draw_rectangle_rec(menu_rect, self.PANEL_BG)
+        rl.draw_rectangle_lines_ex(menu_rect, 1, self.BORDER_COLOR)
+        item_rect = rl.Rectangle(menu_rect.x, menu_rect.y, menu_rect.width, float(self.CONTEXT_MENU_ITEM_HEIGHT))
+        self._register_cursor_rect(item_rect)
+        hover = rl.check_collision_point_rec(rl.get_mouse_position(), item_rect)
+        if hover:
+            rl.draw_rectangle_rec(item_rect, self.LIST_ROW_HOVER)
+        rl.draw_text("Ver en escena", int(item_rect.x + 10), int(item_rect.y + 6), 10, self.TEXT_COLOR)
+        if hover and rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
+            self._request_open_for_node(node)
+            self._close_context_menu()
+
+    def _context_menu_node(self, snapshot: dict[str, list[dict[str, Any]]]) -> Optional[dict[str, Any]]:
+        node_key = str(self._context_menu_node_key or "")
+        if not node_key:
+            return None
+        for node in snapshot.get("canvas_nodes", []):
+            if str(node.get("node_key", "") or "") == node_key:
+                return dict(node)
+        return None
+
+    def _context_menu_rect(self) -> rl.Rectangle:
+        width = float(self.CONTEXT_MENU_WIDTH)
+        height = float(self.CONTEXT_MENU_ITEM_HEIGHT)
+        mx = min(self._context_menu_pos.x, self._panel_rect.x + self._panel_rect.width - width - 4)
+        my = min(self._context_menu_pos.y, self._panel_rect.y + self._panel_rect.height - height - 4)
+        mx = max(self._panel_rect.x + 4, mx)
+        my = max(self._panel_rect.y + 4, my)
+        return rl.Rectangle(mx, my, width, height)
+
+    def _request_open_for_node(self, node: dict[str, Any]) -> None:
+        if str(node.get("kind", "")) == "entity":
+            self.request_open_source = {
+                "scene_ref": str(node.get("scene_ref", "") or ""),
+                "entity_name": str(node.get("entity_name", "") or ""),
+            }
+            return
+        scene_ref = str(node.get("scene_ref", "") or "")
+        if scene_ref:
+            self.request_open_target = {"scene_ref": scene_ref}
+
+    def _close_context_menu(self) -> None:
+        self._context_menu_active = False
+        self._context_menu_node_key = ""
 
     def _resolve_node_rect(self, node: dict[str, Any]) -> rl.Rectangle:
         x = float(node.get("_draw_x", node.get("x", 0.0)) or 0.0)

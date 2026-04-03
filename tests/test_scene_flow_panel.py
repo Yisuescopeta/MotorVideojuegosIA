@@ -4,6 +4,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import pyray as rl
+
 from engine.core.game import Game
 from engine.editor.scene_flow_panel import SceneFlowPanel
 from engine.levels.component_registry import create_default_registry
@@ -569,6 +571,301 @@ class SceneFlowPanelSupportTests(unittest.TestCase):
         self.assertEqual(scene_link["link_mode"], "trigger_enter")
         self.assertEqual(action["target_scene_path"], "levels/next.json")
         self.assertEqual(contact["mode"], "trigger_enter")
+
+    def test_draw_edge_renders_one_way_arrow(self) -> None:
+        panel = SceneFlowPanel()
+        source_rect = rl.Rectangle(100.0, 80.0, float(panel.NODE_WIDTH), float(panel.NODE_HEIGHT))
+        target_rect = rl.Rectangle(360.0, 80.0, float(panel.NODE_WIDTH), float(panel.NODE_HEIGHT))
+        panel._node_rects = {
+            "entity::source": source_rect,
+            "target::dest": target_rect,
+        }
+
+        with patch("pyray.draw_line_ex") as draw_line_ex, patch("pyray.draw_triangle") as draw_triangle:
+            panel._draw_edge(
+                {
+                    "source_node_key": "entity::source",
+                    "target_node_key": "target::dest",
+                    "connection_type": "one_way",
+                }
+            )
+
+        draw_line_ex.assert_called_once()
+        draw_triangle.assert_called_once()
+
+    def test_draw_edge_renders_two_way_arrows(self) -> None:
+        panel = SceneFlowPanel()
+        source_rect = rl.Rectangle(100.0, 80.0, float(panel.NODE_WIDTH), float(panel.NODE_HEIGHT))
+        target_rect = rl.Rectangle(360.0, 80.0, float(panel.NODE_WIDTH), float(panel.NODE_HEIGHT))
+        panel._node_rects = {
+            "entity::source": source_rect,
+            "entity::target": target_rect,
+        }
+
+        with patch("pyray.draw_line_ex") as draw_line_ex, patch("pyray.draw_triangle") as draw_triangle:
+            panel._draw_edge(
+                {
+                    "source_node_key": "entity::source",
+                    "target_node_key": "entity::target",
+                    "connection_type": "two_way",
+                }
+            )
+
+        self.assertEqual(draw_line_ex.call_count, 2)
+        self.assertEqual(draw_triangle.call_count, 2)
+
+    def test_flow_panel_render_draws_edges_after_preparing_node_rects(self) -> None:
+        panel = SceneFlowPanel()
+        panel.current_scene_only = False
+        panel._snapshot = {
+            "sidebar_items": [
+                {
+                    "sidebar_key": "sidebar::levels/a.json::DoorA",
+                    "node_key": "entity::levels/a.json::DoorA",
+                    "source_scene_ref": "levels/a.json",
+                    "source_scene_path": "levels/a.json",
+                    "source_scene_key": "levels/a",
+                    "source_scene_name": "SceneA",
+                    "source_entity_name": "DoorA",
+                    "trigger_label": "Interact Near",
+                    "status": "ok",
+                    "connected": True,
+                },
+                {
+                    "sidebar_key": "sidebar::levels/b.json::DoorB",
+                    "node_key": "entity::levels/b.json::DoorB",
+                    "source_scene_ref": "levels/b.json",
+                    "source_scene_path": "levels/b.json",
+                    "source_scene_key": "levels/b",
+                    "source_scene_name": "SceneB",
+                    "source_entity_name": "DoorB",
+                    "trigger_label": "Interact Near",
+                    "status": "ok",
+                    "connected": True,
+                },
+            ],
+            "runtime_only_items": [],
+            "canvas_nodes": [
+                {
+                    "node_key": "entity::levels/a.json::DoorA",
+                    "kind": "entity",
+                    "scene_ref": "levels/a.json",
+                    "scene_name": "SceneA",
+                    "entity_name": "DoorA",
+                    "label": "DoorA",
+                    "status": "ok",
+                    "x": 0.0,
+                    "y": 0.0,
+                    "has_stored_position": False,
+                    "messages": [],
+                },
+                {
+                    "node_key": "entity::levels/b.json::DoorB",
+                    "kind": "entity",
+                    "scene_ref": "levels/b.json",
+                    "scene_name": "SceneB",
+                    "entity_name": "DoorB",
+                    "label": "DoorB",
+                    "status": "ok",
+                    "x": 0.0,
+                    "y": 0.0,
+                    "has_stored_position": False,
+                    "messages": [],
+                },
+            ],
+            "canvas_edges": [
+                {
+                    "edge_key": "two-way::entity::levels/a.json::DoorA::entity::levels/b.json::DoorB",
+                    "source_node_key": "entity::levels/a.json::DoorA",
+                    "target_node_key": "entity::levels/b.json::DoorB",
+                    "connection_type": "two_way",
+                    "source_scene_ref": "levels/a.json",
+                    "target_scene_ref": "levels/b.json",
+                    "status": "ok",
+                    "messages": [],
+                }
+            ],
+            "issues": [],
+            "rows": [],
+        }
+        with patch.object(panel, "refresh", return_value=panel._snapshot), patch(
+            "engine.editor.scene_flow_panel.gui_toggle_bool",
+            side_effect=lambda rect, _label, value: value,
+        ), patch(
+            "pyray.gui_button",
+            return_value=False,
+        ), patch("pyray.draw_rectangle"), patch("pyray.draw_rectangle_rec"), patch(
+            "pyray.draw_rectangle_lines_ex"
+        ), patch("pyray.draw_line"), patch("pyray.draw_text"), patch(
+            "pyray.draw_circle"
+        ), patch("pyray.draw_line_ex") as draw_line_ex, patch(
+            "pyray.draw_triangle"
+        ) as draw_triangle, patch(
+            "pyray.begin_scissor_mode"
+        ), patch("pyray.end_scissor_mode"), patch(
+            "pyray.check_collision_point_rec",
+            return_value=False,
+        ), patch("pyray.get_mouse_position"), patch("pyray.get_mouse_wheel_move", return_value=0.0):
+            panel.render(0, 0, 960, 320)
+
+        self.assertEqual(draw_line_ex.call_count, 2)
+        self.assertEqual(draw_triangle.call_count, 2)
+        self.assertIn("entity::levels/a.json::DoorA", panel._node_rects)
+        self.assertIn("entity::levels/b.json::DoorB", panel._node_rects)
+
+    def test_left_click_on_entity_node_selects_without_opening_scene(self) -> None:
+        panel = SceneFlowPanel()
+        node = {
+            "node_key": "entity::levels/a.json::DoorA",
+            "kind": "entity",
+            "scene_ref": "levels/a.json",
+            "entity_name": "DoorA",
+        }
+        panel._node_rects = {
+            node["node_key"]: rl.Rectangle(100.0, 80.0, float(panel.NODE_WIDTH), float(panel.NODE_HEIGHT))
+        }
+        snapshot = {
+            "sidebar_items": [{"node_key": node["node_key"], "sidebar_key": "sidebar::doora"}],
+            "canvas_nodes": [node],
+        }
+        mouse = rl.Vector2(120.0, 96.0)
+
+        with patch("pyray.get_mouse_position", return_value=mouse), patch(
+            "pyray.check_collision_point_rec",
+            side_effect=lambda point, rect: rect.x <= point.x <= rect.x + rect.width and rect.y <= point.y <= rect.y + rect.height,
+        ), patch("pyray.is_mouse_button_pressed", side_effect=lambda button: button == rl.MOUSE_BUTTON_LEFT), patch(
+            "pyray.is_mouse_button_down",
+            return_value=False,
+        ), patch("pyray.is_mouse_button_released", return_value=False):
+            panel._handle_canvas_interactions([node], snapshot)
+
+        self.assertEqual(panel._selected_node_key, node["node_key"])
+        self.assertEqual(panel._selected_sidebar_key, "sidebar::doora")
+        self.assertEqual(panel._drag_node_key, node["node_key"])
+        self.assertIsNone(panel.request_open_source)
+        self.assertIsNone(panel.request_open_target)
+
+    def test_left_click_on_target_node_selects_without_opening_scene(self) -> None:
+        panel = SceneFlowPanel()
+        node = {
+            "node_key": "target::levels/b.json::DoorB",
+            "kind": "target",
+            "scene_ref": "levels/b.json",
+            "entity_name": "",
+        }
+        panel._node_rects = {
+            node["node_key"]: rl.Rectangle(360.0, 80.0, float(panel.NODE_WIDTH), float(panel.NODE_HEIGHT))
+        }
+        snapshot = {"sidebar_items": [], "canvas_nodes": [node]}
+        mouse = rl.Vector2(380.0, 96.0)
+
+        with patch("pyray.get_mouse_position", return_value=mouse), patch(
+            "pyray.check_collision_point_rec",
+            side_effect=lambda point, rect: rect.x <= point.x <= rect.x + rect.width and rect.y <= point.y <= rect.y + rect.height,
+        ), patch("pyray.is_mouse_button_pressed", side_effect=lambda button: button == rl.MOUSE_BUTTON_LEFT), patch(
+            "pyray.is_mouse_button_down",
+            return_value=False,
+        ), patch("pyray.is_mouse_button_released", return_value=False):
+            panel._handle_canvas_interactions([node], snapshot)
+
+        self.assertEqual(panel._selected_node_key, node["node_key"])
+        self.assertIsNone(panel.request_open_source)
+        self.assertIsNone(panel.request_open_target)
+
+    def test_right_click_on_node_opens_context_menu(self) -> None:
+        panel = SceneFlowPanel()
+        node = {
+            "node_key": "entity::levels/a.json::DoorA",
+            "kind": "entity",
+            "scene_ref": "levels/a.json",
+            "entity_name": "DoorA",
+        }
+        panel._node_rects = {
+            node["node_key"]: rl.Rectangle(100.0, 80.0, float(panel.NODE_WIDTH), float(panel.NODE_HEIGHT))
+        }
+        snapshot = {
+            "sidebar_items": [{"node_key": node["node_key"], "sidebar_key": "sidebar::doora"}],
+            "canvas_nodes": [node],
+        }
+        mouse = rl.Vector2(120.0, 96.0)
+
+        with patch("pyray.get_mouse_position", return_value=mouse), patch(
+            "pyray.check_collision_point_rec",
+            side_effect=lambda point, rect: rect.x <= point.x <= rect.x + rect.width and rect.y <= point.y <= rect.y + rect.height,
+        ), patch(
+            "pyray.is_mouse_button_pressed",
+            side_effect=lambda button: button == rl.MOUSE_BUTTON_RIGHT,
+        ), patch("pyray.is_mouse_button_down", return_value=False), patch("pyray.is_mouse_button_released", return_value=False):
+            panel._handle_canvas_interactions([node], snapshot)
+
+        self.assertTrue(panel._context_menu_active)
+        self.assertEqual(panel._context_menu_node_key, node["node_key"])
+        self.assertEqual(panel._selected_node_key, node["node_key"])
+        self.assertEqual(panel._selected_sidebar_key, "sidebar::doora")
+
+    def test_context_menu_view_in_scene_requests_entity_open(self) -> None:
+        panel = SceneFlowPanel()
+        panel._panel_rect = rl.Rectangle(0.0, 0.0, 640.0, 360.0)
+        panel._context_menu_active = True
+        panel._context_menu_pos = rl.Vector2(120.0, 96.0)
+        panel._context_menu_node_key = "entity::levels/a.json::DoorA"
+        snapshot = {
+            "canvas_nodes": [
+                {
+                    "node_key": "entity::levels/a.json::DoorA",
+                    "kind": "entity",
+                    "scene_ref": "levels/a.json",
+                    "entity_name": "DoorA",
+                }
+            ]
+        }
+        menu_rect = panel._context_menu_rect()
+        mouse = rl.Vector2(menu_rect.x + 10.0, menu_rect.y + 10.0)
+
+        with patch("pyray.get_mouse_position", return_value=mouse), patch(
+            "pyray.check_collision_point_rec",
+            side_effect=lambda point, rect: rect.x <= point.x <= rect.x + rect.width and rect.y <= point.y <= rect.y + rect.height,
+        ), patch("pyray.is_mouse_button_pressed", return_value=False), patch(
+            "pyray.is_mouse_button_released",
+            side_effect=lambda button: button == rl.MOUSE_BUTTON_LEFT,
+        ), patch("pyray.draw_rectangle_rec"), patch("pyray.draw_rectangle_lines_ex"), patch("pyray.draw_text"):
+            panel._draw_canvas_context_menu(snapshot)
+
+        self.assertEqual(panel.request_open_source, {"scene_ref": "levels/a.json", "entity_name": "DoorA"})
+        self.assertFalse(panel._context_menu_active)
+
+    def test_context_menu_click_outside_closes_without_navigation(self) -> None:
+        panel = SceneFlowPanel()
+        panel._panel_rect = rl.Rectangle(0.0, 0.0, 640.0, 360.0)
+        panel._context_menu_active = True
+        panel._context_menu_pos = rl.Vector2(120.0, 96.0)
+        panel._context_menu_node_key = "target::levels/b.json::DoorB"
+        snapshot = {
+            "canvas_nodes": [
+                {
+                    "node_key": "target::levels/b.json::DoorB",
+                    "kind": "target",
+                    "scene_ref": "levels/b.json",
+                    "entity_name": "",
+                }
+            ]
+        }
+        mouse = rl.Vector2(12.0, 12.0)
+
+        with patch("pyray.get_mouse_position", return_value=mouse), patch(
+            "pyray.check_collision_point_rec",
+            side_effect=lambda point, rect: rect.x <= point.x <= rect.x + rect.width and rect.y <= point.y <= rect.y + rect.height,
+        ), patch(
+            "pyray.is_mouse_button_pressed",
+            side_effect=lambda button: button == rl.MOUSE_BUTTON_LEFT,
+        ), patch("pyray.is_mouse_button_released", return_value=False), patch(
+            "pyray.draw_rectangle_rec"
+        ), patch("pyray.draw_rectangle_lines_ex"), patch("pyray.draw_text"):
+            panel._draw_canvas_context_menu(snapshot)
+
+        self.assertFalse(panel._context_menu_active)
+        self.assertIsNone(panel.request_open_source)
+        self.assertIsNone(panel.request_open_target)
 
 
 if __name__ == "__main__":
