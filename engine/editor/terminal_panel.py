@@ -1161,7 +1161,7 @@ class TerminalPanel:
     def set_project_service(self, project_service: Optional[ProjectService]) -> None:
         next_root = ""
         if project_service is not None and project_service.has_project:
-            next_root = project_service.project_root.as_posix()
+            next_root = project_service.project_root_display.as_posix()
         project_changed = next_root != self.last_project_root
         self.project_service = project_service
         self.last_project_root = next_root
@@ -1184,7 +1184,7 @@ class TerminalPanel:
             self.status_text = "Embedded terminal is only available on Windows"
             return
 
-        project_root = self.project_service.project_root.as_posix()
+        project_root = self.project_service.project_root_display.as_posix()
         self.shutdown()
         cols, rows = self._calculate_terminal_size()
         self.screen = _TerminalScreen(cols, rows, sequence_handler=self._handle_terminal_sequence)
