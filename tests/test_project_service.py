@@ -267,6 +267,18 @@ class ProjectServiceTests(unittest.TestCase):
         self.assertEqual(first, levels_root / "boss_intro.json")
         self.assertEqual(second, levels_root / "boss_intro_2.json")
 
+    def test_list_project_prefabs_supports_prefab_and_json_and_skips_meta(self) -> None:
+        project_root, service = self._make_project("PrefabCatalog")
+        prefabs_root = project_root / "prefabs"
+        prefabs_root.mkdir(parents=True, exist_ok=True)
+        (prefabs_root / "enemy.prefab").write_text("{}", encoding="utf-8")
+        (prefabs_root / "legacy.json").write_text("{}", encoding="utf-8")
+        (prefabs_root / "ignored.meta.json").write_text("{}", encoding="utf-8")
+
+        prefabs = service.list_project_prefabs()
+
+        self.assertEqual(prefabs, ["prefabs/enemy.prefab", "prefabs/legacy.json"])
+
 
 class ProjectSwitchIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:

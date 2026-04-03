@@ -511,6 +511,20 @@ class ProjectService:
             )
         return result
 
+    def list_project_prefabs(self) -> List[str]:
+        if not self.has_project:
+            return []
+        prefabs_root = self.get_project_path("prefabs")
+        if not prefabs_root.exists():
+            return []
+        return [
+            self.to_relative_path(path)
+            for path in sorted(prefabs_root.rglob("*"))
+            if path.is_file()
+            and not path.name.endswith(".meta.json")
+            and path.suffix.lower() in {".prefab", ".json"}
+        ]
+
     def clear_recent_projects(self) -> None:
         self._write_registry_entries([])
 

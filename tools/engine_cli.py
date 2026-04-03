@@ -1,12 +1,29 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
 import os
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 from engine.project.project_service import ProjectService
+from tools.ai_workflow_cli_helpers import (
+    EXIT_RUNTIME_ERROR,
+    load_json_file,
+    parse_verification_scenario,
+    render_context_summary,
+    render_validation_summary,
+    render_verification_summary,
+    render_workflow_summary,
+    run_context_pack,
+    run_validation,
+    run_verification,
+    run_workflow,
+    write_json_output,
+)
 from tools.schema_cli import migrate_path, validate_path
 
 
@@ -102,6 +119,45 @@ def _smoke(level: str, frames: int, seed: int | None, out_dir: str) -> int:
     )
 
 
+def _project_root(value: str) -> str:
+    return Path(value or os.getcwd()).expanduser().resolve().as_posix()
+
+
+def _print_or_emit(payload: dict, *, as_json: bool, out_path: str, lines: list[str]) -> None:
+    rendered = write_json_output(payload, out_path)
+    if as_json:
+        print(rendered)
+        return
+    for line in lines:
+        print(line)
+    if out_path:
+        print(f"[OK] json report written: {Path(out_path).as_posix()}")
+
+
+def _emit_setup_error(*, message: str, as_json: bool, out_path: str, code: str) -> None:
+    payload = {
+        "status": "failed",
+        "error": {
+            "code": code,
+            "message": message,
+        },
+        "exit_code": EXIT_RUNTIME_ERROR,
+    }
+    rendered = write_json_output(payload, out_path)
+    if as_json:
+        print(rendered)
+        return
+    print(f"[ERROR] {message}")
+    if out_path:
+        print(f"[OK] json report written: {Path(out_path).as_posix()}")
+
+
+def _flush_buffered_stdout(buffered_stdout: io.StringIO) -> None:
+    noise = buffered_stdout.getvalue()
+    if noise:
+        sys.stderr.write(noise)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Unified local CLI for validation, migration, assets, headless runs, and profiling.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -137,6 +193,32 @@ def parse_args() -> argparse.Namespace:
     smoke_parser.add_argument("--seed", type=int, default=123)
     smoke_parser.add_argument("--out-dir", default="artifacts/cli_smoke")
 
+    ai_context_parser = subparsers.add_parser("ai-context", help="Generate the AI-assisted context pack")
+    ai_context_parser.add_argument("--project-root", default="")
+    ai_context_parser.add_argument("--json", action="store_true")
+
+    ai_validate_parser = subparsers.add_parser("ai-validate", help="Run structured validation for AI-assisted workflows")
+    ai_validate_parser.add_argument(
+        "--target",
+        choices=("active-scene", "scene-file", "prefab-file", "scene-transitions", "project"),
+        required=True,
+    )
+    ai_validate_parser.add_argument("--path", default="")
+    ai_validate_parser.add_argument("--project-root", default="")
+    ai_validate_parser.add_argument("--json", action="store_true")
+
+    ai_verify_parser = subparsers.add_parser("ai-verify", help="Run structured headless verification")
+    ai_verify_parser.add_argument("--scenario", required=True)
+    ai_verify_parser.add_argument("--project-root", default="")
+    ai_verify_parser.add_argument("--json", action="store_true")
+    ai_verify_parser.add_argument("--out", default="")
+
+    ai_workflow_parser = subparsers.add_parser("ai-workflow", help="Run a thin AI-assisted workflow sequence")
+    ai_workflow_parser.add_argument("--spec", required=True)
+    ai_workflow_parser.add_argument("--project-root", default="")
+    ai_workflow_parser.add_argument("--json", action="store_true")
+    ai_workflow_parser.add_argument("--out", default="")
+
     return parser.parse_args()
 
 
@@ -169,6 +251,152 @@ def main() -> int:
         return _profile_run(args.scene, args.frames, args.out, args.seed, args.mode)
     if args.command == "smoke":
         return _smoke(args.scene, args.frames, args.seed, args.out_dir)
+    if args.command == "ai-context":
+        if not args.json:
+            try:
+                payload = run_context_pack(_project_root(args.project_root))
+                _print_or_emit(payload, as_json=False, out_path="", lines=render_context_summary(payload))
+                return 0
+            except Exception as exc:
+                _emit_setup_error(
+                    message=f"context generation failed: {exc}",
+                    as_json=False,
+                    out_path="",
+                    code="context.setup_failed",
+                )
+                return EXIT_RUNTIME_ERROR
+
+        buffered_stdout = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buffered_stdout):
+                payload = run_context_pack(_project_root(args.project_root))
+            _flush_buffered_stdout(buffered_stdout)
+            _print_or_emit(payload, as_json=True, out_path="", lines=render_context_summary(payload))
+            return 0
+        except Exception as exc:
+            _flush_buffered_stdout(buffered_stdout)
+            _emit_setup_error(
+                message=f"context generation failed: {exc}",
+                as_json=True,
+                out_path="",
+                code="context.setup_failed",
+            )
+            return EXIT_RUNTIME_ERROR
+    if args.command == "ai-validate":
+        if not args.json:
+            try:
+                exit_code, payload = run_validation(
+                    project_root=_project_root(args.project_root),
+                    target=args.target,
+                    path=args.path,
+                )
+                _print_or_emit(payload, as_json=False, out_path="", lines=render_validation_summary(payload))
+                return exit_code
+            except Exception as exc:
+                _emit_setup_error(
+                    message=f"validation setup failed: {exc}",
+                    as_json=False,
+                    out_path="",
+                    code="validation.setup_failed",
+                )
+                return EXIT_RUNTIME_ERROR
+
+        buffered_stdout = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buffered_stdout):
+                exit_code, payload = run_validation(
+                    project_root=_project_root(args.project_root),
+                    target=args.target,
+                    path=args.path,
+                )
+            _flush_buffered_stdout(buffered_stdout)
+            _print_or_emit(payload, as_json=True, out_path="", lines=render_validation_summary(payload))
+            return exit_code
+        except Exception as exc:
+            _flush_buffered_stdout(buffered_stdout)
+            _emit_setup_error(
+                message=f"validation setup failed: {exc}",
+                as_json=True,
+                out_path="",
+                code="validation.setup_failed",
+            )
+            return EXIT_RUNTIME_ERROR
+    if args.command == "ai-verify":
+        if not args.json:
+            try:
+                scenario_data = load_json_file(args.scenario)
+                scenario = parse_verification_scenario(
+                    scenario_data,
+                    default_project_root=_project_root(args.project_root),
+                )
+                exit_code, payload = run_verification(scenario)
+                _print_or_emit(payload, as_json=False, out_path=args.out, lines=render_verification_summary(payload))
+                return exit_code
+            except Exception as exc:
+                _emit_setup_error(
+                    message=f"verification setup failed: {exc}",
+                    as_json=False,
+                    out_path=args.out,
+                    code="verification.setup_failed",
+                )
+                return EXIT_RUNTIME_ERROR
+
+        buffered_stdout = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buffered_stdout):
+                scenario_data = load_json_file(args.scenario)
+                scenario = parse_verification_scenario(
+                    scenario_data,
+                    default_project_root=_project_root(args.project_root),
+                )
+                exit_code, payload = run_verification(scenario)
+            _flush_buffered_stdout(buffered_stdout)
+            _print_or_emit(payload, as_json=True, out_path=args.out, lines=render_verification_summary(payload))
+            return exit_code
+        except Exception as exc:
+            _flush_buffered_stdout(buffered_stdout)
+            _emit_setup_error(
+                message=f"verification setup failed: {exc}",
+                as_json=True,
+                out_path=args.out,
+                code="verification.setup_failed",
+            )
+            return EXIT_RUNTIME_ERROR
+    if args.command == "ai-workflow":
+        if not args.json:
+            try:
+                spec = load_json_file(args.spec)
+                project_root = _project_root(args.project_root or str(spec.get("project_root", "") or os.getcwd()))
+                exit_code, payload = run_workflow(spec, project_root=project_root)
+                _print_or_emit(payload, as_json=False, out_path=args.out, lines=render_workflow_summary(payload))
+                return exit_code
+            except Exception as exc:
+                _emit_setup_error(
+                    message=f"workflow setup failed: {exc}",
+                    as_json=False,
+                    out_path=args.out,
+                    code="workflow.setup_failed",
+                )
+                return EXIT_RUNTIME_ERROR
+
+        buffered_stdout = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buffered_stdout):
+                spec = load_json_file(args.spec)
+                project_root = _project_root(args.project_root or str(spec.get("project_root", "") or os.getcwd()))
+                exit_code, payload = run_workflow(spec, project_root=project_root)
+            _flush_buffered_stdout(buffered_stdout)
+            _print_or_emit(payload, as_json=True, out_path=args.out, lines=render_workflow_summary(payload))
+            return exit_code
+        except Exception as exc:
+            _flush_buffered_stdout(buffered_stdout)
+            _emit_setup_error(
+                message=f"workflow setup failed: {exc}",
+                as_json=True,
+                out_path=args.out,
+                code="workflow.setup_failed",
+            )
+            return EXIT_RUNTIME_ERROR
     return 1
 
 
