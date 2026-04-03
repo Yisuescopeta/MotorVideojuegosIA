@@ -1,91 +1,75 @@
+"""Paquete principal del motor de videojuegos 2D.
+
+Las reexportaciones se resuelven de forma perezosa para evitar cargar
+dependencias opcionales de runtime, como `pyray`, durante imports de utilidades
+de validación o serialización.
 """
-engine/ - Paquete principal del motor de videojuegos 2D
-"""
 
-# ECS
-from engine.ecs.entity import Entity
-from engine.ecs.component import Component
-from engine.ecs.world import World
+from __future__ import annotations
 
-# Componentes
-from engine.components.transform import Transform
-from engine.components.sprite import Sprite
-from engine.components.collider import Collider
-from engine.components.charactercontroller2d import CharacterController2D
-from engine.components.joint2d import Joint2D
-from engine.components.rigidbody import RigidBody
-from engine.components.animator import Animator, AnimationData
-from engine.components.camera2d import Camera2D
-from engine.components.audiosource import AudioSource
-from engine.components.inputmap import InputMap
-from engine.components.playercontroller2d import PlayerController2D
-from engine.components.scene_entry_point import SceneEntryPoint
-from engine.components.scene_transition_action import SceneTransitionAction
-from engine.components.scene_transition_on_contact import SceneTransitionOnContact
-from engine.components.scene_transition_on_interact import SceneTransitionOnInteract
-from engine.components.scene_transition_on_player_death import SceneTransitionOnPlayerDeath
-from engine.components.scriptbehaviour import ScriptBehaviour
-from engine.components.tilemap import Tilemap
+import importlib
+from typing import Any
 
-# Sistemas
-from engine.systems.render_system import RenderSystem
-from engine.systems.physics_system import PhysicsSystem
-from engine.systems.collision_system import CollisionSystem
-from engine.systems.animation_system import AnimationSystem
-from engine.systems.audio_system import AudioSystem
-from engine.systems.input_system import InputSystem
-from engine.systems.player_controller_system import PlayerControllerSystem
-from engine.systems.character_controller_system import CharacterControllerSystem
-from engine.systems.script_behaviour_system import ScriptBehaviourSystem
+_LAZY_IMPORTS: dict[str, tuple[str, str]] = {
+    "Entity": ("engine.ecs.entity", "Entity"),
+    "Component": ("engine.ecs.component", "Component"),
+    "World": ("engine.ecs.world", "World"),
+    "Transform": ("engine.components.transform", "Transform"),
+    "Sprite": ("engine.components.sprite", "Sprite"),
+    "Collider": ("engine.components.collider", "Collider"),
+    "CharacterController2D": ("engine.components.charactercontroller2d", "CharacterController2D"),
+    "Joint2D": ("engine.components.joint2d", "Joint2D"),
+    "RigidBody": ("engine.components.rigidbody", "RigidBody"),
+    "Animator": ("engine.components.animator", "Animator"),
+    "AnimationData": ("engine.components.animator", "AnimationData"),
+    "Camera2D": ("engine.components.camera2d", "Camera2D"),
+    "AudioSource": ("engine.components.audiosource", "AudioSource"),
+    "InputMap": ("engine.components.inputmap", "InputMap"),
+    "PlayerController2D": ("engine.components.playercontroller2d", "PlayerController2D"),
+    "SceneEntryPoint": ("engine.components.scene_entry_point", "SceneEntryPoint"),
+    "SceneTransitionAction": ("engine.components.scene_transition_action", "SceneTransitionAction"),
+    "SceneTransitionOnContact": ("engine.components.scene_transition_on_contact", "SceneTransitionOnContact"),
+    "SceneTransitionOnInteract": ("engine.components.scene_transition_on_interact", "SceneTransitionOnInteract"),
+    "SceneTransitionOnPlayerDeath": ("engine.components.scene_transition_on_player_death", "SceneTransitionOnPlayerDeath"),
+    "ScriptBehaviour": ("engine.components.scriptbehaviour", "ScriptBehaviour"),
+    "Tilemap": ("engine.components.tilemap", "Tilemap"),
+    "RenderSystem": ("engine.systems.render_system", "RenderSystem"),
+    "PhysicsSystem": ("engine.systems.physics_system", "PhysicsSystem"),
+    "CollisionSystem": ("engine.systems.collision_system", "CollisionSystem"),
+    "AnimationSystem": ("engine.systems.animation_system", "AnimationSystem"),
+    "AudioSystem": ("engine.systems.audio_system", "AudioSystem"),
+    "InputSystem": ("engine.systems.input_system", "InputSystem"),
+    "PlayerControllerSystem": ("engine.systems.player_controller_system", "PlayerControllerSystem"),
+    "CharacterControllerSystem": ("engine.systems.character_controller_system", "CharacterControllerSystem"),
+    "ScriptBehaviourSystem": ("engine.systems.script_behaviour_system", "ScriptBehaviourSystem"),
+    "InspectorSystem": ("engine.inspector.inspector_system", "InspectorSystem"),
+    "LevelLoader": ("engine.levels.level_loader", "LevelLoader"),
+    "ComponentRegistry": ("engine.levels.component_registry", "ComponentRegistry"),
+    "create_default_registry": ("engine.levels.component_registry", "create_default_registry"),
+    "EventBus": ("engine.events.event_bus", "EventBus"),
+    "Event": ("engine.events.event_bus", "Event"),
+    "RuleSystem": ("engine.events.rule_system", "RuleSystem"),
+    "Scene": ("engine.scenes.scene", "Scene"),
+    "SceneManager": ("engine.scenes.scene_manager", "SceneManager"),
+    "Game": ("engine.core.game", "Game"),
+    "TimeManager": ("engine.core.time_manager", "TimeManager"),
+    "EngineState": ("engine.core.engine_state", "EngineState"),
+    "TextureManager": ("engine.resources.texture_manager", "TextureManager"),
+    "ENGINE_VERSION": ("engine.config", "ENGINE_VERSION"),
+}
 
-# Inspector
-from engine.inspector.inspector_system import InspectorSystem
+__all__ = list(_LAZY_IMPORTS)
 
-# Levels
-from engine.levels.level_loader import LevelLoader
-from engine.levels.component_registry import ComponentRegistry, create_default_registry
 
-# Events
-from engine.events.event_bus import EventBus, Event
-from engine.events.rule_system import RuleSystem
+def __getattr__(name: str) -> Any:
+    if name not in _LAZY_IMPORTS:
+        raise AttributeError(name)
+    module_name, attr_name = _LAZY_IMPORTS[name]
+    value = getattr(importlib.import_module(module_name), attr_name)
+    globals()[name] = value
+    return value
 
-# Scenes
-from engine.scenes.scene import Scene
-from engine.scenes.scene_manager import SceneManager
 
-# Core
-from engine.core.game import Game
-from engine.core.time_manager import TimeManager
-from engine.core.engine_state import EngineState
-
-# Config
-from engine.config import ENGINE_VERSION
-
-# Resources
-from engine.resources.texture_manager import TextureManager
-
-__all__ = [
-    # ECS
-    "Entity", "Component", "World",
-    # Componentes
-    "Transform", "Sprite", "Collider", "CharacterController2D", "Joint2D", "RigidBody", "Animator", "AnimationData",
-    "Camera2D", "AudioSource", "InputMap",
-    "PlayerController2D", "SceneEntryPoint", "SceneTransitionAction", "SceneTransitionOnContact",
-    "SceneTransitionOnInteract", "SceneTransitionOnPlayerDeath", "ScriptBehaviour", "Tilemap",
-    # Sistemas
-    "RenderSystem", "PhysicsSystem", "CollisionSystem", "AnimationSystem", "AudioSystem", "InputSystem", "PlayerControllerSystem", "CharacterControllerSystem", "ScriptBehaviourSystem",
-    # Inspector
-    "InspectorSystem",
-    # Levels
-    "LevelLoader", "ComponentRegistry", "create_default_registry",
-    # Events
-    "EventBus", "Event", "RuleSystem",
-    # Scenes
-    "Scene", "SceneManager",
-    # Core
-    "Game", "TimeManager", "EngineState",
-    # Resources
-    "TextureManager",
-    # Config
-    "ENGINE_VERSION",
-]
+def __dir__() -> list[str]:
+    names = set(globals()) | set(__all__)
+    return sorted(names)

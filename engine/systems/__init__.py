@@ -1,35 +1,38 @@
-"""
-engine/systems/ - Sistemas que procesan componentes
+"""Sistemas de runtime del motor.
 
-PROPÓSITO:
-    Los sistemas contienen la LÓGICA del juego.
-    Cada sistema procesa entidades que tienen ciertos componentes.
-
-SISTEMAS DISPONIBLES:
-    - RenderSystem: Dibuja entidades (sprites, animaciones, placeholders)
-    - PhysicsSystem: Aplica gravedad y movimiento
-    - CollisionSystem: Detecta colisiones AABB
-    - AnimationSystem: Actualiza animaciones por sprite sheet
+Las reexportaciones se resuelven de forma perezosa para evitar cargar
+dependencias de renderizado al importar el paquete.
 """
 
-from engine.systems.render_system import RenderSystem
-from engine.systems.physics_system import PhysicsSystem
-from engine.systems.collision_system import CollisionSystem
-from engine.systems.animation_system import AnimationSystem
-from engine.systems.audio_system import AudioSystem
-from engine.systems.input_system import InputSystem
-from engine.systems.player_controller_system import PlayerControllerSystem
-from engine.systems.character_controller_system import CharacterControllerSystem
-from engine.systems.script_behaviour_system import ScriptBehaviourSystem
+from __future__ import annotations
 
-__all__ = [
-    "RenderSystem",
-    "PhysicsSystem",
-    "CollisionSystem",
-    "AnimationSystem",
-    "AudioSystem",
-    "InputSystem",
-    "PlayerControllerSystem",
-    "CharacterControllerSystem",
-    "ScriptBehaviourSystem",
-]
+import importlib
+from typing import Any
+
+_LAZY_IMPORTS: dict[str, tuple[str, str]] = {
+    "RenderSystem": ("engine.systems.render_system", "RenderSystem"),
+    "PhysicsSystem": ("engine.systems.physics_system", "PhysicsSystem"),
+    "CollisionSystem": ("engine.systems.collision_system", "CollisionSystem"),
+    "AnimationSystem": ("engine.systems.animation_system", "AnimationSystem"),
+    "AudioSystem": ("engine.systems.audio_system", "AudioSystem"),
+    "InputSystem": ("engine.systems.input_system", "InputSystem"),
+    "PlayerControllerSystem": ("engine.systems.player_controller_system", "PlayerControllerSystem"),
+    "CharacterControllerSystem": ("engine.systems.character_controller_system", "CharacterControllerSystem"),
+    "ScriptBehaviourSystem": ("engine.systems.script_behaviour_system", "ScriptBehaviourSystem"),
+}
+
+__all__ = list(_LAZY_IMPORTS)
+
+
+def __getattr__(name: str) -> Any:
+    if name not in _LAZY_IMPORTS:
+        raise AttributeError(name)
+    module_name, attr_name = _LAZY_IMPORTS[name]
+    value = getattr(importlib.import_module(module_name), attr_name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    names = set(globals()) | set(__all__)
+    return sorted(names)
