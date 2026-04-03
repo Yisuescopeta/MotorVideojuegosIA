@@ -75,7 +75,7 @@ def _install_pyray_stub(*, force: bool = False) -> None:
             self.zoom = float(zoom)
 
     class Texture:
-        __slots__ = ("id", "width", "height", "mipmaps", "format")
+        __slots__ = ("id", "width", "height", "mipmaps", "format", "texture")
 
         def __init__(self, *, texture_id: int = 0, width: int = 0, height: int = 0) -> None:
             self.id = int(texture_id)
@@ -83,6 +83,7 @@ def _install_pyray_stub(*, force: bool = False) -> None:
             self.height = int(height)
             self.mipmaps = 1
             self.format = 0
+            self.texture = self
 
     class Image:
         __slots__ = ("width", "height", "mipmaps", "format", "_pixels")
@@ -93,6 +94,11 @@ def _install_pyray_stub(*, force: bool = False) -> None:
             self.mipmaps = 1
             self.format = 7
             self._pixels = list(pixels) if pixels is not None else [Color(0, 0, 0, 0) for _ in range(max(0, width * height))]
+
+    class _FFI:
+        def new(self, cdecl: str, init: Any = None) -> list[Any]:
+            del cdecl
+            return [init]
 
     PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
@@ -296,7 +302,19 @@ def _install_pyray_stub(*, force: bool = False) -> None:
     def load_texture_from_image(image: Image) -> Texture:
         return Texture(texture_id=1 if is_image_valid(image) else 0, width=image.width, height=image.height)
 
+    def load_render_texture(width: int, height: int) -> Texture:
+        return Texture(texture_id=1, width=int(width), height=int(height))
+
+    def load_image_from_texture(texture: Any) -> Image:
+        return Image(int(getattr(texture, "width", 0)), int(getattr(texture, "height", 0)))
+
+    def image_flip_vertical(image: Any) -> Any:
+        return image
+
     def unload_texture(texture: Any) -> None:
+        del texture
+
+    def unload_render_texture(texture: Any) -> None:
         del texture
 
     def measure_text_ex(*args: Any, **kwargs: Any) -> Vector2:
@@ -369,6 +387,19 @@ def _install_pyray_stub(*, force: bool = False) -> None:
     def get_time() -> float:
         return time.time()
 
+    def get_screen_to_world_2d(position: Any, camera: Any) -> Vector2:
+        px = float(getattr(position, "x", 0.0))
+        py = float(getattr(position, "y", 0.0))
+        offset = getattr(camera, "offset", Vector2())
+        target = getattr(camera, "target", Vector2())
+        zoom = float(getattr(camera, "zoom", 1.0) or 1.0)
+        if zoom == 0:
+            zoom = 1.0
+        return Vector2(
+            (px - float(getattr(offset, "x", 0.0))) / zoom + float(getattr(target, "x", 0.0)),
+            (py - float(getattr(offset, "y", 0.0))) / zoom + float(getattr(target, "y", 0.0)),
+        )
+
     def get_glyph_index(*args: Any, **kwargs: Any) -> int:
         return 0
 
@@ -387,6 +418,12 @@ def _install_pyray_stub(*, force: bool = False) -> None:
     def end_mode_2d(*args: Any, **kwargs: Any) -> None:
         return None
 
+    def begin_texture_mode(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    def end_texture_mode(*args: Any, **kwargs: Any) -> None:
+        return None
+
     def begin_drawing(*args: Any, **kwargs: Any) -> None:
         return None
 
@@ -403,6 +440,12 @@ def _install_pyray_stub(*, force: bool = False) -> None:
         return None
 
     def close_window(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    def init_window(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    def set_config_flags(*args: Any, **kwargs: Any) -> None:
         return None
 
     def set_target_fps(*args: Any, **kwargs: Any) -> None:
@@ -427,6 +470,9 @@ def _install_pyray_stub(*, force: bool = False) -> None:
         return None
 
     def draw_rectangle_rec(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    def draw_rectangle_lines(*args: Any, **kwargs: Any) -> None:
         return None
 
     def draw_rectangle_lines_ex(*args: Any, **kwargs: Any) -> None:
@@ -478,16 +524,19 @@ def _install_pyray_stub(*, force: bool = False) -> None:
         "Camera2D": Camera2D,
         "Texture": Texture,
         "Image": Image,
+        "ffi": _FFI(),
         "gen_image_color": gen_image_color,
         "image_draw_rectangle": image_draw_rectangle,
         "export_image": export_image,
         "load_image": load_image,
+        "load_render_texture": load_render_texture,
         "is_image_valid": is_image_valid,
         "load_image_colors": load_image_colors,
         "unload_image_colors": unload_image_colors,
         "unload_image": unload_image,
         "load_texture": load_texture,
         "load_texture_from_image": load_texture_from_image,
+        "get_screen_to_world_2d": get_screen_to_world_2d,
         "unload_texture": unload_texture,
         "measure_text_ex": measure_text_ex,
         "check_collision_point_rec": check_collision_point_rec,
@@ -513,10 +562,14 @@ def _install_pyray_stub(*, force: bool = False) -> None:
         "text_length": text_length,
         "begin_mode_2d": begin_mode_2d,
         "end_mode_2d": end_mode_2d,
+        "begin_texture_mode": begin_texture_mode,
+        "end_texture_mode": end_texture_mode,
         "begin_drawing": begin_drawing,
         "end_drawing": end_drawing,
         "clear_background": clear_background,
         "set_window_size": set_window_size,
+        "set_config_flags": set_config_flags,
+        "init_window": init_window,
         "toggle_fullscreen": toggle_fullscreen,
         "close_window": close_window,
         "set_target_fps": set_target_fps,
@@ -527,6 +580,7 @@ def _install_pyray_stub(*, force: bool = False) -> None:
         "draw_circle_lines": draw_circle_lines,
         "draw_rectangle": draw_rectangle,
         "draw_rectangle_rec": draw_rectangle_rec,
+        "draw_rectangle_lines": draw_rectangle_lines,
         "draw_rectangle_lines_ex": draw_rectangle_lines_ex,
         "draw_triangle": draw_triangle,
         "draw_texture": draw_texture,
@@ -541,6 +595,9 @@ def _install_pyray_stub(*, force: bool = False) -> None:
         "gui_button": gui_button,
         "get_window_position": get_window_position,
         "load_font_default": load_font_default,
+        "load_image_from_texture": load_image_from_texture,
+        "image_flip_vertical": image_flip_vertical,
+        "unload_render_texture": unload_render_texture,
         "WHITE": Color(255, 255, 255, 255),
         "BLACK": Color(0, 0, 0, 255),
         "BLANK": Color(0, 0, 0, 0),

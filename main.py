@@ -18,7 +18,6 @@ import argparse
 import os
 
 import pyray as rl
-
 from cli.runner import CLIRunner
 from cli.script_executor import ScriptExecutor
 from engine.core.game import Game
