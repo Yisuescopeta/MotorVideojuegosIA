@@ -173,6 +173,23 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         success = self.game.load_scene_flow_target("menu_scene")
         return self.ok("Menu scene loaded", {"path": self.game.current_scene_path}) if success else self.fail("Menu scene is not configured")
 
+    def load_scene_flow_target(self, key: str) -> ActionResult:
+        if self.game is None:
+            return self.fail("Engine not initialized")
+        normalized_key = str(key or "").strip()
+        if not normalized_key:
+            return self.fail("Scene flow key is required")
+        success = self.game.load_scene_flow_target(normalized_key)
+        if not success:
+            return self.fail(f"Scene flow target '{normalized_key}' is not configured")
+        return self.ok(
+            "Scene flow target loaded",
+            {
+                "key": normalized_key,
+                "path": self.game.current_scene_path,
+            },
+        )
+
     def instantiate_prefab(
         self,
         path: str,
