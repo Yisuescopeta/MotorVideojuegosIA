@@ -1,0 +1,4 @@
+interface:
+  display_name: "Platformer 2D Builder"
+  short_description: "Build 2D platformer gameplay in this engine"
+  default_prompt: "Use $platformer-2d-builder to build or extend 2D side-scrolling platformer gameplay in this engine."

@@ -4,6 +4,8 @@ engine/systems/render_system.py - Sistema de renderizado 2D con render graph min
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any, Optional
 
 import pyray as rl
@@ -70,7 +72,14 @@ class RenderSystem:
     def set_project_service(self, project_service: Any) -> None:
         self._project_service = project_service
         self._asset_service = AssetService(project_service) if project_service is not None else None
-        self._asset_resolver = self._asset_service.get_asset_resolver() if self._asset_service is not None else None
+        self.set_content_resolver(
+            self._asset_service.get_asset_resolver() if self._asset_service is not None else None,
+            asset_service=self._asset_service,
+        )
+
+    def set_content_resolver(self, resolver: Any, *, asset_service: AssetService | None = None) -> None:
+        self._asset_resolver = resolver
+        self._asset_service = asset_service
 
     def reset_project_resources(self) -> None:
         self._texture_manager.unload_all()
@@ -726,9 +735,23 @@ class RenderSystem:
 
     def _resolve_material_payload(self, style: RenderStyle2D) -> dict[str, Any]:
         material_ref = style.get_material_reference()
-        if self._asset_service is None or not (material_ref.get("guid") or material_ref.get("path")):
+        if not (material_ref.get("guid") or material_ref.get("path")):
             return {}
-        material = self._asset_service.load_material_definition(material_ref)
+        if self._asset_service is not None:
+            material = self._asset_service.load_material_definition(material_ref)
+        elif self._asset_resolver is not None:
+            resolved_path = str(self._asset_resolver.resolve_path(material_ref) or "").strip()
+            if not resolved_path:
+                return {}
+            try:
+                from engine.rendering.materials import Material2D
+
+                payload = Path(resolved_path).read_text(encoding="utf-8")
+                material = Material2D.from_dict(json.loads(payload))
+            except Exception:
+                return {}
+        else:
+            return {}
         return {
             "material_id": material_ref.get("guid") or material_ref.get("path") or style.material_id,
             "shader_id": material.shader_id,
@@ -1355,6 +1378,10 @@ class RenderSystem:
         return self._texture_manager.load(resolved_path, cache_key=resolved_path)
 
     def _resolve_texture_path(self, path: str) -> str:
+        if self._asset_resolver is not None and path:
+            resolved = str(self._asset_resolver.resolve_path(path) or "").strip()
+            if resolved:
+                return resolved
         if self._project_service is None or not path:
             return path
         return self._project_service.resolve_path(path).as_posix()

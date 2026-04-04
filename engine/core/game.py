@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any, Optional
 import pyray as rl
 
 from engine.app import (
+    BuildWorkflowController,
     DebugToolsController,
     EditorInteractionController,
     ProjectWorkspaceController,
@@ -39,6 +40,7 @@ from engine.core.time_manager import TimeManager
 from engine.debug.profiler import EngineProfiler
 from engine.debug.timeline import Timeline
 from engine.editor.animator_panel import AnimatorPanel
+from engine.editor.build_settings_modal import BuildSettingsModal
 from engine.editor.cursor_manager import CustomCursorRenderer
 from engine.editor.editor_layout import EditorLayout
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
@@ -130,6 +132,7 @@ class Game:
         # Editor Panels
         self.hierarchy_panel: Optional["HierarchyPanel"] = HierarchyPanel()
         self.animator_panel: Optional["AnimatorPanel"] = AnimatorPanel()
+        self.build_settings_modal: Optional["BuildSettingsModal"] = BuildSettingsModal()
         self.sprite_editor_modal: Optional["SpriteEditorModal"] = SpriteEditorModal()
         self.terminal_panel: Optional["TerminalPanel"] = TerminalPanel()
         self.gizmo_system: Optional["GizmoSystem"] = GizmoSystem()
@@ -270,6 +273,13 @@ class Game:
             close_scene_workspace_tab=self._close_scene_workspace_tab,
             stop_runtime=self._stop_runtime_flow,
             set_running=lambda value: setattr(self, "running", value),
+        )
+        self._build_workflow_controller = BuildWorkflowController(
+            get_project_service=lambda: self._project_service,
+            get_build_settings_modal=lambda: self.build_settings_modal,
+            refresh_project_scene_entries=self._refresh_project_scene_entries,
+            log_info=log_info,
+            log_err=log_err,
         )
         self._editor_interaction_controller = EditorInteractionController(
             get_state=lambda: self._state,
@@ -775,11 +785,15 @@ class Game:
                      self.width = rl.get_screen_width()
                      self.height = rl.get_screen_height()
 
-                if self.sprite_editor_modal is None or not self.sprite_editor_modal.is_open:
+                build_modal_open = self.build_settings_modal is not None and self.build_settings_modal.is_open
+                sprite_modal_open = self.sprite_editor_modal is not None and self.sprite_editor_modal.is_open
+                if not sprite_modal_open and not build_modal_open:
                     self.editor_layout.update_input()
                     if self.terminal_panel is not None:
                         self.terminal_panel.update_input(self.editor_layout.active_bottom_tab == "TERMINAL")
                     self._persist_editor_preferences()
+                elif build_modal_open and self.build_settings_modal is not None:
+                    self.build_settings_modal.handle_input()
                 if self.animator_panel is not None and active_world is not None:
                     self.animator_panel.update(active_world, dt)
                 
@@ -1148,6 +1162,8 @@ class Game:
 
             if self.sprite_editor_modal is not None and self.sprite_editor_modal.is_open:
                 self.sprite_editor_modal.render(self.width, self.height)
+            if self.build_settings_modal is not None and self.build_settings_modal.is_open:
+                self.build_settings_modal.render(self.width, self.height)
 
             self._draw_debug_info()
             self._draw_performance_overlay()
@@ -1384,6 +1400,10 @@ class Game:
         if self.editor_layout is None:
             return
 
+        if self.editor_layout.request_open_build_settings:
+            self.editor_layout.request_open_build_settings = False
+            self._build_workflow_controller.open_build_settings()
+
         self._scene_workflow_controller.handle_scene_tab_requests()
         should_exit_launcher = self._project_workspace_controller.handle_project_launcher_requests()
         if should_exit_launcher:
@@ -1393,6 +1413,7 @@ class Game:
         default_ui_parent = self._resolve_default_ui_parent(active_world)
 
         self._handle_local_ui_authoring_requests(default_ui_parent)
+        self._build_workflow_controller.handle_modal_requests()
         self._project_workspace_controller.handle_project_switch_requests()
         self._scene_workflow_controller.handle_scene_ui_requests()
 
