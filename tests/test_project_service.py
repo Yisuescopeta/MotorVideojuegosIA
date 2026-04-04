@@ -5,6 +5,7 @@ from pathlib import Path
 
 from cli.script_executor import ScriptExecutor
 from engine.api import EngineAPI
+from engine.project import BuildTargetPlatform
 from engine.project.project_service import ProjectService
 
 
@@ -178,6 +179,147 @@ class ProjectServiceTests(unittest.TestCase):
                 },
             },
         )
+
+    def test_default_build_settings_are_created_loaded_and_manifest_is_project_derived(self) -> None:
+        project_root, service = self._make_project("BuildDefaults")
+
+        build_settings_path = project_root / "settings" / "build_settings.json"
+        settings = service.load_build_settings()
+        manifest = service.generate_build_manifest(generated_at_utc="2026-04-03T20:00:00+00:00")
+
+        self.assertTrue(build_settings_path.exists())
+        self.assertEqual(settings.product_name, "BuildDefaults")
+        self.assertEqual(settings.company_name, "DefaultCompany")
+        self.assertEqual(settings.startup_scene, "levels/main_scene.json")
+        self.assertEqual(settings.scenes_in_build, ("levels/main_scene.json",))
+        self.assertEqual(settings.target_platform, BuildTargetPlatform.WINDOWS_DESKTOP)
+        self.assertFalse(settings.development_build)
+        self.assertFalse(settings.include_logs)
+        self.assertFalse(settings.include_profiler)
+        self.assertEqual(settings.output_name, "BuildDefaults")
+        self.assertEqual(manifest.to_dict()["output"]["output_root"], ".motor/build/windows_desktop/BuildDefaults")
+        self.assertEqual(
+            manifest.to_dict()["artifacts"]["player_build_report"],
+            ".motor/build/windows_desktop/BuildDefaults/player_build_report.json",
+        )
+
+    def test_save_build_settings_preserves_custom_scene_order_and_deduplicates(self) -> None:
+        project_root, service = self._make_project("BuildSceneOrder")
+        self._write_level(project_root, "z_last.json", "Last")
+        self._write_level(project_root, "a_first.json", "First")
+
+        service.save_build_settings(
+            {
+                "product_name": "Scene Order Game",
+                "company_name": "Studio",
+                "startup_scene": str(project_root / "levels" / "z_last.json"),
+                "scenes_in_build": [
+                    "levels\\z_last.json",
+                    "",
+                    str(project_root / "levels" / "a_first.json"),
+                    "levels/z_last.json",
+                ],
+                "target_platform": "windows_desktop",
+                "development_build": True,
+                "include_logs": True,
+                "include_profiler": False,
+                "output_name": "Scene Order Game",
+            }
+        )
+
+        settings = service.load_build_settings()
+
+        self.assertEqual(
+            settings.scenes_in_build,
+            ("levels/z_last.json", "levels/a_first.json"),
+        )
+        self.assertEqual(settings.startup_scene, "levels/z_last.json")
+
+    def test_save_build_settings_rejects_invalid_startup_scene(self) -> None:
+        _, service = self._make_project("InvalidStartup")
+
+        with self.assertRaisesRegex(ValueError, "startup_scene must be present in scenes_in_build"):
+            service.save_build_settings(
+                {
+                    "product_name": "Broken Build",
+                    "company_name": "Studio",
+                    "startup_scene": "levels/missing.json",
+                    "scenes_in_build": ["levels/main_scene.json"],
+                    "target_platform": "windows_desktop",
+                    "development_build": False,
+                    "include_logs": False,
+                    "include_profiler": False,
+                    "output_name": "Broken Build",
+                }
+            )
+
+    def test_build_settings_path_normalization_rejects_external_paths_and_sanitizes_output_name(self) -> None:
+        project_root, service = self._make_project("PathNormalization")
+        self._write_level(project_root, "custom_scene.json", "Custom")
+
+        service.save_build_settings(
+            {
+                "product_name": "Normalized Build",
+                "company_name": "Studio",
+                "startup_scene": str(project_root / "levels" / "custom_scene.json"),
+                "scenes_in_build": [str(project_root / "levels" / "custom_scene.json")],
+                "target_platform": "windows_desktop",
+                "development_build": False,
+                "include_logs": False,
+                "include_profiler": False,
+                "output_name": "Normalized Build:*? 2026",
+            }
+        )
+
+        settings = service.load_build_settings()
+
+        self.assertEqual(settings.startup_scene, "levels/custom_scene.json")
+        self.assertEqual(settings.scenes_in_build, ("levels/custom_scene.json",))
+        self.assertEqual(settings.output_name, "Normalized_Build_2026")
+
+        with self.assertRaisesRegex(ValueError, "must stay inside the project"):
+            service.save_build_settings(
+                {
+                    "product_name": "External",
+                    "company_name": "Studio",
+                    "startup_scene": (self.workspace / "outside_scene.json").as_posix(),
+                    "scenes_in_build": ["levels/main_scene.json"],
+                    "target_platform": "windows_desktop",
+                    "development_build": False,
+                    "include_logs": False,
+                    "include_profiler": False,
+                    "output_name": "External",
+                }
+            )
+
+    def test_build_manifest_generation_is_deterministic_for_same_timestamp(self) -> None:
+        project_root, service = self._make_project("DeterministicBuild")
+        self._write_level(project_root, "alpha.json", "Alpha")
+        self._write_level(project_root, "beta.json", "Beta")
+        service.save_build_settings(
+            {
+                "product_name": "Deterministic Build",
+                "company_name": "Studio",
+                "startup_scene": "levels/alpha.json",
+                "scenes_in_build": ["levels/alpha.json", "levels/beta.json"],
+                "target_platform": "windows_desktop",
+                "development_build": True,
+                "include_logs": True,
+                "include_profiler": True,
+                "output_name": "Deterministic Build",
+            }
+        )
+
+        first = service.generate_build_manifest(generated_at_utc="2026-04-03T20:15:00+00:00")
+        second = service.generate_build_manifest(generated_at_utc="2026-04-03T20:15:00+00:00")
+
+        self.assertEqual(first.to_dict(), second.to_dict())
+        self.assertEqual(
+            json.dumps(first.to_dict(), sort_keys=True),
+            json.dumps(second.to_dict(), sort_keys=True),
+        )
+        self.assertEqual(first.to_dict()["scenes_in_build"], ["levels/alpha.json", "levels/beta.json"])
+        self.assertEqual(first.to_dict()["development"]["include_profiler"], True)
 
     def test_validate_project_rejects_missing_or_invalid_manifest(self) -> None:
         missing_root = self.workspace / "MissingProject"

@@ -16,9 +16,11 @@ CONTROLES:
 
 import argparse
 import os
+import sys
 
 import pyray as rl
 from cli.runner import CLIRunner
+from cli.runtime_runner import StandaloneRuntimeRunner
 from cli.script_executor import ScriptExecutor
 from engine.core.game import Game
 from engine.events.event_bus import EventBus
@@ -48,6 +50,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--script", type=str, help="Ruta al script de automatizacion")
     parser.add_argument("--frames", type=int, default=0, help="Numero de frames a ejecutar")
     parser.add_argument("--level", type=str, default="levels/demo_level.json", help="Ruta al nivel a cargar")
+    parser.add_argument("--standalone-build", type=str, default="", help="Ruta a un build exportado con runtime empaquetado")
     parser.add_argument("--seed", type=int, default=None, help="Seed para ejecucion headless reproducible")
     parser.add_argument("--golden-output", type=str, default="", help="Ruta para guardar un reporte de golden run")
     parser.add_argument("--golden-compare", type=str, default="", help="Ruta de un golden run esperado para comparar")
@@ -86,6 +89,17 @@ def _register_optional_box2d_backend(game: Game, gravity: float, event_bus: Even
 def main() -> None:
     """Funcion principal."""
     args = parse_args()
+
+    if args.standalone_build:
+        exit_code = StandaloneRuntimeRunner().run(
+            args.standalone_build,
+            headless=bool(args.headless or args.frames > 0),
+            frames=max(0, int(args.frames)),
+            seed=args.seed,
+        )
+        if exit_code:
+            raise SystemExit(exit_code)
+        return
 
     # Modo CLI / Headless (Solo si se pide headless o frames explicitamente)
     # Nota: Si se pasa --script SIN --headless, queremos ver la ejecucion visual
@@ -191,4 +205,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as exc:
+        print(f"[ERROR] Fatal bootstrap error: {exc}")
+        sys.exit(1)

@@ -12,6 +12,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from engine.config import ENGINE_VERSION
+from engine.project.build_settings import (
+    BuildManifest,
+    BuildSettings,
+    BuildTargetPlatform,
+    build_manifest_from_settings,
+    sanitize_output_name,
+)
 
 
 def _utc_now_iso() -> str:
@@ -95,6 +102,7 @@ class ProjectService:
     EDITOR_STATE_FILE = "editor_state.json"
     PROJECTS_DIR_NAME = "projects"
     PROJECT_SETTINGS_FILE = "project_settings.json"
+    BUILD_SETTINGS_FILE = "build_settings.json"
     RECENTS_LIMIT = 32
 
     def __init__(
@@ -265,6 +273,9 @@ class ProjectService:
     def get_project_settings_path(self) -> Path:
         return self.get_project_path("settings") / self.PROJECT_SETTINGS_FILE
 
+    def get_build_settings_path(self) -> Path:
+        return self.get_project_path("settings") / self.BUILD_SETTINGS_FILE
+
     def load_project_settings(self) -> Dict[str, Any]:
         path = self.get_project_settings_path()
         if not path.exists():
@@ -278,6 +289,40 @@ class ProjectService:
 
     def save_project_settings(self, data: Dict[str, Any]) -> None:
         self._write_json(self.get_project_settings_path(), self._normalize_project_settings(data))
+
+    def load_build_settings(self, *, strict: bool = False) -> BuildSettings:
+        path = self.get_build_settings_path()
+        default_settings = self._default_build_settings()
+        if not path.exists():
+            return default_settings
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            return self._normalize_build_settings(data)
+        except Exception:
+            if strict:
+                raise
+            return default_settings
+
+    def save_build_settings(self, data: BuildSettings | Dict[str, Any]) -> None:
+        settings = self._normalize_build_settings(data)
+        self._write_json(self.get_build_settings_path(), settings.to_dict())
+
+    def normalize_build_settings(self, data: BuildSettings | Dict[str, Any]) -> BuildSettings:
+        return self._normalize_build_settings(data)
+
+    def generate_build_manifest(
+        self,
+        settings: BuildSettings | Dict[str, Any] | None = None,
+        *,
+        generated_at_utc: str | None = None,
+    ) -> BuildManifest:
+        resolved = self.load_build_settings() if settings is None else self._normalize_build_settings(settings)
+        return build_manifest_from_settings(
+            resolved,
+            self.to_relative_path(self.get_project_path("build")),
+            generated_at_utc=generated_at_utc,
+        )
 
     def get_project_summary(self) -> Dict[str, Any]:
         return {
@@ -559,6 +604,20 @@ class ProjectService:
                 settings = self._default_project_settings()
         self._write_json(settings_path, settings)
 
+        build_settings_path = root / manifest.paths["settings"] / self.BUILD_SETTINGS_FILE
+        build_settings = self._default_build_settings_for_manifest(manifest)
+        if build_settings_path.exists():
+            try:
+                with build_settings_path.open("r", encoding="utf-8") as handle:
+                    build_settings = self._normalize_build_settings(
+                        json.load(handle),
+                        project_root=root.resolve(),
+                        manifest=manifest,
+                    )
+            except Exception:
+                build_settings = self._default_build_settings_for_manifest(manifest)
+        self._write_json(build_settings_path, build_settings.to_dict())
+
         if create_bootstrap:
             startup_scene = root / settings["startup_scene"]
             if not startup_scene.exists():
@@ -598,6 +657,110 @@ class ProjectService:
                 "path_sandbox": False,
             },
         }
+
+    def _default_build_settings(self) -> BuildSettings:
+        return self._default_build_settings_for_manifest(self.manifest)
+
+    def _default_build_settings_for_manifest(self, manifest: ProjectManifest) -> BuildSettings:
+        default_scene = "levels/main_scene.json"
+        product_name = manifest.name.strip() or "MotorVideojuegosIA Project"
+        return BuildSettings(
+            product_name=product_name,
+            company_name="DefaultCompany",
+            startup_scene=default_scene,
+            scenes_in_build=(default_scene,),
+            target_platform=BuildTargetPlatform.WINDOWS_DESKTOP,
+            development_build=False,
+            include_logs=False,
+            include_profiler=False,
+            output_name=sanitize_output_name(product_name),
+        )
+
+    def _normalize_build_settings(
+        self,
+        data: BuildSettings | Dict[str, Any],
+        *,
+        project_root: Path | None = None,
+        manifest: ProjectManifest | None = None,
+    ) -> BuildSettings:
+        if isinstance(data, BuildSettings):
+            payload = data.to_dict()
+        elif isinstance(data, dict):
+            payload = dict(data)
+        else:
+            raise ValueError("Build settings must be a BuildSettings instance or a JSON object")
+
+        resolved_manifest = manifest or self.manifest
+        resolved_project_root = (project_root or self.project_root).resolve()
+        defaults = self._default_build_settings_for_manifest(resolved_manifest)
+        product_name = str(payload.get("product_name", defaults.product_name)).strip() or defaults.product_name
+        company_name = str(payload.get("company_name", defaults.company_name)).strip() or defaults.company_name
+        raw_scenes = payload.get("scenes_in_build", list(defaults.scenes_in_build))
+        if not isinstance(raw_scenes, list):
+            raise ValueError("Build settings scenes_in_build must be a list")
+        scenes_in_build = self._normalize_scenes_in_build(raw_scenes, project_root=resolved_project_root)
+        startup_scene = self._normalize_project_relative_path(
+            payload.get("startup_scene", defaults.startup_scene),
+            purpose="startup scene",
+            project_root=resolved_project_root,
+        )
+        if not scenes_in_build:
+            raise ValueError("Build settings require at least one scene in scenes_in_build")
+        if startup_scene not in scenes_in_build:
+            raise ValueError("Build settings startup_scene must be present in scenes_in_build")
+        try:
+            target_platform = BuildTargetPlatform(
+                str(payload.get("target_platform", defaults.target_platform.value)).strip()
+                or defaults.target_platform.value
+            )
+        except ValueError as exc:
+            raise ValueError("Unsupported build target platform") from exc
+        development_build = bool(payload.get("development_build", defaults.development_build))
+        include_logs = bool(payload.get("include_logs", defaults.include_logs))
+        include_profiler = bool(payload.get("include_profiler", defaults.include_profiler))
+        if include_profiler and not development_build:
+            raise ValueError("Build settings include_profiler requires development_build")
+        output_source = str(payload.get("output_name", "")).strip() or product_name
+        output_name = sanitize_output_name(output_source)
+        return BuildSettings(
+            product_name=product_name,
+            company_name=company_name,
+            startup_scene=startup_scene,
+            scenes_in_build=tuple(scenes_in_build),
+            target_platform=target_platform,
+            development_build=development_build,
+            include_logs=include_logs,
+            include_profiler=include_profiler,
+            output_name=output_name,
+        )
+
+    def _normalize_scenes_in_build(self, scenes: List[Any], *, project_root: Path) -> List[str]:
+        normalized: List[str] = []
+        seen: set[str] = set()
+        for item in scenes:
+            scene = str(item or "").strip()
+            if not scene:
+                continue
+            relative = self._normalize_project_relative_path(scene, purpose="scene in build", project_root=project_root)
+            if relative in seen:
+                continue
+            seen.add(relative)
+            normalized.append(relative)
+        return normalized
+
+    def _normalize_project_relative_path(self, path_value: Any, *, purpose: str, project_root: Path) -> str:
+        raw_path = str(path_value or "").strip()
+        if not raw_path:
+            raise ValueError(f"Build settings {purpose} cannot be empty")
+        candidate_path = Path(raw_path.replace("\\", "/"))
+        if candidate_path.is_absolute():
+            candidate = candidate_path.expanduser().resolve()
+        else:
+            candidate = (project_root / candidate_path).resolve()
+        try:
+            return candidate.relative_to(project_root).as_posix()
+        except ValueError as exc:
+            raise ValueError(f"Build settings {purpose} must stay inside the project") from exc
 
     def _normalize_project_settings(self, data: Dict[str, Any]) -> Dict[str, Any]:
         defaults = self._default_project_settings()

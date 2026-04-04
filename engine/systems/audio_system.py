@@ -20,7 +20,10 @@ class AudioSystem:
 
     def set_project_service(self, project_service: Any) -> None:
         self._asset_service = AssetService(project_service) if project_service is not None else None
-        self._asset_resolver = self._asset_service.get_asset_resolver() if self._asset_service is not None else None
+        self.set_content_resolver(self._asset_service.get_asset_resolver() if self._asset_service is not None else None)
+
+    def set_content_resolver(self, resolver: Any) -> None:
+        self._asset_resolver = resolver
 
     def resolve_asset_path(self, audio_source: AudioSource) -> str:
         if self._asset_resolver is None:
