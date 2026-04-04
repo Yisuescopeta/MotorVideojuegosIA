@@ -74,6 +74,7 @@ class BuildWorkflowController:
         project_service = self._get_project_service()
         if modal is None or project_service is None:
             return
+        modal.set_status("Building Player... this may take a while.")
         try:
             from engine.project.build_player import BuildPlayerService
 
