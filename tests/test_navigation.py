@@ -35,6 +35,9 @@ class TestVec2(unittest.TestCase):
     def test_mul_scalar(self) -> None:
         self.assertEqual(Vec2(2, 3) * 3, Vec2(6, 9))
 
+    def test_rmul_scalar(self) -> None:
+        self.assertEqual(3 * Vec2(2, 3), Vec2(6, 9))
+
     def test_manhattan(self) -> None:
         self.assertEqual(Vec2(1, 2).manhattan_distance(Vec2(4, 6)), 7)
 
