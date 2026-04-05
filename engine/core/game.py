@@ -46,7 +46,7 @@ from engine.editor.editor_layout import EditorLayout
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
 from engine.editor.gizmo_system import GizmoSystem
 from engine.editor.hierarchy_panel import HierarchyPanel
-from engine.editor.console_panel import log_err, log_warn
+from engine.editor.console_panel import log_err, log_info, log_warn
 from engine.editor.raygui_theme import apply_unity_dark_theme
 from engine.editor.render_safety import safe_reset_clip_state
 from engine.editor.sprite_editor_modal import SpriteEditorModal

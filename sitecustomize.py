@@ -645,4 +645,5 @@ def _install_pyray_stub(*, force: bool = False) -> None:
 
     module.__getattr__ = __getattr__  # type: ignore[attr-defined]
     module.__dir__ = __dir__  # type: ignore[attr-defined]
+    module._IS_STUB = True  # sentinel: lets main.py detect stub vs real backend
     sys.modules["pyray"] = module

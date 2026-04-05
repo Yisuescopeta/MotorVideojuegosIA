@@ -97,7 +97,7 @@ class EditorLayout:
             ("Open Scene",       "Ctrl+O",       "open_scene"),
             ("Save",             "Ctrl+S",       "save_scene"),
             None,
-            ("Project Settings", "",             "project_settings"),
+            ("Build Settings...", "",             "project_settings"),
             None,
             ("Exit",             "Alt+F4",       "exit"),
         ],

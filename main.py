@@ -17,6 +17,7 @@ CONTROLES:
 import argparse
 import os
 import sys
+from pathlib import Path
 
 import pyray as rl
 from cli.runner import CLIRunner
@@ -42,6 +43,51 @@ from engine.systems.script_behaviour_system import ScriptBehaviourSystem
 from engine.systems.selection_system import SelectionSystem
 from engine.systems.ui_render_system import UIRenderSystem
 from engine.systems.ui_system import UISystem
+
+
+def _validate_and_log_pyray_backend() -> None:
+    """Validate that the real raylib backend is loaded; write a boot log for silent builds.
+
+    When the build runs with console=False, all stderr output is suppressed and failures
+    are completely invisible.  This function:
+      - Writes motor_boot.log next to the .exe so startup info is always recoverable.
+      - Raises RuntimeError if the pyray stub is active in GUI mode so the error reaches
+        the frozen-build error handler (which writes to motor_boot.log) before any
+        attempt to open a window.
+    """
+    is_frozen = bool(getattr(sys, "frozen", False))
+    is_stub = bool(getattr(rl, "_IS_STUB", False))
+    pyray_file = getattr(rl, "__file__", "<built-in or no __file__>")
+
+    boot_lines = [
+        "[motor-boot] ---- pyray backend validation ----",
+        f"[motor-boot] sys.frozen     = {is_frozen}",
+        f"[motor-boot] pyray module   = {rl}",
+        f"[motor-boot] pyray.__file__ = {pyray_file}",
+        f"[motor-boot] _IS_STUB       = {is_stub}",
+        "[motor-boot] ----------------------------------",
+    ]
+
+    for line in boot_lines:
+        print(line, file=sys.stderr)
+
+    if is_frozen:
+        # Also write to a log file — stderr is swallowed when console=False
+        try:
+            _log_path = Path(sys.executable).parent / "motor_boot.log"
+            _log_path.write_text("\n".join(boot_lines) + "\n", encoding="utf-8")
+        except Exception as _exc:
+            print(f"[motor-boot] WARNING: could not write motor_boot.log: {_exc}", file=sys.stderr)
+
+    if is_stub:
+        raise RuntimeError(
+            "pyray stub is active in GUI mode — real raylib backend not available.\n"
+            f"pyray loaded from: {pyray_file}\n"
+            "The window cannot be opened.\n"
+            "Check that raylib-py is installed (pip install raylib) and that the\n"
+            "build spec bundles the real pyray (not the local stub shim at pyray/).\n"
+            "See motor_boot.log next to the .exe for more detail."
+        )
 
 
 def parse_args() -> argparse.Namespace:
@@ -118,6 +164,8 @@ def main() -> None:
     print("  - PLAY usa RuntimeWorld (copia temporal)")
     print("  - STOP restaura World desde Scene")
     print()
+
+    _validate_and_log_pyray_backend()
 
     ensure_sprite_sheet()
 

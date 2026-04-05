@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from cli.headless_game import HeadlessGame
-from engine.core.game import Game
+if TYPE_CHECKING:
+    from cli.headless_game import HeadlessGame
+    from engine.core.game import Game
+
 from engine.events.event_bus import EventBus
 from engine.events.rule_system import RuleSystem
 from engine.levels.component_registry import create_default_registry
@@ -400,6 +402,8 @@ class StandaloneRuntimeBootstrap:
             )
 
     def _create_game(self, manifest: RuntimeManifest, resolver: PackagedContentResolver, *, headless: bool) -> Game:
+        from cli.headless_game import HeadlessGame  # lazy import — avoids module-level cycle
+        from engine.core.game import Game  # lazy import — avoids module-level cycle
         _ = manifest
         game: Game = HeadlessGame() if headless else Game(title="Motor 2D")
         registry = create_default_registry()

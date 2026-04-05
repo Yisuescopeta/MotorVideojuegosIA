@@ -1,10 +1,12 @@
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
 from engine.project import BuildPlayerOptions, BuildPlayerService, ProjectService
+from engine.project.build_player import _PackagingRequest, _PyInstallerPackager
 
 
 MINIMAL_PNG_BYTES = (
@@ -184,6 +186,55 @@ class BuildPlayerServiceTests(unittest.TestCase):
         self.assertEqual(json.dumps(first.to_dict(), sort_keys=True), json.dumps(second.to_dict(), sort_keys=True))
         self.assertEqual(first.output_summary, second.output_summary)
         self.assertEqual(first.top_assets_by_size, second.top_assets_by_size)
+
+
+    def test_spec_file_has_valid_python_syntax(self) -> None:
+        """Generated spec must be syntactically valid Python (no indentation error from joiner mismatch)."""
+        packager = _PyInstallerPackager()
+        request = _PackagingRequest(
+            project_root=(self.workspace / "proj").as_posix(),
+            repo_root=self.repo_root.as_posix(),
+            output_root=(self.workspace / "out" / "game_build").as_posix(),
+            executable_name="game_build",
+            development_build=False,
+            include_logs=False,
+        )
+        spec = packager._build_spec(request)
+        try:
+            compile(spec, "player_runtime.spec", "exec")
+        except SyntaxError as exc:
+            self.fail(
+                f"Generated spec file has a Python syntax error: {exc}\n"
+                f"First 10 lines:\n" + "\n".join(spec.splitlines()[:10])
+            )
+
+    def test_packaging_failure_surfaces_stderr_in_report(self) -> None:
+        """A CalledProcessError raised by the packager must include stderr in the build report."""
+
+        class _FailingPackager:
+            def package(self, request):
+                # CalledProcessError(returncode, cmd, output, stderr) — note: stdout is the 'output' param
+                raise subprocess.CalledProcessError(
+                    1,
+                    ["pyinstaller", "spec"],
+                    "INFO: PyInstaller starting\n",
+                    "ERROR: cannot import name 'HeadlessGame'\nTraceback ...\nIndentationError: unexpected indent",
+                )
+
+        report = BuildPlayerService(
+            self.project_service,
+            packager=_FailingPackager(),
+            timer=_timer_factory([0.0, 0.1]),
+            repo_root=self.repo_root,
+        ).build_player()
+
+        self.assertEqual(report.status, "failed")
+        error_codes = [e.code for e in report.errors]
+        self.assertIn("build_player.packaging_failed", error_codes)
+        error = next(e for e in report.errors if e.code == "build_player.packaging_failed")
+        self.assertIn("exit code 1", error.message)
+        self.assertIn("IndentationError", error.message)
+        self.assertEqual(error.stage, "packaging")
 
 
 if __name__ == "__main__":

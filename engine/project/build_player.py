@@ -200,9 +200,19 @@ class _PyInstallerPackager:
         "cli.runtime_runner",
         "cli.headless_game",
         "player_main",
+        "pyray",
+        "raylib",
     )
 
     def package(self, request: _PackagingRequest) -> _PackagingResult:
+        import importlib.util
+
+        if importlib.util.find_spec("PyInstaller") is None:
+            raise RuntimeError(
+                "PyInstaller is not installed in this Python environment. "
+                "Run: pip install pyinstaller"
+            )
+
         repo_root = Path(request.repo_root).resolve()
         output_root = Path(request.output_root).resolve()
         output_root.parent.mkdir(parents=True, exist_ok=True)
@@ -211,52 +221,110 @@ class _PyInstallerPackager:
         spec_path = work_root / self.SPEC_FILE_NAME
         spec_path.write_text(self._build_spec(request), encoding="utf-8")
 
-        subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "PyInstaller",
-                spec_path.as_posix(),
-                "--noconfirm",
-                "--distpath",
-                output_root.parent.as_posix(),
-                "--workpath",
-                work_root.as_posix(),
-            ],
-            cwd=repo_root,
-            check=True,
-        )
+        log_path = work_root / "pyinstaller.log"
+        cmd = [
+            sys.executable,
+            "-m",
+            "PyInstaller",
+            spec_path.as_posix(),
+            "--noconfirm",
+            "--distpath",
+            output_root.parent.as_posix(),
+            "--workpath",
+            work_root.as_posix(),
+        ]
+        result = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True)
+        combined_log = (result.stdout or "") + ("\n" + result.stderr if result.stderr else "")
+        try:
+            log_path.write_text(combined_log, encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+        if result.returncode != 0:
+            raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
+
         executable_path = output_root / f"{request.executable_name}.exe"
         if not executable_path.exists():
             raise RuntimeError(f"Packaged executable was not generated: {executable_path.as_posix()}")
         return _PackagingResult(executable_path=executable_path.as_posix())
 
     def _build_spec(self, request: _PackagingRequest) -> str:
-        hidden_imports = ",\n        ".join(repr(item) for item in self.HIDDEN_IMPORTS)
+        # The joiner indentation (20 spaces) must match the column of {hidden_imports} in
+        # the f-string template so textwrap.dedent removes exactly the right prefix length.
+        hidden_imports = ",\n                    ".join(repr(item) for item in self.HIDDEN_IMPORTS)
         console_enabled = "True" if request.development_build and request.include_logs else "False"
         return textwrap.dedent(
             f"""\
             # -*- mode: python ; coding: utf-8 -*-
             import os
-            from PyInstaller.utils.hooks import collect_dynamic_libs
+            import sys as _sys
+            import site as _site_module
+            from PyInstaller.utils.hooks import collect_dynamic_libs, collect_all
 
             block_cipher = None
 
             PROJECT_ROOT = {Path(request.repo_root).resolve().as_posix()!r}
+
+
+            def _find_real_pyray_sp():
+                \"\"\"Site-packages dir with the real pyray (not the local project stub shim).
+
+                The project ships pyray/__init__.py as a compatibility shim.  If that shim
+                ends up in pathex before the real site-packages, PyInstaller bundles the
+                stub and raylib functions become no-ops — the window never opens.
+                \"\"\"
+                local_shim = os.path.normcase(os.path.join(PROJECT_ROOT, "pyray"))
+                candidates = []
+                try:
+                    candidates += _site_module.getsitepackages()
+                except Exception:
+                    pass
+                try:
+                    candidates.append(_site_module.getusersitepackages())
+                except Exception:
+                    pass
+                for sp in candidates:
+                    pyray_dir = os.path.join(sp, "pyray")
+                    if not os.path.isdir(pyray_dir):
+                        continue
+                    if os.path.normcase(pyray_dir) == local_shim:
+                        continue
+                    init_py = os.path.join(pyray_dir, "__init__.py")
+                    if not os.path.isfile(init_py):
+                        continue
+                    try:
+                        with open(init_py, encoding="utf-8", errors="replace") as f:
+                            content = f.read()
+                        if "sitecustomize" not in content:
+                            return sp
+                    except Exception:
+                        continue
+                return None
+
+
+            _real_sp = _find_real_pyray_sp()
+            _pathex = ([_real_sp] if _real_sp else []) + [PROJECT_ROOT]
+
+            if _real_sp and _real_sp not in _sys.path:
+                _sys.path.insert(0, _real_sp)
+
             raylib_binaries = collect_dynamic_libs("raylib")
+            try:
+                _pyray_datas, _pyray_binaries, _pyray_hidden = collect_all("pyray")
+            except Exception:
+                _pyray_datas, _pyray_binaries, _pyray_hidden = [], [], []
 
             a = Analysis(
                 [os.path.join(PROJECT_ROOT, {self.PLAYER_ENTRYPOINT!r})],
-                pathex=[PROJECT_ROOT],
-                binaries=raylib_binaries,
-                datas=[],
+                pathex=_pathex,
+                binaries=raylib_binaries + _pyray_binaries,
+                datas=[] + _pyray_datas,
                 hiddenimports=[
                     {hidden_imports}
-                ],
+                ] + _pyray_hidden,
                 hookspath=[],
                 hooksconfig={{}},
                 runtime_hooks=[],
-                excludes=["bandit", "mypy", "ruff", "pip_audit", "pytest"],
+                excludes=["sitecustomize", "bandit", "mypy", "ruff", "pip_audit", "pytest"],
                 win_no_prefer_redirects=False,
                 win_private_assemblies=False,
                 cipher=block_cipher,
@@ -431,11 +499,16 @@ class BuildPlayerService:
         except _BuildPlayerFailure as exc:
             errors = sorted(list(exc.diagnostics), key=_diagnostic_sort_key)
         except subprocess.CalledProcessError as exc:
+            stderr_text = (getattr(exc, "stderr", None) or "").strip()
+            snippet = stderr_text[-400:] if len(stderr_text) > 400 else stderr_text
+            msg = f"PyInstaller packaging failed (exit code {exc.returncode})."
+            if snippet:
+                msg += f" Details: {snippet}"
             errors = [
                 self._diagnostic(
                     "error",
                     "build_player.packaging_failed",
-                    f"PyInstaller packaging failed with exit code {exc.returncode}.",
+                    msg,
                     stage="packaging",
                 )
             ]
