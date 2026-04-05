@@ -37,13 +37,15 @@ class AudioSource(Component):
         self._playback_position: float = 0.0
         self._playback_duration: float = 0.0
         self._is_paused: bool = False
+        self._effective_time: float | None = None
 
     @property
     def playback_position(self) -> float:
         if self._is_paused:
             return self._playback_position
         if self.is_playing and not self._is_paused and self._playback_start_time > 0:
-            return self._playback_position + (time.time() - self._playback_start_time)
+            current_time = self._effective_time if self._effective_time is not None else time.time()
+            return self._playback_position + (current_time - self._playback_start_time)
         return self._playback_position
 
     @playback_position.setter
@@ -70,6 +72,18 @@ class AudioSource(Component):
     def sync_asset_reference(self, reference: Any) -> None:
         self.asset = normalize_asset_reference(reference)
         self.asset_path = self.asset.get("path", "")
+
+    def set_effective_time(self, time: float | None) -> None:
+        """Set effective time for playback_position computation.
+
+        When set, playback_position will use this time instead of time.time().
+        This enables deterministic behavior during stepping and testing.
+        """
+        self._effective_time = time
+
+    def clear_effective_time(self) -> None:
+        """Clear effective time, reverting to wall-clock time."""
+        self._effective_time = None
 
     def to_dict(self) -> dict[str, Any]:
         return {

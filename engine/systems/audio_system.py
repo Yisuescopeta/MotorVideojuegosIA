@@ -33,15 +33,34 @@ class AudioSystem:
         return self._asset_resolver.resolve_path(audio_source.get_asset_reference() or audio_source.asset_path)
 
     def _get_asset_duration(self, audio_source: AudioSource) -> float:
+        """Return audio asset duration in seconds.
+
+        Currently a stub: returns 0.0 because runtime audio does not require
+        actual audio playback. The playback_duration is intentionally left as
+        a user-settable/runtime-computed value that can be populated via
+        play() when the real audio backend is integrated.
+        """
         return 0.0
 
-    def update(self, world: World) -> None:
+    def update(self, world: World, game_time: float | None = None) -> None:
+        """Update all AudioSource components in the world.
+
+        Args:
+            world: The game world to update.
+            game_time: Optional game time in seconds. When provided, this value
+                is used for playback_position computation instead of time.time().
+                This ensures deterministic behavior during stepping and testing.
+        """
+        wall_time = time.time()
+        effective_time = game_time if game_time is not None else wall_time
         for entity in world.get_entities_with(AudioSource):
             audio_source = entity.get_component(AudioSource)
             if audio_source is None or not audio_source.enabled:
                 continue
             if audio_source.play_on_awake and not audio_source.is_playing:
+                audio_source._playback_start_time = effective_time
                 audio_source.is_playing = True
+            audio_source.set_effective_time(effective_time)
             if audio_source.is_playing and not audio_source.is_paused:
                 if audio_source.playback_duration > 0:
                     current_pos = audio_source.playback_position
@@ -50,7 +69,7 @@ class AudioSystem:
                         audio_source._playback_position = 0.0
                         audio_source._playback_start_time = 0.0
 
-    def play(self, world: World, entity_name: str) -> bool:
+    def play(self, world: World, entity_name: str, game_time: float | None = None) -> bool:
         entity = world.get_entity_by_name(entity_name)
         if entity is None:
             return False
@@ -60,10 +79,12 @@ class AudioSystem:
         if not audio_source.asset_path and not audio_source.get_asset_reference().get("guid"):
             return False
         self.resolve_asset_path(audio_source)
-        audio_source._playback_start_time = time.time()
+        effective_time = game_time if game_time is not None else time.time()
+        audio_source._playback_start_time = effective_time
         audio_source._playback_position = 0.0
         audio_source._is_paused = False
         audio_source.is_playing = True
+        audio_source.set_effective_time(game_time)
         if audio_source.playback_duration <= 0:
             audio_source.playback_duration = self._get_asset_duration(audio_source)
         return True
@@ -82,7 +103,7 @@ class AudioSystem:
         audio_source._is_paused = True
         return True
 
-    def resume(self, world: World, entity_name: str) -> bool:
+    def resume(self, world: World, entity_name: str, game_time: float | None = None) -> bool:
         entity = world.get_entity_by_name(entity_name)
         if entity is None:
             return False
@@ -91,8 +112,10 @@ class AudioSystem:
             return False
         if not audio_source.is_paused:
             return False
-        audio_source._playback_start_time = time.time()
+        effective_time = game_time if game_time is not None else time.time()
+        audio_source._playback_start_time = effective_time
         audio_source._is_paused = False
+        audio_source.set_effective_time(game_time)
         return True
 
     def stop(self, world: World, entity_name: str) -> bool:

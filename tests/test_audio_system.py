@@ -292,6 +292,76 @@ class AudioSystemUnitTests(unittest.TestCase):
         system.update(world)
         self.assertTrue(audio.is_playing)
 
+    def test_play_on_awake_initializes_playback_start_time(self) -> None:
+        system = AudioSystem()
+        world, entity = self._make_world_with_audio()
+        audio = entity.get_component(AudioSource)
+        assert audio is not None
+        audio.play_on_awake = True
+        audio.is_playing = False
+        audio._playback_start_time = 0.0
+
+        system.update(world)
+        self.assertTrue(audio.is_playing)
+        self.assertGreater(audio._playback_start_time, 0)
+
+    def test_play_on_awake_with_game_time_uses_deterministic_time(self) -> None:
+        system = AudioSystem()
+        world, entity = self._make_world_with_audio()
+        audio = entity.get_component(AudioSource)
+        assert audio is not None
+        audio.play_on_awake = True
+        audio.is_playing = False
+        audio._playback_start_time = 0.0
+
+        game_time = 100.0
+        system.update(world, game_time=game_time)
+        self.assertTrue(audio.is_playing)
+        self.assertEqual(audio._playback_start_time, game_time)
+
+    def test_playback_position_uses_effective_time(self) -> None:
+        audio = AudioSource(asset_path="assets/test.wav")
+        audio.is_playing = True
+        audio._is_paused = False
+        audio._playback_start_time = 10.0
+        audio._playback_position = 0.0
+
+        audio.set_effective_time(15.0)
+        self.assertEqual(audio.playback_position, 5.0)
+
+    def test_playback_position_uses_wall_time_when_no_effective(self) -> None:
+        audio = AudioSource(asset_path="assets/test.wav")
+        audio.is_playing = True
+        audio._is_paused = False
+        audio._playback_start_time = time.time() - 5.0
+        audio._playback_position = 0.0
+
+        audio.clear_effective_time()
+        pos = audio.playback_position
+        self.assertGreaterEqual(pos, 5.0)
+
+    def test_update_with_game_time_uses_deterministic_position(self) -> None:
+        system = AudioSystem()
+        world, entity = self._make_world_with_audio()
+        audio = entity.get_component(AudioSource)
+        assert audio is not None
+        audio.play_on_awake = True
+        audio.is_playing = False
+        audio._playback_start_time = 0.0
+        audio._playback_duration = 0.0
+
+        game_time = 100.0
+        system.update(world, game_time=game_time)
+
+        self.assertTrue(audio.is_playing)
+        self.assertEqual(audio._playback_start_time, game_time)
+        audio.set_effective_time(game_time)
+        self.assertEqual(audio.playback_position, 0.0)
+
+        game_time_2 = 105.0
+        audio.set_effective_time(game_time_2)
+        self.assertEqual(audio.playback_position, 5.0)
+
 
 class RuntimeAPIAudioIntegrationTests(unittest.TestCase):
     """Test RuntimeAPI audio endpoints through EngineAPI."""
