@@ -1,91 +1,254 @@
 # AGENTS.md
 
-## Setup & Installation
+## Purpose
+
+This repository uses a shared serializable engine model and supports parallel feature work through isolated branches/worktrees.
+
+This file is the default operating contract for coding agents working in this repo.
+
+Read this file together with:
+
+- `docs/TECHNICAL.md`
+- `docs/module_taxonomy.md`
+- `docs/parallel_execution_plan.md`
+- `docs/parallel_prompts_index.md`
+
+## Core repository invariants
+
+These rules are not optional.
+
+### 1. Persistent source of truth
+
+- `Scene` is the persistent source of truth.
+- `World` is an operational projection.
+- runtime mutations must not become accidental authoring state.
+
+### 2. Authoring path
+
+- serializable authoring changes must go through `SceneManager` or `EngineAPI`
+- do not introduce new direct-edit paths around shared authoring flows
+- direct mutation of `edit_world` is legacy compatibility only, not the preferred route for new work
+
+### 3. Public API
+
+- `EngineAPI` is the stable public facade for agents, tests, CLI and automation
+- do not bypass it for public-facing workflows unless the task explicitly requires internal wiring work
+
+### 4. Physics contract
+
+- preserve the common backend contract
+- preserve `legacy_aabb` fallback behavior
+- do not change the public meaning of `query_physics_ray` or `query_physics_aabb` outside dedicated physics work
+
+### 5. Component registration
+
+- if you add a new public component, register it in `engine/levels/component_registry.py`
+- do not assume public support for unregistered components
+
+## Critical files
+
+Treat these files as frozen unless the task explicitly authorizes them.
+
+- `engine/scenes/scene_manager.py`
+- `engine/core/game.py`
+- `engine/app/runtime_controller.py`
+- `engine/systems/render_system.py`
+- `engine/systems/physics_system.py`
+- `engine/systems/collision_system.py`
+- `engine/components/tilemap.py`
+- `engine/levels/component_registry.py`
+
+If you think one of these files must be changed:
+
+1. stop
+2. explain exactly why
+3. state the minimal required change
+4. do not change it silently
+
+## Branch-aware perimeter rules
+
+When working in a parallel feature branch, stay strictly inside that branch scope.
+
+### Branch: `feature/w1-audio2d-runtime`
+
+Allowed:
+
+- `engine/components/audiosource.py`
+- `engine/systems/audio_system.py`
+- `engine/api/_runtime_api.py`
+- audio tests
+- audio docs
+
+Forbidden:
+
+- `engine/core/game.py`
+- `engine/app/runtime_controller.py`
+- `engine/systems/render_system.py`
+- `engine/scenes/scene_manager.py`
+- `engine/api/_authoring_api.py`
+
+### Branch: `feature/w1-navigation-core`
+
+Allowed:
+
+- `engine/navigation/*`
+- navigation tests
+- navigation docs
+- minimal API additions in `engine/api/_runtime_api.py` or `engine/api/_authoring_api.py`
+- `engine/levels/component_registry.py` only if a public component is introduced
+
+Forbidden:
+
+- `engine/tilemap/*`
+- `engine/components/tilemap.py`
+- `engine/systems/physics_system.py`
+- `engine/systems/collision_system.py`
+- `engine/physics/*`
+- `engine/app/runtime_controller.py`
+- `engine/systems/render_system.py`
+- `engine/core/game.py`
+
+### Branch: `feature/w1-animator-authoring`
+
+Allowed:
+
+- `engine/components/animator.py`
+- `engine/systems/animation_system.py`
+- `engine/editor/animator_panel.py`
+- animator-specific parts of `engine/api/_authoring_api.py`
+- animator tests
+- animator docs
+
+Forbidden:
+
+- `engine/systems/render_system.py`
+- `engine/tilemap/*`
+- `engine/app/runtime_controller.py`
+- `engine/scenes/scene_manager.py`
+- `engine/core/game.py`
+- `engine/inspector/inspector_system.py`
+
+### Branch: `feature/w1-tilemap-authoring`
+
+Allowed:
+
+- `engine/components/tilemap.py`
+- tilemap-specific parts of `engine/api/_authoring_api.py`
+- tilemap editor/inspector files
+- tilemap API tests
+- tilemap serialization tests
+- tilemap docs
+
+Forbidden:
+
+- `engine/systems/render_system.py`
+- `engine/tilemap/collision_builder.py`
+- `engine/app/runtime_controller.py`
+- `engine/systems/physics_system.py`
+- `engine/systems/collision_system.py`
+- `engine/physics/*`
+- `engine/core/game.py`
+- `engine/scenes/scene_manager.py`
+
+### Branch: `feature/w2-tilemap-render`
+
+Allowed:
+
+- `engine/systems/render_system.py`
+- `tests/test_render_graph.py`
+- tilemap render docs
+
+Forbidden:
+
+- `engine/components/tilemap.py`
+- `engine/api/_authoring_api.py`
+- `engine/tilemap/collision_builder.py`
+- `engine/app/runtime_controller.py`
+- `engine/systems/physics_system.py`
+- `engine/core/game.py`
+- `engine/editor/*`
+
+### Branch: `feature/w3-tilemap-collision`
+
+Allowed:
+
+- `engine/tilemap/collision_builder.py`
+- `tests/test_tilemap_collision.py`
+- minimal, justified changes in `engine/app/runtime_controller.py`
+- tilemap collision docs
+
+Forbidden:
+
+- `engine/systems/physics_system.py`
+- `engine/systems/collision_system.py`
+- `engine/physics/*`
+- `engine/systems/render_system.py`
+- `engine/components/tilemap.py`
+- `engine/core/game.py`
+- `engine/scenes/scene_manager.py`
+
+### Branch: `feature/w4-physics-core`
+
+Allowed:
+
+- `engine/systems/physics_system.py`
+- `engine/systems/collision_system.py`
+- `engine/components/rigidbody.py`
+- `engine/physics/*`
+- `engine/app/runtime_controller.py`
+- physics/runtime tests
+- physics docs
+
+Forbidden:
+
+- `engine/components/tilemap.py`
+- `engine/tilemap/collision_builder.py`
+- `engine/systems/render_system.py`
+- `engine/core/game.py`
+- `engine/scenes/scene_manager.py`
+- `engine/editor/*`
+- `engine/api/_authoring_api.py`
+
+## Testing expectations
+
+Before reporting completion:
+
+- run focused tests for the touched subsystem
+- run additional regression tests when the change touches shared contracts
+- do not disable tests to get green output
+- do not claim lint/typecheck/bandit success unless you actually ran them
+
+Minimum commands commonly useful in this repo:
 
 ```bash
-pip install -r requirements.txt
-pip install -e .[dev]
-python main.py
-```
-
-## Developer Commands
-
-```bash
-# Test suite
 python -m unittest discover -s tests
-
-# Single test file
-python -m unittest tests/test_core_regression_matrix.py
-
-# Lint (ruff targets specific dirs, not whole repo)
-python -m ruff check engine/api engine/project engine/rl engine/serialization engine/events cli tools main.py
-
-# Typecheck
-python -m mypy engine/api engine/project engine/rl engine/serialization engine/events cli tools main.py
-
-# Security
-python -m bandit -q -c .bandit -r engine cli tools main.py
-python -m pip_audit --skip-editable --ignore-vuln CVE-2026-4539
-
-# CLI tooling
-python -m tools.engine_cli validate --target scene --path levels/demo_level.json
-python -m tools.engine_cli smoke --scene levels/demo_level.json --frames 5 --out-dir artifacts/cli_smoke
+python -m ruff check engine cli tools main.py
+python -m mypy engine cli tools main.py
 ```
 
-## Core Architecture
+Use narrower test selection when appropriate, but state exactly what you ran.
 
-- **Source of truth**: Serializable `Scene` data (JSON, schema v2). UI is never the source of truth.
-- **Editable world** (`SceneManager.edit_world`) ← derived from `Scene`
-- **Runtime world** (`SceneManager.runtime_world`) ← cloned temporary copy for PLAY
-- `Game.world` / `HeadlessGame.world` expose `active_world` but don't replace the serializable model.
-- **Authoring mutation routes**: Always go through `SceneManager.apply_edit_to_world()`, `update_entity_property()`, `replace_component_data()`, `add_component_to_entity()`, `remove_component_from_entity()`, or `EngineAPI`.
-- `sync_from_edit_world()` is legacy; avoid for new authoring code.
+## Parallel merge discipline
 
-## Module Classification
+Every final delivery should include:
 
-| Category | Contents |
-|---|---|
-| `core mandatory` | ECS, Scene, SceneManager, serialization/schema, EngineAPI, editor base, hierarchy, physics backend contract + `legacy_aabb` fallback |
-| `official optional` | assets, prefabs, tilemap, audio, UI serializable, `box2d` backend |
-| `experimental/tooling` | `engine/rl`, datasets, runners, multiagent, debug tooling |
+1. a short technical summary
+2. exact files changed
+3. exact tests added or modified
+4. exact tests run
+5. remaining risks or limitations
+6. confirmation that no forbidden files were touched
 
-`box2d` is optional and falls back to `legacy_aabb` if unavailable.
+## Stop conditions
 
-## Headless / CLI Mode
+Stop and ask for review instead of continuing if:
 
-```bash
-python main.py --headless --level levels/demo_level.json --frames 60
-python main.py --headless --script path/to/script.py --frames 5
-```
+- the task requires a forbidden file
+- the task requires widening the branch perimeter
+- the task would change a core invariant
+- the task would create a new public contract without explicit approval
 
-## Key Files
+## Practical rule
 
-- `main.py` — editor entry point (GUI mode)
-- `engine/api/engine_api.py` — public API facade for agents, CLI, tests
-- `engine/scenes/scene_manager.py` — coordinates EDIT→PLAY→STOP
-- `engine/serialization/` — schema and migration logic (v1→v2, emits v2)
-- `docs/architecture.md` / `docs/module_taxonomy.md` — architectural contract
-- `docs/TECHNICAL.md`, `docs/schema_serialization.md` — deeper technical docs
-- `tests/test_core_regression_matrix.py` — regression tests for core invariants
-
-## Python & Tool Versions
-
-- Python >= 3.11
-- `pyproject.toml`: setuptools-based build
-- `ruff` (py311 target, line-length 120)
-- `mypy` (exclude: tests/, artifacts/, build/, dist/)
-- `bandit` config at `.bandit` (skips: B105, B106, B110, B112, B311, B404, B603)
-
-## Editor Controls (when running main.py)
-
-| Key | Action |
-|---|---|
-| SPACE | Play |
-| P | Pause/Resume |
-| ESC | Stop |
-| R | Reload scene |
-| TAB | Toggle inspector |
-| F8 | Hot-reload scripts |
-| F10 | Step |
-| F11 | Fullscreen |
-| Ctrl+S | Save scene |
+Prefer a smaller correct change over a broader risky one.
+Do not optimize for local completion if it harms merge safety.
