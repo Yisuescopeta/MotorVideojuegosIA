@@ -32,6 +32,9 @@ class Vec2:
     def __mul__(self, scalar: int) -> Vec2:
         return Vec2(self.x * scalar, self.y * scalar)
 
+    def __rmul__(self, scalar: int) -> Vec2:
+        return self.__mul__(scalar)
+
     def manhattan_distance(self, other: Vec2) -> int:
         return abs(self.x - other.x) + abs(self.y - other.y)
 

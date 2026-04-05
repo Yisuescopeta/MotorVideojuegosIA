@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from engine.navigation.astar import AStarPathfinder
-from engine.navigation.grid import CARDINAL_COST, NavigationGrid, Vec2
+from engine.navigation.grid import CARDINAL_COST, DIAGONAL_COST, NavigationGrid, Vec2
 
 
 @dataclass
@@ -171,10 +171,13 @@ class NavigationService:
             if current_cost > max_cost:
                 continue
 
-            for neighbor, is_diag in self._pathfinder._get_neighbors(current, diagonal):
+            neighbors = self._grid.neighbors_8(current) if diagonal else self._grid.neighbors_4(current)
+            for neighbor, is_diag in neighbors:
                 if neighbor in visited:
                     continue
-                move_cost = self._pathfinder._move_cost(neighbor, is_diag)
+                cell = self._grid.get_cell_vec(neighbor)
+                base = DIAGONAL_COST if is_diag else CARDINAL_COST
+                move_cost = (base * cell.cost_multiplier) // 100
                 new_cost = current_cost + move_cost
                 if new_cost <= max_cost:
                     visited[neighbor] = new_cost
@@ -213,7 +216,8 @@ class NavigationService:
                     if neighbor not in node_index:
                         continue
                     to_id = node_index[neighbor]
-                    cost = CARDINAL_COST
+                    neighbor_cell = self._grid.get_cell_vec(neighbor)
+                    cost = (CARDINAL_COST * neighbor_cell.cost_multiplier) // 100
                     edges.append({"from": from_id, "to": to_id, "cost": cost, "diagonal": False})
 
         return {"nodes": nodes, "edges": edges}

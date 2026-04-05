@@ -10,7 +10,6 @@ Tests cover:
 - Deterministic, tilemap-agnostic behavior
 """
 
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,7 +17,6 @@ from pathlib import Path
 from engine.navigation import (
     AStarPathfinder,
     NavigationGrid,
-    NavigationQuery,
     NavigationService,
     Vec2,
 )
@@ -424,6 +422,52 @@ class TestNavigationService(unittest.TestCase):
         result = svc.query_path(0, 0, 4, 4)
         self.assertTrue(result.success)
 
+    def test_get_reachable_positions_diagonal(self) -> None:
+        grid = NavigationGrid.from_walkable_matrix([
+            [True, True, True],
+            [True, True, True],
+            [True, True, True],
+        ])
+        svc = NavigationService(grid)
+        reachable = svc.get_reachable_positions(1, 1, max_cost=300, diagonal=True)
+        self.assertIn(Vec2(1, 1), reachable)
+        self.assertIn(Vec2(0, 0), reachable)
+        self.assertIn(Vec2(2, 2), reachable)
+
+    def test_get_reachable_positions_cost_limit(self) -> None:
+        grid = NavigationGrid.from_walkable_matrix([
+            [True, True, True],
+            [True, True, True],
+            [True, True, True],
+        ])
+        svc = NavigationService(grid)
+        reachable = svc.get_reachable_positions(0, 0, max_cost=100, diagonal=False)
+        self.assertIn(Vec2(0, 0), reachable)
+        self.assertIn(Vec2(1, 0), reachable)
+        self.assertNotIn(Vec2(2, 0), reachable)
+
+    def test_build_navmesh_uses_real_costs(self) -> None:
+        grid = NavigationGrid.from_walkable_matrix([
+            [True, True],
+            [True, True],
+        ])
+        grid.cells[0][1].cost_multiplier = 200
+        grid.cells[1][0].cost_multiplier = 50
+        svc = NavigationService(grid)
+        mesh = svc.build_navmesh_from_grid()
+        edges = mesh["edges"]
+        cost_200 = None
+        cost_50 = None
+        for e in edges:
+            from_pos = mesh["nodes"][e["from"]]
+            to_pos = mesh["nodes"][e["to"]]
+            if from_pos["x"] == 0 and from_pos["y"] == 0 and to_pos["x"] == 1 and to_pos["y"] == 0:
+                cost_200 = e["cost"]
+            if from_pos["x"] == 0 and from_pos["y"] == 0 and to_pos["x"] == 0 and to_pos["y"] == 1:
+                cost_50 = e["cost"]
+        self.assertEqual(cost_200, 200)
+        self.assertEqual(cost_50, 50)
+
 
 class TestNavigationGridCostModifiers(unittest.TestCase):
     def test_cost_modifier_affects_path(self) -> None:
@@ -442,6 +486,28 @@ class TestNavigationGridCostModifiers(unittest.TestCase):
         path, cost = pf.find_path_with_cost(Vec2(0, 0), Vec2(1, 1), diagonal=False)
         self.assertTrue(path)
         self.assertGreater(cost, 0)
+
+    def test_cost_modifier_low_vs_high(self) -> None:
+        walkable = [
+            [True, True, True],
+            [True, True, True],
+            [True, True, True],
+        ]
+        g_low = NavigationGrid.from_walkable_matrix(walkable)
+        g_low.cells[0][1].cost_multiplier = 1
+        g_low.cells[1][1].cost_multiplier = 1
+        pf_low = AStarPathfinder(g_low)
+        path_low, cost_low = pf_low.find_path_with_cost(Vec2(0, 0), Vec2(2, 0), diagonal=False)
+
+        g_high = NavigationGrid.from_walkable_matrix(walkable)
+        g_high.cells[0][1].cost_multiplier = 300
+        g_high.cells[1][1].cost_multiplier = 300
+        pf_high = AStarPathfinder(g_high)
+        path_high, cost_high = pf_high.find_path_with_cost(Vec2(0, 0), Vec2(2, 0), diagonal=False)
+
+        self.assertTrue(path_low)
+        self.assertTrue(path_high)
+        self.assertLess(cost_low, cost_high)
 
 
 if __name__ == "__main__":
