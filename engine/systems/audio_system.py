@@ -4,6 +4,7 @@ engine/systems/audio_system.py - Sistema de audio 2D basico y seguro para headle
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from engine.assets.asset_service import AssetService
@@ -31,6 +32,9 @@ class AudioSystem:
             return entry["absolute_path"]
         return self._asset_resolver.resolve_path(audio_source.get_asset_reference() or audio_source.asset_path)
 
+    def _get_asset_duration(self, audio_source: AudioSource) -> float:
+        return 0.0
+
     def update(self, world: World) -> None:
         for entity in world.get_entities_with(AudioSource):
             audio_source = entity.get_component(AudioSource)
@@ -38,6 +42,13 @@ class AudioSystem:
                 continue
             if audio_source.play_on_awake and not audio_source.is_playing:
                 audio_source.is_playing = True
+            if audio_source.is_playing and not audio_source.is_paused:
+                if audio_source.playback_duration > 0:
+                    current_pos = audio_source.playback_position
+                    if current_pos >= audio_source.playback_duration and not audio_source.loop:
+                        audio_source.is_playing = False
+                        audio_source._playback_position = 0.0
+                        audio_source._playback_start_time = 0.0
 
     def play(self, world: World, entity_name: str) -> bool:
         entity = world.get_entity_by_name(entity_name)
@@ -49,7 +60,39 @@ class AudioSystem:
         if not audio_source.asset_path and not audio_source.get_asset_reference().get("guid"):
             return False
         self.resolve_asset_path(audio_source)
+        audio_source._playback_start_time = time.time()
+        audio_source._playback_position = 0.0
+        audio_source._is_paused = False
         audio_source.is_playing = True
+        if audio_source.playback_duration <= 0:
+            audio_source.playback_duration = self._get_asset_duration(audio_source)
+        return True
+
+    def pause(self, world: World, entity_name: str) -> bool:
+        entity = world.get_entity_by_name(entity_name)
+        if entity is None:
+            return False
+        audio_source = entity.get_component(AudioSource)
+        if audio_source is None or not audio_source.enabled:
+            return False
+        if not audio_source.is_playing or audio_source.is_paused:
+            return False
+        audio_source._playback_position = audio_source.playback_position
+        audio_source._playback_start_time = 0.0
+        audio_source._is_paused = True
+        return True
+
+    def resume(self, world: World, entity_name: str) -> bool:
+        entity = world.get_entity_by_name(entity_name)
+        if entity is None:
+            return False
+        audio_source = entity.get_component(AudioSource)
+        if audio_source is None or not audio_source.enabled:
+            return False
+        if not audio_source.is_paused:
+            return False
+        audio_source._playback_start_time = time.time()
+        audio_source._is_paused = False
         return True
 
     def stop(self, world: World, entity_name: str) -> bool:
@@ -60,4 +103,7 @@ class AudioSystem:
         if audio_source is None:
             return False
         audio_source.is_playing = False
+        audio_source._playback_position = 0.0
+        audio_source._playback_start_time = 0.0
+        audio_source._is_paused = False
         return True

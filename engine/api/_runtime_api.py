@@ -149,11 +149,17 @@ class RuntimeAPI(EngineAPIComponent):
     def get_audio_state(self, entity_name: str) -> Dict[str, Any]:
         from engine.components.audiosource import AudioSource
 
+        if self.game is None or self.game.world is None:
+            return {}
         entity = self.require_entity(entity_name)
         audio_source = entity.get_component(AudioSource)
         if audio_source is None:
             return {}
-        return audio_source.to_dict()
+        state = audio_source.to_dict()
+        state["playback_position"] = audio_source.playback_position
+        state["playback_duration"] = audio_source.playback_duration
+        state["is_paused"] = audio_source.is_paused
+        return state
 
     def get_script_public_data(self, entity_name: str) -> Dict[str, Any]:
         from engine.components.scriptbehaviour import ScriptBehaviour
@@ -208,6 +214,18 @@ class RuntimeAPI(EngineAPIComponent):
             return self.fail("Audio system not ready")
         success = self.game.audio_system.stop(self.game.world, entity_name)
         return self.ok("Audio stopped", {"entity": entity_name}) if success else self.fail("Audio source not found")
+
+    def pause_audio(self, entity_name: str) -> ActionResult:
+        if self.game is None or self.game.world is None or self.game.audio_system is None:
+            return self.fail("Audio system not ready")
+        success = self.game.audio_system.pause(self.game.world, entity_name)
+        return self.ok("Audio paused", {"entity": entity_name}) if success else self.fail("Audio source not found, disabled, or already paused")
+
+    def resume_audio(self, entity_name: str) -> ActionResult:
+        if self.game is None or self.game.world is None or self.game.audio_system is None:
+            return self.fail("Audio system not ready")
+        success = self.game.audio_system.resume(self.game.world, entity_name)
+        return self.ok("Audio resumed", {"entity": entity_name}) if success else self.fail("Audio source not found, disabled, or not paused")
 
     def shutdown(self) -> None:
         if self.game is not None:

@@ -4,6 +4,7 @@ engine/components/audiosource.py - Fuente de audio 2D serializable.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from engine.assets.asset_reference import build_asset_reference, clone_asset_reference, normalize_asset_reference
@@ -32,6 +33,36 @@ class AudioSource(Component):
         self.play_on_awake: bool = play_on_awake
         self.spatial_blend: float = spatial_blend
         self.is_playing: bool = False
+        self._playback_start_time: float = 0.0
+        self._playback_position: float = 0.0
+        self._playback_duration: float = 0.0
+        self._is_paused: bool = False
+
+    @property
+    def playback_position(self) -> float:
+        if self._is_paused:
+            return self._playback_position
+        if self.is_playing and not self._is_paused and self._playback_start_time > 0:
+            return self._playback_position + (time.time() - self._playback_start_time)
+        return self._playback_position
+
+    @playback_position.setter
+    def playback_position(self, value: float) -> None:
+        self._playback_position = max(0.0, float(value))
+        if self._is_paused:
+            self._playback_start_time = 0.0
+
+    @property
+    def playback_duration(self) -> float:
+        return self._playback_duration
+
+    @playback_duration.setter
+    def playback_duration(self, value: float) -> None:
+        self._playback_duration = max(0.0, float(value))
+
+    @property
+    def is_paused(self) -> bool:
+        return self._is_paused
 
     def get_asset_reference(self) -> dict[str, str]:
         return clone_asset_reference(self.asset)
