@@ -398,6 +398,123 @@ class AnimatorPanelTests(unittest.TestCase):
         animator = self.api.get_entity("AnimatorSpeedProbe")["components"]["Animator"]
         self.assertAlmostEqual(animator["animations"]["idle"]["fps"], 5.0, delta=0.01)
 
+    def test_animator_panel_duplicate_state(self) -> None:
+        sprite_sheet = self._write_sheet_with_slices("assets/test_animator_dup.png", ["a_0", "a_1", "b_0"])
+        self._create_animator_probe(
+            "AnimatorDupProbe",
+            sprite_sheet,
+            {
+                "idle": {"frames": [0], "slice_names": ["a_0"], "fps": 8.0, "loop": True, "on_complete": None},
+                "run": {"frames": [1, 2], "slice_names": ["a_1", "b_0"], "fps": 12.0, "loop": False, "on_complete": None},
+            },
+        )
+
+        world = self.api.game.world
+        world.selected_entity_name = "AnimatorDupProbe"
+
+        self.assertTrue(self.panel.duplicate_state(world, "idle"))
+        animator = self.api.get_entity("AnimatorDupProbe")["components"]["Animator"]
+        self.assertIn("idle_copy", animator["animations"])
+        self.assertEqual(animator["animations"]["idle_copy"]["slice_names"], ["a_0"])
+        self.assertEqual(animator["animations"]["idle_copy"]["fps"], 8.0)
+        self.assertEqual(animator["animations"]["idle_copy"]["loop"], True)
+
+        self.assertTrue(self.panel.duplicate_state(world, "run", "dash"))
+        animator = self.api.get_entity("AnimatorDupProbe")["components"]["Animator"]
+        self.assertIn("dash", animator["animations"])
+        self.assertEqual(animator["animations"]["dash"]["slice_names"], ["a_1", "b_0"])
+        self.assertEqual(animator["animations"]["dash"]["fps"], 12.0)
+        self.assertEqual(animator["animations"]["dash"]["loop"], False)
+
+    def test_animator_panel_duplicate_state_avoids_name_collision(self) -> None:
+        sprite_sheet = self._write_sheet_with_slices("assets/test_animator_dup2.png", ["x_0"])
+        self._create_animator_probe(
+            "AnimatorDup2Probe",
+            sprite_sheet,
+            {"idle": {"frames": [0], "slice_names": ["x_0"], "fps": 8.0, "loop": True, "on_complete": None}},
+        )
+
+        world = self.api.game.world
+        world.selected_entity_name = "AnimatorDup2Probe"
+
+        self.assertTrue(self.panel.duplicate_state(world, "idle"))
+        self.assertTrue(self.panel.duplicate_state(world, "idle"))
+        animator = self.api.get_entity("AnimatorDup2Probe")["components"]["Animator"]
+        self.assertIn("idle_copy", animator["animations"])
+        self.assertIn("idle_copy_1", animator["animations"])
+
+    def test_animator_panel_rename_state(self) -> None:
+        sprite_sheet = self._write_sheet_with_slices("assets/test_animator_rename.png", ["a_0", "b_0"])
+        self._create_animator_probe(
+            "AnimatorRenameProbe",
+            sprite_sheet,
+            {
+                "idle": {"frames": [0], "slice_names": ["a_0"], "fps": 8.0, "loop": True, "on_complete": None},
+                "run": {"frames": [1], "slice_names": ["b_0"], "fps": 12.0, "loop": False, "on_complete": "idle"},
+            },
+        )
+
+        world = self.api.game.world
+        world.selected_entity_name = "AnimatorRenameProbe"
+        self.panel.selected_state_name = "idle"
+
+        self.assertTrue(self.panel.rename_state(world, "idle", "idle_alt"))
+        animator = self.api.get_entity("AnimatorRenameProbe")["components"]["Animator"]
+        self.assertIn("idle_alt", animator["animations"])
+        self.assertNotIn("idle", animator["animations"])
+        self.assertEqual(animator["default_state"], "idle_alt")
+
+        self.assertTrue(self.panel.rename_state(world, "run", "sprint"))
+        animator = self.api.get_entity("AnimatorRenameProbe")["components"]["Animator"]
+        self.assertEqual(animator["animations"]["sprint"]["on_complete"], "idle_alt")
+
+    def test_animator_panel_set_animator_flip(self) -> None:
+        sprite_sheet = self._write_sheet_with_slices("assets/test_animator_flip.png", ["f_0"])
+        self._create_animator_probe(
+            "AnimatorFlipProbe",
+            sprite_sheet,
+            {"idle": {"frames": [0], "slice_names": ["f_0"], "fps": 8.0, "loop": True, "on_complete": None}},
+        )
+
+        world = self.api.game.world
+        world.selected_entity_name = "AnimatorFlipProbe"
+
+        self.assertTrue(self.panel.set_animator_flip(world, flip_x=True))
+        animator = self.api.get_entity("AnimatorFlipProbe")["components"]["Animator"]
+        self.assertEqual(animator["flip_x"], True)
+
+        self.assertTrue(self.panel.set_animator_flip(world, flip_y=True))
+        animator = self.api.get_entity("AnimatorFlipProbe")["components"]["Animator"]
+        self.assertEqual(animator["flip_y"], True)
+
+        self.assertTrue(self.panel.set_animator_flip(world, flip_x=False))
+        animator = self.api.get_entity("AnimatorFlipProbe")["components"]["Animator"]
+        self.assertEqual(animator["flip_x"], False)
+        self.assertEqual(animator["flip_y"], True)
+
+    def test_animator_panel_set_animator_speed(self) -> None:
+        sprite_sheet = self._write_sheet_with_slices("assets/test_animator_sp.png", ["s_0"])
+        self._create_animator_probe(
+            "AnimatorSpeedPanelProbe",
+            sprite_sheet,
+            {"idle": {"frames": [0], "slice_names": ["s_0"], "fps": 8.0, "loop": True, "on_complete": None}},
+        )
+
+        world = self.api.game.world
+        world.selected_entity_name = "AnimatorSpeedPanelProbe"
+
+        self.assertTrue(self.panel.set_animator_speed(world, 2.0))
+        animator = self.api.get_entity("AnimatorSpeedPanelProbe")["components"]["Animator"]
+        self.assertEqual(animator["speed"], 2.0)
+
+        self.assertTrue(self.panel.set_animator_speed(world, 0.5))
+        animator = self.api.get_entity("AnimatorSpeedPanelProbe")["components"]["Animator"]
+        self.assertEqual(animator["speed"], 0.5)
+
+        self.assertTrue(self.panel.set_animator_speed(world, 0.0))
+        animator = self.api.get_entity("AnimatorSpeedPanelProbe")["components"]["Animator"]
+        self.assertEqual(animator["speed"], 0.01)
+
 
 if __name__ == "__main__":
     unittest.main()

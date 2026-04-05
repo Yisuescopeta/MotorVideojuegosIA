@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from typing import Any, Dict, Optional
 
 from engine.api._context import EngineAPIComponent
@@ -531,6 +532,117 @@ class AuthoringAPI(EngineAPIComponent):
                 animation["on_complete"] = None
         success = self.scene_manager.replace_component_data(entity_name, "Animator", payload)
         return self.ok("Animator state removed", {"entity": entity_name, "state": state_name}) if success else self.fail("Animator state remove failed")
+
+    def duplicate_animator_state(self, entity_name: str, source_state: str, new_state_name: Optional[str] = None) -> ActionResult:
+        self.ensure_edit_mode()
+        if self.scene_manager is None:
+            return self.fail("SceneManager not ready")
+        if not source_state.strip():
+            return self.fail("Source state name is required")
+        payload = self._load_animator_payload(entity_name)
+        if payload is None:
+            return self.fail("Animator not found")
+        animations = payload.setdefault("animations", {})
+        if source_state not in animations:
+            return self.fail(f"Source state '{source_state}' not found")
+
+        base_name = new_state_name.strip() if new_state_name else f"{source_state}_copy"
+        final_name = base_name
+        suffix = 1
+        while final_name in animations:
+            final_name = f"{base_name}_{suffix}"
+            suffix += 1
+
+        animations[final_name] = copy.deepcopy(animations[source_state])
+        success = self.scene_manager.replace_component_data(entity_name, "Animator", payload)
+        return self.ok("Animator state duplicated", {"entity": entity_name, "state": final_name}) if success else self.fail("Animator state duplicate failed")
+
+    def rename_animator_state(self, entity_name: str, old_name: str, new_name: str) -> ActionResult:
+        self.ensure_edit_mode()
+        if self.scene_manager is None:
+            return self.fail("SceneManager not ready")
+        if not old_name.strip() or not new_name.strip():
+            return self.fail("State names cannot be empty")
+        if old_name == new_name:
+            return self.ok("No rename needed", {"entity": entity_name, "state": new_name})
+        payload = self._load_animator_payload(entity_name)
+        if payload is None:
+            return self.fail("Animator not found")
+        animations = payload.setdefault("animations", {})
+        if old_name not in animations:
+            return self.fail(f"State '{old_name}' not found")
+        if new_name in animations:
+            return self.fail(f"State '{new_name}' already exists")
+
+        animations[new_name] = animations.pop(old_name)
+        if payload.get("default_state") == old_name:
+            payload["default_state"] = new_name
+        if payload.get("current_state") == old_name:
+            payload["current_state"] = new_name
+        for animation in animations.values():
+            if animation.get("on_complete") == old_name:
+                animation["on_complete"] = new_name
+
+        success = self.scene_manager.replace_component_data(entity_name, "Animator", payload)
+        return self.ok("Animator state renamed", {"entity": entity_name, "state": new_name}) if success else self.fail("Animator state rename failed")
+
+    def set_animator_flip(self, entity_name: str, flip_x: Optional[bool] = None, flip_y: Optional[bool] = None) -> ActionResult:
+        self.ensure_edit_mode()
+        animator_data = self._load_animator_payload(entity_name)
+        if animator_data is None:
+            return self.fail("Animator not found")
+        if flip_x is not None:
+            animator_data["flip_x"] = bool(flip_x)
+        if flip_y is not None:
+            animator_data["flip_y"] = bool(flip_y)
+        if self.scene_manager is None:
+            return self.fail("SceneManager not ready")
+        success = self.scene_manager.replace_component_data(entity_name, "Animator", animator_data)
+        return self.ok("Animator flip updated", {"entity": entity_name}) if success else self.fail("Animator flip update failed")
+
+    def set_animator_speed(self, entity_name: str, speed: float) -> ActionResult:
+        self.ensure_edit_mode()
+        animator_data = self._load_animator_payload(entity_name)
+        if animator_data is None:
+            return self.fail("Animator not found")
+        animator_data["speed"] = max(0.01, float(speed))
+        if self.scene_manager is None:
+            return self.fail("SceneManager not ready")
+        success = self.scene_manager.replace_component_data(entity_name, "Animator", animator_data)
+        return self.ok("Animator speed updated", {"entity": entity_name, "speed": animator_data["speed"]}) if success else self.fail("Animator speed update failed")
+
+    def get_animator_info(self, entity_name: str) -> Dict[str, Any]:
+        animator_data = self._load_animator_payload(entity_name)
+        if animator_data is None:
+            return {"exists": False}
+
+        animations = animator_data.get("animations", {})
+        states_info = []
+        for state_name, state_data in animations.items():
+            frame_count = len(state_data.get("slice_names", [])) or len(state_data.get("frames", []))
+            duration = (frame_count / max(0.001, state_data.get("fps", 8.0))) if frame_count > 0 else 0.0
+            states_info.append({
+                "name": state_name,
+                "frame_count": frame_count,
+                "fps": state_data.get("fps", 8.0),
+                "loop": state_data.get("loop", True),
+                "on_complete": state_data.get("on_complete"),
+                "duration_seconds": round(duration, 3),
+                "is_default": animator_data.get("default_state", "") == state_name,
+            })
+
+        return {
+            "exists": True,
+            "sprite_sheet": animator_data.get("sprite_sheet_path", ""),
+            "frame_width": animator_data.get("frame_width", 32),
+            "frame_height": animator_data.get("frame_height", 32),
+            "flip_x": animator_data.get("flip_x", False),
+            "flip_y": animator_data.get("flip_y", False),
+            "speed": animator_data.get("speed", 1.0),
+            "default_state": animator_data.get("default_state", ""),
+            "current_state": animator_data.get("current_state", ""),
+            "states": states_info,
+        }
 
     def create_animator_state(
         self,

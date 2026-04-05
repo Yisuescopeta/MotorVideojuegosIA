@@ -60,6 +60,8 @@ class Animator(Component):
         animations: Optional[Dict[str, AnimationData]] = None,
         default_state: str = "idle",
         flip_x: bool = False,
+        flip_y: bool = False,
+        speed: float = 1.0,
     ) -> None:
         self.enabled: bool = True
         self.sprite_sheet_ref = normalize_asset_reference(sprite_sheet_ref if sprite_sheet_ref is not None else sprite_sheet)
@@ -69,6 +71,8 @@ class Animator(Component):
         self.animations: Dict[str, AnimationData] = animations or {}
         self.default_state: str = default_state
         self.flip_x: bool = flip_x
+        self.flip_y: bool = flip_y
+        self.speed: float = max(0.01, float(speed))
 
         self.current_state: str = default_state
         self.current_frame: int = 0
@@ -82,16 +86,45 @@ class Animator(Component):
         self.sprite_sheet_ref = normalize_asset_reference(reference)
         self.sprite_sheet = self.sprite_sheet_ref.get("path", "")
 
-    def play(self, state: str, force_restart: bool = False) -> None:
+    def play(self, state: str, force_restart: bool = False) -> str:
         if state not in self.animations:
             print(f"[WARNING] Animator: estado '{state}' no existe")
-            return
+            return self.current_state
+        previous_state = self.current_state
         if state == self.current_state and not force_restart:
-            return
+            return previous_state
         self.current_state = state
         self.current_frame = 0
         self.elapsed_time = 0.0
         self.is_finished = False
+        return previous_state
+
+    def stop(self) -> None:
+        self.is_finished = True
+
+    def resume(self) -> None:
+        if self.is_finished and self.current_state in self.animations:
+            anim = self.animations[self.current_state]
+            if not anim.loop:
+                self.is_finished = False
+
+    @property
+    def is_playing(self) -> bool:
+        if self.current_state not in self.animations:
+            return False
+        if self.is_finished:
+            return False
+        anim = self.animations[self.current_state]
+        if not anim.loop:
+            return False
+        return True
+
+    @property
+    def normalized_time(self) -> float:
+        anim = self.get_current_animation()
+        if anim is None or anim.get_frame_count() <= 0:
+            return 0.0
+        return self.current_frame / max(1, anim.get_frame_count() - 1)
 
     def get_current_animation(self) -> Optional[AnimationData]:
         return self.animations.get(self.current_state)
@@ -129,6 +162,8 @@ class Animator(Component):
             "frame_width": self.frame_width,
             "frame_height": self.frame_height,
             "flip_x": self.flip_x,
+            "flip_y": self.flip_y,
+            "speed": self.speed,
             "animations": {name: anim.to_dict() for name, anim in self.animations.items()},
             "default_state": self.default_state,
             "current_state": self.current_state,
@@ -155,6 +190,8 @@ class Animator(Component):
             animations=animations,
             default_state=data.get("default_state", data.get("current_state", "idle")),
             flip_x=data.get("flip_x", False),
+            flip_y=data.get("flip_y", False),
+            speed=data.get("speed", 1.0),
         )
         animator.enabled = data.get("enabled", True)
         animator.current_state = data.get("current_state", animator.default_state)
