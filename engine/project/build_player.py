@@ -203,6 +203,14 @@ class _PyInstallerPackager:
     )
 
     def package(self, request: _PackagingRequest) -> _PackagingResult:
+        import importlib.util
+
+        if importlib.util.find_spec("PyInstaller") is None:
+            raise RuntimeError(
+                "PyInstaller is not installed in this Python environment. "
+                "Run: pip install pyinstaller"
+            )
+
         repo_root = Path(request.repo_root).resolve()
         output_root = Path(request.output_root).resolve()
         output_root.parent.mkdir(parents=True, exist_ok=True)
@@ -211,28 +219,36 @@ class _PyInstallerPackager:
         spec_path = work_root / self.SPEC_FILE_NAME
         spec_path.write_text(self._build_spec(request), encoding="utf-8")
 
-        subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "PyInstaller",
-                spec_path.as_posix(),
-                "--noconfirm",
-                "--distpath",
-                output_root.parent.as_posix(),
-                "--workpath",
-                work_root.as_posix(),
-            ],
-            cwd=repo_root,
-            check=True,
-        )
+        log_path = work_root / "pyinstaller.log"
+        cmd = [
+            sys.executable,
+            "-m",
+            "PyInstaller",
+            spec_path.as_posix(),
+            "--noconfirm",
+            "--distpath",
+            output_root.parent.as_posix(),
+            "--workpath",
+            work_root.as_posix(),
+        ]
+        result = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True)
+        combined_log = (result.stdout or "") + ("\n" + result.stderr if result.stderr else "")
+        try:
+            log_path.write_text(combined_log, encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+        if result.returncode != 0:
+            raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
+
         executable_path = output_root / f"{request.executable_name}.exe"
         if not executable_path.exists():
             raise RuntimeError(f"Packaged executable was not generated: {executable_path.as_posix()}")
         return _PackagingResult(executable_path=executable_path.as_posix())
 
     def _build_spec(self, request: _PackagingRequest) -> str:
-        hidden_imports = ",\n        ".join(repr(item) for item in self.HIDDEN_IMPORTS)
+        # The joiner indentation (20 spaces) must match the column of {hidden_imports} in
+        # the f-string template so textwrap.dedent removes exactly the right prefix length.
+        hidden_imports = ",\n                    ".join(repr(item) for item in self.HIDDEN_IMPORTS)
         console_enabled = "True" if request.development_build and request.include_logs else "False"
         return textwrap.dedent(
             f"""\
@@ -431,11 +447,16 @@ class BuildPlayerService:
         except _BuildPlayerFailure as exc:
             errors = sorted(list(exc.diagnostics), key=_diagnostic_sort_key)
         except subprocess.CalledProcessError as exc:
+            stderr_text = (getattr(exc, "stderr", None) or "").strip()
+            snippet = stderr_text[-400:] if len(stderr_text) > 400 else stderr_text
+            msg = f"PyInstaller packaging failed (exit code {exc.returncode})."
+            if snippet:
+                msg += f" Details: {snippet}"
             errors = [
                 self._diagnostic(
                     "error",
                     "build_player.packaging_failed",
-                    f"PyInstaller packaging failed with exit code {exc.returncode}.",
+                    msg,
                     stage="packaging",
                 )
             ]
