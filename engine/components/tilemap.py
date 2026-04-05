@@ -65,8 +65,11 @@ class Tilemap(Component):
         animated: bool = False,
         animation_id: str = "",
         terrain_type: str = "",
+        create_layer: bool = True,
     ) -> None:
-        layer = self._ensure_layer(layer_name)
+        layer = self._ensure_layer(layer_name) if create_layer else self._find_layer(layer_name)
+        if layer is None:
+            raise ValueError(f"Layer '{layer_name}' does not exist and create_layer=False")
         key = f"{int(x)},{int(y)}"
         tiles = layer.setdefault("tiles", {})
         tiles[key] = {
@@ -94,6 +97,7 @@ class Tilemap(Component):
         animated: bool = False,
         animation_id: str = "",
         terrain_type: str = "",
+        create_layer: bool = True,
     ) -> None:
         self.set_tile(
             layer_name,
@@ -107,6 +111,7 @@ class Tilemap(Component):
             animated=animated,
             animation_id=animation_id,
             terrain_type=terrain_type,
+            create_layer=create_layer,
         )
 
     def fill_rect(
@@ -125,8 +130,11 @@ class Tilemap(Component):
         animated: bool = False,
         animation_id: str = "",
         terrain_type: str = "",
+        create_layer: bool = True,
     ) -> int:
-        layer = self._ensure_layer(layer_name)
+        layer = self._ensure_layer(layer_name) if create_layer else self._find_layer(layer_name)
+        if layer is None:
+            raise ValueError(f"Layer '{layer_name}' does not exist and create_layer=False")
         tiles = layer.setdefault("tiles", {})
         count = 0
         x_start_i = int(x_start)
@@ -149,8 +157,10 @@ class Tilemap(Component):
                 count += 1
         return count
 
-    def clear_tile(self, layer_name: str, x: int, y: int) -> None:
-        layer = self._ensure_layer(layer_name)
+    def clear_tile(self, layer_name: str, x: int, y: int, create_layer: bool = True) -> None:
+        layer = self._ensure_layer(layer_name) if create_layer else self._find_layer(layer_name)
+        if layer is None:
+            raise ValueError(f"Layer '{layer_name}' does not exist and create_layer=False")
         layer.setdefault("tiles", {}).pop(f"{int(x)},{int(y)}", None)
 
     def get_tile(self, layer_name: str, x: int, y: int) -> dict[str, Any] | None:
@@ -308,6 +318,12 @@ class Tilemap(Component):
         return None
 
     def _ensure_layer(self, layer_name: str) -> dict[str, Any]:
+        """Find existing layer or create new one with default properties.
+
+        WARNING: This method performs implicit layer creation (autovivification).
+        This can hide bugs when typos in layer names create phantom layers.
+        Use create_layer=False in set_tile/fill_rect/clear_tile to disable.
+        """
         layer = self._find_layer(layer_name)
         if layer is not None:
             return layer

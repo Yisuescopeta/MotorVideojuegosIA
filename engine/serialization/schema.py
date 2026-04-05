@@ -851,8 +851,8 @@ def _validate_tilemap(data: dict[str, Any], *, path: str) -> list[str]:
         _expect_int(data["cell_height"], path=f"{path}.cell_height", errors=errors, minimum=1)
     if "orientation" in data:
         orientation = _expect_string(data["orientation"], path=f"{path}.orientation", errors=errors, non_empty=True)
-        if isinstance(orientation, str) and orientation.strip() != "orthogonal":
-            errors.append(f"{path}.orientation: expected orthogonal")
+        if isinstance(orientation, str) and orientation.strip().lower() not in ("orthogonal", "isometric", "hexagonal", "staggered"):
+            errors.append(f"{path}.orientation: expected orthogonal, isometric, hexagonal, or staggered (component normalizes to orthogonal if unsupported)")
     _validate_asset_reference_consistency(data, ref_key="tileset", path_key="tileset_path", path=path, errors=errors)
     if "metadata" in data:
         metadata = _expect_object(data["metadata"], path=f"{path}.metadata", errors=errors)

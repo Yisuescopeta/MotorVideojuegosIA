@@ -607,6 +607,144 @@ class TilemapComponentTests(unittest.TestCase):
         self.assertEqual(tile["animation_id"], "")
         self.assertEqual(tile["terrain_type"], "")
 
+    def test_tilemap_set_tile_create_layer_false_raises(self) -> None:
+        from engine.components.tilemap import Tilemap
+
+        tilemap = Tilemap(layers=[{"name": "Ground", "tiles": []}])
+
+        with self.assertRaises(ValueError) as ctx:
+            tilemap.set_tile("Nonexistent", 0, 0, "grass", create_layer=False)
+        self.assertIn("Nonexistent", str(ctx.exception))
+        self.assertIn("does not exist", str(ctx.exception))
+
+    def test_tilemap_fill_rect_create_layer_false_raises(self) -> None:
+        from engine.components.tilemap import Tilemap
+
+        tilemap = Tilemap(layers=[{"name": "Ground", "tiles": []}])
+
+        with self.assertRaises(ValueError) as ctx:
+            tilemap.fill_rect("Nonexistent", 0, 0, 2, 2, "grass", create_layer=False)
+        self.assertIn("Nonexistent", str(ctx.exception))
+
+    def test_tilemap_clear_tile_create_layer_false_raises(self) -> None:
+        from engine.components.tilemap import Tilemap
+
+        tilemap = Tilemap(layers=[{"name": "Ground", "tiles": []}])
+
+        with self.assertRaises(ValueError) as ctx:
+            tilemap.clear_tile("Nonexistent", 0, 0, create_layer=False)
+        self.assertIn("Nonexistent", str(ctx.exception))
+
+    def test_tilemap_set_tile_full_accepts_create_layer(self) -> None:
+        from engine.components.tilemap import Tilemap
+
+        tilemap = Tilemap(layers=[{"name": "Ground", "tiles": []}])
+
+        tilemap.set_tile_full(
+            "Ground",
+            1, 2, "animated_tile",
+            animated=True,
+            animation_id="test_anim",
+            terrain_type="water",
+            flags=["solid"],
+            create_layer=True,
+        )
+
+        tile = tilemap.get_tile("Ground", 1, 2)
+        self.assertIsNotNone(tile)
+        self.assertEqual(tile["tile_id"], "animated_tile")
+        self.assertEqual(tile["animated"], True)
+        self.assertEqual(tile["animation_id"], "test_anim")
+        self.assertEqual(tile["terrain_type"], "water")
+
+    def test_tilemap_set_tile_full_create_layer_false_raises(self) -> None:
+        from engine.components.tilemap import Tilemap
+
+        tilemap = Tilemap(layers=[{"name": "Ground", "tiles": []}])
+
+        with self.assertRaises(ValueError) as ctx:
+            tilemap.set_tile_full("Nonexistent", 0, 0, "grass", create_layer=False)
+        self.assertIn("does not exist", str(ctx.exception))
+
+    def test_tilemap_layer_autovivification_default_behavior(self) -> None:
+        from engine.components.tilemap import Tilemap
+
+        tilemap = Tilemap(layers=[])
+
+        tilemap.set_tile("NewLayer", 0, 0, "grass")
+        layer = tilemap.get_layer("NewLayer")
+        self.assertIsNotNone(layer)
+        self.assertEqual(layer["name"], "NewLayer")
+        self.assertEqual(layer["visible"], True)
+        self.assertEqual(layer["opacity"], 1.0)
+        self.assertEqual(layer["locked"], False)
+        self.assertEqual(layer["offset_x"], 0.0)
+        self.assertEqual(layer["offset_y"], 0.0)
+        self.assertEqual(layer["collision_layer"], 0)
+
+    def test_tilemap_empty_layer_name_uses_default(self) -> None:
+        from engine.components.tilemap import Tilemap
+
+        tilemap = Tilemap(default_layer_name="DefaultLayer")
+
+        tilemap.set_tile("", 0, 0, "grass")
+        layer = tilemap.get_layer("DefaultLayer")
+        self.assertIsNotNone(layer)
+
+    def test_tilemap_duplicate_layer_returns_existing(self) -> None:
+        from engine.components.tilemap import Tilemap
+
+        tilemap = Tilemap(layers=[{"name": "Ground", "tiles": []}])
+
+        result1 = tilemap.add_layer("Ground")
+        result2 = tilemap.add_layer("Ground")
+
+        self.assertEqual(result1, result2)
+        self.assertEqual(len(tilemap.layers), 1)
+
+    def test_tilemap_metadata_per_layer_survives_roundtrip(self) -> None:
+        from engine.components.tilemap import Tilemap
+
+        tilemap = Tilemap(
+            layers=[{
+                "name": "Ground",
+                "tiles": [],
+                "metadata": {"purpose": "terrain", "priority": 1}
+            }]
+        )
+
+        data = tilemap.to_dict()
+        restored = Tilemap.from_dict(data)
+
+        layer = restored.get_layer("Ground")
+        self.assertIsNotNone(layer)
+        self.assertEqual(layer["metadata"]["purpose"], "terrain")
+        self.assertEqual(layer["metadata"]["priority"], 1)
+
+    def test_tilemap_get_tile_nonexistent_layer_returns_none(self) -> None:
+        from engine.components.tilemap import Tilemap
+
+        tilemap = Tilemap(layers=[{"name": "Ground", "tiles": []}])
+
+        tile = tilemap.get_tile("Nonexistent", 0, 0)
+        self.assertIsNone(tile)
+
+    def test_tilemap_tileset_reference_roundtrip(self) -> None:
+        from engine.components.tilemap import Tilemap
+
+        tilemap = Tilemap(
+            tileset={"guid": "abc123", "path": "assets/tiles.png"},
+            tileset_path="assets/tiles.png",
+            layers=[{"name": "Ground", "tiles": []}]
+        )
+
+        data = tilemap.to_dict()
+        restored = Tilemap.from_dict(data)
+
+        self.assertEqual(restored.tileset.get("guid"), "abc123")
+        self.assertEqual(restored.tileset.get("path"), "assets/tiles.png")
+        self.assertEqual(restored.tileset_path, "assets/tiles.png")
+
 
 if __name__ == "__main__":
     unittest.main()
