@@ -226,6 +226,13 @@ def _canonicalize_tilemap(payload: dict[str, Any]) -> None:
     payload.setdefault("tileset", {})
     payload.setdefault("tileset_path", "")
     payload.setdefault("layers", [])
+    payload.setdefault("metadata", {})
+    payload.setdefault("tileset_tile_width", 16)
+    payload.setdefault("tileset_tile_height", 16)
+    payload.setdefault("tileset_columns", 0)
+    payload.setdefault("tileset_spacing", 0)
+    payload.setdefault("tileset_margin", 0)
+    payload.setdefault("default_layer_name", "Layer")
 
 
 def _canonicalize_component_payload(component_name: str, payload: dict[str, Any], *, entity_path: str) -> None:
@@ -778,6 +785,12 @@ def _validate_tile_entry(tile: Any, *, path: str) -> list[str]:
         custom = _expect_object(tile_payload["custom"], path=f"{path}.custom", errors=errors)
         if custom is not None:
             _expect_json_serializable(custom, path=f"{path}.custom", errors=errors)
+    if "animated" in tile_payload:
+        _expect_bool(tile_payload["animated"], path=f"{path}.animated", errors=errors)
+    if "animation_id" in tile_payload:
+        _expect_string(tile_payload["animation_id"], path=f"{path}.animation_id", errors=errors)
+    if "terrain_type" in tile_payload:
+        _expect_string(tile_payload["terrain_type"], path=f"{path}.terrain_type", errors=errors)
     return errors
 
 
@@ -792,6 +805,22 @@ def _validate_tile_layer(layer: Any, *, path: str) -> list[str]:
         _expect_bool(layer_payload["visible"], path=f"{path}.visible", errors=errors)
     if "opacity" in layer_payload:
         _expect_number(layer_payload["opacity"], path=f"{path}.opacity", errors=errors, minimum=0.0, maximum=1.0)
+    if "locked" in layer_payload:
+        _expect_bool(layer_payload["locked"], path=f"{path}.locked", errors=errors)
+    if "offset_x" in layer_payload:
+        _expect_number(layer_payload["offset_x"], path=f"{path}.offset_x", errors=errors)
+    if "offset_y" in layer_payload:
+        _expect_number(layer_payload["offset_y"], path=f"{path}.offset_y", errors=errors)
+    if "collision_layer" in layer_payload:
+        _expect_int(layer_payload["collision_layer"], path=f"{path}.collision_layer", errors=errors, minimum=0)
+    if "tilemap_source" in layer_payload and layer_payload["tilemap_source"] is not None:
+        ts = layer_payload["tilemap_source"]
+        if not isinstance(ts, (dict, str)):
+            errors.append(f"{path}.tilemap_source: expected asset reference")
+        elif isinstance(ts, dict):
+            for field_name in ("guid", "path"):
+                if field_name in ts and not isinstance(ts.get(field_name), str):
+                    errors.append(f"{path}.tilemap_source.{field_name}: expected string")
     if "metadata" in layer_payload:
         metadata = _expect_object(layer_payload["metadata"], path=f"{path}.metadata", errors=errors)
         if metadata is not None:
@@ -825,6 +854,18 @@ def _validate_tilemap(data: dict[str, Any], *, path: str) -> list[str]:
         if isinstance(orientation, str) and orientation.strip() != "orthogonal":
             errors.append(f"{path}.orientation: expected orthogonal")
     _validate_asset_reference_consistency(data, ref_key="tileset", path_key="tileset_path", path=path, errors=errors)
+    if "metadata" in data:
+        metadata = _expect_object(data["metadata"], path=f"{path}.metadata", errors=errors)
+        if metadata is not None:
+            _expect_json_serializable(metadata, path=f"{path}.metadata", errors=errors)
+    for key in ("tileset_tile_width", "tileset_tile_height"):
+        if key in data:
+            _expect_int(data[key], path=f"{path}.{key}", errors=errors, minimum=1)
+    for key in ("tileset_columns", "tileset_spacing", "tileset_margin"):
+        if key in data:
+            _expect_int(data[key], path=f"{path}.{key}", errors=errors, minimum=0)
+    if "default_layer_name" in data:
+        _expect_string(data["default_layer_name"], path=f"{path}.default_layer_name", errors=errors)
     if "layers" in data:
         layers = data["layers"]
         if not isinstance(layers, list):
