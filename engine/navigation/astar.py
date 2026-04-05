@@ -125,14 +125,16 @@ class AStarPathfinder:
     def _get_neighbors(
         self, pos: Vec2, diagonal: bool
     ) -> list[tuple[Vec2, bool]]:
-        assert self._grid is not None
+        if self._grid is None:
+            raise RuntimeError("AStarPathfinder._get_neighbors: grid is not set")
         if diagonal:
             return list(self._grid.neighbors_8(pos))
         return list(self._grid.neighbors_4(pos))
 
     def _is_diagonal_move_allowed(self, from_pos: Vec2, to_pos: Vec2) -> bool:
         """Check if diagonal move is allowed (no corner cutting)."""
-        assert self._grid is not None
+        if self._grid is None:
+            raise RuntimeError("AStarPathfinder._is_diagonal_move_allowed: grid is not set")
         dx = to_pos.x - from_pos.x
         dy = to_pos.y - from_pos.y
         if dx == 0 or dy == 0:
@@ -150,7 +152,8 @@ class AStarPathfinder:
         return CARDINAL_COST * (dx + dy) + (DIAGONAL_COST - 2 * CARDINAL_COST) * min(dx, dy)
 
     def _move_cost(self, pos: Vec2, diagonal: bool) -> int:
-        assert self._grid is not None
+        if self._grid is None:
+            raise RuntimeError("AStarPathfinder._move_cost: grid is not set")
         cell = self._grid.get_cell_vec(pos)
         base = DIAGONAL_COST if diagonal else CARDINAL_COST
         return (base * cell.cost_multiplier) // 100
@@ -172,7 +175,8 @@ class AStarPathfinder:
         path = [current]
         while came_from[current] is not None:
             prev = came_from[current]
-            assert prev is not None
+            if prev is None:
+                raise RuntimeError("AStarPathfinder._reconstruct_path: unexpected None predecessor")
             current = prev
             path.append(current)
         path.reverse()
@@ -180,7 +184,8 @@ class AStarPathfinder:
 
     def is_path_valid(self, path: list[Vec2]) -> bool:
         """Check if a path is valid (all cells walkable)."""
-        assert self._grid is not None
+        if self._grid is None:
+            raise RuntimeError("AStarPathfinder.is_path_valid: grid is not set")
         if not path:
             return False
         for pos in path:
