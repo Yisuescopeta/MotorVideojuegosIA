@@ -425,6 +425,199 @@ class AuthoringAPI(EngineAPIComponent):
         payload = self._load_tilemap_payload(entity_name)
         return payload or {}
 
+    def get_tilemap_layer(self, entity_name: str, layer_name: str) -> Dict[str, Any]:
+        payload = self._load_tilemap_payload(entity_name)
+        if payload is None:
+            return {}
+        tilemap = Tilemap.from_dict(payload)
+        layer = tilemap.get_layer(layer_name)
+        return layer or {}
+
+    def create_tilemap_layer(
+        self,
+        entity_name: str,
+        layer_name: str,
+        *,
+        visible: bool = True,
+        opacity: float = 1.0,
+        locked: bool = False,
+        offset_x: float = 0.0,
+        offset_y: float = 0.0,
+        collision_layer: int = 0,
+        tilemap_source: str = "",
+        metadata: Dict[str, Any] | None = None,
+    ) -> ActionResult:
+        self.ensure_edit_mode()
+        if self.scene_manager is None:
+            return self.fail("SceneManager not ready")
+        payload = self._load_tilemap_payload(entity_name)
+        if payload is None:
+            return self.fail("Tilemap not found")
+        tilemap = Tilemap.from_dict(payload)
+        source_ref = self.api.get_asset_reference(tilemap_source) if tilemap_source else {}
+        layer = tilemap.add_layer(
+            layer_name,
+            visible=visible,
+            opacity=opacity,
+            locked=locked,
+            offset_x=offset_x,
+            offset_y=offset_y,
+            collision_layer=collision_layer,
+            tilemap_source=source_ref if (source_ref.get("guid") or source_ref.get("path")) else tilemap_source,
+            metadata=metadata,
+        )
+        success = self.scene_manager.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
+        return self.ok("Tilemap layer created", {"entity": entity_name, "layer": layer.get("name")}) if success else self.fail("Tilemap layer creation failed")
+
+    def update_tilemap_layer(
+        self,
+        entity_name: str,
+        layer_name: str,
+        *,
+        visible: bool | None = None,
+        opacity: float | None = None,
+        locked: bool | None = None,
+        offset_x: float | None = None,
+        offset_y: float | None = None,
+        collision_layer: int | None = None,
+        tilemap_source: str | None = None,
+        metadata: Dict[str, Any] | None = None,
+    ) -> ActionResult:
+        self.ensure_edit_mode()
+        if self.scene_manager is None:
+            return self.fail("SceneManager not ready")
+        payload = self._load_tilemap_payload(entity_name)
+        if payload is None:
+            return self.fail("Tilemap not found")
+        tilemap = Tilemap.from_dict(payload)
+        source_ref = self.api.get_asset_reference(tilemap_source) if tilemap_source is not None else None
+        success = tilemap.set_layer_properties(
+            layer_name,
+            visible=visible,
+            opacity=opacity,
+            locked=locked,
+            offset_x=offset_x,
+            offset_y=offset_y,
+            collision_layer=collision_layer,
+            tilemap_source=source_ref if (source_ref is not None and (source_ref.get("guid") or source_ref.get("path"))) else tilemap_source,
+            metadata=metadata,
+        )
+        if not success:
+            return self.fail(f"Layer '{layer_name}' not found")
+        success = self.scene_manager.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
+        return self.ok("Tilemap layer updated", {"entity": entity_name, "layer": layer_name}) if success else self.fail("Tilemap layer update failed")
+
+    def delete_tilemap_layer(self, entity_name: str, layer_name: str) -> ActionResult:
+        self.ensure_edit_mode()
+        if self.scene_manager is None:
+            return self.fail("SceneManager not ready")
+        payload = self._load_tilemap_payload(entity_name)
+        if payload is None:
+            return self.fail("Tilemap not found")
+        tilemap = Tilemap.from_dict(payload)
+        success = tilemap.remove_layer(layer_name)
+        if not success:
+            return self.fail(f"Layer '{layer_name}' not found")
+        success = self.scene_manager.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
+        return self.ok("Tilemap layer deleted", {"entity": entity_name, "layer": layer_name}) if success else self.fail("Tilemap layer deletion failed")
+
+    def set_tilemap_tile_full(
+        self,
+        entity_name: str,
+        layer_name: str,
+        x: int,
+        y: int,
+        tile_id: str,
+        *,
+        source: str = "",
+        flags: list[str] | None = None,
+        tags: list[str] | None = None,
+        custom: Dict[str, Any] | None = None,
+        animated: bool = False,
+        animation_id: str = "",
+        terrain_type: str = "",
+    ) -> ActionResult:
+        self.ensure_edit_mode()
+        if self.scene_manager is None:
+            return self.fail("SceneManager not ready")
+        payload = self._load_tilemap_payload(entity_name)
+        if payload is None:
+            return self.fail("Tilemap not found")
+        tilemap = Tilemap.from_dict(payload)
+        source_ref = self.api.get_asset_reference(source) if source else {}
+        tilemap.set_tile_full(
+            layer_name,
+            x,
+            y,
+            tile_id,
+            source=source_ref if (source_ref.get("guid") or source_ref.get("path")) else source,
+            flags=flags,
+            tags=tags,
+            custom=custom,
+            animated=animated,
+            animation_id=animation_id,
+            terrain_type=terrain_type,
+        )
+        success = self.scene_manager.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
+        return self.ok("Tilemap tile full updated", {"entity": entity_name, "layer": layer_name, "x": x, "y": y}) if success else self.fail("Tilemap tile update failed")
+
+    def bulk_set_tilemap_tiles(
+        self,
+        entity_name: str,
+        layer_name: str,
+        tiles: list[Dict[str, Any]],
+    ) -> ActionResult:
+        self.ensure_edit_mode()
+        if self.scene_manager is None:
+            return self.fail("SceneManager not ready")
+        payload = self._load_tilemap_payload(entity_name)
+        if payload is None:
+            return self.fail("Tilemap not found")
+        tilemap = Tilemap.from_dict(payload)
+        count = 0
+        for tile_spec in tiles:
+            x = int(tile_spec.get("x", 0))
+            y = int(tile_spec.get("y", 0))
+            tile_id = str(tile_spec.get("tile_id", ""))
+            source = tile_spec.get("source", "")
+            source_ref = self.api.get_asset_reference(source) if source else {}
+            tilemap.set_tile_full(
+                layer_name,
+                x,
+                y,
+                tile_id,
+                source=source_ref if (source_ref.get("guid") or source_ref.get("path")) else source,
+                flags=tile_spec.get("flags"),
+                tags=tile_spec.get("tags"),
+                custom=tile_spec.get("custom"),
+                animated=tile_spec.get("animated", False),
+                animation_id=str(tile_spec.get("animation_id", "")),
+                terrain_type=str(tile_spec.get("terrain_type", "")),
+            )
+            count += 1
+        success = self.scene_manager.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
+        return self.ok("Bulk tiles set", {"entity": entity_name, "layer": layer_name, "count": count}) if success else self.fail("Bulk tile update failed")
+
+    def resize_tilemap(
+        self,
+        entity_name: str,
+        cell_width: int,
+        cell_height: int,
+        *,
+        offset_x: int = 0,
+        offset_y: int = 0,
+    ) -> ActionResult:
+        self.ensure_edit_mode()
+        if self.scene_manager is None:
+            return self.fail("SceneManager not ready")
+        payload = self._load_tilemap_payload(entity_name)
+        if payload is None:
+            return self.fail("Tilemap not found")
+        tilemap = Tilemap.from_dict(payload)
+        tilemap.resize(cell_width, cell_height, offset_x=offset_x, offset_y=offset_y)
+        success = self.scene_manager.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
+        return self.ok("Tilemap resized", {"entity": entity_name, "cell_width": cell_width, "cell_height": cell_height}) if success else self.fail("Tilemap resize failed")
+
     def list_animator_states(self, entity_name: str) -> list[Dict[str, Any]]:
         entity = self.require_entity(entity_name)
         from engine.components.animator import Animator
