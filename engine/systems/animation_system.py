@@ -75,7 +75,6 @@ class AnimationSystem:
 
         while animator.elapsed_time >= frame_duration:
             animator.elapsed_time -= frame_duration
-            previous_frame = animator.current_frame
             animator.current_frame += 1
 
             if animator.current_frame >= anim.get_frame_count():
@@ -94,9 +93,6 @@ class AnimationSystem:
                             self._emit_state_changed(entity, previous_state, animator.current_state)
 
                     break
-
-            if previous_frame != animator.current_frame and animator.current_frame == 0 and not anim.loop:
-                self._emit_animation_end(entity, animator.current_state, animator.normalized_time)
 
     def _emit_animation_end(self, entity: Entity, animation_name: str, normalized_time: float) -> None:
         """Emite evento de animación terminada."""

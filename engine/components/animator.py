@@ -114,9 +114,6 @@ class Animator(Component):
             return False
         if self.is_finished:
             return False
-        anim = self.animations[self.current_state]
-        if not anim.loop:
-            return False
         return True
 
     @property

@@ -80,6 +80,14 @@ class AnimatorComponentTests(unittest.TestCase):
         animator.is_finished = True
         self.assertFalse(animator.is_playing)
 
+    def test_animator_is_playing_non_loop_active(self) -> None:
+        animator = Animator(animations={"idle": AnimationData(loop=False, slice_names=["a", "b", "c"])})
+        self.assertTrue(animator.is_playing)
+        animator.current_frame = 1
+        self.assertTrue(animator.is_playing)
+        animator.is_finished = True
+        self.assertFalse(animator.is_playing)
+
     def test_animator_is_playing_no_animations(self) -> None:
         animator = Animator()
         self.assertFalse(animator.is_playing)
