@@ -200,6 +200,8 @@ class _PyInstallerPackager:
         "cli.runtime_runner",
         "cli.headless_game",
         "player_main",
+        "pyray",
+        "raylib",
     )
 
     def package(self, request: _PackagingRequest) -> _PackagingResult:
@@ -254,25 +256,75 @@ class _PyInstallerPackager:
             f"""\
             # -*- mode: python ; coding: utf-8 -*-
             import os
-            from PyInstaller.utils.hooks import collect_dynamic_libs
+            import sys as _sys
+            import site as _site_module
+            from PyInstaller.utils.hooks import collect_dynamic_libs, collect_all
 
             block_cipher = None
 
             PROJECT_ROOT = {Path(request.repo_root).resolve().as_posix()!r}
+
+
+            def _find_real_pyray_sp():
+                \"\"\"Site-packages dir with the real pyray (not the local project stub shim).
+
+                The project ships pyray/__init__.py as a compatibility shim.  If that shim
+                ends up in pathex before the real site-packages, PyInstaller bundles the
+                stub and raylib functions become no-ops — the window never opens.
+                \"\"\"
+                local_shim = os.path.normcase(os.path.join(PROJECT_ROOT, "pyray"))
+                candidates = []
+                try:
+                    candidates += _site_module.getsitepackages()
+                except Exception:
+                    pass
+                try:
+                    candidates.append(_site_module.getusersitepackages())
+                except Exception:
+                    pass
+                for sp in candidates:
+                    pyray_dir = os.path.join(sp, "pyray")
+                    if not os.path.isdir(pyray_dir):
+                        continue
+                    if os.path.normcase(pyray_dir) == local_shim:
+                        continue
+                    init_py = os.path.join(pyray_dir, "__init__.py")
+                    if not os.path.isfile(init_py):
+                        continue
+                    try:
+                        with open(init_py, encoding="utf-8", errors="replace") as f:
+                            content = f.read()
+                        if "sitecustomize" not in content:
+                            return sp
+                    except Exception:
+                        continue
+                return None
+
+
+            _real_sp = _find_real_pyray_sp()
+            _pathex = ([_real_sp] if _real_sp else []) + [PROJECT_ROOT]
+
+            if _real_sp and _real_sp not in _sys.path:
+                _sys.path.insert(0, _real_sp)
+
             raylib_binaries = collect_dynamic_libs("raylib")
+            try:
+                _pyray_datas, _pyray_binaries, _pyray_hidden = collect_all("pyray")
+            except Exception:
+                _pyray_datas, _pyray_binaries, _pyray_hidden = [], [], []
 
             a = Analysis(
                 [os.path.join(PROJECT_ROOT, {self.PLAYER_ENTRYPOINT!r})],
-                pathex=[PROJECT_ROOT],
-                binaries=raylib_binaries,
-                datas=[],
+                pathex=_pathex,
+                binaries=raylib_binaries + _pyray_binaries,
+                datas=[] + _pyray_datas,
                 hiddenimports=[
                     {hidden_imports}
-                ],
+                ] + _pyray_hidden,
                 hookspath=[],
                 hooksconfig={{}},
                 runtime_hooks=[],
-                excludes=["bandit", "mypy", "ruff", "pip_audit", "pytest"],
+                excludes=["sitecustomize", "bandit", "mypy", "ruff", "pip_audit", "pytest"],
                 win_no_prefer_redirects=False,
                 win_private_assemblies=False,
                 cipher=block_cipher,
