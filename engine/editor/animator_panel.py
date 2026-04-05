@@ -8,7 +8,6 @@ import copy
 from typing import Any, Dict, List, Optional
 
 import pyray as rl
-
 from engine.assets.asset_service import AssetService
 from engine.components.animator import Animator
 from engine.editor.render_safety import editor_scissor
@@ -244,6 +243,90 @@ class AnimatorPanel:
             self.selected_frame_index = 0
         return success
 
+    def duplicate_state(self, world: Any, state_name: str, new_name: Optional[str] = None) -> bool:
+        context = self.get_selection_context(world)
+        entity_name = context.get("entity_name", "")
+        if not entity_name:
+            return False
+        payload = self._get_animator_payload(world, entity_name)
+        if payload is None:
+            return False
+        animations = payload.setdefault("animations", {})
+        if state_name not in animations:
+            return False
+
+        base_name = new_name.strip() if new_name else f"{state_name}_copy"
+        final_name = base_name
+        suffix = 1
+        while final_name in animations:
+            final_name = f"{base_name}_{suffix}"
+            suffix += 1
+
+        animations[final_name] = copy.deepcopy(animations[state_name])
+        success = self._replace_animator_payload(world, entity_name, payload)
+        if success:
+            self.selected_state_name = final_name
+            self.selected_frame_index = 0
+        return success
+
+    def rename_state(self, world: Any, old_name: str, new_name: str) -> bool:
+        context = self.get_selection_context(world)
+        entity_name = context.get("entity_name", "")
+        if not entity_name:
+            return False
+        if not old_name.strip() or not new_name.strip():
+            return False
+        if old_name == new_name:
+            return True
+        payload = self._get_animator_payload(world, entity_name)
+        if payload is None:
+            return False
+        animations = payload.setdefault("animations", {})
+        if old_name not in animations:
+            return False
+        if new_name in animations:
+            return False
+
+        animations[new_name] = animations.pop(old_name)
+        if payload.get("default_state") == old_name:
+            payload["default_state"] = new_name
+        if payload.get("current_state") == old_name:
+            payload["current_state"] = new_name
+        for animation in animations.values():
+            if animation.get("on_complete") == old_name:
+                animation["on_complete"] = new_name
+
+        success = self._replace_animator_payload(world, entity_name, payload)
+        if success:
+            self.selected_state_name = new_name
+            self.selected_frame_index = 0
+        return success
+
+    def set_animator_flip(self, world: Any, flip_x: Optional[bool] = None, flip_y: Optional[bool] = None) -> bool:
+        context = self.get_selection_context(world)
+        entity_name = context.get("entity_name", "")
+        if not entity_name:
+            return False
+        payload = self._get_animator_payload(world, entity_name)
+        if payload is None:
+            return False
+        if flip_x is not None:
+            payload["flip_x"] = bool(flip_x)
+        if flip_y is not None:
+            payload["flip_y"] = bool(flip_y)
+        return self._replace_animator_payload(world, entity_name, payload)
+
+    def set_animator_speed(self, world: Any, speed: float) -> bool:
+        context = self.get_selection_context(world)
+        entity_name = context.get("entity_name", "")
+        if not entity_name:
+            return False
+        payload = self._get_animator_payload(world, entity_name)
+        if payload is None:
+            return False
+        payload["speed"] = max(0.01, float(speed))
+        return self._replace_animator_payload(world, entity_name, payload)
+
     def add_frame(self, world: Any, state_name: str) -> bool:
         context = self.get_selection_context(world)
         available = list(context.get("available_slices", []))
@@ -370,7 +453,7 @@ class AnimatorPanel:
             rl.draw_rectangle_rec(view_rect, self.BG_COLOR)
 
             context = self.get_selection_context(world)
-            status = context.get("status")
+            status = context.get("status") or "unknown"
             if status != "ready":
                 self._draw_empty_state(status, x, y, width, height)
                 return
