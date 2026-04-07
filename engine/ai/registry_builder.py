@@ -412,23 +412,23 @@ class CapabilityRegistryBuilder:
 
     def _register_animator_capabilities(self) -> None:
         self._add(Capability(
-            id="animator:ensure",
-            summary="Ensure Animator component exists on entity (creates if missing)",
+            id="animator:set_sheet",
+            summary="Set the sprite sheet asset for an Animator",
             mode="edit",
-            api_methods=["AuthoringAPI.ensure_animator"],
-            cli_command="motor animator ensure <entity> [--sheet <asset>]",
+            api_methods=["AuthoringAPI.set_animator_sprite_sheet"],
+            cli_command="motor animator set-sheet <entity> <asset>",
             example=CapabilityExample(
-                description="Ensure Player has an Animator component",
+                description="Set player sprite sheet",
                 api_calls=[
-                    {"method": "ensure_animator", "args": {
+                    {"method": "set_animator_sprite_sheet", "args": {
                         "entity_name": "Player",
-                        "sprite_sheet": "assets/player.png",
+                        "asset_path": "assets/player.png",
                     }},
                 ],
-                expected_outcome="Player has Animator component, optionally with sprite sheet set",
+                expected_outcome="Player's Animator now references the specified sprite sheet",
             ),
-            notes="Idempotent: creates only if missing. Use before adding animation states.",
-            tags=["animator", "animation", "component", "setup"],
+            notes="The asset must have slices defined. Used before creating animation states.",
+            tags=["animator", "setup"],
         ))
 
         self._add(Capability(
@@ -489,26 +489,6 @@ class CapabilityRegistryBuilder:
             ),
             notes="Useful for debugging animation states and verifying configuration.",
             tags=["animator", "query"],
-        ))
-
-        self._add(Capability(
-            id="animator:set_sheet",
-            summary="Set the sprite sheet asset for an Animator",
-            mode="edit",
-            api_methods=["AuthoringAPI.set_animator_sprite_sheet"],
-            cli_command="motor animator set-sheet <entity> <asset>",
-            example=CapabilityExample(
-                description="Set player sprite sheet",
-                api_calls=[
-                    {"method": "set_animator_sprite_sheet", "args": {
-                        "entity_name": "Player",
-                        "asset_path": "assets/player.png",
-                    }},
-                ],
-                expected_outcome="Player's Animator now references the specified sprite sheet",
-            ),
-            notes="The asset must have slices defined. Used before creating animation states.",
-            tags=["animator", "setup"],
         ))
 
     def _register_prefab_capabilities(self) -> None:
@@ -602,15 +582,15 @@ class CapabilityRegistryBuilder:
         ))
 
         self._add(Capability(
-            id="project:info",
-            summary="Get the current project's information summary",
+            id="project:manifest",
+            summary="Get the current project's manifest summary",
             mode="both",
-            api_methods=["AssetsProjectAPI.get_project_info"],
+            api_methods=["AssetsProjectAPI.get_project_manifest"],
             cli_command="motor project info",
             example=CapabilityExample(
-                description="Get project info",
+                description="Get project manifest",
                 api_calls=[
-                    {"method": "get_project_info", "args": {}},
+                    {"method": "get_project_manifest", "args": {}},
                 ],
                 expected_outcome="Returns project name, root, paths, engine_version",
             ),
@@ -784,16 +764,16 @@ class CapabilityRegistryBuilder:
             id="introspect:capabilities",
             summary="Query this capability registry itself",
             mode="both",
-            api_methods=["CapabilityRegistry.list_all", "CapabilityRegistry.get"],
-            cli_command="motor capabilities [list|get <id>]",
+            api_methods=["cmd_capabilities"],
+            cli_command="motor capabilities [--json]",
             example=CapabilityExample(
-                description="List all scene-related capabilities",
+                description="List all capabilities in JSON format",
                 api_calls=[
-                    {"method": "list_by_tag", "args": {"tag": "scene"}},
+                    {"method": "cmd_capabilities", "args": {"json_output": True}},
                 ],
-                expected_outcome="Returns capabilities filtered by tag",
+                expected_outcome="Returns full capability registry as JSON",
             ),
-            notes="The registry describes itself. Use for discovering available operations.",
+            notes="The registry is accessible via 'motor capabilities' CLI command. Use for discovering available operations.",
             tags=["introspection", "meta"],
         ))
 
