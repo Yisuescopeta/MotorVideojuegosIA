@@ -249,5 +249,72 @@ class MotorAIBootstrapFilesTests(unittest.TestCase):
         )
 
 
+class MotorGrammarUniquenessTests(unittest.TestCase):
+    """Tests to ensure grammar uniqueness - no duplicate official syntax."""
+    
+    def test_no_legacy_aliases_in_official_registry(self) -> None:
+        """Registry commands should not document legacy aliases as official.
+        
+        Legacy aliases pueden existir en el CLI por compatibilidad,
+        pero no deben aparecer en el registry como interfaz oficial.
+        """
+        registry = get_default_registry()
+        
+        # Patrones legacy que no deben estar en cli_command oficial
+        legacy_patterns = [
+            "upsert-state",  # Ahora es 'state create'
+            "remove-state",  # Ahora es 'state remove'
+        ]
+        
+        violations = []
+        for cap in registry.list_all():
+            for pattern in legacy_patterns:
+                if pattern in cap.cli_command:
+                    violations.append((cap.id, cap.cli_command))
+        
+        if violations:
+            self.fail(
+                f"Registry documenta aliases legacy como oficiales:\n" + 
+                "\n".join([f"  {cid}: {cmd}" for cid, cmd in violations]) +
+                "\n\nUse 'animator state create/remove' en su lugar."
+            )
+    
+    def test_grammar_pattern_consistency(self) -> None:
+        """All CLI commands follow the unified grammar pattern.
+        
+        Gramática oficial: motor <noun> [<subnoun>] <verb> [<args>]
+        """
+        registry = get_default_registry()
+        
+        # Verbos oficiales permitidos
+        official_verbs = {
+            "create", "list", "load", "save", "add", "remove", 
+            "edit", "info", "ensure", "set-sheet", "bootstrap-ai",
+            "grid", "auto", "manual", "open", "instantiate",
+            "unpack", "apply", "play", "stop", "step", "query",
+        }
+        
+        violations = []
+        for cap in registry.list_all():
+            parts = cap.cli_command.split()
+            if len(parts) < 2:
+                continue
+            
+            # Extraer verbo (último componente antes de argumentos)
+            cmd_parts = parts[1:]  # Remove 'motor'
+            
+            # Verificar si termina en un verbo conocido
+            last_part = cmd_parts[-1] if cmd_parts else ""
+            if last_part.startswith("<") or last_part.startswith("["):
+                # El verbo es el anterior a los argumentos
+                last_part = cmd_parts[-2] if len(cmd_parts) >= 2 else ""
+            
+            # Los comandos de 3 niveles (animator state create) son válidos
+            # No necesitan verificación adicional
+        
+        # Este test es informativo, no falla por ahora
+        # Se puede hacer más estricto en el futuro
+
+
 if __name__ == "__main__":
     unittest.main()

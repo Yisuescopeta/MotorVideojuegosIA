@@ -205,19 +205,19 @@ class CapabilityRegistryBuilder:
             summary="Add a component to an existing entity",
             mode="edit",
             api_methods=["AuthoringAPI.add_component"],
-            cli_command="motor component add <entity> <component> [data...]",
+            cli_command="motor component add <entity> <component> [--data <json>]",
             example=CapabilityExample(
-                description="Add a SpriteRenderer to the Player",
+                description="Add a Sprite to the Player",
                 api_calls=[
                     {"method": "add_component", "args": {
                         "entity_name": "Player",
-                        "component_name": "SpriteRenderer",
+                        "component_name": "Sprite",
                         "data": {"asset_path": "assets/player.png"},
                     }},
                 ],
-                expected_outcome="Player entity now has a SpriteRenderer component",
+                expected_outcome="Player entity now has a Sprite component",
             ),
-            notes="Component data is optional; defaults are used if not provided. Fails if component already exists.",
+            notes="Component data is optional; defaults are used if not provided. Fails if component already exists. Use canonical component names from the component registry.",
             tags=["component", "authoring"],
         ))
 
@@ -250,16 +250,16 @@ class CapabilityRegistryBuilder:
             api_methods=["AuthoringAPI.remove_component"],
             cli_command="motor component remove <entity> <component>",
             example=CapabilityExample(
-                description="Remove the collider from an entity",
+                description="Remove the Collider from an entity",
                 api_calls=[
                     {"method": "remove_component", "args": {
                         "entity_name": "Player",
-                        "component_name": "BoxCollider",
+                        "component_name": "Collider",
                     }},
                 ],
-                expected_outcome="BoxCollider component is removed from Player",
+                expected_outcome="Collider component is removed from Player",
             ),
-            notes="Some components (like Transform) are required and cannot be removed.",
+            notes="Some components (like Transform) are required and cannot be removed. Use canonical component names from the component registry.",
             tags=["component", "authoring"],
         ))
 
@@ -334,11 +334,11 @@ class CapabilityRegistryBuilder:
 
     def _register_slicing_capabilities(self) -> None:
         self._add(Capability(
-            id="slice:grid",
+            id="asset:slice:grid",
             summary="Create grid-based slices from a sprite sheet asset",
             mode="edit",
             api_methods=["AssetsProjectAPI.create_grid_slices"],
-            cli_command="motor slice grid <asset> <cell_width> <cell_height> [--margin <m>] [--spacing <s>]",
+            cli_command="motor asset slice grid <asset> --cell-width <w> --cell-height <h>",
             example=CapabilityExample(
                 description="Slice a 256x256 sprite sheet into 32x32 tiles",
                 api_calls=[
@@ -357,11 +357,11 @@ class CapabilityRegistryBuilder:
         ))
 
         self._add(Capability(
-            id="slice:list",
+            id="asset:slice:list",
             summary="List all slices defined for an asset",
             mode="both",
             api_methods=["AssetsProjectAPI.list_asset_slices"],
-            cli_command="motor slice list <asset>",
+            cli_command="motor asset slice list <asset>",
             example=CapabilityExample(
                 description="List slices for player sprite sheet",
                 api_calls=[
@@ -373,17 +373,74 @@ class CapabilityRegistryBuilder:
             tags=["asset", "slicing"],
         ))
 
+        self._add(Capability(
+            id="asset:slice:auto",
+            summary="Auto-detect slices from a sprite sheet asset",
+            mode="edit",
+            api_methods=["AssetsProjectAPI.preview_auto_slices", "AssetsProjectAPI.create_auto_slices"],
+            cli_command="motor asset slice auto <asset> [--preview]",
+            example=CapabilityExample(
+                description="Auto-detect slices for player sprite",
+                api_calls=[
+                    {"method": "create_auto_slices", "args": {"asset_path": "assets/player.png"}},
+                ],
+                expected_outcome="Slices auto-detected and saved to asset metadata",
+            ),
+            notes="Uses alpha channel to detect sprite boundaries. Preview mode shows detections without saving.",
+            tags=["asset", "slicing", "sprite"],
+        ))
+
+        self._add(Capability(
+            id="asset:slice:manual",
+            summary="Save manually defined slices for an asset",
+            mode="edit",
+            api_methods=["AssetsProjectAPI.save_manual_slices"],
+            cli_command="motor asset slice manual <asset> --slices <json>",
+            example=CapabilityExample(
+                description="Save manual slice definitions",
+                api_calls=[
+                    {"method": "save_manual_slices", "args": {
+                        "asset_path": "assets/player.png",
+                        "slices": [{"name": "idle_0", "x": 0, "y": 0, "width": 32, "height": 32}],
+                    }},
+                ],
+                expected_outcome="Manual slices saved to asset metadata",
+            ),
+            notes="Use for non-uniform sprites that don't fit grid or auto-detection.",
+            tags=["asset", "slicing", "sprite"],
+        ))
+
     def _register_animator_capabilities(self) -> None:
         self._add(Capability(
-            id="animator:create",
-            summary="Create an Animator component on an entity with initial state",
+            id="animator:ensure",
+            summary="Ensure Animator component exists on entity (creates if missing)",
             mode="edit",
-            api_methods=["AuthoringAPI.create_animator_state"],
-            cli_command="motor animator upsert-state <entity> --slices <slice1,slice2...>",
+            api_methods=["AuthoringAPI.ensure_animator"],
+            cli_command="motor animator ensure <entity> [--sheet <asset>]",
+            example=CapabilityExample(
+                description="Ensure Player has an Animator component",
+                api_calls=[
+                    {"method": "ensure_animator", "args": {
+                        "entity_name": "Player",
+                        "sprite_sheet": "assets/player.png",
+                    }},
+                ],
+                expected_outcome="Player has Animator component, optionally with sprite sheet set",
+            ),
+            notes="Idempotent: creates only if missing. Use before adding animation states.",
+            tags=["animator", "animation", "component", "setup"],
+        ))
+
+        self._add(Capability(
+            id="animator:state:create",
+            summary="Create or update an animation state",
+            mode="edit",
+            api_methods=["AuthoringAPI.upsert_animator_state"],
+            cli_command="motor animator state create <entity> <state> --slices <slices...>",
             example=CapabilityExample(
                 description="Create idle animation state using slice_0 through slice_3",
                 api_calls=[
-                    {"method": "create_animator_state", "args": {
+                    {"method": "upsert_animator_state", "args": {
                         "entity_name": "Player",
                         "state_name": "idle",
                         "slice_names": ["slice_0", "slice_1", "slice_2", "slice_3"],
@@ -391,33 +448,10 @@ class CapabilityRegistryBuilder:
                         "loop": True,
                     }},
                 ],
-                expected_outcome="Player has Animator component with 'idle' state defined",
+                expected_outcome="'idle' state created on Player's Animator (upserts if exists)",
             ),
-            notes="Slice names must exist in the asset's metadata. First state becomes default.",
-            tags=["animator", "animation", "component"],
-        ))
-
-        self._add(Capability(
-            id="animator:state:add",
-            summary="Add a new animation state to an existing Animator",
-            mode="edit",
-            api_methods=["AuthoringAPI.upsert_animator_state"],
-            cli_command="motor animator upsert-state <entity> <state> --slices <slices...>",
-            example=CapabilityExample(
-                description="Add run animation using run_0 through run_3 slices",
-                api_calls=[
-                    {"method": "upsert_animator_state", "args": {
-                        "entity_name": "Player",
-                        "state_name": "run",
-                        "slice_names": ["run_0", "run_1", "run_2", "run_3"],
-                        "fps": 12,
-                        "loop": True,
-                    }},
-                ],
-                expected_outcome="'run' state added to Player's Animator",
-            ),
-            notes="Upserts: creates if not exists, updates if exists. Can set as default.",
-            tags=["animator", "animation"],
+            notes="Creates Animator component if needed. Upserts: creates if not exists, updates if exists. First state becomes default.",
+            tags=["animator", "animation", "state"],
         ))
 
         self._add(Capability(
@@ -425,7 +459,7 @@ class CapabilityRegistryBuilder:
             summary="Remove an animation state from an Animator",
             mode="edit",
             api_methods=["AuthoringAPI.remove_animator_state"],
-            cli_command="motor animator remove-state <entity> <state>",
+            cli_command="motor animator state remove <entity> <state>",
             example=CapabilityExample(
                 description="Remove the unused 'hurt' state",
                 api_calls=[
@@ -437,7 +471,7 @@ class CapabilityRegistryBuilder:
                 expected_outcome="'hurt' state removed. Default state updated if needed.",
             ),
             notes="Cannot remove the last state. References in transitions become null.",
-            tags=["animator", "animation"],
+            tags=["animator", "animation", "state"],
         ))
 
         self._add(Capability(
@@ -568,15 +602,15 @@ class CapabilityRegistryBuilder:
         ))
 
         self._add(Capability(
-            id="project:manifest",
-            summary="Get the current project's manifest summary",
+            id="project:info",
+            summary="Get the current project's information summary",
             mode="both",
-            api_methods=["AssetsProjectAPI.get_project_manifest"],
-            cli_command="motor project manifest",
+            api_methods=["AssetsProjectAPI.get_project_info"],
+            cli_command="motor project info",
             example=CapabilityExample(
                 description="Get project info",
                 api_calls=[
-                    {"method": "get_project_manifest", "args": {}},
+                    {"method": "get_project_info", "args": {}},
                 ],
                 expected_outcome="Returns project name, root, paths, engine_version",
             ),
@@ -852,13 +886,14 @@ class MotorAIBootstrapBuilder:
         ]
 
         common_caps = [
-            "scene:load", "scene:save", "scene:flow:load_next",
+            "scene:load", "scene:save", "scene:create",
             "entity:create", "entity:delete",
             "component:add", "component:edit",
             "prefab:instantiate", "prefab:list",
-            "asset:list", "slice:grid",
-            "animator:create", "animator:state:add",
+            "asset:list", "asset:slice:grid", "asset:slice:list",
+            "animator:create", "animator:state:add", "animator:info",
             "runtime:play", "runtime:stop",
+            "introspect:capabilities", "introspect:status",
         ]
 
         for cap_id in common_caps:
@@ -879,7 +914,6 @@ class MotorAIBootstrapBuilder:
             "Entity Operations": ["entity:"],
             "Component Operations": ["component:"],
             "Asset Management": ["asset:"],
-            "Sprite Slicing": ["slice:"],
             "Animation": ["animator:"],
             "Prefabs": ["prefab:"],
             "Project": ["project:"],
@@ -912,17 +946,65 @@ class MotorAIBootstrapBuilder:
             "",
             "## Getting Started",
             "",
-            "1. **Load a scene**: `motor scene load levels/main_scene.json`",
-            "2. **Create an entity**: `motor entity create Player --component Transform`",
-            "3. **Add components**: `motor component add Player SpriteRenderer`",
-            "4. **Edit properties**: `motor component edit Player Transform x 100`",
-            "5. **Test**: `motor runtime play`",
+            "### Quick Workflow",
+            "",
+            "1. **Check project health**:",
+            "   ```bash",
+            "   motor doctor --project . --json",
+            "   ```",
+            "",
+            "2. **Create a scene**:",
+            "   ```bash",
+            "   motor scene create \"Level 1\" --project .",
+            "   ```",
+            "",
+            "3. **Create an entity**:",
+            "   ```bash",
+            "   motor entity create Player --project . --json",
+            "   ```",
+            "",
+            "4. **Add a component**:",
+            "   ```bash",
+            '   motor component add Player Transform --data \'{"x": 100, "y": 200}\' --project .',
+            "   ```",
+            "",
+            "5. **Slice a sprite sheet**:",
+            "   ```bash",
+            "   motor asset slice grid assets/player.png --cell-width 32 --cell-height 32 --project .",
+            "   ```",
+            "",
+            "6. **Configure animator**:",
+            "   ```bash",
+            "   motor animator set-sheet Player assets/player.png --project .",
+            "   motor animator upsert-state Player idle --slices idle_0,idle_1,idle_2,idle_3 --fps 8 --loop --project .",
+            "   ```",
+            "",
+            "### Regenerate AI Bootstrap Files",
+            "",
+            "If these files are missing or outdated, regenerate them with:",
+            "```bash",
+            "motor project bootstrap-ai --project .",
+            "```",
+            "",
+            "### Discover Capabilities",
+            "",
+            "List all available capabilities:",
+            "```bash",
+            "motor capabilities --json",
+            "```",
             "",
             "## Naming Conventions",
             "",
             "- **Capability IDs**: `scope:action` (e.g., `scene:load`, `entity:create`)",
             "- **CLI Commands**: `motor <scope> <action>` (e.g., `motor scene load`)",
             "- **API Methods**: `ScopeAPI.method_name` (e.g., `SceneWorkspaceAPI.load_level`)",
+            "",
+            "## Official CLI",
+            "",
+            "This project uses the official `motor` CLI:",
+            "- Entrypoint: `motor [command] [options]`",
+            "- Alternative: `python -m motor [command] [options]`",
+            "- Legacy: `python -m tools.engine_cli` (deprecated, for compatibility only)",
             "",
         ])
 

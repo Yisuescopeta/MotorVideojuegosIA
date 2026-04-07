@@ -86,29 +86,35 @@ def create_motor_parser() -> argparse.ArgumentParser:
         description="Official CLI for MotorVideojuegosIA - AI-facing game engine operations",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+GRAMMAR: motor <noun> [<subnoun>] <verb> [<args>] [options]
+
 AI-Facing Commands:
   capabilities              Discover engine capabilities
   doctor                    Validate project health
+  
   project info              Show project information
+  project bootstrap-ai      Generate AI bootstrap files
   
   scene list                List all scenes
   scene create <name>       Create new scene
+  scene load <path>         Load a scene
+  scene save                Save active scene
   
   entity create <name>      Create entity in active scene
   
-  component add <entity> <comp>  Add component to entity
+  component add <e> <c>     Add component to entity
   
-  animator ensure <entity>  Ensure Animator component exists (creates if missing)
-  animator info <entity>    Show animator configuration
-  animator set-sheet <e> <asset>  Set sprite sheet
-  animator upsert-state <e> <state>  Create/update animation state
-  animator remove-state <e> <state>  Remove animation state
+  animator info <e>         Show animator configuration
+  animator set-sheet <e> <a>  Set sprite sheet
+  animator ensure <e>       Ensure Animator exists (creates if missing)
+  animator state create <e> <s>  Create/update animation state
+  animator state remove <e> <s>  Remove animation state
   
   asset list                List project assets
-  asset slice list <asset>  List slices for asset
-  asset slice grid <asset>  Create grid-based slices
-  asset slice auto <asset>  Auto-detect slices
-  asset slice manual <asset>  Save manual slices
+  asset slice list <a>      List slices for asset
+  asset slice grid <a>      Create grid-based slices
+  asset slice auto <a>      Auto-detect slices
+  asset slice manual <a>    Save manual slices
 
 Examples:
   motor doctor --project . --json
@@ -116,12 +122,14 @@ Examples:
   motor scene create "Level 1"
   motor entity create Player --components '{"Transform":{"x":100}}'
   motor animator ensure Player --sheet assets/player.png
-  motor animator upsert-state Player idle --slices idle_0,idle_1,idle_2 --fps 8 --loop
-  motor animator upsert-state Player attack --slices atk_0,atk_1 --fps 12 --no-loop --set-default
+  motor animator state create Player idle --slices idle_0,idle_1,idle_2 --fps 8 --loop
+  motor animator state create Player attack --slices atk_0,atk_1 --fps 12 --no-loop --set-default
+  motor asset slice grid assets/tiles.png --cell-width 32 --cell-height 32 --project .
 
 Documentation:
   - See START_HERE_AI.md in your project root
   - See motor_ai.json for full capability registry
+  - See docs/CLI_GRAMMAR.md for grammar specification
         """,
     )
     
@@ -305,42 +313,6 @@ Documentation:
     )
     animator_sheet_parser.add_argument("--json", action="store_true", help="Output in JSON format")
     
-    animator_upsert_parser = animator_subparsers.add_parser(
-        "upsert-state",
-        help="Create or update an animator state",
-    )
-    animator_upsert_parser.add_argument("entity", help="Entity name")
-    animator_upsert_parser.add_argument("state", help="State name")
-    animator_upsert_parser.add_argument(
-        "--slices", required=True,
-        help="Comma-separated slice names"
-    )
-    animator_upsert_parser.add_argument(
-        "--fps", type=float, default=8.0,
-        help="Frames per second"
-    )
-    animator_upsert_parser.add_argument(
-        "--loop", dest="loop", action="store_true", default=None,
-        help="Enable animation looping (default: true)"
-    )
-    animator_upsert_parser.add_argument(
-        "--no-loop", dest="loop", action="store_false", default=None,
-        help="Disable animation looping"
-    )
-    animator_upsert_parser.add_argument(
-        "--set-default", action="store_true",
-        help="Set as default state"
-    )
-    animator_upsert_parser.add_argument(
-        "--auto-create", action="store_true",
-        help="Auto-create Animator component if missing"
-    )
-    animator_upsert_parser.add_argument(
-        "--project", dest="project_root", default=".",
-        help="Path to project directory"
-    )
-    animator_upsert_parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    
     animator_ensure_parser = animator_subparsers.add_parser(
         "ensure",
         help="Ensure Animator component exists on entity (creates if missing)",
@@ -356,17 +328,89 @@ Documentation:
     )
     animator_ensure_parser.add_argument("--json", action="store_true", help="Output in JSON format")
     
-    animator_remove_parser = animator_subparsers.add_parser(
-        "remove-state",
-        help="Remove an animator state",
+    # animator state subcommand (nueva gramática jerárquica)
+    animator_state_parser = animator_subparsers.add_parser(
+        "state",
+        help="Animator state operations",
     )
-    animator_remove_parser.add_argument("entity", help="Entity name")
-    animator_remove_parser.add_argument("state", help="State name")
-    animator_remove_parser.add_argument(
+    animator_state_subparsers = animator_state_parser.add_subparsers(dest="animator_state_subcommand", required=True)
+    
+    # state create (antes upsert-state)
+    animator_state_create_parser = animator_state_subparsers.add_parser(
+        "create",
+        help="Create or update an animation state",
+    )
+    animator_state_create_parser.add_argument("entity", help="Entity name")
+    animator_state_create_parser.add_argument("state", help="State name")
+    animator_state_create_parser.add_argument(
+        "--slices", required=True,
+        help="Comma-separated slice names"
+    )
+    animator_state_create_parser.add_argument(
+        "--fps", type=float, default=8.0,
+        help="Frames per second"
+    )
+    animator_state_create_parser.add_argument(
+        "--loop", dest="loop", action="store_true", default=None,
+        help="Enable animation looping (default: true)"
+    )
+    animator_state_create_parser.add_argument(
+        "--no-loop", dest="loop", action="store_false", default=None,
+        help="Disable animation looping"
+    )
+    animator_state_create_parser.add_argument(
+        "--set-default", action="store_true",
+        help="Set as default state"
+    )
+    animator_state_create_parser.add_argument(
+        "--auto-create", action="store_true",
+        help="Auto-create Animator component if missing"
+    )
+    animator_state_create_parser.add_argument(
         "--project", dest="project_root", default=".",
         help="Path to project directory"
     )
-    animator_remove_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+    animator_state_create_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+    
+    # state remove (antes remove-state)
+    animator_state_remove_parser = animator_state_subparsers.add_parser(
+        "remove",
+        help="Remove an animation state",
+    )
+    animator_state_remove_parser.add_argument("entity", help="Entity name")
+    animator_state_remove_parser.add_argument("state", help="State name")
+    animator_state_remove_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    animator_state_remove_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+    
+    # === LEGACY COMMANDS (compatibilidad temporal, no documentados) ===
+    # upsert-state legacy alias
+    animator_upsert_parser = animator_subparsers.add_parser(
+        "upsert-state",
+        help=argparse.SUPPRESS,  # No mostrar en help
+    )
+    animator_upsert_parser.add_argument("entity", help=argparse.SUPPRESS)
+    animator_upsert_parser.add_argument("state", help=argparse.SUPPRESS)
+    animator_upsert_parser.add_argument("--slices", required=True, help=argparse.SUPPRESS)
+    animator_upsert_parser.add_argument("--fps", type=float, default=8.0, help=argparse.SUPPRESS)
+    animator_upsert_parser.add_argument("--loop", dest="loop", action="store_true", default=None, help=argparse.SUPPRESS)
+    animator_upsert_parser.add_argument("--no-loop", dest="loop", action="store_false", default=None, help=argparse.SUPPRESS)
+    animator_upsert_parser.add_argument("--set-default", action="store_true", help=argparse.SUPPRESS)
+    animator_upsert_parser.add_argument("--auto-create", action="store_true", help=argparse.SUPPRESS)
+    animator_upsert_parser.add_argument("--project", dest="project_root", default=".", help=argparse.SUPPRESS)
+    animator_upsert_parser.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
+    
+    # remove-state legacy alias
+    animator_remove_parser = animator_subparsers.add_parser(
+        "remove-state",
+        help=argparse.SUPPRESS,  # No mostrar en help
+    )
+    animator_remove_parser.add_argument("entity", help=argparse.SUPPRESS)
+    animator_remove_parser.add_argument("state", help=argparse.SUPPRESS)
+    animator_remove_parser.add_argument("--project", dest="project_root", default=".", help=argparse.SUPPRESS)
+    animator_remove_parser.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
 
     # === asset ===
     asset_parser = subparsers.add_parser(
@@ -610,10 +654,48 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 asset_path=parsed.asset,
                 json_output=parsed.json,
             )
+        elif parsed.animator_subcommand == "ensure":
+            return cmd_animator_ensure(
+                project_path=Path(parsed.project_root).resolve(),
+                entity_name=parsed.entity,
+                sprite_sheet=parsed.sprite_sheet,
+                json_output=parsed.json,
+            )
+        elif parsed.animator_subcommand == "state":
+            # Nueva gramática jerárquica: animator state <action>
+            if parsed.animator_state_subcommand == "create":
+                slice_names = [s.strip() for s in parsed.slices.split(",") if s.strip()]
+                # Determine loop value: explicit --no-loop or --loop, default to True
+                loop = True if parsed.loop is None else parsed.loop
+                return cmd_animator_upsert_state(
+                    project_path=Path(parsed.project_root).resolve(),
+                    entity_name=parsed.entity,
+                    state_name=parsed.state,
+                    slice_names=slice_names,
+                    fps=parsed.fps,
+                    loop=loop,
+                    set_default=parsed.set_default,
+                    auto_create=parsed.auto_create,
+                    json_output=parsed.json,
+                )
+            elif parsed.animator_state_subcommand == "remove":
+                return cmd_animator_remove_state(
+                    project_path=Path(parsed.project_root).resolve(),
+                    entity_name=parsed.entity,
+                    state_name=parsed.state,
+                    json_output=parsed.json,
+                )
+        # LEGACY COMMANDS (compatibilidad temporal)
         elif parsed.animator_subcommand == "upsert-state":
+            # Legacy alias para 'animator state create'
             slice_names = [s.strip() for s in parsed.slices.split(",") if s.strip()]
-            # Determine loop value: explicit --no-loop or --loop, default to True
             loop = True if parsed.loop is None else parsed.loop
+            import warnings
+            warnings.warn(
+                "'animator upsert-state' is deprecated. Use 'animator state create' instead.",
+                DeprecationWarning,
+                stacklevel=1
+            )
             return cmd_animator_upsert_state(
                 project_path=Path(parsed.project_root).resolve(),
                 entity_name=parsed.entity,
@@ -625,14 +707,14 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 auto_create=parsed.auto_create,
                 json_output=parsed.json,
             )
-        elif parsed.animator_subcommand == "ensure":
-            return cmd_animator_ensure(
-                project_path=Path(parsed.project_root).resolve(),
-                entity_name=parsed.entity,
-                sprite_sheet=parsed.sprite_sheet,
-                json_output=parsed.json,
-            )
         elif parsed.animator_subcommand == "remove-state":
+            # Legacy alias para 'animator state remove'
+            import warnings
+            warnings.warn(
+                "'animator remove-state' is deprecated. Use 'animator state remove' instead.",
+                DeprecationWarning,
+                stacklevel=1
+            )
             return cmd_animator_remove_state(
                 project_path=Path(parsed.project_root).resolve(),
                 entity_name=parsed.entity,

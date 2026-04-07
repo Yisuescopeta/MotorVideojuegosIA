@@ -343,9 +343,9 @@ class DefaultRegistryContentTests(unittest.TestCase):
             "component:": ["component:add", "component:edit"],
             "asset:": ["asset:list", "asset:find"],
             "asset:slice:": ["asset:slice:grid", "asset:slice:list"],  # slice commands under asset
-            "animator:": ["animator:create", "animator:state:add"],
+            "animator:": ["animator:ensure", "animator:state:create", "animator:state:remove"],
             "prefab:": ["prefab:instantiate", "prefab:list"],
-            "project:": ["project:open", "project:manifest"],
+            "project:": ["project:open", "project:info"],
             "runtime:": ["runtime:play", "runtime:stop"],
             "physics:": ["physics:query:aabb", "physics:query:ray"],
             "introspect:": ["introspect:capabilities"],

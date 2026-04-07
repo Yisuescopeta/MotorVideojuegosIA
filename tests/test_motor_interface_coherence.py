@@ -557,7 +557,7 @@ class RegistryToCLICoherenceTests(unittest.TestCase):
         registry = get_default_registry()
         parser = create_motor_parser()
         
-        # Extract available commands
+        # Extract available commands (hasta 3 niveles de profundidad)
         available_commands = set()
         for action in parser._actions:
             if hasattr(action, 'choices') and action.choices:
@@ -566,8 +566,14 @@ class RegistryToCLICoherenceTests(unittest.TestCase):
                     if hasattr(subparser, '_actions'):
                         for sub_action in subparser._actions:
                             if hasattr(sub_action, 'choices') and sub_action.choices:
-                                for sub_cmd in sub_action.choices.keys():
+                                for sub_cmd, sub_subparser in sub_action.choices.items():
                                     available_commands.add(f"{cmd_name} {sub_cmd}")
+                                    # Tercer nivel (ej: animator state create)
+                                    if hasattr(sub_subparser, '_actions'):
+                                        for sub_sub_action in sub_subparser._actions:
+                                            if hasattr(sub_sub_action, 'choices') and sub_sub_action.choices:
+                                                for sub_sub_cmd in sub_sub_action.choices.keys():
+                                                    available_commands.add(f"{cmd_name} {sub_cmd} {sub_sub_cmd}")
         
         # Check registry commands
         missing_commands = []
@@ -576,11 +582,8 @@ class RegistryToCLICoherenceTests(unittest.TestCase):
             if not cmd_parts:
                 continue
             
-            base_cmd = cmd_parts[0]
-            if len(cmd_parts) > 1:
-                full_cmd = f"{cmd_parts[0]} {cmd_parts[1]}"
-            else:
-                full_cmd = base_cmd
+            # Construir path completo del comando
+            full_path = " ".join(cmd_parts)
             
             # Skip commands that require arguments (can't test without them)
             if any(c in cap.cli_command for c in ["<", "[", "..."]):
@@ -590,14 +593,44 @@ class RegistryToCLICoherenceTests(unittest.TestCase):
             future_commands = {
                 "runtime", "prefab", "undo", "redo", "status", "physics"
             }
-            if base_cmd in future_commands:
+            if cmd_parts[0] in future_commands:
                 continue
             
-            if full_cmd not in available_commands and base_cmd not in available_commands:
-                missing_commands.append(f"{cap.id}: {cap.cli_command}")
+            # Verificar si el comando existe (match exacto o parcial)
+            if full_path not in available_commands:
+                # Verificar si al menos el primer nivel existe
+                if cmd_parts[0] not in available_commands:
+                    missing_commands.append(f"{cap.id}: {cap.cli_command}")
         
         if missing_commands:
             self.fail(f"Registry commands not in motor CLI:\n" + "\n".join(missing_commands))
+    
+    def test_no_duplicate_grammar_patterns(self) -> None:
+        """No debe haber múltiples patterns gramaticales para la misma operación.
+        
+        Verifica que no se documenten aliases como comandos oficiales separados.
+        """
+        registry = get_default_registry()
+        
+        # Mapeo de operaciones semánticas a su comando único oficial
+        semantic_operations = {
+            "animator state create": ["motor animator state create", "motor animator upsert-state"],
+            "animator state remove": ["motor animator state remove", "motor animator remove-state"],
+        }
+        
+        for operation, possible_commands in semantic_operations.items():
+            found_commands = []
+            for cap in registry.list_all():
+                for cmd_pattern in possible_commands:
+                    if cap.cli_command.startswith(cmd_pattern):
+                        found_commands.append((cap.id, cap.cli_command))
+            
+            # Solo debe haber UN comando oficial documentado
+            official_commands = [(cid, cmd) for cid, cmd in found_commands 
+                               if "upsert-state" not in cmd and "remove-state" not in cmd]
+            
+            if len(official_commands) > 1:
+                self.fail(f"Múltiples comandos oficiales para '{operation}': {official_commands}")
 
 
 if __name__ == "__main__":

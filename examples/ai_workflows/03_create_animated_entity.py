@@ -1,30 +1,59 @@
 #!/usr/bin/env python3
 """
-Example 03: Create Animated Entity
+Example 03: Create Animated Entity (Official Motor CLI Workflow)
 
-Full workflow demonstrating:
-1. Create a scene
-2. Create an entity
-3. Add components
-4. Configure animator with states
+Full workflow demonstrating the official AI-facing animator API:
+1. Validate project with doctor
+2. Create a scene
+3. Create an entity
+4. Ensure Animator component exists (auto-creates if missing)
+5. Set sprite sheet
+6. Configure animation states (loop and no-loop)
+
+Uses the official `motor` CLI interface.
+
+Official Animator Workflow (Grammar: motor <noun> [<subnoun>] <verb>):
+  motor animator ensure <entity> [--sheet <asset>]
+  motor animator set-sheet <entity> <asset>
+  motor animator state create <entity> <state> --slices <names> [--loop|--no-loop]
+  motor animator state remove <entity> <state>
+  motor animator info <entity>
+
+Loop/No-Loop Semantics:
+  --loop      : Animation repeats indefinitely (default)
+  --no-loop   : Animation plays once and stops
 """
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
+# Ensure motor CLI is available in the environment
+ROOT = Path(__file__).resolve().parents[2]
+ENV = os.environ.copy()
+PYTHONPATH = ENV.get("PYTHONPATH", "")
+ENV["PYTHONPATH"] = str(ROOT) if not PYTHONPATH else str(ROOT) + os.pathsep + PYTHONPATH
+
 
 def run_command(*args, project="."):
     """Run a motor CLI command and return parsed JSON."""
-    cmd = [sys.executable, "-m", "tools.engine_cli"] + list(args) + ["--project", project, "--json"]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    return json.loads(result.stdout)
+    cmd = ["motor"] + list(args) + ["--project", project, "--json"]
+    result = subprocess.run(cmd, capture_output=True, text=True, env=ENV)
+    # Parse JSON output (skip any leading non-JSON lines)
+    output = result.stdout
+    if "{" in output:
+        output = output[output.index("{"):]
+    try:
+        return json.loads(output)
+    except json.JSONDecodeError:
+        return {"success": False, "message": f"Invalid JSON: {output[:200]}", "data": {}}
 
 
 def main():
     print("=" * 60)
-    print("Example 03: Create Animated Entity")
+    print("Example 03: Create Animated Entity (Official Motor CLI)")
     print("=" * 60)
     
     project_path = Path(".")
@@ -62,7 +91,7 @@ def main():
     
     print(f"✓ Entity '{entity_name}' created")
     
-    # Step 4: Add Transform component
+    # Step 4: Add Transform component (canonical name)
     print("\n📦 Adding Transform component...")
     transform_data = json.dumps({"x": 100, "y": 200, "scale_x": 1, "scale_y": 1})
     result = run_command(
@@ -76,37 +105,39 @@ def main():
     else:
         print(f"✓ Transform added at position (100, 200)")
     
-    # Step 5: Add SpriteRenderer component
-    print("\n🎨 Adding SpriteRenderer component...")
-    renderer_data = json.dumps({"enabled": True, "tint": "#FFFFFF"})
+    # Step 5: Add Sprite component (canonical name, not SpriteRenderer)
+    print("\n🎨 Adding Sprite component...")
+    sprite_data = json.dumps({"enabled": True, "tint": "#FFFFFF"})
     result = run_command(
-        "component", "add", entity_name, "SpriteRenderer",
-        "--data", renderer_data,
+        "component", "add", entity_name, "Sprite",
+        "--data", sprite_data,
         project=str(project_path)
     )
     
     if not result["success"]:
-        print(f"⚠️  Could not add SpriteRenderer: {result.get('message')}")
+        print(f"⚠️  Could not add Sprite: {result.get('message')}")
     else:
-        print(f"✓ SpriteRenderer added")
+        print(f"✓ Sprite added")
     
-    # Step 6: Add Animator component
-    print("\n🎭 Adding Animator component...")
-    animator_data = json.dumps({"enabled": True, "speed": 1.0})
+    # Step 6: Ensure Animator component exists (official pattern)
+    print("\n🎭 Ensuring Animator component exists...")
     result = run_command(
-        "component", "add", entity_name, "Animator",
-        "--data", animator_data,
+        "animator", "ensure", entity_name,
         project=str(project_path)
     )
     
     if not result["success"]:
-        print(f"⚠️  Could not add Animator: {result.get('message')}")
+        print(f"⚠️  Could not ensure Animator: {result.get('message')}")
     else:
-        print(f"✓ Animator added")
+        created = result["data"].get("created", False)
+        if created:
+            print(f"✓ Animator component created")
+        else:
+            print(f"✓ Animator component already exists")
     
     # Step 7: Check for available sprites
     print("\n🔍 Looking for sprite assets...")
-    result = run_command("assets", "list", project=str(project_path))
+    result = run_command("asset", "list", project=str(project_path))
     images = [a for a in result["data"]["assets"] if a["path"].lower().endswith(".png")]
     
     if images:
@@ -124,26 +155,43 @@ def main():
             print(f"✓ Sprite sheet configured")
             
             # Check for slices
-            result = run_command("assets", "slices", "list", sprite_asset, project=str(project_path))
+            result = run_command("asset", "slice", "list", sprite_asset, project=str(project_path))
             slices = result["data"]["slices"]
             
             if len(slices) >= 4:
-                # Create animation state
+                # Create looping idle animation state
                 slice_names = ",".join([s["name"] for s in slices[:4]])
-                print(f"\n🎬 Creating 'idle' animation state...")
+                print(f"\n🎬 Creating 'idle' animation state (looping)...")
                 result = run_command(
-                    "animator", "upsert-state", entity_name, "idle",
+                    "animator", "state", "create", entity_name, "idle",
                     "--slices", slice_names,
                     "--fps", "8",
                     "--loop",
                     "--set-default",
                     project=str(project_path)
                 )
-                
+
                 if result["success"]:
-                    print(f"✓ Animation state 'idle' created with {len(slices[:4])} frames")
+                    print(f"✓ Animation state 'idle' created with {len(slices[:4])} frames (looping)")
                 else:
-                    print(f"⚠️  Could not create state: {result.get('message')}")
+                    print(f"⚠️  Could not create idle state: {result.get('message')}")
+
+                # Create non-looping attack animation state if enough slices
+                if len(slices) >= 6:
+                    attack_slices = ",".join([s["name"] for s in slices[4:6]])
+                    print(f"\n⚔️  Creating 'attack' animation state (non-looping)...")
+                    result = run_command(
+                        "animator", "state", "create", entity_name, "attack",
+                        "--slices", attack_slices,
+                        "--fps", "12",
+                        "--no-loop",
+                        project=str(project_path)
+                    )
+
+                    if result["success"]:
+                        print(f"✓ Animation state 'attack' created with {len(slices[4:6])} frames (non-looping)")
+                    else:
+                        print(f"⚠️  Could not create attack state: {result.get('message')}")
             else:
                 print(f"⚠️  Not enough slices for animation (need 4, have {len(slices)})")
                 print("   Run: python examples/ai_workflows/02_slice_spritesheet.py")
@@ -164,7 +212,8 @@ def main():
         print(f"   - States: {len(info.get('states', []))}")
         print(f"   - Default state: {info.get('default_state', 'none')}")
         for state in info.get("states", []):
-            print(f"     - {state['name']}: {state['frame_count']} frames @ {state['fps']} FPS")
+            loop_status = "loop" if state.get('loop', True) else "one-shot"
+            print(f"     - {state['name']}: {state['frame_count']} frames @ {state['fps']} FPS ({loop_status})")
     else:
         print(f"⚠️  Animator not fully configured")
     
@@ -174,11 +223,17 @@ def main():
     print(f"\nCreated:")
     print(f"  - Scene: {scene_name}")
     print(f"  - Entity: {entity_name}")
-    print(f"  - Components: Transform, SpriteRenderer, Animator")
-    print(f"\nNext steps:")
-    print(f"  1. Open scene: motor scene load {scene_path}")
-    print(f"  2. Add more animation states")
-    print(f"  3. Save the scene")
+    print(f"  - Components: Transform, Sprite, Animator")
+    print(f"\nOfficial Animator Commands Used:")
+    print(f"  motor animator ensure <entity>                 # Ensure Animator exists")
+    print(f"  motor animator set-sheet <entity> <asset>      # Set sprite sheet")
+    print(f"  motor animator state create <entity> <state> --slices <names> [--loop|--no-loop]")
+    print(f"  motor animator state remove <entity> <state>   # Remove animation state")
+    print(f"  motor animator info <entity>                   # Get animator info")
+    print(f"\nGrammar: motor <noun> [<subnoun>] <verb> [<args>] [options]")
+    print(f"\nLoop/No-Loop Semantics:")
+    print(f"  --loop    : Animation repeats indefinitely (default)")
+    print(f"  --no-loop : Animation plays once and stops")
     print("=" * 60)
     
     return 0

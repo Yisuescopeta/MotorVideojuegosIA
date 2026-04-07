@@ -178,34 +178,55 @@ class RegistryToCLIExecutableContractTests(unittest.TestCase):
     def test_implemented_commands_actually_work(self) -> None:
         """Los comandos marcados como implementados deben funcionar realmente."""
         # Comandos que deberían funcionar (no marcados como futuro)
+        # Usando gramática oficial: motor <noun> [<subnoun>] <verb>
         implemented_patterns = [
-            r"^motor capabilities",
-            r"^motor doctor",
-            r"^motor project info",
-            r"^motor scene list",
-            r"^motor scene create",
-            r"^motor entity create",
-            r"^motor component add",
-            r"^motor asset list",
-            r"^motor animator info",
-            r"^motor animator ensure",
+            ("capabilities", []),
+            ("doctor", []),
+            ("project", ["info"]),
+            ("scene", ["list"]),
+            ("scene", ["create"]),
+            ("entity", ["create"]),
+            ("component", ["add"]),
+            ("asset", ["list"]),
+            ("animator", ["info"]),
+            ("animator", ["ensure"]),
+            ("animator", ["state", "create"]),  # Nueva gramática jerárquica
+            ("animator", ["state", "remove"]),  # Nueva gramática jerárquica
         ]
         
-        for pattern in implemented_patterns:
-            # Extract base command for testing
-            parts = pattern.replace("^motor ", "").split()
+        for scope, subcommands in implemented_patterns:
+            cmd_parts = [scope] + subcommands
             
-            # Skip commands that need arguments beyond what we can test
-            if any(x in parts for x in ["<", "create", "add", "info"]):
-                continue
-            
-            with self.subTest(command=pattern):
-                args = parts + ["--help"]
+            with self.subTest(command=f"motor {' '.join(cmd_parts)}"):
+                args = cmd_parts + ["--help"]
                 returncode, stdout, stderr = _run_motor(*args, env=self.env)
                 
                 # --help should work (return 0) even if command needs args
                 if returncode != 0 and "error" in (stderr + stdout).lower():
-                    self.fail(f"Command '{pattern}' parece no existir. Return code: {returncode}")
+                    self.fail(f"Command 'motor {' '.join(cmd_parts)}' parece no existir. Return code: {returncode}")
+    
+    def test_no_duplicate_official_commands(self) -> None:
+        """No debe haber dos sintaxis oficiales para la misma operación.
+        
+        Este test verifica que no se introduzcan aliases no documentados
+        como parte de la interfaz oficial.
+        """
+        # Mapeo de operaciones a su sintaxis oficial única
+        official_syntax = {
+            "animator state create": "motor animator state create <entity> <state>",
+            "animator state remove": "motor animator state remove <entity> <state>",
+        }
+        
+        # Verificar que no hay múltiples capabilities apuntando a comandos similares
+        for cap in self.registry.list_all():
+            cmd = cap.cli_command
+            
+            # Verificar que los comandos legacy no están documentados como oficiales
+            if "upsert-state" in cmd or "remove-state" in cmd:
+                self.fail(
+                    f"Capability '{cap.id}' usa sintaxis legacy en cli_command: {cmd}\n"
+                    f"Use 'animator state create/remove' en su lugar."
+                )
 
 
 class DocumentationContractTests(unittest.TestCase):
