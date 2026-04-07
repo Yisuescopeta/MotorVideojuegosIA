@@ -69,12 +69,13 @@ def _ensure_project(project_path: Path) -> None:
         raise ProjectNotFoundError(str(project_path))
 
 
-def _init_engine(project_path: Path) -> EngineAPI:
+def _init_engine(project_path: Path, auto_ensure_project: bool = True) -> EngineAPI:
     """Initialize EngineAPI for the project."""
     try:
         return EngineAPI(
             project_root=str(project_path),
             sandbox_paths=False,
+            auto_ensure_project=auto_ensure_project,
         )
     except Exception as exc:
         raise EngineInitError(str(exc))
@@ -231,10 +232,10 @@ def cmd_doctor(project_path: Path, json_output: bool) -> int:
         except Exception as exc:
             warnings.append(f"Could not validate entrypoints: {exc}")
 
-    # Check 6: Try to init engine
+    # Check 6: Try to init engine (read-only mode - no side effects)
     api: Optional[EngineAPI] = None
     try:
-        api = _init_engine(project_path)
+        api = _init_engine(project_path, auto_ensure_project=False)
         checks["engine_init"] = True
 
         # Check 7: Can list scenes
