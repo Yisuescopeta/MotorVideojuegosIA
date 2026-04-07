@@ -982,38 +982,49 @@ def cmd_animator_remove_state(
 
 
 def cmd_project_bootstrap_ai(project_path: Path, json_output: bool) -> int:
-    """Generate AI bootstrap files (motor_ai.json and START_HERE_AI.md)."""
+    """Generate AI bootstrap files (motor_ai.json and START_HERE_AI.md).
+    
+    Uses portable relative paths for commit-friendly output.
+    """
     try:
         _ensure_project(project_path)
         
         from engine.ai.registry_builder import MotorAIBootstrapBuilder, get_default_registry
-        from engine.project.project_service import ProjectService
+        from engine.project.project_service import ProjectService, ProjectManifest
         
         # Load project manifest
         manifest_path = project_path / "project.json"
         manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = ProjectManifest.from_dict(manifest_data)
         
         # Create registry and builder
         registry = get_default_registry()
         bootstrap_builder = MotorAIBootstrapBuilder(registry)
         
-        # Prepare project data
+        # Prepare portable project data (all paths relative)
         project_data = {
             "project": {
-                "name": manifest_data.get("name", "Untitled Project"),
-                "root": project_path.as_posix(),
-                "engine_version": manifest_data.get("engine_version", "unknown"),
-                "template": manifest_data.get("template", "default"),
+                "name": manifest.name,
+                "root": ".",  # Relative to project directory
+                "engine_version": manifest.engine_version,
+                "template": manifest.template,
+                "paths": manifest.paths,
             },
             "entrypoints": {
-                "manifest": (project_path / "project.json").as_posix(),
+                "manifest": "project.json",
+                "settings": f"{manifest.paths['settings']}/project_settings.json",
+                "startup_scene": "levels/main_scene.json",
+                "scripts_dir": manifest.paths["scripts"],
+                "assets_dir": manifest.paths["assets"],
+                "levels_dir": manifest.paths["levels"],
+                "prefabs_dir": manifest.paths["prefabs"],
             },
+            "important_files": [
+                "project.json",
+                "motor_ai.json",
+                "START_HERE_AI.md",
+            ],
         }
-        
-        # Add settings path if available
-        if "paths" in manifest_data and "settings" in manifest_data["paths"]:
-            settings_path = project_path / manifest_data["paths"]["settings"] / "project_settings.json"
-            project_data["entrypoints"]["settings"] = settings_path.as_posix()
         
         # Generate and write files
         paths = bootstrap_builder.write_to_project(project_path, project_data)
