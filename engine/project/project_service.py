@@ -583,20 +583,29 @@ class ProjectService:
         registry = CapabilityRegistryBuilder(engine_version=ENGINE_VERSION).build()
         bootstrap_builder = MotorAIBootstrapBuilder(registry)
 
+        # Portable project data - all paths are relative to project root
         project_data = {
             "project": {
                 "name": target_manifest.name,
-                "root": target_root.as_posix(),
+                "root": ".",  # Relative to project directory
                 "engine_version": target_manifest.engine_version,
                 "template": target_manifest.template,
+                "paths": target_manifest.paths,  # Include canonical paths
             },
             "entrypoints": {
-                "manifest": (target_root / self.PROJECT_FILE).as_posix(),
-                "settings": (target_root / target_manifest.paths["settings"] / self.PROJECT_SETTINGS_FILE).as_posix(),
-                "startup_scene": (target_root / "levels" / "main_scene.json").as_posix(),
-                "scripts_dir": (target_root / target_manifest.paths["scripts"]).as_posix(),
-                "assets_dir": (target_root / target_manifest.paths["assets"]).as_posix(),
+                "manifest": self.PROJECT_FILE,
+                "settings": f"{target_manifest.paths['settings']}/{self.PROJECT_SETTINGS_FILE}",
+                "startup_scene": "levels/main_scene.json",
+                "scripts_dir": target_manifest.paths["scripts"],
+                "assets_dir": target_manifest.paths["assets"],
+                "levels_dir": target_manifest.paths["levels"],
+                "prefabs_dir": target_manifest.paths["prefabs"],
             },
+            "important_files": [
+                "project.json",
+                "motor_ai.json",
+                "START_HERE_AI.md",
+            ],
         }
 
         motor_ai_content = bootstrap_builder.build_motor_ai_json(project_data)
