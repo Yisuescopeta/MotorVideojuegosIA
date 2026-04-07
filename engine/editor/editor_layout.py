@@ -178,6 +178,7 @@ class EditorLayout:
         self.request_activate_scene_key: str = ""
         self.request_close_scene_key: str = ""
         self.request_open_project: bool = False
+        self.request_open_build_settings: bool = False
         self.request_browse_project: bool = False
         self.request_create_project: bool = False
         self.request_exit_launcher: bool = False
@@ -1351,7 +1352,7 @@ class EditorLayout:
         elif action_id == "save_scene":
             self.request_save_scene = True
         elif action_id == "project_settings":
-            self.show_project_modal = True
+            self.request_open_build_settings = True
         elif action_id == "exit":
             self.request_exit = True
         elif action_id == "undo":

@@ -27,6 +27,18 @@ from tools.ai_workflow_cli_helpers import (
 from tools.schema_cli import migrate_path, validate_path
 
 
+def _run_buffered(func):
+    buffered_stdout = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buffered_stdout):
+            result = func()
+        _flush_buffered_stdout(buffered_stdout)
+        return result
+    except Exception:
+        _flush_buffered_stdout(buffered_stdout)
+        raise
+
+
 def _validate_assets(search: str = "") -> int:
     from engine.assets.asset_service import AssetService
 
@@ -49,6 +61,178 @@ def _build_assets() -> int:
     report = service.build_asset_artifacts()
     print(f"[OK] artifacts built: {report['artifact_count']}")
     return 0
+
+
+def _render_build_settings_summary(payload: dict) -> list[str]:
+    return [
+        f"[OK] build settings: {payload.get('product_name', '')}",
+        f"[OK] target_platform: {payload.get('target_platform', '')}",
+        f"[OK] startup_scene: {payload.get('startup_scene', '')}",
+        f"[OK] scenes_in_build: {len(payload.get('scenes_in_build', []))}",
+    ]
+
+
+def _render_prebuild_summary(payload: dict) -> list[str]:
+    selected = dict(payload.get("selected_content", {})) if isinstance(payload.get("selected_content", {}), dict) else {}
+    blocking = list(payload.get("blocking_errors", [])) if isinstance(payload.get("blocking_errors", []), list) else []
+    warnings = list(payload.get("warnings", [])) if isinstance(payload.get("warnings", []), list) else []
+    lines = [
+        (
+            f"[OK] prebuild valid: {payload.get('startup_scene', '')}"
+            if bool(payload.get("valid"))
+            else f"[ERROR] prebuild invalid: {payload.get('startup_scene', '')}"
+        ),
+        f"[OK] scenes: {len(payload.get('scene_order', []))}",
+        (
+            "[OK] selected content: "
+            f"scenes={len(selected.get('scenes', []))} "
+            f"prefabs={len(selected.get('prefabs', []))} "
+            f"scripts={len(selected.get('scripts', []))} "
+            f"assets={len(selected.get('assets', []))} "
+            f"metadata={len(selected.get('metadata', []))}"
+        ),
+        f"[OK] warnings: {len(warnings)}",
+        f"[OK] blocking_errors: {len(blocking)}",
+    ]
+    for item in blocking:
+        code = str(dict(item).get("code", "") or "")
+        message = str(dict(item).get("message", "") or "")
+        path = str(dict(item).get("path", "") or dict(item).get("reference", "") or "")
+        suffix = f" [{path}]" if path else ""
+        lines.append(f"[ERROR] {code}: {message}{suffix}")
+    return lines
+
+
+def _render_build_player_summary(payload: dict) -> list[str]:
+    warnings = list(payload.get("warnings", [])) if isinstance(payload.get("warnings", []), list) else []
+    errors = list(payload.get("errors", [])) if isinstance(payload.get("errors", []), list) else []
+    lines = [
+        (
+            f"[OK] build-player status: {payload.get('status', '')}"
+            if str(payload.get("status", "")) == "succeeded"
+            else f"[ERROR] build-player status: {payload.get('status', '')}"
+        ),
+        f"[OK] target: {payload.get('target_platform', '') or 'unknown'}",
+        f"[OK] output: {payload.get('output_path', '') or '(none)'}",
+        f"[OK] startup_scene: {payload.get('startup_scene', '') or '(none)'}",
+        f"[OK] warnings: {len(warnings)}",
+        f"[OK] errors: {len(errors)}",
+    ]
+    for item in warnings:
+        code = str(dict(item).get("code", "") or "")
+        message = str(dict(item).get("message", "") or "")
+        path = str(dict(item).get("path", "") or "")
+        suffix = f" [{path}]" if path else ""
+        lines.append(f"[WARNING] {code}: {message}{suffix}")
+    for item in errors:
+        code = str(dict(item).get("code", "") or "")
+        message = str(dict(item).get("message", "") or "")
+        path = str(dict(item).get("path", "") or "")
+        suffix = f" [{path}]" if path else ""
+        lines.append(f"[ERROR] {code}: {message}{suffix}")
+    report_path = str(payload.get("report_path", "") or "").strip()
+    if report_path:
+        lines.append(f"[OK] report: {report_path}")
+    return lines
+
+
+def _build_settings_show(project_root: str, *, as_json: bool, out_path: str) -> int:
+    try:
+        settings = ProjectService(project_root).load_build_settings()
+        payload = settings.to_dict()
+        _print_or_emit(payload, as_json=as_json, out_path=out_path, lines=_render_build_settings_summary(payload))
+        return 0
+    except Exception as exc:
+        _emit_setup_error(
+            message=f"build settings load failed: {exc}",
+            as_json=as_json,
+            out_path=out_path,
+            code="build_settings.load_failed",
+        )
+        return EXIT_RUNTIME_ERROR
+
+
+def _build_settings_set(args: argparse.Namespace) -> int:
+    try:
+        project_root = _project_root(args.project_root)
+        service = ProjectService(project_root)
+        payload = service.load_build_settings().to_dict()
+        if args.product_name is not None:
+            payload["product_name"] = args.product_name
+        if args.company_name is not None:
+            payload["company_name"] = args.company_name
+        if args.startup_scene is not None:
+            payload["startup_scene"] = args.startup_scene
+        if args.scene is not None:
+            payload["scenes_in_build"] = list(args.scene)
+        if args.target_platform is not None:
+            payload["target_platform"] = args.target_platform
+        if args.output_name is not None:
+            payload["output_name"] = args.output_name
+        if args.development_build is not None:
+            payload["development_build"] = bool(args.development_build)
+        if args.include_logs is not None:
+            payload["include_logs"] = bool(args.include_logs)
+        if args.include_profiler is not None:
+            payload["include_profiler"] = bool(args.include_profiler)
+        service.save_build_settings(payload)
+        saved = service.load_build_settings()
+        response = saved.to_dict()
+        _print_or_emit(response, as_json=args.json, out_path=args.out, lines=_render_build_settings_summary(response))
+        return 0
+    except Exception as exc:
+        _emit_setup_error(
+            message=f"build settings update failed: {exc}",
+            as_json=bool(args.json),
+            out_path=str(args.out or ""),
+            code="build_settings.update_failed",
+        )
+        return EXIT_RUNTIME_ERROR
+
+
+def _prebuild_check(project_root: str, *, as_json: bool, out_path: str) -> int:
+    from engine.assets.asset_service import AssetService
+    from engine.project import BuildPrebuildService
+
+    try:
+        def _generate():
+            service = ProjectService(project_root)
+            asset_service = AssetService(service)
+            report = BuildPrebuildService(service, asset_service).generate_report()
+            return report.to_dict()
+
+        payload = _run_buffered(_generate)
+        _print_or_emit(payload, as_json=as_json, out_path=out_path, lines=_render_prebuild_summary(payload))
+        return 0 if bool(payload.get("valid")) else 2
+    except Exception as exc:
+        _emit_setup_error(
+            message=f"prebuild setup failed: {exc}",
+            as_json=as_json,
+            out_path=out_path,
+            code="prebuild.setup_failed",
+        )
+        return EXIT_RUNTIME_ERROR
+
+
+def _build_player(project_root: str, output_root: str, *, as_json: bool, report_out: str) -> int:
+    from engine.project import BuildPlayerOptions, BuildPlayerService
+
+    try:
+        payload = _run_buffered(
+            lambda: BuildPlayerService(ProjectService(project_root))
+            .build_player(BuildPlayerOptions(output_root=output_root))
+            .to_dict()
+        )
+        _print_or_emit(payload, as_json=as_json, out_path=report_out, lines=_render_build_player_summary(payload))
+        return 0 if str(payload.get("status", "")) == "succeeded" else 1
+    except Exception as exc:
+        _emit_setup_error(
+            message=f"build-player setup failed: {exc}",
+            as_json=as_json,
+            out_path=report_out,
+            code="build_player.setup_failed",
+        )
+        return EXIT_RUNTIME_ERROR
 
 
 def _run_headless(level: str, frames: int, seed: int | None, debug_dump: str = "") -> int:
@@ -174,6 +358,39 @@ def parse_args() -> argparse.Namespace:
     build_assets_parser = subparsers.add_parser("build-assets", help="Build deterministic asset artifacts")
     build_assets_parser.add_argument("--bundle", action="store_true", help="Also create a content bundle")
 
+    build_settings_parser = subparsers.add_parser("build-settings", help="Inspect or update project build settings")
+    build_settings_subparsers = build_settings_parser.add_subparsers(dest="build_settings_command", required=True)
+
+    build_settings_show_parser = build_settings_subparsers.add_parser("show", help="Show normalized project build settings")
+    build_settings_show_parser.add_argument("--project-root", default="")
+    build_settings_show_parser.add_argument("--json", action="store_true")
+    build_settings_show_parser.add_argument("--out", default="")
+
+    build_settings_set_parser = build_settings_subparsers.add_parser("set", help="Update and save project build settings")
+    build_settings_set_parser.add_argument("--project-root", default="")
+    build_settings_set_parser.add_argument("--product-name", default=None)
+    build_settings_set_parser.add_argument("--company-name", default=None)
+    build_settings_set_parser.add_argument("--startup-scene", default=None)
+    build_settings_set_parser.add_argument("--scene", action="append", default=None, help="Append a scene path; repeat to define scenes_in_build order.")
+    build_settings_set_parser.add_argument("--target-platform", choices=("windows_desktop",), default=None)
+    build_settings_set_parser.add_argument("--output-name", default=None)
+    build_settings_set_parser.add_argument("--development-build", action=argparse.BooleanOptionalAction, default=None)
+    build_settings_set_parser.add_argument("--include-logs", action=argparse.BooleanOptionalAction, default=None)
+    build_settings_set_parser.add_argument("--include-profiler", action=argparse.BooleanOptionalAction, default=None)
+    build_settings_set_parser.add_argument("--json", action="store_true")
+    build_settings_set_parser.add_argument("--out", default="")
+
+    prebuild_parser = subparsers.add_parser("prebuild-check", help="Run build prevalidation and content selection")
+    prebuild_parser.add_argument("--project-root", default="")
+    prebuild_parser.add_argument("--json", action="store_true")
+    prebuild_parser.add_argument("--out", default="")
+
+    build_player_parser = subparsers.add_parser("build-player", help="Build a folder-based Windows desktop player export")
+    build_player_parser.add_argument("--project-root", default="", help="Project root to build. Defaults to the current working directory.")
+    build_player_parser.add_argument("--out", default="", help="Optional output folder override for the exported player.")
+    build_player_parser.add_argument("--json", action="store_true", help="Emit the build report as JSON.")
+    build_player_parser.add_argument("--report-out", default="", help="Optional path to also write the build report JSON.")
+
     run_parser = subparsers.add_parser("run-headless", help="Execute a scene headlessly for N frames")
     run_parser.add_argument("scene")
     run_parser.add_argument("--frames", type=int, default=60)
@@ -245,6 +462,15 @@ def main() -> int:
         report = service.create_bundle()
         print(f"[OK] bundle created: {report['bundle_path']}")
         return 0
+    if args.command == "build-settings":
+        if args.build_settings_command == "show":
+            return _build_settings_show(_project_root(args.project_root), as_json=args.json, out_path=args.out)
+        if args.build_settings_command == "set":
+            return _build_settings_set(args)
+    if args.command == "build-player":
+        return _build_player(_project_root(args.project_root), args.out, as_json=args.json, report_out=args.report_out)
+    if args.command == "prebuild-check":
+        return _prebuild_check(_project_root(args.project_root), as_json=args.json, out_path=args.out)
     if args.command == "run-headless":
         return _run_headless(args.scene, args.frames, args.seed, args.debug_dump)
     if args.command == "profile-run":

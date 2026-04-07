@@ -67,7 +67,10 @@ class ScriptBehaviourSystem:
 
     def set_project_service(self, project_service: Any) -> None:
         self._asset_service = AssetService(project_service) if project_service is not None else None
-        self._asset_resolver = self._asset_service.get_asset_resolver() if self._asset_service is not None else None
+        self.set_content_resolver(self._asset_service.get_asset_resolver() if self._asset_service is not None else None)
+
+    def set_content_resolver(self, resolver: Any) -> None:
+        self._asset_resolver = resolver
 
     def set_scene_flow_loader(self, loader: Optional[Callable[[str], bool]]) -> None:
         self._scene_flow_loader = loader

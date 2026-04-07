@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 from engine.core.engine_state import EngineState
@@ -196,12 +197,18 @@ class SceneWorkflowController:
         scene_manager = self._get_scene_manager()
         project_service = self._get_project_service()
         editor_layout = self._get_editor_layout()
-        if scene_manager is None or project_service is None or not project_service.has_project:
+        if scene_manager is None:
             return False
         if self._get_state() in (EngineState.PLAY, EngineState.PAUSED, EngineState.STEPPING):
             self._stop_runtime()
 
-        resolved_path = project_service.resolve_path(path).as_posix()
+        resolved_path = ""
+        if project_service is not None and getattr(project_service, "has_project", False):
+            resolved_path = project_service.resolve_path(path).as_posix()
+        elif path and Path(path).is_absolute():
+            resolved_path = Path(path).expanduser().resolve().as_posix()
+        if not resolved_path:
+            return False
         self._capture_active_scene_view_state()
         world = scene_manager.load_scene_from_file(resolved_path, activate=True)
         if world is None:
