@@ -1,127 +1,137 @@
-# AI Workflow Examples for MotorVideojuegosIA
+# AI Workflow Examples
 
-This directory contains practical examples for AI assistants working with the motor.
+This directory contains examples demonstrating how AI assistants can interact
+with MotorVideojuegosIA using the **official `motor` CLI interface**.
 
-## Quick Reference
+## Official Interface
+
+All examples use the official `motor` CLI entry point:
 
 ```bash
-# Discover capabilities
-python -m tools.engine_cli capabilities --json
+# Official way (preferred)
+motor doctor --project .
+motor scene create "Level 1"
+motor entity create Player
 
-# Check project health
-python -m tools.engine_cli doctor --project . --json
-
-# List available scenes
-python -m tools.engine_cli scene list --project . --json
+# Via Python module (for testing/development)
+python -m motor doctor --project .
 ```
+
+⚠️ **Note**: The legacy interface `python -m tools.engine_cli` is deprecated
+and should not be used in new scripts or documentation.
 
 ## Examples
 
-### 1. Query Capabilities (01_query_capabilities.py)
+### 01_query_capabilities.py
 
-Shows how to discover what the engine can do.
+Discover what the engine can do - the first step when opening any project.
 
 ```bash
 python examples/ai_workflows/01_query_capabilities.py
 ```
 
-### 2. Slice a Sprite Sheet (02_slice_spritesheet.py)
+Demonstrates:
+- Checking for motor_ai.json
+- Querying engine capabilities
+- Grouping capabilities by category
+- Showing example CLI commands
 
-Demonstrates grid-based slicing for animation.
+### 02_slice_spritesheet.py
+
+Create animation frames from a sprite sheet.
 
 ```bash
 python examples/ai_workflows/02_slice_spritesheet.py
 ```
 
-### 3. Create Animated Entity (03_create_animated_entity.py)
+Demonstrates:
+- Checking project health
+- Listing assets
+- Creating grid-based slices
 
-Full workflow: scene → entity → animator → states.
+### 03_create_animated_entity.py
+
+Full workflow for creating an animated entity.
 
 ```bash
 python examples/ai_workflows/03_create_animated_entity.py
 ```
 
-## Common Patterns
+Demonstrates:
+- Creating scenes and entities
+- Adding Animator components
+- Setting sprite sheets
+- Creating looping and non-looping animation states
+- Verifying animator configuration
 
-### Pattern 1: Detect and Validate Project
+## Key Principles
 
-```python
-from pathlib import Path
-import subprocess
-import json
+1. **Use `motor` command**: All examples use the `motor` CLI as the primary interface
+2. **JSON output**: All commands use `--json` for machine-readable output
+3. **Project context**: Commands that need project context use `--project .`
+4. **Error handling**: Examples handle JSON parsing and show meaningful errors
+5. **Idempotent operations**: Most operations can be safely re-run
 
-project_path = Path(".")
+## Common Commands
 
-# Validate project health
-result = subprocess.run(
-    ["python", "-m", "tools.engine_cli", "doctor", 
-     "--project", str(project_path), "--json"],
-    capture_output=True, text=True
-)
-diagnosis = json.loads(result.stdout)
+```bash
+# Project diagnostics
+motor doctor --project .
+motor capabilities
 
-if diagnosis["data"]["healthy"]:
-    print("Project is ready for AI workflows")
-else:
-    print(f"Issues found: {diagnosis['data']['issues']}")
+# Scene operations
+motor scene list --project .
+motor scene create "My Level" --project .
+motor scene load levels/my_level.json --project .
+
+# Entity operations
+motor entity create Player --project .
+motor component add Player Transform --data '{"x":100,"y":200}' --project .
+
+# Asset operations
+motor asset list --project .
+motor asset slice grid assets/player.png --cell-width 32 --cell-height 32 --project .
+
+# Animator operations
+motor animator ensure Player --project .
+motor animator set-sheet Player assets/player.png --project .
+motor animator state create Player idle --slices slice_0,slice_1 --fps 8 --loop --project .
+motor animator state create Player attack --slices attack_0,attack_1 --fps 12 --no-loop --project .
+motor animator info Player --project .
 ```
 
-### Pattern 2: Execute Headless Command
+## Loop/No-Loop Semantics
 
-```python
-import subprocess
-import json
+When creating animation states:
 
-def motor_command(*args, project="."):
-    """Execute a motor CLI command and return parsed JSON."""
-    cmd = ["python", "-m", "tools.engine_cli"] + list(args) + ["--project", project, "--json"]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    return json.loads(result.stdout)
+- `--loop` (default): Animation repeats indefinitely (e.g., idle, walk)
+- `--no-loop`: Animation plays once and stops (e.g., attack, jump)
 
-# Example: Create a scene
-result = motor_command("scene", "create", "My Level")
-if result["success"]:
-    print(f"Scene created: {result['data']['path']}")
+```bash
+# Looping idle animation
+motor animator state create Player idle --slices idle_0,idle_1 --fps 8 --loop
+
+# Non-looping attack animation
+motor animator state create Player attack --slices atk_0,atk_1 --fps 12 --no-loop
 ```
 
-### Pattern 3: Component Data Builder
+## Environment Setup
 
-```python
-def build_transform(x=0, y=0, rotation=0):
-    return {
-        "Transform": {
-            "enabled": True,
-            "x": x,
-            "y": y,
-            "rotation": rotation,
-            "scale_x": 1.0,
-            "scale_y": 1.0,
-        }
-    }
+The examples automatically configure the Python path to find the motor CLI.
+If running commands manually, ensure the project root is in PYTHONPATH:
 
-def build_animator(sprite_sheet=""):
-    return {
-        "Animator": {
-            "enabled": True,
-            "sprite_sheet_path": sprite_sheet,
-            "animations": {},
-        }
-    }
+```bash
+# Animator operations
+motor animator ensure Player --project .
+motor animator set-sheet Player assets/player.png --project .
+motor animator state create Player idle --slices slice_0,slice_1 --fps 8 --loop --project .
+motor animator state create Player attack --slices attack_0,attack_1 --fps 12 --no-loop --project .
+motor animator info Player --project .
 ```
 
-## Error Handling
+Or on Windows:
 
-Always check the `success` field in responses:
-
-```python
-result = motor_command("entity", "create", "Player")
-if not result["success"]:
-    print(f"Error: {result['message']}")
-    # Handle error appropriately
+```powershell
+$env:PYTHONPATH = "C:\MejoraIA\MotorVideojuegosIA;$env:PYTHONPATH"
+motor doctor --project .
 ```
-
-## Resources
-
-- `motor_ai.json` in your project root contains the full capability registry
-- `START_HERE_AI.md` provides project-specific guidance
-- Run `python -m tools.engine_cli --help` for all available commands
