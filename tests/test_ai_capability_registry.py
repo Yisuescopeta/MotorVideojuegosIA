@@ -342,7 +342,7 @@ class DefaultRegistryContentTests(unittest.TestCase):
             "entity:": ["entity:create", "entity:delete"],
             "component:": ["component:add", "component:edit"],
             "asset:": ["asset:list", "asset:find"],
-            "slice:": ["slice:grid", "slice:list"],
+            "asset:slice:": ["asset:slice:grid", "asset:slice:list"],  # slice commands under asset
             "animator:": ["animator:create", "animator:state:add"],
             "prefab:": ["prefab:instantiate", "prefab:list"],
             "project:": ["project:open", "project:manifest"],
@@ -393,10 +393,28 @@ class DefaultRegistryContentTests(unittest.TestCase):
                 cap.cli_command,
                 f"{cap.id} missing cli_command",
             )
+
+    def test_all_cli_commands_use_motor_prefix(self) -> None:
+        """Blindaje: TODOS los cli_command deben empezar con 'motor '."""
+        for cap in self.registry.list_all():
             self.assertTrue(
                 cap.cli_command.startswith("motor "),
-                f"{cap.id} CLI command should start with 'motor ': {cap.cli_command}",
+                f"{cap.id} CLI command must start with 'motor ': got '{cap.cli_command}'",
             )
+
+    def test_no_cli_commands_use_legacy_tools_engine_cli(self) -> None:
+        """Blindaje: NINGÚN cli_command debe usar tools.engine_cli."""
+        legacy_patterns = [
+            "python -m tools.engine_cli",
+            "tools.engine_cli",
+            "python -m tools",
+        ]
+        for cap in self.registry.list_all():
+            for pattern in legacy_patterns:
+                self.assertNotIn(
+                    pattern, cap.cli_command,
+                    f"{cap.id} uses deprecated CLI pattern '{pattern}': {cap.cli_command}"
+                )
 
     def test_registry_passes_validation(self) -> None:
         errors = self.registry.validate()
@@ -486,7 +504,7 @@ class RegistryBuilderPatternTests(unittest.TestCase):
             scopes.add(scope)
 
         expected_scopes = {
-            "scene", "entity", "component", "asset", "slice",
+            "scene", "entity", "component", "asset",  # slice is under asset
             "animator", "prefab", "project", "runtime", "physics", "introspect",
         }
         self.assertTrue(

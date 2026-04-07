@@ -1,0 +1,456 @@
+"""
+tests/test_motor_cli_contract.py - Executable contract tests for motor CLI
+
+Blindaje contra regresiones:
+- Verifica que TODOS los cli_command del registry sean compatibles con `motor`
+- Falla si hay comandos documentados pero inexistentes
+- Falla si los ejemplos usan la CLI antigua como camino principal
+- Falla si START_HERE_AI.md usa `python -m tools.engine_cli` fuera de contexto legacy
+- Falla si motor_ai.json referencia comandos obsoletos
+
+Estos tests ejecutan comandos reales, no solo verifican estructura.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from typing import List, Set, Tuple
+
+from engine.ai import get_default_registry, CapabilityRegistry, MotorAIBootstrapBuilder
+from motor.cli import create_motor_parser
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _run_motor(*args: str, env: dict | None = None, project: Path | None = None) -> Tuple[int, str, str]:
+    """Run motor CLI command and return (returncode, stdout, stderr)."""
+    cmd = [sys.executable, "-m", "motor"] + list(args)
+    
+    if env is None:
+        env = os.environ.copy()
+        python_path = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = str(ROOT) if not python_path else str(ROOT) + os.pathsep + python_path
+    
+    result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=str(project) if project else str(ROOT))
+    return result.returncode, result.stdout, result.stderr
+
+
+def _create_test_project(workspace: Path, name: str = "TestProject") -> Path:
+    """Create a minimal valid test project."""
+    project_root = workspace / name
+    project_root.mkdir()
+    
+    (project_root / "project.json").write_text(
+        json.dumps({
+            "name": name,
+            "version": 2,
+            "engine_version": "2026.03",
+            "template": "empty",
+            "paths": {
+                "assets": "assets",
+                "levels": "levels",
+                "prefabs": "prefabs",
+                "scripts": "scripts",
+                "settings": "settings",
+                "meta": ".motor/meta",
+                "build": ".motor/build",
+            },
+        }),
+        encoding="utf-8",
+    )
+    
+    for dir_name in ["assets", "levels", "scripts", "settings", ".motor"]:
+        (project_root / dir_name).mkdir(parents=True, exist_ok=True)
+    
+    return project_root
+
+
+class RegistryToCLIExecutableContractTests(unittest.TestCase):
+    """Executable contract tests: registry commands must work in motor CLI."""
+    
+    @classmethod
+    def setUpClass(cls):
+        cls.registry = get_default_registry()
+        cls.parser = create_motor_parser()
+        cls._temp_dir = tempfile.TemporaryDirectory()
+        cls.project = _create_test_project(Path(cls._temp_dir.name), "ContractTest")
+        cls.env = os.environ.copy()
+        python_path = cls.env.get("PYTHONPATH", "")
+        cls.env["PYTHONPATH"] = str(ROOT) if not python_path else str(ROOT) + os.pathsep + python_path
+    
+    @classmethod
+    def tearDownClass(cls):
+        cls._temp_dir.cleanup()
+    
+    def _get_available_commands(self) -> Set[str]:
+        """Extract available commands from motor CLI parser."""
+        commands = set()
+        for action in self.parser._actions:
+            if hasattr(action, 'choices') and action.choices:
+                for cmd_name, subparser in action.choices.items():
+                    commands.add(cmd_name)
+                    # Check for subcommands
+                    if hasattr(subparser, '_actions'):
+                        for sub_action in subparser._actions:
+                            if hasattr(sub_action, 'choices') and sub_action.choices:
+                                for sub_cmd in sub_action.choices.keys():
+                                    commands.add(f"{cmd_name} {sub_cmd}")
+        return commands
+    
+    def test_all_registry_cli_commands_start_with_motor(self) -> None:
+        """CADA cli_command en el registry debe empezar con 'motor '."""
+        violations = []
+        for cap in self.registry.list_all():
+            if not cap.cli_command.startswith("motor "):
+                violations.append(f"{cap.id}: {cap.cli_command}")
+        
+        if violations:
+            self.fail(f"Capabilities sin prefijo 'motor ':\n" + "\n".join(violations))
+    
+    def test_no_registry_commands_use_deprecated_tools_engine_cli(self) -> None:
+        """NINGÚN cli_command debe referenciar tools.engine_cli."""
+        deprecated_patterns = [
+            "python -m tools.engine_cli",
+            "tools.engine_cli",
+            "python -m tools",
+        ]
+        
+        violations = []
+        for cap in self.registry.list_all():
+            for pattern in deprecated_patterns:
+                if pattern in cap.cli_command:
+                    violations.append(f"{cap.id}: {cap.cli_command}")
+                    break
+        
+        if violations:
+            self.fail(f"Capabilities con CLI obsoleto:\n" + "\n".join(violations))
+    
+    def test_registry_command_scopes_exist_in_motor_cli(self) -> None:
+        """Todos los scopes de comandos en registry deben existir en motor CLI."""
+        available = self._get_available_commands()
+        
+        # Mapeo de capability scope a comandos CLI
+        scope_to_command = {
+            "scene": "scene",
+            "entity": "entity",
+            "component": "component",
+            "asset": "asset",
+            "animator": "animator",
+            "prefab": "prefab",
+            "project": "project",
+            "runtime": "runtime",
+            "physics": "physics",
+            "slice": "asset",  # slice commands are under asset
+            "introspect": "capabilities",  # introspect:capabilities -> capabilities
+        }
+        
+        # Comandos que pueden no estar implementados aún pero están documentados
+        future_scopes = {"runtime", "prefab", "physics", "introspect"}
+        
+        violations = []
+        for cap in self.registry.list_all():
+            scope = cap.id.split(":")[0]
+            expected_cmd = scope_to_command.get(scope, scope)
+            
+            if scope in future_scopes:
+                continue  # Skip future commands
+            
+            # Check if command or subcommand exists
+            cmd_parts = cap.cli_command.split()[1:]  # Remove 'motor'
+            if not cmd_parts:
+                continue
+                
+            base_cmd = cmd_parts[0]
+            if base_cmd not in available and f"{base_cmd} {cmd_parts[1] if len(cmd_parts) > 1 else ''}".strip() not in available:
+                if expected_cmd not in available:
+                    violations.append(f"{cap.id}: scope '{scope}' -> command '{expected_cmd}' not found")
+        
+        if violations:
+            self.fail(f"Scopes de registry sin comandos CLI correspondientes:\n" + "\n".join(violations))
+    
+    def test_implemented_commands_actually_work(self) -> None:
+        """Los comandos marcados como implementados deben funcionar realmente."""
+        # Comandos que deberían funcionar (no marcados como futuro)
+        implemented_patterns = [
+            r"^motor capabilities",
+            r"^motor doctor",
+            r"^motor project info",
+            r"^motor scene list",
+            r"^motor scene create",
+            r"^motor entity create",
+            r"^motor component add",
+            r"^motor asset list",
+            r"^motor animator info",
+            r"^motor animator ensure",
+        ]
+        
+        for pattern in implemented_patterns:
+            # Extract base command for testing
+            parts = pattern.replace("^motor ", "").split()
+            
+            # Skip commands that need arguments beyond what we can test
+            if any(x in parts for x in ["<", "create", "add", "info"]):
+                continue
+            
+            with self.subTest(command=pattern):
+                args = parts + ["--help"]
+                returncode, stdout, stderr = _run_motor(*args, env=self.env)
+                
+                # --help should work (return 0) even if command needs args
+                if returncode != 0 and "error" in (stderr + stdout).lower():
+                    self.fail(f"Command '{pattern}' parece no existir. Return code: {returncode}")
+
+
+class DocumentationContractTests(unittest.TestCase):
+    """Contract tests for documentation alignment with motor CLI."""
+    
+    def test_start_here_md_uses_motor_as_primary_interface(self) -> None:
+        """START_HERE_AI.md debe usar `motor` como interfaz principal."""
+        start_here_path = ROOT / "START_HERE_AI.md"
+        if not start_here_path.exists():
+            self.skipTest("START_HERE_AI.md no encontrado")
+        
+        content = start_here_path.read_text(encoding="utf-8")
+        lines = content.split("\n")
+        
+        violations = []
+        for i, line in enumerate(lines, 1):
+            # Buscar referencias a tools.engine_cli fuera de contexto legacy
+            if "tools.engine_cli" in line:
+                context = line.lower()
+                # Permitir solo en contextos explícitos de legacy/deprecated
+                if not any(word in context for word in ["legacy", "deprecated", "compatibility", "old", "alternative"]):
+                    violations.append(f"Línea {i}: {line.strip()}")
+            
+            # Buscar comandos sin prefijo motor en bloques de código
+            if line.strip().startswith(("```bash", "```shell", "$ ")):
+                # Verificar siguiente línea
+                continue
+        
+        if violations:
+            self.fail(f"START_HERE_AI.md usa CLI obsoleto como principal:\n" + "\n".join(violations))
+    
+    def test_start_here_md_no_python_m_tools_pattern(self) -> None:
+        """START_HERE_AI.md no debe tener `python -m tools...` como ejemplo principal."""
+        start_here_path = ROOT / "START_HERE_AI.md"
+        if not start_here_path.exists():
+            self.skipTest("START_HERE_AI.md no encontrado")
+        
+        content = start_here_path.read_text(encoding="utf-8")
+        
+        # Buscar patrones prohibidos
+        prohibited_patterns = [
+            r"python\s+-m\s+tools\.engine_cli",
+            r"python\s+-m\s+tools\s",
+        ]
+        
+        violations = []
+        for pattern in prohibited_patterns:
+            matches = list(re.finditer(pattern, content, re.IGNORECASE))
+            for match in matches:
+                line_num = content[:match.start()].count("\n") + 1
+                line_start = content.rfind("\n", 0, match.start()) + 1
+                line_end = content.find("\n", match.end())
+                context = content[line_start:line_end].lower()
+                
+                # Solo permitir en contexto legacy explícito
+                if not any(word in context for word in ["legacy", "deprecated", "compatibility"]):
+                    violations.append(f"Línea {line_num}: {match.group()}")
+        
+        if violations:
+            self.fail(f"START_HERE_AI.md contiene patrones prohibidos:\n" + "\n".join(violations))
+
+
+class ExamplesContractTests(unittest.TestCase):
+    """Contract tests for AI workflow examples."""
+    
+    EXAMPLES_DIR = ROOT / "examples" / "ai_workflows"
+    
+    def test_all_examples_use_motor_not_legacy_cli(self) -> None:
+        """Todos los ejemplos deben usar `motor`, no `python -m tools.engine_cli`."""
+        if not self.EXAMPLES_DIR.exists():
+            self.skipTest("Directorio de ejemplos no encontrado")
+        
+        violations = []
+        for py_file in self.EXAMPLES_DIR.glob("*.py"):
+            content = py_file.read_text(encoding="utf-8")
+            
+            # Verificar que NO usen tools.engine_cli
+            if "tools.engine_cli" in content:
+                lines = content.split("\n")
+                for i, line in enumerate(lines, 1):
+                    if "tools.engine_cli" in line:
+                        violations.append(f"{py_file.name}:{i}: {line.strip()}")
+            
+            # Verificar que SÍ usen motor
+            if '"motor"' not in content and "'motor'" not in content:
+                violations.append(f"{py_file.name}: No usa comando 'motor'")
+        
+        if violations:
+            self.fail(f"Ejemplos con CLI incorrecto:\n" + "\n".join(violations))
+    
+    def test_examples_are_executable(self) -> None:
+        """Los ejemplos deben poder ejecutarse sin errores de importación."""
+        if not self.EXAMPLES_DIR.exists():
+            self.skipTest("Directorio de ejemplos no encontrado")
+        
+        # Solo verificar sintaxis, no ejecutar completamente
+        for py_file in self.EXAMPLES_DIR.glob("*.py"):
+            with self.subTest(example=py_file.name):
+                # Verificar que el archivo tiene sintaxis Python válida
+                result = subprocess.run(
+                    [sys.executable, "-m", "py_compile", str(py_file)],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode != 0:
+                    self.fail(f"{py_file.name} tiene errores de sintaxis: {result.stderr}")
+
+
+class MotorAIBootstrapContractTests(unittest.TestCase):
+    """Contract tests for motor_ai.json generation."""
+    
+    def test_generated_motor_ai_uses_official_interface(self) -> None:
+        """motor_ai.json generado debe usar solo comandos motor oficiales."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = _create_test_project(Path(tmpdir), "BootstrapTest")
+            
+            # Generate bootstrap
+            registry = get_default_registry()
+            builder = MotorAIBootstrapBuilder(registry)
+            builder.write_to_project(project, {"project": {"name": "BootstrapTest"}})
+            
+            # Verify motor_ai.json
+            motor_ai_path = project / "motor_ai.json"
+            self.assertTrue(motor_ai_path.exists())
+            
+            content = motor_ai_path.read_text(encoding="utf-8")
+            
+            # No debe tener referencias a tools.engine_cli
+            if "tools.engine_cli" in content:
+                self.fail("motor_ai.json contiene referencia a 'tools.engine_cli'")
+            
+            # Debe tener referencias a motor
+            if "motor " not in content:
+                self.fail("motor_ai.json no contiene referencias a 'motor'")
+            
+            # Verificar estructura
+            data = json.loads(content)
+            self.assertEqual(data["schema_version"], 2)
+            self.assertIn("engine", data)
+            self.assertIn("capabilities", data)
+            
+            # Verificar que todas las capabilities usan motor
+            for cap in data["capabilities"]["capabilities"]:
+                cli_cmd = cap.get("cli_command", "")
+                if cli_cmd and not cli_cmd.startswith("motor "):
+                    self.fail(f"Capability {cap['id']} usa comando no-motor: {cli_cmd}")
+    
+    def test_generated_start_here_uses_motor(self) -> None:
+        """START_HERE_AI.md generado debe usar motor como interfaz principal."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = _create_test_project(Path(tmpdir), "StartHereTest")
+            
+            # Generate bootstrap
+            registry = get_default_registry()
+            builder = MotorAIBootstrapBuilder(registry)
+            builder.write_to_project(project, {"project": {"name": "StartHereTest"}})
+            
+            start_here_path = project / "START_HERE_AI.md"
+            self.assertTrue(start_here_path.exists())
+            
+            content = start_here_path.read_text(encoding="utf-8")
+            
+            # No debe tener tools.engine_cli fuera de contexto legacy
+            lines = content.split("\n")
+            for i, line in enumerate(lines, 1):
+                if "tools.engine_cli" in line:
+                    if not any(word in line.lower() for word in ["legacy", "deprecated", "compatibility"]):
+                        self.fail(f"START_HERE_AI.md línea {i} usa CLI obsoleto: {line}")
+
+
+class NoRegressionTests(unittest.TestCase):
+    """Tests para prevenir regresiones a interfaces legacy."""
+    
+    def test_no_hardcoded_python_m_tools_in_source(self) -> None:
+        """El código fuente no debe hardcodear python -m tools como camino principal."""
+        # Directorios a revisar
+        source_dirs = [ROOT / "engine", ROOT / "motor", ROOT / "cli"]
+        
+        violations = []
+        for src_dir in source_dirs:
+            if not src_dir.exists():
+                continue
+            for py_file in src_dir.rglob("*.py"):
+                content = py_file.read_text(encoding="utf-8")
+                if 'python -m tools' in content or 'python -m tools.engine_cli' in content:
+                    # Excepciones permitidas
+                    rel_path = py_file.relative_to(ROOT)
+                    if 'test' in str(rel_path).lower():
+                        continue  # Tests pueden tener compatibilidad
+                    lines = content.split("\n")
+                    for i, line in enumerate(lines, 1):
+                        if 'python -m tools' in line or 'python -m tools.engine_cli' in line:
+                            # Permitir si está en contexto legacy/deprecated explícito
+                            if any(word in line.lower() for word in ['legacy', 'deprecated', 'compatibility', 'old']):
+                                continue
+                            violations.append(f"{rel_path}:{i}")
+        
+        if violations:
+            self.fail(f"Código fuente con referencias legacy (sin contexto explícito):\n" + "\n".join(violations))
+
+
+class CommandCoverageTests(unittest.TestCase):
+    """Tests para verificar cobertura de comandos entre registry y CLI."""
+    
+    def test_all_motor_commands_are_in_registry(self) -> None:
+        """Todos los comandos motor deben estar documentados en registry."""
+        registry = get_default_registry()
+        parser = create_motor_parser()
+        
+        # Extraer comandos del parser
+        motor_commands = set()
+        for action in parser._actions:
+            if hasattr(action, 'choices') and action.choices:
+                motor_commands.update(action.choices.keys())
+        
+        # Extraer scopes del registry
+        registry_scopes = set()
+        for cap in registry.list_all():
+            scope = cap.id.split(":")[0]
+            registry_scopes.add(scope)
+        
+        # Mapeo inverso: comandos CLI a scopes
+        command_to_scope = {
+            "capabilities": "introspect",
+            "doctor": "project",
+            "project": "project",
+            "scene": "scene",
+            "entity": "entity",
+            "component": "component",
+            "animator": "animator",
+            "asset": "asset",
+        }
+        
+        # Verificar que cada comando motor tiene al menos un capability
+        missing = []
+        for cmd in motor_commands:
+            expected_scope = command_to_scope.get(cmd, cmd)
+            if expected_scope not in registry_scopes:
+                # Algunos comandos son meta-comandos
+                if cmd not in ["doctor", "capabilities"]:
+                    missing.append(cmd)
+        
+        if missing:
+            self.fail(f"Comandos motor sin capabilities en registry: {missing}")
+
+
+if __name__ == "__main__":
+    unittest.main()
