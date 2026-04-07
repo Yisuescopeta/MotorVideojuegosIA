@@ -85,6 +85,11 @@ class ProjectManifest:
         )
 
 
+MOTOR_AI_FILE = "motor_ai.json"
+START_HERE_FILE = "START_HERE_AI.md"
+BOOTSTRAP_SCHEMA_VERSION = 1
+
+
 class ProjectService:
     """Resuelve proyecto activo, launcher, paths y estado local del editor."""
 
@@ -210,6 +215,7 @@ class ProjectService:
         manifest = self._load_manifest(manifest_path)
         migrated_manifest = self._migrate_manifest(root, manifest)
         self._ensure_project_layout_for(root, migrated_manifest, create_bootstrap=False)
+        self.generate_ai_bootstrap(root, migrated_manifest)
         existing = self._load_registry_entries()
         entry = self._registry_entry_from_manifest(root, migrated_manifest)
         merged = [item for item in existing if self._normalize_registry_path(item.get("path")) != entry["path"]]
@@ -563,6 +569,51 @@ class ProjectService:
             startup_scene = root / settings["startup_scene"]
             if not startup_scene.exists():
                 self._write_default_scene(startup_scene, "Main Scene")
+            self.generate_ai_bootstrap(root, manifest)
+
+    def generate_ai_bootstrap(self, root: Path | None = None, manifest: ProjectManifest | None = None) -> Dict[str, Any]:
+        from engine.ai import CapabilityRegistryBuilder, MotorAIBootstrapBuilder
+
+        target_root = Path(root) if root else self._project_root_real
+        target_manifest = manifest if manifest else self.manifest
+
+        motor_ai_path = target_root / MOTOR_AI_FILE
+        start_here_path = target_root / START_HERE_FILE
+
+        registry = CapabilityRegistryBuilder(engine_version=ENGINE_VERSION).build()
+        bootstrap_builder = MotorAIBootstrapBuilder(registry)
+
+        project_data = {
+            "project": {
+                "name": target_manifest.name,
+                "root": target_root.as_posix(),
+                "engine_version": target_manifest.engine_version,
+                "template": target_manifest.template,
+            },
+            "entrypoints": {
+                "manifest": (target_root / self.PROJECT_FILE).as_posix(),
+                "settings": (target_root / target_manifest.paths["settings"] / self.PROJECT_SETTINGS_FILE).as_posix(),
+                "startup_scene": (target_root / "levels" / "main_scene.json").as_posix(),
+                "scripts_dir": (target_root / target_manifest.paths["scripts"]).as_posix(),
+                "assets_dir": (target_root / target_manifest.paths["assets"]).as_posix(),
+            },
+        }
+
+        motor_ai_content = bootstrap_builder.build_motor_ai_json(project_data)
+        start_here_content = bootstrap_builder.build_start_here_md(target_manifest.name)
+
+        motor_ai_path.write_text(motor_ai_content, encoding="utf-8")
+        start_here_path.write_text(start_here_content, encoding="utf-8")
+
+        return json.loads(motor_ai_content)
+
+    def migrate_project_bootstrap(self, project_root: Path | None = None) -> Dict[str, Any]:
+        root = self._normalize_project_root(project_root) if project_root else self._project_root_real
+        manifest_path = root / self.PROJECT_FILE
+        if not manifest_path.exists():
+            raise FileNotFoundError(f"project.json not found in {root}")
+        manifest = self._load_manifest(manifest_path)
+        return self.generate_ai_bootstrap(root, manifest)
 
     def _load_manifest(self, manifest_path: Path) -> ProjectManifest:
         with manifest_path.open("r", encoding="utf-8") as handle:

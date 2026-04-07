@@ -150,3 +150,77 @@ class AssetsProjectAPI(EngineAPIComponent):
         if self.asset_service is None:
             return []
         return self.asset_service.list_slices(asset_path)
+
+    def preview_auto_slices(
+        self,
+        asset_path: str,
+        pivot_x: float = 0.5,
+        pivot_y: float = 0.5,
+        naming_prefix: Optional[str] = None,
+        alpha_threshold: int = 1,
+        color_tolerance: int = 12,
+    ) -> list[Dict[str, Any]]:
+        """Preview auto-detected slices without saving them."""
+        if self.asset_service is None:
+            return []
+        return self.asset_service.preview_auto_slices(
+            asset_path,
+            pivot_x=pivot_x,
+            pivot_y=pivot_y,
+            naming_prefix=naming_prefix,
+            alpha_threshold=alpha_threshold,
+            color_tolerance=color_tolerance,
+        )
+
+    def create_auto_slices(
+        self,
+        asset_path: str,
+        pivot_x: float = 0.5,
+        pivot_y: float = 0.5,
+        naming_prefix: Optional[str] = None,
+        alpha_threshold: int = 1,
+    ) -> ActionResult:
+        """Generate and save auto-detected slices for an asset."""
+        if self.asset_service is None:
+            return self.fail("Asset service not ready")
+        try:
+            metadata = self.asset_service.generate_auto_slices(
+                asset_path,
+                pivot_x=pivot_x,
+                pivot_y=pivot_y,
+                naming_prefix=naming_prefix,
+                alpha_threshold=alpha_threshold,
+            )
+            return self.ok("Auto slices created", metadata)
+        except Exception as exc:
+            return self.fail(f"Auto slice generation failed: {exc}")
+
+    def save_manual_slices(
+        self,
+        asset_path: str,
+        slices: list[Dict[str, Any]],
+        pivot_x: float = 0.5,
+        pivot_y: float = 0.5,
+        naming_prefix: Optional[str] = None,
+    ) -> ActionResult:
+        """Save manually defined slices for an asset."""
+        if self.asset_service is None:
+            return self.fail("Asset service not ready")
+        try:
+            metadata = self.asset_service.save_manual_slices(
+                asset_path,
+                slices=slices,
+                pivot_x=pivot_x,
+                pivot_y=pivot_y,
+                naming_prefix=naming_prefix,
+            )
+            return self.ok("Manual slices saved", metadata)
+        except Exception as exc:
+            return self.fail(f"Manual slice save failed: {exc}")
+
+    def get_asset_image_size(self, asset_path: str) -> Dict[str, int]:
+        """Get the image dimensions for an asset."""
+        if self.asset_service is None:
+            return {"width": 0, "height": 0}
+        width, height = self.asset_service.get_image_size(asset_path)
+        return {"width": width, "height": height}

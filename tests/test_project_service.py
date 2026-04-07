@@ -280,6 +280,164 @@ class ProjectServiceTests(unittest.TestCase):
         self.assertEqual(prefabs, ["prefabs/enemy.prefab", "prefabs/legacy.json"])
 
 
+class AIDiscoverabilityTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp_dir = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._temp_dir.name)
+        self.global_state_dir = self.workspace / "global_state"
+
+    def tearDown(self) -> None:
+        self._temp_dir.cleanup()
+
+    def _make_project(self, name: str) -> tuple[Path, ProjectService]:
+        root = self.workspace / name
+        service = ProjectService(root, global_state_dir=self.global_state_dir)
+        return root, service
+
+    def test_new_project_contains_motor_ai_json_and_start_here_md(self) -> None:
+        project_root, service = self._make_project("BootstrapProject")
+
+        motor_ai_path = project_root / "motor_ai.json"
+        start_here_path = project_root / "START_HERE_AI.md"
+
+        self.assertTrue(motor_ai_path.exists(), "motor_ai.json must be created on project creation")
+        self.assertTrue(start_here_path.exists(), "START_HERE_AI.md must be created on project creation")
+
+    def test_motor_ai_json_has_correct_schema_version(self) -> None:
+        project_root, service = self._make_project("SchemaProject")
+
+        motor_ai_path = project_root / "motor_ai.json"
+        data = json.loads(motor_ai_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(data["schema_version"], 2)
+        self.assertIn("engine", data)
+        self.assertIn("project", data)
+        self.assertIn("entrypoints", data)
+        self.assertIn("capabilities", data)
+
+    def test_motor_ai_json_engine_section_contains_version_info(self) -> None:
+        project_root, service = self._make_project("EngineInfoProject")
+
+        motor_ai_path = project_root / "motor_ai.json"
+        data = json.loads(motor_ai_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(data["engine"]["name"], "MotorVideojuegosIA")
+        self.assertIn("version", data["engine"])
+        self.assertIn("api_version", data["engine"])
+
+    def test_motor_ai_json_project_section_contains_manifest_data(self) -> None:
+        project_root, service = self._make_project("ProjectDataProject")
+
+        motor_ai_path = project_root / "motor_ai.json"
+        data = json.loads(motor_ai_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(data["project"]["name"], "ProjectDataProject")
+        self.assertIn("root", data["project"])
+        self.assertIn("engine_version", data["project"])
+        self.assertIn("template", data["project"])
+
+    def test_motor_ai_json_entrypoints_contains_key_paths(self) -> None:
+        project_root, service = self._make_project("EntrypointsProject")
+
+        motor_ai_path = project_root / "motor_ai.json"
+        data = json.loads(motor_ai_path.read_text(encoding="utf-8"))
+
+        entrypoints = data["entrypoints"]
+        self.assertIn("manifest", entrypoints)
+        self.assertIn("settings", entrypoints)
+        self.assertIn("startup_scene", entrypoints)
+        self.assertIn("scripts_dir", entrypoints)
+        self.assertIn("assets_dir", entrypoints)
+        self.assertTrue(Path(entrypoints["manifest"]).exists())
+        self.assertTrue(Path(entrypoints["settings"]).exists())
+
+    def test_motor_ai_json_capabilities_is_structured_as_registry(self) -> None:
+        project_root, service = self._make_project("CapabilitiesProject")
+
+        motor_ai_path = project_root / "motor_ai.json"
+        data = json.loads(motor_ai_path.read_text(encoding="utf-8"))
+
+        caps = data["capabilities"]
+        self.assertIn("schema_version", caps)
+        self.assertIn("engine", caps)
+        self.assertIn("capabilities", caps)
+        self.assertIsInstance(caps["capabilities"], list)
+        self.assertGreater(len(caps["capabilities"]), 0)
+        # Verify at least one capability has expected structure
+        first_cap = caps["capabilities"][0]
+        self.assertIn("id", first_cap)
+        self.assertIn("summary", first_cap)
+        self.assertIn("mode", first_cap)
+        self.assertIn("api_methods", first_cap)
+        self.assertIn("cli_command", first_cap)
+
+    def test_start_here_md_contains_project_name_and_engine_version(self) -> None:
+        project_root, service = self._make_project("StartHereProject")
+
+        start_here_path = project_root / "START_HERE_AI.md"
+        content = start_here_path.read_text(encoding="utf-8")
+
+        self.assertIn("StartHereProject", content)
+        self.assertIn("MotorVideojuegosIA", content)
+        self.assertIn("motor_ai.json", content)
+
+    def test_generate_ai_bootstrap_overwrites_existing_files(self) -> None:
+        project_root, service = self._make_project("RegenProject")
+
+        motor_ai_path = project_root / "motor_ai.json"
+        original_content = json.dumps({"schema_version": 99}, indent=4)
+        motor_ai_path.write_text(original_content, encoding="utf-8")
+
+        result = service.generate_ai_bootstrap()
+
+        data = json.loads(motor_ai_path.read_text(encoding="utf-8"))
+        self.assertEqual(data["schema_version"], 2)
+        self.assertIn("engine", data)
+
+    def test_migrate_project_bootstrap_adds_files_to_existing_project(self) -> None:
+        project_root = self.workspace / "LegacyProject"
+        project_root.mkdir(parents=True, exist_ok=True)
+        (project_root / "project.json").write_text(
+            json.dumps({
+                "name": "LegacyProject",
+                "version": 1,
+                "paths": {},
+            }, indent=4),
+            encoding="utf-8",
+        )
+        bootstrap = ProjectService(self.workspace, global_state_dir=self.global_state_dir, auto_ensure=False)
+        bootstrap.register_project(project_root)
+
+        motor_ai_path = project_root / "motor_ai.json"
+        start_here_path = project_root / "START_HERE_AI.md"
+
+        self.assertTrue(motor_ai_path.exists(), "migrate_project_bootstrap must create motor_ai.json")
+        self.assertTrue(start_here_path.exists(), "migrate_project_bootstrap must create START_HERE_AI.md")
+
+        data = json.loads(motor_ai_path.read_text(encoding="utf-8"))
+        self.assertEqual(data["project"]["name"], "LegacyProject")
+        self.assertEqual(data["schema_version"], 2)
+
+    def test_generate_ai_bootstrap_with_custom_name_updates_project_name(self) -> None:
+        project_root = self.workspace / "CustomNameProject"
+        service = ProjectService(self.workspace, global_state_dir=self.global_state_dir, auto_ensure=False)
+        service.create_project(project_root, name="Custom Display Name")
+
+        motor_ai_path = project_root / "motor_ai.json"
+        data = json.loads(motor_ai_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(data["project"]["name"], "Custom Display Name")
+
+    def test_motor_ai_json_capabilities_has_engine_info(self) -> None:
+        project_root, service = self._make_project("CapsSchemaProject")
+
+        motor_ai_path = project_root / "motor_ai.json"
+        data = json.loads(motor_ai_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(data["engine"]["capabilities_schema_version"], 1)
+        self.assertIn("schema_version", data["capabilities"])
+
+
 class ProjectSwitchIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:
         self._temp_dir = tempfile.TemporaryDirectory()
