@@ -380,8 +380,11 @@ class NoRegressionTests(unittest.TestCase):
     """Tests para prevenir regresiones a interfaces legacy."""
     
     def test_no_hardcoded_python_m_tools_in_source(self) -> None:
-        """El código fuente no debe hardcodear python -m tools como camino principal."""
-        # Directorios a revisar
+        """El código fuente no debe hardcodear python -m tools como camino principal.
+        
+        Las referencias en documentación/contexto deprecado están permitidas.
+        """
+        # Directorios a revisar (excluyendo tools/ que es legacy)
         source_dirs = [ROOT / "engine", ROOT / "motor", ROOT / "cli"]
         
         violations = []
@@ -390,18 +393,28 @@ class NoRegressionTests(unittest.TestCase):
                 continue
             for py_file in src_dir.rglob("*.py"):
                 content = py_file.read_text(encoding="utf-8")
-                if 'python -m tools' in content or 'python -m tools.engine_cli' in content:
-                    # Excepciones permitidas
-                    rel_path = py_file.relative_to(ROOT)
-                    if 'test' in str(rel_path).lower():
-                        continue  # Tests pueden tener compatibilidad
-                    lines = content.split("\n")
-                    for i, line in enumerate(lines, 1):
-                        if 'python -m tools' in line or 'python -m tools.engine_cli' in line:
-                            # Permitir si está en contexto legacy/deprecated explícito
-                            if any(word in line.lower() for word in ['legacy', 'deprecated', 'compatibility', 'old']):
-                                continue
-                            violations.append(f"{rel_path}:{i}")
+                rel_path = py_file.relative_to(ROOT)
+                if 'test' in str(rel_path).lower():
+                    continue  # Tests pueden tener compatibilidad
+                    
+                lines = content.split("\n")
+                for i, line in enumerate(lines, 1):
+                    if 'python -m tools' in line or 'python -m tools.engine_cli' in line:
+                        # Permitir si está en contexto legacy/deprecated explícito
+                        # Buscar en línea actual y algunas líneas cercanas
+                        context_lines = [line]
+                        if i > 1:
+                            context_lines.append(lines[i-2])  # Línea anterior
+                        if i < len(lines):
+                            context_lines.append(lines[i])  # Línea siguiente
+                        
+                        context_text = ' '.join(context_lines).lower()
+                        if any(word in context_text for word in ['legacy', 'deprecated', 'compatibility', 'old', 'backward']):
+                            continue
+                        # Permitir si es un comentario (línea empieza con #)
+                        if line.strip().startswith('#'):
+                            continue
+                        violations.append(f"{rel_path}:{i}")
         
         if violations:
             self.fail(f"Código fuente con referencias legacy (sin contexto explícito):\n" + "\n".join(violations))

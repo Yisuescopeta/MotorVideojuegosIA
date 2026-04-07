@@ -8,6 +8,17 @@ Ensures alignment between:
 - AI workflow examples
 
 These tests will fail if the interface drifts or if legacy references persist.
+
+ARCHITECTURE NOTE:
+    These tests use the OFFICIAL motor CLI API:
+        from motor.cli import create_motor_parser, run_motor_command
+    
+    They verify that:
+    1. The official CLI parser (motor.cli.create_motor_parser) exists and works
+    2. Commands can be executed via motor.cli.run_motor_command
+    3. python -m motor works as entrypoint
+    
+    Do NOT use tools.engine_cli in these tests - it is deprecated.
 """
 
 from __future__ import annotations
@@ -22,6 +33,9 @@ import unittest
 from pathlib import Path
 
 from engine.ai import get_default_registry
+
+# Import official CLI API
+from motor.cli import create_motor_parser, run_motor_command
 
 ROOT = Path(__file__).resolve().parents[1]
 
