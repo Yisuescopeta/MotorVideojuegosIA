@@ -417,7 +417,7 @@ class MotorNoRegressionTests(unittest.TestCase):
         violations = []
         for py_file in tests_dir.rglob("*.py"):
             # Skip files that explicitly test backward compatibility
-            if py_file.name in ["test_motor_entrypoint.py", "test_engine_cli.py", "test_motor_interface_coherence.py"]:
+            if py_file.name in ["test_motor_entrypoint.py", "test_engine_cli.py", "test_motor_interface_coherence.py", "test_official_contract_regression.py"]:
                 continue
             
             content = py_file.read_text(encoding="utf-8")
