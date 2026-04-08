@@ -305,6 +305,30 @@ class CapabilityRegistrySerializationTests(unittest.TestCase):
         self.assertEqual(cap_data["notes"], "Important notes")
         self.assertEqual(cap_data["tags"], ["scene", "core"])
 
+    def test_to_dict_includes_status(self) -> None:
+        """to_dict must include status field."""
+        registry = CapabilityRegistry(schema_version=1)
+
+        # Test all status values
+        for status in ["implemented", "planned", "deprecated"]:
+            cap = Capability(
+                id=f"test:{status}",
+                summary=f"Test {status}",
+                mode="edit",
+                api_methods=["API.test"],
+                cli_command="test",
+                example=CapabilityExample(description="Test", api_calls=[]),
+                status=status,
+            )
+            registry.register(cap)
+
+        data = registry.to_dict()
+        cap_by_id = {c["id"]: c for c in data["capabilities"]}
+
+        self.assertEqual(cap_by_id["test:implemented"]["status"], "implemented")
+        self.assertEqual(cap_by_id["test:planned"]["status"], "planned")
+        self.assertEqual(cap_by_id["test:deprecated"]["status"], "deprecated")
+
     def test_from_dict_roundtrip(self) -> None:
         registry = CapabilityRegistry(schema_version=1)
         cap = Capability(
@@ -325,6 +349,154 @@ class CapabilityRegistrySerializationTests(unittest.TestCase):
         restored_cap = restored.get("test:roundtrip")
         self.assertIsNotNone(restored_cap)
         self.assertEqual(restored_cap.summary, "Test roundtrip")
+
+    def test_from_dict_preserves_status(self) -> None:
+        """from_dict must preserve status field exactly."""
+        registry = CapabilityRegistry(schema_version=1)
+
+        for status in ["implemented", "planned", "deprecated"]:
+            cap = Capability(
+                id=f"test:{status}",
+                summary=f"Test {status}",
+                mode="edit",
+                api_methods=["API.test"],
+                cli_command="test",
+                example=CapabilityExample(description="Test", api_calls=[]),
+                status=status,
+            )
+            registry.register(cap)
+
+        data = registry.to_dict()
+        restored = CapabilityRegistry.from_dict(data)
+
+        for status in ["implemented", "planned", "deprecated"]:
+            cap = restored.get(f"test:{status}")
+            self.assertIsNotNone(cap, f"Capability test:{status} should exist after roundtrip")
+            self.assertEqual(
+                cap.status, status,
+                f"Status for test:{status} not preserved: expected '{status}', got '{cap.status}'"
+            )
+
+    def test_from_dict_defaults_to_implemented(self) -> None:
+        """from_dict should default to 'implemented' if status is missing."""
+        data = {
+            "schema_version": 1,
+            "engine": {"name": "Test", "version": "1.0"},
+            "capabilities": [
+                {
+                    "id": "test:no_status",
+                    "summary": "Test",
+                    "mode": "edit",
+                    "api_methods": ["API.test"],
+                    "cli_command": "test",
+                    "example": {"description": "Test", "api_calls": []},
+                    # Note: no "status" field
+                }
+            ],
+        }
+
+        restored = CapabilityRegistry.from_dict(data)
+        cap = restored.get("test:no_status")
+        self.assertIsNotNone(cap)
+        self.assertEqual(cap.status, "implemented", "Missing status should default to 'implemented'")
+
+    def test_list_implemented_filters_correctly(self) -> None:
+        """list_implemented must return only capabilities with status='implemented'."""
+        registry = CapabilityRegistry(schema_version=1)
+
+        for status in ["implemented", "planned", "deprecated"]:
+            cap = Capability(
+                id=f"test:{status}",
+                summary=f"Test {status}",
+                mode="edit",
+                api_methods=["API.test"],
+                cli_command="test",
+                example=CapabilityExample(description="Test", api_calls=[]),
+                status=status,
+            )
+            registry.register(cap)
+
+        implemented = registry.list_implemented()
+        self.assertEqual(len(implemented), 1)
+        self.assertEqual(implemented[0].id, "test:implemented")
+
+    def test_list_planned_filters_correctly(self) -> None:
+        """list_planned must return only capabilities with status='planned'."""
+        registry = CapabilityRegistry(schema_version=1)
+
+        for status in ["implemented", "planned", "deprecated"]:
+            cap = Capability(
+                id=f"test:{status}",
+                summary=f"Test {status}",
+                mode="edit",
+                api_methods=["API.test"],
+                cli_command="test",
+                example=CapabilityExample(description="Test", api_calls=[]),
+                status=status,
+            )
+            registry.register(cap)
+
+        planned = registry.list_planned()
+        self.assertEqual(len(planned), 1)
+        self.assertEqual(planned[0].id, "test:planned")
+
+    def test_list_deprecated_filters_correctly(self) -> None:
+        """list_deprecated must return only capabilities with status='deprecated'."""
+        registry = CapabilityRegistry(schema_version=1)
+
+        for status in ["implemented", "planned", "deprecated"]:
+            cap = Capability(
+                id=f"test:{status}",
+                summary=f"Test {status}",
+                mode="edit",
+                api_methods=["API.test"],
+                cli_command="test",
+                example=CapabilityExample(description="Test", api_calls=[]),
+                status=status,
+            )
+            registry.register(cap)
+
+        deprecated = registry.list_deprecated()
+        self.assertEqual(len(deprecated), 1)
+        self.assertEqual(deprecated[0].id, "test:deprecated")
+
+    def test_full_roundtrip_preserves_all_fields(self) -> None:
+        """Full roundtrip must preserve ALL capability fields including status."""
+        original = CapabilityRegistry(schema_version=2)
+        cap = Capability(
+            id="test:full",
+            summary="Full test capability",
+            mode="both",
+            api_methods=["API.test", "API.other"],
+            cli_command="motor test full",
+            example=CapabilityExample(
+                description="Full example",
+                api_calls=[{"method": "test", "args": {"key": "value"}}],
+                expected_outcome="Works",
+            ),
+            notes="Important notes",
+            tags=["test", "full"],
+            status="planned",
+        )
+        original.register(cap)
+
+        # Serialize and deserialize
+        data = original.to_dict()
+        restored = CapabilityRegistry.from_dict(data)
+
+        # Verify all fields
+        restored_cap = restored.get("test:full")
+        self.assertIsNotNone(restored_cap)
+        self.assertEqual(restored_cap.id, cap.id)
+        self.assertEqual(restored_cap.summary, cap.summary)
+        self.assertEqual(restored_cap.mode, cap.mode)
+        self.assertEqual(restored_cap.status, cap.status)
+        self.assertEqual(restored_cap.api_methods, cap.api_methods)
+        self.assertEqual(restored_cap.cli_command, cap.cli_command)
+        self.assertEqual(restored_cap.notes, cap.notes)
+        self.assertEqual(restored_cap.tags, cap.tags)
+        self.assertEqual(restored_cap.example.description, cap.example.description)
+        self.assertEqual(restored_cap.example.expected_outcome, cap.example.expected_outcome)
 
 
 class DefaultRegistryContentTests(unittest.TestCase):

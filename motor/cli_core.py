@@ -122,6 +122,7 @@ def cmd_capabilities(json_output: bool) -> int:
                 "id": cap.id,
                 "summary": cap.summary,
                 "mode": cap.mode,
+                "status": cap.status,
                 "api_methods": cap.api_methods,
                 "cli_command": cap.cli_command,
                 "tags": cap.tags,

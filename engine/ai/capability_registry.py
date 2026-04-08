@@ -167,6 +167,7 @@ class CapabilityRegistry:
                 example=example,
                 notes=str(cap_data.get("notes", "")),
                 tags=list(cap_data.get("tags", [])),
+                status=str(cap_data.get("status", "implemented")),
             )
             registry.register(capability)
         return registry
