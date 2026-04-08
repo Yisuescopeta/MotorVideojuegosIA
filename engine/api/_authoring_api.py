@@ -716,6 +716,9 @@ class AuthoringAPI(EngineAPIComponent):
             return self.fail("Animator state not found")
         del animations[state_name]
         next_default = next(iter(animations.keys()), "")
+        # Keep a valid default state (non-empty string required by schema)
+        if not next_default:
+            next_default = state_name  # Keep the removed state name as placeholder
         if payload.get("default_state") == state_name:
             payload["default_state"] = next_default
         if payload.get("current_state") == state_name:

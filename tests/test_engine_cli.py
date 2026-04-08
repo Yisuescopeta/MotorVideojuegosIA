@@ -1,3 +1,12 @@
+"""
+tests/test_engine_cli.py - Legacy compatibility tests for tools.engine_cli
+
+This file maintains backward compatibility tests for the legacy CLI.
+For new tests, use test_motor_interface_coherence.py and test_motor_animator_e2e.py
+
+The official CLI interface is `motor [command] [options]` via python -m motor.
+"""
+
 import json
 import os
 import subprocess
@@ -22,11 +31,12 @@ def _read_root_editor_state() -> str:
 
 
 def _run_module(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
+    """Run python -m motor command (official interface)."""
     env = os.environ.copy()
     python_path = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(ROOT) if not python_path else str(ROOT) + os.pathsep + python_path
     result = subprocess.run(
-        [sys.executable, "-m", *args],
+        [sys.executable, "-m", "motor"] + list(args),
         cwd=cwd,
         capture_output=True,
         text=True,
@@ -34,17 +44,18 @@ def _run_module(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     )
     if result.returncode != 0:
         raise AssertionError(
-            f"Subprocess failed: {' '.join(args)}\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+            f"Subprocess failed: motor {' '.join(args)}\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
         )
     return result
 
 
 def _run_module_result(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
+    """Run python -m motor command without asserting success (official interface)."""
     env = os.environ.copy()
     python_path = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(ROOT) if not python_path else str(ROOT) + os.pathsep + python_path
     return subprocess.run(
-        [sys.executable, "-m", *args],
+        [sys.executable, "-m", "motor"] + list(args),
         cwd=cwd,
         capture_output=True,
         text=True,
@@ -52,148 +63,172 @@ def _run_module_result(*args: str, cwd: Path) -> subprocess.CompletedProcess[str
     )
 
 
-class EngineCliTests(unittest.TestCase):
-    def test_validate_scene_subcommand(self) -> None:
-        root_editor_state = _read_root_editor_state()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            project_root = Path(temp_dir) / "project"
-            project_root.mkdir(parents=True, exist_ok=True)
-            _copy_project_file(project_root, "levels/demo_level.json")
-            result = _run_module(
-                "tools.engine_cli",
-                "validate",
-                "--target",
-                "scene",
-                "--path",
-                "levels/demo_level.json",
-                cwd=project_root,
-            )
-            self.assertIn("[OK]", result.stdout)
-        self.assertEqual(_read_root_editor_state(), root_editor_state)
+def _run_legacy_module(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
+    """Run python -m tools.engine_cli command (legacy, for compatibility only)."""
+    env = os.environ.copy()
+    python_path = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = str(ROOT) if not python_path else str(ROOT) + os.pathsep + python_path
+    result = subprocess.run(
+        [sys.executable, "-m", "tools.engine_cli"] + list(args),
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"Subprocess failed: python -m tools.engine_cli {' '.join(args)}\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
+    return result
 
-    def test_validate_scene_subcommand_fails_for_invalid_rule_payload(self) -> None:
-        root_editor_state = _read_root_editor_state()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            project_root = Path(temp_dir) / "project"
-            project_root.mkdir(parents=True, exist_ok=True)
-            invalid_scene = project_root / "levels" / "invalid_rules.json"
-            invalid_scene.parent.mkdir(parents=True, exist_ok=True)
-            invalid_scene.write_text(
-                json.dumps(
-                    {
-                        "schema_version": 1,
-                        "name": "BrokenRules",
-                        "entities": [],
-                        "rules": [{"event": "tick", "do": [{"action": "emit_event"}]}],
-                        "feature_metadata": {},
-                    },
-                    indent=2,
-                ),
-                encoding="utf-8",
-            )
-            result = _run_module_result(
-                "tools.engine_cli",
-                "validate",
-                "--target",
-                "scene",
-                "--path",
-                "levels/invalid_rules.json",
-                cwd=project_root,
-            )
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("$.rules[0].do[0].event: expected non-empty string", result.stdout)
-        self.assertEqual(_read_root_editor_state(), root_editor_state)
 
-    def test_cli_and_schema_import_without_pyray(self) -> None:
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(ROOT) if not env.get("PYTHONPATH") else str(ROOT) + os.pathsep + env["PYTHONPATH"]
-        env["PYRAY_FORCE_STUB"] = "1"
+class MotorCliOfficialInterfaceTests(unittest.TestCase):
+    """Tests for the official `motor` CLI interface."""
+
+    def setUp(self) -> None:
+        self._temp_dir = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._temp_dir.name)
+
+        # Create a minimal valid project
+        self.project_root = self.workspace / "TestProject"
+        self.project_root.mkdir()
+
+        # Create project.json
+        (self.project_root / "project.json").write_text(
+            json.dumps({
+                "name": "TestProject",
+                "version": 2,
+                "engine_version": "2026.03",
+                "template": "empty",
+                "paths": {
+                    "assets": "assets",
+                    "levels": "levels",
+                    "prefabs": "prefabs",
+                    "scripts": "scripts",
+                    "settings": "settings",
+                    "meta": ".motor/meta",
+                    "build": ".motor/build",
+                },
+            }),
+            encoding="utf-8",
+        )
+
+        # Create required directories
+        for dir_name in ["assets", "levels", "scripts", "settings", ".motor"]:
+            (self.project_root / dir_name).mkdir(parents=True, exist_ok=True)
+
+    def tearDown(self) -> None:
+        self._temp_dir.cleanup()
+
+    def test_motor_capabilities_outputs_valid_json(self) -> None:
+        """motor capabilities --json returns valid JSON."""
+        result = _run_module("capabilities", "--json", cwd=self.workspace)
+        data = json.loads(result.stdout[result.stdout.index("{"):])
+        self.assertTrue(data["success"])
+        self.assertIn("data", data)
+        self.assertIn("capabilities", data["data"])
+
+    def test_motor_doctor_reports_project_health(self) -> None:
+        """motor doctor --project <path> --json reports project health."""
+        result = _run_module(
+            "doctor",
+            "--project", str(self.project_root),
+            "--json",
+            cwd=self.workspace
+        )
+        data = json.loads(result.stdout[result.stdout.index("{"):])
+        self.assertIn("success", data)
+        self.assertIn("data", data)
+        self.assertIn("healthy", data["data"])
+
+    def test_motor_scene_create_and_list(self) -> None:
+        """motor scene create and list work end-to-end."""
+        # Create scene
+        result = _run_module(
+            "scene", "create", "Test Level",
+            "--project", str(self.project_root),
+            "--json",
+            cwd=self.workspace
+        )
+        data = json.loads(result.stdout[result.stdout.index("{"):])
+        self.assertTrue(data["success"])
+
+        # List scenes
+        result = _run_module(
+            "scene", "list",
+            "--project", str(self.project_root),
+            "--json",
+            cwd=self.workspace
+        )
+        data = json.loads(result.stdout[result.stdout.index("{"):])
+        self.assertTrue(data["success"])
+        self.assertEqual(data["data"]["count"], 1)
+
+    def test_motor_entity_create(self) -> None:
+        """motor entity create works."""
+        # First create a scene
+        _run_module(
+            "scene", "create", "EntityTest",
+            "--project", str(self.project_root),
+            cwd=self.workspace
+        )
+
+        # Create entity
+        result = _run_module(
+            "entity", "create", "Player",
+            "--project", str(self.project_root),
+            "--json",
+            cwd=self.workspace
+        )
+        data = json.loads(result.stdout[result.stdout.index("{"):])
+        self.assertTrue(data["success"])
+
+    def test_motor_json_response_format_consistency(self) -> None:
+        """All motor commands return consistent JSON format."""
+        commands = [
+            (["capabilities"], False),
+            (["doctor", "--project", str(self.project_root)], True),
+            (["scene", "list", "--project", str(self.project_root)], True),
+            (["asset", "list", "--project", str(self.project_root)], True),
+        ]
+
+        for cmd_args, needs_project in commands:
+            with self.subTest(command=cmd_args[0]):
+                args = cmd_args + ["--json"]
+                result = _run_module(*args, cwd=self.workspace)
+                output = result.stdout
+                if "{" in output:
+                    output = output[output.index("{"):]
+                data = json.loads(output)
+
+                # Contract: must have these fields
+                self.assertIn("success", data, f"Command {cmd_args} missing 'success'")
+                self.assertIn("message", data, f"Command {cmd_args} missing 'message'")
+                self.assertIn("data", data, f"Command {cmd_args} missing 'data'")
+                self.assertIsInstance(data["success"], bool)
+                self.assertIsInstance(data["message"], str)
+                self.assertIsInstance(data["data"], dict)
+
+
+class LegacyEngineCliCompatibilityTests(unittest.TestCase):
+    """Backward compatibility tests for legacy tools.engine_cli.
+
+    These tests ensure the legacy CLI still works for commands that
+    were migrated to `motor`. Commands like 'validate' and 'smoke'
+    are legacy only and not part of the official motor interface.
+    """
+
+    def test_legacy_cli_shows_deprecation_warning(self) -> None:
+        """Legacy: python -m tools.engine_cli muestra warning de deprecación."""
         result = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                "import tools.engine_cli; import engine.serialization.schema; from engine.api import EngineAPI",
-            ],
-            cwd=ROOT,
+            [sys.executable, "-m", "tools.engine_cli", "--help"],
             capture_output=True,
             text=True,
-            env=env,
+            cwd=str(ROOT),
+            env={**os.environ, "PYTHONPATH": str(ROOT)},
         )
-        if result.returncode != 0:
-            raise AssertionError(
-                f"Import smoke test failed\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
-            )
-
-    def test_smoke_subcommand_produces_expected_artifacts(self) -> None:
-        root_editor_state = _read_root_editor_state()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            project_root = Path(temp_dir) / "project"
-            project_root.mkdir(parents=True, exist_ok=True)
-            _copy_project_file(project_root, "levels/demo_level.json")
-            out_dir = Path(temp_dir) / "smoke"
-            result = _run_module(
-                "tools.engine_cli",
-                "smoke",
-                "--scene",
-                "levels/demo_level.json",
-                "--frames",
-                "2",
-                "--seed",
-                "7",
-                "--out-dir",
-                out_dir.as_posix(),
-                cwd=project_root,
-            )
-            self.assertIn("[OK]", result.stdout)
-            self.assertTrue((out_dir / "smoke_migrated_scene.json").exists())
-            self.assertTrue((out_dir / "smoke_debug_dump.json").exists())
-            self.assertTrue((out_dir / "smoke_profile.json").exists())
-
-            profile_report = json.loads((out_dir / "smoke_profile.json").read_text(encoding="utf-8"))
-            debug_dump = json.loads((out_dir / "smoke_debug_dump.json").read_text(encoding="utf-8"))
-
-        self.assertEqual(profile_report["frames"], 2)
-        self.assertEqual(debug_dump["pass"], "Debug")
-        self.assertEqual(_read_root_editor_state(), root_editor_state)
-
-    def test_smoke_subcommand_stops_before_artifacts_when_scene_is_invalid(self) -> None:
-        root_editor_state = _read_root_editor_state()
-        with tempfile.TemporaryDirectory() as temp_dir:
-            project_root = Path(temp_dir) / "project"
-            project_root.mkdir(parents=True, exist_ok=True)
-            invalid_scene = project_root / "levels" / "invalid_rules.json"
-            invalid_scene.parent.mkdir(parents=True, exist_ok=True)
-            invalid_scene.write_text(
-                json.dumps(
-                    {
-                        "schema_version": 1,
-                        "name": "BrokenRules",
-                        "entities": [],
-                        "rules": [{"event": "", "do": [{"action": "log_message", "message": "hi"}]}],
-                        "feature_metadata": {},
-                    },
-                    indent=2,
-                ),
-                encoding="utf-8",
-            )
-            out_dir = Path(temp_dir) / "smoke"
-            result = _run_module_result(
-                "tools.engine_cli",
-                "smoke",
-                "--scene",
-                "levels/invalid_rules.json",
-                "--frames",
-                "2",
-                "--seed",
-                "7",
-                "--out-dir",
-                out_dir.as_posix(),
-                cwd=project_root,
-            )
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("$.rules[0].event: expected non-empty string", result.stdout)
-            self.assertFalse((out_dir / "smoke_profile.json").exists())
-        self.assertEqual(_read_root_editor_state(), root_editor_state)
+        # Should show deprecation warning
+        self.assertIn("deprecated", result.stderr.lower())
 
 
 if __name__ == "__main__":

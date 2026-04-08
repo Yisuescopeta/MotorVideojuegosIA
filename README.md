@@ -35,8 +35,8 @@ python main.py
 ```bash
 python -m unittest discover -s tests
 
-python -m tools.engine_cli validate --target scene --path levels/demo_level.json
-python -m tools.engine_cli smoke --scene levels/demo_level.json --frames 5 --out-dir artifacts/cli_smoke
+python -m motor doctor --project . --json
+python -m motor capabilities --json
 
 python -m ruff check engine/api engine/project engine/rl engine/serialization engine/events cli tools main.py
 python -m mypy engine/api engine/project engine/rl engine/serialization engine/events cli tools main.py

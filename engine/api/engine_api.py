@@ -38,6 +38,8 @@ class EngineAPI:
         project_root: str | None = None,
         global_state_dir: str | None = None,
         sandbox_paths: bool = False,
+        auto_ensure_project: bool = True,
+        read_only: bool = False,
     ) -> None:
         self.game: Optional[HeadlessGame] = None
         self.scene_manager: Optional[SceneManager] = None
@@ -47,6 +49,8 @@ class EngineAPI:
         self._project_root = project_root or os.getcwd()
         self._global_state_dir = global_state_dir
         self._sandbox_paths = bool(sandbox_paths)
+        self._auto_ensure_project = auto_ensure_project
+        self._read_only = read_only
         self._context = EngineAPIContext(self)
         self._initialize_engine()
         self._initialize_collaborators()
@@ -70,7 +74,12 @@ class EngineAPI:
 
         self.game = HeadlessGame()
         self.scene_manager = SceneManager(self._registry)
-        self.project_service = ProjectService(self._project_root, global_state_dir=self._global_state_dir)
+        self.project_service = ProjectService(
+            self._project_root,
+            global_state_dir=self._global_state_dir,
+            auto_ensure=self._auto_ensure_project,
+            read_only=self._read_only,
+        )
         self.asset_service = AssetService(self.project_service)
 
         event_bus = EventBus()  # type: ignore

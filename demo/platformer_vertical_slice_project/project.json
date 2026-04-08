@@ -1,0 +1,16 @@
+{
+    "name": "Platformer Vertical Slice",
+    "version": 2,
+    "engine_version": "2026.03",
+    "template": "platformer",
+    "description": "Demo de plataformas 2D con tilemaps, animaciones y audio",
+    "paths": {
+        "assets": "assets",
+        "levels": "levels",
+        "prefabs": "prefabs",
+        "scripts": "scripts",
+        "settings": "settings",
+        "meta": ".motor/meta",
+        "build": ".motor/build"
+    }
+}

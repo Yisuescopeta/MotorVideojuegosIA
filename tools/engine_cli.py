@@ -1,3 +1,10 @@
+"""
+tools/engine_cli.py - Legacy compatibility CLI.
+
+This module keeps the deprecated entry point alive for existing scripts and
+tests while the official CLI lives in motor.cli.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -6,10 +13,14 @@ import io
 import json
 import os
 import sys
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 from engine.project.project_service import ProjectService
+from motor import cli as _motor_cli
+from motor import cli_core as _cli_core
 from tools.ai_workflow_cli_helpers import (
     EXIT_RUNTIME_ERROR,
     load_json_file,
@@ -26,6 +37,98 @@ from tools.ai_workflow_cli_helpers import (
 )
 from tools.schema_cli import migrate_path, validate_path
 
+# Re-export command handlers from motor.cli_core for backward compatibility.
+cmd_capabilities = _cli_core.cmd_capabilities
+cmd_doctor = _cli_core.cmd_doctor
+cmd_project_info = _cli_core.cmd_project_info
+cmd_scene_list = _cli_core.cmd_scene_list
+cmd_scene_create = _cli_core.cmd_scene_create
+cmd_entity_create = _cli_core.cmd_entity_create
+cmd_component_add = _cli_core.cmd_component_add
+cmd_assets_list = _cli_core.cmd_assets_list
+cmd_slices_list = _cli_core.cmd_slices_list
+cmd_slices_grid = _cli_core.cmd_slices_grid
+cmd_slices_auto = _cli_core.cmd_slices_auto
+cmd_slices_manual = _cli_core.cmd_slices_manual
+cmd_animator_info = _cli_core.cmd_animator_info
+cmd_animator_set_sheet = _cli_core.cmd_animator_set_sheet
+cmd_animator_upsert_state = _cli_core.cmd_animator_upsert_state
+cmd_animator_remove_state = _cli_core.cmd_animator_remove_state
+_output = _cli_core._output
+_ensure_project = _cli_core._ensure_project
+_init_engine = _cli_core._init_engine
+_make_response = _cli_core._make_response
+_print_json = _cli_core._print_json
+EngineCLIError = _cli_core.EngineCLIError
+ProjectNotFoundError = _cli_core.ProjectNotFoundError
+EngineInitError = _cli_core.EngineInitError
+
+# Re-export official CLI helpers for transition support.
+run_motor_command = _motor_cli.run_motor_command
+cli_main = _motor_cli.cli_main
+main = _motor_cli.main
+create_motor_parser = _motor_cli.create_motor_parser
+
+# Legacy compatibility alias.
+parse_args = create_motor_parser
+
+__all__ = [
+    "cmd_capabilities",
+    "cmd_doctor",
+    "cmd_project_info",
+    "cmd_scene_list",
+    "cmd_scene_create",
+    "cmd_entity_create",
+    "cmd_component_add",
+    "cmd_assets_list",
+    "cmd_slices_list",
+    "cmd_slices_grid",
+    "cmd_slices_auto",
+    "cmd_slices_manual",
+    "cmd_animator_info",
+    "cmd_animator_set_sheet",
+    "cmd_animator_upsert_state",
+    "cmd_animator_remove_state",
+    "_output",
+    "_ensure_project",
+    "_init_engine",
+    "_make_response",
+    "_print_json",
+    "EngineCLIError",
+    "ProjectNotFoundError",
+    "EngineInitError",
+    "run_motor_command",
+    "cli_main",
+    "main",
+    "create_motor_parser",
+    "parse_args",
+]
+
+_LEGACY_COMMANDS = {
+    "validate",
+    "migrate",
+    "build-assets",
+    "run-headless",
+    "profile-run",
+    "smoke",
+    "ai-context",
+    "ai-validate",
+    "ai-verify",
+    "ai-workflow",
+}
+
+
+def _emit_deprecation_warning() -> None:
+    warnings.warn(
+        "python -m tools.engine_cli is deprecated. Use 'motor' or 'python -m motor' instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+
+def _project_root(value: str) -> str:
+    return Path(value or os.getcwd()).expanduser().resolve().as_posix()
+
 
 def _validate_assets(search: str = "") -> int:
     from engine.assets.asset_service import AssetService
@@ -35,8 +138,8 @@ def _validate_assets(search: str = "") -> int:
     assets = service.list_assets(search=search)
     missing = [item["path"] for item in assets if not service.resolve_asset_path(item["path"]).exists()]
     if missing:
-        for path in missing:
-            print(f"[ERROR] missing asset: {path}")
+        for asset_path in missing:
+            print(f"[ERROR] missing asset: {asset_path}")
         return 1
     print(f"[OK] assets validated: {len(assets)}")
     return 0
@@ -107,7 +210,12 @@ def _smoke(level: str, frames: int, seed: int | None, out_dir: str) -> int:
     result = _build_assets()
     if result != 0:
         return result
-    result = _run_headless(level=level, frames=frames, seed=seed, debug_dump=(out_root / "smoke_debug_dump.json").as_posix())
+    result = _run_headless(
+        level=level,
+        frames=frames,
+        seed=seed,
+        debug_dump=(out_root / "smoke_debug_dump.json").as_posix(),
+    )
     if result != 0:
         return result
     return _profile_run(
@@ -119,11 +227,7 @@ def _smoke(level: str, frames: int, seed: int | None, out_dir: str) -> int:
     )
 
 
-def _project_root(value: str) -> str:
-    return Path(value or os.getcwd()).expanduser().resolve().as_posix()
-
-
-def _print_or_emit(payload: dict, *, as_json: bool, out_path: str, lines: list[str]) -> None:
+def _print_or_emit(payload: dict[str, Any], *, as_json: bool, out_path: str, lines: list[str]) -> None:
     rendered = write_json_output(payload, out_path)
     if as_json:
         print(rendered)
@@ -158,8 +262,8 @@ def _flush_buffered_stdout(buffered_stdout: io.StringIO) -> None:
         sys.stderr.write(noise)
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Unified local CLI for validation, migration, assets, headless runs, and profiling.")
+def _build_legacy_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Legacy compatibility CLI for AI workflow helpers.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     validate_parser = subparsers.add_parser("validate", help="Validate scenes, assets, or both")
@@ -187,7 +291,10 @@ def parse_args() -> argparse.Namespace:
     profile_parser.add_argument("--seed", type=int, default=None)
     profile_parser.add_argument("--mode", choices=("play", "edit"), default="play")
 
-    smoke_parser = subparsers.add_parser("smoke", help="Run validate, migrate, build-assets, run-headless, and profile-run in order")
+    smoke_parser = subparsers.add_parser(
+        "smoke",
+        help="Run validate, migrate, build-assets, run-headless, and profile-run in order",
+    )
     smoke_parser.add_argument("--scene", default="levels/demo_level.json")
     smoke_parser.add_argument("--frames", type=int, default=5)
     smoke_parser.add_argument("--seed", type=int, default=123)
@@ -197,7 +304,10 @@ def parse_args() -> argparse.Namespace:
     ai_context_parser.add_argument("--project-root", default="")
     ai_context_parser.add_argument("--json", action="store_true")
 
-    ai_validate_parser = subparsers.add_parser("ai-validate", help="Run structured validation for AI-assisted workflows")
+    ai_validate_parser = subparsers.add_parser(
+        "ai-validate",
+        help="Run structured validation for AI-assisted workflows",
+    )
     ai_validate_parser.add_argument(
         "--target",
         choices=("active-scene", "scene-file", "prefab-file", "scene-transitions", "project"),
@@ -219,11 +329,10 @@ def parse_args() -> argparse.Namespace:
     ai_workflow_parser.add_argument("--json", action="store_true")
     ai_workflow_parser.add_argument("--out", default="")
 
-    return parser.parse_args()
+    return parser
 
 
-def main() -> int:
-    args = parse_args()
+def _dispatch_legacy_command(args: argparse.Namespace) -> int:
     if args.command == "validate":
         if args.target == "scene":
             return validate_path(args.path)
@@ -233,8 +342,10 @@ def main() -> int:
         if scene_result != 0:
             return scene_result
         return _validate_assets(args.search)
+
     if args.command == "migrate":
         return migrate_path(args.path, args.output)
+
     if args.command == "build-assets":
         result = _build_assets()
         if result != 0 or not args.bundle:
@@ -245,26 +356,21 @@ def main() -> int:
         report = service.create_bundle()
         print(f"[OK] bundle created: {report['bundle_path']}")
         return 0
+
     if args.command == "run-headless":
         return _run_headless(args.scene, args.frames, args.seed, args.debug_dump)
+
     if args.command == "profile-run":
         return _profile_run(args.scene, args.frames, args.out, args.seed, args.mode)
+
     if args.command == "smoke":
         return _smoke(args.scene, args.frames, args.seed, args.out_dir)
+
     if args.command == "ai-context":
         if not args.json:
-            try:
-                payload = run_context_pack(_project_root(args.project_root))
-                _print_or_emit(payload, as_json=False, out_path="", lines=render_context_summary(payload))
-                return 0
-            except Exception as exc:
-                _emit_setup_error(
-                    message=f"context generation failed: {exc}",
-                    as_json=False,
-                    out_path="",
-                    code="context.setup_failed",
-                )
-                return EXIT_RUNTIME_ERROR
+            payload = run_context_pack(_project_root(args.project_root))
+            _print_or_emit(payload, as_json=False, out_path="", lines=render_context_summary(payload))
+            return 0
 
         buffered_stdout = io.StringIO()
         try:
@@ -282,6 +388,7 @@ def main() -> int:
                 code="context.setup_failed",
             )
             return EXIT_RUNTIME_ERROR
+
     if args.command == "ai-validate":
         if not args.json:
             try:
@@ -321,6 +428,7 @@ def main() -> int:
                 code="validation.setup_failed",
             )
             return EXIT_RUNTIME_ERROR
+
     if args.command == "ai-verify":
         if not args.json:
             try:
@@ -362,6 +470,7 @@ def main() -> int:
                 code="verification.setup_failed",
             )
             return EXIT_RUNTIME_ERROR
+
     if args.command == "ai-workflow":
         if not args.json:
             try:
@@ -397,8 +506,26 @@ def main() -> int:
                 code="workflow.setup_failed",
             )
             return EXIT_RUNTIME_ERROR
+
     return 1
 
 
+def deprecated_main() -> int:
+    _emit_deprecation_warning()
+    print(
+        "[DEPRECATED] Using python -m tools.engine_cli is deprecated.\n"
+        "[DEPRECATED] Please use: motor {}\n".format(" ".join(sys.argv[1:])),
+        file=sys.stderr,
+    )
+
+    argv = sys.argv[1:]
+    if argv and argv[0] in _LEGACY_COMMANDS:
+        parser = _build_legacy_parser()
+        args = parser.parse_args(argv)
+        return _dispatch_legacy_command(args)
+
+    return run_motor_command(argv)
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(deprecated_main())

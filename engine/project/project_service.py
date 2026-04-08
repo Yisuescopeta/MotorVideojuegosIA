@@ -85,6 +85,11 @@ class ProjectManifest:
         )
 
 
+MOTOR_AI_FILE = "motor_ai.json"
+START_HERE_FILE = "START_HERE_AI.md"
+BOOTSTRAP_SCHEMA_VERSION = 1
+
+
 class ProjectService:
     """Resuelve proyecto activo, launcher, paths y estado local del editor."""
 
@@ -102,6 +107,7 @@ class ProjectService:
         project_root: str | os.PathLike[str] = ".",
         global_state_dir: str | os.PathLike[str] | None = None,
         auto_ensure: bool = True,
+        read_only: bool = False,
     ) -> None:
         self._editor_root = Path(project_root).expanduser().absolute()
         self._editor_root_real = self._editor_root.resolve()
@@ -110,8 +116,10 @@ class ProjectService:
         self._manifest: ProjectManifest | None = None
         self._global_dir = self._resolve_global_dir(global_state_dir)
         self._recents_file = self._global_dir / self.RECENTS_FILE_NAME
-        self._ensure_global_storage()
-        if auto_ensure:
+        self._read_only = read_only
+        if not read_only:
+            self._ensure_global_storage()
+        if auto_ensure and not read_only:
             self.ensure_project(self._project_root)
 
     @property
@@ -155,7 +163,20 @@ class ProjectService:
         self._project_root = root.expanduser().absolute()
         self._project_root_real = self._project_root.resolve()
 
+    def _guard_writable(self, operation: str = "write") -> None:
+        """Raise PermissionError if this service is in read-only mode.
+
+        Call this at the entry point of every mutating operation.
+        Internal calls from already-guarded public methods do not need additional guards.
+        """
+        if self._read_only:
+            raise PermissionError(
+                f"ProjectService is in read-only mode: {operation} is not permitted. "
+                f"Create a new ProjectService instance with read_only=False for write operations."
+            )
+
     def ensure_project(self, project_root: str | os.PathLike[str] | None = None) -> ProjectManifest:
+        self._guard_writable("ensure_project")
         root = self._normalize_project_root(project_root) if project_root is not None else self._project_root_real
         root.mkdir(parents=True, exist_ok=True)
         manifest_path = root / self.PROJECT_FILE
@@ -181,6 +202,7 @@ class ProjectService:
         project_root: str | os.PathLike[str],
         name: str | None = None,
     ) -> ProjectManifest:
+        self._guard_writable("create_project")
         root = self._normalize_project_root(project_root)
         if root.exists() and any(root.iterdir()):
             raise FileExistsError(f"Project directory is not empty: {root}")
@@ -201,6 +223,7 @@ class ProjectService:
         return self.manifest
 
     def register_project(self, project_root: str | os.PathLike[str]) -> Dict[str, Any]:
+        self._guard_writable("register_project")
         root = self._normalize_project_root(project_root)
         manifest_path = root / self.PROJECT_FILE
         if not root.exists():
@@ -210,6 +233,7 @@ class ProjectService:
         manifest = self._load_manifest(manifest_path)
         migrated_manifest = self._migrate_manifest(root, manifest)
         self._ensure_project_layout_for(root, migrated_manifest, create_bootstrap=False)
+        self.generate_ai_bootstrap(root, migrated_manifest)
         existing = self._load_registry_entries()
         entry = self._registry_entry_from_manifest(root, migrated_manifest)
         merged = [item for item in existing if self._normalize_registry_path(item.get("path")) != entry["path"]]
@@ -218,6 +242,7 @@ class ProjectService:
         return self._build_launcher_entry(root, "external_registered", entry)
 
     def remove_registered_project(self, project_root: str | os.PathLike[str]) -> None:
+        self._guard_writable("remove_registered_project")
         target_path = self._normalize_project_root(project_root).as_posix()
         items = [
             item
@@ -227,11 +252,13 @@ class ProjectService:
         self._write_registry_entries(items)
 
     def clear_active_project(self) -> None:
+        self._guard_writable("clear_active_project")
         self._manifest = None
         self._project_root = self._editor_root
         self._project_root_real = self._editor_root_real
 
     def open_project(self, project_root: str | os.PathLike[str]) -> ProjectManifest:
+        self._guard_writable("open_project")
         root = self._normalize_project_root(project_root)
         manifest_path = root / self.PROJECT_FILE
         if not manifest_path.exists():
@@ -277,6 +304,7 @@ class ProjectService:
         return self._normalize_project_settings(data)
 
     def save_project_settings(self, data: Dict[str, Any]) -> None:
+        self._guard_writable("save_project_settings")
         self._write_json(self.get_project_settings_path(), self._normalize_project_settings(data))
 
     def get_project_summary(self) -> Dict[str, Any]:
@@ -365,11 +393,13 @@ class ProjectService:
         return self._normalize_editor_state(data)
 
     def save_editor_state(self, data: Dict[str, Any]) -> None:
+        self._guard_writable("save_editor_state")
         state_path = self._get_editor_state_path()
         state_path.parent.mkdir(parents=True, exist_ok=True)
         self._write_json(state_path, self._normalize_editor_state(data))
 
     def set_last_scene(self, path: str) -> None:
+        self._guard_writable("set_last_scene")
         state = self.load_editor_state()
         state["last_scene"] = self.to_relative_path(path) if path else ""
         self.save_editor_state(state)
@@ -378,6 +408,7 @@ class ProjectService:
         return str(self.load_editor_state().get("last_scene", ""))
 
     def set_preference(self, key: str, value: Any) -> None:
+        self._guard_writable("set_preference")
         state = self.load_editor_state()
         preferences = state.setdefault("preferences", {})
         preferences[str(key)] = value
@@ -387,6 +418,7 @@ class ProjectService:
         return self.load_editor_state().get("preferences", {}).get(key, default)
 
     def push_recent_asset(self, category: str, asset_path: str, limit: int = 8) -> None:
+        self._guard_writable("push_recent_asset")
         if not asset_path:
             return
         state = self.load_editor_state()
@@ -444,6 +476,7 @@ class ProjectService:
         return result
 
     def record_recent_project(self) -> None:
+        self._guard_writable("record_recent_project")
         if not self.has_project:
             return
         projects = self._load_registry_entries()
@@ -526,9 +559,11 @@ class ProjectService:
         ]
 
     def clear_recent_projects(self) -> None:
+        self._guard_writable("clear_recent_projects")
         self._write_registry_entries([])
 
     def _ensure_global_storage(self) -> None:
+        self._guard_writable("_ensure_global_storage")
         self._global_dir.mkdir(parents=True, exist_ok=True)
         if not self._recents_file.exists():
             self._write_json(self._recents_file, {"projects": []})
@@ -542,6 +577,7 @@ class ProjectService:
         manifest: ProjectManifest,
         create_bootstrap: bool,
     ) -> None:
+        self._guard_writable("_ensure_project_layout_for")
         for key in ("assets", "levels", "prefabs", "scripts", "settings", "meta", "build"):
             (root / manifest.paths.get(key, key)).mkdir(parents=True, exist_ok=True)
 
@@ -563,6 +599,62 @@ class ProjectService:
             startup_scene = root / settings["startup_scene"]
             if not startup_scene.exists():
                 self._write_default_scene(startup_scene, "Main Scene")
+            self.generate_ai_bootstrap(root, manifest)
+
+    def generate_ai_bootstrap(self, root: Path | None = None, manifest: ProjectManifest | None = None) -> Dict[str, Any]:
+        self._guard_writable("generate_ai_bootstrap")
+        from engine.ai import CapabilityRegistryBuilder, MotorAIBootstrapBuilder
+
+        target_root = Path(root) if root else self._project_root_real
+        target_manifest = manifest if manifest else self.manifest
+
+        motor_ai_path = target_root / MOTOR_AI_FILE
+        start_here_path = target_root / START_HERE_FILE
+
+        registry = CapabilityRegistryBuilder(engine_version=ENGINE_VERSION).build()
+        bootstrap_builder = MotorAIBootstrapBuilder(registry)
+
+        # Portable project data - all paths are relative to project root
+        project_data = {
+            "project": {
+                "name": target_manifest.name,
+                "root": ".",  # Relative to project directory
+                "engine_version": target_manifest.engine_version,
+                "template": target_manifest.template,
+                "paths": target_manifest.paths,  # Include canonical paths
+            },
+            "entrypoints": {
+                "manifest": self.PROJECT_FILE,
+                "settings": f"{target_manifest.paths['settings']}/{self.PROJECT_SETTINGS_FILE}",
+                "startup_scene": "levels/main_scene.json",
+                "scripts_dir": target_manifest.paths["scripts"],
+                "assets_dir": target_manifest.paths["assets"],
+                "levels_dir": target_manifest.paths["levels"],
+                "prefabs_dir": target_manifest.paths["prefabs"],
+            },
+            "important_files": [
+                "project.json",
+                "motor_ai.json",
+                "START_HERE_AI.md",
+            ],
+        }
+
+        motor_ai_content = bootstrap_builder.build_motor_ai_json(project_data)
+        start_here_content = bootstrap_builder.build_start_here_md(target_manifest.name)
+
+        motor_ai_path.write_text(motor_ai_content, encoding="utf-8")
+        start_here_path.write_text(start_here_content, encoding="utf-8")
+
+        return json.loads(motor_ai_content)
+
+    def migrate_project_bootstrap(self, project_root: Path | None = None) -> Dict[str, Any]:
+        self._guard_writable("migrate_project_bootstrap")
+        root = self._normalize_project_root(project_root) if project_root else self._project_root_real
+        manifest_path = root / self.PROJECT_FILE
+        if not manifest_path.exists():
+            raise FileNotFoundError(f"project.json not found in {root}")
+        manifest = self._load_manifest(manifest_path)
+        return self.generate_ai_bootstrap(root, manifest)
 
     def _load_manifest(self, manifest_path: Path) -> ProjectManifest:
         with manifest_path.open("r", encoding="utf-8") as handle:
@@ -811,6 +903,7 @@ class ProjectService:
         )
 
     def _write_json(self, path: Path, data: Dict[str, Any]) -> None:
+        self._guard_writable("_write_json")
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as handle:
             json.dump(data, handle, indent=4)
