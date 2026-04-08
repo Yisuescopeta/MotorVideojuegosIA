@@ -362,14 +362,15 @@ class MotorAIBootstrapContractTests(unittest.TestCase):
             if "motor " not in content:
                 self.fail("motor_ai.json no contiene referencias a 'motor'")
             
-            # Verificar estructura
+            # Verificar estructura v3
             data = json.loads(content)
-            self.assertEqual(data["schema_version"], 2)
+            self.assertEqual(data["schema_version"], 3, "motor_ai.json debe ser schema v3")
             self.assertIn("engine", data)
-            self.assertIn("capabilities", data)
+            self.assertIn("implemented_capabilities", data, "v3 debe tener implemented_capabilities")
+            self.assertIn("planned_capabilities", data, "v3 debe tener planned_capabilities")
             
             # Verificar que todas las capabilities usan motor
-            for cap in data["capabilities"]["capabilities"]:
+            for cap in data.get("implemented_capabilities", []):
                 cli_cmd = cap.get("cli_command", "")
                 if cli_cmd and not cli_cmd.startswith("motor "):
                     self.fail(f"Capability {cap['id']} usa comando no-motor: {cli_cmd}")

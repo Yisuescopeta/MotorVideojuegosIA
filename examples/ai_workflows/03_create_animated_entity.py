@@ -154,50 +154,48 @@ def main():
                 print(f"✓ Animator already exists with correct sprite sheet")
         else:
             print(f"⚠️  Could not ensure Animator: {result.get('message')}")
-            
-            # Check for slices
-            result = run_command("asset", "slice", "list", sprite_asset, project=str(project_path))
-            slices = result["data"]["slices"]
-            
-            if len(slices) >= 4:
-                # Create looping idle animation state
-                slice_names = ",".join([s["name"] for s in slices[:4]])
-                print(f"\n🎬 Creating 'idle' animation state (looping)...")
+        
+        # Step 7: Check for slices
+        result = run_command("asset", "slice", "list", sprite_asset, project=str(project_path))
+        slices = result["data"]["slices"]
+        
+        if len(slices) >= 4:
+            # Create looping idle animation state
+            slice_names = ",".join([s["name"] for s in slices[:4]])
+            print(f"\n🎬 Creating 'idle' animation state (looping)...")
+            result = run_command(
+                "animator", "state", "create", entity_name, "idle",
+                "--slices", slice_names,
+                "--fps", "8",
+                "--loop",
+                "--set-default",
+                project=str(project_path)
+            )
+
+            if result["success"]:
+                print(f"✓ Animation state 'idle' created with {len(slices[:4])} frames (looping)")
+            else:
+                print(f"⚠️  Could not create idle state: {result.get('message')}")
+
+            # Create non-looping attack animation state if enough slices
+            if len(slices) >= 6:
+                attack_slices = ",".join([s["name"] for s in slices[4:6]])
+                print(f"\n⚔️  Creating 'attack' animation state (non-looping)...")
                 result = run_command(
-                    "animator", "state", "create", entity_name, "idle",
-                    "--slices", slice_names,
-                    "--fps", "8",
-                    "--loop",
-                    "--set-default",
+                    "animator", "state", "create", entity_name, "attack",
+                    "--slices", attack_slices,
+                    "--fps", "12",
+                    "--no-loop",
                     project=str(project_path)
                 )
 
                 if result["success"]:
-                    print(f"✓ Animation state 'idle' created with {len(slices[:4])} frames (looping)")
+                    print(f"✓ Animation state 'attack' created with {len(slices[4:6])} frames (non-looping)")
                 else:
-                    print(f"⚠️  Could not create idle state: {result.get('message')}")
-
-                # Create non-looping attack animation state if enough slices
-                if len(slices) >= 6:
-                    attack_slices = ",".join([s["name"] for s in slices[4:6]])
-                    print(f"\n⚔️  Creating 'attack' animation state (non-looping)...")
-                    result = run_command(
-                        "animator", "state", "create", entity_name, "attack",
-                        "--slices", attack_slices,
-                        "--fps", "12",
-                        "--no-loop",
-                        project=str(project_path)
-                    )
-
-                    if result["success"]:
-                        print(f"✓ Animation state 'attack' created with {len(slices[4:6])} frames (non-looping)")
-                    else:
-                        print(f"⚠️  Could not create attack state: {result.get('message')}")
-            else:
-                print(f"⚠️  Not enough slices for animation (need 4, have {len(slices)})")
-                print("   Run: python examples/ai_workflows/02_slice_spritesheet.py")
+                    print(f"⚠️  Could not create attack state: {result.get('message')}")
         else:
-            print(f"⚠️  Could not set sprite sheet: {result.get('message')}")
+            print(f"⚠️  Not enough slices for animation (need 4, have {len(slices)})")
+            print("   Run: python examples/ai_workflows/02_slice_spritesheet.py")
     else:
         print("⚠️  No sprite assets found")
         print("   Add a PNG to assets/ folder first")
