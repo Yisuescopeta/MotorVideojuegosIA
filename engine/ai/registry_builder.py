@@ -1076,7 +1076,7 @@ class MotorAIBootstrapBuilder:
 
         for category_name, prefixes in categories.items():
             caps = [
-                cap for cap in self._registry.list_all()
+                cap for cap in self._registry.list_implemented()
                 if any(cap.id.startswith(p) for p in prefixes)
             ]
             if caps:
@@ -1085,6 +1085,25 @@ class MotorAIBootstrapBuilder:
                 for cap in sorted(caps, key=lambda c: c.id):
                     lines.append(f"- `{cap.id}`: {cap.summary}")
                 lines.append("")
+
+        planned = self._registry.list_planned()
+        if planned:
+            lines.extend([
+                "## Coming Soon",
+                "",
+                "These capabilities are planned but **not yet available** via the CLI.",
+                "Do not attempt to use them — the `motor` CLI does not expose them.",
+                "They are listed here so an AI knows they exist in the engine",
+                "and should not be attempted until they are marked as `implemented`.",
+                "",
+            ])
+            lines.append("| Capability | Summary |")
+            lines.append("|-----------|---------|")
+            for cap in sorted(planned, key=lambda c: c.id):
+                lines.append(f"| `{cap.id}` | {cap.summary} |")
+            lines.append("")
+            lines.append("> **Note**: Use `motor capabilities --json` to check which are now available.")
+            lines.append("")
 
         lines.extend([
             "## Full Capability Registry",
@@ -1095,6 +1114,7 @@ class MotorAIBootstrapBuilder:
             "- CLI command templates",
             "- Working examples for each capability",
             "- Mode restrictions (edit/play/both)",
+            "- Explicit separation of `implemented` vs `planned` capabilities",
             "",
             "## Getting Started",
             "",

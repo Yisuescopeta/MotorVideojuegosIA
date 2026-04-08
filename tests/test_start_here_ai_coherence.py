@@ -86,7 +86,7 @@ class StartHereAICoherenceTests(unittest.TestCase):
             "runtime:play", "runtime:stop", "runtime:step",
             "introspect:status", "introspect:entity",
         ]
-        
+
         for cap_id in planned_ids:
             cap = self.registry.get(cap_id)
             if cap:
@@ -94,6 +94,80 @@ class StartHereAICoherenceTests(unittest.TestCase):
                     cap.status, "planned",
                     f"If {cap_id} exists, it should be 'planned', not in common list"
                 )
+
+    def test_capabilities_by_category_only_implemented(self) -> None:
+        """'Capabilities by Category' section must NOT include planned capabilities."""
+        registry = get_default_registry()
+        planned_ids = {cap.id for cap in registry.list_planned()}
+
+        # Find the "Capabilities by Category" section
+        cat_start = self.content.find("## Capabilities by Category")
+        coming_start = self.content.find("## Coming Soon")
+        self.assertGreater(cat_start, 0, "Should have 'Capabilities by Category' section")
+
+        cat_section = self.content[cat_start:coming_start if coming_start > 0 else len(self.content)]
+
+        for pid in planned_ids:
+            self.assertNotIn(
+                pid, cat_section,
+                f"Planned capability '{pid}' must NOT appear in 'Capabilities by Category' "
+                f"section — it would mislead an AI into thinking it's available"
+            )
+
+    def test_coming_soon_section_exists_with_planned(self) -> None:
+        """'Coming Soon' section must list all planned capabilities."""
+        self.assertIn(
+            "## Coming Soon", self.content,
+            "START_HERE_AI.md must have a 'Coming Soon' section "
+            "to explicitly separate future capabilities from implemented ones"
+        )
+
+        registry = get_default_registry()
+        planned_ids = {cap.id for cap in registry.list_planned()}
+
+        missing = []
+        for pid in planned_ids:
+            if pid not in self.content:
+                missing.append(pid)
+
+        self.assertEqual(
+            len(missing), 0,
+            f"Planned capabilities missing from 'Coming Soon' section: {missing}"
+        )
+
+    def test_no_planned_cli_command_in_quick_workflow(self) -> None:
+        """Quick Workflow must use only implemented commands (no planned)."""
+        # Find the Quick Workflow section
+        workflow_start = self.content.find("### Quick Workflow")
+        naming_start = self.content.find("## Naming Conventions")
+        self.assertGreater(workflow_start, 0)
+
+        workflow_content = self.content[workflow_start:naming_start]
+
+        # Extract all 'motor X Y Z' commands from the workflow
+        import re
+        commands = re.findall(r'motor \w+(?: \w+)*', workflow_content)
+
+        registry = get_default_registry()
+        planned_commands = set()
+        for cap in registry.list_planned():
+            if cap.cli_command.startswith("motor "):
+                # Strip motor prefix and optional args
+                parts = cap.cli_command.split()[1:]
+                clean = [p for p in parts if not p.startswith(('<', '['))]
+                if clean:
+                    planned_commands.add("motor " + " ".join(clean[:3]))
+
+        violations = []
+        for cmd in commands:
+            for planned in planned_commands:
+                if cmd.startswith(planned):
+                    violations.append(f"{cmd} (planned command)")
+
+        self.assertEqual(
+            len(violations), 0,
+            f"Quick Workflow contains planned commands: {violations}"
+        )
 
     def test_official_cli_syntax_used(self) -> None:
         """All CLI examples should use 'motor' prefix."""

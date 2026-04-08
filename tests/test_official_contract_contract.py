@@ -558,6 +558,95 @@ class BootstrapFromRegistryContractTests(_ContractTestMixin, unittest.TestCase):
 # Contract 7: legacy compatibility is read-only
 # =============================================================================
 
+class StartHereMDPolicyContractTests(_ContractTestMixin, unittest.TestCase):
+    """Contract: START_HERE_AI.md must not mislead AI about available capabilities."""
+
+    def setUp(self) -> None:
+        from engine.ai import MotorAIBootstrapBuilder
+        self.registry = get_default_registry()
+        self.builder = MotorAIBootstrapBuilder(self.registry)
+
+    def test_start_here_by_category_no_planned(self) -> None:
+        """'Capabilities by Category' must contain only implemented capabilities."""
+        registry = get_default_registry()
+        planned_ids = {cap.id for cap in registry.list_planned()}
+
+        content = self.builder.build_start_here_md("TestProject")
+
+        cat_start = content.find("## Capabilities by Category")
+        coming_start = content.find("## Coming Soon")
+        self.assertGreater(cat_start, 0, "Must have 'Capabilities by Category'")
+
+        section = content[cat_start:coming_start if coming_start > 0 else len(content)]
+        violations = [pid for pid in planned_ids if pid in section]
+
+        self.assertEqual(
+            len(violations), 0,
+            f"'Capabilities by Category' must not list planned: {violations}"
+        )
+
+    def test_start_here_has_coming_soon(self) -> None:
+        """START_HERE_AI.md must have explicit 'Coming Soon' section for planned caps."""
+        registry = get_default_registry()
+        planned_ids = {cap.id for cap in registry.list_planned()}
+
+        content = self.builder.build_start_here_md("TestProject")
+
+        self.assertIn("## Coming Soon", content,
+                     "Must have explicit 'Coming Soon' section for planned capabilities")
+        for pid in planned_ids:
+            self.assertIn(pid, content,
+                         f"Planned '{pid}' must appear in 'Coming Soon' section")
+
+    def test_start_here_quick_workflow_only_implemented(self) -> None:
+        """Quick Workflow section must use only implemented commands."""
+        import re
+        registry = get_default_registry()
+
+        content = self.builder.build_start_here_md("TestProject")
+
+        workflow_start = content.find("### Quick Workflow")
+        naming_start = content.find("## Naming Conventions")
+        section = content[workflow_start:naming_start if naming_start > 0 else len(content)]
+
+        # Extract motor commands
+        commands = re.findall(r'motor \w+(?: \w+)*', section)
+
+        planned = set()
+        for cap in registry.list_planned():
+            if cap.cli_command.startswith("motor "):
+                parts = cap.cli_command.split()[1:]
+                clean = [p for p in parts if not p.startswith(('<', '['))]
+                if clean:
+                    planned.add("motor " + " ".join(clean[:3]))
+
+        violations = [c for c in commands if any(c.startswith(p) for p in planned)]
+        self.assertEqual(len(violations), 0,
+                       f"Quick Workflow uses planned commands: {violations}")
+
+    def test_start_here_no_cli_command_section_has_planned(self) -> None:
+        """No section with CLI commands (like 'Capabilities by Category') may include planned."""
+        registry = get_default_registry()
+        planned_ids = {cap.id for cap in registry.list_planned()}
+
+        content = self.builder.build_start_here_md("TestProject")
+
+        # Scan for fenced code blocks containing 'motor' commands
+        import re
+        code_blocks = re.findall(r'```(?:bash)?\n(.*?)```', content, re.DOTALL)
+
+        violations = []
+        for block in code_blocks:
+            for pid in planned_ids:
+                if pid in block:
+                    violations.append(f"{pid} in code block")
+
+        self.assertEqual(
+            len(violations), 0,
+            f"Code blocks in START_HERE_AI.md must not reference planned capabilities: {violations}"
+        )
+
+
 class LegacyCompatibilityContractTests(_ContractTestMixin, unittest.TestCase):
     """Contract: legacy interfaces are clearly marked and separated from official contract."""
 
