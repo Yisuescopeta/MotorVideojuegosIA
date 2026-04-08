@@ -694,5 +694,46 @@ class LegacyCompatibilityContractTests(_ContractTestMixin, unittest.TestCase):
                            "doctor should detect legacy schema_version 1")
 
 
+class ProjectServiceReadOnlyContractTests(unittest.TestCase):
+    """Contract: ProjectService read_only=True blocks ALL mutating operations."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.workspace = Path(tempfile.mkdtemp(prefix="motor_ro_contract_"))
+        cls.project = cls.workspace / "Project"
+        cls.project.mkdir()
+        (cls.project / "project.json").write_text(
+            json.dumps({
+                "name": "Test", "version": 2, "engine_version": "2026.03",
+                "template": "empty",
+                "paths": {"assets": "assets", "levels": "levels", "prefabs": "prefabs",
+                         "scripts": "scripts", "settings": "settings",
+                         "meta": ".motor/meta", "build": ".motor/build"},
+            }),
+            encoding="utf-8",
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+        shutil.rmtree(cls.workspace, ignore_errors=True)
+
+    def test_project_service_read_only_blocks_set_last_scene(self) -> None:
+        """CRITICAL: read_only=True must block set_last_scene (used by scene commands)."""
+        from engine.project.project_service import ProjectService
+        ro = ProjectService(self.project, auto_ensure=False, read_only=True)
+
+        with self.assertRaises(PermissionError, msg="set_last_scene must raise PermissionError in read_only"):
+            ro.set_last_scene("levels/test.json")
+
+    def test_project_service_read_only_blocks_generate_bootstrap(self) -> None:
+        """CRITICAL: read_only=True must block generate_ai_bootstrap."""
+        from engine.project.project_service import ProjectService
+        ro = ProjectService(self.project, auto_ensure=False, read_only=True)
+
+        with self.assertRaises(PermissionError, msg="generate_ai_bootstrap must raise PermissionError in read_only"):
+            ro.generate_ai_bootstrap()
+
+
 if __name__ == "__main__":
     unittest.main()
