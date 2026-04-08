@@ -937,15 +937,14 @@ class MotorAIBootstrapBuilder:
             "",
         ]
 
+        # Only implemented capabilities - verified to exist in CLI
         common_caps = [
             "scene:load", "scene:save", "scene:create",
-            "entity:create", "entity:delete",
-            "component:add", "component:edit",
-            "prefab:instantiate", "prefab:list",
+            "entity:create",
+            "component:add",
             "asset:list", "asset:slice:grid", "asset:slice:list",
-            "animator:create", "animator:state:add", "animator:info",
-            "runtime:play", "runtime:stop",
-            "introspect:capabilities", "introspect:status",
+            "animator:set_sheet", "animator:state:create", "animator:info",
+            "introspect:capabilities",
         ]
 
         for cap_id in common_caps:
@@ -1027,8 +1026,9 @@ class MotorAIBootstrapBuilder:
             "",
             "6. **Configure animator**:",
             "   ```bash",
+            "   motor animator ensure Player --project .",
             "   motor animator set-sheet Player assets/player.png --project .",
-            "   motor animator upsert-state Player idle --slices idle_0,idle_1,idle_2,idle_3 --fps 8 --loop --project .",
+            "   motor animator state create Player idle --slices idle_0,idle_1,idle_2,idle_3 --fps 8 --loop --project .",
             "   ```",
             "",
             "### Regenerate AI Bootstrap Files",
