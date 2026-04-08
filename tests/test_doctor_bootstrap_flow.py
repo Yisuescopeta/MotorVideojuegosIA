@@ -271,6 +271,72 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
                 self.assertFalse(result.get("success"),
                                "bootstrap-ai should report failure")
 
+    def test_doctor_reads_v3_schema_correctly(self) -> None:
+        """Doctor should correctly read motor_ai.json v3 schema with implemented/planned split."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = self._create_test_project(Path(tmpdir))
+
+            # Generate bootstrap files (creates v3 schema)
+            returncode, _, _ = self._run_motor(
+                "project", "bootstrap-ai", "--project", str(project),
+                cwd=project
+            )
+            self.assertEqual(returncode, 0, "bootstrap-ai should succeed")
+
+            # Verify motor_ai.json has v3 structure
+            motor_ai_path = project / "motor_ai.json"
+            motor_ai_data = json.loads(motor_ai_path.read_text())
+
+            self.assertEqual(motor_ai_data.get("schema_version"), 3,
+                           "motor_ai.json should be schema v3")
+            self.assertIn("implemented_capabilities", motor_ai_data,
+                        "v3 schema should have implemented_capabilities")
+            self.assertIn("planned_capabilities", motor_ai_data,
+                        "v3 schema should have planned_capabilities")
+            self.assertIn("capability_counts", motor_ai_data,
+                        "v3 schema should have capability_counts")
+
+            # Run doctor - should read v3 correctly
+            returncode, stdout, _ = self._run_motor(
+                "doctor", "--project", str(project), "--json",
+                cwd=project
+            )
+            self.assertEqual(returncode, 0, "doctor should succeed with v3 schema")
+
+            # Parse doctor output
+            output = stdout
+            if "{" in output:
+                output = output[output.index("{"):]
+            result = json.loads(output)
+
+            checks = result.get("data", {}).get("checks", {})
+
+            # Doctor should correctly read v3 fields
+            self.assertEqual(checks.get("motor_ai_schema_version"), 3,
+                           "Doctor should detect schema v3")
+            self.assertIn("motor_ai_implemented_count", checks,
+                        "Doctor should report implemented capabilities count")
+            self.assertIn("motor_ai_planned_count", checks,
+                        "Doctor should report planned capabilities count")
+            self.assertIn("motor_ai_capabilities_count", checks,
+                        "Doctor should report total capabilities count")
+
+            # Counts should match what was generated
+            self.assertGreater(checks.get("motor_ai_implemented_count", 0), 0,
+                             "Should have implemented capabilities")
+            self.assertGreater(checks.get("motor_ai_planned_count", 0), 0,
+                             "Should have planned capabilities")
+            self.assertGreater(checks.get("motor_ai_capabilities_count", 0), 0,
+                             "Should have total capabilities count")
+
+            # Verify consistency with actual data
+            expected_implemented = len(motor_ai_data.get("implemented_capabilities", []))
+            expected_planned = len(motor_ai_data.get("planned_capabilities", []))
+            self.assertEqual(checks.get("motor_ai_implemented_count"), expected_implemented,
+                           "Doctor implemented count should match file")
+            self.assertEqual(checks.get("motor_ai_planned_count"), expected_planned,
+                           "Doctor planned count should match file")
+
 
 if __name__ == "__main__":
     unittest.main()

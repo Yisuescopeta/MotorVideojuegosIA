@@ -179,11 +179,40 @@ def cmd_doctor(project_path: Path, json_output: bool) -> int:
             motor_ai_data = json.loads(motor_ai_path.read_text(encoding="utf-8"))
             checks["motor_ai_valid"] = True
             checks["motor_ai_schema_version"] = motor_ai_data.get("schema_version", 0)
-            checks["motor_ai_capabilities_count"] = len(
-                motor_ai_data.get("capabilities", {}).get("capabilities", [])
-            )
-            if "capabilities" not in motor_ai_data:
-                warnings.append("motor_ai.json missing capabilities section")
+
+            # Read capability counts with backward compatibility
+            # Schema v3: implemented_capabilities, planned_capabilities, capability_counts
+            # Schema v1/v2: capabilities.capabilities (single list)
+            schema_version = motor_ai_data.get("schema_version", 0)
+
+            if schema_version >= 3:
+                # v3: Use implemented/planned separation
+                implemented_caps = motor_ai_data.get("implemented_capabilities", [])
+                planned_caps = motor_ai_data.get("planned_capabilities", [])
+                capability_counts = motor_ai_data.get("capability_counts", {})
+
+                checks["motor_ai_implemented_count"] = len(implemented_caps)
+                checks["motor_ai_planned_count"] = len(planned_caps)
+                checks["motor_ai_capabilities_count"] = capability_counts.get(
+                    "total", len(implemented_caps) + len(planned_caps)
+                )
+
+                # Validate v3 structure
+                if not implemented_caps and not planned_caps:
+                    warnings.append("motor_ai.json v3 has no capabilities (both lists empty)")
+                if "capability_counts" not in motor_ai_data:
+                    warnings.append("motor_ai.json v3 missing capability_counts")
+            else:
+                # v1/v2: Legacy single capabilities list
+                legacy_caps = motor_ai_data.get("capabilities", {}).get("capabilities", [])
+                checks["motor_ai_capabilities_count"] = len(legacy_caps)
+                checks["motor_ai_implemented_count"] = len(legacy_caps)
+                checks["motor_ai_planned_count"] = 0
+
+                if not legacy_caps:
+                    warnings.append("motor_ai.json has empty capabilities list")
+
+            # Common validations
             if "engine" not in motor_ai_data:
                 warnings.append("motor_ai.json missing engine section")
         except json.JSONDecodeError as exc:
