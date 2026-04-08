@@ -27,9 +27,15 @@ class DoctorReadOnlyTests(unittest.TestCase):
 
     def setUp(self):
         """Set up test environment."""
+        self._temp_home = tempfile.TemporaryDirectory(prefix="motor_doctor_home_")
+        self.isolated_home = Path(self._temp_home.name) / "isolated_home"
         self.env = os.environ.copy()
         python_path = self.env.get("PYTHONPATH", "")
         self.env["PYTHONPATH"] = str(ROOT) if not python_path else str(ROOT) + os.pathsep + python_path
+        self.env["MOTORVIDEOJUEGOSIA_HOME"] = self.isolated_home.as_posix()
+
+    def tearDown(self):
+        self._temp_home.cleanup()
 
     def _get_project_state(self, project_path: Path) -> dict:
         """Capture the complete state of a project directory."""
@@ -191,10 +197,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
             workspace = Path(tmpdir)
             project = workspace / "TestProject"
             project.mkdir()
-            
-            # Isolated global storage directory
-            isolated_home = workspace / "isolated_home"
-            
+
             # Create minimal project
             (project / "project.json").write_text(json.dumps({
                 "name": "TestProject",
@@ -211,19 +214,15 @@ class DoctorReadOnlyTests(unittest.TestCase):
             }))
             
             # Check for global storage in isolated directory
-            global_dir = isolated_home / ".motorvideojuegosia"
+            global_dir = self.isolated_home / ".motorvideojuegosia"
             recents_file = global_dir / "recent_projects.json"
-            
-            # Build env with isolated MOTORVIDEOJUEGOSIA_HOME
-            test_env = self.env.copy()
-            test_env["MOTORVIDEOJUEGOSIA_HOME"] = isolated_home.as_posix()
-            
+
             # Run doctor
             result = subprocess.run(
                 [sys.executable, "-m", "motor", "doctor", "--project", str(project), "--json"],
                 capture_output=True,
                 text=True,
-                env=test_env,
+                env=self.env,
             )
             
             self.assertEqual(result.returncode, 0, "doctor should succeed")
@@ -232,11 +231,15 @@ class DoctorReadOnlyTests(unittest.TestCase):
             self.assertFalse(
                 global_dir.exists(),
                 f"doctor must NOT create global storage directory in isolated MOTORVIDEOJUEGOSIA_HOME "
-                f"({isolated_home}). Global dir path checked: {global_dir}"
+                f"({self.isolated_home}). Global dir path checked: {global_dir}"
             )
             self.assertFalse(
                 recents_file.exists(),
                 "doctor must NOT create recent_projects.json in isolated global storage"
+            )
+            self.assertFalse(
+                any(self.isolated_home.rglob("*")),
+                "doctor must not create any artifacts under isolated MOTORVIDEOJUEGOSIA_HOME"
             )
 
     def test_doctor_does_not_modify_existing_files(self) -> None:

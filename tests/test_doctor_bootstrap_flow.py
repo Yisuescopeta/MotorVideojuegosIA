@@ -20,6 +20,13 @@ from pathlib import Path
 
 class DoctorBootstrapFlowTests(unittest.TestCase):
     """Integration tests for the doctor → bootstrap-ai workflow."""
+
+    def setUp(self) -> None:
+        self._home_tmp = tempfile.TemporaryDirectory(prefix="motor_doctor_home_")
+        self.isolated_home = Path(self._home_tmp.name) / "isolated_home"
+
+    def tearDown(self) -> None:
+        self._home_tmp.cleanup()
     
     def _run_motor(self, *args: str, cwd: Path) -> tuple[int, str, str]:
         """Run motor CLI command and return (returncode, stdout, stderr)."""
@@ -31,6 +38,7 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
         env = os.environ.copy()
         python_path = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = str(root) if not python_path else str(root) + os.pathsep + python_path
+        env["MOTORVIDEOJUEGOSIA_HOME"] = self.isolated_home.as_posix()
         
         result = subprocess.run(
             cmd,
@@ -248,6 +256,10 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
                            "Doctor should not create motor_ai.json")
             self.assertFalse((project / "START_HERE_AI.md").exists(),
                            "Doctor should not create START_HERE_AI.md")
+            self.assertFalse(
+                self.isolated_home.exists(),
+                "Doctor should not create isolated MOTORVIDEOJUEGOSIA_HOME artifacts"
+            )
     
     def test_bootstrap_ai_fails_without_project(self) -> None:
         """Bootstrap-ai should fail gracefully when run outside a project."""
