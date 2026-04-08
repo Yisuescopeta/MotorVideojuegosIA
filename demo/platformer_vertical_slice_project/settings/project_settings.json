@@ -1,0 +1,16 @@
+{
+    "startup_scene": "levels/platformer_vertical_slice.json",
+    "template": "platformer",
+    "terminal": {
+        "execution_policy": "inherit"
+    },
+    "api": {
+        "path_sandbox": false
+    },
+    "display": {
+        "window_width": 1280,
+        "window_height": 720,
+        "window_title": "Platformer Vertical Slice",
+        "vsync": true
+    }
+}

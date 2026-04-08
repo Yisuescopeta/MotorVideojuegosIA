@@ -287,6 +287,10 @@ class DoctorReadOnlyTests(unittest.TestCase):
                 stat_before.st_mtime, stat_after.st_mtime,
                 "doctor must not modify project.json timestamp"
             )
+            self.assertFalse((project / ".motor" / "editor_state.json").exists(),
+                           "doctor must not create .motor/editor_state.json")
+            self.assertFalse((project / "settings" / "project_settings.json").exists(),
+                           "doctor must not create settings/project_settings.json")
 
     def test_doctor_reports_missing_bootstrap_correctly(self) -> None:
         """doctor should report missing bootstrap without creating it."""

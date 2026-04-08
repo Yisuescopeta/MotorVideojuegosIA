@@ -219,12 +219,7 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
             self.assertIn("implemented_capabilities", motor_ai2)
     
     def test_doctor_is_read_only(self) -> None:
-        """Doctor should not modify project files (may create engine state files).
-        
-        Note: EngineAPI may create state files in .motor/ directory during initialization.
-        This is expected behavior. The important thing is that doctor doesn't modify
-        user project files like project.json.
-        """
+        """Doctor should not modify project files or create editor state."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project = self._create_test_project(Path(tmpdir))
             
@@ -243,6 +238,10 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
             final_project_json = (project / "project.json").read_text()
             self.assertEqual(initial_project_json, final_project_json,
                            "Doctor should not modify project.json")
+            self.assertFalse((project / ".motor" / "editor_state.json").exists(),
+                           "Doctor should not create .motor/editor_state.json")
+            self.assertFalse((project / "settings" / "project_settings.json").exists(),
+                           "Doctor should not create settings/project_settings.json")
             
             # Verify motor_ai.json and START_HERE_AI.md were not created by doctor
             self.assertFalse((project / "motor_ai.json").exists(),

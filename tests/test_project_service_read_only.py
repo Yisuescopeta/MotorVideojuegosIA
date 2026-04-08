@@ -141,6 +141,41 @@ class ProjectServiceReadOnlyUnitTests(unittest.TestCase):
         self.ro.get_last_scene()
         self.ro.get_preference("x")
 
+    def test_clear_active_project_read_only(self) -> None:
+        """clear_active_project must also be blocked in read_only mode."""
+        self._guard_test("clear_active_project", self.ro.clear_active_project, self.rw.clear_active_project)
+
+    def test_open_project_read_only(self) -> None:
+        """open_project must not create layout files in read_only mode."""
+        target = self.workspace / "OpenProject"
+        target.mkdir(exist_ok=True)
+        (target / "project.json").write_text(
+            json.dumps({
+                "name": "OpenProject",
+                "version": 2,
+                "engine_version": "2026.03",
+                "template": "empty",
+                "paths": {
+                    "assets": "assets", "levels": "levels",
+                    "prefabs": "prefabs", "scripts": "scripts",
+                    "settings": "settings", "meta": ".motor/meta",
+                    "build": ".motor/build",
+                },
+            }),
+            encoding="utf-8",
+        )
+        with self.assertRaises(PermissionError):
+            self.ro.open_project(target)
+        self.assertFalse((target / ".motor" / "editor_state.json").exists())
+        self.assertFalse((target / "settings" / "project_settings.json").exists())
+
+    def test_internal_write_helper_read_only(self) -> None:
+        """Low-level JSON writes must also be blocked in read_only mode."""
+        target = self.workspace / "private_write.json"
+        with self.assertRaises(PermissionError):
+            self.ro._write_json(target, {"blocked": True})
+        self.assertFalse(target.exists())
+
     def test_permission_error_message_mentions_operation(self) -> None:
         """PermissionError message must name the blocked operation."""
         try:

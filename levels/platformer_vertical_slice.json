@@ -1,0 +1,531 @@
+{
+    "schema_version": 2,
+    "name": "Platformer Vertical Slice",
+    "entities": [
+        {
+            "name": "Player",
+            "active": true,
+            "tag": "Player",
+            "layer": "Gameplay",
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 100.0,
+                    "y": 300.0,
+                    "rotation": 0.0,
+                    "scale_x": 0.5,
+                    "scale_y": 0.5
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 48,
+                    "height": 64,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": false,
+                    "shape_type": "box",
+                    "radius": 24.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "RigidBody": {
+                    "enabled": true,
+                    "velocity_x": 0.0,
+                    "velocity_y": 0.0,
+                    "gravity_scale": 1.0,
+                    "is_grounded": false,
+                    "body_type": "dynamic",
+                    "simulated": true,
+                    "freeze_x": false,
+                    "freeze_y": false,
+                    "constraints": ["None"],
+                    "use_full_kinematic_contacts": false,
+                    "collision_detection_mode": "discrete"
+                },
+                "InputMap": {
+                    "enabled": true,
+                    "move_left": "A,LEFT",
+                    "move_right": "D,RIGHT",
+                    "move_up": "W,UP",
+                    "move_down": "S,DOWN",
+                    "action_1": "SPACE",
+                    "action_2": "ENTER"
+                },
+                "PlayerController2D": {
+                    "enabled": true,
+                    "move_speed": 200.0,
+                    "jump_velocity": -380.0,
+                    "air_control": 0.8
+                },
+                "Animator": {
+                    "enabled": true,
+                    "sprite_sheet": {
+                        "guid": "",
+                        "path": "demo/platformer_demo_package/assets/sprites/alienBlue_stand.png"
+                    },
+                    "sprite_sheet_path": "demo/platformer_demo_package/assets/sprites/alienBlue_stand.png",
+                    "frame_width": 128,
+                    "frame_height": 256,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "speed": 1.0,
+                    "animations": {
+                        "idle": {
+                            "frames": [0],
+                            "slice_names": ["alienBlue_stand"],
+                            "fps": 1.0,
+                            "loop": true
+                        },
+                        "run": {
+                            "frames": [0, 1],
+                            "slice_names": ["alienBlue_walk1", "alienBlue_walk2"],
+                            "fps": 8.0,
+                            "loop": true
+                        },
+                        "jump": {
+                            "frames": [0],
+                            "slice_names": ["alienBlue_jump"],
+                            "fps": 1.0,
+                            "loop": true
+                        }
+                    },
+                    "default_state": "idle",
+                    "current_state": "idle",
+                    "current_frame": 0,
+                    "is_finished": false
+                },
+                "AudioSource": {
+                    "enabled": true,
+                    "asset": {
+                        "guid": "",
+                        "path": "demo/platformer_demo_package/assets/audio/jump.wav"
+                    },
+                    "asset_path": "demo/platformer_demo_package/assets/audio/jump.wav",
+                    "volume": 0.8,
+                    "pitch": 1.0,
+                    "loop": false,
+                    "play_on_awake": false,
+                    "spatial_blend": 0.0,
+                    "is_playing": false
+                }
+            }
+        },
+        {
+            "name": "MainCamera",
+            "active": true,
+            "tag": "MainCamera",
+            "layer": "System",
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 400.0,
+                    "y": 300.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Camera2D": {
+                    "enabled": true,
+                    "offset_x": 400.0,
+                    "offset_y": 300.0,
+                    "zoom": 1.0,
+                    "rotation": 0.0,
+                    "is_primary": true,
+                    "follow_entity": "Player",
+                    "framing_mode": "platformer",
+                    "dead_zone_width": 100.0,
+                    "dead_zone_height": 50.0,
+                    "clamp_left": null,
+                    "clamp_right": null,
+                    "clamp_top": null,
+                    "clamp_bottom": null,
+                    "recenter_on_play": true
+                }
+            }
+        },
+        {
+            "name": "LevelTilemap",
+            "active": true,
+            "tag": "Level",
+            "layer": "Gameplay",
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 0.0,
+                    "y": 0.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Tilemap": {
+                    "enabled": true,
+                    "cell_width": 64,
+                    "cell_height": 64,
+                    "orientation": "orthogonal",
+                    "tileset": {
+                        "guid": "",
+                        "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"
+                    },
+                    "tileset_path": "demo/platformer_demo_package/assets/tilesets/grassMid.png",
+                    "tileset_tile_width": 64,
+                    "tileset_tile_height": 64,
+                    "tileset_columns": 1,
+                    "tileset_spacing": 0,
+                    "tileset_margin": 0,
+                    "default_layer_name": "Ground",
+                    "layers": [
+                        {
+                            "name": "Ground",
+                            "visible": true,
+                            "opacity": 1.0,
+                            "locked": false,
+                            "offset_x": 0.0,
+                            "offset_y": 0.0,
+                            "collision_layer": 1,
+                            "tilemap_source": {},
+                            "metadata": {},
+                            "tiles": [
+                                {"x": 0, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 1, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 2, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 3, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 4, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 5, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 6, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 7, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 8, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 9, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 10, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 11, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 12, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 13, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 14, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 15, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 16, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 17, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 18, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 19, "y": 8, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]}
+                            ]
+                        },
+                        {
+                            "name": "Platforms",
+                            "visible": true,
+                            "opacity": 1.0,
+                            "locked": false,
+                            "offset_x": 0.0,
+                            "offset_y": 0.0,
+                            "collision_layer": 1,
+                            "tilemap_source": {},
+                            "metadata": {},
+                            "tiles": [
+                                {"x": 4, "y": 6, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 5, "y": 6, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 6, "y": 6, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 9, "y": 5, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 10, "y": 5, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 13, "y": 4, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 14, "y": 4, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]},
+                                {"x": 15, "y": 4, "tile_id": "grassMid", "source": {"guid": "", "path": "demo/platformer_demo_package/assets/tilesets/grassMid.png"}, "flags": ["solid"]}
+                            ]
+                        }
+                    ],
+                    "metadata": {}
+                }
+            }
+        },
+        {
+            "name": "Coin",
+            "active": true,
+            "tag": "Collectable",
+            "layer": "Gameplay",
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 320.0,
+                    "y": 340.0,
+                    "rotation": 0.0,
+                    "scale_x": 0.5,
+                    "scale_y": 0.5
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 32,
+                    "height": 32,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 16.0,
+                    "points": [],
+                    "friction": 0.0,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "demo/platformer_demo_package/assets/sprites/coinGold.png"
+                    },
+                    "texture_path": "demo/platformer_demo_package/assets/sprites/coinGold.png",
+                    "width": 64,
+                    "height": 64,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [255, 255, 255, 255]
+                }
+            }
+        },
+        {
+            "name": "Spikes",
+            "active": true,
+            "tag": "Hazard",
+            "layer": "Gameplay",
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 640.0,
+                    "y": 445.0,
+                    "rotation": 0.0,
+                    "scale_x": 0.5,
+                    "scale_y": 0.5
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 48,
+                    "height": 32,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 24.0,
+                    "points": [],
+                    "friction": 0.0,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "demo/platformer_demo_package/assets/sprites/spikes.png"
+                    },
+                    "texture_path": "demo/platformer_demo_package/assets/sprites/spikes.png",
+                    "width": 64,
+                    "height": 48,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [255, 255, 255, 255]
+                }
+            }
+        },
+        {
+            "name": "Goal",
+            "active": true,
+            "tag": "Goal",
+            "layer": "Gameplay",
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 1100.0,
+                    "y": 200.0,
+                    "rotation": 0.0,
+                    "scale_x": 0.6,
+                    "scale_y": 0.6
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 48,
+                    "height": 64,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 24.0,
+                    "points": [],
+                    "friction": 0.0,
+                    "restitution": 0.0,
+                    "density": 1.0
+                },
+                "Sprite": {
+                    "enabled": true,
+                    "texture": {
+                        "guid": "",
+                        "path": "demo/platformer_demo_package/assets/sprites/coinGold.png"
+                    },
+                    "texture_path": "demo/platformer_demo_package/assets/sprites/coinGold.png",
+                    "width": 64,
+                    "height": 64,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [100, 255, 100, 255]
+                }
+            }
+        },
+        {
+            "name": "AudioManager",
+            "active": true,
+            "tag": "AudioManager",
+            "layer": "System",
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 0.0,
+                    "y": 0.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "AudioSource": {
+                    "enabled": true,
+                    "asset": {
+                        "guid": "",
+                        "path": "demo/platformer_demo_package/assets/audio/collect.wav"
+                    },
+                    "asset_path": "demo/platformer_demo_package/assets/audio/collect.wav",
+                    "volume": 0.7,
+                    "pitch": 1.0,
+                    "loop": false,
+                    "play_on_awake": false,
+                    "spatial_blend": 0.0,
+                    "is_playing": false
+                }
+            }
+        }
+    ],
+    "rules": [
+        {
+            "event": "on_trigger_enter",
+            "when": {
+                "entity_a": "Player",
+                "entity_b": "Coin"
+            },
+            "do": [
+                {
+                    "action": "log_message",
+                    "message": "Coin collected! +10 points"
+                },
+                {
+                    "action": "destroy_entity",
+                    "entity": "Coin"
+                }
+            ]
+        },
+        {
+            "event": "on_trigger_enter",
+            "when": {
+                "entity_a": "Coin",
+                "entity_b": "Player"
+            },
+            "do": [
+                {
+                    "action": "log_message",
+                    "message": "Coin collected! +10 points"
+                },
+                {
+                    "action": "destroy_entity",
+                    "entity": "Coin"
+                }
+            ]
+        },
+        {
+            "event": "on_trigger_enter",
+            "when": {
+                "entity_a": "Player",
+                "entity_b": "Spikes"
+            },
+            "do": [
+                {
+                    "action": "log_message",
+                    "message": "Ouch! You hit the spikes. Respawning..."
+                },
+                {
+                    "action": "set_position",
+                    "entity": "Player",
+                    "x": 100.0,
+                    "y": 300.0
+                }
+            ]
+        },
+        {
+            "event": "on_trigger_enter",
+            "when": {
+                "entity_a": "Spikes",
+                "entity_b": "Player"
+            },
+            "do": [
+                {
+                    "action": "log_message",
+                    "message": "Ouch! You hit the spikes. Respawning..."
+                },
+                {
+                    "action": "set_position",
+                    "entity": "Player",
+                    "x": 100.0,
+                    "y": 300.0
+                }
+            ]
+        },
+        {
+            "event": "on_trigger_enter",
+            "when": {
+                "entity_a": "Player",
+                "entity_b": "Goal"
+            },
+            "do": [
+                {
+                    "action": "log_message",
+                    "message": "Victory! Level complete!"
+                },
+                {
+                    "action": "emit_event",
+                    "event_name": "victory"
+                }
+            ]
+        },
+        {
+            "event": "on_trigger_enter",
+            "when": {
+                "entity_a": "Goal",
+                "entity_b": "Player"
+            },
+            "do": [
+                {
+                    "action": "log_message",
+                    "message": "Victory! Level complete!"
+                },
+                {
+                    "action": "emit_event",
+                    "event_name": "victory"
+                }
+            ]
+        }
+    ],
+    "feature_metadata": {
+        "physics_2d": {
+            "backend": "legacy_aabb",
+            "gravity": 900.0,
+            "layer_matrix": {
+                "Gameplay|Gameplay": true,
+                "Gameplay|System": false,
+                "System|Gameplay": false,
+                "System|System": false
+            }
+        },
+        "render_2d": {
+            "sorting_layers": ["Default", "Background", "Gameplay", "Foreground", "UI"]
+        },
+        "scene_flow": {
+            "next_scene": "",
+            "menu_scene": "levels/main_menu_scene.json"
+        }
+    }
+}
