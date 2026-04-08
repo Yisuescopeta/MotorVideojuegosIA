@@ -78,18 +78,18 @@ class CapabilityRegistryBuilder:
 
         self._add(Capability(
             id="scene:save",
-            summary="Save the active scene to its source file or a new path",
+            summary="Save the active scene to its source file",
             mode="edit",
             api_methods=["SceneWorkspaceAPI.save_scene"],
-            cli_command="motor scene save [path]",
+            cli_command="motor scene save [--project <path>]",
             example=CapabilityExample(
                 description="Save the current scene",
                 api_calls=[
                     {"method": "save_scene", "args": {}},
                 ],
-                expected_outcome="The scene is serialized and written to its source_path",
+                expected_outcome="The active scene is serialized and written to its source_path",
             ),
-            notes="If no path provided, uses the scene's source_path. Requires scene to have been saved before.",
+            notes="Saves the currently active scene. Requires a scene to be loaded first.",
             tags=["scene", "persistence"],
         ))
 
@@ -133,7 +133,7 @@ class CapabilityRegistryBuilder:
             summary="Create a new entity with optional components",
             mode="edit",
             api_methods=["AuthoringAPI.create_entity"],
-            cli_command="motor entity create <name> [--component <name>]*",
+            cli_command="motor entity create <name> [--components <json>]",
             example=CapabilityExample(
                 description="Create a player entity with Transform",
                 api_calls=[
@@ -144,7 +144,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Entity 'Player' exists in active scene with Transform component",
             ),
-            notes="Entity names must be unique in the scene. Components are optional at creation.",
+            notes="Entity names must be unique in the scene. Components are optional at creation. Use --components '{\"Transform\":{\"x\":100}}' to add components.",
             tags=["entity", "authoring"],
         ))
 
@@ -436,7 +436,7 @@ class CapabilityRegistryBuilder:
             summary="Create or update an animation state",
             mode="edit",
             api_methods=["AuthoringAPI.upsert_animator_state"],
-            cli_command="motor animator state create <entity> <state> --slices <slices...>",
+            cli_command="motor animator state create <entity> <state> --slices <slices...> [--fps <n>] [--loop|--no-loop] [--set-default] [--auto-create]",
             example=CapabilityExample(
                 description="Create idle animation state using slice_0 through slice_3",
                 api_calls=[
@@ -450,7 +450,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="'idle' state created on Player's Animator (upserts if exists)",
             ),
-            notes="Creates Animator component if needed. Upserts: creates if not exists, updates if exists. First state becomes default.",
+            notes="Upserts: creates if not exists, updates if exists. Use --auto-create to create Animator component if missing. First state becomes default. --loop enables looping (default), --no-loop disables it.",
             tags=["animator", "animation", "state"],
         ))
 
@@ -811,8 +811,34 @@ class CapabilityRegistryBuilder:
             tags=["introspection", "runtime"],
         ))
 
+    # Capabilities that are planned but not yet implemented
+    _PLANNED_CAPABILITIES = {
+        # Runtime features
+        "runtime:play", "runtime:stop", "runtime:step", "runtime:undo", "runtime:redo",
+        # Physics features
+        "physics:query:aabb", "physics:query:ray", "physics:backend:list",
+        # Prefab features
+        "prefab:instantiate", "prefab:list", "prefab:unpack", "prefab:apply",
+        # Advanced entity features
+        "entity:delete", "entity:parent", "entity:list",
+        "introspect:entity", "introspect:status",
+        # Advanced asset features
+        "asset:find", "asset:metadata:get", "asset:refresh",
+        # Advanced component features
+        "component:edit", "component:remove",
+        # Project state features
+        "project:open", "project:editor_state",
+        # Scene flow features
+        "scene:flow:set_next", "scene:flow:load_next",
+    }
+
     def _add(self, capability: Capability) -> None:
-        """Helper to add a capability to the registry."""
+        """Helper to add a capability to the registry with appropriate status."""
+        # Determine status based on capability ID
+        if capability.id in self._PLANNED_CAPABILITIES:
+            # Recreate capability with planned status
+            from dataclasses import replace
+            capability = replace(capability, status="planned")
         self._registry.register(capability)
 
 
@@ -831,15 +857,61 @@ class MotorAIBootstrapBuilder:
         Args:
             project_data: Optional project-specific data to include (name, root, entrypoints, etc.)
         """
+        # Build implemented capabilities list (AI-facing contract)
+        implemented_caps = [
+            {
+                "id": cap.id,
+                "summary": cap.summary,
+                "mode": cap.mode,
+                "status": cap.status,
+                "api_methods": cap.api_methods,
+                "cli_command": cap.cli_command,
+                "example": {
+                    "description": cap.example.description,
+                    "api_calls": cap.example.api_calls,
+                    "expected_outcome": cap.example.expected_outcome,
+                },
+                "notes": cap.notes,
+                "tags": cap.tags,
+            }
+            for cap in sorted(self._registry.list_implemented(), key=lambda c: c.id)
+        ]
+
+        # Build planned capabilities list (roadmap)
+        planned_caps = [
+            {
+                "id": cap.id,
+                "summary": cap.summary,
+                "mode": cap.mode,
+                "status": cap.status,
+                "api_methods": cap.api_methods,
+                "cli_command": cap.cli_command,
+                "example": {
+                    "description": cap.example.description,
+                    "api_calls": cap.example.api_calls,
+                    "expected_outcome": cap.example.expected_outcome,
+                },
+                "notes": cap.notes,
+                "tags": cap.tags,
+            }
+            for cap in sorted(self._registry.list_planned(), key=lambda c: c.id)
+        ]
+
         data: Dict[str, Any] = {
-            "schema_version": 2,  # Updated from 1 to include capabilities registry
+            "schema_version": 3,  # Updated to 3 for status field and separated capabilities
             "engine": {
                 "name": self._registry.engine_name,
                 "version": self._registry.engine_version,
                 "api_version": "1",
                 "capabilities_schema_version": self._registry.schema_version,
             },
-            "capabilities": self._registry.to_dict(),
+            "implemented_capabilities": implemented_caps,
+            "planned_capabilities": planned_caps,
+            "capability_counts": {
+                "implemented": len(implemented_caps),
+                "planned": len(planned_caps),
+                "total": len(implemented_caps) + len(planned_caps),
+            },
         }
 
         if project_data:
