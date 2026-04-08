@@ -338,5 +338,155 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
                            "Doctor planned count should match file")
 
 
+    def test_doctor_reads_legacy_v1_schema(self) -> None:
+        """Doctor should gracefully handle legacy v1 schema (capabilities.capabilities)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = self._create_test_project(Path(tmpdir))
+
+            # Manually write a legacy v1 schema motor_ai.json
+            legacy_schema = {
+                "schema_version": 1,
+                "engine": {
+                    "name": "MotorVideojuegosIA",
+                    "version": "2026.03",
+                    "api_version": "1",
+                },
+                "capabilities": {
+                    "capabilities": [
+                        {"id": "scene:create", "summary": "Create a scene"},
+                        {"id": "entity:create", "summary": "Create an entity"},
+                    ]
+                },
+            }
+            (project / "motor_ai.json").write_text(
+                json.dumps(legacy_schema), encoding="utf-8"
+            )
+            (project / "START_HERE_AI.md").write_text("# Test\n", encoding="utf-8")
+
+            # Run doctor
+            returncode, stdout, _ = self._run_motor(
+                "doctor", "--project", str(project), "--json",
+                cwd=project
+            )
+            self.assertEqual(returncode, 0, "Doctor should succeed with legacy schema")
+
+            # Parse output
+            output = stdout
+            if "{" in output:
+                output = output[output.index("{"):]
+            result = json.loads(output)
+
+            checks = result.get("data", {}).get("checks", {})
+
+            # Doctor should correctly identify legacy schema
+            self.assertEqual(checks.get("motor_ai_schema_version"), 1,
+                           "Doctor should detect schema v1")
+            self.assertEqual(checks.get("motor_ai_capabilities_count"), 2,
+                           "Doctor should count legacy capabilities correctly")
+            self.assertEqual(checks.get("motor_ai_implemented_count"), 2,
+                           "Legacy schema: all capabilities count as implemented")
+            self.assertEqual(checks.get("motor_ai_planned_count"), 0,
+                           "Legacy schema: no planned capabilities")
+
+    def test_doctor_reads_legacy_v2_schema(self) -> None:
+        """Doctor should gracefully handle legacy v2 schema."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = self._create_test_project(Path(tmpdir))
+
+            # Manually write a legacy v2 schema motor_ai.json
+            legacy_schema = {
+                "schema_version": 2,
+                "engine": {
+                    "name": "MotorVideojuegosIA",
+                    "version": "2026.03",
+                    "api_version": "1",
+                },
+                "capabilities": {
+                    "capabilities": [
+                        {"id": "scene:list", "summary": "List scenes"},
+                        {"id": "entity:create", "summary": "Create entity"},
+                        {"id": "asset:list", "summary": "List assets"},
+                    ]
+                },
+            }
+            (project / "motor_ai.json").write_text(
+                json.dumps(legacy_schema), encoding="utf-8"
+            )
+            (project / "START_HERE_AI.md").write_text("# Test\n", encoding="utf-8")
+
+            # Run doctor
+            returncode, stdout, _ = self._run_motor(
+                "doctor", "--project", str(project), "--json",
+                cwd=project
+            )
+            self.assertEqual(returncode, 0, "Doctor should succeed with legacy v2 schema")
+
+            output = stdout
+            if "{" in output:
+                output = output[output.index("{"):]
+            result = json.loads(output)
+
+            checks = result.get("data", {}).get("checks", {})
+
+            self.assertEqual(checks.get("motor_ai_schema_version"), 2,
+                           "Doctor should detect schema v2")
+            self.assertEqual(checks.get("motor_ai_capabilities_count"), 3,
+                           "Doctor should count v2 capabilities correctly")
+            self.assertEqual(checks.get("motor_ai_implemented_count"), 3,
+                           "Legacy v2: all capabilities count as implemented")
+            self.assertEqual(checks.get("motor_ai_planned_count"), 0,
+                           "Legacy v2: no planned capabilities")
+
+    def test_doctor_warns_on_v3_missing_counts(self) -> None:
+        """Doctor should warn if v3 schema is missing capability_counts."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = self._create_test_project(Path(tmpdir))
+
+            # Write a malformed v3 schema (has implemented/planned but no counts)
+            malformed_v3 = {
+                "schema_version": 3,
+                "engine": {
+                    "name": "MotorVideojuegosIA",
+                    "version": "2026.03",
+                    "api_version": "1",
+                },
+                "implemented_capabilities": [
+                    {"id": "scene:create", "summary": "Create scene"},
+                ],
+                "planned_capabilities": [
+                    {"id": "entity:delete", "summary": "Delete entity"},
+                ],
+                # NOTE: missing "capability_counts"
+            }
+            (project / "motor_ai.json").write_text(
+                json.dumps(malformed_v3), encoding="utf-8"
+            )
+            (project / "START_HERE_AI.md").write_text("# Test\n", encoding="utf-8")
+
+            returncode, stdout, _ = self._run_motor(
+                "doctor", "--project", str(project), "--json",
+                cwd=project
+            )
+            self.assertEqual(returncode, 0)
+
+            output = stdout
+            if "{" in output:
+                output = output[output.index("{"):]
+            result = json.loads(output)
+
+            # Doctor should warn about missing capability_counts
+            warnings = result.get("data", {}).get("warnings", [])
+            has_count_warning = any(
+                "capability_counts" in w for w in warnings
+            )
+            self.assertTrue(has_count_warning,
+                          "Doctor should warn when v3 schema is missing capability_counts")
+
+            # But counts should still be computed from the lists
+            checks = result.get("data", {}).get("checks", {})
+            self.assertEqual(checks.get("motor_ai_capabilities_count"), 2,
+                           "Doctor should compute total from lists when counts missing")
+
+
 if __name__ == "__main__":
     unittest.main()

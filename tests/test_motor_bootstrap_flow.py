@@ -148,10 +148,13 @@ class MotorBootstrapFlowTests(unittest.TestCase):
         self.assertTrue(motor_ai_path.exists(), "motor_ai.json should be created")
         self.assertTrue(start_here_path.exists(), "START_HERE_AI.md should be created")
         
-        # Verify motor_ai.json is valid
+        # Verify motor_ai.json is valid (schema v3)
         motor_ai_data = json.loads(motor_ai_path.read_text())
         self.assertIn("schema_version", motor_ai_data)
-        self.assertIn("capabilities", motor_ai_data)
+        self.assertEqual(motor_ai_data["schema_version"], 3)
+        self.assertIn("implemented_capabilities", motor_ai_data)
+        self.assertIn("planned_capabilities", motor_ai_data)
+        self.assertIn("capability_counts", motor_ai_data)
         
         # Verify START_HERE_AI.md contains motor commands
         start_here_content = start_here_path.read_text()
@@ -235,7 +238,8 @@ class MotorBootstrapFlowTests(unittest.TestCase):
         self.assertTrue(start_here_path.exists())
         
         motor_ai_data = json.loads(motor_ai_path.read_text())
-        self.assertIn("capabilities", motor_ai_data)
+        self.assertIn("implemented_capabilities", motor_ai_data)
+        self.assertIn("planned_capabilities", motor_ai_data)
 
 
 class MotorDoctorReadOnlyTests(unittest.TestCase):

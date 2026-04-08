@@ -56,7 +56,7 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         """
         if self.scene_manager is None:
             return False
-        return self.scene_manager.get_active_scene_summary().get("path") != ""
+        return bool(self.scene_manager.get_active_scene_summary().get("path"))
 
     def get_active_scene_info(self) -> Dict[str, Any]:
         """Get comprehensive information about the active scene.
@@ -197,7 +197,12 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         if self.game is None:
             return self.fail("Engine not initialized")
         success = self.game.create_scene(name)
-        return self.ok("Scene created", {"path": self.game.current_scene_path}) if success else self.fail("Scene creation failed")
+        if not success:
+            return self.fail("Scene creation failed")
+        path = self.game.current_scene_path
+        if path and self.project_service:
+            self.project_service.set_last_scene(path)
+        return self.ok("Scene created", {"path": path})
 
     def open_scene(self, path: str) -> ActionResult:
         return self.load_scene(path)

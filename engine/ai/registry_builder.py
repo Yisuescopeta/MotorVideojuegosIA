@@ -820,7 +820,7 @@ class CapabilityRegistryBuilder:
             summary="Diagnose project health and detect issues",
             mode="both",
             api_methods=["cmd_doctor"],
-            cli_command="motor doctor --project <path>",
+            cli_command="motor doctor [--project <path>]",
             example=CapabilityExample(
                 description="Check project health",
                 api_calls=[

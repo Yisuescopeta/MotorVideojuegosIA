@@ -110,23 +110,18 @@ class ParserRegistryStrictAlignmentTests(unittest.TestCase):
                                         f"{cap.id}: cli_command must have at least <noun> and <verb>")
 
     def test_required_vs_optional_args_clear(self) -> None:
-        """Verify required args use <>, optional use []."""
+        """Verify required args use <>, optional use [brackets]."""
         for cap in self.implemented_caps:
             with self.subTest(capability=cap.id):
                 cmd = cap.cli_command
                 
-                # Check that required args use <>
-                if "<name>" in cmd or "<entity>" in cmd or "<state>" in cmd:
-                    pass  # Good - using required notation
-                
-                # Check that optional args use []
-                optional_pattern = r'\[--[\w-]+(?:\s+<[^>]+>)?\]'
-                matches = re.findall(optional_pattern, cmd)
-                
-                # At minimum, --project and --json should be in []
+                # Verify --project is wrapped in optional brackets: [--project <path>]
                 if "--project" in cmd:
-                    self.assertIn("[", cmd.split("--project")[0].split()[-1] if "--project" in cmd else "",
-                                  f"{cap.id}: --project must be in optional brackets [...]")
+                    self.assertIn(
+                        "[--project",
+                        cmd,
+                        f"{cap.id}: --project must be wrapped in optional brackets [...]: got '{cmd}'"
+                    )
 
     def test_notes_match_cli_behavior(self) -> None:
         """Verify notes field accurately describes CLI behavior."""
