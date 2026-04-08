@@ -31,15 +31,19 @@ ROOT = Path(__file__).resolve().parents[1]
 class _ContractTestMixin:
     """Shared setup for subprocess-based contract tests."""
 
-    def _run_motor(self, *args: str, project: Path | None = None, cwd: Path | None = None) -> subprocess.CompletedProcess:
-        """Run motor CLI command. Uses project path if given, else cwd."""
-        cmd = [sys.executable, "-m", "motor"] + list(args)
+    @property
+    def env(self) -> dict:
+        """Return a clean env with PYTHONPATH set. Subclasses can override."""
         env = os.environ.copy()
         pp = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = str(ROOT) if not pp else str(ROOT) + os.pathsep + pp
-        target_cwd = str(project) if project else (str(cwd) if cwd else str(project))
+        return env
+
+    def _run_motor(self, *args: str, project: Path | None = None, cwd: Path | None = None) -> subprocess.CompletedProcess:
+        """Run motor CLI command. Uses project path if given, else cwd."""
+        cmd = [sys.executable, "-m", "motor"] + list(args)
         return subprocess.run(
-            cmd, capture_output=True, text=True, env=env,
+            cmd, capture_output=True, text=True, env=self.env,
             cwd=str(project) if project else (cwd or ROOT)
         )
 
@@ -82,32 +86,39 @@ class DoctorReadOnlyContractTests(_ContractTestMixin, unittest.TestCase):
     """Contract: doctor must never mutate project or global state."""
 
     def test_doctor_passes_read_only_to_engine_api(self) -> None:
-        """doctor must pass read_only=True to EngineAPI so no global storage is created."""
+        """doctor must pass read_only=True to EngineAPI so no global storage is created.
+        
+        Uses an isolated MOTORVIDEOJUEGOSIA_HOME so the test is deterministic.
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
-            project = self._create_test_project(Path(tmpdir))
+            workspace = Path(tmpdir)
+            project = self._create_test_project(workspace)
+            isolated_home = workspace / "isolated_home"
 
-            # Ensure global storage does NOT exist before
-            home = Path.home()
-            global_dir = home / ".motorvideojuegosia"
+            # Build env with isolated MOTORVIDEOJUEGOSIA_HOME
+            test_env = self.env.copy()
+            test_env["MOTORVIDEOJUEGOSIA_HOME"] = isolated_home.as_posix()
+
+            global_dir = isolated_home / ".motorvideojuegosia"
             recents = global_dir / "recent_projects.json"
-            global_existed_before = global_dir.exists()
-            recents_existed_before = recents.exists()
 
-            # Run doctor
-            result = self._run_motor("doctor", "--project", str(project), "--json", project=project)
+            # Run doctor with isolated global storage
+            result = subprocess.run(
+                [sys.executable, "-m", "motor", "doctor", "--project", str(project), "--json"],
+                capture_output=True, text=True, env=test_env,
+                cwd=str(project),
+            )
             self.assertEqual(result.returncode, 0, f"doctor should succeed: {result.stderr}")
 
-            # Verify global storage was NOT created
-            if not global_existed_before:
-                self.assertFalse(
-                    global_dir.exists(),
-                    "doctor must NOT create ~/.motorvideojuegosia/ (EngineAPI must use read_only=True)"
-                )
-            if not recents_existed_before:
-                self.assertFalse(
-                    recents.exists(),
-                    "doctor must NOT create recent_projects.json"
-                )
+            # Verify global storage was NOT created in isolated home
+            self.assertFalse(
+                global_dir.exists(),
+                "doctor must NOT create ~/.motorvideojuegosia/ (EngineAPI must use read_only=True)"
+            )
+            self.assertFalse(
+                recents.exists(),
+                "doctor must NOT create recent_projects.json"
+            )
 
     def test_doctor_does_not_create_project_state_dir(self) -> None:
         """doctor must not create .motor/ editor state directory for clean project."""

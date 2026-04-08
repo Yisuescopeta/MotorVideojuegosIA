@@ -182,10 +182,18 @@ class DoctorReadOnlyTests(unittest.TestCase):
             )
 
     def test_doctor_does_not_create_global_storage(self) -> None:
-        """CRITICAL: motor doctor must not create global storage directory."""
+        """CRITICAL: motor doctor must not create global storage directory.
+        
+        Uses an isolated MOTORVIDEOJUEGOSIA_HOME so the test is fully deterministic
+        and does not depend on the real home directory or prior state.
+        """
         with tempfile.TemporaryDirectory() as tmpdir:
-            project = Path(tmpdir) / "TestProject"
+            workspace = Path(tmpdir)
+            project = workspace / "TestProject"
             project.mkdir()
+            
+            # Isolated global storage directory
+            isolated_home = workspace / "isolated_home"
             
             # Create minimal project
             (project / "project.json").write_text(json.dumps({
@@ -202,42 +210,34 @@ class DoctorReadOnlyTests(unittest.TestCase):
                 },
             }))
             
-            # Check for global storage in home directory
-            home = Path.home()
-            global_dir = home / ".motorvideojuegosia"
+            # Check for global storage in isolated directory
+            global_dir = isolated_home / ".motorvideojuegosia"
             recents_file = global_dir / "recent_projects.json"
             
-            # Record state before
-            global_existed_before = global_dir.exists()
-            recents_existed_before = recents_file.exists()
+            # Build env with isolated MOTORVIDEOJUEGOSIA_HOME
+            test_env = self.env.copy()
+            test_env["MOTORVIDEOJUEGOSIA_HOME"] = isolated_home.as_posix()
             
             # Run doctor
             result = subprocess.run(
                 [sys.executable, "-m", "motor", "doctor", "--project", str(project), "--json"],
                 capture_output=True,
                 text=True,
-                env=self.env,
+                env=test_env,
             )
             
             self.assertEqual(result.returncode, 0, "doctor should succeed")
             
-            # Check state after
-            global_existed_after = global_dir.exists()
-            recents_existed_after = recents_file.exists()
-            
-            # If global dir didn't exist before, it shouldn't be created
-            if not global_existed_before:
-                self.assertFalse(
-                    global_existed_after,
-                    "doctor must NOT create global storage directory (~/.motorvideojuegosia)"
-                )
-            
-            # If recents file didn't exist before, it shouldn't be created
-            if not recents_existed_before:
-                self.assertFalse(
-                    recents_existed_after,
-                    "doctor must NOT create recent_projects.json"
-                )
+            # Verify no global storage was created in isolated home
+            self.assertFalse(
+                global_dir.exists(),
+                f"doctor must NOT create global storage directory in isolated MOTORVIDEOJUEGOSIA_HOME "
+                f"({isolated_home}). Global dir path checked: {global_dir}"
+            )
+            self.assertFalse(
+                recents_file.exists(),
+                "doctor must NOT create recent_projects.json in isolated global storage"
+            )
 
     def test_doctor_does_not_modify_existing_files(self) -> None:
         """CRITICAL: motor doctor must not modify any existing files."""
