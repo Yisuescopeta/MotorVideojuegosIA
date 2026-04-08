@@ -107,6 +107,7 @@ class ProjectService:
         project_root: str | os.PathLike[str] = ".",
         global_state_dir: str | os.PathLike[str] | None = None,
         auto_ensure: bool = True,
+        read_only: bool = False,
     ) -> None:
         self._editor_root = Path(project_root).expanduser().absolute()
         self._editor_root_real = self._editor_root.resolve()
@@ -115,8 +116,10 @@ class ProjectService:
         self._manifest: ProjectManifest | None = None
         self._global_dir = self._resolve_global_dir(global_state_dir)
         self._recents_file = self._global_dir / self.RECENTS_FILE_NAME
-        self._ensure_global_storage()
-        if auto_ensure:
+        self._read_only = read_only
+        if not read_only:
+            self._ensure_global_storage()
+        if auto_ensure and not read_only:
             self.ensure_project(self._project_root)
 
     @property

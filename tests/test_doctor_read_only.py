@@ -181,6 +181,64 @@ class DoctorReadOnlyTests(unittest.TestCase):
                 "doctor must NOT create START_HERE_AI.md - it should only diagnose"
             )
 
+    def test_doctor_does_not_create_global_storage(self) -> None:
+        """CRITICAL: motor doctor must not create global storage directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = Path(tmpdir) / "TestProject"
+            project.mkdir()
+            
+            # Create minimal project
+            (project / "project.json").write_text(json.dumps({
+                "name": "TestProject",
+                "version": 2,
+                "engine_version": "2026.03",
+                "paths": {
+                    "assets": "assets",
+                    "levels": "levels",
+                    "scripts": "scripts",
+                    "settings": "settings",
+                    "meta": ".motor/meta",
+                    "build": ".motor/build",
+                },
+            }))
+            
+            # Check for global storage in home directory
+            home = Path.home()
+            global_dir = home / ".motorvideojuegosia"
+            recents_file = global_dir / "recent_projects.json"
+            
+            # Record state before
+            global_existed_before = global_dir.exists()
+            recents_existed_before = recents_file.exists()
+            
+            # Run doctor
+            result = subprocess.run(
+                [sys.executable, "-m", "motor", "doctor", "--project", str(project), "--json"],
+                capture_output=True,
+                text=True,
+                env=self.env,
+            )
+            
+            self.assertEqual(result.returncode, 0, "doctor should succeed")
+            
+            # Check state after
+            global_existed_after = global_dir.exists()
+            recents_existed_after = recents_file.exists()
+            
+            # If global dir didn't exist before, it shouldn't be created
+            if not global_existed_before:
+                self.assertFalse(
+                    global_existed_after,
+                    "doctor must NOT create global storage directory (~/.motorvideojuegosia)"
+                )
+            
+            # If recents file didn't exist before, it shouldn't be created
+            if not recents_existed_before:
+                self.assertFalse(
+                    recents_existed_after,
+                    "doctor must NOT create recent_projects.json"
+                )
+
     def test_doctor_does_not_modify_existing_files(self) -> None:
         """CRITICAL: motor doctor must not modify any existing files."""
         with tempfile.TemporaryDirectory() as tmpdir:
