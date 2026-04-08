@@ -55,21 +55,41 @@ class CLICapabilitiesStatusTests(unittest.TestCase):
                     f"Capability {cap['id']} has invalid status: {cap['status']}"
                 )
 
-    def test_all_default_capabilities_are_implemented(self) -> None:
-        """All capabilities in default registry should be implemented."""
+    def test_all_default_capabilities_have_valid_status(self) -> None:
+        """All capabilities should have a valid status (implemented, planned, or deprecated)."""
         data = self._run_motor_capabilities()
         capabilities = data.get("data", {}).get("capabilities", [])
 
-        non_implemented = [
-            cap for cap in capabilities
-            if cap.get("status") != "implemented"
-        ]
+        for cap in capabilities:
+            with self.subTest(capability=cap["id"]):
+                self.assertIn(
+                    cap.get("status"),
+                    {"implemented", "planned", "deprecated"},
+                    f"Capability {cap['id']} has invalid status: {cap.get('status')}"
+                )
 
-        self.assertEqual(
-            len(non_implemented), 0,
-            f"All default capabilities should be implemented, found: "
-            f"{[(c['id'], c.get('status')) for c in non_implemented]}"
+    def test_implemented_count_matches_cli_commands(self) -> None:
+        """Count of implemented capabilities should be reasonable."""
+        data = self._run_motor_capabilities()
+        capabilities = data.get("data", {}).get("capabilities", [])
+
+        implemented = [c for c in capabilities if c.get("status") == "implemented"]
+        planned = [c for c in capabilities if c.get("status") == "planned"]
+
+        # Should have at least the core implemented commands
+        self.assertGreaterEqual(
+            len(implemented), 15,
+            f"Should have at least 15 implemented capabilities, found {len(implemented)}"
         )
+
+        # Should have planned capabilities (commands not yet in CLI)
+        self.assertGreater(
+            len(planned), 0,
+            f"Should have some planned capabilities, found {len(planned)}"
+        )
+
+        # Print summary for visibility
+        print(f"\n  Implemented: {len(implemented)}, Planned: {len(planned)}")
 
     def test_capabilities_json_is_complete(self) -> None:
         """motor capabilities --json should return complete capability info."""

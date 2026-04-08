@@ -43,6 +43,23 @@ class CapabilityRegistryBuilder:
 
     def _register_scene_capabilities(self) -> None:
         self._add(Capability(
+            id="scene:list",
+            summary="List all available scenes in the project",
+            mode="both",
+            api_methods=["SceneWorkspaceAPI.list_project_scenes"],
+            cli_command="motor scene list",
+            example=CapabilityExample(
+                description="List all scenes in the project",
+                api_calls=[
+                    {"method": "list_project_scenes", "args": {}},
+                ],
+                expected_outcome="Returns list of scene paths and names",
+            ),
+            notes="Searches levels/ directory for .json scene files.",
+            tags=["scene", "query", "workspace"],
+        ))
+
+        self._add(Capability(
             id="scene:create",
             summary="Create a new scene with a unique file path",
             mode="both",
@@ -586,6 +603,23 @@ class CapabilityRegistryBuilder:
 
     def _register_project_capabilities(self) -> None:
         self._add(Capability(
+            id="project:bootstrap-ai",
+            summary="Generate AI bootstrap files (motor_ai.json and START_HERE_AI.md)",
+            mode="both",
+            api_methods=["ProjectService.generate_ai_bootstrap"],
+            cli_command="motor project bootstrap-ai",
+            example=CapabilityExample(
+                description="Generate AI bootstrap files for the project",
+                api_calls=[
+                    {"method": "generate_ai_bootstrap", "args": {}},
+                ],
+                expected_outcome="motor_ai.json and START_HERE_AI.md are created in project root",
+            ),
+            notes="Regenerates the AI-facing documentation files. Safe to run multiple times (idempotent).",
+            tags=["project", "bootstrap", "ai"],
+        ))
+
+        self._add(Capability(
             id="project:open",
             summary="Open a different project and load its startup scene",
             mode="both",
@@ -782,6 +816,23 @@ class CapabilityRegistryBuilder:
 
     def _register_introspection_capabilities(self) -> None:
         self._add(Capability(
+            id="introspect:doctor",
+            summary="Diagnose project health and detect issues",
+            mode="both",
+            api_methods=["cmd_doctor"],
+            cli_command="motor doctor --project <path>",
+            example=CapabilityExample(
+                description="Check project health",
+                api_calls=[
+                    {"method": "cmd_doctor", "args": {"project_path": ".", "json_output": True}},
+                ],
+                expected_outcome="Returns diagnostic report with checks, warnings, and recommendations",
+            ),
+            notes="Read-only operation. Validates project.json, motor_ai.json, START_HERE_AI.md, and directory structure.",
+            tags=["introspection", "diagnostics"],
+        ))
+
+        self._add(Capability(
             id="introspect:capabilities",
             summary="Query this capability registry itself",
             mode="both",
@@ -833,9 +884,54 @@ class CapabilityRegistryBuilder:
         ))
 
     # Capabilities that are planned but not yet implemented.
-    # NOTE: Only add capabilities here that do NOT have a corresponding implementation.
-    # If a capability is registered above with _add(), it should NOT be in this set.
-    _PLANNED_CAPABILITIES: set[str] = set()  # Currently all registered capabilities are implemented
+    # These do NOT have corresponding implementations in the official motor CLI parser.
+    # They are API-level capabilities that may be used programmatically but are not
+    # exposed through the CLI yet.
+    _PLANNED_CAPABILITIES: set[str] = {
+        # Scene flow (no CLI commands exist)
+        "scene:flow:set_next",
+        "scene:flow:load_next",
+        
+        # Entity operations beyond create (no CLI commands exist)
+        "entity:delete",
+        "entity:parent",
+        "entity:list",
+        "introspect:entity",  # motor entity inspect not in parser
+        
+        # Component operations beyond add (no CLI commands exist)
+        "component:edit",
+        "component:remove",
+        
+        # Asset operations beyond list/slice (no CLI commands exist)
+        "asset:find",
+        "asset:metadata:get",
+        "asset:refresh",
+        
+        # Prefab operations (no CLI commands exist)
+        "prefab:instantiate",
+        "prefab:unpack",
+        "prefab:apply",
+        "prefab:list",
+        
+        # Project operations beyond info/bootstrap-ai (no CLI commands exist)
+        "project:open",
+        "project:editor_state",
+        
+        # Runtime operations (no CLI commands exist)
+        "runtime:play",
+        "runtime:stop",
+        "runtime:step",
+        "runtime:undo",
+        "runtime:redo",
+        
+        # Physics operations (no CLI commands exist)
+        "physics:query:aabb",
+        "physics:query:ray",
+        "physics:backend:list",
+        
+        # Introspection beyond capabilities (no CLI command exists)
+        "introspect:status",
+    }
 
     def _add(self, capability: Capability) -> None:
         """Helper to add a capability to the registry with appropriate status."""
