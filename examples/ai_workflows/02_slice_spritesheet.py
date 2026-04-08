@@ -21,8 +21,12 @@ ENV["PYTHONPATH"] = str(ROOT) if not PYTHONPATH else str(ROOT) + os.pathsep + PY
 
 
 def run_motor(*args, project="."):
-    """Run a motor CLI command and return parsed JSON."""
-    cmd = ["motor"] + list(args) + ["--json", "--project", str(project)]
+    """Run a motor CLI command and return parsed JSON.
+
+    Uses 'python -m motor' for robustness in clean checkouts without
+    global motor binary installation.
+    """
+    cmd = [sys.executable, "-m", "motor"] + list(args) + ["--json", "--project", str(project)]
     result = subprocess.run(cmd, capture_output=True, text=True, env=ENV)
     # Parse JSON output (skip any leading non-JSON lines)
     output = result.stdout

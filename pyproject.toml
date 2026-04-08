@@ -28,7 +28,10 @@ version = {attr = "engine.config.ENGINE_VERSION"}
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["engine*", "cli*", "tools*"]
+include = ["engine*", "cli*", "tools*", "motor*"]
+
+[project.scripts]
+motor = "motor.cli:main"
 
 [tool.ruff]
 target-version = "py311"

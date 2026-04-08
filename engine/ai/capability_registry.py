@@ -44,6 +44,11 @@ class Capability:
 
     A capability represents a coherent unit of functionality that an AI assistant
     can invoke, spanning one or more API methods across potentially multiple subsystems.
+
+    Status:
+        - "implemented": Fully implemented and available for use
+        - "planned": Planned for future implementation (not yet available)
+        - "deprecated": Deprecated, will be removed in future versions
     """
     id: str
     summary: str
@@ -53,6 +58,7 @@ class Capability:
     example: CapabilityExample
     notes: str = ""
     tags: List[str] = field(default_factory=list)
+    status: str = "implemented"  # "implemented" | "planned" | "deprecated"
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, str) or not self.id.strip():
@@ -61,6 +67,8 @@ class Capability:
             raise ValueError(f"Capability id must use 'scope:action' format, got {self.id!r}")
         if self.mode not in {"edit", "play", "both"}:
             raise ValueError(f"Capability mode must be 'edit', 'play', or 'both', got {self.mode!r}")
+        if self.status not in {"implemented", "planned", "deprecated"}:
+            raise ValueError(f"Capability status must be 'implemented', 'planned', or 'deprecated', got {self.status!r}")
         if not isinstance(self.api_methods, list) or not self.api_methods:
             raise ValueError("Capability must have at least one api_method")
         if not isinstance(self.example, CapabilityExample):
@@ -110,6 +118,7 @@ class CapabilityRegistry:
                     "id": cap.id,
                     "summary": cap.summary,
                     "mode": cap.mode,
+                    "status": cap.status,
                     "api_methods": cap.api_methods,
                     "cli_command": cap.cli_command,
                     "example": {
@@ -123,6 +132,18 @@ class CapabilityRegistry:
                 for cap in sorted(self._capabilities.values(), key=lambda c: c.id)
             ],
         }
+
+    def list_implemented(self) -> List[Capability]:
+        """Return only implemented capabilities."""
+        return [cap for cap in self._capabilities.values() if cap.status == "implemented"]
+
+    def list_planned(self) -> List[Capability]:
+        """Return only planned capabilities."""
+        return [cap for cap in self._capabilities.values() if cap.status == "planned"]
+
+    def list_deprecated(self) -> List[Capability]:
+        """Return only deprecated capabilities."""
+        return [cap for cap in self._capabilities.values() if cap.status == "deprecated"]
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "CapabilityRegistry":

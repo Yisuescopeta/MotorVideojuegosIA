@@ -134,14 +134,15 @@ class BootstrapPortabilityTests(unittest.TestCase):
         """motor_ai.json must contain essential fields for AI discovery."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root, manifest = self._create_test_project(Path(tmpdir))
-            
+
             service = ProjectService(project_root, auto_ensure=False)
             result = service.generate_ai_bootstrap(project_root, manifest)
-            
+
             # Check required fields
             self.assertIn("project", result, "Must have 'project' section")
             self.assertIn("entrypoints", result, "Must have 'entrypoints' section")
-            self.assertIn("capabilities", result, "Must have 'capabilities' section")
+            self.assertIn("implemented_capabilities", result, "Must have 'implemented_capabilities' section")
+            self.assertIn("planned_capabilities", result, "Must have 'planned_capabilities' section")
             self.assertIn("engine", result, "Must have 'engine' section")
             
             # Check project fields

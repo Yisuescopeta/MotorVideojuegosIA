@@ -436,12 +436,14 @@ class MotorAIBootstrapBuilderTests(unittest.TestCase):
         data = json.loads(content)
         self.assertIn("schema_version", data)
         self.assertIn("engine", data)
-        self.assertIn("capabilities", data)
+        self.assertIn("implemented_capabilities", data)
+        self.assertIn("planned_capabilities", data)
+        self.assertIn("capability_counts", data)
 
     def test_motor_ai_json_has_correct_schema_version(self) -> None:
         content = self.builder.build_motor_ai_json()
         data = json.loads(content)
-        self.assertEqual(data["schema_version"], 2)
+        self.assertEqual(data["schema_version"], 3)  # Updated for status field
         self.assertEqual(data["engine"]["capabilities_schema_version"], 1)
 
     def test_motor_ai_json_includes_project_data_when_provided(self) -> None:

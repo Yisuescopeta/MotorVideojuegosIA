@@ -309,11 +309,13 @@ class AIDiscoverabilityTests(unittest.TestCase):
         motor_ai_path = project_root / "motor_ai.json"
         data = json.loads(motor_ai_path.read_text(encoding="utf-8"))
 
-        self.assertEqual(data["schema_version"], 2)
+        self.assertEqual(data["schema_version"], 3)  # Updated for status field
         self.assertIn("engine", data)
         self.assertIn("project", data)
         self.assertIn("entrypoints", data)
-        self.assertIn("capabilities", data)
+        self.assertIn("implemented_capabilities", data)
+        self.assertIn("planned_capabilities", data)
+        self.assertIn("capability_counts", data)
 
     def test_motor_ai_json_engine_section_contains_version_info(self) -> None:
         project_root, service = self._make_project("EngineInfoProject")
@@ -357,19 +359,22 @@ class AIDiscoverabilityTests(unittest.TestCase):
         motor_ai_path = project_root / "motor_ai.json"
         data = json.loads(motor_ai_path.read_text(encoding="utf-8"))
 
-        caps = data["capabilities"]
-        self.assertIn("schema_version", caps)
-        self.assertIn("engine", caps)
-        self.assertIn("capabilities", caps)
-        self.assertIsInstance(caps["capabilities"], list)
-        self.assertGreater(len(caps["capabilities"]), 0)
+        # Check implemented_capabilities structure
+        caps = data["implemented_capabilities"]
+        self.assertIsInstance(caps, list)
+        self.assertGreater(len(caps), 0)
         # Verify at least one capability has expected structure
-        first_cap = caps["capabilities"][0]
+        first_cap = caps[0]
         self.assertIn("id", first_cap)
         self.assertIn("summary", first_cap)
         self.assertIn("mode", first_cap)
+        self.assertIn("status", first_cap)
         self.assertIn("api_methods", first_cap)
         self.assertIn("cli_command", first_cap)
+
+        # Check planned_capabilities exists
+        planned = data["planned_capabilities"]
+        self.assertIsInstance(planned, list)
 
     def test_start_here_md_contains_project_name_and_engine_version(self) -> None:
         project_root, service = self._make_project("StartHereProject")
@@ -391,8 +396,9 @@ class AIDiscoverabilityTests(unittest.TestCase):
         result = service.generate_ai_bootstrap()
 
         data = json.loads(motor_ai_path.read_text(encoding="utf-8"))
-        self.assertEqual(data["schema_version"], 2)
+        self.assertEqual(data["schema_version"], 3)  # Updated for status field
         self.assertIn("engine", data)
+        self.assertIn("implemented_capabilities", data)
 
     def test_migrate_project_bootstrap_adds_files_to_existing_project(self) -> None:
         project_root = self.workspace / "LegacyProject"
@@ -416,7 +422,7 @@ class AIDiscoverabilityTests(unittest.TestCase):
 
         data = json.loads(motor_ai_path.read_text(encoding="utf-8"))
         self.assertEqual(data["project"]["name"], "LegacyProject")
-        self.assertEqual(data["schema_version"], 2)
+        self.assertEqual(data["schema_version"], 3)  # Updated for status field
 
     def test_generate_ai_bootstrap_with_custom_name_updates_project_name(self) -> None:
         project_root = self.workspace / "CustomNameProject"
@@ -435,7 +441,10 @@ class AIDiscoverabilityTests(unittest.TestCase):
         data = json.loads(motor_ai_path.read_text(encoding="utf-8"))
 
         self.assertEqual(data["engine"]["capabilities_schema_version"], 1)
-        self.assertIn("schema_version", data["capabilities"])
+        # Check that implemented_capabilities have status field
+        if data.get("implemented_capabilities"):
+            first_cap = data["implemented_capabilities"][0]
+            self.assertIn("status", first_cap)
 
 
 class ProjectSwitchIntegrationTests(unittest.TestCase):

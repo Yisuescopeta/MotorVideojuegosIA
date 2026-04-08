@@ -48,6 +48,47 @@ class SceneWorkspaceAPI(EngineAPIComponent):
             return {}
         return self.scene_manager.get_active_scene_summary()
 
+    def has_active_scene(self) -> bool:
+        """Check if there is an active scene loaded.
+
+        Returns:
+            True if a scene is currently active, False otherwise.
+        """
+        if self.scene_manager is None:
+            return False
+        return self.scene_manager.get_active_scene_summary().get("path") != ""
+
+    def get_active_scene_info(self) -> Dict[str, Any]:
+        """Get comprehensive information about the active scene.
+
+        Returns:
+            Dictionary with scene info including:
+            - has_scene: bool
+            - path: str (scene source path or empty string)
+            - name: str (scene name or empty string)
+            - key: str (scene key or empty string)
+            - dirty: bool (whether scene has unsaved changes)
+            - entity_count: int (number of entities in scene)
+        """
+        if self.scene_manager is None:
+            return {
+                "has_scene": False,
+                "path": "",
+                "name": "",
+                "key": "",
+                "dirty": False,
+                "entity_count": 0,
+            }
+        summary = self.scene_manager.get_active_scene_summary()
+        return {
+            "has_scene": summary.get("path", "") != "",
+            "path": summary.get("path", ""),
+            "name": summary.get("name", ""),
+            "key": summary.get("key", ""),
+            "dirty": summary.get("dirty", False),
+            "entity_count": summary.get("entity_count", 0),
+        }
+
     def activate_scene(self, key_or_path: str) -> ActionResult:
         if self.game is None:
             return self.fail("Engine not initialized")

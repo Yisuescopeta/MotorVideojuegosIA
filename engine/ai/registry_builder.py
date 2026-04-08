@@ -150,7 +150,7 @@ class CapabilityRegistryBuilder:
 
         self._add(Capability(
             id="entity:delete",
-            summary="Remove an entity from the active scene",
+            summary="Remove an entity from the active scene, reparenting children to grandparent",
             mode="edit",
             api_methods=["AuthoringAPI.delete_entity"],
             cli_command="motor entity delete <name>",
@@ -159,9 +159,9 @@ class CapabilityRegistryBuilder:
                 api_calls=[
                     {"method": "delete_entity", "args": {"name": "Player"}},
                 ],
-                expected_outcome="Entity 'Player' is removed from the scene",
+                expected_outcome="Entity 'Player' is removed; any children are reparented to Player's parent (or unparented if Player had no parent). Children preserve their world transform.",
             ),
-            notes="Also removes child entities recursively. Cannot be undone automatically.",
+            notes="CHILDREN ARE NOT DELETED - they are reparented to the deleted entity's parent (grandparent). Their local transforms are recalculated to preserve world position. Use remove_entity_subtree for recursive deletion. Cannot be undone automatically.",
             tags=["entity", "authoring"],
         ))
 
@@ -412,6 +412,27 @@ class CapabilityRegistryBuilder:
 
     def _register_animator_capabilities(self) -> None:
         self._add(Capability(
+            id="animator:ensure",
+            summary="Ensure Animator exists on entity with optional sheet (creates or updates)",
+            mode="edit",
+            api_methods=["AuthoringAPI.add_component", "AuthoringAPI.set_animator_sprite_sheet"],
+            cli_command="motor animator ensure <entity> [--sheet <asset>]",
+            example=CapabilityExample(
+                description="Ensure Player has Animator with sprite sheet",
+                api_calls=[
+                    {"method": "add_component", "args": {
+                        "entity_name": "Player",
+                        "component_name": "Animator",
+                        "data": {"enabled": True, "speed": 1.0, "sprite_sheet": "assets/player.png"},
+                    }},
+                ],
+                expected_outcome="Animator exists on Player with sprite_sheet set to assets/player.png (created if missing, sheet updated if different)",
+            ),
+            notes="Idempotent operation. If Animator does NOT exist: creates it with the provided sheet. If Animator ALREADY exists and no sheet provided: succeeds without changes. If Animator ALREADY exists and sheet provided: updates the sheet. This provides a single-command 'ensure exists with this configuration' workflow ideal for headless automation.",
+            tags=["animator", "setup", "idempotent"],
+        ))
+
+        self._add(Capability(
             id="animator:set_sheet",
             summary="Set the sprite sheet asset for an Animator",
             mode="edit",
@@ -427,7 +448,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Player's Animator now references the specified sprite sheet",
             ),
-            notes="The asset must have slices defined. Used before creating animation states.",
+            notes="The asset must have slices defined. Used before creating animation states. Requires Animator to already exist; use 'animator ensure' if you need to create and set sheet in one operation.",
             tags=["animator", "setup"],
         ))
 
@@ -468,9 +489,9 @@ class CapabilityRegistryBuilder:
                         "state_name": "hurt",
                     }},
                 ],
-                expected_outcome="'hurt' state removed. Default state updated if needed.",
+                expected_outcome="'hurt' state removed. Default and current state updated if they referenced 'hurt'. Any on_complete references to 'hurt' are cleared (set to null).",
             ),
-            notes="Cannot remove the last state. References in transitions become null.",
+            notes="CAN remove the last state (schema allows empty animations object). When the last state is removed, default_state is set to the removed state's name as a placeholder (schema requires non-empty string). When removing a state, on_complete references pointing to it from other states are automatically cleared.",
             tags=["animator", "animation", "state"],
         ))
 
@@ -811,26 +832,10 @@ class CapabilityRegistryBuilder:
             tags=["introspection", "runtime"],
         ))
 
-    # Capabilities that are planned but not yet implemented
-    _PLANNED_CAPABILITIES = {
-        # Runtime features
-        "runtime:play", "runtime:stop", "runtime:step", "runtime:undo", "runtime:redo",
-        # Physics features
-        "physics:query:aabb", "physics:query:ray", "physics:backend:list",
-        # Prefab features
-        "prefab:instantiate", "prefab:list", "prefab:unpack", "prefab:apply",
-        # Advanced entity features
-        "entity:delete", "entity:parent", "entity:list",
-        "introspect:entity", "introspect:status",
-        # Advanced asset features
-        "asset:find", "asset:metadata:get", "asset:refresh",
-        # Advanced component features
-        "component:edit", "component:remove",
-        # Project state features
-        "project:open", "project:editor_state",
-        # Scene flow features
-        "scene:flow:set_next", "scene:flow:load_next",
-    }
+    # Capabilities that are planned but not yet implemented.
+    # NOTE: Only add capabilities here that do NOT have a corresponding implementation.
+    # If a capability is registered above with _add(), it should NOT be in this set.
+    _PLANNED_CAPABILITIES: set[str] = set()  # Currently all registered capabilities are implemented
 
     def _add(self, capability: Capability) -> None:
         """Helper to add a capability to the registry with appropriate status."""

@@ -5,17 +5,36 @@ with MotorVideojuegosIA using the **official `motor` CLI interface**.
 
 ## Official Interface
 
-All examples use the official `motor` CLI entry point:
+The official `motor` CLI is the primary interface for all operations:
 
 ```bash
-# Official way (preferred)
+# Official interface (documented syntax)
 motor doctor --project .
 motor scene create "Level 1"
 motor entity create Player
 
-# Via Python module (for testing/development)
+# For development or when motor is not globally installed
 python -m motor doctor --project .
 ```
+
+### Example Scripts Execution Strategy
+
+The Python example scripts in this directory use `python -m motor` internally
+to ensure they work reliably in clean checkouts without requiring a global
+`motor` binary installation:
+
+```python
+# Internal execution in examples (robust for CI/development)
+cmd = [sys.executable, "-m", "motor", "doctor", "--project", "."]
+
+# Documented official interface (for user reference)
+# motor doctor --project .
+```
+
+This approach provides:
+- **Maximum reproducibility**: Works in fresh clones without additional setup
+- **CI/CD compatibility**: No global installation required in build environments
+- **Official syntax preserved**: Documentation and user-facing commands use `motor ...`
 
 ⚠️ **Note**: The legacy interface `python -m tools.engine_cli` is deprecated
 and should not be used in new scripts or documentation.

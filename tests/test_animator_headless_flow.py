@@ -208,11 +208,11 @@ class AnimatorHeadlessFlowTests(unittest.TestCase):
         """Verify the entire flow works without visual editor interaction."""
         # This test validates that all operations are truly headless
         entity_name = "Player"
-        
+
         # Create scene and entity
         self._run_motor("scene", "create", "Level1")
         self._run_motor("entity", "create", entity_name)
-        
+
         # All animator operations should work without editor
         operations = [
             ("ensure animator", ["animator", "ensure", entity_name]),
@@ -220,13 +220,90 @@ class AnimatorHeadlessFlowTests(unittest.TestCase):
             ("create slices", ["asset", "slice", "grid", "assets/player.png", "--cell-width", "8", "--cell-height", "8"]),
             ("query info", ["animator", "info", entity_name]),
         ]
-        
+
         for op_name, args in operations:
             result = self._run_motor(*args)
             self.assertTrue(
                 result.get("success"),
                 f"Operation '{op_name}' should work without editor: {result.get('message')}"
             )
+
+    def test_ensure_sheet_semantics_when_animator_missing(self) -> None:
+        """ensure --sheet should create Animator with sheet when it doesn't exist."""
+        entity_name = "NewPlayer"
+
+        # Create scene and entity
+        self._run_motor("scene", "create", "Level1")
+        self._run_motor("entity", "create", entity_name)
+
+        # Ensure Animator with sheet when it doesn't exist
+        result = self._run_motor("animator", "ensure", entity_name, "--sheet", "assets/player.png")
+        self.assertTrue(result.get("success"), f"ensure --sheet should succeed: {result.get('message')}")
+        self.assertTrue(result["data"].get("created"), "Animator should be created when missing")
+        self.assertFalse(result["data"].get("updated"), "Should not be marked as updated when created")
+        self.assertEqual(result["data"].get("sprite_sheet"), "assets/player.png", "Sheet should be set")
+
+        # Verify the sheet was actually set
+        result = self._run_motor("animator", "info", entity_name)
+        self.assertEqual(result["data"].get("sprite_sheet"), "assets/player.png", "Sheet should persist")
+
+    def test_ensure_sheet_semantics_when_animator_exists(self) -> None:
+        """ensure --sheet should update sheet when Animator already exists."""
+        entity_name = "ExistingPlayer"
+
+        # Create scene and entity
+        self._run_motor("scene", "create", "Level1")
+        self._run_motor("entity", "create", entity_name)
+
+        # First, create Animator without sheet
+        result = self._run_motor("animator", "ensure", entity_name)
+        self.assertTrue(result.get("success"))
+        self.assertTrue(result["data"].get("created"))
+
+        # Now ensure with sheet - should update existing Animator
+        result = self._run_motor("animator", "ensure", entity_name, "--sheet", "assets/player.png")
+        self.assertTrue(result.get("success"), f"ensure --sheet should succeed: {result.get('message')}")
+        self.assertFalse(result["data"].get("created"), "Should not be marked as created when exists")
+        self.assertTrue(result["data"].get("updated"), "Should be marked as updated")
+        self.assertEqual(result["data"].get("sprite_sheet"), "assets/player.png", "New sheet should be set")
+
+    def test_ensure_sheet_idempotent_with_same_sheet(self) -> None:
+        """ensure --sheet should be idempotent when sheet already matches."""
+        entity_name = "IdempotentPlayer"
+
+        # Create scene and entity
+        self._run_motor("scene", "create", "Level1")
+        self._run_motor("entity", "create", entity_name)
+
+        # Create Animator with sheet
+        result = self._run_motor("animator", "ensure", entity_name, "--sheet", "assets/player.png")
+        self.assertTrue(result.get("success"))
+
+        # Ensure again with same sheet - should succeed without changes
+        result = self._run_motor("animator", "ensure", entity_name, "--sheet", "assets/player.png")
+        self.assertTrue(result.get("success"))
+        self.assertFalse(result["data"].get("created"), "Should not be created (already exists)")
+        self.assertFalse(result["data"].get("updated"), "Should not be updated (same sheet)")
+        self.assertEqual(result["data"].get("sprite_sheet"), "assets/player.png", "Sheet should remain")
+
+    def test_ensure_without_sheet_idempotent(self) -> None:
+        """ensure without --sheet should be idempotent (just checks existence)."""
+        entity_name = "SimplePlayer"
+
+        # Create scene and entity
+        self._run_motor("scene", "create", "Level1")
+        self._run_motor("entity", "create", entity_name)
+
+        # First ensure - creates Animator
+        result = self._run_motor("animator", "ensure", entity_name)
+        self.assertTrue(result.get("success"))
+        self.assertTrue(result["data"].get("created"))
+
+        # Second ensure without sheet - should succeed without changes
+        result = self._run_motor("animator", "ensure", entity_name)
+        self.assertTrue(result.get("success"))
+        self.assertFalse(result["data"].get("created"))
+        self.assertFalse(result["data"].get("updated"))
 
 
 if __name__ == "__main__":

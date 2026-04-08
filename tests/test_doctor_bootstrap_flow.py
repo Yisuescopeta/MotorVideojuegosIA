@@ -216,7 +216,7 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
             
             # File should still be valid
             motor_ai2 = json.loads((project / "motor_ai.json").read_text())
-            self.assertIn("capabilities", motor_ai2)
+            self.assertIn("implemented_capabilities", motor_ai2)
     
     def test_doctor_is_read_only(self) -> None:
         """Doctor should not modify project files (may create engine state files).

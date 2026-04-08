@@ -315,12 +315,12 @@ Documentation:
     
     animator_ensure_parser = animator_subparsers.add_parser(
         "ensure",
-        help="Ensure Animator component exists on entity (creates if missing)",
+        help="Ensure Animator exists with optional sheet (creates or updates)",
     )
     animator_ensure_parser.add_argument("entity", help="Entity name")
     animator_ensure_parser.add_argument(
         "--sheet", dest="sprite_sheet", default="",
-        help="Optional sprite sheet asset path"
+        help="Sprite sheet asset path. If Animator exists, updates the sheet."
     )
     animator_ensure_parser.add_argument(
         "--project", dest="project_root", default=".",

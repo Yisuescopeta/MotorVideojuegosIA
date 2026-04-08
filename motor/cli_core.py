@@ -84,15 +84,15 @@ def _init_engine(project_path: Path, auto_ensure_project: bool = True) -> Engine
 def _auto_load_scene(api: EngineAPI) -> tuple[bool, str]:
     """Auto-load the last active scene if no scene is currently active.
     
+    Uses only public EngineAPI surfaces - no direct SceneManager access.
+    
     Returns:
         Tuple of (success, message)
     """
-    if api.scene_manager is None:
-        return False, "SceneManager not ready"
-    
-    entry = api.scene_manager._get_active_entry()
-    if entry is not None:
-        return True, "Scene already active"
+    # Check if scene is already active using public API
+    if api.has_active_scene():
+        scene_info = api.get_active_scene_info()
+        return True, f"Scene already active: {scene_info.get('name', 'unknown')}"
     
     # Try to load the last scene from editor state
     editor_state = api.get_editor_state()
@@ -828,7 +828,15 @@ def cmd_animator_ensure(
     sprite_sheet: str,
     json_output: bool,
 ) -> int:
-    """Ensure Animator component exists on entity (creates if missing)."""
+    """Ensure Animator component exists on entity with optional sheet.
+
+    Semantics:
+    - If Animator does NOT exist: creates it with the provided sheet (if any).
+    - If Animator ALREADY exists and no sheet provided: succeeds (idempotent).
+    - If Animator ALREADY exists and sheet provided: updates the sheet.
+
+    This provides an idempotent "ensure exists with this sheet" operation.
+    """
     api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
@@ -841,15 +849,39 @@ def cmd_animator_ensure(
 
         # Check if Animator already exists
         info = api.get_animator_info(entity_name)
+
         if info.get("exists"):
+            # Animator exists - check if we need to update the sheet
+            current_sheet = info.get("sprite_sheet", "")
+
+            if sprite_sheet and sprite_sheet != current_sheet:
+                # Update the sheet
+                result = api.set_animator_sprite_sheet(entity_name, sprite_sheet)
+                if result.get("success"):
+                    api.save_scene()
+                    return _output(
+                        True,
+                        f"Animator on '{entity_name}' updated with new sprite sheet",
+                        {"entity": entity_name, "created": False, "updated": True, "sprite_sheet": sprite_sheet},
+                        json_output
+                    )
+                else:
+                    return _output(
+                        False,
+                        result.get("message", f"Failed to update sprite sheet on '{entity_name}'"),
+                        None,
+                        json_output
+                    )
+
+            # Animator exists and no sheet update needed
             return _output(
                 True,
                 f"Animator already exists on '{entity_name}'",
-                {"entity": entity_name, "created": False, "sprite_sheet": info.get("sprite_sheet", "")},
+                {"entity": entity_name, "created": False, "updated": False, "sprite_sheet": current_sheet},
                 json_output
             )
 
-        # Create Animator component
+        # Animator does not exist - create it
         animator_data: Dict[str, Any] = {"enabled": True, "speed": 1.0}
         if sprite_sheet:
             animator_data["sprite_sheet"] = sprite_sheet
@@ -862,7 +894,7 @@ def cmd_animator_ensure(
             return _output(
                 True,
                 result.get("message", f"Animator added to '{entity_name}'"),
-                {"entity": entity_name, "created": True, "sprite_sheet": sprite_sheet},
+                {"entity": entity_name, "created": True, "updated": False, "sprite_sheet": sprite_sheet},
                 json_output
             )
         else:
@@ -984,61 +1016,35 @@ def cmd_animator_remove_state(
 
 def cmd_project_bootstrap_ai(project_path: Path, json_output: bool) -> int:
     """Generate AI bootstrap files (motor_ai.json and START_HERE_AI.md).
-    
+
+    Delegates to ProjectService for single source of truth.
     Uses portable relative paths for commit-friendly output.
     """
     try:
         _ensure_project(project_path)
-        
-        from engine.ai.registry_builder import MotorAIBootstrapBuilder, get_default_registry
-        from engine.project.project_service import ProjectService, ProjectManifest
-        
-        # Load project manifest
-        manifest_path = project_path / "project.json"
-        manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
-        manifest = ProjectManifest.from_dict(manifest_data)
-        
-        # Create registry and builder
+
+        from engine.ai import get_default_registry
+        from engine.project.project_service import ProjectService
+
+        # Initialize ProjectService (without auto_ensure to avoid side effects)
+        project_service = ProjectService(project_root=project_path, auto_ensure=False)
+
+        # Delegate to the service layer - single source of truth for bootstrap structure
+        # migrate_project_bootstrap loads the manifest and calls generate_ai_bootstrap
+        motor_ai_data = project_service.migrate_project_bootstrap(project_path)
+
+        # Get registry for capability count
         registry = get_default_registry()
-        bootstrap_builder = MotorAIBootstrapBuilder(registry)
-        
-        # Prepare portable project data (all paths relative)
-        project_data = {
-            "project": {
-                "name": manifest.name,
-                "root": ".",  # Relative to project directory
-                "engine_version": manifest.engine_version,
-                "template": manifest.template,
-                "paths": manifest.paths,
-            },
-            "entrypoints": {
-                "manifest": "project.json",
-                "settings": f"{manifest.paths['settings']}/project_settings.json",
-                "startup_scene": "levels/main_scene.json",
-                "scripts_dir": manifest.paths["scripts"],
-                "assets_dir": manifest.paths["assets"],
-                "levels_dir": manifest.paths["levels"],
-                "prefabs_dir": manifest.paths["prefabs"],
-            },
-            "important_files": [
-                "project.json",
-                "motor_ai.json",
-                "START_HERE_AI.md",
-            ],
-        }
-        
-        # Generate and write files
-        paths = bootstrap_builder.write_to_project(project_path, project_data)
-        
+
         data = {
-            "motor_ai_json": str(paths["motor_ai_json"]),
-            "start_here_md": str(paths["start_here_md"]),
+            "motor_ai_json": str(project_path / "motor_ai.json"),
+            "start_here_md": str(project_path / "START_HERE_AI.md"),
             "registry_capabilities_count": len(registry.list_all()),
         }
-        
+
         return _output(
             True,
-            f"AI bootstrap files generated:\n  - {paths['motor_ai_json']}\n  - {paths['start_here_md']}",
+            f"AI bootstrap files generated:\n  - {data['motor_ai_json']}\n  - {data['start_here_md']}",
             data,
             json_output
         )

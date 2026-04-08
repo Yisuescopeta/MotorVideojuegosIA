@@ -38,8 +38,12 @@ ENV["PYTHONPATH"] = str(ROOT) if not PYTHONPATH else str(ROOT) + os.pathsep + PY
 
 
 def run_command(*args, project="."):
-    """Run a motor CLI command and return parsed JSON."""
-    cmd = ["motor"] + list(args) + ["--project", project, "--json"]
+    """Run a motor CLI command and return parsed JSON.
+
+    Uses 'python -m motor' for robustness in clean checkouts without
+    global motor binary installation.
+    """
+    cmd = [sys.executable, "-m", "motor"] + list(args) + ["--project", project, "--json"]
     result = subprocess.run(cmd, capture_output=True, text=True, env=ENV)
     # Parse JSON output (skip any leading non-JSON lines)
     output = result.stdout
@@ -119,40 +123,37 @@ def main():
     else:
         print(f"✓ Sprite added")
     
-    # Step 6: Ensure Animator component exists (official pattern)
-    print("\n🎭 Ensuring Animator component exists...")
-    result = run_command(
-        "animator", "ensure", entity_name,
-        project=str(project_path)
-    )
-    
-    if not result["success"]:
-        print(f"⚠️  Could not ensure Animator: {result.get('message')}")
-    else:
-        created = result["data"].get("created", False)
-        if created:
-            print(f"✓ Animator component created")
-        else:
-            print(f"✓ Animator component already exists")
-    
-    # Step 7: Check for available sprites
+    # Step 6: Ensure Animator component exists with sprite sheet (idempotent)
+    # The 'ensure --sheet' command guarantees Animator exists AND has the specified sheet.
+    # If Animator doesn't exist: creates it with the sheet.
+    # If Animator already exists: updates the sheet to the specified one.
     print("\n🔍 Looking for sprite assets...")
     result = run_command("asset", "list", project=str(project_path))
     images = [a for a in result["data"]["assets"] if a["path"].lower().endswith(".png")]
-    
+
     if images:
         sprite_asset = images[0]["path"]
         print(f"✓ Found sprite asset: {sprite_asset}")
-        
-        # Set sprite sheet
-        print(f"\n📄 Setting sprite sheet...")
+
+        # Ensure Animator exists AND set the sprite sheet in one command
+        print(f"\n🎭 Ensuring Animator exists with sprite sheet...")
         result = run_command(
-            "animator", "set-sheet", entity_name, sprite_asset,
+            "animator", "ensure", entity_name,
+            "--sheet", sprite_asset,
             project=str(project_path)
         )
-        
+
         if result["success"]:
-            print(f"✓ Sprite sheet configured")
+            created = result["data"].get("created", False)
+            updated = result["data"].get("updated", False)
+            if created:
+                print(f"✓ Animator created and configured with sprite sheet")
+            elif updated:
+                print(f"✓ Animator updated with new sprite sheet")
+            else:
+                print(f"✓ Animator already exists with correct sprite sheet")
+        else:
+            print(f"⚠️  Could not ensure Animator: {result.get('message')}")
             
             # Check for slices
             result = run_command("asset", "slice", "list", sprite_asset, project=str(project_path))
@@ -225,12 +226,15 @@ def main():
     print(f"  - Entity: {entity_name}")
     print(f"  - Components: Transform, Sprite, Animator")
     print(f"\nOfficial Animator Commands Used:")
-    print(f"  motor animator ensure <entity>                 # Ensure Animator exists")
-    print(f"  motor animator set-sheet <entity> <asset>      # Set sprite sheet")
+    print(f"  motor animator ensure <entity> [--sheet <asset>]  # Ensure exists, set sheet if provided")
+    print(f"  motor animator set-sheet <entity> <asset>         # Set/update sprite sheet")
     print(f"  motor animator state create <entity> <state> --slices <names> [--loop|--no-loop]")
-    print(f"  motor animator state remove <entity> <state>   # Remove animation state")
-    print(f"  motor animator info <entity>                   # Get animator info")
+    print(f"  motor animator state remove <entity> <state>      # Remove animation state")
+    print(f"  motor animator info <entity>                      # Get animator info")
     print(f"\nGrammar: motor <noun> [<subnoun>] <verb> [<args>] [options]")
+    print(f"\nEnsure Semantics:")
+    print(f"  --sheet <asset> : Guarantees Animator exists AND has this sheet")
+    print(f"                    (creates if missing, updates sheet if different)")
     print(f"\nLoop/No-Loop Semantics:")
     print(f"  --loop    : Animation repeats indefinitely (default)")
     print(f"  --no-loop : Animation plays once and stops")
