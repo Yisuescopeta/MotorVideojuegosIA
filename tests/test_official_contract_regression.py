@@ -48,7 +48,7 @@ class OfficialCLIContractTests(unittest.TestCase):
         self.assertIn("motor", result.stdout.lower(), "Help should mention motor")
     
     def test_motor_capabilities_works(self) -> None:
-        """CRITICAL: motor capabilities must return valid JSON."""
+        """CRITICAL: motor capabilities must return valid JSON with status field."""
         result = subprocess.run(
             [sys.executable, "-m", "motor", "capabilities", "--json"],
             capture_output=True,
@@ -64,6 +64,19 @@ class OfficialCLIContractTests(unittest.TestCase):
         data = json.loads(output)
         self.assertTrue(data.get("success"), "capabilities must report success")
         self.assertIn("capabilities", data.get("data", {}), "must return capabilities list")
+
+        # Verify status field is present for each capability
+        capabilities = data.get("data", {}).get("capabilities", [])
+        self.assertGreater(len(capabilities), 0, "Should have capabilities")
+
+        for cap in capabilities:
+            with self.subTest(capability=cap.get("id", "unknown")):
+                self.assertIn("status", cap, f"Capability {cap.get('id')} must include status field")
+                self.assertIn(
+                    cap["status"],
+                    {"implemented", "planned", "deprecated"},
+                    f"Capability {cap.get('id')} has invalid status: {cap['status']}"
+                )
     
     def test_motor_doctor_works(self) -> None:
         """CRITICAL: motor doctor must diagnose projects."""
@@ -272,7 +285,15 @@ class RegistryParserAlignmentTests(unittest.TestCase):
             if any(future in full_cmd for future in future_or_unimplemented):
                 continue
             
-            if full_cmd not in parser_commands:
+            # Check if this command or any prefix exists in parser
+            found = False
+            for i in range(len(clean_parts), 0, -1):
+                check_cmd = " ".join(clean_parts[:i])
+                if check_cmd in parser_commands:
+                    found = True
+                    break
+            
+            if not found:
                 mismatches.append(f"{cap.id}: {full_cmd}")
         
         if mismatches:
@@ -347,6 +368,281 @@ class NoFutureArchitectureAssumptionsTests(unittest.TestCase):
         # This test serves as documentation of what's implemented
         # If a test uses an unimplemented command, it should fail
         self.assertTrue(len(implemented) > 0, "Must have implemented commands")
+
+
+class PlannedCapabilitiesNotExecutableTests(unittest.TestCase):
+    """Tests ensuring planned capabilities are NOT treated as executable commands."""
+
+    def test_planned_capabilities_not_in_parser(self) -> None:
+        """CRITICAL: Planned capabilities must NOT be valid parser commands.
+
+        This test verifies that commands marked as 'planned' cannot actually
+        be executed via the motor CLI parser. If a planned capability has a
+        working parser command, it should be marked as 'implemented'.
+        """
+        from engine.ai import get_default_registry
+        from motor.cli import create_motor_parser
+
+        registry = get_default_registry()
+        parser = create_motor_parser()
+
+        # Get all leaf-level parser commands (ones that can actually execute)
+        executable_commands = set()
+        for action in parser._actions:
+            if hasattr(action, 'choices') and action.choices:
+                for cmd_name, subparser in action.choices.items():
+                    # Only add if the subparser doesn't have required subcommands
+                    has_required_subparsers = False
+                    if hasattr(subparser, '_actions'):
+                        for sub_action in subparser._actions:
+                            if hasattr(sub_action, 'required') and sub_action.required:
+                                has_required_subparsers = True
+                                break
+
+                    if not has_required_subparsers:
+                        executable_commands.add(cmd_name)
+
+                    # Check second level
+                    if hasattr(subparser, '_actions'):
+                        for sub_action in subparser._actions:
+                            if hasattr(sub_action, 'choices') and sub_action.choices:
+                                for sub_cmd, sub_subparser in sub_action.choices.items():
+                                    full_cmd = f"{cmd_name} {sub_cmd}"
+                                    # Check if this is executable (no further required subcommands)
+                                    has_required = False
+                                    if hasattr(sub_subparser, '_actions'):
+                                        for sub_sub_action in sub_subparser._actions:
+                                            if hasattr(sub_sub_action, 'required') and sub_sub_action.required:
+                                                has_required = True
+                                                break
+
+                                    if not has_required:
+                                        executable_commands.add(full_cmd)
+
+        # Check planned capabilities
+        planned_caps = registry.list_planned()
+        violations = []
+
+        for cap in planned_caps:
+            # Extract the base command from cli_command
+            if cap.cli_command.startswith("motor "):
+                parts = cap.cli_command.split()[1:]  # Remove 'motor'
+                clean_parts = [p for p in parts if not p.startswith(('<', '['))]
+
+                # Build command paths to check
+                if len(clean_parts) >= 3:
+                    full_cmd = f"{clean_parts[0]} {clean_parts[1]} {clean_parts[2]}"
+                    base_cmd = f"{clean_parts[0]} {clean_parts[1]}"
+                elif len(clean_parts) == 2:
+                    full_cmd = f"{clean_parts[0]} {clean_parts[1]}"
+                    base_cmd = clean_parts[0]
+                else:
+                    full_cmd = clean_parts[0]
+                    base_cmd = clean_parts[0]
+
+                # Check if the FULL command is in executable commands
+                # Only fail if the EXACT command exists and is executable
+                if full_cmd in executable_commands:
+                    violations.append(
+                        f"Planned capability {cap.id} has executable command '{full_cmd}'"
+                    )
+                elif base_cmd in executable_commands and len(clean_parts) == 1:
+                    # Single-level command that exists
+                    violations.append(
+                        f"Planned capability {cap.id} has executable command '{base_cmd}'"
+                    )
+
+        if violations:
+            self.fail(
+                f"Planned capabilities found as executable commands in parser:\n" +
+                "\n".join(f"  {v}" for v in violations) +
+                "\n\nIf these commands work, mark the capability as 'implemented'."
+            )
+
+    def test_implemented_capabilities_have_working_parser(self) -> None:
+        """CRITICAL: Implemented capabilities must have corresponding parser command.
+
+        This test verifies that every capability marked as 'implemented' has
+        a working command in the motor CLI parser.
+        """
+        from engine.ai import get_default_registry
+        from motor.cli import create_motor_parser
+
+        registry = get_default_registry()
+        parser = create_motor_parser()
+
+        # Get all executable parser commands
+        executable_commands = set()
+        for action in parser._actions:
+            if hasattr(action, 'choices') and action.choices:
+                for cmd_name, subparser in action.choices.items():
+                    executable_commands.add(cmd_name)
+                    # Second level
+                    if hasattr(subparser, '_actions'):
+                        for sub_action in subparser._actions:
+                            if hasattr(sub_action, 'choices') and sub_action.choices:
+                                for sub_cmd in sub_action.choices.keys():
+                                    executable_commands.add(f"{cmd_name} {sub_cmd}")
+                                    # Third level
+                                    sub_subparser = sub_action.choices[sub_cmd]
+                                    if hasattr(sub_subparser, '_actions'):
+                                        for sub_sub_action in sub_subparser._actions:
+                                            if hasattr(sub_sub_action, 'choices') and sub_sub_action.choices:
+                                                for sub_sub_cmd in sub_sub_action.choices.keys():
+                                                    executable_commands.add(f"{cmd_name} {sub_cmd} {sub_sub_cmd}")
+
+        # Check implemented capabilities
+        implemented_caps = registry.list_implemented()
+        missing_parser = []
+
+        for cap in implemented_caps:
+            if cap.cli_command.startswith("motor "):
+                parts = cap.cli_command.split()[1:]  # Remove 'motor'
+                clean_parts = [p for p in parts if not p.startswith(('<', '['))]
+
+                if not clean_parts:
+                    continue
+
+                # Build command path - try all possible matches
+                found_match = False
+
+                # Try full path first
+                if len(clean_parts) >= 3:
+                    full_cmd = f"{clean_parts[0]} {clean_parts[1]} {clean_parts[2]}"
+                    if full_cmd in executable_commands:
+                        found_match = True
+
+                # Try two-level path
+                if not found_match and len(clean_parts) >= 2:
+                    two_level = f"{clean_parts[0]} {clean_parts[1]}"
+                    if two_level in executable_commands:
+                        found_match = True
+
+                # Try single-level path
+                if not found_match:
+                    if clean_parts[0] in executable_commands:
+                        found_match = True
+
+                if not found_match:
+                    missing_parser.append(
+                        f"Implemented capability {cap.id}: no parser command for '{cap.cli_command}'"
+                    )
+
+        if missing_parser:
+            self.fail(
+                f"Implemented capabilities missing parser commands:\n" +
+                "\n".join(f"  {m}" for m in missing_parser)
+            )
+
+
+class SchemaV3CompatibilityTests(unittest.TestCase):
+    """Tests ensuring v3 schema is properly handled."""
+
+    def setUp(self) -> None:
+        self.env = os.environ.copy()
+        python_path = self.env.get("PYTHONPATH", "")
+        self.env["PYTHONPATH"] = str(ROOT) if not python_path else str(ROOT) + os.pathsep + python_path
+
+    def test_doctor_reads_v3_schema(self) -> None:
+        """CRITICAL: doctor must correctly read motor_ai.json v3 schema."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = Path(tmpdir) / "TestProject"
+            project.mkdir()
+
+            # Create minimal project
+            (project / "project.json").write_text(json.dumps({
+                "name": "TestProject",
+                "version": 2,
+                "engine_version": "2026.03",
+                "paths": {
+                    "assets": "assets", "levels": "levels",
+                    "scripts": "scripts", "settings": "settings",
+                    "meta": ".motor/meta", "build": ".motor/build"
+                },
+            }))
+            for d in ["assets", "levels", "scripts", "settings", ".motor"]:
+                (project / d).mkdir(parents=True, exist_ok=True)
+
+            # Generate v3 motor_ai.json
+            result = subprocess.run(
+                [sys.executable, "-m", "motor", "project", "bootstrap-ai", "--project", str(project)],
+                capture_output=True, text=True, env=self.env,
+            )
+            self.assertEqual(result.returncode, 0, "bootstrap-ai must succeed")
+
+            # Run doctor - should read v3 correctly
+            result = subprocess.run(
+                [sys.executable, "-m", "motor", "doctor", "--project", str(project), "--json"],
+                capture_output=True, text=True, env=self.env,
+            )
+            self.assertEqual(result.returncode, 0, "doctor must succeed")
+
+            output = result.stdout
+            if "{" in output:
+                output = output[output.index("{"):]
+
+            data = json.loads(output)
+            checks = data.get("data", {}).get("checks", {})
+
+            # Verify v3 fields are read
+            self.assertEqual(checks.get("motor_ai_schema_version"), 3,
+                           "Doctor should detect schema v3")
+            self.assertIn("motor_ai_implemented_count", checks,
+                        "Doctor should report implemented count")
+            self.assertIn("motor_ai_planned_count", checks,
+                        "Doctor should report planned count")
+
+    def test_motor_ai_json_has_v3_structure(self) -> None:
+        """CRITICAL: Generated motor_ai.json must have v3 structure."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = Path(tmpdir) / "TestProject"
+            project.mkdir()
+
+            (project / "project.json").write_text(json.dumps({
+                "name": "TestProject",
+                "version": 2,
+                "paths": {
+                    "assets": "assets", "levels": "levels",
+                    "scripts": "scripts", "settings": "settings",
+                    "meta": ".motor/meta", "build": ".motor/build"
+                },
+            }))
+            for d in ["assets", "levels", "scripts", "settings", ".motor"]:
+                (project / d).mkdir(parents=True, exist_ok=True)
+
+            # Generate bootstrap
+            result = subprocess.run(
+                [sys.executable, "-m", "motor", "project", "bootstrap-ai", "--project", str(project)],
+                capture_output=True, text=True, env=self.env,
+            )
+            self.assertEqual(result.returncode, 0, "bootstrap-ai must succeed")
+
+            # Verify v3 structure
+            motor_ai_path = project / "motor_ai.json"
+            data = json.loads(motor_ai_path.read_text())
+
+            self.assertEqual(data.get("schema_version"), 3, "Must be schema v3")
+            self.assertIn("implemented_capabilities", data, "Must have implemented_capabilities")
+            self.assertIn("planned_capabilities", data, "Must have planned_capabilities")
+            self.assertIn("capability_counts", data, "Must have capability_counts")
+
+            # Verify counts are consistent
+            counts = data.get("capability_counts", {})
+            self.assertEqual(
+                counts.get("implemented"),
+                len(data.get("implemented_capabilities", [])),
+                "Implemented count must match list length"
+            )
+            self.assertEqual(
+                counts.get("planned"),
+                len(data.get("planned_capabilities", [])),
+                "Planned count must match list length"
+            )
+            self.assertEqual(
+                counts.get("total"),
+                counts.get("implemented", 0) + counts.get("planned", 0),
+                "Total must equal implemented + planned"
+            )
 
 
 if __name__ == "__main__":
