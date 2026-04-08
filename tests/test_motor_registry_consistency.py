@@ -95,6 +95,7 @@ class MotorRegistryConsistencyTests(unittest.TestCase):
                 allowed_exceptions = {
                     'runtime:undo': 'undo',  # motor undo
                     'runtime:redo': 'redo',  # motor redo
+                    'introspect:doctor': 'doctor',  # motor doctor
                     'introspect:capabilities': 'capabilities',  # motor capabilities
                     'introspect:entity': 'entity',  # motor entity inspect
                     'introspect:status': 'status',  # motor status

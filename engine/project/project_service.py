@@ -165,7 +165,7 @@ class ProjectService:
 
     def _guard_writable(self, operation: str = "write") -> None:
         """Raise PermissionError if this service is in read-only mode.
-        
+
         Call this at the entry point of every mutating operation.
         Internal calls from already-guarded public methods do not need additional guards.
         """

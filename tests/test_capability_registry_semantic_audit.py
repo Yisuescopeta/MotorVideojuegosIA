@@ -206,7 +206,7 @@ class APIMethodSemanticTests(unittest.TestCase):
                     continue
                 
                 class_name = method.split('.')[0]
-                # Allow CapabilityRegistry methods (self-referential)
+                # Allow CapabilityRegistry methods (self-referential) and CLI handlers.
                 if class_name not in valid_prefixes and class_name != 'CapabilityRegistry':
                     invalid_patterns.append((cap.id, method, f"unknown class '{class_name}'"))
         
