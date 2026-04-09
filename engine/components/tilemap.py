@@ -11,12 +11,14 @@ class Tilemap(Component):
     """Tilemap serializable con layers, tileset, metadata por tile y enriquecimiento para authoring."""
 
     VALID_ORIENTATIONS = {"orthogonal"}
+    VALID_TILESET_MODES = {"grid", "atlas_slices"}
 
     def __init__(
         self,
         cell_width: int = 16,
         cell_height: int = 16,
         orientation: str = "orthogonal",
+        tileset_mode: str = "grid",
         tileset: Any = None,
         tileset_path: str = "",
         layers: list[dict[str, Any]] | None = None,
@@ -33,6 +35,8 @@ class Tilemap(Component):
         self.cell_height: int = max(1, int(cell_height))
         normalized_orientation = str(orientation or "orthogonal")
         self.orientation: str = normalized_orientation if normalized_orientation in self.VALID_ORIENTATIONS else "orthogonal"
+        normalized_tileset_mode = str(tileset_mode or "grid").strip().lower()
+        self.tileset_mode: str = normalized_tileset_mode if normalized_tileset_mode in self.VALID_TILESET_MODES else "grid"
         self.tileset = normalize_asset_reference(tileset if tileset is not None else tileset_path)
         self.tileset_path: str = self.tileset.get("path", "")
         self.layers: list[dict[str, Any]] = self._normalize_layers(layers or [])
@@ -65,6 +69,7 @@ class Tilemap(Component):
         animated: bool = False,
         animation_id: str = "",
         terrain_type: str = "",
+        slice_name: str = "",
         create_layer: bool = True,
     ) -> None:
         layer = self._ensure_layer(layer_name) if create_layer else self._find_layer(layer_name)
@@ -81,6 +86,7 @@ class Tilemap(Component):
             "animated": bool(animated),
             "animation_id": str(animation_id or "").strip(),
             "terrain_type": str(terrain_type or "").strip(),
+            "slice_name": str(slice_name or "").strip(),
         }
 
     def set_tile_full(
@@ -97,6 +103,7 @@ class Tilemap(Component):
         animated: bool = False,
         animation_id: str = "",
         terrain_type: str = "",
+        slice_name: str = "",
         create_layer: bool = True,
     ) -> None:
         self.set_tile(
@@ -111,6 +118,7 @@ class Tilemap(Component):
             animated=animated,
             animation_id=animation_id,
             terrain_type=terrain_type,
+            slice_name=slice_name,
             create_layer=create_layer,
         )
 
@@ -130,6 +138,7 @@ class Tilemap(Component):
         animated: bool = False,
         animation_id: str = "",
         terrain_type: str = "",
+        slice_name: str = "",
         create_layer: bool = True,
     ) -> int:
         layer = self._ensure_layer(layer_name) if create_layer else self._find_layer(layer_name)
@@ -153,6 +162,7 @@ class Tilemap(Component):
                     "animated": bool(animated),
                     "animation_id": str(animation_id or "").strip(),
                     "terrain_type": str(terrain_type or "").strip(),
+                    "slice_name": str(slice_name or "").strip(),
                 }
                 count += 1
         return count
@@ -274,6 +284,7 @@ class Tilemap(Component):
             "cell_width": self.cell_width,
             "cell_height": self.cell_height,
             "orientation": self.orientation,
+            "tileset_mode": self.tileset_mode,
             "tileset": self.get_tileset_reference(),
             "tileset_path": self.tileset_path,
             "layers": self._serialize_layers(),
@@ -296,6 +307,7 @@ class Tilemap(Component):
             cell_width=data.get("cell_width", 16),
             cell_height=data.get("cell_height", 16),
             orientation=data.get("orientation", "orthogonal"),
+            tileset_mode=data.get("tileset_mode", "grid"),
             tileset=tileset_ref,
             tileset_path=tileset_path,
             layers=data.get("layers", []),
@@ -387,6 +399,7 @@ class Tilemap(Component):
             "animated": bool(tile.get("animated", False)),
             "animation_id": str(tile.get("animation_id", "")).strip(),
             "terrain_type": str(tile.get("terrain_type", "")).strip(),
+            "slice_name": str(tile.get("slice_name", "")).strip(),
         }
 
     def _serialize_layers(self) -> list[dict[str, Any]]:
@@ -407,6 +420,7 @@ class Tilemap(Component):
                         "animated": bool(tile.get("animated", False)),
                         "animation_id": str(tile.get("animation_id", "")).strip(),
                         "terrain_type": str(tile.get("terrain_type", "")).strip(),
+                        "slice_name": str(tile.get("slice_name", "")).strip(),
                     }
                 )
             serialized.append(

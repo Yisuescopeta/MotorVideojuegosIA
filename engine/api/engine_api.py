@@ -60,6 +60,7 @@ class EngineAPI:
         from engine.assets.asset_service import AssetService
         from engine.inspector.inspector_system import InspectorSystem
         from engine.systems.animation_system import AnimationSystem
+        from engine.systems.animator_controller_system import AnimatorControllerSystem
         from engine.systems.audio_system import AudioSystem
         from engine.systems.character_controller_system import CharacterControllerSystem
         from engine.systems.collision_system import CollisionSystem
@@ -89,6 +90,7 @@ class EngineAPI:
         self.game.set_physics_system(PhysicsSystem(gravity=600))
         self.game.set_collision_system(CollisionSystem(event_bus))
         self.game.set_animation_system(AnimationSystem(event_bus))
+        self.game.set_animator_controller_system(AnimatorControllerSystem(event_bus))
         self.game.set_inspector_system(InspectorSystem())
         self.game.set_selection_system(SelectionSystem())
         self.game.set_event_bus(event_bus)

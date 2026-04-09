@@ -1,12 +1,25 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from engine.api import EngineAPI
 from engine.components.animator import AnimationData, Animator
+from engine.components.transform import Transform
 from engine.ecs.world import World
 from engine.events.event_bus import EventBus
 from engine.systems.animation_system import AnimationSystem
+from engine.systems.render_system import RenderSystem
+
+
+class _FakeSliceAssetService:
+    def __init__(self, slices: dict[str, dict]) -> None:
+        self._slices = slices
+
+    def get_slice_rect(self, _reference, slice_name: str):
+        return self._slices.get(slice_name)
 
 
 class AnimationSystemTests(unittest.TestCase):
@@ -115,6 +128,179 @@ class AnimationSystemTests(unittest.TestCase):
 
         animator.stop()
         self.assertFalse(animator.is_playing)
+
+    def test_animator_from_dict_defaults_to_legacy_anchor_mode(self) -> None:
+        animator = Animator.from_dict(
+            {
+                "enabled": True,
+                "sprite_sheet": "test.png",
+                "animations": {"idle": {"frames": [0], "slice_names": ["idle_0"], "fps": 8.0, "loop": True}},
+                "default_state": "idle",
+            }
+        )
+
+        self.assertEqual(animator.anchor_mode, "legacy_center")
+
+    def test_selection_bounds_keep_slice_pivot_anchor_stable(self) -> None:
+        world = World()
+        entity = world.create_entity("PivotHero")
+        entity.add_component(Transform(x=100.0, y=200.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        entity.add_component(
+            Animator(
+                sprite_sheet="hero.png",
+                animations={"idle": AnimationData(slice_names=["idle_small", "idle_big"], fps=6.0, loop=True)},
+                default_state="idle",
+                anchor_mode="slice_pivot",
+            )
+        )
+
+        render_system = RenderSystem()
+        render_system._asset_service = _FakeSliceAssetService(
+            {
+                "idle_small": {"x": 0, "y": 0, "width": 20, "height": 30, "pivot_x": 0.5, "pivot_y": 1.0},
+                "idle_big": {"x": 20, "y": 0, "width": 36, "height": 48, "pivot_x": 0.5, "pivot_y": 1.0},
+            }
+        )
+        animator = entity.get_component(Animator)
+        self.assertIsNotNone(animator)
+
+        bounds_small = render_system._selection_bounds(entity)
+        animator.current_frame = 1
+        bounds_big = render_system._selection_bounds(entity)
+
+        self.assertIsNotNone(bounds_small)
+        self.assertIsNotNone(bounds_big)
+        self.assertAlmostEqual(bounds_small["left"] + (bounds_small["width"] * 0.5), 100.0, places=4)
+        self.assertAlmostEqual(bounds_big["left"] + (bounds_big["width"] * 0.5), 100.0, places=4)
+        self.assertAlmostEqual(bounds_small["top"] + bounds_small["height"], 200.0, places=4)
+        self.assertAlmostEqual(bounds_big["top"] + bounds_big["height"], 200.0, places=4)
+
+    def test_draw_animated_sprite_keeps_slice_pivot_anchor_stable_across_variable_sizes(self) -> None:
+        transform = Transform(x=100.0, y=200.0, rotation=0.0, scale_x=1.0, scale_y=1.0)
+        animator = Animator(
+            sprite_sheet="hero.png",
+            animations={"idle": AnimationData(slice_names=["idle_small", "idle_big"], fps=6.0, loop=True)},
+            default_state="idle",
+            anchor_mode="slice_pivot",
+        )
+
+        render_system = RenderSystem()
+        render_system._asset_service = _FakeSliceAssetService(
+            {
+                "idle_small": {"x": 0, "y": 0, "width": 20, "height": 30, "pivot_x": 0.5, "pivot_y": 1.0},
+                "idle_big": {"x": 20, "y": 0, "width": 36, "height": 48, "pivot_x": 0.5, "pivot_y": 1.0},
+            }
+        )
+        render_system._load_texture = lambda *_args, **_kwargs: SimpleNamespace(id=1, width=128, height=128)
+
+        draw_calls: list[dict[str, float]] = []
+
+        def _capture_draw(_texture, _source, dest, _origin, _rotation, _tint) -> None:
+            draw_calls.append(
+                {
+                    "x": float(dest.x),
+                    "y": float(dest.y),
+                    "width": float(dest.width),
+                    "height": float(dest.height),
+                }
+            )
+
+        with patch("engine.systems.render_system.rl.draw_texture_pro", side_effect=_capture_draw):
+            render_system._draw_animated_sprite(transform, animator)
+            animator.current_frame = 1
+            render_system._draw_animated_sprite(transform, animator)
+
+        self.assertEqual(len(draw_calls), 2)
+        for payload in draw_calls:
+            self.assertAlmostEqual(payload["x"] + (payload["width"] * 0.5), 100.0, places=4)
+            self.assertAlmostEqual(payload["y"] + payload["height"], 200.0, places=4)
+
+    def test_draw_animated_sprite_falls_back_to_legacy_center_without_slice_pivot_metadata(self) -> None:
+        transform = Transform(x=64.0, y=96.0, rotation=0.0, scale_x=1.0, scale_y=1.0)
+        animator = Animator(
+            sprite_sheet="hero.png",
+            animations={"idle": AnimationData(slice_names=["idle"], fps=6.0, loop=True)},
+            default_state="idle",
+            anchor_mode="slice_pivot",
+        )
+
+        render_system = RenderSystem()
+        render_system._asset_service = _FakeSliceAssetService(
+            {
+                "idle": {"x": 0, "y": 0, "width": 20, "height": 30},
+            }
+        )
+        render_system._load_texture = lambda *_args, **_kwargs: SimpleNamespace(id=1, width=128, height=128)
+
+        draw_calls: list[dict[str, float]] = []
+
+        def _capture_draw(_texture, _source, dest, _origin, _rotation, _tint) -> None:
+            draw_calls.append(
+                {
+                    "x": float(dest.x),
+                    "y": float(dest.y),
+                    "width": float(dest.width),
+                    "height": float(dest.height),
+                }
+            )
+
+        with patch("engine.systems.render_system.rl.draw_texture_pro", side_effect=_capture_draw):
+            render_system._draw_animated_sprite(transform, animator)
+
+        self.assertEqual(len(draw_calls), 1)
+        payload = draw_calls[0]
+        self.assertAlmostEqual(payload["x"] + (payload["width"] * 0.5), 64.0, places=4)
+        self.assertAlmostEqual(payload["y"] + (payload["height"] * 0.5), 96.0, places=4)
+
+    def test_draw_and_selection_bounds_mirror_slice_pivot_when_flipped(self) -> None:
+        world = World()
+        entity = world.create_entity("FlipPivotHero")
+        transform = Transform(x=100.0, y=200.0, rotation=0.0, scale_x=1.0, scale_y=1.0)
+        entity.add_component(transform)
+        animator = Animator(
+            sprite_sheet="hero.png",
+            animations={"idle": AnimationData(slice_names=["idle"], fps=6.0, loop=True)},
+            default_state="idle",
+            flip_x=True,
+            flip_y=True,
+            anchor_mode="slice_pivot",
+        )
+        entity.add_component(animator)
+
+        render_system = RenderSystem()
+        render_system._asset_service = _FakeSliceAssetService(
+            {
+                "idle": {"x": 0, "y": 0, "width": 40, "height": 20, "pivot_x": 0.25, "pivot_y": 0.75},
+            }
+        )
+        render_system._load_texture = lambda *_args, **_kwargs: SimpleNamespace(id=1, width=128, height=128)
+
+        draw_calls: list[dict[str, float]] = []
+
+        def _capture_draw(_texture, _source, dest, _origin, _rotation, _tint) -> None:
+            draw_calls.append(
+                {
+                    "x": float(dest.x),
+                    "y": float(dest.y),
+                    "width": float(dest.width),
+                    "height": float(dest.height),
+                }
+            )
+
+        with patch("engine.systems.render_system.rl.draw_texture_pro", side_effect=_capture_draw):
+            render_system._draw_animated_sprite(transform, animator)
+
+        self.assertEqual(len(draw_calls), 1)
+        payload = draw_calls[0]
+        self.assertAlmostEqual(payload["x"] + (payload["width"] * 0.75), 100.0, places=4)
+        self.assertAlmostEqual(payload["y"] + (payload["height"] * 0.25), 200.0, places=4)
+
+        bounds = render_system._selection_bounds(entity)
+        self.assertIsNotNone(bounds)
+        self.assertAlmostEqual(bounds["left"], payload["x"], places=4)
+        self.assertAlmostEqual(bounds["top"], payload["y"], places=4)
+        self.assertAlmostEqual(bounds["left"] + (bounds["width"] * 0.75), 100.0, places=4)
+        self.assertAlmostEqual(bounds["top"] + (bounds["height"] * 0.25), 200.0, places=4)
 
 
 class AuthoringAPIAnimatorTests(unittest.TestCase):
@@ -266,6 +452,33 @@ class AuthoringAPIAnimatorTests(unittest.TestCase):
 
         animator = self.api.get_entity("SpeedTest2")["components"]["Animator"]
         self.assertEqual(animator["speed"], 0.01)
+
+    def test_set_animator_anchor_mode(self) -> None:
+        self._create_animator_entity("AnchorModeTest")
+
+        result = self.api.set_animator_anchor_mode("AnchorModeTest", "slice_pivot")
+
+        self.assertTrue(result["success"])
+        animator = self.api.get_entity("AnchorModeTest")["components"]["Animator"]
+        self.assertEqual(animator["anchor_mode"], "slice_pivot")
+
+    def test_animator_anchor_mode_persists_after_save_and_reload(self) -> None:
+        self._create_animator_entity("AnchorPersist")
+
+        result = self.api.set_animator_anchor_mode("AnchorPersist", "slice_pivot")
+        self.assertTrue(result["success"])
+
+        save_path = self.project_root / "levels" / "animator_anchor_roundtrip.json"
+        save_result = self.api.save_scene(path=save_path.as_posix())
+        self.assertTrue(save_result["success"])
+
+        persisted = json.loads(save_path.read_text(encoding="utf-8"))
+        saved_entity = next(entry for entry in persisted["entities"] if entry["name"] == "AnchorPersist")
+        self.assertEqual(saved_entity["components"]["Animator"]["anchor_mode"], "slice_pivot")
+
+        self.api.load_level(save_path.as_posix())
+        animator = self.api.get_entity("AnchorPersist")["components"]["Animator"]
+        self.assertEqual(animator["anchor_mode"], "slice_pivot")
 
     def test_get_animator_info(self) -> None:
         self._create_animator_entity("InfoTest")

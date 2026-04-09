@@ -1,0 +1,56 @@
+{
+  "name": "Tilemap Runtime Regression",
+  "entities": [
+    {
+      "name": "Hero",
+      "active": true,
+      "tag": "",
+      "layer": "Gameplay",
+      "components": {
+        "Transform": {"enabled": true, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+        "Collider": {"enabled": true, "width": 12.0, "height": 24.0, "offset_x": 0.0, "offset_y": 0.0, "is_trigger": false},
+        "CharacterController2D": {"enabled": true, "use_input_map": false, "velocity_x": 120.0, "gravity": 0.0, "max_fall_speed": 0.0}
+      }
+    },
+    {
+      "name": "Map",
+      "active": true,
+      "tag": "",
+      "layer": "Gameplay",
+      "components": {
+        "Transform": {"enabled": true, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+        "Tilemap": {
+          "enabled": true,
+          "cell_width": 16,
+          "cell_height": 16,
+          "orientation": "orthogonal",
+          "tileset_mode": "atlas_slices",
+          "tileset": {"guid": "", "path": "assets/terrain_atlas.png"},
+          "tileset_path": "assets/terrain_atlas.png",
+          "layers": [
+            {
+              "name": "Ground",
+              "visible": true,
+              "opacity": 1.0,
+              "locked": false,
+              "offset_x": 0.0,
+              "offset_y": 0.0,
+              "collision_layer": 0,
+              "tilemap_source": {"guid": "", "path": "assets/terrain_atlas.png"},
+              "tiles": [
+                {"x": 2, "y": 0, "tile_id": "wall", "slice_name": "terrain_wall_a", "flags": ["solid"]},
+                {"x": 2, "y": 1, "tile_id": "wall", "slice_name": "terrain_wall_b", "flags": ["solid"]}
+              ]
+            }
+          ]
+        },
+        "RenderOrder2D": {"enabled": true, "sorting_layer": "Default", "order_in_layer": 0, "render_pass": "World"}
+      }
+    }
+  ],
+  "rules": [],
+  "feature_metadata": {
+    "physics_2d": {"backend": "legacy_aabb"},
+    "render_2d": {"sorting_layers": ["Default", "Gameplay"]}
+  }
+}

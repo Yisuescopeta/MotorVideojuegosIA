@@ -59,6 +59,9 @@ class UIRenderSystem:
             rect = self._button_rect(layout, button, state)
             rl.draw_rectangle_rounded(rect, 0.18, 8, rl.Color(*color))
             rl.draw_rectangle_rounded_lines_ex(rect, 0.18, 8, 2.0, rl.Color(18, 18, 18, 220))
+            if state.get("focused") and button.interactable:
+                focus_rect = rl.Rectangle(rect.x - 3.0, rect.y - 3.0, rect.width + 6.0, rect.height + 6.0)
+                rl.draw_rectangle_rounded_lines_ex(focus_rect, 0.2, 8, 2.0, rl.Color(255, 210, 64, 255))
             if button.label and entity.get_component(UIText) is None:
                 self._draw_label(button.label, rect, 24, rl.WHITE, "center", False)
 

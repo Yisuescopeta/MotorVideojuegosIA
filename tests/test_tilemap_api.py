@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from engine.api import EngineAPI
 
@@ -215,6 +216,124 @@ class TilemapApiTests(unittest.TestCase):
             self.assertEqual(tilemap["metadata"]["grid_offset_y"], 0)
         finally:
             reloaded.shutdown()
+
+    def test_tilemap_atlas_tileset_and_slice_roundtrip(self) -> None:
+        scene_path = self._write_scene()
+        self.api.load_level(scene_path.as_posix())
+
+        configure_result = self.api.configure_tilemap_tileset(
+            "Grid",
+            tileset="assets/tiles/terrain_atlas.png",
+            tileset_mode="atlas_slices",
+            tileset_tile_width=16,
+            tileset_tile_height=16,
+            tileset_columns=8,
+            tileset_spacing=1,
+            tileset_margin=2,
+        )
+        self.assertTrue(configure_result["success"])
+
+        fill_result = self.api.fill_tilemap_rect(
+            "Grid",
+            "Ground",
+            0,
+            0,
+            1,
+            1,
+            "grass",
+            source="assets/tiles/terrain_atlas.png",
+            flags=["solid"],
+            slice_name="terrain_grass",
+        )
+        self.assertTrue(fill_result["success"])
+        self.assertEqual(fill_result["data"]["count"], 4)
+
+        save_result = self.api.save_scene(path=scene_path.as_posix())
+        self.assertTrue(save_result["success"])
+
+        reloaded = EngineAPI(project_root=self.project_root.as_posix(), global_state_dir=(self.root / "global_state_reload_atlas").as_posix())
+        try:
+            reloaded.load_level(scene_path.as_posix())
+            tilemap = reloaded.get_tilemap("Grid")
+            self.assertEqual(tilemap["tileset_mode"], "atlas_slices")
+            self.assertEqual(tilemap["tileset_path"], "assets/tiles/terrain_atlas.png")
+            self.assertEqual(tilemap["tileset_columns"], 8)
+            layer = next(layer for layer in tilemap["layers"] if layer["name"] == "Ground")
+            tile_map = {(tile["x"], tile["y"]): tile for tile in layer["tiles"]}
+            self.assertEqual(tile_map[(0, 0)]["slice_name"], "terrain_grass")
+            self.assertEqual(tile_map[(1, 1)]["flags"], ["solid"])
+        finally:
+            reloaded.shutdown()
+
+    def test_tilemap_asset_references_roundtrip_for_tileset_layer_and_tile_sources(self) -> None:
+        scene_path = self._write_scene()
+        self.api.load_level(scene_path.as_posix())
+
+        configure_result = self.api.configure_tilemap_tileset(
+            "Grid",
+            tileset="assets/tiles/terrain_atlas.png",
+            tileset_mode="atlas_slices",
+        )
+        self.assertTrue(configure_result["success"])
+
+        create_layer = self.api.create_tilemap_layer(
+            "Grid",
+            "Decor",
+            tilemap_source="assets/tiles/decor_atlas.png",
+        )
+        self.assertTrue(create_layer["success"])
+
+        set_tile = self.api.set_tilemap_tile_full(
+            "Grid",
+            "Decor",
+            3,
+            4,
+            "torch",
+            source="assets/tiles/props_atlas.png",
+            slice_name="prop_torch",
+        )
+        self.assertTrue(set_tile["success"])
+
+        save_result = self.api.save_scene(path=scene_path.as_posix())
+        self.assertTrue(save_result["success"])
+
+        reloaded = EngineAPI(project_root=self.project_root.as_posix(), global_state_dir=(self.root / "global_state_reload_refs").as_posix())
+        try:
+            reloaded.load_level(scene_path.as_posix())
+            tilemap = reloaded.get_tilemap("Grid")
+            self.assertEqual(tilemap["tileset"]["path"], "assets/tiles/terrain_atlas.png")
+            self.assertEqual(tilemap["tileset_path"], "assets/tiles/terrain_atlas.png")
+
+            decor = next(layer for layer in tilemap["layers"] if layer["name"] == "Decor")
+            self.assertEqual(decor["tilemap_source"]["path"], "assets/tiles/decor_atlas.png")
+
+            tile = next(tile for tile in decor["tiles"] if tile["x"] == 3 and tile["y"] == 4)
+            self.assertEqual(tile["source"]["path"], "assets/tiles/props_atlas.png")
+            self.assertEqual(tile["slice_name"], "prop_torch")
+        finally:
+            reloaded.shutdown()
+
+    def test_fill_and_clear_tilemap_rect_use_single_scene_replace(self) -> None:
+        scene_path = self._write_scene()
+        self.api.load_level(scene_path.as_posix())
+
+        with patch.object(self.api.scene_manager, "replace_component_data", wraps=self.api.scene_manager.replace_component_data) as replace_mock:
+            fill_result = self.api.fill_tilemap_rect("Grid", "Ground", 2, 3, 4, 4, "stone", slice_name="terrain_stone")
+            clear_result = self.api.clear_tilemap_rect("Grid", "Ground", 3, 4, 4, 4)
+
+        self.assertTrue(fill_result["success"])
+        self.assertTrue(clear_result["success"])
+        self.assertEqual(fill_result["data"]["count"], 6)
+        self.assertEqual(clear_result["data"]["count"], 2)
+        self.assertEqual(replace_mock.call_count, 2)
+
+        tilemap = self.api.get_tilemap("Grid")
+        layer = next(layer for layer in tilemap["layers"] if layer["name"] == "Ground")
+        tile_map = {(tile["x"], tile["y"]): tile for tile in layer["tiles"]}
+        self.assertIn((2, 3), tile_map)
+        self.assertIn((2, 4), tile_map)
+        self.assertNotIn((3, 4), tile_map)
+        self.assertNotIn((4, 4), tile_map)
 
     def test_tilemap_full_model_roundtrip_with_all_fields(self) -> None:
         scene = {
@@ -744,6 +863,7 @@ class TilemapComponentTests(unittest.TestCase):
         self.assertEqual(restored.tileset.get("guid"), "abc123")
         self.assertEqual(restored.tileset.get("path"), "assets/tiles.png")
         self.assertEqual(restored.tileset_path, "assets/tiles.png")
+
 
 
 if __name__ == "__main__":

@@ -20,6 +20,11 @@ class DebugAPI(EngineAPIComponent):
             return {}
         return self.game.get_profiler_report()
 
+    def get_runtime_debug_snapshot(self) -> Dict[str, Any]:
+        if self.game is None:
+            return {}
+        return self.game.get_runtime_debug_snapshot()
+
     def configure_debug_overlay(
         self,
         *,

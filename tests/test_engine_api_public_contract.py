@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from engine.api import EngineAPI
+from engine.core.engine_state import EngineState
 
 
 class EngineAPIPublicContractTests(unittest.TestCase):
@@ -100,7 +101,69 @@ class EngineAPIPublicContractTests(unittest.TestCase):
         self.assertTrue(hasattr(api.game, "get_physics_backend_selection"))
         self.assertTrue(hasattr(api.game, "get_ui_entity_screen_rect"))
         self.assertTrue(hasattr(api.game, "click_ui_entity"))
+        self.assertTrue(hasattr(api.game, "inject_ui_navigation"))
+        self.assertTrue(hasattr(api.game, "get_ui_focus_state"))
+        self.assertTrue(hasattr(api.game, "move_ui_focus"))
+        self.assertTrue(hasattr(api.game, "submit_ui_focus"))
+        self.assertTrue(hasattr(api.game, "get_runtime_debug_snapshot"))
         self.assertTrue(hasattr(api.game, "request_shutdown"))
+
+    def test_engine_api_exposes_public_asset_animation_authoring_methods(self) -> None:
+        api = self._make_api()
+
+        self.assertTrue(hasattr(api, "preview_auto_slices"))
+        self.assertTrue(hasattr(api, "apply_auto_slices"))
+        self.assertTrue(hasattr(api, "apply_manual_slices"))
+        self.assertTrue(hasattr(api, "group_asset_slices"))
+        self.assertTrue(hasattr(api, "build_animation_from_slices"))
+        self.assertTrue(hasattr(api, "create_animator_state_from_slices"))
+
+    def test_engine_api_exposes_public_animator_controller_methods(self) -> None:
+        api = self._make_api()
+
+        self.assertTrue(hasattr(api, "get_animator_controller"))
+        self.assertTrue(hasattr(api, "set_animator_controller"))
+        self.assertTrue(hasattr(api, "set_animator_parameter"))
+        self.assertTrue(hasattr(api, "set_animator_trigger"))
+        self.assertTrue(hasattr(api, "reset_animator_trigger"))
+
+    def test_engine_api_exposes_public_ui_focus_methods(self) -> None:
+        api = self._make_api()
+
+        self.assertTrue(hasattr(api, "get_ui_focus"))
+        self.assertTrue(hasattr(api, "move_ui_focus"))
+        self.assertTrue(hasattr(api, "submit_ui_focus"))
+        self.assertTrue(hasattr(api, "cancel_ui_focus"))
+        self.assertTrue(hasattr(api, "set_ui_focus"))
+        self.assertTrue(hasattr(api, "focus_entity"))
+        self.assertTrue(hasattr(api, "ui_move_focus"))
+        self.assertTrue(hasattr(api, "ui_submit"))
+        self.assertTrue(hasattr(api, "ui_cancel"))
+
+    def test_engine_api_exposes_fast_scene_authoring_methods(self) -> None:
+        api = self._make_api()
+
+        self.assertTrue(hasattr(api, "snap_entities_to_grid"))
+        self.assertTrue(hasattr(api, "duplicate_entities"))
+        self.assertTrue(hasattr(api, "align_entities"))
+        self.assertTrue(hasattr(api, "stamp_prefab"))
+        self.assertTrue(hasattr(api, "stamp_entities_from_source"))
+
+    def test_headless_step_orders_animation_before_gameplay_and_restores_paused_state(self) -> None:
+        api = self._make_api()
+        api.load_level(self.scene_path.as_posix())
+        api.play()
+        self.assertIsNotNone(api.game)
+
+        order: list[str] = []
+        api.game._update_animation = lambda world, dt: order.append("animation")  # type: ignore[method-assign]
+        api.game._update_gameplay = lambda world, dt: order.append("gameplay")  # type: ignore[method-assign]
+        api.game._update_ui_overlay = lambda world, viewport_size, active_tab=None: order.append("ui")  # type: ignore[method-assign]
+        api.game.step()
+        api.game.step_frame()
+
+        self.assertEqual(order, ["animation", "gameplay", "ui"])
+        self.assertEqual(api.game.state, EngineState.PAUSED)
 
     def test_scene_manager_exposes_public_serializable_accessors_needed_by_api(self) -> None:
         api = self._make_api()

@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch
 
 from engine.components.animator import AnimationData, Animator
+from engine.components.animator_controller import AnimatorController
 from engine.components.transform import Transform
 from engine.core.game import Game
 from engine.events.event_bus import EventBus
@@ -109,6 +110,53 @@ class RuleSystemTests(unittest.TestCase):
         self.assertIsNotNone(animator)
         self.assertEqual(transform.x, 10.0)
         self.assertEqual(transform.y, 20.0)
+        self.assertEqual(animator.current_state, "hit")
+
+    def test_set_animation_routes_to_animator_controller_state_when_present(self) -> None:
+        world = World()
+        player = world.create_entity("Player")
+        player.add_component(Transform(x=1, y=2))
+        player.add_component(
+            Animator(
+                animations={
+                    "idle": AnimationData(frames=[0]),
+                    "hit": AnimationData(frames=[1]),
+                },
+                default_state="idle",
+            )
+        )
+        player.add_component(
+            AnimatorController.from_dict(
+                {
+                    "enabled": True,
+                    "entry_state": "idle_logic",
+                    "parameters": {},
+                    "states": {
+                        "idle_logic": {"animation_state": "idle", "enter_events": [], "exit_events": []},
+                        "hit_logic": {"animation_state": "hit", "enter_events": [], "exit_events": []},
+                    },
+                    "transitions": [],
+                }
+            )
+        )
+
+        self.rule_system.load_rules(
+            [
+                {
+                    "event": "tick",
+                    "do": [{"action": "set_animation", "entity": "Player", "state": "hit_logic"}],
+                }
+            ]
+        )
+        self.rule_system.set_world(world)
+
+        self.event_bus.emit("tick", {})
+
+        animator = player.get_component(Animator)
+        controller = player.get_component(AnimatorController)
+        self.assertIsNotNone(animator)
+        self.assertIsNotNone(controller)
+        self.assertEqual(controller.active_state, "hit_logic")
         self.assertEqual(animator.current_state, "hit")
 
     def test_bootstrap_smoke_supports_rule_system_without_world(self) -> None:

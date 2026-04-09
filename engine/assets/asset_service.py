@@ -23,6 +23,9 @@ from engine.rendering.materials import Material2D
 class AssetService:
     """Gestiona metadata sidecar, slices, catalogo y referencias canonicas."""
 
+    VALID_SLICE_GROUP_MODES = {"row", "name_prefix", "visual_order"}
+    VALID_ANIMATION_ORDER_MODES = {"selection", "visual"}
+
     def __init__(self, project_service: ProjectService) -> None:
         self._history: Any = None
         self._project_service = project_service
@@ -240,6 +243,22 @@ class AssetService:
         metadata["slices"] = slices
         return self.save_metadata(asset_path, metadata)
 
+    def apply_auto_slices(
+        self,
+        locator: Any,
+        pivot_x: float = 0.5,
+        pivot_y: float = 0.5,
+        naming_prefix: Optional[str] = None,
+        alpha_threshold: int = 1,
+    ) -> Dict[str, Any]:
+        return self.generate_auto_slices(
+            locator,
+            pivot_x=pivot_x,
+            pivot_y=pivot_y,
+            naming_prefix=naming_prefix,
+            alpha_threshold=alpha_threshold,
+        )
+
     def save_manual_slices(
         self,
         locator: Any,
@@ -273,6 +292,22 @@ class AssetService:
         metadata["slices"] = normalized
         return self.save_metadata(asset_path, metadata)
 
+    def apply_manual_slices(
+        self,
+        locator: Any,
+        slices: List[Dict[str, Any]],
+        pivot_x: float = 0.5,
+        pivot_y: float = 0.5,
+        naming_prefix: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return self.save_manual_slices(
+            locator,
+            slices=slices,
+            pivot_x=pivot_x,
+            pivot_y=pivot_y,
+            naming_prefix=naming_prefix,
+        )
+
     def preview_auto_slices(
         self,
         locator: Any,
@@ -281,21 +316,179 @@ class AssetService:
         naming_prefix: Optional[str] = None,
         alpha_threshold: int = 1,
         color_tolerance: int = 12,
-    ) -> List[Dict[str, Any]]:
+        structured: bool = False,
+    ) -> List[Dict[str, Any]] | Dict[str, Any]:
+        payload = self._preview_auto_slices_payload(
+            locator,
+            pivot_x=pivot_x,
+            pivot_y=pivot_y,
+            naming_prefix=naming_prefix,
+            alpha_threshold=alpha_threshold,
+            color_tolerance=color_tolerance,
+        )
+        if structured:
+            return payload
+        return list(payload["slices"])
+
+    def group_slices(
+        self,
+        locator: Any,
+        *,
+        group_mode: str = "visual_order",
+        slice_names: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        asset_path = self._resolve_locator_path(locator)
+        normalized_mode = str(group_mode or "visual_order").strip().lower()
+        if normalized_mode not in self.VALID_SLICE_GROUP_MODES:
+            raise ValueError(f"Unsupported slice group mode: {group_mode}")
+
+        available = self._normalize_slice_collection(self.list_slices(asset_path))
+        selected, missing = self._filter_selected_slices(available, slice_names)
+        ordered = sorted(selected, key=self._slice_visual_key)
+        groups: list[dict[str, Any]] = []
+
+        if normalized_mode == "visual_order":
+            if ordered:
+                groups.append(self._build_slice_group("visual_order", "visual_order", ordered))
+        elif normalized_mode == "row":
+            rows: dict[int, list[dict[str, Any]]] = {}
+            for slice_info in ordered:
+                rows.setdefault(int(slice_info["y"]), []).append(slice_info)
+            for index, row_y in enumerate(sorted(rows)):
+                groups.append(self._build_slice_group(f"row_{index}", f"row:{row_y}", rows[row_y]))
+        else:
+            grouped_by_prefix: dict[str, list[dict[str, Any]]] = {}
+            first_order: dict[str, tuple[int, int, str]] = {}
+            for slice_info in ordered:
+                prefix = self._slice_name_prefix(str(slice_info["name"]))
+                grouped_by_prefix.setdefault(prefix, []).append(slice_info)
+                first_order.setdefault(prefix, self._slice_visual_key(slice_info))
+            for prefix in sorted(grouped_by_prefix, key=lambda item: (first_order[item], item)):
+                groups.append(self._build_slice_group(prefix, prefix, grouped_by_prefix[prefix]))
+
+        return {
+            "asset_path": asset_path,
+            "asset_reference": self.get_asset_reference(asset_path),
+            "group_mode": normalized_mode,
+            "selected_count": len(selected),
+            "missing_slice_names": missing,
+            "groups": groups,
+        }
+
+    def build_animation_from_slices(
+        self,
+        locator: Any,
+        slice_names: List[str],
+        *,
+        state_name: str = "",
+        fps: float = 8.0,
+        loop: bool = True,
+        on_complete: Optional[str] = None,
+        order_mode: str = "selection",
+    ) -> Dict[str, Any]:
+        asset_path = self._resolve_locator_path(locator)
+        normalized_order_mode = str(order_mode or "selection").strip().lower()
+        if normalized_order_mode not in self.VALID_ANIMATION_ORDER_MODES:
+            raise ValueError(f"Unsupported animation order mode: {order_mode}")
+
+        available = self._normalize_slice_collection(self.list_slices(asset_path))
+        ordered_slices = self._resolve_animation_slices(available, slice_names, order_mode=normalized_order_mode)
+        if not ordered_slices:
+            raise ValueError("At least one slice is required to build an animation")
+
+        safe_fps = max(0.001, float(fps))
+        frame_duration = 1.0 / safe_fps
+        ordered_slice_names = [str(item["name"]) for item in ordered_slices]
+        frame_widths = [int(item["width"]) for item in ordered_slices]
+        frame_heights = [int(item["height"]) for item in ordered_slices]
+        preview_frames = []
+        for index, slice_info in enumerate(ordered_slices):
+            preview_frames.append(
+                {
+                    "index": index,
+                    "slice_name": str(slice_info["name"]),
+                    "x": int(slice_info["x"]),
+                    "y": int(slice_info["y"]),
+                    "width": int(slice_info["width"]),
+                    "height": int(slice_info["height"]),
+                    "pivot_x": float(slice_info["pivot_x"]),
+                    "pivot_y": float(slice_info["pivot_y"]),
+                    "duration_seconds": round(frame_duration, 6),
+                }
+            )
+
+        return {
+            "asset_path": asset_path,
+            "asset_reference": self.get_asset_reference(asset_path),
+            "state_name": str(state_name or ""),
+            "order_mode": normalized_order_mode,
+            "slice_count": len(ordered_slices),
+            "animation": {
+                "frames": list(range(len(ordered_slices))),
+                "slice_names": ordered_slice_names,
+                "fps": float(fps),
+                "loop": bool(loop),
+                "on_complete": on_complete,
+            },
+            "preview": {
+                "asset_path": asset_path,
+                "state_name": str(state_name or ""),
+                "frame_count": len(ordered_slices),
+                "fps": float(fps),
+                "loop": bool(loop),
+                "duration_seconds": round(len(ordered_slices) / safe_fps, 6),
+                "frame_size_summary": {
+                    "min_width": min(frame_widths),
+                    "max_width": max(frame_widths),
+                    "min_height": min(frame_heights),
+                    "max_height": max(frame_heights),
+                    "variable_size": (min(frame_widths) != max(frame_widths)) or (min(frame_heights) != max(frame_heights)),
+                },
+                "frames": preview_frames,
+            },
+        }
+
+    def _preview_auto_slices_payload(
+        self,
+        locator: Any,
+        *,
+        pivot_x: float,
+        pivot_y: float,
+        naming_prefix: Optional[str],
+        alpha_threshold: int,
+        color_tolerance: int,
+    ) -> Dict[str, Any]:
         file_path = self.resolve_asset_path(locator)
+        asset_path = self._resolve_locator_path(locator)
+        prefix = naming_prefix or file_path.stem
+        width, height = self.get_image_size(asset_path)
+        payload = {
+            "asset_path": asset_path,
+            "asset_reference": self.get_asset_reference(asset_path),
+            "image": {"width": int(width), "height": int(height)},
+            "settings": {
+                "pivot_x": float(pivot_x),
+                "pivot_y": float(pivot_y),
+                "naming_prefix": prefix,
+                "alpha_threshold": int(alpha_threshold),
+                "color_tolerance": int(color_tolerance),
+            },
+            "slice_count": 0,
+            "slices": [],
+        }
         if not file_path.exists():
-            return []
+            return payload
 
         image = rl.load_image(file_path.as_posix())
         if not rl.is_image_valid(image):
-            return []
+            return payload
 
         width = int(image.width)
         height = int(image.height)
         colors = rl.load_image_colors(image)
-        prefix = naming_prefix or file_path.stem
+        payload["image"] = {"width": width, "height": height}
         try:
-            return self._detect_auto_slices_from_colors(
+            slices = self._detect_auto_slices_from_colors(
                 width,
                 height,
                 colors,
@@ -305,6 +498,9 @@ class AssetService:
                 alpha_threshold=alpha_threshold,
                 color_tolerance=color_tolerance,
             )
+            payload["slices"] = self._normalize_slice_collection(slices)
+            payload["slice_count"] = len(payload["slices"])
+            return payload
         finally:
             rl.unload_image_colors(colors)
             rl.unload_image(image)
@@ -392,6 +588,101 @@ class AssetService:
             "automatic": {},
             "slices": [],
         }
+
+    def _normalize_slice_collection(self, slices: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        normalized: list[dict[str, Any]] = []
+        for index, item in enumerate(slices):
+            normalized.append(
+                {
+                    "name": str(item.get("name") or f"slice_{index}"),
+                    "x": int(item.get("x", 0)),
+                    "y": int(item.get("y", 0)),
+                    "width": max(1, int(item.get("width", 1))),
+                    "height": max(1, int(item.get("height", 1))),
+                    "pivot_x": float(item.get("pivot_x", 0.5)),
+                    "pivot_y": float(item.get("pivot_y", 0.5)),
+                }
+            )
+        return normalized
+
+    def _filter_selected_slices(
+        self,
+        available: List[Dict[str, Any]],
+        selected_names: Optional[List[str]],
+    ) -> tuple[List[Dict[str, Any]], List[str]]:
+        if not selected_names:
+            return (list(available), [])
+        by_name = {str(item["name"]): item for item in available}
+        selected: list[dict[str, Any]] = []
+        missing: list[str] = []
+        seen: set[str] = set()
+        for name in selected_names:
+            normalized_name = str(name or "").strip()
+            if not normalized_name or normalized_name in seen:
+                continue
+            seen.add(normalized_name)
+            slice_info = by_name.get(normalized_name)
+            if slice_info is None:
+                missing.append(normalized_name)
+                continue
+            selected.append(slice_info)
+        return (selected, missing)
+
+    def _resolve_animation_slices(
+        self,
+        available: List[Dict[str, Any]],
+        slice_names: List[str],
+        *,
+        order_mode: str,
+    ) -> List[Dict[str, Any]]:
+        by_name = {str(item["name"]): item for item in available}
+        ordered: list[dict[str, Any]] = []
+        missing: list[str] = []
+        for name in slice_names:
+            normalized_name = str(name or "").strip()
+            if not normalized_name:
+                continue
+            slice_info = by_name.get(normalized_name)
+            if slice_info is None:
+                missing.append(normalized_name)
+                continue
+            ordered.append(slice_info)
+        if missing:
+            raise ValueError(f"Unknown slice names: {', '.join(missing)}")
+        if order_mode == "visual":
+            ordered.sort(key=self._slice_visual_key)
+        return ordered
+
+    def _build_slice_group(self, group_key: str, label: str, slices: List[Dict[str, Any]]) -> Dict[str, Any]:
+        ordered = sorted(slices, key=self._slice_visual_key)
+        return {
+            "group_key": str(group_key),
+            "label": str(label),
+            "frame_count": len(ordered),
+            "slice_names": [str(item["name"]) for item in ordered],
+            "slices": [dict(item) for item in ordered],
+        }
+
+    def _slice_visual_key(self, slice_info: Dict[str, Any]) -> tuple[int, int, str]:
+        return (
+            int(slice_info.get("y", 0)),
+            int(slice_info.get("x", 0)),
+            str(slice_info.get("name", "")),
+        )
+
+    def _slice_name_prefix(self, slice_name: str) -> str:
+        normalized = str(slice_name or "").strip()
+        if not normalized:
+            return "unnamed"
+        if "_" in normalized:
+            prefix, suffix = normalized.rsplit("_", 1)
+            if prefix and suffix.isdigit():
+                return prefix
+        end = len(normalized)
+        while end > 0 and normalized[end - 1].isdigit():
+            end -= 1
+        trimmed = normalized[:end].rstrip("_- ")
+        return trimmed or normalized
 
     def _detect_auto_slices_from_colors(
         self,

@@ -51,6 +51,8 @@ class AnimationData:
 class Animator(Component):
     """Gestiona animaciones basadas en sprite sheets."""
 
+    VALID_ANCHOR_MODES = {"legacy_center", "auto", "slice_pivot"}
+
     def __init__(
         self,
         sprite_sheet: str = "",
@@ -62,6 +64,7 @@ class Animator(Component):
         flip_x: bool = False,
         flip_y: bool = False,
         speed: float = 1.0,
+        anchor_mode: str = "legacy_center",
     ) -> None:
         self.enabled: bool = True
         self.sprite_sheet_ref = normalize_asset_reference(sprite_sheet_ref if sprite_sheet_ref is not None else sprite_sheet)
@@ -73,6 +76,8 @@ class Animator(Component):
         self.flip_x: bool = flip_x
         self.flip_y: bool = flip_y
         self.speed: float = max(0.01, float(speed))
+        normalized_anchor_mode = str(anchor_mode or "legacy_center").strip().lower()
+        self.anchor_mode: str = normalized_anchor_mode if normalized_anchor_mode in self.VALID_ANCHOR_MODES else "legacy_center"
 
         self.current_state: str = default_state
         self.current_frame: int = 0
@@ -161,6 +166,7 @@ class Animator(Component):
             "flip_x": self.flip_x,
             "flip_y": self.flip_y,
             "speed": self.speed,
+            "anchor_mode": self.anchor_mode,
             "animations": {name: anim.to_dict() for name, anim in self.animations.items()},
             "default_state": self.default_state,
             "current_state": self.current_state,
@@ -189,6 +195,7 @@ class Animator(Component):
             flip_x=data.get("flip_x", False),
             flip_y=data.get("flip_y", False),
             speed=data.get("speed", 1.0),
+            anchor_mode=data.get("anchor_mode", "legacy_center"),
         )
         animator.enabled = data.get("enabled", True)
         animator.current_state = data.get("current_state", animator.default_state)

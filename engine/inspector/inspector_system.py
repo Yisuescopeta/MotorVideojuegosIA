@@ -160,6 +160,7 @@ class InspectorSystem:
         self.component_editors.register("Collider", self._draw_collider_editor)
         self.component_editors.register("RigidBody", self._draw_rigidbody_editor)
         self.component_editors.register("Animator", self._draw_animator_editor)
+        self.component_editors.register("AnimatorController", self._draw_animator_controller_editor)
         self.component_editors.register("Camera2D", self._draw_camera2d_editor)
         self.component_editors.register("AudioSource", self._draw_audio_source_editor)
         self.component_editors.register("InputMap", self._draw_input_map_editor)
@@ -1595,6 +1596,7 @@ class InspectorSystem:
         current_y = self._draw_action_row("Editor", "Open Sprite Editor", x, current_y, width, bool(component.sprite_sheet), lambda: self.open_sprite_editor(component.sprite_sheet))
         current_y = self._draw_component_field("Frame Width", component.frame_width, entity_id, "Animator", "frame_width", x, current_y, width, is_edit, world)
         current_y = self._draw_component_field("Frame Height", component.frame_height, entity_id, "Animator", "frame_height", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("Anchor", component.anchor_mode, entity_id, "Animator", "anchor_mode", x, current_y, width, is_edit, world)
         current_y = self._draw_component_field("Default", component.default_state, entity_id, "Animator", "default_state", x, current_y, width, is_edit, world)
         current_y = self._draw_readonly_row("Current", component.current_state, x, current_y, width)
         current_y = self._draw_readonly_row("Frame", str(component.current_frame), x, current_y, width)
@@ -1611,6 +1613,66 @@ class InspectorSystem:
         animations = component.animations or {}
         for state_name, animation in animations.items():
             current_y = self._draw_animator_state_editor(component, entity_id, entity_name, state_name, animation, x, current_y, width, is_edit, world)
+        return current_y
+
+    def _draw_animator_controller_editor(
+        self,
+        component: Any,
+        entity_id: int,
+        x: int,
+        y: int,
+        width: int,
+        is_edit: bool,
+        world: "World",
+    ) -> int:
+        current_y = y
+        current_y = self._draw_component_field(
+            "Enabled",
+            bool(component.enabled),
+            entity_id,
+            "AnimatorController",
+            "enabled",
+            x,
+            current_y,
+            width,
+            is_edit,
+            world,
+        )
+        current_y = self._draw_component_field(
+            "Entry State",
+            str(component.entry_state),
+            entity_id,
+            "AnimatorController",
+            "entry_state",
+            x,
+            current_y,
+            width,
+            is_edit,
+            world,
+        )
+        current_y = self._draw_readonly_row("Parameters", str(len(component.parameters or {})), x, current_y, width)
+        current_y = self._draw_readonly_row("States", str(len(component.states or {})), x, current_y, width)
+        current_y = self._draw_readonly_row("Transitions", str(len(component.transitions or [])), x, current_y, width)
+        current_y = self._draw_readonly_row("Active", str(getattr(component, "active_state", "")), x, current_y, width)
+        current_y = self._draw_readonly_row("Previous", str(getattr(component, "previous_state", "")), x, current_y, width)
+        current_y = self._draw_readonly_row("Last Transition", str(getattr(component, "last_transition_id", "")), x, current_y, width)
+        current_y = self._draw_readonly_row("Pending Triggers", ", ".join(sorted(getattr(component, "pending_triggers", set()))), x, current_y, width)
+
+        current_y = self._draw_section_title("Controller States", x, current_y, width)
+        for state_name, state_payload in (component.states or {}).items():
+            if not isinstance(state_payload, dict):
+                continue
+            animation_state = str(state_payload.get("animation_state", "") or "")
+            current_y = self._draw_readonly_row(state_name, animation_state, x, current_y, width)
+
+        current_y = self._draw_section_title("Parameters", x, current_y, width)
+        runtime_parameters = getattr(component, "runtime_parameters", {})
+        for parameter_name, definition in (component.parameters or {}).items():
+            if not isinstance(definition, dict):
+                continue
+            parameter_type = str(definition.get("type", "float") or "float")
+            runtime_value = runtime_parameters.get(parameter_name, definition.get("default"))
+            current_y = self._draw_readonly_row(parameter_name, f"{parameter_type} = {runtime_value}", x, current_y, width)
         return current_y
 
     def _draw_animator_state_editor(
@@ -1931,6 +1993,7 @@ class InspectorSystem:
             ("Ref Height", "reference_height"),
             ("Match", "match_mode"),
             ("Sort Order", "sort_order"),
+            ("Initial Focus", "initial_focus_entity_id"),
         ):
             current_y = self._draw_component_field(label, getattr(component, prop_name), entity_id, "Canvas", prop_name, x, current_y, width, is_edit, world)
         return current_y
@@ -1974,8 +2037,13 @@ class InspectorSystem:
         for label, prop_name in (
             ("Enabled", "enabled"),
             ("Interactable", "interactable"),
+            ("Focusable", "focusable"),
             ("Label", "label"),
             ("Pressed Scale", "transition_scale_pressed"),
+            ("Nav Up", "nav_up"),
+            ("Nav Down", "nav_down"),
+            ("Nav Left", "nav_left"),
+            ("Nav Right", "nav_right"),
         ):
             current_y = self._draw_component_field(label, getattr(component, prop_name), entity_id, "UIButton", prop_name, x, current_y, width, is_edit, world)
 

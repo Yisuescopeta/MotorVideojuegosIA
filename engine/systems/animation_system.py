@@ -14,6 +14,7 @@ EVENTOS EMITIDOS:
 from typing import TYPE_CHECKING, Optional, Set
 
 from engine.components.animator import Animator
+from engine.components.animator_controller import AnimatorController
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 
@@ -86,7 +87,10 @@ class AnimationSystem:
 
                     self._emit_animation_end(entity, animator.current_state, animator.normalized_time)
 
-                    if anim.on_complete is not None:
+                    controller = entity.get_component(AnimatorController)
+                    controller_enabled = bool(controller is not None and controller.enabled)
+
+                    if anim.on_complete is not None and not controller_enabled:
                         previous_state = animator.current_state
                         animator.play(anim.on_complete)
                         if previous_state != animator.current_state:

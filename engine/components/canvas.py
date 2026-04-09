@@ -20,6 +20,7 @@ class Canvas(Component):
         reference_height: int = 600,
         match_mode: str = "stretch",
         sort_order: int = 0,
+        initial_focus_entity_id: str = "",
     ) -> None:
         self.enabled = enabled
         self.render_mode = str(render_mode or "screen_space_overlay")
@@ -27,6 +28,7 @@ class Canvas(Component):
         self.reference_height = max(1, int(reference_height))
         self.match_mode = str(match_mode or "stretch")
         self.sort_order = int(sort_order)
+        self.initial_focus_entity_id = str(initial_focus_entity_id or "").strip()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -36,6 +38,7 @@ class Canvas(Component):
             "reference_height": self.reference_height,
             "match_mode": self.match_mode,
             "sort_order": self.sort_order,
+            "initial_focus_entity_id": self.initial_focus_entity_id,
         }
 
     @classmethod
@@ -47,4 +50,5 @@ class Canvas(Component):
             reference_height=data.get("reference_height", 600),
             match_mode=data.get("match_mode", "stretch"),
             sort_order=data.get("sort_order", 0),
+            initial_focus_entity_id=data.get("initial_focus_entity_id", ""),
         )

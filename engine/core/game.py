@@ -63,6 +63,7 @@ if TYPE_CHECKING:
     from engine.levels.level_loader import LevelLoader
     from engine.scenes.scene_manager import SceneManager
     from engine.systems.animation_system import AnimationSystem
+    from engine.systems.animator_controller_system import AnimatorControllerSystem
     from engine.systems.audio_system import AudioSystem
     from engine.systems.character_controller_system import CharacterControllerSystem
     from engine.systems.collision_system import CollisionSystem
@@ -109,6 +110,7 @@ class Game:
         self._physics_backend_registry: PhysicsBackendRegistry = PhysicsBackendRegistry(default_backend_name="legacy_aabb")
         self._physics_backend_name: str = "legacy_aabb"
         self._animation_system: Optional["AnimationSystem"] = None
+        self._animator_controller_system: Optional["AnimatorControllerSystem"] = None
         self._audio_system: Optional["AudioSystem"] = None
         self._input_system: Optional["InputSystem"] = None
         self._player_controller_system: Optional["PlayerControllerSystem"] = None
@@ -190,6 +192,7 @@ class Game:
             get_script_behaviour_system=lambda: self._script_behaviour_system,
             get_event_bus=lambda: self._event_bus,
             get_animation_system=lambda: self._animation_system,
+            get_animator_controller_system=lambda: self._animator_controller_system,
             get_input_system=lambda: self._input_system,
             get_player_controller_system=lambda: self._player_controller_system,
             get_character_controller_system=lambda: self._character_controller_system,
@@ -378,6 +381,205 @@ class Game:
 
     def get_profiler_report(self) -> dict[str, Any]:
         return self._debug_tools_controller.get_profiler_report()
+
+    def get_runtime_debug_snapshot(self) -> dict[str, Any]:
+        from engine.components.animator import Animator
+        from engine.components.animator_controller import AnimatorController
+        from engine.components.rigidbody import RigidBody
+        from engine.components.tilemap import Tilemap
+        from engine.components.transform import Transform
+
+        active_world = self.world
+        selection = self.get_physics_backend_selection(active_world)
+        requested_backend = str(selection.get("requested_backend") or self._physics_backend_name)
+        effective_backend = selection.get("effective_backend")
+        resolved_backend = (
+            self._physics_backend_registry.resolve(
+                active_world,
+                default_backend_name=self._physics_backend_name,
+            )
+            if active_world is not None
+            else None
+        )
+        backend = resolved_backend.backend if resolved_backend is not None else None
+        physics_metrics = (
+            dict(backend.get_step_metrics())
+            if backend is not None and hasattr(backend, "get_step_metrics")
+            else dict(self._physics_system.get_step_metrics()) if self._physics_system is not None else {}
+        )
+        contacts = self._serialize_runtime_contacts(active_world, backend)
+        rigidbodies: list[dict[str, Any]] = []
+        animators: list[dict[str, Any]] = []
+        tilemaps: list[dict[str, Any]] = []
+
+        if active_world is not None:
+            for entity in active_world.get_entities_with(Transform, RigidBody):
+                transform = entity.get_component(Transform)
+                rigidbody = entity.get_component(RigidBody)
+                if transform is None or rigidbody is None:
+                    continue
+                rigidbodies.append(
+                    {
+                        "entity": entity.name,
+                        "entity_id": int(entity.id),
+                        "body_type": str(rigidbody.body_type),
+                        "simulated": bool(rigidbody.simulated),
+                        "grounded": bool(rigidbody.is_grounded),
+                        "velocity": {
+                            "x": float(rigidbody.velocity_x),
+                            "y": float(rigidbody.velocity_y),
+                        },
+                        "position": {
+                            "x": float(transform.x),
+                            "y": float(transform.y),
+                        },
+                        "contact_state": (
+                            self._physics_system.get_body_contact_state(entity.id)
+                            if self._physics_system is not None and hasattr(self._physics_system, "get_body_contact_state")
+                            else {}
+                        ),
+                    }
+                )
+
+            for entity in active_world.get_entities_with(Animator):
+                animator = entity.get_component(Animator)
+                controller = entity.get_component(AnimatorController)
+                if animator is None:
+                    continue
+                controller_snapshot = controller.get_runtime_snapshot() if controller is not None else {}
+                animators.append(
+                    {
+                        "entity": entity.name,
+                        "entity_id": int(entity.id),
+                        "current_state": str(animator.current_state),
+                        "default_state": str(animator.default_state),
+                        "current_frame": int(animator.current_frame),
+                        "current_slice": animator.get_current_slice_name(),
+                        "normalized_time": float(animator.normalized_time),
+                        "is_finished": bool(animator.is_finished),
+                        "speed": float(animator.speed),
+                        "flip_x": bool(animator.flip_x),
+                        "flip_y": bool(animator.flip_y),
+                        "anchor_mode": str(getattr(animator, "anchor_mode", "legacy_center")),
+                        "controller_enabled": bool(controller is not None and controller.enabled),
+                        "controller_state": str(controller_snapshot.get("active_state", "") or ""),
+                        "mapped_animation_state": (
+                            controller.get_state_animation(str(controller_snapshot.get("active_state", "") or ""))
+                            if controller is not None
+                            else ""
+                        ),
+                        "parameters": dict(controller_snapshot.get("parameters", {})) if controller_snapshot else {},
+                        "pending_triggers": list(controller_snapshot.get("pending_triggers", [])) if controller_snapshot else [],
+                        "last_transition_id": str(controller_snapshot.get("last_transition_id", "") or ""),
+                    }
+                )
+
+            for entity in active_world.get_all_entities():
+                tilemap = entity.get_component(Tilemap)
+                if tilemap is None or not entity.active or not tilemap.enabled:
+                    continue
+                layers: list[dict[str, Any]] = []
+                total_tiles = 0
+                for layer in tilemap.layers:
+                    tiles_payload = layer.get("tiles", {})
+                    tile_count = len(tiles_payload) if isinstance(tiles_payload, dict) else len(tiles_payload or [])
+                    total_tiles += int(tile_count)
+                    layer_source = layer.get("tilemap_source", {})
+                    layer_source_path = layer_source.get("path", "") if isinstance(layer_source, dict) else str(layer_source or "")
+                    layers.append(
+                        {
+                            "name": str(layer.get("name", "")),
+                            "visible": bool(layer.get("visible", True)),
+                            "opacity": float(layer.get("opacity", 1.0)),
+                            "locked": bool(layer.get("locked", False)),
+                            "collision_layer": int(layer.get("collision_layer", 0)),
+                            "offset_x": float(layer.get("offset_x", 0.0)),
+                            "offset_y": float(layer.get("offset_y", 0.0)),
+                            "tile_count": int(tile_count),
+                            "tilemap_source_path": layer_source_path,
+                        }
+                    )
+                tilemaps.append(
+                    {
+                        "entity": entity.name,
+                        "entity_id": int(entity.id),
+                        "cell_width": int(tilemap.cell_width),
+                        "cell_height": int(tilemap.cell_height),
+                        "orientation": str(tilemap.orientation),
+                        "tileset_mode": str(getattr(tilemap, "tileset_mode", "grid")),
+                        "tileset_path": str(tilemap.tileset_path),
+                        "layer_count": len(layers),
+                        "total_tiles": int(total_tiles),
+                        "layers": layers,
+                    }
+                )
+
+        return {
+            "frame": int(self.time.frame_count),
+            "time": float(self.time.total_time),
+            "engine_state": str(self._state),
+            "world_available": bool(active_world is not None),
+            "physics": {
+                "backend": {
+                    "requested": requested_backend,
+                    "effective": str(effective_backend) if effective_backend is not None else None,
+                    "used_fallback": bool(selection.get("used_fallback", False)),
+                    "fallback_reason": selection.get("fallback_reason"),
+                    "unavailable_reason": selection.get("unavailable_reason"),
+                },
+                "last_step_metrics": physics_metrics,
+                "contacts": contacts,
+                "rigidbodies": rigidbodies,
+            },
+            "animators": animators,
+            "tilemaps": tilemaps,
+        }
+
+    def _serialize_runtime_contacts(self, world: Optional["World"], backend: Any) -> list[dict[str, Any]]:
+        if world is not None and backend is not None and hasattr(backend, "collect_contacts"):
+            contacts = backend.collect_contacts(world)
+            return sorted(
+                [
+                    {
+                        "entity_a": str(contact.entity_a),
+                        "entity_a_id": int(contact.entity_a_id),
+                        "entity_b": str(contact.entity_b),
+                        "entity_b_id": int(contact.entity_b_id),
+                        "is_trigger": bool(contact.is_trigger),
+                        "normal": {
+                            "x": float(contact.normal_x or 0.0),
+                            "y": float(contact.normal_y or 0.0),
+                        },
+                        "penetration": float(getattr(contact, "penetration", 0.0) or 0.0),
+                        "contact_type": str(getattr(contact, "contact_type", "overlap")),
+                        "source": str(getattr(contact, "source", "overlap")),
+                        "separation": float(getattr(contact, "separation", 0.0) or 0.0),
+                    }
+                    for contact in contacts
+                ],
+                key=lambda item: (int(item["entity_a_id"]), int(item["entity_b_id"])),
+            )
+
+        if self._collision_system is None:
+            return []
+        return sorted(
+            [
+                {
+                    "entity_a": collision.entity_a.name,
+                    "entity_a_id": int(collision.entity_a.id),
+                    "entity_b": collision.entity_b.name,
+                    "entity_b_id": int(collision.entity_b.id),
+                    "is_trigger": bool(collision.is_trigger),
+                    "normal": {"x": 0.0, "y": 0.0},
+                    "penetration": 0.0,
+                    "contact_type": "overlap",
+                    "source": "collision_system",
+                    "separation": 0.0,
+                }
+                for collision in self._collision_system.get_collisions()
+            ],
+            key=lambda item: (int(item["entity_a_id"]), int(item["entity_b_id"])),
+        )
     
     # === SETTERS ===
     
@@ -400,6 +602,11 @@ class Game:
     
     def set_animation_system(self, system: "AnimationSystem") -> None:
         self._animation_system = system
+
+    def set_animator_controller_system(self, system: "AnimatorControllerSystem") -> None:
+        self._animator_controller_system = system
+        if self._event_bus is not None and hasattr(self._animator_controller_system, "set_event_bus"):
+            self._animator_controller_system.set_event_bus(self._event_bus)
 
     def set_audio_system(self, system: "AudioSystem") -> None:
         self._audio_system = system
@@ -441,6 +648,8 @@ class Game:
             backend.set_event_bus(event_bus)
         if self._character_controller_system is not None and hasattr(self._character_controller_system, "set_event_bus"):
             self._character_controller_system.set_event_bus(event_bus)
+        if self._animator_controller_system is not None and hasattr(self._animator_controller_system, "set_event_bus"):
+            self._animator_controller_system.set_event_bus(event_bus)
         if self._ui_system is not None:
             self._ui_system.set_event_bus(event_bus)
         self._scene_transition_controller.set_event_bus(event_bus)
@@ -671,6 +880,63 @@ class Game:
             return False
         target_viewport = viewport_size or (float(self.width), float(self.height))
         return self._ui_system.click_entity(active_world, entity_name, target_viewport)
+
+    def inject_ui_navigation(
+        self,
+        *,
+        move_x: int = 0,
+        move_y: int = 0,
+        submit: bool = False,
+        cancel: bool = False,
+        frames: int = 1,
+    ) -> bool:
+        if self._ui_system is None:
+            return False
+        self._ui_system.inject_navigation_state(
+            move_x=move_x,
+            move_y=move_y,
+            submit=submit,
+            cancel=cancel,
+            frames=frames,
+        )
+        return True
+
+    def get_ui_focus_state(
+        self,
+        viewport_size: Optional[tuple[float, float]] = None,
+    ) -> dict[str, Any]:
+        active_world = self.world
+        if not self.refresh_ui_layout(viewport_size):
+            return {"focused_entity": None, "canvas_focus": {}}
+        if self._ui_system is None or active_world is None:
+            return {"focused_entity": None, "canvas_focus": {}}
+        target_viewport = viewport_size or (float(self.width), float(self.height))
+        self._ui_system.update(active_world, target_viewport, allow_interaction=False)
+        return {
+            "focused_entity": self._ui_system.get_focused_entity_name(),
+            "canvas_focus": self._ui_system.get_focus_snapshot(),
+        }
+
+    def move_ui_focus(
+        self,
+        direction: str,
+        viewport_size: Optional[tuple[float, float]] = None,
+    ) -> Optional[str]:
+        active_world = self.world
+        if self._ui_system is None or active_world is None:
+            return None
+        target_viewport = viewport_size or (float(self.width), float(self.height))
+        return self._ui_system.move_focus(active_world, target_viewport, direction)
+
+    def submit_ui_focus(
+        self,
+        viewport_size: Optional[tuple[float, float]] = None,
+    ) -> bool:
+        active_world = self.world
+        if self._ui_system is None or active_world is None:
+            return False
+        target_viewport = viewport_size or (float(self.width), float(self.height))
+        return self._ui_system.submit_focused(active_world, target_viewport)
 
     def request_shutdown(self) -> None:
         self.running = False

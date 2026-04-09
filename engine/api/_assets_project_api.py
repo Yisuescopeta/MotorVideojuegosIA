@@ -159,10 +159,11 @@ class AssetsProjectAPI(EngineAPIComponent):
         naming_prefix: Optional[str] = None,
         alpha_threshold: int = 1,
         color_tolerance: int = 12,
-    ) -> list[Dict[str, Any]]:
+        structured: bool = False,
+    ) -> list[Dict[str, Any]] | Dict[str, Any]:
         """Preview auto-detected slices without saving them."""
         if self.asset_service is None:
-            return []
+            return {"asset_path": asset_path, "image": {"width": 0, "height": 0}, "settings": {}, "slice_count": 0, "slices": []} if structured else []
         return self.asset_service.preview_auto_slices(
             asset_path,
             pivot_x=pivot_x,
@@ -170,6 +171,53 @@ class AssetsProjectAPI(EngineAPIComponent):
             naming_prefix=naming_prefix,
             alpha_threshold=alpha_threshold,
             color_tolerance=color_tolerance,
+            structured=structured,
+        )
+
+    def group_asset_slices(
+        self,
+        asset_path: str,
+        *,
+        group_mode: str = "visual_order",
+        slice_names: Optional[list[str]] = None,
+    ) -> Dict[str, Any]:
+        if self.asset_service is None:
+            return {"asset_path": asset_path, "group_mode": group_mode, "selected_count": 0, "missing_slice_names": [], "groups": []}
+        return self.asset_service.group_slices(
+            asset_path,
+            group_mode=group_mode,
+            slice_names=slice_names,
+        )
+
+    def build_animation_from_slices(
+        self,
+        asset_path: str,
+        slice_names: list[str],
+        *,
+        state_name: str = "",
+        fps: float = 8.0,
+        loop: bool = True,
+        on_complete: Optional[str] = None,
+        order_mode: str = "selection",
+    ) -> Dict[str, Any]:
+        if self.asset_service is None:
+            return {
+                "asset_path": asset_path,
+                "asset_reference": {"guid": "", "path": asset_path},
+                "state_name": state_name,
+                "order_mode": order_mode,
+                "slice_count": 0,
+                "animation": {"frames": [], "slice_names": [], "fps": float(fps), "loop": bool(loop), "on_complete": on_complete},
+                "preview": {"asset_path": asset_path, "state_name": state_name, "frame_count": 0, "fps": float(fps), "loop": bool(loop), "duration_seconds": 0.0, "frame_size_summary": {"min_width": 0, "max_width": 0, "min_height": 0, "max_height": 0, "variable_size": False}, "frames": []},
+            }
+        return self.asset_service.build_animation_from_slices(
+            asset_path,
+            slice_names,
+            state_name=state_name,
+            fps=fps,
+            loop=loop,
+            on_complete=on_complete,
+            order_mode=order_mode,
         )
 
     def create_auto_slices(
@@ -181,17 +229,33 @@ class AssetsProjectAPI(EngineAPIComponent):
         alpha_threshold: int = 1,
     ) -> ActionResult:
         """Generate and save auto-detected slices for an asset."""
+        return self.apply_auto_slices(
+            asset_path=asset_path,
+            pivot_x=pivot_x,
+            pivot_y=pivot_y,
+            naming_prefix=naming_prefix,
+            alpha_threshold=alpha_threshold,
+        )
+
+    def apply_auto_slices(
+        self,
+        asset_path: str,
+        pivot_x: float = 0.5,
+        pivot_y: float = 0.5,
+        naming_prefix: Optional[str] = None,
+        alpha_threshold: int = 1,
+    ) -> ActionResult:
         if self.asset_service is None:
             return self.fail("Asset service not ready")
         try:
-            metadata = self.asset_service.generate_auto_slices(
+            metadata = self.asset_service.apply_auto_slices(
                 asset_path,
                 pivot_x=pivot_x,
                 pivot_y=pivot_y,
                 naming_prefix=naming_prefix,
                 alpha_threshold=alpha_threshold,
             )
-            return self.ok("Auto slices created", metadata)
+            return self.ok("Auto slices applied", metadata)
         except Exception as exc:
             return self.fail(f"Auto slice generation failed: {exc}")
 
@@ -204,17 +268,33 @@ class AssetsProjectAPI(EngineAPIComponent):
         naming_prefix: Optional[str] = None,
     ) -> ActionResult:
         """Save manually defined slices for an asset."""
+        return self.apply_manual_slices(
+            asset_path=asset_path,
+            slices=slices,
+            pivot_x=pivot_x,
+            pivot_y=pivot_y,
+            naming_prefix=naming_prefix,
+        )
+
+    def apply_manual_slices(
+        self,
+        asset_path: str,
+        slices: list[Dict[str, Any]],
+        pivot_x: float = 0.5,
+        pivot_y: float = 0.5,
+        naming_prefix: Optional[str] = None,
+    ) -> ActionResult:
         if self.asset_service is None:
             return self.fail("Asset service not ready")
         try:
-            metadata = self.asset_service.save_manual_slices(
+            metadata = self.asset_service.apply_manual_slices(
                 asset_path,
                 slices=slices,
                 pivot_x=pivot_x,
                 pivot_y=pivot_y,
                 naming_prefix=naming_prefix,
             )
-            return self.ok("Manual slices saved", metadata)
+            return self.ok("Manual slices applied", metadata)
         except Exception as exc:
             return self.fail(f"Manual slice save failed: {exc}")
 

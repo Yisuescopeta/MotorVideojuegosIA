@@ -161,6 +161,95 @@ class SchemaValidationTests(unittest.TestCase):
         self.assertEqual(animator["sprite_sheet"], {"guid": "", "path": "assets/sprites/player_sheet.png"})
         self.assertEqual(animator["sprite_sheet_path"], "assets/sprites/player_sheet.png")
 
+    def test_animator_controller_is_canonicalized_with_defaults(self) -> None:
+        migrated = migrate_scene_data(
+            {
+                "name": "AnimatorControllerScene",
+                "entities": [
+                    {
+                        "name": "Player",
+                        "components": {
+                            "Animator": {
+                                "enabled": True,
+                                "sprite_sheet": "assets/sprites/player_sheet.png",
+                                "frame_width": 32,
+                                "frame_height": 32,
+                                "default_state": "idle",
+                                "current_state": "idle",
+                                "animations": {"idle": {"frames": [0], "fps": 8.0, "loop": True}},
+                            },
+                            "AnimatorController": {},
+                        },
+                    }
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+        controller = migrated["entities"][0]["components"]["AnimatorController"]
+        self.assertEqual(controller["enabled"], True)
+        self.assertEqual(controller["entry_state"], "")
+        self.assertEqual(controller["parameters"], {})
+        self.assertEqual(controller["states"], {})
+        self.assertEqual(controller["transitions"], [])
+
+    def test_scene_validation_rejects_animator_controller_without_animator(self) -> None:
+        payload = migrate_scene_data(
+            _scene_payload(
+                entities=[
+                    _entity_payload(
+                        "Actor",
+                        components={
+                            "AnimatorController": {
+                                "enabled": True,
+                                "entry_state": "",
+                                "parameters": {},
+                                "states": {},
+                                "transitions": [],
+                            }
+                        },
+                    )
+                ]
+            )
+        )
+        errors = validate_scene_data(payload)
+        self.assertIn("$.entities[0].components.AnimatorController: requires Animator on the same entity", errors)
+
+    def test_scene_validation_rejects_animator_controller_states_pointing_to_missing_clip(self) -> None:
+        payload = migrate_scene_data(
+            _scene_payload(
+                entities=[
+                    _entity_payload(
+                        "Actor",
+                        components={
+                            "Animator": {
+                                "enabled": True,
+                                "sprite_sheet": "assets/actor.png",
+                                "sprite_sheet_path": "assets/actor.png",
+                                "frame_width": 16,
+                                "frame_height": 16,
+                                "default_state": "idle",
+                                "current_state": "idle",
+                                "animations": {"idle": {"frames": [0], "fps": 8.0, "loop": True}},
+                            },
+                            "AnimatorController": {
+                                "enabled": True,
+                                "entry_state": "logic_idle",
+                                "parameters": {"speed": {"type": "float", "default": 0.0}},
+                                "states": {"logic_idle": {"animation_state": "run", "enter_events": [], "exit_events": []}},
+                                "transitions": [],
+                            },
+                        },
+                    )
+                ]
+            )
+        )
+        errors = validate_scene_data(payload)
+        self.assertTrue(
+            any("AnimatorController.states.logic_idle.animation_state: unknown animator state 'run'" in error for error in errors),
+            errors,
+        )
+
     def test_scene_manager_save_includes_schema_version(self) -> None:
         manager = SceneManager(create_default_registry())
         manager.load_scene({"name": "SaveMe", "entities": [], "rules": [], "feature_metadata": {}})

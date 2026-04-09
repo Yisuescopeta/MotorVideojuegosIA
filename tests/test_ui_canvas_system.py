@@ -581,6 +581,356 @@ class CanvasUISystemTests(unittest.TestCase):
         self.assertTrue(ui_system.should_render_scene_view_ui(world, allow_runtime=False))
         self.assertTrue(ui_system.should_render_scene_view_ui(world, allow_runtime=True))
 
+    def test_ui_focus_navigation_submit_and_cancel_work_through_engine_api(self) -> None:
+        scene_path = self._write_scene(
+            "ui_focus_navigation.json",
+            {
+                "name": "UI Focus Navigation",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+
+        self.assertTrue(self.api.create_canvas(name="CanvasRoot", initial_focus_entity_id="PlayButton")["success"])
+        self.assertTrue(
+            self.api.create_ui_button(
+                "PlayButton",
+                "Play",
+                "CanvasRoot",
+                {"width": 220.0, "height": 72.0, "anchored_x": -140.0},
+                {"type": "emit_event", "name": "ui.play_clicked"},
+                nav_right="OptionsButton",
+            )["success"]
+        )
+        self.assertTrue(
+            self.api.create_ui_button(
+                "OptionsButton",
+                "Options",
+                "CanvasRoot",
+                {"width": 220.0, "height": 72.0, "anchored_x": 140.0},
+                {"type": "emit_event", "name": "ui.options_clicked"},
+                nav_left="PlayButton",
+            )["success"]
+        )
+
+        focus_state = self.api.get_ui_focus()
+        self.assertEqual(focus_state["active_canvas"], "CanvasRoot")
+        self.assertTrue(focus_state["has_focus"])
+        self.assertEqual(focus_state["focused_entity"], "PlayButton")
+        self.assertEqual(focus_state["canvas_focus"]["CanvasRoot"], "PlayButton")
+        self.assertEqual(focus_state["focused_button"]["label"], "Play")
+        self.assertEqual(focus_state["focused_button"]["navigation"]["right"], "OptionsButton")
+
+        move_result = self.api.move_ui_focus("right")
+        self.assertTrue(move_result["success"])
+        self.assertEqual(move_result["data"]["focused_entity"], "OptionsButton")
+
+        self.api.play()
+        self.api.game.event_bus.clear_history()
+
+        submit_result = self.api.inject_ui_navigation(submit=True, frames=1)
+        self.assertTrue(submit_result["success"])
+        self.api.step(1)
+        event_names = [event.name for event in self.api.game.event_bus.get_recent_events()]
+        self.assertIn("ui.options_clicked", event_names)
+
+        self.api.game.event_bus.clear_history()
+        cancel_result = self.api.cancel_ui_focus()
+        self.assertTrue(cancel_result["success"])
+        cancel_events = [event.name for event in self.api.game.event_bus.get_recent_events()]
+        self.assertIn("ui.cancel", cancel_events)
+
+    def test_simple_menu_can_be_driven_via_public_focus_move_submit_aliases(self) -> None:
+        scene_path = self._write_scene(
+            "ui_simple_menu_aliases.json",
+            {
+                "name": "UI Simple Menu Aliases",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+
+        self.assertTrue(self.api.create_canvas(name="MenuCanvas", initial_focus_entity_id="PlayButton")["success"])
+        self.assertTrue(
+            self.api.create_ui_button(
+                "PlayButton",
+                "Play",
+                "MenuCanvas",
+                {"width": 220.0, "height": 72.0, "anchored_y": -90.0},
+                {"type": "emit_event", "name": "ui.play_clicked"},
+                nav_down="QuitButton",
+            )["success"]
+        )
+        self.assertTrue(
+            self.api.create_ui_button(
+                "QuitButton",
+                "Quit",
+                "MenuCanvas",
+                {"width": 220.0, "height": 72.0, "anchored_y": 10.0},
+                {"type": "emit_event", "name": "ui.quit_clicked"},
+                nav_up="PlayButton",
+            )["success"]
+        )
+
+        focus_result = self.api.focus_entity("PlayButton")
+        self.assertTrue(focus_result["success"])
+        self.assertEqual(focus_result["data"]["focused_entity"], "PlayButton")
+
+        move_result = self.api.ui_move_focus("down")
+        self.assertTrue(move_result["success"])
+        self.assertEqual(move_result["data"]["focused_entity"], "QuitButton")
+
+        self.api.play()
+        self.api.game.event_bus.clear_history()
+        submit_result = self.api.ui_submit()
+        self.assertTrue(submit_result["success"])
+        event_names = [event.name for event in self.api.game.event_bus.get_recent_events()]
+        self.assertIn("ui.quit_clicked", event_names)
+
+        self.api.game.event_bus.clear_history()
+        cancel_result = self.api.ui_cancel()
+        self.assertTrue(cancel_result["success"])
+        cancel_events = self.api.game.event_bus.get_recent_events()
+        self.assertIn("ui.cancel", [event.name for event in cancel_events])
+        self.assertEqual(cancel_events[-1].data["canvas"], "MenuCanvas")
+
+    def test_ui_focus_invalid_initial_target_falls_back_to_first_focusable(self) -> None:
+        scene_path = self._write_scene(
+            "ui_focus_initial_fallback.json",
+            {
+                "name": "UI Focus Initial Fallback",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+        self.assertTrue(self.api.create_canvas(name="CanvasRoot", initial_focus_entity_id="MissingButton")["success"])
+        self.assertTrue(
+            self.api.create_ui_button(
+                "FirstButton",
+                "First",
+                "CanvasRoot",
+                {"width": 220.0, "height": 72.0, "anchored_y": -60.0},
+                {"type": "emit_event", "name": "ui.first_clicked"},
+            )["success"]
+        )
+        self.assertTrue(
+            self.api.create_ui_button(
+                "SecondButton",
+                "Second",
+                "CanvasRoot",
+                {"width": 220.0, "height": 72.0, "anchored_y": 60.0},
+                {"type": "emit_event", "name": "ui.second_clicked"},
+            )["success"]
+        )
+
+        focus_state = self.api.get_ui_focus()
+
+        self.assertEqual(focus_state["focused_entity"], "FirstButton")
+        self.assertEqual(focus_state["active_canvas"], "CanvasRoot")
+
+    def test_ui_focus_spatial_fallback_and_submit_uses_focus_not_hover(self) -> None:
+        scene_path = self._write_scene(
+            "ui_focus_spatial_submit.json",
+            {
+                "name": "UI Focus Spatial Submit",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+        self.assertTrue(self.api.create_canvas(name="CanvasRoot", initial_focus_entity_id="LeftButton")["success"])
+        self.assertTrue(
+            self.api.create_ui_button(
+                "LeftButton",
+                "Left",
+                "CanvasRoot",
+                {"width": 220.0, "height": 72.0, "anchored_x": -160.0},
+                {"type": "emit_event", "name": "ui.left_clicked"},
+            )["success"]
+        )
+        self.assertTrue(
+            self.api.create_ui_button(
+                "RightButton",
+                "Right",
+                "CanvasRoot",
+                {"width": 220.0, "height": 72.0, "anchored_x": 160.0},
+                {"type": "emit_event", "name": "ui.right_clicked"},
+            )["success"]
+        )
+
+        self.api.game._ui_system.inject_pointer_state(560.0, 300.0, down=False, pressed=False, released=False)
+        self.api.game._ui_system.update(self.api.game.world, (800.0, 600.0), allow_interaction=True)
+        hover_state = self.api.game._ui_system.get_button_state(self.api.game.world.get_entity_by_name("RightButton"))
+        self.assertTrue(hover_state["hovered"])
+        self.assertFalse(hover_state["focused"])
+
+        move_result = self.api.move_ui_focus("right")
+        self.assertTrue(move_result["success"])
+        self.assertEqual(move_result["data"]["focused_entity"], "RightButton")
+
+        self.api.play()
+        self.api.game.event_bus.clear_history()
+        submit_result = self.api.submit_ui_focus()
+        self.assertTrue(submit_result["success"])
+        event_names = [event.name for event in self.api.game.event_bus.get_recent_events()]
+        self.assertIn("ui.right_clicked", event_names)
+        self.assertNotIn("ui.left_clicked", event_names)
+
+    def test_ui_pointer_hover_does_not_steal_focus_but_click_does(self) -> None:
+        scene_path = self._write_scene(
+            "ui_focus_pointer_priority.json",
+            {
+                "name": "UI Focus Pointer Priority",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+        self.assertTrue(self.api.create_canvas(name="CanvasRoot", initial_focus_entity_id="PrimaryButton")["success"])
+        self.assertTrue(
+            self.api.create_ui_button(
+                "PrimaryButton",
+                "Primary",
+                "CanvasRoot",
+                {"width": 220.0, "height": 72.0, "anchored_x": -140.0},
+                {"type": "emit_event", "name": "ui.primary_clicked"},
+            )["success"]
+        )
+        self.assertTrue(
+            self.api.create_ui_button(
+                "SecondaryButton",
+                "Secondary",
+                "CanvasRoot",
+                {"width": 220.0, "height": 72.0, "anchored_x": 140.0},
+                {"type": "emit_event", "name": "ui.secondary_clicked"},
+            )["success"]
+        )
+
+        self.api.game._ui_system.inject_pointer_state(540.0, 300.0, down=False, pressed=False, released=False)
+        self.api.game._ui_system.update(self.api.game.world, (800.0, 600.0), allow_interaction=True)
+        focus_state = self.api.get_ui_focus()
+        self.assertEqual(focus_state["focused_entity"], "PrimaryButton")
+
+        self.api.game._ui_system.inject_pointer_state(540.0, 300.0, down=True, pressed=True, released=False)
+        self.api.game._ui_system.update(self.api.game.world, (800.0, 600.0), allow_interaction=True)
+        self.api.game._ui_system.inject_pointer_state(540.0, 300.0, down=False, pressed=False, released=True)
+        self.api.game._ui_system.update(self.api.game.world, (800.0, 600.0), allow_interaction=True)
+
+        focus_state = self.api.get_ui_focus()
+        self.assertEqual(focus_state["focused_entity"], "SecondaryButton")
+
+    def test_ui_set_focus_and_resync_when_focused_button_becomes_non_interactable(self) -> None:
+        scene_path = self._write_scene(
+            "ui_focus_resync.json",
+            {
+                "name": "UI Focus Resync",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+        self.assertTrue(self.api.create_canvas(name="CanvasRoot", initial_focus_entity_id="FirstButton")["success"])
+        self.assertTrue(
+            self.api.create_ui_button(
+                "FirstButton",
+                "First",
+                "CanvasRoot",
+                {"width": 220.0, "height": 72.0, "anchored_x": -140.0},
+                {"type": "emit_event", "name": "ui.first_clicked"},
+                nav_right="SecondButton",
+            )["success"]
+        )
+        self.assertTrue(
+            self.api.create_ui_button(
+                "SecondButton",
+                "Second",
+                "CanvasRoot",
+                {"width": 220.0, "height": 72.0, "anchored_x": 140.0},
+                {"type": "emit_event", "name": "ui.second_clicked"},
+                nav_left="FirstButton",
+            )["success"]
+        )
+
+        set_focus_result = self.api.set_ui_focus("SecondButton")
+        self.assertTrue(set_focus_result["success"])
+        self.assertEqual(set_focus_result["data"]["focused_entity"], "SecondButton")
+
+        self.assertTrue(self.api.edit_component("SecondButton", "UIButton", "interactable", False)["success"])
+
+        focus_state = self.api.get_ui_focus()
+        self.assertEqual(focus_state["focused_entity"], "FirstButton")
+        self.assertEqual(focus_state["active_canvas"], "CanvasRoot")
+
+    def test_ui_set_focus_can_switch_active_canvas_for_cancel_and_submit(self) -> None:
+        scene_path = self._write_scene(
+            "ui_focus_multi_canvas.json",
+            {
+                "name": "UI Focus Multi Canvas",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+        self.assertTrue(self.api.create_canvas(name="BackgroundCanvas", sort_order=0, initial_focus_entity_id="BackgroundButton")["success"])
+        self.assertTrue(self.api.create_canvas(name="OverlayCanvas", sort_order=10, initial_focus_entity_id="OverlayButton")["success"])
+        self.assertTrue(
+            self.api.create_ui_button(
+                "BackgroundButton",
+                "Background",
+                "BackgroundCanvas",
+                {"width": 220.0, "height": 72.0, "anchored_y": 120.0},
+                {"type": "emit_event", "name": "ui.background_clicked"},
+            )["success"]
+        )
+        self.assertTrue(
+            self.api.create_ui_button(
+                "OverlayButton",
+                "Overlay",
+                "OverlayCanvas",
+                {"width": 220.0, "height": 72.0, "anchored_y": -120.0},
+                {"type": "emit_event", "name": "ui.overlay_clicked"},
+            )["success"]
+        )
+
+        initial_focus = self.api.get_ui_focus()
+        self.assertEqual(initial_focus["active_canvas"], "OverlayCanvas")
+        self.assertEqual(initial_focus["focused_entity"], "OverlayButton")
+
+        set_focus_result = self.api.set_ui_focus("BackgroundButton", canvas_name="BackgroundCanvas")
+        self.assertTrue(set_focus_result["success"])
+        self.assertEqual(set_focus_result["data"]["active_canvas"], "BackgroundCanvas")
+
+        focus_state = self.api.get_ui_focus()
+        self.assertEqual(focus_state["active_canvas"], "BackgroundCanvas")
+        self.assertEqual(focus_state["focused_entity"], "BackgroundButton")
+
+        self.api.play()
+        self.api.game.event_bus.clear_history()
+        submit_result = self.api.submit_ui_focus()
+        self.assertTrue(submit_result["success"])
+        event_names = [event.name for event in self.api.game.event_bus.get_recent_events()]
+        self.assertIn("ui.background_clicked", event_names)
+        self.assertNotIn("ui.overlay_clicked", event_names)
+
+        self.api.game.event_bus.clear_history()
+        cancel_result = self.api.cancel_ui_focus()
+        self.assertTrue(cancel_result["success"])
+        cancel_events = self.api.game.event_bus.get_recent_events()
+        self.assertIn("ui.cancel", [event.name for event in cancel_events])
+        self.assertEqual(cancel_events[-1].data["canvas"], "BackgroundCanvas")
+
+        self.api.stop()
+
 
 if __name__ == "__main__":
     unittest.main()

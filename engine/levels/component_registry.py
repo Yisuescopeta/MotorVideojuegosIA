@@ -85,6 +85,7 @@ def create_default_registry() -> ComponentRegistry:
     """Crea un registro con los componentes predeterminados del motor."""
     from engine.components.audiosource import AudioSource
     from engine.components.animator import Animator
+    from engine.components.animator_controller import AnimatorController
     from engine.components.camera2d import Camera2D
     from engine.components.charactercontroller2d import CharacterController2D
     from engine.components.canvas import Canvas
@@ -117,6 +118,7 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("Joint2D", Joint2D)
     registry.register("RigidBody", RigidBody)
     registry.register("Animator", Animator)
+    registry.register("AnimatorController", AnimatorController)
     registry.register("Camera2D", Camera2D)
     registry.register("AudioSource", AudioSource)
     registry.register("InputMap", InputMap)
