@@ -19,6 +19,8 @@ FUNCIONALIDADES:
 from datetime import datetime, timezone
 import pyray as rl
 import os
+import subprocess
+import platform
 from typing import Optional
 from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.console_panel import ConsolePanel, log_err
@@ -1165,6 +1167,28 @@ class EditorLayout:
         rl.draw_rectangle_rec(self.splitter_right_rect, col_right)
         rl.draw_rectangle_rec(self.bottom_splitter_rect, col_bottom)
 
+    def open_project_folder(self) -> None:
+        """Abre la carpeta del proyecto en el explorador de archivos del sistema."""
+        try:
+            # Verificar que hay un proyecto cargado
+            if (hasattr(self, 'project_panel') and 
+                self.project_panel is not None and 
+                self.project_panel.project_service is not None and
+                self.project_panel.project_service.has_project):
+                
+                project_root = str(self.project_panel.project_service.project_root)
+                
+                # Abrir según el sistema operativo
+                system = platform.system()
+                if system == "Windows":
+                    subprocess.Popen(["explorer", project_root])
+                elif system == "Darwin":  # macOS
+                    subprocess.Popen(["open", project_root])
+                else:  # Linux y otros
+                    subprocess.Popen(["xdg-open", project_root])
+        except Exception as e:
+            log_err(f"Error opening project folder: {e}")
+
     def _draw_toolbar(self, is_playing: bool) -> None:
         """Dibuja el toolbar estilo Unity con herramientas y controles de play."""
         toolbar_y = self.MENU_HEIGHT
@@ -1264,6 +1288,18 @@ class EditorLayout:
         # DERECHA: Opciones
         # ========================================
         right_x = self.screen_width - 200
+        
+        # Botón Abrir Carpeta del Proyecto
+        folder_rect = rl.Rectangle(right_x - 32, play_y, 28, btn_height)
+        self._register_cursor_rect(folder_rect)
+        folder_hover = rl.check_collision_point_rec(rl.get_mouse_position(), folder_rect)
+        folder_bg = self.UNITY_BUTTON_HOVER if folder_hover else self.UNITY_BUTTON
+        rl.draw_rectangle_rec(folder_rect, folder_bg)
+        rl.draw_rectangle_lines_ex(folder_rect, 1, self.UNITY_BORDER)
+        # Centrar el emoji en el botón
+        rl.draw_text("📁", int(folder_rect.x + 4), int(play_y + 4), 14, self.UNITY_TEXT)
+        if folder_hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+            self.open_project_folder()
         
         # Layers dropdown
         layers_rect = rl.Rectangle(right_x, play_y, 66, btn_height)
