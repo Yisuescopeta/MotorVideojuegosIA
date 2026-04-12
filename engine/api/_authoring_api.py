@@ -390,9 +390,12 @@ class AuthoringAPI(EngineAPIComponent):
         normalized_target = self._normalize_authoring_target(target)
 
         bindings = [self._resolve_spatial_binding(entity_name, normalized_target) for entity_name in normalized_entities]
-        if any(binding is None for binding in bindings):
-            return self.fail("All entities must have a supported transform for alignment")
-        positions = [float(binding[normalized_axis]) for binding in bindings if binding is not None]
+        resolved_bindings: list[Dict[str, Any]] = []
+        for binding in bindings:
+            if binding is None:
+                return self.fail("All entities must have a supported transform for alignment")
+            resolved_bindings.append(binding)
+        positions = [float(binding[normalized_axis]) for binding in resolved_bindings]
         if normalized_mode == "min":
             target_value = min(positions)
         elif normalized_mode == "max":
@@ -406,8 +409,7 @@ class AuthoringAPI(EngineAPIComponent):
             return self.fail("Transaction start failed")
         try:
             aligned: list[Dict[str, Any]] = []
-            for entity_name, binding in zip(normalized_entities, bindings):
-                assert binding is not None
+            for entity_name, binding in zip(normalized_entities, resolved_bindings):
                 field_name = binding["x_field"] if normalized_axis == "x" else binding["y_field"]
                 before_value = float(binding[normalized_axis])
                 if not self.edit_component(entity_name, binding["component"], field_name, target_value)["success"]:

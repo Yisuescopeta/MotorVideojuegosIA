@@ -250,6 +250,18 @@ class AuthoringTransactionsTests(unittest.TestCase):
         self.assertEqual(self.api.get_entity("ActorB")["components"]["Transform"]["y"], 30.0)
         self.assertEqual(self.api.get_entity("ActorC")["components"]["Transform"]["y"], 30.0)
 
+    def test_align_entities_fails_cleanly_when_entity_has_no_supported_transform(self) -> None:
+        self.assertTrue(self.api.create_entity("ActorA")["success"])
+        self.assertTrue(self.api.create_entity("ActorB")["success"])
+        self.assertTrue(self.api.remove_component("ActorB", "Transform")["success"])
+        self.assertTrue(self.api.edit_component("ActorA", "Transform", "x", 10.0)["success"])
+
+        result = self.api.align_entities(["ActorA", "ActorB"], axis="x", mode="min")
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["message"], "All entities must have a supported transform for alignment")
+        self.assertEqual(self.api.get_entity("ActorA")["components"]["Transform"]["x"], 10.0)
+
     def test_stamp_prefab_and_entities_from_source_support_fast_spawn_workflows(self) -> None:
         prefab_path = self.root / "prefabs" / "coin.prefab"
         prefab_path.write_text(

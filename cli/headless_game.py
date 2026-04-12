@@ -4,8 +4,8 @@ cli/headless_game.py - Headless runtime entrypoint
 
 import time
 
-from engine.core.game import Game
 from engine.core.engine_state import EngineState
+from engine.core.game import Game
 
 
 class HeadlessGame(Game):
