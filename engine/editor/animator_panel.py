@@ -57,11 +57,60 @@ def detect_slice_sequences(slice_names: List[str]) -> List[List[str]]:
     return [list(names) for _, _, names in sequences]
 
 
+def detect_slice_groups(slice_names: List[str]) -> List[Dict[str, Any]]:
+    grouped: Dict[str, List[tuple[int, int, str]]] = {}
+    for position, name in enumerate(slice_names):
+        match = _SLICE_SEQUENCE_PATTERN.match(str(name))
+        if match is None:
+            continue
+        group_name = match.group(1).rstrip("_").strip()
+        if not group_name:
+            continue
+        grouped.setdefault(group_name, []).append((int(match.group(2)), position, str(name)))
+
+    groups: List[Dict[str, Any]] = []
+    for group_name, items in grouped.items():
+        ordered = sorted(items, key=lambda item: (item[0], item[1]))
+        if len(ordered) < 2:
+            continue
+        slice_group = [item[2] for item in ordered]
+        groups.append(
+            {
+                "group_name": group_name,
+                "slice_names": slice_group,
+                "count": len(slice_group),
+            }
+        )
+
+    groups.sort(key=lambda item: (-int(item["count"]), str(item["group_name"])))
+    return groups
+
+
 def choose_default_slice_sequence(slice_names: List[str]) -> List[str]:
     sequences = detect_slice_sequences(slice_names)
     if sequences:
         return list(sequences[0])
     return [slice_names[0]] if slice_names else []
+
+
+def get_default_state_name_for_group(group_name: str) -> str:
+    clean_name = str(group_name or "").strip()
+    return clean_name or "state"
+
+
+def build_state_payload_from_slice_group(
+    slice_names: List[str],
+    *,
+    preserve_fields: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    preserved = dict(preserve_fields or {})
+    return {
+        "frames": list(range(len(slice_names))),
+        "slice_names": list(slice_names),
+        "fps": float(preserved.get("fps", 8.0)),
+        "loop": bool(preserved.get("loop", True)),
+        "on_complete": preserved.get("on_complete"),
+    }
 
 
 class AnimatorPanel:
@@ -274,6 +323,71 @@ class AnimatorPanel:
         if success:
             self.selected_state_name = state_name
             self.selected_frame_index = 0
+        return success
+
+    def list_detected_slice_groups(self, world: Any) -> List[Dict[str, Any]]:
+        context = self.get_selection_context(world)
+        return self._detect_groups_from_context(context)
+
+    def create_state_from_slice_group(self, world: Any, group_name: str) -> bool:
+        context = self.get_selection_context(world)
+        entity_name = context.get("entity_name", "")
+        if not entity_name:
+            return False
+        payload = self._get_animator_payload(world, entity_name)
+        if payload is None:
+            return False
+        group = self._find_slice_group(context, group_name)
+        if group is None:
+            return False
+
+        animations = payload.setdefault("animations", {})
+        base_name = get_default_state_name_for_group(str(group.get("group_name", "")))
+        state_name = base_name
+        suffix = 1
+        while state_name in animations:
+            state_name = f"{base_name}_{suffix}"
+            suffix += 1
+
+        animations[state_name] = build_state_payload_from_slice_group(list(group.get("slice_names", [])))
+        if not payload.get("default_state"):
+            payload["default_state"] = state_name
+        if not payload.get("current_state"):
+            payload["current_state"] = state_name
+        success = self._replace_animator_payload(world, entity_name, payload)
+        if success:
+            self.selected_state_name = state_name
+            self.selected_frame_index = 0
+            self.preview_frame = 0
+            self.preview_elapsed = 0.0
+        return success
+
+    def apply_slice_group_to_state(self, world: Any, state_name: str, group_name: str) -> bool:
+        context = self.get_selection_context(world)
+        entity_name = context.get("entity_name", "")
+        if not entity_name or not state_name:
+            return False
+        payload = self._get_animator_payload(world, entity_name)
+        if payload is None:
+            return False
+        animations = payload.setdefault("animations", {})
+        state = animations.get(state_name)
+        if state is None:
+            return False
+        group = self._find_slice_group(context, group_name)
+        if group is None:
+            return False
+
+        animations[state_name] = build_state_payload_from_slice_group(
+            list(group.get("slice_names", [])),
+            preserve_fields=state,
+        )
+        success = self._replace_animator_payload(world, entity_name, payload)
+        if success:
+            self.selected_state_name = state_name
+            self.selected_frame_index = 0
+            self.preview_frame = 0
+            self.preview_elapsed = 0.0
         return success
 
     def remove_state(self, world: Any, state_name: str) -> bool:
@@ -588,10 +702,6 @@ class AnimatorPanel:
         current_y = self._draw_card(rect, "Frames")
         state_name = context.get("selected_state_name", "")
         state_data = context.get("selected_state_data")
-        if not state_name or state_data is None:
-            rl.draw_text("Create or select a state.", int(rect.x + 10), int(current_y), 11, self.DIM_COLOR)
-            return
-
         sprite_sheet = context.get("sprite_sheet", "")
         if not sprite_sheet:
             rl.draw_text("Choose an image from the project list.", int(rect.x + 10), int(current_y), 11, self.DIM_COLOR)
@@ -622,6 +732,38 @@ class AnimatorPanel:
             cta_rect = rl.Rectangle(rect.x + 10, current_y, rect.width - 20, 24)
             if rl.gui_button(cta_rect, "Open Sprite Editor"):
                 self.request_open_sprite_editor_for = sprite_sheet
+            return
+
+        slice_groups = self._detect_groups_from_context(context)
+        if slice_groups:
+            rl.draw_text("Slice Groups", int(rect.x + 10), int(current_y), 11, self.TEXT_COLOR)
+            current_y += 18
+            for group in slice_groups[:4]:
+                group_name = str(group.get("group_name", ""))
+                row_rect = rl.Rectangle(rect.x + 10, current_y, rect.width - 20, 22)
+                rl.draw_rectangle_rec(row_rect, rl.Color(40, 40, 40, 255))
+                rl.draw_text(
+                    f"{group_name} ({int(group.get('count', 0))})",
+                    int(row_rect.x + 6),
+                    int(row_rect.y + 6),
+                    10,
+                    self.TEXT_COLOR,
+                )
+                new_rect = rl.Rectangle(row_rect.x + row_rect.width - 96, row_rect.y, 42, 22)
+                apply_rect = rl.Rectangle(row_rect.x + row_rect.width - 48, row_rect.y, 42, 22)
+                if rl.gui_button(new_rect, "New"):
+                    self.create_state_from_slice_group(world, group_name)
+                if state_name:
+                    if rl.gui_button(apply_rect, "Apply"):
+                        self.apply_slice_group_to_state(world, state_name, group_name)
+                else:
+                    rl.draw_rectangle_rec(apply_rect, rl.Color(32, 32, 32, 255))
+                    rl.draw_text("Apply", int(apply_rect.x + 6), int(apply_rect.y + 6), 9, self.DIM_COLOR)
+                current_y += 26
+            current_y += 6
+
+        if not state_name or state_data is None:
+            rl.draw_text("Create or select a state.", int(rect.x + 10), int(current_y), 11, self.DIM_COLOR)
             return
 
         fps = float(state_data.get("fps", 8.0))
@@ -771,6 +913,18 @@ class AnimatorPanel:
         dest_h = source.height * scale
         dest = rl.Rectangle(rect.x + (rect.width - dest_w) / 2, rect.y + (rect.height - dest_h) / 2, dest_w, dest_h)
         rl.draw_texture_pro(texture, source, dest, rl.Vector2(0, 0), 0.0, rl.WHITE)
+
+    def _detect_groups_from_context(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        return detect_slice_groups(list(context.get("available_slices", [])))
+
+    def _find_slice_group(self, context: Dict[str, Any], group_name: str) -> Optional[Dict[str, Any]]:
+        target = str(group_name or "").strip()
+        if not target:
+            return None
+        for group in self._detect_groups_from_context(context):
+            if str(group.get("group_name", "")) == target:
+                return dict(group)
+        return None
 
     def _get_animator_payload(self, world: Any, entity_name: str) -> Optional[Dict[str, Any]]:
         if self._scene_manager is not None and self._scene_manager.current_scene is not None:
