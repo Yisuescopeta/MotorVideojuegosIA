@@ -140,6 +140,56 @@ def can_refresh_from_recommended_group(context: Dict[str, Any], recommended_grou
     return bool(slice_names)
 
 
+def get_selected_state_slice_names(context: Dict[str, Any]) -> List[str]:
+    state_data = context.get("selected_state_data") or {}
+    return [str(name) for name in state_data.get("slice_names", []) if str(name)]
+
+
+def get_recommended_group_sync_status(
+    context: Dict[str, Any],
+    recommended_group: Optional[Dict[str, Any]],
+) -> Optional[str]:
+    if not str(context.get("selected_state_name", "") or "").strip():
+        return None
+    if recommended_group is None:
+        return None
+    recommended_slice_names = [str(name) for name in recommended_group.get("slice_names", []) if str(name)]
+    if not recommended_slice_names:
+        return None
+    state_slice_names = get_selected_state_slice_names(context)
+    if state_slice_names == recommended_slice_names:
+        return "aligned"
+    return "out_of_sync"
+
+
+def get_recommended_group_action_hint(sync_status: Optional[str]) -> str:
+    if sync_status == "aligned":
+        return "Already aligned"
+    if sync_status == "out_of_sync":
+        return "Will update frames"
+    return ""
+
+
+def get_recommended_group_refresh_label(sync_status: Optional[str]) -> str:
+    if sync_status == "aligned":
+        return "Refresh Anyway"
+    if sync_status == "out_of_sync":
+        return "Refresh Frames"
+    return "Refresh From Recommended"
+
+
+def get_recommended_group_refresh_variant(sync_status: Optional[str]) -> str:
+    if sync_status == "aligned":
+        return "neutral"
+    if sync_status == "out_of_sync":
+        return "emphasis"
+    return "default"
+
+
+def get_recommended_group_sync_badge_variant(sync_status: Optional[str]) -> str:
+    return get_recommended_group_refresh_variant(sync_status)
+
+
 class AnimatorPanel:
     BG_COLOR = rl.Color(36, 36, 36, 255)
     CARD_COLOR = rl.Color(46, 46, 46, 255)
@@ -238,14 +288,21 @@ class AnimatorPanel:
         if animator is None:
             return {"entity_name": entity_name, "status": "no_animator"}
 
-        states = animator.to_dict().get("animations", {})
+        animator_payload = self._get_animator_payload(world, entity_name) or animator.to_dict()
+        states = copy.deepcopy(animator_payload.get("animations", {}))
         selected_state = self.selected_state_name
         if selected_state not in states:
-            selected_state = animator.default_state if animator.default_state in states else next(iter(states.keys()), "")
+            payload_default_state = str(animator_payload.get("default_state", "") or "")
+            selected_state = payload_default_state if payload_default_state in states else next(iter(states.keys()), "")
         selected_state_data = copy.deepcopy(states.get(selected_state) or {})
-        sprite_sheet_locator: Any = animator.get_sprite_sheet_reference() if hasattr(animator, "get_sprite_sheet_reference") else animator.sprite_sheet
+        sprite_sheet_locator: Any = animator_payload.get("sprite_sheet")
+        if not sprite_sheet_locator:
+            sprite_sheet_locator = (
+                animator.get_sprite_sheet_reference() if hasattr(animator, "get_sprite_sheet_reference") else animator.sprite_sheet
+            )
         sprite_summary: Dict[str, Any] = {}
-        if self._asset_service is not None and animator.sprite_sheet:
+        sprite_sheet_path = str(animator_payload.get("sprite_sheet_path", "") or animator.sprite_sheet)
+        if self._asset_service is not None and sprite_sheet_path:
             entry = self._asset_service.get_asset_entry(sprite_sheet_locator)
             if entry is not None and hasattr(animator, "sync_sprite_sheet_reference"):
                 animator.sync_sprite_sheet_reference(entry.get("reference", {}))
@@ -263,7 +320,7 @@ class AnimatorPanel:
             "states": states,
             "selected_state_name": selected_state,
             "selected_state_data": selected_state_data,
-            "sprite_sheet": animator.sprite_sheet,
+            "sprite_sheet": sprite_sheet_path,
             "sprite_sheet_reference": sprite_sheet_locator,
             "sprite_sheet_summary": dict(sprite_summary),
             "sprite_sheet_pipeline_status": str(sprite_summary.get("pipeline_status", "") or ""),
@@ -785,23 +842,78 @@ class AnimatorPanel:
             rl.draw_text("Slice Groups", int(rect.x + 10), int(current_y), 11, self.TEXT_COLOR)
             current_y += 18
             if recommended_group is not None:
-                recommended_rect = rl.Rectangle(rect.x + 10, current_y, rect.width - 20, 22)
+                recommended_sync_status = self._get_recommended_group_sync_status_from_context(context, recommended_group)
+                recommended_hint = get_recommended_group_action_hint(recommended_sync_status)
+                recommended_rect = rl.Rectangle(rect.x + 10, current_y, rect.width - 20, 34)
                 rl.draw_rectangle_rec(recommended_rect, rl.Color(44, 63, 88, 255))
                 rl.draw_text(
                     f"Recommended: {recommended_group['group_name']}",
                     int(recommended_rect.x + 6),
-                    int(recommended_rect.y + 6),
+                    int(recommended_rect.y + 5),
                     10,
                     self.TEXT_COLOR,
                 )
-                quick_rect = rl.Rectangle(recommended_rect.x + recommended_rect.width - 312, recommended_rect.y, 150, 22)
+                if recommended_sync_status == "aligned":
+                    sync_label = "Aligned"
+                    sync_color = rl.Color(132, 214, 160, 255)
+                elif recommended_sync_status == "out_of_sync":
+                    sync_label = "Out of Sync"
+                    sync_color = rl.Color(232, 194, 96, 255)
+                else:
+                    sync_label = ""
+                    sync_color = self.DIM_COLOR
+                if sync_label:
+                    badge_variant = get_recommended_group_sync_badge_variant(recommended_sync_status)
+                    if badge_variant == "emphasis":
+                        badge_fill = rl.Color(99, 78, 38, 255)
+                        badge_border = rl.Color(232, 194, 96, 255)
+                    elif badge_variant == "neutral":
+                        badge_fill = rl.Color(54, 76, 102, 255)
+                        badge_border = rl.Color(118, 148, 182, 255)
+                    else:
+                        badge_fill = rl.Color(52, 52, 52, 255)
+                        badge_border = self.BORDER_COLOR
+                    badge_width = 86 if recommended_sync_status == "aligned" else 102
+                    badge_rect = rl.Rectangle(recommended_rect.x + 112, recommended_rect.y + 2, badge_width, 16)
+                    rl.draw_rectangle_rec(badge_rect, badge_fill)
+                    rl.draw_rectangle_lines_ex(badge_rect, 1, badge_border)
+                    rl.draw_text(
+                        sync_label,
+                        int(badge_rect.x + 6),
+                        int(recommended_rect.y + 5),
+                        10,
+                        sync_color,
+                    )
+                if recommended_hint:
+                    rl.draw_text(
+                        recommended_hint,
+                        int(recommended_rect.x + 6),
+                        int(recommended_rect.y + 19),
+                        9,
+                        self.DIM_COLOR,
+                    )
+                quick_rect = rl.Rectangle(recommended_rect.x + recommended_rect.width - 312, recommended_rect.y + 6, 150, 22)
                 if rl.gui_button(quick_rect, "New From Recommended"):
                     self.create_state_from_recommended_group(world)
                 if can_refresh_from_recommended_group(context, recommended_group):
-                    refresh_rect = rl.Rectangle(recommended_rect.x + recommended_rect.width - 156, recommended_rect.y, 150, 22)
-                    if rl.gui_button(refresh_rect, "Refresh From Recommended"):
+                    refresh_rect = rl.Rectangle(recommended_rect.x + recommended_rect.width - 156, recommended_rect.y + 6, 150, 22)
+                    refresh_label = get_recommended_group_refresh_label(recommended_sync_status)
+                    refresh_variant = get_recommended_group_refresh_variant(recommended_sync_status)
+                    if refresh_variant == "emphasis":
+                        accent_color = rl.Color(214, 155, 82, 255)
+                        border_color = rl.Color(232, 194, 96, 255)
+                    elif refresh_variant == "neutral":
+                        accent_color = rl.Color(72, 96, 126, 255)
+                        border_color = rl.Color(118, 148, 182, 255)
+                    else:
+                        accent_color = rl.Color(56, 56, 56, 255)
+                        border_color = self.BORDER_COLOR
+                    accent_rect = rl.Rectangle(refresh_rect.x - 4, refresh_rect.y + 1, 3, max(0, refresh_rect.height - 2))
+                    rl.draw_rectangle_rec(accent_rect, accent_color)
+                    if rl.gui_button(refresh_rect, refresh_label):
                         self.refresh_state_from_recommended_group(world)
-                current_y += 26
+                    rl.draw_rectangle_lines_ex(refresh_rect, 1, border_color)
+                current_y += 38
             for group in slice_groups[:4]:
                 group_name = str(group.get("group_name", ""))
                 row_rect = rl.Rectangle(rect.x + 10, current_y, rect.width - 20, 22)
@@ -999,6 +1111,13 @@ class AnimatorPanel:
             str(context.get("selected_state_name", "")),
             self._detect_groups_from_context(context),
         )
+
+    def _get_recommended_group_sync_status_from_context(
+        self,
+        context: Dict[str, Any],
+        recommended_group: Optional[Dict[str, Any]],
+    ) -> Optional[str]:
+        return get_recommended_group_sync_status(context, recommended_group)
 
     def _get_animator_payload(self, world: Any, entity_name: str) -> Optional[Dict[str, Any]]:
         if self._scene_manager is not None and self._scene_manager.current_scene is not None:

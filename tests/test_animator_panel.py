@@ -12,8 +12,14 @@ from engine.editor.animator_panel import (
     detect_slice_groups,
     detect_slice_sequences,
     expand_slice_sequence,
+    get_recommended_group_action_hint,
+    get_recommended_group_refresh_label,
+    get_recommended_group_refresh_variant,
+    get_recommended_group_sync_badge_variant,
+    get_recommended_group_sync_status,
     get_recommended_slice_group,
     get_default_state_name_for_group,
+    get_selected_state_slice_names,
     normalize_group_match_name,
 )
 from engine.editor.project_panel import ProjectPanel
@@ -206,6 +212,49 @@ class AnimatorPanelTests(unittest.TestCase):
         self.assertFalse(can_refresh_from_recommended_group({"selected_state_name": ""}, recommended))
         self.assertFalse(can_refresh_from_recommended_group(context, None))
         self.assertFalse(can_refresh_from_recommended_group(context, {"group_name": "idle", "slice_names": [], "count": 0}))
+
+    def test_recommended_group_sync_helpers_compare_selected_state_slice_names(self) -> None:
+        recommended = {"group_name": "idle", "slice_names": ["idle_0", "idle_1"], "count": 2}
+        aligned_context = {
+            "selected_state_name": "idle",
+            "selected_state_data": {"slice_names": ["idle_0", "idle_1"]},
+        }
+        out_of_sync_context = {
+            "selected_state_name": "idle",
+            "selected_state_data": {"slice_names": ["idle_1", "idle_0"]},
+        }
+
+        self.assertEqual(get_selected_state_slice_names(aligned_context), ["idle_0", "idle_1"])
+        self.assertEqual(get_recommended_group_sync_status(aligned_context, recommended), "aligned")
+        self.assertEqual(get_recommended_group_sync_status(out_of_sync_context, recommended), "out_of_sync")
+        self.assertIsNone(get_recommended_group_sync_status({"selected_state_name": ""}, recommended))
+        self.assertIsNone(get_recommended_group_sync_status(aligned_context, None))
+        self.assertIsNone(
+            get_recommended_group_sync_status(
+                aligned_context,
+                {"group_name": "idle", "slice_names": [], "count": 0},
+            )
+        )
+
+    def test_recommended_group_action_hint_uses_existing_sync_status(self) -> None:
+        self.assertEqual(get_recommended_group_action_hint("aligned"), "Already aligned")
+        self.assertEqual(get_recommended_group_action_hint("out_of_sync"), "Will update frames")
+        self.assertEqual(get_recommended_group_action_hint(None), "")
+
+    def test_recommended_group_refresh_label_uses_existing_sync_status(self) -> None:
+        self.assertEqual(get_recommended_group_refresh_label("aligned"), "Refresh Anyway")
+        self.assertEqual(get_recommended_group_refresh_label("out_of_sync"), "Refresh Frames")
+        self.assertEqual(get_recommended_group_refresh_label(None), "Refresh From Recommended")
+
+    def test_recommended_group_refresh_variant_uses_existing_sync_status(self) -> None:
+        self.assertEqual(get_recommended_group_refresh_variant("aligned"), "neutral")
+        self.assertEqual(get_recommended_group_refresh_variant("out_of_sync"), "emphasis")
+        self.assertEqual(get_recommended_group_refresh_variant(None), "default")
+
+    def test_recommended_group_sync_badge_variant_uses_existing_sync_status(self) -> None:
+        self.assertEqual(get_recommended_group_sync_badge_variant("aligned"), "neutral")
+        self.assertEqual(get_recommended_group_sync_badge_variant("out_of_sync"), "emphasis")
+        self.assertEqual(get_recommended_group_sync_badge_variant(None), "default")
 
     def test_animator_lists_png_assets_even_without_slices(self) -> None:
         unsliced = self._write_temp_png("assets/test_animator_unsliced.png")
@@ -538,6 +587,50 @@ class AnimatorPanelTests(unittest.TestCase):
         self.assertIsNotNone(recommended)
         self.assertEqual(recommended["group_name"], "idle")
 
+    def test_animator_panel_marks_recommended_group_as_aligned_when_sequences_match(self) -> None:
+        sprite_sheet = self._write_sheet_with_slices(
+            "assets/test_animator_aligned_group.png",
+            ["idle_0", "idle_1", "run_0", "run_1"],
+        )
+        self._create_animator_probe(
+            "AnimatorAlignedProbe",
+            sprite_sheet,
+            {"idle": {"frames": [0, 1], "slice_names": ["idle_0", "idle_1"], "fps": 8.0, "loop": True, "on_complete": None}},
+        )
+
+        world = self.api.game.world
+        world.selected_entity_name = "AnimatorAlignedProbe"
+        self.panel.selected_state_name = "idle"
+        context = self.panel.get_selection_context(world)
+        recommended = self.panel._get_recommended_group_from_context(context)
+
+        self.assertEqual(
+            self.panel._get_recommended_group_sync_status_from_context(context, recommended),
+            "aligned",
+        )
+
+    def test_animator_panel_marks_recommended_group_as_out_of_sync_when_sequences_differ(self) -> None:
+        sprite_sheet = self._write_sheet_with_slices(
+            "assets/test_animator_out_of_sync_group.png",
+            ["idle_0", "idle_1", "idle_2", "run_0"],
+        )
+        self._create_animator_probe(
+            "AnimatorOutOfSyncProbe",
+            sprite_sheet,
+            {"idle": {"frames": [0], "slice_names": ["run_0"], "fps": 8.0, "loop": True, "on_complete": None}},
+        )
+
+        world = self.api.game.world
+        world.selected_entity_name = "AnimatorOutOfSyncProbe"
+        self.panel.selected_state_name = "idle"
+        context = self.panel.get_selection_context(world)
+        recommended = self.panel._get_recommended_group_from_context(context)
+
+        self.assertEqual(
+            self.panel._get_recommended_group_sync_status_from_context(context, recommended),
+            "out_of_sync",
+        )
+
     def test_animator_panel_has_no_recommended_group_when_no_clear_match_exists(self) -> None:
         sprite_sheet = self._write_sheet_with_slices(
             "assets/test_animator_no_recommended_group.png",
@@ -555,6 +648,7 @@ class AnimatorPanelTests(unittest.TestCase):
         context = self.panel.get_selection_context(world)
 
         self.assertIsNone(self.panel._get_recommended_group_from_context(context))
+        self.assertIsNone(self.panel._get_recommended_group_sync_status_from_context(context, None))
 
     def test_animator_can_create_state_from_slice_group_with_safe_name_collision(self) -> None:
         sprite_sheet = self._write_sheet_with_slices(
@@ -621,6 +715,13 @@ class AnimatorPanelTests(unittest.TestCase):
         world = self.api.game.world
         world.selected_entity_name = "AnimatorRefreshRecommendedProbe"
         self.panel.selected_state_name = "idle"
+        before_context = self.panel.get_selection_context(world)
+        before_recommended = self.panel._get_recommended_group_from_context(before_context)
+
+        self.assertEqual(
+            self.panel._get_recommended_group_sync_status_from_context(before_context, before_recommended),
+            "out_of_sync",
+        )
 
         self.assertTrue(self.panel.refresh_state_from_recommended_group(world))
         animator = self.api.get_entity("AnimatorRefreshRecommendedProbe")["components"]["Animator"]
@@ -630,6 +731,12 @@ class AnimatorPanelTests(unittest.TestCase):
         self.assertEqual(state["fps"], 11.0)
         self.assertEqual(state["loop"], False)
         self.assertEqual(state["on_complete"], "idle")
+        after_context = self.panel.get_selection_context(world)
+        after_recommended = self.panel._get_recommended_group_from_context(after_context)
+        self.assertEqual(
+            self.panel._get_recommended_group_sync_status_from_context(after_context, after_recommended),
+            "aligned",
+        )
 
     def test_animator_refresh_from_recommended_group_is_safe_and_idempotent(self) -> None:
         sprite_sheet = self._write_sheet_with_slices(
