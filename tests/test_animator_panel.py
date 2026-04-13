@@ -7,6 +7,7 @@ import pyray as rl
 from engine.api import EngineAPI
 from engine.editor.animator_panel import (
     build_state_payload_from_slice_group,
+    can_refresh_from_recommended_group,
     choose_default_slice_sequence,
     detect_slice_groups,
     detect_slice_sequences,
@@ -197,6 +198,14 @@ class AnimatorPanelTests(unittest.TestCase):
         self.assertEqual(get_recommended_slice_group("idle", groups), groups[0])
         self.assertEqual(get_recommended_slice_group("idle_1", groups), groups[0])
         self.assertIsNone(get_recommended_slice_group("jump", groups))
+
+    def test_can_refresh_from_recommended_group_requires_selected_state_and_valid_group(self) -> None:
+        context = {"selected_state_name": "idle"}
+        recommended = {"group_name": "idle", "slice_names": ["idle_0", "idle_1"], "count": 2}
+        self.assertTrue(can_refresh_from_recommended_group(context, recommended))
+        self.assertFalse(can_refresh_from_recommended_group({"selected_state_name": ""}, recommended))
+        self.assertFalse(can_refresh_from_recommended_group(context, None))
+        self.assertFalse(can_refresh_from_recommended_group(context, {"group_name": "idle", "slice_names": [], "count": 0}))
 
     def test_animator_lists_png_assets_even_without_slices(self) -> None:
         unsliced = self._write_temp_png("assets/test_animator_unsliced.png")
@@ -589,6 +598,90 @@ class AnimatorPanelTests(unittest.TestCase):
         animator = self.api.get_entity("AnimatorCreateRecommendedProbe")["components"]["Animator"]
         self.assertIn("idle_2", animator["animations"])
         self.assertEqual(animator["animations"]["idle_2"]["slice_names"], ["idle_0", "idle_1"])
+
+    def test_animator_can_refresh_selected_state_from_recommended_group_preserving_fields(self) -> None:
+        sprite_sheet = self._write_sheet_with_slices(
+            "assets/test_animator_refresh_recommended_group.png",
+            ["idle_0", "idle_1", "idle_2", "run_0"],
+        )
+        self._create_animator_probe(
+            "AnimatorRefreshRecommendedProbe",
+            sprite_sheet,
+            {
+                "idle": {
+                    "frames": [9],
+                    "slice_names": ["run_0"],
+                    "fps": 11.0,
+                    "loop": False,
+                    "on_complete": "idle",
+                },
+            },
+        )
+
+        world = self.api.game.world
+        world.selected_entity_name = "AnimatorRefreshRecommendedProbe"
+        self.panel.selected_state_name = "idle"
+
+        self.assertTrue(self.panel.refresh_state_from_recommended_group(world))
+        animator = self.api.get_entity("AnimatorRefreshRecommendedProbe")["components"]["Animator"]
+        state = animator["animations"]["idle"]
+        self.assertEqual(state["slice_names"], ["idle_0", "idle_1", "idle_2"])
+        self.assertEqual(state["frames"], [0, 1, 2])
+        self.assertEqual(state["fps"], 11.0)
+        self.assertEqual(state["loop"], False)
+        self.assertEqual(state["on_complete"], "idle")
+
+    def test_animator_refresh_from_recommended_group_is_safe_and_idempotent(self) -> None:
+        sprite_sheet = self._write_sheet_with_slices(
+            "assets/test_animator_refresh_idempotent.png",
+            ["idle_0", "idle_1"],
+        )
+        self._create_animator_probe(
+            "AnimatorRefreshIdempotentProbe",
+            sprite_sheet,
+            {
+                "idle": {
+                    "frames": [0, 1],
+                    "slice_names": ["idle_0", "idle_1"],
+                    "fps": 8.0,
+                    "loop": True,
+                    "on_complete": None,
+                },
+            },
+        )
+
+        world = self.api.game.world
+        world.selected_entity_name = "AnimatorRefreshIdempotentProbe"
+        self.panel.selected_state_name = "idle"
+
+        self.assertTrue(self.panel.refresh_state_from_recommended_group(world))
+        animator = self.api.get_entity("AnimatorRefreshIdempotentProbe")["components"]["Animator"]
+        self.assertEqual(animator["animations"]["idle"]["slice_names"], ["idle_0", "idle_1"])
+        self.assertEqual(animator["animations"]["idle"]["frames"], [0, 1])
+
+    def test_animator_refresh_from_recommended_group_fails_without_recommendation(self) -> None:
+        sprite_sheet = self._write_sheet_with_slices(
+            "assets/test_animator_refresh_no_recommendation.png",
+            ["idle_0", "idle_1"],
+        )
+        self._create_animator_probe(
+            "AnimatorRefreshNoRecommendationProbe",
+            sprite_sheet,
+            {
+                "jump": {
+                    "frames": [0],
+                    "slice_names": ["idle_0"],
+                    "fps": 8.0,
+                    "loop": True,
+                    "on_complete": None,
+                },
+            },
+        )
+
+        world = self.api.game.world
+        world.selected_entity_name = "AnimatorRefreshNoRecommendationProbe"
+        self.panel.selected_state_name = "jump"
+        self.assertFalse(self.panel.refresh_state_from_recommended_group(world))
 
     def test_animator_can_apply_slice_group_to_existing_state_preserving_fields(self) -> None:
         sprite_sheet = self._write_sheet_with_slices(

@@ -131,6 +131,15 @@ def get_recommended_slice_group(selected_state_name: str, groups: List[Dict[str,
     return None
 
 
+def can_refresh_from_recommended_group(context: Dict[str, Any], recommended_group: Optional[Dict[str, Any]]) -> bool:
+    if not str(context.get("selected_state_name", "") or "").strip():
+        return False
+    if recommended_group is None:
+        return False
+    slice_names = list(recommended_group.get("slice_names", []))
+    return bool(slice_names)
+
+
 class AnimatorPanel:
     BG_COLOR = rl.Color(36, 36, 36, 255)
     CARD_COLOR = rl.Color(46, 46, 46, 255)
@@ -386,6 +395,17 @@ class AnimatorPanel:
         if recommended is None:
             return False
         return self.create_state_from_slice_group(world, str(recommended.get("group_name", "")))
+
+    def refresh_state_from_recommended_group(self, world: Any) -> bool:
+        context = self.get_selection_context(world)
+        recommended = self._get_recommended_group_from_context(context)
+        if not can_refresh_from_recommended_group(context, recommended):
+            return False
+        return self.apply_slice_group_to_state(
+            world,
+            str(context.get("selected_state_name", "")),
+            str(recommended.get("group_name", "")),
+        )
 
     def apply_slice_group_to_state(self, world: Any, state_name: str, group_name: str) -> bool:
         context = self.get_selection_context(world)
@@ -774,9 +794,13 @@ class AnimatorPanel:
                     10,
                     self.TEXT_COLOR,
                 )
-                quick_rect = rl.Rectangle(recommended_rect.x + recommended_rect.width - 156, recommended_rect.y, 150, 22)
+                quick_rect = rl.Rectangle(recommended_rect.x + recommended_rect.width - 312, recommended_rect.y, 150, 22)
                 if rl.gui_button(quick_rect, "New From Recommended"):
                     self.create_state_from_recommended_group(world)
+                if can_refresh_from_recommended_group(context, recommended_group):
+                    refresh_rect = rl.Rectangle(recommended_rect.x + recommended_rect.width - 156, recommended_rect.y, 150, 22)
+                    if rl.gui_button(refresh_rect, "Refresh From Recommended"):
+                        self.refresh_state_from_recommended_group(world)
                 current_y += 26
             for group in slice_groups[:4]:
                 group_name = str(group.get("group_name", ""))
