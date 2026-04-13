@@ -533,11 +533,13 @@ class ProjectPanel:
         image_width = 0
         image_height = 0
         if is_image and self.asset_service is not None and relative_path:
-            metadata = self.asset_service.get_sprite_metadata(relative_path)
-            slices = self.asset_service.list_sprite_slices(relative_path)
-            image_width, image_height = self.asset_service.get_sprite_image_size(relative_path)
-            slice_count = len(slices)
-            pipeline_status, pipeline_detail = self._compute_image_pipeline_status(has_meta, metadata, slice_count)
+            summary = self.asset_service.get_sprite_asset_summary(relative_path)
+            guid_short = str(summary.get("guid_short", guid_short) or guid_short)
+            has_meta = bool(summary.get("has_metadata", has_meta))
+            pipeline_status = str(summary.get("pipeline_status", "") or "")
+            pipeline_detail = str(summary.get("pipeline_label", "") or "")
+            slice_count = int(summary.get("slice_count", 0) or 0)
+            image_width, image_height = tuple(summary.get("image_size", (0, 0)))
         meta_chunks = [asset_kind]
         if guid_short:
             meta_chunks.append(guid_short)
@@ -565,17 +567,6 @@ class ProjectPanel:
             "is_image": is_image,
             "is_scene": is_scene,
         }
-
-    def _compute_image_pipeline_status(self, has_meta: bool, metadata: Dict[str, Any], slice_count: int) -> tuple[str, str]:
-        asset_type = str(metadata.get("asset_type", "") or "").strip().lower()
-        import_mode = str(metadata.get("import_mode", "") or "").strip().lower()
-        if slice_count > 0:
-            return ("ready", "sprite ready")
-        if asset_type == "sprite_sheet" or import_mode in {"grid", "automatic", "manual"}:
-            return ("needs slicing", "sprite sheet without slices")
-        if has_meta:
-            return ("metadata", "metadata only")
-        return ("image", "plain image")
 
     def _matches_filter(self, item: Dict[str, Any]) -> bool:
         if item["entry_type"] == "dir":

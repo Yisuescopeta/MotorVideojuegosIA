@@ -5,7 +5,7 @@ from pathlib import Path
 import pyray as rl
 
 from engine.api import EngineAPI
-from engine.editor.animator_panel import expand_slice_sequence
+from engine.editor.animator_panel import choose_default_slice_sequence, detect_slice_sequences, expand_slice_sequence
 from engine.editor.project_panel import ProjectPanel
 
 
@@ -143,9 +143,32 @@ class AnimatorPanelTests(unittest.TestCase):
         self.assertEqual(expand_slice_sequence(slices, "missing", 2), [])
         self.assertEqual(expand_slice_sequence(slices, "idle_0", 0), [])
 
+    def test_detect_slice_sequences_groups_numbered_prefix_runs(self) -> None:
+        sequences = detect_slice_sequences(["idle_0", "idle_1", "run_0", "idle_3", "run_1", "pose"])
+        self.assertEqual(sequences, [["idle_0", "idle_1"], ["run_0", "run_1"]])
+
+    def test_choose_default_slice_sequence_prefers_longest_numbered_run(self) -> None:
+        choice = choose_default_slice_sequence(["idle_0", "idle_1", "run_0", "run_1", "run_2"])
+        self.assertEqual(choice, ["run_0", "run_1", "run_2"])
+
+        fallback = choose_default_slice_sequence(["pose_a", "pose_b"])
+        self.assertEqual(fallback, ["pose_a"])
+
     def test_animator_lists_png_assets_even_without_slices(self) -> None:
         unsliced = self._write_temp_png("assets/test_animator_unsliced.png")
         sliced = self._write_sheet_with_slices("assets/test_animator_sliced.png", ["a_0"])
+        metadata_only = self._write_temp_png("assets/test_animator_metadata.png")
+        metadata_result = self.api.save_asset_metadata(
+            metadata_only,
+            {
+                "asset_type": "texture",
+                "import_mode": "raw",
+                "grid": {},
+                "automatic": {},
+                "slices": [],
+            },
+        )
+        self.assertTrue(metadata_result["success"])
         self._create_animator_probe(
             "AnimatorAssetProbe",
             unsliced,
@@ -155,8 +178,13 @@ class AnimatorPanelTests(unittest.TestCase):
         assets = {item["path"]: item for item in self.panel.list_sprite_sheet_assets()}
         self.assertIn(unsliced, assets)
         self.assertIn(sliced, assets)
+        self.assertIn(metadata_only, assets)
         self.assertFalse(assets[unsliced]["has_slices"])
         self.assertTrue(assets[sliced]["has_slices"])
+        self.assertEqual(assets[unsliced]["pipeline_status"], "image")
+        self.assertEqual(assets[metadata_only]["pipeline_status"], "metadata")
+        self.assertEqual(assets[sliced]["pipeline_status"], "ready")
+        self.assertEqual(assets[sliced]["slice_count"], 1)
 
     def test_game_opens_sprite_editor_modal_from_animator_request(self) -> None:
         unsliced = self._write_temp_png("assets/test_animator_modal.png")
@@ -359,6 +387,75 @@ class AnimatorPanelTests(unittest.TestCase):
         self.assertTrue(context["has_slices"])
         self.assertEqual(context["selected_state_name"], "idle")
         self.assertEqual(context["available_slices"], ["slice_0", "slice_1"])
+        self.assertEqual(context["sprite_sheet_pipeline_status"], "ready")
+        self.assertEqual(context["sprite_sheet_pipeline_label"], "sprite ready")
+
+    def test_animator_panel_context_marks_unsliced_sheet_as_needing_slicing(self) -> None:
+        unsliced = self._write_temp_png("assets/test_animator_context_unsliced.png")
+        metadata = self.api.save_asset_metadata(
+            unsliced,
+            {
+                "asset_type": "sprite_sheet",
+                "import_mode": "grid",
+                "grid": {"cell_width": 16, "cell_height": 16},
+                "automatic": {},
+                "slices": [],
+            },
+        )
+        self.assertTrue(metadata["success"])
+        self._create_animator_probe(
+            "AnimatorUnslicedContextProbe",
+            unsliced,
+            {"idle": {"frames": [0], "slice_names": [], "fps": 8.0, "loop": True, "on_complete": None}},
+        )
+
+        world = self.api.game.world
+        world.selected_entity_name = "AnimatorUnslicedContextProbe"
+        context = self.panel.get_selection_context(world)
+
+        self.assertEqual(context["sprite_sheet_pipeline_status"], "needs slicing")
+        self.assertEqual(context["sprite_sheet_pipeline_label"], "sprite sheet without slices")
+        self.assertFalse(context["sprite_sheet_ready"])
+        self.assertFalse(context["has_slices"])
+
+    def test_animator_create_state_bootstraps_from_detected_slice_sequence(self) -> None:
+        sprite_sheet = self._write_sheet_with_slices(
+            "assets/test_animator_bootstrap.png",
+            ["idle_0", "idle_1", "idle_2", "run_0"],
+        )
+        self._create_animator_probe(
+            "AnimatorBootstrapProbe",
+            sprite_sheet,
+            {},
+        )
+
+        world = self.api.game.world
+        world.selected_entity_name = "AnimatorBootstrapProbe"
+
+        self.assertTrue(self.panel.create_state(world))
+        animator = self.api.get_entity("AnimatorBootstrapProbe")["components"]["Animator"]
+        created_state = animator["animations"]["state_1"]
+
+        self.assertEqual(created_state["slice_names"], ["idle_0", "idle_1", "idle_2"])
+        self.assertEqual(created_state["frames"], [0, 1, 2])
+
+    def test_animator_panel_can_request_sprite_editor_for_unprepared_sheet(self) -> None:
+        unsliced = self._write_temp_png("assets/test_animator_request_unsliced.png")
+        self._create_animator_probe(
+            "AnimatorRequestUnslicedProbe",
+            unsliced,
+            {"idle": {"frames": [0], "slice_names": [], "fps": 8.0, "loop": True, "on_complete": None}},
+        )
+
+        world = self.api.game.world
+        world.selected_entity_name = "AnimatorRequestUnslicedProbe"
+        context = self.panel.get_selection_context(world)
+
+        self.assertEqual(context["sprite_sheet_pipeline_status"], "image")
+        self.panel.request_open_sprite_editor_for = context["sprite_sheet"]
+        self.api.game._process_ui_requests()
+        self.assertTrue(self.modal.is_open)
+        self.assertEqual(self.modal.asset_path, unsliced)
 
     def test_animator_panel_preserves_legacy_frames_until_state_is_edited(self) -> None:
         sprite_sheet = self._write_sheet_with_slices("assets/test_animator_legacy.png", ["legacy_0", "legacy_1", "legacy_2"])
@@ -517,6 +614,19 @@ class AnimatorPanelTests(unittest.TestCase):
         self.assertTrue(self.panel.set_animator_speed(world, 0.0))
         animator = self.api.get_entity("AnimatorSpeedPanelProbe")["components"]["Animator"]
         self.assertEqual(animator["speed"], 0.01)
+
+
+class AnimatorPanelSourceRegressionTests(unittest.TestCase):
+    def test_animator_panel_does_not_reference_modal_or_private_runtime_hooks(self) -> None:
+        source = Path("engine/editor/animator_panel.py").read_text(encoding="utf-8")
+        forbidden_tokens = (
+            "sprite_editor_modal",
+            "._input_system",
+            "._event_bus",
+        )
+
+        for token in forbidden_tokens:
+            self.assertNotIn(token, source, msg=f"engine/editor/animator_panel.py still references {token}")
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ engine/editor/animator_panel.py - Workspace dedicado para authoring de Animator.
 from __future__ import annotations
 
 import copy
+import re
 from typing import Any, Dict, List, Optional
 
 import pyray as rl
@@ -14,6 +15,7 @@ from engine.editor.render_safety import editor_scissor
 from engine.resources.texture_manager import TextureManager
 
 _UNSET = object()
+_SLICE_SEQUENCE_PATTERN = re.compile(r"^(.*?)(\d+)$")
 
 
 def expand_slice_sequence(slice_names: List[str], start_slice_name: str, sprite_count: int) -> List[str]:
@@ -27,6 +29,41 @@ def expand_slice_sequence(slice_names: List[str], start_slice_name: str, sprite_
     return list(slice_names[start_index:end_index])
 
 
+def detect_slice_sequences(slice_names: List[str]) -> List[List[str]]:
+    grouped: Dict[str, List[tuple[int, int, str]]] = {}
+    for position, name in enumerate(slice_names):
+        match = _SLICE_SEQUENCE_PATTERN.match(str(name))
+        if match is None:
+            continue
+        prefix = match.group(1)
+        grouped.setdefault(prefix, []).append((int(match.group(2)), position, str(name)))
+
+    sequences: List[tuple[int, int, List[str]]] = []
+    for items in grouped.values():
+        ordered = sorted(items, key=lambda item: (item[0], item[1]))
+        current: List[tuple[int, int, str]] = []
+        previous_number: Optional[int] = None
+        for number, position, name in ordered:
+            if current and previous_number is not None and number != previous_number + 1:
+                if len(current) > 1:
+                    sequences.append((len(current), min(entry[1] for entry in current), [entry[2] for entry in current]))
+                current = []
+            current.append((number, position, name))
+            previous_number = number
+        if len(current) > 1:
+            sequences.append((len(current), min(entry[1] for entry in current), [entry[2] for entry in current]))
+
+    sequences.sort(key=lambda item: (-item[0], item[1], item[2][0]))
+    return [list(names) for _, _, names in sequences]
+
+
+def choose_default_slice_sequence(slice_names: List[str]) -> List[str]:
+    sequences = detect_slice_sequences(slice_names)
+    if sequences:
+        return list(sequences[0])
+    return [slice_names[0]] if slice_names else []
+
+
 class AnimatorPanel:
     BG_COLOR = rl.Color(36, 36, 36, 255)
     CARD_COLOR = rl.Color(46, 46, 46, 255)
@@ -36,6 +73,7 @@ class AnimatorPanel:
     ACCENT_COLOR = rl.Color(58, 121, 187, 255)
     MIN_FRAME_MS = 16
     MAX_FRAME_MS = 1000
+    IMAGE_EXTENSIONS: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".bmp")
 
     def __init__(self) -> None:
         self._scene_manager: Any = None
@@ -130,13 +168,16 @@ class AnimatorPanel:
             selected_state = animator.default_state if animator.default_state in states else next(iter(states.keys()), "")
         selected_state_data = copy.deepcopy(states.get(selected_state) or {})
         sprite_sheet_locator: Any = animator.get_sprite_sheet_reference() if hasattr(animator, "get_sprite_sheet_reference") else animator.sprite_sheet
+        sprite_summary: Dict[str, Any] = {}
         if self._asset_service is not None and animator.sprite_sheet:
             entry = self._asset_service.get_asset_entry(sprite_sheet_locator)
             if entry is not None and hasattr(animator, "sync_sprite_sheet_reference"):
                 animator.sync_sprite_sheet_reference(entry.get("reference", {}))
                 sprite_sheet_locator = animator.get_sprite_sheet_reference()
-        slices = self._asset_service.list_slices(sprite_sheet_locator) if (self._asset_service is not None and animator.sprite_sheet) else []
+            sprite_summary = self._asset_service.get_sprite_asset_summary(sprite_sheet_locator)
+        slices = list(sprite_summary.get("slices", [])) if sprite_summary else []
         slice_names = [str(item.get("name", "")) for item in slices if item.get("name")]
+        image_width, image_height = tuple(sprite_summary.get("image_size", (0, 0))) if sprite_summary else (0, 0)
 
         return {
             "entity_name": entity_name,
@@ -148,21 +189,38 @@ class AnimatorPanel:
             "selected_state_data": selected_state_data,
             "sprite_sheet": animator.sprite_sheet,
             "sprite_sheet_reference": sprite_sheet_locator,
+            "sprite_sheet_summary": dict(sprite_summary),
+            "sprite_sheet_pipeline_status": str(sprite_summary.get("pipeline_status", "") or ""),
+            "sprite_sheet_pipeline_label": str(sprite_summary.get("pipeline_label", "") or ""),
+            "sprite_sheet_has_metadata": bool(sprite_summary.get("has_metadata", False)),
+            "sprite_sheet_slice_count": int(sprite_summary.get("slice_count", 0) or 0),
+            "sprite_sheet_image_width": int(image_width),
+            "sprite_sheet_image_height": int(image_height),
             "available_slices": slice_names,
             "has_slices": bool(slice_names),
-            "sprite_sheet_ready": bool(slice_names),
+            "sprite_sheet_ready": str(sprite_summary.get("pipeline_status", "") or "") == "ready",
         }
 
     def list_sprite_sheet_assets(self) -> List[Dict[str, Any]]:
-        if self._project_service is None or self._asset_service is None:
+        if self._asset_service is None:
             return []
-        assets = self._project_service.list_assets(extensions=[".png"])
+        self._asset_service.refresh_catalog()
+        assets = self._asset_service.list_assets(asset_kind="texture")
+        if not assets:
+            assets = self._asset_service.list_assets(extensions=list(self.IMAGE_EXTENSIONS))
         result: List[Dict[str, Any]] = []
         for asset in assets:
-            prepared = bool(self._asset_service.list_slices(asset["path"]))
+            summary = self._asset_service.get_sprite_asset_summary(asset["path"])
+            image_width, image_height = tuple(summary.get("image_size", (0, 0)))
             item = dict(asset)
-            item["has_slices"] = prepared
-            item["status_label"] = "ready" if prepared else "needs slicing"
+            item["has_slices"] = bool(summary.get("slice_count", 0))
+            item["pipeline_status"] = str(summary.get("pipeline_status", "") or "")
+            item["pipeline_label"] = str(summary.get("pipeline_label", "") or "")
+            item["status_label"] = item["pipeline_label"] or item["pipeline_status"]
+            item["slice_count"] = int(summary.get("slice_count", 0) or 0)
+            item["image_size"] = (int(image_width), int(image_height))
+            item["guid_short"] = str(summary.get("guid_short", asset.get("guid_short", "")) or "")
+            item["has_metadata"] = bool(summary.get("has_metadata", False))
             result.append(item)
         return result
 
@@ -200,9 +258,10 @@ class AnimatorPanel:
             suffix += 1
         state_name = f"state_{suffix}"
         available = list(context.get("available_slices", []))
+        default_sequence = choose_default_slice_sequence(available)
         animations[state_name] = {
-            "frames": [0],
-            "slice_names": [available[0]] if available else [],
+            "frames": list(range(len(default_sequence))) if default_sequence else [0],
+            "slice_names": default_sequence,
             "fps": 8.0,
             "loop": True,
             "on_complete": None,
@@ -519,7 +578,8 @@ class AnimatorPanel:
             base_color = self.ACCENT_COLOR if active else (rl.Color(62, 62, 62, 255) if hover else rl.Color(48, 48, 48, 255))
             rl.draw_rectangle_rec(row_rect, base_color)
             rl.draw_text(asset["name"], int(row_rect.x + 6), int(row_rect.y + 4), 10, self.TEXT_COLOR)
-            rl.draw_text(asset["status_label"], int(row_rect.x + 6), int(row_rect.y + 15), 9, self.DIM_COLOR)
+            summary = f"{asset['status_label']} | {asset.get('slice_count', 0)} slices"
+            rl.draw_text(summary[:32], int(row_rect.x + 6), int(row_rect.y + 15), 9, self.DIM_COLOR)
             if hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 self.set_sprite_sheet(world, asset["path"])
             current_y += 32
@@ -534,15 +594,30 @@ class AnimatorPanel:
 
         sprite_sheet = context.get("sprite_sheet", "")
         if not sprite_sheet:
-            rl.draw_text("Choose a PNG from the project list.", int(rect.x + 10), int(current_y), 11, self.DIM_COLOR)
+            rl.draw_text("Choose an image from the project list.", int(rect.x + 10), int(current_y), 11, self.DIM_COLOR)
             return
 
+        pipeline_label = str(context.get("sprite_sheet_pipeline_label", "") or "plain image")
+        slice_count = int(context.get("sprite_sheet_slice_count", 0) or 0)
+        image_width = int(context.get("sprite_sheet_image_width", 0) or 0)
+        image_height = int(context.get("sprite_sheet_image_height", 0) or 0)
+        rl.draw_text(f"Sheet: {sprite_sheet}", int(rect.x + 10), int(current_y), 10, self.DIM_COLOR)
+        current_y += 18
+        rl.draw_text(
+            f"Pipeline: {pipeline_label} | Image: {image_width}x{image_height} | slices: {slice_count}",
+            int(rect.x + 10),
+            int(current_y),
+            10,
+            self.TEXT_COLOR,
+        )
+        current_y += 24
+
         if not context.get("has_slices", False):
-            rl.draw_text("This PNG still needs slicing metadata.", int(rect.x + 10), int(current_y), 11, self.DIM_COLOR)
+            rl.draw_text("This sprite sheet is not ready for animation yet.", int(rect.x + 10), int(current_y), 11, self.DIM_COLOR)
             current_y += 24
             info_rect = rl.Rectangle(rect.x + 10, current_y, rect.width - 20, 22)
             rl.draw_rectangle_rec(info_rect, rl.Color(40, 40, 40, 255))
-            rl.draw_text(sprite_sheet, int(info_rect.x + 6), int(info_rect.y + 6), 10, self.DIM_COLOR)
+            rl.draw_text(pipeline_label, int(info_rect.x + 6), int(info_rect.y + 6), 10, self.DIM_COLOR)
             current_y += 28
             cta_rect = rl.Rectangle(rect.x + 10, current_y, rect.width - 20, 24)
             if rl.gui_button(cta_rect, "Open Sprite Editor"):

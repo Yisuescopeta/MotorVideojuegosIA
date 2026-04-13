@@ -23,6 +23,8 @@ from engine.rendering.materials import Material2D
 class AssetService:
     """Gestiona metadata sidecar, slices, catalogo y referencias canonicas."""
 
+    IMAGE_EXTENSIONS: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".bmp")
+
     def __init__(self, project_service: ProjectService) -> None:
         self._history: Any = None
         self._project_service = project_service
@@ -434,6 +436,45 @@ class AssetService:
     def get_image_size(self, locator: Any) -> tuple[int, int]:
         return self.get_sprite_image_size(locator)
 
+    def get_sprite_asset_summary(self, locator: Any) -> Dict[str, Any]:
+        asset_path = self._resolve_locator_path(locator)
+        entry = self.get_asset_entry(locator)
+        if entry is None and asset_path:
+            entry = self.get_asset_entry(asset_path)
+
+        metadata = self.get_sprite_metadata(asset_path) if asset_path else self._default_metadata("")
+        asset_kind = str((entry or {}).get("asset_kind", metadata.get("asset_kind", "unknown")) or "unknown")
+        importer = str((entry or {}).get("importer", metadata.get("importer", "unknown")) or "unknown")
+        guid = str((entry or {}).get("guid", metadata.get("guid", "")) or "")
+        guid_short = str((entry or {}).get("guid_short", "") or (guid[:8] if guid else ""))
+        has_metadata = bool((entry or {}).get("has_meta", False))
+        if asset_path and not has_metadata:
+            metadata_path = self.get_metadata_path(asset_path)
+            has_metadata = bool(metadata_path and metadata_path.exists())
+
+        is_image = asset_kind == "texture" or asset_path.lower().endswith(self.IMAGE_EXTENSIONS)
+        slices = self.list_sprite_slices(asset_path) if is_image and asset_path else []
+        image_size = self.get_sprite_image_size(asset_path) if is_image and asset_path else (0, 0)
+        pipeline_status, pipeline_label = self._compute_sprite_pipeline_status(has_metadata, metadata, len(slices))
+
+        return {
+            "locator": locator,
+            "path": asset_path,
+            "asset_kind": asset_kind,
+            "importer": importer,
+            "guid": guid,
+            "guid_short": guid_short,
+            "has_metadata": has_metadata,
+            "pipeline_status": pipeline_status,
+            "pipeline_label": pipeline_label,
+            "slice_count": len(slices),
+            "slices": [dict(item) for item in slices],
+            "image_size": tuple(image_size),
+            "metadata": dict(metadata),
+            "is_image": is_image,
+            "reference": dict((entry or {}).get("reference", {})) if isinstance((entry or {}).get("reference", {}), dict) else {},
+        }
+
     def _resolve_locator_path(self, locator: Any) -> str:
         if isinstance(locator, str):
             return locator.strip().replace("\\", "/")
@@ -463,6 +504,25 @@ class AssetService:
             "automatic": {},
             "slices": [],
         }
+
+    def _compute_sprite_pipeline_status(
+        self,
+        has_metadata: bool,
+        metadata: Dict[str, Any],
+        slice_count: int,
+    ) -> tuple[str, str]:
+        asset_type = str(metadata.get("asset_type", "") or "").strip().lower()
+        import_mode = str(metadata.get("import_mode", "") or "").strip().lower()
+        grid = dict(metadata.get("grid", {})) if isinstance(metadata.get("grid", {}), dict) else {}
+        automatic = dict(metadata.get("automatic", {})) if isinstance(metadata.get("automatic", {}), dict) else {}
+        has_explicit_sprite_setup = bool(grid) or bool(automatic) or import_mode in {"automatic", "manual"}
+        if slice_count > 0:
+            return ("ready", "sprite ready")
+        if (asset_type == "sprite_sheet" or import_mode in {"grid", "automatic", "manual"}) and has_explicit_sprite_setup:
+            return ("needs slicing", "sprite sheet without slices")
+        if has_metadata and (import_mode == "raw" or asset_type not in {"sprite_sheet", "texture"}):
+            return ("metadata", "metadata only")
+        return ("image", "plain image")
 
     def _save_sprite_pipeline_metadata(
         self,

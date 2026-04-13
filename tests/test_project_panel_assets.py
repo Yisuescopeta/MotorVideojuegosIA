@@ -47,6 +47,16 @@ class ProjectPanelAssetTests(unittest.TestCase):
                 "slices": [],
             },
         )
+        self.panel.asset_service.save_metadata(
+            "assets/unsliced.png",
+            {
+                "asset_type": "sprite_sheet",
+                "import_mode": "grid",
+                "grid": {"cell_width": 16, "cell_height": 16},
+                "automatic": {},
+                "slices": [],
+            },
+        )
         self.panel.asset_service.save_sprite_manual_slices(
             "assets/characters/hero_ready.png",
             [{"name": "idle_0", "x": 0, "y": 0, "width": 1, "height": 1}],
