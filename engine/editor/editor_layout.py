@@ -16,18 +16,19 @@ FUNCIONALIDADES:
     - Sistema de Pestañas (SCENE / GAME).
 """
 
-from datetime import datetime, timezone
-import pyray as rl
 import os
-import subprocess
 import platform
+import subprocess
+from datetime import datetime, timezone
 from typing import Optional
-from engine.editor.cursor_manager import CursorVisualState
+
+import pyray as rl
 from engine.editor.console_panel import ConsolePanel, log_err
+from engine.editor.cursor_manager import CursorVisualState
+from engine.editor.editor_tools import EditorTool, PivotMode, SnapSettings, TransformSpace
 from engine.editor.project_panel import ProjectPanel
 from engine.editor.render_safety import safe_reset_clip_state
 from engine.editor.scene_flow_panel import SceneFlowPanel
-from engine.editor.editor_tools import EditorTool, PivotMode, SnapSettings, TransformSpace
 
 
 class EditorLayout:
@@ -2013,9 +2014,6 @@ class EditorLayout:
 
         # Determine visible range based on camera (Optimization)
         # For now, simplistic large grid
-
-        count = 100
-        spacing = 100  # pixels per unit ideally match camera zoom
         # But we work in world units.
 
         # Center lines
