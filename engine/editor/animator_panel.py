@@ -16,6 +16,7 @@ from engine.resources.texture_manager import TextureManager
 
 _UNSET = object()
 _SLICE_SEQUENCE_PATTERN = re.compile(r"^(.*?)(\d+)$")
+_TRAILING_STATE_NUMBER_PATTERN = re.compile(r"_(\d+)$")
 
 
 def expand_slice_sequence(slice_names: List[str], start_slice_name: str, sprite_count: int) -> List[str]:
@@ -111,6 +112,23 @@ def build_state_payload_from_slice_group(
         "loop": bool(preserved.get("loop", True)),
         "on_complete": preserved.get("on_complete"),
     }
+
+
+def normalize_group_match_name(name: str) -> str:
+    normalized = str(name or "").strip().lower()
+    if not normalized:
+        return ""
+    return _TRAILING_STATE_NUMBER_PATTERN.sub("", normalized)
+
+
+def get_recommended_slice_group(selected_state_name: str, groups: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    target = normalize_group_match_name(selected_state_name)
+    if not target:
+        return None
+    for group in groups:
+        if normalize_group_match_name(str(group.get("group_name", ""))) == target:
+            return dict(group)
+    return None
 
 
 class AnimatorPanel:
@@ -361,6 +379,13 @@ class AnimatorPanel:
             self.preview_frame = 0
             self.preview_elapsed = 0.0
         return success
+
+    def create_state_from_recommended_group(self, world: Any) -> bool:
+        context = self.get_selection_context(world)
+        recommended = self._get_recommended_group_from_context(context)
+        if recommended is None:
+            return False
+        return self.create_state_from_slice_group(world, str(recommended.get("group_name", "")))
 
     def apply_slice_group_to_state(self, world: Any, state_name: str, group_name: str) -> bool:
         context = self.get_selection_context(world)
@@ -735,13 +760,30 @@ class AnimatorPanel:
             return
 
         slice_groups = self._detect_groups_from_context(context)
+        recommended_group = self._get_recommended_group_from_context(context)
         if slice_groups:
             rl.draw_text("Slice Groups", int(rect.x + 10), int(current_y), 11, self.TEXT_COLOR)
             current_y += 18
+            if recommended_group is not None:
+                recommended_rect = rl.Rectangle(rect.x + 10, current_y, rect.width - 20, 22)
+                rl.draw_rectangle_rec(recommended_rect, rl.Color(44, 63, 88, 255))
+                rl.draw_text(
+                    f"Recommended: {recommended_group['group_name']}",
+                    int(recommended_rect.x + 6),
+                    int(recommended_rect.y + 6),
+                    10,
+                    self.TEXT_COLOR,
+                )
+                quick_rect = rl.Rectangle(recommended_rect.x + recommended_rect.width - 156, recommended_rect.y, 150, 22)
+                if rl.gui_button(quick_rect, "New From Recommended"):
+                    self.create_state_from_recommended_group(world)
+                current_y += 26
             for group in slice_groups[:4]:
                 group_name = str(group.get("group_name", ""))
                 row_rect = rl.Rectangle(rect.x + 10, current_y, rect.width - 20, 22)
-                rl.draw_rectangle_rec(row_rect, rl.Color(40, 40, 40, 255))
+                is_recommended = recommended_group is not None and str(recommended_group.get("group_name", "")) == group_name
+                row_color = rl.Color(52, 70, 96, 255) if is_recommended else rl.Color(40, 40, 40, 255)
+                rl.draw_rectangle_rec(row_rect, row_color)
                 rl.draw_text(
                     f"{group_name} ({int(group.get('count', 0))})",
                     int(row_rect.x + 6),
@@ -749,6 +791,8 @@ class AnimatorPanel:
                     10,
                     self.TEXT_COLOR,
                 )
+                if is_recommended:
+                    rl.draw_text("Recommended", int(row_rect.x + 108), int(row_rect.y + 6), 9, self.TEXT_COLOR)
                 new_rect = rl.Rectangle(row_rect.x + row_rect.width - 96, row_rect.y, 42, 22)
                 apply_rect = rl.Rectangle(row_rect.x + row_rect.width - 48, row_rect.y, 42, 22)
                 if rl.gui_button(new_rect, "New"):
@@ -925,6 +969,12 @@ class AnimatorPanel:
             if str(group.get("group_name", "")) == target:
                 return dict(group)
         return None
+
+    def _get_recommended_group_from_context(self, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        return get_recommended_slice_group(
+            str(context.get("selected_state_name", "")),
+            self._detect_groups_from_context(context),
+        )
 
     def _get_animator_payload(self, world: Any, entity_name: str) -> Optional[Dict[str, Any]]:
         if self._scene_manager is not None and self._scene_manager.current_scene is not None:
