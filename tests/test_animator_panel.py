@@ -210,6 +210,9 @@ class AnimatorPanelTests(unittest.TestCase):
 
         self.assertIsNotNone(metadata)
         self.assertTrue(metadata_path.exists())
+        self.assertEqual(metadata["import_mode"], "grid")
+        self.assertEqual(metadata["import_settings"]["grid"], metadata["grid"])
+        self.assertEqual(metadata["import_settings"]["automatic"], {})
 
         world = self.api.game.world
         world.selected_entity_name = "AnimatorGenerateProbe"

@@ -92,6 +92,9 @@ class AssetService:
             return Path("")
         return self._database.get_metadata_path(asset_path)
 
+    def get_sprite_metadata(self, locator: Any) -> Dict[str, Any]:
+        return self.load_metadata(locator)
+
     def load_metadata(self, locator: Any) -> Dict[str, Any]:
         asset_path = self._resolve_locator_path(locator)
         if not asset_path:
@@ -104,6 +107,8 @@ class AssetService:
         payload = dict(before)
         payload.update(metadata)
         payload["source_path"] = asset_path
+        payload["path"] = asset_path
+        payload = self._synchronize_sprite_metadata(payload)
         saved = self._database.save_metadata(asset_path, payload)
         if record_history and self._history is not None and asset_path:
             after = json.loads(json.dumps(saved))
@@ -158,7 +163,7 @@ class AssetService:
     def rename_asset(self, locator: Any, new_name: str) -> Optional[Dict[str, Any]]:
         return self._database.rename_asset(locator, new_name)
 
-    def generate_grid_slices(
+    def generate_sprite_grid_slices(
         self,
         locator: Any,
         cell_width: int,
@@ -170,7 +175,7 @@ class AssetService:
         naming_prefix: Optional[str] = None,
     ) -> Dict[str, Any]:
         asset_path = self._resolve_locator_path(locator)
-        width, height = self.get_image_size(asset_path)
+        width, height = self.get_sprite_image_size(asset_path)
         if width <= 0 or height <= 0 or cell_width <= 0 or cell_height <= 0:
             raise ValueError("Invalid image or cell size for grid slicing")
         slices: List[Dict[str, Any]] = []
@@ -194,22 +199,45 @@ class AssetService:
                 index += 1
                 x += cell_width + spacing
             y += cell_height + spacing
-        metadata = self.load_metadata(asset_path)
-        metadata["asset_type"] = "sprite_sheet"
-        metadata["import_mode"] = "grid"
-        metadata["grid"] = {
-            "cell_width": cell_width,
-            "cell_height": cell_height,
-            "margin": margin,
-            "spacing": spacing,
-            "pivot_x": pivot_x,
-            "pivot_y": pivot_y,
-            "naming_prefix": prefix,
-        }
-        metadata["slices"] = slices
-        return self.save_metadata(asset_path, metadata)
+        return self._save_sprite_pipeline_metadata(
+            asset_path,
+            import_mode="grid",
+            slices=slices,
+            grid={
+                "cell_width": cell_width,
+                "cell_height": cell_height,
+                "margin": margin,
+                "spacing": spacing,
+                "pivot_x": pivot_x,
+                "pivot_y": pivot_y,
+                "naming_prefix": prefix,
+            },
+            automatic={},
+        )
 
-    def generate_auto_slices(
+    def generate_grid_slices(
+        self,
+        locator: Any,
+        cell_width: int,
+        cell_height: int,
+        margin: int = 0,
+        spacing: int = 0,
+        pivot_x: float = 0.5,
+        pivot_y: float = 0.5,
+        naming_prefix: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return self.generate_sprite_grid_slices(
+            locator,
+            cell_width=cell_width,
+            cell_height=cell_height,
+            margin=margin,
+            spacing=spacing,
+            pivot_x=pivot_x,
+            pivot_y=pivot_y,
+            naming_prefix=naming_prefix,
+        )
+
+    def generate_sprite_auto_slices(
         self,
         locator: Any,
         pivot_x: float = 0.5,
@@ -226,21 +254,36 @@ class AssetService:
             naming_prefix=prefix,
             alpha_threshold=alpha_threshold,
         )
+        return self._save_sprite_pipeline_metadata(
+            asset_path,
+            import_mode="automatic",
+            slices=slices,
+            grid={},
+            automatic={
+                "pivot_x": pivot_x,
+                "pivot_y": pivot_y,
+                "alpha_threshold": alpha_threshold,
+                "naming_prefix": prefix,
+            },
+        )
 
-        metadata = self.load_metadata(asset_path)
-        metadata["asset_type"] = "sprite_sheet"
-        metadata["import_mode"] = "automatic"
-        metadata["grid"] = {}
-        metadata["automatic"] = {
-            "pivot_x": pivot_x,
-            "pivot_y": pivot_y,
-            "alpha_threshold": alpha_threshold,
-            "naming_prefix": prefix,
-        }
-        metadata["slices"] = slices
-        return self.save_metadata(asset_path, metadata)
+    def generate_auto_slices(
+        self,
+        locator: Any,
+        pivot_x: float = 0.5,
+        pivot_y: float = 0.5,
+        naming_prefix: Optional[str] = None,
+        alpha_threshold: int = 1,
+    ) -> Dict[str, Any]:
+        return self.generate_sprite_auto_slices(
+            locator,
+            pivot_x=pivot_x,
+            pivot_y=pivot_y,
+            naming_prefix=naming_prefix,
+            alpha_threshold=alpha_threshold,
+        )
 
-    def save_manual_slices(
+    def save_sprite_manual_slices(
         self,
         locator: Any,
         slices: List[Dict[str, Any]],
@@ -265,13 +308,29 @@ class AssetService:
                     "pivot_y": float(item.get("pivot_y", pivot_y)),
                 }
             )
-        metadata = self.load_metadata(asset_path)
-        metadata["asset_type"] = "sprite_sheet"
-        metadata["import_mode"] = "manual"
-        metadata["grid"] = {}
-        metadata["automatic"] = {}
-        metadata["slices"] = normalized
-        return self.save_metadata(asset_path, metadata)
+        return self._save_sprite_pipeline_metadata(
+            asset_path,
+            import_mode="manual",
+            slices=normalized,
+            grid={},
+            automatic={},
+        )
+
+    def save_manual_slices(
+        self,
+        locator: Any,
+        slices: List[Dict[str, Any]],
+        pivot_x: float = 0.5,
+        pivot_y: float = 0.5,
+        naming_prefix: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return self.save_sprite_manual_slices(
+            locator,
+            slices=slices,
+            pivot_x=pivot_x,
+            pivot_y=pivot_y,
+            naming_prefix=naming_prefix,
+        )
 
     def preview_auto_slices(
         self,
@@ -309,7 +368,7 @@ class AssetService:
             rl.unload_image_colors(colors)
             rl.unload_image(image)
 
-    def import_asset(self, source_path: str, target_folder: str = "", overwrite: bool = False) -> str:
+    def import_sprite_asset(self, source_path: str, target_folder: str = "", overwrite: bool = False) -> str:
         if not source_path:
             raise ValueError("Source path is required")
         source = Path(source_path).expanduser().resolve()
@@ -332,19 +391,28 @@ class AssetService:
         self.reimport_asset(imported_path)
         return imported_path
 
-    def list_slices(self, locator: Any) -> List[Dict[str, Any]]:
+    def import_asset(self, source_path: str, target_folder: str = "", overwrite: bool = False) -> str:
+        return self.import_sprite_asset(source_path, target_folder=target_folder, overwrite=overwrite)
+
+    def list_sprite_slices(self, locator: Any) -> List[Dict[str, Any]]:
         asset_path = self._resolve_locator_path(locator)
         if not asset_path:
             return []
         return self._database.list_slices(asset_path)
 
-    def get_slice_rect(self, locator: Any, slice_name: str) -> Optional[Dict[str, Any]]:
+    def list_slices(self, locator: Any) -> List[Dict[str, Any]]:
+        return self.list_sprite_slices(locator)
+
+    def get_sprite_slice_rect(self, locator: Any, slice_name: str) -> Optional[Dict[str, Any]]:
         asset_path = self._resolve_locator_path(locator)
         if not asset_path:
             return None
         return self._database.get_slice_rect(asset_path, slice_name)
 
-    def get_image_size(self, locator: Any) -> tuple[int, int]:
+    def get_slice_rect(self, locator: Any, slice_name: str) -> Optional[Dict[str, Any]]:
+        return self.get_sprite_slice_rect(locator, slice_name)
+
+    def get_sprite_image_size(self, locator: Any) -> tuple[int, int]:
         file_path = self.resolve_asset_path(locator)
         if not file_path.exists():
             return (0, 0)
@@ -362,6 +430,9 @@ class AssetService:
             return (int(image.width), int(image.height))
         finally:
             rl.unload_image(image)
+
+    def get_image_size(self, locator: Any) -> tuple[int, int]:
+        return self.get_sprite_image_size(locator)
 
     def _resolve_locator_path(self, locator: Any) -> str:
         if isinstance(locator, str):
@@ -392,6 +463,50 @@ class AssetService:
             "automatic": {},
             "slices": [],
         }
+
+    def _save_sprite_pipeline_metadata(
+        self,
+        locator: Any,
+        *,
+        import_mode: str,
+        slices: List[Dict[str, Any]],
+        grid: Optional[Dict[str, Any]] = None,
+        automatic: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        metadata = self.load_metadata(locator)
+        metadata["asset_type"] = "sprite_sheet"
+        metadata["import_mode"] = import_mode
+        metadata["grid"] = dict(grid or {})
+        metadata["automatic"] = dict(automatic or {})
+        metadata["slices"] = [dict(item) for item in slices]
+        return self.save_metadata(locator, metadata)
+
+    def _synchronize_sprite_metadata(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
+        asset_type = str(metadata.get("asset_type", "")).strip()
+        asset_kind = str(metadata.get("asset_kind", "")).strip()
+        has_sprite_shape = any(key in metadata for key in ("import_mode", "grid", "automatic", "slices"))
+        if asset_type != "sprite_sheet" and asset_kind != "texture" and not has_sprite_shape:
+            return metadata
+
+        synchronized = dict(metadata)
+        grid = dict(synchronized.get("grid", {})) if isinstance(synchronized.get("grid", {}), dict) else {}
+        automatic = dict(synchronized.get("automatic", {})) if isinstance(synchronized.get("automatic", {}), dict) else {}
+        slices = [dict(item) for item in synchronized.get("slices", [])] if isinstance(synchronized.get("slices", []), list) else []
+        import_settings = (
+            dict(synchronized.get("import_settings", {}))
+            if isinstance(synchronized.get("import_settings", {}), dict)
+            else {}
+        )
+        synchronized["grid"] = grid
+        synchronized["automatic"] = automatic
+        synchronized["slices"] = slices
+        import_settings["asset_type"] = synchronized.get("asset_type", "sprite_sheet")
+        import_settings["import_mode"] = synchronized.get("import_mode", "raw")
+        import_settings["grid"] = dict(grid)
+        import_settings["automatic"] = dict(automatic)
+        import_settings["slices"] = [dict(item) for item in slices]
+        synchronized["import_settings"] = import_settings
+        return synchronized
 
     def _detect_auto_slices_from_colors(
         self,

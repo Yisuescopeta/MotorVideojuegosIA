@@ -110,10 +110,13 @@ class AssetsProjectAPI(EngineAPIComponent):
         reimported = self.asset_service.reimport_asset(locator)
         return self.ok("Asset reimported", reimported) if reimported is not None else self.fail("Asset reimport failed")
 
-    def get_asset_metadata(self, asset_path: str) -> Dict[str, Any]:
+    def get_sprite_metadata(self, asset_path: str) -> Dict[str, Any]:
         if self.asset_service is None:
             return {}
-        return self.asset_service.load_metadata(asset_path)
+        return self.asset_service.get_sprite_metadata(asset_path)
+
+    def get_asset_metadata(self, asset_path: str) -> Dict[str, Any]:
+        return self.get_sprite_metadata(asset_path)
 
     def save_asset_metadata(self, asset_path: str, metadata: Dict[str, Any]) -> ActionResult:
         if self.asset_service is None:
@@ -121,7 +124,7 @@ class AssetsProjectAPI(EngineAPIComponent):
         saved = self.asset_service.save_metadata(asset_path, metadata)
         return self.ok("Asset metadata saved", saved)
 
-    def create_grid_slices(
+    def generate_sprite_grid_slices(
         self,
         asset_path: str,
         cell_width: int,
@@ -134,7 +137,7 @@ class AssetsProjectAPI(EngineAPIComponent):
     ) -> ActionResult:
         if self.asset_service is None:
             return self.fail("Asset service not ready")
-        metadata = self.asset_service.generate_grid_slices(
+        metadata = self.asset_service.generate_sprite_grid_slices(
             asset_path,
             cell_width=cell_width,
             cell_height=cell_height,
@@ -144,12 +147,42 @@ class AssetsProjectAPI(EngineAPIComponent):
             pivot_y=pivot_y,
             naming_prefix=naming_prefix,
         )
-        return self.ok("Grid slices created", metadata)
+        return self.ok("Sprite grid slices created", metadata)
 
-    def list_asset_slices(self, asset_path: str) -> list[Dict[str, Any]]:
+    def create_grid_slices(
+        self,
+        asset_path: str,
+        cell_width: int,
+        cell_height: int,
+        margin: int = 0,
+        spacing: int = 0,
+        pivot_x: float = 0.5,
+        pivot_y: float = 0.5,
+        naming_prefix: Optional[str] = None,
+    ) -> ActionResult:
+        return self.generate_sprite_grid_slices(
+            asset_path=asset_path,
+            cell_width=cell_width,
+            cell_height=cell_height,
+            margin=margin,
+            spacing=spacing,
+            pivot_x=pivot_x,
+            pivot_y=pivot_y,
+            naming_prefix=naming_prefix,
+        )
+
+    def list_sprite_slices(self, asset_path: str) -> list[Dict[str, Any]]:
         if self.asset_service is None:
             return []
-        return self.asset_service.list_slices(asset_path)
+        return self.asset_service.list_sprite_slices(asset_path)
+
+    def list_asset_slices(self, asset_path: str) -> list[Dict[str, Any]]:
+        return self.list_sprite_slices(asset_path)
+
+    def get_sprite_slice_rect(self, asset_path: str, slice_name: str) -> Optional[Dict[str, Any]]:
+        if self.asset_service is None:
+            return None
+        return self.asset_service.get_sprite_slice_rect(asset_path, slice_name)
 
     def preview_auto_slices(
         self,
@@ -172,6 +205,28 @@ class AssetsProjectAPI(EngineAPIComponent):
             color_tolerance=color_tolerance,
         )
 
+    def generate_sprite_auto_slices(
+        self,
+        asset_path: str,
+        pivot_x: float = 0.5,
+        pivot_y: float = 0.5,
+        naming_prefix: Optional[str] = None,
+        alpha_threshold: int = 1,
+    ) -> ActionResult:
+        if self.asset_service is None:
+            return self.fail("Asset service not ready")
+        try:
+            metadata = self.asset_service.generate_sprite_auto_slices(
+                asset_path,
+                pivot_x=pivot_x,
+                pivot_y=pivot_y,
+                naming_prefix=naming_prefix,
+                alpha_threshold=alpha_threshold,
+            )
+            return self.ok("Sprite auto slices created", metadata)
+        except Exception as exc:
+            return self.fail(f"Sprite auto slice generation failed: {exc}")
+
     def create_auto_slices(
         self,
         asset_path: str,
@@ -180,20 +235,35 @@ class AssetsProjectAPI(EngineAPIComponent):
         naming_prefix: Optional[str] = None,
         alpha_threshold: int = 1,
     ) -> ActionResult:
-        """Generate and save auto-detected slices for an asset."""
+        return self.generate_sprite_auto_slices(
+            asset_path=asset_path,
+            pivot_x=pivot_x,
+            pivot_y=pivot_y,
+            naming_prefix=naming_prefix,
+            alpha_threshold=alpha_threshold,
+        )
+
+    def save_sprite_manual_slices(
+        self,
+        asset_path: str,
+        slices: list[Dict[str, Any]],
+        pivot_x: float = 0.5,
+        pivot_y: float = 0.5,
+        naming_prefix: Optional[str] = None,
+    ) -> ActionResult:
         if self.asset_service is None:
             return self.fail("Asset service not ready")
         try:
-            metadata = self.asset_service.generate_auto_slices(
+            metadata = self.asset_service.save_sprite_manual_slices(
                 asset_path,
+                slices=slices,
                 pivot_x=pivot_x,
                 pivot_y=pivot_y,
                 naming_prefix=naming_prefix,
-                alpha_threshold=alpha_threshold,
             )
-            return self.ok("Auto slices created", metadata)
+            return self.ok("Sprite manual slices saved", metadata)
         except Exception as exc:
-            return self.fail(f"Auto slice generation failed: {exc}")
+            return self.fail(f"Sprite manual slice save failed: {exc}")
 
     def save_manual_slices(
         self,
@@ -203,24 +273,32 @@ class AssetsProjectAPI(EngineAPIComponent):
         pivot_y: float = 0.5,
         naming_prefix: Optional[str] = None,
     ) -> ActionResult:
-        """Save manually defined slices for an asset."""
+        return self.save_sprite_manual_slices(
+            asset_path=asset_path,
+            slices=slices,
+            pivot_x=pivot_x,
+            pivot_y=pivot_y,
+            naming_prefix=naming_prefix,
+        )
+
+    def get_sprite_image_size(self, asset_path: str) -> Dict[str, int]:
+        if self.asset_service is None:
+            return {"width": 0, "height": 0}
+        width, height = self.asset_service.get_sprite_image_size(asset_path)
+        return {"width": width, "height": height}
+
+    def get_asset_image_size(self, asset_path: str) -> Dict[str, int]:
+        return self.get_sprite_image_size(asset_path)
+
+    def import_sprite_asset(self, source_path: str, target_folder: str = "", overwrite: bool = False) -> ActionResult:
         if self.asset_service is None:
             return self.fail("Asset service not ready")
         try:
-            metadata = self.asset_service.save_manual_slices(
-                asset_path,
-                slices=slices,
-                pivot_x=pivot_x,
-                pivot_y=pivot_y,
-                naming_prefix=naming_prefix,
+            imported_path = self.asset_service.import_sprite_asset(
+                source_path,
+                target_folder=target_folder,
+                overwrite=overwrite,
             )
-            return self.ok("Manual slices saved", metadata)
+            return self.ok("Sprite asset imported", {"path": imported_path})
         except Exception as exc:
-            return self.fail(f"Manual slice save failed: {exc}")
-
-    def get_asset_image_size(self, asset_path: str) -> Dict[str, int]:
-        """Get the image dimensions for an asset."""
-        if self.asset_service is None:
-            return {"width": 0, "height": 0}
-        width, height = self.asset_service.get_image_size(asset_path)
-        return {"width": width, "height": height}
+            return self.fail(f"Sprite import failed: {exc}")
