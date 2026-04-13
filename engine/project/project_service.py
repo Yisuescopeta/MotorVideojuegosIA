@@ -165,7 +165,7 @@ class ProjectService:
 
     def _guard_writable(self, operation: str = "write") -> None:
         """Raise PermissionError if this service is in read-only mode.
-        
+
         Call this at the entry point of every mutating operation.
         Internal calls from already-guarded public methods do not need additional guards.
         """
@@ -551,9 +551,7 @@ class ProjectService:
         return [
             self.to_relative_path(path)
             for path in sorted(prefabs_root.rglob("*"))
-            if path.is_file()
-            and not path.name.endswith(".meta.json")
-            and path.suffix.lower() in {".prefab", ".json"}
+            if path.is_file() and not path.name.endswith(".meta.json") and path.suffix.lower() in {".prefab", ".json"}
         ]
 
     def clear_recent_projects(self) -> None:
@@ -597,7 +595,9 @@ class ProjectService:
                 self._write_default_scene(startup_scene, "Main Scene")
             self.generate_ai_bootstrap(root, manifest)
 
-    def generate_ai_bootstrap(self, root: Path | None = None, manifest: ProjectManifest | None = None) -> Dict[str, Any]:
+    def generate_ai_bootstrap(
+        self, root: Path | None = None, manifest: ProjectManifest | None = None
+    ) -> Dict[str, Any]:
         self._guard_writable("generate_ai_bootstrap")
         from engine.ai import CapabilityRegistryBuilder, MotorAIBootstrapBuilder
 
@@ -696,7 +696,10 @@ class ProjectService:
         template = str(data.get("template", defaults["template"])).strip() or defaults["template"]
         raw_terminal = data.get("terminal", {})
         terminal = raw_terminal if isinstance(raw_terminal, dict) else {}
-        execution_policy = str(terminal.get("execution_policy", defaults["terminal"]["execution_policy"])).strip() or defaults["terminal"]["execution_policy"]
+        execution_policy = (
+            str(terminal.get("execution_policy", defaults["terminal"]["execution_policy"])).strip()
+            or defaults["terminal"]["execution_policy"]
+        )
         if execution_policy not in {"inherit", "RemoteSigned", "Bypass"}:
             execution_policy = defaults["terminal"]["execution_policy"]
         raw_api = data.get("api", {})
@@ -795,7 +798,8 @@ class ProjectService:
                 {
                     "name": str(item.get("name", "")).strip() or Path(path).name or "Project",
                     "path": path,
-                    "manifest_path": str(item.get("manifest_path", "")).strip() or (Path(path) / self.PROJECT_FILE).as_posix(),
+                    "manifest_path": str(item.get("manifest_path", "")).strip()
+                    or (Path(path) / self.PROJECT_FILE).as_posix(),
                     "last_opened_utc": str(item.get("last_opened_utc", "")).strip(),
                     "engine_version": str(item.get("engine_version", "")).strip(),
                 }
@@ -850,7 +854,9 @@ class ProjectService:
             except Exception:
                 status = "invalid"
 
-        name = str((registry_item or {}).get("name", "")).strip() or (manifest.name if manifest is not None else root.name or "Project")
+        name = str((registry_item or {}).get("name", "")).strip() or (
+            manifest.name if manifest is not None else root.name or "Project"
+        )
         engine_version = str((registry_item or {}).get("engine_version", "")).strip()
         if manifest is not None:
             engine_version = manifest.engine_version

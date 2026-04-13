@@ -37,7 +37,7 @@ ARCHITECTURE NOTE:
 
     Legacy compatibility (DEPRECATED):
         python -m tools.engine_cli [command] [options]
-        
+
         Shows deprecation warning and delegates to motor.cli
 
 MIGRATION GUIDE:
@@ -61,45 +61,44 @@ INTERNAL USE ONLY:
 
 from __future__ import annotations
 
-import warnings
 import sys
-from typing import List, Optional
+import warnings
+
+# Re-export official CLI for transition support
+# This allows gradual migration from tools.engine_cli to motor.cli
+from motor.cli import cli_main, create_motor_parser, main, run_motor_command
 
 # Re-export command handlers from motor.cli_core for backward compatibility
 # New code should import directly from motor.cli_core
 from motor.cli_core import (
-    # Commands
-    cmd_capabilities,
-    cmd_doctor,
-    cmd_project_info,
-    cmd_scene_list,
-    cmd_scene_create,
-    cmd_entity_create,
-    cmd_component_add,
-    cmd_assets_list,
-    cmd_slices_list,
-    cmd_slices_grid,
-    cmd_slices_auto,
-    cmd_slices_manual,
-    cmd_animator_info,
-    cmd_animator_set_sheet,
-    cmd_animator_upsert_state,
-    cmd_animator_remove_state,
-    # Utilities
-    _output,
+    # Exceptions
+    EngineCLIError,
+    EngineInitError,
+    ProjectNotFoundError,
     _ensure_project,
     _init_engine,
     _make_response,
+    # Utilities
+    _output,
     _print_json,
-    # Exceptions
-    EngineCLIError,
-    ProjectNotFoundError,
-    EngineInitError,
+    cmd_animator_info,
+    cmd_animator_remove_state,
+    cmd_animator_set_sheet,
+    cmd_animator_upsert_state,
+    cmd_assets_list,
+    # Commands
+    cmd_capabilities,
+    cmd_component_add,
+    cmd_doctor,
+    cmd_entity_create,
+    cmd_project_info,
+    cmd_scene_create,
+    cmd_scene_list,
+    cmd_slices_auto,
+    cmd_slices_grid,
+    cmd_slices_list,
+    cmd_slices_manual,
 )
-
-# Re-export official CLI for transition support
-# This allows gradual migration from tools.engine_cli to motor.cli
-from motor.cli import run_motor_command, cli_main, main, create_motor_parser
 
 # Legacy compatibility alias
 parse_args = create_motor_parser
@@ -153,16 +152,17 @@ def _emit_deprecation_warning() -> None:
 def deprecated_main() -> int:
     """
     DEPRECATED entry point for backward compatibility.
-    
+
     Emits deprecation warning and delegates to the official motor CLI.
-    
+
     Returns:
         Exit code from cli_main()
     """
     _emit_deprecation_warning()
     print(
-        "[DEPRECATED] Using python -m tools.engine_cli is deprecated.\n"
-        "[DEPRECATED] Please use: motor {}\n".format(" ".join(sys.argv[1:])),
+        "[DEPRECATED] Using python -m tools.engine_cli is deprecated.\n[DEPRECATED] Please use: motor {}\n".format(
+            " ".join(sys.argv[1:])
+        ),
         file=sys.stderr,
     )
     return cli_main()
