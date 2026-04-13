@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 import pyray as rl
 from engine.assets.asset_service import AssetService
 from engine.components.animator import Animator
+from engine.components.animator_controller import AnimatorController
 from engine.editor.render_safety import editor_scissor
 from engine.resources.texture_manager import TextureManager
 
@@ -49,6 +50,7 @@ class AnimatorPanel:
         self.preview_playing: bool = False
         self.preview_frame: int = 0
         self.preview_elapsed: float = 0.0
+        self.active_tab: str = "clips"
         self.request_open_sprite_editor_for: Optional[str] = None
 
     def set_scene_manager(self, manager: Any) -> None:
@@ -65,6 +67,7 @@ class AnimatorPanel:
         self.preview_playing = False
         self.preview_frame = 0
         self.preview_elapsed = 0.0
+        self.active_tab = "clips"
         self.request_open_sprite_editor_for = None
 
     def _fps_to_frame_ms(self, fps: float) -> int:
@@ -129,6 +132,7 @@ class AnimatorPanel:
         if selected_state not in states:
             selected_state = animator.default_state if animator.default_state in states else next(iter(states.keys()), "")
         selected_state_data = copy.deepcopy(states.get(selected_state) or {})
+        controller_payload = self._get_animator_controller_payload(world, entity_name)
         sprite_sheet_locator: Any = animator.get_sprite_sheet_reference() if hasattr(animator, "get_sprite_sheet_reference") else animator.sprite_sheet
         if self._asset_service is not None and animator.sprite_sheet:
             entry = self._asset_service.get_asset_entry(sprite_sheet_locator)
@@ -151,6 +155,7 @@ class AnimatorPanel:
             "available_slices": slice_names,
             "has_slices": bool(slice_names),
             "sprite_sheet_ready": bool(slice_names),
+            "controller": controller_payload,
         }
 
     def list_sprite_sheet_assets(self) -> List[Dict[str, Any]]:
@@ -458,12 +463,26 @@ class AnimatorPanel:
                 self._draw_empty_state(status, x, y, width, height)
                 return
 
+            tab_y = y + 4
+            clips_tab = rl.Rectangle(x + 4, tab_y, 78, 24)
+            controller_tab = rl.Rectangle(x + 88, tab_y, 96, 24)
+            if rl.gui_button(clips_tab, "Clips"):
+                self.active_tab = "clips"
+            if rl.gui_button(controller_tab, "Controller"):
+                self.active_tab = "controller"
+
             left_w = int(width * 0.28)
             center_w = int(width * 0.40)
             right_w = width - left_w - center_w - 16
-            left_rect = rl.Rectangle(x + 4, y + 4, left_w, height - 8)
-            center_rect = rl.Rectangle(left_rect.x + left_rect.width + 4, y + 4, center_w, height - 8)
-            right_rect = rl.Rectangle(center_rect.x + center_rect.width + 4, y + 4, right_w, height - 8)
+            body_y = y + 34
+            body_height = height - 38
+            left_rect = rl.Rectangle(x + 4, body_y, left_w, body_height)
+            center_rect = rl.Rectangle(left_rect.x + left_rect.width + 4, body_y, center_w, body_height)
+            right_rect = rl.Rectangle(center_rect.x + center_rect.width + 4, body_y, right_w, body_height)
+
+            if self.active_tab == "controller":
+                self._draw_controller_tab(world, context, rl.Rectangle(x + 4, body_y, width - 8, body_height))
+                return
 
             self._draw_states_column(world, context, left_rect)
             self._draw_state_editor(world, context, center_rect)
@@ -679,6 +698,62 @@ class AnimatorPanel:
         current_y += int(preview_rect.height + 8)
         rl.draw_text(f"{len(slice_names)} frames", int(rect.x + 10), int(current_y), 10, self.DIM_COLOR)
 
+    def _draw_controller_tab(self, world: Any, context: Dict[str, Any], rect: rl.Rectangle) -> None:
+        current_y = self._draw_card(rect, f"Controller: {context['entity_name']}")
+        controller_payload = context.get("controller")
+        if not isinstance(controller_payload, dict):
+            rl.draw_text("This Animator has no AnimatorController component yet.", int(rect.x + 10), int(current_y), 11, self.DIM_COLOR)
+            add_rect = rl.Rectangle(rect.x + 10, current_y + 28, 180, 24)
+            if rl.gui_button(add_rect, "Add AnimatorController"):
+                self._ensure_animator_controller(world, context["entity_name"])
+            return
+
+        rl.draw_text("Legacy note: Animator.on_complete is ignored while the controller is enabled.", int(rect.x + 10), int(current_y), 10, self.DIM_COLOR)
+        current_y += 24
+        enabled_rect = rl.Rectangle(rect.x + 10, current_y, 180, 22)
+        if rl.gui_button(enabled_rect, f"Enabled: {'ON' if controller_payload.get('enabled', True) else 'OFF'}"):
+            payload = copy.deepcopy(controller_payload)
+            payload["enabled"] = not bool(payload.get("enabled", True))
+            self._replace_animator_controller_payload(world, context["entity_name"], payload)
+        current_y += 28
+
+        entry_state = str(controller_payload.get("entry_state", "") or "")
+        rl.draw_text(f"Entry State: {entry_state or '(empty)'}", int(rect.x + 10), int(current_y), 11, self.TEXT_COLOR)
+        current_y += 22
+
+        parameters = controller_payload.get("parameters", {})
+        states = controller_payload.get("states", {})
+        transitions = controller_payload.get("transitions", [])
+        rl.draw_text(f"Parameters: {len(parameters) if isinstance(parameters, dict) else 0}", int(rect.x + 10), int(current_y), 10, self.TEXT_COLOR)
+        current_y += 18
+        if isinstance(parameters, dict):
+            for parameter_name, parameter_payload in list(parameters.items())[:8]:
+                parameter_type = parameter_payload.get("type", "float") if isinstance(parameter_payload, dict) else "float"
+                rl.draw_text(f"- {parameter_name}: {parameter_type}", int(rect.x + 16), int(current_y), 10, self.DIM_COLOR)
+                current_y += 16
+
+        current_y += 8
+        rl.draw_text(f"States: {len(states) if isinstance(states, dict) else 0}", int(rect.x + 10), int(current_y), 10, self.TEXT_COLOR)
+        current_y += 18
+        if isinstance(states, dict):
+            for state_name, state_payload in list(states.items())[:10]:
+                animation_state = state_payload.get("animation_state", "") if isinstance(state_payload, dict) else ""
+                rl.draw_text(f"- {state_name} -> {animation_state}", int(rect.x + 16), int(current_y), 10, self.DIM_COLOR)
+                current_y += 16
+
+        current_y += 8
+        rl.draw_text(f"Transitions: {len(transitions) if isinstance(transitions, list) else 0}", int(rect.x + 10), int(current_y), 10, self.TEXT_COLOR)
+        current_y += 18
+        if isinstance(transitions, list):
+            for transition_payload in transitions[:10]:
+                if not isinstance(transition_payload, dict):
+                    continue
+                transition_id = str(transition_payload.get("id", "") or "(transition)")
+                from_state = "Any State" if bool(transition_payload.get("from_any_state", False)) else str(transition_payload.get("from_state", "") or "")
+                to_state = str(transition_payload.get("to_state", "") or "")
+                rl.draw_text(f"- {transition_id}: {from_state} -> {to_state}", int(rect.x + 16), int(current_y), 10, self.DIM_COLOR)
+                current_y += 16
+
     def _draw_preview_texture(self, asset_path: str, slice_name: str, rect: rl.Rectangle) -> None:
         rl.draw_rectangle_rec(rect, rl.Color(32, 32, 32, 255))
         rl.draw_rectangle_lines_ex(rect, 1, self.BORDER_COLOR)
@@ -712,6 +787,21 @@ class AnimatorPanel:
             return None
         return copy.deepcopy(animator.to_dict())
 
+    def _get_animator_controller_payload(self, world: Any, entity_name: str) -> Optional[Dict[str, Any]]:
+        if self._scene_manager is not None and self._scene_manager.current_scene is not None:
+            entity_data = self._scene_manager.current_scene.find_entity(entity_name)
+            if entity_data is not None:
+                component_data = entity_data.get("components", {}).get("AnimatorController")
+                if component_data is not None:
+                    return copy.deepcopy(component_data)
+        entity = world.get_entity_by_name(entity_name)
+        if entity is None:
+            return None
+        controller = entity.get_component(AnimatorController)
+        if controller is None:
+            return None
+        return copy.deepcopy(controller.to_dict())
+
     def _replace_animator_payload(self, world: Any, entity_name: str, payload: Dict[str, Any]) -> bool:
         if self._scene_manager is not None:
             return self._scene_manager.replace_component_data(entity_name, "Animator", copy.deepcopy(payload))
@@ -724,6 +814,29 @@ class AnimatorPanel:
         replacement = Animator.from_dict(payload)
         entity.add_component(replacement)
         return True
+
+    def _replace_animator_controller_payload(self, world: Any, entity_name: str, payload: Dict[str, Any]) -> bool:
+        if self._scene_manager is not None:
+            existing = self._get_animator_controller_payload(world, entity_name)
+            if existing is None:
+                return self._scene_manager.add_component_to_entity(entity_name, "AnimatorController", copy.deepcopy(payload))
+            return self._scene_manager.replace_component_data(entity_name, "AnimatorController", copy.deepcopy(payload))
+        entity = world.get_entity_by_name(entity_name)
+        if entity is None:
+            return False
+        replacement = AnimatorController.from_dict(payload)
+        entity.add_component(replacement)
+        return True
+
+    def _ensure_animator_controller(self, world: Any, entity_name: str) -> bool:
+        payload = {
+            "enabled": True,
+            "entry_state": "",
+            "parameters": {},
+            "states": {},
+            "transitions": [],
+        }
+        return self._replace_animator_controller_payload(world, entity_name, payload)
 
     def cleanup(self) -> None:
         self._texture_manager.unload_all()

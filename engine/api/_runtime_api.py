@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 
 from engine.api._context import EngineAPIComponent
 from engine.api.types import ActionResult, EngineStatus, EntityData
+from engine.components.animator_controller import AnimatorController
 from engine.physics.backend import PhysicsBackendInfo, PhysicsBackendSelection
 
 
@@ -227,6 +228,54 @@ class RuntimeAPI(EngineAPIComponent):
         success = self.game.audio_system.resume(self.game.world, entity_name)
         return self.ok("Audio resumed", {"entity": entity_name}) if success else self.fail("Audio source not found, disabled, or not paused")
 
+    def set_animator_parameter(self, entity_name: str, parameter_name: str, value: Any) -> ActionResult:
+        controller = self._require_animator_controller(entity_name)
+        if controller is None:
+            return self.fail("AnimatorController not found")
+        normalized_name = str(parameter_name or "").strip()
+        if not normalized_name:
+            return self.fail("AnimatorController parameter name is required")
+        if not controller.has_parameter(normalized_name):
+            return self.fail(f"AnimatorController parameter '{normalized_name}' not found")
+        try:
+            success = controller.set_parameter(normalized_name, value)
+        except (TypeError, ValueError):
+            return self.fail(f"AnimatorController parameter '{normalized_name}' rejected the provided value")
+        if not success:
+            return self.fail(f"AnimatorController parameter '{normalized_name}' update failed")
+        return self.ok(
+            "AnimatorController parameter updated",
+            {
+                "entity": entity_name,
+                "parameter": normalized_name,
+                "value": controller.get_parameter_value(normalized_name),
+            },
+        )
+
+    def set_animator_trigger(self, entity_name: str, parameter_name: str) -> ActionResult:
+        controller = self._require_animator_controller(entity_name)
+        if controller is None:
+            return self.fail("AnimatorController not found")
+        normalized_name = str(parameter_name or "").strip()
+        if not controller.set_trigger(normalized_name):
+            return self.fail(f"AnimatorController trigger '{normalized_name}' not found")
+        return self.ok("AnimatorController trigger set", {"entity": entity_name, "parameter": normalized_name})
+
+    def reset_animator_trigger(self, entity_name: str, parameter_name: str) -> ActionResult:
+        controller = self._require_animator_controller(entity_name)
+        if controller is None:
+            return self.fail("AnimatorController not found")
+        normalized_name = str(parameter_name or "").strip()
+        if not controller.reset_trigger(normalized_name):
+            return self.fail(f"AnimatorController trigger '{normalized_name}' not found")
+        return self.ok("AnimatorController trigger reset", {"entity": entity_name, "parameter": normalized_name})
+
     def shutdown(self) -> None:
         if self.game is not None:
             self.game.request_shutdown()
+
+    def _require_animator_controller(self, entity_name: str) -> AnimatorController | None:
+        if self.game is None or self.game.world is None:
+            return None
+        entity = self.require_entity(entity_name)
+        return entity.get_component(AnimatorController)

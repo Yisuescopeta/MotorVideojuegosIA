@@ -34,6 +34,7 @@ EJEMPLO DE USO:
 from typing import Any, Dict, List, Optional
 
 from engine.components.animator import Animator
+from engine.components.animator_controller import AnimatorController
 from engine.components.transform import Transform
 from engine.ecs.world import World
 from engine.events.event_bus import Event, EventBus
@@ -204,6 +205,13 @@ class RuleSystem:
             return
 
         animator = entity.get_component(Animator)
+        controller = entity.get_component(AnimatorController)
+        if animator is not None and controller is not None and controller.enabled and state in controller.states:
+            controller.set_active_state(state, last_transition_id="rule_set_animation")
+            animation_state = controller.get_state_animation(state)
+            if animation_state in animator.animations:
+                animator.play(animation_state, force_restart=True)
+            return
         if animator is not None:
             animator.play(state)
 

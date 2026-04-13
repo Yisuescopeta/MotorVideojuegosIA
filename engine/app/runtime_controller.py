@@ -28,6 +28,7 @@ class RuntimeController:
         get_script_behaviour_system: Callable[[], Any],
         get_event_bus: Callable[[], Any],
         get_animation_system: Callable[[], Any],
+        get_animator_controller_system: Callable[[], Any],
         get_input_system: Callable[[], Any],
         get_player_controller_system: Callable[[], Any],
         get_character_controller_system: Callable[[], Any],
@@ -49,6 +50,7 @@ class RuntimeController:
         self._get_script_behaviour_system = get_script_behaviour_system
         self._get_event_bus = get_event_bus
         self._get_animation_system = get_animation_system
+        self._get_animator_controller_system = get_animator_controller_system
         self._get_input_system = get_input_system
         self._get_player_controller_system = get_player_controller_system
         self._get_character_controller_system = get_character_controller_system
@@ -174,6 +176,10 @@ class RuntimeController:
         backend = self._get_physics_backend_registry().resolve(world).backend
         if backend is not None and state.allows_physics():
             backend.step(world, dt)
+
+        animator_controller_system = self._get_animator_controller_system()
+        if animator_controller_system is not None:
+            animator_controller_system.update(world, dt)
 
         audio_system = self._get_audio_system()
         if audio_system is not None:

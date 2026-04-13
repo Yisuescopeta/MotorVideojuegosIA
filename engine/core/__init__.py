@@ -1,18 +1,28 @@
 """
-engine/core/ - Módulos del núcleo del motor
-
-PROPÓSITO:
-    Contiene la lógica central del motor: game loop, tiempo e input.
-
-MÓDULOS:
-    - game: Clase principal Game con el game loop
-    - time_manager: Control de delta time y FPS
+engine/core/ - Modulos del nucleo del motor.
 """
 
-from engine.core.game import Game
-from engine.core.time_manager import TimeManager
+from __future__ import annotations
 
-__all__ = [
-    "Game",
-    "TimeManager",
-]
+import importlib
+from typing import Any
+
+_LAZY_IMPORTS: dict[str, tuple[str, str]] = {
+    "Game": ("engine.core.game", "Game"),
+    "TimeManager": ("engine.core.time_manager", "TimeManager"),
+}
+
+__all__ = list(_LAZY_IMPORTS)
+
+
+def __getattr__(name: str) -> Any:
+    if name not in _LAZY_IMPORTS:
+        raise AttributeError(name)
+    module_name, attr_name = _LAZY_IMPORTS[name]
+    value = getattr(importlib.import_module(module_name), attr_name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))

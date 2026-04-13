@@ -57,8 +57,9 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             self._physics_system.update(world, dt)
         if self._collision_system is not None:
             self._collision_system.update(world)
-        self._latest_contacts.extend(self._build_overlap_contacts())
-        self._append_swept_contacts(world)
+        self._latest_contacts.extend(self._build_physics_contacts())
+        self._append_overlap_contacts()
+        self._emit_non_overlap_contact_events()
 
     def query_ray(
         self,
@@ -123,6 +124,11 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             return dict(self._physics_system.get_step_metrics())
         return {"ccd_bodies": 0, "swept_checks": 0}
 
+    def _build_physics_contacts(self) -> list[PhysicsContact]:
+        if self._physics_system is None or not hasattr(self._physics_system, "get_frame_contacts"):
+            return []
+        return list(self._physics_system.get_frame_contacts())
+
     def _build_overlap_contacts(self) -> list[PhysicsContact]:
         if self._collision_system is None:
             return []
@@ -139,41 +145,52 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             )
         return contacts
 
-    def _append_swept_contacts(self, world: Any) -> None:
-        if self._physics_system is None or not hasattr(self._physics_system, "consume_swept_contacts"):
-            return
+    def _append_overlap_contacts(self) -> None:
+        overlap_contacts = self._build_overlap_contacts()
         existing_pairs = {
-            tuple(sorted((contact.entity_a_id, contact.entity_b_id)))
+            (
+                tuple(sorted((int(contact.entity_a_id), int(contact.entity_b_id)))),
+                bool(contact.is_trigger),
+            )
             for contact in self._latest_contacts
         }
-        for entity_a_id, entity_b_id in self._physics_system.consume_swept_contacts():
-            pair = tuple(sorted((int(entity_a_id), int(entity_b_id))))
+        for contact in overlap_contacts:
+            pair = (
+                tuple(sorted((int(contact.entity_a_id), int(contact.entity_b_id)))),
+                bool(contact.is_trigger),
+            )
             if pair in existing_pairs:
                 continue
-            entity_a = self._find_entity(world, entity_a_id)
-            entity_b = self._find_entity(world, entity_b_id)
-            if entity_a is None or entity_b is None:
-                continue
-            contact = PhysicsContact(
-                entity_a=entity_a.name,
-                entity_b=entity_b.name,
-                entity_a_id=int(entity_a.id),
-                entity_b_id=int(entity_b.id),
-                is_trigger=False,
-            )
             self._latest_contacts.append(contact)
             existing_pairs.add(pair)
-            if self._event_bus is not None:
-                self._event_bus.emit(
-                    "on_collision",
-                    {
-                        "entity_a": contact.entity_a,
-                        "entity_b": contact.entity_b,
-                        "entity_a_id": contact.entity_a_id,
-                        "entity_b_id": contact.entity_b_id,
-                        "is_trigger": False,
-                    },
-                )
+
+    def _emit_non_overlap_contact_events(self) -> None:
+        if self._event_bus is None:
+            return
+        overlap_pairs = {
+            (
+                tuple(sorted((int(contact.entity_a_id), int(contact.entity_b_id)))),
+                bool(contact.is_trigger),
+            )
+            for contact in self._build_overlap_contacts()
+        }
+        for contact in self._latest_contacts:
+            pair = (
+                tuple(sorted((int(contact.entity_a_id), int(contact.entity_b_id)))),
+                bool(contact.is_trigger),
+            )
+            if pair in overlap_pairs:
+                continue
+            self._event_bus.emit(
+                "on_trigger_enter" if contact.is_trigger else "on_collision",
+                {
+                    "entity_a": contact.entity_a,
+                    "entity_b": contact.entity_b,
+                    "entity_a_id": contact.entity_a_id,
+                    "entity_b_id": contact.entity_b_id,
+                    "is_trigger": bool(contact.is_trigger),
+                },
+            )
 
     def _find_entity(self, world: Any, entity_id: int) -> Any:
         for entity in world.get_all_entities():

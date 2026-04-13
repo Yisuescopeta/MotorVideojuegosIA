@@ -17,6 +17,7 @@ class RuntimeControllerTests(unittest.TestCase):
         self.script_behaviour_system = Mock()
         self.event_bus = Mock()
         self.animation_system = Mock()
+        self.animator_controller_system = Mock()
         self.input_system = Mock()
         self.player_controller_system = Mock()
         self.character_controller_system = Mock()
@@ -37,6 +38,7 @@ class RuntimeControllerTests(unittest.TestCase):
             get_script_behaviour_system=lambda: self.script_behaviour_system,
             get_event_bus=lambda: self.event_bus,
             get_animation_system=lambda: self.animation_system,
+            get_animator_controller_system=lambda: self.animator_controller_system,
             get_input_system=lambda: self.input_system,
             get_player_controller_system=lambda: self.player_controller_system,
             get_character_controller_system=lambda: self.character_controller_system,
@@ -163,6 +165,7 @@ class RuntimeControllerTests(unittest.TestCase):
         self.player_controller_system.update.assert_called_once_with(world)
         self.script_behaviour_system.update.assert_called_once_with(world, 0.25, is_edit_mode=False)
         backend.step.assert_called_once_with(world, 0.25)
+        self.animator_controller_system.update.assert_called_once_with(world, 0.25)
         self.physics_system.update.assert_not_called()
         self.collision_system.update.assert_not_called()
         self.audio_system.update.assert_called_once_with(world)
@@ -178,6 +181,7 @@ class RuntimeControllerTests(unittest.TestCase):
         self.controller.update_gameplay(world, 0.1)
 
         legacy_backend.step.assert_called_once_with(world, 0.1)
+        self.animator_controller_system.update.assert_called_once_with(world, 0.1)
         self.physics_system.update.assert_not_called()
         self.collision_system.update.assert_not_called()
         self.audio_system.update.assert_called_once_with(world)
@@ -191,6 +195,7 @@ class RuntimeControllerTests(unittest.TestCase):
 
         self.physics_system.update.assert_not_called()
         self.collision_system.update.assert_not_called()
+        self.animator_controller_system.update.assert_called_once_with(world, 0.1)
         self.audio_system.update.assert_called_once_with(world)
         self.scene_transition_controller.update.assert_called_once_with(world)
 
@@ -236,6 +241,7 @@ class RuntimeControllerTests(unittest.TestCase):
             get_script_behaviour_system=lambda: self.script_behaviour_system,
             get_event_bus=lambda: self.event_bus,
             get_animation_system=lambda: self.animation_system,
+            get_animator_controller_system=lambda: self.animator_controller_system,
             get_input_system=lambda: self.input_system,
             get_player_controller_system=lambda: self.player_controller_system,
             get_character_controller_system=lambda: self.character_controller_system,

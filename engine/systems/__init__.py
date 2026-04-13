@@ -14,6 +14,7 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "PhysicsSystem": ("engine.systems.physics_system", "PhysicsSystem"),
     "CollisionSystem": ("engine.systems.collision_system", "CollisionSystem"),
     "AnimationSystem": ("engine.systems.animation_system", "AnimationSystem"),
+    "AnimatorControllerSystem": ("engine.systems.animator_controller_system", "AnimatorControllerSystem"),
     "AudioSystem": ("engine.systems.audio_system", "AudioSystem"),
     "InputSystem": ("engine.systems.input_system", "InputSystem"),
     "PlayerControllerSystem": ("engine.systems.player_controller_system", "PlayerControllerSystem"),

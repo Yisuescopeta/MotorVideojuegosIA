@@ -4,6 +4,7 @@ cli/headless_game.py - Headless runtime entrypoint
 
 import time
 
+from engine.core.engine_state import EngineState
 from engine.core.game import Game
 
 
@@ -57,19 +58,23 @@ class HeadlessGame(Game):
                 self._script_behaviour_system.update(active_world, dt, is_edit_mode=True)
                 self._perf_stats["scripts"] = (time.perf_counter() - scripts_start) * 1000.0
 
+        if self._state.allows_gameplay():
+            animation_start = time.perf_counter()
+            self._update_animation(active_world, dt)
+            self._perf_stats["animation"] = (time.perf_counter() - animation_start) * 1000.0
+
         if active_world is not None and (self._state.allows_physics() or self._state.allows_gameplay()):
             gameplay_start = time.perf_counter()
             self._update_gameplay(active_world, dt)
             self._perf_stats["gameplay"] = (time.perf_counter() - gameplay_start) * 1000.0
 
-        animation_start = time.perf_counter()
-        self._update_animation(active_world, dt)
-        self._perf_stats["animation"] = (time.perf_counter() - animation_start) * 1000.0
-
         if active_world is not None:
             ui_start = time.perf_counter()
             self._update_ui_overlay(active_world, (float(self.width), float(self.height)))
             self._perf_stats["ui"] = (time.perf_counter() - ui_start) * 1000.0
+
+        if self._state == EngineState.STEPPING:
+            self._state = EngineState.PAUSED
 
         if self._state.is_edit() and self._scene_manager is not None:
             self._scene_manager.sync_from_edit_world()

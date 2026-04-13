@@ -25,6 +25,10 @@ UI_BUTTON_ACTIONS = {"emit_event", "load_scene", "load_scene_flow", "run_scene_t
 SCENE_TRANSITION_CONTACT_MODES = {"trigger_enter", "collision"}
 SCENE_LINK_MODES = {"", "ui_button", "interact_near", "trigger_enter", "collision"}
 PHYSICS_BACKENDS = {"legacy_aabb", "box2d"}
+ANIMATOR_CONTROLLER_PARAMETER_TYPES = {"bool", "int", "float", "trigger"}
+ANIMATOR_CONTROLLER_BOOL_OPS = {"is_true", "is_false"}
+ANIMATOR_CONTROLLER_NUMERIC_OPS = {"equals", "not_equals", "greater", "greater_or_equal", "less", "less_or_equal"}
+ANIMATOR_CONTROLLER_TRIGGER_OPS = {"is_set"}
 ASSET_REFERENCE_FIELD_PAIRS = {
     "Sprite": ("texture", "texture_path"),
     "Animator": ("sprite_sheet", "sprite_sheet_path"),
@@ -223,6 +227,7 @@ def _canonicalize_tilemap(payload: dict[str, Any]) -> None:
     payload.setdefault("cell_width", 16)
     payload.setdefault("cell_height", 16)
     payload.setdefault("orientation", "orthogonal")
+    payload.setdefault("tileset_mode", "grid")
     payload.setdefault("tileset", {})
     payload.setdefault("tileset_path", "")
     payload.setdefault("layers", [])
@@ -255,6 +260,13 @@ def _canonicalize_component_payload(component_name: str, payload: dict[str, Any]
         _canonicalize_tilemap(payload)
     elif component_name == "Animator":
         payload.setdefault("sprite_sheet_path", normalize_asset_reference(payload.get("sprite_sheet")).get("path", ""))
+        payload.setdefault("anchor_mode", "legacy_center")
+    elif component_name == "AnimatorController":
+        payload.setdefault("enabled", True)
+        payload.setdefault("entry_state", "")
+        payload.setdefault("parameters", {})
+        payload.setdefault("states", {})
+        payload.setdefault("transitions", [])
     elif component_name == "SceneEntryPoint":
         entry_id = payload.get("entry_id")
         label = payload.get("label")
@@ -745,6 +757,10 @@ def _validate_animator(data: dict[str, Any], *, path: str) -> list[str]:
         _expect_int(data["current_frame"], path=f"{path}.current_frame", errors=errors, minimum=0)
     if "is_finished" in data:
         _expect_bool(data["is_finished"], path=f"{path}.is_finished", errors=errors)
+    if "anchor_mode" in data:
+        anchor_mode = _expect_string(data["anchor_mode"], path=f"{path}.anchor_mode", errors=errors, non_empty=True)
+        if isinstance(anchor_mode, str) and anchor_mode.strip() not in {"legacy_center", "auto", "slice_pivot"}:
+            errors.append(f"{path}.anchor_mode: expected one of ['auto', 'legacy_center', 'slice_pivot']")
     if "animations" in data:
         animations = data["animations"]
         if not isinstance(animations, dict):
@@ -755,6 +771,137 @@ def _validate_animator(data: dict[str, Any], *, path: str) -> list[str]:
                     errors.append(f"{path}.animations: expected non-empty string keys")
                     continue
                 errors.extend(_validate_animation_data(anim_data, path=f"{path}.animations.{state_name}"))
+    return errors
+
+
+def _validate_declared_events(value: Any, *, path: str) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(value, list):
+        errors.append(f"{path}: expected array")
+        return errors
+    for index, item in enumerate(value):
+        payload = _expect_object(item, path=f"{path}[{index}]", errors=errors)
+        if payload is None:
+            continue
+        _expect_string(payload.get("name"), path=f"{path}[{index}].name", errors=errors, non_empty=True)
+        if "data" in payload:
+            _expect_json_serializable(payload.get("data"), path=f"{path}[{index}].data", errors=errors)
+    return errors
+
+
+def _validate_animator_controller(data: dict[str, Any], *, path: str) -> list[str]:
+    errors: list[str] = []
+    if "enabled" in data:
+        _expect_bool(data["enabled"], path=f"{path}.enabled", errors=errors)
+    if "entry_state" in data:
+        _expect_string(data["entry_state"], path=f"{path}.entry_state", errors=errors)
+
+    parameters = data.get("parameters", {})
+    if not isinstance(parameters, dict):
+        errors.append(f"{path}.parameters: expected object")
+    else:
+        for parameter_name, parameter_definition in parameters.items():
+            if not isinstance(parameter_name, str) or not parameter_name.strip():
+                errors.append(f"{path}.parameters: expected non-empty string keys")
+                continue
+            definition = _expect_object(parameter_definition, path=f"{path}.parameters.{parameter_name}", errors=errors)
+            if definition is None:
+                continue
+            parameter_type = _expect_string(
+                definition.get("type"),
+                path=f"{path}.parameters.{parameter_name}.type",
+                errors=errors,
+                non_empty=True,
+            )
+            normalized_type = parameter_type.strip().lower() if isinstance(parameter_type, str) else ""
+            if normalized_type and normalized_type not in ANIMATOR_CONTROLLER_PARAMETER_TYPES:
+                errors.append(
+                    f"{path}.parameters.{parameter_name}.type: expected one of {sorted(ANIMATOR_CONTROLLER_PARAMETER_TYPES)}"
+                )
+            if "default" in definition and normalized_type == "bool":
+                _expect_bool(definition.get("default"), path=f"{path}.parameters.{parameter_name}.default", errors=errors)
+            elif "default" in definition and normalized_type == "int":
+                _expect_int(definition.get("default"), path=f"{path}.parameters.{parameter_name}.default", errors=errors)
+            elif "default" in definition and normalized_type == "float":
+                _expect_number(definition.get("default"), path=f"{path}.parameters.{parameter_name}.default", errors=errors)
+
+    states = data.get("states", {})
+    if not isinstance(states, dict):
+        errors.append(f"{path}.states: expected object")
+    else:
+        for state_name, state_payload in states.items():
+            if not isinstance(state_name, str) or not state_name.strip():
+                errors.append(f"{path}.states: expected non-empty string keys")
+                continue
+            state = _expect_object(state_payload, path=f"{path}.states.{state_name}", errors=errors)
+            if state is None:
+                continue
+            _expect_string(
+                state.get("animation_state"),
+                path=f"{path}.states.{state_name}.animation_state",
+                errors=errors,
+                non_empty=True,
+            )
+            if "enter_events" in state:
+                errors.extend(_validate_declared_events(state["enter_events"], path=f"{path}.states.{state_name}.enter_events"))
+            if "exit_events" in state:
+                errors.extend(_validate_declared_events(state["exit_events"], path=f"{path}.states.{state_name}.exit_events"))
+
+    transitions = data.get("transitions", [])
+    if not isinstance(transitions, list):
+        errors.append(f"{path}.transitions: expected array")
+    else:
+        for index, transition_payload in enumerate(transitions):
+            transition = _expect_object(transition_payload, path=f"{path}.transitions[{index}]", errors=errors)
+            if transition is None:
+                continue
+            _expect_string(transition.get("id"), path=f"{path}.transitions[{index}].id", errors=errors, non_empty=True)
+            if "from_state" in transition:
+                _expect_string(transition.get("from_state"), path=f"{path}.transitions[{index}].from_state", errors=errors)
+            _expect_string(transition.get("to_state"), path=f"{path}.transitions[{index}].to_state", errors=errors, non_empty=True)
+            for bool_key in ("from_any_state", "enabled", "has_exit_time", "force_restart"):
+                if bool_key in transition:
+                    _expect_bool(transition.get(bool_key), path=f"{path}.transitions[{index}].{bool_key}", errors=errors)
+            if "exit_time" in transition:
+                _expect_number(
+                    transition.get("exit_time"),
+                    path=f"{path}.transitions[{index}].exit_time",
+                    errors=errors,
+                    minimum=0.0,
+                    maximum=1.0,
+                )
+            conditions = transition.get("conditions", [])
+            if not isinstance(conditions, list):
+                errors.append(f"{path}.transitions[{index}].conditions: expected array")
+            else:
+                for condition_index, condition_payload in enumerate(conditions):
+                    condition = _expect_object(
+                        condition_payload,
+                        path=f"{path}.transitions[{index}].conditions[{condition_index}]",
+                        errors=errors,
+                    )
+                    if condition is None:
+                        continue
+                    _expect_string(
+                        condition.get("parameter"),
+                        path=f"{path}.transitions[{index}].conditions[{condition_index}].parameter",
+                        errors=errors,
+                        non_empty=True,
+                    )
+                    _expect_string(
+                        condition.get("op"),
+                        path=f"{path}.transitions[{index}].conditions[{condition_index}].op",
+                        errors=errors,
+                        non_empty=True,
+                    )
+                    if "value" in condition:
+                        _expect_json_serializable(
+                            condition.get("value"),
+                            path=f"{path}.transitions[{index}].conditions[{condition_index}].value",
+                            errors=errors,
+                        )
+            if "events" in transition:
+                errors.extend(_validate_declared_events(transition["events"], path=f"{path}.transitions[{index}].events"))
     return errors
 
 
@@ -791,6 +938,8 @@ def _validate_tile_entry(tile: Any, *, path: str) -> list[str]:
         _expect_string(tile_payload["animation_id"], path=f"{path}.animation_id", errors=errors)
     if "terrain_type" in tile_payload:
         _expect_string(tile_payload["terrain_type"], path=f"{path}.terrain_type", errors=errors)
+    if "slice_name" in tile_payload:
+        _expect_string(tile_payload["slice_name"], path=f"{path}.slice_name", errors=errors)
     return errors
 
 
@@ -853,6 +1002,10 @@ def _validate_tilemap(data: dict[str, Any], *, path: str) -> list[str]:
         orientation = _expect_string(data["orientation"], path=f"{path}.orientation", errors=errors, non_empty=True)
         if isinstance(orientation, str) and orientation.strip().lower() not in ("orthogonal", "isometric", "hexagonal", "staggered"):
             errors.append(f"{path}.orientation: expected orthogonal, isometric, hexagonal, or staggered (component normalizes to orthogonal if unsupported)")
+    if "tileset_mode" in data:
+        tileset_mode = _expect_string(data["tileset_mode"], path=f"{path}.tileset_mode", errors=errors, non_empty=True)
+        if isinstance(tileset_mode, str) and tileset_mode.strip().lower() not in {"grid", "atlas_slices"}:
+            errors.append(f"{path}.tileset_mode: expected one of ['atlas_slices', 'grid']")
     _validate_asset_reference_consistency(data, ref_key="tileset", path_key="tileset_path", path=path, errors=errors)
     if "metadata" in data:
         metadata = _expect_object(data["metadata"], path=f"{path}.metadata", errors=errors)
@@ -967,6 +1120,8 @@ def _validate_canvas(data: dict[str, Any], *, path: str) -> list[str]:
             _expect_int(data[key], path=f"{path}.{key}", errors=errors, minimum=1)
     if "sort_order" in data:
         _expect_int(data["sort_order"], path=f"{path}.sort_order", errors=errors)
+    if "initial_focus_entity_id" in data:
+        _expect_string(data["initial_focus_entity_id"], path=f"{path}.initial_focus_entity_id", errors=errors)
     return errors
 
 
@@ -1034,6 +1189,11 @@ def _validate_ui_button(data: dict[str, Any], *, path: str) -> list[str]:
             _validate_rgba(data[key], path=f"{path}.{key}", errors=errors)
     if "transition_scale_pressed" in data:
         _expect_number(data["transition_scale_pressed"], path=f"{path}.transition_scale_pressed", errors=errors, exclusive_minimum=0.0)
+    if "focusable" in data:
+        _expect_bool(data["focusable"], path=f"{path}.focusable", errors=errors)
+    for key in ("nav_up", "nav_down", "nav_left", "nav_right"):
+        if key in data:
+            _expect_string(data[key], path=f"{path}.{key}", errors=errors)
     if "on_click" in data:
         errors.extend(_validate_button_on_click(data["on_click"], path=f"{path}.on_click"))
     return errors
@@ -1122,6 +1282,7 @@ CORE_COMPONENT_VALIDATORS: dict[str, Callable[[dict[str, Any], str], list[str]]]
     "Collider": lambda data, path: _validate_collider(data, path=path),
     "RigidBody": lambda data, path: _validate_rigidbody(data, path=path),
     "Animator": lambda data, path: _validate_animator(data, path=path),
+    "AnimatorController": lambda data, path: _validate_animator_controller(data, path=path),
     "Tilemap": lambda data, path: _validate_tilemap(data, path=path),
     "Camera2D": lambda data, path: _validate_camera2d(data, path=path),
     "InputMap": lambda data, path: _validate_input_map(data, path=path),
@@ -1153,6 +1314,96 @@ def _validate_prefab_instance(prefab_instance: Any, *, path: str) -> list[str]:
     return errors
 
 
+def _validate_animator_controller_semantics(components: dict[str, Any], *, path: str) -> list[str]:
+    errors: list[str] = []
+    controller = components.get("AnimatorController")
+    if not isinstance(controller, dict):
+        return errors
+
+    animator = components.get("Animator")
+    if not isinstance(animator, dict):
+        errors.append(f"{path}.components.AnimatorController: requires Animator on the same entity")
+        return errors
+
+    animator_states = animator.get("animations", {})
+    controller_states = controller.get("states", {})
+    if not isinstance(animator_states, dict) or not isinstance(controller_states, dict):
+        return errors
+
+    entry_state = str(controller.get("entry_state", "") or "").strip()
+    if entry_state and entry_state not in controller_states:
+        errors.append(f"{path}.components.AnimatorController.entry_state: unknown state '{entry_state}'")
+
+    for state_name, state_payload in controller_states.items():
+        if not isinstance(state_payload, dict):
+            continue
+        animation_state = str(state_payload.get("animation_state", "") or "").strip()
+        if animation_state and animation_state not in animator_states:
+            errors.append(
+                f"{path}.components.AnimatorController.states.{state_name}.animation_state: unknown animator state '{animation_state}'"
+            )
+
+    parameter_defs = controller.get("parameters", {})
+    if not isinstance(parameter_defs, dict):
+        parameter_defs = {}
+
+    transitions = controller.get("transitions", [])
+    if not isinstance(transitions, list):
+        return errors
+
+    seen_transition_ids: set[str] = set()
+    for index, transition in enumerate(transitions):
+        if not isinstance(transition, dict):
+            continue
+        transition_id = str(transition.get("id", "") or "").strip()
+        if transition_id:
+            if transition_id in seen_transition_ids:
+                errors.append(
+                    f"{path}.components.AnimatorController.transitions[{index}].id: duplicate transition id '{transition_id}'"
+                )
+            seen_transition_ids.add(transition_id)
+
+        from_any_state = bool(transition.get("from_any_state", False))
+        from_state = str(transition.get("from_state", "") or "").strip()
+        to_state = str(transition.get("to_state", "") or "").strip()
+        if not from_any_state and from_state not in controller_states:
+            errors.append(
+                f"{path}.components.AnimatorController.transitions[{index}].from_state: unknown state '{from_state}'"
+            )
+        if to_state not in controller_states:
+            errors.append(
+                f"{path}.components.AnimatorController.transitions[{index}].to_state: unknown state '{to_state}'"
+            )
+
+        conditions = transition.get("conditions", [])
+        if not isinstance(conditions, list):
+            continue
+        for condition_index, condition in enumerate(conditions):
+            if not isinstance(condition, dict):
+                continue
+            parameter_name = str(condition.get("parameter", "") or "").strip()
+            if parameter_name not in parameter_defs:
+                errors.append(
+                    f"{path}.components.AnimatorController.transitions[{index}].conditions[{condition_index}].parameter: unknown parameter '{parameter_name}'"
+                )
+                continue
+            parameter_type = str(parameter_defs.get(parameter_name, {}).get("type", "float") or "float").strip().lower()
+            op = str(condition.get("op", "") or "").strip().lower()
+            if parameter_type == "bool" and op not in ANIMATOR_CONTROLLER_BOOL_OPS:
+                errors.append(
+                    f"{path}.components.AnimatorController.transitions[{index}].conditions[{condition_index}].op: expected one of {sorted(ANIMATOR_CONTROLLER_BOOL_OPS)} for bool"
+                )
+            elif parameter_type in {"int", "float"} and op not in ANIMATOR_CONTROLLER_NUMERIC_OPS:
+                errors.append(
+                    f"{path}.components.AnimatorController.transitions[{index}].conditions[{condition_index}].op: expected one of {sorted(ANIMATOR_CONTROLLER_NUMERIC_OPS)} for numeric"
+                )
+            elif parameter_type == "trigger" and op not in ANIMATOR_CONTROLLER_TRIGGER_OPS:
+                errors.append(
+                    f"{path}.components.AnimatorController.transitions[{index}].conditions[{condition_index}].op: expected one of {sorted(ANIMATOR_CONTROLLER_TRIGGER_OPS)} for trigger"
+                )
+    return errors
+
+
 def _validate_entity(entity: Any, *, path: str) -> list[str]:
     errors: list[str] = []
     payload = _expect_object(entity, path=path, errors=errors)
@@ -1176,6 +1427,7 @@ def _validate_entity(entity: Any, *, path: str) -> list[str]:
             validator = CORE_COMPONENT_VALIDATORS.get(component_name)
             if validator is not None:
                 errors.extend(validator(component_data, f"{path}.components.{component_name}"))
+        errors.extend(_validate_animator_controller_semantics(components, path=path))
     if "component_metadata" in payload and not isinstance(payload.get("component_metadata"), dict):
         errors.append(f"{path}.component_metadata: expected object")
     if "prefab_instance" in payload:

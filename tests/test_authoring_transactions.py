@@ -187,6 +187,130 @@ class AuthoringTransactionsTests(unittest.TestCase):
         self.assertNotIn("Collider", enemy["components"])
         self.assertEqual(weapon["tag"], "Blade")
 
+    def test_snap_entities_to_grid_updates_transform_and_recttransform(self) -> None:
+        self.assertTrue(self.api.create_entity("Crate")["success"])
+        self.assertTrue(self.api.edit_component("Crate", "Transform", "x", 13.2)["success"])
+        self.assertTrue(self.api.edit_component("Crate", "Transform", "y", 30.7)["success"])
+        self.assertTrue(self.api.create_canvas(name="MenuCanvas")["success"])
+        self.assertTrue(
+            self.api.create_ui_button(
+                "PlayButton",
+                "Play",
+                "MenuCanvas",
+                {"anchored_x": 19.0, "anchored_y": 47.0, "width": 160.0, "height": 48.0},
+            )["success"]
+        )
+
+        result = self.api.snap_entities_to_grid(["Crate", "PlayButton"], step_x=16.0)
+
+        self.assertTrue(result["success"])
+        crate = self.api.get_entity("Crate")
+        button = self.api.get_entity("PlayButton")
+        self.assertEqual(crate["components"]["Transform"]["x"], 16.0)
+        self.assertEqual(crate["components"]["Transform"]["y"], 32.0)
+        self.assertEqual(button["components"]["RectTransform"]["anchored_x"], 16.0)
+        self.assertEqual(button["components"]["RectTransform"]["anchored_y"], 48.0)
+        self.assertEqual(len(result["data"]["entities"]), 2)
+
+    def test_duplicate_entities_with_offset_preserves_hierarchy(self) -> None:
+        self.assertTrue(self.api.create_entity("Platform")["success"])
+        self.assertTrue(self.api.edit_component("Platform", "Transform", "x", 32.0)["success"])
+        self.assertTrue(self.api.edit_component("Platform", "Transform", "y", 48.0)["success"])
+        self.assertTrue(self.api.create_child_entity("Platform", "Decoration")["success"])
+        self.assertTrue(self.api.edit_component("Decoration", "Transform", "x", 4.0)["success"])
+        self.assertTrue(self.api.edit_component("Decoration", "Transform", "y", -2.0)["success"])
+
+        result = self.api.duplicate_entities(["Platform"], offset_x=64.0, offset_y=16.0, include_children=True)
+
+        self.assertTrue(result["success"])
+        created_names = [item["entity"] for item in result["data"]["created"]]
+        self.assertIn("Platform_copy1", created_names)
+        self.assertIn("Decoration_copy1", created_names)
+        original_child = self.api.get_entity("Decoration")
+        platform_copy = self.api.get_entity("Platform_copy1")
+        decoration_copy = self.api.get_entity("Decoration_copy1")
+        self.assertEqual(platform_copy["components"]["Transform"]["x"], 96.0)
+        self.assertEqual(platform_copy["components"]["Transform"]["y"], 64.0)
+        self.assertEqual(decoration_copy["parent"], "Platform_copy1")
+        self.assertEqual(decoration_copy["components"]["Transform"]["x"], original_child["components"]["Transform"]["x"])
+        self.assertEqual(decoration_copy["components"]["Transform"]["y"], original_child["components"]["Transform"]["y"])
+
+    def test_align_entities_supports_batch_alignment(self) -> None:
+        self.assertTrue(self.api.create_entity("ActorA")["success"])
+        self.assertTrue(self.api.create_entity("ActorB")["success"])
+        self.assertTrue(self.api.create_entity("ActorC")["success"])
+        self.assertTrue(self.api.edit_component("ActorA", "Transform", "y", 10.0)["success"])
+        self.assertTrue(self.api.edit_component("ActorB", "Transform", "y", 30.0)["success"])
+        self.assertTrue(self.api.edit_component("ActorC", "Transform", "y", 50.0)["success"])
+
+        result = self.api.align_entities(["ActorA", "ActorB", "ActorC"], axis="y", mode="center")
+
+        self.assertTrue(result["success"])
+        self.assertEqual(self.api.get_entity("ActorA")["components"]["Transform"]["y"], 30.0)
+        self.assertEqual(self.api.get_entity("ActorB")["components"]["Transform"]["y"], 30.0)
+        self.assertEqual(self.api.get_entity("ActorC")["components"]["Transform"]["y"], 30.0)
+
+    def test_align_entities_fails_cleanly_when_entity_has_no_supported_transform(self) -> None:
+        self.assertTrue(self.api.create_entity("ActorA")["success"])
+        self.assertTrue(self.api.create_entity("ActorB")["success"])
+        self.assertTrue(self.api.remove_component("ActorB", "Transform")["success"])
+        self.assertTrue(self.api.edit_component("ActorA", "Transform", "x", 10.0)["success"])
+
+        result = self.api.align_entities(["ActorA", "ActorB"], axis="x", mode="min")
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["message"], "All entities must have a supported transform for alignment")
+        self.assertEqual(self.api.get_entity("ActorA")["components"]["Transform"]["x"], 10.0)
+
+    def test_stamp_prefab_and_entities_from_source_support_fast_spawn_workflows(self) -> None:
+        prefab_path = self.root / "prefabs" / "coin.prefab"
+        prefab_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "root_name": "Coin",
+                    "entities": [
+                        {
+                            "name": "Coin",
+                            "active": True,
+                            "tag": "Pickup",
+                            "layer": "Default",
+                            "components": {
+                                "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0}
+                            },
+                        }
+                    ],
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        self.assertTrue(self.api.create_entity("Torch")["success"])
+        self.assertTrue(self.api.edit_component("Torch", "Transform", "x", 8.0)["success"])
+        self.assertTrue(self.api.edit_component("Torch", "Transform", "y", 12.0)["success"])
+
+        prefab_result = self.api.stamp_prefab(
+            "prefabs/coin.prefab",
+            [
+                {"name": "CoinA", "x": 32.0, "y": 64.0},
+                {"name": "CoinB", "x": 48.0, "y": 64.0},
+            ],
+        )
+        entity_result = self.api.stamp_entities_from_source(
+            "Torch",
+            [
+                {"name": "TorchA", "x": 96.0, "y": 24.0},
+                {"name": "TorchB", "x": 128.0, "y": 24.0},
+            ],
+        )
+
+        self.assertTrue(prefab_result["success"])
+        self.assertTrue(entity_result["success"])
+        self.assertEqual(self.api.get_entity("CoinA")["components"]["Transform"]["x"], 32.0)
+        self.assertEqual(self.api.get_entity("CoinB")["components"]["Transform"]["y"], 64.0)
+        self.assertEqual(self.api.get_entity("TorchA")["components"]["Transform"]["x"], 96.0)
+        self.assertEqual(self.api.get_entity("TorchB")["components"]["Transform"]["y"], 24.0)
+
 
 if __name__ == "__main__":
     unittest.main()

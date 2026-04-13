@@ -12,6 +12,17 @@ from engine.ecs.world import World
 from engine.systems.render_system import RenderSystem
 
 
+class _FakeTileSliceAssetService:
+    def __init__(self, slices: dict[str, dict]) -> None:
+        self._slices = slices
+
+    def get_slice_rect(self, _reference, slice_name: str):
+        return self._slices.get(slice_name)
+
+    def load_metadata(self, _asset_path: str):
+        return {}
+
+
 class RenderGraphTests(unittest.TestCase):
     def _make_sprite_entity(
         self,
@@ -171,7 +182,131 @@ class RenderGraphTests(unittest.TestCase):
         self.assertEqual(stats["tilemap_chunks"], 768)
         self.assertEqual(stats["tilemap_chunk_rebuilds"], 768)
         self.assertEqual(stats["draw_calls"], 768)
-        self.assertEqual(stats["batches"], 768)
+        self.assertEqual(stats["batches"], 3)
+
+    def test_tilemap_atlas_slices_emit_textured_source_rects_in_chunk_data(self) -> None:
+        world = World()
+        tilemap_entity = world.create_entity("AtlasMap")
+        tilemap_entity.add_component(Transform(x=0.0, y=0.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        tilemap_entity.add_component(
+            Tilemap(
+                cell_width=16,
+                cell_height=16,
+                tileset_mode="atlas_slices",
+                tileset={"guid": "", "path": "assets/atlas.png"},
+                layers=[
+                    {
+                        "name": "Ground",
+                        "tilemap_source": {"guid": "", "path": "assets/atlas.png"},
+                        "tiles": [
+                            {
+                                "x": 0,
+                                "y": 0,
+                                "tile_id": "grass",
+                                "slice_name": "terrain_grass",
+                            }
+                        ],
+                    }
+                ],
+            )
+        )
+        tilemap_entity.add_component(RenderOrder2D(sorting_layer="Default", order_in_layer=0, render_pass="World"))
+
+        render_system = RenderSystem()
+        render_system._asset_service = _FakeTileSliceAssetService(
+            {"terrain_grass": {"x": 32, "y": 48, "width": 16, "height": 16}}
+        )
+
+        graph = render_system._build_render_graph(world)
+        world_pass = graph["passes"][0]
+        tile_chunk = world_pass["commands"][0]["chunk_data"]["tiles"][0]
+        chunk_data = world_pass["commands"][0]["chunk_data"]
+
+        self.assertEqual(tile_chunk["render_mode"], "atlas_slices")
+        self.assertEqual(tile_chunk["slice_name"], "terrain_grass")
+        self.assertEqual(tile_chunk["source"]["path"], "assets/atlas.png")
+        self.assertEqual(tile_chunk["source_rect"], {"x": 32, "y": 48, "width": 16, "height": 16})
+        self.assertTrue(tile_chunk["uses_texture"])
+        self.assertEqual(tile_chunk["fallback_mode"], "")
+        self.assertEqual(chunk_data["textured_tile_count"], 1)
+        self.assertEqual(chunk_data["fallback_tile_count"], 0)
+        self.assertEqual(chunk_data["atlas_id"], "assets/atlas.png")
+
+    def test_tilemap_chunks_share_batch_when_same_layer_and_atlas(self) -> None:
+        world = World()
+        tilemap_entity = world.create_entity("ChunkedMap")
+        tilemap_entity.add_component(Transform(x=0.0, y=0.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        tilemap_entity.add_component(
+            Tilemap(
+                cell_width=16,
+                cell_height=16,
+                tileset_mode="atlas_slices",
+                tileset={"guid": "", "path": "assets/atlas.png"},
+                layers=[
+                    {
+                        "name": "Ground",
+                        "tilemap_source": {"guid": "", "path": "assets/atlas.png"},
+                        "tiles": [
+                            {"x": 0, "y": 0, "tile_id": "grass", "slice_name": "terrain_grass"},
+                            {"x": 20, "y": 0, "tile_id": "stone", "slice_name": "terrain_stone"},
+                        ],
+                    }
+                ],
+            )
+        )
+        tilemap_entity.add_component(RenderOrder2D(sorting_layer="Default", order_in_layer=0, render_pass="World"))
+
+        render_system = RenderSystem()
+        render_system._asset_service = _FakeTileSliceAssetService(
+            {
+                "terrain_grass": {"x": 0, "y": 0, "width": 16, "height": 16},
+                "terrain_stone": {"x": 16, "y": 0, "width": 16, "height": 16},
+            }
+        )
+
+        graph = render_system._public_graph(render_system._build_render_graph(world))
+        world_pass = graph["passes"][0]
+
+        self.assertEqual(world_pass["stats"]["draw_calls"], 2)
+        self.assertEqual(world_pass["stats"]["batches"], 1)
+        self.assertEqual(world_pass["batches"][0]["entity_names"], ["ChunkedMap", "ChunkedMap"])
+        self.assertNotIn("chunk", world_pass["batches"][0]["key"])
+        self.assertEqual(world_pass["batches"][0]["key"]["tilemap_layer"], "Ground")
+
+    def test_tilemap_chunk_cache_invalidates_when_tileset_reference_changes(self) -> None:
+        world = World()
+        tilemap_entity = world.create_entity("Map")
+        tilemap_entity.add_component(Transform(x=0.0, y=0.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        tilemap_entity.add_component(
+            Tilemap(
+                cell_width=16,
+                cell_height=16,
+                tileset_mode="atlas_slices",
+                tileset={"guid": "", "path": "assets/atlas_a.png"},
+                layers=[
+                    {
+                        "name": "Ground",
+                        "tiles": [{"x": 0, "y": 0, "tile_id": "grass", "slice_name": "terrain_grass"}],
+                    }
+                ],
+            )
+        )
+        tilemap_entity.add_component(RenderOrder2D(sorting_layer="Default", order_in_layer=0, render_pass="World"))
+
+        render_system = RenderSystem()
+        render_system._asset_service = _FakeTileSliceAssetService(
+            {"terrain_grass": {"x": 0, "y": 0, "width": 16, "height": 16}}
+        )
+
+        first_stats = render_system.profile_world(world)
+        self.assertEqual(first_stats["tilemap_chunk_rebuilds"], 1)
+
+        tilemap = tilemap_entity.get_component(Tilemap)
+        tilemap.sync_tileset_reference({"guid": "", "path": "assets/atlas_b.png"})
+        world.touch()
+
+        second_stats = render_system.profile_world(world)
+        self.assertEqual(second_stats["tilemap_chunk_rebuilds"], 1)
 
     def test_debug_dump_includes_tile_chunks_camera_and_manual_primitives(self) -> None:
         world = World()

@@ -133,6 +133,14 @@ class AssetSlicingAPITests(unittest.TestCase):
         # Should return a list (may be empty depending on image content)
         self.assertIsInstance(slices, list)
 
+    def test_preview_auto_slices_supports_structured_payload(self) -> None:
+        payload = self.api.preview_auto_slices("assets/spritesheet.png", structured=True)
+
+        self.assertEqual(payload["asset_path"], "assets/spritesheet.png")
+        self.assertEqual(payload["image"], {"width": 16, "height": 16})
+        self.assertEqual(payload["slice_count"], len(payload["slices"]))
+        self.assertIn("settings", payload)
+
     def test_save_manual_slices(self) -> None:
         """Test saving manual slices."""
         manual_slices = [
@@ -167,6 +175,95 @@ class AssetSlicingAPITests(unittest.TestCase):
         data = result.get("data", {})
         self.assertEqual(data.get("import_mode"), "manual")
         self.assertEqual(data.get("asset_type"), "sprite_sheet")
+
+    def test_apply_manual_slices_and_group_asset_slices(self) -> None:
+        result = self.api.apply_manual_slices(
+            asset_path="assets/spritesheet.png",
+            slices=[
+                {"name": "idle_0", "x": 0, "y": 0, "width": 8, "height": 8},
+                {"name": "idle_1", "x": 8, "y": 0, "width": 8, "height": 8},
+                {"name": "attack_0", "x": 0, "y": 8, "width": 8, "height": 8},
+                {"name": "attack_1", "x": 8, "y": 8, "width": 8, "height": 8},
+            ],
+        )
+
+        self.assertTrue(result["success"])
+        grouped = self.api.group_asset_slices("assets/spritesheet.png", group_mode="name_prefix")
+        self.assertEqual([group["group_key"] for group in grouped["groups"]], ["idle", "attack"])
+
+    def test_build_animation_from_slices_returns_serializable_preview(self) -> None:
+        self.api.apply_manual_slices(
+            asset_path="assets/spritesheet.png",
+            slices=[
+                {"name": "run_0", "x": 8, "y": 0, "width": 6, "height": 8},
+                {"name": "run_1", "x": 0, "y": 0, "width": 8, "height": 8},
+                {"name": "run_2", "x": 0, "y": 8, "width": 10, "height": 12},
+            ],
+        )
+
+        payload = self.api.build_animation_from_slices(
+            "assets/spritesheet.png",
+            ["run_2", "run_0", "run_1"],
+            state_name="run",
+            fps=12.0,
+            loop=False,
+            order_mode="visual",
+        )
+
+        self.assertEqual(payload["animation"]["slice_names"], ["run_1", "run_0", "run_2"])
+        self.assertEqual(payload["preview"]["frame_count"], 3)
+        self.assertTrue(payload["preview"]["frame_size_summary"]["variable_size"])
+
+    def test_create_animator_state_from_slices_uses_public_engine_api_flow(self) -> None:
+        scene_path = self.project_root / "levels" / "animator_scene.json"
+        scene_path.write_text(json.dumps({"name": "Animator Scene", "entities": [], "rules": []}, indent=2), encoding="utf-8")
+        self.api.load_level(scene_path.as_posix())
+        create_result = self.api.create_entity(
+            "Hero",
+            {
+                "Animator": {
+                    "enabled": True,
+                    "sprite_sheet": "",
+                    "frame_width": 16,
+                    "frame_height": 16,
+                    "animations": {},
+                    "default_state": "idle",
+                    "current_state": "idle",
+                    "current_frame": 0,
+                    "is_finished": False,
+                    "flip_x": False,
+                    "flip_y": False,
+                    "speed": 1.0,
+                }
+            },
+        )
+        self.assertTrue(create_result["success"])
+        self.api.apply_manual_slices(
+            asset_path="assets/spritesheet.png",
+            slices=[
+                {"name": "idle_0", "x": 0, "y": 0, "width": 8, "height": 8},
+                {"name": "idle_1", "x": 8, "y": 0, "width": 8, "height": 8},
+            ],
+        )
+
+        result = self.api.create_animator_state_from_slices(
+            "Hero",
+            "idle",
+            "assets/spritesheet.png",
+            ["idle_1", "idle_0"],
+            fps=10.0,
+            loop=True,
+            order_mode="visual",
+            set_default=True,
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["data"]["animation"]["slice_names"], ["idle_0", "idle_1"])
+        info = self.api.get_animator_info("Hero")
+        self.assertEqual(info["sprite_sheet"], "assets/spritesheet.png")
+        idle_state = next(state for state in info["states"] if state["name"] == "idle")
+        self.assertEqual(idle_state["frame_count"], 2)
+        self.assertTrue(idle_state["is_default"])
 
 
 class AssetSlicingEdgeCasesTests(unittest.TestCase):

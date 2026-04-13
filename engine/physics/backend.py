@@ -46,6 +46,12 @@ class PhysicsContact:
     entity_a_id: int
     entity_b_id: int
     is_trigger: bool
+    normal_x: float | None = None
+    normal_y: float | None = None
+    penetration: float = 0.0
+    contact_type: str = "overlap"
+    source: str = "overlap"
+    separation: float = 0.0
 
 
 class PhysicsBackend(ABC):

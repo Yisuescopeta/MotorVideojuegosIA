@@ -20,6 +20,7 @@ from engine.components.charactercontroller2d import CharacterController2D
 from engine.components.joint2d import Joint2D
 from engine.components.rigidbody import RigidBody
 from engine.components.animator import Animator, AnimationData
+from engine.components.animator_controller import AnimatorController
 from engine.components.camera2d import Camera2D
 from engine.components.audiosource import AudioSource
 from engine.components.inputmap import InputMap
@@ -44,6 +45,7 @@ __all__ = [
     "RigidBody",
     "Animator",
     "AnimationData",
+    "AnimatorController",
     "Camera2D",
     "AudioSource",
     "InputMap",

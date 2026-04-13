@@ -1,0 +1,57 @@
+{
+  "name": "Platformer Runtime Regression",
+  "entities": [
+    {
+      "name": "Player",
+      "active": true,
+      "tag": "",
+      "layer": "Gameplay",
+      "components": {
+        "Transform": {"enabled": true, "x": 0.0, "y": 25.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+        "RigidBody": {"enabled": true, "body_type": "dynamic", "gravity_scale": 1.0, "velocity_x": 0.0, "velocity_y": 0.0, "is_grounded": false},
+        "Collider": {"enabled": true, "width": 12.0, "height": 10.0, "offset_x": 0.0, "offset_y": 0.0, "is_trigger": false}
+      }
+    },
+    {
+      "name": "Ground",
+      "active": true,
+      "tag": "",
+      "layer": "Gameplay",
+      "components": {
+        "Transform": {"enabled": true, "x": 0.0, "y": 40.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+        "Collider": {"enabled": true, "width": 120.0, "height": 20.0, "offset_x": 0.0, "offset_y": 0.0, "is_trigger": false}
+      }
+    },
+    {
+      "name": "HeroAnimator",
+      "active": true,
+      "tag": "",
+      "layer": "Gameplay",
+      "components": {
+        "Transform": {"enabled": true, "x": 100.0, "y": 200.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+        "Animator": {
+          "enabled": true,
+          "sprite_sheet": "assets/hero.png",
+          "sprite_sheet_path": "assets/hero.png",
+          "frame_width": 16,
+          "frame_height": 16,
+          "anchor_mode": "slice_pivot",
+          "animations": {
+            "idle": {
+              "frames": [0, 1],
+              "slice_names": ["idle_small", "idle_big"],
+              "fps": 6.0,
+              "loop": true
+            }
+          },
+          "default_state": "idle",
+          "current_state": "idle",
+          "current_frame": 0,
+          "is_finished": false
+        }
+      }
+    }
+  ],
+  "rules": [],
+  "feature_metadata": {"physics_2d": {"backend": "legacy_aabb"}}
+}
