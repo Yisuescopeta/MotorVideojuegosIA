@@ -96,22 +96,22 @@ class StartHereAICoherenceTests(unittest.TestCase):
                 )
 
     def test_capabilities_by_category_only_implemented(self) -> None:
-        """'Capabilities by Category' section must NOT include planned capabilities."""
+        """Implemented section must NOT include planned capabilities."""
         registry = get_default_registry()
         planned_ids = {cap.id for cap in registry.list_planned()}
 
-        # Find the "Capabilities by Category" section
-        cat_start = self.content.find("## Capabilities by Category")
+        # Find the implemented capabilities section
+        implemented_start = self.content.find("## Implemented Capabilities")
         coming_start = self.content.find("## Coming Soon")
-        self.assertGreater(cat_start, 0, "Should have 'Capabilities by Category' section")
+        self.assertGreater(implemented_start, 0, "Should have 'Implemented Capabilities' section")
 
-        cat_section = self.content[cat_start:coming_start if coming_start > 0 else len(self.content)]
+        implemented_section = self.content[implemented_start:coming_start if coming_start > 0 else len(self.content)]
 
         for pid in planned_ids:
             self.assertNotIn(
-                pid, cat_section,
-                f"Planned capability '{pid}' must NOT appear in 'Capabilities by Category' "
-                f"section — it would mislead an AI into thinking it's available"
+                pid, implemented_section,
+                f"Planned capability '{pid}' must NOT appear in the implemented section "
+                f"because it would mislead an AI into thinking it's available"
             )
 
     def test_coming_soon_section_exists_with_planned(self) -> None:
@@ -255,6 +255,11 @@ class StartHereAIContentTests(unittest.TestCase):
     def test_has_quick_workflow_section(self) -> None:
         """Should have Quick Workflow section."""
         self.assertIn("## Quick Workflow", self.content)
+
+    def test_has_implemented_capabilities_section(self) -> None:
+        """Should clearly separate capabilities that are available now."""
+        self.assertIn("## Implemented Capabilities", self.content)
+        self.assertIn("available now and are safe to use", self.content)
 
     def test_has_naming_conventions_section(self) -> None:
         """Should have Naming Conventions section."""

@@ -1,0 +1,95 @@
+# 🎮 Platformer Vertical Slice
+
+Demo de plataformas 2D implementado con MotorVideojuegosIA.
+
+## 📂 Estructura del Proyecto
+
+```
+platformer_vertical_slice_project/
+├── project.json              # Configuración del proyecto
+├── ABRIR_JUEGO.bat          # Script para lanzar el juego
+├── LEEME.txt                # Este archivo
+├── levels/
+│   └── platformer_vertical_slice.json    # Escena principal
+├── assets/
+│   ├── sprites/             # Gráficos del juego
+│   ├── audio/               # Sonidos
+│   └── tilesets/            # Tiles del nivel
+└── settings/
+    └── project_settings.json # Configuración de inicio
+```
+
+## 🚀 Cómo Abrir el Juego
+
+### Opción 1: Doble clic (Recomendado)
+
+1. **Doble clic** en el archivo **`ABRIR_JUEGO.bat`**
+2. ¡El juego se iniciará automáticamente!
+
+### Opción 2: Desde el Motor
+
+1. Abre el motor de juegos (ejecuta `main.py` en la carpeta raíz)
+2. Ve a **File → Open Project**
+3. Selecciona esta carpeta: `demo/platformer_vertical_slice_project/`
+4. El juego cargará automáticamente
+
+### Opción 3: Línea de comandos
+
+```cmd
+cd C:\Users\usuario\Downloads\MotorVideojuegosIA-main\MotorVideojuegosIA-main
+python main.py --project demo/platformer_vertical_slice_project
+```
+
+## 🎮 Controles
+
+| Tecla | Acción |
+|-------|--------|
+| **A** o **←** | Mover izquierda |
+| **D** o **→** | Mover derecha |
+| **SPACE** | Saltar |
+
+## 🎯 Objetivo
+
+- Recoge la **moneda dorada** 🪙
+- Evita los **pinchos** 🔺
+- Llega a la **meta verde** 🏁
+
+## ⚠️ Solución de Problemas
+
+### "Python no encontrado"
+
+Instala Python 3.8+ desde https://www.python.org/
+
+**IMPORTANTE:** Durante la instalación, marca la casilla **"Add Python to PATH"**
+
+### "No module named 'pyray'"
+
+Instala las dependencias:
+```cmd
+pip install pyray
+```
+
+### La ventana no aparece
+
+El motor necesita un entorno gráfico. Si usas WSL, ejecuta desde Windows nativo.
+
+## 📋 Características
+
+- ✅ Movimiento de personaje con física
+- ✅ Salto y gravedad
+- ✅ Animaciones (idle, run, jump)
+- ✅ Tilemap con colisiones
+- ✅ Coleccionables (moneda)
+- ✅ Peligros (pinchos)
+- ✅ Sistema de victoria
+- ✅ Audio (salto, recolección)
+
+## 📝 Notas
+
+- Este es un **vertical slice** - una demo técnica pequeña pero completa
+- Valida las capacidades principales del motor
+- Sirve como base para proyectos más grandes
+
+---
+
+**¡Diviértete jugando!** 🎉

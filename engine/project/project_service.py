@@ -252,11 +252,13 @@ class ProjectService:
         self._write_registry_entries(items)
 
     def clear_active_project(self) -> None:
+        self._guard_writable("clear_active_project")
         self._manifest = None
         self._project_root = self._editor_root
         self._project_root_real = self._editor_root_real
 
     def open_project(self, project_root: str | os.PathLike[str]) -> ProjectManifest:
+        self._guard_writable("open_project")
         root = self._normalize_project_root(project_root)
         manifest_path = root / self.PROJECT_FILE
         if not manifest_path.exists():
@@ -559,6 +561,7 @@ class ProjectService:
         self._write_registry_entries([])
 
     def _ensure_global_storage(self) -> None:
+        self._guard_writable("_ensure_global_storage")
         self._global_dir.mkdir(parents=True, exist_ok=True)
         if not self._recents_file.exists():
             self._write_json(self._recents_file, {"projects": []})
@@ -572,6 +575,7 @@ class ProjectService:
         manifest: ProjectManifest,
         create_bootstrap: bool,
     ) -> None:
+        self._guard_writable("_ensure_project_layout_for")
         for key in ("assets", "levels", "prefabs", "scripts", "settings", "meta", "build"):
             (root / manifest.paths.get(key, key)).mkdir(parents=True, exist_ok=True)
 
@@ -905,6 +909,7 @@ class ProjectService:
         )
 
     def _write_json(self, path: Path, data: Dict[str, Any]) -> None:
+        self._guard_writable("_write_json")
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as handle:
             json.dump(data, handle, indent=4)

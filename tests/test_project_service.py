@@ -100,6 +100,22 @@ class ProjectServiceTests(unittest.TestCase):
         self.assertTrue(bool(recents[0]["last_opened_utc"]))
         self.assertEqual(first_service.global_state_dir, self.global_state_dir.resolve())
 
+    def test_recent_projects_are_isolated_between_global_state_dirs(self) -> None:
+        first_global = self.workspace / "global_state_a"
+        second_global = self.workspace / "global_state_b"
+
+        first_service = ProjectService(self.workspace / "ProjectA", global_state_dir=first_global)
+        second_service = ProjectService(self.workspace / "ProjectB", global_state_dir=second_global)
+
+        first_recents = first_service.list_recent_projects()
+        second_recents = second_service.list_recent_projects()
+
+        self.assertEqual([item["name"] for item in first_recents], ["ProjectA"])
+        self.assertEqual([item["name"] for item in second_recents], ["ProjectB"])
+        self.assertNotEqual(first_service.get_recent_projects_path(), second_service.get_recent_projects_path())
+        self.assertTrue((first_global / "recent_projects.json").exists())
+        self.assertTrue((second_global / "recent_projects.json").exists())
+
     def test_launcher_lists_internal_and_invalid_registered_projects(self) -> None:
         bootstrap = ProjectService(self.workspace, global_state_dir=self.global_state_dir, auto_ensure=False)
         internal_root = bootstrap.build_internal_project_path("InternalProject")

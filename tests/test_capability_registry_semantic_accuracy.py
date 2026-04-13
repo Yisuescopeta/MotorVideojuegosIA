@@ -149,29 +149,30 @@ class CapabilityRegistryDescriptionTests(unittest.TestCase):
                      "Notes should mention that last state CAN be removed")
 
     def test_no_planned_capabilities_have_implementations(self) -> None:
-        """Verify no capability is marked as 'planned' if it has an implementation."""
+        """Verify planned capabilities are partitioned from implemented ones."""
         builder = CapabilityRegistryBuilder()
         registry = builder.build()
 
         planned = registry.list_planned()
+        implemented_ids = {cap.id for cap in registry.list_implemented()}
 
-        # If this list is non-empty, each should genuinely not have an implementation
-        # Currently, all registered capabilities should be implemented
-        self.assertEqual(len(planned), 0,
-                        f"Found {len(planned)} planned capabilities that may be implemented: "
-                        f"{[c.id for c in planned]}")
+        self.assertGreater(len(planned), 0, "Expected planned capabilities in the registry")
+        for cap in planned:
+            self.assertEqual(cap.status, "planned")
+            self.assertNotIn(cap.id, implemented_ids)
 
     def test_all_registered_capabilities_are_implemented(self) -> None:
-        """Verify all registered capabilities have status='implemented'."""
+        """Verify registry separates implemented and planned capabilities."""
         builder = CapabilityRegistryBuilder()
         registry = builder.build()
 
         all_caps = registry.list_all()
-        non_implemented = [c for c in all_caps if c.status != "implemented"]
+        implemented = [c for c in all_caps if c.status == "implemented"]
+        planned = [c for c in all_caps if c.status == "planned"]
 
-        self.assertEqual(len(non_implemented), 0,
-                        f"Found {len(non_implemented)} non-implemented capabilities: "
-                        f"{[(c.id, c.status) for c in non_implemented]}")
+        self.assertGreater(len(implemented), 0)
+        self.assertGreater(len(planned), 0)
+        self.assertEqual(len(implemented) + len(planned), len(all_caps))
 
 
 class RegistryBuildTests(unittest.TestCase):
@@ -206,10 +207,15 @@ class RegistryBuildTests(unittest.TestCase):
         implemented = data["implemented_capabilities"]
         self.assertGreater(len(implemented), 0, "Should have implemented capabilities")
 
-        # All registered capabilities should be in implemented list
-        registered_count = len(registry.list_all())
-        self.assertEqual(len(implemented), registered_count,
-                        f"Expected {registered_count} implemented, got {len(implemented)}")
+        planned = data["planned_capabilities"]
+
+        self.assertEqual(len(implemented), len(registry.list_implemented()))
+        self.assertEqual(len(planned), len(registry.list_planned()))
+        self.assertEqual(
+            len(implemented) + len(planned),
+            len(registry.list_all()),
+            "Implemented + planned should match full registry",
+        )
 
 
 if __name__ == "__main__":

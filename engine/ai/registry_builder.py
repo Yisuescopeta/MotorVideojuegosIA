@@ -819,7 +819,7 @@ class CapabilityRegistryBuilder:
             id="introspect:doctor",
             summary="Diagnose project health and detect issues",
             mode="both",
-            api_methods=["cmd_doctor"],
+            api_methods=["CapabilityRegistry.cmd_doctor"],
             cli_command="motor doctor [--project <path>]",
             example=CapabilityExample(
                 description="Check project health",
@@ -836,7 +836,7 @@ class CapabilityRegistryBuilder:
             id="introspect:capabilities",
             summary="Query this capability registry itself",
             mode="both",
-            api_methods=["cmd_capabilities"],
+            api_methods=["CapabilityRegistry.cmd_capabilities"],
             cli_command="motor capabilities [--json]",
             example=CapabilityExample(
                 description="List all capabilities in JSON format",
@@ -1032,7 +1032,9 @@ class MotorAIBootstrapBuilder:
             "## Overview",
             "This project uses MotorVideojuegosIA, a 2D game engine designed for AI-assisted development.",
             "",
-            "## Quick Reference",
+            "## Implemented Capabilities",
+            "",
+            "The entries below are available now and are safe to use from the CLI.",
             "",
             "### Most Common Operations",
             "",
