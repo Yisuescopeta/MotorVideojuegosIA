@@ -4,10 +4,20 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import pyray as rl
 from cli.script_executor import ScriptExecutor
 from engine.api import EngineAPI
 from engine.components.recttransform import RectTransform
 from engine.components.transform import Transform
+
+MINIMAL_PNG_BYTES = (
+    b"\x89PNG\r\n\x1a\n"
+    b"\x00\x00\x00\rIHDR"
+    b"\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+    b"\x00\x00\x00\rIDATx\x9cc\xf8\xff\xff?\x00\x05\xfe\x02\xfeA\xe2%\x9b"
+    b"\x00\x00\x00\x00IEND\xaeB`\x82"
+)
 
 
 class InspectorCoreTests(unittest.TestCase):
@@ -40,6 +50,12 @@ class InspectorCoreTests(unittest.TestCase):
         path = self.project_root / "levels" / filename
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, indent=4), encoding="utf-8")
+        return path
+
+    def _write_png(self, relative_path: str) -> Path:
+        path = self.project_root / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(MINIMAL_PNG_BYTES)
         return path
 
     def _target_scene_payload(self, scene_name: str, entry_points: list[tuple[str, str, float, float]]) -> dict:
@@ -110,6 +126,7 @@ class InspectorCoreTests(unittest.TestCase):
             "AudioSource",
             "InputMap",
             "PlayerController2D",
+            "Tilemap",
             "ScriptBehaviour",
             "SceneEntryPoint",
         }
@@ -159,6 +176,240 @@ class InspectorCoreTests(unittest.TestCase):
         self.assertEqual(entity["components"]["Sprite"]["texture_path"], "assets/player_alt.png")
         self.assertEqual(entity["components"]["Sprite"]["texture"]["path"], "assets/player_alt.png")
         self.assertEqual(entity["components"]["Sprite"]["tint"], [128, 200, 255, 255])
+
+    def test_tilemap_payload_edits_update_scene_and_support_undo_redo(self) -> None:
+        self._create_probe(
+            "InspectorTilemapProbe",
+            {
+                "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                "Tilemap": {
+                    "enabled": True,
+                    "cell_width": 16,
+                    "cell_height": 16,
+                    "orientation": "orthogonal",
+                    "tileset": {"guid": "", "path": "assets/base_tiles.png"},
+                    "tileset_path": "assets/base_tiles.png",
+                    "tileset_tile_width": 1,
+                    "tileset_tile_height": 1,
+                    "tileset_columns": 1,
+                    "tileset_spacing": 0,
+                    "tileset_margin": 0,
+                    "default_layer_name": "Ground",
+                    "layers": [{"name": "Ground", "tiles": []}],
+                },
+            },
+        )
+
+        def update(payload: dict) -> None:
+            payload["cell_width"] = 32
+            payload["default_layer_name"] = "Gameplay"
+            payload["layers"][0]["locked"] = True
+            payload["layers"][0]["offset_x"] = 12.0
+
+        success = self.inspector.update_component_payload(self.api.game.world, "InspectorTilemapProbe", "Tilemap", update)
+        self.assertTrue(success)
+
+        tilemap = self.api.get_entity("InspectorTilemapProbe")["components"]["Tilemap"]
+        self.assertEqual(tilemap["cell_width"], 32)
+        self.assertEqual(tilemap["default_layer_name"], "Gameplay")
+        self.assertEqual(tilemap["layers"][0]["locked"], True)
+        self.assertEqual(tilemap["layers"][0]["offset_x"], 12.0)
+        scene_tilemap = self.api.scene_manager.current_scene.find_entity("InspectorTilemapProbe")["components"]["Tilemap"]
+        self.assertEqual(scene_tilemap["layers"][0]["locked"], True)
+
+        self.assertTrue(self.api.undo()["success"])
+        tilemap = self.api.get_entity("InspectorTilemapProbe")["components"]["Tilemap"]
+        self.assertEqual(tilemap["cell_width"], 16)
+        self.assertEqual(tilemap["default_layer_name"], "Ground")
+        self.assertEqual(tilemap["layers"][0]["locked"], False)
+
+        self.assertTrue(self.api.redo()["success"])
+        tilemap = self.api.get_entity("InspectorTilemapProbe")["components"]["Tilemap"]
+        self.assertEqual(tilemap["cell_width"], 32)
+        self.assertEqual(tilemap["layers"][0]["offset_x"], 12.0)
+
+    def test_tilemap_palette_prefers_layer_slices_and_falls_back_to_grid(self) -> None:
+        self._write_png("assets/component_tiles.png")
+        self._write_png("assets/layer_tiles.png")
+        self._write_png("assets/grid_only.png")
+        self.api.asset_service.generate_sprite_grid_slices("assets/layer_tiles.png", cell_width=1, cell_height=1, naming_prefix="layer")
+
+        self._create_probe(
+            "TilePaletteProbe",
+            {
+                "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                "Tilemap": {
+                    "enabled": True,
+                    "cell_width": 16,
+                    "cell_height": 16,
+                    "orientation": "orthogonal",
+                    "tileset": {"guid": "", "path": "assets/component_tiles.png"},
+                    "tileset_path": "assets/component_tiles.png",
+                    "tileset_tile_width": 1,
+                    "tileset_tile_height": 1,
+                    "tileset_columns": 1,
+                    "tileset_spacing": 0,
+                    "tileset_margin": 0,
+                    "default_layer_name": "Ground",
+                    "layers": [{"name": "Ground", "tilemap_source": {"guid": "", "path": "assets/layer_tiles.png"}, "tiles": []}],
+                },
+            },
+        )
+
+        slice_options = self.inspector.list_tilemap_palette_options(self.api.game.world, "TilePaletteProbe", "Ground")
+        self.assertEqual(slice_options, [("layer_0", "layer_0")])
+        self.assertTrue(self.inspector.activate_tilemap_tool(self.api.game.world, "TilePaletteProbe", layer_name="Ground"))
+        slice_state = self.inspector.get_tilemap_tool_state()
+        self.assertEqual(slice_state["source"]["path"], "assets/layer_tiles.png")
+        self.assertEqual(slice_state["tile_id"], "layer_0")
+
+        self._create_probe(
+            "TileGridProbe",
+            {
+                "Transform": {"enabled": True, "x": 10.0, "y": 20.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                "Tilemap": {
+                    "enabled": True,
+                    "cell_width": 16,
+                    "cell_height": 16,
+                    "orientation": "orthogonal",
+                    "tileset": {"guid": "", "path": "assets/grid_only.png"},
+                    "tileset_path": "assets/grid_only.png",
+                    "tileset_tile_width": 1,
+                    "tileset_tile_height": 1,
+                    "tileset_columns": 1,
+                    "tileset_spacing": 0,
+                    "tileset_margin": 0,
+                    "default_layer_name": "Decor",
+                    "layers": [{"name": "Decor", "offset_x": 32.0, "offset_y": 16.0, "tiles": []}],
+                },
+            },
+        )
+        grid_options = self.inspector.list_tilemap_palette_options(self.api.game.world, "TileGridProbe", "Decor")
+        self.assertEqual(grid_options, [("0", "0")])
+        self.assertTrue(self.inspector.activate_tilemap_tool(self.api.game.world, "TileGridProbe", layer_name="Decor"))
+        self.assertEqual(
+            self.inspector.tilemap_world_to_cell(self.api.game.world, "TileGridProbe", 42.0, 36.0),
+            (0, 0),
+        )
+
+    def test_tilemap_brush_paints_drag_stroke_on_active_layer_with_single_undo(self) -> None:
+        self._write_png("assets/brush_tiles.png")
+        self._create_probe(
+            "TileBrushProbe",
+            {
+                "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                "Tilemap": {
+                    "enabled": True,
+                    "cell_width": 16,
+                    "cell_height": 16,
+                    "orientation": "orthogonal",
+                    "tileset": {"guid": "", "path": "assets/brush_tiles.png"},
+                    "tileset_path": "assets/brush_tiles.png",
+                    "tileset_tile_width": 1,
+                    "tileset_tile_height": 1,
+                    "tileset_columns": 1,
+                    "tileset_spacing": 0,
+                    "tileset_margin": 0,
+                    "default_layer_name": "Ground",
+                    "layers": [
+                        {"name": "Ground", "tiles": []},
+                        {"name": "Decor", "tiles": []},
+                    ],
+                },
+            },
+        )
+
+        self.assertTrue(self.inspector.activate_tilemap_tool(self.api.game.world, "TileBrushProbe", layer_name="Decor"))
+        self.assertTrue(self.inspector.set_tilemap_selected_tile(self.api.game.world, "TileBrushProbe", "0"))
+        self.assertTrue(self.inspector.set_tilemap_tool_mode("paint"))
+
+        with patch("pyray.is_mouse_button_pressed", return_value=True), patch("pyray.is_mouse_button_down", return_value=True), patch(
+            "pyray.is_mouse_button_released",
+            return_value=False,
+        ):
+            self.inspector.handle_tilemap_scene_input(self.api.game.world, rl.Vector2(8.0, 8.0), False)
+        tilemap = self.api.get_tilemap("TileBrushProbe")
+        decor_layer = next(layer for layer in tilemap["layers"] if layer["name"] == "Decor")
+        self.assertEqual(decor_layer["tiles"], [])
+
+        with patch("pyray.is_mouse_button_pressed", return_value=True), patch("pyray.is_mouse_button_down", return_value=True), patch(
+            "pyray.is_mouse_button_released",
+            return_value=False,
+        ):
+            self.inspector.handle_tilemap_scene_input(self.api.game.world, rl.Vector2(8.0, 8.0), True)
+        with patch("pyray.is_mouse_button_pressed", return_value=False), patch("pyray.is_mouse_button_down", return_value=True), patch(
+            "pyray.is_mouse_button_released",
+            return_value=False,
+        ):
+            self.inspector.handle_tilemap_scene_input(self.api.game.world, rl.Vector2(24.0, 8.0), True)
+        with patch("pyray.is_mouse_button_pressed", return_value=False), patch("pyray.is_mouse_button_down", return_value=False), patch(
+            "pyray.is_mouse_button_released",
+            return_value=True,
+        ):
+            self.inspector.handle_tilemap_scene_input(self.api.game.world, rl.Vector2(24.0, 8.0), True)
+
+        tilemap = self.api.get_tilemap("TileBrushProbe")
+        ground_layer = next(layer for layer in tilemap["layers"] if layer["name"] == "Ground")
+        decor_layer = next(layer for layer in tilemap["layers"] if layer["name"] == "Decor")
+        self.assertEqual(ground_layer["tiles"], [])
+        self.assertEqual(sorted((tile["x"], tile["y"]) for tile in decor_layer["tiles"]), [(0, 0), (1, 0)])
+
+        self.assertTrue(self.api.undo()["success"])
+        tilemap = self.api.get_tilemap("TileBrushProbe")
+        decor_layer = next(layer for layer in tilemap["layers"] if layer["name"] == "Decor")
+        self.assertEqual(decor_layer["tiles"], [])
+
+        self.assertTrue(self.api.redo()["success"])
+        tilemap = self.api.get_tilemap("TileBrushProbe")
+        decor_layer = next(layer for layer in tilemap["layers"] if layer["name"] == "Decor")
+        self.assertEqual(sorted((tile["x"], tile["y"]) for tile in decor_layer["tiles"]), [(0, 0), (1, 0)])
+
+    def test_tilemap_brush_erase_supports_undo(self) -> None:
+        self._write_png("assets/erase_tiles.png")
+        self._create_probe(
+            "TileEraseProbe",
+            {
+                "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                "Tilemap": {
+                    "enabled": True,
+                    "cell_width": 16,
+                    "cell_height": 16,
+                    "orientation": "orthogonal",
+                    "tileset": {"guid": "", "path": "assets/erase_tiles.png"},
+                    "tileset_path": "assets/erase_tiles.png",
+                    "tileset_tile_width": 1,
+                    "tileset_tile_height": 1,
+                    "tileset_columns": 1,
+                    "tileset_spacing": 0,
+                    "tileset_margin": 0,
+                    "default_layer_name": "Ground",
+                    "layers": [{"name": "Ground", "tiles": [{"x": 0, "y": 0, "tile_id": "0", "source": {"guid": "", "path": "assets/erase_tiles.png"}, "flags": [], "tags": [], "custom": {}, "animated": False, "animation_id": "", "terrain_type": ""}]}],
+                },
+            },
+        )
+
+        self.assertTrue(self.inspector.activate_tilemap_tool(self.api.game.world, "TileEraseProbe", layer_name="Ground"))
+        self.assertTrue(self.inspector.set_tilemap_tool_mode("erase"))
+
+        with patch("pyray.is_mouse_button_pressed", return_value=True), patch("pyray.is_mouse_button_down", return_value=True), patch(
+            "pyray.is_mouse_button_released",
+            return_value=False,
+        ):
+            self.inspector.handle_tilemap_scene_input(self.api.game.world, rl.Vector2(8.0, 8.0), True)
+        with patch("pyray.is_mouse_button_pressed", return_value=False), patch("pyray.is_mouse_button_down", return_value=False), patch(
+            "pyray.is_mouse_button_released",
+            return_value=True,
+        ):
+            self.inspector.handle_tilemap_scene_input(self.api.game.world, rl.Vector2(8.0, 8.0), True)
+
+        tilemap = self.api.get_tilemap("TileEraseProbe")
+        ground_layer = next(layer for layer in tilemap["layers"] if layer["name"] == "Ground")
+        self.assertEqual(ground_layer["tiles"], [])
+
+        self.assertTrue(self.api.undo()["success"])
+        tilemap = self.api.get_tilemap("TileEraseProbe")
+        ground_layer = next(layer for layer in tilemap["layers"] if layer["name"] == "Ground")
+        self.assertEqual([(tile["x"], tile["y"]) for tile in ground_layer["tiles"]], [(0, 0)])
 
     def test_animator_payload_edits_use_serializable_source_and_history(self) -> None:
         self._create_probe(

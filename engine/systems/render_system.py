@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 import pyray as rl
-
+from engine.assets.asset_reference import clone_asset_reference, normalize_asset_reference
 from engine.assets.asset_service import AssetService
 from engine.components.animator import Animator
 from engine.components.camera2d import Camera2D
@@ -603,9 +603,9 @@ class RenderSystem:
         rebuilds = 0
         live_keys: set[tuple[int, str, int, int]] = set()
         tileset_ref = tilemap.get_tileset_reference()
-        atlas_id = self._resolve_atlas_id(tileset_ref)
-        if not atlas_id:
-            atlas_id = str(tileset_ref.get("guid") or tileset_ref.get("path") or "__tilemap__")
+        fallback_atlas_id = self._resolve_atlas_id(tileset_ref)
+        if not fallback_atlas_id:
+            fallback_atlas_id = str(tileset_ref.get("guid") or tileset_ref.get("path") or "__tilemap__")
         for layer_index, layer in enumerate(tilemap.layers):
             if not bool(layer.get("visible", True)):
                 continue
@@ -616,12 +616,14 @@ class RenderSystem:
                 signature = self._tilemap_chunk_signature(tilemap, layer, chunk_tiles)
                 cached = self._tilemap_chunk_cache.get(cache_key)
                 if cached is None or cached.get("signature") != signature:
+                    chunk_data = self._build_tilemap_chunk_data(tilemap, layer, chunk_x, chunk_y, chunk_tiles)
                     cached = {
                         "signature": signature,
-                        "data": self._build_tilemap_chunk_data(tilemap, layer, chunk_x, chunk_y, chunk_tiles),
+                        "data": chunk_data,
                     }
                     self._tilemap_chunk_cache[cache_key] = cached
                     rebuilds += 1
+                chunk_atlas_id = self._tilemap_chunk_atlas_id(cached["data"], fallback_atlas_id)
                 commands.append(
                     {
                         "kind": "tilemap_chunk",
@@ -632,7 +634,7 @@ class RenderSystem:
                         "chunk_id": f"{layer.get('name', f'Layer_{layer_index}')}/{chunk_x},{chunk_y}",
                         "chunk_data": cached["data"],
                         "batch_key": {
-                            "atlas_id": atlas_id,
+                            "atlas_id": chunk_atlas_id,
                             "material_id": "tilemap_chunk",
                             "shader_id": "default",
                             "blend_mode": "alpha",
@@ -667,13 +669,26 @@ class RenderSystem:
         return chunks
 
     def _tilemap_chunk_signature(self, tilemap: Tilemap, layer: dict[str, Any], chunk_tiles: list[dict[str, Any]]) -> tuple[Any, ...]:
+        tileset_ref = tilemap.get_tileset_reference()
+        layer_source = normalize_asset_reference(layer.get("tilemap_source"))
         return (
             int(tilemap.cell_width),
             int(tilemap.cell_height),
             str(tilemap.orientation),
+            str(tileset_ref.get("guid", "")),
+            str(tileset_ref.get("path", "")),
+            int(tilemap.tileset_tile_width),
+            int(tilemap.tileset_tile_height),
+            int(tilemap.tileset_columns),
+            int(tilemap.tileset_spacing),
+            int(tilemap.tileset_margin),
             str(layer.get("name", "")),
             bool(layer.get("visible", True)),
             float(layer.get("opacity", 1.0)),
+            float(layer.get("offset_x", 0.0)),
+            float(layer.get("offset_y", 0.0)),
+            str(layer_source.get("guid", "")),
+            str(layer_source.get("path", "")),
             tuple(
                 (
                     int(tile["x"]),
@@ -698,22 +713,61 @@ class RenderSystem:
         chunk_tiles: list[dict[str, Any]],
     ) -> dict[str, Any]:
         opacity = max(0.0, min(1.0, float(layer.get("opacity", 1.0))))
+        layer_offset_x = float(layer.get("offset_x", 0.0))
+        layer_offset_y = float(layer.get("offset_y", 0.0))
+        tint = [255, 255, 255, int(255 * opacity)]
         tiles = []
+        min_x: float | None = None
+        min_y: float | None = None
+        max_x: float | None = None
+        max_y: float | None = None
         for tile in sorted(chunk_tiles, key=lambda item: (int(item["y"]), int(item["x"]), str(item["tile_id"]))):
+            asset_ref = self._resolve_tile_asset_reference(tilemap, layer, tile)
+            source_rect, resolution = self._resolve_tile_source_rect(tilemap, asset_ref, tile)
+            dest_x = float(int(tile["x"]) * int(tilemap.cell_width)) + layer_offset_x
+            dest_y = float(int(tile["y"]) * int(tilemap.cell_height)) + layer_offset_y
+            dest_width = int(tilemap.cell_width)
+            dest_height = int(tilemap.cell_height)
+            resolved = source_rect is not None and bool(asset_ref.get("guid") or asset_ref.get("path"))
+            if resolved:
+                min_x = dest_x if min_x is None else min(min_x, dest_x)
+                min_y = dest_y if min_y is None else min(min_y, dest_y)
+                max_x = (dest_x + dest_width) if max_x is None else max(max_x, dest_x + dest_width)
+                max_y = (dest_y + dest_height) if max_y is None else max(max_y, dest_y + dest_height)
             tiles.append(
                 {
                     "x": int(tile["x"]),
                     "y": int(tile["y"]),
-                    "width": int(tilemap.cell_width),
-                    "height": int(tilemap.cell_height),
-                    "color": self._tile_color(str(tile["tile_id"]), opacity),
+                    "tile_id": str(tile["tile_id"]),
+                    "width": dest_width,
+                    "height": dest_height,
+                    "texture": clone_asset_reference(asset_ref),
+                    "texture_path": str(asset_ref.get("path", "")),
+                    "source_rect": dict(source_rect or {}),
+                    "dest": {
+                        "x": dest_x,
+                        "y": dest_y,
+                        "width": dest_width,
+                        "height": dest_height,
+                    },
+                    "tint": list(tint),
+                    "resolved": bool(resolved),
+                    "resolution": resolution if resolved else "unresolved",
                 }
             )
+        bounds = {
+            "x": float(min_x or 0.0),
+            "y": float(min_y or 0.0),
+            "width": float((max_x - min_x) if min_x is not None and max_x is not None else 0.0),
+            "height": float((max_y - min_y) if min_y is not None and max_y is not None else 0.0),
+        }
         return {
             "layer_name": str(layer.get("name", "")),
             "chunk_x": int(chunk_x),
             "chunk_y": int(chunk_y),
             "tiles": tiles,
+            "bounds": bounds,
+            "unresolved_tiles": sum(1 for tile in tiles if not tile.get("resolved", False)),
         }
 
     def _tile_color(self, tile_id: str, opacity: float) -> tuple[int, int, int, int]:
@@ -849,6 +903,7 @@ class RenderSystem:
                             "sorting_layer": command.get("sorting_layer", ""),
                             "order_in_layer": command.get("order_in_layer", 0),
                             "batch_key": dict(command.get("batch_key", {})),
+                            "chunk_data": self._clone_geometry(command.get("chunk_data")),
                             "geometry": self._clone_geometry(command.get("geometry")),
                         }
                         for command in pass_data.get("commands", [])
@@ -1315,11 +1370,28 @@ class RenderSystem:
             return
         chunk_data = command.get("chunk_data", {})
         for tile in chunk_data.get("tiles", []):
-            x = float(transform.x) + int(tile["x"]) * int(tile["width"])
-            y = float(transform.y) + int(tile["y"]) * int(tile["height"])
-            color = rl.Color(*tile["color"])
-            rl.draw_rectangle(int(x), int(y), int(tile["width"]), int(tile["height"]), color)
-            rl.draw_rectangle_lines(int(x), int(y), int(tile["width"]), int(tile["height"]), rl.Color(0, 0, 0, min(255, color.a)))
+            if not bool(tile.get("resolved", False)):
+                continue
+            texture_ref = normalize_asset_reference(tile.get("texture"))
+            texture_path = str(tile.get("texture_path", ""))
+            texture = self._load_texture(texture_ref, texture_path)
+            if texture.id == 0:
+                continue
+            source_rect_data = dict(tile.get("source_rect", {}))
+            dest_data = dict(tile.get("dest", {}))
+            source_rect = rl.Rectangle(
+                float(source_rect_data.get("x", 0.0)),
+                float(source_rect_data.get("y", 0.0)),
+                float(source_rect_data.get("width", 0.0)),
+                float(source_rect_data.get("height", 0.0)),
+            )
+            dest_rect = rl.Rectangle(
+                float(transform.x) + float(dest_data.get("x", 0.0)),
+                float(transform.y) + float(dest_data.get("y", 0.0)),
+                float(dest_data.get("width", 0.0)),
+                float(dest_data.get("height", 0.0)),
+            )
+            rl.draw_texture_pro(texture, source_rect, dest_rect, rl.Vector2(0, 0), 0.0, self._color_from_payload(tile.get("tint", [])))
 
     def _draw_joint(self, entity: Entity) -> None:
         transform = entity.get_component(Transform)
@@ -1358,6 +1430,83 @@ class RenderSystem:
         if self._project_service is None or not path:
             return path
         return self._project_service.resolve_path(path).as_posix()
+
+    def _tilemap_chunk_atlas_id(self, chunk_data: dict[str, Any], fallback_atlas_id: str) -> str:
+        atlas_ids = {
+            str(tile.get("texture", {}).get("guid") or tile.get("texture_path") or "")
+            for tile in chunk_data.get("tiles", [])
+            if bool(tile.get("resolved", False))
+        }
+        atlas_ids.discard("")
+        if len(atlas_ids) == 1:
+            return next(iter(atlas_ids))
+        if len(atlas_ids) > 1:
+            return "__tilemap_mixed__"
+        return fallback_atlas_id or "__tilemap__"
+
+    def _resolve_tile_asset_reference(self, tilemap: Tilemap, layer: dict[str, Any], tile: dict[str, Any]) -> dict[str, str]:
+        for candidate in (
+            normalize_asset_reference(tile.get("source")),
+            normalize_asset_reference(layer.get("tilemap_source")),
+            tilemap.get_tileset_reference(),
+        ):
+            if candidate.get("guid") or candidate.get("path"):
+                return candidate
+        return normalize_asset_reference({})
+
+    def _resolve_tile_source_rect(
+        self,
+        tilemap: Tilemap,
+        asset_ref: dict[str, str],
+        tile: dict[str, Any],
+    ) -> tuple[dict[str, int] | None, str]:
+        tile_id = str(tile.get("tile_id", "")).strip()
+        slice_rect = self._resolve_tile_slice_rect(asset_ref, tile_id)
+        if slice_rect is not None:
+            return slice_rect, "slice"
+        grid_rect = self._resolve_tile_grid_rect(tilemap, tile_id)
+        if grid_rect is not None:
+            return grid_rect, "grid"
+        return None, "unresolved"
+
+    def _resolve_tile_slice_rect(self, asset_ref: dict[str, str], tile_id: str) -> dict[str, int] | None:
+        if self._asset_service is None or not tile_id or not (asset_ref.get("guid") or asset_ref.get("path")):
+            return None
+        slice_rect = self._asset_service.get_slice_rect(asset_ref, tile_id)
+        if slice_rect is None:
+            return None
+        return {
+            "x": int(slice_rect.get("x", 0)),
+            "y": int(slice_rect.get("y", 0)),
+            "width": max(1, int(slice_rect.get("width", 0))),
+            "height": max(1, int(slice_rect.get("height", 0))),
+        }
+
+    def _resolve_tile_grid_rect(self, tilemap: Tilemap, tile_id: str) -> dict[str, int] | None:
+        tile_width = max(1, int(tilemap.tileset_tile_width or tilemap.cell_width))
+        tile_height = max(1, int(tilemap.tileset_tile_height or tilemap.cell_height))
+        columns = max(1, int(tilemap.tileset_columns or 0))
+        spacing = max(0, int(tilemap.tileset_spacing))
+        margin = max(0, int(tilemap.tileset_margin))
+        tile_index = self._parse_tile_index(tile_id)
+        if tile_index is None:
+            if columns != 1:
+                return None
+            tile_index = 0
+        if tile_index < 0:
+            return None
+        return {
+            "x": margin + ((tile_index % columns) * (tile_width + spacing)),
+            "y": margin + ((tile_index // columns) * (tile_height + spacing)),
+            "width": tile_width,
+            "height": tile_height,
+        }
+
+    def _parse_tile_index(self, tile_id: str) -> int | None:
+        try:
+            return int(str(tile_id).strip())
+        except (TypeError, ValueError):
+            return None
 
     def cleanup(self) -> None:
         self._texture_manager.unload_all()

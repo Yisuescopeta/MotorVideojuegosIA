@@ -1,13 +1,12 @@
-import unittest
 import json
 import os
 import tempfile
+import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pyray as rl
-
 from engine.app.editor_interaction_controller import EditorInteractionController
 from engine.core.engine_state import EngineState
 from engine.editor.cursor_manager import CursorVisualState
@@ -35,6 +34,8 @@ class EditorInteractionControllerTests(unittest.TestCase):
         self.hierarchy_panel.get_cursor_intent.return_value = CursorVisualState.DEFAULT
         self.inspector_system = Mock()
         self.inspector_system.get_cursor_intent.return_value = CursorVisualState.DEFAULT
+        self.inspector_system.is_tilemap_tool_active.return_value = False
+        self.inspector_system.handle_tilemap_scene_input.return_value = False
         self.history_manager = Mock()
         self.layout = Mock()
         self.layout.project_panel = SimpleNamespace(
@@ -155,6 +156,34 @@ class EditorInteractionControllerTests(unittest.TestCase):
             record_history=True,
             label="Move Entity",
         )
+
+    def test_handle_selection_and_gizmos_delegates_to_tilemap_tool_and_skips_selection(self) -> None:
+        world = Mock()
+        self.inspector_system.is_tilemap_tool_active.return_value = True
+
+        with patch("pyray.is_mouse_button_pressed", return_value=True), patch("pyray.is_mouse_button_down", return_value=True), patch(
+            "pyray.is_mouse_button_released",
+            return_value=False,
+        ):
+            self.controller.handle_selection_and_gizmos(world)
+
+        self.inspector_system.handle_tilemap_scene_input.assert_called_once()
+        self.gizmo_system.update.assert_not_called()
+        self.selection_system.update.assert_not_called()
+
+    def test_resolve_cursor_state_marks_scene_interactive_when_tilemap_tool_is_active(self) -> None:
+        world = Mock()
+        self.inspector_system.is_tilemap_tool_active.return_value = True
+        self.ui_system.should_render_scene_view_ui.return_value = False
+        self.ui_system.get_cursor_intent.return_value = CursorVisualState.DEFAULT
+
+        with patch("pyray.get_mouse_position", return_value=rl.Vector2(12, 14)), patch(
+            "pyray.check_collision_point_rec",
+            return_value=True,
+        ):
+            state = self.controller.resolve_cursor_state(world)
+
+        self.assertEqual(state, CursorVisualState.INTERACTIVE)
 
     def test_resolve_cursor_state_returns_interactive_when_ui_requests_it(self) -> None:
         world = Mock()

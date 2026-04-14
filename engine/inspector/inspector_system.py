@@ -5,32 +5,46 @@ engine/inspector/inspector_system.py - Dedicated inspector editors.
 from __future__ import annotations
 
 import copy
-from pathlib import Path
+import math
 import time
-
-import pyray as rl
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+import pyray as rl
+from engine.assets.asset_reference import clone_asset_reference, normalize_asset_reference
+from engine.assets.asset_service import AssetService
 from engine.components.collider import Collider
-from engine.ecs.component import Component
-from engine.ecs.entity import Entity
-from engine.ecs.world import World
-from engine.editor.cursor_manager import CursorVisualState
-from engine.inspector.component_editor_registry import ComponentEditorRegistry
-from engine.levels.component_registry import create_default_registry
 from engine.components.playercontroller2d import PlayerController2D
-from engine.components.scene_link import SceneLink
-from engine.components.scene_transition_action import SceneTransitionAction
 from engine.components.scene_transition_on_contact import SceneTransitionOnContact
 from engine.components.scene_transition_on_interact import SceneTransitionOnInteract
 from engine.components.scene_transition_on_player_death import SceneTransitionOnPlayerDeath
 from engine.components.uibutton import UIButton
+from engine.ecs.component import Component
+from engine.ecs.entity import Entity
+from engine.ecs.world import World
+from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.render_safety import editor_scissor
+from engine.inspector.component_editor_registry import ComponentEditorRegistry
+from engine.levels.component_registry import create_default_registry
+from engine.project.project_service import ProjectService
 from engine.scenes.scene_transition_support import list_scene_entry_points, validate_scene_transition_references
-
 
 PayloadUpdater = Callable[[Dict[str, Any]], None]
 CommitCallback = Callable[[Any], bool]
+
+
+@dataclass
+class TilemapAuthoringState:
+    enabled: bool = False
+    entity_name: str = ""
+    layer_name: str = ""
+    tile_id: str = ""
+    source: dict[str, str] = field(default_factory=dict)
+    mode: str = "paint"
+    hover_cell: tuple[int, int] | None = None
+    stroke_active: bool = False
+    stroke_cells: set[tuple[int, int]] = field(default_factory=set)
 
 
 class InspectorSystem:
@@ -93,6 +107,10 @@ class InspectorSystem:
         self._scene_entry_point_cache_time: float = 0.0
         self._cursor_interactive_rects: List[rl.Rectangle] = []
         self._cursor_text_rects: List[rl.Rectangle] = []
+        self._tilemap_authoring = TilemapAuthoringState()
+        self._tilemap_project_service: Optional[ProjectService] = None
+        self._tilemap_asset_service: Optional[AssetService] = None
+        self._tilemap_asset_service_root: str = ""
         self._register_default_component_editors()
 
     def set_scene_manager(self, manager: Any) -> None:
@@ -100,9 +118,163 @@ class InspectorSystem:
         self._scene_path_cache = []
         self._scene_path_cache_root = ""
         self._scene_path_cache_time = 0.0
+        self._tilemap_project_service = None
+        self._tilemap_asset_service = None
+        self._tilemap_asset_service_root = ""
 
     def open_sprite_editor(self, asset_path: str) -> None:
         self.request_open_sprite_editor_for = asset_path
+
+    def get_tilemap_tool_state(self) -> Dict[str, Any]:
+        return {
+            "enabled": bool(self._tilemap_authoring.enabled),
+            "entity_name": str(self._tilemap_authoring.entity_name or ""),
+            "layer_name": str(self._tilemap_authoring.layer_name or ""),
+            "tile_id": str(self._tilemap_authoring.tile_id or ""),
+            "source": clone_asset_reference(self._tilemap_authoring.source),
+            "mode": str(self._tilemap_authoring.mode or "paint"),
+            "hover_cell": tuple(self._tilemap_authoring.hover_cell) if self._tilemap_authoring.hover_cell is not None else None,
+            "stroke_active": bool(self._tilemap_authoring.stroke_active),
+            "stroke_cells": sorted(self._tilemap_authoring.stroke_cells),
+        }
+
+    def activate_tilemap_tool(
+        self,
+        world: "World",
+        entity_name: Optional[str] = None,
+        *,
+        layer_name: Optional[str] = None,
+    ) -> bool:
+        target_name = str(entity_name or world.selected_entity_name or "").strip()
+        if not target_name or not self._entity_has_component(world, target_name, "Tilemap"):
+            return False
+        self._tilemap_authoring.enabled = True
+        self._tilemap_authoring.entity_name = target_name
+        payload = self._current_component_payload(world, target_name, "Tilemap") or {}
+        preferred_layer = layer_name
+        if preferred_layer is None and self._tilemap_authoring.entity_name == target_name:
+            preferred_layer = self._tilemap_authoring.layer_name
+        self._tilemap_authoring.layer_name = self._resolve_tilemap_layer_name(payload, preferred_layer)
+        self._synchronize_tilemap_tool_selection(world, target_name)
+        return True
+
+    def deactivate_tilemap_tool(self) -> None:
+        if self._tilemap_authoring.stroke_active:
+            self._finish_tilemap_stroke(commit=False)
+        self._tilemap_authoring = TilemapAuthoringState()
+
+    def is_tilemap_tool_active(self, world: "World") -> bool:
+        if not self._tilemap_authoring.enabled:
+            return False
+        entity_name = self._resolve_tilemap_tool_entity_name(world)
+        return bool(entity_name)
+
+    def set_tilemap_tool_mode(self, mode: str) -> bool:
+        normalized_mode = "erase" if str(mode or "").strip().lower() == "erase" else "paint"
+        self._tilemap_authoring.mode = normalized_mode
+        return True
+
+    def set_tilemap_active_layer(self, world: "World", entity_name: str, layer_name: str) -> bool:
+        if not self.activate_tilemap_tool(world, entity_name, layer_name=layer_name):
+            return False
+        self._tilemap_authoring.layer_name = str(layer_name or "").strip()
+        self._synchronize_tilemap_tool_selection(world, entity_name)
+        return True
+
+    def set_tilemap_selected_tile(
+        self,
+        world: "World",
+        entity_name: str,
+        tile_id: str,
+        *,
+        source: Any = None,
+    ) -> bool:
+        normalized_entity_name = str(entity_name or "").strip()
+        if not normalized_entity_name:
+            return False
+        if not (self._tilemap_authoring.enabled and self._tilemap_authoring.entity_name == normalized_entity_name):
+            if not self.activate_tilemap_tool(world, normalized_entity_name):
+                return False
+        self._tilemap_authoring.tile_id = str(tile_id or "").strip()
+        if source is not None:
+            self._tilemap_authoring.source = normalize_asset_reference(source)
+        else:
+            payload = self._current_component_payload(world, normalized_entity_name, "Tilemap") or {}
+            self._tilemap_authoring.source = self._resolve_tilemap_palette_source(payload, self._tilemap_authoring.layer_name)
+        return True
+
+    def list_tilemap_palette_options(
+        self,
+        world: "World",
+        entity_name: str,
+        layer_name: Optional[str] = None,
+    ) -> List[tuple[str, str]]:
+        payload = self._current_component_payload(world, entity_name, "Tilemap")
+        if payload is None:
+            return []
+        active_layer = self._resolve_tilemap_layer_name(payload, layer_name)
+        asset_ref = self._resolve_tilemap_palette_source(payload, active_layer)
+        slices = self._list_tilemap_slice_options(asset_ref)
+        if slices:
+            return slices
+        return self._list_tilemap_grid_options(payload, asset_ref)
+
+    def tilemap_world_to_cell(
+        self,
+        world: "World",
+        entity_name: str,
+        world_x: float,
+        world_y: float,
+    ) -> Optional[tuple[int, int]]:
+        entity = world.get_entity_by_name(entity_name)
+        if entity is None:
+            return None
+        transform = self._find_component(entity, "Transform")
+        tilemap = self._find_component(entity, "Tilemap")
+        if transform is None or tilemap is None or not getattr(tilemap, "enabled", True):
+            return None
+        payload = self._current_component_payload(world, entity_name, "Tilemap") or {}
+        layer = self._find_tilemap_layer_payload(payload, self._tilemap_authoring.layer_name)
+        layer_offset_x = float((layer or {}).get("offset_x", 0.0))
+        layer_offset_y = float((layer or {}).get("offset_y", 0.0))
+        cell_width = max(1, int(getattr(tilemap, "cell_width", 1)))
+        cell_height = max(1, int(getattr(tilemap, "cell_height", 1)))
+        local_x = float(world_x) - float(getattr(transform, "x", 0.0)) - layer_offset_x
+        local_y = float(world_y) - float(getattr(transform, "y", 0.0)) - layer_offset_y
+        return (int(math.floor(local_x / cell_width)), int(math.floor(local_y / cell_height)))
+
+    def handle_tilemap_scene_input(self, world: "World", mouse_world: rl.Vector2, mouse_in_scene: bool) -> bool:
+        entity_name = self._resolve_tilemap_tool_entity_name(world)
+        if entity_name is None:
+            self._tilemap_authoring.hover_cell = None
+            if self._tilemap_authoring.stroke_active:
+                self._finish_tilemap_stroke(commit=False)
+            return False
+
+        payload = self._current_component_payload(world, entity_name, "Tilemap") or {}
+        self._tilemap_authoring.layer_name = self._resolve_tilemap_layer_name(payload, self._tilemap_authoring.layer_name)
+        self._synchronize_tilemap_tool_selection(world, entity_name)
+
+        hover_cell = None
+        if mouse_in_scene:
+            hover_cell = self.tilemap_world_to_cell(world, entity_name, float(mouse_world.x), float(mouse_world.y))
+        self._tilemap_authoring.hover_cell = hover_cell
+
+        left_pressed = rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT)
+        left_down = rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT)
+        left_released = rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT)
+
+        if mouse_in_scene and hover_cell is not None and left_pressed:
+            if not self._begin_tilemap_stroke():
+                return True
+            self._apply_tilemap_brush(world, entity_name, hover_cell)
+        elif self._tilemap_authoring.stroke_active and mouse_in_scene and hover_cell is not None and left_down:
+            self._apply_tilemap_brush(world, entity_name, hover_cell)
+
+        if self._tilemap_authoring.stroke_active and (left_released or not left_down):
+            self._finish_tilemap_stroke(commit=True)
+
+        return bool(self._tilemap_authoring.enabled)
 
     def has_dedicated_editor(self, component_name: str) -> bool:
         return self.component_editors.has(component_name)
@@ -164,6 +336,7 @@ class InspectorSystem:
         self.component_editors.register("AudioSource", self._draw_audio_source_editor)
         self.component_editors.register("InputMap", self._draw_input_map_editor)
         self.component_editors.register("PlayerController2D", self._draw_player_controller_editor)
+        self.component_editors.register("Tilemap", self._draw_tilemap_editor)
         self.component_editors.register("ScriptBehaviour", self._draw_script_behaviour_editor)
         self.component_editors.register("SceneEntryPoint", self._draw_scene_entry_point_editor)
         self.component_editors.register("SceneLink", self._draw_scene_link_editor)
@@ -696,6 +869,265 @@ class InspectorSystem:
             if type(component).__name__ == component_name:
                 return component
         return None
+
+    def _entity_has_component(self, world: "World", entity_name: str, component_name: str) -> bool:
+        entity = world.get_entity_by_name(entity_name)
+        return bool(entity is not None and self._find_component(entity, component_name) is not None)
+
+    def _resolve_tilemap_tool_entity_name(self, world: "World") -> Optional[str]:
+        stored_name = str(self._tilemap_authoring.entity_name or "").strip()
+        if stored_name and self._entity_has_component(world, stored_name, "Tilemap"):
+            return stored_name
+        selected_name = str(world.selected_entity_name or "").strip()
+        if selected_name and self._entity_has_component(world, selected_name, "Tilemap"):
+            self._tilemap_authoring.entity_name = selected_name
+            return selected_name
+        self._tilemap_authoring.enabled = False
+        self._tilemap_authoring.entity_name = ""
+        return None
+
+    def _resolve_tilemap_layer_name(self, payload: Dict[str, Any], preferred: Optional[str]) -> str:
+        preferred_name = str(preferred or "").strip()
+        layers = payload.get("layers", [])
+        if isinstance(layers, list):
+            for layer in layers:
+                if isinstance(layer, dict) and str(layer.get("name", "")).strip() == preferred_name:
+                    return preferred_name
+            for layer in layers:
+                if isinstance(layer, dict):
+                    candidate = str(layer.get("name", "")).strip()
+                    if candidate:
+                        return candidate
+        return str(payload.get("default_layer_name", "") or "Layer").strip() or "Layer"
+
+    def _find_tilemap_layer_payload(self, payload: Dict[str, Any], layer_name: str) -> Optional[Dict[str, Any]]:
+        for layer in payload.get("layers", []):
+            if isinstance(layer, dict) and str(layer.get("name", "")).strip() == str(layer_name or "").strip():
+                return layer
+        return None
+
+    def _ensure_tilemap_layer_payload(self, payload: Dict[str, Any], layer_name: str) -> Dict[str, Any]:
+        existing = self._find_tilemap_layer_payload(payload, layer_name)
+        if existing is not None:
+            return existing
+        normalized_name = str(layer_name or payload.get("default_layer_name", "Layer")).strip() or "Layer"
+        layer_payload = {
+            "name": normalized_name,
+            "visible": True,
+            "opacity": 1.0,
+            "locked": False,
+            "offset_x": 0.0,
+            "offset_y": 0.0,
+            "collision_layer": 0,
+            "tilemap_source": {},
+            "metadata": {},
+            "tiles": [],
+        }
+        payload.setdefault("layers", []).append(layer_payload)
+        return layer_payload
+
+    def _find_serialized_tile_entry(self, layer_payload: Dict[str, Any], x: int, y: int) -> Optional[Dict[str, Any]]:
+        for tile in layer_payload.get("tiles", []):
+            if not isinstance(tile, dict):
+                continue
+            if int(tile.get("x", 0)) == int(x) and int(tile.get("y", 0)) == int(y):
+                return tile
+        return None
+
+    def _set_tilemap_tileset_reference(self, payload: Dict[str, Any], locator: Any) -> None:
+        reference = normalize_asset_reference(locator)
+        payload["tileset"] = clone_asset_reference(reference)
+        payload["tileset_path"] = reference.get("path", "")
+
+    def _set_tilemap_layer_source(self, payload: Dict[str, Any], layer_name: str, locator: Any) -> None:
+        layer = self._ensure_tilemap_layer_payload(payload, layer_name)
+        layer["tilemap_source"] = clone_asset_reference(locator)
+
+    def _set_tilemap_layer_field(self, payload: Dict[str, Any], layer_name: str, field_name: str, value: Any) -> None:
+        layer = self._ensure_tilemap_layer_payload(payload, layer_name)
+        layer[field_name] = copy.deepcopy(value)
+
+    def _append_tilemap_layer(self, payload: Dict[str, Any]) -> None:
+        layers = payload.setdefault("layers", [])
+        existing_names = {str(layer.get("name", "")).strip() for layer in layers if isinstance(layer, dict)}
+        base_name = str(payload.get("default_layer_name", "Layer")).strip() or "Layer"
+        candidate = base_name
+        suffix = 1
+        while candidate in existing_names:
+            candidate = f"{base_name}_{suffix}"
+            suffix += 1
+        layers.append(
+            {
+                "name": candidate,
+                "visible": True,
+                "opacity": 1.0,
+                "locked": False,
+                "offset_x": 0.0,
+                "offset_y": 0.0,
+                "collision_layer": 0,
+                "tilemap_source": {},
+                "metadata": {},
+                "tiles": [],
+            }
+        )
+
+    def _resolve_tilemap_palette_source(self, payload: Dict[str, Any], layer_name: str) -> dict[str, str]:
+        layer = self._find_tilemap_layer_payload(payload, layer_name)
+        if layer is not None:
+            layer_source = normalize_asset_reference(layer.get("tilemap_source"))
+            if layer_source.get("guid") or layer_source.get("path"):
+                return layer_source
+        return normalize_asset_reference(payload.get("tileset"))
+
+    def _synchronize_tilemap_tool_selection(self, world: "World", entity_name: str) -> None:
+        payload = self._current_component_payload(world, entity_name, "Tilemap")
+        if payload is None:
+            return
+        self._tilemap_authoring.layer_name = self._resolve_tilemap_layer_name(payload, self._tilemap_authoring.layer_name)
+        source = self._resolve_tilemap_palette_source(payload, self._tilemap_authoring.layer_name)
+        options = self.list_tilemap_palette_options(world, entity_name, self._tilemap_authoring.layer_name)
+        valid_tile_ids = {key for key, _label in options}
+        if options and self._tilemap_authoring.tile_id not in valid_tile_ids:
+            self._tilemap_authoring.tile_id = options[0][0]
+        if source.get("guid") or source.get("path"):
+            self._tilemap_authoring.source = source
+
+    def _get_tilemap_asset_service(self) -> Optional[AssetService]:
+        current_scene = getattr(self._scene_manager, "current_scene", None) if self._scene_manager is not None else None
+        scene_path = str(getattr(current_scene, "source_path", "") or "").strip()
+        if not scene_path:
+            return None
+        project_root = Path(scene_path).resolve().parent.parent
+        root_key = project_root.as_posix()
+        if self._tilemap_asset_service is not None and self._tilemap_asset_service_root == root_key:
+            return self._tilemap_asset_service
+        project_file = project_root / ProjectService.PROJECT_FILE
+        if not project_file.exists():
+            return None
+        try:
+            project_service = ProjectService(
+                project_root.as_posix(),
+                global_state_dir=(project_root / ".motor" / "inspector_state").as_posix(),
+                auto_ensure=False,
+            )
+            project_service.open_project(project_root.as_posix())
+        except Exception:
+            return None
+        self._tilemap_project_service = project_service
+        self._tilemap_asset_service = AssetService(project_service)
+        self._tilemap_asset_service_root = root_key
+        return self._tilemap_asset_service
+
+    def _list_tilemap_slice_options(self, asset_ref: dict[str, str]) -> List[tuple[str, str]]:
+        if not (asset_ref.get("guid") or asset_ref.get("path")):
+            return []
+        asset_service = self._get_tilemap_asset_service()
+        if asset_service is None:
+            return []
+        try:
+            slices = asset_service.list_slices(asset_ref)
+        except Exception:
+            return []
+        options: List[tuple[str, str]] = []
+        for slice_info in slices:
+            name = str(slice_info.get("name", "")).strip()
+            if name:
+                options.append((name, name))
+        return options
+
+    def _list_tilemap_grid_options(self, payload: Dict[str, Any], asset_ref: dict[str, str]) -> List[tuple[str, str]]:
+        tile_width = max(1, int(payload.get("tileset_tile_width", payload.get("cell_width", 1)) or 1))
+        tile_height = max(1, int(payload.get("tileset_tile_height", payload.get("cell_height", 1)) or 1))
+        spacing = max(0, int(payload.get("tileset_spacing", 0) or 0))
+        margin = max(0, int(payload.get("tileset_margin", 0) or 0))
+        columns = max(0, int(payload.get("tileset_columns", 0) or 0))
+        image_width = 0
+        image_height = 0
+        asset_service = self._get_tilemap_asset_service()
+        if asset_service is not None and (asset_ref.get("guid") or asset_ref.get("path")):
+            try:
+                image_width, image_height = asset_service.get_sprite_image_size(asset_ref)
+            except Exception:
+                image_width, image_height = (0, 0)
+        if columns <= 0 and image_width > 0:
+            usable_width = max(0, image_width - (margin * 2) + spacing)
+            columns = max(1, usable_width // max(1, tile_width + spacing))
+        if columns <= 0:
+            return []
+        rows = 1
+        if image_height > 0:
+            usable_height = max(0, image_height - (margin * 2) + spacing)
+            rows = max(1, usable_height // max(1, tile_height + spacing))
+        total = max(1, rows * columns)
+        return [(str(index), str(index)) for index in range(total)]
+
+    def _begin_tilemap_stroke(self) -> bool:
+        if self._scene_manager is None or self._tilemap_authoring.stroke_active:
+            return self._tilemap_authoring.stroke_active
+        label = "Tilemap Erase Stroke" if self._tilemap_authoring.mode == "erase" else "Tilemap Paint Stroke"
+        if not self._scene_manager.begin_transaction(label=label):
+            return False
+        self._tilemap_authoring.stroke_active = True
+        self._tilemap_authoring.stroke_cells.clear()
+        return True
+
+    def _finish_tilemap_stroke(self, *, commit: bool) -> None:
+        if not self._tilemap_authoring.stroke_active or self._scene_manager is None:
+            self._tilemap_authoring.stroke_active = False
+            self._tilemap_authoring.stroke_cells.clear()
+            return
+        if commit:
+            self._scene_manager.commit_transaction()
+        else:
+            self._scene_manager.rollback_transaction()
+        self._tilemap_authoring.stroke_active = False
+        self._tilemap_authoring.stroke_cells.clear()
+
+    def _apply_tilemap_brush(self, world: "World", entity_name: str, cell: tuple[int, int]) -> bool:
+        if cell in self._tilemap_authoring.stroke_cells:
+            return False
+        payload = self._current_component_payload(world, entity_name, "Tilemap")
+        if payload is None:
+            return False
+        layer = self._ensure_tilemap_layer_payload(payload, self._tilemap_authoring.layer_name)
+        if bool(layer.get("locked", False)):
+            return False
+        tile_x, tile_y = int(cell[0]), int(cell[1])
+        existing = self._find_serialized_tile_entry(layer, tile_x, tile_y)
+        if self._tilemap_authoring.mode == "erase":
+            if existing is None:
+                self._tilemap_authoring.stroke_cells.add(cell)
+                return False
+            layer["tiles"] = [
+                tile
+                for tile in layer.get("tiles", [])
+                if not (isinstance(tile, dict) and int(tile.get("x", 0)) == tile_x and int(tile.get("y", 0)) == tile_y)
+            ]
+        else:
+            tile_id = str(self._tilemap_authoring.tile_id or "").strip()
+            if not tile_id:
+                return False
+            tile_payload = {
+                "x": tile_x,
+                "y": tile_y,
+                "tile_id": tile_id,
+                "source": clone_asset_reference(self._tilemap_authoring.source),
+                "flags": [],
+                "tags": [],
+                "custom": {},
+                "animated": False,
+                "animation_id": "",
+                "terrain_type": "",
+            }
+            if existing is None:
+                layer.setdefault("tiles", []).append(tile_payload)
+            else:
+                existing.clear()
+                existing.update(tile_payload)
+        success = self.replace_component_payload(world, entity_name, "Tilemap", payload)
+        if success:
+            self._tilemap_authoring.stroke_cells.add(cell)
+        return success
 
     def _get_component_origin(self, entity: Optional[Entity], component_name: str, component: Optional[Component] = None) -> str:
         if entity is not None:
@@ -1771,6 +2203,210 @@ class InspectorSystem:
             current_y = self._draw_nullable_float_row(label, getattr(component, prop_name), prop_id, x, current_y, width, is_edit, world, on_commit=on_commit)
 
         current_y = self._draw_component_field("Recenter", component.recenter_on_play, entity_id, "Camera2D", "recenter_on_play", x, current_y, width, is_edit, world)
+        return current_y
+
+    def _draw_tilemap_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:
+        current_y = y
+        entity_name = self._entity_name_from_id(world, entity_id)
+        current_y = self._draw_component_field("Enabled", component.enabled, entity_id, "Tilemap", "enabled", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("Cell Width", component.cell_width, entity_id, "Tilemap", "cell_width", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("Cell Height", component.cell_height, entity_id, "Tilemap", "cell_height", x, current_y, width, is_edit, world)
+
+        tileset_path = str(getattr(component, "tileset_path", "") or getattr(component, "tileset", {}).get("path", "") or "")
+        tileset_prop_id = f"{entity_id}:Tilemap:tileset_path"
+
+        def commit_tileset(new_value: Any) -> bool:
+            if entity_name is None:
+                return False
+            normalized = str(new_value or "").strip()
+            return self.update_component_payload(
+                world,
+                entity_name,
+                "Tilemap",
+                lambda payload, normalized=normalized: self._set_tilemap_tileset_reference(payload, normalized),
+            )
+
+        current_y = self._draw_text_row("Tileset", tileset_path, tileset_prop_id, x, current_y, width, is_edit, world, on_commit=commit_tileset)
+        current_y = self._draw_component_field("Tile W", component.tileset_tile_width, entity_id, "Tilemap", "tileset_tile_width", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("Tile H", component.tileset_tile_height, entity_id, "Tilemap", "tileset_tile_height", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("Columns", component.tileset_columns, entity_id, "Tilemap", "tileset_columns", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("Spacing", component.tileset_spacing, entity_id, "Tilemap", "tileset_spacing", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("Margin", component.tileset_margin, entity_id, "Tilemap", "tileset_margin", x, current_y, width, is_edit, world)
+        current_y = self._draw_component_field("Default Layer", component.default_layer_name, entity_id, "Tilemap", "default_layer_name", x, current_y, width, is_edit, world)
+
+        if entity_name is None:
+            return current_y
+
+        payload = self._current_component_payload(world, entity_name, "Tilemap") or {}
+        active_layer_name = self._resolve_tilemap_layer_name(payload, self._tilemap_authoring.layer_name if self._tilemap_authoring.entity_name == entity_name else None)
+        layer_options = [
+            (str(layer.get("name", "")).strip(), str(layer.get("name", "")).strip())
+            for layer in payload.get("layers", [])
+            if isinstance(layer, dict) and str(layer.get("name", "")).strip()
+        ]
+        if not layer_options:
+            layer_options = [(component.default_layer_name, component.default_layer_name)]
+        brush_active = bool(self._tilemap_authoring.enabled and self._tilemap_authoring.entity_name == entity_name)
+
+        current_y = self._draw_bool_row(
+            "Brush Active",
+            brush_active,
+            f"{entity_id}:Tilemap:brush_active",
+            x,
+            current_y,
+            width,
+            is_edit,
+            world,
+            on_toggle=lambda enabled, entity_name=entity_name: self.activate_tilemap_tool(world, entity_name) if enabled else (self.deactivate_tilemap_tool() or True),
+        )
+        current_y = self._draw_choice_row(
+            "Edit Layer",
+            layer_options,
+            active_layer_name,
+            x,
+            current_y,
+            width,
+            is_edit,
+            on_select=lambda value, entity_name=entity_name: self.set_tilemap_active_layer(world, entity_name, value),
+        )
+        current_y = self._draw_choice_row(
+            "Brush Mode",
+            [("paint", "Paint"), ("erase", "Erase")],
+            "erase" if self._tilemap_authoring.mode == "erase" else "paint",
+            x,
+            current_y,
+            width,
+            is_edit,
+            on_select=lambda value: self.set_tilemap_tool_mode(value),
+        )
+
+        self._synchronize_tilemap_tool_selection(world, entity_name)
+        palette_options = self.list_tilemap_palette_options(world, entity_name, active_layer_name)
+        source_path = self._resolve_tilemap_palette_source(payload, active_layer_name).get("path", "")
+        current_y = self._draw_readonly_row("Paint Source", source_path or "(none)", x, current_y, width)
+        if palette_options:
+            selected_tile = self._tilemap_authoring.tile_id or palette_options[0][0]
+            current_y = self._draw_choice_row(
+                "Selected Tile",
+                palette_options,
+                selected_tile,
+                x,
+                current_y,
+                width,
+                is_edit,
+                on_select=lambda value, entity_name=entity_name, source_path=source_path: self.set_tilemap_selected_tile(world, entity_name, value, source=source_path),
+            )
+        else:
+            current_y = self._draw_readonly_row("Selected Tile", "(unresolved)", x, current_y, width)
+
+        current_y = self._draw_section_title("Layers", x, current_y, width)
+        add_rect = rl.Rectangle(x + self.LABEL_WIDTH + 5, current_y + 1, width - self.LABEL_WIDTH - 10, self.LINE_HEIGHT - 2)
+        self._register_cursor_rect(add_rect)
+        if rl.gui_button(add_rect, "Add Layer") and is_edit:
+            self.update_component_payload(world, entity_name, "Tilemap", self._append_tilemap_layer)
+        current_y += self.LINE_HEIGHT
+
+        for layer in payload.get("layers", []):
+            if not isinstance(layer, dict):
+                continue
+            layer_name = str(layer.get("name", "")).strip() or "Layer"
+            current_y = self._draw_section_title(f"Layer: {layer_name}", x, current_y, width)
+            current_y = self._draw_bool_row(
+                "Visible",
+                bool(layer.get("visible", True)),
+                f"{entity_id}:Tilemap:{layer_name}:visible",
+                x,
+                current_y,
+                width,
+                is_edit,
+                world,
+                on_toggle=lambda new_value, entity_name=entity_name, layer_name=layer_name: self.update_component_payload(
+                    world,
+                    entity_name,
+                    "Tilemap",
+                    lambda payload, layer_name=layer_name, new_value=new_value: self._set_tilemap_layer_field(payload, layer_name, "visible", bool(new_value)),
+                ),
+            )
+            current_y = self._draw_float_row(
+                "Opacity",
+                float(layer.get("opacity", 1.0)),
+                f"{entity_id}:Tilemap:{layer_name}:opacity",
+                x,
+                current_y,
+                width,
+                is_edit,
+                world,
+                on_commit=lambda new_value, entity_name=entity_name, layer_name=layer_name: self.update_component_payload(
+                    world,
+                    entity_name,
+                    "Tilemap",
+                    lambda payload, layer_name=layer_name, new_value=new_value: self._set_tilemap_layer_field(payload, layer_name, "opacity", max(0.0, min(1.0, float(new_value)))),
+                ),
+            )
+            current_y = self._draw_bool_row(
+                "Locked",
+                bool(layer.get("locked", False)),
+                f"{entity_id}:Tilemap:{layer_name}:locked",
+                x,
+                current_y,
+                width,
+                is_edit,
+                world,
+                on_toggle=lambda new_value, entity_name=entity_name, layer_name=layer_name: self.update_component_payload(
+                    world,
+                    entity_name,
+                    "Tilemap",
+                    lambda payload, layer_name=layer_name, new_value=new_value: self._set_tilemap_layer_field(payload, layer_name, "locked", bool(new_value)),
+                ),
+            )
+            current_y = self._draw_float_row(
+                "Offset X",
+                float(layer.get("offset_x", 0.0)),
+                f"{entity_id}:Tilemap:{layer_name}:offset_x",
+                x,
+                current_y,
+                width,
+                is_edit,
+                world,
+                on_commit=lambda new_value, entity_name=entity_name, layer_name=layer_name: self.update_component_payload(
+                    world,
+                    entity_name,
+                    "Tilemap",
+                    lambda payload, layer_name=layer_name, new_value=new_value: self._set_tilemap_layer_field(payload, layer_name, "offset_x", float(new_value)),
+                ),
+            )
+            current_y = self._draw_float_row(
+                "Offset Y",
+                float(layer.get("offset_y", 0.0)),
+                f"{entity_id}:Tilemap:{layer_name}:offset_y",
+                x,
+                current_y,
+                width,
+                is_edit,
+                world,
+                on_commit=lambda new_value, entity_name=entity_name, layer_name=layer_name: self.update_component_payload(
+                    world,
+                    entity_name,
+                    "Tilemap",
+                    lambda payload, layer_name=layer_name, new_value=new_value: self._set_tilemap_layer_field(payload, layer_name, "offset_y", float(new_value)),
+                ),
+            )
+            current_y = self._draw_text_row(
+                "Source",
+                normalize_asset_reference(layer.get("tilemap_source")).get("path", ""),
+                f"{entity_id}:Tilemap:{layer_name}:tilemap_source",
+                x,
+                current_y,
+                width,
+                is_edit,
+                world,
+                on_commit=lambda new_value, entity_name=entity_name, layer_name=layer_name: self.update_component_payload(
+                    world,
+                    entity_name,
+                    "Tilemap",
+                    lambda payload, layer_name=layer_name, new_value=new_value: self._set_tilemap_layer_source(payload, layer_name, str(new_value or "").strip()),
+                ),
+            )
         return current_y
 
     def _draw_audio_source_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:
