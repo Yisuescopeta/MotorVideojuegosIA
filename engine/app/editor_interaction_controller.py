@@ -161,10 +161,15 @@ class EditorInteractionController:
             and hasattr(inspector_system, "is_tilemap_tool_active")
             and inspector_system.is_tilemap_tool_active(active_world)
         )
+        gizmo_system = self._get_gizmo_system()
+        tilemap_preview = None
         if tilemap_tool_active and inspector_system is not None and active_world is not None:
             inspector_system.handle_tilemap_scene_input(active_world, mouse_world, mouse_in_scene)
+            if hasattr(inspector_system, "get_tilemap_preview_snapshot"):
+                tilemap_preview = inspector_system.get_tilemap_preview_snapshot(active_world)
+        if gizmo_system is not None and hasattr(gizmo_system, "set_tilemap_preview"):
+            gizmo_system.set_tilemap_preview(tilemap_preview)
 
-        gizmo_system = self._get_gizmo_system()
         scene_manager = self._get_scene_manager()
         if not tilemap_tool_active and gizmo_system is not None and active_world is not None:
             if gizmo_system.is_dragging or mouse_in_scene:

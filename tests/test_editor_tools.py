@@ -1,10 +1,10 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pyray as rl
-
 from engine.components.recttransform import RectTransform
 from engine.components.sprite import Sprite
 from engine.components.transform import Transform
@@ -616,6 +616,72 @@ class GizmoSystemMathTests(unittest.TestCase):
         gizmo._draw_translate_gizmo.assert_called_once()
         gizmo._draw_rotate_gizmo.assert_called_once()
         gizmo._draw_scale_gizmo.assert_called_once()
+
+    def test_tilemap_preview_renders_paint_ghost_without_selected_entity(self) -> None:
+        gizmo = GizmoSystem()
+        world = SceneManager(create_default_registry()).load_scene({"name": "PreviewOnly", "entities": [], "rules": [], "feature_metadata": {}})
+        gizmo.set_tilemap_preview(
+            {
+                "mode": "paint",
+                "editable": True,
+                "texture_path": "C:/fake/tile.png",
+                "source_rect": {"x": 0, "y": 0, "width": 16, "height": 16},
+                "cell_rect": {"x": 10.0, "y": 20.0, "width": 32.0, "height": 32.0},
+            }
+        )
+
+        with patch.object(gizmo._tilemap_texture_manager, "load", return_value=SimpleNamespace(id=1, width=16, height=16)), patch(
+            "pyray.draw_texture_pro"
+        ) as draw_texture_pro, patch("pyray.draw_rectangle_lines_ex") as draw_outline, patch("pyray.draw_rectangle_rec") as draw_fill:
+            gizmo.render(world, EditorTool.MOVE, TransformSpace.WORLD, PivotMode.PIVOT)
+
+        draw_texture_pro.assert_called_once()
+        draw_outline.assert_called_once()
+        draw_fill.assert_not_called()
+
+    def test_tilemap_preview_renders_invalid_overlay_without_texture(self) -> None:
+        gizmo = GizmoSystem()
+        world = SceneManager(create_default_registry()).load_scene({"name": "InvalidPreview", "entities": [], "rules": [], "feature_metadata": {}})
+        gizmo.set_tilemap_preview(
+            {
+                "mode": "paint",
+                "editable": False,
+                "texture_path": "C:/fake/tile.png",
+                "source_rect": {"x": 0, "y": 0, "width": 16, "height": 16},
+                "cell_rect": {"x": 4.0, "y": 6.0, "width": 16.0, "height": 16.0},
+            }
+        )
+
+        with patch.object(gizmo._tilemap_texture_manager, "load", return_value=SimpleNamespace(id=1, width=16, height=16)), patch(
+            "pyray.draw_texture_pro"
+        ) as draw_texture_pro, patch("pyray.draw_rectangle_lines_ex") as draw_outline, patch("pyray.draw_rectangle_rec") as draw_fill:
+            gizmo.render(world, EditorTool.MOVE, TransformSpace.WORLD, PivotMode.PIVOT)
+
+        draw_texture_pro.assert_not_called()
+        draw_outline.assert_called_once()
+        draw_fill.assert_called_once()
+
+    def test_tilemap_preview_renders_erase_overlay(self) -> None:
+        gizmo = GizmoSystem()
+        world = SceneManager(create_default_registry()).load_scene({"name": "ErasePreview", "entities": [], "rules": [], "feature_metadata": {}})
+        gizmo.set_tilemap_preview(
+            {
+                "mode": "erase",
+                "editable": True,
+                "texture_path": "",
+                "source_rect": None,
+                "cell_rect": {"x": 2.0, "y": 3.0, "width": 8.0, "height": 8.0},
+            }
+        )
+
+        with patch("pyray.draw_texture_pro") as draw_texture_pro, patch("pyray.draw_rectangle_lines_ex") as draw_outline, patch(
+            "pyray.draw_rectangle_rec"
+        ) as draw_fill:
+            gizmo.render(world, EditorTool.MOVE, TransformSpace.WORLD, PivotMode.PIVOT)
+
+        draw_texture_pro.assert_not_called()
+        draw_outline.assert_called_once()
+        draw_fill.assert_called_once()
 
 
 class SceneManagerTransformStateTests(unittest.TestCase):

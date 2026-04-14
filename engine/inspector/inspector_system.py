@@ -28,6 +28,7 @@ from engine.editor.render_safety import editor_scissor
 from engine.inspector.component_editor_registry import ComponentEditorRegistry
 from engine.levels.component_registry import create_default_registry
 from engine.project.project_service import ProjectService
+from engine.resources.texture_manager import TextureManager
 from engine.scenes.scene_transition_support import list_scene_entry_points, validate_scene_transition_references
 
 PayloadUpdater = Callable[[Dict[str, Any]], None]
@@ -43,6 +44,7 @@ class TilemapAuthoringState:
     source: dict[str, str] = field(default_factory=dict)
     mode: str = "paint"
     hover_cell: tuple[int, int] | None = None
+    palette_scroll: float = 0.0
     stroke_active: bool = False
     stroke_cells: set[tuple[int, int]] = field(default_factory=set)
 
@@ -111,6 +113,7 @@ class InspectorSystem:
         self._tilemap_project_service: Optional[ProjectService] = None
         self._tilemap_asset_service: Optional[AssetService] = None
         self._tilemap_asset_service_root: str = ""
+        self._tilemap_texture_manager = TextureManager()
         self._register_default_component_editors()
 
     def set_scene_manager(self, manager: Any) -> None:
@@ -134,9 +137,16 @@ class InspectorSystem:
             "source": clone_asset_reference(self._tilemap_authoring.source),
             "mode": str(self._tilemap_authoring.mode or "paint"),
             "hover_cell": tuple(self._tilemap_authoring.hover_cell) if self._tilemap_authoring.hover_cell is not None else None,
+            "palette_scroll": float(self._tilemap_authoring.palette_scroll),
             "stroke_active": bool(self._tilemap_authoring.stroke_active),
             "stroke_cells": sorted(self._tilemap_authoring.stroke_cells),
         }
+
+    def get_tilemap_preview_snapshot(self, world: "World") -> Optional[Dict[str, Any]]:
+        entity_name = self._resolve_tilemap_tool_entity_name(world)
+        if entity_name is None or self._tilemap_authoring.hover_cell is None:
+            return None
+        return self._build_tilemap_preview_snapshot(world, entity_name, self._tilemap_authoring.hover_cell)
 
     def activate_tilemap_tool(
         self,
@@ -148,6 +158,8 @@ class InspectorSystem:
         target_name = str(entity_name or world.selected_entity_name or "").strip()
         if not target_name or not self._entity_has_component(world, target_name, "Tilemap"):
             return False
+        previous_entity = self._tilemap_authoring.entity_name
+        previous_layer = self._tilemap_authoring.layer_name
         self._tilemap_authoring.enabled = True
         self._tilemap_authoring.entity_name = target_name
         payload = self._current_component_payload(world, target_name, "Tilemap") or {}
@@ -155,6 +167,8 @@ class InspectorSystem:
         if preferred_layer is None and self._tilemap_authoring.entity_name == target_name:
             preferred_layer = self._tilemap_authoring.layer_name
         self._tilemap_authoring.layer_name = self._resolve_tilemap_layer_name(payload, preferred_layer)
+        if previous_entity != target_name or previous_layer != self._tilemap_authoring.layer_name:
+            self._tilemap_authoring.palette_scroll = 0.0
         self._synchronize_tilemap_tool_selection(world, target_name)
         return True
 
@@ -178,6 +192,7 @@ class InspectorSystem:
         if not self.activate_tilemap_tool(world, entity_name, layer_name=layer_name):
             return False
         self._tilemap_authoring.layer_name = str(layer_name or "").strip()
+        self._tilemap_authoring.palette_scroll = 0.0
         self._synchronize_tilemap_tool_selection(world, entity_name)
         return True
 
@@ -209,15 +224,26 @@ class InspectorSystem:
         entity_name: str,
         layer_name: Optional[str] = None,
     ) -> List[tuple[str, str]]:
+        return [
+            (str(entry.get("tile_id", "")), str(entry.get("label", "")))
+            for entry in self.list_tilemap_palette_entries(world, entity_name, layer_name)
+        ]
+
+    def list_tilemap_palette_entries(
+        self,
+        world: "World",
+        entity_name: str,
+        layer_name: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         payload = self._current_component_payload(world, entity_name, "Tilemap")
         if payload is None:
             return []
         active_layer = self._resolve_tilemap_layer_name(payload, layer_name)
         asset_ref = self._resolve_tilemap_palette_source(payload, active_layer)
-        slices = self._list_tilemap_slice_options(asset_ref)
-        if slices:
-            return slices
-        return self._list_tilemap_grid_options(payload, asset_ref)
+        entries = self._build_tilemap_palette_entries(payload, asset_ref)
+        for entry in entries:
+            entry["layer_name"] = active_layer
+        return entries
 
     def tilemap_world_to_cell(
         self,
@@ -985,12 +1011,41 @@ class InspectorSystem:
             return
         self._tilemap_authoring.layer_name = self._resolve_tilemap_layer_name(payload, self._tilemap_authoring.layer_name)
         source = self._resolve_tilemap_palette_source(payload, self._tilemap_authoring.layer_name)
-        options = self.list_tilemap_palette_options(world, entity_name, self._tilemap_authoring.layer_name)
-        valid_tile_ids = {key for key, _label in options}
-        if options and self._tilemap_authoring.tile_id not in valid_tile_ids:
-            self._tilemap_authoring.tile_id = options[0][0]
+        entries = self.list_tilemap_palette_entries(world, entity_name, self._tilemap_authoring.layer_name)
+        valid_tile_ids = {str(entry.get("tile_id", "")) for entry in entries}
+        if entries and self._tilemap_authoring.tile_id not in valid_tile_ids:
+            self._tilemap_authoring.tile_id = str(entries[0].get("tile_id", ""))
         if source.get("guid") or source.get("path"):
             self._tilemap_authoring.source = source
+
+    def _build_tilemap_palette_entries(self, payload: Dict[str, Any], asset_ref: dict[str, str]) -> List[Dict[str, Any]]:
+        entries: List[Dict[str, Any]] = []
+        for tile_id, label in self._list_tilemap_slice_options(asset_ref):
+            entries.append(self._build_tilemap_visual_entry(payload, asset_ref, tile_id, label=label))
+        if entries:
+            return entries
+        for tile_id, label in self._list_tilemap_grid_options(payload, asset_ref):
+            entries.append(self._build_tilemap_visual_entry(payload, asset_ref, tile_id, label=label))
+        return entries
+
+    def _build_tilemap_visual_entry(
+        self,
+        payload: Dict[str, Any],
+        asset_ref: dict[str, str],
+        tile_id: str,
+        *,
+        label: str,
+    ) -> Dict[str, Any]:
+        source_rect, resolution = self._resolve_tilemap_source_rect(payload, asset_ref, tile_id)
+        return {
+            "tile_id": str(tile_id or "").strip(),
+            "label": str(label or tile_id or "").strip(),
+            "source": clone_asset_reference(asset_ref),
+            "texture_path": self._resolve_tilemap_texture_path(asset_ref),
+            "source_rect": copy.deepcopy(source_rect) if source_rect is not None else None,
+            "resolution": resolution,
+            "status": "ok" if source_rect is not None else "unresolved",
+        }
 
     def _get_tilemap_asset_service(self) -> Optional[AssetService]:
         current_scene = getattr(self._scene_manager, "current_scene", None) if self._scene_manager is not None else None
@@ -1061,6 +1116,150 @@ class InspectorSystem:
         total = max(1, rows * columns)
         return [(str(index), str(index)) for index in range(total)]
 
+    def _resolve_tilemap_texture_path(self, asset_ref: dict[str, str]) -> str:
+        asset_service = self._get_tilemap_asset_service()
+        if asset_service is None or not (asset_ref.get("guid") or asset_ref.get("path")):
+            return ""
+        try:
+            return asset_service.resolve_asset_path(asset_ref).as_posix()
+        except Exception:
+            return ""
+
+    def _resolve_tilemap_source_rect(
+        self,
+        payload: Dict[str, Any],
+        asset_ref: dict[str, str],
+        tile_id: str,
+    ) -> tuple[Dict[str, int] | None, str]:
+        slice_rect = self._resolve_tilemap_slice_rect(asset_ref, tile_id)
+        if slice_rect is not None:
+            return slice_rect, "slice"
+        grid_rect = self._resolve_tilemap_grid_rect(payload, tile_id)
+        if grid_rect is not None:
+            return grid_rect, "grid"
+        return None, "unresolved"
+
+    def _resolve_tilemap_slice_rect(self, asset_ref: dict[str, str], tile_id: str) -> Dict[str, int] | None:
+        asset_service = self._get_tilemap_asset_service()
+        if asset_service is None or not tile_id or not (asset_ref.get("guid") or asset_ref.get("path")):
+            return None
+        try:
+            slice_rect = asset_service.get_slice_rect(asset_ref, tile_id)
+        except Exception:
+            slice_rect = None
+        if slice_rect is None:
+            return None
+        return {
+            "x": int(slice_rect.get("x", 0)),
+            "y": int(slice_rect.get("y", 0)),
+            "width": max(1, int(slice_rect.get("width", 0))),
+            "height": max(1, int(slice_rect.get("height", 0))),
+        }
+
+    def _resolve_tilemap_grid_rect(self, payload: Dict[str, Any], tile_id: str) -> Dict[str, int] | None:
+        tile_width = max(1, int(payload.get("tileset_tile_width", payload.get("cell_width", 1)) or 1))
+        tile_height = max(1, int(payload.get("tileset_tile_height", payload.get("cell_height", 1)) or 1))
+        columns = max(1, int(payload.get("tileset_columns", 0) or 0))
+        spacing = max(0, int(payload.get("tileset_spacing", 0) or 0))
+        margin = max(0, int(payload.get("tileset_margin", 0) or 0))
+        tile_index = self._parse_tilemap_tile_index(tile_id)
+        if tile_index is None:
+            if columns != 1:
+                return None
+            tile_index = 0
+        if tile_index < 0:
+            return None
+        return {
+            "x": margin + ((tile_index % columns) * (tile_width + spacing)),
+            "y": margin + ((tile_index // columns) * (tile_height + spacing)),
+            "width": tile_width,
+            "height": tile_height,
+        }
+
+    def _parse_tilemap_tile_index(self, tile_id: str) -> Optional[int]:
+        try:
+            return int(str(tile_id or "").strip())
+        except (TypeError, ValueError):
+            return None
+
+    def _tilemap_preview_status_label(self, status: str) -> str:
+        return {
+            "ok": "Ready",
+            "missing_layer": "Missing layer",
+            "hidden": "Hidden layer",
+            "locked": "Locked layer",
+            "missing_source": "Missing tileset",
+            "missing_tile": "Missing tile",
+            "unresolved_tile": "Unresolved tile",
+            "missing_texture": "Missing texture",
+        }.get(str(status or "").strip(), "Invalid")
+
+    def _build_tilemap_preview_snapshot(
+        self,
+        world: "World",
+        entity_name: str,
+        cell: tuple[int, int],
+    ) -> Optional[Dict[str, Any]]:
+        entity = world.get_entity_by_name(entity_name)
+        if entity is None:
+            return None
+        transform = self._find_component(entity, "Transform")
+        tilemap = self._find_component(entity, "Tilemap")
+        if transform is None or tilemap is None or not getattr(tilemap, "enabled", True):
+            return None
+        payload = self._current_component_payload(world, entity_name, "Tilemap")
+        if payload is None:
+            return None
+        layer_name = self._resolve_tilemap_layer_name(payload, self._tilemap_authoring.layer_name)
+        layer = self._find_tilemap_layer_payload(payload, layer_name)
+        asset_ref = self._resolve_tilemap_palette_source(payload, layer_name)
+        tile_id = str(self._tilemap_authoring.tile_id or "").strip()
+        source_rect, resolution = self._resolve_tilemap_source_rect(payload, asset_ref, tile_id)
+        texture_path = self._resolve_tilemap_texture_path(asset_ref)
+        cell_width = max(1, int(payload.get("cell_width", getattr(tilemap, "cell_width", 1)) or 1))
+        cell_height = max(1, int(payload.get("cell_height", getattr(tilemap, "cell_height", 1)) or 1))
+        layer_offset_x = float((layer or {}).get("offset_x", 0.0))
+        layer_offset_y = float((layer or {}).get("offset_y", 0.0))
+        status = "ok"
+        if layer is None:
+            status = "missing_layer"
+        elif not bool(layer.get("visible", True)):
+            status = "hidden"
+        elif bool(layer.get("locked", False)):
+            status = "locked"
+        elif not (asset_ref.get("guid") or asset_ref.get("path")):
+            status = "missing_source"
+        elif not tile_id:
+            status = "missing_tile"
+        elif source_rect is None:
+            status = "unresolved_tile"
+        elif not texture_path:
+            status = "missing_texture"
+        cell_x, cell_y = int(cell[0]), int(cell[1])
+        world_x = float(getattr(transform, "x", 0.0)) + layer_offset_x + (cell_x * cell_width)
+        world_y = float(getattr(transform, "y", 0.0)) + layer_offset_y + (cell_y * cell_height)
+        cell_rect = {
+            "x": world_x,
+            "y": world_y,
+            "width": float(cell_width),
+            "height": float(cell_height),
+        }
+        return {
+            "entity_name": entity_name,
+            "layer_name": layer_name,
+            "cell": (cell_x, cell_y),
+            "mode": str(self._tilemap_authoring.mode or "paint"),
+            "tile_id": tile_id,
+            "source": clone_asset_reference(asset_ref),
+            "texture_path": texture_path,
+            "source_rect": copy.deepcopy(source_rect) if source_rect is not None else None,
+            "resolution": resolution,
+            "cell_rect": cell_rect,
+            "editable": status == "ok",
+            "status": status,
+            "status_label": self._tilemap_preview_status_label(status),
+        }
+
     def _begin_tilemap_stroke(self) -> bool:
         if self._scene_manager is None or self._tilemap_authoring.stroke_active:
             return self._tilemap_authoring.stroke_active
@@ -1086,12 +1285,13 @@ class InspectorSystem:
     def _apply_tilemap_brush(self, world: "World", entity_name: str, cell: tuple[int, int]) -> bool:
         if cell in self._tilemap_authoring.stroke_cells:
             return False
+        preview = self._build_tilemap_preview_snapshot(world, entity_name, cell)
+        if preview is None or not bool(preview.get("editable")):
+            return False
         payload = self._current_component_payload(world, entity_name, "Tilemap")
         if payload is None:
             return False
         layer = self._ensure_tilemap_layer_payload(payload, self._tilemap_authoring.layer_name)
-        if bool(layer.get("locked", False)):
-            return False
         tile_x, tile_y = int(cell[0]), int(cell[1])
         existing = self._find_serialized_tile_entry(layer, tile_x, tile_y)
         if self._tilemap_authoring.mode == "erase":
@@ -1308,6 +1508,97 @@ class InspectorSystem:
         if rl.gui_button(right_rect, ">") and current_index < len(options) - 1 and on_select is not None:
             on_select(options[current_index + 1][0])
         return y + row_height
+
+    def _draw_tilemap_palette_grid(
+        self,
+        entries: List[Dict[str, Any]],
+        selected_tile: str,
+        x: int,
+        y: int,
+        width: int,
+        is_edit: bool,
+        *,
+        on_select: Optional[Callable[[str], bool]] = None,
+    ) -> int:
+        current_y = self._draw_section_title("Palette", x, y, width)
+        frame_rect = rl.Rectangle(x + 5, current_y + 2, width - 10, 116)
+        content_rect = rl.Rectangle(frame_rect.x + 4, frame_rect.y + 4, frame_rect.width - 8, frame_rect.height - 8)
+        rl.draw_rectangle_rec(frame_rect, rl.Color(34, 34, 34, 255))
+        rl.draw_rectangle_lines_ex(frame_rect, 1, rl.Color(60, 60, 60, 255))
+        mouse_pos = rl.get_mouse_position()
+        if rl.check_collision_point_rec(mouse_pos, frame_rect):
+            wheel = rl.get_mouse_wheel_move()
+            if abs(float(wheel)) > 0.01:
+                self._tilemap_authoring.palette_scroll = max(0.0, self._tilemap_authoring.palette_scroll - (float(wheel) * 28.0))
+
+        tile_size = 34.0
+        tile_gap = 6.0
+        cols = max(1, int((content_rect.width + tile_gap) // (tile_size + tile_gap)))
+        rows = max(1, math.ceil(len(entries) / cols))
+        content_height = rows * (tile_size + tile_gap)
+        max_scroll = max(0.0, content_height - content_rect.height)
+        self._tilemap_authoring.palette_scroll = min(self._tilemap_authoring.palette_scroll, max_scroll)
+
+        with editor_scissor(content_rect):
+            for index, entry in enumerate(entries):
+                col = index % cols
+                row = index // cols
+                tile_rect = rl.Rectangle(
+                    content_rect.x + col * (tile_size + tile_gap),
+                    content_rect.y + row * (tile_size + tile_gap) - self._tilemap_authoring.palette_scroll,
+                    tile_size,
+                    tile_size,
+                )
+                if tile_rect.y + tile_rect.height < content_rect.y or tile_rect.y > content_rect.y + content_rect.height:
+                    continue
+                entry_tile_id = str(entry.get("tile_id", ""))
+                selected = entry_tile_id == selected_tile
+                hovered = rl.check_collision_point_rec(mouse_pos, tile_rect)
+                border_color = rl.Color(80, 180, 255, 255) if selected else rl.Color(88, 88, 88, 255)
+                if hovered and not selected:
+                    border_color = rl.Color(170, 170, 170, 255)
+                rl.draw_rectangle_rec(tile_rect, rl.Color(28, 28, 28, 255))
+                texture = self._load_tilemap_palette_texture(str(entry.get("texture_path", "")))
+                source_rect = entry.get("source_rect")
+                if texture is not None and getattr(texture, "id", 0) != 0 and isinstance(source_rect, dict):
+                    inset = 3.0
+                    rl.draw_texture_pro(
+                        texture,
+                        rl.Rectangle(
+                            float(source_rect.get("x", 0)),
+                            float(source_rect.get("y", 0)),
+                            float(source_rect.get("width", 1)),
+                            float(source_rect.get("height", 1)),
+                        ),
+                        rl.Rectangle(tile_rect.x + inset, tile_rect.y + inset, tile_rect.width - (inset * 2), tile_rect.height - (inset * 2)),
+                        rl.Vector2(0, 0),
+                        0.0,
+                        rl.WHITE,
+                    )
+                else:
+                    rl.draw_text(str(entry.get("label", entry_tile_id))[:6], int(tile_rect.x + 4), int(tile_rect.y + 11), 10, rl.Color(210, 210, 210, 255))
+                rl.draw_rectangle_lines_ex(tile_rect, 2, border_color)
+                self._register_cursor_rect(tile_rect)
+                if is_edit and hovered and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT) and on_select is not None:
+                    on_select(entry_tile_id)
+        if max_scroll > 0.0:
+            ratio = content_rect.height / max(content_rect.height, content_height)
+            thumb_height = max(12.0, content_rect.height * ratio)
+            thumb_range = max(0.0, content_rect.height - thumb_height)
+            thumb_offset = 0.0 if max_scroll <= 0.0 else (self._tilemap_authoring.palette_scroll / max_scroll) * thumb_range
+            scrollbar_rect = rl.Rectangle(frame_rect.x + frame_rect.width - 5, content_rect.y + thumb_offset, 3, thumb_height)
+            rl.draw_rectangle_rec(scrollbar_rect, rl.Color(92, 92, 92, 255))
+        return int(frame_rect.y + frame_rect.height + 6)
+
+    def _load_tilemap_palette_texture(self, texture_path: str) -> Any:
+        normalized = str(texture_path or "").strip()
+        if not normalized:
+            return None
+        try:
+            texture = self._tilemap_texture_manager.load(normalized, cache_key=normalized)
+        except Exception:
+            return None
+        return texture if getattr(texture, "id", 0) != 0 else None
 
     def _draw_scene_transition_block(
         self,
@@ -2281,14 +2572,14 @@ class InspectorSystem:
         )
 
         self._synchronize_tilemap_tool_selection(world, entity_name)
-        palette_options = self.list_tilemap_palette_options(world, entity_name, active_layer_name)
+        palette_entries = self.list_tilemap_palette_entries(world, entity_name, active_layer_name)
         source_path = self._resolve_tilemap_palette_source(payload, active_layer_name).get("path", "")
         current_y = self._draw_readonly_row("Paint Source", source_path or "(none)", x, current_y, width)
-        if palette_options:
-            selected_tile = self._tilemap_authoring.tile_id or palette_options[0][0]
-            current_y = self._draw_choice_row(
-                "Selected Tile",
-                palette_options,
+        if palette_entries:
+            selected_tile = self._tilemap_authoring.tile_id or str(palette_entries[0].get("tile_id", ""))
+            current_y = self._draw_readonly_row("Selected Tile", selected_tile or "(none)", x, current_y, width)
+            current_y = self._draw_tilemap_palette_grid(
+                palette_entries,
                 selected_tile,
                 x,
                 current_y,
@@ -2298,6 +2589,11 @@ class InspectorSystem:
             )
         else:
             current_y = self._draw_readonly_row("Selected Tile", "(unresolved)", x, current_y, width)
+        preview = self.get_tilemap_preview_snapshot(world) if brush_active and self._tilemap_authoring.entity_name == entity_name else None
+        if preview is not None:
+            current_y = self._draw_readonly_row("Brush Preview", str(preview.get("status_label", "")), x, current_y, width)
+        elif brush_active:
+            current_y = self._draw_readonly_row("Brush Preview", "Move cursor into Scene View", x, current_y, width)
 
         current_y = self._draw_section_title("Layers", x, current_y, width)
         add_rect = rl.Rectangle(x + self.LABEL_WIDTH + 5, current_y + 1, width - self.LABEL_WIDTH - 10, self.LINE_HEIGHT - 2)

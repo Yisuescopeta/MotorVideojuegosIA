@@ -4,13 +4,13 @@ engine/editor/gizmo_system.py - Sistema de herramientas de escena y UI.
 
 from __future__ import annotations
 
+import copy
 import math
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Optional, Tuple
 
 import pyray as rl
-
 from engine.components.animator import Animator
 from engine.components.canvas import Canvas
 from engine.components.collider import Collider
@@ -20,6 +20,7 @@ from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.editor.editor_tools import EditorTool, PivotMode, SnapSettings, TransformSpace
+from engine.resources.texture_manager import TextureManager
 
 
 class GizmoMode(Enum):
@@ -89,6 +90,11 @@ class GizmoSystem:
         self.drag_start_rect: dict[str, float] | None = None
         self.drag_parent_rect: dict[str, float] | None = None
         self._completed_drag: CompletedGizmoDrag | None = None
+        self._tilemap_preview: dict[str, Any] | None = None
+        self._tilemap_texture_manager = TextureManager()
+
+    def set_tilemap_preview(self, preview: dict[str, Any] | None) -> None:
+        self._tilemap_preview = copy.deepcopy(preview) if preview is not None else None
 
     def update(
         self,
@@ -147,30 +153,23 @@ class GizmoSystem:
         pivot_mode: PivotMode = PivotMode.PIVOT,
     ) -> None:
         selected_entity = self._get_selected_entity(world)
-        if not selected_entity:
-            return
-        if selected_entity.get_component(RectTransform) is not None:
-            return
+        if selected_entity is not None and selected_entity.get_component(RectTransform) is None:
+            transform = selected_entity.get_component(Transform)
+            if transform is not None:
+                self.current_tool = EditorTool.from_value(tool)
+                self.transform_space = transform_space
+                self.pivot_mode = pivot_mode
 
-        transform = selected_entity.get_component(Transform)
-        if transform is None:
-            return
-
-        self.current_tool = EditorTool.from_value(tool)
-        self.transform_space = transform_space
-        self.pivot_mode = pivot_mode
-
-        active_tool = self._resolve_effective_tool(selected_entity)
-        if active_tool == EditorTool.HAND:
-            return
-
-        origin_x, origin_y = self._get_gizmo_origin(selected_entity, transform, pivot_mode)
-        if active_tool in (EditorTool.MOVE, EditorTool.TRANSFORM):
-            self._draw_translate_gizmo(origin_x, origin_y, transform)
-        if active_tool in (EditorTool.ROTATE, EditorTool.TRANSFORM):
-            self._draw_rotate_gizmo(origin_x, origin_y, transform.rotation)
-        if active_tool in (EditorTool.SCALE, EditorTool.TRANSFORM):
-            self._draw_scale_gizmo(origin_x, origin_y, transform)
+                active_tool = self._resolve_effective_tool(selected_entity)
+                if active_tool != EditorTool.HAND:
+                    origin_x, origin_y = self._get_gizmo_origin(selected_entity, transform, pivot_mode)
+                    if active_tool in (EditorTool.MOVE, EditorTool.TRANSFORM):
+                        self._draw_translate_gizmo(origin_x, origin_y, transform)
+                    if active_tool in (EditorTool.ROTATE, EditorTool.TRANSFORM):
+                        self._draw_rotate_gizmo(origin_x, origin_y, transform.rotation)
+                    if active_tool in (EditorTool.SCALE, EditorTool.TRANSFORM):
+                        self._draw_scale_gizmo(origin_x, origin_y, transform)
+        self._draw_tilemap_preview()
 
     def render_ui_overlay(
         self,
@@ -380,6 +379,59 @@ class GizmoSystem:
         color = self.HOVER_COLOR if active else rl.WHITE
         rl.draw_rectangle(int(point.x - size / 2), int(point.y - size / 2), size, size, color)
         rl.draw_rectangle_lines(int(point.x - size / 2), int(point.y - size / 2), size, size, rl.Color(20, 20, 20, 220))
+
+    def _draw_tilemap_preview(self) -> None:
+        preview = self._tilemap_preview
+        if not isinstance(preview, dict):
+            return
+        rect_data = preview.get("cell_rect")
+        if not isinstance(rect_data, dict):
+            return
+        rect = rl.Rectangle(
+            float(rect_data.get("x", 0.0)),
+            float(rect_data.get("y", 0.0)),
+            max(1.0, float(rect_data.get("width", 1.0))),
+            max(1.0, float(rect_data.get("height", 1.0))),
+        )
+        editable = bool(preview.get("editable"))
+        mode = str(preview.get("mode", "paint") or "paint").strip().lower()
+        if editable and mode == "paint":
+            texture = self._load_tilemap_preview_texture(str(preview.get("texture_path", "")))
+            source_rect = preview.get("source_rect")
+            if texture is not None and getattr(texture, "id", 0) != 0 and isinstance(source_rect, dict):
+                rl.draw_texture_pro(
+                    texture,
+                    rl.Rectangle(
+                        float(source_rect.get("x", 0)),
+                        float(source_rect.get("y", 0)),
+                        float(source_rect.get("width", 1)),
+                        float(source_rect.get("height", 1)),
+                    ),
+                    rect,
+                    rl.Vector2(0, 0),
+                    0.0,
+                    rl.Color(255, 255, 255, 170),
+                )
+            else:
+                rl.draw_rectangle_rec(rect, rl.Color(70, 150, 220, 55))
+            rl.draw_rectangle_lines_ex(rect, 2, rl.Color(110, 210, 255, 255))
+            return
+        if editable and mode == "erase":
+            rl.draw_rectangle_rec(rect, rl.Color(255, 156, 76, 50))
+            rl.draw_rectangle_lines_ex(rect, 2, rl.Color(255, 176, 96, 255))
+            return
+        rl.draw_rectangle_rec(rect, rl.Color(220, 72, 72, 60))
+        rl.draw_rectangle_lines_ex(rect, 2, rl.Color(255, 92, 92, 255))
+
+    def _load_tilemap_preview_texture(self, texture_path: str) -> Any:
+        normalized = str(texture_path or "").strip()
+        if not normalized:
+            return None
+        try:
+            texture = self._tilemap_texture_manager.load(normalized, cache_key=normalized)
+        except Exception:
+            return None
+        return texture if getattr(texture, "id", 0) != 0 else None
 
     def _check_transform_intersection(
         self,

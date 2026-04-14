@@ -36,6 +36,7 @@ class EditorInteractionControllerTests(unittest.TestCase):
         self.inspector_system.get_cursor_intent.return_value = CursorVisualState.DEFAULT
         self.inspector_system.is_tilemap_tool_active.return_value = False
         self.inspector_system.handle_tilemap_scene_input.return_value = False
+        self.inspector_system.get_tilemap_preview_snapshot.return_value = None
         self.history_manager = Mock()
         self.layout = Mock()
         self.layout.project_panel = SimpleNamespace(
@@ -160,6 +161,7 @@ class EditorInteractionControllerTests(unittest.TestCase):
     def test_handle_selection_and_gizmos_delegates_to_tilemap_tool_and_skips_selection(self) -> None:
         world = Mock()
         self.inspector_system.is_tilemap_tool_active.return_value = True
+        self.inspector_system.get_tilemap_preview_snapshot.return_value = {"status": "ok"}
 
         with patch("pyray.is_mouse_button_pressed", return_value=True), patch("pyray.is_mouse_button_down", return_value=True), patch(
             "pyray.is_mouse_button_released",
@@ -168,8 +170,18 @@ class EditorInteractionControllerTests(unittest.TestCase):
             self.controller.handle_selection_and_gizmos(world)
 
         self.inspector_system.handle_tilemap_scene_input.assert_called_once()
+        self.gizmo_system.set_tilemap_preview.assert_called_once_with({"status": "ok"})
         self.gizmo_system.update.assert_not_called()
         self.selection_system.update.assert_not_called()
+
+    def test_handle_selection_and_gizmos_clears_tilemap_preview_when_tool_inactive(self) -> None:
+        world = Mock()
+        self.inspector_system.is_tilemap_tool_active.return_value = False
+
+        with patch("pyray.is_mouse_button_pressed", return_value=False):
+            self.controller.handle_selection_and_gizmos(world)
+
+        self.gizmo_system.set_tilemap_preview.assert_called_once_with(None)
 
     def test_resolve_cursor_state_marks_scene_interactive_when_tilemap_tool_is_active(self) -> None:
         world = Mock()
