@@ -4,6 +4,7 @@ engine/systems/render_system.py - Sistema de renderizado 2D con render graph min
 
 from __future__ import annotations
 
+import math
 from typing import Any, Optional
 
 import pyray as rl
@@ -1368,6 +1369,10 @@ class RenderSystem:
         transform = entity.get_component(Transform)
         if transform is None:
             return
+        scale_x = float(transform.scale_x)
+        scale_y = float(transform.scale_y)
+        if scale_x <= 0.0 or scale_y <= 0.0:
+            return
         chunk_data = command.get("chunk_data", {})
         for tile in chunk_data.get("tiles", []):
             if not bool(tile.get("resolved", False)):
@@ -1385,13 +1390,27 @@ class RenderSystem:
                 float(source_rect_data.get("width", 0.0)),
                 float(source_rect_data.get("height", 0.0)),
             )
+            local_x = float(dest_data.get("x", 0.0))
+            local_y = float(dest_data.get("y", 0.0))
+            world_x, world_y = self._tilemap_local_to_world_point(transform, local_x, local_y)
             dest_rect = rl.Rectangle(
-                float(transform.x) + float(dest_data.get("x", 0.0)),
-                float(transform.y) + float(dest_data.get("y", 0.0)),
-                float(dest_data.get("width", 0.0)),
-                float(dest_data.get("height", 0.0)),
+                world_x,
+                world_y,
+                float(dest_data.get("width", 0.0)) * scale_x,
+                float(dest_data.get("height", 0.0)) * scale_y,
             )
-            rl.draw_texture_pro(texture, source_rect, dest_rect, rl.Vector2(0, 0), 0.0, self._color_from_payload(tile.get("tint", [])))
+            rl.draw_texture_pro(texture, source_rect, dest_rect, rl.Vector2(0, 0), float(transform.rotation), self._color_from_payload(tile.get("tint", [])))
+
+    @staticmethod
+    def _tilemap_local_to_world_point(transform: Transform, local_x: float, local_y: float) -> tuple[float, float]:
+        scaled_x = float(local_x) * float(transform.scale_x)
+        scaled_y = float(local_y) * float(transform.scale_y)
+        radians = math.radians(float(transform.rotation))
+        cos_r = math.cos(radians)
+        sin_r = math.sin(radians)
+        world_x = float(transform.x) + (scaled_x * cos_r) - (scaled_y * sin_r)
+        world_y = float(transform.y) + (scaled_x * sin_r) + (scaled_y * cos_r)
+        return (world_x, world_y)
 
     def _draw_joint(self, entity: Entity) -> None:
         transform = entity.get_component(Transform)

@@ -480,6 +480,239 @@ class InspectorCoreTests(unittest.TestCase):
         ground_layer = next(layer for layer in tilemap["layers"] if layer["name"] == "Ground")
         self.assertEqual(ground_layer["tiles"], [])
 
+    def test_tilemap_world_to_cell_applies_transform_rotation_scale_and_layer_offset(self) -> None:
+        self._write_png("assets/transform_tiles.png")
+        self._create_probe(
+            "TileTransformProbe",
+            {
+                "Transform": {"enabled": True, "x": 10.0, "y": 20.0, "rotation": 90.0, "scale_x": 2.0, "scale_y": 3.0},
+                "Tilemap": {
+                    "enabled": True,
+                    "cell_width": 16,
+                    "cell_height": 16,
+                    "orientation": "orthogonal",
+                    "tileset": {"guid": "", "path": "assets/transform_tiles.png"},
+                    "tileset_path": "assets/transform_tiles.png",
+                    "tileset_tile_width": 1,
+                    "tileset_tile_height": 1,
+                    "tileset_columns": 1,
+                    "tileset_spacing": 0,
+                    "tileset_margin": 0,
+                    "default_layer_name": "Ground",
+                    "layers": [{"name": "Ground", "offset_x": 4.0, "offset_y": 5.0, "tiles": []}],
+                },
+            },
+        )
+
+        self.assertTrue(self.inspector.activate_tilemap_tool(self.api.game.world, "TileTransformProbe", layer_name="Ground"))
+        self.assertEqual(self.inspector.tilemap_world_to_cell(self.api.game.world, "TileTransformProbe", -125.0, 76.0), (1, 2))
+        with patch("pyray.is_mouse_button_pressed", return_value=False), patch("pyray.is_mouse_button_down", return_value=False), patch(
+            "pyray.is_mouse_button_released",
+            return_value=False,
+        ):
+            self.inspector.handle_tilemap_scene_input(self.api.game.world, rl.Vector2(-125.0, 76.0), True)
+
+        preview = self.inspector.get_tilemap_preview_snapshot(self.api.game.world)
+        self.assertEqual(preview["cell"], (1, 2))
+        self.assertEqual(preview["rotation"], 90.0)
+        self.assertEqual(preview["scale"], {"x": 2.0, "y": 3.0})
+        self.assertAlmostEqual(preview["cell_rect"]["x"], -101.0)
+        self.assertAlmostEqual(preview["cell_rect"]["y"], 60.0)
+        self.assertEqual((preview["cell_rect"]["width"], preview["cell_rect"]["height"]), (32.0, 48.0))
+        self.assertAlmostEqual(preview["cell_corners"][0][0], -101.0)
+        self.assertAlmostEqual(preview["cell_corners"][0][1], 60.0)
+
+    def test_tilemap_zero_scale_is_not_editable(self) -> None:
+        self._write_png("assets/zero_scale_tiles.png")
+        self._create_probe(
+            "TileZeroScaleProbe",
+            {
+                "Transform": {"enabled": True, "x": 10.0, "y": 20.0, "rotation": 0.0, "scale_x": 0.0, "scale_y": 1.0},
+                "Tilemap": {
+                    "enabled": True,
+                    "cell_width": 16,
+                    "cell_height": 16,
+                    "orientation": "orthogonal",
+                    "tileset": {"guid": "", "path": "assets/zero_scale_tiles.png"},
+                    "tileset_path": "assets/zero_scale_tiles.png",
+                    "tileset_tile_width": 1,
+                    "tileset_tile_height": 1,
+                    "tileset_columns": 1,
+                    "tileset_spacing": 0,
+                    "tileset_margin": 0,
+                    "default_layer_name": "Ground",
+                    "layers": [{"name": "Ground", "tiles": []}],
+                },
+            },
+        )
+
+        self.assertTrue(self.inspector.activate_tilemap_tool(self.api.game.world, "TileZeroScaleProbe", layer_name="Ground"))
+        self.assertIsNone(self.inspector.tilemap_world_to_cell(self.api.game.world, "TileZeroScaleProbe", 10.0, 20.0))
+        preview = self.inspector._build_tilemap_preview_snapshot(self.api.game.world, "TileZeroScaleProbe", (0, 0))
+        self.assertEqual(preview["status"], "invalid_transform")
+        self.assertFalse(preview["editable"])
+
+    def test_tilemap_keyboard_navigation_and_shortcuts_are_editor_only(self) -> None:
+        self._write_png("assets/nav_tiles.png")
+        self._create_probe(
+            "TileNavProbe",
+            {
+                "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                "Tilemap": {
+                    "enabled": True,
+                    "cell_width": 16,
+                    "cell_height": 16,
+                    "orientation": "orthogonal",
+                    "tileset": {"guid": "", "path": "assets/nav_tiles.png"},
+                    "tileset_path": "assets/nav_tiles.png",
+                    "tileset_tile_width": 1,
+                    "tileset_tile_height": 1,
+                    "tileset_columns": 4,
+                    "tileset_spacing": 0,
+                    "tileset_margin": 0,
+                    "default_layer_name": "Ground",
+                    "layers": [{"name": "Ground", "tiles": []}],
+                },
+            },
+        )
+
+        self.assertTrue(self.inspector.activate_tilemap_tool(self.api.game.world, "TileNavProbe", layer_name="Ground"))
+
+        def right_pressed(key: int) -> bool:
+            return key == rl.KEY_RIGHT
+
+        with patch("pyray.is_key_down", return_value=False), patch("pyray.is_key_pressed", side_effect=right_pressed):
+            self.inspector.update(0.0, self.api.game.world, True)
+        self.assertEqual(self.inspector.get_tilemap_tool_state()["palette_selected_index"], 1)
+
+        def enter_pressed(key: int) -> bool:
+            return key == rl.KEY_ENTER
+
+        with patch("pyray.is_key_down", return_value=False), patch("pyray.is_key_pressed", side_effect=enter_pressed):
+            self.inspector.update(0.0, self.api.game.world, True)
+        self.assertEqual(self.inspector.get_tilemap_tool_state()["tile_id"], "1")
+
+        def flood_shortcut(key: int) -> bool:
+            return key == rl.KEY_G
+
+        with patch("pyray.is_key_down", return_value=False), patch("pyray.is_key_pressed", side_effect=flood_shortcut):
+            self.inspector.update(0.0, self.api.game.world, True)
+        self.assertEqual(self.inspector.get_tilemap_tool_state()["mode"], "flood_fill")
+
+        self.inspector.editing_text_field = "dummy"
+        with patch("pyray.is_key_down", return_value=False), patch("pyray.is_key_pressed", side_effect=lambda key: key == rl.KEY_D):
+            self.inspector.update(0.0, self.api.game.world, True)
+        self.assertEqual(self.inspector.get_tilemap_tool_state()["mode"], "flood_fill")
+        self.inspector.editing_text_field = None
+
+        with patch("pyray.is_key_down", side_effect=lambda key: key == rl.KEY_LEFT_SHIFT), patch("pyray.is_key_pressed", return_value=False):
+            self.inspector.update(0.0, self.api.game.world, True)
+            self.assertEqual(self.inspector.get_tilemap_tool_state()["effective_mode"], "erase")
+
+    def test_tilemap_pick_box_fill_flood_fill_and_stamp_are_transactional(self) -> None:
+        self._write_png("assets/tool_tiles.png")
+        self.api.asset_service.generate_sprite_grid_slices("assets/tool_tiles.png", cell_width=1, cell_height=1, naming_prefix="tool")
+        self._create_probe(
+            "TileToolsProbe",
+            {
+                "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                "Tilemap": {
+                    "enabled": True,
+                    "cell_width": 16,
+                    "cell_height": 16,
+                    "orientation": "orthogonal",
+                    "tileset": {"guid": "", "path": "assets/tool_tiles.png"},
+                    "tileset_path": "assets/tool_tiles.png",
+                    "tileset_tile_width": 1,
+                    "tileset_tile_height": 1,
+                    "tileset_columns": 1,
+                    "tileset_spacing": 0,
+                    "tileset_margin": 0,
+                    "default_layer_name": "Ground",
+                    "layers": [
+                        {
+                            "name": "Ground",
+                            "tiles": [
+                                {"x": 0, "y": 0, "tile_id": "0", "source": {"guid": "", "path": "assets/tool_tiles.png"}, "flags": [], "tags": [], "custom": {}, "animated": False, "animation_id": "", "terrain_type": ""},
+                                {"x": 1, "y": 0, "tile_id": "1", "source": {"guid": "", "path": "assets/tool_tiles.png"}, "flags": [], "tags": [], "custom": {}, "animated": False, "animation_id": "", "terrain_type": ""},
+                            ],
+                        }
+                    ],
+                },
+            },
+        )
+
+        self.assertTrue(self.inspector.activate_tilemap_tool(self.api.game.world, "TileToolsProbe", layer_name="Ground"))
+        self.assertTrue(self.inspector.set_tilemap_tool_mode("pick"))
+        with patch("pyray.is_mouse_button_pressed", return_value=True), patch("pyray.is_mouse_button_down", return_value=True), patch(
+            "pyray.is_mouse_button_released",
+            return_value=False,
+        ):
+            self.inspector.handle_tilemap_scene_input(self.api.game.world, rl.Vector2(8.0, 8.0), True)
+        with patch("pyray.is_mouse_button_pressed", return_value=False), patch("pyray.is_mouse_button_down", return_value=False), patch(
+            "pyray.is_mouse_button_released",
+            return_value=True,
+        ):
+            self.inspector.handle_tilemap_scene_input(self.api.game.world, rl.Vector2(8.0, 8.0), True)
+        self.assertEqual(self.inspector.get_tilemap_tool_state()["tile_id"], "0")
+        self.assertEqual(self.inspector.get_tilemap_tool_state()["mode"], "paint")
+
+        self.assertTrue(self.inspector.set_tilemap_tool_mode("box_fill"))
+        with patch("pyray.is_mouse_button_pressed", return_value=True), patch("pyray.is_mouse_button_down", return_value=True), patch(
+            "pyray.is_mouse_button_released",
+            return_value=False,
+        ):
+            self.inspector.handle_tilemap_scene_input(self.api.game.world, rl.Vector2(0.0, 16.0), True)
+        with patch("pyray.is_mouse_button_pressed", return_value=False), patch("pyray.is_mouse_button_down", return_value=False), patch(
+            "pyray.is_mouse_button_released",
+            return_value=True,
+        ):
+            self.inspector.handle_tilemap_scene_input(self.api.game.world, rl.Vector2(16.0, 32.0), True)
+        tilemap = self.api.get_tilemap("TileToolsProbe")
+        ground = next(layer for layer in tilemap["layers"] if layer["name"] == "Ground")
+        self.assertTrue({(0, 1), (1, 1), (0, 2), (1, 2)}.issubset({(tile["x"], tile["y"]) for tile in ground["tiles"]}))
+        self.assertTrue(self.api.undo()["success"])
+        self.assertTrue(self.api.redo()["success"])
+
+        self.assertTrue(self.inspector.set_tilemap_selected_tile(self.api.game.world, "TileToolsProbe", "tool_0"))
+        self.assertTrue(self.inspector.set_tilemap_tool_mode("flood_fill"))
+        with patch("pyray.is_mouse_button_pressed", return_value=True), patch("pyray.is_mouse_button_down", return_value=True), patch(
+            "pyray.is_mouse_button_released",
+            return_value=False,
+        ):
+            self.inspector.handle_tilemap_scene_input(self.api.game.world, rl.Vector2(8.0, 8.0), True)
+        tilemap = self.api.get_tilemap("TileToolsProbe")
+        ground = next(layer for layer in tilemap["layers"] if layer["name"] == "Ground")
+        self.assertEqual(next(tile for tile in ground["tiles"] if tile["x"] == 0 and tile["y"] == 0)["tile_id"], "tool_0")
+
+        self.assertTrue(self.inspector.set_tilemap_tool_mode("pick"))
+        with patch("pyray.is_mouse_button_pressed", return_value=True), patch("pyray.is_mouse_button_down", return_value=True), patch(
+            "pyray.is_mouse_button_released",
+            return_value=False,
+        ):
+            self.inspector.handle_tilemap_scene_input(self.api.game.world, rl.Vector2(8.0, 8.0), True)
+        with patch("pyray.is_mouse_button_pressed", return_value=False), patch("pyray.is_mouse_button_down", return_value=False), patch(
+            "pyray.is_mouse_button_released",
+            return_value=True,
+        ):
+            self.inspector.handle_tilemap_scene_input(self.api.game.world, rl.Vector2(24.0, 8.0), True)
+        self.assertEqual(self.inspector.get_tilemap_tool_state()["mode"], "stamp")
+        self.assertGreaterEqual(len(self.inspector.get_tilemap_tool_state()["stamp_tiles"]), 2)
+
+        with patch("pyray.is_mouse_button_pressed", return_value=True), patch("pyray.is_mouse_button_down", return_value=True), patch(
+            "pyray.is_mouse_button_released",
+            return_value=False,
+        ):
+            self.inspector.handle_tilemap_scene_input(self.api.game.world, rl.Vector2(48.0, 0.0), True)
+        with patch("pyray.is_mouse_button_pressed", return_value=False), patch("pyray.is_mouse_button_down", return_value=False), patch(
+            "pyray.is_mouse_button_released",
+            return_value=True,
+        ):
+            self.inspector.handle_tilemap_scene_input(self.api.game.world, rl.Vector2(48.0, 0.0), True)
+        tilemap = self.api.get_tilemap("TileToolsProbe")
+        ground = next(layer for layer in tilemap["layers"] if layer["name"] == "Ground")
+        self.assertTrue({(3, 0), (4, 0)}.issubset({(tile["x"], tile["y"]) for tile in ground["tiles"]}))
+
     def test_animator_payload_edits_use_serializable_source_and_history(self) -> None:
         self._create_probe(
             "InspectorAnimatorProbe",

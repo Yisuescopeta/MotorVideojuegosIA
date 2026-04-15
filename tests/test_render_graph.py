@@ -54,9 +54,12 @@ class RenderGraphTests(unittest.TestCase):
         sorting_layer: str = "Default",
         order_in_layer: int = 0,
         render_pass: str = "World",
+        rotation: float = 0.0,
+        scale_x: float = 1.0,
+        scale_y: float = 1.0,
     ):
         entity = world.create_entity(name)
-        entity.add_component(Transform(x=x, y=y, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        entity.add_component(Transform(x=x, y=y, rotation=rotation, scale_x=scale_x, scale_y=scale_y))
         entity.add_component(tilemap)
         entity.add_component(RenderOrder2D(sorting_layer=sorting_layer, order_in_layer=order_in_layer, render_pass=render_pass))
         return entity
@@ -459,6 +462,52 @@ class RenderGraphTests(unittest.TestCase):
         self.assertEqual((dest_rect.x, dest_rect.y, dest_rect.width, dest_rect.height), (42.0, 68.0, 16.0, 16.0))
         self.assertEqual(rotation, 0.0)
         self.assertEqual((tint.r, tint.g, tint.b, tint.a), (255, 255, 255, 255))
+
+    def test_tilemap_chunk_draw_applies_transform_rotation_and_scale_without_rebuild(self) -> None:
+        project_service, _asset_service = self._create_temp_render_project()
+        asset_path = self._copy_fixture_asset(project_service, "assets/test_spritesheet.png", "assets/tiles/grid_transform.png")
+
+        world = World()
+        entity = self._make_tilemap_entity(
+            world,
+            Tilemap(
+                cell_width=16,
+                cell_height=16,
+                tileset_path=asset_path,
+                tileset_tile_width=16,
+                tileset_tile_height=16,
+                tileset_columns=8,
+                layers=[{"name": "Ground", "tiles": [{"x": 1, "y": 2, "tile_id": "9"}]}],
+            ),
+            x=10.0,
+            y=20.0,
+            rotation=90.0,
+            scale_x=2.0,
+            scale_y=3.0,
+        )
+
+        render_system = RenderSystem()
+        render_system.set_project_service(project_service)
+        first_stats = render_system.profile_world(world)
+        self.assertEqual(first_stats["tilemap_chunk_rebuilds"], 1)
+        entity.get_component(Transform).rotation = 45.0
+        entity.get_component(Transform).scale_x = 1.5
+        world.touch()
+        second_stats = render_system.profile_world(world)
+        self.assertEqual(second_stats["tilemap_chunk_rebuilds"], 0)
+
+        command = self._first_private_tilemap_command(render_system, world)
+        entity.get_component(Transform).rotation = 90.0
+        entity.get_component(Transform).scale_x = 2.0
+        entity.get_component(Transform).scale_y = 3.0
+        with patch.object(render_system, "_load_texture", return_value=SimpleNamespace(id=1)), patch("pyray.draw_texture_pro") as draw_texture_pro:
+            render_system._draw_tilemap_chunk(command)
+
+        _, _source_rect, dest_rect, _, rotation, _tint = draw_texture_pro.call_args.args
+        self.assertAlmostEqual(dest_rect.x, -86.0)
+        self.assertAlmostEqual(dest_rect.y, 52.0)
+        self.assertEqual((dest_rect.width, dest_rect.height), (32.0, 48.0))
+        self.assertEqual(rotation, 90.0)
 
 
 if __name__ == "__main__":

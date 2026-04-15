@@ -683,6 +683,30 @@ class GizmoSystemMathTests(unittest.TestCase):
         draw_outline.assert_called_once()
         draw_fill.assert_called_once()
 
+    def test_tilemap_preview_uses_transformed_corners_for_outline(self) -> None:
+        gizmo = GizmoSystem()
+        world = SceneManager(create_default_registry()).load_scene({"name": "CornerPreview", "entities": [], "rules": [], "feature_metadata": {}})
+        gizmo.set_tilemap_preview(
+            {
+                "mode": "erase",
+                "editable": True,
+                "texture_path": "",
+                "source_rect": None,
+                "cell_rect": {"x": 10.0, "y": 20.0, "width": 32.0, "height": 48.0},
+                "cell_corners": [(10.0, 20.0), (42.0, 20.0), (42.0, 68.0), (10.0, 68.0)],
+                "rotation": 90.0,
+            }
+        )
+
+        with patch("pyray.draw_line_ex") as draw_line_ex, patch("pyray.draw_triangle") as draw_triangle, patch(
+            "pyray.draw_rectangle_lines_ex"
+        ) as draw_rect_outline:
+            gizmo.render(world, EditorTool.MOVE, TransformSpace.WORLD, PivotMode.PIVOT)
+
+        self.assertEqual(draw_line_ex.call_count, 4)
+        self.assertEqual(draw_triangle.call_count, 2)
+        draw_rect_outline.assert_not_called()
+
 
 class SceneManagerTransformStateTests(unittest.TestCase):
     def setUp(self) -> None:
