@@ -53,7 +53,7 @@ contradecirlos.
 
 - [agents.md](agents.md) - guia breve para agentes trabajando en este repo.
 - [../AGENTS.md](../AGENTS.md) - contrato operativo de agentes y reglas de perimetro.
-- [ai_assisted_workflows.md](ai_assisted_workflows.md) - foundation experimental para workflows AI-assisted.
+- [ai_assisted_workflows.md](ai_assisted_workflows.md) - base experimental para flujos asistidos por IA.
 
 Los artefactos `motor_ai.json` y `START_HERE_AI.md` se generan por proyecto con:
 
@@ -69,9 +69,9 @@ explicitamente versionarlos.
 Estos documentos describen tooling real cuando el codigo existe, pero no amplian
 el contrato de `core obligatorio`.
 
-- [navigation.md](navigation.md) - pathfinding experimental.
+- [navigation.md](navigation.md) - busqueda de rutas experimental.
 - [rl.md](rl.md) - wrappers RL, datasets y runners headless.
-- [ai_assisted_workflows.md](ai_assisted_workflows.md) - modelos de workflow para automatizacion.
+- [ai_assisted_workflows.md](ai_assisted_workflows.md) - modelos de flujo para automatizacion.
 
 ## Gobernanza
 

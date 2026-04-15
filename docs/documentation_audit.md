@@ -1,14 +1,15 @@
 # Auditoria documental
 
-Nota de uso: este documento es un registro de auditoria y decisiones de
-reorganizacion. No es el punto de entrada principal ni reemplaza el contrato
+Nota de uso: este documento registra decisiones de reorganizacion y validacion
+documental. No es el punto de entrada principal ni reemplaza el contrato
 funcional del motor. Para navegar la documentacion usa [README.md](README.md);
 para reglas futuras de mantenimiento usa
 [documentation_governance.md](documentation_governance.md).
 
-Fecha de reestructuracion: 2026-04-16.
+Fecha de reestructuracion inicial: 2026-04-16.
+Fecha de cierre post-integracion con `main`: 2026-04-16.
 
-Alcance auditado:
+## Alcance auditado
 
 - `README.md`
 - `AGENTS.md`
@@ -19,12 +20,44 @@ Alcance auditado:
 - `EngineAPI`
 - tests de gobernanza, contrato y coherencia de interfaz
 
+## Estado de integracion
+
+La rama `codex/Documentacion` fue actualizada contra `origin/main` mediante un
+merge real.
+
+- Base de `main` integrada: `origin/main` en `12b8a53`.
+- Commit de merge local: `b8dfdff`.
+- Conflictos de Git: ninguno.
+- La reorganizacion documental de la rama se conservo: canon en `docs/`,
+  material historico bajo `docs/archive/` y `motor` como CLI publica.
+
+Despues del merge, `main` no reintrodujo como canonicos roadmaps, research,
+prompts de agentes ni notas historicas en la raiz de `docs/`; permanecen bajo
+`docs/archive/`.
+
 ## Criterio de autoridad
 
-La fuente de verdad es el codigo, los tests, `EngineAPI`, `motor/cli.py`,
-`motor/cli_core.py`, `engine/ai/registry_builder.py` y los schemas reales.
+Si dos fuentes discrepan, manda este orden:
 
-No se usaron roadmaps, prompts ni research como fuente de producto actual.
+1. Codigo y tests.
+2. `EngineAPI` publica.
+3. CLI oficial `motor` en `motor/cli.py` y `motor/cli_core.py`.
+4. Documentacion canonica enlazada desde [README.md](README.md).
+5. Archivo historico en [archive/](archive/) solo como contexto.
+
+No se usan roadmaps, prompts ni research como fuente de producto actual.
+
+## Idioma canonico
+
+La capa canonica del repositorio queda en espanol. Se preservan sin traducir
+nombres tecnicos, comandos, metodos, flags, rutas, schemas y valores de contrato
+publico, por ejemplo `Scene`, `World`, `SceneManager`, `EngineAPI`,
+`legacy_aabb`, `motor`, `schema_version`, `implemented_capabilities` y
+`planned_capabilities`.
+
+`AGENTS.md` tambien queda en espanol para no romper la coherencia global de la
+capa canonica. Los nombres de ramas, rutas y reglas de perimetro se mantienen
+literalmente.
 
 ## Clasificacion resultante
 
@@ -44,11 +77,12 @@ No se usaron roadmaps, prompts ni research como fuente de producto actual.
 
 ### Gobernanza y soporte de lectura
 
+- `CONTRIBUTING.md`
 - `docs/documentation_governance.md`
 - `docs/glossary.md`
 - `docs/documentation_audit.md`
 
-### Referencia tecnica o tooling vigente
+### Referencia operativa o tooling vigente
 
 - `docs/building.md`
 - `docs/navigation.md`
@@ -71,15 +105,9 @@ Archivado bajo `docs/archive/`:
 
 ## Inconsistencias corregidas
 
-### Skill inexistente
-
-El prompt inicial referenciaba `.agents/skills/doc-coauthoring/SKILL.md`, pero
-ese archivo no existe en el repo. La reestructuracion siguio el contrato del
-prompt del usuario.
-
 ### Referencias rotas en `AGENTS.md`
 
-Se eliminaron referencias a:
+Se eliminaron referencias antiguas a:
 
 - `docs/parallel_execution_plan.md`
 - `docs/parallel_prompts_index.md`
@@ -114,8 +142,7 @@ Se reemplazo por la CLI publica real:
 - `planned_capabilities`
 - `capability_counts`
 
-El documento fue reescrito para reflejar el builder actual y la compatibilidad
-legacy de `doctor`.
+El documento refleja el builder actual y la compatibilidad legacy de `doctor`.
 
 ### Material historico mezclado con docs principales
 
@@ -126,7 +153,7 @@ portal canonico.
 ### Rutas absolutas Windows
 
 `docs/rl.md` contenia enlaces Markdown absolutos a una copia local del repo. Se
-convirtio a enlaces relativos del repositorio.
+convirtieron a enlaces relativos del repositorio.
 
 ### Ayuda CLI con enlace archivado
 
@@ -140,77 +167,70 @@ nota de diseno. Se actualizo el texto de ayuda en `motor/cli.py` para apuntar a
 documento original en `docs/archive/demos/COMO_EJECUTAR.md` y se dejo un redirect
 breve en root hacia `README.md` y `docs/README.md`.
 
-## Decisiones de arquitectura documental
+## Validaciones post-integracion
 
-1. `README.md` queda como entrada ejecutiva.
-2. `docs/README.md` queda como portal maestro.
-3. `docs/architecture.md` define el contrato conceptual.
-4. `docs/TECHNICAL.md` resume comportamiento verificable y enlaza a fuentes.
-5. `docs/schema_serialization.md` es la unica fuente documental para escenas y prefabs.
-6. `docs/module_taxonomy.md` es la unica fuente documental de clasificacion.
-7. `docs/api.md` documenta `EngineAPI` por dominios reales.
-8. `docs/cli.md` documenta solo la CLI publica `motor`.
-9. `docs/agents.md` da orientacion breve y evita que agentes lean archivo historico como contrato.
-10. `docs/archive/` conserva contexto no canonico sin contaminar la navegacion principal.
+Estas validaciones se ejecutaron despues de integrar `origin/main` y de cerrar
+la edicion documental principal.
 
-## Documentos movidos al archivo
-
-Diseno/notas historicas:
-
-- `docs/CLI_ARCHITECTURE.md`
-- `docs/CLI_GRAMMAR.md`
-- `docs/DOCTOR_BOOTSTRAP_FLOW.md`
-- `docs/DOCTOR_READ_ONLY_DESIGN.md`
-- `docs/CAPABILITY_STATUS_DESIGN.md`
-- `docs/MIGRATION_TO_MOTOR_INTERFACE.md`
-- `docs/PARSER_REGISTRY_ALIGNMENT.md`
-- `docs/REGISTRY_AUDIT_REPORT.md`
-- `docs/REGRESSION_GUARANTEES.md`
-- `docs/ANIMATOR_HEADLESS_FLOW.md`
-- `docs/ai_workflow_cli.md`
-
-Auditoria historica:
-
-- `docs/ANALISIS_PROYECTO_ACTUAL.md`
-
-Demos antiguas:
-
-- `COMO_EJECUTAR.md` original
-
-Directorios completos:
-
-- `docs/roadmaps/`
-- `docs/research/`
-- `docs/agent-orchestration/`
-
-## Validaciones ejecutadas durante la auditoria inicial
+### Validado realmente
 
 ```bash
 py -m unittest tests.test_repository_governance tests.test_motor_cli_contract tests.test_start_here_ai_coherence -v
 ```
 
-Resultado observado antes de la reestructuracion completa:
+Resultado observado:
 
 - `OK`
 - 39 tests
-- 2 skips esperados por ausencia de `START_HERE_AI.md` en root
-
-## Validaciones ejecutadas tras la reestructuracion
+- 2 skips
 
 ```bash
-py -m unittest tests.test_repository_governance tests.test_motor_cli_contract tests.test_start_here_ai_coherence -v
 py -m unittest tests.test_official_contract_regression tests.test_parser_registry_alignment tests.test_motor_interface_coherence tests.test_motor_registry_consistency -v
+```
+
+Resultado observado:
+
+- `OK`
+- 50 tests
+- 2 skips
+
+```bash
 py -m motor --help
+```
+
+Resultado observado:
+
+- exit code `0`
+- la ayuda se imprime correctamente
+- la seccion `Documentation` apunta a `docs/cli.md`
+
+```bash
 py -m motor doctor --project . --json
 ```
 
-Resultados:
+Resultado observado:
 
-- primera suite: `OK`, 39 tests, 2 skips esperados por ausencia de `START_HERE_AI.md` en root
-- segunda suite: `OK`, 50 tests, 2 skips esperados por ausencia de `START_HERE_AI.md` en root
-- `py -m motor --help`: `OK`, ayuda apunta a `docs/cli.md`
-- `py -m motor doctor --project . --json`: `success = true`, proyecto `healthy`, 3 warnings esperados
-- chequeo de enlaces Markdown internos sobre `README.md`, `AGENTS.md`, `CONTRIBUTING.md`, `COMO_EJECUTAR.md` y `docs/**/*.md`: `OK`
+- exit code `0`
+- `success = true`
+- `status = "healthy"`
+- 3 warnings
+
+Chequeo local de enlaces Markdown internos sobre `README.md`, `AGENTS.md`,
+`CONTRIBUTING.md`, `COMO_EJECUTAR.md` y `docs/**/*.md`:
+
+- `OK`
+- 88 archivos Markdown verificados
+- se ignoraron URLs externas y anclas puras
+
+### Warning/skip esperado
+
+Skips esperados en las dos suites:
+
+- `START_HERE_AI.md no encontrado`
+- `START_HERE_AI.md not found`
+
+Motivo: el repo raiz no versiona `START_HERE_AI.md`; ese artefacto se genera por
+proyecto con `py -m motor project bootstrap-ai --project .`.
 
 Warnings esperados de `doctor` en el repo raiz:
 
@@ -218,11 +238,31 @@ Warnings esperados de `doctor` en el repo raiz:
 - `START_HERE_AI.md not found (run project migration)`
 - `Cannot list assets: Project manifest not loaded`
 
+Motivo: el root del repo es funcional como proyecto de desarrollo, pero no tiene
+los artefactos AI bootstrap generados en la raiz.
+
+### No ejecutado
+
+No se ejecutaron en este cierre:
+
+- `py -m unittest discover -s tests`
+- `py -m ruff check engine cli tools main.py`
+- `py -m mypy engine cli tools main.py`
+- `py -m bandit -q -c .bandit -r engine cli tools main.py`
+- `py -m pip_audit --skip-editable --ignore-vuln CVE-2026-4539`
+
+Motivo: el alcance pedido fue integracion documental y revalidacion enfocada de
+gobernanza/contratos/CLI. No se debe inferir exito de estas validaciones.
+
+### Bloqueado por entorno
+
+Ninguna validacion pedida quedo bloqueada por entorno.
+
 ## Riesgos residuales
 
-- Algunos documentos archivados conservan contenido antiguo por diseno. No deben
+- Los documentos archivados conservan contenido antiguo por diseno. No deben
   usarse como contrato vigente.
-- Algunos tests historicos pueden crear fixtures legacy `motor_ai.json`
-  schema `1` o `2`; eso prueba compatibilidad, no el contrato actual.
+- Algunos tests historicos pueden crear fixtures legacy `motor_ai.json` schema
+  `1` o `2`; eso prueba compatibilidad, no el contrato actual.
 - El registry de capabilities puede listar capacidades `planned`; la CLI publica
   solo debe considerarse disponible si el parser de `motor/cli.py` la expone.

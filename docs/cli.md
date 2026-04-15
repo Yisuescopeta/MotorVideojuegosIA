@@ -3,7 +3,7 @@
 Esta es la referencia canonica de la CLI publica actual. La implementacion vive
 en `motor/cli.py` y las funciones de comando en `motor/cli_core.py`.
 
-## Entrypoints
+## Puntos de entrada
 
 ```bash
 motor <command> [options]
@@ -71,7 +71,7 @@ py -m motor project info --project . --json
 
 ### `motor project bootstrap-ai`
 
-Genera o regenera los artefactos AI-facing del proyecto:
+Genera o regenera los artefactos orientados a IA del proyecto:
 
 - `motor_ai.json`
 - `START_HERE_AI.md`

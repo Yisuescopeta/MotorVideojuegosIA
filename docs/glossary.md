@@ -55,8 +55,8 @@ opcional, pero no reemplaza esta garantia. Ver [architecture.md](architecture.md
 
 ## `motor_ai.json`
 
-Artefacto machine-readable generado dentro de cada proyecto para orientar a una
-IA. No es documentacion canonica versionada del repo raiz. Ver
+Artefacto legible por maquinas generado dentro de cada proyecto para orientar a
+una IA. No es documentacion canonica versionada del repo raiz. Ver
 [MOTOR_AI_JSON_CONTRACT.md](MOTOR_AI_JSON_CONTRACT.md).
 
 ## `START_HERE_AI.md`
@@ -64,4 +64,3 @@ IA. No es documentacion canonica versionada del repo raiz. Ver
 Guia generada por proyecto junto con `motor_ai.json`. Se crea con
 `py -m motor project bootstrap-ai --project .` y debe distinguir capacidades
 implementadas de capacidades planificadas. Ver [MOTOR_AI_JSON_CONTRACT.md](MOTOR_AI_JSON_CONTRACT.md).
-

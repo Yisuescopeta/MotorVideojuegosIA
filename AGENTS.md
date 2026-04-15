@@ -1,14 +1,14 @@
 # AGENTS.md
 
-## Purpose
+## Proposito
 
-This repository uses a shared serializable engine model and supports parallel
-feature work through isolated branches/worktrees.
+Este repositorio usa un modelo de motor serializable compartido y admite trabajo
+paralelo en ramas/worktrees aislados.
 
-This file is the default operating contract for coding agents working in this
-repo.
+Este archivo es el contrato operativo por defecto para agentes de codigo que
+trabajen en este repo.
 
-Read this file together with:
+Lee este archivo junto con:
 
 - `docs/README.md`
 - `docs/architecture.md`
@@ -17,45 +17,46 @@ Read this file together with:
 - `docs/module_taxonomy.md`
 - `docs/agents.md`
 
-Historical roadmaps, prompt packs, research notes, and old orchestration
-material are archived under `docs/archive/`. They are useful background, not the
-current product contract.
+Roadmaps historicos, packs de prompts, notas de investigacion y material antiguo
+de orquestacion estan archivados bajo `docs/archive/`. Son contexto util, no el
+contrato de producto actual.
 
-## Core repository invariants
+## Invariantes centrales del repositorio
 
-These rules are not optional.
+Estas reglas no son opcionales.
 
-### 1. Persistent source of truth
+### 1. Fuente persistente de verdad
 
-- `Scene` is the persistent source of truth.
-- `World` is an operational projection.
-- runtime mutations must not become accidental authoring state.
+- `Scene` es la fuente persistente de verdad.
+- `World` es una proyeccion operativa.
+- Las mutaciones runtime no deben convertirse en authoring state accidental.
 
-### 2. Authoring path
+### 2. Ruta de authoring
 
-- serializable authoring changes must go through `SceneManager` or `EngineAPI`
-- do not introduce new direct-edit paths around shared authoring flows
-- direct mutation of `edit_world` is legacy compatibility only, not the preferred route for new work
+- Los cambios serializables de authoring deben pasar por `SceneManager` o `EngineAPI`.
+- No introduzcas rutas nuevas de edicion directa alrededor de flujos compartidos de authoring.
+- La mutacion directa de `edit_world` es solo compatibilidad legacy, no la ruta preferida para trabajo nuevo.
 
-### 3. Public API
+### 3. API publica
 
-- `EngineAPI` is the stable public facade for agents, tests, CLI and automation
-- do not bypass it for public-facing workflows unless the task explicitly requires internal wiring work
+- `EngineAPI` es la fachada publica estable para agentes, tests, CLI y automatizacion.
+- No la saltes en flujos publicos salvo que la tarea requiera explicitamente wiring interno.
 
-### 4. Physics contract
+### 4. Contrato fisico
 
-- preserve the common backend contract
-- preserve `legacy_aabb` fallback behavior
-- do not change the public meaning of `query_physics_ray` or `query_physics_aabb` outside dedicated physics work
+- Conserva el contrato comun de backends.
+- Conserva el fallback `legacy_aabb`.
+- No cambies el significado publico de `query_physics_ray` ni `query_physics_aabb` fuera de trabajo dedicado de fisica.
 
-### 5. Component registration
+### 5. Registro de componentes
 
-- if you add a new public component, register it in `engine/levels/component_registry.py`
-- do not assume public support for unregistered components
+- Si agregas un componente publico nuevo, registralo en `engine/levels/component_registry.py`.
+- No asumas soporte publico para componentes no registrados.
 
-## Critical files
+## Archivos criticos
 
-Treat these files as frozen unless the task explicitly authorizes them.
+Trata estos archivos como congelados salvo que la tarea lo autorice
+explicitamente.
 
 - `engine/scenes/scene_manager.py`
 - `engine/core/game.py`
@@ -66,35 +67,36 @@ Treat these files as frozen unless the task explicitly authorizes them.
 - `engine/components/tilemap.py`
 - `engine/levels/component_registry.py`
 
-If you think one of these files must be changed:
+Si crees que uno de estos archivos debe cambiar:
 
-1. stop
-2. explain exactly why
-3. state the minimal required change
-4. do not change it silently
+1. Detente.
+2. Explica exactamente por que.
+3. Declara el cambio minimo requerido.
+4. No lo cambies en silencio.
 
-## Documentation boundaries
+## Limites documentales
 
-- Canonical docs live at the root of `docs/` and are indexed by `docs/README.md`.
-- Archived docs live under `docs/archive/` and must not be treated as current source of truth.
-- New public behavior should update canonical docs, not only an archived note or prompt.
-- Do not promote a capability as current unless it is backed by code, tests, the public API, or the official `motor` CLI.
+- La documentacion canonica vive en la raiz de `docs/` y esta indexada por `docs/README.md`.
+- La documentacion archivada vive bajo `docs/archive/` y no debe tratarse como fuente de verdad actual.
+- El comportamiento publico nuevo debe actualizar docs canonicas, no solo una nota archivada o prompt.
+- No promociones una capacidad como actual salvo que este respaldada por codigo, tests, API publica o la CLI oficial `motor`.
 
-## Branch-aware perimeter rules
+## Reglas de perimetro por rama
 
-When working in a parallel feature branch, stay strictly inside that branch scope.
+Cuando trabajes en una rama paralela de feature, permanece estrictamente dentro
+del alcance de esa rama.
 
-### Branch: `feature/w1-audio2d-runtime`
+### Rama: `feature/w1-audio2d-runtime`
 
-Allowed:
+Permitido:
 
 - `engine/components/audiosource.py`
 - `engine/systems/audio_system.py`
 - `engine/api/_runtime_api.py`
-- audio tests
-- audio docs
+- tests de audio
+- docs de audio
 
-Forbidden:
+Prohibido:
 
 - `engine/core/game.py`
 - `engine/app/runtime_controller.py`
@@ -102,17 +104,17 @@ Forbidden:
 - `engine/scenes/scene_manager.py`
 - `engine/api/_authoring_api.py`
 
-### Branch: `feature/w1-navigation-core`
+### Rama: `feature/w1-navigation-core`
 
-Allowed:
+Permitido:
 
 - `engine/navigation/*`
-- navigation tests
-- navigation docs
-- minimal API additions in `engine/api/_runtime_api.py` or `engine/api/_authoring_api.py`
-- `engine/levels/component_registry.py` only if a public component is introduced
+- tests de navegacion
+- docs de navegacion
+- adiciones minimas de API en `engine/api/_runtime_api.py` o `engine/api/_authoring_api.py`
+- `engine/levels/component_registry.py` solo si se introduce un componente publico
 
-Forbidden:
+Prohibido:
 
 - `engine/tilemap/*`
 - `engine/components/tilemap.py`
@@ -123,18 +125,18 @@ Forbidden:
 - `engine/systems/render_system.py`
 - `engine/core/game.py`
 
-### Branch: `feature/w1-animator-authoring`
+### Rama: `feature/w1-animator-authoring`
 
-Allowed:
+Permitido:
 
 - `engine/components/animator.py`
 - `engine/systems/animation_system.py`
 - `engine/editor/animator_panel.py`
-- animator-specific parts of `engine/api/_authoring_api.py`
-- animator tests
-- animator docs
+- partes especificas de animator en `engine/api/_authoring_api.py`
+- tests de animator
+- docs de animator
 
-Forbidden:
+Prohibido:
 
 - `engine/systems/render_system.py`
 - `engine/tilemap/*`
@@ -143,18 +145,18 @@ Forbidden:
 - `engine/core/game.py`
 - `engine/inspector/inspector_system.py`
 
-### Branch: `feature/w1-tilemap-authoring`
+### Rama: `feature/w1-tilemap-authoring`
 
-Allowed:
+Permitido:
 
 - `engine/components/tilemap.py`
-- tilemap-specific parts of `engine/api/_authoring_api.py`
-- tilemap editor/inspector files
-- tilemap API tests
-- tilemap serialization tests
-- tilemap docs
+- partes especificas de tilemap en `engine/api/_authoring_api.py`
+- archivos de editor/inspector de tilemap
+- tests de API tilemap
+- tests de serializacion tilemap
+- docs de tilemap
 
-Forbidden:
+Prohibido:
 
 - `engine/systems/render_system.py`
 - `engine/tilemap/collision_builder.py`
@@ -165,15 +167,15 @@ Forbidden:
 - `engine/core/game.py`
 - `engine/scenes/scene_manager.py`
 
-### Branch: `feature/w2-tilemap-render`
+### Rama: `feature/w2-tilemap-render`
 
-Allowed:
+Permitido:
 
 - `engine/systems/render_system.py`
 - `tests/test_render_graph.py`
-- tilemap render docs
+- docs de render tilemap
 
-Forbidden:
+Prohibido:
 
 - `engine/components/tilemap.py`
 - `engine/api/_authoring_api.py`
@@ -183,16 +185,16 @@ Forbidden:
 - `engine/core/game.py`
 - `engine/editor/*`
 
-### Branch: `feature/w3-tilemap-collision`
+### Rama: `feature/w3-tilemap-collision`
 
-Allowed:
+Permitido:
 
 - `engine/tilemap/collision_builder.py`
 - `tests/test_tilemap_collision.py`
-- minimal, justified changes in `engine/app/runtime_controller.py`
-- tilemap collision docs
+- cambios minimos y justificados en `engine/app/runtime_controller.py`
+- docs de colision tilemap
 
-Forbidden:
+Prohibido:
 
 - `engine/systems/physics_system.py`
 - `engine/systems/collision_system.py`
@@ -202,19 +204,19 @@ Forbidden:
 - `engine/core/game.py`
 - `engine/scenes/scene_manager.py`
 
-### Branch: `feature/w4-physics-core`
+### Rama: `feature/w4-physics-core`
 
-Allowed:
+Permitido:
 
 - `engine/systems/physics_system.py`
 - `engine/systems/collision_system.py`
 - `engine/components/rigidbody.py`
 - `engine/physics/*`
 - `engine/app/runtime_controller.py`
-- physics/runtime tests
-- physics docs
+- tests de physics/runtime
+- docs de fisica
 
-Forbidden:
+Prohibido:
 
 - `engine/components/tilemap.py`
 - `engine/tilemap/collision_builder.py`
@@ -224,16 +226,16 @@ Forbidden:
 - `engine/editor/*`
 - `engine/api/_authoring_api.py`
 
-## Testing expectations
+## Expectativas de testing
 
-Before reporting completion:
+Antes de reportar finalizacion:
 
-- run focused tests for the touched subsystem
-- run additional regression tests when the change touches shared contracts
-- do not disable tests to get green output
-- do not claim lint/typecheck/bandit success unless you actually ran them
+- Ejecuta tests enfocados para el subsistema tocado.
+- Ejecuta regresiones adicionales cuando el cambio toque contratos compartidos.
+- No deshabilites tests para obtener salida verde.
+- No afirmes exito de lint/typecheck/bandit si no los ejecutaste realmente.
 
-Minimum commands commonly useful in this repo:
+Comandos minimos comunes en este repo:
 
 ```bash
 py -m unittest discover -s tests
@@ -241,29 +243,30 @@ py -m ruff check engine cli tools main.py
 py -m mypy engine cli tools main.py
 ```
 
-Use narrower test selection when appropriate, but state exactly what you ran.
+Usa selecciones mas estrechas cuando corresponda, pero declara exactamente que
+ejecutaste.
 
-## Parallel merge discipline
+## Disciplina de merge paralelo
 
-Every final delivery should include:
+Cada entrega final debe incluir:
 
-1. a short technical summary
-2. exact files changed
-3. exact tests added or modified
-4. exact tests run
-5. remaining risks or limitations
-6. confirmation that no forbidden files were touched
+1. Resumen tecnico breve.
+2. Archivos exactos cambiados.
+3. Tests exactos agregados o modificados.
+4. Tests exactos ejecutados.
+5. Riesgos o limitaciones restantes.
+6. Confirmacion de que no se tocaron archivos prohibidos.
 
-## Stop conditions
+## Condiciones de parada
 
-Stop and ask for review instead of continuing if:
+Detente y pide revision antes de continuar si:
 
-- the task requires a forbidden file
-- the task requires widening the branch perimeter
-- the task would change a core invariant
-- the task would create a new public contract without explicit approval
+- La tarea requiere un archivo prohibido.
+- La tarea requiere ampliar el perimetro de la rama.
+- La tarea cambiaria un invariante central.
+- La tarea crearia un contrato publico nuevo sin aprobacion explicita.
 
-## Practical rule
+## Regla practica
 
-Prefer a smaller correct change over a broader risky one.
-Do not optimize for local completion if it harms merge safety.
+Prefiere un cambio pequeno y correcto antes que uno amplio y riesgoso.
+No optimices por cierre local si eso perjudica la seguridad de merge.

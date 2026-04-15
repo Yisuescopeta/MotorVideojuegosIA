@@ -1,7 +1,7 @@
 # Contrato `motor_ai.json`
 
-`motor_ai.json` es el artefacto machine-readable que permite a una IA descubrir
-un proyecto creado con MotorVideojuegosIA. No es documentacion del repositorio:
+`motor_ai.json` es el artefacto legible por maquinas que permite a una IA
+descubrir un proyecto creado con MotorVideojuegosIA. No es documentacion del repositorio:
 se genera dentro de cada proyecto con la CLI oficial.
 
 Generador canonico:
@@ -15,7 +15,7 @@ Generador canonico:
 - Formato actual: `schema_version = 3`
 - Registry interno de capabilities: `capabilities_schema_version = 1`
 - CLI oficial: `motor`
-- Legacy soportado por `doctor`: schemas `1` y `2` con `capabilities.capabilities`
+- Compatibilidad legacy de `doctor`: schemas `1` y `2` con `capabilities.capabilities`
 
 `doctor` puede leer schemas antiguos para diagnostico, pero el bootstrap actual
 debe generar siempre schema `3`.

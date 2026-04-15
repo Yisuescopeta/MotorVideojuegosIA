@@ -211,7 +211,7 @@ Assets:
 - `save_asset_metadata(asset_path, metadata)`
 - `get_asset_image_size(asset_path)`
 
-Sprite slicing:
+Slicing de sprites:
 
 - `create_grid_slices(asset_path, cell_width, cell_height, margin=0, spacing=0, pivot_x=0.5, pivot_y=0.5, naming_prefix=None)`
 - `list_asset_slices(asset_path)`
