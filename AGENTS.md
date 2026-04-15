@@ -2,16 +2,24 @@
 
 ## Purpose
 
-This repository uses a shared serializable engine model and supports parallel feature work through isolated branches/worktrees.
+This repository uses a shared serializable engine model and supports parallel
+feature work through isolated branches/worktrees.
 
-This file is the default operating contract for coding agents working in this repo.
+This file is the default operating contract for coding agents working in this
+repo.
 
 Read this file together with:
 
+- `docs/README.md`
+- `docs/architecture.md`
 - `docs/TECHNICAL.md`
+- `docs/schema_serialization.md`
 - `docs/module_taxonomy.md`
-- `docs/parallel_execution_plan.md`
-- `docs/parallel_prompts_index.md`
+- `docs/agents.md`
+
+Historical roadmaps, prompt packs, research notes, and old orchestration
+material are archived under `docs/archive/`. They are useful background, not the
+current product contract.
 
 ## Core repository invariants
 
@@ -64,6 +72,13 @@ If you think one of these files must be changed:
 2. explain exactly why
 3. state the minimal required change
 4. do not change it silently
+
+## Documentation boundaries
+
+- Canonical docs live at the root of `docs/` and are indexed by `docs/README.md`.
+- Archived docs live under `docs/archive/` and must not be treated as current source of truth.
+- New public behavior should update canonical docs, not only an archived note or prompt.
+- Do not promote a capability as current unless it is backed by code, tests, the public API, or the official `motor` CLI.
 
 ## Branch-aware perimeter rules
 
@@ -221,9 +236,9 @@ Before reporting completion:
 Minimum commands commonly useful in this repo:
 
 ```bash
-python -m unittest discover -s tests
-python -m ruff check engine cli tools main.py
-python -m mypy engine cli tools main.py
+py -m unittest discover -s tests
+py -m ruff check engine cli tools main.py
+py -m mypy engine cli tools main.py
 ```
 
 Use narrower test selection when appropriate, but state exactly what you ran.

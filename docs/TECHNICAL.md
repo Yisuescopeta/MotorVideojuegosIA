@@ -1,157 +1,51 @@
-# Documentacion tecnica del motor 2D
+# Referencia tecnica
 
-## Resumen tecnico
+Esta referencia resume el estado verificable del codigo. Para el contrato
+arquitectonico lee [architecture.md](architecture.md); para la taxonomia lee
+[module_taxonomy.md](module_taxonomy.md); para serializacion lee
+[schema_serialization.md](schema_serialization.md).
 
-El motor se organiza alrededor de un modelo ECS y de un contrato serializable de
-escena/prefab. El punto importante no es solo que exista editor, runtime o CLI,
-sino que las tres capas operan sobre el mismo modelo de datos.
-
-Contrato base vigente:
+## Contrato base
 
 - `scene schema_version = 2`
 - `prefab schema_version = 2`
-- migraciones explicitas de payloads legacy y `v1`
-- guardado siempre en payload canonico `v2`
+- migraciones `legacy/v1 -> v2`
+- validacion posterior a la migracion
+- guardado canonico `v2`
 
-La fuente de verdad persistente es `Scene`. `World` es una proyeccion operativa
-del mismo contenido.
+`Scene` es persistente. `World` es una proyeccion operativa.
 
-## Modelo de datos
+## Componentes registrados
 
-### Scene
+La fuente de verdad para componentes publicos registrados es
+`engine/levels/component_registry.py`.
 
-`Scene` encapsula el payload editable y persistible:
+Familias principales:
 
-- `name`
-- `schema_version`
-- `entities`
-- `rules`
-- `feature_metadata`
+- Espacial/render: `Transform`, `RectTransform`, `Sprite`, `Animator`, `Camera2D`, `RenderOrder2D`, `RenderStyle2D`.
+- Gameplay/fisica: `Collider`, `RigidBody`, `CharacterController2D`, `PlayerController2D`, `Joint2D`, `InputMap`, `AudioSource`, `ScriptBehaviour`.
+- Escena, tilemap y UI: `Tilemap`, `SceneLink`, `SceneEntryPoint`, `SceneTransition*`, `Canvas`, `UIText`, `UIButton`.
 
-Ademas:
+No se debe asumir soporte publico para componentes no registrados.
 
-- resuelve prefabs al reconstruir `World`
-- preserva `feature_metadata`
-- permite actualizar entidad, componente y metadata serializable sin depender de
-  UI
+## Runtime y sistemas
 
-### World
+El runtime usa `Game` o `HeadlessGame` para coordinar sistemas sobre el mundo
+activo. Los sistemas actuales incluyen render, fisica, colisiones, animacion,
+input, controladores de personaje/jugador, scripts, audio y UI.
 
-`World` es el contenedor de entidades activas utilizado por editor y runtime.
-No es la fuente de verdad persistente.
+`RenderSystem` mantiene render graph, sorting layers, batching, tilemap chunks,
+debug geometry y render targets con fallback seguro cuando no hay backend
+grafico disponible.
 
-Propiedades relevantes del contrato operativo:
-
-- entidades con nombre unico
-- filtrado por componentes via `get_entities_with(...)`
-- `feature_metadata` accesible desde el mundo activo
-- seleccion activa (`selected_entity_name`) como estado de workspace/runtime,
-  no como dato persistente de escena
-
-### SceneManager
-
-`SceneManager` coordina la vida de la escena editable:
-
-- `load_scene(...)` y `load_scene_from_file(...)`
-- workspace multi-escena
-- `enter_play()` y `exit_play()`
-- dirty state por escena
-- historial y transacciones
-- seleccion persistente entre `EDIT`, `PLAY`, `STOP` y cambios de pestaña
-
-Internamente esta separado por responsabilidades:
-
-- `workspace_lifecycle.py`
-- `structural_authoring.py`
-- `change_history.py`
-
-La fachada publica sigue centralizada en `SceneManager`.
-
-## Componentes registrados hoy
-
-La fuente de verdad sobre componentes registrados es
-`engine/levels/component_registry.py`. Las familias activas hoy son:
-
-### Espacial y render
-
-- `Transform`
-- `RectTransform`
-- `Sprite`
-- `Animator`
-- `Camera2D`
-- `RenderOrder2D`
-- `RenderStyle2D`
-
-### Gameplay y fisica
-
-- `Collider`
-- `RigidBody`
-- `CharacterController2D`
-- `PlayerController2D`
-- `Joint2D`
-- `InputMap`
-- `AudioSource`
-- `ScriptBehaviour`
-
-### Escena, tilemap y UI serializable
-
-- `Tilemap`
-- `SceneLink`
-- `Canvas`
-- `UIText`
-- `UIButton`
-
-No se debe asumir soporte publico para componentes fuera de ese registry.
-
-## Sistemas y runtime
-
-### RenderSystem
-
-`RenderSystem` no solo dibuja sprites. Hoy tambien:
-
-- construye un render graph publico con passes `World`, `Overlay` y `Debug`
-- ordena por sorting layer y `order_in_layer`
-- agrupa entidades contiguas por material, atlas y capa
-- soporta `Tilemap` por chunks con cache y rebuild incremental
-- puede emitir debug geometry dump y metricas de profiling
-- usa render targets con fallback seguro cuando no hay backend grafico
-
-### Physics y collision
-
-El runtime fisico opera contra un contrato comun de backend:
-
-- backend efectivo por defecto `legacy_aabb`
-- `box2d` opcional cuando la dependencia esta disponible
-- fallback explicito a `legacy_aabb` si `box2d` no puede activarse
-- la fachada publica expone `query_physics_ray` y `query_physics_aabb`
-- `query_shape` permanece como parte del contrato interno de backend, no como
-  API publica del motor
-
-El backend solicitado se expresa en `feature_metadata.physics_2d.backend`. El
-fallback no debe sobrescribir ese valor pedido; solo cambia la seleccion
-efectiva en runtime.
-
-### Animation, input, scripts y UI
-
-Tambien forman parte del runtime actual:
-
-- `AnimationSystem`
-- `InputSystem`
-- `CharacterControllerSystem`
-- `PlayerControllerSystem`
-- `ScriptBehaviourSystem`
-- `AudioSystem`
-- `UISystem`
-- `UIRenderSystem`
-
-`ScriptBehaviour.public_data` sigue siendo la unica bolsa persistente del
-script. El resto del estado de modulo es runtime.
+El sistema fisico conserva `legacy_aabb` como fallback obligatorio y registra
+`box2d` como backend opcional cuando la dependencia esta disponible.
 
 ## Reglas y eventos
 
 `EventBus` y `RuleSystem` permiten gameplay declarativo desde datos de escena.
 
-Acciones soportadas por contrato:
+Acciones de reglas soportadas por contrato:
 
 - `set_animation`
 - `set_position`
@@ -159,63 +53,20 @@ Acciones soportadas por contrato:
 - `emit_event`
 - `log_message`
 
-`RuleSystem` admite binding por fases:
+## Workspace y authoring
 
-- se construye con `event_bus`
-- enlaza el `World` activo despues mediante `set_world(world)`
+`SceneManager` coordina carga/guardado, workspace multi-escena, escena activa,
+dirty state, historial, transacciones, `EDIT -> PLAY -> STOP`, operaciones
+estructurales y prefabs.
 
-Las acciones que requieren entidad se omiten con warning si aun no hay `world`.
-
-## Flujo de escenas y workspace
-
-### Ciclo `EDIT -> PLAY -> STOP`
-
-El flujo correcto hoy es:
-
-```text
-Scene (serializable)
-  -> edit_world (editable)
-  -> runtime_world (clon temporal para PLAY)
-  -> reconstruccion de edit_world al volver a STOP
-```
-
-Invariantes operativos:
-
-- las mutaciones runtime no deben contaminar `Scene`
-- la seleccion puede sobrevivir al cambio de modo
-- dirty/save/autosave no deben contaminarse con previews transitorios de gizmos
-
-### Rutas de authoring recomendadas
-
-Las rutas compartidas de authoring siguen siendo:
-
-- `SceneManager.apply_edit_to_world()`
-- `SceneManager.update_entity_property()`
-- `SceneManager.replace_component_data()`
-- `SceneManager.add_component_to_entity()`
-- `SceneManager.remove_component_from_entity()`
-- operaciones estructurales como crear entidad, duplicar subarbol o reparentar
-- `EngineAPI` como fachada publica equivalente
-
-`sync_from_edit_world()` queda como compatibilidad legacy explicita, no como via
-principal para authoring nuevo.
+Las rutas recomendadas para cambios persistentes son `SceneManager` y
+`EngineAPI`. `sync_from_edit_world()` queda como compatibilidad legacy.
 
 ## EngineAPI publica
 
-`EngineAPI` es la fachada publica que el repositorio considera estable.
-Internamente delega por dominios, pero el punto de entrada publico sigue siendo
-uno.
-
-Dominios actuales:
-
-- authoring
-- runtime
-- workspace y scene flow
-- assets y proyecto
-- debug/profiler
-- UI serializable
-
-Ejemplos de superficie publica ya fijada por tests:
+`EngineAPI` es la fachada estable para agentes, tests, CLI y automatizacion.
+Internamente delega por dominios: authoring, runtime, workspace y scene flow,
+assets/proyecto, debug/profiler y UI serializable.
 
 ```python
 from engine.api import EngineAPI
@@ -227,61 +78,64 @@ api.play()
 api.step(2)
 events = api.get_recent_events(count=10)
 selection = api.get_physics_backend_selection()
+api.shutdown()
 ```
 
-Regla importante:
+La referencia agrupada vive en [api.md](api.md).
 
-- wrappers RL, CLI y automatizacion deben usar `EngineAPI`
-- no deben tocar hooks privados del runtime
+## CLI oficial
 
-## Invariantes realmente cubiertos por tests
+La CLI publica es `motor`, implementada en `motor/cli.py`.
 
-La documentacion principal debe leerse junto con estas suites:
+Comandos base:
+
+- `motor capabilities`
+- `motor doctor`
+- `motor project info`
+- `motor project bootstrap-ai`
+- `motor scene list/create/load/save`
+- `motor entity create`
+- `motor component add`
+- `motor animator ...`
+- `motor asset ...`
+
+La referencia completa vive en [cli.md](cli.md).
+
+## IA, RL y tooling experimental
+
+`engine/rl`, datasets, runners paralelos y workflows AI-assisted existen, pero
+pertenecen a `experimental/tooling`, no al `core obligatorio`.
+
+Docs relevantes:
+
+- [rl.md](rl.md)
+- [ai_assisted_workflows.md](ai_assisted_workflows.md)
+- [navigation.md](navigation.md)
+
+## Tests de contrato
 
 - `tests/test_core_regression_matrix.py`
 - `tests/test_schema_validation.py`
 - `tests/test_scene_workspace.py`
 - `tests/test_engine_api_public_contract.py`
-- `tests/test_physics_backend.py`
+- `tests/test_motor_cli_contract.py`
+- `tests/test_official_contract_regression.py`
+- `tests/test_repository_governance.py`
 
-Cobertura relevante hoy:
+Cobertura relevante:
 
 - roundtrip `load -> edit -> save -> load`
 - preservacion de `feature_metadata`
-- compatibilidad de migracion `legacy/v1 -> v2`
-- aislamiento de `PLAY` respecto a la escena editable
-- seleccion persistente por workspace
-- equivalencia funcional entre authoring directo y authoring via `EngineAPI`
-- fallback fisico y contrato publico comparable entre backends
-
-## Clasificacion tecnica del repo
-
-La referencia canonica por subsistema vive en
-[module_taxonomy.md](./module_taxonomy.md). El resumen tecnico es:
-
-### Core obligatorio
-
-- ECS, `Scene`, `SceneManager`, serializacion y schema/migraciones
-- editor base, jerarquia y `EngineAPI`
-- contrato comun de physics backends con fallback `legacy_aabb`
-
-### Modulos oficiales opcionales
-
-- assets y prefabs
-- tilemap, audio y UI serializable
-- `box2d` y otras capacidades oficiales no necesarias para el contrato minimo
-
-### Experimental/tooling
-
-- `engine/rl`
-- datasets, runners y multiagente
-- debug avanzado, benchmarking y tooling de investigacion
+- migraciones `legacy/v1 -> v2`
+- aislamiento de `PLAY`
+- equivalencia funcional de authoring por `EngineAPI`
+- fallback fisico y queries publicas
+- separacion entre capabilities implementadas y planificadas
 
 ## Limites actuales
 
-- el determinismo no se promete como garantia cross-platform estricta
-- existen rutas legacy de edicion directa sobre `edit_world` que deben seguir
-  acotadas
-- RL y datasets existen, pero no forman parte del core obligatorio
-- el proyecto sigue siendo experimental aunque varias bases del core ya esten
-  cubiertas por tests
+- No se promete determinismo cross-platform estricto.
+- Existen rutas legacy de edicion directa que deben permanecer acotadas.
+- `box2d` no es dependencia obligatoria.
+- `engine/rl` y datasets son experimentales.
+- Material archivado en `docs/archive/` no es contrato vigente.

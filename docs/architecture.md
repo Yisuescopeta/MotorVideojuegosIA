@@ -1,155 +1,133 @@
-# Arquitectura del motor 2D IA-first
+# Arquitectura canonica
 
-## Objetivo
+Este documento fija el contrato arquitectonico vigente del repo. La referencia
+de clasificacion por subsistema esta en [module_taxonomy.md](module_taxonomy.md).
 
-Este documento fija el contrato arquitectonico que el proyecto considera
-vigente:
+## Principio central
 
-- la UI no es la fuente de verdad
-- el modelo serializable manda
-- editor, runtime y API operan sobre el mismo contrato de datos
+El motor no debe esconder estado funcional en la UI. La fuente de verdad
+persistente vive en datos serializables.
 
-La clasificacion de que cae en `core obligatorio`, `modulos oficiales
-opcionales` o `experimental/tooling` vive en
-[module_taxonomy.md](./module_taxonomy.md). Esa taxonomia no cambia este
-contrato: solo fija prioridades y limites de compatibilidad alrededor del mismo
-modelo compartido.
+- `Scene` es la fuente de verdad persistente.
+- `World` es una proyeccion operativa.
+- `SceneManager` coordina el workspace editable y el ciclo `EDIT -> PLAY -> STOP`.
+- `EngineAPI` es la fachada publica para agentes, tests, CLI y automatizacion.
 
-## Fuente de verdad
+El contrato base vigente usa:
 
-### Authoring persistente
+- `scene schema_version = 2`
+- `prefab schema_version = 2`
+- migracion explicita de payloads legacy y `v1` a `v2`
+- guardado canonico en `v2`
 
-La fuente de verdad persistente vive en datos serializables:
+## Representaciones
 
-- escenas JSON con `scene schema_version = 2`
-- prefabs con `prefab schema_version = 2`
-- migraciones explicitas `legacy/v1 -> v2`
-- `feature_metadata` y reglas declarativas serializadas junto a la escena
+### Scene
 
-La carga migra y valida antes de construir runtime. El guardado emite siempre
-payload canonico `v2`.
+`Scene` conserva el contenido editable y persistible: entidades, componentes
+serializables, reglas, `feature_metadata` y referencias de prefab. Un cambio de
+authoring que deba persistir tiene que terminar en `Scene`.
 
-### Representaciones en memoria
+### World
 
-Las representaciones en memoria son proyecciones del mismo modelo:
+`World` contiene entidades activas para editor y runtime. No es un formato de
+persistencia ni sustituye a `Scene`.
 
-- `Scene` conserva la version editable y persistible del contenido
-- `SceneManager.edit_world` es una reconstruccion editable derivada de `Scene`
-- `SceneManager.runtime_world` es un clon temporal para `PLAY`
-- `Game.world` y `HeadlessGame.world` exponen el `active_world`, pero no
-  sustituyen al modelo serializable
+`SceneManager.edit_world` es una reconstruccion editable desde la escena.
+`SceneManager.runtime_world` es un clon temporal usado en `PLAY`.
+`Game.world` y `HeadlessGame.world` exponen el mundo activo para sistemas, pero
+no son la fuente de verdad persistente.
+
+## Ciclo EDIT -> PLAY -> STOP
+
+```text
+Scene serializable
+  -> edit_world para authoring
+  -> runtime_world temporal para PLAY
+  -> vuelta a edit_world sin contaminar authoring
+```
+
+Invariantes:
+
+1. Las mutaciones de runtime no se guardan como authoring por accidente.
+2. La seleccion puede sobrevivir a cambios de modo sin volverse dato serializable de escena.
+3. Previews transitorios de gizmos no deben marcar dirty state ni autosave.
+4. Un save/load roundtrip conserva entidades, componentes, jerarquia y `feature_metadata`.
 
 ## Superficie de mutacion autorizada
 
-La mutacion de contenido debe pasar por rutas compartidas de authoring:
+Las rutas compartidas de authoring son:
 
 - `SceneManager.apply_edit_to_world()`
 - `SceneManager.update_entity_property()`
 - `SceneManager.replace_component_data()`
 - `SceneManager.add_component_to_entity()`
 - `SceneManager.remove_component_from_entity()`
-- `SceneManager.create_entity()` y operaciones estructurales relacionadas
-- `EngineAPI` como fachada publica para agentes, tooling y tests
+- operaciones estructurales de `SceneManager`
+- metodos publicos equivalentes en `EngineAPI`
 
-`sync_from_edit_world()` sigue existiendo, pero se considera compatibilidad
-legacy explicita para rutas antiguas de edicion directa sobre `edit_world`. No
-es el flujo normal recomendado para authoring nuevo.
-
-Los previews transitorios de gizmos no deben contaminar dirty state, save ni
-autosave.
+`sync_from_edit_world()` existe para compatibilidad legacy explicita. No es la
+ruta normal para nuevas superficies publicas de authoring.
 
 ## Responsabilidades por capa
 
-### Scene
-
-- guarda entidades, componentes, reglas y `feature_metadata`
-- resuelve prefabs y crea un `World` desde datos
-- aplica actualizaciones serializables por entidad y componente
-
 ### SceneManager
 
-- coordina workspaces de escena
-- mantiene `Scene`, `edit_world` y `runtime_world`
-- controla la transicion `EDIT -> PLAY -> STOP`
-- registra dirty state, historial y transacciones
+Responsable de workspace, escenas abiertas, escena activa, dirty state,
+transacciones, historial, operaciones estructurales y transicion entre modos.
 
-Internamente esta troceado en colaboradores con responsabilidades separadas:
+### Game y HeadlessGame
 
-- workspace y lifecycle
-- authoring estructural y prefabs
-- transacciones e historial
-
-Ese troceado no cambia su fachada publica ni abre rutas nuevas fuera del
-contrato comun.
-
-### Game / HeadlessGame
-
-- coordinan estado del motor, tiempo y sistemas
-- nunca son la fuente de verdad persistente
-- en `PLAY` trabajan sobre un clon temporal
-- mantienen una fachada publica estable aunque internamente `Game` este
-  dividido en controladores
-
-Los controladores internos no forman parte del contrato publico.
+Coordinan tiempo, estado del motor y sistemas sobre el mundo activo. No deben
+convertirse en una ruta paralela de persistencia.
 
 ### EngineAPI
 
-- expone authoring, runtime, workspace, assets, debug y UI serializable
-- debe ofrecer operaciones funcionales equivalentes a las rutas principales de
-  la UI
-- no debe depender de internals privados del runtime ni abrir atajos paralelos
-  al contrato de `SceneManager`
+`EngineAPI` expone authoring, runtime, workspace, scene flow, assets, proyecto,
+debug y UI serializable. Wrappers RL, CLI, tests y automatizacion deben usar
+esta fachada en vez de internals privados.
 
-### UI / editor
+### Editor/UI
 
-- visualiza y traduce operaciones de usuario
-- puede mantener estado visual efimero de layout, hover o seleccion
-- no puede introducir datos funcionales inaccesibles por API o no
-  serializables
+La UI visualiza y traduce acciones de usuario. Puede mantener estado efimero de
+layout, hover o seleccion visual. No debe introducir comportamiento funcional
+inaccesible por `EngineAPI` o por datos serializables.
 
-## Invariantes testables
+## Contrato fisico
 
-1. `load -> edit -> save -> load` conserva entidades, componentes y
-   `feature_metadata`.
-2. `EDIT -> PLAY -> STOP` no contamina la escena editable con mutaciones de
-   runtime.
-3. Las rutas principales de authoring disponibles en UI tienen equivalente por
-   `EngineAPI` o por datos serializables.
-4. Un cambio en `EDIT` termina reflejado en `Scene` y en el `edit_world`
-   reconstruido.
-5. Prefabs y overrides se guardan como datos, no como copias oportunistas de
-   UI.
-6. El headless puede ejecutar escenas sin depender de layout ni ventana.
-7. La seleccion puede persistir entre `EDIT`, `PLAY`, `STOP` y cambios de
-   escena del workspace sin convertirse en estado serializable.
-8. La seleccion del backend fisico puede pedir `box2d` y caer en fallback a
-   `legacy_aabb` sin mutar el backend solicitado en `feature_metadata`.
+El core conserva un contrato comun de backends fisicos:
 
-## Cobertura de pruebas relevante
+- `legacy_aabb` esta siempre disponible
+- `box2d` es opcional
+- si `box2d` no puede activarse, el runtime cae a `legacy_aabb`
+- el backend solicitado en `feature_metadata.physics_2d.backend` no debe sobrescribirse por el fallback efectivo
+- `query_physics_ray` y `query_physics_aabb` mantienen su significado publico
+
+## Taxonomia arquitectonica
+
+Los documentos principales usan tres categorias:
+
+- `core obligatorio`
+- `modulos oficiales opcionales`
+- `experimental/tooling`
+
+La clasificacion completa vive en [module_taxonomy.md](module_taxonomy.md).
+
+## Cobertura relevante
 
 - `tests/test_core_regression_matrix.py`
 - `tests/test_scene_workspace.py`
 - `tests/test_engine_api_public_contract.py`
 - `tests/test_schema_validation.py`
 - `tests/test_physics_backend.py`
-
-## Limites y riesgos actuales
-
-- siguen existiendo algunas rutas legacy de edicion directa sobre `edit_world`;
-  deben quedar acotadas y depender de sincronizacion explicita de compatibilidad
-- el determinismo se persigue en la misma maquina y entorno, no como garantia
-  cross-platform fuerte
-- `box2d` es opcional; el core no lo exige como dependencia obligatoria
-- RL, datasets y runners paralelos existen, pero quedan fuera del core
-  obligatorio y se documentan como `experimental/tooling`
+- `tests/test_repository_governance.py`
 
 ## Regla de extension
 
-Antes de introducir una feature nueva, hay que responder estas preguntas:
+Antes de introducir una feature nueva, definir:
 
 1. Donde se serializa.
 2. Como se edita sin depender de UI.
 3. Como se valida en headless.
-4. Como se restaura tras `STOP` si participa en runtime.
-5. Si pertenece al core, a un modulo oficial opcional o a
-   `experimental/tooling`.
+4. Como vuelve a estado editable tras `STOP` si participa en runtime.
+5. Si pertenece a `core obligatorio`, `modulos oficiales opcionales` o `experimental/tooling`.

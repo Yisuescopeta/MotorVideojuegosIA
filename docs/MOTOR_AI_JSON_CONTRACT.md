@@ -1,30 +1,96 @@
-# Contrato Portable de motor_ai.json
+# Contrato `motor_ai.json`
 
-**Versión:** 2026.03  
-**Fecha:** 2025-01-21  
-**Estado:** ESTABLE
+`motor_ai.json` es el artefacto machine-readable que permite a una IA descubrir
+un proyecto creado con MotorVideojuegosIA. No es documentacion del repositorio:
+se genera dentro de cada proyecto con la CLI oficial.
 
-## Resumen
+Generador canonico:
 
-El archivo `motor_ai.json` es el contrato AI-facing del proyecto MotorVideojuegosIA. Este documento especifica el formato portable que permite a una IA descubrir y operar sobre el proyecto sin información dependiente de la máquina.
+- `engine/ai/registry_builder.py`
+- `engine/project/project_service.py`
+- `motor project bootstrap-ai --project .`
 
-## Principios de Portabilidad
+## Estado actual
 
-1. **Rutas relativas**: Todas las rutas son relativas al root del proyecto
-2. **Sin rutas absolutas**: No Windows (`C:\`), no Unix (`/home/`), no network (`\\`)
-3. **Commit-friendly**: El archivo puede ser versionado sin contaminar con datos locales
-4. **AI-discoverable**: Contiene toda la información necesaria para IA
+- Formato actual: `schema_version = 3`
+- Registry interno de capabilities: `capabilities_schema_version = 1`
+- CLI oficial: `motor`
+- Legacy soportado por `doctor`: schemas `1` y `2` con `capabilities.capabilities`
 
-## Estructura del Archivo
+`doctor` puede leer schemas antiguos para diagnostico, pero el bootstrap actual
+debe generar siempre schema `3`.
+
+## Principios
+
+1. Las rutas de proyecto deben ser relativas al root del proyecto.
+2. El archivo no debe contener rutas absolutas de Windows, Unix ni red.
+3. La lista de capabilities separa lo implementado de lo planificado.
+4. Los comandos CLI documentados deben usar `motor`, no `tools.engine_cli`.
+5. `capability_counts` debe coincidir con las listas del archivo.
+
+## Estructura v3
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "engine": {
     "name": "MotorVideojuegosIA",
     "version": "2026.03",
     "api_version": "1",
     "capabilities_schema_version": 1
+  },
+  "implemented_capabilities": [
+    {
+      "id": "scene:create",
+      "summary": "Create a new scene with a unique file path",
+      "mode": "both",
+      "status": "implemented",
+      "api_methods": ["SceneWorkspaceAPI.create_scene"],
+      "cli_command": "motor scene create <name>",
+      "example": {
+        "description": "Create a new scene called 'Level 1'",
+        "api_calls": [
+          {
+            "method": "create_scene",
+            "args": {
+              "name": "Level 1"
+            }
+          }
+        ],
+        "expected_outcome": "A new scene file is created and becomes active"
+      },
+      "notes": "Scene name is sanitized for the filename.",
+      "tags": ["scene", "authoring", "workspace"]
+    }
+  ],
+  "planned_capabilities": [
+    {
+      "id": "runtime:step",
+      "summary": "Advance runtime simulation by a number of frames",
+      "mode": "play",
+      "status": "planned",
+      "api_methods": ["RuntimeAPI.step"],
+      "cli_command": "motor step <frames>",
+      "example": {
+        "description": "Advance simulation",
+        "api_calls": [
+          {
+            "method": "step",
+            "args": {
+              "frames": 1
+            }
+          }
+        ],
+        "expected_outcome": "Simulation advances one frame"
+      },
+      "notes": "Listed as planned when no public CLI parser exists.",
+      "tags": ["runtime"]
+    }
+  ],
+  "capability_counts": {
+    "implemented": 1,
+    "planned": 1,
+    "total": 2
   },
   "project": {
     "name": "MyGame",
@@ -49,163 +115,94 @@ El archivo `motor_ai.json` es el contrato AI-facing del proyecto MotorVideojuego
     "assets_dir": "assets",
     "levels_dir": "levels",
     "prefabs_dir": "prefabs"
-  },
-  "important_files": [
-    "project.json",
-    "motor_ai.json",
-    "START_HERE_AI.md"
-  ],
-  "capabilities": {
-    "schema_version": 1,
-    "engine": {
-      "name": "MotorVideojuegosIA",
-      "version": "2026.03"
-    },
-    "capabilities": [...]
   }
 }
 ```
 
-## Secciones
+Las secciones `project` y `entrypoints` aparecen cuando el bootstrap recibe datos
+de proyecto. Los tests de portabilidad verifican que esas rutas sean relativas.
+
+## Campos principales
 
 ### `schema_version`
-Versión del formato de motor_ai.json. Actualmente `2`.
+
+Version del contrato del archivo. El valor actual generado por el codigo es `3`.
 
 ### `engine`
-Información del motor:
-- `name`: Nombre del motor ("MotorVideojuegosIA")
-- `version`: Versión del motor ("2026.03")
-- `api_version`: Versión de la API ("1")
-- `capabilities_schema_version`: Versión del schema de capabilities
+
+Metadatos del motor:
+
+- `name`
+- `version`
+- `api_version`
+- `capabilities_schema_version`
+
+### `implemented_capabilities`
+
+Lista de capacidades disponibles ahora. Cada entrada debe tener
+`status = "implemented"` y, si declara `cli_command`, debe usar la CLI oficial
+`motor`.
+
+### `planned_capabilities`
+
+Lista de capacidades no disponibles como interfaz publica completa. Se conserva
+para orientacion de agentes, pero no autoriza a invocar comandos inexistentes.
+
+### `capability_counts`
+
+Resumen derivado:
+
+- `implemented = implemented_capabilities.length`
+- `planned = planned_capabilities.length`
+- `total = implemented + planned`
 
 ### `project`
-Información del proyecto:
-- `name`: Nombre del proyecto
-- `root`: Siempre `"."` (relativo al directorio del proyecto)
-- `engine_version`: Versión del motor usada por el proyecto
-- `template`: Template usado para crear el proyecto
-- `paths`: Rutas canónicas de carpetas del proyecto (todas relativas)
+
+Metadatos portables del proyecto. `root` debe ser `"."`; `paths` debe contener
+rutas relativas.
 
 ### `entrypoints`
-Puntos de entrada clave para la IA:
-- `manifest`: Archivo de manifiesto del proyecto ("project.json")
-- `settings`: Archivo de configuración ("settings/project_settings.json")
-- `startup_scene`: Escena de inicio ("levels/main_scene.json")
-- `scripts_dir`: Directorio de scripts ("scripts")
-- `assets_dir`: Directorio de assets ("assets")
-- `levels_dir`: Directorio de niveles ("levels")
-- `prefabs_dir`: Directorio de prefabs ("prefabs")
 
-Todas las rutas son **relativas al root del proyecto**.
+Archivos y carpetas que una IA puede usar para orientarse dentro del proyecto.
+Todos los valores son relativos.
 
-### `important_files`
-Lista de archivos importantes que la IA debe conocer:
-- `project.json`: Manifiesto del proyecto
-- `motor_ai.json`: Este archivo (capability registry)
-- `START_HERE_AI.md`: Guía de inicio rápido
+## Compatibilidad legacy
 
-### `capabilities`
-Registry completo de capabilities del motor. Ver documentación de capabilities.
+Schemas `1` y `2` usaban una forma anidada:
 
-## Para Desarrolladores IA
-
-### Descubrimiento del Proyecto
-
-Al abrir una carpeta de proyecto, la IA debe:
-
-1. Verificar que existe `motor_ai.json`
-2. Leer `project.name` para identificar el proyecto
-3. Usar `entrypoints` para localizar archivos clave
-4. Usar `project.paths` para navegar la estructura
-
-### Ejemplo de Uso
-
-```python
-import json
-from pathlib import Path
-
-# IA abre la carpeta del proyecto
-project_root = Path("./MyGame")
-
-# Carga motor_ai.json
-motor_ai = json.loads((project_root / "motor_ai.json").read_text())
-
-# Descubre estructura
-project_name = motor_ai["project"]["name"]
-assets_dir = project_root / motor_ai["entrypoints"]["assets_dir"]
-manifest_path = project_root / motor_ai["entrypoints"]["manifest"]
-
-# Lista capabilities disponibles
-for cap in motor_ai["capabilities"]["capabilities"]:
-    print(f"- {cap['id']}: {cap['summary']}")
-```
-
-## Reglas de Generación
-
-### Código de Generación
-
-El archivo se genera mediante `MotorAIBootstrapBuilder`:
-
-```python
-from engine.ai import get_default_registry, MotorAIBootstrapBuilder
-from engine.project.project_service import ProjectService
-
-registry = get_default_registry()
-builder = MotorAIBootstrapBuilder(registry)
-
-project_data = {
-    "project": {
-        "name": "MyGame",
-        "root": ".",  # SIEMPRE relativo
-        "paths": {...},  # Rutas canónicas
-    },
-    "entrypoints": {
-        "manifest": "project.json",  # Relativo
-        "assets_dir": "assets",  # Relativo
-        # ... etc
-    },
-    "important_files": [
-        "project.json",
-        "motor_ai.json",
-        "START_HERE_AI.md",
-    ],
+```json
+{
+  "schema_version": 2,
+  "capabilities": {
+    "capabilities": []
+  }
 }
-
-builder.write_to_project(project_root, project_data)
 ```
 
-### Verificación de Portabilidad
+`motor doctor` conserva lectura de esa forma para proyectos antiguos y reporta
+los conteos como implementados. Esa estructura no debe usarse en bootstrap nuevo.
 
-Ejecutar tests antes de commits:
+## Uso desde CLI
 
 ```bash
-python -m unittest tests.test_bootstrap_portability -v
+py -m motor project bootstrap-ai --project . --json
+py -m motor doctor --project . --json
+py -m motor capabilities --json
 ```
 
-Tests que verifican:
-- ❌ No rutas absolutas Windows (`C:\`)
-- ❌ No rutas absolutas Unix (`/home/`, `/Users/`)
-- ❌ No rutas de red (`\\server\`)
-- ✅ Todas las rutas relativas al proyecto
-- ✅ AI-discoverable
+`doctor` no crea archivos. `project bootstrap-ai` es el comando que escribe
+`motor_ai.json` y `START_HERE_AI.md`.
 
-## Historial de Cambios
+## Validaciones relevantes
 
-### v2 (2025-01-21)
-- **Cambio**: Eliminadas rutas absolutas del sistema
-- **Cambio**: `project.root` ahora es `"."` en lugar de ruta absoluta
-- **Cambio**: `entrypoints.*` ahora son rutas relativas
-- **Añadido**: Sección `important_files`
-- **Añadido**: Campo `project.paths` con rutas canónicas
-- **Motivación**: Portabilidad y commit-friendly
+- `tests/test_bootstrap_portability.py`
+- `tests/test_doctor_bootstrap_flow.py`
+- `tests/test_motor_cli_contract.py`
+- `tests/test_official_contract_regression.py`
+- `tests/test_motor_interface_coherence.py`
+- `tests/test_motor_registry_consistency.py`
+- `tests/test_project_service.py`
 
-### v1 (Versión anterior)
-- Contenía rutas absolutas del sistema de archivos
-- No era portable entre máquinas
-- No era adecuado para versionado
-
-## Referencias
-
-- `engine/ai/registry_builder.py`: Generador del archivo
-- `engine/project/project_service.py`: Integración con proyecto
-- `tests/test_bootstrap_portability.py`: Tests de portabilidad
+Estas suites cubren portabilidad de rutas, schema v3, separacion
+implemented/planned, conteos, uso de `motor` y comportamiento read-only de
+`doctor`.

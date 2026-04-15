@@ -1,144 +1,124 @@
-# Motor de Videojuegos 2D - IA First
+# MotorVideojuegosIA
 
-Motor/editor 2D experimental en Python orientado a trabajar con un modelo
-serializable comun para editor, runtime y API. El proyecto no intenta ocultar
-estado en la UI: la fuente de verdad vive en escenas, prefabs y metadatos
-serializables.
+MotorVideojuegosIA is an experimental 2D engine/editor in Python designed around
+AI-assisted authoring. The project keeps editor, runtime, CLI, tests, and
+automation aligned around a shared serializable model.
 
-## Estado actual
+The persistent source of truth is `Scene`. `World` is an operational projection
+used by editor and runtime. Public automation should go through `EngineAPI` or
+the official `motor` CLI.
 
-La base tecnica mas estable del repositorio hoy es:
+## Current Status
+
+The stable technical base today is:
 
 - `scene schema_version = 2`
 - `prefab schema_version = 2`
-- la carga migra payloads legacy y `v1` a `v2` antes de validar
-- el guardado emite payload canonico `v2`
-- `SceneManager`, `Game`/`HeadlessGame` y `EngineAPI` operan sobre el mismo
-  contrato de datos
-- existe una matriz de regresion del core que protege invariantes de
-  serializacion, workspace, authoring, `EDIT -> PLAY -> STOP` y API publica
+- legacy and `v1` scene/prefab payloads are migrated to canonical `v2` before validation
+- save paths emit canonical `v2`
+- `SceneManager`, `Game`/`HeadlessGame`, `EngineAPI`, and the CLI operate on the same data contract
+- regression tests cover serialization, workspace behavior, authoring, public API, CLI contracts, and `EDIT -> PLAY -> STOP`
 
-El proyecto sigue siendo experimental. Hay capacidades reales de authoring,
-runtime, headless y tooling, pero no se documenta como motor cerrado ni como
-producto listo para produccion.
+The repo remains experimental. Some modules are official, while RL, datasets,
+multi-agent tooling, and historical automation plans are explicitly
+`experimental/tooling`.
 
-## Inicio rapido
+## Quick Start
 
-```bash
-pip install -r requirements.txt
-pip install -e .[dev]
-python main.py
-```
-
-## Testing y CLI
+Use Python 3.11 or newer.
 
 ```bash
-python -m unittest discover -s tests
-
-python -m motor doctor --project . --json
-python -m motor capabilities --json
-
-python -m ruff check engine/api engine/project engine/rl engine/serialization engine/events cli tools main.py
-python -m mypy engine/api engine/project engine/rl engine/serialization engine/events cli tools main.py
-python -m bandit -q -c .bandit -r engine cli tools main.py
-python -m pip_audit --skip-editable --ignore-vuln CVE-2026-4539
+py -m pip install -r requirements.txt
+py -m pip install -e .[dev]
+py main.py
 ```
 
-## Taxonomia del motor
+On platforms where `py` is not available, use the active Python 3.11 executable.
 
-La referencia canonica de clasificacion vive en
-[docs/module_taxonomy.md](docs/module_taxonomy.md). El resumen operativo es:
+## Official CLI
 
-### Core obligatorio
+The public command-line interface is `motor`, provided by `motor.cli:main`.
 
-- ECS, `Scene`, `SceneManager`, serializacion y schema/migraciones
-- editor base y jerarquia como parte del authoring compartido
-- `EngineAPI` y contrato fisico base con fallback `legacy_aabb`
-- pruebas de regresion que protegen ese nucleo
+```bash
+py -m motor --help
+py -m motor doctor --project . --json
+py -m motor capabilities --json
+py -m motor scene list --project . --json
+py -m motor project bootstrap-ai --project .
+```
 
-### Modulos oficiales opcionales
+`tools/engine_cli.py` still exists as a deprecated compatibility wrapper for
+legacy scripts. It is not the public CLI for new documentation or automation.
 
-- assets y prefabs
-- tilemap, audio y UI serializable
-- `box2d` y otras capacidades oficiales no necesarias para el contrato minimo
+## Documentation Map
 
-### Experimental/tooling
+Start here:
 
-- `engine/rl`
-- datasets, runners, multiagente y debug avanzado
-- tooling de investigacion y benchmarking fuera del contrato base
+- [docs/README.md](docs/README.md) - master documentation portal
+- [docs/architecture.md](docs/architecture.md) - canonical architecture
+- [docs/TECHNICAL.md](docs/TECHNICAL.md) - technical reference
+- [docs/schema_serialization.md](docs/schema_serialization.md) - serialization contract
+- [docs/module_taxonomy.md](docs/module_taxonomy.md) - `core obligatorio`, `modulos oficiales opcionales`, and `experimental/tooling`
+- [docs/api.md](docs/api.md) - public `EngineAPI` reference
+- [docs/cli.md](docs/cli.md) - official `motor` CLI reference
+- [docs/agents.md](docs/agents.md) - compact guide for AI agents
+- [docs/documentation_audit.md](docs/documentation_audit.md) - audit and archive decisions
 
-## Contrato de datos
+Archived research, old roadmaps, and prompt packs live under
+[docs/archive/](docs/archive/). They are preserved for context, but they are not
+product truth.
 
-La escena serializable es la fuente de verdad. `Scene` contiene el payload
-editable y persistible; `SceneManager.edit_world` es una proyeccion editable de
-ese payload; `SceneManager.runtime_world` es un clon temporal para `PLAY`.
-`Game.world` y `HeadlessGame.world` exponen el `active_world`, pero no
-sustituyen al modelo serializable.
+## Architecture Summary
 
-El payload canonico de escena contiene como minimo:
+The engine is built around these layers:
 
-- `name`
-- `schema_version`
-- `entities`
-- `rules`
-- `feature_metadata`
+- `Scene`: persistent, serializable content.
+- `SceneManager`: workspace, authoring state, transactions, dirty state, and `EDIT -> PLAY -> STOP`.
+- `World`: active operational projection, never the persistent source of truth.
+- `Game` / `HeadlessGame`: runtime coordination over the active world.
+- `EngineAPI`: stable public facade for agents, tests, CLI, and automation.
+- Editor/UI: translates user actions into the shared authoring model.
 
-`feature_metadata` concentra configuracion transversal soportada por el core,
-como `render_2d`, `physics_2d` y `scene_flow`, siempre validada desde schema.
+Authoring changes should flow through `SceneManager` or `EngineAPI`.
+`sync_from_edit_world()` is retained for legacy compatibility, not as the normal
+route for new public workflows.
 
-## Capas principales
+## Taxonomy
 
-- `Scene`: guarda datos serializables, resuelve prefabs y reconstruye `World`
-  desde datos.
-- `SceneManager`: coordina workspace, authoring estructural, transacciones,
-  historial, dirty state y la transicion `EDIT -> PLAY -> STOP`.
-- `Game` / `HeadlessGame`: coordinan estado del motor, tiempo y sistemas sobre
-  el mundo activo.
-- `EngineAPI`: fachada publica para agentes, tests, CLI y scripts. Internamente
-  esta delegada por dominios, pero la fachada publica sigue siendo unica.
-- UI/editor: traduce interacciones de usuario al mismo contrato compartido. No
-  debe crear fuente de verdad paralela.
+The canonical taxonomy is maintained in [docs/module_taxonomy.md](docs/module_taxonomy.md).
 
-## EngineAPI actual
+Short version:
 
-`EngineAPI` expone dominios publicos de trabajo sin depender de internals
-privados del runtime:
+- `core obligatorio`: ECS, `Scene`, `SceneManager`, serialization, schema/migrations, base editor authoring, hierarchy, `EngineAPI`, and the common physics backend contract with `legacy_aabb` fallback.
+- `modulos oficiales opcionales`: assets, prefabs, tilemap, audio, UI serializable, and optional `box2d`.
+- `experimental/tooling`: `engine/rl`, datasets, runners, multi-agent tooling, debug/benchmark helpers, and archived orchestration material.
 
-- authoring de entidades, componentes y `feature_metadata`
-- runtime (`play`, `stop`, `step`, eventos e input inyectado)
-- workspace y scene flow
-- assets y proyecto
-- debug/profiler
-- UI serializable
+## Tests
 
-La documentacion tecnica completa esta en:
+Useful focused checks:
 
-- [docs/architecture.md](docs/architecture.md)
-- [docs/TECHNICAL.md](docs/TECHNICAL.md)
-- [docs/schema_serialization.md](docs/schema_serialization.md)
+```bash
+py -m unittest tests.test_repository_governance tests.test_motor_cli_contract tests.test_start_here_ai_coherence -v
+py -m unittest tests.test_official_contract_regression tests.test_parser_registry_alignment tests.test_motor_interface_coherence tests.test_motor_registry_consistency -v
+```
 
-## Controles del editor
+Broader checks:
 
-| Tecla | Accion |
-|---|---|
-| `SPACE` | Play |
-| `P` | Pause / Resume |
-| `ESC` | Stop |
-| `R` | Recargar escena |
-| `TAB` | Mostrar u ocultar inspector |
-| `UP` / `DOWN` | Scroll del inspector |
-| `F8` | Hot-reload de scripts |
-| `F10` | Step |
-| `F11` | Fullscreen |
-| `Ctrl+S` | Guardar escena |
+```bash
+py -m unittest discover -s tests
+py -m ruff check engine cli tools main.py
+py -m mypy engine cli tools main.py
+```
 
-## Contribucion y seguridad
+Do not claim lint, typecheck, security, or full test success unless the command
+was actually run.
 
-El repositorio mantiene documentacion minima de gobernanza:
+## Governance
 
+Repository governance lives in:
+
+- [LICENSE](LICENSE)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [SECURITY.md](SECURITY.md)
-- [LICENSE](LICENSE)
 
-No se promete soporte comercial ni SLA.
+There is no commercial support or SLA implied by this repository.

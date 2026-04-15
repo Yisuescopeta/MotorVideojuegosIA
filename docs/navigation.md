@@ -1,26 +1,25 @@
-# Navigation / Pathfinding Module
+# Navigation / Pathfinding
 
-## Status
+Estado: `experimental/tooling`.
 
-**experimental/tooling** — This module is not part of the core motor contract.
-It is a standalone pathfinding infrastructure that can grow to integrate
-with Tilemap and physics in future phases.
+El modulo de navegacion no pertenece al contrato de `core obligatorio`. Es una
+infraestructura de pathfinding standalone que puede integrarse con Tilemap,
+fisica o runtime en fases futuras.
 
-## Overview
+Implementacion: [../engine/navigation/](../engine/navigation/)
 
-The navigation module provides:
+## Superficie actual
 
-- **NavigationGrid**: A 2D tile-based grid for navigation data
-- **AStarPathfinder**: A* pathfinding algorithm on NavigationGrid
-- **NavigationService**: High-level query facade
-- **Vec2**: Immutable 2D integer coordinate
+- `Vec2`: coordenada 2D entera e inmutable.
+- `NavigationGrid`: grilla 2D con celdas transitables y coste por celda.
+- `AStarPathfinder`: A* sobre `NavigationGrid`.
+- `NavigationService`: fachada de consultas.
 
-## Quick Start
+## Ejemplo
 
 ```python
-from engine.navigation import NavigationGrid, NavigationService, Vec2
+from engine.navigation import NavigationGrid, NavigationService
 
-# Create a 5x5 open grid
 grid = NavigationGrid.from_walkable_matrix([
     [True, True, True, True, True],
     [True, True, True, True, True],
@@ -29,49 +28,62 @@ grid = NavigationGrid.from_walkable_matrix([
     [True, True, True, True, True],
 ])
 
-# Query a path
-svc = NavigationService(grid)
-result = svc.query_path(0, 0, 4, 4)
+service = NavigationService(grid)
+result = service.query_path(0, 0, 4, 4)
 print(result.success, result.path, result.cost)
 ```
 
-## Architecture
+## `Vec2`
 
-### Vec2
+Soporta:
 
-Immutable 2D integer coordinate with vector math operations:
-`+`, `-`, `*`, `manhattan_distance`, `chebyshev_distance`.
+- suma, resta y multiplicacion escalar
+- `manhattan_distance`
+- `chebyshev_distance`
 
-### NavigationGrid
+## `NavigationGrid`
 
-Tile-based 2D grid:
-- `width`, `height`, `cell_size` (world units per tile)
-- Per-cell: `walkable` (bool) + `cost_multiplier` (int, default=100)
-- `world_to_grid(x, y)` → Vec2
-- `grid_to_world_center(col, row)` → (float, float)
-- `neighbors_4(pos)` / `neighbors_8(pos)` for graph traversal
+Datos principales:
 
-### AStarPathfinder
+- `width`
+- `height`
+- `cell_size`
+- `walkable`
+- `cost_multiplier`
 
-A* algorithm on NavigationGrid:
-- 4-directional or 8-directional movement
-- Per-cell cost multipliers (terrain cost)
-- Diagonal corner-cutting prevention (8-directional)
-- Line-of-sight check (Bresenham-based)
-- Max iterations cap for budgeted queries
+Conversiones:
 
-### NavigationService
+- `world_to_grid(x, y)`
+- `grid_to_world_center(col, row)`
 
-Facade providing:
-- `query_path(x1, y1, x2, y2, diagonal=True)` → NavigationQuery
-- `query_world_path(wx1, wy1, wx2, wy2)` → NavigationQuery (world coords)
-- `has_line_of_sight(x1, y1, x2, y2)` → bool
-- `get_reachable_positions(x, y, max_cost)` → list[Vec2]
-- `build_navmesh_from_grid()` → mesh-like dict for AI/external consumers
+Vecinos:
 
-## Serialization
+- `neighbors_4(pos)`
+- `neighbors_8(pos)`
 
-NavigationGrid is serializable to/from dict and JSON:
+## `AStarPathfinder`
+
+Comportamiento actual:
+
+- movimiento 4 u 8 direcciones
+- multiplicadores de coste por celda
+- prevencion de corner-cutting diagonal
+- line of sight basado en Bresenham
+- limite de iteraciones para queries con presupuesto
+
+## `NavigationService`
+
+Metodos principales:
+
+- `query_path(x1, y1, x2, y2, diagonal=True)`
+- `query_world_path(wx1, wy1, wx2, wy2)`
+- `has_line_of_sight(x1, y1, x2, y2)`
+- `get_reachable_positions(x, y, max_cost)`
+- `build_navmesh_from_grid()`
+
+## Serializacion
+
+`NavigationGrid` se serializa a dict y JSON:
 
 ```python
 data = grid.to_dict()
@@ -80,39 +92,32 @@ grid.to_json("path/to/navgrid.json")
 restored = NavigationGrid.from_json("path/to/navgrid.json")
 ```
 
-## Phase 2 Integration Points
+## No objetivos actuales
 
-When integrating with **Tilemap**:
+- No esta acoplado a Tilemap.
+- No esta acoplado a fisica.
+- No es un sistema runtime con tick por frame.
+- No es un NavMesh 3D.
 
-1. `NavigationGrid.from_tilemap(tilemap_component)` — generate navigation
-   grid from tile properties (e.g., tile `navigation` tag)
-2. Hook into `TilemapComponent.on_tile_changed` to invalidate/rebuild grid
-3. Register `NavigationService` in `Game` or `HeadlessGame` for runtime queries
+## Integraciones futuras posibles
 
-When integrating with **Physics**:
+Tilemap:
 
-1. Use `ColliderComponent` bounds to mark cells as blocked
-2. `NavigationSystem` could receive collision events and update walkability
-3. Alternatively, keep navigation walkability independent (navmesh vs physics body)
+- generar grilla desde propiedades de tiles
+- invalidar grilla al cambiar tiles
+- referenciar fuentes de tilemap desde metadata
 
-When integrating with **RuntimeController**:
+Fisica:
 
-1. `NavigationService` is a query-only facade — it doesn't tick
-2. `AISystem` or `ScriptBehaviourComponent` can call `NavigationService.query_path()`
-   every frame or on demand
-3. `NavigationQuery.path` returns `list[Vec2]` in grid coordinates; caller
-   converts to world waypoints
+- marcar celdas bloqueadas con bounds de colliders
+- actualizar walkability por eventos de colision
+- mantener navegacion independiente de cuerpos fisicos si conviene
 
-## What This Module Is NOT
+Runtime:
 
-- Not coupled to physics or Tilemap in this phase
-- Not a runtime system that ticks each frame
-- Not a NavMesh in the traditional 3D sense (uses tile grid instead)
+- exponer consultas desde scripts o sistemas IA
+- convertir paths de grilla a waypoints en mundo
 
-## Module Location
-
-`engine/navigation/`
-- `__init__.py` — public exports
-- `grid.py` — Vec2 + NavigationGrid
-- `astar.py` — AStarPathfinder
-- `service.py` — NavigationService facade
+Antes de promocionar este modulo fuera de `experimental/tooling`, actualizar
+[module_taxonomy.md](module_taxonomy.md), [architecture.md](architecture.md) y
+tests de contrato.
