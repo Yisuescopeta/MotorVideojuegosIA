@@ -220,6 +220,119 @@ class AssetDatabaseTests(unittest.TestCase):
         self.assertEqual(second["width"], 16)
         self.assertEqual(load_mock.call_count, 1)
 
+    def test_sprite_service_grid_contract_persists_canonical_pipeline_metadata(self) -> None:
+        self._write_png("assets/player_sheet.png")
+
+        metadata = self.asset_service.generate_sprite_grid_slices(
+            "assets/player_sheet.png",
+            cell_width=1,
+            cell_height=1,
+            naming_prefix="player",
+        )
+
+        self.assertEqual(metadata["asset_type"], "sprite_sheet")
+        self.assertEqual(metadata["import_mode"], "grid")
+        self.assertEqual(metadata["grid"]["cell_width"], 1)
+        self.assertEqual(metadata["automatic"], {})
+        self.assertEqual(metadata["import_settings"]["asset_type"], "sprite_sheet")
+        self.assertEqual(metadata["import_settings"]["import_mode"], "grid")
+        self.assertEqual(metadata["import_settings"]["grid"], metadata["grid"])
+        self.assertEqual(metadata["import_settings"]["automatic"], {})
+        self.assertEqual(metadata["import_settings"]["slices"], metadata["slices"])
+
+        loaded = self.asset_service.get_sprite_metadata("assets/player_sheet.png")
+        self.assertEqual(loaded["import_settings"]["grid"], metadata["grid"])
+        self.assertEqual(loaded["slices"][0]["name"], "player_0")
+
+    def test_sprite_service_mode_transition_clears_stale_import_settings(self) -> None:
+        self._write_png("assets/player_sheet.png")
+
+        with patch.object(
+            self.asset_service,
+            "preview_auto_slices",
+            return_value=[{"name": "auto_0", "x": 0, "y": 0, "width": 1, "height": 1, "pivot_x": 0.5, "pivot_y": 0.5}],
+        ):
+            auto_metadata = self.asset_service.generate_sprite_auto_slices("assets/player_sheet.png", naming_prefix="auto")
+
+        self.assertEqual(auto_metadata["import_mode"], "automatic")
+        self.assertEqual(auto_metadata["grid"], {})
+        self.assertEqual(auto_metadata["automatic"]["naming_prefix"], "auto")
+        self.assertEqual(auto_metadata["import_settings"]["automatic"], auto_metadata["automatic"])
+
+        manual_metadata = self.asset_service.save_sprite_manual_slices(
+            "assets/player_sheet.png",
+            [{"name": "manual_0", "x": 0, "y": 0, "width": 1, "height": 1}],
+        )
+
+        self.assertEqual(manual_metadata["import_mode"], "manual")
+        self.assertEqual(manual_metadata["grid"], {})
+        self.assertEqual(manual_metadata["automatic"], {})
+        self.assertEqual(manual_metadata["import_settings"]["grid"], {})
+        self.assertEqual(manual_metadata["import_settings"]["automatic"], {})
+        self.assertEqual([item["name"] for item in manual_metadata["slices"]], ["manual_0"])
+        self.assertEqual([item["name"] for item in manual_metadata["import_settings"]["slices"]], ["manual_0"])
+
+    def test_sprite_service_query_contract_lists_slices_and_rects(self) -> None:
+        self._write_png("assets/player_sheet.png")
+        self.asset_service.generate_sprite_grid_slices(
+            "assets/player_sheet.png",
+            cell_width=1,
+            cell_height=1,
+            naming_prefix="query",
+        )
+
+        slices = self.asset_service.list_sprite_slices("assets/player_sheet.png")
+        rect = self.asset_service.get_sprite_slice_rect("assets/player_sheet.png", "query_0")
+
+        self.assertEqual([item["name"] for item in slices], ["query_0"])
+        self.assertIsNotNone(rect)
+        self.assertEqual(rect["width"], 1)
+        self.assertEqual(rect["height"], 1)
+
+    def test_sprite_asset_summary_reports_pipeline_status_and_image_data(self) -> None:
+        self._write_png("assets/plain.png")
+        self._write_png("assets/metadata_only.png")
+        self._write_png("assets/unsliced_sheet.png")
+        self._write_png("assets/ready_sheet.png")
+
+        self.asset_service.save_metadata(
+            "assets/metadata_only.png",
+            {
+                "asset_type": "texture",
+                "import_mode": "raw",
+                "grid": {},
+                "automatic": {},
+                "slices": [],
+            },
+        )
+        self.asset_service.save_metadata(
+            "assets/unsliced_sheet.png",
+            {
+                "asset_type": "sprite_sheet",
+                "import_mode": "grid",
+                "grid": {"cell_width": 1, "cell_height": 1},
+                "automatic": {},
+                "slices": [],
+            },
+        )
+        self.asset_service.save_sprite_manual_slices(
+            "assets/ready_sheet.png",
+            [{"name": "idle_0", "x": 0, "y": 0, "width": 1, "height": 1}],
+        )
+
+        plain = self.asset_service.get_sprite_asset_summary("assets/plain.png")
+        metadata_only = self.asset_service.get_sprite_asset_summary("assets/metadata_only.png")
+        unsliced = self.asset_service.get_sprite_asset_summary("assets/unsliced_sheet.png")
+        ready = self.asset_service.get_sprite_asset_summary("assets/ready_sheet.png")
+
+        self.assertEqual(plain["pipeline_status"], "image")
+        self.assertEqual(metadata_only["pipeline_status"], "metadata")
+        self.assertEqual(unsliced["pipeline_status"], "needs slicing")
+        self.assertEqual(ready["pipeline_status"], "ready")
+        self.assertEqual(ready["slice_count"], 1)
+        self.assertEqual(tuple(ready["image_size"]), (1, 1))
+        self.assertTrue(ready["has_metadata"])
+
     def test_absolute_project_paths_resolve_without_recursive_refresh(self) -> None:
         absolute_path = self._write_png("assets/player.png")
         self.asset_service.refresh_catalog()
