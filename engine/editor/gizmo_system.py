@@ -397,7 +397,14 @@ class GizmoSystem:
         mode = str(preview.get("mode", "paint") or "paint").strip().lower()
         rotation = float(preview.get("rotation", 0.0) or 0.0)
         corners = preview.get("cell_corners")
-        if editable and mode in {"paint", "stamp", "box_fill", "flood_fill"}:
+        preview_tiles = preview.get("preview_tiles")
+        if mode == "stamp" and isinstance(preview_tiles, list) and preview_tiles:
+            for preview_tile in preview_tiles:
+                if isinstance(preview_tile, dict):
+                    self._draw_tilemap_preview_tile(preview_tile, bool(preview_tile.get("editable")))
+            self._draw_tilemap_preview_outline(rect, corners, rl.Color(110, 210, 255, 255) if editable else rl.Color(255, 92, 92, 255))
+            return
+        if editable and mode in {"paint", "box_fill", "flood_fill"}:
             texture = self._load_tilemap_preview_texture(str(preview.get("texture_path", "")))
             source_rect = preview.get("source_rect")
             if texture is not None and getattr(texture, "id", 0) != 0 and isinstance(source_rect, dict):
@@ -424,6 +431,41 @@ class GizmoSystem:
             return
         self._draw_tilemap_preview_fill(rect, corners, rl.Color(220, 72, 72, 60))
         self._draw_tilemap_preview_outline(rect, corners, rl.Color(255, 92, 92, 255))
+
+    def _draw_tilemap_preview_tile(self, preview_tile: dict[str, Any], editable: bool) -> None:
+        rect_data = preview_tile.get("cell_rect")
+        if not isinstance(rect_data, dict):
+            return
+        rect = rl.Rectangle(
+            float(rect_data.get("x", 0.0)),
+            float(rect_data.get("y", 0.0)),
+            max(1.0, float(rect_data.get("width", 1.0))),
+            max(1.0, float(rect_data.get("height", 1.0))),
+        )
+        corners = preview_tile.get("cell_corners")
+        if not editable:
+            self._draw_tilemap_preview_fill(rect, corners, rl.Color(220, 72, 72, 60))
+            self._draw_tilemap_preview_outline(rect, corners, rl.Color(255, 92, 92, 255))
+            return
+        texture = self._load_tilemap_preview_texture(str(preview_tile.get("texture_path", "")))
+        source_rect = preview_tile.get("source_rect")
+        if texture is not None and getattr(texture, "id", 0) != 0 and isinstance(source_rect, dict):
+            rl.draw_texture_pro(
+                texture,
+                rl.Rectangle(
+                    float(source_rect.get("x", 0)),
+                    float(source_rect.get("y", 0)),
+                    float(source_rect.get("width", 1)),
+                    float(source_rect.get("height", 1)),
+                ),
+                rect,
+                rl.Vector2(0, 0),
+                float(preview_tile.get("rotation", 0.0) or 0.0),
+                rl.Color(255, 255, 255, 170),
+            )
+        else:
+            self._draw_tilemap_preview_fill(rect, corners, rl.Color(70, 150, 220, 55))
+        self._draw_tilemap_preview_outline(rect, corners, rl.Color(110, 210, 255, 255))
 
     def _draw_tilemap_preview_fill(self, rect: rl.Rectangle, corners: Any, color: rl.Color) -> None:
         points = self._tilemap_preview_points(corners)

@@ -4,7 +4,6 @@ engine/systems/render_system.py - Sistema de renderizado 2D con render graph min
 
 from __future__ import annotations
 
-import math
 from typing import Any, Optional
 
 import pyray as rl
@@ -22,6 +21,7 @@ from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.rendering.render_targets import RenderTargetPool
+from engine.rendering.tilemap_chunk_renderer import TilemapChunkRenderer
 from engine.resources.texture_manager import TextureManager
 
 
@@ -42,6 +42,7 @@ class RenderSystem:
         self._asset_service: AssetService | None = None
         self._asset_resolver: Any = None
         self._render_targets: RenderTargetPool = RenderTargetPool()
+        self._tilemap_chunk_renderer: TilemapChunkRenderer = TilemapChunkRenderer(self._render_targets, lambda reference, fallback_path: self._load_texture(reference, fallback_path))
         self.debug_draw_colliders: bool = self.DEBUG_DRAW_COLLIDERS
         self.debug_draw_labels: bool = False
         self.debug_draw_tile_chunks: bool = False
@@ -54,10 +55,12 @@ class RenderSystem:
         self._tilemap_chunk_cache: dict[tuple[int, str, int, int], dict[str, Any]] = {}
         self._last_render_stats: dict[str, Any] = {
             "render_entities": 0,
+            "render_commands": 0,
             "draw_calls": 0,
             "batches": 0,
             "state_changes": 0,
             "tilemap_chunks": 0,
+            "tilemap_tile_draw_calls": 0,
             "tilemap_chunk_rebuilds": 0,
             "pass_count": len(self.PASS_SEQUENCE),
             "render_target_passes": 0,
@@ -75,6 +78,7 @@ class RenderSystem:
 
     def reset_project_resources(self) -> None:
         self._texture_manager.unload_all()
+        self._tilemap_chunk_renderer.invalidate_cached_targets(self._tilemap_chunk_cache)
 
     def set_debug_options(
         self,
@@ -154,6 +158,10 @@ class RenderSystem:
         camera = override_camera
         if camera is None and use_world_camera:
             camera = self._build_camera_from_world(world, viewport_size=viewport_size)
+        if allow_render_targets:
+            self._render_targets.begin_frame()
+            self._prepare_tilemap_chunk_targets(graph)
+
         if camera is not None:
             rl.begin_mode_2d(camera)
 
@@ -164,7 +172,7 @@ class RenderSystem:
             self._render_pass(graph, "Debug")
             if camera is not None:
                 rl.end_mode_2d()
-            totals = self._copy_stats(frame_plan["totals"])
+            totals = self._copy_stats_with_tilemap_fallback_draws(frame_plan["totals"], graph)
             totals["render_target_passes"] = 0
             totals["render_target_composites"] = 0
             self._last_render_stats = totals
@@ -173,7 +181,6 @@ class RenderSystem:
         if camera is not None:
             rl.end_mode_2d()
 
-        self._render_targets.begin_frame()
         self._render_debug_overlay(frame_plan, camera=camera, viewport_size=viewport_size)
         self._render_minimap(world, frame_plan, viewport_size=viewport_size)
         target_metrics = self._render_targets.get_frame_metrics()
@@ -352,6 +359,8 @@ class RenderSystem:
 
         passes: list[dict[str, Any]] = []
         total_draw_calls = 0
+        total_render_commands = 0
+        total_tilemap_tile_draw_calls = 0
         total_batches = 0
         total_state_changes = 0
         total_entities = 0
@@ -360,7 +369,9 @@ class RenderSystem:
             commands = pass_commands[pass_name]
             batches = self._build_batches(commands)
             entity_count = sum(1 for command in commands if command["kind"] == "entity")
-            draw_calls = len(commands)
+            render_commands = len(commands)
+            draw_calls = sum(self._command_draw_call_count(command) for command in commands)
+            tilemap_tile_draw_calls = sum(self._tilemap_command_draw_call_count(command) for command in commands)
             batch_count = len(batches)
             state_changes = max(0, batch_count - 1)
             passes.append(
@@ -370,7 +381,9 @@ class RenderSystem:
                     "batches": batches,
                     "stats": {
                         "render_entities": entity_count,
+                        "render_commands": render_commands,
                         "draw_calls": draw_calls,
+                        "tilemap_tile_draw_calls": tilemap_tile_draw_calls,
                         "batches": batch_count,
                         "state_changes": state_changes,
                     },
@@ -378,15 +391,19 @@ class RenderSystem:
             )
             total_entities += entity_count
             total_draw_calls += draw_calls
+            total_render_commands += render_commands
+            total_tilemap_tile_draw_calls += tilemap_tile_draw_calls
             total_batches += batch_count
             total_state_changes += state_changes
 
         totals = {
             "render_entities": total_entities,
+            "render_commands": total_render_commands,
             "draw_calls": total_draw_calls,
             "batches": total_batches,
             "state_changes": total_state_changes,
             "tilemap_chunks": tilemap_chunks,
+            "tilemap_tile_draw_calls": total_tilemap_tile_draw_calls,
             "tilemap_chunk_rebuilds": tilemap_chunk_rebuilds,
             "pass_count": len(self.PASS_SEQUENCE),
             "sort_cache": {"hits": self._sort_cache_hits, "misses": self._sort_cache_misses},
@@ -402,6 +419,14 @@ class RenderSystem:
         self._render_graph_cache_key = cache_key
         self._render_graph_cache = graph
         return graph
+
+    def _command_draw_call_count(self, command: dict[str, Any]) -> int:
+        if command.get("kind") == "tilemap_chunk":
+            return self._tilemap_chunk_renderer.command_draw_call_count(command)
+        return 1
+
+    def _tilemap_command_draw_call_count(self, command: dict[str, Any]) -> int:
+        return self._tilemap_chunk_renderer.tile_draw_call_count(command)
 
     def _build_frame_plan(
         self,
@@ -621,6 +646,13 @@ class RenderSystem:
                     cached = {
                         "signature": signature,
                         "data": chunk_data,
+                        "render_target_dirty": True,
+                        "render_target_name": self._tilemap_chunk_render_target_name(
+                            int(entity.id),
+                            str(layer.get("name", f"Layer_{layer_index}")),
+                            int(chunk_x),
+                            int(chunk_y),
+                        ),
                     }
                     self._tilemap_chunk_cache[cache_key] = cached
                     rebuilds += 1
@@ -634,6 +666,9 @@ class RenderSystem:
                         "order_in_layer": order_in_layer + layer_index,
                         "chunk_id": f"{layer.get('name', f'Layer_{layer_index}')}/{chunk_x},{chunk_y}",
                         "chunk_data": cached["data"],
+                        "cache_key": cache_key,
+                        "render_target_name": cached.get("render_target_name", ""),
+                        "render_target_dirty": bool(cached.get("render_target_dirty", True)),
                         "batch_key": {
                             "atlas_id": chunk_atlas_id,
                             "material_id": "tilemap_chunk",
@@ -646,8 +681,15 @@ class RenderSystem:
                 )
         stale_keys = [key for key in self._tilemap_chunk_cache.keys() if key[0] == int(entity.id) and key not in live_keys]
         for key in stale_keys:
-            self._tilemap_chunk_cache.pop(key, None)
+            cached = self._tilemap_chunk_cache.pop(key, None)
+            if cached is not None:
+                self._tilemap_chunk_renderer.unload_target(str(cached.get("render_target_name", "")))
         return commands, rebuilds
+
+    @staticmethod
+    def _tilemap_chunk_render_target_name(entity_id: int, layer_name: str, chunk_x: int, chunk_y: int) -> str:
+        safe_layer = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in str(layer_name or "Layer"))
+        return f"tilemap_chunk_{int(entity_id)}_{safe_layer}_{int(chunk_x)}_{int(chunk_y)}"
 
     def _partition_tilemap_layer(self, tilemap: Tilemap, layer: dict[str, Any]) -> dict[tuple[int, int], list[dict[str, Any]]]:
         chunks: dict[tuple[int, int], list[dict[str, Any]]] = {}
@@ -927,10 +969,12 @@ class RenderSystem:
     def _copy_stats(self, payload: dict[str, Any]) -> dict[str, Any]:
         return {
             "render_entities": int(payload.get("render_entities", 0)),
+            "render_commands": int(payload.get("render_commands", payload.get("draw_calls", 0))),
             "draw_calls": int(payload.get("draw_calls", 0)),
             "batches": int(payload.get("batches", 0)),
             "state_changes": int(payload.get("state_changes", 0)),
             "tilemap_chunks": int(payload.get("tilemap_chunks", 0)),
+            "tilemap_tile_draw_calls": int(payload.get("tilemap_tile_draw_calls", 0)),
             "tilemap_chunk_rebuilds": int(payload.get("tilemap_chunk_rebuilds", 0)),
             "pass_count": int(payload.get("pass_count", len(self.PASS_SEQUENCE))),
             "render_target_passes": int(payload.get("render_target_passes", 0)),
@@ -942,13 +986,36 @@ class RenderSystem:
             "passes": {
                 str(name): {
                     "render_entities": int(stats.get("render_entities", 0)),
+                    "render_commands": int(stats.get("render_commands", stats.get("draw_calls", 0))),
                     "draw_calls": int(stats.get("draw_calls", 0)),
+                    "tilemap_tile_draw_calls": int(stats.get("tilemap_tile_draw_calls", 0)),
                     "batches": int(stats.get("batches", 0)),
                     "state_changes": int(stats.get("state_changes", 0)),
                 }
                 for name, stats in payload.get("passes", {}).items()
             },
         }
+
+    def _copy_stats_with_tilemap_fallback_draws(self, payload: dict[str, Any], graph: dict[str, Any]) -> dict[str, Any]:
+        stats = self._copy_stats(payload)
+        total_draw_calls = 0
+        pass_stats: dict[str, dict[str, int]] = {}
+        for pass_data in graph.get("passes", []):
+            pass_name = str(pass_data.get("name", ""))
+            commands = list(pass_data.get("commands", []))
+            draw_calls = 0
+            for command in commands:
+                if command.get("kind") == "tilemap_chunk":
+                    draw_calls += self._tilemap_command_draw_call_count(command)
+                else:
+                    draw_calls += 1
+            current = dict(stats.get("passes", {}).get(pass_name, {}))
+            current["draw_calls"] = draw_calls
+            pass_stats[pass_name] = current
+            total_draw_calls += draw_calls
+        stats["draw_calls"] = total_draw_calls
+        stats["passes"] = pass_stats
+        return stats
 
     def _build_camera_from_world(
         self,
@@ -1364,53 +1431,11 @@ class RenderSystem:
             values.append(255)
         return rl.Color(int(values[0]), int(values[1]), int(values[2]), int(values[3]))
 
-    def _draw_tilemap_chunk(self, command: dict[str, Any]) -> None:
-        entity = command["entity"]
-        transform = entity.get_component(Transform)
-        if transform is None:
-            return
-        scale_x = float(transform.scale_x)
-        scale_y = float(transform.scale_y)
-        if scale_x <= 0.0 or scale_y <= 0.0:
-            return
-        chunk_data = command.get("chunk_data", {})
-        for tile in chunk_data.get("tiles", []):
-            if not bool(tile.get("resolved", False)):
-                continue
-            texture_ref = normalize_asset_reference(tile.get("texture"))
-            texture_path = str(tile.get("texture_path", ""))
-            texture = self._load_texture(texture_ref, texture_path)
-            if texture.id == 0:
-                continue
-            source_rect_data = dict(tile.get("source_rect", {}))
-            dest_data = dict(tile.get("dest", {}))
-            source_rect = rl.Rectangle(
-                float(source_rect_data.get("x", 0.0)),
-                float(source_rect_data.get("y", 0.0)),
-                float(source_rect_data.get("width", 0.0)),
-                float(source_rect_data.get("height", 0.0)),
-            )
-            local_x = float(dest_data.get("x", 0.0))
-            local_y = float(dest_data.get("y", 0.0))
-            world_x, world_y = self._tilemap_local_to_world_point(transform, local_x, local_y)
-            dest_rect = rl.Rectangle(
-                world_x,
-                world_y,
-                float(dest_data.get("width", 0.0)) * scale_x,
-                float(dest_data.get("height", 0.0)) * scale_y,
-            )
-            rl.draw_texture_pro(texture, source_rect, dest_rect, rl.Vector2(0, 0), float(transform.rotation), self._color_from_payload(tile.get("tint", [])))
+    def _prepare_tilemap_chunk_targets(self, graph: dict[str, Any]) -> None:
+        self._tilemap_chunk_renderer.prepare_targets(graph, self._tilemap_chunk_cache)
 
-    @staticmethod
-    def _tilemap_local_to_world_point(transform: Transform, local_x: float, local_y: float) -> tuple[float, float]:
-        scaled_x = float(local_x) * float(transform.scale_x)
-        scaled_y = float(local_y) * float(transform.scale_y)
-        radians = math.radians(float(transform.rotation))
-        cos_r = math.cos(radians)
-        sin_r = math.sin(radians)
-        world_x = float(transform.x) + (scaled_x * cos_r) - (scaled_y * sin_r)
-        world_y = float(transform.y) + (scaled_x * sin_r) + (scaled_y * cos_r)
-        return (world_x, world_y)
+    def _draw_tilemap_chunk(self, command: dict[str, Any]) -> None:
+        self._tilemap_chunk_renderer.draw_chunk(command)
 
     def _draw_joint(self, entity: Entity) -> None:
         transform = entity.get_component(Transform)

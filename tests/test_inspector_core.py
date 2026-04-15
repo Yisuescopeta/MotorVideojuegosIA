@@ -1,4 +1,5 @@
 import json
+import math
 import tempfile
 import unittest
 from pathlib import Path
@@ -552,6 +553,48 @@ class InspectorCoreTests(unittest.TestCase):
         self.assertEqual(preview["status"], "invalid_transform")
         self.assertFalse(preview["editable"])
 
+    def test_tilemap_negative_scale_mirrors_cell_preview_and_nonfinite_is_invalid(self) -> None:
+        self._write_png("assets/mirror_tiles.png")
+        self._create_probe(
+            "TileMirrorProbe",
+            {
+                "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": -1.0, "scale_y": -2.0},
+                "Tilemap": {
+                    "enabled": True,
+                    "cell_width": 16,
+                    "cell_height": 16,
+                    "orientation": "orthogonal",
+                    "tileset": {"guid": "", "path": "assets/mirror_tiles.png"},
+                    "tileset_path": "assets/mirror_tiles.png",
+                    "tileset_tile_width": 1,
+                    "tileset_tile_height": 1,
+                    "tileset_columns": 1,
+                    "tileset_spacing": 0,
+                    "tileset_margin": 0,
+                    "default_layer_name": "Ground",
+                    "layers": [{"name": "Ground", "tiles": []}],
+                },
+            },
+        )
+
+        self.assertTrue(self.inspector.activate_tilemap_tool(self.api.game.world, "TileMirrorProbe", layer_name="Ground"))
+        self.assertEqual(self.inspector.tilemap_world_to_cell(self.api.game.world, "TileMirrorProbe", -24.0, -80.0), (1, 2))
+        preview = self.inspector._build_tilemap_preview_snapshot(self.api.game.world, "TileMirrorProbe", (1, 2))
+        self.assertEqual(preview["status"], "ok")
+        self.assertTrue(preview["editable"])
+        self.assertEqual(preview["scale"], {"x": -1.0, "y": -2.0})
+        self.assertEqual((preview["cell_rect"]["x"], preview["cell_rect"]["y"]), (-32.0, -96.0))
+        self.assertEqual((preview["cell_rect"]["width"], preview["cell_rect"]["height"]), (16.0, 32.0))
+        self.assertEqual(preview["cell_corners"][0], (-16.0, -64.0))
+        self.assertEqual((preview["source_rect"]["x"], preview["source_rect"]["y"]), (1.0, 1.0))
+        self.assertEqual((preview["source_rect"]["width"], preview["source_rect"]["height"]), (-1.0, -1.0))
+
+        transform = self.api.game.world.get_entity_by_name("TileMirrorProbe").get_component(Transform)
+        transform.scale_x = math.inf
+        invalid_preview = self.inspector._build_tilemap_preview_snapshot(self.api.game.world, "TileMirrorProbe", (1, 2))
+        self.assertEqual(invalid_preview["status"], "invalid_transform")
+        self.assertFalse(invalid_preview["editable"])
+
     def test_tilemap_keyboard_navigation_and_shortcuts_are_editor_only(self) -> None:
         self._write_png("assets/nav_tiles.png")
         self._create_probe(
@@ -712,6 +755,155 @@ class InspectorCoreTests(unittest.TestCase):
         tilemap = self.api.get_tilemap("TileToolsProbe")
         ground = next(layer for layer in tilemap["layers"] if layer["name"] == "Ground")
         self.assertTrue({(3, 0), (4, 0)}.issubset({(tile["x"], tile["y"]) for tile in ground["tiles"]}))
+
+    def test_tilemap_stamp_preview_resolves_each_tile_and_blocks_invalid_stamp(self) -> None:
+        self._write_png("assets/stamp_preview_tiles.png")
+        tile_payload = {
+            "source": {"guid": "", "path": "assets/stamp_preview_tiles.png"},
+            "flags": [],
+            "tags": [],
+            "custom": {},
+            "animated": False,
+            "animation_id": "",
+            "terrain_type": "",
+        }
+        self._create_probe(
+            "TileStampPreviewProbe",
+            {
+                "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                "Tilemap": {
+                    "enabled": True,
+                    "cell_width": 16,
+                    "cell_height": 16,
+                    "orientation": "orthogonal",
+                    "tileset": {"guid": "", "path": "assets/stamp_preview_tiles.png"},
+                    "tileset_path": "assets/stamp_preview_tiles.png",
+                    "tileset_tile_width": 1,
+                    "tileset_tile_height": 1,
+                    "tileset_columns": 2,
+                    "tileset_spacing": 0,
+                    "tileset_margin": 0,
+                    "default_layer_name": "Ground",
+                    "layers": [
+                        {
+                            "name": "Ground",
+                            "tiles": [
+                                {"x": 0, "y": 0, "tile_id": "0", **tile_payload},
+                                {"x": 1, "y": 0, "tile_id": "1", **tile_payload},
+                                {"x": 0, "y": 1, "tile_id": "2", **tile_payload},
+                                {"x": 1, "y": 1, "tile_id": "3", **tile_payload},
+                            ],
+                        }
+                    ],
+                },
+            },
+        )
+
+        self.assertTrue(self.inspector.activate_tilemap_tool(self.api.game.world, "TileStampPreviewProbe", layer_name="Ground"))
+        self.assertTrue(self.inspector._set_tilemap_stamp_from_scene(self.api.game.world, "TileStampPreviewProbe", (0, 0), (1, 1)))
+        preview = self.inspector._build_tilemap_preview_snapshot(self.api.game.world, "TileStampPreviewProbe", (3, 3))
+        self.assertTrue(preview["editable"])
+        self.assertEqual(len(preview["preview_tiles"]), 4)
+        self.assertEqual([tile["cell"] for tile in preview["preview_tiles"]], [(3, 3), (4, 3), (3, 4), (4, 4)])
+        self.assertTrue(all(tile["status"] == "ok" for tile in preview["preview_tiles"]))
+
+        self.inspector._tilemap_authoring.stamp_tiles[1]["tile_id"] = "missing"
+        invalid_preview = self.inspector._build_tilemap_preview_snapshot(self.api.game.world, "TileStampPreviewProbe", (3, 3))
+        self.assertFalse(invalid_preview["editable"])
+        self.assertEqual(invalid_preview["preview_tiles"][1]["status"], "unresolved_tile")
+        self.assertFalse(self.inspector._apply_tilemap_brush(self.api.game.world, "TileStampPreviewProbe", (3, 3)))
+        tilemap = self.api.get_tilemap("TileStampPreviewProbe")
+        ground = next(layer for layer in tilemap["layers"] if layer["name"] == "Ground")
+        self.assertNotIn((3, 3), {(tile["x"], tile["y"]) for tile in ground["tiles"]})
+
+    def test_tilemap_stamp_preview_uses_per_tile_source_without_global_tileset(self) -> None:
+        self._write_png("assets/stamp_source_override_tiles.png")
+        self._create_probe(
+            "TileStampSourceProbe",
+            {
+                "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                "Tilemap": {
+                    "enabled": True,
+                    "cell_width": 16,
+                    "cell_height": 16,
+                    "orientation": "orthogonal",
+                    "tileset": {"guid": "", "path": ""},
+                    "tileset_path": "",
+                    "tileset_tile_width": 1,
+                    "tileset_tile_height": 1,
+                    "tileset_columns": 2,
+                    "tileset_spacing": 0,
+                    "tileset_margin": 0,
+                    "default_layer_name": "Ground",
+                    "layers": [{"name": "Ground", "tiles": []}],
+                },
+            },
+        )
+
+        self.assertTrue(self.inspector.activate_tilemap_tool(self.api.game.world, "TileStampSourceProbe", layer_name="Ground"))
+        self.assertTrue(self.inspector.set_tilemap_tool_mode("stamp"))
+        self.inspector._tilemap_authoring.stamp_tiles = [
+            {"offset_x": 0, "offset_y": 0, "tile_id": "0", "source": {"guid": "", "path": "assets/stamp_source_override_tiles.png"}},
+            {"offset_x": 1, "offset_y": 0, "tile_id": "1", "source": {"guid": "", "path": "assets/stamp_source_override_tiles.png"}},
+        ]
+        preview = self.inspector._build_tilemap_preview_snapshot(self.api.game.world, "TileStampSourceProbe", (0, 0))
+        self.assertEqual(preview["status"], "ok")
+        self.assertTrue(preview["editable"])
+        self.assertEqual([tile["status"] for tile in preview["preview_tiles"]], ["ok", "ok"])
+        self.assertEqual([tile["source"]["path"] for tile in preview["preview_tiles"]], ["assets/stamp_source_override_tiles.png", "assets/stamp_source_override_tiles.png"])
+
+        self.inspector._tilemap_authoring.stamp_tiles[1]["source"] = {"guid": "", "path": ""}
+        invalid_preview = self.inspector._build_tilemap_preview_snapshot(self.api.game.world, "TileStampSourceProbe", (0, 0))
+        self.assertFalse(invalid_preview["editable"])
+        self.assertEqual(invalid_preview["preview_tiles"][1]["status"], "missing_source")
+        self.assertFalse(self.inspector._apply_tilemap_brush(self.api.game.world, "TileStampSourceProbe", (0, 0)))
+        tilemap = self.api.get_tilemap("TileStampSourceProbe")
+        ground = next(layer for layer in tilemap["layers"] if layer["name"] == "Ground")
+        self.assertEqual(ground["tiles"], [])
+
+    def test_tilemap_flood_fill_uses_explicit_bounds_and_reports_truncation(self) -> None:
+        self._write_png("assets/flood_bounds_tiles.png")
+        self._create_probe(
+            "TileFloodBoundsProbe",
+            {
+                "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                "Tilemap": {
+                    "enabled": True,
+                    "cell_width": 16,
+                    "cell_height": 16,
+                    "orientation": "orthogonal",
+                    "tileset": {"guid": "", "path": "assets/flood_bounds_tiles.png"},
+                    "tileset_path": "assets/flood_bounds_tiles.png",
+                    "tileset_tile_width": 1,
+                    "tileset_tile_height": 1,
+                    "tileset_columns": 1,
+                    "tileset_spacing": 0,
+                    "tileset_margin": 0,
+                    "default_layer_name": "Ground",
+                    "layers": [{"name": "Ground", "tiles": []}],
+                },
+            },
+        )
+
+        self.assertTrue(self.inspector.activate_tilemap_tool(self.api.game.world, "TileFloodBoundsProbe", layer_name="Ground"))
+        self.assertTrue(self.inspector.set_tilemap_selected_tile(self.api.game.world, "TileFloodBoundsProbe", "0"))
+        self.assertTrue(self.inspector.set_tilemap_tool_mode("flood_fill"))
+        auto_preview = self.inspector._build_tilemap_preview_snapshot(self.api.game.world, "TileFloodBoundsProbe", (0, 0))
+        self.assertEqual(auto_preview["flood_bounds"], (-8, -8, 7, 7))
+        self.assertEqual(auto_preview["flood_preview_count"], 256)
+        self.assertFalse(auto_preview["flood_truncated"])
+
+        self.assertTrue(self.inspector.set_tilemap_flood_bounds(mode="manual", min_x=0, min_y=0, max_x=2, max_y=2, max_cells=4))
+        manual_preview = self.inspector._build_tilemap_preview_snapshot(self.api.game.world, "TileFloodBoundsProbe", (1, 1))
+        self.assertEqual(manual_preview["flood_bounds"], (0, 0, 2, 2))
+        self.assertEqual(manual_preview["flood_preview_count"], 4)
+        self.assertTrue(manual_preview["flood_truncated"])
+        self.assertEqual(self.inspector.get_tilemap_tool_state()["flood_preview_count"], 4)
+        self.assertTrue(self.inspector._apply_tilemap_flood_fill(self.api.game.world, "TileFloodBoundsProbe", (1, 1)))
+        tilemap = self.api.get_tilemap("TileFloodBoundsProbe")
+        ground = next(layer for layer in tilemap["layers"] if layer["name"] == "Ground")
+        self.assertEqual(len(ground["tiles"]), 4)
+        self.assertTrue({(0, 1), (1, 1)}.issubset({(tile["x"], tile["y"]) for tile in ground["tiles"]}))
 
     def test_animator_payload_edits_use_serializable_source_and_history(self) -> None:
         self._create_probe(

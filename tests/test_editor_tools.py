@@ -707,6 +707,65 @@ class GizmoSystemMathTests(unittest.TestCase):
         self.assertEqual(draw_triangle.call_count, 2)
         draw_rect_outline.assert_not_called()
 
+    def test_tilemap_stamp_preview_draws_each_preview_tile(self) -> None:
+        gizmo = GizmoSystem()
+        world = SceneManager(create_default_registry()).load_scene({"name": "StampPreview", "entities": [], "rules": [], "feature_metadata": {}})
+        preview_tiles = []
+        for index in range(4):
+            x = float((index % 2) * 16)
+            y = float((index // 2) * 16)
+            preview_tiles.append(
+                {
+                    "editable": True,
+                    "texture_path": "assets/stamp.png",
+                    "source_rect": {"x": float(index), "y": 0.0, "width": 1.0, "height": 1.0},
+                    "cell_rect": {"x": x, "y": y, "width": 16.0, "height": 16.0},
+                    "rotation": 0.0,
+                }
+            )
+        gizmo.set_tilemap_preview(
+            {
+                "mode": "stamp",
+                "editable": True,
+                "cell_rect": {"x": 0.0, "y": 0.0, "width": 32.0, "height": 32.0},
+                "preview_tiles": preview_tiles,
+            }
+        )
+
+        with patch.object(gizmo._tilemap_texture_manager, "load", return_value=SimpleNamespace(id=1)), patch(
+            "pyray.draw_texture_pro"
+        ) as draw_texture_pro, patch("pyray.draw_rectangle_lines_ex"):
+            gizmo.render(world, EditorTool.MOVE, TransformSpace.WORLD, PivotMode.PIVOT)
+
+        self.assertEqual(draw_texture_pro.call_count, 4)
+
+    def test_tilemap_stamp_preview_draws_invalid_tile_overlay(self) -> None:
+        gizmo = GizmoSystem()
+        world = SceneManager(create_default_registry()).load_scene({"name": "InvalidStampPreview", "entities": [], "rules": [], "feature_metadata": {}})
+        gizmo.set_tilemap_preview(
+            {
+                "mode": "stamp",
+                "editable": False,
+                "cell_rect": {"x": 0.0, "y": 0.0, "width": 16.0, "height": 16.0},
+                "preview_tiles": [
+                    {
+                        "editable": False,
+                        "texture_path": "",
+                        "source_rect": None,
+                        "cell_rect": {"x": 0.0, "y": 0.0, "width": 16.0, "height": 16.0},
+                    }
+                ],
+            }
+        )
+
+        with patch("pyray.draw_texture_pro") as draw_texture_pro, patch("pyray.draw_rectangle_rec") as draw_fill, patch(
+            "pyray.draw_rectangle_lines_ex"
+        ):
+            gizmo.render(world, EditorTool.MOVE, TransformSpace.WORLD, PivotMode.PIVOT)
+
+        draw_texture_pro.assert_not_called()
+        draw_fill.assert_called_once()
+
 
 class SceneManagerTransformStateTests(unittest.TestCase):
     def setUp(self) -> None:

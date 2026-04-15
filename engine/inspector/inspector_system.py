@@ -7,6 +7,7 @@ from __future__ import annotations
 import copy
 import math
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
@@ -52,6 +53,16 @@ class TilemapAuthoringState:
     stroke_cells: set[tuple[int, int]] = field(default_factory=set)
     box_fill_anchor: tuple[int, int] | None = None
     stamp_tiles: list[dict[str, Any]] = field(default_factory=list)
+    flood_bounds_mode: str = "auto"
+    flood_margin: int = 8
+    flood_max_cells: int = 4096
+    flood_min_x: int = -8
+    flood_min_y: int = -8
+    flood_max_x: int = 7
+    flood_max_y: int = 7
+    flood_effective_bounds: tuple[int, int, int, int] | None = None
+    flood_preview_count: int = 0
+    flood_truncated: bool = False
 
 
 class InspectorSystem:
@@ -151,6 +162,18 @@ class InspectorSystem:
             "stroke_cells": sorted(self._tilemap_authoring.stroke_cells),
             "box_fill_anchor": tuple(self._tilemap_authoring.box_fill_anchor) if self._tilemap_authoring.box_fill_anchor is not None else None,
             "stamp_tiles": copy.deepcopy(self._tilemap_authoring.stamp_tiles),
+            "flood_bounds_mode": str(self._tilemap_authoring.flood_bounds_mode or "auto"),
+            "flood_margin": int(self._tilemap_authoring.flood_margin),
+            "flood_max_cells": int(self._tilemap_authoring.flood_max_cells),
+            "flood_manual_bounds": (
+                int(self._tilemap_authoring.flood_min_x),
+                int(self._tilemap_authoring.flood_min_y),
+                int(self._tilemap_authoring.flood_max_x),
+                int(self._tilemap_authoring.flood_max_y),
+            ),
+            "flood_effective_bounds": tuple(self._tilemap_authoring.flood_effective_bounds) if self._tilemap_authoring.flood_effective_bounds is not None else None,
+            "flood_preview_count": int(self._tilemap_authoring.flood_preview_count),
+            "flood_truncated": bool(self._tilemap_authoring.flood_truncated),
         }
 
     def get_tilemap_preview_snapshot(self, world: "World") -> Optional[Dict[str, Any]]:
@@ -201,6 +224,10 @@ class InspectorSystem:
         self._tilemap_authoring.shortcut_mode = ""
         if normalized_mode != "box_fill":
             self._tilemap_authoring.box_fill_anchor = None
+        if normalized_mode != "flood_fill":
+            self._tilemap_authoring.flood_effective_bounds = None
+            self._tilemap_authoring.flood_preview_count = 0
+            self._tilemap_authoring.flood_truncated = False
         return True
 
     def set_tilemap_active_layer(self, world: "World", entity_name: str, layer_name: str) -> bool:
@@ -243,6 +270,47 @@ class InspectorSystem:
         self._tilemap_authoring.palette_selected_index = clamped_index
         entry = entries[clamped_index]
         return self.set_tilemap_selected_tile(world, entity_name, str(entry.get("tile_id", "")), source=entry.get("source"))
+
+    def set_tilemap_flood_bounds(
+        self,
+        *,
+        mode: str | None = None,
+        margin: int | None = None,
+        max_cells: int | None = None,
+        min_x: int | None = None,
+        min_y: int | None = None,
+        max_x: int | None = None,
+        max_y: int | None = None,
+    ) -> bool:
+        """Configures editor-only flood fill limits without changing scene data."""
+        if mode is not None:
+            normalized_mode = str(mode or "").strip().lower()
+            if normalized_mode not in {"auto", "manual"}:
+                return False
+            self._tilemap_authoring.flood_bounds_mode = normalized_mode
+        if margin is not None:
+            self._tilemap_authoring.flood_margin = max(0, int(margin))
+        if max_cells is not None:
+            self._tilemap_authoring.flood_max_cells = max(1, min(4096, int(max_cells)))
+        if min_x is not None:
+            self._tilemap_authoring.flood_min_x = int(min_x)
+        if min_y is not None:
+            self._tilemap_authoring.flood_min_y = int(min_y)
+        if max_x is not None:
+            self._tilemap_authoring.flood_max_x = int(max_x)
+        if max_y is not None:
+            self._tilemap_authoring.flood_max_y = int(max_y)
+        if self._tilemap_authoring.flood_min_x > self._tilemap_authoring.flood_max_x:
+            self._tilemap_authoring.flood_min_x, self._tilemap_authoring.flood_max_x = (
+                self._tilemap_authoring.flood_max_x,
+                self._tilemap_authoring.flood_min_x,
+            )
+        if self._tilemap_authoring.flood_min_y > self._tilemap_authoring.flood_max_y:
+            self._tilemap_authoring.flood_min_y, self._tilemap_authoring.flood_max_y = (
+                self._tilemap_authoring.flood_max_y,
+                self._tilemap_authoring.flood_min_y,
+            )
+        return True
 
     def list_tilemap_palette_options(
         self,
@@ -1332,11 +1400,19 @@ class InspectorSystem:
         except (TypeError, ValueError):
             return None
 
+    def _tilemap_transform_scale_is_valid(self, transform: Component) -> bool:
+        try:
+            scale_x = float(getattr(transform, "scale_x", 1.0))
+            scale_y = float(getattr(transform, "scale_y", 1.0))
+        except (TypeError, ValueError):
+            return False
+        return math.isfinite(scale_x) and math.isfinite(scale_y) and scale_x != 0.0 and scale_y != 0.0
+
     def _tilemap_world_to_local_point(self, transform: Component, world_x: float, world_y: float) -> Optional[tuple[float, float]]:
+        if not self._tilemap_transform_scale_is_valid(transform):
+            return None
         scale_x = float(getattr(transform, "scale_x", 1.0))
         scale_y = float(getattr(transform, "scale_y", 1.0))
-        if scale_x <= 0.0 or scale_y <= 0.0:
-            return None
         dx = float(world_x) - float(getattr(transform, "x", 0.0))
         dy = float(world_y) - float(getattr(transform, "y", 0.0))
         radians = math.radians(float(getattr(transform, "rotation", 0.0)))
@@ -1358,6 +1434,28 @@ class InspectorSystem:
         world_y = float(getattr(transform, "y", 0.0)) + (scaled_x * sin_r) + (scaled_y * cos_r)
         return (world_x, world_y)
 
+    def _tilemap_cell_draw_rect(
+        self,
+        transform: Component,
+        local_x: float,
+        local_y: float,
+        width: float,
+        height: float,
+    ) -> dict[str, float]:
+        if not self._tilemap_transform_scale_is_valid(transform):
+            return {"x": float(getattr(transform, "x", 0.0)), "y": float(getattr(transform, "y", 0.0)), "width": 0.0, "height": 0.0}
+        scale_x = float(getattr(transform, "scale_x", 1.0))
+        scale_y = float(getattr(transform, "scale_y", 1.0))
+        anchor_x = local_x + (width if scale_x < 0.0 else 0.0)
+        anchor_y = local_y + (height if scale_y < 0.0 else 0.0)
+        world_x, world_y = self._tilemap_local_to_world_point(transform, anchor_x, anchor_y)
+        return {
+            "x": world_x,
+            "y": world_y,
+            "width": abs(width * scale_x),
+            "height": abs(height * scale_y),
+        }
+
     def _tilemap_cell_world_corners(
         self,
         transform: Component,
@@ -1366,12 +1464,82 @@ class InspectorSystem:
         width: float,
         height: float,
     ) -> list[tuple[float, float]]:
+        if not self._tilemap_transform_scale_is_valid(transform):
+            x = float(getattr(transform, "x", 0.0))
+            y = float(getattr(transform, "y", 0.0))
+            return [(x, y), (x, y), (x, y), (x, y)]
         return [
             self._tilemap_local_to_world_point(transform, local_x, local_y),
             self._tilemap_local_to_world_point(transform, local_x + width, local_y),
             self._tilemap_local_to_world_point(transform, local_x + width, local_y + height),
             self._tilemap_local_to_world_point(transform, local_x, local_y + height),
         ]
+
+    def _tilemap_source_rect_for_transform(self, source_rect: Optional[Dict[str, Any]], transform: Component) -> Optional[dict[str, float]]:
+        if not isinstance(source_rect, dict):
+            return None
+        rect = {
+            "x": float(source_rect.get("x", 0.0)),
+            "y": float(source_rect.get("y", 0.0)),
+            "width": float(source_rect.get("width", 0.0)),
+            "height": float(source_rect.get("height", 0.0)),
+        }
+        if float(getattr(transform, "scale_x", 1.0)) < 0.0:
+            rect["x"] += rect["width"]
+            rect["width"] *= -1.0
+        if float(getattr(transform, "scale_y", 1.0)) < 0.0:
+            rect["y"] += rect["height"]
+            rect["height"] *= -1.0
+        return rect
+
+    def _build_tilemap_preview_tile(
+        self,
+        payload: Dict[str, Any],
+        transform: Component,
+        cell: tuple[int, int],
+        tile_id: str,
+        asset_ref: Dict[str, str],
+        cell_width: int,
+        cell_height: int,
+        layer_offset_x: float,
+        layer_offset_y: float,
+    ) -> Dict[str, Any]:
+        normalized_tile_id = str(tile_id or "").strip()
+        normalized_asset_ref = normalize_asset_reference(asset_ref)
+        source_rect, resolution = self._resolve_tilemap_source_rect(payload, normalized_asset_ref, normalized_tile_id)
+        texture_path = self._resolve_tilemap_texture_path(normalized_asset_ref)
+        status = "ok"
+        if not self._tilemap_transform_scale_is_valid(transform):
+            status = "invalid_transform"
+        elif not (normalized_asset_ref.get("guid") or normalized_asset_ref.get("path")):
+            status = "missing_source"
+        elif not normalized_tile_id:
+            status = "missing_tile"
+        elif source_rect is None:
+            status = "unresolved_tile"
+        elif not texture_path:
+            status = "missing_texture"
+        cell_x, cell_y = int(cell[0]), int(cell[1])
+        local_x = layer_offset_x + (cell_x * cell_width)
+        local_y = layer_offset_y + (cell_y * cell_height)
+        return {
+            "cell": (cell_x, cell_y),
+            "tile_id": normalized_tile_id,
+            "source": clone_asset_reference(normalized_asset_ref),
+            "texture_path": texture_path,
+            "source_rect": self._tilemap_source_rect_for_transform(source_rect, transform),
+            "resolution": resolution,
+            "cell_rect": self._tilemap_cell_draw_rect(transform, local_x, local_y, float(cell_width), float(cell_height)),
+            "cell_corners": self._tilemap_cell_world_corners(transform, local_x, local_y, float(cell_width), float(cell_height)),
+            "rotation": float(getattr(transform, "rotation", 0.0)),
+            "scale": {
+                "x": float(getattr(transform, "scale_x", 1.0)),
+                "y": float(getattr(transform, "scale_y", 1.0)),
+            },
+            "status": status,
+            "status_label": self._tilemap_preview_status_label(status),
+            "editable": status == "ok",
+        }
 
     def _tilemap_preview_status_label(self, status: str) -> str:
         return {
@@ -1414,7 +1582,7 @@ class InspectorSystem:
         layer_offset_y = float((layer or {}).get("offset_y", 0.0))
         mode = self._tilemap_effective_mode()
         status = "ok"
-        if float(getattr(transform, "scale_x", 1.0)) <= 0.0 or float(getattr(transform, "scale_y", 1.0)) <= 0.0:
+        if not self._tilemap_transform_scale_is_valid(transform):
             status = "invalid_transform"
         if layer is None:
             status = "missing_layer"
@@ -1422,7 +1590,7 @@ class InspectorSystem:
             status = "hidden"
         elif bool(layer.get("locked", False)):
             status = "locked"
-        elif mode in {"paint", "box_fill", "flood_fill", "stamp"} and not (asset_ref.get("guid") or asset_ref.get("path")):
+        elif mode in {"paint", "box_fill", "flood_fill"} and not (asset_ref.get("guid") or asset_ref.get("path")):
             status = "missing_source"
         elif mode in {"paint", "box_fill", "flood_fill"} and not tile_id:
             status = "missing_tile"
@@ -1435,16 +1603,9 @@ class InspectorSystem:
         cell_x, cell_y = int(cell[0]), int(cell[1])
         local_x = layer_offset_x + (cell_x * cell_width)
         local_y = layer_offset_y + (cell_y * cell_height)
-        world_x, world_y = self._tilemap_local_to_world_point(transform, local_x, local_y)
-        scaled_width = float(cell_width) * max(0.0, float(getattr(transform, "scale_x", 1.0)))
-        scaled_height = float(cell_height) * max(0.0, float(getattr(transform, "scale_y", 1.0)))
-        cell_rect = {
-            "x": world_x,
-            "y": world_y,
-            "width": scaled_width,
-            "height": scaled_height,
-        }
+        cell_rect = self._tilemap_cell_draw_rect(transform, local_x, local_y, float(cell_width), float(cell_height))
         cell_corners = self._tilemap_cell_world_corners(transform, local_x, local_y, float(cell_width), float(cell_height))
+        preview_tiles: list[dict[str, Any]] = []
         if mode == "box_fill" and self._tilemap_authoring.box_fill_anchor is not None:
             anchor_x, anchor_y = self._tilemap_authoring.box_fill_anchor
             min_x = min(anchor_x, cell_x)
@@ -1456,6 +1617,45 @@ class InspectorSystem:
             box_width = float((max_x - min_x + 1) * cell_width)
             box_height = float((max_y - min_y + 1) * cell_height)
             cell_corners = self._tilemap_cell_world_corners(transform, box_local_x, box_local_y, box_width, box_height)
+        elif mode == "stamp" and status == "ok":
+            for stamp_tile in self._tilemap_authoring.stamp_tiles:
+                offset_x = int(stamp_tile.get("offset_x", 0))
+                offset_y = int(stamp_tile.get("offset_y", 0))
+                stamp_source = normalize_asset_reference(stamp_tile.get("source"))
+                if not (stamp_source.get("guid") or stamp_source.get("path")):
+                    stamp_source = asset_ref
+                preview_tile = self._build_tilemap_preview_tile(
+                    payload,
+                    transform,
+                    (cell_x + offset_x, cell_y + offset_y),
+                    str(stamp_tile.get("tile_id", "")),
+                    stamp_source,
+                    cell_width,
+                    cell_height,
+                    layer_offset_x,
+                    layer_offset_y,
+                )
+                preview_tiles.append(preview_tile)
+            invalid_stamp_tiles = [tile for tile in preview_tiles if not bool(tile.get("editable"))]
+            if invalid_stamp_tiles:
+                status = str(invalid_stamp_tiles[0].get("status", "unresolved_tile"))
+            if preview_tiles:
+                first_tile = preview_tiles[0]
+                texture_path = str(first_tile.get("texture_path", ""))
+                source_rect = first_tile.get("source_rect")
+                resolution = first_tile.get("resolution")
+        if mode == "flood_fill":
+            self._tilemap_authoring.flood_effective_bounds = None
+            self._tilemap_authoring.flood_preview_count = 0
+            self._tilemap_authoring.flood_truncated = False
+        if mode == "flood_fill" and status == "ok" and layer is not None:
+            flood_cells, flood_bounds, flood_truncated = self._compute_tilemap_flood_fill_cells(layer, (cell_x, cell_y))
+            self._tilemap_authoring.flood_effective_bounds = flood_bounds
+            self._tilemap_authoring.flood_preview_count = len(flood_cells)
+            self._tilemap_authoring.flood_truncated = flood_truncated
+        snapshot_source_rect = self._tilemap_source_rect_for_transform(source_rect, transform)
+        if mode == "stamp" and preview_tiles:
+            snapshot_source_rect = copy.deepcopy(preview_tiles[0].get("source_rect"))
         return {
             "entity_name": entity_name,
             "layer_name": layer_name,
@@ -1464,10 +1664,14 @@ class InspectorSystem:
             "tile_id": tile_id,
             "source": clone_asset_reference(asset_ref),
             "texture_path": texture_path,
-            "source_rect": copy.deepcopy(source_rect) if source_rect is not None else None,
+            "source_rect": snapshot_source_rect,
             "resolution": resolution,
             "cell_rect": cell_rect,
             "cell_corners": cell_corners,
+            "preview_tiles": preview_tiles,
+            "flood_bounds": tuple(self._tilemap_authoring.flood_effective_bounds) if self._tilemap_authoring.flood_effective_bounds is not None else None,
+            "flood_preview_count": int(self._tilemap_authoring.flood_preview_count),
+            "flood_truncated": bool(self._tilemap_authoring.flood_truncated),
             "rotation": float(getattr(transform, "rotation", 0.0)),
             "scale": {
                 "x": float(getattr(transform, "scale_x", 1.0)),
@@ -1655,34 +1859,58 @@ class InspectorSystem:
         tile_id = str(self._tilemap_authoring.tile_id or "").strip()
         if not tile_id:
             return False
-        existing_tiles = [tile for tile in layer.get("tiles", []) if isinstance(tile, dict)]
+        fill_cells, bounds, truncated = self._compute_tilemap_flood_fill_cells(layer, cell)
+        self._tilemap_authoring.flood_effective_bounds = bounds
+        self._tilemap_authoring.flood_preview_count = len(fill_cells)
+        self._tilemap_authoring.flood_truncated = truncated
+        for x, y in fill_cells:
+            self._upsert_serialized_tile_entry(layer, x, y, tile_id, self._tilemap_authoring.source)
+        return self.replace_component_payload(world, entity_name, "Tilemap", payload)
+
+    def _compute_tilemap_flood_fill_cells(
+        self,
+        layer: Dict[str, Any],
+        cell: tuple[int, int],
+    ) -> tuple[list[tuple[int, int]], tuple[int, int, int, int], bool]:
         start_x, start_y = int(cell[0]), int(cell[1])
-        if existing_tiles:
-            xs = [int(tile.get("x", 0)) for tile in existing_tiles] + [start_x]
-            ys = [int(tile.get("y", 0)) for tile in existing_tiles] + [start_y]
-            min_x, max_x = min(xs) - 1, max(xs) + 1
-            min_y, max_y = min(ys) - 1, max(ys) + 1
-        else:
-            min_x = max_x = start_x
-            min_y = max_y = start_y
-        target_tile = self._find_serialized_tile_entry(layer, start_x, start_y)
-        target_identity = self._serialized_tile_identity(target_tile)
+        min_x, min_y, max_x, max_y = self._resolve_tilemap_flood_bounds(layer, (start_x, start_y))
+        target_identity = self._serialized_tile_identity(self._find_serialized_tile_entry(layer, start_x, start_y))
+        max_cells = max(1, min(4096, int(self._tilemap_authoring.flood_max_cells)))
         visited: set[tuple[int, int]] = set()
-        queue: list[tuple[int, int]] = [(start_x, start_y)]
+        queue: deque[tuple[int, int]] = deque([(start_x, start_y)])
         fill_cells: list[tuple[int, int]] = []
-        while queue and len(fill_cells) < 4096:
-            x, y = queue.pop(0)
+        truncated = False
+        while queue:
+            x, y = queue.popleft()
             if (x, y) in visited or x < min_x or x > max_x or y < min_y or y > max_y:
                 continue
             visited.add((x, y))
             current_identity = self._serialized_tile_identity(self._find_serialized_tile_entry(layer, x, y))
             if current_identity != target_identity:
                 continue
+            if len(fill_cells) >= max_cells:
+                truncated = True
+                continue
             fill_cells.append((x, y))
             queue.extend(((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
-        for x, y in fill_cells:
-            self._upsert_serialized_tile_entry(layer, x, y, tile_id, self._tilemap_authoring.source)
-        return self.replace_component_payload(world, entity_name, "Tilemap", payload)
+        return fill_cells, (min_x, min_y, max_x, max_y), truncated
+
+    def _resolve_tilemap_flood_bounds(self, layer: Dict[str, Any], cell: tuple[int, int]) -> tuple[int, int, int, int]:
+        start_x, start_y = int(cell[0]), int(cell[1])
+        if str(self._tilemap_authoring.flood_bounds_mode or "auto").strip().lower() == "manual":
+            return (
+                min(int(self._tilemap_authoring.flood_min_x), int(self._tilemap_authoring.flood_max_x)),
+                min(int(self._tilemap_authoring.flood_min_y), int(self._tilemap_authoring.flood_max_y)),
+                max(int(self._tilemap_authoring.flood_min_x), int(self._tilemap_authoring.flood_max_x)),
+                max(int(self._tilemap_authoring.flood_min_y), int(self._tilemap_authoring.flood_max_y)),
+            )
+        existing_tiles = [tile for tile in layer.get("tiles", []) if isinstance(tile, dict)]
+        if existing_tiles:
+            margin = max(0, int(self._tilemap_authoring.flood_margin))
+            xs = [int(tile.get("x", 0)) for tile in existing_tiles] + [start_x]
+            ys = [int(tile.get("y", 0)) for tile in existing_tiles] + [start_y]
+            return (min(xs) - margin, min(ys) - margin, max(xs) + margin, max(ys) + margin)
+        return (start_x - 8, start_y - 8, start_x + 7, start_y + 7)
 
     def _serialized_tile_identity(self, tile: Optional[Dict[str, Any]]) -> tuple[str, str, str] | None:
         if tile is None:
