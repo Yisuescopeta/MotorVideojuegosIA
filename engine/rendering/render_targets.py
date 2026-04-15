@@ -96,6 +96,15 @@ class RenderTargetPool:
     def get(self, name: str) -> Optional[RenderTargetHandle]:
         return self._targets.get(name)
 
+    def unload(self, name: str) -> None:
+        handle = self._targets.pop(name, None)
+        if handle is None:
+            return
+        if self._active_target == name:
+            self._active_target = ""
+        if handle.render_texture is not None:
+            rl.unload_render_texture(handle.render_texture)
+
     def get_frame_metrics(self) -> dict[str, int]:
         return dict(self._frame_metrics)
 

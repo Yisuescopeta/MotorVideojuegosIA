@@ -1,0 +1,59 @@
+{
+    "schema_version": 2,
+    "name": "Main Scene",
+    "entities": [
+        {
+            "name": "Player",
+            "active": true,
+            "tag": "player",
+            "layer": "Gameplay",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 320.0,
+                    "y": 280.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                }
+            }
+        },
+        {
+            "name": "EnemyWizard",
+            "active": true,
+            "tag": "enemy",
+            "layer": "Gameplay",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 460.0,
+                    "y": 280.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                }
+            }
+        },
+        {
+            "name": "WorldDirector",
+            "active": true,
+            "tag": "director",
+            "layer": "UI",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 0.0,
+                    "y": 0.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                }
+            }
+        }
+    ],
+    "rules": [],
+    "feature_metadata": {}
+}

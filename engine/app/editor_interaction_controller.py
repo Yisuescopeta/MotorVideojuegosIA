@@ -4,7 +4,6 @@ import os
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import pyray as rl
-
 from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
 
@@ -151,13 +150,28 @@ class EditorInteractionController:
                     active_world,
                     allow_runtime=state.allows_gameplay(),
                 )
-            )
+                )
             if scene_ui_visible:
                 ui_system.ensure_layout_cache(active_world, scene_viewport_size)
 
+        inspector_system = self._get_inspector_system()
+        tilemap_tool_active = bool(
+            inspector_system is not None
+            and active_world is not None
+            and hasattr(inspector_system, "is_tilemap_tool_active")
+            and inspector_system.is_tilemap_tool_active(active_world)
+        )
         gizmo_system = self._get_gizmo_system()
+        tilemap_preview = None
+        if tilemap_tool_active and inspector_system is not None and active_world is not None:
+            inspector_system.handle_tilemap_scene_input(active_world, mouse_world, mouse_in_scene)
+            if hasattr(inspector_system, "get_tilemap_preview_snapshot"):
+                tilemap_preview = inspector_system.get_tilemap_preview_snapshot(active_world)
+        if gizmo_system is not None and hasattr(gizmo_system, "set_tilemap_preview"):
+            gizmo_system.set_tilemap_preview(tilemap_preview)
+
         scene_manager = self._get_scene_manager()
-        if gizmo_system is not None and active_world is not None:
+        if not tilemap_tool_active and gizmo_system is not None and active_world is not None:
             if gizmo_system.is_dragging or mouse_in_scene:
                 was_dragging = gizmo_system.is_dragging
                 active_tool = layout.active_tool if layout is not None else EditorTool.MOVE
@@ -187,6 +201,8 @@ class EditorInteractionController:
 
         gizmo_active = gizmo_system.is_hot() if gizmo_system is not None else False
         hand_tool_active = layout is not None and layout.active_tool == EditorTool.HAND
+        if tilemap_tool_active:
+            return
         if not hand_tool_active and not gizmo_active and mouse_in_scene and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
             ui_hit = None
             if ui_system is not None and scene_ui_visible:
@@ -231,6 +247,15 @@ class EditorInteractionController:
         inspector_system = self._get_inspector_system()
         if inspector_system is not None:
             state = max(state, inspector_system.get_cursor_intent(mouse))
+            if (
+                active_world is not None
+                and layout is not None
+                and layout.active_tab == "SCENE"
+                and rl.check_collision_point_rec(mouse, layout.get_center_view_rect())
+                and hasattr(inspector_system, "is_tilemap_tool_active")
+                and inspector_system.is_tilemap_tool_active(active_world)
+            ):
+                state = max(state, CursorVisualState.INTERACTIVE)
 
         gizmo_system = self._get_gizmo_system()
         if gizmo_system is not None and gizmo_system.is_hot():

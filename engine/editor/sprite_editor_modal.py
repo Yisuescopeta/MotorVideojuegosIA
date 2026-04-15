@@ -56,8 +56,8 @@ class SpriteEditorModal:
         if self._asset_service is None or not asset_path:
             return False
         self.asset_path = asset_path
-        metadata = self._asset_service.load_metadata(asset_path)
-        image_width, image_height = self._asset_service.get_image_size(asset_path)
+        metadata = self._asset_service.get_sprite_metadata(asset_path)
+        image_width, image_height = self._asset_service.get_sprite_image_size(asset_path)
         grid = metadata.get("grid", {})
         self.import_mode = str(metadata.get("import_mode", "grid") or "grid")
         self.cell_width = max(1, int(grid.get("cell_width") or image_width or 32))
@@ -95,7 +95,7 @@ class SpriteEditorModal:
     def save_grid_slices(self) -> Optional[dict]:
         if self._asset_service is None or not self.asset_path:
             return None
-        metadata = self._asset_service.generate_grid_slices(
+        metadata = self._asset_service.generate_sprite_grid_slices(
             self.asset_path,
             cell_width=max(1, int(self.cell_width)),
             cell_height=max(1, int(self.cell_height)),
@@ -112,7 +112,7 @@ class SpriteEditorModal:
     def save_automatic_slices(self) -> Optional[dict]:
         if self._asset_service is None or not self.asset_path:
             return None
-        metadata = self._asset_service.generate_auto_slices(
+        metadata = self._asset_service.generate_sprite_auto_slices(
             self.asset_path,
             pivot_x=float(self.pivot_x),
             pivot_y=float(self.pivot_y),
@@ -126,7 +126,7 @@ class SpriteEditorModal:
     def save_manual_slices(self) -> Optional[dict]:
         if self._asset_service is None or not self.asset_path:
             return None
-        metadata = self._asset_service.save_manual_slices(
+        metadata = self._asset_service.save_sprite_manual_slices(
             self.asset_path,
             self.manual_slices,
             pivot_x=float(self.pivot_x),
@@ -141,7 +141,7 @@ class SpriteEditorModal:
     def import_image(self, source_path: str, target_folder: str = "") -> Optional[str]:
         if self._asset_service is None or self._project_service is None:
             return None
-        imported_path = self._asset_service.import_asset(source_path, target_folder=target_folder)
+        imported_path = self._asset_service.import_sprite_asset(source_path, target_folder=target_folder)
         self.open(imported_path)
         return imported_path
 
@@ -190,7 +190,7 @@ class SpriteEditorModal:
                 self.close()
             return
 
-        image_width, image_height = self._asset_service.get_image_size(self.asset_path)
+        image_width, image_height = self._asset_service.get_sprite_image_size(self.asset_path)
         rl.draw_text(f"Image: {image_width}x{image_height}", int(modal.x + 16), int(modal.y + 68), 11, self.TEXT)
         mode_grid_rect = rl.Rectangle(modal.x + 118, modal.y + 62, 70, 24)
         mode_auto_rect = rl.Rectangle(modal.x + 194, modal.y + 62, 88, 24)
@@ -298,7 +298,7 @@ class SpriteEditorModal:
     def _build_preview_metadata(self) -> dict:
         if self._asset_service is None or not self.asset_path:
             return {"slices": []}
-        width, height = self._asset_service.get_image_size(self.asset_path)
+        width, height = self._asset_service.get_sprite_image_size(self.asset_path)
         if width <= 0 or height <= 0:
             return {"slices": []}
         try:

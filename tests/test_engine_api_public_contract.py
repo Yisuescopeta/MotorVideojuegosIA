@@ -6,6 +6,16 @@ from unittest.mock import patch
 
 from engine.api import EngineAPI
 
+MINIMAL_PNG_BYTES = (
+    b"\x89PNG\r\n\x1a\n"
+    b"\x00\x00\x00\rIHDR"
+    b"\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+    b"\x00\x00\x00\rIDATx\x9cc```\xf8\x0f\x00\x01\x04\x01\x00"
+    b"\x18\xdd\x8d\xb1"
+    b"\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
 
 class EngineAPIPublicContractTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -31,6 +41,12 @@ class EngineAPIPublicContractTests(unittest.TestCase):
         )
         self.addCleanup(api.shutdown)
         return api
+
+    def _write_png(self, relative_path: str) -> Path:
+        path = self.project_root / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(MINIMAL_PNG_BYTES)
+        return path
 
     def test_inject_input_state_applies_runtime_override(self) -> None:
         api = self._make_api()
@@ -123,6 +139,32 @@ class EngineAPIPublicContractTests(unittest.TestCase):
 
         self.assertFalse(api.game.headless_running)
 
+    def test_engine_api_exposes_sprite_pipeline_public_contract(self) -> None:
+        self._write_png("assets/player_sheet.png")
+        api = self._make_api()
+
+        self.assertTrue(hasattr(api, "get_sprite_metadata"))
+        self.assertTrue(hasattr(api, "list_sprite_slices"))
+        self.assertTrue(hasattr(api, "get_sprite_slice_rect"))
+        self.assertTrue(hasattr(api, "generate_sprite_grid_slices"))
+        self.assertTrue(hasattr(api, "generate_sprite_auto_slices"))
+        self.assertTrue(hasattr(api, "save_sprite_manual_slices"))
+        self.assertTrue(hasattr(api, "get_sprite_image_size"))
+        self.assertTrue(hasattr(api, "import_sprite_asset"))
+
+        result = api.generate_sprite_grid_slices(
+            asset_path="assets/player_sheet.png",
+            cell_width=1,
+            cell_height=1,
+            naming_prefix="hero",
+        )
+
+        self.assertTrue(result["success"])
+        self.assertEqual(api.get_sprite_image_size("assets/player_sheet.png"), {"width": 1, "height": 1})
+        self.assertEqual(api.get_sprite_metadata("assets/player_sheet.png")["import_mode"], "grid")
+        self.assertEqual([item["name"] for item in api.list_sprite_slices("assets/player_sheet.png")], ["hero_0"])
+        self.assertEqual(api.get_sprite_slice_rect("assets/player_sheet.png", "hero_0")["width"], 1)
+
 
 class RLPublicContractRegressionTests(unittest.TestCase):
     def test_rl_modules_do_not_touch_private_runtime_hooks(self) -> None:
@@ -156,6 +198,19 @@ class RLPublicContractRegressionTests(unittest.TestCase):
 
         for token in forbidden_tokens:
             self.assertNotIn(token, source, msg=f"engine/api/engine_api.py still references {token}")
+
+    def test_assets_project_api_does_not_reference_editor_or_private_runtime_hooks(self) -> None:
+        source = Path("engine/api/_assets_project_api.py").read_text(encoding="utf-8")
+        forbidden_tokens = (
+            "sprite_editor_modal",
+            "._process_ui_requests(",
+            "._input_system",
+            "._event_bus",
+            "._asset_service",
+        )
+
+        for token in forbidden_tokens:
+            self.assertNotIn(token, source, msg=f"engine/api/_assets_project_api.py still references {token}")
 
 
 class EngineAPIOptionalBox2DTests(unittest.TestCase):
