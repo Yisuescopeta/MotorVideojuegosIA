@@ -3,6 +3,15 @@
 Esta guia resume como orientarse sin mezclar material historico con contratos
 vigentes. Para reglas operativas completas, lee [../AGENTS.md](../AGENTS.md).
 
+## Primeros 5 minutos
+
+1. Lee [README.md](README.md) para ubicar canon, referencia, tooling y archivo.
+2. Lee [glossary.md](glossary.md) si algun termino del repo no es obvio.
+3. Lee [../AGENTS.md](../AGENTS.md) antes de tocar archivos o elegir perimetro.
+4. Usa [api.md](api.md) o [cli.md](cli.md) para flujos publicos.
+5. Revisa [documentation_governance.md](documentation_governance.md) si el cambio
+   crea, mueve o actualiza documentacion.
+
 ## Fuentes de verdad
 
 Orden de autoridad:
@@ -15,8 +24,8 @@ Orden de autoridad:
    [module_taxonomy.md](module_taxonomy.md), [api.md](api.md) y [cli.md](cli.md).
 5. Archivo historico en [archive/](archive/) solo como contexto.
 
-No uses roadmaps, prompts antiguos ni research como prueba de funcionalidad
-actual.
+No uses roadmaps, prompts antiguos, research ni capabilities `planned` como
+prueba de funcionalidad actual.
 
 ## Invariantes que no debes romper
 
@@ -59,6 +68,8 @@ py -m motor component add Player Transform --data '{"x":0,"y":0}' --project . --
 - No editar `SceneManager.edit_world` directamente para flujos publicos nuevos.
 - No asumir soporte de componentes no registrados.
 - No documentar capacidades planificadas como implementadas.
+- No ejecutar comandos listados como `planned` en `motor_ai.json` o
+  `motor capabilities --json` si no existen en `motor/cli.py`.
 - No reemplazar `motor` por `tools/engine_cli.py` en docs nuevas.
 - No mover material desde `docs/archive/` a docs canonicas sin verificar codigo y tests.
 - No tocar archivos congelados de [../AGENTS.md](../AGENTS.md) sin justificarlo.
@@ -66,11 +77,13 @@ py -m motor component add Player Transform --data '{"x":0,"y":0}' --project . --
 ## Documentos por necesidad
 
 - Quiero entender el sistema: [architecture.md](architecture.md).
+- Quiero entender terminos del repo: [glossary.md](glossary.md).
 - Quiero saber que es core y que es experimental: [module_taxonomy.md](module_taxonomy.md).
 - Quiero cambiar escenas/prefabs: [schema_serialization.md](schema_serialization.md).
 - Quiero automatizar por Python: [api.md](api.md).
 - Quiero automatizar por CLI: [cli.md](cli.md).
 - Quiero entender `motor_ai.json`: [MOTOR_AI_JSON_CONTRACT.md](MOTOR_AI_JSON_CONTRACT.md).
+- Quiero cambiar documentacion: [documentation_governance.md](documentation_governance.md).
 - Quiero contexto historico: [archive/](archive/).
 
 ## Checks minimos antes de entregar docs o contratos

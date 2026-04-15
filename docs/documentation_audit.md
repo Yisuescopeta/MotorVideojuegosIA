@@ -1,5 +1,11 @@
 # Auditoria documental
 
+Nota de uso: este documento es un registro de auditoria y decisiones de
+reorganizacion. No es el punto de entrada principal ni reemplaza el contrato
+funcional del motor. Para navegar la documentacion usa [README.md](README.md);
+para reglas futuras de mantenimiento usa
+[documentation_governance.md](documentation_governance.md).
+
 Fecha de reestructuracion: 2026-04-16.
 
 Alcance auditado:
@@ -22,7 +28,7 @@ No se usaron roadmaps, prompts ni research como fuente de producto actual.
 
 ## Clasificacion resultante
 
-### Canonico vigente
+### Canon del motor
 
 - `README.md`
 - `AGENTS.md`
@@ -35,6 +41,11 @@ No se usaron roadmaps, prompts ni research como fuente de producto actual.
 - `docs/cli.md`
 - `docs/MOTOR_AI_JSON_CONTRACT.md`
 - `docs/agents.md`
+
+### Gobernanza y soporte de lectura
+
+- `docs/documentation_governance.md`
+- `docs/glossary.md`
 - `docs/documentation_audit.md`
 
 ### Referencia tecnica o tooling vigente

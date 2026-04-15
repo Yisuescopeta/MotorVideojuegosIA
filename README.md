@@ -35,6 +35,15 @@ py main.py
 
 On platforms where `py` is not available, use the active Python 3.11 executable.
 
+## First 10 Minutes
+
+1. Read this page for the project shape and current status.
+2. Open [docs/README.md](docs/README.md) to choose the right detailed document.
+3. Read [docs/glossary.md](docs/glossary.md) for repo-specific terms.
+4. Run `py -m motor doctor --project . --json`.
+5. If you plan to contribute, read [CONTRIBUTING.md](CONTRIBUTING.md) and
+   [docs/documentation_governance.md](docs/documentation_governance.md).
+
 ## Official CLI
 
 The public command-line interface is `motor`, provided by `motor.cli:main`.
@@ -55,6 +64,7 @@ legacy scripts. It is not the public CLI for new documentation or automation.
 Start here:
 
 - [docs/README.md](docs/README.md) - master documentation portal
+- [docs/glossary.md](docs/glossary.md) - short definitions for cold readers
 - [docs/architecture.md](docs/architecture.md) - canonical architecture
 - [docs/TECHNICAL.md](docs/TECHNICAL.md) - technical reference
 - [docs/schema_serialization.md](docs/schema_serialization.md) - serialization contract
@@ -62,7 +72,8 @@ Start here:
 - [docs/api.md](docs/api.md) - public `EngineAPI` reference
 - [docs/cli.md](docs/cli.md) - official `motor` CLI reference
 - [docs/agents.md](docs/agents.md) - compact guide for AI agents
-- [docs/documentation_audit.md](docs/documentation_audit.md) - audit and archive decisions
+- [docs/documentation_governance.md](docs/documentation_governance.md) - documentation maintenance rules
+- [docs/documentation_audit.md](docs/documentation_audit.md) - audit log and archive decisions, not the main feature contract
 
 Archived research, old roadmaps, and prompt packs live under
 [docs/archive/](docs/archive/). They are preserved for context, but they are not
@@ -120,5 +131,6 @@ Repository governance lives in:
 - [LICENSE](LICENSE)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [SECURITY.md](SECURITY.md)
+- [docs/documentation_governance.md](docs/documentation_governance.md)
 
 There is no commercial support or SLA implied by this repository.
