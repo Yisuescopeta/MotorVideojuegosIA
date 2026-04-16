@@ -58,13 +58,73 @@ class ProfilerApiTests(unittest.TestCase):
             global_state_dir=self.global_state_dir.as_posix(),
         )
         self.api.load_level("levels/demo_level.json")
+        assert self.api.game is not None
+        self.game = self.api.game
 
     def tearDown(self) -> None:
         self.api.shutdown()
         self._temp_dir.cleanup()
 
-    def test_headless_step_populates_versioned_profiler_report(self) -> None:
+    def test_reset_profiler_does_not_enable_runtime_metrics(self) -> None:
+        self.game.enable_runtime_metrics = False
+        self.game.enable_deep_profiling = True
+        self.game._metrics_frame_index = 9
+
+        self.api.reset_profiler("headless_test")
+
+        self.assertFalse(self.game.enable_runtime_metrics)
+        self.assertFalse(self.game.enable_deep_profiling)
+        self.assertEqual(self.game._metrics_frame_index, 0)
+
+    def test_play_does_not_enable_runtime_metrics(self) -> None:
+        self.game.enable_runtime_metrics = False
+
+        self.api.play()
+
+        self.assertFalse(self.game.enable_runtime_metrics)
+
+    def test_headless_step_skips_metrics_when_overlay_and_runtime_metrics_are_disabled(self) -> None:
+        self.game.show_performance_overlay = False
+        self.game.enable_runtime_metrics = False
         root_editor_state = _read_root_editor_state()
+        self.api.reset_profiler("headless_test")
+        self.api.step(frames=31)
+        report = self.api.get_profiler_report()
+
+        self.assertEqual(report["profile_version"], PROFILE_REPORT_VERSION)
+        self.assertEqual(report["run_label"], "headless_test")
+        self.assertEqual(report["frames"], 0)
+        self.assertEqual(report["systems"], {})
+        self.assertEqual(report["counters"]["avg"], {})
+        self.assertEqual(report["counters"]["max"], {})
+        self.assertEqual(report["last_frame"], {})
+        self.assertEqual(_read_root_editor_state(), root_editor_state)
+
+    def test_headless_step_collects_cheap_metrics_when_overlay_is_enabled(self) -> None:
+        self.game.show_performance_overlay = True
+        self.game.enable_runtime_metrics = False
+
+        self.api.reset_profiler("overlay_test")
+        self.api.step(frames=31)
+        report = self.api.get_profiler_report()
+
+        self.assertEqual(report["run_label"], "overlay_test")
+        self.assertEqual(report["frames"], 3)
+        self.assertIn("frame", report["systems"])
+        self.assertIn("avg", report["counters"])
+        self.assertIn("max", report["counters"])
+        self.assertIn("entities", report["counters"]["avg"])
+        self.assertIn("world_json_bytes", report["counters"]["avg"])
+        self.assertEqual(report["last_frame"]["memory"]["world_json_bytes"], 0.0)
+        self.assertEqual(report["last_frame"]["memory"]["entity_avg_json_bytes"], 0.0)
+        self.assertEqual(report["last_frame"]["frame"], 31)
+        self.assertIn("timings_ms", report["last_frame"])
+        self.assertIn("memory", report["last_frame"])
+
+    def test_headless_step_populates_versioned_profiler_report_when_runtime_metrics_are_explicitly_enabled(self) -> None:
+        root_editor_state = _read_root_editor_state()
+        self.game.enable_runtime_metrics = True
+
         self.api.reset_profiler("headless_test")
         self.api.step(frames=31)
         report = self.api.get_profiler_report()
@@ -83,6 +143,21 @@ class ProfilerApiTests(unittest.TestCase):
         self.assertIn("timings_ms", report["last_frame"])
         self.assertIn("memory", report["last_frame"])
         self.assertEqual(_read_root_editor_state(), root_editor_state)
+
+    def test_headless_step_collects_deep_metrics_only_when_explicitly_enabled(self) -> None:
+        self.game.enable_runtime_metrics = True
+
+        self.api.reset_profiler("deep_test")
+        self.assertFalse(self.game.enable_deep_profiling)
+
+        self.game.enable_deep_profiling = True
+        self.api.step(frames=31)
+        report = self.api.get_profiler_report()
+
+        self.assertEqual(report["run_label"], "deep_test")
+        self.assertEqual(report["frames"], 3)
+        self.assertGreater(report["last_frame"]["memory"]["world_json_bytes"], 0.0)
+        self.assertGreater(report["last_frame"]["memory"]["entity_avg_json_bytes"], 0.0)
 
     def test_profile_run_cli_writes_stable_report_schema(self) -> None:
         original_catalog = _read_catalog_snapshot()

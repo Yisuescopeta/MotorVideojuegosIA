@@ -389,7 +389,6 @@ class Game:
         self._runtime_controller.stop()
 
     def reset_profiler(self, run_label: str = "default") -> None:
-        self.enable_runtime_metrics = True
         self.enable_deep_profiling = False
         self._metrics_frame_index = 0
         self._debug_tools_controller.reset_profiler(run_label=run_label)

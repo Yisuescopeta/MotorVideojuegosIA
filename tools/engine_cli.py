@@ -183,6 +183,8 @@ def _profile_run(scene: str, frames: int, out: str, seed: int | None, mode: str)
     if seed is not None:
         api.set_seed(seed)
     api.reset_profiler(run_label=f"profile:{Path(scene).name}:{mode}")
+    if api.game is not None:
+        api.game.enable_runtime_metrics = True
     if mode == "play":
         api.play()
     api.step(frames=max(1, int(frames)))
