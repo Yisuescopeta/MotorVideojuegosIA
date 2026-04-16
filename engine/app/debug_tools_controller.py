@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import pyray as rl
@@ -8,13 +9,13 @@ import pyray as rl
 from engine.components.canvas import Canvas
 from engine.components.scriptbehaviour import ScriptBehaviour
 from engine.components.uibutton import UIButton
-from engine.core.engine_state import EngineState
 from engine.debug.profiler import EngineProfiler
 from engine.debug.timeline import Timeline
 from engine.editor.console_panel import log_err, log_info
 from engine.physics.registry import PhysicsBackendRegistry
 
 if TYPE_CHECKING:
+    from engine.core.engine_state import EngineState
     from engine.core.hot_reload import HotReloadManager
     from engine.core.time_manager import TimeManager
     from engine.ecs.world import World
@@ -71,6 +72,12 @@ class DebugToolsController:
         self._set_debug_draw_colliders = set_debug_draw_colliders
         self._get_debug_draw_labels = get_debug_draw_labels
         self._set_debug_draw_labels = set_debug_draw_labels
+        self._memory_cache: dict[str, Any] = {
+            "world_id": None,
+            "world_version": None,
+            "timestamp": 0.0,
+            "data": self._empty_memory_counters(),
+        }
 
     def apply_render_debug_options(self, render_system: Any) -> None:
         if render_system is None or not hasattr(render_system, "set_debug_options"):
@@ -92,6 +99,8 @@ class DebugToolsController:
         step_callback: Callable[[], None],
         toggle_fullscreen_callback: Callable[[], None],
     ) -> None:
+        from engine.core.engine_state import EngineState
+
         state = self._get_state()
         if state in (EngineState.PAUSED, EngineState.PLAY):
             if rl.is_key_pressed(rl.KEY_F10):
@@ -163,6 +172,8 @@ class DebugToolsController:
             print(f"[DEBUG] Snapshot loaded. Frame: {snapshot.frame}")
 
     def draw_debug_info(self) -> None:
+        from engine.core.engine_state import EngineState
+
         state = self._get_state()
         width = self._get_width()
         state_color = {
@@ -212,6 +223,10 @@ class DebugToolsController:
                 "render_target_passes": 0,
                 "physics_ccd_bodies": 0,
                 "physics_contacts": 0,
+                "physics_candidate_solids": 0,
+                "collision_candidates": 0,
+                "collision_pairs_tested": 0,
+                "collision_hits": 0,
                 "canvases": 0,
                 "buttons": 0,
                 "scripts": 0,
@@ -228,6 +243,10 @@ class DebugToolsController:
         render_target_passes = 0
         physics_ccd_bodies = 0
         physics_contacts = 0
+        physics_candidate_solids = 0
+        collision_candidates = 0
+        collision_pairs_tested = 0
+        collision_hits = 0
 
         render_system = self._get_render_system()
         if render_system is not None and hasattr(render_system, "get_last_render_stats"):
@@ -245,6 +264,14 @@ class DebugToolsController:
             backend_metrics = backend.get_step_metrics()
             physics_ccd_bodies = int(backend_metrics.get("ccd_bodies", 0))
             physics_contacts = int(backend_metrics.get("contacts", 0))
+            physics_candidate_solids = int(backend_metrics.get("candidate_solids", 0))
+
+        collision_system = self._get_collision_system()
+        if collision_system is not None and hasattr(collision_system, "get_step_metrics"):
+            collision_metrics = collision_system.get_step_metrics()
+            collision_candidates = int(collision_metrics.get("candidate_pairs", 0))
+            collision_pairs_tested = int(collision_metrics.get("narrow_phase_pairs", 0))
+            collision_hits = int(collision_metrics.get("actual_collisions", 0))
 
         counters = {
             "entities": active_world.entity_count(),
@@ -256,6 +283,10 @@ class DebugToolsController:
             "render_target_passes": render_target_passes,
             "physics_ccd_bodies": physics_ccd_bodies,
             "physics_contacts": physics_contacts,
+            "physics_candidate_solids": physics_candidate_solids,
+            "collision_candidates": collision_candidates,
+            "collision_pairs_tested": collision_pairs_tested,
+            "collision_hits": collision_hits,
             "canvases": len(active_world.get_entities_with(Canvas)),
             "buttons": len(active_world.get_entities_with(UIButton)),
             "scripts": len(active_world.get_entities_with(ScriptBehaviour)),
@@ -263,9 +294,21 @@ class DebugToolsController:
         self._perf_counters.clear()
         self._perf_counters.update(counters)
 
+    def _empty_memory_counters(self) -> dict[str, float]:
+        return {"world_json_bytes": 0.0, "entity_avg_json_bytes": 0.0}
+
     def approximate_memory_counters(self, active_world: Optional["World"]) -> dict[str, float]:
         if active_world is None:
-            return {"world_json_bytes": 0.0, "entity_avg_json_bytes": 0.0}
+            return self._empty_memory_counters()
+        world_id = int(id(active_world))
+        world_version = int(getattr(active_world, "version", 0))
+        now = time.perf_counter()
+        if (
+            self._memory_cache.get("world_id") == world_id
+            and self._memory_cache.get("world_version") == world_version
+            and (now - float(self._memory_cache.get("timestamp", 0.0))) <= 1.0
+        ):
+            return dict(self._memory_cache.get("data", self._empty_memory_counters()))
         try:
             payload = active_world.serialize()
             encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
@@ -274,12 +317,25 @@ class DebugToolsController:
             log_err(f"approximate_memory_counters: serialización fallida: {exc}")
             total_bytes = 0.0
         entity_count = max(1, active_world.entity_count())
-        return {
+        data = {
             "world_json_bytes": total_bytes,
             "entity_avg_json_bytes": total_bytes / entity_count,
         }
+        self._memory_cache = {
+            "world_id": world_id,
+            "world_version": world_version,
+            "timestamp": now,
+            "data": data,
+        }
+        return dict(data)
 
-    def record_profiler_frame(self, active_world: Optional["World"], *, frame_time_ms: float | None = None) -> None:
+    def record_profiler_frame(
+        self,
+        active_world: Optional["World"],
+        *,
+        frame_time_ms: float | None = None,
+        deep: bool = False,
+    ) -> None:
         resolved_backend = self._get_physics_backend_registry().resolve(active_world)
         backend_name = resolved_backend.effective_backend or resolved_backend.requested_backend
         backend_metrics = resolved_backend.backend.get_step_metrics() if resolved_backend.backend is not None else {}
@@ -295,10 +351,11 @@ class DebugToolsController:
         if active_world is not None:
             timings_ms["animation"] = float(self._perf_stats.get("animation", 0.0))
             timings_ms["gameplay"] = float(self._perf_stats.get("gameplay", 0.0))
+        memory = self.approximate_memory_counters(active_world) if deep else self._empty_memory_counters()
         self._profiler.record_frame(
             timings_ms=timings_ms,
             counters=dict(self._perf_counters),
-            memory=self.approximate_memory_counters(active_world),
+            memory=memory,
             mode=str(self._get_state()),
             frame_index=int(self._time_manager.frame_count),
             backend=backend_name,
@@ -310,7 +367,7 @@ class DebugToolsController:
             return
 
         panel_width = 260
-        panel_height = 246
+        panel_height = 288
         panel_x = self._get_width() - panel_width - 12
         panel_y = 12
         panel_rect = rl.Rectangle(panel_x, panel_y, panel_width, panel_height)
@@ -349,6 +406,30 @@ class DebugToolsController:
         rl.draw_text(f"rt passes: {self._perf_counters.get('render_target_passes', 0)}", panel_x + 10, text_y, 10, rl.SKYBLUE)
         text_y += 14
         rl.draw_text(f"ccd bodies: {self._perf_counters.get('physics_ccd_bodies', 0)}", panel_x + 10, text_y, 10, rl.SKYBLUE)
+        text_y += 14
+        rl.draw_text(
+            f"phys candidates: {self._perf_counters.get('physics_candidate_solids', 0)}",
+            panel_x + 10,
+            text_y,
+            10,
+            rl.SKYBLUE,
+        )
+        text_y += 14
+        rl.draw_text(
+            f"collision cand/tests: {self._perf_counters.get('collision_candidates', 0)}/{self._perf_counters.get('collision_pairs_tested', 0)}",
+            panel_x + 10,
+            text_y,
+            10,
+            rl.SKYBLUE,
+        )
+        text_y += 14
+        rl.draw_text(
+            f"collision hits: {self._perf_counters.get('collision_hits', 0)}",
+            panel_x + 10,
+            text_y,
+            10,
+            rl.SKYBLUE,
+        )
         text_y += 14
         rl.draw_text(
             f"canvases/buttons: {self._perf_counters.get('canvases', 0)}/{self._perf_counters.get('buttons', 0)}",

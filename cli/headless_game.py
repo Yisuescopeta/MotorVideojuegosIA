@@ -75,8 +75,18 @@ class HeadlessGame(Game):
             self._scene_manager.sync_from_edit_world()
 
         self._perf_stats["frame"] = (time.perf_counter() - frame_start) * 1000.0
-        self._update_perf_counters(active_world)
-        self._record_profiler_frame(active_world)
+        should_collect_metrics = self._should_collect_metrics()
+        should_sample_metrics = self._metrics_sample_every <= 1 or (
+            self._metrics_frame_index % self._metrics_sample_every == 0
+        )
+        self._metrics_frame_index += 1
+        if should_collect_metrics:
+            self._update_perf_counters(active_world)
+        if should_collect_metrics and should_sample_metrics:
+            self._record_profiler_frame(
+                active_world,
+                deep=self._should_collect_deep_metrics(),
+            )
 
     def step_frame(self, dt: float = 1.0 / 60.0) -> None:
         """Avanza manualmente un frame."""

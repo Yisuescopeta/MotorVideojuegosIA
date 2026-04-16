@@ -26,6 +26,8 @@ class _FakeSceneManager:
 class _FakePerfWorld:
     def __init__(self) -> None:
         self.feature_metadata = {"physics_2d": {"backend": "stub_backend"}}
+        self.version = 1
+        self.serialize_calls = 0
 
     def entity_count(self) -> int:
         return 6
@@ -39,6 +41,7 @@ class _FakePerfWorld:
         return list(mapping.get(component_type.__name__, []))
 
     def serialize(self) -> dict:
+        self.serialize_calls += 1
         return {"entities": [1, 2, 3], "rules": []}
 
 
@@ -73,6 +76,12 @@ class DebugToolsControllerTests(unittest.TestCase):
         self.scene_manager = _FakeSceneManager()
         self.rule_system = Mock()
         self.render_system = Mock()
+        self.collision_system = Mock()
+        self.collision_system.get_step_metrics.return_value = {
+            "candidate_pairs": 11,
+            "narrow_phase_pairs": 4,
+            "actual_collisions": 2,
+        }
         self.render_system.get_last_render_stats.return_value = {
             "render_entities": 5,
             "draw_calls": 9,
@@ -83,7 +92,7 @@ class DebugToolsControllerTests(unittest.TestCase):
         }
         self.backend = Mock()
         self.backend.backend_name = "stub_backend"
-        self.backend.get_step_metrics.return_value = {"ccd_bodies": 8, "contacts": 7}
+        self.backend.get_step_metrics.return_value = {"ccd_bodies": 8, "contacts": 7, "candidate_solids": 13}
         self.physics_backend_registry = PhysicsBackendRegistry(default_backend_name="stub_backend")
         self.physics_backend_registry.register_backend(self.backend, backend_name="stub_backend")
         self.controller = DebugToolsController(
@@ -99,7 +108,7 @@ class DebugToolsControllerTests(unittest.TestCase):
             get_scene_manager=lambda: self.scene_manager,
             get_level_loader=lambda: None,
             get_rule_system=lambda: self.rule_system,
-            get_collision_system=lambda: None,
+            get_collision_system=lambda: self.collision_system,
             get_render_system=lambda: self.render_system,
             get_physics_backend_registry=lambda: self.physics_backend_registry,
             get_width=lambda: 1280,
@@ -167,9 +176,32 @@ class DebugToolsControllerTests(unittest.TestCase):
         self.assertEqual(report["last_frame"]["backend"], "stub_backend")
         self.assertEqual(report["last_frame"]["backend_metrics"]["contacts"], 7)
         self.assertEqual(report["last_frame"]["counters"]["draw_calls"], 9)
+        self.assertEqual(report["last_frame"]["counters"]["physics_candidate_solids"], 13)
+        self.assertEqual(report["last_frame"]["counters"]["collision_candidates"], 11)
+        self.assertEqual(report["last_frame"]["counters"]["collision_pairs_tested"], 4)
+        self.assertEqual(report["last_frame"]["counters"]["collision_hits"], 2)
         self.assertEqual(report["last_frame"]["counters"]["canvases"], 1)
         self.assertEqual(report["last_frame"]["counters"]["buttons"], 2)
         self.assertEqual(report["last_frame"]["counters"]["scripts"], 3)
+        self.assertEqual(report["last_frame"]["memory"]["world_json_bytes"], 0.0)
+        self.assertEqual(report["last_frame"]["memory"]["entity_avg_json_bytes"], 0.0)
+        self.assertEqual(world.serialize_calls, 0)
+
+    def test_record_profiler_frame_deep_metrics_use_memory_cache_until_world_changes(self) -> None:
+        self.controller.reset_profiler("controller-deep")
+        world = _FakePerfWorld()
+
+        self.controller.update_perf_counters(world)
+        self.controller.record_profiler_frame(world, frame_time_ms=16.5, deep=True)
+        self.controller.record_profiler_frame(world, frame_time_ms=16.5, deep=True)
+        world.version += 1
+        self.controller.record_profiler_frame(world, frame_time_ms=16.5, deep=True)
+
+        report = self.controller.get_profiler_report()
+
+        self.assertEqual(world.serialize_calls, 2)
+        self.assertGreater(report["last_frame"]["memory"]["world_json_bytes"], 0.0)
+        self.assertGreater(report["last_frame"]["memory"]["entity_avg_json_bytes"], 0.0)
 
 
 if __name__ == "__main__":

@@ -66,7 +66,7 @@ class ProfilerApiTests(unittest.TestCase):
     def test_headless_step_populates_versioned_profiler_report(self) -> None:
         root_editor_state = _read_root_editor_state()
         self.api.reset_profiler("headless_test")
-        self.api.step(frames=3)
+        self.api.step(frames=31)
         report = self.api.get_profiler_report()
 
         self.assertEqual(report["profile_version"], PROFILE_REPORT_VERSION)
@@ -77,7 +77,9 @@ class ProfilerApiTests(unittest.TestCase):
         self.assertIn("max", report["counters"])
         self.assertIn("entities", report["counters"]["avg"])
         self.assertIn("world_json_bytes", report["counters"]["avg"])
-        self.assertEqual(report["last_frame"]["frame"], 3)
+        self.assertEqual(report["last_frame"]["memory"]["world_json_bytes"], 0.0)
+        self.assertEqual(report["last_frame"]["memory"]["entity_avg_json_bytes"], 0.0)
+        self.assertEqual(report["last_frame"]["frame"], 31)
         self.assertIn("timings_ms", report["last_frame"])
         self.assertIn("memory", report["last_frame"])
         self.assertEqual(_read_root_editor_state(), root_editor_state)
