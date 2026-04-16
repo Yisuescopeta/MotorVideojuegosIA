@@ -1,9 +1,23 @@
 # AGENTS.md
 
+### Regla para reducir consumo de tokens
+
+- Se directo.
+- No expliques paso a paso lo que haces salvo que se te pida.
+- No des actualizaciones constantes durante la ejecucion.
+- No repitas contexto ya conocido.
+- No desarrolles razonamientos largos si no aportan a la tarea.
+- Prioriza ejecutar y entregar resultado.
+- Al final, entrega solo un resumen corto y util con:
+    1.que cambiaste,
+    2.que archivos tocaste,
+    3.que validaste,
+    4.riesgos restantes si existen.
+
 ## Proposito
 
 Este repositorio usa un modelo de motor serializable compartido y admite trabajo
-paralelo en ramas/worktrees aislados.
+iterativo sobre un contrato tecnico comun.
 
 Este archivo es el contrato operativo por defecto para agentes de codigo que
 trabajen en este repo.
@@ -15,11 +29,27 @@ Lee este archivo junto con:
 - `docs/TECHNICAL.md`
 - `docs/schema_serialization.md`
 - `docs/module_taxonomy.md`
+- `docs/api.md`
+- `docs/cli.md`
 - `docs/agents.md`
+- `docs/documentation_governance.md`
 
-Roadmaps historicos, packs de prompts, notas de investigacion y material antiguo
-de orquestacion estan archivados bajo `docs/archive/`. Son contexto util, no el
+Roadmaps historicos, research, packs de prompts y material antiguo de
+orquestacion estan archivados bajo `docs/archive/`. Son contexto util, no el
 contrato de producto actual.
+
+## Orden de autoridad
+
+Si dos fuentes discrepan, usa este orden:
+
+1. Codigo y tests.
+2. `EngineAPI` publica en `engine/api/`.
+3. CLI oficial `motor` en `motor/cli.py` y `motor/cli_core.py`.
+4. Documentacion canonica enlazada desde `docs/README.md`.
+5. Archivo historico en `docs/archive/` solo como contexto.
+
+No promociones una capacidad como actual si no esta respaldada por codigo,
+tests, `EngineAPI` o la CLI oficial `motor`.
 
 ## Invariantes centrales del repositorio
 
@@ -55,8 +85,8 @@ Estas reglas no son opcionales.
 
 ## Archivos criticos
 
-Trata estos archivos como congelados salvo que la tarea lo autorice
-explicitamente.
+Trata estos archivos como sensibles salvo que la tarea requiera tocarlos de forma
+explicita y justificada.
 
 - `engine/scenes/scene_manager.py`
 - `engine/core/game.py`
@@ -69,10 +99,20 @@ explicitamente.
 
 Si crees que uno de estos archivos debe cambiar:
 
-1. Detente.
-2. Explica exactamente por que.
-3. Declara el cambio minimo requerido.
-4. No lo cambies en silencio.
+1. Explica exactamente por que.
+2. Declara el cambio minimo requerido.
+3. No lo cambies en silencio.
+4. No amplifiques el alcance del cambio sin necesidad.
+
+## Reglas generales de alcance
+
+- Mantente dentro del subsistema realmente implicado por la tarea.
+- No mezcles refactors amplios con fixes pequenos o cambios documentales.
+- No amplifiques el alcance “por limpieza” si no aporta al objetivo principal.
+- Si una tarea afecta contrato publico, schema, CLI, `EngineAPI` o invariantes arquitectonicos, actualiza la documentacion canonica correspondiente.
+- Si una tarea parece exigir tocar demasiados subsistemas a la vez, reduce el alcance y prioriza el cambio minimo correcto.
+- Si el trabajo requiere crear un contrato publico nuevo o cambiar un invariante central, detente y deja la necesidad explicitamente indicada.
+- No uses documentos archivados como base para introducir comportamiento actual.
 
 ## Limites documentales
 
@@ -80,151 +120,35 @@ Si crees que uno de estos archivos debe cambiar:
 - La documentacion archivada vive bajo `docs/archive/` y no debe tratarse como fuente de verdad actual.
 - El comportamiento publico nuevo debe actualizar docs canonicas, no solo una nota archivada o prompt.
 - No promociones una capacidad como actual salvo que este respaldada por codigo, tests, API publica o la CLI oficial `motor`.
+- No uses documentos de `docs/archive/` para contradecir `README.md`, `docs/architecture.md`, `docs/TECHNICAL.md`, `docs/schema_serialization.md`, `docs/module_taxonomy.md`, `docs/api.md` o `docs/cli.md`.
 
-## Reglas de perimetro por rama
+## Cuando debes actualizar documentacion
 
-Cuando trabajes en una rama paralela de feature, permanece estrictamente dentro
-del alcance de esa rama.
+Si tu cambio toca alguno de estos contratos, actualiza tambien su documentacion
+canonica correspondiente:
 
-### Rama: `feature/w1-audio2d-runtime`
+- Arquitectura o invariantes -> `docs/architecture.md` y `docs/TECHNICAL.md`
+- Schema, migraciones o payloads serializables -> `docs/schema_serialization.md`
+- Clasificacion de subsistemas -> `docs/module_taxonomy.md`
+- API publica -> `docs/api.md` y `docs/agents.md`
+- CLI publica `motor` -> `docs/cli.md`
+- Reorganizacion documental -> `docs/documentation_governance.md` y, si aplica, `docs/documentation_audit.md`
 
-Permitido:
+No dupliques listas largas de API o CLI en documentos secundarios si ya existe
+una referencia canonica.
 
-- `engine/components/audiosource.py`
-- `engine/systems/audio_system.py`
-- `engine/api/_runtime_api.py`
-- tests de audio
-- docs de audio
+## Capas documentales del repo
 
-Prohibido:
+Usa esta separacion al crear o mover documentacion:
 
-- `engine/core/game.py`
-- `engine/app/runtime_controller.py`
-- `engine/systems/render_system.py`
-- `engine/scenes/scene_manager.py`
-- `engine/api/_authoring_api.py`
+- Entrada: `README.md`, `docs/README.md`
+- Canon: `architecture`, `TECHNICAL`, `schema_serialization`, `module_taxonomy`, `api`, `cli`
+- Referencia operativa: `glossary`, `building` y guias concretas
+- Experimental/tooling: `navigation`, `rl`, `ai_assisted_workflows`
+- Archivo: `docs/archive/`
 
-### Rama: `feature/w1-navigation-core`
-
-Permitido:
-
-- `engine/navigation/*`
-- tests de navegacion
-- docs de navegacion
-- adiciones minimas de API en `engine/api/_runtime_api.py` o `engine/api/_authoring_api.py`
-- `engine/levels/component_registry.py` solo si se introduce un componente publico
-
-Prohibido:
-
-- `engine/tilemap/*`
-- `engine/components/tilemap.py`
-- `engine/systems/physics_system.py`
-- `engine/systems/collision_system.py`
-- `engine/physics/*`
-- `engine/app/runtime_controller.py`
-- `engine/systems/render_system.py`
-- `engine/core/game.py`
-
-### Rama: `feature/w1-animator-authoring`
-
-Permitido:
-
-- `engine/components/animator.py`
-- `engine/systems/animation_system.py`
-- `engine/editor/animator_panel.py`
-- partes especificas de animator en `engine/api/_authoring_api.py`
-- tests de animator
-- docs de animator
-
-Prohibido:
-
-- `engine/systems/render_system.py`
-- `engine/tilemap/*`
-- `engine/app/runtime_controller.py`
-- `engine/scenes/scene_manager.py`
-- `engine/core/game.py`
-- `engine/inspector/inspector_system.py`
-
-### Rama: `feature/w1-tilemap-authoring`
-
-Permitido:
-
-- `engine/components/tilemap.py`
-- partes especificas de tilemap en `engine/api/_authoring_api.py`
-- archivos de editor/inspector de tilemap
-- tests de API tilemap
-- tests de serializacion tilemap
-- docs de tilemap
-
-Prohibido:
-
-- `engine/systems/render_system.py`
-- `engine/tilemap/collision_builder.py`
-- `engine/app/runtime_controller.py`
-- `engine/systems/physics_system.py`
-- `engine/systems/collision_system.py`
-- `engine/physics/*`
-- `engine/core/game.py`
-- `engine/scenes/scene_manager.py`
-
-### Rama: `feature/w2-tilemap-render`
-
-Permitido:
-
-- `engine/systems/render_system.py`
-- `tests/test_render_graph.py`
-- docs de render tilemap
-
-Prohibido:
-
-- `engine/components/tilemap.py`
-- `engine/api/_authoring_api.py`
-- `engine/tilemap/collision_builder.py`
-- `engine/app/runtime_controller.py`
-- `engine/systems/physics_system.py`
-- `engine/core/game.py`
-- `engine/editor/*`
-
-### Rama: `feature/w3-tilemap-collision`
-
-Permitido:
-
-- `engine/tilemap/collision_builder.py`
-- `tests/test_tilemap_collision.py`
-- cambios minimos y justificados en `engine/app/runtime_controller.py`
-- docs de colision tilemap
-
-Prohibido:
-
-- `engine/systems/physics_system.py`
-- `engine/systems/collision_system.py`
-- `engine/physics/*`
-- `engine/systems/render_system.py`
-- `engine/components/tilemap.py`
-- `engine/core/game.py`
-- `engine/scenes/scene_manager.py`
-
-### Rama: `feature/w4-physics-core`
-
-Permitido:
-
-- `engine/systems/physics_system.py`
-- `engine/systems/collision_system.py`
-- `engine/components/rigidbody.py`
-- `engine/physics/*`
-- `engine/app/runtime_controller.py`
-- tests de physics/runtime
-- docs de fisica
-
-Prohibido:
-
-- `engine/components/tilemap.py`
-- `engine/tilemap/collision_builder.py`
-- `engine/systems/render_system.py`
-- `engine/core/game.py`
-- `engine/scenes/scene_manager.py`
-- `engine/editor/*`
-- `engine/api/_authoring_api.py`
+Si un documento nuevo no encaja en una de estas capas, deten el cambio y
+justifica donde deberia vivir.
 
 ## Expectativas de testing
 
@@ -233,40 +157,16 @@ Antes de reportar finalizacion:
 - Ejecuta tests enfocados para el subsistema tocado.
 - Ejecuta regresiones adicionales cuando el cambio toque contratos compartidos.
 - No deshabilites tests para obtener salida verde.
-- No afirmes exito de lint/typecheck/bandit si no los ejecutaste realmente.
+- No afirmes exito de lint, typecheck, seguridad o auditoria si no ejecutaste realmente esos checks.
+- Si un check global falla por deuda previa del repo y no por tu cambio, reportalo como riesgo residual y no como fallo resuelto.
 
-Comandos minimos comunes en este repo:
+### Validaciones enfocadas recomendadas
+
+Cuando toques documentacion, CLI o contratos publicos, prioriza:
 
 ```bash
-py -m unittest discover -s tests
-py -m ruff check engine cli tools main.py
-py -m mypy engine cli tools main.py
-```
+py -m unittest tests.test_repository_governance tests.test_motor_cli_contract tests.test_start_here_ai_coherence -v
+py -m unittest tests.test_official_contract_regression tests.test_parser_registry_alignment tests.test_motor_interface_coherence tests.test_motor_registry_consistency -v
+py -m motor --help
+py -m motor doctor --project . --json
 
-Usa selecciones mas estrechas cuando corresponda, pero declara exactamente que
-ejecutaste.
-
-## Disciplina de merge paralelo
-
-Cada entrega final debe incluir:
-
-1. Resumen tecnico breve.
-2. Archivos exactos cambiados.
-3. Tests exactos agregados o modificados.
-4. Tests exactos ejecutados.
-5. Riesgos o limitaciones restantes.
-6. Confirmacion de que no se tocaron archivos prohibidos.
-
-## Condiciones de parada
-
-Detente y pide revision antes de continuar si:
-
-- La tarea requiere un archivo prohibido.
-- La tarea requiere ampliar el perimetro de la rama.
-- La tarea cambiaria un invariante central.
-- La tarea crearia un contrato publico nuevo sin aprobacion explicita.
-
-## Regla practica
-
-Prefiere un cambio pequeno y correcto antes que uno amplio y riesgoso.
-No optimices por cierre local si eso perjudica la seguridad de merge.
