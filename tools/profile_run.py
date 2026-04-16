@@ -30,6 +30,8 @@ def main() -> int:
     if args.seed is not None:
         api.set_seed(args.seed)
     api.reset_profiler(run_label=f"profile:{scene_path.name}:{args.mode}")
+    if api.game is not None:
+        api.game.enable_runtime_metrics = True
     if args.mode == "play":
         api.play()
     api.step(frames=max(1, int(args.frames)))

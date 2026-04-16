@@ -152,6 +152,10 @@ class Game:
         
         self.autosave_timer: float = 0.0
         self.show_performance_overlay: bool = False
+        self.enable_runtime_metrics: bool = False
+        self.enable_deep_profiling: bool = False
+        self._metrics_sample_every: int = 15
+        self._metrics_frame_index: int = 0
         self._perf_stats: dict[str, float] = {
             "frame": 0.0,
             "render": 0.0,
@@ -164,6 +168,17 @@ class Game:
         self._perf_counters: dict[str, int] = {
             "entities": 0,
             "render_entities": 0,
+            "draw_calls": 0,
+            "batches": 0,
+            "tilemap_chunks": 0,
+            "tilemap_chunk_rebuilds": 0,
+            "render_target_passes": 0,
+            "physics_ccd_bodies": 0,
+            "physics_contacts": 0,
+            "physics_candidate_solids": 0,
+            "collision_candidates": 0,
+            "collision_pairs_tested": 0,
+            "collision_hits": 0,
             "canvases": 0,
             "buttons": 0,
             "scripts": 0,
@@ -374,6 +389,8 @@ class Game:
         self._runtime_controller.stop()
 
     def reset_profiler(self, run_label: str = "default") -> None:
+        self.enable_deep_profiling = False
+        self._metrics_frame_index = 0
         self._debug_tools_controller.reset_profiler(run_label=run_label)
 
     def get_profiler_report(self) -> dict[str, Any]:
@@ -870,9 +887,19 @@ class Game:
                 from engine.editor.console_panel import log_err
                 log_err(f"CRITICAL RENDER ERROR: {e}")
             self._perf_stats["frame"] = (time.perf_counter() - frame_start) * 1000.0
-            self._update_perf_counters(active_world)
-            self._record_profiler_frame(active_world)
-        
+            should_collect_metrics = self._should_collect_metrics()
+            should_sample_metrics = self._metrics_sample_every <= 1 or (
+                self._metrics_frame_index % self._metrics_sample_every == 0
+            )
+            self._metrics_frame_index += 1
+            if should_collect_metrics:
+                self._update_perf_counters(active_world)
+            if should_collect_metrics and should_sample_metrics:
+                self._record_profiler_frame(
+                    active_world,
+                    deep=self._should_collect_deep_metrics(),
+                )
+
         self._cleanup()
     
     def _update_animation(self, world: Optional["World"], dt: float) -> None:
@@ -995,14 +1022,26 @@ class Game:
     def _draw_debug_info(self) -> None:
         self._debug_tools_controller.draw_debug_info()
 
+    def _should_collect_metrics(self) -> bool:
+        return self.enable_runtime_metrics or self.show_performance_overlay
+
+    def _should_collect_deep_metrics(self) -> bool:
+        return self.enable_deep_profiling
+
     def _update_perf_counters(self, active_world: Optional["World"]) -> None:
         self._debug_tools_controller.update_perf_counters(active_world)
 
     def _approximate_memory_counters(self, active_world: Optional["World"]) -> dict[str, float]:
         return self._debug_tools_controller.approximate_memory_counters(active_world)
 
-    def _record_profiler_frame(self, active_world: Optional["World"], *, frame_time_ms: float | None = None) -> None:
-        self._debug_tools_controller.record_profiler_frame(active_world, frame_time_ms=frame_time_ms)
+    def _record_profiler_frame(
+        self,
+        active_world: Optional["World"],
+        *,
+        frame_time_ms: float | None = None,
+        deep: bool = False,
+    ) -> None:
+        self._debug_tools_controller.record_profiler_frame(active_world, frame_time_ms=frame_time_ms, deep=deep)
 
     def _draw_performance_overlay(self) -> None:
         self._debug_tools_controller.draw_performance_overlay()
