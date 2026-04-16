@@ -20,12 +20,16 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from typing import List, Set, Tuple
+from unittest.mock import patch
 
 from engine.ai import get_default_registry, CapabilityRegistry, MotorAIBootstrapBuilder
 from engine.api import EngineAPI
 from motor.cli import create_motor_parser
+from motor.cli_core import cmd_prefab_create
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -310,6 +314,64 @@ class PrefabCLIContractTests(unittest.TestCase):
         payload = json.loads(stdout[stdout.index("{"):])
         self.assertTrue(payload["success"])
         self.assertEqual(payload["data"]["prefab_path"], "prefabs/enemy.prefab")
+        self.assertTrue((self.project / "prefabs" / "enemy.prefab").exists())
+
+    def test_cmd_prefab_create_asset_only_does_not_save_scene(self) -> None:
+        scene_path = self._write_scene()
+        real_api = EngineAPI(project_root=self.project.as_posix())
+        self.addCleanup(real_api.shutdown)
+        real_api.load_level(scene_path.as_posix())
+        self.assertTrue(real_api.create_entity("EnemyTemplate")["success"])
+        self.assertTrue(real_api.save_scene()["success"])
+
+        stdout = StringIO()
+        with patch("motor.cli_core.EngineAPI", return_value=real_api) as engine_api_cls, \
+             patch("motor.cli_core._auto_load_scene", return_value=(True, "")), \
+             patch.object(real_api, "save_scene", wraps=real_api.save_scene) as save_scene_spy, \
+             redirect_stdout(stdout):
+            returncode = cmd_prefab_create(
+                self.project,
+                "EnemyTemplate",
+                "prefabs/enemy.prefab",
+                replace_original=False,
+                instance_name=None,
+                json_output=True,
+            )
+
+        self.assertEqual(returncode, 0, stdout.getvalue())
+        engine_api_cls.assert_called_once()
+        save_scene_spy.assert_not_called()
+        payload = json.loads(stdout.getvalue()[stdout.getvalue().index("{"):])
+        self.assertTrue(payload["success"])
+        self.assertTrue((self.project / "prefabs" / "enemy.prefab").exists())
+
+    def test_cmd_prefab_create_replace_original_saves_scene_once(self) -> None:
+        scene_path = self._write_scene()
+        real_api = EngineAPI(project_root=self.project.as_posix())
+        self.addCleanup(real_api.shutdown)
+        real_api.load_level(scene_path.as_posix())
+        self.assertTrue(real_api.create_entity("EnemyTemplate")["success"])
+        self.assertTrue(real_api.save_scene()["success"])
+
+        stdout = StringIO()
+        with patch("motor.cli_core.EngineAPI", return_value=real_api) as engine_api_cls, \
+             patch("motor.cli_core._auto_load_scene", return_value=(True, "")), \
+             patch.object(real_api, "save_scene", wraps=real_api.save_scene) as save_scene_spy, \
+             redirect_stdout(stdout):
+            returncode = cmd_prefab_create(
+                self.project,
+                "EnemyTemplate",
+                "prefabs/enemy.prefab",
+                replace_original=True,
+                instance_name=None,
+                json_output=True,
+            )
+
+        self.assertEqual(returncode, 0, stdout.getvalue())
+        engine_api_cls.assert_called_once()
+        save_scene_spy.assert_called_once()
+        payload = json.loads(stdout.getvalue()[stdout.getvalue().index("{"):])
+        self.assertTrue(payload["success"])
         self.assertTrue((self.project / "prefabs" / "enemy.prefab").exists())
 
     def test_motor_prefab_instantiate_creates_linked_instance(self) -> None:

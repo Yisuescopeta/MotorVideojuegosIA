@@ -600,7 +600,8 @@ def cmd_prefab_create(
         )
 
         if result.get("success"):
-            api.save_scene()
+            if replace_original:
+                api.save_scene()
             return _output(True, result.get("message", "Prefab created"), result.get("data"), json_output)
         return _output(False, result.get("message", "Failed to create prefab"), None, json_output)
 
