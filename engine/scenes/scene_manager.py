@@ -763,6 +763,23 @@ class SceneManager:
     def instantiate_prefab(self, name: str, prefab_path: str, parent: Optional[str] = None, overrides: Optional[Dict[str, Any]] = None, root_name: Optional[str] = None) -> bool:
         return self._structural_authoring.instantiate_prefab(name, prefab_path, parent, overrides, root_name)
 
+    def create_prefab(
+        self,
+        entity_name: str,
+        prefab_path: str,
+        *,
+        replace_original: bool = False,
+        instance_name: Optional[str] = None,
+        prefab_locator: Optional[str] = None,
+    ) -> bool:
+        return self._structural_authoring.create_prefab(
+            entity_name,
+            prefab_path,
+            replace_original=replace_original,
+            instance_name=instance_name,
+            prefab_locator=prefab_locator,
+        )
+
     def unpack_prefab(self, entity_name: str) -> bool:
         return self._structural_authoring.unpack_prefab(entity_name)
 

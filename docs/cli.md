@@ -145,6 +145,51 @@ py -m motor component add Player Animator --data '{"enabled":true,"speed":1.0}' 
 El nombre de componente debe estar registrado en
 `engine/levels/component_registry.py`.
 
+## Prefabs
+
+### `motor prefab create <entity> <path>`
+
+Guarda una entidad raiz y su subarbol como prefab. Con `--replace-original`
+sustituye el subarbol original por una instancia enlazada al prefab nuevo.
+
+```bash
+py -m motor prefab create EnemyTemplate prefabs/enemy.prefab --project . --json
+py -m motor prefab create EnemyTemplate prefabs/enemy.prefab --replace-original --instance-name EnemyA --project . --json
+```
+
+### `motor prefab instantiate <path>`
+
+Crea una instancia enlazada desde un prefab existente.
+
+```bash
+py -m motor prefab instantiate prefabs/enemy.prefab --name EnemyA --project . --json
+py -m motor prefab instantiate prefabs/enemy.prefab --name EnemyA --parent Spawner --project . --json
+```
+
+### `motor prefab unpack <entity>`
+
+Convierte una instancia de prefab en entidades explicitas editables.
+
+```bash
+py -m motor prefab unpack EnemyA --project . --json
+```
+
+### `motor prefab apply <entity>`
+
+Aplica los overrides acumulados de una instancia al archivo prefab origen.
+
+```bash
+py -m motor prefab apply EnemyA --project . --json
+```
+
+### `motor prefab list`
+
+Lista los prefabs detectados en el proyecto.
+
+```bash
+py -m motor prefab list --project . --json
+```
+
 ## Animator
 
 ### `motor animator info <entity>`
@@ -265,7 +310,6 @@ Ejemplos actuales de capacidades planificadas sin parser publico incluyen:
 
 - `entity delete/list/parent`
 - `component edit/remove`
-- operaciones de prefab
 - runtime `play/stop/step/undo/redo`
 - queries de fisica desde CLI
 - scene flow desde CLI

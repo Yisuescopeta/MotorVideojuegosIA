@@ -161,7 +161,7 @@ class CLISyntaxSemanticTests(unittest.TestCase):
         """CLI commands should reference subcommands that exist in motor CLI."""
         # These are documented but not yet implemented (future)
         future_commands = {
-            'runtime', 'prefab', 'undo', 'redo', 'status', 'physics'
+            'runtime', 'undo', 'redo', 'status', 'physics'
         }
         
         mismatches = []

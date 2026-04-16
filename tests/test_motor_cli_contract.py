@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import List, Set, Tuple
 
 from engine.ai import get_default_registry, CapabilityRegistry, MotorAIBootstrapBuilder
+from engine.api import EngineAPI
 from motor.cli import create_motor_parser
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -152,7 +153,7 @@ class RegistryToCLIExecutableContractTests(unittest.TestCase):
         }
         
         # Comandos que pueden no estar implementados aún pero están documentados
-        future_scopes = {"runtime", "prefab", "physics", "introspect"}
+        future_scopes = {"runtime", "physics", "introspect"}
         
         violations = []
         for cap in self.registry.list_all():
@@ -187,6 +188,11 @@ class RegistryToCLIExecutableContractTests(unittest.TestCase):
             ("scene", ["create"]),
             ("entity", ["create"]),
             ("component", ["add"]),
+            ("prefab", ["create"]),
+            ("prefab", ["instantiate"]),
+            ("prefab", ["unpack"]),
+            ("prefab", ["apply"]),
+            ("prefab", ["list"]),
             ("asset", ["list"]),
             ("animator", ["info"]),
             ("animator", ["ensure"]),
@@ -227,6 +233,186 @@ class RegistryToCLIExecutableContractTests(unittest.TestCase):
                     f"Capability '{cap.id}' usa sintaxis legacy en cli_command: {cmd}\n"
                     f"Use 'animator state create/remove' en su lugar."
                 )
+
+
+class PrefabCLIContractTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp_dir = tempfile.TemporaryDirectory()
+        self.project = _create_test_project(Path(self._temp_dir.name), "PrefabCLI")
+        self.env = os.environ.copy()
+        python_path = self.env.get("PYTHONPATH", "")
+        self.env["PYTHONPATH"] = str(ROOT) if not python_path else str(ROOT) + os.pathsep + python_path
+
+    def tearDown(self) -> None:
+        self._temp_dir.cleanup()
+
+    def _write_scene(self, relative_path: str = "levels/main_scene.json") -> Path:
+        scene_path = self.project / relative_path
+        scene_path.parent.mkdir(parents=True, exist_ok=True)
+        scene_path.write_text(
+            json.dumps({"name": "Main Scene", "entities": [], "rules": [], "feature_metadata": {}}, indent=2),
+            encoding="utf-8",
+        )
+        return scene_path
+
+    def _write_root_prefab(self, relative_path: str = "prefabs/enemy.prefab") -> Path:
+        prefab_path = self.project / relative_path
+        prefab_path.parent.mkdir(parents=True, exist_ok=True)
+        prefab_path.write_text(
+            json.dumps(
+                {
+                    "root_name": "Enemy",
+                    "entities": [
+                        {
+                            "name": "Enemy",
+                            "active": True,
+                            "tag": "Enemy",
+                            "layer": "Actors",
+                            "components": {
+                                "Transform": {
+                                    "enabled": True,
+                                    "x": 0.0,
+                                    "y": 0.0,
+                                    "rotation": 0.0,
+                                    "scale_x": 1.0,
+                                    "scale_y": 1.0,
+                                }
+                            },
+                        }
+                    ],
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        return prefab_path
+
+    def test_motor_prefab_create_writes_prefab_and_json_payload(self) -> None:
+        scene_path = self._write_scene()
+        api = EngineAPI(project_root=self.project.as_posix())
+        self.addCleanup(api.shutdown)
+        api.load_level(scene_path.as_posix())
+        self.assertTrue(api.create_entity("EnemyTemplate")["success"])
+        self.assertTrue(api.save_scene()["success"])
+
+        returncode, stdout, _stderr = _run_motor(
+            "prefab",
+            "create",
+            "EnemyTemplate",
+            "prefabs/enemy.prefab",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stdout)
+        payload = json.loads(stdout[stdout.index("{"):])
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["data"]["prefab_path"], "prefabs/enemy.prefab")
+        self.assertTrue((self.project / "prefabs" / "enemy.prefab").exists())
+
+    def test_motor_prefab_instantiate_creates_linked_instance(self) -> None:
+        scene_path = self._write_scene()
+        self._write_root_prefab()
+        api = EngineAPI(project_root=self.project.as_posix())
+        self.addCleanup(api.shutdown)
+        api.load_level(scene_path.as_posix())
+
+        returncode, stdout, _stderr = _run_motor(
+            "prefab",
+            "instantiate",
+            "prefabs/enemy.prefab",
+            "--name",
+            "EnemyA",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stdout)
+        payload = json.loads(stdout[stdout.index("{"):])
+        self.assertTrue(payload["success"])
+
+        reloaded = EngineAPI(project_root=self.project.as_posix())
+        self.addCleanup(reloaded.shutdown)
+        reloaded.load_level(scene_path.as_posix())
+        entity = reloaded.scene_manager.current_scene.find_entity("EnemyA")
+        self.assertEqual(entity["prefab_instance"]["prefab_path"], "../prefabs/enemy.prefab")
+
+    def test_motor_prefab_unpack_removes_prefab_link(self) -> None:
+        scene_path = self._write_scene()
+        self._write_root_prefab()
+        api = EngineAPI(project_root=self.project.as_posix())
+        self.addCleanup(api.shutdown)
+        api.load_level(scene_path.as_posix())
+        self.assertTrue(api.instantiate_prefab("prefabs/enemy.prefab", name="EnemyA")["success"])
+        self.assertTrue(api.save_scene()["success"])
+
+        returncode, stdout, _stderr = _run_motor(
+            "prefab",
+            "unpack",
+            "EnemyA",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stdout)
+        payload = json.loads(stdout[stdout.index("{"):])
+        self.assertTrue(payload["success"])
+
+        reloaded = EngineAPI(project_root=self.project.as_posix())
+        self.addCleanup(reloaded.shutdown)
+        reloaded.load_level(scene_path.as_posix())
+        entity = reloaded.scene_manager.current_scene.find_entity("EnemyA")
+        self.assertNotIn("prefab_instance", entity)
+
+    def test_motor_prefab_apply_persists_overrides_to_source_prefab(self) -> None:
+        scene_path = self._write_scene()
+        prefab_path = self._write_root_prefab()
+        api = EngineAPI(project_root=self.project.as_posix())
+        self.addCleanup(api.shutdown)
+        api.load_level(scene_path.as_posix())
+        self.assertTrue(api.instantiate_prefab("prefabs/enemy.prefab", name="EnemyA")["success"])
+        self.assertTrue(api.edit_component("EnemyA", "Transform", "x", 15.0)["success"])
+        self.assertTrue(api.save_scene()["success"])
+
+        returncode, stdout, _stderr = _run_motor(
+            "prefab",
+            "apply",
+            "EnemyA",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stdout)
+        payload = json.loads(stdout[stdout.index("{"):])
+        self.assertTrue(payload["success"])
+        prefab_payload = json.loads(prefab_path.read_text(encoding="utf-8"))
+        self.assertEqual(prefab_payload["entities"][0]["components"]["Transform"]["x"], 15.0)
+
+    def test_motor_prefab_list_returns_project_prefabs(self) -> None:
+        self._write_root_prefab("prefabs/enemy.prefab")
+        (self.project / "prefabs" / "legacy.json").write_text('{"root_name":"Legacy","entities":[]}', encoding="utf-8")
+
+        returncode, stdout, _stderr = _run_motor(
+            "prefab",
+            "list",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stdout)
+        payload = json.loads(stdout[stdout.index("{"):])
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["data"]["prefabs"], ["prefabs/enemy.prefab", "prefabs/legacy.json"])
 
 
 class DocumentationContractTests(unittest.TestCase):

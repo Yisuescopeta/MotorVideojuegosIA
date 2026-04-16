@@ -468,9 +468,8 @@ class HierarchyPanel:
                     )
                     root.destroy()
                     
-                    if path:
-                        from engine.assets.prefab import PrefabManager
-                        PrefabManager.save_prefab(entity, path, world=world)
+                    if path and self._scene_manager is not None:
+                        self._scene_manager.create_prefab(entity.name, path)
                 except Exception as e:
                     print(f"[ERROR] Save Prefab dialog failed: {e}")
 

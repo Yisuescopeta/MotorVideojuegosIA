@@ -152,7 +152,6 @@ class MotorRegistryConsistencyTests(unittest.TestCase):
         # Commands that are documented but not yet implemented
         future_commands = {
             'runtime',  # runtime:play, runtime:stop, etc.
-            'prefab',   # prefab:instantiate, etc.
             'undo',     # runtime:undo
             'redo',     # runtime:redo
             'status',   # introspect:status
@@ -182,6 +181,7 @@ class MotorCLIOfficialInterfaceTests(unittest.TestCase):
             'scene',
             'entity',
             'component',
+            'prefab',
             'animator',
             'asset',
         ]

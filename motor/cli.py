@@ -60,6 +60,11 @@ from motor.cli_core import (
     cmd_scene_save,
     cmd_entity_create,
     cmd_component_add,
+    cmd_prefab_create,
+    cmd_prefab_instantiate,
+    cmd_prefab_unpack,
+    cmd_prefab_apply,
+    cmd_prefab_list,
     cmd_assets_list,
     cmd_slices_list,
     cmd_slices_grid,
@@ -103,6 +108,12 @@ AI-Facing Commands:
   entity create <name>      Create entity in active scene
   
   component add <e> <c>     Add component to entity
+
+  prefab create <e> <p>     Save entity subtree as prefab
+  prefab instantiate <p>    Instantiate prefab in active scene
+  prefab unpack <e>         Convert prefab instance to explicit entities
+  prefab apply <e>          Apply instance overrides to source prefab
+  prefab list               List project prefabs
   
   animator info <e>         Show animator configuration
   animator set-sheet <e> <a>  Set sprite sheet
@@ -121,6 +132,7 @@ Examples:
   motor capabilities
   motor scene create "Level 1"
   motor entity create Player --components '{"Transform":{"x":100}}'
+  motor prefab create Player prefabs/player.prefab --project .
   motor animator ensure Player --sheet assets/player.png
   motor animator state create Player idle --slices idle_0,idle_1,idle_2 --fps 8 --loop
   motor animator state create Player attack --slices atk_0,atk_1 --fps 12 --no-loop --set-default
@@ -282,6 +294,80 @@ Documentation:
         help='Component data JSON'
     )
     component_add_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    # === prefab ===
+    prefab_parser = subparsers.add_parser(
+        "prefab",
+        help="Prefab operations",
+    )
+    prefab_subparsers = prefab_parser.add_subparsers(dest="prefab_subcommand", required=True)
+
+    prefab_create_parser = prefab_subparsers.add_parser(
+        "create",
+        help="Create a prefab from an entity",
+    )
+    prefab_create_parser.add_argument("entity", help="Root entity name")
+    prefab_create_parser.add_argument("path", help="Prefab output path")
+    prefab_create_parser.add_argument(
+        "--replace-original",
+        action="store_true",
+        help="Replace the original subtree with a linked prefab instance",
+    )
+    prefab_create_parser.add_argument(
+        "--instance-name",
+        default=None,
+        help="Instance name to use when replacing the original subtree",
+    )
+    prefab_create_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    prefab_create_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    prefab_instantiate_parser = prefab_subparsers.add_parser(
+        "instantiate",
+        help="Instantiate a prefab in the active scene",
+    )
+    prefab_instantiate_parser.add_argument("path", help="Prefab path")
+    prefab_instantiate_parser.add_argument("--name", default=None, help="Root entity name override")
+    prefab_instantiate_parser.add_argument("--parent", default=None, help="Optional parent entity name")
+    prefab_instantiate_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    prefab_instantiate_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    prefab_unpack_parser = prefab_subparsers.add_parser(
+        "unpack",
+        help="Unpack a prefab instance into explicit scene entities",
+    )
+    prefab_unpack_parser.add_argument("entity", help="Prefab instance root entity")
+    prefab_unpack_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    prefab_unpack_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    prefab_apply_parser = prefab_subparsers.add_parser(
+        "apply",
+        help="Apply prefab instance overrides back to the source prefab",
+    )
+    prefab_apply_parser.add_argument("entity", help="Prefab instance root entity")
+    prefab_apply_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    prefab_apply_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    prefab_list_parser = prefab_subparsers.add_parser(
+        "list",
+        help="List project prefabs",
+    )
+    prefab_list_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    prefab_list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === animator ===
     animator_parser = subparsers.add_parser(
@@ -638,7 +724,44 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 data=data,
                 json_output=parsed.json,
             )
-    
+
+    # === prefab ===
+    elif parsed.command == "prefab":
+        if parsed.prefab_subcommand == "create":
+            return cmd_prefab_create(
+                project_path=Path(parsed.project_root).resolve(),
+                entity_name=parsed.entity,
+                prefab_path=parsed.path,
+                replace_original=parsed.replace_original,
+                instance_name=parsed.instance_name,
+                json_output=parsed.json,
+            )
+        elif parsed.prefab_subcommand == "instantiate":
+            return cmd_prefab_instantiate(
+                project_path=Path(parsed.project_root).resolve(),
+                prefab_path=parsed.path,
+                name=parsed.name,
+                parent=parsed.parent,
+                json_output=parsed.json,
+            )
+        elif parsed.prefab_subcommand == "unpack":
+            return cmd_prefab_unpack(
+                project_path=Path(parsed.project_root).resolve(),
+                entity_name=parsed.entity,
+                json_output=parsed.json,
+            )
+        elif parsed.prefab_subcommand == "apply":
+            return cmd_prefab_apply(
+                project_path=Path(parsed.project_root).resolve(),
+                entity_name=parsed.entity,
+                json_output=parsed.json,
+            )
+        elif parsed.prefab_subcommand == "list":
+            return cmd_prefab_list(
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
+
     # === animator ===
     elif parsed.command == "animator":
         if parsed.animator_subcommand == "info":

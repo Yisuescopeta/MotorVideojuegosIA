@@ -96,6 +96,7 @@ Comandos base:
 - `motor scene list/create/load/save`
 - `motor entity create`
 - `motor component add`
+- `motor prefab create/instantiate/unpack/apply/list`
 - `motor animator ...`
 - `motor asset ...`
 

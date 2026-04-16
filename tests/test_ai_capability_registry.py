@@ -516,7 +516,7 @@ class DefaultRegistryContentTests(unittest.TestCase):
             "asset:": ["asset:list", "asset:find"],
             "asset:slice:": ["asset:slice:grid", "asset:slice:list"],  # slice commands under asset
             "animator:": ["animator:set_sheet", "animator:info", "animator:state:create", "animator:state:remove"],
-            "prefab:": ["prefab:instantiate", "prefab:list"],
+            "prefab:": ["prefab:create", "prefab:instantiate", "prefab:list"],
             "project:": ["project:open", "project:manifest"],
             "runtime:": ["runtime:play", "runtime:stop"],
             "physics:": ["physics:query:aabb", "physics:query:ray"],
@@ -637,6 +637,7 @@ class MotorAIBootstrapBuilderTests(unittest.TestCase):
         content = self.builder.build_start_here_md("Test")
         self.assertIn("scene:load", content)
         self.assertIn("entity:create", content)
+        self.assertIn("prefab:create", content)
         self.assertIn("prefab:instantiate", content)
 
     def test_start_here_md_has_naming_conventions(self) -> None:
