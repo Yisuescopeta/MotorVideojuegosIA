@@ -42,7 +42,8 @@ class PhysicsSystem:
         self._swept_contacts = []
         self._swept_contact_set = set()
         entities = world.get_entities_with(Transform, RigidBody)
-        solid_candidates: dict[int, _SolidCandidate] = {}
+        static_like_candidates: dict[int, _SolidCandidate] = {}
+        moving_candidates: list[_SolidCandidate] = []
         grid = SpatialHash2D(cell_size=self._spatial_hash_cell_size)
 
         for entity in world.get_entities_with(Transform, Collider):
@@ -52,8 +53,15 @@ class PhysicsSystem:
                 continue
             if not self._is_solid_body(entity):
                 continue
-            solid_candidates[int(entity.id)] = _SolidCandidate(entity=entity, collider=collider)
-            grid.insert(entity.id, collider.get_bounds(transform.x, transform.y))
+            candidate = _SolidCandidate(entity=entity, collider=collider)
+            rigidbody = entity.get_component(RigidBody)
+            if rigidbody is None or rigidbody.body_type == "static":
+                static_like_candidates[int(entity.id)] = candidate
+                grid.insert(entity.id, collider.get_bounds(transform.x, transform.y))
+            else:
+                moving_candidates.append(candidate)
+
+        moving_candidates.sort(key=lambda candidate: int(candidate.entity.id))
 
         for entity in entities:
             transform = entity.get_component(Transform)
@@ -81,7 +89,8 @@ class PhysicsSystem:
                 collider,
                 transform,
                 grid,
-                solid_candidates,
+                static_like_candidates,
+                moving_candidates,
                 delta_x,
                 delta_y,
             )
@@ -155,7 +164,8 @@ class PhysicsSystem:
         collider: Collider | None,
         transform: Transform,
         grid: SpatialHash2D,
-        solid_candidates: dict[int, _SolidCandidate],
+        static_like_candidates: dict[int, _SolidCandidate],
+        moving_candidates: list[_SolidCandidate],
         delta_x: float,
         delta_y: float,
     ) -> list[_SolidCandidate]:
@@ -164,14 +174,30 @@ class PhysicsSystem:
         current_aabb = collider.get_bounds(transform.x, transform.y)
         swept_aabb = self._build_swept_aabb(current_aabb, delta_x, delta_y)
         candidates: list[_SolidCandidate] = []
+        seen_ids: set[int] = set()
         for candidate_id in sorted(grid.query(swept_aabb)):
             if candidate_id == entity.id:
                 continue
-            candidate = solid_candidates.get(candidate_id)
+            candidate = static_like_candidates.get(candidate_id)
             if candidate is None:
                 continue
             if not self._should_resolve(world, entity, rigidbody, candidate.entity):
                 continue
+            seen_ids.add(int(candidate_id))
+            candidates.append(candidate)
+        for candidate in moving_candidates:
+            candidate_id = int(candidate.entity.id)
+            if candidate_id == int(entity.id) or candidate_id in seen_ids:
+                continue
+            if not self._should_resolve(world, entity, rigidbody, candidate.entity):
+                continue
+            other_transform = candidate.entity.get_component(Transform)
+            if other_transform is None or not candidate.collider.enabled:
+                continue
+            candidate_aabb = candidate.collider.get_bounds(other_transform.x, other_transform.y)
+            if not self._aabb_overlaps(swept_aabb, candidate_aabb):
+                continue
+            seen_ids.add(candidate_id)
             candidates.append(candidate)
         return candidates
 
@@ -187,6 +213,11 @@ class PhysicsSystem:
             max(right, moved_right),
             max(bottom, moved_bottom),
         )
+
+    def _aabb_overlaps(self, aabb_a: AABB, aabb_b: AABB) -> bool:
+        left_a, top_a, right_a, bottom_a = aabb_a
+        left_b, top_b, right_b, bottom_b = aabb_b
+        return left_a < right_b and right_a > left_b and top_a < bottom_b and bottom_a > top_b
 
     def _resolve_horizontal(
         self,
