@@ -360,6 +360,7 @@ class NoFutureArchitectureAssumptionsTests(unittest.TestCase):
             "capabilities", "doctor", "project info", "project bootstrap-ai",
             "scene list", "scene create", "scene load", "scene save",
             "entity create", "component add",
+            "prefab create", "prefab instantiate", "prefab unpack", "prefab apply", "prefab list",
             "asset list", "asset slice list", "asset slice grid", "asset slice auto", "asset slice manual",
             "animator info", "animator set-sheet", "animator ensure",
             "animator state create", "animator state remove",

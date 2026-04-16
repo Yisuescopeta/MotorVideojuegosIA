@@ -284,6 +284,63 @@ class ScenePrefabAuthoring:
     context: SceneStructuralAuthoringContext
     hierarchy: SceneHierarchyAuthoring
 
+    def create_prefab(
+        self,
+        entity_name: str,
+        prefab_path: str,
+        *,
+        replace_original: bool = False,
+        instance_name: Optional[str] = None,
+        prefab_locator: Optional[str] = None,
+    ) -> bool:
+        entry = self.context.get_active_entry()
+        if entry is None or entry.is_playing or entry.edit_world is None:
+            return False
+        self.context.flush_pending_edit_world(entry)
+
+        from engine.assets.prefab import PrefabManager
+
+        root = entry.edit_world.get_entity_by_name(entity_name)
+        if root is None:
+            return False
+        root_instance_name = str(instance_name or entity_name or root.name)
+        if replace_original and root_instance_name != entity_name and entry.scene.find_entity(root_instance_name) is not None:
+            return False
+        if not PrefabManager.save_prefab(root, prefab_path, world=entry.edit_world):
+            return False
+        if not replace_original:
+            return True
+
+        root_parent = root.parent_name
+        root_prefab_name = root.prefab_instance.get("root_name") if root.prefab_instance else None
+        before = copy.deepcopy(entry.scene.to_dict())
+
+        if not self.hierarchy.remove_entity_subtree(entry, entity_name):
+            return False
+
+        payload = {
+            "name": root_instance_name,
+            "active": True,
+            "tag": "Untagged",
+            "layer": "Default",
+            "parent": root_parent,
+            "prefab_instance": {
+                "prefab_path": prefab_locator or prefab_path,
+                "root_name": root_prefab_name or root.name,
+                "overrides": {},
+            },
+            "components": {},
+            "component_metadata": {},
+        }
+        if not entry.scene.add_entity(payload):
+            return False
+
+        self.context.sync_scene_links_from_feature_metadata(entry)
+        self.context.rebuild_edit_world(entry)
+        entry.dirty = True
+        self.context.record_scene_change(entry, f"create_prefab:{entity_name}", before)
+        return True
+
     def instantiate_prefab(
         self,
         name: str,
@@ -601,6 +658,23 @@ class SceneStructuralAuthoring:
         root_name: Optional[str] = None,
     ) -> bool:
         return self._prefabs.instantiate_prefab(name, prefab_path, parent, overrides, root_name)
+
+    def create_prefab(
+        self,
+        entity_name: str,
+        prefab_path: str,
+        *,
+        replace_original: bool = False,
+        instance_name: Optional[str] = None,
+        prefab_locator: Optional[str] = None,
+    ) -> bool:
+        return self._prefabs.create_prefab(
+            entity_name,
+            prefab_path,
+            replace_original=replace_original,
+            instance_name=instance_name,
+            prefab_locator=prefab_locator,
+        )
 
     def unpack_prefab(self, entity_name: str) -> bool:
         return self._prefabs.unpack_prefab(entity_name)

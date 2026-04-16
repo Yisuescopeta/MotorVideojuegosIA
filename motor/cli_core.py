@@ -574,6 +574,171 @@ def cmd_component_add(
                 pass
 
 
+def cmd_prefab_create(
+    project_path: Path,
+    entity_name: str,
+    prefab_path: str,
+    replace_original: bool,
+    instance_name: Optional[str],
+    json_output: bool,
+) -> int:
+    """Create a prefab from an entity in the active scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+
+        result = api.create_prefab(
+            entity_name,
+            prefab_path,
+            replace_original=replace_original,
+            instance_name=instance_name,
+        )
+
+        if result.get("success"):
+            if replace_original:
+                api.save_scene()
+            return _output(True, result.get("message", "Prefab created"), result.get("data"), json_output)
+        return _output(False, result.get("message", "Failed to create prefab"), None, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to create prefab: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_prefab_instantiate(
+    project_path: Path,
+    prefab_path: str,
+    name: Optional[str],
+    parent: Optional[str],
+    json_output: bool,
+) -> int:
+    """Instantiate a prefab in the active scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+
+        result = api.instantiate_prefab(prefab_path, name=name, parent=parent)
+
+        if result.get("success"):
+            api.save_scene()
+            return _output(True, result.get("message", "Prefab instantiated"), result.get("data"), json_output)
+        return _output(False, result.get("message", "Failed to instantiate prefab"), None, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to instantiate prefab: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_prefab_unpack(project_path: Path, entity_name: str, json_output: bool) -> int:
+    """Unpack a prefab instance in the active scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+
+        result = api.unpack_prefab(entity_name)
+
+        if result.get("success"):
+            api.save_scene()
+            return _output(True, result.get("message", "Prefab unpacked"), result.get("data"), json_output)
+        return _output(False, result.get("message", "Failed to unpack prefab"), None, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to unpack prefab: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_prefab_apply(project_path: Path, entity_name: str, json_output: bool) -> int:
+    """Apply prefab overrides back to the source prefab."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+
+        result = api.apply_prefab_overrides(entity_name)
+
+        if result.get("success"):
+            api.save_scene()
+            return _output(True, result.get("message", "Prefab overrides applied"), result.get("data"), json_output)
+        return _output(False, result.get("message", "Failed to apply prefab overrides"), None, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to apply prefab overrides: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_prefab_list(project_path: Path, json_output: bool) -> int:
+    """List prefabs available in the project."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+
+        prefabs = api.list_project_prefabs()
+        data = {
+            "count": len(prefabs),
+            "prefabs": prefabs,
+        }
+        return _output(True, f"Found {len(prefabs)} prefabs", data, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to list prefabs: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
 def cmd_assets_list(project_path: Path, search: str, json_output: bool) -> int:
     """List assets in the project."""
     api: Optional[EngineAPI] = None

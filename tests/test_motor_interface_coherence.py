@@ -87,9 +87,7 @@ class MotorRegistryAlignmentTests(unittest.TestCase):
             "motor runtime play",
             "motor runtime pause",
             "motor runtime stop",
-            "motor prefab create",
             "motor prefab edit",
-            "motor prefab list",
             "motor physics query aabb",
             "motor physics query ray",
             "motor physics backends",
@@ -635,7 +633,7 @@ class RegistryToCLICoherenceTests(unittest.TestCase):
             
             # Skip known future commands
             future_commands = {
-                "runtime", "prefab", "undo", "redo", "status", "physics"
+                "runtime", "undo", "redo", "status", "physics"
             }
             if cmd_parts[0] in future_commands:
                 continue

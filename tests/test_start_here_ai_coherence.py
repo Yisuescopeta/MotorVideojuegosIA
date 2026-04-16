@@ -61,6 +61,7 @@ class StartHereAICoherenceTests(unittest.TestCase):
             "scene:load", "scene:save", "scene:create",
             "entity:create",
             "component:add",
+            "prefab:create", "prefab:instantiate", "prefab:list",
             "asset:list", "asset:slice:grid", "asset:slice:list",
             "animator:set_sheet", "animator:state:create", "animator:info",
             "introspect:capabilities",
@@ -82,7 +83,6 @@ class StartHereAICoherenceTests(unittest.TestCase):
         planned_ids = [
             "entity:delete", "entity:parent", "entity:list",
             "component:edit", "component:remove",
-            "prefab:instantiate", "prefab:list",
             "runtime:play", "runtime:stop", "runtime:step",
             "introspect:status", "introspect:entity",
         ]

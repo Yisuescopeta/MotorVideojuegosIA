@@ -178,6 +178,7 @@ Scene flow:
 
 Prefabs:
 
+- `create_prefab(entity_name, path, replace_original=False, instance_name=None)`
 - `instantiate_prefab(path, name=None, parent=None, overrides=None)`
 - `unpack_prefab(entity_name)`
 - `apply_prefab_overrides(entity_name)`

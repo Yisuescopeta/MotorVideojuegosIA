@@ -165,6 +165,63 @@ class EngineAPIPublicContractTests(unittest.TestCase):
         self.assertEqual([item["name"] for item in api.list_sprite_slices("assets/player_sheet.png")], ["hero_0"])
         self.assertEqual(api.get_sprite_slice_rect("assets/player_sheet.png", "hero_0")["width"], 1)
 
+    def test_create_prefab_saves_entity_subtree_inside_project(self) -> None:
+        api = self._make_api()
+        api.load_level(self.scene_path.as_posix())
+        self.assertTrue(api.create_entity("PrefabRoot")["success"])
+        self.assertTrue(
+            api.create_child_entity(
+                "PrefabRoot",
+                "PrefabChild",
+                {"Transform": {"enabled": True, "x": 8.0, "y": 4.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0}},
+            )["success"]
+        )
+        self.assertTrue(api.save_scene()["success"])
+        self.assertFalse(api.get_active_scene_info()["dirty"])
+
+        result = api.create_prefab("PrefabRoot", "prefabs/prefab_root.prefab")
+
+        self.assertTrue(result["success"])
+        self.assertEqual(
+            result["data"],
+            {
+                "entity": "PrefabRoot",
+                "prefab_path": "prefabs/prefab_root.prefab",
+                "replace_original": False,
+            },
+        )
+        self.assertFalse(api.get_active_scene_info()["dirty"])
+        prefab_path = self.project_root / "prefabs" / "prefab_root.prefab"
+        self.assertTrue(prefab_path.exists())
+        payload = json.loads(prefab_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["root_name"], "PrefabRoot")
+        self.assertEqual({entity["name"] for entity in payload["entities"]}, {"PrefabRoot", "PrefabChild"})
+
+    def test_create_prefab_replace_original_swaps_subtree_with_linked_instance(self) -> None:
+        api = self._make_api()
+        api.load_level(self.scene_path.as_posix())
+        self.assertTrue(api.create_entity("EnemyTemplate")["success"])
+        self.assertTrue(
+            api.create_child_entity(
+                "EnemyTemplate",
+                "Weapon",
+                {"Transform": {"enabled": True, "x": 4.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0}},
+            )["success"]
+        )
+        self.assertTrue(api.save_scene()["success"])
+
+        result = api.create_prefab("EnemyTemplate", "prefabs/enemy.prefab", replace_original=True)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["data"]["instance"], "EnemyTemplate")
+        self.assertTrue(api.get_active_scene_info()["dirty"])
+        root_entity = api.scene_manager.current_scene.find_entity("EnemyTemplate")
+        self.assertIsNotNone(root_entity)
+        self.assertIn("prefab_instance", root_entity)
+        self.assertEqual(root_entity["prefab_instance"]["prefab_path"], "../prefabs/enemy.prefab")
+        self.assertIsNone(api.scene_manager.current_scene.find_entity("Weapon"))
+        self.assertIsNotNone(api.game.world.get_entity_by_name("EnemyTemplate/Weapon"))
+
 
 class RLPublicContractRegressionTests(unittest.TestCase):
     def test_rl_modules_do_not_touch_private_runtime_hooks(self) -> None:
@@ -312,6 +369,19 @@ class EngineAPISandboxTests(unittest.TestCase):
         api.load_level("levels/inside.json")
 
         result = api.instantiate_prefab(outside_prefab.as_posix())
+
+        self.assertFalse(result["success"])
+        self.assertIn("Sandbox blocked path outside project root", result["message"])
+
+    def test_create_prefab_blocks_outside_project_when_sandbox_enabled(self) -> None:
+        self._write_scene(self.project_root, "levels/inside.json", name="Inside Scene")
+        outside_prefab = self.outside_root / "prefabs" / "external_prefab.prefab"
+        api = EngineAPI(project_root=self.project_root.as_posix(), sandbox_paths=True)
+        self.addCleanup(api.shutdown)
+        api.load_level("levels/inside.json")
+        self.assertTrue(api.create_entity("SandboxEntity")["success"])
+
+        result = api.create_prefab("SandboxEntity", outside_prefab.as_posix())
 
         self.assertFalse(result["success"])
         self.assertIn("Sandbox blocked path outside project root", result["message"])

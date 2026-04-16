@@ -264,6 +264,57 @@ class UnityRuntimeBaseTests(unittest.TestCase):
             operations,
         )
 
+    def test_create_prefab_replace_original_roundtrip_persists_applied_changes(self) -> None:
+        self.assertTrue(
+            self.api.create_entity(
+                "EnemyTemplate",
+                {
+                    "Transform": {
+                        "enabled": True,
+                        "x": 0.0,
+                        "y": 0.0,
+                        "rotation": 0.0,
+                        "scale_x": 1.0,
+                        "scale_y": 1.0,
+                    }
+                },
+            )["success"]
+        )
+        self.assertTrue(
+            self.api.create_child_entity(
+                "EnemyTemplate",
+                "Weapon",
+                {
+                    "Transform": {
+                        "enabled": True,
+                        "x": 4.0,
+                        "y": 0.0,
+                        "rotation": 0.0,
+                        "scale_x": 1.0,
+                        "scale_y": 1.0,
+                    }
+                },
+            )["success"]
+        )
+
+        create_result = self.api.create_prefab("EnemyTemplate", "prefabs/enemy.prefab", replace_original=True)
+        self.assertTrue(create_result["success"])
+        self.assertEqual(create_result["data"]["instance"], "EnemyTemplate")
+        self.assertIsNotNone(self.api.game.world.get_entity_by_name("EnemyTemplate/Weapon"))
+
+        self.assertTrue(self.api.edit_component("EnemyTemplate/Weapon", "Transform", "x", 12.0)["success"])
+        self.assertTrue(self.api.apply_prefab_overrides("EnemyTemplate")["success"])
+        self.assertTrue(self.api.instantiate_prefab("prefabs/enemy.prefab", name="EnemyClone")["success"])
+
+        clone_weapon = self.api.game.world.get_entity_by_name("EnemyClone/Weapon")
+        self.assertIsNotNone(clone_weapon)
+        self.assertEqual(clone_weapon.get_component(Transform).x, 12.0)
+
+        prefab_path = self.root / "prefabs" / "enemy.prefab"
+        prefab_data = json.loads(prefab_path.read_text(encoding="utf-8"))
+        weapon_data = next(entity for entity in prefab_data["entities"] if entity["name"] == "Weapon")
+        self.assertEqual(weapon_data["components"]["Transform"]["x"], 12.0)
+
     def test_render_sorting_uses_sorting_layer_and_order_in_layer(self) -> None:
         for name in ("Back", "Mid", "Front"):
             self.assertTrue(

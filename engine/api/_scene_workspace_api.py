@@ -271,6 +271,46 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         )
         return self.ok("Prefab instantiated", {"entity": entity_name}) if success else self.fail("Prefab instantiation failed")
 
+    def create_prefab(
+        self,
+        entity_name: str,
+        path: str,
+        replace_original: bool = False,
+        instance_name: Optional[str] = None,
+    ) -> ActionResult:
+        self.ensure_edit_mode()
+        if self.scene_manager is None or self.project_service is None:
+            return self.fail("SceneManager not ready")
+
+        try:
+            resolved_path = self.resolve_api_path(path, purpose="create prefab")
+        except InvalidOperationError as exc:
+            return self.fail(str(exc))
+
+        active_scene = self.scene_manager.get_active_scene_summary()
+        scene_source_path = str(active_scene.get("path", "")).strip() or None
+        prefab_locator = self.project_service.to_scene_locator(
+            resolved_path,
+            scene_source_path=scene_source_path,
+        )
+        success = self.scene_manager.create_prefab(
+            entity_name,
+            resolved_path.as_posix(),
+            replace_original=replace_original,
+            instance_name=instance_name,
+            prefab_locator=prefab_locator,
+        )
+        if not success:
+            return self.fail("Prefab creation failed")
+        data = {
+            "entity": entity_name,
+            "prefab_path": self.project_service.to_relative_path(resolved_path),
+            "replace_original": bool(replace_original),
+        }
+        if replace_original:
+            data["instance"] = instance_name or entity_name
+        return self.ok("Prefab created", data)
+
     def unpack_prefab(self, entity_name: str) -> ActionResult:
         self.ensure_edit_mode()
         if self.scene_manager is None:

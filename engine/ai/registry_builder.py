@@ -531,11 +531,32 @@ class CapabilityRegistryBuilder:
 
     def _register_prefab_capabilities(self) -> None:
         self._add(Capability(
+            id="prefab:create",
+            summary="Create a prefab asset from an existing entity subtree",
+            mode="edit",
+            api_methods=["SceneWorkspaceAPI.create_prefab"],
+            cli_command="motor prefab create <entity> <path> [--replace-original] [--instance-name <name>] [--project <path>]",
+            example=CapabilityExample(
+                description="Create an enemy prefab from an existing entity",
+                api_calls=[
+                    {"method": "create_prefab", "args": {
+                        "entity_name": "EnemyTemplate",
+                        "path": "prefabs/enemy.prefab",
+                        "replace_original": True,
+                    }},
+                ],
+                expected_outcome="Writes prefabs/enemy.prefab and optionally replaces the original subtree with a linked instance",
+            ),
+            notes="Creates a prefab asset through the public authoring route. With --replace-original it swaps the subtree for a linked prefab instance.",
+            tags=["prefab", "authoring"],
+        ))
+
+        self._add(Capability(
             id="prefab:instantiate",
             summary="Create an entity instance from a prefab file",
             mode="edit",
             api_methods=["SceneWorkspaceAPI.instantiate_prefab"],
-            cli_command="motor prefab instantiate <path> [--name <name>] [--parent <parent>]",
+            cli_command="motor prefab instantiate <path> [--name <name>] [--parent <parent>] [--project <path>]",
             example=CapabilityExample(
                 description="Instantiate an enemy prefab",
                 api_calls=[
@@ -555,7 +576,7 @@ class CapabilityRegistryBuilder:
             summary="Convert a prefab instance to a regular entity",
             mode="edit",
             api_methods=["SceneWorkspaceAPI.unpack_prefab"],
-            cli_command="motor prefab unpack <entity>",
+            cli_command="motor prefab unpack <entity> [--project <path>]",
             example=CapabilityExample(
                 description="Unpack Enemy_01 to modify it independently",
                 api_calls=[
@@ -572,7 +593,7 @@ class CapabilityRegistryBuilder:
             summary="Apply instance overrides back to the source prefab",
             mode="edit",
             api_methods=["SceneWorkspaceAPI.apply_prefab_overrides"],
-            cli_command="motor prefab apply <entity>",
+            cli_command="motor prefab apply <entity> [--project <path>]",
             example=CapabilityExample(
                 description="Apply Enemy_01 changes to the prefab",
                 api_calls=[
@@ -589,7 +610,7 @@ class CapabilityRegistryBuilder:
             summary="List all prefabs available in the project",
             mode="both",
             api_methods=["AssetsProjectAPI.list_project_prefabs"],
-            cli_command="motor prefab list",
+            cli_command="motor prefab list [--project <path>]",
             example=CapabilityExample(
                 description="List all prefabs",
                 api_calls=[
@@ -906,12 +927,6 @@ class CapabilityRegistryBuilder:
         "asset:find",
         "asset:metadata:get",
         "asset:refresh",
-        
-        # Prefab operations (no CLI commands exist)
-        "prefab:instantiate",
-        "prefab:unpack",
-        "prefab:apply",
-        "prefab:list",
         
         # Project operations beyond info/bootstrap-ai (no CLI commands exist)
         "project:open",
