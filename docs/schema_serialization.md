@@ -1,13 +1,15 @@
-# Contrato De Serializacion Del Core
+# Contrato de serializacion del core
+
+`engine/serialization/schema.py` es la fuente de verdad tecnica para schemas,
+migracion y validacion.
 
 ## Version actual
 
 - `scene schema_version = 2`
 - `prefab schema_version = 2`
 
-`engine/serialization/schema.py` es la fuente de verdad del contrato
-serializable. Toda carga migra primero a la version actual y valida despues.
-Todo guardado emite payload canónico `v2`.
+Toda carga migra primero a la version actual y valida despues. Todo guardado de
+escena o prefab emite payload canonico `v2`.
 
 ## Politica de compatibilidad
 
@@ -23,42 +25,47 @@ Se aceptan en carga:
 No se aceptan:
 
 - versiones futuras o desconocidas sin migrador explicito
-- payloads que siguen siendo invalidos despues de migrar
-- JSON ajenos al contrato de escena/prefab usados por error como input del tooling
+- payloads invalidos despues de migrar
+- JSON ajeno al contrato de escena/prefab usado como input de tooling
+
+## Payload minimo de escena
+
+Una escena canonica incluye:
+
+- `name`
+- `schema_version`
+- `entities`
+- `rules`
+- `feature_metadata`
+
+Cada entidad define identidad, estado, jerarquia y componentes serializables.
+Los componentes publicos deben estar registrados en
+`engine/levels/component_registry.py`.
 
 ## Migraciones automaticas
 
 ### Escenas
 
+La migracion cubre:
+
 - ausencia de `schema_version`
-  - se interpreta como legacy y se promociona por pipeline `v0 -> v1 -> v2`
-- defaults top-level y de entidad
-  - `name`, `entities`, `rules`, `feature_metadata`
-  - `active`, `tag`, `layer`, `components`
-- canonicalizacion de componentes core legacy:
-  - `Collider`
-    - añade `shape_type`, `radius`, `points`, `friction`, `restitution`, `density`
-  - `RigidBody`
-    - añade `body_type`, `simulated`, `freeze_x`, `freeze_y`,
-      `constraints`, `use_full_kinematic_contacts`,
-      `collision_detection_mode`
-  - referencias de asset legacy en string para campos publicos core
-    - `Sprite.texture`
-    - `Animator.sprite_sheet`
-    - `Tilemap.tileset`
-    - `AudioSource.asset`
-    - `ScriptBehaviour.script`
+- defaults top-level: `name`, `entities`, `rules`, `feature_metadata`
+- defaults de entidad: `active`, `tag`, `layer`, `components`
+- canonicalizacion de componentes core legacy
+- referencias de asset legacy en campos publicos core: `Sprite.texture`, `Animator.sprite_sheet`, `Tilemap.tileset`, `AudioSource.asset`, `ScriptBehaviour.script`
 
 ### Prefabs
 
+La migracion cubre:
+
 - wrapper de prefab legacy de entidad unica
-- normalizacion de `prefab_instance.overrides` legacy tipo mapa a
-  `overrides.operations`
-- canonicalizacion equivalente de componentes core y asset refs publicos
+- normalizacion de `prefab_instance.overrides`
+- canonicalizacion equivalente de componentes core
+- asset refs publicos equivalentes a escenas
 
-## Casos que requieren error explicito
+## Errores explicitos
 
-La migracion no parchea en silencio payloads ambiguos. Ejemplos:
+La migracion no parchea payloads ambiguos en silencio. Deben fallar casos como:
 
 - `schema_version` no soportado
 - `Animator.sprite_sheet` y `sprite_sheet_path` inconsistentes
@@ -66,7 +73,7 @@ La migracion no parchea en silencio payloads ambiguos. Ejemplos:
 - `AudioSource.asset` y `asset_path` inconsistentes
 - `ScriptBehaviour.script` y `module_path` incompatibles
 
-En estos casos el motor devuelve errores claros del tipo:
+Ejemplos de errores esperados:
 
 - `Unsupported scene schema version: 99`
 - `Cannot migrate $.entities[0].components.Animator: inconsistent sprite_sheet and sprite_sheet_path`
@@ -75,29 +82,33 @@ En estos casos el motor devuelve errores claros del tipo:
 
 Tras migrar, el payload se valida contra `v2`.
 
-La validacion usa errores estables por path, por ejemplo:
+Los errores usan paths estables, por ejemplo:
 
 - `$.entities[1].parent: unknown parent 'Ghost'`
-- `$.entities[0].components.RigidBody.body_type: expected one of ['dynamic', 'kinematic', 'static']`
+- `$.entities[0].components.RigidBody.body_type: expected one of [...]`
 - `$.feature_metadata.render_2d.sorting_layers[1]: duplicate layer 'Default'`
 
-## Impacto sobre assets antiguos
+## Feature metadata
 
-- los assets legacy siguen cargando si la migracion es no ambigua
-- al guardarse, se reescriben en formato canónico `v2`
-- en este cierre de prioridad 1, `levels/*.json` del repo principal queda
-  normalizado a `v2`
+`feature_metadata` concentra configuracion transversal del core y modulos
+oficiales. Ejemplos actuales:
 
-## Alcance actual
+- `render_2d`
+- `physics_2d`
+- `scene_flow`
 
-El endurecimiento profundo cubre el core serializable del motor. Siguen fuera de
-validacion profunda en esta iteracion:
+El backend fisico solicitado se mantiene como dato serializable. El runtime
+puede usar fallback efectivo sin sobrescribir el valor solicitado.
 
-- `CharacterController2D`
-- `Joint2D`
-- `PlayerController2D`
-- `RenderOrder2D`
-- `RenderStyle2D`
-- `SceneLink`
+## Alcance de validacion
 
-Estos componentes siguen pasando por validacion minima de objeto serializable.
+La validacion profunda cubre el core serializable. Algunos componentes de
+modulos o integraciones siguen con validacion minima de objeto serializable si
+su contrato profundo no esta formalizado en el schema.
+
+## Tests relacionados
+
+- `tests/test_schema_validation.py`
+- `tests/test_official_contract_contract.py`
+- `tests/test_official_contract_regression.py`
+- `tests/test_core_regression_matrix.py`

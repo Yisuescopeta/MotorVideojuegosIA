@@ -1,68 +1,84 @@
-# Build y Distribución - MotorVideojuegosIA (Windows)
+# Build y distribucion Windows
+
+Estado: referencia tecnica vigente para empaquetado local.
+
+El script de build vive en [../build/build_windows.py](../build/build_windows.py).
 
 ## Requisitos
 
 - Python 3.11+
-- PyInstaller: `pip install pyinstaller`
-- Inno Setup 6 (solo para generar instalador): https://jrsoftware.org/isinfo.php
+- PyInstaller
+- Inno Setup 6 solo si se genera instalador
+
+Instalacion minima:
+
+```bash
+py -m pip install pyinstaller
+```
+
+Inno Setup: https://jrsoftware.org/isinfo.php
 
 ## Generar ejecutable
 
 ```bash
-python build/build_windows.py
+py build/build_windows.py
 ```
 
-Genera `dist/MotorVideojuegosIA/MotorVideojuegosIA.exe` (carpeta con todo incluido).
+Salida esperada:
 
-## Generar ejecutable + instalador
+```text
+dist/MotorVideojuegosIA/MotorVideojuegosIA.exe
+```
+
+## Generar ejecutable e instalador
 
 ```bash
-python build/build_windows.py --installer
+py build/build_windows.py --installer
 ```
 
-Genera `dist/MotorVideojuegosIA-{version}-Setup.exe`.
+Salida esperada:
 
-Requiere Inno Setup 6 instalado (ISCC.exe en el PATH o en su ubicación estándar).
-
-## Publicar una nueva versión
-
-1. **Editar la versión** en `engine/config.py`:
-   ```python
-   ENGINE_VERSION: str = "2026.04"  # <- cambiar aquí
-   ```
-   Esta es la **única fuente de verdad**. pyproject.toml, el instalador, la UI y el update checker la leen de aquí.
-
-2. **Generar build e instalador**:
-   ```bash
-   python build/build_windows.py --installer
-   ```
-
-3. **Crear GitHub Release**:
-   - Tag: `v2026.04` (o la versión que corresponda)
-   - Subir `dist/MotorVideojuegosIA-2026.04-Setup.exe` como asset
-   - Marcar como "Latest release"
-
-4. Los usuarios existentes verán el botón verde "Update vX.Y" en la barra de menú del editor.
-
-## Cómo funciona la comprobación de actualizaciones
-
-- Al arrancar, el motor lanza un thread que consulta la GitHub Releases API
-- Si hay una release más nueva que `ENGINE_VERSION`, muestra un botón verde en la barra de menú
-- Al hacer click, abre el navegador con el enlace de descarga del instalador
-- Si no hay conexión o la API falla, no pasa nada: el motor funciona normalmente
-- No hay actualización automática, ni servicio en background, ni reemplazo de binarios
-
-## Estructura de archivos de build
-
+```text
+dist/MotorVideojuegosIA-{version}-Setup.exe
 ```
+
+El instalador requiere `ISCC.exe` en el `PATH` o en una ruta estandar de Inno
+Setup 6.
+
+## Version
+
+La version del motor se lee desde `ENGINE_VERSION` en
+[../engine/config.py](../engine/config.py). Ese valor alimenta el build, el
+instalador y las referencias de version del motor.
+
+Ejemplo:
+
+```python
+ENGINE_VERSION: str = "2026.03"
+```
+
+No dupliques la version en documentacion ni scripts si puede leerse desde
+`engine/config.py`.
+
+## Archivos de build
+
+```text
 build/
-  motorvideojuegos.spec   # Configuración de PyInstaller
-  installer.iss           # Script de Inno Setup
-  build_windows.py        # Script principal de build
+  build_windows.py
+  installer.iss
+  motorvideojuegos.spec
 ```
+
+## Publicacion manual
+
+1. Actualiza `ENGINE_VERSION` en `engine/config.py`.
+2. Ejecuta `py build/build_windows.py --installer`.
+3. Crea una GitHub Release con tag `v{version}`.
+4. Sube `dist/MotorVideojuegosIA-{version}-Setup.exe` como asset.
 
 ## Notas
 
-- Windows SmartScreen puede advertir al ejecutar el instalador (no está firmado digitalmente). El usuario debe hacer "Ejecutar de todas formas".
-- El ejecutable empaquetado pesa ~30-50MB (Python + raylib embebido).
-- El working directory del acceso directo apunta a la carpeta de instalación, lo cual es necesario para que `os.getcwd()` funcione correctamente con los proyectos.
+- El ejecutable empaquetado incluye Python y dependencias necesarias.
+- Windows SmartScreen puede advertir si el instalador no esta firmado.
+- El working directory del acceso directo debe apuntar a la carpeta de
+  instalacion para conservar compatibilidad con proyectos que usan `os.getcwd()`.

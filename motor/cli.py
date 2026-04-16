@@ -129,7 +129,7 @@ Examples:
 Documentation:
   - See START_HERE_AI.md in your project root
   - See motor_ai.json for full capability registry
-  - See docs/CLI_GRAMMAR.md for grammar specification
+  - See docs/cli.md for the official CLI reference
         """,
     )
     

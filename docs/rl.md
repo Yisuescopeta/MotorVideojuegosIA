@@ -1,23 +1,33 @@
-# RL Wrapper
+# RL y datasets
 
-El wrapper `Gymnasium` del motor vive en [engine/rl/gym_env.py](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/engine/rl/gym_env.py).
+Estado: `experimental/tooling`.
 
-## Contrato
+Esta documentacion cubre wrappers y herramientas reales del repo, pero no forman
+parte del contrato de `core obligatorio`.
 
-La clase principal es `MotorGymEnv` y sigue el contrato:
+## Gymnasium
+
+El wrapper `Gymnasium` vive en [../engine/rl/gym_env.py](../engine/rl/gym_env.py).
+
+Clase principal:
+
+- `MotorGymEnv`
+
+Contrato:
 
 - `reset(seed=..., options=...) -> (obs, info)`
 - `step(action) -> (obs, reward, terminated, truncated, info)`
 
-Funciona en modo headless por defecto y se apoya en el runtime real del motor mediante:
+Funciona en modo headless y usa el runtime real mediante:
 
-- carga de escena por [engine/api/engine_api.py](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/engine/api/engine_api.py)
+- carga de escena por [../engine/api/engine_api.py](../engine/api/engine_api.py)
 - entrada inyectada por `InputSystem.inject_state`
-- avance de simulacion por `step()`
+- avance de simulacion por `EngineAPI.step()`
 
-Durante `reset()` el wrapper ejecuta por defecto `1` frame neutro de asentamiento (`settle_frames=1`) para estabilizar escenas cuyo spawn inicial entra levemente solapado con el suelo.
+Durante `reset()`, el wrapper ejecuta por defecto `settle_frames=1` para
+estabilizar escenas cuyo spawn inicial solapa levemente con el suelo.
 
-## Action Spec
+## Action spec
 
 - version: `1`
 - modo: `discrete_6`
@@ -31,9 +41,7 @@ Mapa de acciones:
 5. `4`: left_jump
 6. `5`: right_jump
 
-La codificacion esta pensada para ampliarse a multiagente mas adelante sin acoplarse a UI.
-
-## Observation Spec
+## Observation spec
 
 - version: `1`
 - campos numericos y serializables
@@ -47,62 +55,59 @@ Campos:
 - `goal_exists`
 - `last_action`
 
-## Reward Baseline
+## Reward baseline
 
-La recompensa base actual es deliberadamente simple y transparente:
+La recompensa base actual es deliberadamente simple:
 
 - progreso horizontal: `delta_x * 0.01`
 - bonus por objetivo alcanzado: `+1.0`
 - penalizacion por caer fuera del umbral: `-1.0`
 
-Esto sirve como baseline reproducible para entrenamiento y test, no como reward universal del motor.
+Sirve como baseline reproducible para entrenamiento y test, no como reward
+universal del motor.
 
-## Dataset
+## Dataset aleatorio
 
-El runner de rollouts aleatorios vive en [random_rollout_dataset.py](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/tools/random_rollout_dataset.py).
+El runner de rollouts aleatorios vive en
+[../tools/random_rollout_dataset.py](../tools/random_rollout_dataset.py).
 
-Se eligio `JSONL` frente a `NPZ` por tres motivos:
-
-- no añade dependencia pesada
-- cada transicion es inspeccionable a simple vista
-- es facil de concatenar, filtrar y versionar
-
-Ejemplo:
+Se eligio `JSONL` frente a `NPZ` porque cada transicion es inspeccionable,
+concatenable y no requiere dependencia pesada.
 
 ```bash
-py -3 tools/random_rollout_dataset.py levels/platformer_test_scene.json --episodes 10 --max-steps 120 --seed 123 --out artifacts/random_rollouts.jsonl
+py tools/random_rollout_dataset.py levels/platformer_test_scene.json --episodes 10 --max-steps 120 --seed 123 --out artifacts/random_rollouts.jsonl
 ```
 
 ## Multiagente
 
-El wrapper multiagente vive en [pettingzoo_env.py](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/engine/rl/pettingzoo_env.py) y usa un modelo `ParallelEnv`.
+El wrapper multiagente vive en
+[../engine/rl/pettingzoo_env.py](../engine/rl/pettingzoo_env.py) y usa un modelo
+`ParallelEnv`.
 
-Se eligio `Parallel` y no `AEC` porque:
-
-- el motor ya procesa acciones de varios actores en el mismo frame
-- la fisica y colisiones son simultaneas, no por turnos
-- evita introducir una semantica artificial distinta del runtime real
+Se eligio `Parallel` porque el motor procesa acciones de varios actores en el
+mismo frame y la fisica se resuelve simultaneamente.
 
 Escena de validacion:
 
-- [multiagent_toy_scene.json](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/levels/multiagent_toy_scene.json)
+- [../levels/multiagent_toy_scene.json](../levels/multiagent_toy_scene.json)
 
 Dataset multiagente:
 
 ```bash
-py -3 tools/multiagent_rollout_dataset.py levels/multiagent_toy_scene.json --episodes 5 --max-steps 80 --seed 123 --out artifacts/multiagent_rollouts.jsonl
+py tools/multiagent_rollout_dataset.py levels/multiagent_toy_scene.json --episodes 5 --max-steps 80 --seed 123 --out artifacts/multiagent_rollouts.jsonl
 ```
 
-## Scenario Generator y Replay
+## Scenario generator y replay
 
-El tooling de escenarios y logging versionado vive en [scenario_dataset_cli.py](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/tools/scenario_dataset_cli.py).
+El tooling de escenarios y logging versionado vive en
+[../tools/scenario_dataset_cli.py](../tools/scenario_dataset_cli.py).
 
 Ejemplos:
 
 ```bash
-py -3 tools/scenario_dataset_cli.py generate-scenarios levels/multiagent_toy_scene.json --count 100 --seed 123 --out-dir artifacts/generated_scenarios
-py -3 tools/scenario_dataset_cli.py run-episodes levels/platformer_test_scene.json --episodes 100 --max-steps 120 --seed 123 --out artifacts/episodes.jsonl --summary-out artifacts/episodes_summary.json
-py -3 tools/scenario_dataset_cli.py replay-episode artifacts/episodes.jsonl --episode-id episode_0000 --out artifacts/replay_episode_0000.json
+py tools/scenario_dataset_cli.py generate-scenarios levels/multiagent_toy_scene.json --count 100 --seed 123 --out-dir artifacts/generated_scenarios
+py tools/scenario_dataset_cli.py run-episodes levels/platformer_test_scene.json --episodes 100 --max-steps 120 --seed 123 --out artifacts/episodes.jsonl --summary-out artifacts/episodes_summary.json
+py tools/scenario_dataset_cli.py replay-episode artifacts/episodes.jsonl --episode-id episode_0000 --out artifacts/replay_episode_0000.json
 ```
 
 Cada step del dataset guarda:
@@ -113,18 +118,14 @@ Cada step del dataset guarda:
 - eventos recientes
 - fingerprint de mundo
 
-## Runner Paralelo
+## Runner paralelo
 
-El runner paralelo headless vive en [parallel_rollout_runner.py](/C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/tools/parallel_rollout_runner.py).
+El runner paralelo headless vive en
+[../tools/parallel_rollout_runner.py](../tools/parallel_rollout_runner.py).
 
-Usa subprocess por worker para:
-
-- aislar fallos
-- limitar mejor CPU por `max_workers`
-- evitar compartir estado mutable entre entornos
-
-Ejemplo:
+Usa subprocess por worker para aislar fallos y evitar compartir estado mutable
+entre entornos.
 
 ```bash
-py -3 tools/parallel_rollout_runner.py levels/multiagent_toy_scene.json --workers 8 --episodes 8 --max-steps 1250 --seed 123 --out-dir artifacts/parallel_rollouts
+py tools/parallel_rollout_runner.py levels/multiagent_toy_scene.json --workers 8 --episodes 8 --max-steps 1250 --seed 123 --out-dir artifacts/parallel_rollouts
 ```

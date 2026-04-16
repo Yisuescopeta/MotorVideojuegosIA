@@ -1,53 +1,92 @@
 # AGENTS.md
 
-## Purpose
+### Regla para reducir consumo de tokens
 
-This repository uses a shared serializable engine model and supports parallel feature work through isolated branches/worktrees.
+- Se directo.
+- No expliques paso a paso lo que haces salvo que se te pida.
+- No des actualizaciones constantes durante la ejecucion.
+- No repitas contexto ya conocido.
+- No desarrolles razonamientos largos si no aportan a la tarea.
+- Prioriza ejecutar y entregar resultado.
+- Al final, entrega solo un resumen corto y util con:
+    1.que cambiaste,
+    2.que archivos tocaste,
+    3.que validaste,
+    4.riesgos restantes si existen.
 
-This file is the default operating contract for coding agents working in this repo.
+## Proposito
 
-Read this file together with:
+Este repositorio usa un modelo de motor serializable compartido y admite trabajo
+iterativo sobre un contrato tecnico comun.
 
+Este archivo es el contrato operativo por defecto para agentes de codigo que
+trabajen en este repo.
+
+Lee este archivo junto con:
+
+- `docs/README.md`
+- `docs/architecture.md`
 - `docs/TECHNICAL.md`
+- `docs/schema_serialization.md`
 - `docs/module_taxonomy.md`
-- `docs/parallel_execution_plan.md`
-- `docs/parallel_prompts_index.md`
+- `docs/api.md`
+- `docs/cli.md`
+- `docs/agents.md`
+- `docs/documentation_governance.md`
 
-## Core repository invariants
+Roadmaps historicos, research, packs de prompts y material antiguo de
+orquestacion estan archivados bajo `docs/archive/`. Son contexto util, no el
+contrato de producto actual.
 
-These rules are not optional.
+## Orden de autoridad
 
-### 1. Persistent source of truth
+Si dos fuentes discrepan, usa este orden:
 
-- `Scene` is the persistent source of truth.
-- `World` is an operational projection.
-- runtime mutations must not become accidental authoring state.
+1. Codigo y tests.
+2. `EngineAPI` publica en `engine/api/`.
+3. CLI oficial `motor` en `motor/cli.py` y `motor/cli_core.py`.
+4. Documentacion canonica enlazada desde `docs/README.md`.
+5. Archivo historico en `docs/archive/` solo como contexto.
 
-### 2. Authoring path
+No promociones una capacidad como actual si no esta respaldada por codigo,
+tests, `EngineAPI` o la CLI oficial `motor`.
 
-- serializable authoring changes must go through `SceneManager` or `EngineAPI`
-- do not introduce new direct-edit paths around shared authoring flows
-- direct mutation of `edit_world` is legacy compatibility only, not the preferred route for new work
+## Invariantes centrales del repositorio
 
-### 3. Public API
+Estas reglas no son opcionales.
 
-- `EngineAPI` is the stable public facade for agents, tests, CLI and automation
-- do not bypass it for public-facing workflows unless the task explicitly requires internal wiring work
+### 1. Fuente persistente de verdad
 
-### 4. Physics contract
+- `Scene` es la fuente persistente de verdad.
+- `World` es una proyeccion operativa.
+- Las mutaciones runtime no deben convertirse en authoring state accidental.
 
-- preserve the common backend contract
-- preserve `legacy_aabb` fallback behavior
-- do not change the public meaning of `query_physics_ray` or `query_physics_aabb` outside dedicated physics work
+### 2. Ruta de authoring
 
-### 5. Component registration
+- Los cambios serializables de authoring deben pasar por `SceneManager` o `EngineAPI`.
+- No introduzcas rutas nuevas de edicion directa alrededor de flujos compartidos de authoring.
+- La mutacion directa de `edit_world` es solo compatibilidad legacy, no la ruta preferida para trabajo nuevo.
 
-- if you add a new public component, register it in `engine/levels/component_registry.py`
-- do not assume public support for unregistered components
+### 3. API publica
 
-## Critical files
+- `EngineAPI` es la fachada publica estable para agentes, tests, CLI y automatizacion.
+- No la saltes en flujos publicos salvo que la tarea requiera explicitamente wiring interno.
 
-Treat these files as frozen unless the task explicitly authorizes them.
+### 4. Contrato fisico
+
+- Conserva el contrato comun de backends.
+- Conserva el fallback `legacy_aabb`.
+- No cambies el significado publico de `query_physics_ray` ni `query_physics_aabb` fuera de trabajo dedicado de fisica.
+
+### 5. Registro de componentes
+
+- Si agregas un componente publico nuevo, registralo en `engine/levels/component_registry.py`.
+- No asumas soporte publico para componentes no registrados.
+
+## Archivos criticos
+
+Trata estos archivos como sensibles salvo que la tarea requiera tocarlos de forma
+explicita y justificada.
 
 - `engine/scenes/scene_manager.py`
 - `engine/core/game.py`
@@ -58,197 +97,76 @@ Treat these files as frozen unless the task explicitly authorizes them.
 - `engine/components/tilemap.py`
 - `engine/levels/component_registry.py`
 
-If you think one of these files must be changed:
+Si crees que uno de estos archivos debe cambiar:
 
-1. stop
-2. explain exactly why
-3. state the minimal required change
-4. do not change it silently
+1. Explica exactamente por que.
+2. Declara el cambio minimo requerido.
+3. No lo cambies en silencio.
+4. No amplifiques el alcance del cambio sin necesidad.
 
-## Branch-aware perimeter rules
+## Reglas generales de alcance
 
-When working in a parallel feature branch, stay strictly inside that branch scope.
+- Mantente dentro del subsistema realmente implicado por la tarea.
+- No mezcles refactors amplios con fixes pequenos o cambios documentales.
+- No amplifiques el alcance “por limpieza” si no aporta al objetivo principal.
+- Si una tarea afecta contrato publico, schema, CLI, `EngineAPI` o invariantes arquitectonicos, actualiza la documentacion canonica correspondiente.
+- Si una tarea parece exigir tocar demasiados subsistemas a la vez, reduce el alcance y prioriza el cambio minimo correcto.
+- Si el trabajo requiere crear un contrato publico nuevo o cambiar un invariante central, detente y deja la necesidad explicitamente indicada.
+- No uses documentos archivados como base para introducir comportamiento actual.
 
-### Branch: `feature/w1-audio2d-runtime`
+## Limites documentales
 
-Allowed:
+- La documentacion canonica vive en la raiz de `docs/` y esta indexada por `docs/README.md`.
+- La documentacion archivada vive bajo `docs/archive/` y no debe tratarse como fuente de verdad actual.
+- El comportamiento publico nuevo debe actualizar docs canonicas, no solo una nota archivada o prompt.
+- No promociones una capacidad como actual salvo que este respaldada por codigo, tests, API publica o la CLI oficial `motor`.
+- No uses documentos de `docs/archive/` para contradecir `README.md`, `docs/architecture.md`, `docs/TECHNICAL.md`, `docs/schema_serialization.md`, `docs/module_taxonomy.md`, `docs/api.md` o `docs/cli.md`.
 
-- `engine/components/audiosource.py`
-- `engine/systems/audio_system.py`
-- `engine/api/_runtime_api.py`
-- audio tests
-- audio docs
+## Cuando debes actualizar documentacion
 
-Forbidden:
+Si tu cambio toca alguno de estos contratos, actualiza tambien su documentacion
+canonica correspondiente:
 
-- `engine/core/game.py`
-- `engine/app/runtime_controller.py`
-- `engine/systems/render_system.py`
-- `engine/scenes/scene_manager.py`
-- `engine/api/_authoring_api.py`
+- Arquitectura o invariantes -> `docs/architecture.md` y `docs/TECHNICAL.md`
+- Schema, migraciones o payloads serializables -> `docs/schema_serialization.md`
+- Clasificacion de subsistemas -> `docs/module_taxonomy.md`
+- API publica -> `docs/api.md` y `docs/agents.md`
+- CLI publica `motor` -> `docs/cli.md`
+- Reorganizacion documental -> `docs/documentation_governance.md` y, si aplica, `docs/documentation_audit.md`
 
-### Branch: `feature/w1-navigation-core`
+No dupliques listas largas de API o CLI en documentos secundarios si ya existe
+una referencia canonica.
 
-Allowed:
+## Capas documentales del repo
 
-- `engine/navigation/*`
-- navigation tests
-- navigation docs
-- minimal API additions in `engine/api/_runtime_api.py` or `engine/api/_authoring_api.py`
-- `engine/levels/component_registry.py` only if a public component is introduced
+Usa esta separacion al crear o mover documentacion:
 
-Forbidden:
+- Entrada: `README.md`, `docs/README.md`
+- Canon: `architecture`, `TECHNICAL`, `schema_serialization`, `module_taxonomy`, `api`, `cli`
+- Referencia operativa: `glossary`, `building` y guias concretas
+- Experimental/tooling: `navigation`, `rl`, `ai_assisted_workflows`
+- Archivo: `docs/archive/`
 
-- `engine/tilemap/*`
-- `engine/components/tilemap.py`
-- `engine/systems/physics_system.py`
-- `engine/systems/collision_system.py`
-- `engine/physics/*`
-- `engine/app/runtime_controller.py`
-- `engine/systems/render_system.py`
-- `engine/core/game.py`
+Si un documento nuevo no encaja en una de estas capas, deten el cambio y
+justifica donde deberia vivir.
 
-### Branch: `feature/w1-animator-authoring`
+## Expectativas de testing
 
-Allowed:
+Antes de reportar finalizacion:
 
-- `engine/components/animator.py`
-- `engine/systems/animation_system.py`
-- `engine/editor/animator_panel.py`
-- animator-specific parts of `engine/api/_authoring_api.py`
-- animator tests
-- animator docs
+- Ejecuta tests enfocados para el subsistema tocado.
+- Ejecuta regresiones adicionales cuando el cambio toque contratos compartidos.
+- No deshabilites tests para obtener salida verde.
+- No afirmes exito de lint, typecheck, seguridad o auditoria si no ejecutaste realmente esos checks.
+- Si un check global falla por deuda previa del repo y no por tu cambio, reportalo como riesgo residual y no como fallo resuelto.
 
-Forbidden:
+### Validaciones enfocadas recomendadas
 
-- `engine/systems/render_system.py`
-- `engine/tilemap/*`
-- `engine/app/runtime_controller.py`
-- `engine/scenes/scene_manager.py`
-- `engine/core/game.py`
-- `engine/inspector/inspector_system.py`
-
-### Branch: `feature/w1-tilemap-authoring`
-
-Allowed:
-
-- `engine/components/tilemap.py`
-- tilemap-specific parts of `engine/api/_authoring_api.py`
-- tilemap editor/inspector files
-- tilemap API tests
-- tilemap serialization tests
-- tilemap docs
-
-Forbidden:
-
-- `engine/systems/render_system.py`
-- `engine/tilemap/collision_builder.py`
-- `engine/app/runtime_controller.py`
-- `engine/systems/physics_system.py`
-- `engine/systems/collision_system.py`
-- `engine/physics/*`
-- `engine/core/game.py`
-- `engine/scenes/scene_manager.py`
-
-### Branch: `feature/w2-tilemap-render`
-
-Allowed:
-
-- `engine/systems/render_system.py`
-- `tests/test_render_graph.py`
-- tilemap render docs
-
-Forbidden:
-
-- `engine/components/tilemap.py`
-- `engine/api/_authoring_api.py`
-- `engine/tilemap/collision_builder.py`
-- `engine/app/runtime_controller.py`
-- `engine/systems/physics_system.py`
-- `engine/core/game.py`
-- `engine/editor/*`
-
-### Branch: `feature/w3-tilemap-collision`
-
-Allowed:
-
-- `engine/tilemap/collision_builder.py`
-- `tests/test_tilemap_collision.py`
-- minimal, justified changes in `engine/app/runtime_controller.py`
-- tilemap collision docs
-
-Forbidden:
-
-- `engine/systems/physics_system.py`
-- `engine/systems/collision_system.py`
-- `engine/physics/*`
-- `engine/systems/render_system.py`
-- `engine/components/tilemap.py`
-- `engine/core/game.py`
-- `engine/scenes/scene_manager.py`
-
-### Branch: `feature/w4-physics-core`
-
-Allowed:
-
-- `engine/systems/physics_system.py`
-- `engine/systems/collision_system.py`
-- `engine/components/rigidbody.py`
-- `engine/physics/*`
-- `engine/app/runtime_controller.py`
-- physics/runtime tests
-- physics docs
-
-Forbidden:
-
-- `engine/components/tilemap.py`
-- `engine/tilemap/collision_builder.py`
-- `engine/systems/render_system.py`
-- `engine/core/game.py`
-- `engine/scenes/scene_manager.py`
-- `engine/editor/*`
-- `engine/api/_authoring_api.py`
-
-## Testing expectations
-
-Before reporting completion:
-
-- run focused tests for the touched subsystem
-- run additional regression tests when the change touches shared contracts
-- do not disable tests to get green output
-- do not claim lint/typecheck/bandit success unless you actually ran them
-
-Minimum commands commonly useful in this repo:
+Cuando toques documentacion, CLI o contratos publicos, prioriza:
 
 ```bash
-python -m unittest discover -s tests
-python -m ruff check engine cli tools main.py
-python -m mypy engine cli tools main.py
-```
+py -m unittest tests.test_repository_governance tests.test_motor_cli_contract tests.test_start_here_ai_coherence -v
+py -m unittest tests.test_official_contract_regression tests.test_parser_registry_alignment tests.test_motor_interface_coherence tests.test_motor_registry_consistency -v
+py -m motor --help
+py -m motor doctor --project . --json
 
-Use narrower test selection when appropriate, but state exactly what you ran.
-
-## Parallel merge discipline
-
-Every final delivery should include:
-
-1. a short technical summary
-2. exact files changed
-3. exact tests added or modified
-4. exact tests run
-5. remaining risks or limitations
-6. confirmation that no forbidden files were touched
-
-## Stop conditions
-
-Stop and ask for review instead of continuing if:
-
-- the task requires a forbidden file
-- the task requires widening the branch perimeter
-- the task would change a core invariant
-- the task would create a new public contract without explicit approval
-
-## Practical rule
-
-Prefer a smaller correct change over a broader risky one.
-Do not optimize for local completion if it harms merge safety.

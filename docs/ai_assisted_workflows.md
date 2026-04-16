@@ -1,5 +1,7 @@
 # AI-Assisted Workflows Foundation
 
+Status: `experimental/tooling`.
+
 ## Scope
 
 This document defines a small foundation layer for AI-assisted workflows in the

@@ -1,0 +1,256 @@
+# EngineAPI publica
+
+`EngineAPI` es la fachada publica estable para agentes, tests, CLI y
+automatizacion. La clase vive en `engine/api/engine_api.py` y delega en
+componentes por dominio.
+
+```python
+from engine.api import EngineAPI
+
+api = EngineAPI(project_root=".")
+try:
+    api.load_scene("levels/main_scene.json")
+    api.create_entity("Player", components={"Transform": {"x": 100, "y": 200}})
+    api.save_scene()
+finally:
+    api.shutdown()
+```
+
+## Constructor y ciclo de vida
+
+```python
+EngineAPI(
+    project_root: str | None = None,
+    global_state_dir: str | None = None,
+    sandbox_paths: bool = False,
+    auto_ensure_project: bool = True,
+    read_only: bool = False,
+)
+```
+
+- `project_root`: root del proyecto. Si no se pasa, usa el cwd.
+- `sandbox_paths`: bloquea rutas fuera del proyecto para operaciones que resuelven paths.
+- `auto_ensure_project`: permite crear/asegurar estructura de proyecto al iniciar.
+- `read_only`: usado por diagnosticos como `motor doctor`.
+- `shutdown()`: solicita cierre del runtime headless.
+
+`EngineAPI` inicializa `HeadlessGame`, `SceneManager`, `ProjectService`,
+`AssetService`, sistemas runtime y el backend fisico opcional `box2d` cuando
+esta disponible.
+
+## Forma de respuesta
+
+Los metodos de authoring y proyecto suelen devolver `ActionResult`:
+
+```python
+{
+    "success": True,
+    "message": "Entity created",
+    "data": {"entity": "Player"}
+}
+```
+
+Los metodos de consulta devuelven diccionarios o listas serializables.
+
+## Authoring
+
+Fuente: `engine/api/_authoring_api.py`.
+
+Transacciones y cambios:
+
+- `begin_transaction(label="transaction")`
+- `apply_change(change)`
+- `commit_transaction()`
+- `rollback_transaction()`
+
+Entidades:
+
+- `create_entity(name, components=None)`
+- `delete_entity(name)`
+- `set_entity_active(name, active)`
+- `set_entity_tag(name, tag)`
+- `set_entity_layer(name, layer)`
+- `set_entity_parent(name, parent_name)`
+- `create_child_entity(parent_name, name, components=None)`
+
+Componentes:
+
+- `add_component(entity_name, component_name, data=None)`
+- `remove_component(entity_name, component_name)`
+- `edit_component(entity_name, component, property, value)`
+- `set_component_enabled(entity_name, component_name, enabled)`
+
+Helpers de componentes oficiales:
+
+- camara: `create_camera2d`, `update_camera2d`, `set_camera_framing`
+- input: `create_input_map`, `update_input_map`
+- audio: `create_audio_source`, `update_audio_source`
+- scripts: `add_script_behaviour`, `update_script_behaviour`, `set_script_public_data`
+- render/fisica: `set_sorting_layers`, `set_render_order`, `set_physics_layer_collision`, `set_physics_backend`, `set_rigidbody_constraints`
+- tilemap: `create_tilemap`, `set_tilemap_tile`, `clear_tilemap_tile`, `get_tilemap`, `get_tilemap_layer`, `create_tilemap_layer`, `update_tilemap_layer`, `delete_tilemap_layer`, `set_tilemap_tile_full`, `bulk_set_tilemap_tiles`, `resize_tilemap`
+- animator: `list_animator_states`, `set_animator_sprite_sheet`, `upsert_animator_state`, `set_animator_state_frames`, `remove_animator_state`, `duplicate_animator_state`, `rename_animator_state`, `set_animator_flip`, `set_animator_speed`, `get_animator_info`, `create_animator_state`
+
+Metadata:
+
+- `set_feature_metadata(key, value)`
+
+Reglas:
+
+- Los metodos de authoring requieren modo `EDIT`.
+- Los componentes publicos deben estar registrados en `engine/levels/component_registry.py`.
+- No uses mutacion directa de `edit_world` para flujos publicos nuevos.
+
+## Runtime e inspeccion
+
+Fuente: `engine/api/_runtime_api.py`.
+
+Control runtime:
+
+- `play()`
+- `stop()`
+- `step(frames=1)`
+- `set_seed(seed)`
+- `undo()`
+- `redo()`
+
+Estado y entidades:
+
+- `get_status()`
+- `list_entities(tag=None, layer=None, active=None)`
+- `get_entity(name)`
+- `get_primary_camera()`
+- `get_recent_events(count=50)`
+
+Input, audio y scripts:
+
+- `get_input_state(entity_name)`
+- `inject_input_state(entity_name, state, frames=1)`
+- `get_audio_state(entity_name)`
+- `play_audio(entity_name)`
+- `stop_audio(entity_name)`
+- `pause_audio(entity_name)`
+- `resume_audio(entity_name)`
+- `get_script_public_data(entity_name)`
+
+Fisica:
+
+- `query_physics_aabb(left, top, right, bottom)`
+- `query_physics_ray(origin_x, origin_y, direction_x, direction_y, max_distance)`
+- `list_physics_backends()`
+- `get_physics_backend_selection()`
+
+`legacy_aabb` debe permanecer disponible como fallback. `box2d` es opcional.
+
+## Workspace, escenas y prefabs
+
+Fuente: `engine/api/_scene_workspace_api.py`.
+
+Carga y guardado:
+
+- `load_level(path)`
+- `load_scene(path)`
+- `open_scene(path)`
+- `create_scene(name)`
+- `save_scene(key_or_path=None, path=None)`
+
+Workspace:
+
+- `list_open_scenes()`
+- `get_active_scene()`
+- `has_active_scene()`
+- `get_active_scene_info()`
+- `activate_scene(key_or_path)`
+- `close_scene(key_or_path, discard_changes=False)`
+- `copy_entity_to_scene(entity_name, target_scene)`
+
+Scene flow:
+
+- `get_feature_metadata()`
+- `get_scene_connections()`
+- `set_scene_link(entity_name, target_path, flow_key="", preview_label="")`
+- `set_scene_connection(key, path)`
+- `set_next_scene(path)`
+- `set_menu_scene(path)`
+- `set_previous_scene(path)`
+- `load_next_scene()`
+- `load_menu_scene()`
+- `load_scene_flow_target(key)`
+
+Prefabs:
+
+- `instantiate_prefab(path, name=None, parent=None, overrides=None)`
+- `unpack_prefab(entity_name)`
+- `apply_prefab_overrides(entity_name)`
+
+## Proyecto y assets
+
+Fuente: `engine/api/_assets_project_api.py`.
+
+Proyecto:
+
+- `list_recent_projects()`
+- `get_project_manifest()`
+- `open_project(path)`
+- `get_editor_state()`
+- `save_editor_state(data)`
+
+Assets:
+
+- `list_project_assets(search="")`
+- `list_project_prefabs()`
+- `list_project_scripts()`
+- `refresh_asset_catalog()`
+- `build_asset_artifacts()`
+- `create_asset_bundle()`
+- `find_assets(search="", asset_kind="", importer="", extensions=None)`
+- `get_asset_reference(locator)`
+- `move_asset(locator, destination_path)`
+- `rename_asset(locator, new_name)`
+- `reimport_asset(locator)`
+- `get_asset_metadata(asset_path)`
+- `save_asset_metadata(asset_path, metadata)`
+- `get_asset_image_size(asset_path)`
+
+Slicing de sprites:
+
+- `create_grid_slices(asset_path, cell_width, cell_height, margin=0, spacing=0, pivot_x=0.5, pivot_y=0.5, naming_prefix=None)`
+- `list_asset_slices(asset_path)`
+- `preview_auto_slices(asset_path, pivot_x=0.5, pivot_y=0.5, naming_prefix=None, alpha_threshold=1, color_tolerance=12)`
+- `create_auto_slices(asset_path, pivot_x=0.5, pivot_y=0.5, naming_prefix=None, alpha_threshold=1)`
+- `save_manual_slices(asset_path, slices, pivot_x=0.5, pivot_y=0.5, naming_prefix=None)`
+
+## Debug y profiler
+
+Fuente: `engine/api/_debug_api.py`.
+
+- `reset_profiler(run_label="default")`
+- `get_profiler_report()`
+- `configure_debug_overlay(draw_colliders=None, draw_labels=None, draw_tile_chunks=None, draw_camera=None, primitives=None)`
+- `clear_debug_primitives()`
+- `get_debug_geometry_dump(viewport_width=800, viewport_height=600)`
+
+## UI serializable
+
+Fuente: `engine/api/_ui_api.py`.
+
+- `create_canvas(name="Canvas", reference_width=800, reference_height=600, sort_order=0)`
+- `create_ui_element(name, parent, rect_transform=None)`
+- `set_rect_transform(entity_name, properties)`
+- `create_ui_text(name, text, parent, rect_transform=None, font_size=24, alignment="center")`
+- `create_ui_button(name, label, parent, rect_transform=None, on_click=None)`
+- `set_button_on_click(entity_name, on_click)`
+- `list_ui_nodes()`
+- `get_ui_layout(entity_name)`
+- `click_ui_button(entity_name)`
+
+## Uso recomendado para agentes
+
+1. Crea `EngineAPI(project_root=".")`.
+2. Carga o crea una escena con metodos de workspace.
+3. Aplica cambios persistentes con metodos de authoring.
+4. Guarda con `save_scene()`.
+5. Usa `play()`, `step()` y consultas runtime para verificacion headless.
+6. Llama `shutdown()` al terminar.
+
+No llames internals privados salvo que la tarea sea explicitamente de wiring
+interno y este dentro del perimetro permitido por [../AGENTS.md](../AGENTS.md).
