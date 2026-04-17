@@ -16,41 +16,41 @@ class AuthoringAPI(EngineAPIComponent):
     """Authoring-oriented entity, component, prefab, and serialized data endpoints."""
 
     def begin_transaction(self, label: str = "transaction") -> ActionResult:
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
-        success = self.scene_manager.begin_transaction(label=label)
+        success = self.scene_authoring.begin_transaction(label=label)
         return self.ok("Transaction started", {"label": label}) if success else self.fail("Transaction start failed")
 
     def apply_change(self, change: Dict[str, Any]) -> ActionResult:
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
-        success = self.scene_manager.apply_change(Change.from_dict(change))
+        success = self.scene_authoring.apply_change(Change.from_dict(change))
         return self.ok("Change applied", {"change": change}) if success else self.fail("Change apply failed")
 
     def commit_transaction(self) -> ActionResult:
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
-        result = self.scene_manager.commit_transaction()
+        result = self.scene_authoring.commit_transaction()
         return self.ok("Transaction committed", result) if result is not None else self.fail("Transaction commit failed")
 
     def rollback_transaction(self) -> ActionResult:
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
-        success = self.scene_manager.rollback_transaction()
+        success = self.scene_authoring.rollback_transaction()
         return self.ok("Transaction rolled back") if success else self.fail("Transaction rollback failed")
 
     def create_entity(self, name: str, components: Optional[Dict[str, Dict[str, Any]]] = None) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
-        success = self.scene_manager.create_entity(name, components=components)
+        success = self.scene_authoring.create_entity(name, components=components)
         return self.ok("Entity created", {"entity": name}) if success else self.fail("Entity already exists")
 
     def delete_entity(self, name: str) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
-        success = self.scene_manager.remove_entity(name)
+        success = self.scene_authoring.remove_entity(name)
         return self.ok("Entity removed", {"entity": name}) if success else self.fail("Entity not found")
 
     def set_entity_active(self, name: str, active: bool) -> ActionResult:
@@ -67,9 +67,9 @@ class AuthoringAPI(EngineAPIComponent):
 
     def set_entity_parent(self, name: str, parent_name: Optional[str]) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
-        success = self.scene_manager.set_entity_parent(name, parent_name)
+        success = self.scene_authoring.set_entity_parent(name, parent_name)
         return self.ok("Entity parent updated", {"entity": name, "parent": parent_name}) if success else self.fail("Entity parent update failed")
 
     def create_child_entity(
@@ -79,30 +79,30 @@ class AuthoringAPI(EngineAPIComponent):
         components: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
-        success = self.scene_manager.create_child_entity(parent_name, name, components=components)
+        success = self.scene_authoring.create_child_entity(parent_name, name, components=components)
         return self.ok("Child entity created", {"entity": name, "parent": parent_name}) if success else self.fail("Child entity creation failed")
 
     def add_component(self, entity_name: str, component_name: str, data: Optional[Dict[str, Any]] = None) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
-        success = self.scene_manager.add_component_to_entity(entity_name, component_name, component_data=data)
+        success = self.scene_authoring.add_component_to_entity(entity_name, component_name, component_data=data)
         return self.ok("Component added", {"entity": entity_name, "component": component_name}) if success else self.fail("Component add failed")
 
     def remove_component(self, entity_name: str, component_name: str) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
-        success = self.scene_manager.remove_component_from_entity(entity_name, component_name)
+        success = self.scene_authoring.remove_component_from_entity(entity_name, component_name)
         return self.ok("Component removed", {"entity": entity_name, "component": component_name}) if success else self.fail("Component remove failed")
 
     def edit_component(self, entity_name: str, component: str, property: str, value: Any) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
-        success = self.scene_manager.apply_edit_to_world(entity_name, component, property, value)
+        success = self.scene_authoring.apply_edit_to_world(entity_name, component, property, value)
         return self.ok("Edit applied") if success else self.fail("Edit failed (check names/property)")
 
     def set_component_enabled(self, entity_name: str, component_name: str, enabled: bool) -> ActionResult:
@@ -268,9 +268,9 @@ class AuthoringAPI(EngineAPIComponent):
 
     def set_feature_metadata(self, key: str, value: Any) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("No scene loaded")
-        if not self.scene_manager.set_feature_metadata(key, value):
+        if not self.scene_authoring.set_feature_metadata(key, value):
             return self.fail("Feature metadata update failed")
         return self.ok("Feature metadata updated", {"key": key})
 
@@ -316,14 +316,15 @@ class AuthoringAPI(EngineAPIComponent):
     def set_physics_backend(self, backend_name: str) -> ActionResult:
         self.ensure_edit_mode()
         normalized = str(backend_name or "").strip() or "legacy_aabb"
-        if self.game is None or not self.game.knows_physics_backend(normalized):
+        runtime = self.runtime
+        if runtime is None or not runtime.knows_physics_backend(normalized):
             return self.fail(f"Unsupported physics backend: {normalized}")
         metadata = self.api.get_feature_metadata()
         physics_2d = dict(metadata.get("physics_2d", {}))
         physics_2d["backend"] = normalized
         result = self.set_feature_metadata("physics_2d", physics_2d)
-        if result["success"] and self.game is not None:
-            self.game.refresh_runtime_physics_backend()
+        if result["success"] and runtime is not None:
+            runtime.refresh_runtime_physics_backend()
         return result
 
     def set_rigidbody_constraints(self, entity_name: str, constraints: list[str]) -> ActionResult:
@@ -356,7 +357,7 @@ class AuthoringAPI(EngineAPIComponent):
         layers: Optional[list[Dict[str, Any]]] = None,
     ) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         has_tilemap = self.load_component_payload(entity_name, "Tilemap") is not None
         tileset_ref = self.api.get_asset_reference(tileset) if tileset else {"guid": "", "path": ""}
@@ -369,9 +370,9 @@ class AuthoringAPI(EngineAPIComponent):
             layers=layers or [],
         ).to_dict()
         success = (
-            self.scene_manager.replace_component_data(entity_name, "Tilemap", payload)
+            self.scene_authoring.replace_component_data(entity_name, "Tilemap", payload)
             if has_tilemap
-            else self.scene_manager.add_component_to_entity(entity_name, "Tilemap", payload)
+            else self.scene_authoring.add_component_to_entity(entity_name, "Tilemap", payload)
         )
         return self.ok("Tilemap updated", {"entity": entity_name}) if success else self.fail("Tilemap update failed")
 
@@ -389,7 +390,7 @@ class AuthoringAPI(EngineAPIComponent):
         custom: Optional[Dict[str, Any]] = None,
     ) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         payload = self._load_tilemap_payload(entity_name)
         if payload is None:
@@ -406,19 +407,19 @@ class AuthoringAPI(EngineAPIComponent):
             tags=tags,
             custom=custom,
         )
-        success = self.scene_manager.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
+        success = self.scene_authoring.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
         return self.ok("Tilemap tile updated", {"entity": entity_name, "layer": layer_name, "x": x, "y": y}) if success else self.fail("Tilemap tile update failed")
 
     def clear_tilemap_tile(self, entity_name: str, layer_name: str, x: int, y: int) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         payload = self._load_tilemap_payload(entity_name)
         if payload is None:
             return self.fail("Tilemap not found")
         tilemap = Tilemap.from_dict(payload)
         tilemap.clear_tile(layer_name, x, y)
-        success = self.scene_manager.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
+        success = self.scene_authoring.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
         return self.ok("Tilemap tile cleared", {"entity": entity_name, "layer": layer_name, "x": x, "y": y}) if success else self.fail("Tilemap tile clear failed")
 
     def get_tilemap(self, entity_name: str) -> Dict[str, Any]:
@@ -448,7 +449,7 @@ class AuthoringAPI(EngineAPIComponent):
         metadata: Dict[str, Any] | None = None,
     ) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         payload = self._load_tilemap_payload(entity_name)
         if payload is None:
@@ -466,7 +467,7 @@ class AuthoringAPI(EngineAPIComponent):
             tilemap_source=source_ref if (source_ref.get("guid") or source_ref.get("path")) else tilemap_source,
             metadata=metadata,
         )
-        success = self.scene_manager.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
+        success = self.scene_authoring.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
         return self.ok("Tilemap layer created", {"entity": entity_name, "layer": layer.get("name")}) if success else self.fail("Tilemap layer creation failed")
 
     def update_tilemap_layer(
@@ -484,7 +485,7 @@ class AuthoringAPI(EngineAPIComponent):
         metadata: Dict[str, Any] | None = None,
     ) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         payload = self._load_tilemap_payload(entity_name)
         if payload is None:
@@ -504,12 +505,12 @@ class AuthoringAPI(EngineAPIComponent):
         )
         if not success:
             return self.fail(f"Layer '{layer_name}' not found")
-        success = self.scene_manager.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
+        success = self.scene_authoring.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
         return self.ok("Tilemap layer updated", {"entity": entity_name, "layer": layer_name}) if success else self.fail("Tilemap layer update failed")
 
     def delete_tilemap_layer(self, entity_name: str, layer_name: str) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         payload = self._load_tilemap_payload(entity_name)
         if payload is None:
@@ -518,7 +519,7 @@ class AuthoringAPI(EngineAPIComponent):
         success = tilemap.remove_layer(layer_name)
         if not success:
             return self.fail(f"Layer '{layer_name}' not found")
-        success = self.scene_manager.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
+        success = self.scene_authoring.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
         return self.ok("Tilemap layer deleted", {"entity": entity_name, "layer": layer_name}) if success else self.fail("Tilemap layer deletion failed")
 
     def set_tilemap_tile_full(
@@ -538,7 +539,7 @@ class AuthoringAPI(EngineAPIComponent):
         terrain_type: str = "",
     ) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         payload = self._load_tilemap_payload(entity_name)
         if payload is None:
@@ -558,7 +559,7 @@ class AuthoringAPI(EngineAPIComponent):
             animation_id=animation_id,
             terrain_type=terrain_type,
         )
-        success = self.scene_manager.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
+        success = self.scene_authoring.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
         return self.ok("Tilemap tile full updated", {"entity": entity_name, "layer": layer_name, "x": x, "y": y}) if success else self.fail("Tilemap tile update failed")
 
     def bulk_set_tilemap_tiles(
@@ -568,7 +569,7 @@ class AuthoringAPI(EngineAPIComponent):
         tiles: list[Dict[str, Any]],
     ) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         payload = self._load_tilemap_payload(entity_name)
         if payload is None:
@@ -595,7 +596,7 @@ class AuthoringAPI(EngineAPIComponent):
                 terrain_type=str(tile_spec.get("terrain_type", "")),
             )
             count += 1
-        success = self.scene_manager.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
+        success = self.scene_authoring.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
         return self.ok("Bulk tiles set", {"entity": entity_name, "layer": layer_name, "count": count}) if success else self.fail("Bulk tile update failed")
 
     def resize_tilemap(
@@ -608,14 +609,14 @@ class AuthoringAPI(EngineAPIComponent):
         offset_y: int = 0,
     ) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         payload = self._load_tilemap_payload(entity_name)
         if payload is None:
             return self.fail("Tilemap not found")
         tilemap = Tilemap.from_dict(payload)
         tilemap.resize(cell_width, cell_height, offset_x=offset_x, offset_y=offset_y)
-        success = self.scene_manager.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
+        success = self.scene_authoring.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
         return self.ok("Tilemap resized", {"entity": entity_name, "cell_width": cell_width, "cell_height": cell_height}) if success else self.fail("Tilemap resize failed")
 
     def list_animator_states(self, entity_name: str) -> list[Dict[str, Any]]:
@@ -648,7 +649,7 @@ class AuthoringAPI(EngineAPIComponent):
         set_default: bool = False,
     ) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         if not state_name.strip():
             return self.fail("Animator state name is required")
@@ -666,7 +667,7 @@ class AuthoringAPI(EngineAPIComponent):
             payload["default_state"] = state_name
         if payload.get("current_state") not in animations:
             payload["current_state"] = payload["default_state"]
-        success = self.scene_manager.replace_component_data(entity_name, "Animator", payload)
+        success = self.scene_authoring.replace_component_data(entity_name, "Animator", payload)
         return self.ok("Animator state updated", {"entity": entity_name, "state": state_name}) if success else self.fail("Animator state update failed")
 
     def set_animator_state_frames(
@@ -680,7 +681,7 @@ class AuthoringAPI(EngineAPIComponent):
         set_default: bool = False,
     ) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         payload = self._load_animator_payload(entity_name)
         if payload is None:
@@ -701,12 +702,12 @@ class AuthoringAPI(EngineAPIComponent):
             payload["default_state"] = state_name
         if payload.get("current_state") not in animations:
             payload["current_state"] = payload["default_state"]
-        success = self.scene_manager.replace_component_data(entity_name, "Animator", payload)
+        success = self.scene_authoring.replace_component_data(entity_name, "Animator", payload)
         return self.ok("Animator frames updated", {"entity": entity_name, "state": state_name}) if success else self.fail("Animator frames update failed")
 
     def remove_animator_state(self, entity_name: str, state_name: str) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         payload = self._load_animator_payload(entity_name)
         if payload is None:
@@ -726,12 +727,12 @@ class AuthoringAPI(EngineAPIComponent):
         for animation in animations.values():
             if animation.get("on_complete") == state_name:
                 animation["on_complete"] = None
-        success = self.scene_manager.replace_component_data(entity_name, "Animator", payload)
+        success = self.scene_authoring.replace_component_data(entity_name, "Animator", payload)
         return self.ok("Animator state removed", {"entity": entity_name, "state": state_name}) if success else self.fail("Animator state remove failed")
 
     def duplicate_animator_state(self, entity_name: str, source_state: str, new_state_name: Optional[str] = None) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         if not source_state.strip():
             return self.fail("Source state name is required")
@@ -750,12 +751,12 @@ class AuthoringAPI(EngineAPIComponent):
             suffix += 1
 
         animations[final_name] = copy.deepcopy(animations[source_state])
-        success = self.scene_manager.replace_component_data(entity_name, "Animator", payload)
+        success = self.scene_authoring.replace_component_data(entity_name, "Animator", payload)
         return self.ok("Animator state duplicated", {"entity": entity_name, "state": final_name}) if success else self.fail("Animator state duplicate failed")
 
     def rename_animator_state(self, entity_name: str, old_name: str, new_name: str) -> ActionResult:
         self.ensure_edit_mode()
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         if not old_name.strip() or not new_name.strip():
             return self.fail("State names cannot be empty")
@@ -779,7 +780,7 @@ class AuthoringAPI(EngineAPIComponent):
             if animation.get("on_complete") == old_name:
                 animation["on_complete"] = new_name
 
-        success = self.scene_manager.replace_component_data(entity_name, "Animator", payload)
+        success = self.scene_authoring.replace_component_data(entity_name, "Animator", payload)
         return self.ok("Animator state renamed", {"entity": entity_name, "state": new_name}) if success else self.fail("Animator state rename failed")
 
     def set_animator_flip(self, entity_name: str, flip_x: Optional[bool] = None, flip_y: Optional[bool] = None) -> ActionResult:
@@ -791,9 +792,9 @@ class AuthoringAPI(EngineAPIComponent):
             animator_data["flip_x"] = bool(flip_x)
         if flip_y is not None:
             animator_data["flip_y"] = bool(flip_y)
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
-        success = self.scene_manager.replace_component_data(entity_name, "Animator", animator_data)
+        success = self.scene_authoring.replace_component_data(entity_name, "Animator", animator_data)
         return self.ok("Animator flip updated", {"entity": entity_name}) if success else self.fail("Animator flip update failed")
 
     def set_animator_speed(self, entity_name: str, speed: float) -> ActionResult:
@@ -802,9 +803,9 @@ class AuthoringAPI(EngineAPIComponent):
         if animator_data is None:
             return self.fail("Animator not found")
         animator_data["speed"] = max(0.01, float(speed))
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
-        success = self.scene_manager.replace_component_data(entity_name, "Animator", animator_data)
+        success = self.scene_authoring.replace_component_data(entity_name, "Animator", animator_data)
         return self.ok("Animator speed updated", {"entity": entity_name, "speed": animator_data["speed"]}) if success else self.fail("Animator speed update failed")
 
     def get_animator_info(self, entity_name: str) -> Dict[str, Any]:
@@ -860,9 +861,9 @@ class AuthoringAPI(EngineAPIComponent):
         )
 
     def _apply_entity_property(self, name: str, property_name: str, value: Any, message: str) -> ActionResult:
-        if self.scene_manager is None:
+        if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
-        success = self.scene_manager.update_entity_property(name, property_name, value)
+        success = self.scene_authoring.update_entity_property(name, property_name, value)
         return self.ok(message, {"entity": name}) if success else self.fail("Entity property update failed")
 
     def _load_animator_payload(self, entity_name: str) -> Optional[Dict[str, Any]]:

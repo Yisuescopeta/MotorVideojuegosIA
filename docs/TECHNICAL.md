@@ -66,11 +66,25 @@ estructurales y prefabs.
 Las rutas recomendadas para cambios persistentes son `SceneManager` y
 `EngineAPI`. `sync_from_edit_world()` queda como compatibilidad legacy.
 
+Base tecnica interna compartida:
+
+- `engine/scenes/contracts.py` separa `SceneRuntimePort`,
+  `SceneAuthoringPort` y `SceneWorkspacePort` como puertos internos sobre
+  `SceneManager`.
+- `engine/core/runtime_contracts.py` encapsula el wiring requerido por
+  `RuntimeController` en `RuntimeControllerContext`.
+- `engine/api/_contracts.py` tipa el bundle interno que `EngineAPI` expone a
+  sus colaboradores privados.
+
 ## EngineAPI publica
 
 `EngineAPI` es la fachada estable para agentes, tests, CLI y automatizacion.
 Internamente delega por dominios: authoring, runtime, workspace y scene flow,
 assets/proyecto, debug/profiler y UI serializable.
+
+Desde Fase 1, esos colaboradores privados consumen puertos tipados de escena y
+runtime en vez de depender de `Game` o `SceneManager` completos cuando no hace
+falta. La semantica publica no cambia.
 
 ```python
 from engine.api import EngineAPI
