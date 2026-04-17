@@ -66,6 +66,21 @@ estructurales y prefabs.
 Las rutas recomendadas para cambios persistentes son `SceneManager` y
 `EngineAPI`. `sync_from_edit_world()` queda como compatibilidad legacy.
 
+## Foundation del editor
+
+La foundation visual del editor vive en `engine/editor/` y se organiza alrededor
+de `EditorShell`, `EditorShellState`, `EditorPanelSlots` y
+`EditorSelectionState`.
+
+- `EditorShell` compone layout, jerarquia y paneles montables.
+- `EditorLayout` sigue siendo la superficie visual compatible, pero ya no crea
+  por si mismo todos los paneles del shell.
+- `EditorSelectionState` es estado efimero compartido entre shell, jerarquia e
+  interaccion; no reemplaza a `SceneManager`, `World` ni a la ruta canonica de
+  authoring.
+- El runtime sigue orquestado por `Game`; la costura editor/runtime solo monta
+  la foundation del editor y no redefine contratos del motor.
+
 ## EngineAPI publica
 
 `EngineAPI` es la fachada estable para agentes, tests, CLI y automatizacion.

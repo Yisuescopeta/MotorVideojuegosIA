@@ -41,6 +41,8 @@ from engine.debug.timeline import Timeline
 from engine.editor.animator_panel import AnimatorPanel
 from engine.editor.cursor_manager import CustomCursorRenderer
 from engine.editor.editor_layout import EditorLayout
+from engine.editor.editor_shell import EditorShell
+from engine.editor.editor_shell_state import EditorPanelSlots
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
 from engine.editor.gizmo_system import GizmoSystem
 from engine.editor.hierarchy_panel import HierarchyPanel
@@ -128,12 +130,16 @@ class Game:
         self.timeline: "Timeline" = Timeline(capacity=TIMELINE_CAPACITY)
         
         # Editor Panels
-        self.hierarchy_panel: Optional["HierarchyPanel"] = HierarchyPanel()
         self.animator_panel: Optional["AnimatorPanel"] = AnimatorPanel()
         self.sprite_editor_modal: Optional["SpriteEditorModal"] = SpriteEditorModal()
         self.terminal_panel: Optional["TerminalPanel"] = TerminalPanel()
+        self.editor_shell: EditorShell = EditorShell(
+            panel_slots=EditorPanelSlots(terminal_panel=self.terminal_panel),
+        )
+        self._editor_selection_state = self.editor_shell.selection_state
+        self.hierarchy_panel: Optional["HierarchyPanel"] = self.editor_shell.hierarchy_panel
         self.gizmo_system: Optional["GizmoSystem"] = GizmoSystem()
-        self.editor_layout: Optional["EditorLayout"] = None
+        self.editor_layout: Optional["EditorLayout"] = self.editor_shell.layout
         self._cursor_renderer: CustomCursorRenderer = CustomCursorRenderer()
         
         # Gestión de escenas
@@ -261,6 +267,7 @@ class Game:
             get_project_service=lambda: self._project_service,
             get_scene_manager=lambda: self._scene_manager,
             get_editor_layout=lambda: self.editor_layout,
+            get_editor_selection=lambda: self._editor_selection_state,
             get_state=lambda: self._state,
             get_current_scene_path=lambda: self.current_scene_path,
             set_current_scene_path=lambda value: setattr(self, "current_scene_path", value),
@@ -290,6 +297,7 @@ class Game:
         self._editor_interaction_controller = EditorInteractionController(
             get_state=lambda: self._state,
             get_editor_layout=lambda: self.editor_layout,
+            get_editor_selection=lambda: self._editor_selection_state,
             get_scene_manager=lambda: self._scene_manager,
             get_selection_system=lambda: self._selection_system,
             get_gizmo_system=lambda: self.gizmo_system,
@@ -300,7 +308,24 @@ class Game:
             get_current_scene_viewport_size=self._current_scene_viewport_size,
             get_current_viewport_size=self._current_viewport_size,
         )
-    
+
+    def _sync_editor_shell(self) -> None:
+        if self.editor_layout is not None and self.editor_shell.layout is None:
+            self.editor_shell.state = self.editor_layout.shell_state
+            self.editor_shell.panel_slots = self.editor_layout.panel_slots
+            self.editor_shell.attach_layout(self.editor_layout)
+        elif self.editor_layout is not None and self.editor_shell.layout is not self.editor_layout:
+            self.editor_shell.attach_layout(self.editor_layout)
+        elif self.editor_layout is None and self.editor_shell.layout is not None:
+            self.editor_layout = self.editor_shell.layout
+        self.editor_shell.bind_terminal_panel(self.terminal_panel)
+        self.hierarchy_panel = self.editor_shell.hierarchy_panel
+        self.hierarchy_panel.set_selection_state(self._editor_selection_state)
+        if self._scene_manager is not None:
+            self.editor_shell.bind_scene_manager(self._scene_manager)
+        if self._project_service is not None:
+            self.editor_shell.bind_project_service(self._project_service)
+
     # === PROPIEDADES ===
     
     @property
@@ -477,6 +502,7 @@ class Game:
     def set_scene_manager(self, manager: "SceneManager") -> None:
         self._scene_manager = manager
         self._scene_manager.set_history_manager(self._history_manager)
+        self._sync_editor_shell()
         # Conectar inspector al scene_manager para edición
         if self._inspector_system is not None:
             self._inspector_system.set_scene_manager(manager)
@@ -486,13 +512,7 @@ class Game:
             self.sprite_editor_modal.set_history_manager(self._history_manager)
         if self._script_behaviour_system is not None:
             self._script_behaviour_system.set_scene_manager(manager)
-        if self.hierarchy_panel is not None:
-            self.hierarchy_panel.set_scene_manager(manager)
         if self.editor_layout is not None:
-            if getattr(self.editor_layout, "flow_panel", None) is not None:
-                self.editor_layout.flow_panel.set_scene_manager(manager)
-            if getattr(self.editor_layout, "flow_workspace_panel", None) is not None:
-                self.editor_layout.flow_workspace_panel.set_scene_manager(manager)
             self.editor_layout.set_scene_tabs(manager.list_open_scenes(), manager.active_scene_key)
             
     def set_selection_system(self, system: "SelectionSystem") -> None:
@@ -525,6 +545,7 @@ class Game:
 
     def set_project_service(self, service: ProjectService) -> None:
         self._project_service = service
+        self._sync_editor_shell()
         if self._ui_render_system is not None and hasattr(self._ui_render_system, "set_project_service"):
             self._ui_render_system.set_project_service(service)
         self._project_workspace_controller.set_project_service(service)
@@ -725,24 +746,18 @@ class Game:
         
         # Crear EditorLayout (necesita ventana Raylib inicializada)
         if self.editor_layout is None:
-            self.editor_layout = EditorLayout(self.width, self.height)
-            self.editor_layout.terminal_panel = self.terminal_panel
+            self.editor_layout = self.editor_shell.ensure_layout(self.width, self.height)
+            self.editor_shell.bind_terminal_panel(self.terminal_panel)
             if self._project_service is not None:
                 self._project_workspace_controller.refresh_launcher_projects()
                 if self._project_service.has_project:
-                    self.editor_layout.project_panel.set_project_service(self._project_service)
-                    if getattr(self.editor_layout, "flow_panel", None) is not None:
-                        self.editor_layout.flow_panel.set_project_service(self._project_service)
-                    if getattr(self.editor_layout, "flow_workspace_panel", None) is not None:
-                        self.editor_layout.flow_workspace_panel.set_project_service(self._project_service)
+                    self.editor_shell.bind_project_service(self._project_service)
                 else:
                     self.editor_layout.show_project_launcher = True
             if self._scene_manager is not None:
-                if getattr(self.editor_layout, "flow_panel", None) is not None:
-                    self.editor_layout.flow_panel.set_scene_manager(self._scene_manager)
-                if getattr(self.editor_layout, "flow_workspace_panel", None) is not None:
-                    self.editor_layout.flow_workspace_panel.set_scene_manager(self._scene_manager)
+                self.editor_shell.bind_scene_manager(self._scene_manager)
                 self.editor_layout.set_scene_tabs(self._scene_manager.list_open_scenes(), self._scene_manager.active_scene_key)
+        self._sync_editor_shell()
         
         self.running = True
         print(f"[INFO] Motor iniciado en modo: {self._state}")

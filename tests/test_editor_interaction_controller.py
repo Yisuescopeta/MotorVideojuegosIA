@@ -10,6 +10,7 @@ import pyray as rl
 from engine.app.editor_interaction_controller import EditorInteractionController
 from engine.core.engine_state import EngineState
 from engine.editor.cursor_manager import CursorVisualState
+from engine.editor.editor_selection import EditorSelectionState
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
 from engine.levels.component_registry import create_default_registry
 from engine.project.project_service import ProjectService
@@ -38,6 +39,7 @@ class EditorInteractionControllerTests(unittest.TestCase):
         self.inspector_system.handle_tilemap_scene_input.return_value = False
         self.inspector_system.get_tilemap_preview_snapshot.return_value = None
         self.history_manager = Mock()
+        self.editor_selection = EditorSelectionState()
         self.layout = Mock()
         self.layout.project_panel = SimpleNamespace(
             dragging_file=None,
@@ -65,6 +67,7 @@ class EditorInteractionControllerTests(unittest.TestCase):
         self.controller = EditorInteractionController(
             get_state=lambda: self.state,
             get_editor_layout=lambda: self.layout,
+            get_editor_selection=lambda: self.editor_selection,
             get_scene_manager=lambda: self.scene_manager,
             get_selection_system=lambda: self.selection_system,
             get_gizmo_system=lambda: self.gizmo_system,
@@ -99,6 +102,18 @@ class EditorInteractionControllerTests(unittest.TestCase):
         self.ui_system.ensure_layout_cache.assert_called_once_with(world, (320.0, 180.0))
         self.selection_system.update.assert_not_called()
         self.scene_manager.set_selected_entity.assert_called_with("PlayButton")
+        self.assertEqual(self.editor_selection.entity_name, "PlayButton")
+
+    def test_handle_selection_and_gizmos_updates_shared_selection_state_from_selection_system(self) -> None:
+        world = Mock()
+        self.ui_system.should_render_scene_view_ui.return_value = False
+        self.selection_system.update.return_value = "Hero"
+
+        with patch("pyray.is_mouse_button_pressed", return_value=True):
+            self.controller.handle_selection_and_gizmos(world)
+
+        self.scene_manager.set_selected_entity.assert_called_with("Hero")
+        self.assertEqual(self.editor_selection.entity_name, "Hero")
 
     def test_handle_selection_and_gizmos_ignores_hidden_scene_ui(self) -> None:
         world = Mock()
@@ -406,6 +421,7 @@ class EditorInteractionControllerTests(unittest.TestCase):
         controller = EditorInteractionController(
             get_state=lambda: EngineState.EDIT,
             get_editor_layout=lambda: layout,
+            get_editor_selection=lambda: EditorSelectionState(),
             get_scene_manager=lambda: scene_manager,
             get_selection_system=lambda: Mock(),
             get_gizmo_system=lambda: Mock(),
