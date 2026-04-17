@@ -204,6 +204,9 @@ class InspectorSystem:
         self._tilemap_authoring.layer_name = self._resolve_tilemap_layer_name(payload, preferred_layer)
         if previous_entity != target_name or previous_layer != self._tilemap_authoring.layer_name:
             self._tilemap_authoring.palette_scroll = 0.0
+            self._tilemap_authoring.palette_selected_index = 0
+            self._tilemap_authoring.tile_id = ""
+            self._tilemap_authoring.source = {}
         self._synchronize_tilemap_tool_selection(world, target_name)
         return True
 
