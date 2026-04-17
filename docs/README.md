@@ -28,6 +28,7 @@ experimental y archivo historico. Si hay conflicto, manda este orden:
 | Que es experimental | [module_taxonomy.md](module_taxonomy.md) |
 | Que interfaz publica existe | [api.md](api.md) y [cli.md](cli.md) |
 | Donde mirar arquitectura | [architecture.md](architecture.md) y [TECHNICAL.md](TECHNICAL.md) |
+| Como trabajar por ramas y workspaces | [roadmap/master-plan.md](roadmap/master-plan.md), [architecture/branch-strategy.md](architecture/branch-strategy.md) y [architecture/module-boundaries.md](architecture/module-boundaries.md) |
 | Donde mirar automatizacion o IA | [agents.md](agents.md), [ai_assisted_workflows.md](ai_assisted_workflows.md) y [MOTOR_AI_JSON_CONTRACT.md](MOTOR_AI_JSON_CONTRACT.md) |
 | Donde poner o cambiar docs | [documentation_governance.md](documentation_governance.md) |
 
@@ -49,11 +50,25 @@ contradecirlos.
 - [glossary.md](glossary.md) - conceptos clave para lectores frios.
 - [building.md](building.md) - build y distribucion Windows.
 
+## Desarrollo paralelo
+
+Estos documentos coordinan ramas, workspaces e integracion. Son referencia
+operativa y no prueba de capacidades implementadas del motor.
+
+- [roadmap/master-plan.md](roadmap/master-plan.md) - plan maestro por fases para abrir trabajo paralelo.
+- [roadmap/milestone-template.md](roadmap/milestone-template.md) - plantilla de milestone por rama.
+- [roadmap/rfc-lite-template.md](roadmap/rfc-lite-template.md) - decision minima previa a ramas grandes.
+- [architecture/branch-strategy.md](architecture/branch-strategy.md) - convencion de ramas y workspaces.
+- [architecture/module-boundaries.md](architecture/module-boundaries.md) - mapa practico de carpetas y subsistemas.
+- [architecture/integration-strategy.md](architecture/integration-strategy.md) - integracion temporal por dominios.
+- [ai/codex-prompt-guidelines.md](ai/codex-prompt-guidelines.md) - formato recomendado de prompt para Codex.
+
 ## Agentes e IA
 
 - [agents.md](agents.md) - guia breve para agentes trabajando en este repo.
 - [../AGENTS.md](../AGENTS.md) - contrato operativo de agentes y reglas de perimetro.
 - [ai_assisted_workflows.md](ai_assisted_workflows.md) - base experimental para flujos asistidos por IA.
+- [ai/codex-prompt-guidelines.md](ai/codex-prompt-guidelines.md) - formato de prompt para trabajo acotado con Codex.
 
 Los artefactos `motor_ai.json` y `START_HERE_AI.md` se generan por proyecto con:
 
@@ -77,6 +92,7 @@ el contrato de `core obligatorio`.
 
 - [documentation_governance.md](documentation_governance.md) - reglas para crear, mover y mantener documentacion.
 - [documentation_audit.md](documentation_audit.md) - registro de auditoria y decisiones de reorganizacion; no es contrato funcional principal.
+- [roadmap/master-plan.md](roadmap/master-plan.md) - planificacion operativa futura; no evidencia de features implementadas.
 - [../CONTRIBUTING.md](../CONTRIBUTING.md) - contribucion tecnica y documental.
 - [../SECURITY.md](../SECURITY.md) - reporte de vulnerabilidades.
 - [../LICENSE](../LICENSE) - licencia.

@@ -22,7 +22,8 @@ tests, `EngineAPI` o la CLI oficial `motor`.
 | Capa | Ubicacion | Uso |
 |---|---|---|
 | Entrada | [../README.md](../README.md), [README.md](README.md) | Orientacion rapida y mapa de lectura. |
-| Canon | `architecture`, `TECHNICAL`, schema, taxonomia, API, CLI | Contratos vigentes del motor. |
+| Canon | `architecture.md`, `TECHNICAL.md`, `schema_serialization.md`, `module_taxonomy.md`, `api.md`, `cli.md` | Contratos vigentes del motor. |
+| Planificacion/gobernanza operativa | `roadmap/`, `architecture/branch-strategy.md`, `architecture/module-boundaries.md`, `architecture/integration-strategy.md`, `ai/codex-prompt-guidelines.md` | Coordina ramas, workspaces, integracion y prompts sin redefinir contrato funcional. |
 | Referencia operativa | `building`, `glossary`, guias concretas | Ayuda practica que no redefine contratos. |
 | Experimental/tooling | `navigation`, `rl`, `ai_assisted_workflows` | Tooling real fuera del core obligatorio. |
 | Archivo | [archive/](archive/) | Contexto historico no normativo. |
@@ -37,6 +38,7 @@ tests, `EngineAPI` o la CLI oficial `motor`.
 | Cambio en CLI `motor` | [cli.md](cli.md), [MOTOR_AI_JSON_CONTRACT.md](MOTOR_AI_JSON_CONTRACT.md) si afecta bootstrap/capabilities, tests CLI. |
 | Promocion o degradacion de subsistema | [module_taxonomy.md](module_taxonomy.md), [architecture.md](architecture.md), docs del subsistema. |
 | Nueva capacidad experimental | Doc propio con `Estado: experimental/tooling` o seccion en doc experimental existente. |
+| Nueva regla de ramas, workspaces o integracion | `docs/README.md`, esta guia, `docs/documentation_audit.md` y la doc operativa correspondiente en `roadmap/`, `architecture/` o `ai/`. |
 | Nuevo documento principal | [README.md](README.md), esta guia y, si aplica, [../README.md](../README.md). |
 | Reorganizacion documental | [documentation_audit.md](documentation_audit.md) como registro de decisiones. |
 
@@ -51,6 +53,9 @@ tests, `EngineAPI` o la CLI oficial `motor`.
 - No mover material historico a canon sin verificar codigo, tests e interfaz publica.
 - Si un termino aparece en varios documentos y puede confundir a lectores frios,
   agregarlo o ajustarlo en [glossary.md](glossary.md).
+- `docs/roadmap/` coordina trabajo futuro y no prueba capacidades implementadas.
+- `docs/archive/roadmaps/` sigue siendo historico; no debe reabsorberse como
+  canon ni como plan operativo vivo.
 
 ## Checklist para PRs de documentacion
 
