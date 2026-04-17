@@ -34,6 +34,19 @@ El runtime usa `Game` o `HeadlessGame` para coordinar sistemas sobre el mundo
 activo. Los sistemas actuales incluyen render, fisica, colisiones, animacion,
 input, controladores de personaje/jugador, scripts, audio y UI.
 
+`Animator` mantiene compatibilidad con el flujo actual basado en clips por
+nombre (`animations`, `default_state`, `current_state`, `play()` y
+`AnimationData.on_complete`) y ahora admite foundation opcional de state
+machine de una sola capa:
+
+- `parameters`: definiciones serializables de `bool`, `int`, `float` y `trigger`
+- `state_machine`: `entry_state` y nodos por estado con `transitions`
+- `transitions`: condiciones declarativas, `has_exit_time`, `exit_time` y
+  `force_restart`
+
+Los valores runtime de parametros y triggers no forman parte del payload
+serializable del authoring.
+
 `RenderSystem` mantiene render graph, sorting layers, batching, tilemap chunks,
 debug geometry y render targets con fallback seguro cuando no hay backend
 grafico disponible.

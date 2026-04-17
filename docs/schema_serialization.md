@@ -48,6 +48,20 @@ sprite (`*_sprite`, `*_slice`, `image_tint`, `preserve_aspect`) sin romper el
 payload legacy basado en colores. `UIImage` serializa `sprite`, `slice_name`,
 `tint` y `preserve_aspect`.
 
+En `Animator`, el payload vigente sigue usando `animations`, `default_state`,
+`current_state`, `sprite_sheet` y `sprite_sheet_path`. Como foundation opcional
+de Fase 6 puede incluir tambien:
+
+- `parameters`: mapa `name -> {type, default}` con tipos `bool`, `int`, `float`
+  y `trigger`
+- `state_machine`: `entry_state` y `states`
+- `states.<name>.transitions`: lista con `to`, `conditions`, `has_exit_time`,
+  `exit_time`, `force_restart` y `name` opcional
+- `conditions`: `parameter`, `operator`, `value`
+
+Los valores runtime de parametros y triggers no se serializan; solo se
+serializa su configuracion declarativa.
+
 ## Migraciones automaticas
 
 ### Escenas
