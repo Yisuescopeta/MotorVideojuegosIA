@@ -152,6 +152,7 @@ class ProjectWorkspaceControllerTests(unittest.TestCase):
         self.hot_reload_manager = Mock()
         self.timeline = Mock()
         self.render_system = Mock()
+        self.ui_render_system = Mock()
         self.audio_system = Mock()
         self.script_behaviour_system = Mock()
         self.rule_system = Mock()
@@ -179,6 +180,7 @@ class ProjectWorkspaceControllerTests(unittest.TestCase):
             hot_reload_manager=self.hot_reload_manager,
             timeline=self.timeline,
             get_render_system=lambda: self.render_system,
+            get_ui_render_system=lambda: self.ui_render_system,
             get_audio_system=lambda: self.audio_system,
             get_script_behaviour_system=lambda: self.script_behaviour_system,
             get_rule_system=lambda: self.rule_system,
@@ -203,6 +205,7 @@ class ProjectWorkspaceControllerTests(unittest.TestCase):
         self.assertIsNotNone(self.layout.recent_projects)
         self.assertIsNotNone(self.layout.project_scene_entries)
         self.render_system.set_project_service.assert_called_once_with(self.project_service)
+        self.ui_render_system.set_project_service.assert_called_once_with(self.project_service)
         self.audio_system.set_project_service.assert_called_once_with(self.project_service)
         self.animator_panel.set_project_service.assert_called_once_with(self.project_service)
         self.sprite_editor_modal.set_project_service.assert_called_once_with(self.project_service)
@@ -284,6 +287,13 @@ class ProjectWorkspaceControllerTests(unittest.TestCase):
             1.5,
         )
         self.sync_scene_workspace_ui.assert_called_once_with(True)
+
+    def test_reset_project_bound_state_resets_ui_render_resources(self) -> None:
+        self.controller.reset_project_bound_state()
+
+        self.render_system.reset_project_resources.assert_called_once()
+        self.ui_render_system.reset_project_resources.assert_called_once()
+        self.timeline.clear.assert_called_once()
 
     def test_open_project_resets_workspace_and_focuses_scene(self) -> None:
         with patch.object(self.controller, "restore_workspace_from_project_state", return_value=False), patch.object(

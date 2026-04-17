@@ -5,7 +5,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from engine.api import EngineAPI
+from engine.components.uibutton import UIButton
 from engine.editor.cursor_manager import CursorVisualState
+from engine.systems.ui_render_system import UIRenderSystem
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -71,6 +73,80 @@ class CanvasUISystemTests(unittest.TestCase):
 
         ui_nodes = {entity["name"] for entity in self.api.list_ui_nodes()}
         self.assertEqual(ui_nodes, {"CanvasRoot", "Title", "PlayButton"})
+
+    def test_ui_button_roundtrip_preserves_optional_sprite_fields(self) -> None:
+        scene_path = self._write_scene(
+            "ui_button_sprite_roundtrip.json",
+            {
+                "name": "UI Button Sprite Roundtrip",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+
+        self.assertTrue(self.api.create_canvas(name="CanvasRoot")["success"])
+        self.assertTrue(
+            self.api.create_ui_button(
+                "PlayButton",
+                "Play",
+                "CanvasRoot",
+                {"width": 280.0, "height": 84.0},
+                {"type": "emit_event", "name": "ui.play_clicked"},
+                normal_sprite={"path": "assets/ui/button_normal.png"},
+                pressed_sprite={"path": "assets/ui/button_pressed.png"},
+                normal_slice="idle",
+                pressed_slice="pressed",
+                preserve_aspect=False,
+            )["success"]
+        )
+        self.api.game.save_current_scene()
+
+        raw = json.loads(scene_path.read_text(encoding="utf-8"))
+        button = next(entity for entity in raw["entities"] if entity["name"] == "PlayButton")
+        payload = button["components"]["UIButton"]
+
+        self.assertEqual(payload["normal_sprite"], {"guid": "", "path": "assets/ui/button_normal.png"})
+        self.assertEqual(payload["pressed_sprite"], {"guid": "", "path": "assets/ui/button_pressed.png"})
+        self.assertEqual(payload["normal_slice"], "idle")
+        self.assertEqual(payload["pressed_slice"], "pressed")
+        self.assertFalse(payload["preserve_aspect"])
+
+    def test_create_ui_image_is_listed_as_ui_node_and_serialized(self) -> None:
+        scene_path = self._write_scene(
+            "ui_image.json",
+            {
+                "name": "UI Image",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+
+        self.assertTrue(self.api.create_canvas(name="CanvasRoot")["success"])
+        self.assertTrue(
+            self.api.create_ui_image(
+                "TitleBanner",
+                "CanvasRoot",
+                {"path": "assets/ui/banner.png"},
+                {"width": 448.0, "height": 160.0},
+                slice_name="banner_main",
+            )["success"]
+        )
+        self.api.game.save_current_scene()
+
+        raw = json.loads(scene_path.read_text(encoding="utf-8"))
+        banner = next(entity for entity in raw["entities"] if entity["name"] == "TitleBanner")
+        payload = banner["components"]["UIImage"]
+
+        self.assertEqual(payload["sprite"], {"guid": "", "path": "assets/ui/banner.png"})
+        self.assertEqual(payload["slice_name"], "banner_main")
+        self.assertTrue(payload["preserve_aspect"])
+
+        ui_nodes = {entity["name"] for entity in self.api.list_ui_nodes()}
+        self.assertEqual(ui_nodes, {"CanvasRoot", "TitleBanner"})
 
     def test_rect_transform_layout_scales_with_reference_resolution(self) -> None:
         scene_path = self._write_scene(
@@ -363,6 +439,35 @@ class CanvasUISystemTests(unittest.TestCase):
         event_names = [event.name for event in self.api.game._event_bus.get_recent_events()]
         self.assertNotIn("ui.play_clicked", event_names)
 
+    def test_button_with_sprite_still_fires_declared_action(self) -> None:
+        scene_path = self._write_scene(
+            "ui_sprite_button_click.json",
+            {
+                "name": "UI Sprite Button Click",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+        self.assertTrue(self.api.create_canvas(name="CanvasRoot")["success"])
+        self.assertTrue(
+            self.api.create_ui_button(
+                "PlayButton",
+                "Play",
+                "CanvasRoot",
+                {"width": 280.0, "height": 84.0},
+                {"type": "emit_event", "name": "ui.play_clicked"},
+                normal_sprite={"path": "assets/ui/button_normal.png"},
+            )["success"]
+        )
+
+        result = self.api.click_ui_button("PlayButton")
+
+        self.assertTrue(result["success"])
+        event_names = [event.name for event in self.api.game.event_bus.get_recent_events()]
+        self.assertIn("ui.play_clicked", event_names)
+
     def test_scene_viewport_size_helper_uses_scene_texture_dimensions(self) -> None:
         self.api.game.editor_layout = SimpleNamespace(
             active_tab="SCENE",
@@ -476,6 +581,34 @@ class CanvasUISystemTests(unittest.TestCase):
         intent = self.api.game._ui_system.get_cursor_intent(self.api.game.world, (800.0, 600.0), 400.0, 300.0)
 
         self.assertEqual(intent, CursorVisualState.DEFAULT)
+
+    def test_ui_render_system_resolve_button_visual_fallbacks(self) -> None:
+        render_system = UIRenderSystem()
+        button = UIButton(
+            label="Play",
+            normal_sprite={"path": "assets/ui/button_normal.png"},
+            hover_sprite={"path": "assets/ui/button_hover.png"},
+            normal_slice="idle",
+            hover_slice="hover",
+            image_tint=(250, 240, 230, 255),
+        )
+
+        hovered = render_system._resolve_button_visual(button, {"hovered": True, "pressed": False})
+        self.assertEqual(hovered["asset_ref"], {"guid": "", "path": "assets/ui/button_hover.png"})
+        self.assertEqual(hovered["slice_name"], "hover")
+
+        pressed = render_system._resolve_button_visual(button, {"hovered": True, "pressed": True})
+        self.assertEqual(pressed["asset_ref"], {"guid": "", "path": "assets/ui/button_hover.png"})
+        self.assertEqual(pressed["slice_name"], "hover")
+
+        disabled = render_system._resolve_button_visual(button, {"hovered": False, "pressed": False})
+        self.assertEqual(disabled["asset_ref"], {"guid": "", "path": "assets/ui/button_normal.png"})
+
+        button.interactable = False
+        disabled = render_system._resolve_button_visual(button, {"hovered": False, "pressed": False})
+        self.assertEqual(disabled["asset_ref"], {"guid": "", "path": "assets/ui/button_normal.png"})
+        self.assertEqual(disabled["slice_name"], "idle")
+        self.assertEqual(disabled["tint"], (175, 168, 161, 219))
 
     def test_real_main_menu_canvas_button_loads_platformer_scene(self) -> None:
         self._copy_real_scene("main_menu_scene.json")

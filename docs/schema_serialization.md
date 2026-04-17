@@ -42,6 +42,12 @@ Cada entidad define identidad, estado, jerarquia y componentes serializables.
 Los componentes publicos deben estar registrados en
 `engine/levels/component_registry.py`.
 
+En UI serializable, el contrato vigente incluye `Canvas`, `RectTransform`,
+`UIText`, `UIButton` y `UIImage`. `UIButton` admite visuales opcionales por
+sprite (`*_sprite`, `*_slice`, `image_tint`, `preserve_aspect`) sin romper el
+payload legacy basado en colores. `UIImage` serializa `sprite`, `slice_name`,
+`tint` y `preserve_aspect`.
+
 ## Migraciones automaticas
 
 ### Escenas
@@ -105,6 +111,9 @@ puede usar fallback efectivo sin sobrescribir el valor solicitado.
 La validacion profunda cubre el core serializable. Algunos componentes de
 modulos o integraciones siguen con validacion minima de objeto serializable si
 su contrato profundo no esta formalizado en el schema.
+
+La UI serializable valida `RGBA`, strings de slice y referencias de asset para
+sprites UI cuando esos campos estan presentes.
 
 ## Tests relacionados
 

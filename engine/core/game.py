@@ -274,6 +274,7 @@ class Game:
             hot_reload_manager=self.hot_reload_manager,
             timeline=self.timeline,
             get_render_system=lambda: self._render_system,
+            get_ui_render_system=lambda: self._ui_render_system,
             get_audio_system=lambda: self._audio_system,
             get_script_behaviour_system=lambda: self._script_behaviour_system,
             get_rule_system=lambda: self._rule_system,
@@ -515,6 +516,8 @@ class Game:
 
     def set_ui_render_system(self, system: "UIRenderSystem") -> None:
         self._ui_render_system = system
+        if self._project_service is not None and hasattr(self._ui_render_system, "set_project_service"):
+            self._ui_render_system.set_project_service(self._project_service)
         
     def set_script_executor(self, executor: "ScriptExecutor") -> None:
         """Asigna un ejecutor de scripts para automatización visual."""
@@ -522,6 +525,8 @@ class Game:
 
     def set_project_service(self, service: ProjectService) -> None:
         self._project_service = service
+        if self._ui_render_system is not None and hasattr(self._ui_render_system, "set_project_service"):
+            self._ui_render_system.set_project_service(service)
         self._project_workspace_controller.set_project_service(service)
 
     def _refresh_project_scene_entries(self) -> None:
@@ -1227,6 +1232,8 @@ class Game:
         self._cursor_renderer.show_system_cursor()
         if self.terminal_panel is not None:
             self.terminal_panel.shutdown()
+        if self._ui_render_system is not None and hasattr(self._ui_render_system, "cleanup"):
+            self._ui_render_system.cleanup()
         if self._render_system is not None:
             self._render_system.cleanup()
         if self.animator_panel is not None:

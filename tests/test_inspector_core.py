@@ -652,6 +652,38 @@ class InspectorCoreTests(unittest.TestCase):
             self.inspector.update(0.0, self.api.game.world, True)
             self.assertEqual(self.inspector.get_tilemap_tool_state()["effective_mode"], "erase")
 
+    def test_tilemap_activation_resets_palette_selection_when_switching_entities(self) -> None:
+        self._write_png("assets/switch_tiles.png")
+        tilemap_components = {
+            "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+            "Tilemap": {
+                "enabled": True,
+                "cell_width": 16,
+                "cell_height": 16,
+                "orientation": "orthogonal",
+                "tileset": {"guid": "", "path": "assets/switch_tiles.png"},
+                "tileset_path": "assets/switch_tiles.png",
+                "tileset_tile_width": 1,
+                "tileset_tile_height": 1,
+                "tileset_columns": 4,
+                "tileset_spacing": 0,
+                "tileset_margin": 0,
+                "default_layer_name": "Ground",
+                "layers": [{"name": "Ground", "tiles": []}],
+            },
+        }
+        self._create_probe("TileSwitchA", tilemap_components)
+        self._create_probe("TileSwitchB", tilemap_components)
+
+        self.assertTrue(self.inspector.activate_tilemap_tool(self.api.game.world, "TileSwitchA", layer_name="Ground"))
+        self.assertTrue(self.inspector.set_tilemap_selected_tile(self.api.game.world, "TileSwitchA", "2"))
+        self.assertEqual(self.inspector.get_tilemap_tool_state()["palette_selected_index"], 2)
+
+        self.assertTrue(self.inspector.activate_tilemap_tool(self.api.game.world, "TileSwitchB", layer_name="Ground"))
+        state = self.inspector.get_tilemap_tool_state()
+        self.assertEqual(state["tile_id"], "0")
+        self.assertEqual(state["palette_selected_index"], 0)
+
     def test_tilemap_pick_box_fill_flood_fill_and_stamp_are_transactional(self) -> None:
         self._write_png("assets/tool_tiles.png")
         self.api.asset_service.generate_sprite_grid_slices("assets/tool_tiles.png", cell_width=1, cell_height=1, naming_prefix="tool")

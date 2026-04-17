@@ -63,6 +63,9 @@ py -m motor entity create Player --project . --json
 py -m motor component add Player Transform --data '{"x":0,"y":0}' --project . --json
 ```
 
+Para UI serializable usa los helpers publicos de `EngineAPI` como
+`create_canvas`, `create_ui_text`, `create_ui_button` y `create_ui_image`.
+
 ## Que evitar
 
 - No editar `SceneManager.edit_world` directamente para flujos publicos nuevos.

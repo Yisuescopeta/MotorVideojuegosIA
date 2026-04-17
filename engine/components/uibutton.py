@@ -7,6 +7,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+from engine.assets.asset_reference import clone_asset_reference, normalize_asset_reference, reference_has_identity
 from engine.ecs.component import Component
 
 
@@ -24,6 +25,16 @@ class UIButton(Component):
         disabled_color: tuple[int, int, int, int] = (48, 48, 48, 200),
         transition_scale_pressed: float = 0.96,
         on_click: dict[str, Any] | None = None,
+        normal_sprite: Any = None,
+        hover_sprite: Any = None,
+        pressed_sprite: Any = None,
+        disabled_sprite: Any = None,
+        normal_slice: str = "",
+        hover_slice: str = "",
+        pressed_slice: str = "",
+        disabled_slice: str = "",
+        image_tint: tuple[int, int, int, int] = (255, 255, 255, 255),
+        preserve_aspect: bool = True,
     ) -> None:
         self.enabled = enabled
         self.interactable = bool(interactable)
@@ -34,6 +45,27 @@ class UIButton(Component):
         self.disabled_color = tuple(int(v) for v in disabled_color)
         self.transition_scale_pressed = float(transition_scale_pressed)
         self.on_click = copy.deepcopy(on_click or {})
+        self.normal_sprite = normalize_asset_reference(normal_sprite)
+        self.hover_sprite = normalize_asset_reference(hover_sprite)
+        self.pressed_sprite = normalize_asset_reference(pressed_sprite)
+        self.disabled_sprite = normalize_asset_reference(disabled_sprite)
+        self.normal_slice = str(normal_slice or "")
+        self.hover_slice = str(hover_slice or "")
+        self.pressed_slice = str(pressed_slice or "")
+        self.disabled_slice = str(disabled_slice or "")
+        self.image_tint = tuple(int(v) for v in image_tint)
+        self.preserve_aspect = bool(preserve_aspect)
+
+    def has_sprite_visuals(self) -> bool:
+        return any(
+            reference_has_identity(ref)
+            for ref in (
+                self.normal_sprite,
+                self.hover_sprite,
+                self.pressed_sprite,
+                self.disabled_sprite,
+            )
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -46,6 +78,16 @@ class UIButton(Component):
             "disabled_color": list(self.disabled_color),
             "transition_scale_pressed": self.transition_scale_pressed,
             "on_click": copy.deepcopy(self.on_click),
+            "normal_sprite": clone_asset_reference(self.normal_sprite),
+            "hover_sprite": clone_asset_reference(self.hover_sprite),
+            "pressed_sprite": clone_asset_reference(self.pressed_sprite),
+            "disabled_sprite": clone_asset_reference(self.disabled_sprite),
+            "normal_slice": self.normal_slice,
+            "hover_slice": self.hover_slice,
+            "pressed_slice": self.pressed_slice,
+            "disabled_slice": self.disabled_slice,
+            "image_tint": list(self.image_tint),
+            "preserve_aspect": self.preserve_aspect,
         }
 
     @classmethod
@@ -60,4 +102,14 @@ class UIButton(Component):
             disabled_color=tuple(data.get("disabled_color", [48, 48, 48, 200])),  # type: ignore[arg-type]
             transition_scale_pressed=data.get("transition_scale_pressed", 0.96),
             on_click=copy.deepcopy(data.get("on_click", {})),
+            normal_sprite=data.get("normal_sprite"),
+            hover_sprite=data.get("hover_sprite"),
+            pressed_sprite=data.get("pressed_sprite"),
+            disabled_sprite=data.get("disabled_sprite"),
+            normal_slice=data.get("normal_slice", ""),
+            hover_slice=data.get("hover_slice", ""),
+            pressed_slice=data.get("pressed_slice", ""),
+            disabled_slice=data.get("disabled_slice", ""),
+            image_tint=tuple(data.get("image_tint", [255, 255, 255, 255])),  # type: ignore[arg-type]
+            preserve_aspect=data.get("preserve_aspect", True),
         )

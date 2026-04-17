@@ -7,6 +7,7 @@ from engine.api.types import ActionResult, EntityData
 from engine.components.canvas import Canvas
 from engine.components.recttransform import RectTransform
 from engine.components.uibutton import UIButton
+from engine.components.uiimage import UIImage
 from engine.components.uitext import UIText
 
 
@@ -120,6 +121,15 @@ class UIAPI(EngineAPIComponent):
         parent: str,
         rect_transform: Optional[Dict[str, Any]] = None,
         on_click: Optional[Dict[str, Any]] = None,
+        normal_sprite: Any = None,
+        hover_sprite: Any = None,
+        pressed_sprite: Any = None,
+        disabled_sprite: Any = None,
+        normal_slice: str = "",
+        hover_slice: str = "",
+        pressed_slice: str = "",
+        disabled_slice: str = "",
+        preserve_aspect: bool = True,
     ) -> ActionResult:
         self.ensure_edit_mode()
         result = self.create_ui_element(name=name, parent=parent, rect_transform=rect_transform)
@@ -138,9 +148,46 @@ class UIAPI(EngineAPIComponent):
                 "disabled_color": [48, 48, 48, 200],
                 "transition_scale_pressed": 0.96,
                 "on_click": on_click or {"type": "emit_event", "name": "ui.button_clicked"},
+                "normal_sprite": normal_sprite,
+                "hover_sprite": hover_sprite,
+                "pressed_sprite": pressed_sprite,
+                "disabled_sprite": disabled_sprite,
+                "normal_slice": normal_slice,
+                "hover_slice": hover_slice,
+                "pressed_slice": pressed_slice,
+                "disabled_slice": disabled_slice,
+                "image_tint": [255, 255, 255, 255],
+                "preserve_aspect": preserve_aspect,
             },
         )
         return add_result if not add_result["success"] else self.ok("UIButton created", {"entity": name})
+
+    def create_ui_image(
+        self,
+        name: str,
+        parent: str,
+        sprite: Any,
+        rect_transform: Optional[Dict[str, Any]] = None,
+        slice_name: str = "",
+        preserve_aspect: bool = True,
+        tint: Optional[list[int] | tuple[int, int, int, int]] = None,
+    ) -> ActionResult:
+        self.ensure_edit_mode()
+        result = self.create_ui_element(name=name, parent=parent, rect_transform=rect_transform)
+        if not result["success"]:
+            return result
+        add_result = self.api.add_component(
+            name,
+            "UIImage",
+            {
+                "enabled": True,
+                "sprite": sprite,
+                "slice_name": slice_name,
+                "tint": list(tint) if tint is not None else [255, 255, 255, 255],
+                "preserve_aspect": preserve_aspect,
+            },
+        )
+        return add_result if not add_result["success"] else self.ok("UIImage created", {"entity": name})
 
     def set_button_on_click(self, entity_name: str, on_click: Dict[str, Any]) -> ActionResult:
         self.ensure_edit_mode()
@@ -151,7 +198,7 @@ class UIAPI(EngineAPIComponent):
             return []
         nodes: list[EntityData] = []
         for entity in self.game.world.get_all_entities():
-            if any(entity.has_component(component) for component in (Canvas, RectTransform, UIText, UIButton)):
+            if any(entity.has_component(component) for component in (Canvas, RectTransform, UIText, UIButton, UIImage)):
                 nodes.append(self.api.get_entity(entity.name))
         return nodes
 

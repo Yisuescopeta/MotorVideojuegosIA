@@ -204,6 +204,9 @@ class InspectorSystem:
         self._tilemap_authoring.layer_name = self._resolve_tilemap_layer_name(payload, preferred_layer)
         if previous_entity != target_name or previous_layer != self._tilemap_authoring.layer_name:
             self._tilemap_authoring.palette_scroll = 0.0
+            self._tilemap_authoring.palette_selected_index = 0
+            self._tilemap_authoring.tile_id = ""
+            self._tilemap_authoring.source = {}
         self._synchronize_tilemap_tool_selection(world, target_name)
         return True
 
@@ -1156,49 +1159,79 @@ class InspectorSystem:
         entity_name = self._resolve_tilemap_tool_entity_name(world)
         if entity_name is None:
             return
+
         self._tilemap_authoring.shortcut_mode = ""
-        if rl.is_key_down(rl.KEY_LEFT_CONTROL) or rl.is_key_down(rl.KEY_RIGHT_CONTROL):
+        ctrl_down = bool(rl.is_key_down(rl.KEY_LEFT_CONTROL) or rl.is_key_down(rl.KEY_RIGHT_CONTROL))
+        shift_down = bool(rl.is_key_down(rl.KEY_LEFT_SHIFT) or rl.is_key_down(rl.KEY_RIGHT_SHIFT))
+
+        if ctrl_down:
             self._tilemap_authoring.shortcut_mode = "pick"
-        elif rl.is_key_down(rl.KEY_LEFT_SHIFT) or rl.is_key_down(rl.KEY_RIGHT_SHIFT):
+        elif shift_down:
             self._tilemap_authoring.shortcut_mode = "erase"
 
-        for key, mode in (
-            (rl.KEY_B, "paint"),
-            (rl.KEY_D, "erase"),
-            (rl.KEY_I, "pick"),
-            (rl.KEY_U, "box_fill"),
-            (rl.KEY_G, "flood_fill"),
-        ):
-            if rl.is_key_pressed(key):
-                self.set_tilemap_tool_mode(mode)
+        pressed_b = bool(rl.is_key_pressed(rl.KEY_B))
+        pressed_d = bool(rl.is_key_pressed(rl.KEY_D))
+        pressed_i = bool(rl.is_key_pressed(rl.KEY_I))
+        pressed_u = bool(rl.is_key_pressed(rl.KEY_U))
+        pressed_g = bool(rl.is_key_pressed(rl.KEY_G))
+
+        if pressed_b:
+            self.set_tilemap_tool_mode("paint")
+        elif pressed_d:
+            self.set_tilemap_tool_mode("erase")
+        elif pressed_i:
+            self.set_tilemap_tool_mode("pick")
+        elif pressed_u:
+            self.set_tilemap_tool_mode("box_fill")
+        elif pressed_g:
+            self.set_tilemap_tool_mode("flood_fill")
 
         if not self._tilemap_authoring.palette_focused:
             return
         entries = self.list_tilemap_palette_entries(world, entity_name, self._tilemap_authoring.layer_name)
         if not entries:
             return
+
         cols = 4
         index = self._tilemap_current_palette_index(entries)
-        if rl.is_key_pressed(rl.KEY_RIGHT):
+
+        pressed_right = bool(rl.is_key_pressed(rl.KEY_RIGHT))
+        pressed_left = bool(rl.is_key_pressed(rl.KEY_LEFT))
+        pressed_down = bool(rl.is_key_pressed(rl.KEY_DOWN))
+        pressed_up = bool(rl.is_key_pressed(rl.KEY_UP))
+        pressed_home = bool(rl.is_key_pressed(rl.KEY_HOME))
+        pressed_end = bool(rl.is_key_pressed(rl.KEY_END))
+        pressed_page_down = bool(rl.is_key_pressed(rl.KEY_PAGE_DOWN))
+        pressed_page_up = bool(rl.is_key_pressed(rl.KEY_PAGE_UP))
+        pressed_enter = bool(rl.is_key_pressed(rl.KEY_ENTER) or rl.is_key_pressed(rl.KEY_KP_ENTER))
+
+        if pressed_right:
             index += 1
-        if rl.is_key_pressed(rl.KEY_LEFT):
+        elif pressed_left:
             index -= 1
-        if rl.is_key_pressed(rl.KEY_DOWN):
+        elif pressed_down:
             index += cols
-        if rl.is_key_pressed(rl.KEY_UP):
+        elif pressed_up:
             index -= cols
-        if rl.is_key_pressed(rl.KEY_HOME):
+        elif pressed_home:
             index = 0
-        if rl.is_key_pressed(rl.KEY_END):
+        elif pressed_end:
             index = len(entries) - 1
-        if rl.is_key_pressed(rl.KEY_PAGE_DOWN):
+        elif pressed_page_down:
             index += cols * 3
-        if rl.is_key_pressed(rl.KEY_PAGE_UP):
+        elif pressed_page_up:
             index -= cols * 3
+
         self._tilemap_authoring.palette_selected_index = max(0, min(len(entries) - 1, index))
-        if rl.is_key_pressed(rl.KEY_ENTER) or rl.is_key_pressed(rl.KEY_KP_ENTER):
+
+        if pressed_enter:
             selected = entries[self._tilemap_authoring.palette_selected_index]
-            self.set_tilemap_selected_tile(world, entity_name, str(selected.get("tile_id", "")), source=selected.get("source"))
+            self.set_tilemap_selected_tile(
+                world,
+                entity_name,
+                str(selected.get("tile_id", "")),
+                source=selected.get("source"),
+            )
 
     def _tilemap_current_palette_index(self, entries: List[Dict[str, Any]]) -> int:
         if not entries:

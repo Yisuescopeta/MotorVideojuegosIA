@@ -432,6 +432,83 @@ class SchemaValidationTests(unittest.TestCase):
                 {"on_click": {"type": "load_scene"}},
                 "$.entities[0].components.UIButton.on_click.path: expected non-empty string",
             ),
+            (
+                "UIImage",
+                {"tint": [255, 255, 255]},
+                "$.entities[0].components.UIImage.tint: expected RGBA array of length 4",
+            ),
+        ]
+
+        for component_name, component_data, expected in cases:
+            with self.subTest(component=component_name):
+                payload = migrate_scene_data(
+                    _scene_payload(
+                        entities=[
+                            {
+                                "name": "Actor",
+                                "components": {component_name: component_data},
+                            }
+                        ]
+                    )
+                )
+                errors = validate_scene_data(payload)
+                self.assertTrue(any(expected in error for error in errors), errors)
+
+    def test_scene_validation_accepts_ui_button_sprite_fields_and_uiimage(self) -> None:
+        payload = migrate_scene_data(
+            _scene_payload(
+                entities=[
+                    _entity_payload(
+                        "Banner",
+                        components={
+                            "UIImage": {
+                                "enabled": True,
+                                "sprite": {"guid": "", "path": "assets/ui/banner.png"},
+                                "slice_name": "title",
+                                "tint": [255, 255, 255, 255],
+                                "preserve_aspect": True,
+                            }
+                        },
+                    ),
+                    _entity_payload(
+                        "PlayButton",
+                        components={
+                            "UIButton": {
+                                "enabled": True,
+                                "interactable": True,
+                                "label": "Play",
+                                "normal_color": [72, 72, 72, 255],
+                                "hover_color": [92, 92, 92, 255],
+                                "pressed_color": [56, 56, 56, 255],
+                                "disabled_color": [48, 48, 48, 200],
+                                "transition_scale_pressed": 0.96,
+                                "on_click": {"type": "emit_event", "name": "ui.play_clicked"},
+                                "normal_sprite": {"guid": "", "path": "assets/ui/button_normal.png"},
+                                "hover_sprite": {"guid": "", "path": "assets/ui/button_hover.png"},
+                                "pressed_slice": "pressed",
+                                "image_tint": [255, 255, 255, 255],
+                                "preserve_aspect": False,
+                            }
+                        },
+                    ),
+                ]
+            )
+        )
+
+        self.assertEqual(validate_scene_data(payload), [])
+
+    def test_scene_validation_rejects_malformed_ui_asset_refs(self) -> None:
+        cases = [
+            (
+                "UIImage",
+                {"sprite": {"path": 7}},
+                "$.entities[0].components.UIImage.sprite.path: expected string",
+            ),
+            (
+                "UIButton",
+                {"normal_sprite": {"guid": 99}},
+                "$.entities[0].components.UIButton.normal_sprite.guid: expected string",
+            ),
         ]
 
         for component_name, component_data, expected in cases:

@@ -46,6 +46,7 @@ class EngineAPIFacadeSmokeTests(unittest.TestCase):
             "get_project_manifest",
             "list_project_assets",
             "get_profiler_report",
+            "create_ui_image",
             "get_ui_layout",
         )
 
@@ -77,6 +78,8 @@ class EngineAPIFacadeSmokeTests(unittest.TestCase):
         self.assertIsInstance(api.get_project_manifest(), dict)
         self.assertIsInstance(api.list_project_assets(), list)
         self.assertIsInstance(api.get_profiler_report(), dict)
+        self.assertTrue(api.create_canvas("CanvasRoot")["success"])
+        self.assertTrue(api.create_ui_image("Logo", "CanvasRoot", {"path": "assets/ui/logo.png"})["success"])
         self.assertEqual(api.get_ui_layout("Missing"), {})
 
     def test_facade_create_scene_remains_compatible(self) -> None:

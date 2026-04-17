@@ -24,7 +24,7 @@ Familias principales:
 
 - Espacial/render: `Transform`, `RectTransform`, `Sprite`, `Animator`, `Camera2D`, `RenderOrder2D`, `RenderStyle2D`.
 - Gameplay/fisica: `Collider`, `RigidBody`, `CharacterController2D`, `PlayerController2D`, `Joint2D`, `InputMap`, `AudioSource`, `ScriptBehaviour`.
-- Escena, tilemap y UI: `Tilemap`, `SceneLink`, `SceneEntryPoint`, `SceneTransition*`, `Canvas`, `UIText`, `UIButton`.
+- Escena, tilemap y UI: `Tilemap`, `SceneLink`, `SceneEntryPoint`, `SceneTransition*`, `Canvas`, `UIText`, `UIButton`, `UIImage`.
 
 No se debe asumir soporte publico para componentes no registrados.
 
@@ -37,6 +37,10 @@ input, controladores de personaje/jugador, scripts, audio y UI.
 `RenderSystem` mantiene render graph, sorting layers, batching, tilemap chunks,
 debug geometry y render targets con fallback seguro cuando no hay backend
 grafico disponible.
+
+`UIRenderSystem` renderiza la UI overlay serializable. `UISystem` conserva
+layout e interaccion; `UIRenderSystem` resuelve la capa visual para `UIText`,
+`UIButton` por color o sprite, y `UIImage`.
 
 El sistema fisico conserva `legacy_aabb` como fallback obligatorio y registra
 `box2d` como backend opcional cuando la dependencia esta disponible.
