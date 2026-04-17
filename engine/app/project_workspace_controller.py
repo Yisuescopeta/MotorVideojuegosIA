@@ -31,6 +31,7 @@ class ProjectWorkspaceController:
         hot_reload_manager: Any,
         timeline: Any,
         get_render_system: Callable[[], Any],
+        get_ui_render_system: Callable[[], Any],
         get_audio_system: Callable[[], Any],
         get_script_behaviour_system: Callable[[], Any],
         get_rule_system: Callable[[], Any],
@@ -59,6 +60,7 @@ class ProjectWorkspaceController:
         self._hot_reload_manager = hot_reload_manager
         self._timeline = timeline
         self._get_render_system = get_render_system
+        self._get_ui_render_system = get_ui_render_system
         self._get_audio_system = get_audio_system
         self._get_script_behaviour_system = get_script_behaviour_system
         self._get_rule_system = get_rule_system
@@ -97,6 +99,10 @@ class ProjectWorkspaceController:
         render_system = self._get_render_system()
         if render_system is not None:
             render_system.set_project_service(service)
+
+        ui_render_system = self._get_ui_render_system()
+        if ui_render_system is not None and hasattr(ui_render_system, "set_project_service"):
+            ui_render_system.set_project_service(service)
 
         audio_system = self._get_audio_system()
         if audio_system is not None and hasattr(audio_system, "set_project_service"):
@@ -172,6 +178,9 @@ class ProjectWorkspaceController:
         render_system = self._get_render_system()
         if render_system is not None and hasattr(render_system, "reset_project_resources"):
             render_system.reset_project_resources()
+        ui_render_system = self._get_ui_render_system()
+        if ui_render_system is not None and hasattr(ui_render_system, "reset_project_resources"):
+            ui_render_system.reset_project_resources()
         self._timeline.clear()
 
     def capture_active_scene_view_state(self) -> None:

@@ -238,11 +238,16 @@ Fuente: `engine/api/_ui_api.py`.
 - `create_ui_element(name, parent, rect_transform=None)`
 - `set_rect_transform(entity_name, properties)`
 - `create_ui_text(name, text, parent, rect_transform=None, font_size=24, alignment="center")`
-- `create_ui_button(name, label, parent, rect_transform=None, on_click=None)`
+- `create_ui_button(name, label, parent, rect_transform=None, on_click=None, normal_sprite=None, hover_sprite=None, pressed_sprite=None, disabled_sprite=None, normal_slice="", hover_slice="", pressed_slice="", disabled_slice="", preserve_aspect=True)`
+- `create_ui_image(name, parent, sprite, rect_transform=None, slice_name="", preserve_aspect=True, tint=None)`
 - `set_button_on_click(entity_name, on_click)`
 - `list_ui_nodes()`
 - `get_ui_layout(entity_name)`
 - `click_ui_button(entity_name)`
+
+`UIButton` conserva el flujo declarativo actual y puede renderizarse por color o
+por sprite. `UIImage` representa imagen UI no interactiva con `sprite`,
+`slice_name`, `tint` y `preserve_aspect`.
 
 ## Uso recomendado para agentes
 

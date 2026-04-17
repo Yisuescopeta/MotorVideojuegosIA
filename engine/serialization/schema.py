@@ -567,7 +567,7 @@ def _validate_asset_reference_consistency(
     data: dict[str, Any],
     *,
     ref_key: str,
-    path_key: str,
+    path_key: str | None,
     path: str,
     errors: list[str],
 ) -> None:
@@ -583,7 +583,7 @@ def _validate_asset_reference_consistency(
                 for field_name in ("guid", "path"):
                     if field_name in ref_value and not isinstance(ref_value.get(field_name), str):
                         errors.append(f"{path}.{ref_key}.{field_name}: expected string")
-    if path_key in data:
+    if path_key is not None and path_key in data:
         path_value = data.get(path_key)
         if not isinstance(path_value, str):
             errors.append(f"{path}.{path_key}: expected string")
@@ -1032,10 +1032,33 @@ def _validate_ui_button(data: dict[str, Any], *, path: str) -> list[str]:
     for key in ("normal_color", "hover_color", "pressed_color", "disabled_color"):
         if key in data:
             _validate_rgba(data[key], path=f"{path}.{key}", errors=errors)
+    for key in ("normal_sprite", "hover_sprite", "pressed_sprite", "disabled_sprite"):
+        _validate_asset_reference_consistency(data, ref_key=key, path_key=None, path=path, errors=errors)
+    for key in ("normal_slice", "hover_slice", "pressed_slice", "disabled_slice"):
+        if key in data:
+            _expect_string(data[key], path=f"{path}.{key}", errors=errors)
+    if "image_tint" in data:
+        _validate_rgba(data["image_tint"], path=f"{path}.image_tint", errors=errors)
+    if "preserve_aspect" in data:
+        _expect_bool(data["preserve_aspect"], path=f"{path}.preserve_aspect", errors=errors)
     if "transition_scale_pressed" in data:
         _expect_number(data["transition_scale_pressed"], path=f"{path}.transition_scale_pressed", errors=errors, exclusive_minimum=0.0)
     if "on_click" in data:
         errors.extend(_validate_button_on_click(data["on_click"], path=f"{path}.on_click"))
+    return errors
+
+
+def _validate_ui_image(data: dict[str, Any], *, path: str) -> list[str]:
+    errors: list[str] = []
+    if "enabled" in data:
+        _expect_bool(data["enabled"], path=f"{path}.enabled", errors=errors)
+    _validate_asset_reference_consistency(data, ref_key="sprite", path_key=None, path=path, errors=errors)
+    if "slice_name" in data:
+        _expect_string(data["slice_name"], path=f"{path}.slice_name", errors=errors)
+    if "tint" in data:
+        _validate_rgba(data["tint"], path=f"{path}.tint", errors=errors)
+    if "preserve_aspect" in data:
+        _expect_bool(data["preserve_aspect"], path=f"{path}.preserve_aspect", errors=errors)
     return errors
 
 
@@ -1130,6 +1153,7 @@ CORE_COMPONENT_VALIDATORS: dict[str, Callable[[dict[str, Any], str], list[str]]]
     "Canvas": lambda data, path: _validate_canvas(data, path=path),
     "UIText": lambda data, path: _validate_ui_text(data, path=path),
     "UIButton": lambda data, path: _validate_ui_button(data, path=path),
+    "UIImage": lambda data, path: _validate_ui_image(data, path=path),
     "SceneLink": lambda data, path: _validate_scene_link(data, path=path),
     "SceneEntryPoint": lambda data, path: _validate_scene_entry_point(data, path=path),
     "SceneTransitionAction": lambda data, path: _validate_scene_transition_action(data, path=path),

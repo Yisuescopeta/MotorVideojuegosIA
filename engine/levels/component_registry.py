@@ -107,6 +107,7 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.tilemap import Tilemap
     from engine.components.transform import Transform
     from engine.components.uibutton import UIButton
+    from engine.components.uiimage import UIImage
     from engine.components.uitext import UIText
 
     registry = ComponentRegistry()
@@ -135,4 +136,5 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("RectTransform", RectTransform)
     registry.register("UIText", UIText)
     registry.register("UIButton", UIButton)
+    registry.register("UIImage", UIImage)
     return registry
