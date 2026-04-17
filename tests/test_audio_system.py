@@ -6,9 +6,12 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
+from engine.audio import AudioPlaybackRequest, AudioRuntime, NullAudioBackend
 from engine.api import EngineAPI
 from engine.components.audiosource import AudioSource
+from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.systems.audio_system import AudioSystem
@@ -124,6 +127,7 @@ class AudioSystemUnitTests(unittest.TestCase):
     def _make_world_with_audio(self, asset_path: str = "assets/test.wav") -> tuple[World, Entity]:
         world = World()
         entity = Entity("TestAudio")
+        entity.add_component(Transform())
         audio = AudioSource(asset_path=asset_path, volume=1.0, loop=False)
         entity.add_component(audio)
         world.add_entity(entity)
@@ -140,6 +144,10 @@ class AudioSystemUnitTests(unittest.TestCase):
         self.assertTrue(audio.is_playing)
         self.assertFalse(audio.is_paused)
         self.assertGreater(audio._playback_start_time, 0)
+        voice = system._runtime.get_voice("TestAudio")
+        self.assertIsNotNone(voice)
+        assert voice is not None
+        self.assertEqual(voice.bus_id, "master")
 
     def test_play_returns_false_for_missing_entity(self) -> None:
         system = AudioSystem()
@@ -182,6 +190,7 @@ class AudioSystemUnitTests(unittest.TestCase):
         self.assertEqual(audio._playback_position, 0.0)
         self.assertEqual(audio._playback_start_time, 0.0)
         self.assertFalse(audio._is_paused)
+        self.assertIsNone(system._runtime.get_voice("TestAudio"))
 
     def test_stop_returns_false_for_missing_entity(self) -> None:
         system = AudioSystem()
@@ -260,6 +269,7 @@ class AudioSystemUnitTests(unittest.TestCase):
 
         system.update(world)
         self.assertTrue(audio.is_playing)
+        self.assertIsNotNone(system._runtime.get_voice("TestAudio"))
 
     def test_update_auto_stops_non_looping_audio_at_duration(self) -> None:
         system = AudioSystem()
@@ -361,6 +371,115 @@ class AudioSystemUnitTests(unittest.TestCase):
         game_time_2 = 105.0
         audio.set_effective_time(game_time_2)
         self.assertEqual(audio.playback_position, 5.0)
+
+    def test_play_builds_request_with_transform_position(self) -> None:
+        system = AudioSystem()
+        world, entity = self._make_world_with_audio()
+        transform = entity.get_component(Transform)
+        assert transform is not None
+        transform.set_position(12.0, -4.5)
+
+        result = system.play(world, "TestAudio")
+
+        self.assertTrue(result)
+        voice = system._runtime.get_voice("TestAudio")
+        self.assertIsNotNone(voice)
+        assert voice is not None
+        self.assertEqual(voice.position, (12.0, -4.5))
+
+    def test_event_sink_receives_internal_runtime_events(self) -> None:
+        system = AudioSystem()
+        sink = Mock()
+        system.set_event_sink(sink)
+        world, entity = self._make_world_with_audio()
+        audio = entity.get_component(AudioSource)
+        assert audio is not None
+        audio.playback_duration = 1.0
+
+        self.assertTrue(system.play(world, "TestAudio", game_time=10.0))
+        self.assertTrue(system.pause(world, "TestAudio"))
+        self.assertTrue(system.resume(world, "TestAudio", game_time=11.0))
+        system.update(world, game_time=12.1)
+
+        event_names = [call.args[0].name for call in sink.call_args_list]
+        self.assertEqual(
+            event_names,
+            [
+                "audio_play_requested",
+                "audio_started",
+                "audio_paused",
+                "audio_resumed",
+                "audio_completed",
+            ],
+        )
+
+
+class AudioRuntimeFoundationTests(unittest.TestCase):
+    def test_play_creates_voice_with_master_bus(self) -> None:
+        runtime = AudioRuntime()
+        request = AudioPlaybackRequest(
+            entity_name="Music",
+            asset_path="assets/music.ogg",
+            resolved_asset_path="C:/project/assets/music.ogg",
+        )
+
+        voice = runtime.play(request, game_time=10.0)
+
+        self.assertEqual(voice.entity_name, "Music")
+        self.assertEqual(voice.bus_id, "master")
+        self.assertEqual(voice.resolved_asset_path, "C:/project/assets/music.ogg")
+        self.assertTrue(voice.is_playing)
+
+    def test_play_pause_resume_stop_emits_lifecycle_events(self) -> None:
+        runtime = AudioRuntime()
+        request = AudioPlaybackRequest(entity_name="Sfx", asset_path="assets/sfx.wav")
+
+        runtime.play(request, game_time=1.0)
+        runtime.pause("Sfx", game_time=2.5)
+        runtime.resume("Sfx", game_time=3.0)
+        runtime.stop("Sfx")
+
+        events = runtime.drain_events()
+        self.assertEqual(
+            [event.name for event in events],
+            [
+                "audio_play_requested",
+                "audio_started",
+                "audio_paused",
+                "audio_resumed",
+                "audio_stopped",
+            ],
+        )
+
+    def test_update_emits_completed_when_duration_is_known(self) -> None:
+        runtime = AudioRuntime()
+        request = AudioPlaybackRequest(
+            entity_name="Voice",
+            asset_path="assets/voice.wav",
+            playback_duration=1.0,
+        )
+        runtime.play(request, game_time=5.0)
+        runtime.drain_events()
+
+        runtime.update(game_time=6.5)
+
+        events = runtime.drain_events()
+        self.assertEqual([event.name for event in events], ["audio_completed"])
+        self.assertIsNone(runtime.get_voice("Voice"))
+
+    def test_null_backend_is_side_effect_free(self) -> None:
+        backend = NullAudioBackend()
+        runtime = AudioRuntime(backend=backend)
+        request = AudioPlaybackRequest(entity_name="Ambient", asset_path="assets/ambient.wav")
+
+        voice = runtime.play(request, game_time=0.0)
+        backend.update([voice], game_time=0.5)
+        backend.pause(voice)
+        backend.resume(voice)
+        backend.stop(voice)
+
+        self.assertEqual(voice.entity_name, "Ambient")
+        self.assertTrue(voice.is_playing)
 
 
 class RuntimeAPIAudioIntegrationTests(unittest.TestCase):
