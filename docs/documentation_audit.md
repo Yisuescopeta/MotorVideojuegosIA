@@ -82,6 +82,16 @@ literalmente.
 - `docs/glossary.md`
 - `docs/documentation_audit.md`
 
+### Planificacion operativa para ramas y workspaces
+
+- `docs/roadmap/master-plan.md`
+- `docs/roadmap/milestone-template.md`
+- `docs/roadmap/rfc-lite-template.md`
+- `docs/architecture/branch-strategy.md`
+- `docs/architecture/module-boundaries.md`
+- `docs/architecture/integration-strategy.md`
+- `docs/ai/codex-prompt-guidelines.md`
+
 ### Referencia operativa o tooling vigente
 
 - `docs/building.md`
@@ -149,6 +159,26 @@ El documento refleja el builder actual y la compatibilidad legacy de `doctor`.
 Se movieron roadmaps, research, prompts de agentes, notas de diseno antiguas y
 auditorias historicas a `docs/archive/`. Permanecen versionados, pero fuera del
 portal canonico.
+
+### Capa nueva para trabajo paralelo
+
+Se introduce una capa operativa nueva para coordinar ramas, workspaces,
+milestones, RFCs ligeras e integracion por dominio. Esta capa vive en:
+
+- `docs/roadmap/`
+- `docs/architecture/branch-strategy.md`
+- `docs/architecture/module-boundaries.md`
+- `docs/architecture/integration-strategy.md`
+- `docs/ai/codex-prompt-guidelines.md`
+
+Decision aplicada:
+
+- se mantiene fuera del canon funcional del motor
+- se enlaza desde `docs/README.md`
+- no reemplaza `docs/architecture.md`, `docs/module_taxonomy.md`, `docs/api.md`
+  ni `docs/cli.md`
+- deja `docs/archive/roadmaps/` como historico y `docs/roadmap/` como
+  planificacion operativa vigente
 
 ### Rutas absolutas Windows
 
