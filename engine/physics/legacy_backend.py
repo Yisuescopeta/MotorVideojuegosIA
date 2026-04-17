@@ -7,6 +7,7 @@ from engine.components.collider import Collider
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
 from engine.physics.backend import PhysicsAABBHit, PhysicsBackend, PhysicsContact, PhysicsRayHit
+from engine.physics.ecs_adapter import snapshot_world
 
 
 class LegacyAABBPhysicsBackend(PhysicsBackend):
@@ -27,28 +28,19 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         if self._collision_system is not None and hasattr(self._collision_system, "set_event_bus") and event_bus is not None:
             self._collision_system.set_event_bus(event_bus)
 
-    def create_body(self, entity: Any) -> None:
-        self._registered_bodies.add(int(entity.id))
-
-    def destroy_body(self, entity_id: int) -> None:
-        self._registered_bodies.discard(int(entity_id))
-        self._registered_shapes.discard(int(entity_id))
-
-    def create_shape(self, entity: Any) -> None:
-        self._registered_shapes.add(int(entity.id))
-
     def sync_world(self, world: Any) -> None:
-        current_ids = {int(entity.id) for entity in world.get_all_entities()}
+        snapshots = snapshot_world(world)
+        current_ids = {snapshot.entity_id for snapshot in snapshots}
         tracked = self._registered_bodies | self._registered_shapes
         for entity_id in list(tracked - current_ids):
-            self.destroy_body(entity_id)
-        for entity in world.get_all_entities():
-            if entity.get_component(Transform) is None:
+            self._unregister_entity(entity_id)
+        for snapshot in snapshots:
+            if not snapshot.has_transform:
                 continue
-            if entity.get_component(Collider) is not None:
-                self.create_shape(entity)
-            if entity.get_component(RigidBody) is not None:
-                self.create_body(entity)
+            if snapshot.shape is not None:
+                self._registered_shapes.add(int(snapshot.entity_id))
+            if snapshot.body is not None:
+                self._registered_bodies.add(int(snapshot.entity_id))
 
     def step(self, world: Any, dt: float) -> None:
         self.sync_world(world)
@@ -122,6 +114,10 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         if self._physics_system is not None and hasattr(self._physics_system, "get_step_metrics"):
             return dict(self._physics_system.get_step_metrics())
         return {"ccd_bodies": 0, "swept_checks": 0}
+
+    def _unregister_entity(self, entity_id: int) -> None:
+        self._registered_bodies.discard(int(entity_id))
+        self._registered_shapes.discard(int(entity_id))
 
     def _build_overlap_contacts(self) -> list[PhysicsContact]:
         if self._collision_system is None:

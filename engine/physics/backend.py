@@ -1,51 +1,16 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any, Optional, TypedDict
+from typing import Any, Optional
 
-
-class PhysicsPoint(TypedDict):
-    x: float
-    y: float
-
-
-class PhysicsRayHit(TypedDict, total=False):
-    entity: str
-    entity_id: int
-    distance: float
-    point: PhysicsPoint
-    normal: PhysicsPoint
-    is_trigger: bool
-
-
-class PhysicsAABBHit(TypedDict):
-    entity: str
-    entity_id: int
-    is_trigger: bool
-
-
-class PhysicsBackendInfo(TypedDict):
-    name: str
-    available: bool
-    unavailable_reason: Optional[str]
-
-
-class PhysicsBackendSelection(TypedDict):
-    requested_backend: str
-    effective_backend: Optional[str]
-    used_fallback: bool
-    fallback_reason: Optional[str]
-    unavailable_reason: Optional[str]
-
-
-@dataclass
-class PhysicsContact:
-    entity_a: str
-    entity_b: str
-    entity_a_id: int
-    entity_b_id: int
-    is_trigger: bool
+from engine.physics.types import (
+    PhysicsAABBHit,
+    PhysicsBackendInfo,
+    PhysicsBackendSelection,
+    PhysicsContact,
+    PhysicsPoint,
+    PhysicsRayHit,
+)
 
 
 class PhysicsBackend(ABC):
@@ -59,24 +24,9 @@ class PhysicsBackend(ABC):
     - `collect_contacts()`
     - `set_event_bus()`
     - `get_step_metrics()`
-
-    Hooks como `create_body()` o `sync_world()` siguen existiendo para los
-    adaptadores concretos, pero no deben ser usados como API publica.
     """
 
     backend_name: str = "unknown"
-
-    @abstractmethod
-    def create_body(self, entity: Any) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def destroy_body(self, entity_id: int) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def create_shape(self, entity: Any) -> None:
-        raise NotImplementedError
 
     @abstractmethod
     def step(self, world: Any, dt: float) -> None:
@@ -113,3 +63,14 @@ class PhysicsBackend(ABC):
 
     def get_step_metrics(self) -> dict[str, float]:
         return {}
+
+
+__all__ = [
+    "PhysicsAABBHit",
+    "PhysicsBackend",
+    "PhysicsBackendInfo",
+    "PhysicsBackendSelection",
+    "PhysicsContact",
+    "PhysicsPoint",
+    "PhysicsRayHit",
+]

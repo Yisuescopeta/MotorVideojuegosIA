@@ -3,17 +3,16 @@ from __future__ import annotations
 import math
 from typing import Any, Optional
 
-from engine.components.collider import Collider
-from engine.components.joint2d import Joint2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
 from engine.physics.backend import PhysicsAABBHit, PhysicsBackend, PhysicsContact, PhysicsRayHit
+from engine.physics.ecs_adapter import build_body_signature, build_joint_signature, snapshot_world
+from engine.physics.types import PhysicsBodySpec, PhysicsEntitySnapshot
 
 try:
     from Box2D import (
         b2AABB,
         b2ContactListener,
-        b2PolygonShape,
         b2QueryCallback,
         b2RayCastCallback,
         b2Vec2,
@@ -22,7 +21,6 @@ try:
 except Exception:  # pragma: no cover - optional dependency path
     b2AABB = None
     b2ContactListener = object
-    b2PolygonShape = None
     b2QueryCallback = object
     b2RayCastCallback = object
     b2Vec2 = None
@@ -91,7 +89,6 @@ class Box2DPhysicsBackend(PhysicsBackend):
         self._world.contactListener = self._listener
         self._bodies: dict[int, Any] = {}
         self._signatures: dict[int, tuple[Any, ...]] = {}
-        self._entity_names: dict[int, str] = {}
         self._joints: dict[int, Any] = {}
         self._joint_signatures: dict[int, tuple[Any, ...]] = {}
         self._latest_contacts: list[PhysicsContact] = []
@@ -100,48 +97,47 @@ class Box2DPhysicsBackend(PhysicsBackend):
     def set_event_bus(self, event_bus: Optional[Any]) -> None:
         self._event_bus = event_bus
 
-    def create_body(self, entity: Any) -> None:
-        transform = entity.get_component(Transform)
-        collider = entity.get_component(Collider)
-        if transform is None or collider is None or not collider.enabled:
-            return
-        rigidbody = entity.get_component(RigidBody)
-        signature = self._signature(entity, transform, collider, rigidbody)
-        body = self._bodies.get(int(entity.id))
-        if self._signatures.get(entity.id) == signature:
-            if body is not None:
-                self._sync_body_runtime_state(body, transform, rigidbody)
-            return
-        self.destroy_body(entity.id)
-        body = self._create_body_for_entity(entity, transform, collider, rigidbody)
-        self._bodies[entity.id] = body
-        self._signatures[entity.id] = signature
-        self._entity_names[entity.id] = entity.name
-
-    def destroy_body(self, entity_id: int) -> None:
-        body = self._bodies.pop(int(entity_id), None)
-        self._signatures.pop(int(entity_id), None)
-        self._entity_names.pop(int(entity_id), None)
-        if body is not None:
-            self._world.DestroyBody(body)
-
-    def create_shape(self, entity: Any) -> None:
-        self.create_body(entity)
-
     def sync_world(self, world: Any) -> None:
-        current_ids = {int(entity.id) for entity in world.get_all_entities()}
+        snapshots = snapshot_world(world)
+        current_ids = {snapshot.entity_id for snapshot in snapshots}
+        snapshots_by_id = {snapshot.entity_id: snapshot for snapshot in snapshots}
+        snapshots_by_name = {snapshot.entity_name: snapshot for snapshot in snapshots}
+
         for entity_id in list(set(self._bodies.keys()) - current_ids):
             self.destroy_body(entity_id)
         for joint_id in list(set(self._joints.keys()) - current_ids):
             self._destroy_joint(joint_id)
-        for entity in world.get_all_entities():
-            transform = entity.get_component(Transform)
-            collider = entity.get_component(Collider)
-            if transform is None or collider is None or not collider.enabled:
-                self.destroy_body(entity.id)
+
+        for snapshot in snapshots:
+            if not snapshot.has_transform or snapshot.shape is None or not snapshot.shape.enabled:
+                self.destroy_body(snapshot.entity_id)
                 continue
-            self.create_body(entity)
-        self._sync_joints(world)
+            self._sync_body_from_snapshot(snapshot)
+
+        self._sync_joints(snapshots_by_id, snapshots_by_name)
+
+    def destroy_body(self, entity_id: int) -> None:
+        body = self._bodies.pop(int(entity_id), None)
+        self._signatures.pop(int(entity_id), None)
+        if body is not None:
+            self._world.DestroyBody(body)
+
+    def _sync_body_from_snapshot(self, snapshot: PhysicsEntitySnapshot) -> None:
+        shape = snapshot.shape
+        if not snapshot.has_transform or shape is None or not shape.enabled:
+            return
+        signature = build_body_signature(snapshot)
+        if signature is None:
+            return
+        body = self._bodies.get(int(snapshot.entity_id))
+        if self._signatures.get(snapshot.entity_id) == signature:
+            if body is not None:
+                self._sync_body_runtime_state(body, snapshot)
+            return
+        self.destroy_body(snapshot.entity_id)
+        body = self._create_body_for_snapshot(snapshot)
+        self._bodies[snapshot.entity_id] = body
+        self._signatures[snapshot.entity_id] = signature
 
     def step(self, world: Any, dt: float) -> None:
         self.sync_world(world)
@@ -190,51 +186,70 @@ class Box2DPhysicsBackend(PhysicsBackend):
     def get_step_metrics(self) -> dict[str, float]:
         return dict(self._step_metrics)
 
-    def _create_body_for_entity(self, entity: Any, transform: Transform, collider: Collider, rigidbody: Optional[RigidBody]) -> Any:
+    def _create_body_for_snapshot(self, snapshot: PhysicsEntitySnapshot) -> Any:
+        shape = snapshot.shape
+        if not snapshot.has_transform or shape is None:
+            raise ValueError("Physics snapshot requires transform and shape data to create a Box2D body")
+        body_spec = snapshot.body
         body_type = "static"
-        if rigidbody is not None:
-            body_type = rigidbody.body_type
-        body = self._world.CreateDynamicBody(position=(transform.x, transform.y)) if body_type == "dynamic" else self._world.CreateStaticBody(position=(transform.x, transform.y))
+        if body_spec is not None:
+            body_type = body_spec.body_type
+        body = (
+            self._world.CreateDynamicBody(position=(snapshot.transform_x, snapshot.transform_y))
+            if body_type == "dynamic"
+            else self._world.CreateStaticBody(position=(snapshot.transform_x, snapshot.transform_y))
+        )
         if body_type == "kinematic":
             body.type = 1  # b2_kinematicBody
-        if rigidbody is not None:
-            body.linearVelocity = self._constrained_linear_velocity(rigidbody)
-            body.gravityScale = rigidbody.gravity_scale
-            body.bullet = rigidbody.collision_detection_mode == "continuous"
-        body.userData = {"entity_id": int(entity.id), "entity_name": entity.name}
+        if body_spec is not None:
+            body.linearVelocity = self._constrained_linear_velocity(body_spec)
+            body.gravityScale = body_spec.gravity_scale
+            body.bullet = body_spec.collision_detection_mode == "continuous"
+        body.userData = {"entity_id": int(snapshot.entity_id), "entity_name": snapshot.entity_name}
         fixture_kwargs = {
-            "density": float(collider.density),
-            "friction": float(collider.friction),
-            "restitution": float(collider.restitution),
-            "isSensor": bool(collider.is_trigger),
+            "density": float(shape.density),
+            "friction": float(shape.friction),
+            "restitution": float(shape.restitution),
+            "isSensor": bool(shape.filter.is_sensor),
         }
-        shape_type = str(collider.shape_type or "box")
+        shape_type = str(shape.shape_type or "box")
         if shape_type == "circle":
-            body.CreateCircleFixture(radius=float(collider.radius), pos=(float(collider.offset_x), float(collider.offset_y)), **fixture_kwargs)
-        elif shape_type == "polygon" and collider.points:
-            body.CreatePolygonFixture(vertices=[(float(point[0]), float(point[1])) for point in collider.points], **fixture_kwargs)
+            body.CreateCircleFixture(radius=float(shape.radius), pos=(float(shape.offset_x), float(shape.offset_y)), **fixture_kwargs)
+        elif shape_type == "polygon" and shape.points:
+            body.CreatePolygonFixture(vertices=[(float(point[0]), float(point[1])) for point in shape.points], **fixture_kwargs)
         else:
-            body.CreatePolygonFixture(box=(float(collider.width) / 2.0, float(collider.height) / 2.0, (float(collider.offset_x), float(collider.offset_y)), 0.0), **fixture_kwargs)
+            body.CreatePolygonFixture(
+                box=(
+                    float(shape.width) / 2.0,
+                    float(shape.height) / 2.0,
+                    (float(shape.offset_x), float(shape.offset_y)),
+                    0.0,
+                ),
+                **fixture_kwargs,
+            )
         return body
 
-    def _sync_body_runtime_state(self, body: Any, transform: Transform, rigidbody: Optional[RigidBody]) -> None:
-        if abs(float(body.position[0]) - float(transform.x)) > 1e-5 or abs(float(body.position[1]) - float(transform.y)) > 1e-5:
-            body.position = (float(transform.x), float(transform.y))
-        desired_angle = math.radians(float(transform.rotation))
+    def _sync_body_runtime_state(self, body: Any, snapshot: PhysicsEntitySnapshot) -> None:
+        if not snapshot.has_transform:
+            return
+        if abs(float(body.position[0]) - float(snapshot.transform_x)) > 1e-5 or abs(float(body.position[1]) - float(snapshot.transform_y)) > 1e-5:
+            body.position = (float(snapshot.transform_x), float(snapshot.transform_y))
+        desired_angle = math.radians(float(snapshot.transform_rotation))
         if abs(float(body.angle) - desired_angle) > 1e-5:
             body.angle = desired_angle
-        if rigidbody is None:
+        body_spec = snapshot.body
+        if body_spec is None:
             body.linearVelocity = (0.0, 0.0)
             return
-        desired_velocity = self._constrained_linear_velocity(rigidbody)
+        desired_velocity = self._constrained_linear_velocity(body_spec)
         if (
             abs(float(body.linearVelocity[0]) - desired_velocity[0]) > 1e-5
             or abs(float(body.linearVelocity[1]) - desired_velocity[1]) > 1e-5
         ):
             body.linearVelocity = desired_velocity
-        if abs(float(getattr(body, "gravityScale", 1.0)) - float(rigidbody.gravity_scale)) > 1e-5:
-            body.gravityScale = float(rigidbody.gravity_scale)
-        desired_bullet = rigidbody.collision_detection_mode == "continuous"
+        if abs(float(getattr(body, "gravityScale", 1.0)) - float(body_spec.gravity_scale)) > 1e-5:
+            body.gravityScale = float(body_spec.gravity_scale)
+        desired_bullet = body_spec.collision_detection_mode == "continuous"
         if bool(getattr(body, "bullet", False)) != desired_bullet:
             body.bullet = desired_bullet
 
@@ -270,89 +285,57 @@ class Box2DPhysicsBackend(PhysicsBackend):
                 if rigidbody.collision_detection_mode == "continuous":
                     self._step_metrics["ccd_bodies"] += 1
 
-    def _constrained_linear_velocity(self, rigidbody: RigidBody) -> tuple[float, float]:
-        velocity_x = 0.0 if rigidbody.freeze_x else float(rigidbody.velocity_x)
-        velocity_y = 0.0 if rigidbody.freeze_y else float(rigidbody.velocity_y)
+    def _constrained_linear_velocity(self, body_spec: PhysicsBodySpec) -> tuple[float, float]:
+        velocity_x = 0.0 if body_spec.freeze_x else float(body_spec.velocity_x)
+        velocity_y = 0.0 if body_spec.freeze_y else float(body_spec.velocity_y)
         return (velocity_x, velocity_y)
 
-    def _signature(
+    def _sync_joints(
         self,
-        entity: Any,
-        transform: Transform,
-        collider: Collider,
-        rigidbody: Optional[RigidBody],
-    ) -> tuple[Any, ...]:
-        return (
-            entity.name,
-            str(collider.shape_type),
-            float(collider.width),
-            float(collider.height),
-            float(collider.radius),
-            tuple(tuple(float(value) for value in point) for point in collider.points),
-            float(collider.offset_x),
-            float(collider.offset_y),
-            bool(collider.is_trigger),
-            float(collider.friction),
-            float(collider.restitution),
-            float(collider.density),
-            None if rigidbody is None else (
-                rigidbody.body_type,
-                float(rigidbody.gravity_scale),
-                bool(rigidbody.freeze_x),
-                bool(rigidbody.freeze_y),
-                str(rigidbody.collision_detection_mode),
-            ),
-        )
-
-    def _sync_joints(self, world: Any) -> None:
+        snapshots_by_id: dict[int, PhysicsEntitySnapshot],
+        snapshots_by_name: dict[str, PhysicsEntitySnapshot],
+    ) -> None:
         valid_joint_ids: set[int] = set()
-        for entity in world.get_all_entities():
-            joint = entity.get_component(Joint2D)
+        for entity_id, snapshot in snapshots_by_id.items():
+            joint = snapshot.joint
             if joint is None or not joint.enabled or not joint.connected_entity:
-                self._destroy_joint(entity.id)
+                self._destroy_joint(entity_id)
                 continue
-            connected_entity = world.get_entity_by_name(joint.connected_entity)
-            if connected_entity is None:
-                self._destroy_joint(entity.id)
+            connected_snapshot = snapshots_by_name.get(joint.connected_entity)
+            if connected_snapshot is None:
+                self._destroy_joint(entity_id)
                 continue
-            body_a = self._bodies.get(int(entity.id))
-            body_b = self._bodies.get(int(connected_entity.id))
-            if body_a is None or body_b is None:
-                self._destroy_joint(entity.id)
+            body_a = self._bodies.get(int(entity_id))
+            body_b = self._bodies.get(int(connected_snapshot.entity_id))
+            if body_a is None or body_b is None or not snapshot.has_transform or not connected_snapshot.has_transform:
+                self._destroy_joint(entity_id)
                 continue
-            signature = (
-                joint.joint_type,
-                joint.connected_entity,
-                float(joint.anchor_x),
-                float(joint.anchor_y),
-                float(joint.connected_anchor_x),
-                float(joint.connected_anchor_y),
-                float(joint.rest_length),
-                float(joint.damping_ratio),
-                float(joint.frequency_hz),
-                bool(joint.collide_connected),
-            )
-            valid_joint_ids.add(int(entity.id))
-            if self._joint_signatures.get(int(entity.id)) == signature:
+            signature = build_joint_signature(snapshot)
+            if signature is None:
+                self._destroy_joint(entity_id)
                 continue
-            self._destroy_joint(entity.id)
-            self._joints[int(entity.id)] = self._create_joint(entity, connected_entity, joint)
-            self._joint_signatures[int(entity.id)] = signature
+            valid_joint_ids.add(int(entity_id))
+            if self._joint_signatures.get(int(entity_id)) == signature:
+                continue
+            self._destroy_joint(entity_id)
+            self._joints[int(entity_id)] = self._create_joint(snapshot, connected_snapshot)
+            self._joint_signatures[int(entity_id)] = signature
         for entity_id in list(set(self._joints.keys()) - valid_joint_ids):
             self._destroy_joint(entity_id)
 
-    def _create_joint(self, entity: Any, connected_entity: Any, joint: Joint2D) -> Any:
-        body_a = self._bodies[int(entity.id)]
-        body_b = self._bodies[int(connected_entity.id)]
-        transform_a = entity.get_component(Transform)
-        transform_b = connected_entity.get_component(Transform)
+    def _create_joint(self, snapshot: PhysicsEntitySnapshot, connected_snapshot: PhysicsEntitySnapshot) -> Any:
+        joint = snapshot.joint
+        if joint is None:
+            raise ValueError("Physics snapshot requires joint data to create a Box2D joint")
+        body_a = self._bodies[int(snapshot.entity_id)]
+        body_b = self._bodies[int(connected_snapshot.entity_id)]
         anchor_a = (
-            float(transform_a.x + joint.anchor_x),
-            float(transform_a.y + joint.anchor_y),
+            float(snapshot.transform_x + joint.anchor_x),
+            float(snapshot.transform_y + joint.anchor_y),
         )
         anchor_b = (
-            float(transform_b.x + joint.connected_anchor_x),
-            float(transform_b.y + joint.connected_anchor_y),
+            float(connected_snapshot.transform_x + joint.connected_anchor_x),
+            float(connected_snapshot.transform_y + joint.connected_anchor_y),
         )
         if joint.joint_type == "fixed":
             return self._world.CreateWeldJoint(

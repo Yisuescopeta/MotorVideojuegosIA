@@ -45,6 +45,16 @@ layout e interaccion; `UIRenderSystem` resuelve la capa visual para `UIText`,
 El sistema fisico conserva `legacy_aabb` como fallback obligatorio y registra
 `box2d` como backend opcional cuando la dependencia esta disponible.
 
+La foundation interna de `engine/physics/` queda separada en tres capas:
+
+- contrato runtime minimo del backend en `engine/physics/backend.py`
+- tipos normalizados ECS -> physics en `engine/physics/types.py`
+- adaptador ECS -> snapshots/specs y capacidades internas en `engine/physics/ecs_adapter.py` y `engine/physics/capabilities.py`
+
+Esta separacion no cambia la semantica publica actual: `legacy_aabb` sigue
+siendo el fallback obligatorio, `box2d` sigue siendo opcional, y
+`query_physics_ray` / `query_physics_aabb` conservan su significado publico.
+
 ## Reglas y eventos
 
 `EventBus` y `RuleSystem` permiten gameplay declarativo desde datos de escena.
