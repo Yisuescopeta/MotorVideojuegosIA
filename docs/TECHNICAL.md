@@ -49,6 +49,11 @@ El sistema fisico conserva `legacy_aabb` como fallback obligatorio y registra
 
 `Game` y `HeadlessGame` comparten una secuencia interna explicita por frame:
 
+`HeadlessGame` queda tocado solo como adaptador minimo porque `EngineAPI`
+inicializa ese runtime y `step()` publica entra por `step_frame()`. Mantener la
+misma secuencia evita que el foundation diverja entre runtime grafico y runtime
+publico headless.
+
 1. `FIXED_UPDATE`: simulacion runtime con `fixed_dt = 1/60` y acumulador con
    limite de pasos por frame.
 2. `UPDATE`: animacion normal o preview y trabajo variable que no entra todavia

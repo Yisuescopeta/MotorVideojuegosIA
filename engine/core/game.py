@@ -857,16 +857,12 @@ class Game:
                 ),
             )
 
-            # Update Animation (Only in Play/Step mode)
-            # Runtime phases are handled by _run_runtime_tick().
             
             # Actualización de gameplay (Física, Colisiones, Reglas)
-            # Gameplay, edit-mode scripts and UI runtime are handled by _run_runtime_tick().
             
             # Si estábamos en STEPPING, volvemos a PAUSED después de un frame
             if self._state == EngineState.EDIT:
                 self._autosave_dirty_scenes()
-            # Renderizar FRAME (Safe)
             try:
                 render_start = time.perf_counter()
                 self._runtime_controller.begin_render_phase(tick_plan)

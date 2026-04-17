@@ -49,6 +49,8 @@ class HeadlessGame(Game):
         self._perf_stats["animation"] = 0.0
         self._perf_stats["ui"] = 0.0
 
+        # EngineAPI.step() runs through HeadlessGame, so the shared runtime
+        # foundation must also drive the public headless path.
         self._run_runtime_tick(
             active_world,
             dt,
