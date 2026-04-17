@@ -25,7 +25,7 @@ class RenderPipelineFoundationTests(unittest.TestCase):
         entity.add_component(Sprite(texture_path="assets/shared.png", width=32, height=32))
         entity.add_component(RenderOrder2D(sorting_layer=sorting_layer, order_in_layer=order_in_layer, render_pass=render_pass))
 
-    def test_typed_frame_plan_preserves_render_graph_order_and_target_jobs(self) -> None:
+    def test_planner_adapts_legacy_frame_plan_without_changing_order_and_jobs(self) -> None:
         world = World()
         world.feature_metadata = {
             "render_2d": {
@@ -39,7 +39,8 @@ class RenderPipelineFoundationTests(unittest.TestCase):
         world.selected_entity_name = "Hero"
 
         render_system = RenderSystem()
-        frame_plan = render_system._build_frame_plan_model(world, viewport_size=(320.0, 180.0))
+        legacy_frame_plan = render_system._build_frame_plan(world, viewport_size=(320.0, 180.0))
+        frame_plan = render_system._pipeline_planner.adapt_frame_plan_payload(legacy_frame_plan)
 
         self.assertIsInstance(frame_plan, FramePlan2D)
         self.assertEqual([pass_plan.name for pass_plan in frame_plan.passes], ["World", "Overlay", "Debug"])
@@ -48,9 +49,42 @@ class RenderPipelineFoundationTests(unittest.TestCase):
         self.assertEqual([command.entity_name for command in frame_plan.get_pass("World").commands], ["Ground", "Hero"])
         self.assertEqual([command.entity_name for command in frame_plan.get_pass("Overlay").commands], ["HudMarker"])
         self.assertEqual([job.kind for job in frame_plan.render_target_jobs], ["debug_overlay", "minimap"])
-        payload = frame_plan.to_payload()
-        self.assertEqual(payload["render_targets"][0]["name"], "selection_overlay")
-        self.assertNotIn("commands", payload["render_targets"][0])
+        self.assertEqual([job["name"] for job in legacy_frame_plan["render_targets"]], ["selection_overlay", "minimap"])
+
+        frame_plan_via_helper = render_system._build_frame_plan_model(world, viewport_size=(320.0, 180.0))
+        self.assertEqual([pass_plan.name for pass_plan in frame_plan_via_helper.passes], ["World", "Overlay", "Debug"])
+        self.assertEqual([job.kind for job in frame_plan_via_helper.render_target_jobs], ["debug_overlay", "minimap"])
+
+    def test_render_system_wrappers_delegate_typed_models_to_executor(self) -> None:
+        world = World()
+        world.feature_metadata = {
+            "render_2d": {
+                "sorting_layers": ["Default"],
+                "minimap": {"enabled": True, "width": 160, "height": 100, "margin": 10},
+            }
+        }
+        self._make_sprite_entity(world, "Hero", x=16.0)
+        world.selected_entity_name = "Hero"
+
+        render_system = RenderSystem()
+        frame_plan = render_system._build_frame_plan_model(world, viewport_size=(320.0, 180.0))
+
+        with patch.object(render_system._pipeline_executor, "render_pass") as render_pass:
+            render_system._render_pass(frame_plan, "World")
+
+        render_pass.assert_called_once_with(frame_plan, "World")
+
+        with patch.object(render_system._pipeline_executor, "execute_render_target_job") as execute_job:
+            render_system._render_debug_overlay(frame_plan, camera=None, viewport_size=(320.0, 180.0))
+
+        execute_job.assert_called_once()
+        self.assertEqual(execute_job.call_args.args[0].kind, "debug_overlay")
+
+        with patch.object(render_system._pipeline_executor, "execute_render_target_job") as execute_job:
+            render_system._render_minimap(world, frame_plan, viewport_size=(320.0, 180.0))
+
+        execute_job.assert_called_once()
+        self.assertEqual(execute_job.call_args.args[0].kind, "minimap")
 
     def test_executor_dispatches_world_pass_and_target_jobs_through_handlers(self) -> None:
         world = World()
