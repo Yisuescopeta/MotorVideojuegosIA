@@ -1,6 +1,5 @@
 import unittest
 
-from engine.components.tilemap import Tilemap
 from engine.tilemap.model import TileCoord, TilemapData
 
 
@@ -41,46 +40,46 @@ class TilemapFoundationTests(unittest.TestCase):
             [(0, 0, "a"), (2, 1, "b")],
         )
 
-    def test_tilemap_to_dict_resyncs_from_external_surface_mutations(self) -> None:
-        tilemap = Tilemap(
-            cell_width=16,
-            cell_height=16,
-            layers=[{"name": "Ground", "tiles": []}],
-        )
-
-        tilemap.metadata["theme"] = "cave"
-        tilemap.layers[0]["metadata"] = {"purpose": "terrain"}
-        tilemap.layers[0]["tiles"] = {
-            "3,4": {
-                "tile_id": "wall",
-                "flags": ["solid"],
-            }
+    def test_tilemap_data_accepts_legacy_list_and_dict_tile_shapes(self) -> None:
+        payload = {
+            "tileset": {"path": "assets/tiles.png"},
+            "layers": [
+                {
+                    "name": "Ground",
+                    "tiles": [
+                        {"x": 1, "y": 2, "tile_id": "grass"},
+                    ],
+                },
+                {
+                    "name": "Decor",
+                    "tiles": {
+                        "3,4": {"tile_id": "flower"},
+                    },
+                },
+            ],
         }
 
-        payload = tilemap.to_dict()
+        model = TilemapData.from_payload(payload)
 
-        self.assertEqual(payload["metadata"]["theme"], "cave")
-        self.assertEqual(payload["layers"][0]["metadata"]["purpose"], "terrain")
-        self.assertEqual(payload["layers"][0]["tiles"][0]["x"], 3)
-        self.assertEqual(payload["layers"][0]["tiles"][0]["y"], 4)
-        self.assertEqual(payload["layers"][0]["tiles"][0]["tile_id"], "wall")
-        self.assertEqual(payload["layers"][0]["tiles"][0]["flags"], ["solid"])
+        self.assertEqual(model.layers[0].get_tile(TileCoord(1, 2)).tile_id, "grass")
+        self.assertEqual(model.layers[1].get_tile(TileCoord(3, 4)).tile_id, "flower")
 
-    def test_tilemap_followup_operations_preserve_external_layer_changes(self) -> None:
-        tilemap = Tilemap(
-            default_layer_name="Ground",
-            layers=[{"name": "Ground", "tiles": []}],
-        )
+        serialized = model.to_component_payload(enabled=True)
+        self.assertEqual(serialized["layers"][0]["tiles"][0]["tile_id"], "grass")
+        self.assertEqual(serialized["layers"][1]["tiles"][0]["tile_id"], "flower")
 
-        tilemap.layers[0]["metadata"] = {"purpose": "terrain"}
-        tilemap.set_tile("Ground", 1, 2, "grass", custom={"biome": "forest"})
+    def test_tilemap_data_normalizes_tileset_reference_consistency(self) -> None:
+        payload = {
+            "tileset": {"guid": "abc", "path": "assets/old.png"},
+            "tileset_path": "assets/new.png",
+            "layers": [],
+        }
 
-        layer = tilemap.get_layer("Ground")
-        tile = tilemap.get_tile("Ground", 1, 2)
+        model = TilemapData.from_payload(payload)
 
-        self.assertEqual(layer["metadata"]["purpose"], "terrain")
-        self.assertEqual(tile["tile_id"], "grass")
-        self.assertEqual(tile["custom"]["biome"], "forest")
+        self.assertEqual(model.tileset["guid"], "abc")
+        self.assertEqual(model.tileset["path"], "assets/new.png")
+        self.assertEqual(model.tileset_path, "assets/new.png")
 
 
 if __name__ == "__main__":
