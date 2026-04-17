@@ -34,9 +34,12 @@ El runtime usa `Game` o `HeadlessGame` para coordinar sistemas sobre el mundo
 activo. Los sistemas actuales incluyen render, fisica, colisiones, animacion,
 input, controladores de personaje/jugador, scripts, audio y UI.
 
-`RenderSystem` mantiene render graph, sorting layers, batching, tilemap chunks,
-debug geometry y render targets con fallback seguro cuando no hay backend
-grafico disponible.
+`RenderSystem` mantiene la fachada publica del render 2D y delega la
+planificacion/ejecucion del pipeline a `engine/rendering/`. La planificacion
+vive en un planner de frame/passes/comandos y la ejecucion en un executor con
+dispatch por tipo de comando y jobs de render target. Se conservan render
+graph, sorting layers, batching base, tilemap chunks, debug geometry y render
+targets con fallback seguro cuando no hay backend grafico disponible.
 
 `UIRenderSystem` renderiza la UI overlay serializable. `UISystem` conserva
 layout e interaccion; `UIRenderSystem` resuelve la capa visual para `UIText`,

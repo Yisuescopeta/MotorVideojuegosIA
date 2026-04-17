@@ -20,6 +20,9 @@ from engine.components.tilemap import Tilemap
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
+from engine.rendering.pipeline_executor import RenderPipelineExecutor2D
+from engine.rendering.pipeline_planner import RenderPipelinePlanner2D
+from engine.rendering.pipeline_types import FramePlan2D, RenderCommand2D, RenderPassPlan2D, RenderTargetJob2D
 from engine.rendering.render_targets import RenderTargetPool
 from engine.rendering.tilemap_chunk_renderer import TilemapChunkRenderer
 from engine.resources.texture_manager import TextureManager
@@ -43,6 +46,8 @@ class RenderSystem:
         self._asset_resolver: Any = None
         self._render_targets: RenderTargetPool = RenderTargetPool()
         self._tilemap_chunk_renderer: TilemapChunkRenderer = TilemapChunkRenderer(self._render_targets, lambda reference, fallback_path: self._load_texture(reference, fallback_path))
+        self._pipeline_planner: RenderPipelinePlanner2D = RenderPipelinePlanner2D(self)
+        self._pipeline_executor: RenderPipelineExecutor2D = RenderPipelineExecutor2D(self)
         self.debug_draw_colliders: bool = self.DEBUG_DRAW_COLLIDERS
         self.debug_draw_labels: bool = False
         self.debug_draw_tile_chunks: bool = False
@@ -132,8 +137,16 @@ class RenderSystem:
         }
 
     def profile_world(self, world: World, viewport_size: Optional[tuple[float, float]] = None) -> dict[str, Any]:
-        frame_plan = self._build_frame_plan(world, viewport_size=viewport_size)
-        return self._copy_stats(frame_plan["totals"])
+        frame_plan = self._build_frame_plan_model(world, viewport_size=viewport_size)
+        return self._copy_stats(frame_plan.totals)
+
+    def _build_frame_plan_model(
+        self,
+        world: World,
+        *,
+        viewport_size: Optional[tuple[float, float]],
+    ) -> FramePlan2D:
+        return self._pipeline_planner.build_frame_plan(world, viewport_size=viewport_size)
 
     def render(
         self,
@@ -143,12 +156,12 @@ class RenderSystem:
         viewport_size: Optional[tuple[float, float]] = None,
         allow_render_targets: bool = True,
     ) -> None:
-        frame_plan = self._build_frame_plan(world, viewport_size=viewport_size)
-        graph = frame_plan["graph"]
+        frame_plan = self._build_frame_plan_model(world, viewport_size=viewport_size)
+        graph = frame_plan.to_graph_payload()
         backend_ready = bool(hasattr(rl, "is_window_ready") and rl.is_window_ready())
 
         if not backend_ready:
-            totals = self._copy_stats(frame_plan["totals"])
+            totals = self._copy_stats(frame_plan.totals)
             if not allow_render_targets:
                 totals["render_target_passes"] = 0
                 totals["render_target_composites"] = 0
@@ -160,19 +173,19 @@ class RenderSystem:
             camera = self._build_camera_from_world(world, viewport_size=viewport_size)
         if allow_render_targets:
             self._render_targets.begin_frame()
-            self._prepare_tilemap_chunk_targets(graph)
+            self._pipeline_executor.prepare_tilemap_chunk_targets(frame_plan)
 
         if camera is not None:
             rl.begin_mode_2d(camera)
 
-        self._render_pass(graph, "World")
-        self._render_pass(graph, "Overlay")
+        self._pipeline_executor.render_pass(frame_plan, "World")
+        self._pipeline_executor.render_pass(frame_plan, "Overlay")
 
         if not allow_render_targets:
-            self._render_pass(graph, "Debug")
+            self._pipeline_executor.render_pass(frame_plan, "Debug")
             if camera is not None:
                 rl.end_mode_2d()
-            totals = self._copy_stats_with_tilemap_fallback_draws(frame_plan["totals"], graph)
+            totals = self._copy_stats_with_tilemap_fallback_draws(frame_plan.totals, graph)
             totals["render_target_passes"] = 0
             totals["render_target_composites"] = 0
             self._last_render_stats = totals
@@ -181,10 +194,14 @@ class RenderSystem:
         if camera is not None:
             rl.end_mode_2d()
 
-        self._render_debug_overlay(frame_plan, camera=camera, viewport_size=viewport_size)
-        self._render_minimap(world, frame_plan, viewport_size=viewport_size)
+        self._pipeline_executor.execute_render_target_jobs(
+            frame_plan,
+            world=world,
+            camera=camera,
+            viewport_size=viewport_size,
+        )
         target_metrics = self._render_targets.get_frame_metrics()
-        totals = self._copy_stats(frame_plan["totals"])
+        totals = self._copy_stats(frame_plan.totals)
         totals["render_target_passes"] = target_metrics.get("passes", 0)
         totals["render_target_composites"] = target_metrics.get("composites", 0)
         self._last_render_stats = totals
@@ -216,209 +233,7 @@ class RenderSystem:
         return self._sorted_entities_cache
 
     def _build_render_graph(self, world: World, viewport_size: Optional[tuple[float, float]] = None) -> dict[str, Any]:
-        sorting_layers = self._get_sorting_layers(world)
-        normalized_viewport = self._normalize_viewport_size(viewport_size)
-        cache_key = (
-            id(world),
-            int(getattr(world, "version", -1)),
-            int(getattr(world, "selection_version", -1)),
-            tuple(sorting_layers),
-            bool(self.debug_draw_colliders),
-            bool(self.debug_draw_labels),
-            bool(self.debug_draw_tile_chunks),
-            bool(self.debug_draw_camera),
-            self._debug_overlay_signature(),
-            normalized_viewport,
-        )
-        if self._render_graph_cache_key == cache_key:
-            return {
-                "passes": self._render_graph_cache.get("passes", []),
-                "totals": {
-                    **dict(self._render_graph_cache.get("totals", {})),
-                    "tilemap_chunk_rebuilds": 0,
-                },
-            }
-
-        sorted_entities = self._sorted_render_entities(world)
-        pass_commands: dict[str, list[dict[str, Any]]] = {name: [] for name in self.PASS_SEQUENCE}
-        tilemap_chunks = 0
-        tilemap_chunk_rebuilds = 0
-
-        for entity in sorted_entities:
-            transform = entity.get_component(Transform)
-            if transform is None:
-                continue
-            tilemap = entity.get_component(Tilemap)
-            render_order = entity.get_component(RenderOrder2D)
-            pass_name = self._get_render_pass(render_order)
-            sorting_layer = self._get_sorting_layer(render_order)
-            order_in_layer = self._get_order_in_layer(render_order)
-            if tilemap is not None and tilemap.enabled:
-                chunk_commands, rebuilds = self._build_tilemap_commands(entity, transform, tilemap, sorting_layer, order_in_layer)
-                pass_commands[pass_name].extend(chunk_commands)
-                tilemap_chunks += len(chunk_commands)
-                tilemap_chunk_rebuilds += rebuilds
-                if self.debug_draw_tile_chunks:
-                    for chunk_command in chunk_commands:
-                        geometry = self._build_tile_chunk_geometry(entity, chunk_command)
-                        if geometry is not None:
-                            self._append_debug_command(
-                                pass_commands["Debug"],
-                                {
-                                    "kind": "debug",
-                                    "debug_kind": "tile_chunk",
-                                    "entity": entity,
-                                    "entity_name": entity.name,
-                                    "chunk_id": chunk_command.get("chunk_id", ""),
-                                    "geometry": geometry,
-                                },
-                            )
-                continue
-            pass_commands[pass_name].append(
-                {
-                    "kind": "entity",
-                    "entity": entity,
-                    "entity_name": entity.name,
-                    "sorting_layer": sorting_layer,
-                    "order_in_layer": order_in_layer,
-                    "batch_key": self._build_batch_key(entity, sorting_layer),
-                }
-            )
-
-        if self.debug_draw_colliders:
-            for entity in sorted_entities:
-                transform = entity.get_component(Transform)
-                collider = entity.get_component(Collider)
-                if transform is None or collider is None or not collider.enabled:
-                    continue
-                self._append_debug_command(
-                    pass_commands["Debug"],
-                    {
-                        "kind": "debug",
-                        "debug_kind": "collider",
-                        "entity": entity,
-                        "entity_name": entity.name,
-                        "geometry": self._build_collider_geometry(transform, collider),
-                    }
-                )
-            for entity in sorted_entities:
-                transform = entity.get_component(Transform)
-                joint = entity.get_component(Joint2D)
-                if transform is None or joint is None or not joint.enabled or not joint.connected_entity:
-                    continue
-                if world.get_entity_by_name(joint.connected_entity) is None:
-                    continue
-                self._append_debug_command(
-                    pass_commands["Debug"],
-                    {
-                        "kind": "debug",
-                        "debug_kind": "joint",
-                        "entity": entity,
-                        "entity_name": entity.name,
-                        "geometry": self._build_joint_geometry(entity),
-                    }
-                )
-
-        if world.selected_entity_name:
-            selected_entity = world.get_entity_by_name(world.selected_entity_name)
-            if selected_entity is not None:
-                self._append_debug_command(
-                    pass_commands["Debug"],
-                    {
-                        "kind": "debug",
-                        "debug_kind": "selection",
-                        "entity": selected_entity,
-                        "entity_name": selected_entity.name,
-                        "geometry": self._build_selection_geometry(selected_entity),
-                    }
-                )
-
-        if self.debug_draw_camera:
-            camera_geometry = self._build_camera_geometry(world, normalized_viewport)
-            if camera_geometry is not None:
-                self._append_debug_command(
-                    pass_commands["Debug"],
-                    {
-                        "kind": "debug",
-                        "debug_kind": "camera",
-                        "entity_name": "__camera__",
-                        "geometry": camera_geometry,
-                    },
-                )
-
-        for primitive in self._debug_primitives:
-            self._append_debug_command(
-                pass_commands["Debug"],
-                {
-                    "kind": "debug",
-                    "debug_kind": primitive.get("kind", "primitive"),
-                    "entity_name": primitive.get("entity_name", "__debug__"),
-                    "geometry": primitive,
-                },
-            )
-
-        passes: list[dict[str, Any]] = []
-        total_draw_calls = 0
-        total_render_commands = 0
-        total_tilemap_tile_draw_calls = 0
-        total_batches = 0
-        total_state_changes = 0
-        total_entities = 0
-
-        for pass_name in self.PASS_SEQUENCE:
-            commands = pass_commands[pass_name]
-            batches = self._build_batches(commands)
-            entity_count = sum(1 for command in commands if command["kind"] == "entity")
-            render_commands = len(commands)
-            draw_calls = sum(self._command_draw_call_count(command) for command in commands)
-            tilemap_tile_draw_calls = sum(self._tilemap_command_draw_call_count(command) for command in commands)
-            batch_count = len(batches)
-            state_changes = max(0, batch_count - 1)
-            passes.append(
-                {
-                    "name": pass_name,
-                    "commands": commands,
-                    "batches": batches,
-                    "stats": {
-                        "render_entities": entity_count,
-                        "render_commands": render_commands,
-                        "draw_calls": draw_calls,
-                        "tilemap_tile_draw_calls": tilemap_tile_draw_calls,
-                        "batches": batch_count,
-                        "state_changes": state_changes,
-                    },
-                }
-            )
-            total_entities += entity_count
-            total_draw_calls += draw_calls
-            total_render_commands += render_commands
-            total_tilemap_tile_draw_calls += tilemap_tile_draw_calls
-            total_batches += batch_count
-            total_state_changes += state_changes
-
-        totals = {
-            "render_entities": total_entities,
-            "render_commands": total_render_commands,
-            "draw_calls": total_draw_calls,
-            "batches": total_batches,
-            "state_changes": total_state_changes,
-            "tilemap_chunks": tilemap_chunks,
-            "tilemap_tile_draw_calls": total_tilemap_tile_draw_calls,
-            "tilemap_chunk_rebuilds": tilemap_chunk_rebuilds,
-            "pass_count": len(self.PASS_SEQUENCE),
-            "sort_cache": {"hits": self._sort_cache_hits, "misses": self._sort_cache_misses},
-            "passes": {
-                pass_data["name"]: dict(pass_data["stats"])
-                for pass_data in passes
-            },
-        }
-        graph = {
-            "passes": passes,
-            "totals": totals,
-        }
-        self._render_graph_cache_key = cache_key
-        self._render_graph_cache = graph
-        return graph
+        return self._pipeline_planner.build_graph_payload(world, viewport_size=viewport_size)
 
     def _command_draw_call_count(self, command: dict[str, Any]) -> int:
         if command.get("kind") == "tilemap_chunk":
@@ -434,83 +249,23 @@ class RenderSystem:
         *,
         viewport_size: Optional[tuple[float, float]],
     ) -> dict[str, Any]:
-        graph = self._build_render_graph(world, viewport_size=viewport_size)
-        minimap_config = self._get_minimap_config(world)
-        debug_commands = next((entry["commands"] for entry in graph["passes"] if entry["name"] == "Debug"), [])
-        target_jobs: list[dict[str, Any]] = []
-        if debug_commands:
-            width, height = self._normalize_viewport_size(viewport_size)
-            target_jobs.append(
-                {
-                    "name": "selection_overlay",
-                    "kind": "debug_overlay",
-                    "width": width,
-                    "height": height,
-                }
-            )
-        if minimap_config.get("enabled"):
-            target_jobs.append(
-                {
-                    "name": "minimap",
-                    "kind": "minimap",
-                    "width": int(minimap_config["width"]),
-                    "height": int(minimap_config["height"]),
-                    "margin": int(minimap_config["margin"]),
-                }
-            )
-
-        totals = self._copy_stats(graph["totals"])
-        totals["render_target_passes"] = len(target_jobs)
-        totals["render_target_composites"] = len(target_jobs)
-        return {
-            "graph": graph,
-            "render_targets": target_jobs,
-            "totals": totals,
-        }
+        return self._pipeline_planner.build_frame_plan_payload(world, viewport_size=viewport_size)
 
     def _build_batches(self, commands: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        batches: list[dict[str, Any]] = []
-        current: dict[str, Any] | None = None
-
-        for command in commands:
-            batch_key = dict(command["batch_key"])
-            if current is None or current["key"] != batch_key:
-                current = {"key": batch_key, "commands": []}
-                batches.append(current)
-            current["commands"].append(command)
-
-        return batches
+        return self._pipeline_planner.build_batches_payload(commands)
 
     def _render_pass(self, graph: dict[str, Any], pass_name: str) -> None:
-        pass_data = next((entry for entry in graph["passes"] if entry["name"] == pass_name), None)
-        if pass_data is None:
+        legacy_pass = next((entry for entry in graph.get("passes", []) if entry.get("name") == pass_name), None)
+        if legacy_pass is None:
             return
-        for batch in pass_data["batches"]:
-            self._begin_batch_state(batch["key"])
-            try:
-                for command in batch["commands"]:
-                    if command["kind"] == "entity":
-                        entity = command["entity"]
-                        transform = entity.get_component(Transform)
-                        if transform is None:
-                            continue
-                        self._render_entity(entity, transform)
-                    elif command["kind"] == "tilemap_chunk":
-                        self._draw_tilemap_chunk(command)
-                    elif command["debug_kind"] == "collider":
-                        entity = command["entity"]
-                        transform = entity.get_component(Transform)
-                        collider = entity.get_component(Collider)
-                        if transform is not None and collider is not None:
-                            self._draw_collider(transform, collider)
-                    elif command["debug_kind"] == "joint":
-                        self._draw_joint(command["entity"])
-                    elif command["debug_kind"] == "selection":
-                        self._draw_selection_highlight(command["entity"])
-                    else:
-                        self._draw_debug_primitive(command.get("geometry", {}))
-            finally:
-                self._end_batch_state(batch["key"])
+        self._pipeline_executor.render_pass(
+            FramePlan2D(
+                passes=[RenderPassPlan2D.from_payload(legacy_pass)],
+                render_target_jobs=[],
+                totals={},
+            ),
+            pass_name,
+        )
 
     def _render_debug_overlay(
         self,
@@ -519,34 +274,18 @@ class RenderSystem:
         camera: Optional[rl.Camera2D],
         viewport_size: Optional[tuple[float, float]],
     ) -> None:
+        width, height = self._normalize_viewport_size(viewport_size)
         debug_commands = next((entry["commands"] for entry in frame_plan["graph"]["passes"] if entry["name"] == "Debug"), [])
         if not debug_commands:
             return
-        width, height = self._normalize_viewport_size(viewport_size)
-        self._render_targets.begin("selection_overlay", width, height, rl.Color(0, 0, 0, 0))
-        try:
-            if camera is not None:
-                rl.begin_mode_2d(camera)
-            for command in debug_commands:
-                if command["debug_kind"] == "collider":
-                    entity = command["entity"]
-                    transform = entity.get_component(Transform)
-                    collider = entity.get_component(Collider)
-                    if transform is not None and collider is not None:
-                        self._draw_collider(transform, collider)
-                elif command["debug_kind"] == "joint":
-                    self._draw_joint(command["entity"])
-                elif command["debug_kind"] == "selection":
-                    self._draw_selection_highlight(command["entity"])
-                else:
-                    self._draw_debug_primitive(command.get("geometry", {}))
-            if camera is not None:
-                rl.end_mode_2d()
-        finally:
-            self._render_targets.end()
-
-        destination = rl.Rectangle(0, 0, width, height)
-        self._render_targets.compose("selection_overlay", destination, rl.WHITE)
+        job = RenderTargetJob2D(
+            name="selection_overlay",
+            kind="debug_overlay",
+            width=width,
+            height=height,
+            commands=[RenderCommand2D.from_payload(command) for command in debug_commands],
+        )
+        self._pipeline_executor.execute_render_target_job(job, world=None, camera=camera, viewport_size=viewport_size)
 
     def _render_minimap(
         self,
@@ -558,29 +297,16 @@ class RenderSystem:
         minimap_config = self._get_minimap_config(world)
         if not minimap_config.get("enabled"):
             return
-
-        width = int(minimap_config["width"])
-        height = int(minimap_config["height"])
-        margin = int(minimap_config["margin"])
-        self._render_targets.begin("minimap", width, height, rl.Color(12, 14, 18, 235))
-        try:
-            renderables = [command["entity"] for command in next((entry["commands"] for entry in frame_plan["graph"]["passes"] if entry["name"] == "World"), []) if command["kind"] == "entity"]
-            bounds = self._compute_minimap_bounds(renderables)
-            for entity in renderables:
-                transform = entity.get_component(Transform)
-                if transform is None:
-                    continue
-                point = self._project_to_minimap(transform.x, transform.y, bounds, width, height)
-                sprite = entity.get_component(Sprite)
-                color = rl.LIGHTGRAY if sprite is None else rl.Color(*sprite.tint)
-                rl.draw_circle(int(point[0]), int(point[1]), 2.0, color)
-            rl.draw_rectangle_lines(0, 0, width, height, rl.Color(100, 140, 180, 255))
-        finally:
-            self._render_targets.end()
-
-        viewport_width, _ = self._normalize_viewport_size(viewport_size)
-        destination = rl.Rectangle(float(viewport_width - width - margin), float(margin), float(width), float(height))
-        self._render_targets.compose("minimap", destination, rl.WHITE)
+        world_commands = next((entry["commands"] for entry in frame_plan["graph"]["passes"] if entry["name"] == "World"), [])
+        job = RenderTargetJob2D(
+            name="minimap",
+            kind="minimap",
+            width=int(minimap_config["width"]),
+            height=int(minimap_config["height"]),
+            margin=int(minimap_config["margin"]),
+            commands=[RenderCommand2D.from_payload(command) for command in world_commands if command.get("kind") == "entity"],
+        )
+        self._pipeline_executor.execute_render_target_job(job, world=world, camera=None, viewport_size=viewport_size)
 
     def _build_batch_key(self, entity: Entity, sorting_layer: str) -> dict[str, str]:
         style = entity.get_component(RenderStyle2D)
@@ -932,90 +658,13 @@ class RenderSystem:
         return int(render_order.order_in_layer)
 
     def _public_graph(self, graph: dict[str, Any]) -> dict[str, Any]:
-        public_passes: list[dict[str, Any]] = []
-        for pass_data in graph.get("passes", []):
-            public_passes.append(
-                {
-                    "name": pass_data.get("name", ""),
-                    "commands": [
-                        {
-                            "kind": command.get("kind", ""),
-                            "debug_kind": command.get("debug_kind", ""),
-                            "entity_name": command.get("entity_name", ""),
-                            "chunk_id": command.get("chunk_id", ""),
-                            "sorting_layer": command.get("sorting_layer", ""),
-                            "order_in_layer": command.get("order_in_layer", 0),
-                            "batch_key": dict(command.get("batch_key", {})),
-                            "chunk_data": self._clone_geometry(command.get("chunk_data")),
-                            "geometry": self._clone_geometry(command.get("geometry")),
-                        }
-                        for command in pass_data.get("commands", [])
-                    ],
-                    "batches": [
-                        {
-                            "key": dict(batch.get("key", {})),
-                            "entity_names": [command.get("entity_name", "") for command in batch.get("commands", [])],
-                        }
-                        for batch in pass_data.get("batches", [])
-                    ],
-                    "stats": dict(pass_data.get("stats", {})),
-                }
-            )
-        return {
-            "passes": public_passes,
-            "totals": self._copy_stats(graph.get("totals", {})),
-        }
+        return self._pipeline_planner.public_graph(graph)
 
     def _copy_stats(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return {
-            "render_entities": int(payload.get("render_entities", 0)),
-            "render_commands": int(payload.get("render_commands", payload.get("draw_calls", 0))),
-            "draw_calls": int(payload.get("draw_calls", 0)),
-            "batches": int(payload.get("batches", 0)),
-            "state_changes": int(payload.get("state_changes", 0)),
-            "tilemap_chunks": int(payload.get("tilemap_chunks", 0)),
-            "tilemap_tile_draw_calls": int(payload.get("tilemap_tile_draw_calls", 0)),
-            "tilemap_chunk_rebuilds": int(payload.get("tilemap_chunk_rebuilds", 0)),
-            "pass_count": int(payload.get("pass_count", len(self.PASS_SEQUENCE))),
-            "render_target_passes": int(payload.get("render_target_passes", 0)),
-            "render_target_composites": int(payload.get("render_target_composites", 0)),
-            "sort_cache": {
-                "hits": int(payload.get("sort_cache", {}).get("hits", 0)),
-                "misses": int(payload.get("sort_cache", {}).get("misses", 0)),
-            },
-            "passes": {
-                str(name): {
-                    "render_entities": int(stats.get("render_entities", 0)),
-                    "render_commands": int(stats.get("render_commands", stats.get("draw_calls", 0))),
-                    "draw_calls": int(stats.get("draw_calls", 0)),
-                    "tilemap_tile_draw_calls": int(stats.get("tilemap_tile_draw_calls", 0)),
-                    "batches": int(stats.get("batches", 0)),
-                    "state_changes": int(stats.get("state_changes", 0)),
-                }
-                for name, stats in payload.get("passes", {}).items()
-            },
-        }
+        return self._pipeline_planner.copy_stats(payload)
 
     def _copy_stats_with_tilemap_fallback_draws(self, payload: dict[str, Any], graph: dict[str, Any]) -> dict[str, Any]:
-        stats = self._copy_stats(payload)
-        total_draw_calls = 0
-        pass_stats: dict[str, dict[str, int]] = {}
-        for pass_data in graph.get("passes", []):
-            pass_name = str(pass_data.get("name", ""))
-            commands = list(pass_data.get("commands", []))
-            draw_calls = 0
-            for command in commands:
-                if command.get("kind") == "tilemap_chunk":
-                    draw_calls += self._tilemap_command_draw_call_count(command)
-                else:
-                    draw_calls += 1
-            current = dict(stats.get("passes", {}).get(pass_name, {}))
-            current["draw_calls"] = draw_calls
-            pass_stats[pass_name] = current
-            total_draw_calls += draw_calls
-        stats["draw_calls"] = total_draw_calls
-        stats["passes"] = pass_stats
-        return stats
+        return self._pipeline_planner.copy_stats_with_tilemap_fallback_draws(payload, graph)
 
     def _build_camera_from_world(
         self,
@@ -1431,7 +1080,10 @@ class RenderSystem:
             values.append(255)
         return rl.Color(int(values[0]), int(values[1]), int(values[2]), int(values[3]))
 
-    def _prepare_tilemap_chunk_targets(self, graph: dict[str, Any]) -> None:
+    def _prepare_tilemap_chunk_targets(self, graph: dict[str, Any] | FramePlan2D) -> None:
+        if isinstance(graph, FramePlan2D):
+            self._pipeline_executor.prepare_tilemap_chunk_targets(graph)
+            return
         self._tilemap_chunk_renderer.prepare_targets(graph, self._tilemap_chunk_cache)
 
     def _draw_tilemap_chunk(self, command: dict[str, Any]) -> None:
