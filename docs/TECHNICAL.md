@@ -39,8 +39,16 @@ debug geometry y render targets con fallback seguro cuando no hay backend
 grafico disponible.
 
 `UIRenderSystem` renderiza la UI overlay serializable. `UISystem` conserva
-layout e interaccion; `UIRenderSystem` resuelve la capa visual para `UIText`,
-`UIButton` por color o sprite, y `UIImage`.
+layout e interaccion y ahora soporta dos modos de foundation sobre
+`RectTransform`:
+
+- `free` para el comportamiento legacy basado en anchors/pivot/anchored offsets
+- `vertical_stack` y `horizontal_stack` para distribuir hijos con padding,
+  spacing, orden, alineacion y fill/stretch por eje
+
+`UIRenderSystem` sigue resolviendo solo la capa visual para `UIText`,
+`UIButton` por color o sprite, y `UIImage`, usando los rects ya calculados por
+`UISystem`.
 
 El sistema fisico conserva `legacy_aabb` como fallback obligatorio y registra
 `box2d` como backend opcional cuando la dependencia esta disponible.
