@@ -63,6 +63,34 @@ foundation interna de `engine/audio/`. El backend real de audio, buses/mixer,
 spatial audio completo y la integracion con el `EventBus` global quedan
 preparados pero no implementados como contrato actual.
 
+### Secuencia runtime foundation
+
+`Game` y `HeadlessGame` comparten una secuencia interna explicita por frame:
+
+`HeadlessGame` queda tocado solo como adaptador minimo porque `EngineAPI`
+inicializa ese runtime y `step()` publica entra por `step_frame()`. Mantener la
+misma secuencia evita que el foundation diverja entre runtime grafico y runtime
+publico headless.
+
+1. `FIXED_UPDATE`: simulacion runtime con `fixed_dt = 1/60` y acumulador con
+   limite de pasos por frame.
+2. `UPDATE`: animacion normal o preview y trabajo variable que no entra todavia
+   en fixed-step.
+3. `POST_UPDATE`: UI runtime/render-like, bookkeeping y transicion
+   `STEPPING -> PAUSED`.
+4. `RENDER`: solo en el loop grafico; el foundation no cambia `RenderSystem`.
+
+El lifecycle minimo queda asi:
+
+- `EDIT -> PLAY`: clona `runtime_world`, resetea el estado del loop y dispara
+  hooks runtime existentes (`on_play`).
+- `PLAY/PAUSED -> STEPPING`: fuerza exactamente un `FIXED_UPDATE`.
+- `PLAY/PAUSED/STEPPING -> EDIT`: limpia el estado transitorio del loop,
+  ejecuta `on_stop` y restaura `edit_world`.
+
+Esto prepara fases posteriores de render/fisica sin abrir callbacks publicos
+nuevos ni alterar `EngineAPI`, CLI o schema serializable.
+
 ## Reglas y eventos
 
 `EventBus` y `RuleSystem` permiten gameplay declarativo desde datos de escena.

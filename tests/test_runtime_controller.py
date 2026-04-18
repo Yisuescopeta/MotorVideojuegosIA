@@ -4,6 +4,7 @@ from unittest.mock import Mock, call, patch
 
 from engine.app.runtime_controller import RuntimeController
 from engine.core.engine_state import EngineState
+from engine.core.runtime_loop import RuntimePhase
 from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.physics.registry import PhysicsBackendRegistry
 
@@ -28,7 +29,35 @@ class RuntimeControllerTests(unittest.TestCase):
         self.physics_backend_registry = PhysicsBackendRegistry()
         self.reset_profiler = Mock()
         self.set_physics_backend = Mock()
+        self.update_ui_overlay = Mock()
+        self.phase_events: list[RuntimePhase] = []
         self.controller = RuntimeController(
+            get_state=lambda: self.state["value"],
+            set_state=lambda value: self.state.__setitem__("value", value),
+            get_world=lambda: self.world_holder["world"],
+            set_world=lambda world: self.world_holder.__setitem__("world", world),
+            get_scene_manager=lambda: self.scene_manager,
+            get_rule_system=lambda: self.rule_system,
+            get_script_behaviour_system=lambda: self.script_behaviour_system,
+            get_event_bus=lambda: self.event_bus,
+            get_animation_system=lambda: self.animation_system,
+            get_input_system=lambda: self.input_system,
+            get_player_controller_system=lambda: self.player_controller_system,
+            get_character_controller_system=lambda: self.character_controller_system,
+            get_physics_system=lambda: self.physics_system,
+            get_collision_system=lambda: self.collision_system,
+            get_audio_system=lambda: self.audio_system,
+            get_scene_transition_controller=lambda: self.scene_transition_controller,
+            get_physics_backend_registry=lambda: self.physics_backend_registry,
+            reset_profiler=self.reset_profiler,
+            set_physics_backend=self.set_physics_backend,
+            edit_animation_speed=0.35,
+            update_ui_overlay=lambda world, viewport_size, active_tab=None: self.update_ui_overlay(
+                world,
+                viewport_size,
+                active_tab,
+            ),
+            phase_observer=lambda phase, plan: self.phase_events.append(phase),
             RuntimeControllerContext(
                 get_state=lambda: self.state["value"],
                 set_state=lambda value: self.state.__setitem__("value", value),
@@ -152,6 +181,36 @@ class RuntimeControllerTests(unittest.TestCase):
 
         self.assertEqual(self.state["value"], EngineState.EDIT)
 
+    def test_build_tick_plan_accumulates_partial_fixed_steps(self) -> None:
+        self.state["value"] = EngineState.PLAY
+
+        first = self.controller.build_tick_plan(0.01)
+        second = self.controller.build_tick_plan(0.01)
+
+        self.assertEqual(first.fixed_steps, 0)
+        self.assertEqual(second.fixed_steps, 1)
+        self.assertGreater(self.controller.loop_state.accumulator, 0.0)
+        self.assertLess(self.controller.loop_state.accumulator, self.controller.loop_state.fixed_dt)
+
+    def test_build_tick_plan_caps_fixed_steps_and_discards_overflow(self) -> None:
+        self.state["value"] = EngineState.PLAY
+        self.controller.loop_state.max_fixed_steps_per_frame = 2
+
+        plan = self.controller.build_tick_plan(0.2)
+
+        self.assertEqual(plan.fixed_steps, 2)
+        self.assertEqual(self.controller.loop_state.accumulator, 0.0)
+
+    def test_build_tick_plan_stepping_forces_single_fixed_step(self) -> None:
+        self.state["value"] = EngineState.STEPPING
+        self.controller.loop_state.accumulator = 0.5
+
+        plan = self.controller.build_tick_plan(0.0)
+
+        self.assertTrue(plan.is_stepping)
+        self.assertEqual(plan.fixed_steps, 1)
+        self.assertEqual(self.controller.loop_state.accumulator, 0.0)
+
     def test_update_gameplay_prefers_registered_backend(self) -> None:
         backend = Mock()
         backend.backend_name = "box2d"
@@ -216,6 +275,55 @@ class RuntimeControllerTests(unittest.TestCase):
         self.controller.update_animation(world, 2.0)
 
         self.animation_system.update.assert_called_once_with(world, 0.7)
+
+    def test_run_update_in_edit_mode_keeps_preview_and_edit_scripts_outside_fixed_step(self) -> None:
+        world = SimpleNamespace(feature_metadata={})
+        self.state["value"] = EngineState.EDIT
+        plan = self.controller.build_tick_plan(0.2)
+        self.script_behaviour_system.update.return_value = True
+
+        ran_edit_scripts = self.controller.run_update(world, 0.2, plan)
+
+        self.assertEqual(plan.fixed_steps, 0)
+        self.assertTrue(ran_edit_scripts)
+        self.animation_system.update.assert_called_once()
+        animation_args = self.animation_system.update.call_args.args
+        self.assertIs(animation_args[0], world)
+        self.assertAlmostEqual(animation_args[1], 0.07)
+        self.script_behaviour_system.update.assert_called_once_with(world, 0.2, is_edit_mode=True)
+        self.assertEqual(self.phase_events, [RuntimePhase.UPDATE])
+
+    def test_run_post_update_pauses_after_single_step_and_updates_render_like_state(self) -> None:
+        world = SimpleNamespace(feature_metadata={})
+        self.state["value"] = EngineState.STEPPING
+        plan = self.controller.build_tick_plan(0.0, should_render_like=True)
+
+        self.controller.run_fixed_update(world, plan.fixed_dt, plan)
+        self.controller.run_update(world, plan.frame_dt, plan)
+        self.controller.run_post_update(world, plan, viewport_size=(320.0, 180.0), active_tab="GAME")
+
+        self.assertEqual(
+            self.phase_events,
+            [RuntimePhase.FIXED_UPDATE, RuntimePhase.UPDATE, RuntimePhase.POST_UPDATE],
+        )
+        self.update_ui_overlay.assert_called_once_with(world, (320.0, 180.0), "GAME")
+        self.assertEqual(self.state["value"], EngineState.PAUSED)
+
+    def test_play_and_stop_reset_runtime_loop_state(self) -> None:
+        runtime_world = SimpleNamespace(feature_metadata={})
+        edit_world = SimpleNamespace(feature_metadata={})
+        self.scene_manager.enter_play.return_value = runtime_world
+        self.scene_manager.exit_play.return_value = edit_world
+        self.controller.loop_state.accumulator = 0.25
+
+        with patch("engine.app.runtime_controller.bake_tilemap_colliders"):
+            self.controller.play()
+
+        self.assertEqual(self.controller.loop_state.accumulator, 0.0)
+        self.controller.loop_state.accumulator = 0.5
+        self.world_holder["world"] = runtime_world
+        self.controller.stop()
+        self.assertEqual(self.controller.loop_state.accumulator, 0.0)
 
     def test_refresh_default_physics_backend_registers_legacy_backend_when_ready(self) -> None:
         with patch("engine.app.runtime_controller.LegacyAABBPhysicsBackend", return_value="legacy-backend") as backend_class:
