@@ -34,16 +34,34 @@ El runtime usa `Game` o `HeadlessGame` para coordinar sistemas sobre el mundo
 activo. Los sistemas actuales incluyen render, fisica, colisiones, animacion,
 input, controladores de personaje/jugador, scripts, audio y UI.
 
+`engine/audio/` define la foundation interna del runtime de audio. Expone
+contratos runtime (`AudioPlaybackRequest`, `AudioVoiceState`,
+`AudioRuntimeEvent`), un `NullAudioBackend` headless-safe y `AudioRuntime`
+como nucleo independiente de ECS.
+
 `RenderSystem` mantiene render graph, sorting layers, batching, tilemap chunks,
 debug geometry y render targets con fallback seguro cuando no hay backend
 grafico disponible.
 
 `UIRenderSystem` renderiza la UI overlay serializable. `UISystem` conserva
-layout e interaccion; `UIRenderSystem` resuelve la capa visual para `UIText`,
-`UIButton` por color o sprite, y `UIImage`.
+layout e interaccion y ahora soporta dos modos de foundation sobre
+`RectTransform`:
+
+- `free` para el comportamiento legacy basado en anchors/pivot/anchored offsets
+- `vertical_stack` y `horizontal_stack` para distribuir hijos con padding,
+  spacing, orden, alineacion y fill/stretch por eje
+
+`UIRenderSystem` sigue resolviendo solo la capa visual para `UIText`,
+`UIButton` por color o sprite, y `UIImage`, usando los rects ya calculados por
+`UISystem`.
 
 El sistema fisico conserva `legacy_aabb` como fallback obligatorio y registra
 `box2d` como backend opcional cuando la dependencia esta disponible.
+
+`AudioSystem` sigue siendo la superficie ECS/runtime compatible y delega en la
+foundation interna de `engine/audio/`. El backend real de audio, buses/mixer,
+spatial audio completo y la integracion con el `EventBus` global quedan
+preparados pero no implementados como contrato actual.
 
 ### Secuencia runtime foundation
 
@@ -94,11 +112,25 @@ estructurales y prefabs.
 Las rutas recomendadas para cambios persistentes son `SceneManager` y
 `EngineAPI`. `sync_from_edit_world()` queda como compatibilidad legacy.
 
+Base tecnica interna compartida:
+
+- `engine/scenes/contracts.py` separa `SceneRuntimePort`,
+  `SceneAuthoringPort` y `SceneWorkspacePort` como puertos internos sobre
+  `SceneManager`.
+- `engine/core/runtime_contracts.py` encapsula el wiring requerido por
+  `RuntimeController` en `RuntimeControllerContext`.
+- `engine/api/_contracts.py` tipa el bundle interno que `EngineAPI` expone a
+  sus colaboradores privados.
+
 ## EngineAPI publica
 
 `EngineAPI` es la fachada estable para agentes, tests, CLI y automatizacion.
 Internamente delega por dominios: authoring, runtime, workspace y scene flow,
 assets/proyecto, debug/profiler y UI serializable.
+
+Desde Fase 1, esos colaboradores privados consumen puertos tipados de escena y
+runtime en vez de depender de `Game` o `SceneManager` completos cuando no hace
+falta. La semantica publica no cambia.
 
 ```python
 from engine.api import EngineAPI
@@ -138,6 +170,11 @@ La referencia completa vive en [cli.md](cli.md).
 
 `engine/rl`, datasets, runners paralelos y workflows AI-assisted existen, pero
 pertenecen a `experimental/tooling`, no al `core obligatorio`.
+
+`engine/navigation` mantiene una foundation `grid-first` experimental con
+`NavigationGrid`, `NeighborMode`, `PathRequest`, `PathResult` y una API
+canonica `NavigationService.request_path(...)`; `query_path(...)` y
+`query_world_path(...)` permanecen como wrappers de compatibilidad.
 
 Docs relevantes:
 
