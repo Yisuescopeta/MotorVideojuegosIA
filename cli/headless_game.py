@@ -3,6 +3,7 @@ cli/headless_game.py - Headless runtime entrypoint
 """
 
 import time
+from typing import Callable
 
 from engine.core.game import Game
 
@@ -50,10 +51,12 @@ class HeadlessGame(Game):
         self._perf_stats["animation"] = 0.0
         self._perf_stats["ui"] = 0.0
 
-        on_edit_scripts_ran = None
+        on_edit_scripts_ran: Callable[[], None] | None = None
         if scene_manager is not None:
+            manager = scene_manager
+
             def sync_edit_world() -> None:
-                scene_manager.sync_from_edit_world()
+                manager.sync_from_edit_world()
 
             on_edit_scripts_ran = sync_edit_world
 

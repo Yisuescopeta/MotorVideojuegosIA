@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from engine.core.engine_state import EngineState
-from engine.core.runtime_loop import RuntimeLoopState, RuntimePhase, RuntimeTickPlan
 from engine.core.runtime_contracts import RuntimeControllerContext
+from engine.core.runtime_loop import RuntimeLoopState, RuntimePhase, RuntimeTickPlan
 from engine.editor.console_panel import log_info
 from engine.physics.backend import PhysicsBackendSelection
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
@@ -19,50 +19,32 @@ class RuntimeController:
 
     def __init__(
         self,
+        context: RuntimeControllerContext,
         *,
-        get_state: Callable[[], EngineState],
-        set_state: Callable[[EngineState], None],
-        get_world: Callable[[], Optional["World"]],
-        set_world: Callable[[Optional["World"]], None],
-        get_scene_manager: Callable[[], Any],
-        get_rule_system: Callable[[], Any],
-        get_script_behaviour_system: Callable[[], Any],
-        get_event_bus: Callable[[], Any],
-        get_animation_system: Callable[[], Any],
-        get_input_system: Callable[[], Any],
-        get_player_controller_system: Callable[[], Any],
-        get_character_controller_system: Callable[[], Any],
-        get_physics_system: Callable[[], Any],
-        get_collision_system: Callable[[], Any],
-        get_audio_system: Callable[[], Any],
-        get_scene_transition_controller: Callable[[], Any],
-        get_physics_backend_registry: Callable[[], PhysicsBackendRegistry],
-        reset_profiler: Callable[..., None],
-        set_physics_backend: Callable[[Any, str], None],
-        edit_animation_speed: float,
         update_ui_overlay: Optional[Callable[[Any, tuple[float, float], Optional[str]], None]] = None,
         phase_observer: Optional[Callable[[RuntimePhase, RuntimeTickPlan], None]] = None,
     ) -> None:
-        self._get_state = get_state
-        self._set_state = set_state
-        self._get_world = get_world
-        self._set_world = set_world
-        self._get_scene_manager = get_scene_manager
-        self._get_rule_system = get_rule_system
-        self._get_script_behaviour_system = get_script_behaviour_system
-        self._get_event_bus = get_event_bus
-        self._get_animation_system = get_animation_system
-        self._get_input_system = get_input_system
-        self._get_player_controller_system = get_player_controller_system
-        self._get_character_controller_system = get_character_controller_system
-        self._get_physics_system = get_physics_system
-        self._get_collision_system = get_collision_system
-        self._get_audio_system = get_audio_system
-        self._get_scene_transition_controller = get_scene_transition_controller
-        self._get_physics_backend_registry = get_physics_backend_registry
-        self._reset_profiler = reset_profiler
-        self._set_physics_backend = set_physics_backend
-        self._edit_animation_speed = float(edit_animation_speed)
+        self._context = context
+        self._get_state = context.get_state
+        self._set_state = context.set_state
+        self._get_world = context.get_world
+        self._set_world = context.set_world
+        self._get_scene_runtime = context.get_scene_runtime
+        self._get_rule_system = context.get_rule_system
+        self._get_script_behaviour_system = context.get_script_behaviour_system
+        self._get_event_bus = context.get_event_bus
+        self._get_animation_system = context.get_animation_system
+        self._get_input_system = context.get_input_system
+        self._get_player_controller_system = context.get_player_controller_system
+        self._get_character_controller_system = context.get_character_controller_system
+        self._get_physics_system = context.get_physics_system
+        self._get_collision_system = context.get_collision_system
+        self._get_audio_system = context.get_audio_system
+        self._get_scene_transition_controller = context.get_scene_transition_controller
+        self._get_physics_backend_registry = context.get_physics_backend_registry
+        self._reset_profiler = context.reset_profiler
+        self._set_physics_backend = context.set_physics_backend
+        self._edit_animation_speed = float(context.edit_animation_speed)
         self._update_ui_overlay = update_ui_overlay
         self._phase_observer = phase_observer
         self._loop_state = RuntimeLoopState()
@@ -107,29 +89,6 @@ class RuntimeController:
             is_stepping=is_stepping,
             should_render_like=bool(should_render_like),
         )
-    def __init__(self, context: RuntimeControllerContext) -> None:
-        self._context = context
-        self._get_state = context.get_state
-        self._set_state = context.set_state
-        self._get_world = context.get_world
-        self._set_world = context.set_world
-        self._get_scene_runtime = context.get_scene_runtime
-        self._get_rule_system = context.get_rule_system
-        self._get_script_behaviour_system = context.get_script_behaviour_system
-        self._get_event_bus = context.get_event_bus
-        self._get_animation_system = context.get_animation_system
-        self._get_input_system = context.get_input_system
-        self._get_player_controller_system = context.get_player_controller_system
-        self._get_character_controller_system = context.get_character_controller_system
-        self._get_physics_system = context.get_physics_system
-        self._get_collision_system = context.get_collision_system
-        self._get_audio_system = context.get_audio_system
-        self._get_scene_transition_controller = context.get_scene_transition_controller
-        self._get_physics_backend_registry = context.get_physics_backend_registry
-        self._reset_profiler = context.reset_profiler
-        self._set_physics_backend = context.set_physics_backend
-        self._edit_animation_speed = float(context.edit_animation_speed)
-
     def play(self) -> None:
         """Inicia el juego (EDIT -> PLAY)."""
         if self._get_state() != EngineState.EDIT:

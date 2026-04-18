@@ -203,32 +203,15 @@ class Game:
             load_scene_by_path=self._load_runtime_scene_from_ui,
             play_runtime=self.play,
         )
-        self._runtime_controller = RuntimeController(
-            get_state=lambda: self._state,
-            set_state=lambda value: setattr(self, "_state", value),
-            get_world=lambda: self.world,
-            set_world=self.set_world,
-            get_scene_manager=lambda: self._scene_manager,
-            get_rule_system=lambda: self._rule_system,
-            get_script_behaviour_system=lambda: self._script_behaviour_system,
-            get_event_bus=lambda: self._event_bus,
-            get_animation_system=lambda: self._animation_system,
-            get_input_system=lambda: self._input_system,
-            get_player_controller_system=lambda: self._player_controller_system,
-            get_character_controller_system=lambda: self._character_controller_system,
-            get_physics_system=lambda: self._physics_system,
-            get_collision_system=lambda: self._collision_system,
-            get_audio_system=lambda: self._audio_system,
-            get_scene_transition_controller=lambda: self._scene_transition_controller,
-            get_physics_backend_registry=lambda: self._physics_backend_registry,
-            reset_profiler=self.reset_profiler,
-            set_physics_backend=self.set_physics_backend,
-            edit_animation_speed=self.EDIT_ANIMATION_SPEED,
-            update_ui_overlay=lambda world, viewport_size, active_tab=None: self._update_ui_overlay(
+
+        def update_ui_overlay(world: Any, viewport_size: tuple[float, float], active_tab: str | None = None) -> None:
+            self._update_ui_overlay(
                 world,
                 viewport_size,
                 active_tab=active_tab,
-            ),
+            )
+
+        self._runtime_controller = RuntimeController(
             RuntimeControllerContext(
                 get_state=lambda: self._state,
                 set_state=lambda value: setattr(self, "_state", value),
@@ -250,7 +233,8 @@ class Game:
                 reset_profiler=self.reset_profiler,
                 set_physics_backend=self.set_physics_backend,
                 edit_animation_speed=self.EDIT_ANIMATION_SPEED,
-            )
+            ),
+            update_ui_overlay=update_ui_overlay,
         )
         self._debug_tools_controller = DebugToolsController(
             time_manager=self.time,
@@ -453,7 +437,7 @@ class Game:
     
     # === SETTERS ===
     
-    def set_world(self, world: "World") -> None:
+    def set_world(self, world: Optional["World"]) -> None:
         self._world = world
     
     def set_render_system(self, system: "RenderSystem") -> None:
@@ -882,17 +866,22 @@ class Game:
 
             active_tab = self.editor_layout.active_tab if self.editor_layout is not None else "SCENE"
             active_world = self.world
+            on_edit_scripts_ran: Callable[[], None] | None = None
+            if self._scene_manager is not None:
+                scene_manager = self._scene_manager
+
+                def mark_edit_world_dirty() -> None:
+                    scene_manager.mark_edit_world_dirty(reason="legacy_authoring")
+
+                on_edit_scripts_ran = mark_edit_world_dirty
+
             tick_plan = self._run_runtime_tick(
                 active_world,
                 dt,
                 viewport_size=self._ui_viewport_size_for_tab(active_tab),
                 active_tab=active_tab,
                 should_render_like=active_tab in ("SCENE", "GAME"),
-                on_edit_scripts_ran=(
-                    (lambda: self._scene_manager.mark_edit_world_dirty(reason="legacy_authoring"))
-                    if self._scene_manager is not None
-                    else None
-                ),
+                on_edit_scripts_ran=on_edit_scripts_ran,
             )
 
             

@@ -121,6 +121,10 @@ class ProjectService:
             self._ensure_global_storage()
         if auto_ensure and not read_only:
             self.ensure_project(self._project_root)
+        elif read_only:
+            manifest_path = self._project_root_real / self.PROJECT_FILE
+            if manifest_path.exists():
+                self._manifest = self._load_manifest(manifest_path)
 
     @property
     def editor_root(self) -> Path:
