@@ -34,6 +34,11 @@ El runtime usa `Game` o `HeadlessGame` para coordinar sistemas sobre el mundo
 activo. Los sistemas actuales incluyen render, fisica, colisiones, animacion,
 input, controladores de personaje/jugador, scripts, audio y UI.
 
+`RenderSystem` conserva el flujo visible actual del render 2D: render graph,
+sorting layers, batching base, tilemap chunks, debug geometry y render targets
+con fallback seguro cuando no hay backend grafico disponible. `engine/rendering/`
+añade una foundation modular con planner/executor tipados para adaptar ese
+flujo legacy y preparar fases futuras sin sustituir todavia el sistema actual.
 `Animator` mantiene compatibilidad con el flujo actual basado en clips por
 nombre (`animations`, `default_state`, `current_state`, `play()` y
 `AnimationData.on_complete`) y ahora admite foundation opcional de state

@@ -20,6 +20,9 @@ from engine.components.tilemap import Tilemap
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
+from engine.rendering.pipeline_executor import RenderPipelineExecutor2D
+from engine.rendering.pipeline_planner import RenderPipelinePlanner2D
+from engine.rendering.pipeline_types import FramePlan2D
 from engine.rendering.render_targets import RenderTargetPool
 from engine.rendering.tilemap_chunk_renderer import TilemapChunkRenderer
 from engine.resources.texture_manager import TextureManager
@@ -43,6 +46,8 @@ class RenderSystem:
         self._asset_resolver: Any = None
         self._render_targets: RenderTargetPool = RenderTargetPool()
         self._tilemap_chunk_renderer: TilemapChunkRenderer = TilemapChunkRenderer(self._render_targets, lambda reference, fallback_path: self._load_texture(reference, fallback_path))
+        self._pipeline_planner: RenderPipelinePlanner2D = RenderPipelinePlanner2D(self)
+        self._pipeline_executor: RenderPipelineExecutor2D = RenderPipelineExecutor2D(self)
         self.debug_draw_colliders: bool = self.DEBUG_DRAW_COLLIDERS
         self.debug_draw_labels: bool = False
         self.debug_draw_tile_chunks: bool = False
@@ -468,6 +473,16 @@ class RenderSystem:
             "totals": totals,
         }
 
+    def _build_frame_plan_model(
+        self,
+        world: World,
+        *,
+        viewport_size: Optional[tuple[float, float]],
+    ) -> FramePlan2D:
+        return self._pipeline_planner.adapt_frame_plan_payload(
+            self._build_frame_plan(world, viewport_size=viewport_size)
+        )
+
     def _build_batches(self, commands: list[dict[str, Any]]) -> list[dict[str, Any]]:
         batches: list[dict[str, Any]] = []
         current: dict[str, Any] | None = None
@@ -481,7 +496,10 @@ class RenderSystem:
 
         return batches
 
-    def _render_pass(self, graph: dict[str, Any], pass_name: str) -> None:
+    def _render_pass(self, graph: dict[str, Any] | FramePlan2D, pass_name: str) -> None:
+        if isinstance(graph, FramePlan2D):
+            self._pipeline_executor.render_pass(graph, pass_name)
+            return
         pass_data = next((entry for entry in graph["passes"] if entry["name"] == pass_name), None)
         if pass_data is None:
             return
@@ -514,15 +532,21 @@ class RenderSystem:
 
     def _render_debug_overlay(
         self,
-        frame_plan: dict[str, Any],
+        frame_plan: dict[str, Any] | FramePlan2D,
         *,
         camera: Optional[rl.Camera2D],
         viewport_size: Optional[tuple[float, float]],
     ) -> None:
+        if isinstance(frame_plan, FramePlan2D):
+            job = next((item for item in frame_plan.render_target_jobs if item.kind == "debug_overlay"), None)
+            if job is None:
+                return
+            self._pipeline_executor.execute_render_target_job(job, world=None, camera=camera, viewport_size=viewport_size)
+            return
+        width, height = self._normalize_viewport_size(viewport_size)
         debug_commands = next((entry["commands"] for entry in frame_plan["graph"]["passes"] if entry["name"] == "Debug"), [])
         if not debug_commands:
             return
-        width, height = self._normalize_viewport_size(viewport_size)
         self._render_targets.begin("selection_overlay", width, height, rl.Color(0, 0, 0, 0))
         try:
             if camera is not None:
@@ -551,14 +575,19 @@ class RenderSystem:
     def _render_minimap(
         self,
         world: World,
-        frame_plan: dict[str, Any],
+        frame_plan: dict[str, Any] | FramePlan2D,
         *,
         viewport_size: Optional[tuple[float, float]],
     ) -> None:
+        if isinstance(frame_plan, FramePlan2D):
+            job = next((item for item in frame_plan.render_target_jobs if item.kind == "minimap"), None)
+            if job is None:
+                return
+            self._pipeline_executor.execute_render_target_job(job, world=world, camera=None, viewport_size=viewport_size)
+            return
         minimap_config = self._get_minimap_config(world)
         if not minimap_config.get("enabled"):
             return
-
         width = int(minimap_config["width"])
         height = int(minimap_config["height"])
         margin = int(minimap_config["margin"])
@@ -1431,7 +1460,10 @@ class RenderSystem:
             values.append(255)
         return rl.Color(int(values[0]), int(values[1]), int(values[2]), int(values[3]))
 
-    def _prepare_tilemap_chunk_targets(self, graph: dict[str, Any]) -> None:
+    def _prepare_tilemap_chunk_targets(self, graph: dict[str, Any] | FramePlan2D) -> None:
+        if isinstance(graph, FramePlan2D):
+            self._pipeline_executor.prepare_tilemap_chunk_targets(graph)
+            return
         self._tilemap_chunk_renderer.prepare_targets(graph, self._tilemap_chunk_cache)
 
     def _draw_tilemap_chunk(self, command: dict[str, Any]) -> None:
