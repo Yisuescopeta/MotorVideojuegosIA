@@ -34,6 +34,11 @@ El runtime usa `Game` o `HeadlessGame` para coordinar sistemas sobre el mundo
 activo. Los sistemas actuales incluyen render, fisica, colisiones, animacion,
 input, controladores de personaje/jugador, scripts, audio y UI.
 
+`engine/audio/` define la foundation interna del runtime de audio. Expone
+contratos runtime (`AudioPlaybackRequest`, `AudioVoiceState`,
+`AudioRuntimeEvent`), un `NullAudioBackend` headless-safe y `AudioRuntime`
+como nucleo independiente de ECS.
+
 `RenderSystem` mantiene render graph, sorting layers, batching, tilemap chunks,
 debug geometry y render targets con fallback seguro cuando no hay backend
 grafico disponible.
@@ -52,6 +57,11 @@ layout e interaccion y ahora soporta dos modos de foundation sobre
 
 El sistema fisico conserva `legacy_aabb` como fallback obligatorio y registra
 `box2d` como backend opcional cuando la dependencia esta disponible.
+
+`AudioSystem` sigue siendo la superficie ECS/runtime compatible y delega en la
+foundation interna de `engine/audio/`. El backend real de audio, buses/mixer,
+spatial audio completo y la integracion con el `EventBus` global quedan
+preparados pero no implementados como contrato actual.
 
 ## Reglas y eventos
 
