@@ -124,6 +124,24 @@ estructurales y prefabs.
 Las rutas recomendadas para cambios persistentes son `SceneManager` y
 `EngineAPI`. `sync_from_edit_world()` queda como compatibilidad legacy.
 
+### Foundation incremental de tilemap
+
+`Tilemap` conserva su payload serializable actual y su superficie publica para
+compatibilidad con escenas, `EngineAPI`, inspector y runtime existente.
+
+La foundation del dominio vive en `engine/tilemap/model.py`. Esa capa mantiene:
+
+- orden estable de capas por lista
+- almacenamiento interno por coordenada tipada
+- emision canonica de tiles como lista serializable
+- metadata existente de mapa, layer y tile-instance sin introducir schema nuevo
+
+`engine/components/tilemap.py` sigue siendo el componente serializable estable;
+usa esa foundation para parseo y serializacion canonica, sin convertirse en un
+espejo complejo del dominio ni en una integracion fuerte con editor/runtime.
+
+Esta foundation prepara evolucion futura de metadata por tile, layers y reglas
+sin mezclar aun editor visual nuevo ni cambios amplios en runtime/render.
 Base tecnica interna compartida:
 
 - `engine/scenes/contracts.py` separa `SceneRuntimePort`,
