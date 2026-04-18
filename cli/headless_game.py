@@ -38,6 +38,7 @@ class HeadlessGame(Game):
         """Ejecuta un frame de logica sin renderizado."""
         frame_start = time.perf_counter()
         self.time.update_manual(dt)
+        scene_manager = self._scene_manager
 
         active_world = self.world
         self._perf_stats["render"] = 0.0
@@ -49,6 +50,13 @@ class HeadlessGame(Game):
         self._perf_stats["animation"] = 0.0
         self._perf_stats["ui"] = 0.0
 
+        on_edit_scripts_ran = None
+        if scene_manager is not None:
+            def sync_edit_world() -> None:
+                scene_manager.sync_from_edit_world()
+
+            on_edit_scripts_ran = sync_edit_world
+
         # EngineAPI.step() runs through HeadlessGame, so the shared runtime
         # foundation must also drive the public headless path.
         self._run_runtime_tick(
@@ -57,11 +65,7 @@ class HeadlessGame(Game):
             viewport_size=(float(self.width), float(self.height)),
             active_tab="GAME",
             should_render_like=active_world is not None,
-            on_edit_scripts_ran=(
-                self._scene_manager.sync_from_edit_world
-                if self._scene_manager is not None
-                else None
-            ),
+            on_edit_scripts_ran=on_edit_scripts_ran,
         )
 
         self._perf_stats["frame"] = (time.perf_counter() - frame_start) * 1000.0
