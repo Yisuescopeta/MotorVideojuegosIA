@@ -39,13 +39,74 @@ sorting layers, batching base, tilemap chunks, debug geometry y render targets
 con fallback seguro cuando no hay backend grafico disponible. `engine/rendering/`
 añade una foundation modular con planner/executor tipados para adaptar ese
 flujo legacy y preparar fases futuras sin sustituir todavia el sistema actual.
+`Animator` mantiene compatibilidad con el flujo actual basado en clips por
+nombre (`animations`, `default_state`, `current_state`, `play()` y
+`AnimationData.on_complete`) y ahora admite foundation opcional de state
+machine de una sola capa:
+
+- `parameters`: definiciones serializables de `bool`, `int`, `float` y `trigger`
+- `state_machine`: `entry_state` y nodos por estado con `transitions`
+- `transitions`: condiciones declarativas, `has_exit_time`, `exit_time` y
+  `force_restart`
+
+Los valores runtime de parametros y triggers no forman parte del payload
+serializable del authoring.
+`engine/audio/` define la foundation interna del runtime de audio. Expone
+contratos runtime (`AudioPlaybackRequest`, `AudioVoiceState`,
+`AudioRuntimeEvent`), un `NullAudioBackend` headless-safe y `AudioRuntime`
+como nucleo independiente de ECS.
+
+`RenderSystem` mantiene render graph, sorting layers, batching, tilemap chunks,
+debug geometry y render targets con fallback seguro cuando no hay backend
+grafico disponible.
 
 `UIRenderSystem` renderiza la UI overlay serializable. `UISystem` conserva
-layout e interaccion; `UIRenderSystem` resuelve la capa visual para `UIText`,
-`UIButton` por color o sprite, y `UIImage`.
+layout e interaccion y ahora soporta dos modos de foundation sobre
+`RectTransform`:
+
+- `free` para el comportamiento legacy basado en anchors/pivot/anchored offsets
+- `vertical_stack` y `horizontal_stack` para distribuir hijos con padding,
+  spacing, orden, alineacion y fill/stretch por eje
+
+`UIRenderSystem` sigue resolviendo solo la capa visual para `UIText`,
+`UIButton` por color o sprite, y `UIImage`, usando los rects ya calculados por
+`UISystem`.
 
 El sistema fisico conserva `legacy_aabb` como fallback obligatorio y registra
 `box2d` como backend opcional cuando la dependencia esta disponible.
+
+`AudioSystem` sigue siendo la superficie ECS/runtime compatible y delega en la
+foundation interna de `engine/audio/`. El backend real de audio, buses/mixer,
+spatial audio completo y la integracion con el `EventBus` global quedan
+preparados pero no implementados como contrato actual.
+
+### Secuencia runtime foundation
+
+`Game` y `HeadlessGame` comparten una secuencia interna explicita por frame:
+
+`HeadlessGame` queda tocado solo como adaptador minimo porque `EngineAPI`
+inicializa ese runtime y `step()` publica entra por `step_frame()`. Mantener la
+misma secuencia evita que el foundation diverja entre runtime grafico y runtime
+publico headless.
+
+1. `FIXED_UPDATE`: simulacion runtime con `fixed_dt = 1/60` y acumulador con
+   limite de pasos por frame.
+2. `UPDATE`: animacion normal o preview y trabajo variable que no entra todavia
+   en fixed-step.
+3. `POST_UPDATE`: UI runtime/render-like, bookkeeping y transicion
+   `STEPPING -> PAUSED`.
+4. `RENDER`: solo en el loop grafico; el foundation no cambia `RenderSystem`.
+
+El lifecycle minimo queda asi:
+
+- `EDIT -> PLAY`: clona `runtime_world`, resetea el estado del loop y dispara
+  hooks runtime existentes (`on_play`).
+- `PLAY/PAUSED -> STEPPING`: fuerza exactamente un `FIXED_UPDATE`.
+- `PLAY/PAUSED/STEPPING -> EDIT`: limpia el estado transitorio del loop,
+  ejecuta `on_stop` y restaura `edit_world`.
+
+Esto prepara fases posteriores de render/fisica sin abrir callbacks publicos
+nuevos ni alterar `EngineAPI`, CLI o schema serializable.
 
 ## Reglas y eventos
 
@@ -68,11 +129,43 @@ estructurales y prefabs.
 Las rutas recomendadas para cambios persistentes son `SceneManager` y
 `EngineAPI`. `sync_from_edit_world()` queda como compatibilidad legacy.
 
+### Foundation incremental de tilemap
+
+`Tilemap` conserva su payload serializable actual y su superficie publica para
+compatibilidad con escenas, `EngineAPI`, inspector y runtime existente.
+
+La foundation del dominio vive en `engine/tilemap/model.py`. Esa capa mantiene:
+
+- orden estable de capas por lista
+- almacenamiento interno por coordenada tipada
+- emision canonica de tiles como lista serializable
+- metadata existente de mapa, layer y tile-instance sin introducir schema nuevo
+
+`engine/components/tilemap.py` sigue siendo el componente serializable estable;
+usa esa foundation para parseo y serializacion canonica, sin convertirse en un
+espejo complejo del dominio ni en una integracion fuerte con editor/runtime.
+
+Esta foundation prepara evolucion futura de metadata por tile, layers y reglas
+sin mezclar aun editor visual nuevo ni cambios amplios en runtime/render.
+Base tecnica interna compartida:
+
+- `engine/scenes/contracts.py` separa `SceneRuntimePort`,
+  `SceneAuthoringPort` y `SceneWorkspacePort` como puertos internos sobre
+  `SceneManager`.
+- `engine/core/runtime_contracts.py` encapsula el wiring requerido por
+  `RuntimeController` en `RuntimeControllerContext`.
+- `engine/api/_contracts.py` tipa el bundle interno que `EngineAPI` expone a
+  sus colaboradores privados.
+
 ## EngineAPI publica
 
 `EngineAPI` es la fachada estable para agentes, tests, CLI y automatizacion.
 Internamente delega por dominios: authoring, runtime, workspace y scene flow,
 assets/proyecto, debug/profiler y UI serializable.
+
+Desde Fase 1, esos colaboradores privados consumen puertos tipados de escena y
+runtime en vez de depender de `Game` o `SceneManager` completos cuando no hace
+falta. La semantica publica no cambia.
 
 ```python
 from engine.api import EngineAPI
@@ -112,6 +205,11 @@ La referencia completa vive en [cli.md](cli.md).
 
 `engine/rl`, datasets, runners paralelos y workflows AI-assisted existen, pero
 pertenecen a `experimental/tooling`, no al `core obligatorio`.
+
+`engine/navigation` mantiene una foundation `grid-first` experimental con
+`NavigationGrid`, `NeighborMode`, `PathRequest`, `PathResult` y una API
+canonica `NavigationService.request_path(...)`; `query_path(...)` y
+`query_world_path(...)` permanecen como wrappers de compatibilidad.
 
 Docs relevantes:
 

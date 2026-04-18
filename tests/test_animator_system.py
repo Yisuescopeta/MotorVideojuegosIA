@@ -3,7 +3,15 @@ import unittest
 from pathlib import Path
 
 from engine.api import EngineAPI
-from engine.components.animator import AnimationData, Animator
+from engine.components.animator import (
+    AnimationCondition,
+    AnimationData,
+    AnimationParameterDefinition,
+    AnimationStateDefinition,
+    AnimationStateMachine,
+    AnimationTransition,
+    Animator,
+)
 from engine.ecs.world import World
 from engine.events.event_bus import EventBus
 from engine.systems.animation_system import AnimationSystem
@@ -115,6 +123,204 @@ class AnimationSystemTests(unittest.TestCase):
 
         animator.stop()
         self.assertFalse(animator.is_playing)
+
+    def test_animation_system_applies_bool_transition(self) -> None:
+        world = World()
+        entity = world.create_entity("BoolTransitionTest")
+        animator = Animator(
+            animations={
+                "idle": AnimationData(slice_names=["idle_0"], fps=8.0, loop=True),
+                "run": AnimationData(slice_names=["run_0"], fps=8.0, loop=True),
+            },
+            default_state="idle",
+            parameters={
+                "is_moving": AnimationParameterDefinition(type="bool", default=False),
+            },
+            state_machine=AnimationStateMachine(
+                entry_state="idle",
+                states={
+                    "idle": AnimationStateDefinition(
+                        transitions=[
+                            AnimationTransition(
+                                name="idle_to_run",
+                                to="run",
+                                conditions=[AnimationCondition(parameter="is_moving", operator="==", value=True)],
+                                force_restart=True,
+                            )
+                        ]
+                    )
+                },
+            ),
+        )
+        entity.add_component(animator)
+        animator.set_parameter("is_moving", True)
+
+        event_bus = EventBus()
+        transition_events = []
+        state_change_events = []
+        event_bus.subscribe("on_animation_transition", lambda evt: transition_events.append(evt.data))
+        event_bus.subscribe("on_state_changed", lambda evt: state_change_events.append(evt.data))
+
+        system = AnimationSystem(event_bus)
+        system.update(world, delta_time=0.1)
+
+        self.assertEqual(animator.current_state, "run")
+        self.assertEqual(len(transition_events), 1)
+        self.assertEqual(transition_events[0]["transition_name"], "idle_to_run")
+        self.assertEqual(len(state_change_events), 1)
+        self.assertEqual(state_change_events[0]["from_state"], "idle")
+        self.assertEqual(state_change_events[0]["to_state"], "run")
+
+    def test_animation_system_applies_float_and_int_transitions(self) -> None:
+        world = World()
+        entity = world.create_entity("NumericTransitionTest")
+        animator = Animator(
+            animations={
+                "idle": AnimationData(slice_names=["idle_0"], fps=8.0, loop=True),
+                "run": AnimationData(slice_names=["run_0"], fps=8.0, loop=True),
+                "combo": AnimationData(slice_names=["combo_0"], fps=8.0, loop=True),
+            },
+            default_state="idle",
+            parameters={
+                "speed": AnimationParameterDefinition(type="float", default=0.0),
+                "combo_step": AnimationParameterDefinition(type="int", default=0),
+            },
+            state_machine=AnimationStateMachine(
+                entry_state="idle",
+                states={
+                    "idle": AnimationStateDefinition(
+                        transitions=[
+                            AnimationTransition(
+                                to="run",
+                                conditions=[AnimationCondition(parameter="speed", operator=">", value=0.5)],
+                            )
+                        ]
+                    ),
+                    "run": AnimationStateDefinition(
+                        transitions=[
+                            AnimationTransition(
+                                to="combo",
+                                conditions=[AnimationCondition(parameter="combo_step", operator=">=", value=2)],
+                            )
+                        ]
+                    ),
+                },
+            ),
+        )
+        entity.add_component(animator)
+        system = AnimationSystem()
+
+        animator.set_parameter("speed", 1.25)
+        system.update(world, delta_time=0.01)
+        self.assertEqual(animator.current_state, "run")
+
+        animator.set_parameter("combo_step", 2)
+        system.update(world, delta_time=0.01)
+        self.assertEqual(animator.current_state, "combo")
+
+    def test_animation_system_consumes_trigger_transition(self) -> None:
+        world = World()
+        entity = world.create_entity("TriggerTransitionTest")
+        animator = Animator(
+            animations={
+                "idle": AnimationData(slice_names=["idle_0"], fps=8.0, loop=True),
+                "attack": AnimationData(slice_names=["attack_0"], fps=8.0, loop=False),
+            },
+            default_state="idle",
+            parameters={
+                "attack": AnimationParameterDefinition(type="trigger", default=False),
+            },
+            state_machine=AnimationStateMachine(
+                entry_state="idle",
+                states={
+                    "idle": AnimationStateDefinition(
+                        transitions=[
+                            AnimationTransition(
+                                name="idle_to_attack",
+                                to="attack",
+                                conditions=[AnimationCondition(parameter="attack", operator="==", value=True)],
+                                force_restart=True,
+                            )
+                        ]
+                    )
+                },
+            ),
+        )
+        entity.add_component(animator)
+        animator.set_trigger("attack")
+
+        system = AnimationSystem()
+        system.update(world, delta_time=0.01)
+
+        self.assertEqual(animator.current_state, "attack")
+        self.assertFalse(animator.get_parameter("attack"))
+
+    def test_animation_system_applies_exit_time_transition_before_on_complete(self) -> None:
+        world = World()
+        entity = world.create_entity("ExitTimeTransitionTest")
+        animator = Animator(
+            animations={
+                "attack": AnimationData(slice_names=["a0", "a1"], fps=2.0, loop=False, on_complete="run"),
+                "idle": AnimationData(slice_names=["i0"], fps=8.0, loop=True),
+                "run": AnimationData(slice_names=["r0"], fps=8.0, loop=True),
+            },
+            default_state="attack",
+            state_machine=AnimationStateMachine(
+                entry_state="attack",
+                states={
+                    "attack": AnimationStateDefinition(
+                        transitions=[
+                            AnimationTransition(
+                                name="attack_to_idle",
+                                to="idle",
+                                has_exit_time=True,
+                                exit_time=1.0,
+                            )
+                        ]
+                    )
+                },
+            ),
+        )
+        entity.add_component(animator)
+
+        event_bus = EventBus()
+        transition_events = []
+        end_events = []
+        event_bus.subscribe("on_animation_transition", lambda evt: transition_events.append(evt.data))
+        event_bus.subscribe("on_animation_end", lambda evt: end_events.append(evt.data))
+
+        system = AnimationSystem(event_bus)
+        system.update(world, delta_time=1.0)
+
+        self.assertEqual(animator.current_state, "idle")
+        self.assertEqual(len(transition_events), 1)
+        self.assertEqual(transition_events[0]["transition_name"], "attack_to_idle")
+        self.assertEqual(len(end_events), 1)
+        self.assertEqual(end_events[0]["animation"], "attack")
+
+    def test_animation_system_keeps_on_complete_compatibility_without_transition(self) -> None:
+        world = World()
+        entity = world.create_entity("OnCompleteCompatTest")
+        animator = Animator(
+            animations={
+                "attack": AnimationData(slice_names=["a0", "a1"], fps=2.0, loop=False, on_complete="idle"),
+                "idle": AnimationData(slice_names=["i0"], fps=8.0, loop=True),
+            },
+            default_state="attack",
+        )
+        entity.add_component(animator)
+
+        event_bus = EventBus()
+        state_change_events = []
+        event_bus.subscribe("on_state_changed", lambda evt: state_change_events.append(evt.data))
+
+        system = AnimationSystem(event_bus)
+        system.update(world, delta_time=1.0)
+
+        self.assertEqual(animator.current_state, "idle")
+        self.assertEqual(len(state_change_events), 1)
+        self.assertEqual(state_change_events[0]["from_state"], "attack")
+        self.assertEqual(state_change_events[0]["to_state"], "idle")
 
 
 class AuthoringAPIAnimatorTests(unittest.TestCase):

@@ -194,27 +194,30 @@ class UIAPI(EngineAPIComponent):
         return self.api.edit_component(entity_name, "UIButton", "on_click", on_click)
 
     def list_ui_nodes(self) -> list[EntityData]:
-        if self.game is None or self.game.world is None:
+        runtime = self.runtime
+        if runtime is None or runtime.world is None:
             return []
         nodes: list[EntityData] = []
-        for entity in self.game.world.get_all_entities():
+        for entity in runtime.world.get_all_entities():
             if any(entity.has_component(component) for component in (Canvas, RectTransform, UIText, UIButton, UIImage)):
                 nodes.append(self.api.get_entity(entity.name))
         return nodes
 
     def get_ui_layout(self, entity_name: str) -> Dict[str, Any]:
-        if self.game is None:
+        runtime = self.runtime
+        if runtime is None:
             return {}
-        return self.game.get_ui_entity_screen_rect(
+        return runtime.get_ui_entity_screen_rect(
             entity_name,
-            viewport_size=(float(self.game.width), float(self.game.height)),
+            viewport_size=(float(runtime.width), float(runtime.height)),
         ) or {}
 
     def click_ui_button(self, entity_name: str) -> ActionResult:
-        if self.game is None:
+        runtime = self.runtime
+        if runtime is None:
             return self.fail("UI system not ready")
-        clicked = self.game.click_ui_entity(
+        clicked = runtime.click_ui_entity(
             entity_name,
-            viewport_size=(float(self.game.width), float(self.game.height)),
+            viewport_size=(float(runtime.width), float(runtime.height)),
         )
         return self.ok("UIButton clicked", {"entity": entity_name}) if clicked else self.fail("UIButton click failed")

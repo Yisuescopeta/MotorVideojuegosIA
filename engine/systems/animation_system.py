@@ -1,19 +1,21 @@
 """
-engine/systems/animation_system.py - Sistema de actualización de animaciones
+engine/systems/animation_system.py - Sistema de actualizacion de animaciones
 
-PROPÓSITO:
+PROPOSITO:
     Actualiza las animaciones cada frame.
-    Emite eventos on_animation_end cuando una animación termina.
+    Emite eventos on_animation_end cuando una animacion termina.
     Emite eventos on_state_changed cuando cambia el estado.
+    Emite eventos on_animation_transition cuando una transicion declarativa aplica.
 
 EVENTOS EMITIDOS:
-    - on_animation_end: Una animación no-loop termina
-    - on_state_changed: El estado del animator cambió
+    - on_animation_end: Una animacion no-loop termina
+    - on_state_changed: El estado del animator cambio
+    - on_animation_transition: Una transicion declarativa fue aplicada
 """
 
 from typing import TYPE_CHECKING, Optional, Set
 
-from engine.components.animator import Animator
+from engine.components.animator import AnimationTransition, Animator
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 
@@ -25,12 +27,6 @@ class AnimationSystem:
     """Sistema que actualiza las animaciones de todas las entidades."""
 
     def __init__(self, event_bus: Optional["EventBus"] = None) -> None:
-        """
-        Inicializa el sistema.
-
-        Args:
-            event_bus: Bus de eventos para emitir fin de animación
-        """
         self._event_bus: Optional["EventBus"] = event_bus
         self._tracked_animators: Set[int] = set()
 
@@ -58,44 +54,81 @@ class AnimationSystem:
 
     def _update_animator(self, entity: Entity, animator: Animator, delta_time: float) -> None:
         """Actualiza un animator individual."""
-        anim = animator.get_current_animation()
+        self._try_apply_transition(entity, animator, allow_exit_time=False)
 
+        anim = animator.get_current_animation()
         if anim is None or anim.get_frame_count() <= 0:
             return
 
-        if animator.is_finished and not anim.loop:
+        animation_completed = False
+        completed_state = animator.current_state
+        completed_normalized_time = animator.normalized_time
+
+        if anim.fps > 0 and not (animator.is_finished and not anim.loop):
+            effective_delta = delta_time * animator.speed
+            frame_duration = 1.0 / anim.fps
+            animator.elapsed_time += effective_delta
+
+            while animator.elapsed_time >= frame_duration:
+                animator.elapsed_time -= frame_duration
+                animator.current_frame += 1
+
+                if animator.current_frame >= anim.get_frame_count():
+                    if anim.loop:
+                        animator.current_frame = 0
+                    else:
+                        animator.current_frame = anim.get_frame_count() - 1
+                        animator.is_finished = True
+                        animation_completed = True
+                        completed_state = animator.current_state
+                        completed_normalized_time = animator.normalized_time
+                        break
+
+        post_transition_applied = self._try_apply_transition(entity, animator, allow_exit_time=True)
+
+        if not animation_completed:
             return
 
-        if anim.fps <= 0:
+        self._emit_animation_end(entity, completed_state, completed_normalized_time)
+
+        if post_transition_applied:
             return
 
-        effective_delta = delta_time * animator.speed
-        frame_duration = 1.0 / anim.fps
-        animator.elapsed_time += effective_delta
+        if anim.on_complete is not None:
+            previous_state = animator.current_state
+            animator.play(anim.on_complete)
+            if previous_state != animator.current_state:
+                self._emit_state_changed(entity, previous_state, animator.current_state)
 
-        while animator.elapsed_time >= frame_duration:
-            animator.elapsed_time -= frame_duration
-            animator.current_frame += 1
+    def _try_apply_transition(self, entity: Entity, animator: Animator, *, allow_exit_time: bool) -> bool:
+        for transition in animator.get_state_transitions():
+            if not self._transition_matches(animator, transition, allow_exit_time=allow_exit_time):
+                continue
+            if transition.to not in animator.animations:
+                continue
 
-            if animator.current_frame >= anim.get_frame_count():
-                if anim.loop:
-                    animator.current_frame = 0
-                else:
-                    animator.current_frame = anim.get_frame_count() - 1
-                    animator.is_finished = True
+            previous_state = animator.current_state
+            animator.play(transition.to, force_restart=transition.force_restart)
+            transition_applied = transition.force_restart or previous_state != animator.current_state
+            if not transition_applied:
+                continue
 
-                    self._emit_animation_end(entity, animator.current_state, animator.normalized_time)
+            animator.consume_transition_triggers(transition)
+            self._emit_animation_transition(entity, previous_state, animator.current_state, transition.name)
+            if previous_state != animator.current_state:
+                self._emit_state_changed(entity, previous_state, animator.current_state)
+            return True
+        return False
 
-                    if anim.on_complete is not None:
-                        previous_state = animator.current_state
-                        animator.play(anim.on_complete)
-                        if previous_state != animator.current_state:
-                            self._emit_state_changed(entity, previous_state, animator.current_state)
-
-                    break
+    def _transition_matches(self, animator: Animator, transition: AnimationTransition, *, allow_exit_time: bool) -> bool:
+        if transition.has_exit_time != allow_exit_time:
+            return False
+        if allow_exit_time and animator.normalized_time < transition.exit_time:
+            return False
+        return animator.transition_conditions_match(transition)
 
     def _emit_animation_end(self, entity: Entity, animation_name: str, normalized_time: float) -> None:
-        """Emite evento de animación terminada."""
+        """Emite evento de animacion terminada."""
         if self._event_bus is None:
             return
 
@@ -116,4 +149,23 @@ class AnimationSystem:
             "entity_id": entity.id,
             "from_state": from_state,
             "to_state": to_state,
+        })
+
+    def _emit_animation_transition(
+        self,
+        entity: Entity,
+        from_state: str,
+        to_state: str,
+        transition_name: Optional[str],
+    ) -> None:
+        """Emite evento de transicion declarativa."""
+        if self._event_bus is None:
+            return
+
+        self._event_bus.emit("on_animation_transition", {
+            "entity": entity.name,
+            "entity_id": entity.id,
+            "from_state": from_state,
+            "to_state": to_state,
+            "transition_name": transition_name,
         })

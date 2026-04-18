@@ -130,6 +130,17 @@ class EngineAPIPublicContractTests(unittest.TestCase):
         self.assertIsInstance(api.scene_manager.get_feature_metadata(), dict)
         self.assertEqual(api.scene_manager.get_component_data("Player", "Transform")["x"], 120.0)
 
+    def test_engine_api_builds_internal_contract_bundle_from_runtime_and_scene_ports(self) -> None:
+        api = self._make_api()
+        api.load_level(self.scene_path.as_posix())
+
+        self.assertIs(api._contracts.runtime, api.game)
+        self.assertIs(api._contracts.scene_authoring, api.scene_manager.authoring_port)
+        self.assertIs(api._contracts.scene_workspace, api.scene_manager.workspace_port)
+        self.assertIs(api._context.runtime, api.game)
+        self.assertIs(api._context.scene_authoring, api.scene_manager.authoring_port)
+        self.assertIs(api._context.scene_workspace, api.scene_manager.workspace_port)
+
     def test_shutdown_uses_public_runtime_shutdown_hook(self) -> None:
         api = self._make_api()
         self.assertIsNotNone(api.game)
