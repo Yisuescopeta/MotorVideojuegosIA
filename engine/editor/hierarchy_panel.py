@@ -13,6 +13,7 @@ from engine.ecs.world import World
 from engine.ecs.entity import Entity
 from engine.components.transform import Transform
 from engine.editor.cursor_manager import CursorVisualState
+from engine.editor.editor_selection import EditorSelectionState
 from engine.editor.render_safety import editor_scissor
 
 class HierarchyPanel:
@@ -35,12 +36,13 @@ class HierarchyPanel:
     LINE_HEIGHT: int = 18
     INDENT_SIZE: int = 14
     
-    def __init__(self) -> None:
+    def __init__(self, selection_state: Optional[EditorSelectionState] = None) -> None:
         self.visible: bool = True
         self.scroll_offset: int = 0
         self.expanded_ids: Set[int] = set()
         self.panel_width: int = 200
         self._scene_manager = None
+        self._selection_state: Optional[EditorSelectionState] = selection_state
         self._cached_world_id: int = -1
         self._cached_world_version: int = -1
         self._cached_roots: List[Entity] = []
@@ -64,7 +66,30 @@ class HierarchyPanel:
     def set_scene_manager(self, manager: object) -> None:
         """Permite que la UI use el mismo camino serializable que la API."""
         self._scene_manager = manager
-        
+
+    def set_selection_state(self, selection_state: Optional[EditorSelectionState]) -> None:
+        self._selection_state = selection_state
+
+    def _get_selected_entity_name(self, world: "World") -> Optional[str]:
+        world_selected = EditorSelectionState.normalize(getattr(world, "selected_entity_name", None))
+        if self._selection_state is None:
+            return world_selected
+        if world_selected != self._selection_state.entity_name:
+            self._selection_state.set(world_selected)
+        return self._selection_state.entity_name
+
+    def _set_selected_entity(self, world: "World", entity_name: Optional[str]) -> Optional[str]:
+        normalized = EditorSelectionState.normalize(entity_name)
+        if self._selection_state is not None:
+            normalized = self._selection_state.set(normalized)
+        if self._scene_manager is not None:
+            self._scene_manager.set_selected_entity(normalized)
+        else:
+            world.selected_entity_name = normalized
+        if self._selection_state is not None:
+            self._selection_state.apply_to_world(world)
+        return normalized
+
     def render(self, world: "World", x: int, y: int, width: int, height: int, input_blocked: bool = False) -> None:
         """Renderiza el panel de jerarquía estilo Unity.
 
@@ -116,11 +141,11 @@ class HierarchyPanel:
             if is_hover_plus and not self._input_blocked and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 new_name = f"New Entity {world.entity_count()}"
                 if self._scene_manager is not None and self._scene_manager.create_entity(new_name):
-                    self._scene_manager.set_selected_entity(new_name)
+                    self._set_selected_entity(world, new_name)
                 else:
                     new_entity = world.create_entity(new_name)
                     new_entity.add_component(Transform())
-                    world.selected_entity_name = new_entity.name
+                    self._set_selected_entity(world, new_entity.name)
             
             # Línea separadora
             rl.draw_line(x, int(y + self.HEADER_HEIGHT), x + width, int(y + self.HEADER_HEIGHT), self.UNITY_BORDER)
@@ -230,10 +255,7 @@ class HierarchyPanel:
             if not self._input_blocked and not self._is_dragging_entity and rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
                 # Normal click (no drag occurred)
                 if self._drag_entity_id == entity.id:
-                    if self._scene_manager is not None:
-                        self._scene_manager.set_selected_entity(entity.name)
-                    else:
-                        world.selected_entity_name = entity.name
+                    self._set_selected_entity(world, entity.name)
                     if has_children:
                         if entity.id in self.expanded_ids:
                             self.expanded_ids.remove(entity.id)
@@ -250,7 +272,7 @@ class HierarchyPanel:
                 rl.draw_rectangle(panel_x, y, self.panel_width, row_height, rl.Color(44, 93, 135, 100))
 
         # Highlight Selection
-        if world.selected_entity_name == entity.name:
+        if self._get_selected_entity_name(world) == entity.name:
             rl.draw_rectangle(panel_x, y, self.panel_width, row_height, self.UNITY_SELECTED)
 
         # Indentación
@@ -413,11 +435,11 @@ class HierarchyPanel:
         if action == "Create Entity":
             new_name = f"New Entity {world.entity_count()}"
             if self._scene_manager is not None and self._scene_manager.create_entity(new_name):
-                self._scene_manager.set_selected_entity(new_name)
+                self._set_selected_entity(world, new_name)
             else:
                 new_ent = world.create_entity(new_name)
                 new_ent.add_component(Transform())
-                world.selected_entity_name = new_ent.name
+                self._set_selected_entity(world, new_ent.name)
             
         elif action == "Delete Entity" and self.context_target_id is not None:
             entity = world.get_entity(self.context_target_id)
@@ -427,18 +449,15 @@ class HierarchyPanel:
                 else:
                     world.destroy_entity(entity.id)
                 # Si era el seleccionado, deseleccionar
-                if world.selected_entity_name == entity.name:
-                    if self._scene_manager is not None:
-                        self._scene_manager.set_selected_entity(None)
-                    else:
-                        world.selected_entity_name = None
+                if self._get_selected_entity_name(world) == entity.name:
+                    self._set_selected_entity(world, None)
                     
         elif action == "Create Child Entity" and self.context_target_id is not None:
             parent_entity = world.get_entity(self.context_target_id)
             if parent_entity is not None and self._scene_manager is not None:
                 child_name = f"New Child {world.entity_count()}"
                 if self._scene_manager.create_child_entity(parent_entity.name, child_name):
-                    self._scene_manager.set_selected_entity(child_name)
+                    self._set_selected_entity(world, child_name)
                     self.expanded_ids.add(self.context_target_id)
 
         elif action == "Unparent" and self.context_target_id is not None:

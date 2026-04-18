@@ -9,6 +9,7 @@ import pyray as rl
 
 from engine.app.project_workspace_controller import ProjectWorkspaceController
 from engine.core.engine_state import EngineState
+from engine.editor.editor_selection import EditorSelectionState
 from engine.project.project_service import ProjectService
 
 
@@ -145,6 +146,7 @@ class ProjectWorkspaceControllerTests(unittest.TestCase):
         self.project_loaded = {"value": False}
         self.world_holder = {"world": None}
         self.running = {"value": True}
+        self.selection_state = EditorSelectionState()
         self.terminal_panel = Mock()
         self.animator_panel = Mock()
         self.sprite_editor_modal = Mock()
@@ -167,6 +169,7 @@ class ProjectWorkspaceControllerTests(unittest.TestCase):
             get_project_service=lambda: self.project_service,
             get_scene_manager=lambda: self.scene_manager,
             get_editor_layout=lambda: self.layout,
+            get_editor_selection=lambda: self.selection_state,
             get_state=lambda: self.state["value"],
             get_current_scene_path=lambda: self.current_scene_path["value"],
             set_current_scene_path=lambda value: self.current_scene_path.__setitem__("value", value),
@@ -327,6 +330,34 @@ class ProjectWorkspaceControllerTests(unittest.TestCase):
 
         self.assertTrue(self.scene_manager.clear_all_dirty_called)
         open_project.assert_called_once_with(target_project)
+
+    def test_capture_active_scene_view_state_syncs_shared_selection(self) -> None:
+        self.scene_manager.active_scene_key = "scene-a"
+        self.scene_manager.edit_world.selected_entity_name = "Hero"
+        self.layout.editor_camera.target = rl.Vector2(12.0, 18.0)
+        self.layout.editor_camera.zoom = 2.0
+
+        self.controller.capture_active_scene_view_state()
+
+        self.assertEqual(self.selection_state.entity_name, "Hero")
+        self.assertEqual(self.scene_manager.scene_view_states["scene-a"]["selected_entity"], "Hero")
+
+    def test_apply_active_scene_view_state_updates_shared_selection(self) -> None:
+        self.scene_manager.active_scene_key = "scene-a"
+        self.scene_manager.scene_view_states["scene-a"] = {
+            "selected_entity": "Boss",
+            "camera_target": {"x": 48.0, "y": 96.0},
+            "camera_zoom": 1.5,
+        }
+
+        self.controller.apply_active_scene_view_state()
+
+        self.assertEqual(self.selection_state.entity_name, "Boss")
+        self.assertEqual(self.scene_manager.selected_entity, "Boss")
+        self.assertEqual(self.scene_manager.edit_world.selected_entity_name, "Boss")
+        self.assertEqual(float(self.layout.editor_camera.target.x), 48.0)
+        self.assertEqual(float(self.layout.editor_camera.target.y), 96.0)
+        self.assertEqual(float(self.layout.editor_camera.zoom), 1.5)
 
 
 if __name__ == "__main__":
