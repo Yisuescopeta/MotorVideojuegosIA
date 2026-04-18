@@ -31,6 +31,7 @@ orquestacion. Pueden ser valiosos, pero no son contrato duro del motor.
 | ECS base | `core obligatorio` | Define entidades, componentes y mundo. |
 | `Scene` | `core obligatorio` | Es la fuente de verdad serializable. |
 | `SceneManager` | `core obligatorio` | Coordina workspace, authoring, dirty state e `EDIT -> PLAY -> STOP`. |
+| contratos internos de escena/runtime (`engine/scenes/contracts.py`, `engine/core/runtime_contracts.py`) | `core obligatorio` | Fijan limites de integracion entre runtime, authoring, workspace y API. |
 | serializacion y schema/migraciones | `core obligatorio` | Fijan `scene schema_version = 2`, `prefab schema_version = 2` y guardado canonico. |
 | editor base | `core obligatorio` | Traduce authoring al modelo compartido. |
 | jerarquia | `core obligatorio` | Forma parte de datos serializables y tests de authoring. |

@@ -1,6 +1,14 @@
 import unittest
 
-from engine.components.animator import AnimationData, Animator
+from engine.components.animator import (
+    AnimationCondition,
+    AnimationData,
+    AnimationParameterDefinition,
+    AnimationStateDefinition,
+    AnimationStateMachine,
+    AnimationTransition,
+    Animator,
+)
 
 
 class AnimatorComponentTests(unittest.TestCase):
@@ -171,6 +179,115 @@ class AnimatorComponentTests(unittest.TestCase):
         self.assertEqual(restored.default_state, "run")
         self.assertEqual(restored.animations["run"].fps, 12.0)
         self.assertEqual(restored.animations["run"].slice_names, ["run_0", "run_1"])
+
+    def test_animator_parameter_runtime_defaults(self) -> None:
+        animator = Animator(
+            parameters={
+                "is_moving": AnimationParameterDefinition(type="bool", default=True),
+                "speed": AnimationParameterDefinition(type="float", default=2.5),
+                "combo": AnimationParameterDefinition(type="int", default=3),
+                "attack": AnimationParameterDefinition(type="trigger", default=False),
+            }
+        )
+
+        self.assertTrue(animator.get_parameter("is_moving"))
+        self.assertEqual(animator.get_parameter("speed"), 2.5)
+        self.assertEqual(animator.get_parameter("combo"), 3)
+        self.assertFalse(animator.get_parameter("attack"))
+
+    def test_animator_trigger_runtime_state_is_not_serialized(self) -> None:
+        animator = Animator(
+            parameters={
+                "attack": AnimationParameterDefinition(type="trigger", default=False),
+            }
+        )
+        self.assertTrue(animator.set_trigger("attack"))
+        self.assertTrue(animator.get_parameter("attack"))
+
+        data = animator.to_dict()
+        self.assertIn("parameters", data)
+        self.assertNotIn("parameter_values", data)
+        self.assertFalse(data["parameters"]["attack"]["default"])
+
+        restored = Animator.from_dict(data)
+        self.assertFalse(restored.get_parameter("attack"))
+
+    def test_animator_state_machine_roundtrip(self) -> None:
+        animator = Animator(
+            animations={
+                "idle": AnimationData(slice_names=["idle_0"]),
+                "run": AnimationData(slice_names=["run_0"]),
+            },
+            default_state="idle",
+            parameters={
+                "is_moving": AnimationParameterDefinition(type="bool", default=False),
+            },
+            state_machine=AnimationStateMachine(
+                entry_state="idle",
+                states={
+                    "idle": AnimationStateDefinition(
+                        transitions=[
+                            AnimationTransition(
+                                name="idle_to_run",
+                                to="run",
+                                conditions=[
+                                    AnimationCondition(
+                                        parameter="is_moving",
+                                        operator="==",
+                                        value=True,
+                                    )
+                                ],
+                                force_restart=True,
+                            )
+                        ]
+                    )
+                },
+            ),
+        )
+
+        data = animator.to_dict()
+        restored = Animator.from_dict(data)
+
+        self.assertIn("state_machine", data)
+        self.assertEqual(restored.state_machine.entry_state, "idle")
+        self.assertEqual(len(restored.get_state_transitions("idle")), 1)
+        self.assertEqual(restored.get_state_transitions("idle")[0].to, "run")
+
+    def test_animator_play_stays_compatible_with_state_machine(self) -> None:
+        animator = Animator(
+            animations={
+                "idle": AnimationData(),
+                "run": AnimationData(),
+            },
+            default_state="idle",
+            state_machine=AnimationStateMachine(
+                entry_state="idle",
+                states={
+                    "idle": AnimationStateDefinition(
+                        transitions=[AnimationTransition(to="run")]
+                    )
+                },
+            ),
+        )
+
+        previous_state = animator.play("run")
+
+        self.assertEqual(previous_state, "idle")
+        self.assertEqual(animator.current_state, "run")
+
+    def test_animator_uses_state_machine_entry_when_default_state_is_missing(self) -> None:
+        animator = Animator(
+            animations={
+                "idle": AnimationData(),
+            },
+            default_state="missing",
+            state_machine=AnimationStateMachine(
+                entry_state="idle",
+                states={"idle": AnimationStateDefinition()},
+            ),
+        )
+
+        self.assertEqual(animator.current_state, "idle")
 
 
 class AnimationDataTests(unittest.TestCase):
