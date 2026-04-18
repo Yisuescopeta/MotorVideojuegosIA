@@ -61,6 +61,21 @@ de Fase 6 puede incluir tambien:
 
 Los valores runtime de parametros y triggers no se serializan; solo se
 serializa su configuracion declarativa.
+`RectTransform` conserva anclas, pivote, offsets y tamano del payload legacy,
+y ahora puede serializar foundation adicional de layout:
+
+- `layout_mode = free | vertical_stack | horizontal_stack`
+- `layout_order = 0` por defecto
+- `layout_ignore = false` por defecto
+- `size_mode_x = fixed | stretch`
+- `size_mode_y = fixed | stretch`
+- `layout_align = start | center | end | stretch`
+- `padding_left`, `padding_top`, `padding_right`, `padding_bottom`, `spacing`
+  con default `0.0`
+
+Estos campos son aditivos y mantienen compatibilidad con escenas UI existentes:
+si no estan presentes, `RectTransform` sigue resolviendose como layout libre
+basado en anchors/pivot/anchored offsets.
 
 ## Migraciones automaticas
 
@@ -127,7 +142,10 @@ modulos o integraciones siguen con validacion minima de objeto serializable si
 su contrato profundo no esta formalizado en el schema.
 
 La UI serializable valida `RGBA`, strings de slice y referencias de asset para
-sprites UI cuando esos campos estan presentes.
+sprites UI cuando esos campos estan presentes. En esta fase, la foundation
+aditiva de layout en `RectTransform` se serializa y roundtripea como contrato
+de compatibilidad, pero no introduce aun una matriz nueva de validacion estricta
+en `engine/serialization/schema.py`.
 
 ## Tests relacionados
 

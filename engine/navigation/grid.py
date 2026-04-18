@@ -12,6 +12,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Iterator
 
+from engine.navigation.types import NeighborMode
+
 
 @dataclass(frozen=True, slots=True)
 class Vec2:
@@ -89,7 +91,7 @@ class Cell:
     walkable: bool = True
     cost_multiplier: int = 100  # 100 = normal terrain
 
-    def move_cost(self, from_cell: Cell, diagonal: bool = False) -> int:
+    def move_cost(self, diagonal: bool = False) -> int:
         """Return cost to leave this cell (multiplier applied to base cost)."""
         if not self.walkable:
             return 0
@@ -172,23 +174,37 @@ class NavigationGrid:
             float(row * self.cell_size + self.cell_size // 2),
         )
 
+    def neighbors(
+        self,
+        pos: Vec2,
+        neighbor_mode: NeighborMode,
+    ) -> Iterator[tuple[Vec2, bool]]:
+        """Yield walkable neighbors according to the selected expansion policy."""
+        directions = ALL_DIRS if neighbor_mode.allows_diagonal else CARDINAL_DIRS
+        for direction in directions:
+            neighbor = pos + direction
+            if not self.in_bounds_vec(neighbor):
+                continue
+            if not self.is_walkable_vec(neighbor):
+                continue
+            yield neighbor, direction.x != 0 and direction.y != 0
+
     def neighbors_4(self, pos: Vec2) -> Iterator[tuple[Vec2, bool]]:
-        """Yield 4-directional neighbors and whether movement is diagonal."""
-        for d in CARDINAL_DIRS:
-            np = pos + d
-            if self.in_bounds_vec(np) and self.is_walkable_vec(np):
-                yield np, False
+        """Compatibility wrapper for cardinal-only neighbor expansion."""
+        yield from self.neighbors(pos, NeighborMode.CARDINAL_4)
 
     def neighbors_8(self, pos: Vec2) -> Iterator[tuple[Vec2, bool]]:
-        """Yield 8-directional neighbors and whether movement is diagonal."""
-        for d in ALL_DIRS:
-            np = pos + d
-            if not self.in_bounds_vec(np):
-                continue
-            if not self.is_walkable_vec(np):
-                continue
-            diagonal = d.x != 0 and d.y != 0
-            yield np, diagonal
+        """Compatibility wrapper for 8-way neighbor expansion."""
+        yield from self.neighbors(pos, NeighborMode.EIGHT_WAY)
+
+    def move_cost(self, pos: Vec2, diagonal: bool = False) -> int:
+        """Return the movement cost of entering a walkable cell."""
+        return self.get_cell_vec(pos).move_cost(diagonal=diagonal)
+
+    def move_cost_between(self, from_pos: Vec2, to_pos: Vec2) -> int:
+        """Return movement cost between adjacent cells."""
+        diagonal = from_pos.x != to_pos.x and from_pos.y != to_pos.y
+        return self.move_cost(to_pos, diagonal=diagonal)
 
     def iter_cells(self) -> Iterator[tuple[int, int, Cell]]:
         for row in range(self.height):
