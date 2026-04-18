@@ -10,6 +10,14 @@ from engine.components.recttransform import RectTransform
 from engine.components.transform import Transform
 from engine.editor.console_panel import log_err
 from engine.scenes.change_history import SceneChangeCoordinator, SceneChangeCoordinatorContext
+from engine.scenes.contracts import (
+    SceneAuthoringPort,
+    SceneManagerAuthoringAdapter,
+    SceneManagerRuntimeAdapter,
+    SceneManagerWorkspaceAdapter,
+    SceneRuntimePort,
+    SceneWorkspacePort,
+)
 from engine.scenes.scene import Scene
 from engine.scenes.structural_authoring import SceneStructuralAuthoring, SceneStructuralAuthoringContext
 from engine.scenes.workspace_lifecycle import SceneWorkspace, SceneWorkspaceEntry
@@ -62,6 +70,9 @@ class SceneManager:
                 unique_entity_name=self._unique_entity_name,
             )
         )
+        self._runtime_port: SceneRuntimePort = SceneManagerRuntimeAdapter(self)
+        self._authoring_port: SceneAuthoringPort = SceneManagerAuthoringAdapter(self)
+        self._workspace_port: SceneWorkspacePort = SceneManagerWorkspaceAdapter(self)
 
     @property
     def _entries(self) -> dict[str, SceneWorkspaceEntry]:
@@ -79,6 +90,18 @@ class SceneManager:
     def current_scene(self) -> Optional[Scene]:
         entry = self._get_active_entry()
         return entry.scene if entry is not None else None
+
+    @property
+    def runtime_port(self) -> SceneRuntimePort:
+        return self._runtime_port
+
+    @property
+    def authoring_port(self) -> SceneAuthoringPort:
+        return self._authoring_port
+
+    @property
+    def workspace_port(self) -> SceneWorkspacePort:
+        return self._workspace_port
 
     @property
     def scene_name(self) -> str:
