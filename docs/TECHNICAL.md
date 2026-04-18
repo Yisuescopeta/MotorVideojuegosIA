@@ -143,6 +143,11 @@ La referencia completa vive en [cli.md](cli.md).
 `engine/rl`, datasets, runners paralelos y workflows AI-assisted existen, pero
 pertenecen a `experimental/tooling`, no al `core obligatorio`.
 
+`engine/navigation` mantiene una foundation `grid-first` experimental con
+`NavigationGrid`, `NeighborMode`, `PathRequest`, `PathResult` y una API
+canonica `NavigationService.request_path(...)`; `query_path(...)` y
+`query_world_path(...)` permanecen como wrappers de compatibilidad.
+
 Docs relevantes:
 
 - [rl.md](rl.md)
