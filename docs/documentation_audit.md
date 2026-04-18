@@ -82,6 +82,16 @@ literalmente.
 - `docs/glossary.md`
 - `docs/documentation_audit.md`
 
+### Planificacion operativa para ramas y workspaces
+
+- `docs/roadmap/master-plan.md`
+- `docs/roadmap/milestone-template.md`
+- `docs/roadmap/rfc-lite-template.md`
+- `docs/architecture/branch-strategy.md`
+- `docs/architecture/module-boundaries.md`
+- `docs/architecture/integration-strategy.md`
+- `docs/ai/codex-prompt-guidelines.md`
+
 ### Referencia operativa o tooling vigente
 
 - `docs/building.md`
@@ -149,6 +159,26 @@ El documento refleja el builder actual y la compatibilidad legacy de `doctor`.
 Se movieron roadmaps, research, prompts de agentes, notas de diseno antiguas y
 auditorias historicas a `docs/archive/`. Permanecen versionados, pero fuera del
 portal canonico.
+
+### Capa nueva para trabajo paralelo
+
+Se introduce una capa operativa nueva para coordinar ramas, workspaces,
+milestones, RFCs ligeras e integracion por dominio. Esta capa vive en:
+
+- `docs/roadmap/`
+- `docs/architecture/branch-strategy.md`
+- `docs/architecture/module-boundaries.md`
+- `docs/architecture/integration-strategy.md`
+- `docs/ai/codex-prompt-guidelines.md`
+
+Decision aplicada:
+
+- se mantiene fuera del canon funcional del motor
+- se enlaza desde `docs/README.md`
+- no reemplaza `docs/architecture.md`, `docs/module_taxonomy.md`, `docs/api.md`
+  ni `docs/cli.md`
+- deja `docs/archive/roadmaps/` como historico y `docs/roadmap/` como
+  planificacion operativa vigente
 
 ### Rutas absolutas Windows
 
@@ -266,3 +296,75 @@ Ninguna validacion pedida quedo bloqueada por entorno.
   `1` o `2`; eso prueba compatibilidad, no el contrato actual.
 - El registry de capabilities puede listar capacidades `planned`; la CLI publica
   solo debe considerarse disponible si el parser de `motor/cli.py` la expone.
+
+## Cierre tecnico de Fase 0
+
+Fecha: 2026-04-17.
+Rama: `chore/repo-workspace-foundation`.
+
+Este cierre deja Fase 0 lista para merge y como base de Fase 1 sin ampliar
+alcance a runtime, CLI, schema ni features del motor.
+
+### Sincronizacion con `main`
+
+La rama fue sincronizada con `origin/main` mediante `rebase`.
+
+- Base integrada: `origin/main` en `9b93941`.
+- Commit local tras rebase: `27aec3f`.
+- Conflictos de Git: ninguno.
+- Archivos fuera de Fase 0 tocados por la sincronizacion: ninguno.
+
+### Verificacion de Fase 0
+
+Se confirma que Fase 0 deja:
+
+- convencion clara de ramas
+- convencion clara de workspaces
+- estrategia de integracion por dominios
+- reglas de alcance por rama
+- guia practica para futuros prompts a Codex
+- enlaces desde `docs/README.md`
+- separacion explicita entre planificacion operativa y capacidades implementadas
+- cero cambios en runtime critico
+
+### Validado realmente en este cierre
+
+```bash
+py -m unittest tests.test_repository_governance tests.test_motor_cli_contract tests.test_start_here_ai_coherence -v
+```
+
+Resultado observado:
+
+- `OK`
+- 46 tests
+- 2 skips
+
+```bash
+py -m unittest tests.test_official_contract_regression tests.test_parser_registry_alignment tests.test_motor_interface_coherence tests.test_motor_registry_consistency -v
+```
+
+Resultado observado:
+
+- `OK`
+- 50 tests
+- 2 skips
+
+```bash
+py -m motor --help
+```
+
+Resultado observado:
+
+- exit code `0`
+- la ayuda se imprime correctamente
+
+```bash
+py -m motor doctor --project . --json
+```
+
+Resultado observado:
+
+- exit code `0`
+- `success = true`
+- `status = "healthy"`
+- 3 warnings esperados del repo raiz
