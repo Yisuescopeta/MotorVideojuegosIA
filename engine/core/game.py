@@ -36,6 +36,7 @@ from engine.config import EDIT_ANIMATION_SPEED, ENGINE_VERSION, SCRIPTS_DIRECTOR
 from engine.core.engine_state import EngineState
 from engine.core.runtime_loop import RuntimeTickPlan
 from engine.core.hot_reload import HotReloadManager
+from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.core.time_manager import TimeManager
 from engine.debug.profiler import EngineProfiler
 from engine.debug.timeline import Timeline
@@ -222,6 +223,28 @@ class Game:
                 viewport_size,
                 active_tab=active_tab,
             ),
+            RuntimeControllerContext(
+                get_state=lambda: self._state,
+                set_state=lambda value: setattr(self, "_state", value),
+                get_world=lambda: self.world,
+                set_world=self.set_world,
+                get_scene_runtime=lambda: self._scene_manager.runtime_port if self._scene_manager is not None else None,
+                get_rule_system=lambda: self._rule_system,
+                get_script_behaviour_system=lambda: self._script_behaviour_system,
+                get_event_bus=lambda: self._event_bus,
+                get_animation_system=lambda: self._animation_system,
+                get_input_system=lambda: self._input_system,
+                get_player_controller_system=lambda: self._player_controller_system,
+                get_character_controller_system=lambda: self._character_controller_system,
+                get_physics_system=lambda: self._physics_system,
+                get_collision_system=lambda: self._collision_system,
+                get_audio_system=lambda: self._audio_system,
+                get_scene_transition_controller=lambda: self._scene_transition_controller,
+                get_physics_backend_registry=lambda: self._physics_backend_registry,
+                reset_profiler=self.reset_profiler,
+                set_physics_backend=self.set_physics_backend,
+                edit_animation_speed=self.EDIT_ANIMATION_SPEED,
+            )
         )
         self._debug_tools_controller = DebugToolsController(
             time_manager=self.time,

@@ -38,6 +38,13 @@ EngineAPI(
 `AssetService`, sistemas runtime y el backend fisico opcional `box2d` cuando
 esta disponible.
 
+Internamente, `EngineAPI` ahora normaliza sus colaboradores sobre un bundle
+tipado de runtime y puertos de escena (`authoring` y `workspace`). Esto no
+cambia la API publica; solo reduce acoplamiento interno para fases posteriores.
+
+`attach_runtime(...)` conserva firma y sigue siendo la ruta de integracion para
+inyectar un runtime/scene manager externos compatibles con ese contrato base.
+
 ## Forma de respuesta
 
 Los metodos de authoring y proyecto suelen devolver `ActionResult`:

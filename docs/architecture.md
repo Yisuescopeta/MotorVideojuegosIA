@@ -87,6 +87,21 @@ convertirse en una ruta paralela de persistencia.
 debug y UI serializable. Wrappers RL, CLI, tests y automatizacion deben usar
 esta fachada en vez de internals privados.
 
+## Contratos internos base
+
+La base tecnica compartida de Fase 1 hace explicitos tres puertos internos de
+escena y un contexto de runtime:
+
+- `SceneRuntimePort`: ciclo `EDIT -> PLAY -> STOP` y acceso al mundo activo.
+- `SceneAuthoringPort`: mutaciones serializables y operaciones estructurales.
+- `SceneWorkspacePort`: workspace multi-escena, guardado y scene flow.
+- `RuntimeControllerContext`: wiring explicito entre runtime, escena y sistemas.
+
+`SceneManager` sigue siendo la implementacion concreta y `EngineAPI` mantiene la
+misma superficie publica. El cambio solo formaliza limites internos para que
+fases posteriores extiendan runtime, render, fisica, tilemaps, animacion, UI,
+audio, navegacion, editor y tooling sin introducir nuevos accesos cruzados.
+
 ### Editor/UI
 
 La UI visualiza y traduce acciones de usuario. Puede mantener estado efimero de

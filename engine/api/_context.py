@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, cast
 
+from engine.api._contracts import EngineAPIContracts, EngineRuntimePort
 from engine.api.errors import EntityNotFoundError
 from engine.api.types import ActionResult
 from engine.components.renderorder2d import RenderOrder2D
+from engine.scenes.contracts import SceneAuthoringPort, SceneWorkspacePort
 
 if TYPE_CHECKING:
     from engine.api.engine_api import EngineAPI
@@ -26,16 +28,53 @@ class EngineAPIContext:
         return self.api.game
 
     @property
+    def contracts(self) -> EngineAPIContracts:
+        contracts = getattr(self.api, "_contracts", None)
+        if contracts is None:
+            return self.api._refresh_contracts()
+        return contracts
+
+    @property
+    def runtime(self) -> Optional[EngineRuntimePort]:
+        game = self.api.game
+        if game is None:
+            return None
+        runtime = self.contracts.runtime
+        if runtime is game:
+            return runtime
+        return cast(EngineRuntimePort, game)
+
+    @property
     def scene_manager(self) -> Optional["SceneManager"]:
         return self.api.scene_manager
 
     @property
+    def scene_authoring(self) -> Optional[SceneAuthoringPort]:
+        scene_manager = self.api.scene_manager
+        if scene_manager is None:
+            return None
+        authoring = self.contracts.scene_authoring
+        if authoring is not None:
+            return authoring
+        return scene_manager.authoring_port
+
+    @property
+    def scene_workspace(self) -> Optional[SceneWorkspacePort]:
+        scene_manager = self.api.scene_manager
+        if scene_manager is None:
+            return None
+        workspace = self.contracts.scene_workspace
+        if workspace is not None:
+            return workspace
+        return scene_manager.workspace_port
+
+    @property
     def project_service(self) -> Optional["ProjectService"]:
-        return self.api.project_service
+        return self.contracts.project_service
 
     @property
     def asset_service(self) -> Optional["AssetService"]:
-        return self.api.asset_service
+        return self.contracts.asset_service
 
     @property
     def project_root(self) -> str:
@@ -65,18 +104,19 @@ class EngineAPIContext:
         return self.api._resolve_scene_reference(key_or_path)
 
     def require_entity(self, name: str) -> "Entity":
-        game = self.game
-        if game is None or game.world is None:
+        runtime = self.runtime
+        if runtime is None or runtime.world is None:
             raise RuntimeError("No world loaded")
-        entity = game.world.get_entity_by_name(name)
+        entity = runtime.world.get_entity_by_name(name)
         if entity is None:
             raise EntityNotFoundError(f"Entity '{name}' not found")
         return entity
 
     def load_component_payload(self, entity_name: str, component_name: str) -> Optional[dict[str, Any]]:
-        if self.scene_manager is None:
+        authoring = self.scene_authoring
+        if authoring is None:
             return None
-        return self.scene_manager.get_component_data(entity_name, component_name)
+        return authoring.get_component_data(entity_name, component_name)
 
     def normalize_sorting_layers(self, order: list[str]) -> list[str]:
         normalized: list[str] = ["Default"]
@@ -108,8 +148,24 @@ class EngineAPIComponent:
         return self._context.game
 
     @property
+    def contracts(self) -> EngineAPIContracts:
+        return self._context.contracts
+
+    @property
+    def runtime(self) -> Optional[EngineRuntimePort]:
+        return self._context.runtime
+
+    @property
     def scene_manager(self) -> Optional["SceneManager"]:
         return self._context.scene_manager
+
+    @property
+    def scene_authoring(self) -> Optional[SceneAuthoringPort]:
+        return self._context.scene_authoring
+
+    @property
+    def scene_workspace(self) -> Optional[SceneWorkspacePort]:
+        return self._context.scene_workspace
 
     @property
     def project_service(self) -> Optional["ProjectService"]:

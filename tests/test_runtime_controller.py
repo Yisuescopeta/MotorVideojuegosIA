@@ -5,6 +5,7 @@ from unittest.mock import Mock, call, patch
 from engine.app.runtime_controller import RuntimeController
 from engine.core.engine_state import EngineState
 from engine.core.runtime_loop import RuntimePhase
+from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.physics.registry import PhysicsBackendRegistry
 
 
@@ -57,6 +58,28 @@ class RuntimeControllerTests(unittest.TestCase):
                 active_tab,
             ),
             phase_observer=lambda phase, plan: self.phase_events.append(phase),
+            RuntimeControllerContext(
+                get_state=lambda: self.state["value"],
+                set_state=lambda value: self.state.__setitem__("value", value),
+                get_world=lambda: self.world_holder["world"],
+                set_world=lambda world: self.world_holder.__setitem__("world", world),
+                get_scene_runtime=lambda: self.scene_manager,
+                get_rule_system=lambda: self.rule_system,
+                get_script_behaviour_system=lambda: self.script_behaviour_system,
+                get_event_bus=lambda: self.event_bus,
+                get_animation_system=lambda: self.animation_system,
+                get_input_system=lambda: self.input_system,
+                get_player_controller_system=lambda: self.player_controller_system,
+                get_character_controller_system=lambda: self.character_controller_system,
+                get_physics_system=lambda: self.physics_system,
+                get_collision_system=lambda: self.collision_system,
+                get_audio_system=lambda: self.audio_system,
+                get_scene_transition_controller=lambda: self.scene_transition_controller,
+                get_physics_backend_registry=lambda: self.physics_backend_registry,
+                reset_profiler=self.reset_profiler,
+                set_physics_backend=self.set_physics_backend,
+                edit_animation_speed=0.35,
+            )
         )
 
     def test_play_enters_runtime_and_emits_on_play(self) -> None:
@@ -315,26 +338,28 @@ class RuntimeControllerTests(unittest.TestCase):
 
     def test_refresh_default_physics_backend_skips_when_dependencies_missing(self) -> None:
         controller = RuntimeController(
-            get_state=lambda: self.state["value"],
-            set_state=lambda value: self.state.__setitem__("value", value),
-            get_world=lambda: self.world_holder["world"],
-            set_world=lambda world: self.world_holder.__setitem__("world", world),
-            get_scene_manager=lambda: self.scene_manager,
-            get_rule_system=lambda: self.rule_system,
-            get_script_behaviour_system=lambda: self.script_behaviour_system,
-            get_event_bus=lambda: self.event_bus,
-            get_animation_system=lambda: self.animation_system,
-            get_input_system=lambda: self.input_system,
-            get_player_controller_system=lambda: self.player_controller_system,
-            get_character_controller_system=lambda: self.character_controller_system,
-            get_physics_system=lambda: None,
-            get_collision_system=lambda: self.collision_system,
-            get_audio_system=lambda: self.audio_system,
-            get_scene_transition_controller=lambda: self.scene_transition_controller,
-            get_physics_backend_registry=lambda: self.physics_backend_registry,
-            reset_profiler=self.reset_profiler,
-            set_physics_backend=self.set_physics_backend,
-            edit_animation_speed=0.35,
+            RuntimeControllerContext(
+                get_state=lambda: self.state["value"],
+                set_state=lambda value: self.state.__setitem__("value", value),
+                get_world=lambda: self.world_holder["world"],
+                set_world=lambda world: self.world_holder.__setitem__("world", world),
+                get_scene_runtime=lambda: self.scene_manager,
+                get_rule_system=lambda: self.rule_system,
+                get_script_behaviour_system=lambda: self.script_behaviour_system,
+                get_event_bus=lambda: self.event_bus,
+                get_animation_system=lambda: self.animation_system,
+                get_input_system=lambda: self.input_system,
+                get_player_controller_system=lambda: self.player_controller_system,
+                get_character_controller_system=lambda: self.character_controller_system,
+                get_physics_system=lambda: None,
+                get_collision_system=lambda: self.collision_system,
+                get_audio_system=lambda: self.audio_system,
+                get_scene_transition_controller=lambda: self.scene_transition_controller,
+                get_physics_backend_registry=lambda: self.physics_backend_registry,
+                reset_profiler=self.reset_profiler,
+                set_physics_backend=self.set_physics_backend,
+                edit_animation_speed=0.35,
+            )
         )
 
         with patch("engine.app.runtime_controller.LegacyAABBPhysicsBackend") as backend_class:

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from engine.core.engine_state import EngineState
 from engine.core.runtime_loop import RuntimeLoopState, RuntimePhase, RuntimeTickPlan
+from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.editor.console_panel import log_info
 from engine.physics.backend import PhysicsBackendSelection
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
-from engine.physics.registry import PhysicsBackendRegistry
 from engine.tilemap.collision_builder import bake_tilemap_colliders
 
 if TYPE_CHECKING:
@@ -107,6 +107,28 @@ class RuntimeController:
             is_stepping=is_stepping,
             should_render_like=bool(should_render_like),
         )
+    def __init__(self, context: RuntimeControllerContext) -> None:
+        self._context = context
+        self._get_state = context.get_state
+        self._set_state = context.set_state
+        self._get_world = context.get_world
+        self._set_world = context.set_world
+        self._get_scene_runtime = context.get_scene_runtime
+        self._get_rule_system = context.get_rule_system
+        self._get_script_behaviour_system = context.get_script_behaviour_system
+        self._get_event_bus = context.get_event_bus
+        self._get_animation_system = context.get_animation_system
+        self._get_input_system = context.get_input_system
+        self._get_player_controller_system = context.get_player_controller_system
+        self._get_character_controller_system = context.get_character_controller_system
+        self._get_physics_system = context.get_physics_system
+        self._get_collision_system = context.get_collision_system
+        self._get_audio_system = context.get_audio_system
+        self._get_scene_transition_controller = context.get_scene_transition_controller
+        self._get_physics_backend_registry = context.get_physics_backend_registry
+        self._reset_profiler = context.reset_profiler
+        self._set_physics_backend = context.set_physics_backend
+        self._edit_animation_speed = float(context.edit_animation_speed)
 
     def play(self) -> None:
         """Inicia el juego (EDIT -> PLAY)."""
@@ -116,9 +138,9 @@ class RuntimeController:
         log_info("Estado: EDIT -> PLAY")
         self._reset_profiler(run_label="play_session")
 
-        scene_manager = self._get_scene_manager()
-        if scene_manager is not None:
-            runtime_world = scene_manager.enter_play()
+        scene_runtime = self._get_scene_runtime()
+        if scene_runtime is not None:
+            runtime_world = scene_runtime.enter_play()
             if runtime_world is None:
                 return
             self._set_world(runtime_world)
@@ -127,7 +149,7 @@ class RuntimeController:
             rule_system = self._get_rule_system()
             if rule_system is not None:
                 rule_system.set_world(runtime_world)
-                scene = scene_manager.current_scene
+                scene = scene_runtime.current_scene
                 if scene is not None:
                     rule_system.load_rules(scene.rules_data)
 
@@ -171,9 +193,9 @@ class RuntimeController:
         if script_behaviour_system is not None and runtime_world is not None:
             script_behaviour_system.on_stop(runtime_world)
 
-        scene_manager = self._get_scene_manager()
-        if scene_manager is not None:
-            edit_world = scene_manager.exit_play()
+        scene_runtime = self._get_scene_runtime()
+        if scene_runtime is not None:
+            edit_world = scene_runtime.exit_play()
             if edit_world is not None:
                 self._set_world(edit_world)
 

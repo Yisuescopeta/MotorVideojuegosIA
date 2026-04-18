@@ -16,10 +16,40 @@ from pathlib import Path
 
 from engine.navigation import (
     AStarPathfinder,
+    NeighborMode,
     NavigationGrid,
+    NavigationQuery,
     NavigationService,
+    PathRequest,
+    PathResult,
     Vec2,
 )
+
+
+class TestPathContracts(unittest.TestCase):
+    def test_neighbor_mode_from_diagonal(self) -> None:
+        self.assertEqual(NeighborMode.from_diagonal(True), NeighborMode.EIGHT_WAY)
+        self.assertEqual(NeighborMode.from_diagonal(False), NeighborMode.CARDINAL_4)
+
+    def test_path_request_roundtrip(self) -> None:
+        request = PathRequest(
+            start=Vec2(1, 2),
+            goal=Vec2(3, 4),
+            neighbor_mode=NeighborMode.CARDINAL_4,
+            max_iterations=15,
+        )
+        restored = PathRequest.from_dict(request.to_dict())
+        self.assertEqual(restored.start, Vec2(1, 2))
+        self.assertEqual(restored.goal, Vec2(3, 4))
+        self.assertEqual(restored.neighbor_mode, NeighborMode.CARDINAL_4)
+        self.assertEqual(restored.max_iterations, 15)
+
+    def test_path_result_roundtrip(self) -> None:
+        result = PathResult.success_result([Vec2(0, 0), Vec2(1, 0)], 100)
+        restored = PathResult.from_dict(result.to_dict())
+        self.assertTrue(restored.success)
+        self.assertEqual(restored.path, [Vec2(0, 0), Vec2(1, 0)])
+        self.assertEqual(restored.cost, 100)
 
 
 class TestVec2(unittest.TestCase):
@@ -308,6 +338,21 @@ class TestAStarPathfinder(unittest.TestCase):
         path = pf.find_path(Vec2(1, 1), Vec2(1, 1))
         self.assertEqual(path, [Vec2(1, 1)])
 
+    def test_request_path_canonical_api(self) -> None:
+        g = self._make_open_grid(4, 4)
+        pf = AStarPathfinder(g)
+        result = pf.request_path(
+            PathRequest(
+                start=Vec2(0, 0),
+                goal=Vec2(3, 3),
+                neighbor_mode=NeighborMode.CARDINAL_4,
+            )
+        )
+        self.assertTrue(result.success)
+        self.assertEqual(result.path[0], Vec2(0, 0))
+        self.assertEqual(result.path[-1], Vec2(3, 3))
+        self.assertEqual(result.cost, 600)
+
     def test_grid_none_returns_empty(self) -> None:
         pf = AStarPathfinder(None)
         self.assertEqual(pf.find_path(Vec2(0, 0), Vec2(1, 1)), [])
@@ -350,6 +395,22 @@ class TestNavigationService(unittest.TestCase):
         result = svc.query_path(0, 0, 1, 1)
         self.assertFalse(result.success)
         self.assertIn("No navigation grid", result.message)
+
+    def test_request_path_canonical_api(self) -> None:
+        grid = self._make_grid()
+        svc = NavigationService(grid)
+        result = svc.request_path(
+            PathRequest(
+                start=Vec2(0, 0),
+                goal=Vec2(4, 4),
+                neighbor_mode=NeighborMode.EIGHT_WAY,
+            )
+        )
+        self.assertTrue(result.success)
+        self.assertIsInstance(result, PathResult)
+
+    def test_navigation_query_is_path_result_alias(self) -> None:
+        self.assertIs(NavigationQuery, PathResult)
 
     def test_query_path_out_of_bounds(self) -> None:
         grid = self._make_grid()
