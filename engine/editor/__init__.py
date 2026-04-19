@@ -1,3 +1,4 @@
+from engine.editor.agent_panel import AgentPanel
 from engine.editor.editor_layout import EditorLayout
 from engine.editor.editor_selection import EditorSelectionState
 from engine.editor.editor_shell import EditorShell
@@ -10,5 +11,6 @@ __all__ = [
     "EditorSelectionState",
     "EditorShell",
     "EditorShellState",
+    "AgentPanel",
     "HierarchyPanel",
 ]

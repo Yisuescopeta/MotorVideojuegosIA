@@ -90,3 +90,8 @@ Automation-owned runs should also stay self-contained. The AI-assisted workflow
 CLI and headless verification paths use project-local state under
 `.motor/ai_assist_state` instead of user-global editor state so repeated runs
 remain deterministic and isolated.
+
+`engine/agent/` is a separate experimental layer for clean-room agent sessions,
+the fake provider, tools and permissions. It consumes this foundation for
+context, structured authoring and verification; it does not replace these
+workflow contracts.

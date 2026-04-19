@@ -45,6 +45,29 @@ cambia la API publica; solo reduce acoplamiento interno para fases posteriores.
 `attach_runtime(...)` conserva firma y sigue siendo la ruta de integracion para
 inyectar un runtime/scene manager externos compatibles con ese contrato base.
 
+## Agente experimental
+
+Fuente: `engine/api/_agent_api.py`.
+
+El agente nativo es una superficie `experimental/tooling` para sesiones
+clean-room dentro del motor:
+
+- `create_agent_session(permission_mode="confirm_actions", title="", provider_id="fake")`
+- `send_agent_message(session_id, message)`
+- `get_agent_session(session_id)`
+- `approve_agent_action(session_id, action_id, approved)`
+- `cancel_agent_session(session_id)`
+- `list_agent_tools()`
+
+Modos de permiso:
+
+- `confirm_actions`: lectura segura sin confirmacion; escrituras, shell, Git y
+  authoring estructurado quedan pendientes de aprobacion.
+- `full_access`: ejecuta sin confirmacion, conservando hard guards de rutas,
+  carpeta de referencia `Claude Code/`, secretos evidentes y auditoria local.
+
+El estado de sesiones y auditoria vive en `.motor/agent_state`.
+
 ## Forma de respuesta
 
 Los metodos de authoring y proyecto suelen devolver `ActionResult`:

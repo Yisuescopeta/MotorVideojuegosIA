@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from engine.editor.agent_panel import AgentPanel
 from engine.editor.console_panel import ConsolePanel
 from engine.editor.project_panel import ProjectPanel
 from engine.editor.scene_flow_panel import SceneFlowPanel
@@ -17,6 +18,7 @@ class EditorPanelSlots:
     flow_workspace_panel: Any = field(default_factory=SceneFlowPanel)
     console_panel: Any = field(default_factory=ConsolePanel)
     terminal_panel: Any = None
+    agent_panel: Any = field(default_factory=AgentPanel)
 
 
 @dataclass(slots=True)

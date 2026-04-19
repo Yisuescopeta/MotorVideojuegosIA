@@ -36,6 +36,7 @@ htmlcov/
 *.tmp
 *.temp
 .claude/worktrees/
+Claude Code/
 autosave.json
 close_debug.txt
 pty_debug*.txt

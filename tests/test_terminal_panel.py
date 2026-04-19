@@ -69,8 +69,18 @@ class TerminalPanelTests(unittest.TestCase):
             self.assertEqual(layout.active_bottom_tab, "CONSOLE")
             layout.handle_bottom_tab_input(rl.Vector2(240, 544))
             self.assertEqual(layout.active_bottom_tab, "TERMINAL")
+            layout.handle_bottom_tab_input(rl.Vector2(310, 544))
+            self.assertEqual(layout.active_bottom_tab, "AGENT")
             layout.handle_bottom_tab_input(rl.Vector2(20, 544))
             self.assertEqual(layout.active_bottom_tab, "PROJECT")
+
+    def test_window_agent_action_opens_agent_bottom_panel(self) -> None:
+        with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
+            layout = EditorLayout(1280, 720)
+
+        layout._execute_menu_action("bottom_agent")
+
+        self.assertEqual(layout.active_bottom_tab, "AGENT")
 
     def test_bottom_panel_height_round_trips_preferences(self) -> None:
         with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):

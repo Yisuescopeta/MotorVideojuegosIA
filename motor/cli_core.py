@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from engine.agent import AgentSessionService
 from engine.ai import get_default_registry
 from engine.api import EngineAPI
 from engine.project.project_service import ProjectService
@@ -139,6 +140,71 @@ def cmd_capabilities(json_output: bool) -> int:
         return _output(True, f"Found {len(capabilities)} capabilities", data, json_output)
     except Exception as exc:
         return _output(False, f"Failed to load capabilities: {exc}", None, json_output)
+
+
+def cmd_agent_session_create(
+    project_path: Path,
+    permission_mode: str,
+    title: str,
+    json_output: bool,
+) -> int:
+    """Create an experimental agent session."""
+    try:
+        _ensure_project(project_path)
+        service = AgentSessionService(project_root=project_path)
+        session = service.create_session(permission_mode=permission_mode, title=title)
+        return _output(True, "Agent session created", session, json_output)
+    except Exception as exc:
+        return _output(False, f"Agent session create failed: {exc}", None, json_output)
+
+
+def cmd_agent_message_send(
+    project_path: Path,
+    session_id: str,
+    message: str,
+    json_output: bool,
+) -> int:
+    """Send a message to an experimental agent session."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path, auto_ensure_project=False)
+        service = AgentSessionService(api=api, project_root=project_path)
+        session = service.send_message(session_id, message)
+        return _output(True, "Agent message processed", session, json_output)
+    except Exception as exc:
+        return _output(False, f"Agent message failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_agent_action_approve(
+    project_path: Path,
+    session_id: str,
+    action_id: str,
+    approved: bool,
+    json_output: bool,
+) -> int:
+    """Approve or reject an experimental agent action."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path, auto_ensure_project=False)
+        service = AgentSessionService(api=api, project_root=project_path)
+        session = service.approve_action(session_id, action_id, approved)
+        return _output(True, "Agent action resolved", session, json_output)
+    except Exception as exc:
+        return _output(False, f"Agent action failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_doctor(project_path: Path, json_output: bool) -> int:

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from engine.api._assets_project_api import AssetsProjectAPI
+from engine.api._agent_api import AgentAPI
 from engine.api._authoring_api import AuthoringAPI
 from engine.api._context import EngineAPIContext
 from engine.api._contracts import EngineAPIContracts, build_engine_api_contracts
@@ -111,6 +112,7 @@ class EngineAPI:
         self._assets_project_api = AssetsProjectAPI(self._context)
         self._debug_api = DebugAPI(self._context)
         self._ui_api = UIAPI(self._context)
+        self._agent_api = AgentAPI(self._context)
         self._delegates = (
             self._runtime_api,
             self._debug_api,
@@ -118,6 +120,7 @@ class EngineAPI:
             self._scene_workspace_api,
             self._assets_project_api,
             self._ui_api,
+            self._agent_api,
         )
 
     def _refresh_contracts(self) -> EngineAPIContracts:

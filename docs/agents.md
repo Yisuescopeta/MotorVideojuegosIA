@@ -54,6 +54,18 @@ finally:
     api.shutdown()
 ```
 
+## Agente nativo experimental
+
+El repo incluye una base clean-room en `engine/agent/` para un agente de
+asistencia integrado. Usalo como `experimental/tooling`, no como contrato core.
+
+- Crea sesiones con `EngineAPI.create_agent_session`.
+- Envia mensajes con `EngineAPI.send_agent_message`.
+- Aprueba acciones pendientes con `EngineAPI.approve_agent_action`.
+- Las mutaciones de escenas deben pasar por herramientas que usan `EngineAPI` o
+  `AuthoringExecutionService`.
+- No incluyas la carpeta local `Claude Code/` como contexto del agente.
+
 Para CLI:
 
 ```bash

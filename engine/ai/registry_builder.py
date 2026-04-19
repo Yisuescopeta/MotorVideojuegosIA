@@ -39,6 +39,7 @@ class CapabilityRegistryBuilder:
         self._register_runtime_capabilities()
         self._register_physics_capabilities()
         self._register_introspection_capabilities()
+        self._register_agent_capabilities()
         return self._registry
 
     def _register_scene_capabilities(self) -> None:
@@ -904,6 +905,64 @@ class CapabilityRegistryBuilder:
             tags=["introspection", "runtime"],
         ))
 
+    def _register_agent_capabilities(self) -> None:
+        self._add(Capability(
+            id="agent:session:create",
+            summary="Create an experimental clean-room agent session inside the engine",
+            mode="both",
+            api_methods=["AgentAPI.create_agent_session"],
+            cli_command="motor agent session create",
+            example=CapabilityExample(
+                description="Create a confirm-actions agent session",
+                api_calls=[
+                    {"method": "create_agent_session", "args": {"permission_mode": "confirm_actions"}},
+                ],
+                expected_outcome="Returns a session id and empty session state",
+            ),
+            notes="Experimental/tooling API and CLI. Uses a deterministic fake provider by default.",
+            tags=["agent", "experimental", "tooling"],
+        ))
+
+        self._add(Capability(
+            id="agent:message:send",
+            summary="Send a message to an engine-native agent session",
+            mode="both",
+            api_methods=["AgentAPI.send_agent_message"],
+            cli_command="motor agent message send <session> <message>",
+            example=CapabilityExample(
+                description="Ask the fake provider to read a project file",
+                api_calls=[
+                    {
+                        "method": "send_agent_message",
+                        "args": {"session_id": "agent-session-id", "message": "read README.md"},
+                    },
+                ],
+                expected_outcome="The session records the user message, assistant response and tool result or pending action",
+            ),
+            notes="Experimental/tooling API. Mutating tool calls require approval unless the session is full_access.",
+            tags=["agent", "experimental", "tooling"],
+        ))
+
+        self._add(Capability(
+            id="agent:action:approve",
+            summary="Approve or reject a pending agent action",
+            mode="both",
+            api_methods=["AgentAPI.approve_agent_action"],
+            cli_command="motor agent action approve <session> <action>",
+            example=CapabilityExample(
+                description="Approve a pending file write",
+                api_calls=[
+                    {
+                        "method": "approve_agent_action",
+                        "args": {"session_id": "agent-session-id", "action_id": "agent-action-id", "approved": True},
+                    },
+                ],
+                expected_outcome="The pending action is executed and audited",
+            ),
+            notes="Experimental/tooling API. Hard guards still block unsafe paths and obvious secrets.",
+            tags=["agent", "experimental", "permissions"],
+        ))
+
     # Capabilities that are planned but not yet implemented.
     # These do NOT have corresponding implementations in the official motor CLI parser.
     # They are API-level capabilities that may be used programmatically but are not
@@ -946,6 +1005,7 @@ class CapabilityRegistryBuilder:
         
         # Introspection beyond capabilities (no CLI command exists)
         "introspect:status",
+
     }
 
     def _add(self, capability: Capability) -> None:

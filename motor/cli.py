@@ -70,6 +70,9 @@ from motor.cli_core import (
     cmd_slices_grid,
     cmd_slices_auto,
     cmd_slices_manual,
+    cmd_agent_session_create,
+    cmd_agent_message_send,
+    cmd_agent_action_approve,
     cmd_animator_info,
     cmd_animator_set_sheet,
     cmd_animator_upsert_state,
@@ -126,6 +129,10 @@ AI-Facing Commands:
   asset slice grid <a>      Create grid-based slices
   asset slice auto <a>      Auto-detect slices
   asset slice manual <a>    Save manual slices
+
+  agent session create      Create an experimental agent session
+  agent message send        Send a message to an agent session
+  agent action approve      Approve or reject a pending agent action
 
 Examples:
   motor doctor --project . --json
@@ -639,6 +646,77 @@ Documentation:
     )
     slice_manual_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
+    # === agent ===
+    agent_parser = subparsers.add_parser(
+        "agent",
+        help="Experimental engine-native agent operations",
+    )
+    agent_subparsers = agent_parser.add_subparsers(dest="agent_subcommand", required=True)
+
+    agent_session_parser = agent_subparsers.add_parser(
+        "session",
+        help="Agent session operations",
+    )
+    agent_session_subparsers = agent_session_parser.add_subparsers(dest="agent_session_subcommand", required=True)
+
+    agent_session_create_parser = agent_session_subparsers.add_parser(
+        "create",
+        help="Create an experimental agent session",
+    )
+    agent_session_create_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    agent_session_create_parser.add_argument(
+        "--permission-mode",
+        choices=["confirm_actions", "full_access"],
+        default="confirm_actions",
+        help="Permission mode for mutating agent actions"
+    )
+    agent_session_create_parser.add_argument("--title", default="", help="Optional session title")
+    agent_session_create_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    agent_message_parser = agent_subparsers.add_parser(
+        "message",
+        help="Agent message operations",
+    )
+    agent_message_subparsers = agent_message_parser.add_subparsers(dest="agent_message_subcommand", required=True)
+
+    agent_message_send_parser = agent_message_subparsers.add_parser(
+        "send",
+        help="Send a message to an experimental agent session",
+    )
+    agent_message_send_parser.add_argument("session_id", help="Agent session id")
+    agent_message_send_parser.add_argument("message", help="Message text")
+    agent_message_send_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    agent_message_send_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    agent_action_parser = agent_subparsers.add_parser(
+        "action",
+        help="Agent action operations",
+    )
+    agent_action_subparsers = agent_action_parser.add_subparsers(dest="agent_action_subcommand", required=True)
+
+    agent_action_approve_parser = agent_action_subparsers.add_parser(
+        "approve",
+        help="Approve or reject a pending agent action",
+    )
+    agent_action_approve_parser.add_argument("session_id", help="Agent session id")
+    agent_action_approve_parser.add_argument("action_id", help="Agent action id")
+    agent_action_approve_parser.add_argument(
+        "--reject",
+        action="store_true",
+        help="Reject instead of approve"
+    )
+    agent_action_approve_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    agent_action_approve_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
     return parser
 
 
@@ -907,6 +985,31 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                     naming_prefix=parsed.naming_prefix,
                     json_output=parsed.json,
                 )
+
+    # === agent ===
+    elif parsed.command == "agent":
+        if parsed.agent_subcommand == "session" and parsed.agent_session_subcommand == "create":
+            return cmd_agent_session_create(
+                project_path=Path(parsed.project_root).resolve(),
+                permission_mode=parsed.permission_mode,
+                title=parsed.title,
+                json_output=parsed.json,
+            )
+        elif parsed.agent_subcommand == "message" and parsed.agent_message_subcommand == "send":
+            return cmd_agent_message_send(
+                project_path=Path(parsed.project_root).resolve(),
+                session_id=parsed.session_id,
+                message=parsed.message,
+                json_output=parsed.json,
+            )
+        elif parsed.agent_subcommand == "action" and parsed.agent_action_subcommand == "approve":
+            return cmd_agent_action_approve(
+                project_path=Path(parsed.project_root).resolve(),
+                session_id=parsed.session_id,
+                action_id=parsed.action_id,
+                approved=not parsed.reject,
+                json_output=parsed.json,
+            )
     
     return 1  # Unknown command
 

@@ -300,6 +300,45 @@ Guarda slices definidos manualmente como JSON inline o ruta a archivo JSON.
 py -m motor asset slice manual assets/player.png --slices '[{"name":"idle_0","x":0,"y":0,"width":32,"height":32}]' --project . --json
 ```
 
+## Agente experimental
+
+Estos comandos exponen el agente clean-room nativo del motor como herramienta
+experimental. Las sesiones se guardan en estado local del proyecto bajo
+`.motor/agent_state/`.
+
+### `motor agent session create`
+
+Crea una sesion de agente con proveedor fake determinista.
+
+```bash
+py -m motor agent session create --project . --permission-mode confirm_actions --json
+py -m motor agent session create --project . --permission-mode full_access --title "Sesion local" --json
+```
+
+Modos de permisos:
+
+- `confirm_actions` permite lecturas seguras y deja ediciones, shell y Git como acciones pendientes.
+- `full_access` autoejecuta acciones permitidas, manteniendo limites de ruta, auditoria y bloqueo de secretos evidentes.
+
+### `motor agent message send <session_id> <message>`
+
+Envia texto a una sesion. El proveedor fake puede ejecutar herramientas simples
+como `read README.md`, `list .`, `search pattern in path`, `write path :: text`,
+`edit path :: old => new`, `run <command>`, `git status` y `git diff`.
+
+```bash
+py -m motor agent message send agent-session-id "read README.md" --project . --json
+```
+
+### `motor agent action approve <session_id> <action_id>`
+
+Aprueba o rechaza una accion pendiente generada en modo `confirm_actions`.
+
+```bash
+py -m motor agent action approve agent-session-id agent-action-id --project . --json
+py -m motor agent action approve agent-session-id agent-action-id --reject --project . --json
+```
+
 ## Comandos del registry que aun no estan en la CLI
 
 `motor capabilities --json` puede listar capacidades con `status = "planned"`.
