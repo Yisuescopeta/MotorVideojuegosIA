@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import ast
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from engine.ai import get_default_registry
 from engine.levels.component_registry import create_default_registry
@@ -46,8 +46,9 @@ def _available_cli_scopes() -> set[str]:
     parser = create_motor_parser()
     scopes: set[str] = set()
     for action in parser._actions:
-        if hasattr(action, "choices") and action.choices:
-            scopes.update(action.choices.keys())
+        choices = getattr(action, "choices", None)
+        if isinstance(choices, Mapping):
+            scopes.update(str(key) for key in choices.keys())
     return scopes
 
 
@@ -154,7 +155,7 @@ def build_audit_report() -> dict[str, Any]:
     mode_issues = _mode_issues()
     api_issues, api_warnings, symbol_counts = _api_method_findings()
     cli_issues, cli_counts = _cli_command_issues()
-    checks = [
+    checks: list[dict[str, Any]] = [
         {
             "name": "registry-contract",
             "passed": not registry_issues,

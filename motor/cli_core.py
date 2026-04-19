@@ -280,7 +280,7 @@ def cmd_doctor(project_path: Path, json_output: bool) -> int:
 
         # Check 8: Can list assets
         try:
-            assets = api.asset_service.list_assets() if api.asset_service else []
+            assets = api.project_service.list_assets() if api.project_service else []
             checks["can_list_assets"] = True
             checks["asset_count"] = len(assets)
         except Exception as exc:

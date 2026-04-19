@@ -8,10 +8,10 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-from engine.api._contracts import EngineAPIContracts, build_engine_api_contracts
 from engine.api._assets_project_api import AssetsProjectAPI
 from engine.api._authoring_api import AuthoringAPI
 from engine.api._context import EngineAPIContext
+from engine.api._contracts import EngineAPIContracts, build_engine_api_contracts
 from engine.api._debug_api import DebugAPI
 from engine.api._runtime_api import RuntimeAPI
 from engine.api._scene_workspace_api import SceneWorkspaceAPI

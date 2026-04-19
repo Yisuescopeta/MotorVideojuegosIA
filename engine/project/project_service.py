@@ -153,6 +153,10 @@ class ProjectService:
         return self._manifest is not None
 
     @property
+    def read_only(self) -> bool:
+        return self._read_only
+
+    @property
     def project_name(self) -> str:
         return self.manifest.name
 
@@ -528,6 +532,8 @@ class ProjectService:
             return []
         result: List[Dict[str, Any]] = []
         for path in sorted(levels_root.rglob("*.json")):
+            if path.name.endswith(".meta.json"):
+                continue
             relative_path = self.to_relative_path(path)
             scene_name = path.stem.replace("_", " ").strip() or path.stem or "Scene"
             try:
