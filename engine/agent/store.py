@@ -11,8 +11,10 @@ class AgentSessionStore:
         self.project_root = Path(project_root).expanduser().resolve()
         self.state_dir = self.project_root / ".motor" / "agent_state"
         self.sessions_dir = self.state_dir / "sessions"
+        self.events_dir = self.state_dir / "events"
         self.audit_path = self.state_dir / "audit.jsonl"
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
+        self.events_dir.mkdir(parents=True, exist_ok=True)
 
     def save_session(self, session: AgentSession) -> None:
         session_path = self.sessions_dir / f"{session.session_id}.json"
@@ -26,6 +28,9 @@ class AgentSessionStore:
 
     def append_event(self, session_id: str, event: AgentEvent) -> None:
         self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.events_dir.mkdir(parents=True, exist_ok=True)
         payload = {"session_id": session_id, **event.to_dict()}
         with self.audit_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
+        with (self.events_dir / f"{session_id}.jsonl").open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, ensure_ascii=True) + "\n")

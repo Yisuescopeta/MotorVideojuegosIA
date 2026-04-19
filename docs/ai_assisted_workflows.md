@@ -92,6 +92,8 @@ CLI and headless verification paths use project-local state under
 remain deterministic and isolated.
 
 `engine/agent/` is a separate experimental layer for clean-room agent sessions,
-the fake provider, tools and permissions. It consumes this foundation for
-context, structured authoring and verification; it does not replace these
-workflow contracts.
+the fake provider, runtime loop, tools and permissions. It consumes this
+foundation for context, structured authoring and verification; it does not
+replace these workflow contracts. Agent v2 keeps online providers, MCP, web,
+remote execution and subagents out of scope until the core turn/tool runtime is
+stable.

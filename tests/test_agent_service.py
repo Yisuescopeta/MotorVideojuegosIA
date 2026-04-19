@@ -3,7 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from engine.agent import AgentActionStatus, AgentPermissionMode, AgentSessionService
+from engine.agent import AgentActionStatus, AgentPermissionMode, AgentProviderRequest, AgentProviderResponse, AgentSessionService
+from engine.agent.types import AgentToolCall, new_id
 from engine.api import EngineAPI
 
 
@@ -70,6 +71,75 @@ class AgentSessionServiceTests(unittest.TestCase):
 
         self.assertEqual(updated["pending_actions"], [])
         self.assertEqual((self.project / "out.txt").read_text(encoding="utf-8"), "full")
+        self.assertEqual(updated["messages"][-1]["role"], "assistant")
+        self.assertIn("Tool result received for write_file", updated["messages"][-1]["content"])
+
+    def test_tool_result_reenters_provider_until_final_response(self) -> None:
+        (self.project / "notes.txt").write_text("context", encoding="utf-8")
+        service = AgentSessionService(project_root=self.project)
+        session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value)
+
+        updated = service.send_message(session["session_id"], "read notes.txt")
+
+        roles = [message["role"] for message in updated["messages"]]
+        self.assertEqual(roles, ["user", "assistant", "tool", "assistant"])
+        self.assertIn("Tool result received for read_file", updated["messages"][-1]["content"])
+        provider_events = [event for event in updated["events"] if event["kind"] == "provider_started"]
+        self.assertEqual(len(provider_events), 2)
+
+    def test_rejecting_pending_action_resumes_with_tool_result(self) -> None:
+        service = AgentSessionService(project_root=self.project)
+        session = service.create_session(permission_mode=AgentPermissionMode.CONFIRM_ACTIONS.value)
+        updated = service.send_message(session["session_id"], "write notes/reject.txt :: no")
+        pending = [item for item in updated["pending_actions"] if item["status"] == AgentActionStatus.PENDING.value]
+
+        rejected = service.approve_action(session["session_id"], pending[0]["action_id"], False)
+
+        self.assertFalse((self.project / "notes" / "reject.txt").exists())
+        self.assertEqual(rejected["pending_actions"][0]["status"], AgentActionStatus.REJECTED.value)
+        tool_messages = [message for message in rejected["messages"] if message["role"] == "tool"]
+        self.assertFalse(tool_messages[-1]["tool_result"]["success"])
+        self.assertIn("Action rejected by user", tool_messages[-1]["tool_result"]["error"])
+        self.assertEqual(rejected["messages"][-1]["role"], "assistant")
+        self.assertIn("Tool write_file failed", rejected["messages"][-1]["content"])
+
+    def test_new_user_message_is_blocked_while_action_is_pending(self) -> None:
+        service = AgentSessionService(project_root=self.project)
+        session = service.create_session(permission_mode=AgentPermissionMode.CONFIRM_ACTIONS.value)
+        service.send_message(session["session_id"], "write notes/pending.txt :: wait")
+
+        with self.assertRaises(RuntimeError):
+            service.send_message(session["session_id"], "read project.json")
+
+    def test_session_is_versioned_and_writes_per_session_event_log(self) -> None:
+        service = AgentSessionService(project_root=self.project)
+        session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value)
+
+        updated = service.send_message(session["session_id"], "list .")
+
+        self.assertEqual(updated["schema_version"], 2)
+        event_log = self.project / ".motor" / "agent_state" / "events" / f"{session['session_id']}.jsonl"
+        self.assertTrue(event_log.exists())
+        content = event_log.read_text(encoding="utf-8")
+        self.assertIn("provider_started", content)
+        self.assertIn("tool_result_added", content)
+
+    def test_iteration_limit_stops_looping_provider(self) -> None:
+        class LoopingProvider:
+            provider_id = "loop"
+
+            def run_turn(self, request: AgentProviderRequest, config) -> AgentProviderResponse:
+                call = AgentToolCall(new_id("tool"), "read_file", {"path": "missing.txt"})
+                return AgentProviderResponse.from_text("loop", [call], stop_reason="tool_use", provider_id=self.provider_id)
+
+        service = AgentSessionService(project_root=self.project, provider=LoopingProvider(), max_iterations_per_turn=2)
+        session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value, provider_id="loop")
+
+        updated = service.send_message(session["session_id"], "loop")
+
+        self.assertEqual(updated["messages"][-1]["role"], "assistant")
+        self.assertIn("iteration limit", updated["messages"][-1]["content"])
+        self.assertTrue(any(event["kind"] == "turn_limit_reached" for event in updated["events"]))
 
     def test_path_outside_project_is_blocked(self) -> None:
         outside = self.root / "outside.txt"

@@ -470,6 +470,23 @@ class GameTerminalIntegrationTests(unittest.TestCase):
         mock_set_project_service.assert_called_once_with(self.project_service)
         self.assertIs(self.game.editor_layout.terminal_panel, self.game.terminal_panel)
 
+    def test_set_project_service_connects_agent_panel_to_live_engine_port(self) -> None:
+        self.game.set_project_service(self.project_service)
+
+        self.assertIsNotNone(self.game.agent_panel.agent_service)
+        self.assertIsNotNone(self.game.agent_panel.agent_service.engine_port)
+        self.assertIs(self.game.editor_layout.agent_panel, self.game.agent_panel)
+
+    def test_agent_panel_live_engine_port_serves_engine_tools(self) -> None:
+        self.game.set_project_service(self.project_service)
+        service = self.game.agent_panel.agent_service
+
+        result = service.send_message(self.game.agent_panel.session_id, "capabilities")
+
+        tool_messages = [message for message in result["messages"] if message["role"] == "tool"]
+        self.assertTrue(tool_messages)
+        self.assertTrue(tool_messages[-1]["tool_result"]["success"])
+
     def test_open_project_restarts_terminal_panel_for_new_root(self) -> None:
         self.game.set_project_service(self.project_service)
         self.game.terminal_panel.backend = _FakeBackend(self.project_root.as_posix(), 80, 24, self.game.terminal_panel._on_backend_output)

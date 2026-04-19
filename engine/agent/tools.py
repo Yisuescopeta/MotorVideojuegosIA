@@ -4,10 +4,11 @@ import difflib
 import json
 import re
 import subprocess
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
+from engine.agent.engine_port import AgentEnginePort
 from engine.agent.types import AgentToolCall, AgentToolResult
 
 if TYPE_CHECKING:
@@ -38,6 +39,10 @@ class AgentToolSpec:
     description: str
     mutating: bool = False
     permission_scope: str = "read"
+    destructive: bool = False
+    requires_approval: bool = False
+    allowed_in_full_access: bool = True
+    supports_preview: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -45,6 +50,11 @@ class AgentToolSpec:
             "description": self.description,
             "mutating": self.mutating,
             "permission_scope": self.permission_scope,
+            "read_only": not self.mutating,
+            "destructive": self.destructive,
+            "requires_approval": self.requires_approval or self.mutating,
+            "allowed_in_full_access": self.allowed_in_full_access,
+            "supports_preview": self.supports_preview,
         }
 
 
@@ -52,10 +62,23 @@ class AgentToolSpec:
 class AgentToolContext:
     project_root: Path
     api: "EngineAPI | None" = None
+    engine_port: AgentEnginePort | None = None
+
+
+@dataclass(frozen=True)
+class AgentToolPreparedCall:
+    call: AgentToolCall
+    preview: str = ""
+    requires_approval: bool = False
+    reason: str = ""
+    blocked_result: AgentToolResult | None = None
 
 
 class AgentTool(Protocol):
     spec: AgentToolSpec
+
+    def validate(self, args: dict[str, Any], context: AgentToolContext) -> str:
+        ...
 
     def preview(self, args: dict[str, Any], context: AgentToolContext) -> str:
         ...
@@ -66,6 +89,9 @@ class AgentTool(Protocol):
 
 class BaseAgentTool:
     spec = AgentToolSpec(name="base", description="")
+
+    def validate(self, args: dict[str, Any], context: AgentToolContext) -> str:
+        return ""
 
     def preview(self, args: dict[str, Any], context: AgentToolContext) -> str:
         return f"{self.spec.name}: {json.dumps(args, ensure_ascii=True, sort_keys=True)}"
@@ -123,6 +149,12 @@ def _diff(old: str, new: str, path: str) -> str:
 def _reject_secrets(content: str) -> None:
     if SECRET_PATTERN.search(content):
         raise PermissionError("Hard guard blocked writing content that looks like a secret.")
+
+
+def _default_capabilities() -> dict[str, Any]:
+    from engine.ai import get_default_registry
+
+    return get_default_registry().to_dict()
 
 
 class ReadFileTool(BaseAgentTool):
@@ -187,7 +219,14 @@ class SearchTextTool(BaseAgentTool):
 
 
 class WriteFileTool(BaseAgentTool):
-    spec = AgentToolSpec("write_file", "Write a file inside the project.", mutating=True, permission_scope="write")
+    spec = AgentToolSpec(
+        "write_file",
+        "Write a file inside the project.",
+        mutating=True,
+        permission_scope="write",
+        requires_approval=True,
+        supports_preview=True,
+    )
 
     def preview(self, args: dict[str, Any], context: AgentToolContext) -> str:
         path = _resolve_project_path(context.project_root, args.get("path"), allow_missing=True)
@@ -212,7 +251,14 @@ class WriteFileTool(BaseAgentTool):
 
 
 class EditFileTool(BaseAgentTool):
-    spec = AgentToolSpec("edit_file", "Replace text in a file inside the project.", mutating=True, permission_scope="write")
+    spec = AgentToolSpec(
+        "edit_file",
+        "Replace text in a file inside the project.",
+        mutating=True,
+        permission_scope="write",
+        requires_approval=True,
+        supports_preview=True,
+    )
 
     def preview(self, args: dict[str, Any], context: AgentToolContext) -> str:
         path = _resolve_project_path(context.project_root, args.get("path"), allow_missing=False)
@@ -240,7 +286,18 @@ class EditFileTool(BaseAgentTool):
 
 
 class RunCommandTool(BaseAgentTool):
-    spec = AgentToolSpec("run_command", "Run a shell command from the project root.", mutating=True, permission_scope="shell")
+    spec = AgentToolSpec(
+        "run_command",
+        "Run a shell command from the project root.",
+        mutating=True,
+        permission_scope="shell",
+        requires_approval=True,
+        supports_preview=True,
+    )
+
+    def preview(self, args: dict[str, Any], context: AgentToolContext) -> str:
+        command = str(args.get("command", "")).strip()
+        return f"Run from {context.project_root.as_posix()}: {command}"
 
     def execute(self, call: AgentToolCall, context: AgentToolContext) -> AgentToolResult:
         command = str(call.args.get("command", "")).strip()
@@ -249,6 +306,8 @@ class RunCommandTool(BaseAgentTool):
         lowered = command.lower()
         if any(pattern in lowered for pattern in BLOCKED_COMMAND_PATTERNS):
             return self.fail(call, "Hard guard blocked a destructive command.")
+        if REFERENCE_DIR_NAME.lower() in lowered:
+            return self.fail(call, "Hard guard blocked access to the local Claude Code reference.")
         try:
             completed = subprocess.run(
                 command,
@@ -284,7 +343,20 @@ class GitDiffTool(BaseAgentTool):
 
 
 class GitStageTool(BaseAgentTool):
-    spec = AgentToolSpec("git_stage", "Stage paths in git.", mutating=True, permission_scope="git_write")
+    spec = AgentToolSpec(
+        "git_stage",
+        "Stage paths in git.",
+        mutating=True,
+        permission_scope="git_write",
+        requires_approval=True,
+        supports_preview=True,
+    )
+
+    def preview(self, args: dict[str, Any], context: AgentToolContext) -> str:
+        paths = args.get("paths", [])
+        if isinstance(paths, str):
+            paths = [paths]
+        return "Stage paths: " + ", ".join(str(path) for path in paths)
 
     def execute(self, call: AgentToolCall, context: AgentToolContext) -> AgentToolResult:
         paths = call.args.get("paths", [])
@@ -297,7 +369,17 @@ class GitStageTool(BaseAgentTool):
 
 
 class GitCommitTool(BaseAgentTool):
-    spec = AgentToolSpec("git_commit", "Create a git commit.", mutating=True, permission_scope="git_write")
+    spec = AgentToolSpec(
+        "git_commit",
+        "Create a git commit.",
+        mutating=True,
+        permission_scope="git_write",
+        requires_approval=True,
+        supports_preview=True,
+    )
+
+    def preview(self, args: dict[str, Any], context: AgentToolContext) -> str:
+        return f"Create git commit: {str(args.get('message', '')).strip()}"
 
     def execute(self, call: AgentToolCall, context: AgentToolContext) -> AgentToolResult:
         message = str(call.args.get("message", "")).strip()
@@ -332,13 +414,11 @@ class EngineContextTool(BaseAgentTool):
     spec = AgentToolSpec("engine_context", "Capture an AI workflow context snapshot through EngineAPI.")
 
     def execute(self, call: AgentToolCall, context: AgentToolContext) -> AgentToolResult:
-        if context.api is None:
-            return self.fail(call, "EngineAPI is not attached to this agent session.")
+        if context.engine_port is None:
+            return self.fail(call, "Engine port is not attached to this agent session.")
         try:
-            from engine.workflows.ai_assist import build_project_context_snapshot
-
-            snapshot = build_project_context_snapshot(context.api, snapshot_id=str(call.args.get("snapshot_id", "agent-context")))
-            return self.ok(call, json.dumps(snapshot.to_dict(), indent=2, ensure_ascii=True), snapshot.to_dict())
+            data = context.engine_port.context_snapshot(call.args)
+            return self.ok(call, json.dumps(data, indent=2, ensure_ascii=True), data)
         except Exception as exc:
             return self.fail(call, str(exc))
 
@@ -348,9 +428,7 @@ class EngineCapabilitiesTool(BaseAgentTool):
 
     def execute(self, call: AgentToolCall, context: AgentToolContext) -> AgentToolResult:
         try:
-            from engine.ai import get_default_registry
-
-            data = get_default_registry().to_dict()
+            data = context.engine_port.capabilities() if context.engine_port is not None else _default_capabilities()
             return self.ok(call, json.dumps(data, indent=2, ensure_ascii=True), data)
         except Exception as exc:
             return self.fail(call, str(exc))
@@ -362,37 +440,20 @@ class EngineAuthoringExecuteTool(BaseAgentTool):
         "Execute structured authoring operations through EngineAPI.",
         mutating=True,
         permission_scope="engine_authoring",
+        requires_approval=True,
+        supports_preview=True,
     )
 
-    def execute(self, call: AgentToolCall, context: AgentToolContext) -> AgentToolResult:
-        if context.api is None:
-            return self.fail(call, "EngineAPI is not attached to this agent session.")
-        try:
-            from engine.workflows.ai_assist import AuthoringExecutionService
-            from engine.workflows.ai_assist.types import (
-                AuthoringEntityPropertyKind,
-                AuthoringExecutionOperation,
-                AuthoringExecutionOperationKind,
-                AuthoringExecutionRequest,
-            )
+    def preview(self, args: dict[str, Any], context: AgentToolContext) -> str:
+        operations = args.get("operations", [])
+        return json.dumps({"operations": operations, "target_scene_ref": args.get("target_scene_ref", "")}, indent=2, ensure_ascii=True)
 
-            allowed = {field.name for field in fields(AuthoringExecutionOperation)}
-            operations = []
-            for raw in call.args.get("operations", []):
-                payload = {key: value for key, value in dict(raw).items() if key in allowed}
-                payload["kind"] = AuthoringExecutionOperationKind(str(payload["kind"]))
-                if payload.get("property_kind"):
-                    payload["property_kind"] = AuthoringEntityPropertyKind(str(payload["property_kind"]))
-                operations.append(AuthoringExecutionOperation(**payload))
-            request = AuthoringExecutionRequest(
-                request_id=str(call.args.get("request_id", "agent-authoring")),
-                label=str(call.args.get("label", "agent_authoring")),
-                operations=operations,
-                target_scene_ref=str(call.args.get("target_scene_ref", "")),
-                metadata=dict(call.args.get("metadata", {})),
-            )
-            result = AuthoringExecutionService(context.api).execute(request)
-            return self.ok(call, json.dumps(result.to_dict(), indent=2, ensure_ascii=True), result.to_dict())
+    def execute(self, call: AgentToolCall, context: AgentToolContext) -> AgentToolResult:
+        if context.engine_port is None:
+            return self.fail(call, "Engine port is not attached to this agent session.")
+        try:
+            data = context.engine_port.authoring_execute(call.args)
+            return self.ok(call, json.dumps(data, indent=2, ensure_ascii=True), data)
         except Exception as exc:
             return self.fail(call, str(exc))
 
@@ -402,17 +463,17 @@ class EngineValidateTool(BaseAgentTool):
 
     def execute(self, call: AgentToolCall, context: AgentToolContext) -> AgentToolResult:
         try:
-            from engine.workflows.ai_assist import validate_scene_payload
+            if context.engine_port is not None:
+                data = context.engine_port.validate(call.args, context.project_root)
+            else:
+                from engine.workflows.ai_assist import validate_scene_payload
 
-            payload = call.args.get("scene_payload")
-            if payload is None:
-                path_value = call.args.get("path", "")
-                if not path_value and context.api is not None:
-                    path_value = context.api.get_active_scene().get("path", "")
-                path = _resolve_project_path(context.project_root, path_value, allow_missing=False)
-                payload = json.loads(path.read_text(encoding="utf-8"))
-            report = validate_scene_payload(payload)
-            return self.ok(call, json.dumps(report.to_dict(), indent=2, ensure_ascii=True), report.to_dict())
+                payload = call.args.get("scene_payload")
+                if payload is None:
+                    path = _resolve_project_path(context.project_root, call.args.get("path", ""), allow_missing=False)
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                data = validate_scene_payload(payload).to_dict()
+            return self.ok(call, json.dumps(data, indent=2, ensure_ascii=True), data)
         except Exception as exc:
             return self.fail(call, str(exc))
 
@@ -422,38 +483,10 @@ class EngineVerifyTool(BaseAgentTool):
 
     def execute(self, call: AgentToolCall, context: AgentToolContext) -> AgentToolResult:
         try:
-            from engine.workflows.ai_assist import HeadlessVerificationService
-            from engine.workflows.ai_assist.types import (
-                HeadlessVerificationAssertion,
-                HeadlessVerificationAssertionKind,
-                HeadlessVerificationScenario,
-            )
-
-            scenario_data = dict(call.args.get("scenario", call.args))
-            assertions = []
-            for raw in scenario_data.get("assertions", []):
-                payload = dict(raw)
-                payload["kind"] = HeadlessVerificationAssertionKind(str(payload["kind"]))
-                assertions.append(HeadlessVerificationAssertion(**payload))
-            scenario_root = _resolve_project_path(
-                context.project_root,
-                scenario_data.get("project_root", "."),
-                allow_missing=False,
-            )
-            if not scenario_root.is_dir():
-                return self.fail(call, f"Not a directory: {_relative(scenario_root, context.project_root)}")
-            scenario = HeadlessVerificationScenario(
-                scenario_id=str(scenario_data.get("scenario_id", "agent-verification")),
-                project_root=scenario_root.as_posix(),
-                scene_path=str(scenario_data.get("scene_path", "")),
-                assertions=assertions,
-                seed=scenario_data.get("seed"),
-                play=bool(scenario_data.get("play", False)),
-                step_frames=int(scenario_data.get("step_frames", 0)),
-                recent_event_limit=int(scenario_data.get("recent_event_limit", 50)),
-            )
-            report = HeadlessVerificationService().run(scenario)
-            return self.ok(call, json.dumps(report.to_dict(), indent=2, ensure_ascii=True), report.to_dict())
+            if context.engine_port is None:
+                return self.fail(call, "Engine port is not attached to this agent session.")
+            data = context.engine_port.verify(call.args, context.project_root)
+            return self.ok(call, json.dumps(data, indent=2, ensure_ascii=True), data)
         except Exception as exc:
             return self.fail(call, str(exc))
 
@@ -491,7 +524,53 @@ class AgentToolRegistry:
 
     def requires_confirmation(self, name: str) -> bool:
         tool = self.get(name)
-        return bool(tool and tool.spec.mutating)
+        return bool(tool and (tool.spec.requires_approval or tool.spec.mutating))
+
+    def prepare(
+        self,
+        call: AgentToolCall,
+        context: AgentToolContext,
+        *,
+        require_confirmation: bool,
+    ) -> AgentToolPreparedCall:
+        tool = self.get(call.tool_name)
+        if tool is None:
+            return AgentToolPreparedCall(
+                call,
+                blocked_result=AgentToolResult(call.tool_call_id, call.tool_name, False, error=f"Unknown tool: {call.tool_name}"),
+            )
+        if not tool.spec.allowed_in_full_access:
+            return AgentToolPreparedCall(
+                call,
+                blocked_result=AgentToolResult(
+                    call.tool_call_id,
+                    call.tool_name,
+                    False,
+                    error=f"Tool is not allowed in full_access mode: {call.tool_name}",
+                ),
+            )
+        try:
+            validation_error = tool.validate(call.args, context)
+        except Exception as exc:
+            validation_error = str(exc)
+        if validation_error:
+            return AgentToolPreparedCall(
+                call,
+                blocked_result=AgentToolResult(call.tool_call_id, call.tool_name, False, error=validation_error),
+            )
+        preview = ""
+        if tool.spec.supports_preview or tool.spec.mutating:
+            try:
+                preview = tool.preview(call.args, context)
+            except Exception as exc:
+                preview = f"Preview failed: {exc}"
+        needs_approval = require_confirmation and (tool.spec.requires_approval or tool.spec.mutating)
+        return AgentToolPreparedCall(
+            call,
+            preview=preview,
+            requires_approval=needs_approval,
+            reason=f"{call.tool_name} requires confirmation in confirm_actions mode." if needs_approval else "",
+        )
 
     def preview(self, call: AgentToolCall, context: AgentToolContext) -> str:
         tool = self.get(call.tool_name)
@@ -503,4 +582,7 @@ class AgentToolRegistry:
         tool = self.get(call.tool_name)
         if tool is None:
             return AgentToolResult(call.tool_call_id, call.tool_name, False, error=f"Unknown tool: {call.tool_name}")
-        return tool.execute(call, context)
+        try:
+            return tool.execute(call, context)
+        except Exception as exc:
+            return AgentToolResult(call.tool_call_id, call.tool_name, False, error=str(exc))

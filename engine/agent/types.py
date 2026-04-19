@@ -37,12 +37,42 @@ class AgentActionStatus(StrEnum):
 
 class AgentEventKind(StrEnum):
     SESSION_CREATED = "session_created"
+    TURN_STARTED = "turn_started"
+    TURN_SUSPENDED = "turn_suspended"
+    TURN_COMPLETED = "turn_completed"
+    TURN_LIMIT_REACHED = "turn_limit_reached"
     MESSAGE_ADDED = "message_added"
+    PROVIDER_STARTED = "provider_started"
+    PROVIDER_COMPLETED = "provider_completed"
+    PROVIDER_FAILED = "provider_failed"
     TOOL_CALLED = "tool_called"
+    TOOL_RESULT_ADDED = "tool_result_added"
     ACTION_REQUESTED = "action_requested"
     ACTION_APPROVED = "action_approved"
     ACTION_REJECTED = "action_rejected"
     SESSION_CANCELLED = "session_cancelled"
+
+
+class AgentTurnStatus(StrEnum):
+    IDLE = "idle"
+    RUNNING = "running"
+    SUSPENDED = "suspended"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+    LIMIT_REACHED = "limit_reached"
+
+
+class AgentContentBlockKind(StrEnum):
+    TEXT = "text"
+    TOOL_USE = "tool_use"
+    TOOL_RESULT = "tool_result"
+
+
+class AgentPermissionDecisionKind(StrEnum):
+    ALLOW = "allow"
+    ASK = "ask"
+    DENY = "deny"
 
 
 @dataclass(frozen=True)
@@ -75,6 +105,142 @@ class AgentToolResult:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AgentToolResult":
+        return cls(
+            tool_call_id=str(data.get("tool_call_id", "")),
+            tool_name=str(data.get("tool_name", "")),
+            success=bool(data.get("success", False)),
+            output=str(data.get("output", "")),
+            data=dict(data.get("data", {})),
+            error=str(data.get("error", "")),
+        )
+
+
+@dataclass(frozen=True)
+class AgentToolUseBlock:
+    tool_call: AgentToolCall
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"tool_call": self.tool_call.to_dict()}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AgentToolUseBlock":
+        return cls(tool_call=AgentToolCall.from_dict(dict(data.get("tool_call", {}))))
+
+
+@dataclass(frozen=True)
+class AgentToolResultBlock:
+    tool_result: AgentToolResult
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"tool_result": self.tool_result.to_dict()}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AgentToolResultBlock":
+        return cls(tool_result=AgentToolResult.from_dict(dict(data.get("tool_result", {}))))
+
+
+@dataclass(frozen=True)
+class AgentContentBlock:
+    kind: AgentContentBlockKind
+    text: str = ""
+    tool_use: AgentToolUseBlock | None = None
+    tool_result: AgentToolResultBlock | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind.value,
+            "text": self.text,
+            "tool_use": self.tool_use.to_dict() if self.tool_use is not None else None,
+            "tool_result": self.tool_result.to_dict() if self.tool_result is not None else None,
+        }
+
+    @classmethod
+    def text_block(cls, text: str) -> "AgentContentBlock":
+        return cls(AgentContentBlockKind.TEXT, text=str(text))
+
+    @classmethod
+    def tool_use_block(cls, tool_call: AgentToolCall) -> "AgentContentBlock":
+        return cls(AgentContentBlockKind.TOOL_USE, tool_use=AgentToolUseBlock(tool_call))
+
+    @classmethod
+    def tool_result_block(cls, tool_result: AgentToolResult) -> "AgentContentBlock":
+        return cls(AgentContentBlockKind.TOOL_RESULT, tool_result=AgentToolResultBlock(tool_result))
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AgentContentBlock":
+        kind = AgentContentBlockKind(str(data.get("kind", AgentContentBlockKind.TEXT.value)))
+        return cls(
+            kind=kind,
+            text=str(data.get("text", "")),
+            tool_use=AgentToolUseBlock.from_dict(dict(data.get("tool_use", {})))
+            if isinstance(data.get("tool_use"), dict)
+            else None,
+            tool_result=AgentToolResultBlock.from_dict(dict(data.get("tool_result", {})))
+            if isinstance(data.get("tool_result"), dict)
+            else None,
+        )
+
+
+@dataclass(frozen=True)
+class AgentPermissionDecision:
+    kind: AgentPermissionDecisionKind
+    reason: str = ""
+    preview: str = ""
+    updated_args: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind.value,
+            "reason": self.reason,
+            "preview": self.preview,
+            "updated_args": dict(self.updated_args),
+        }
+
+
+@dataclass
+class AgentTurnState:
+    turn_id: str
+    status: AgentTurnStatus = AgentTurnStatus.RUNNING
+    iteration: int = 0
+    max_iterations: int = 8
+    suspended_action_id: str = ""
+    created_at: str = field(default_factory=utc_now_iso)
+    updated_at: str = field(default_factory=utc_now_iso)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "turn_id": self.turn_id,
+            "status": self.status.value,
+            "iteration": self.iteration,
+            "max_iterations": self.max_iterations,
+            "suspended_action_id": self.suspended_action_id,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AgentTurnState":
+        return cls(
+            turn_id=str(data.get("turn_id", "")),
+            status=AgentTurnStatus(str(data.get("status", AgentTurnStatus.RUNNING.value))),
+            iteration=int(data.get("iteration", 0)),
+            max_iterations=int(data.get("max_iterations", 8)),
+            suspended_action_id=str(data.get("suspended_action_id", "")),
+            created_at=str(data.get("created_at", "")) or utc_now_iso(),
+            updated_at=str(data.get("updated_at", "")) or utc_now_iso(),
+        )
+
+
+@dataclass(frozen=True)
+class AgentRuntimeConfig:
+    provider_id: str = "fake"
+    max_iterations_per_turn: int = 8
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
 
 @dataclass
 class AgentMessage:
@@ -84,6 +250,7 @@ class AgentMessage:
     created_at: str = field(default_factory=utc_now_iso)
     tool_calls: list[AgentToolCall] = field(default_factory=list)
     tool_result: AgentToolResult | None = None
+    content_blocks: list[AgentContentBlock] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -93,6 +260,7 @@ class AgentMessage:
             "created_at": self.created_at,
             "tool_calls": [call.to_dict() for call in self.tool_calls],
             "tool_result": self.tool_result.to_dict() if self.tool_result is not None else None,
+            "content_blocks": [block.to_dict() for block in self.content_blocks],
         }
 
     @classmethod
@@ -104,7 +272,8 @@ class AgentMessage:
             content=str(data.get("content", "")),
             created_at=str(data.get("created_at", "")) or utc_now_iso(),
             tool_calls=[AgentToolCall.from_dict(item) for item in data.get("tool_calls", [])],
-            tool_result=AgentToolResult(**tool_result_data) if isinstance(tool_result_data, dict) else None,
+            tool_result=AgentToolResult.from_dict(tool_result_data) if isinstance(tool_result_data, dict) else None,
+            content_blocks=[AgentContentBlock.from_dict(item) for item in data.get("content_blocks", [])],
         )
 
 
@@ -114,6 +283,7 @@ class AgentActionRequest:
     tool_call: AgentToolCall
     reason: str
     preview: str = ""
+    turn_id: str = ""
     status: AgentActionStatus = AgentActionStatus.PENDING
     created_at: str = field(default_factory=utc_now_iso)
     resolved_at: str = ""
@@ -125,6 +295,7 @@ class AgentActionRequest:
             "tool_call": self.tool_call.to_dict(),
             "reason": self.reason,
             "preview": self.preview,
+            "turn_id": self.turn_id,
             "status": self.status.value,
             "created_at": self.created_at,
             "resolved_at": self.resolved_at,
@@ -139,10 +310,42 @@ class AgentActionRequest:
             tool_call=AgentToolCall.from_dict(dict(data.get("tool_call", {}))),
             reason=str(data.get("reason", "")),
             preview=str(data.get("preview", "")),
+            turn_id=str(data.get("turn_id", "")),
             status=AgentActionStatus(str(data.get("status", AgentActionStatus.PENDING.value))),
             created_at=str(data.get("created_at", "")) or utc_now_iso(),
             resolved_at=str(data.get("resolved_at", "")),
-            result=AgentToolResult(**result_data) if isinstance(result_data, dict) else None,
+            result=AgentToolResult.from_dict(result_data) if isinstance(result_data, dict) else None,
+        )
+
+
+@dataclass(frozen=True)
+class AgentSuspension:
+    action_id: str
+    turn_id: str
+    tool_call: AgentToolCall
+    reason: str
+    preview: str = ""
+    created_at: str = field(default_factory=utc_now_iso)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "action_id": self.action_id,
+            "turn_id": self.turn_id,
+            "tool_call": self.tool_call.to_dict(),
+            "reason": self.reason,
+            "preview": self.preview,
+            "created_at": self.created_at,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AgentSuspension":
+        return cls(
+            action_id=str(data.get("action_id", "")),
+            turn_id=str(data.get("turn_id", "")),
+            tool_call=AgentToolCall.from_dict(dict(data.get("tool_call", {}))),
+            reason=str(data.get("reason", "")),
+            preview=str(data.get("preview", "")),
+            created_at=str(data.get("created_at", "")) or utc_now_iso(),
         )
 
 
@@ -182,10 +385,15 @@ class AgentSession:
     messages: list[AgentMessage] = field(default_factory=list)
     pending_actions: list[AgentActionRequest] = field(default_factory=list)
     events: list[AgentEvent] = field(default_factory=list)
+    active_turn: AgentTurnState | None = None
+    suspended_turn: AgentSuspension | None = None
+    runtime_config: AgentRuntimeConfig = field(default_factory=AgentRuntimeConfig)
     cancelled: bool = False
+    schema_version: int = 2
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "schema_version": self.schema_version,
             "session_id": self.session_id,
             "permission_mode": self.permission_mode.value,
             "provider_id": self.provider_id,
@@ -195,12 +403,16 @@ class AgentSession:
             "messages": [message.to_dict() for message in self.messages],
             "pending_actions": [action.to_dict() for action in self.pending_actions],
             "events": [event.to_dict() for event in self.events],
+            "active_turn": self.active_turn.to_dict() if self.active_turn is not None else None,
+            "suspended_turn": self.suspended_turn.to_dict() if self.suspended_turn is not None else None,
+            "runtime_config": self.runtime_config.to_dict(),
             "cancelled": self.cancelled,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AgentSession":
         return cls(
+            schema_version=int(data.get("schema_version", 1)),
             session_id=str(data.get("session_id", "")),
             permission_mode=AgentPermissionMode(str(data.get("permission_mode", AgentPermissionMode.CONFIRM_ACTIONS.value))),
             provider_id=str(data.get("provider_id", "fake")),
@@ -210,5 +422,12 @@ class AgentSession:
             messages=[AgentMessage.from_dict(item) for item in data.get("messages", [])],
             pending_actions=[AgentActionRequest.from_dict(item) for item in data.get("pending_actions", [])],
             events=[AgentEvent.from_dict(item) for item in data.get("events", [])],
+            active_turn=AgentTurnState.from_dict(data["active_turn"]) if isinstance(data.get("active_turn"), dict) else None,
+            suspended_turn=AgentSuspension.from_dict(data["suspended_turn"])
+            if isinstance(data.get("suspended_turn"), dict)
+            else None,
+            runtime_config=AgentRuntimeConfig(**dict(data.get("runtime_config", {})))
+            if isinstance(data.get("runtime_config"), dict)
+            else AgentRuntimeConfig(),
             cancelled=bool(data.get("cancelled", False)),
         )

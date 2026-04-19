@@ -44,13 +44,17 @@ cambia la API publica; solo reduce acoplamiento interno para fases posteriores.
 
 `attach_runtime(...)` conserva firma y sigue siendo la ruta de integracion para
 inyectar un runtime/scene manager externos compatibles con ese contrato base.
+`EngineAPI.from_runtime(...)` crea una fachada sobre un runtime vivo del editor
+sin inicializar un segundo motor headless; se usa para tooling experimental como
+el panel Agent.
 
 ## Agente experimental
 
 Fuente: `engine/api/_agent_api.py`.
 
-El agente nativo es una superficie `experimental/tooling` para sesiones
-clean-room dentro del motor:
+El agente nativo v2 es una superficie `experimental/tooling` para sesiones
+clean-room dentro del motor. Mantiene la API publica de v1, pero internamente
+usa un runtime iterativo `provider -> tool_use -> tool_result -> provider`:
 
 - `create_agent_session(permission_mode="confirm_actions", title="", provider_id="fake")`
 - `send_agent_message(session_id, message)`
@@ -67,6 +71,8 @@ Modos de permiso:
   carpeta de referencia `Claude Code/`, secretos evidentes y auditoria local.
 
 El estado de sesiones y auditoria vive en `.motor/agent_state`.
+Las sesiones se guardan con `schema_version=2`, transcript serializable y log
+de eventos por sesion en `.motor/agent_state/events/`.
 
 ## Forma de respuesta
 

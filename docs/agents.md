@@ -58,13 +58,20 @@ finally:
 
 El repo incluye una base clean-room en `engine/agent/` para un agente de
 asistencia integrado. Usalo como `experimental/tooling`, no como contrato core.
+La v2 usa un runtime de turnos suspendibles: el provider puede pedir tools, cada
+tool devuelve un `tool_result` emparejado y el runtime continua hasta respuesta
+final, aprobacion pendiente, cancelacion o limite de iteraciones.
 
 - Crea sesiones con `EngineAPI.create_agent_session`.
 - Envia mensajes con `EngineAPI.send_agent_message`.
 - Aprueba acciones pendientes con `EngineAPI.approve_agent_action`.
+- Una aprobacion o rechazo reanuda el mismo turno logico y vuelve al provider
+  con el resultado de tool.
 - Las mutaciones de escenas deben pasar por herramientas que usan `EngineAPI` o
   `AuthoringExecutionService`.
 - No incluyas la carpeta local `Claude Code/` como contexto del agente.
+- El provider por defecto sigue siendo `fake` y offline; proveedores online
+  quedan fuera del contrato v2.
 
 Para CLI:
 

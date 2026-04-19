@@ -3,19 +3,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from engine.agent.provider import AgentProviderResponse, FakeLLMProvider, LLMProvider
+from engine.agent.engine_port import AgentEnginePort, EngineAPIAgentEnginePort
+from engine.agent.provider import AgentProviderResolver, FakeLLMProvider, LLMProvider
+from engine.agent.runtime import AgentRuntime
 from engine.agent.store import AgentSessionStore
 from engine.agent.tools import AgentToolContext, AgentToolRegistry
 from engine.agent.types import (
-    AgentActionRequest,
     AgentActionStatus,
     AgentEvent,
     AgentEventKind,
     AgentMessage,
     AgentMessageRole,
     AgentPermissionMode,
+    AgentRuntimeConfig,
     AgentSession,
-    AgentToolCall,
+    AgentTurnStatus,
     new_id,
     utc_now_iso,
 )
@@ -32,12 +34,25 @@ class AgentSessionService:
         project_root: str | Path | None = None,
         provider: LLMProvider | None = None,
         tool_registry: AgentToolRegistry | None = None,
+        engine_port: AgentEnginePort | None = None,
+        max_iterations_per_turn: int = 8,
     ) -> None:
         self.api = api
         self.project_root = self._resolve_project_root(project_root)
         self.provider = provider if provider is not None else FakeLLMProvider()
+        self.provider_resolver = AgentProviderResolver([self.provider])
         self.tools = tool_registry if tool_registry is not None else AgentToolRegistry()
+        self.engine_port = engine_port if engine_port is not None else (
+            EngineAPIAgentEnginePort(api) if api is not None else None
+        )
         self.store = AgentSessionStore(self.project_root)
+        self.runtime = AgentRuntime(
+            tools=self.tools,
+            provider_resolver=self.provider_resolver,
+            tool_context_factory=self._tool_context,
+            append_event=self._append_event,
+            max_iterations_per_turn=max_iterations_per_turn,
+        )
 
     def _resolve_project_root(self, project_root: str | Path | None) -> Path:
         if project_root is not None:
@@ -59,6 +74,10 @@ class AgentSessionService:
             permission_mode=mode,
             provider_id=provider_id or self.provider.provider_id,
             title=title or "Agent Session",
+            runtime_config=AgentRuntimeConfig(
+                provider_id=provider_id or self.provider.provider_id,
+                max_iterations_per_turn=self.runtime.max_iterations_per_turn,
+            ),
         )
         self._append_event(session, AgentEventKind.SESSION_CREATED, {"permission_mode": mode.value})
         self.store.save_session(session)
@@ -82,21 +101,10 @@ class AgentSessionService:
         if slash_response is not None:
             self.store.save_session(session)
             return slash_response
+        if any(action.status == AgentActionStatus.PENDING for action in session.pending_actions):
+            raise RuntimeError("Resolve pending agent actions before sending a new message.")
 
-        session.messages.append(AgentMessage(new_id("msg"), AgentMessageRole.USER, content))
-        self._append_event(session, AgentEventKind.MESSAGE_ADDED, {"role": AgentMessageRole.USER.value})
-
-        provider_response = self.provider.generate(session, self.list_tools())
-        session.messages.append(
-            AgentMessage(
-                new_id("msg"),
-                AgentMessageRole.ASSISTANT,
-                provider_response.content,
-                tool_calls=list(provider_response.tool_calls),
-            )
-        )
-        self._append_event(session, AgentEventKind.MESSAGE_ADDED, {"role": AgentMessageRole.ASSISTANT.value})
-        self._process_tool_calls(session, provider_response)
+        self.runtime.start_turn(session, content)
         session.updated_at = utc_now_iso()
         self.store.save_session(session)
         return session.to_dict()
@@ -111,28 +119,9 @@ class AgentSessionService:
 
         action.resolved_at = utc_now_iso()
         if not approved:
-            action.status = AgentActionStatus.REJECTED
-            session.messages.append(
-                AgentMessage(new_id("msg"), AgentMessageRole.ASSISTANT, f"Action rejected: {action.tool_call.tool_name}")
-            )
-            self._append_event(session, AgentEventKind.ACTION_REJECTED, {"action_id": action_id})
-            session.updated_at = utc_now_iso()
-            self.store.save_session(session)
-            return session.to_dict()
-
-        action.status = AgentActionStatus.APPROVED
-        self._append_event(session, AgentEventKind.ACTION_APPROVED, {"action_id": action_id})
-        result = self._execute_tool_call(action.tool_call)
-        action.result = result
-        action.status = AgentActionStatus.EXECUTED if result.success else AgentActionStatus.FAILED
-        session.messages.append(
-            AgentMessage(
-                new_id("msg"),
-                AgentMessageRole.TOOL,
-                result.output if result.success else result.error,
-                tool_result=result,
-            )
-        )
+            self.runtime.resolve_action(session, action, False)
+        else:
+            self.runtime.resolve_action(session, action, True)
         session.updated_at = utc_now_iso()
         self.store.save_session(session)
         return session.to_dict()
@@ -140,6 +129,8 @@ class AgentSessionService:
     def cancel_session(self, session_id: str) -> dict[str, Any]:
         session = self.store.load_session(session_id)
         session.cancelled = True
+        if session.active_turn is not None:
+            session.active_turn.status = AgentTurnStatus.CANCELLED
         self._append_event(session, AgentEventKind.SESSION_CANCELLED, {})
         session.updated_at = utc_now_iso()
         self.store.save_session(session)
@@ -172,59 +163,13 @@ class AgentSessionService:
             body = f"Unknown command: {command}"
         session.messages.append(AgentMessage(new_id("msg"), AgentMessageRole.USER, content))
         session.messages.append(AgentMessage(new_id("msg"), AgentMessageRole.ASSISTANT, body))
+        session.active_turn = None
+        session.suspended_turn = None
         session.updated_at = utc_now_iso()
         return session.to_dict()
 
-    def _process_tool_calls(self, session: AgentSession, response: AgentProviderResponse) -> None:
-        for call in response.tool_calls:
-            if session.permission_mode == AgentPermissionMode.CONFIRM_ACTIONS and self.tools.requires_confirmation(call.tool_name):
-                preview = self._preview_tool_call(call)
-                action = AgentActionRequest(
-                    action_id=new_id("agent-action"),
-                    tool_call=call,
-                    reason=f"{call.tool_name} requires confirmation in confirm_actions mode.",
-                    preview=preview,
-                )
-                session.pending_actions.append(action)
-                session.messages.append(
-                    AgentMessage(
-                        new_id("msg"),
-                        AgentMessageRole.ASSISTANT,
-                        f"Action pending approval: {call.tool_name} ({action.action_id})",
-                    )
-                )
-                self._append_event(
-                    session,
-                    AgentEventKind.ACTION_REQUESTED,
-                    {"action_id": action.action_id, "tool_name": call.tool_name},
-                )
-                continue
-            result = self._execute_tool_call(call)
-            session.messages.append(
-                AgentMessage(
-                    new_id("msg"),
-                    AgentMessageRole.TOOL,
-                    result.output if result.success else result.error,
-                    tool_result=result,
-                )
-            )
-            self._append_event(
-                session,
-                AgentEventKind.TOOL_CALLED,
-                {"tool_name": call.tool_name, "success": result.success},
-            )
-
     def _tool_context(self) -> AgentToolContext:
-        return AgentToolContext(project_root=self.project_root, api=self.api)
-
-    def _preview_tool_call(self, call: AgentToolCall) -> str:
-        try:
-            return self.tools.preview(call, self._tool_context())
-        except Exception as exc:
-            return f"Preview failed: {exc}"
-
-    def _execute_tool_call(self, call: AgentToolCall):
-        return self.tools.execute(call, self._tool_context())
+        return AgentToolContext(project_root=self.project_root, api=self.api, engine_port=self.engine_port)
 
     def _append_event(self, session: AgentSession, kind: AgentEventKind, data: dict[str, Any]) -> None:
         event = AgentEvent(new_id("event"), kind, data=data)

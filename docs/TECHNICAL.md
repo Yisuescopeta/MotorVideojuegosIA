@@ -225,15 +225,20 @@ pertenecen a `experimental/tooling`, no al `core obligatorio`.
 canonica `NavigationService.request_path(...)`; `query_path(...)` y
 `query_world_path(...)` permanecen como wrappers de compatibilidad.
 
-`engine/agent/` introduce una base clean-room para sesiones tipo agente dentro
+`engine/agent/` implementa una base clean-room para sesiones tipo agente dentro
 del motor. Es `experimental/tooling`: no cambia `Scene`, `World`,
 `SceneManager` ni el contrato de runtime.
 
-- `AgentSessionService` coordina sesiones, mensajes, tool calls, permisos y
-  auditoria local bajo `.motor/agent_state`.
-- Las herramientas de authoring del motor usan `EngineAPI` y
-  `AuthoringExecutionService`; no editan escenas ni prefabs por rutas privadas.
+- `AgentSessionService` es la fachada compatible; delega en `AgentRuntime`, que
+  ejecuta turnos iterativos `provider -> tool_use -> tool_result -> provider`.
+- Las aprobaciones suspenden un turno y `approve_agent_action(...)` lo reanuda
+  con un `tool_result` de ejecucion o rechazo.
+- Las herramientas pasan por pipeline de validacion, preview, permiso,
+  ejecucion y mapeo de resultado.
+- Las herramientas de authoring del motor usan un puerto de engine: `EngineAPI`
+  en API/CLI y un adaptador vivo del editor para el panel visual.
 - Los modos de permiso iniciales son `confirm_actions` y `full_access`.
+- El estado versionado y la auditoria local viven bajo `.motor/agent_state`.
 - `AgentPanel` monta una interfaz simple en el panel inferior del editor, junto
   a `Terminal`.
 

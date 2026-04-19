@@ -963,6 +963,80 @@ class CapabilityRegistryBuilder:
             tags=["agent", "experimental", "permissions"],
         ))
 
+        self._add(Capability(
+            id="agent:runtime",
+            summary="Run the v2 clean-room agent turn loop with provider/tool-result continuation",
+            mode="both",
+            api_methods=["AgentAPI.send_agent_message", "AgentRuntime.continue_turn"],
+            cli_command="motor agent message send <session> <message>",
+            example=CapabilityExample(
+                description="Send a message that may trigger tools and continue after tool results",
+                api_calls=[
+                    {
+                        "method": "send_agent_message",
+                        "args": {"session_id": "agent-session-id", "message": "read README.md"},
+                    },
+                ],
+                expected_outcome="The session records provider events, tool results and a final assistant response",
+            ),
+            notes="Experimental/tooling. Provider is fake/offline by default in v2.",
+            tags=["agent", "experimental", "runtime"],
+        ))
+
+        self._add(Capability(
+            id="agent:tools",
+            summary="List and execute safe engine-native agent tools through the v2 tool pipeline",
+            mode="both",
+            api_methods=["AgentAPI.list_agent_tools", "AgentToolRegistry.prepare"],
+            cli_command="motor agent message send <session> /tools",
+            example=CapabilityExample(
+                description="Ask the session to list available tools",
+                api_calls=[
+                    {"method": "list_agent_tools", "args": {}},
+                ],
+                expected_outcome="Returns tool specs with permission and preview metadata",
+            ),
+            notes="Tools validate input, build previews, resolve permissions, execute and map tool_result records.",
+            tags=["agent", "experimental", "tools"],
+        ))
+
+        self._add(Capability(
+            id="agent:permissions",
+            summary="Suspend mutating agent tools for approval and resume the same logical turn",
+            mode="both",
+            api_methods=["AgentAPI.approve_agent_action"],
+            cli_command="motor agent action approve <session> <action>",
+            example=CapabilityExample(
+                description="Approve a pending write and continue the agent turn",
+                api_calls=[
+                    {
+                        "method": "approve_agent_action",
+                        "args": {"session_id": "agent-session-id", "action_id": "agent-action-id", "approved": True},
+                    },
+                ],
+                expected_outcome="The action emits a tool_result and the provider receives the result for continuation",
+            ),
+            notes="Modes are confirm_actions and full_access. Hard guards still apply in both modes.",
+            tags=["agent", "experimental", "permissions"],
+        ))
+
+        self._add(Capability(
+            id="agent:editor_panel",
+            summary="Use the Agent panel next to Terminal with a live engine port",
+            mode="both",
+            api_methods=["AgentPanel.set_live_engine", "EngineAPI.from_runtime"],
+            cli_command="motor agent message send <session> /status",
+            example=CapabilityExample(
+                description="Inspect agent status from the same session model used by the editor panel",
+                api_calls=[
+                    {"method": "send_agent_message", "args": {"session_id": "agent-session-id", "message": "/status"}},
+                ],
+                expected_outcome="Returns session mode, pending actions and provider state",
+            ),
+            notes="UI capability documented in the registry for AI discovery; the visual entrypoint is Window -> Agent.",
+            tags=["agent", "experimental", "editor", "tooling"],
+        ))
+
     # Capabilities that are planned but not yet implemented.
     # These do NOT have corresponding implementations in the official motor CLI parser.
     # They are API-level capabilities that may be used programmatically but are not

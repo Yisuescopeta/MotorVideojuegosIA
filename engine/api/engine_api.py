@@ -139,6 +139,32 @@ class EngineAPI:
             self.game.set_physics_backend_unavailable("box2d", str(exc))
             print(f"[WARNING] Box2D backend unavailable: {exc}")
 
+    @classmethod
+    def from_runtime(cls, game: Any, scene_manager: SceneManager, project_service: ProjectService) -> "EngineAPI":
+        """Build an EngineAPI facade over an already running editor/runtime.
+
+        This avoids creating a second headless engine when editor tooling needs the
+        public API contract over the live scene workspace.
+        """
+        from engine.assets.asset_service import AssetService
+
+        api = cls.__new__(cls)
+        api.game = game
+        api.scene_manager = scene_manager
+        api.project_service = project_service
+        api.asset_service = AssetService(project_service)
+        api._registry = getattr(scene_manager, "_registry", create_default_registry())
+        api._project_root = project_service.project_root.as_posix()
+        api._global_state_dir = getattr(project_service, "global_state_dir", None)
+        api._sandbox_paths = False
+        api._auto_ensure_project = False
+        api._read_only = bool(getattr(project_service, "read_only", False))
+        api._context = EngineAPIContext(api)
+        api._contracts = None
+        api._initialize_collaborators()
+        api._refresh_contracts()
+        return api
+
     def attach_runtime(self, game: Any, scene_manager: SceneManager, project_service: ProjectService) -> None:
         from engine.assets.asset_service import AssetService
 

@@ -341,6 +341,12 @@ class Game:
             self.editor_shell.bind_scene_manager(self._scene_manager)
         if self._project_service is not None:
             self.editor_shell.bind_project_service(self._project_service)
+        if self.agent_panel is not None and hasattr(self.agent_panel, "set_live_engine"):
+            self.agent_panel.set_live_engine(
+                game=self,
+                scene_manager=self._scene_manager,
+                project_service=self._project_service,
+            )
 
     # === PROPIEDADES ===
     

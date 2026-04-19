@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pyray as rl
 
-from engine.agent import AgentActionStatus, AgentPermissionMode, AgentSessionService
+from engine.agent import AgentActionStatus, AgentPermissionMode, AgentSessionService, EditorLiveAgentEnginePort
 from engine.project.project_service import ProjectService
 
 
@@ -21,6 +21,8 @@ class AgentPanel:
 
     def __init__(self) -> None:
         self.project_service: ProjectService | None = None
+        self.live_game = None
+        self.live_scene_manager = None
         self.agent_service: AgentSessionService | None = None
         self.session_id = ""
         self.permission_mode = AgentPermissionMode.CONFIRM_ACTIONS
@@ -28,6 +30,7 @@ class AgentPanel:
         self.has_focus = False
         self.status_text = "No active project"
         self.preview_action_id = ""
+        self._binding_key: tuple[str, int, int] | None = None
         self.content_rect = rl.Rectangle(0, 0, 0, 0)
         self.input_rect = rl.Rectangle(0, 0, 0, 0)
 
@@ -36,9 +39,45 @@ class AgentPanel:
         if project_service is None or not project_service.has_project:
             self.agent_service = None
             self.session_id = ""
+            self._binding_key = None
             self.status_text = "No active project"
             return
-        self.agent_service = AgentSessionService(project_root=project_service.project_root_display)
+        self._restart_project_session()
+
+    def set_live_engine(self, *, game=None, scene_manager=None, project_service: ProjectService | None = None) -> None:
+        self.live_game = game
+        self.live_scene_manager = scene_manager
+        if project_service is not None:
+            self.project_service = project_service
+        if self.project_service is not None and self.project_service.has_project:
+            self._restart_project_session()
+
+    def _restart_project_session(self) -> None:
+        if self.project_service is None or not self.project_service.has_project:
+            self.agent_service = None
+            self.session_id = ""
+            self._binding_key = None
+            self.status_text = "No active project"
+            return
+        binding_key = (
+            self.project_service.project_root_display.as_posix(),
+            id(self.live_game),
+            id(self.live_scene_manager),
+        )
+        if self._binding_key == binding_key and self.agent_service is not None and self.session_id:
+            return
+        self._binding_key = binding_key
+        engine_port = None
+        if self.live_game is not None and self.live_scene_manager is not None:
+            engine_port = EditorLiveAgentEnginePort(
+                game=self.live_game,
+                scene_manager=self.live_scene_manager,
+                project_service=self.project_service,
+            )
+        self.agent_service = AgentSessionService(
+            project_root=self.project_service.project_root_display,
+            engine_port=engine_port,
+        )
         session = self.agent_service.create_session(
             permission_mode=self.permission_mode.value,
             title="Editor Agent",
@@ -49,6 +88,7 @@ class AgentPanel:
     def set_agent_service(self, service: AgentSessionService | None) -> None:
         self.agent_service = service
         self.session_id = ""
+        self._binding_key = None
         if service is not None:
             session = service.create_session(permission_mode=self.permission_mode.value, title="Editor Agent")
             self.session_id = str(session["session_id"])
