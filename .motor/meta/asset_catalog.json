@@ -1,6 +1,6 @@
 {
     "version": 1,
-    "generated_at_utc": "2026-03-29T17:00:48.709350+00:00",
+    "generated_at_utc": "2026-04-19T18:51:10.765727+00:00",
     "assets": [
         {
             "guid": "ast_fef5e92ecb3a4153af3e993ad33973ec",
@@ -175,8 +175,8 @@
             "dependencies": [],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1774208775.3526359,
-            "source_hash": "92b6bbb0bbec251ab26c32ccbd4aa07e4b63c2fed84dac5926d020a6e606073c",
+            "last_seen_mtime": 1775037556.4157968,
+            "source_hash": "965422cb81758264ba5b7d28ab1e60ce37df8b747a68386fbbb593b5c53caf4a",
             "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
             "reference": {
                 "guid": "ast_63ae5f26a1264f66b1486715352b1676",
@@ -200,8 +200,8 @@
             ],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1774375588.4918432,
-            "source_hash": "bf9c7c67c39cfaf14fd6169cea0f3cc566b2aec094232a94ade63757b2236e99",
+            "last_seen_mtime": 1775037556.4169414,
+            "source_hash": "a2eafb5a1bf149689a45b1789bac5628ee071064e571c83bd5b515f5f9163cb5",
             "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
             "reference": {
                 "guid": "ast_ca105968cf6d4d94bfe5d40e25a667b5",
@@ -222,8 +222,8 @@
             "dependencies": [],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1774178348.331319,
-            "source_hash": "2ee45b01d46d8ee416a794fda45ce5edf85a928a40857d70ce5d877151ed534d",
+            "last_seen_mtime": 1775037556.417911,
+            "source_hash": "631fc10e9c366823ada16d46f2d9b0d54f9516587cce67a81c7d699be5210129",
             "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
             "reference": {
                 "guid": "ast_0a1cfe5901b94d30b23b593639735daa",
@@ -246,15 +246,16 @@
             ],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1774178348.3337252,
-            "source_hash": "606a2be438e23b2611ad2b84de08e65419ac60fdb68fddcfcb537e1e1f9c4b1c",
+            "last_seen_mtime": 1775037556.4191775,
+            "source_hash": "302b721bfdb3d48b09b59f11339276def1f68cc96a33462589b7077d74c177ff",
             "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
             "reference": {
                 "guid": "ast_597251e8033d45e7ad42d229973f763f",
                 "path": "levels/main_menu_scene.json"
             },
             "referenced_by": [
-                "levels/platformer_test_scene.json"
+                "levels/platformer_test_scene.json",
+                "levels/platformer_vertical_slice.json"
             ]
         },
         {
@@ -270,8 +271,8 @@
             "dependencies": [],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1774375588.492887,
-            "source_hash": "ff59867ae394346884fb7fdb940be90064d9b8276dca4eeaea24129ee2e67a39",
+            "last_seen_mtime": 1775037556.4202552,
+            "source_hash": "3c5a2198110e1603d509683d671668c38b9f6118a55f69b08fc9079cf0993185",
             "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
             "reference": {
                 "guid": "ast_b8a67818097d429da9674325af151200",
@@ -292,8 +293,8 @@
             "dependencies": [],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1774375588.4942346,
-            "source_hash": "76266664f924f6dfab249d6806e13b60722dc33499571793931de7cdfc4799be",
+            "last_seen_mtime": 1775037556.4213212,
+            "source_hash": "f41f58341d09c73d803aa122720c1fb7d07828d47e8618d958eeca9dd30bdf84",
             "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
             "reference": {
                 "guid": "ast_eb1b07c4e21a42a481c23da124e22340",
@@ -317,8 +318,8 @@
             ],
             "has_meta": true,
             "import_status": "ready",
-            "last_seen_mtime": 1774178348.3348558,
-            "source_hash": "a8abb2744ca5e1b937362ab2cf306ebc0aef4b2789814a487b96dbda00793088",
+            "last_seen_mtime": 1775037556.4213212,
+            "source_hash": "25f0c56b272916e7c3eb17ce8b0a74128225ca69ee44fefcfd7a41a02625a7a3",
             "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
             "reference": {
                 "guid": "ast_0a0f68b252014c979074814c28cd1c75",
@@ -327,6 +328,30 @@
             "referenced_by": [
                 "levels/main_menu_scene.json"
             ]
+        },
+        {
+            "guid": "ast_1db17c5126e047d8835b34b218350e01",
+            "guid_short": "ast_1db1",
+            "name": "platformer_vertical_slice.json",
+            "path": "levels/platformer_vertical_slice.json",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/levels/platformer_vertical_slice.json",
+            "folder": "levels",
+            "asset_kind": "scene_data",
+            "importer": "scene_data",
+            "labels": [],
+            "dependencies": [
+                "levels/main_menu_scene.json"
+            ],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1776013067.4763005,
+            "source_hash": "673684317f724474224090c55c2e886e26245c52885643795c498f53fc5e7d20",
+            "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
+            "reference": {
+                "guid": "ast_1db17c5126e047d8835b34b218350e01",
+                "path": "levels/platformer_vertical_slice.json"
+            },
+            "referenced_by": []
         },
         {
             "guid": "ast_cce65bdcbc634e99bf978b194dcb0675",
@@ -347,6 +372,28 @@
             "reference": {
                 "guid": "ast_cce65bdcbc634e99bf978b194dcb0675",
                 "path": "scripts/__init__.py"
+            },
+            "referenced_by": []
+        },
+        {
+            "guid": "ast_3456d4c02cfd4ee99ea68c5d63c170d9",
+            "guid_short": "ast_3456",
+            "name": "audit_registry.py",
+            "path": "scripts/audit_registry.py",
+            "absolute_path": "C:/Users/usuario/Downloads/MotorVideojuegosIA-main/MotorVideojuegosIA-main/scripts/audit_registry.py",
+            "folder": "scripts",
+            "asset_kind": "script",
+            "importer": "script",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1776593620.9273384,
+            "source_hash": "b4bca46301dccef8a97ba620071fb7ce6269d9e1bafcacc0dbe6b96548126120",
+            "import_settings_hash": "523830a9e675093e53983a28d15e46898df0bf5cc1dfb94129cd01d2fc33beab",
+            "reference": {
+                "guid": "ast_3456d4c02cfd4ee99ea68c5d63c170d9",
+                "path": "scripts/audit_registry.py"
             },
             "referenced_by": []
         },
