@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Optional
 from engine.api._assets_project_api import AssetsProjectAPI
 from engine.api._authoring_api import AuthoringAPI
 from engine.api._context import EngineAPIContext
+from engine.api._contracts import EngineAPIContracts, build_engine_api_contracts
 from engine.api._debug_api import DebugAPI
 from engine.api._runtime_api import RuntimeAPI
 from engine.api._scene_workspace_api import SceneWorkspaceAPI
@@ -52,8 +53,10 @@ class EngineAPI:
         self._auto_ensure_project = auto_ensure_project
         self._read_only = read_only
         self._context = EngineAPIContext(self)
+        self._contracts: EngineAPIContracts | None = None
         self._initialize_engine()
         self._initialize_collaborators()
+        self._refresh_contracts()
 
     def _initialize_engine(self) -> None:
         from cli.headless_game import HeadlessGame
@@ -117,6 +120,10 @@ class EngineAPI:
             self._ui_api,
         )
 
+    def _refresh_contracts(self) -> EngineAPIContracts:
+        self._contracts = build_engine_api_contracts(self)
+        return self._contracts
+
     def _register_optional_box2d_backend(self) -> None:
         if self.game is None or self.game.physics_system is None or self.game.event_bus is None:
             return
@@ -138,6 +145,7 @@ class EngineAPI:
         self.asset_service = AssetService(project_service)
         if hasattr(self.game, "set_project_service"):
             self.game.set_project_service(project_service)
+        self._refresh_contracts()
 
     def __getattr__(self, name: str) -> Any:
         if name.startswith("_"):

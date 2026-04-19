@@ -1,7 +1,6 @@
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 FORBIDDEN_CWD_PATH_MUTATION = "sys.path.append(" + "os.getcwd())"
 FORBIDDEN_OS_SYSTEM = "os." + "system("
@@ -26,6 +25,15 @@ class ToolingPortabilityRegressionTests(unittest.TestCase):
 
     def test_tools_modules_do_not_mutate_sys_path(self) -> None:
         for path in sorted((ROOT / "tools").glob("*.py")):
+            source = path.read_text(encoding="utf-8")
+            self.assertNotIn(
+                FORBIDDEN_CWD_PATH_MUTATION,
+                source,
+                msg=f"{path.as_posix()} still mutates sys.path",
+            )
+
+    def test_scripts_do_not_mutate_sys_path(self) -> None:
+        for path in sorted((ROOT / "scripts").glob("*.py")):
             source = path.read_text(encoding="utf-8")
             self.assertNotIn(
                 FORBIDDEN_CWD_PATH_MUTATION,

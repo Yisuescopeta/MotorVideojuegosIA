@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import pyray as rl
 from engine.editor.cursor_manager import CursorVisualState
+from engine.editor.editor_selection import EditorSelectionState
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
 
 if TYPE_CHECKING:
@@ -19,6 +20,7 @@ class EditorInteractionController:
         *,
         get_state: Callable[[], Any],
         get_editor_layout: Callable[[], Any],
+        get_editor_selection: Callable[[], Any],
         get_scene_manager: Callable[[], Any],
         get_selection_system: Callable[[], Any],
         get_gizmo_system: Callable[[], Any],
@@ -31,6 +33,7 @@ class EditorInteractionController:
     ) -> None:
         self._get_state = get_state
         self._get_editor_layout = get_editor_layout
+        self._get_editor_selection = get_editor_selection
         self._get_scene_manager = get_scene_manager
         self._get_selection_system = get_selection_system
         self._get_gizmo_system = get_gizmo_system
@@ -40,6 +43,20 @@ class EditorInteractionController:
         self._get_history_manager = get_history_manager
         self._get_current_scene_viewport_size = get_current_scene_viewport_size
         self._get_current_viewport_size = get_current_viewport_size
+
+    def _apply_selection(self, active_world: Optional["World"], entity_name: Optional[str]) -> Optional[str]:
+        normalized = EditorSelectionState.normalize(entity_name)
+        selection_state = self._get_editor_selection()
+        if selection_state is not None:
+            normalized = selection_state.set(normalized)
+        scene_manager = self._get_scene_manager()
+        if scene_manager is not None:
+            scene_manager.set_selected_entity(normalized)
+        elif active_world is not None:
+            active_world.selected_entity_name = normalized
+        if selection_state is not None and active_world is not None:
+            selection_state.apply_to_world(active_world)
+        return normalized
 
     def commit_gizmo_drag(self, drag: Any) -> None:
         scene_manager = self._get_scene_manager()
@@ -99,7 +116,7 @@ class EditorInteractionController:
                     overrides={"": {"components": {"Transform": {"x": drop_pos.x, "y": drop_pos.y}}}},
                     root_name=prefab_data.get("root_name", unique_name),
                 ):
-                    scene_manager.set_selected_entity(unique_name)
+                    self._apply_selection(active_world, unique_name)
             return
 
         base_name = name
@@ -115,7 +132,7 @@ class EditorInteractionController:
                 self._build_sprite_entity_payload(sprite_locator, drop_pos.x, drop_pos.y),
             )
             if created:
-                scene_manager.set_selected_entity(name)
+                self._apply_selection(active_world, name)
             return
 
         new_entity = active_world.create_entity(name)
@@ -126,7 +143,7 @@ class EditorInteractionController:
         new_entity.add_component(Transform(drop_pos.x, drop_pos.y))
         new_entity.add_component(Sprite(file_path))
         new_entity.add_component(Collider(32, 32))
-        active_world.selected_entity_name = name
+        self._apply_selection(active_world, name)
 
     def handle_selection_and_gizmos(self, active_world: Optional["World"]) -> None:
         state = self._get_state()
@@ -213,14 +230,10 @@ class EditorInteractionController:
                     scene_viewport_size,
                 )
             if ui_hit is not None:
-                if scene_manager is not None:
-                    scene_manager.set_selected_entity(ui_hit.name)
-                else:
-                    active_world.selected_entity_name = ui_hit.name
+                self._apply_selection(active_world, ui_hit.name)
             else:
                 selected_name = selection_system.update(active_world, mouse_world)
-                if scene_manager is not None:
-                    scene_manager.set_selected_entity(selected_name)
+                self._apply_selection(active_world, selected_name)
 
     def resolve_cursor_state(self, active_world: Optional["World"]) -> CursorVisualState:
         state = CursorVisualState.DEFAULT

@@ -23,12 +23,75 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import pyray as rl
-from engine.editor.console_panel import ConsolePanel, log_err
+from engine.editor.console_panel import log_err
 from engine.editor.cursor_manager import CursorVisualState
+from engine.editor.editor_shell_state import EditorPanelSlots, EditorShellState
 from engine.editor.editor_tools import EditorTool, PivotMode, SnapSettings, TransformSpace
-from engine.editor.project_panel import ProjectPanel
 from engine.editor.render_safety import safe_reset_clip_state
-from engine.editor.scene_flow_panel import SceneFlowPanel
+
+_SHELL_STATE_FIELDS = (
+    "active_tab",
+    "active_bottom_tab",
+    "request_play",
+    "request_stop",
+    "request_pause",
+    "request_step",
+    "request_new_scene",
+    "request_create_scene",
+    "request_save_scene",
+    "request_load_scene",
+    "request_browse_scene_file",
+    "request_activate_scene_key",
+    "request_close_scene_key",
+    "request_open_project",
+    "request_browse_project",
+    "request_create_project",
+    "request_exit_launcher",
+    "request_remove_project_path",
+    "request_create_canvas",
+    "request_create_ui_text",
+    "request_create_ui_button",
+    "request_exit",
+    "request_undo",
+    "request_redo",
+    "request_duplicate_entity",
+    "request_delete_entity",
+    "request_create_entity",
+    "show_about_modal",
+    "recent_projects",
+    "show_project_modal",
+    "show_project_launcher",
+    "show_create_project_modal",
+    "show_create_scene_modal",
+    "show_scene_browser_modal",
+    "show_project_dirty_modal",
+    "dirty_modal_context",
+    "pending_project_path",
+    "pending_scene_open_path",
+    "pending_scene_close_key",
+    "project_switch_decision",
+    "launcher_search_text",
+    "launcher_search_focused",
+    "launcher_scroll_offset",
+    "launcher_feedback_text",
+    "launcher_feedback_is_error",
+    "launcher_create_name",
+    "launcher_create_name_focused",
+    "scene_create_name",
+    "scene_create_name_focused",
+    "project_scene_entries",
+    "scene_browser_scroll_offset",
+    "scene_tabs",
+    "active_scene_tab_key",
+)
+
+_PANEL_SLOT_FIELDS = (
+    "project_panel",
+    "flow_panel",
+    "flow_workspace_panel",
+    "console_panel",
+    "terminal_panel",
+)
 
 
 class EditorLayout:
@@ -149,13 +212,18 @@ class EditorLayout:
     _LAYERS_OPTIONS = ["Default", "Gameplay", "UI", "Physics", "Editor"]
     _LAYOUT_OPTIONS = ["Default", "2 by 3", "4 Split", "Wide", "Tall"]
 
-    def __init__(self, screen_width: int, screen_height: int) -> None:
+    def __init__(
+        self,
+        screen_width: int,
+        screen_height: int,
+        *,
+        state: Optional[EditorShellState] = None,
+        panel_slots: Optional[EditorPanelSlots] = None,
+    ) -> None:
         self.screen_width = screen_width
         self.screen_height = screen_height
-
-        # Tabs
-        self.active_tab: str = "SCENE"  # "SCENE" | "GAME" | "FLOW" | "ANIMATOR"
-        self.active_bottom_tab: str = "PROJECT"  # "PROJECT" | "FLOW" | "CONSOLE" | "TERMINAL"
+        self._shell_state = state if state is not None else EditorShellState()
+        self._panel_slots = panel_slots if panel_slots is not None else EditorPanelSlots()
 
         # Menu dropdown state
         self._active_menu: str | None = None
@@ -166,67 +234,12 @@ class EditorLayout:
         self._layers_rect: rl.Rectangle = rl.Rectangle(0, 0, 0, 0)
         self._layout_rect: rl.Rectangle = rl.Rectangle(0, 0, 0, 0)
 
-        # Requests (Game.py lee esto)
-        self.request_play: bool = False
-        self.request_stop: bool = False
-        self.request_pause: bool = False
-        self.request_step: bool = False
-
-        # Requests (Scene)
-        self.request_new_scene: bool = False
-        self.request_create_scene: bool = False
-        self.request_save_scene: bool = False
-        self.request_load_scene: bool = False
-        self.request_browse_scene_file: bool = False
-        self.request_activate_scene_key: str = ""
-        self.request_close_scene_key: str = ""
-        self.request_open_project: bool = False
-        self.request_browse_project: bool = False
-        self.request_create_project: bool = False
-        self.request_exit_launcher: bool = False
-        self.request_remove_project_path: str = ""
-        self.request_create_canvas: bool = False
-        self.request_create_ui_text: bool = False
-        self.request_create_ui_button: bool = False
-        self.request_exit: bool = False
-        self.request_undo: bool = False
-        self.request_redo: bool = False
-        self.request_duplicate_entity: bool = False
-        self.request_delete_entity: bool = False
-        self.request_create_entity: bool = False
-        self.show_about_modal: bool = False
-
         # Tool selection
         self.active_tool: EditorTool = EditorTool.MOVE
         self.transform_space: TransformSpace = TransformSpace.WORLD
         self.pivot_mode: PivotMode = PivotMode.PIVOT
         self.snap_settings: SnapSettings = SnapSettings()
         self._editor_preferences_dirty: bool = False
-        self.recent_projects: list[dict] = []
-        self.show_project_modal: bool = False
-        self.show_project_launcher: bool = False
-        self.show_create_project_modal: bool = False
-        self.show_create_scene_modal: bool = False
-        self.show_scene_browser_modal: bool = False
-        self.show_project_dirty_modal: bool = False
-        self.dirty_modal_context: str = ""
-        self.pending_project_path: str = ""
-        self.pending_scene_open_path: str = ""
-        self.pending_scene_close_key: str = ""
-        self.project_switch_decision: str = ""
-        self.launcher_search_text: str = ""
-        self.launcher_search_focused: bool = False
-        self.launcher_scroll_offset: float = 0.0
-        self.launcher_feedback_text: str = ""
-        self.launcher_feedback_is_error: bool = False
-        self.launcher_create_name: str = "NewProject"
-        self.launcher_create_name_focused: bool = False
-        self.scene_create_name: str = "New Scene"
-        self.scene_create_name_focused: bool = False
-        self.project_scene_entries: list[dict] = []
-        self.scene_browser_scroll_offset: float = 0.0
-        self.scene_tabs: list[dict] = []
-        self.active_scene_tab_key: str = ""
 
         # Anchos dinámicos
         self.hierarchy_width = 200
@@ -270,12 +283,6 @@ class EditorLayout:
         self.tab_game_rect = rl.Rectangle(0, 0, 0, 0)
         self.btn_play_rect = rl.Rectangle(0, 0, 0, 0)
 
-        # Project / Console Panel
-        self.project_panel = ProjectPanel("assets")
-        self.flow_panel = SceneFlowPanel()
-        self.flow_workspace_panel = SceneFlowPanel()
-        self.console_panel = ConsolePanel()
-        self.terminal_panel = None
         self._text_measure_cache: dict[tuple[str, int], int] = {}
         self.launcher_search_rect = rl.Rectangle(0, 0, 0, 0)
         self.launcher_table_rect = rl.Rectangle(0, 0, 0, 0)
@@ -286,6 +293,18 @@ class EditorLayout:
         self._cursor_text_rects: list[rl.Rectangle] = []
 
         self.update_layout(screen_width, screen_height)
+
+    @property
+    def shell_state(self) -> EditorShellState:
+        return self._shell_state
+
+    @property
+    def panel_slots(self) -> EditorPanelSlots:
+        return self._panel_slots
+
+    def bind_shell(self, state: EditorShellState, panel_slots: EditorPanelSlots) -> None:
+        self._shell_state = state
+        self._panel_slots = panel_slots
 
     @property
     def current_tool(self) -> str:
@@ -2032,3 +2051,30 @@ class EditorLayout:
             pos = i * step_size
             rl.draw_line(pos, -steps * step_size, pos, steps * step_size, grid_color)
             rl.draw_line(-steps * step_size, pos, steps * step_size, pos, grid_color)
+
+
+def _state_proxy(field_name: str) -> property:
+    def _get(self: EditorLayout):
+        return getattr(self._shell_state, field_name)
+
+    def _set(self: EditorLayout, value):
+        setattr(self._shell_state, field_name, value)
+
+    return property(_get, _set)
+
+
+def _panel_proxy(field_name: str) -> property:
+    def _get(self: EditorLayout):
+        return getattr(self._panel_slots, field_name)
+
+    def _set(self: EditorLayout, value):
+        setattr(self._panel_slots, field_name, value)
+
+    return property(_get, _set)
+
+
+for _field_name in _SHELL_STATE_FIELDS:
+    setattr(EditorLayout, _field_name, _state_proxy(_field_name))
+
+for _field_name in _PANEL_SLOT_FIELDS:
+    setattr(EditorLayout, _field_name, _panel_proxy(_field_name))

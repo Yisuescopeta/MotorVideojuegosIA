@@ -19,7 +19,7 @@ CONTROLES:
 
 import random
 import time
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import pyray as rl
 
@@ -34,13 +34,17 @@ from engine.app import (
 from engine.components.canvas import Canvas
 from engine.config import EDIT_ANIMATION_SPEED, ENGINE_VERSION, SCRIPTS_DIRECTORY, TIMELINE_CAPACITY
 from engine.core.engine_state import EngineState
+from engine.core.runtime_loop import RuntimeTickPlan
 from engine.core.hot_reload import HotReloadManager
+from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.core.time_manager import TimeManager
 from engine.debug.profiler import EngineProfiler
 from engine.debug.timeline import Timeline
 from engine.editor.animator_panel import AnimatorPanel
 from engine.editor.cursor_manager import CustomCursorRenderer
 from engine.editor.editor_layout import EditorLayout
+from engine.editor.editor_shell import EditorShell
+from engine.editor.editor_shell_state import EditorPanelSlots
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
 from engine.editor.gizmo_system import GizmoSystem
 from engine.editor.hierarchy_panel import HierarchyPanel
@@ -128,12 +132,16 @@ class Game:
         self.timeline: "Timeline" = Timeline(capacity=TIMELINE_CAPACITY)
         
         # Editor Panels
-        self.hierarchy_panel: Optional["HierarchyPanel"] = HierarchyPanel()
         self.animator_panel: Optional["AnimatorPanel"] = AnimatorPanel()
         self.sprite_editor_modal: Optional["SpriteEditorModal"] = SpriteEditorModal()
         self.terminal_panel: Optional["TerminalPanel"] = TerminalPanel()
+        self.editor_shell: EditorShell = EditorShell(
+            panel_slots=EditorPanelSlots(terminal_panel=self.terminal_panel),
+        )
+        self._editor_selection_state = self.editor_shell.selection_state
+        self.hierarchy_panel: Optional["HierarchyPanel"] = self.editor_shell.hierarchy_panel
         self.gizmo_system: Optional["GizmoSystem"] = GizmoSystem()
-        self.editor_layout: Optional["EditorLayout"] = None
+        self.editor_layout: Optional["EditorLayout"] = self.editor_shell.layout
         self._cursor_renderer: CustomCursorRenderer = CustomCursorRenderer()
         
         # Gestión de escenas
@@ -195,27 +203,38 @@ class Game:
             load_scene_by_path=self._load_runtime_scene_from_ui,
             play_runtime=self.play,
         )
+
+        def update_ui_overlay(world: Any, viewport_size: tuple[float, float], active_tab: str | None = None) -> None:
+            self._update_ui_overlay(
+                world,
+                viewport_size,
+                active_tab=active_tab,
+            )
+
         self._runtime_controller = RuntimeController(
-            get_state=lambda: self._state,
-            set_state=lambda value: setattr(self, "_state", value),
-            get_world=lambda: self.world,
-            set_world=self.set_world,
-            get_scene_manager=lambda: self._scene_manager,
-            get_rule_system=lambda: self._rule_system,
-            get_script_behaviour_system=lambda: self._script_behaviour_system,
-            get_event_bus=lambda: self._event_bus,
-            get_animation_system=lambda: self._animation_system,
-            get_input_system=lambda: self._input_system,
-            get_player_controller_system=lambda: self._player_controller_system,
-            get_character_controller_system=lambda: self._character_controller_system,
-            get_physics_system=lambda: self._physics_system,
-            get_collision_system=lambda: self._collision_system,
-            get_audio_system=lambda: self._audio_system,
-            get_scene_transition_controller=lambda: self._scene_transition_controller,
-            get_physics_backend_registry=lambda: self._physics_backend_registry,
-            reset_profiler=self.reset_profiler,
-            set_physics_backend=self.set_physics_backend,
-            edit_animation_speed=self.EDIT_ANIMATION_SPEED,
+            RuntimeControllerContext(
+                get_state=lambda: self._state,
+                set_state=lambda value: setattr(self, "_state", value),
+                get_world=lambda: self.world,
+                set_world=self.set_world,
+                get_scene_runtime=lambda: self._scene_manager.runtime_port if self._scene_manager is not None else None,
+                get_rule_system=lambda: self._rule_system,
+                get_script_behaviour_system=lambda: self._script_behaviour_system,
+                get_event_bus=lambda: self._event_bus,
+                get_animation_system=lambda: self._animation_system,
+                get_input_system=lambda: self._input_system,
+                get_player_controller_system=lambda: self._player_controller_system,
+                get_character_controller_system=lambda: self._character_controller_system,
+                get_physics_system=lambda: self._physics_system,
+                get_collision_system=lambda: self._collision_system,
+                get_audio_system=lambda: self._audio_system,
+                get_scene_transition_controller=lambda: self._scene_transition_controller,
+                get_physics_backend_registry=lambda: self._physics_backend_registry,
+                reset_profiler=self.reset_profiler,
+                set_physics_backend=self.set_physics_backend,
+                edit_animation_speed=self.EDIT_ANIMATION_SPEED,
+            ),
+            update_ui_overlay=update_ui_overlay,
         )
         self._debug_tools_controller = DebugToolsController(
             time_manager=self.time,
@@ -261,6 +280,7 @@ class Game:
             get_project_service=lambda: self._project_service,
             get_scene_manager=lambda: self._scene_manager,
             get_editor_layout=lambda: self.editor_layout,
+            get_editor_selection=lambda: self._editor_selection_state,
             get_state=lambda: self._state,
             get_current_scene_path=lambda: self.current_scene_path,
             set_current_scene_path=lambda value: setattr(self, "current_scene_path", value),
@@ -290,6 +310,7 @@ class Game:
         self._editor_interaction_controller = EditorInteractionController(
             get_state=lambda: self._state,
             get_editor_layout=lambda: self.editor_layout,
+            get_editor_selection=lambda: self._editor_selection_state,
             get_scene_manager=lambda: self._scene_manager,
             get_selection_system=lambda: self._selection_system,
             get_gizmo_system=lambda: self.gizmo_system,
@@ -300,7 +321,24 @@ class Game:
             get_current_scene_viewport_size=self._current_scene_viewport_size,
             get_current_viewport_size=self._current_viewport_size,
         )
-    
+
+    def _sync_editor_shell(self) -> None:
+        if self.editor_layout is not None and self.editor_shell.layout is None:
+            self.editor_shell.state = self.editor_layout.shell_state
+            self.editor_shell.panel_slots = self.editor_layout.panel_slots
+            self.editor_shell.attach_layout(self.editor_layout)
+        elif self.editor_layout is not None and self.editor_shell.layout is not self.editor_layout:
+            self.editor_shell.attach_layout(self.editor_layout)
+        elif self.editor_layout is None and self.editor_shell.layout is not None:
+            self.editor_layout = self.editor_shell.layout
+        self.editor_shell.bind_terminal_panel(self.terminal_panel)
+        self.hierarchy_panel = self.editor_shell.hierarchy_panel
+        self.hierarchy_panel.set_selection_state(self._editor_selection_state)
+        if self._scene_manager is not None:
+            self.editor_shell.bind_scene_manager(self._scene_manager)
+        if self._project_service is not None:
+            self.editor_shell.bind_project_service(self._project_service)
+
     # === PROPIEDADES ===
     
     @property
@@ -399,7 +437,7 @@ class Game:
     
     # === SETTERS ===
     
-    def set_world(self, world: "World") -> None:
+    def set_world(self, world: Optional["World"]) -> None:
         self._world = world
     
     def set_render_system(self, system: "RenderSystem") -> None:
@@ -477,6 +515,7 @@ class Game:
     def set_scene_manager(self, manager: "SceneManager") -> None:
         self._scene_manager = manager
         self._scene_manager.set_history_manager(self._history_manager)
+        self._sync_editor_shell()
         # Conectar inspector al scene_manager para edición
         if self._inspector_system is not None:
             self._inspector_system.set_scene_manager(manager)
@@ -486,13 +525,7 @@ class Game:
             self.sprite_editor_modal.set_history_manager(self._history_manager)
         if self._script_behaviour_system is not None:
             self._script_behaviour_system.set_scene_manager(manager)
-        if self.hierarchy_panel is not None:
-            self.hierarchy_panel.set_scene_manager(manager)
         if self.editor_layout is not None:
-            if getattr(self.editor_layout, "flow_panel", None) is not None:
-                self.editor_layout.flow_panel.set_scene_manager(manager)
-            if getattr(self.editor_layout, "flow_workspace_panel", None) is not None:
-                self.editor_layout.flow_workspace_panel.set_scene_manager(manager)
             self.editor_layout.set_scene_tabs(manager.list_open_scenes(), manager.active_scene_key)
             
     def set_selection_system(self, system: "SelectionSystem") -> None:
@@ -525,6 +558,9 @@ class Game:
 
     def set_project_service(self, service: ProjectService) -> None:
         self._project_service = service
+        if service.read_only:
+            return
+        self._sync_editor_shell()
         if self._ui_render_system is not None and hasattr(self._ui_render_system, "set_project_service"):
             self._ui_render_system.set_project_service(service)
         self._project_workspace_controller.set_project_service(service)
@@ -725,24 +761,18 @@ class Game:
         
         # Crear EditorLayout (necesita ventana Raylib inicializada)
         if self.editor_layout is None:
-            self.editor_layout = EditorLayout(self.width, self.height)
-            self.editor_layout.terminal_panel = self.terminal_panel
+            self.editor_layout = self.editor_shell.ensure_layout(self.width, self.height)
+            self.editor_shell.bind_terminal_panel(self.terminal_panel)
             if self._project_service is not None:
                 self._project_workspace_controller.refresh_launcher_projects()
                 if self._project_service.has_project:
-                    self.editor_layout.project_panel.set_project_service(self._project_service)
-                    if getattr(self.editor_layout, "flow_panel", None) is not None:
-                        self.editor_layout.flow_panel.set_project_service(self._project_service)
-                    if getattr(self.editor_layout, "flow_workspace_panel", None) is not None:
-                        self.editor_layout.flow_workspace_panel.set_project_service(self._project_service)
+                    self.editor_shell.bind_project_service(self._project_service)
                 else:
                     self.editor_layout.show_project_launcher = True
             if self._scene_manager is not None:
-                if getattr(self.editor_layout, "flow_panel", None) is not None:
-                    self.editor_layout.flow_panel.set_scene_manager(self._scene_manager)
-                if getattr(self.editor_layout, "flow_workspace_panel", None) is not None:
-                    self.editor_layout.flow_workspace_panel.set_scene_manager(self._scene_manager)
+                self.editor_shell.bind_scene_manager(self._scene_manager)
                 self.editor_layout.set_scene_tabs(self._scene_manager.list_open_scenes(), self._scene_manager.active_scene_key)
+        self._sync_editor_shell()
         
         self.running = True
         print(f"[INFO] Motor iniciado en modo: {self._state}")
@@ -836,56 +866,35 @@ class Game:
                 self._editor_interaction_controller.handle_selection_and_gizmos(active_world)
             self._perf_stats["selection_gizmo"] = (time.perf_counter() - selection_gizmo_start) * 1000.0
 
-            # Update Animation (Only in Play/Step mode)
-            if self._state.allows_gameplay():
-                animation_start = time.perf_counter()
-                try:
-                    self._update_animation(active_world, dt)
-                except Exception as e:
-                    from engine.editor.console_panel import log_err
-                    log_err(f"Animation error: {e}")
-                self._perf_stats["animation"] = (time.perf_counter() - animation_start) * 1000.0
+            active_tab = self.editor_layout.active_tab if self.editor_layout is not None else "SCENE"
+            active_world = self.world
+            on_edit_scripts_ran: Callable[[], None] | None = None
+            if self._scene_manager is not None:
+                scene_manager = self._scene_manager
+
+                def mark_edit_world_dirty() -> None:
+                    scene_manager.mark_edit_world_dirty(reason="legacy_authoring")
+
+                on_edit_scripts_ran = mark_edit_world_dirty
+
+            tick_plan = self._run_runtime_tick(
+                active_world,
+                dt,
+                viewport_size=self._ui_viewport_size_for_tab(active_tab),
+                active_tab=active_tab,
+                should_render_like=active_tab in ("SCENE", "GAME"),
+                on_edit_scripts_ran=on_edit_scripts_ran,
+            )
+
             
             # Actualización de gameplay (Física, Colisiones, Reglas)
-            if self._state.allows_physics() or self._state.allows_gameplay():
-                gameplay_start = time.perf_counter()
-                try:
-                    self._update_gameplay(active_world, dt)
-                except Exception as e:
-                    from engine.editor.console_panel import log_err
-                    log_err(f"Gameplay error: {e}")
-                self._perf_stats["gameplay"] = (time.perf_counter() - gameplay_start) * 1000.0
-
-            scripts_start = time.perf_counter()
-            if self._state == EngineState.EDIT and active_world is not None and self._script_behaviour_system is not None:
-                try:
-                    ran_edit_scripts = self._script_behaviour_system.update(active_world, dt, is_edit_mode=True)
-                    if ran_edit_scripts and self._scene_manager is not None:
-                        self._scene_manager.mark_edit_world_dirty(reason="legacy_authoring")
-                except Exception as e:
-                    from engine.editor.console_panel import log_err
-                    log_err(f"ScriptBehaviour error: {e}")
-            self._perf_stats["scripts"] = (time.perf_counter() - scripts_start) * 1000.0
-
-            ui_start = time.perf_counter()
-            active_tab = self.editor_layout.active_tab if self.editor_layout is not None else "SCENE"
-            if active_world is not None and active_tab in ("SCENE", "GAME"):
-                try:
-                    self._update_ui_overlay(active_world, self._ui_viewport_size_for_tab(active_tab), active_tab=active_tab)
-                except Exception as e:
-                    from engine.editor.console_panel import log_err
-                    log_err(f"UI error: {e}")
-            self._perf_stats["ui"] = (time.perf_counter() - ui_start) * 1000.0
             
             # Si estábamos en STEPPING, volvemos a PAUSED después de un frame
             if self._state == EngineState.EDIT:
                 self._autosave_dirty_scenes()
-            if self._state == EngineState.STEPPING:
-                self._state = EngineState.PAUSED
-
-            # Renderizar FRAME (Safe)
             try:
                 render_start = time.perf_counter()
+                self._runtime_controller.begin_render_phase(tick_plan)
                 self._render_frame(active_world)
                 self._perf_stats["render"] = (time.perf_counter() - render_start) * 1000.0
             except Exception as e:
@@ -906,6 +915,63 @@ class Game:
                 )
 
         self._cleanup()
+
+    def _run_runtime_tick(
+        self,
+        active_world: Optional["World"],
+        dt: float,
+        *,
+        viewport_size: tuple[float, float],
+        active_tab: Optional[str] = None,
+        should_render_like: bool = True,
+        on_edit_scripts_ran: Optional[Callable[[], None]] = None,
+    ) -> RuntimeTickPlan:
+        plan = self._runtime_controller.build_tick_plan(dt, should_render_like=should_render_like)
+
+        gameplay_elapsed = 0.0
+        animation_elapsed = 0.0
+        scripts_elapsed = 0.0
+        ui_elapsed = 0.0
+
+        if active_world is not None and plan.fixed_steps > 0:
+            gameplay_start = time.perf_counter()
+            try:
+                for _ in range(plan.fixed_steps):
+                    self._runtime_controller.run_fixed_update(active_world, plan.fixed_dt, plan)
+            except Exception as exc:
+                log_err(f"Gameplay error: {exc}")
+            gameplay_elapsed = (time.perf_counter() - gameplay_start) * 1000.0
+
+        edit_scripts_ran = False
+        animation_start = time.perf_counter()
+        try:
+            edit_scripts_ran = self._runtime_controller.run_update(active_world, dt, plan)
+        except Exception as exc:
+            log_err(f"Animation/update error: {exc}")
+        animation_elapsed = (time.perf_counter() - animation_start) * 1000.0
+
+        if edit_scripts_ran and on_edit_scripts_ran is not None:
+            scripts_start = time.perf_counter()
+            on_edit_scripts_ran()
+            scripts_elapsed = (time.perf_counter() - scripts_start) * 1000.0
+
+        ui_start = time.perf_counter()
+        try:
+            self._runtime_controller.run_post_update(
+                active_world,
+                plan,
+                viewport_size=viewport_size,
+                active_tab=active_tab,
+            )
+        except Exception as exc:
+            log_err(f"Post-update/UI error: {exc}")
+        ui_elapsed = (time.perf_counter() - ui_start) * 1000.0
+
+        self._perf_stats["gameplay"] = gameplay_elapsed
+        self._perf_stats["animation"] = animation_elapsed
+        self._perf_stats["scripts"] = scripts_elapsed
+        self._perf_stats["ui"] = ui_elapsed
+        return plan
     
     def _update_animation(self, world: Optional["World"], dt: float) -> None:
         self._runtime_controller.update_animation(world, dt)

@@ -628,8 +628,14 @@ class InspectorCoreTests(unittest.TestCase):
             self.inspector.update(0.0, self.api.game.world, True)
         self.assertEqual(self.inspector.get_tilemap_tool_state()["palette_selected_index"], 1)
 
+        enter_seen = False
+
         def enter_pressed(key: int) -> bool:
-            return key == rl.KEY_ENTER
+            nonlocal enter_seen
+            if key == rl.KEY_ENTER and not enter_seen:
+                enter_seen = True
+                return True
+            return False
 
         with patch("pyray.is_key_down", return_value=False), patch("pyray.is_key_pressed", side_effect=enter_pressed):
             self.inspector.update(0.0, self.api.game.world, True)

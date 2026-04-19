@@ -12,6 +12,7 @@ from engine.core.game import Game
 from engine.ecs.entity import Entity
 from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.editor_layout import EditorLayout
+from engine.editor.editor_shell_state import EditorPanelSlots, EditorShellState
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
 from engine.editor.gizmo_system import GizmoSystem
 from engine.levels.component_registry import create_default_registry
@@ -20,6 +21,33 @@ from engine.scenes.scene_manager import SceneManager
 
 
 class EditorLayoutToolStateTests(unittest.TestCase):
+    def test_editor_layout_uses_injected_shell_state_and_panel_slots(self) -> None:
+        state = EditorShellState(active_tab="FLOW", active_bottom_tab="TERMINAL", request_create_entity=True)
+        slots = EditorPanelSlots(
+            project_panel=Mock(),
+            flow_panel=Mock(),
+            flow_workspace_panel=Mock(),
+            console_panel=Mock(),
+            terminal_panel=Mock(),
+        )
+
+        with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
+            layout = EditorLayout(1280, 720, state=state, panel_slots=slots)
+
+        self.assertIs(layout.shell_state, state)
+        self.assertIs(layout.panel_slots, slots)
+        self.assertEqual(layout.active_tab, "FLOW")
+        self.assertEqual(layout.active_bottom_tab, "TERMINAL")
+        self.assertTrue(layout.request_create_entity)
+        self.assertIs(layout.project_panel, slots.project_panel)
+        self.assertIs(layout.terminal_panel, slots.terminal_panel)
+
+        layout.active_bottom_tab = "PROJECT"
+        layout.terminal_panel = None
+
+        self.assertEqual(state.active_bottom_tab, "PROJECT")
+        self.assertIsNone(slots.terminal_panel)
+
     def test_editor_layout_round_trips_tool_preferences(self) -> None:
         with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
             layout = EditorLayout(1280, 720)

@@ -121,6 +121,10 @@ class ProjectService:
             self._ensure_global_storage()
         if auto_ensure and not read_only:
             self.ensure_project(self._project_root)
+        elif read_only:
+            manifest_path = self._project_root_real / self.PROJECT_FILE
+            if manifest_path.exists():
+                self._manifest = self._load_manifest(manifest_path)
 
     @property
     def editor_root(self) -> Path:
@@ -147,6 +151,10 @@ class ProjectService:
     @property
     def has_project(self) -> bool:
         return self._manifest is not None
+
+    @property
+    def read_only(self) -> bool:
+        return self._read_only
 
     @property
     def project_name(self) -> str:
@@ -524,6 +532,8 @@ class ProjectService:
             return []
         result: List[Dict[str, Any]] = []
         for path in sorted(levels_root.rglob("*.json")):
+            if path.name.endswith(".meta.json"):
+                continue
             relative_path = self.to_relative_path(path)
             scene_name = path.stem.replace("_", " ").strip() or path.stem or "Scene"
             try:

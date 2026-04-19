@@ -18,6 +18,7 @@ class ProjectWorkspaceController:
         get_project_service: Callable[[], Any],
         get_scene_manager: Callable[[], Any],
         get_editor_layout: Callable[[], Any],
+        get_editor_selection: Callable[[], Any],
         get_state: Callable[[], EngineState],
         get_current_scene_path: Callable[[], str],
         set_current_scene_path: Callable[[str], None],
@@ -47,6 +48,7 @@ class ProjectWorkspaceController:
         self._get_project_service = get_project_service
         self._get_scene_manager = get_scene_manager
         self._get_editor_layout = get_editor_layout
+        self._get_editor_selection = get_editor_selection
         self._get_state = get_state
         self._get_current_scene_path = get_current_scene_path
         self._set_current_scene_path = set_current_scene_path
@@ -192,7 +194,11 @@ class ProjectWorkspaceController:
         if not active_key:
             return
         active_world = scene_manager.get_edit_world()
-        selected_entity = active_world.selected_entity_name if active_world is not None else None
+        selection_state = self._get_editor_selection()
+        if selection_state is not None:
+            selected_entity = selection_state.sync_from_world(active_world)
+        else:
+            selected_entity = active_world.selected_entity_name if active_world is not None else None
         scene_manager.set_scene_view_state(
             active_key,
             {
@@ -219,7 +225,12 @@ class ProjectWorkspaceController:
             )
         editor_layout.editor_camera.zoom = max(0.1, float(view_state.get("camera_zoom", 1.0) or 1.0))
         selected_entity = view_state.get("selected_entity")
+        selection_state = self._get_editor_selection()
+        if selection_state is not None:
+            selected_entity = selection_state.set(selected_entity)
         scene_manager.set_selected_entity(str(selected_entity) if selected_entity else None)
+        if selection_state is not None:
+            selection_state.apply_to_world(scene_manager.get_edit_world())
 
     def persist_workspace_state(self) -> None:
         project_service = self._get_project_service()

@@ -13,6 +13,38 @@ from engine.systems.ui_render_system import UIRenderSystem
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+def _rect_transform_payload(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "enabled": True,
+        "anchor_min_x": 0.5,
+        "anchor_min_y": 0.5,
+        "anchor_max_x": 0.5,
+        "anchor_max_y": 0.5,
+        "pivot_x": 0.5,
+        "pivot_y": 0.5,
+        "anchored_x": 0.0,
+        "anchored_y": 0.0,
+        "width": 100.0,
+        "height": 40.0,
+        "rotation": 0.0,
+        "scale_x": 1.0,
+        "scale_y": 1.0,
+        "layout_mode": "free",
+        "layout_order": 0,
+        "layout_ignore": False,
+        "size_mode_x": "fixed",
+        "size_mode_y": "fixed",
+        "layout_align": "start",
+        "padding_left": 0.0,
+        "padding_top": 0.0,
+        "padding_right": 0.0,
+        "padding_bottom": 0.0,
+        "spacing": 0.0,
+    }
+    payload.update(overrides)
+    return payload
+
+
 class CanvasUISystemTests(unittest.TestCase):
     def setUp(self) -> None:
         self._temp_dir = tempfile.TemporaryDirectory()
@@ -236,6 +268,456 @@ class CanvasUISystemTests(unittest.TestCase):
 
         self.assertEqual(base_layout, {"x": 260.0, "y": 258.0, "width": 280.0, "height": 84.0})
         self.assertEqual(scaled_layout, {"x": 520.0, "y": 516.0, "width": 560.0, "height": 168.0})
+
+    def test_vertical_stack_layout_applies_padding_spacing_and_layout_order(self) -> None:
+        scene_path = self._write_scene(
+            "ui_vertical_stack.json",
+            {
+                "name": "UI Vertical Stack",
+                "entities": [
+                    {
+                        "name": "CanvasRoot",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "components": {
+                            "Canvas": {
+                                "enabled": True,
+                                "render_mode": "screen_space_overlay",
+                                "reference_width": 800,
+                                "reference_height": 600,
+                                "match_mode": "stretch",
+                                "sort_order": 0,
+                            },
+                            "RectTransform": _rect_transform_payload(
+                                anchor_min_x=0.0,
+                                anchor_min_y=0.0,
+                                anchor_max_x=1.0,
+                                anchor_max_y=1.0,
+                                pivot_x=0.0,
+                                pivot_y=0.0,
+                                width=0.0,
+                                height=0.0,
+                                layout_mode="vertical_stack",
+                                layout_align="center",
+                                padding_left=20.0,
+                                padding_top=20.0,
+                                padding_right=20.0,
+                                padding_bottom=20.0,
+                                spacing=10.0,
+                            ),
+                        },
+                    },
+                    {
+                        "name": "Footer",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "parent": "CanvasRoot",
+                        "components": {
+                            "RectTransform": _rect_transform_payload(width=200.0, height=40.0, layout_order=2),
+                        },
+                    },
+                    {
+                        "name": "Header",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "parent": "CanvasRoot",
+                        "components": {
+                            "RectTransform": _rect_transform_payload(width=300.0, height=50.0, layout_order=0),
+                        },
+                    },
+                    {
+                        "name": "Content",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "parent": "CanvasRoot",
+                        "components": {
+                            "RectTransform": _rect_transform_payload(width=400.0, height=80.0, layout_order=1),
+                        },
+                    },
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+
+        self.api.game._update_ui_overlay(self.api.game.world, (800.0, 600.0))
+        ui_system = self.api.game._ui_system
+
+        self.assertEqual(ui_system.get_entity_screen_rect("Header"), {"x": 250.0, "y": 20.0, "width": 300.0, "height": 50.0})
+        self.assertEqual(ui_system.get_entity_screen_rect("Content"), {"x": 200.0, "y": 80.0, "width": 400.0, "height": 80.0})
+        self.assertEqual(ui_system.get_entity_screen_rect("Footer"), {"x": 300.0, "y": 170.0, "width": 200.0, "height": 40.0})
+
+    def test_horizontal_stack_layout_distributes_stretch_space(self) -> None:
+        scene_path = self._write_scene(
+            "ui_horizontal_stack.json",
+            {
+                "name": "UI Horizontal Stack",
+                "entities": [
+                    {
+                        "name": "CanvasRoot",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "components": {
+                            "Canvas": {
+                                "enabled": True,
+                                "render_mode": "screen_space_overlay",
+                                "reference_width": 800,
+                                "reference_height": 600,
+                                "match_mode": "stretch",
+                                "sort_order": 0,
+                            },
+                            "RectTransform": _rect_transform_payload(
+                                anchor_min_x=0.0,
+                                anchor_min_y=0.0,
+                                anchor_max_x=1.0,
+                                anchor_max_y=1.0,
+                                pivot_x=0.0,
+                                pivot_y=0.0,
+                                width=0.0,
+                                height=0.0,
+                                layout_mode="horizontal_stack",
+                                layout_align="center",
+                                padding_left=20.0,
+                                padding_top=20.0,
+                                padding_right=20.0,
+                                padding_bottom=20.0,
+                                spacing=10.0,
+                            ),
+                        },
+                    },
+                    {
+                        "name": "Left",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "parent": "CanvasRoot",
+                        "components": {
+                            "RectTransform": _rect_transform_payload(width=100.0, height=40.0),
+                        },
+                    },
+                    {
+                        "name": "CenterFill",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "parent": "CanvasRoot",
+                        "components": {
+                            "RectTransform": _rect_transform_payload(width=50.0, height=80.0, size_mode_x="stretch"),
+                        },
+                    },
+                    {
+                        "name": "RightFillHeight",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "parent": "CanvasRoot",
+                        "components": {
+                            "RectTransform": _rect_transform_payload(width=150.0, height=60.0, size_mode_y="stretch"),
+                        },
+                    },
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+
+        self.api.game._update_ui_overlay(self.api.game.world, (800.0, 600.0))
+        ui_system = self.api.game._ui_system
+
+        self.assertEqual(ui_system.get_entity_screen_rect("Left"), {"x": 20.0, "y": 280.0, "width": 100.0, "height": 40.0})
+        self.assertEqual(ui_system.get_entity_screen_rect("CenterFill"), {"x": 130.0, "y": 260.0, "width": 490.0, "height": 80.0})
+        self.assertEqual(
+            ui_system.get_entity_screen_rect("RightFillHeight"),
+            {"x": 630.0, "y": 20.0, "width": 150.0, "height": 560.0},
+        )
+
+    def test_nested_stack_containers_resolve_descendant_layouts(self) -> None:
+        scene_path = self._write_scene(
+            "ui_nested_stacks.json",
+            {
+                "name": "UI Nested Stacks",
+                "entities": [
+                    {
+                        "name": "CanvasRoot",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "components": {
+                            "Canvas": {
+                                "enabled": True,
+                                "render_mode": "screen_space_overlay",
+                                "reference_width": 800,
+                                "reference_height": 600,
+                                "match_mode": "stretch",
+                                "sort_order": 0,
+                            },
+                            "RectTransform": _rect_transform_payload(
+                                anchor_min_x=0.0,
+                                anchor_min_y=0.0,
+                                anchor_max_x=1.0,
+                                anchor_max_y=1.0,
+                                pivot_x=0.0,
+                                pivot_y=0.0,
+                                width=0.0,
+                                height=0.0,
+                                layout_mode="vertical_stack",
+                                layout_align="stretch",
+                                padding_left=20.0,
+                                padding_top=20.0,
+                                padding_right=20.0,
+                                padding_bottom=20.0,
+                                spacing=10.0,
+                            ),
+                        },
+                    },
+                    {
+                        "name": "Panel",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "parent": "CanvasRoot",
+                        "components": {
+                            "RectTransform": _rect_transform_payload(
+                                width=500.0,
+                                height=200.0,
+                                size_mode_x="stretch",
+                                layout_mode="horizontal_stack",
+                                layout_align="stretch",
+                                padding_left=10.0,
+                                padding_top=10.0,
+                                padding_right=10.0,
+                                padding_bottom=10.0,
+                                spacing=10.0,
+                            ),
+                        },
+                    },
+                    {
+                        "name": "PanelLeft",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "parent": "Panel",
+                        "components": {
+                            "RectTransform": _rect_transform_payload(width=100.0, height=40.0),
+                        },
+                    },
+                    {
+                        "name": "PanelRight",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "parent": "Panel",
+                        "components": {
+                            "RectTransform": _rect_transform_payload(width=50.0, height=60.0, size_mode_x="stretch"),
+                        },
+                    },
+                    {
+                        "name": "Footer",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "parent": "CanvasRoot",
+                        "components": {
+                            "RectTransform": _rect_transform_payload(width=300.0, height=50.0),
+                        },
+                    },
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+
+        self.api.game._update_ui_overlay(self.api.game.world, (800.0, 600.0))
+        ui_system = self.api.game._ui_system
+
+        self.assertEqual(ui_system.get_entity_screen_rect("Panel"), {"x": 20.0, "y": 20.0, "width": 760.0, "height": 200.0})
+        self.assertEqual(ui_system.get_entity_screen_rect("PanelLeft"), {"x": 30.0, "y": 30.0, "width": 100.0, "height": 180.0})
+        self.assertEqual(ui_system.get_entity_screen_rect("PanelRight"), {"x": 140.0, "y": 30.0, "width": 630.0, "height": 180.0})
+        self.assertEqual(ui_system.get_entity_screen_rect("Footer"), {"x": 20.0, "y": 230.0, "width": 760.0, "height": 50.0})
+
+    def test_layout_ignore_keeps_legacy_position_inside_stack_container(self) -> None:
+        scene_path = self._write_scene(
+            "ui_layout_ignore.json",
+            {
+                "name": "UI Layout Ignore",
+                "entities": [
+                    {
+                        "name": "CanvasRoot",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "components": {
+                            "Canvas": {
+                                "enabled": True,
+                                "render_mode": "screen_space_overlay",
+                                "reference_width": 800,
+                                "reference_height": 600,
+                                "match_mode": "stretch",
+                                "sort_order": 0,
+                            },
+                            "RectTransform": _rect_transform_payload(
+                                anchor_min_x=0.0,
+                                anchor_min_y=0.0,
+                                anchor_max_x=1.0,
+                                anchor_max_y=1.0,
+                                pivot_x=0.0,
+                                pivot_y=0.0,
+                                width=0.0,
+                                height=0.0,
+                                layout_mode="vertical_stack",
+                                layout_align="start",
+                                padding_left=20.0,
+                                padding_top=20.0,
+                                padding_right=20.0,
+                                padding_bottom=20.0,
+                                spacing=10.0,
+                            ),
+                        },
+                    },
+                    {
+                        "name": "Header",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "parent": "CanvasRoot",
+                        "components": {
+                            "RectTransform": _rect_transform_payload(width=300.0, height=50.0),
+                        },
+                    },
+                    {
+                        "name": "AbsoluteBadge",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "parent": "CanvasRoot",
+                        "components": {
+                            "RectTransform": _rect_transform_payload(
+                                anchor_min_x=1.0,
+                                anchor_min_y=0.0,
+                                anchor_max_x=1.0,
+                                anchor_max_y=0.0,
+                                pivot_x=1.0,
+                                pivot_y=0.0,
+                                anchored_x=-20.0,
+                                anchored_y=20.0,
+                                width=80.0,
+                                height=40.0,
+                                layout_ignore=True,
+                            ),
+                        },
+                    },
+                    {
+                        "name": "Footer",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "parent": "CanvasRoot",
+                        "components": {
+                            "RectTransform": _rect_transform_payload(width=300.0, height=50.0, layout_order=1),
+                        },
+                    },
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+
+        self.api.game._update_ui_overlay(self.api.game.world, (800.0, 600.0))
+        ui_system = self.api.game._ui_system
+
+        self.assertEqual(ui_system.get_entity_screen_rect("Header"), {"x": 20.0, "y": 20.0, "width": 300.0, "height": 50.0})
+        self.assertEqual(ui_system.get_entity_screen_rect("Footer"), {"x": 20.0, "y": 80.0, "width": 300.0, "height": 50.0})
+        self.assertEqual(ui_system.get_entity_screen_rect("AbsoluteBadge"), {"x": 700.0, "y": 20.0, "width": 80.0, "height": 40.0})
+
+    def test_rect_transform_roundtrip_preserves_layout_foundation_fields(self) -> None:
+        scene_path = self._write_scene(
+            "ui_layout_roundtrip.json",
+            {
+                "name": "UI Layout Roundtrip",
+                "entities": [
+                    {
+                        "name": "CanvasRoot",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "components": {
+                            "Canvas": {
+                                "enabled": True,
+                                "render_mode": "screen_space_overlay",
+                                "reference_width": 800,
+                                "reference_height": 600,
+                                "match_mode": "stretch",
+                                "sort_order": 0,
+                            },
+                            "RectTransform": _rect_transform_payload(
+                                anchor_min_x=0.0,
+                                anchor_min_y=0.0,
+                                anchor_max_x=1.0,
+                                anchor_max_y=1.0,
+                                pivot_x=0.0,
+                                pivot_y=0.0,
+                                width=0.0,
+                                height=0.0,
+                            ),
+                        },
+                    },
+                    {
+                        "name": "Panel",
+                        "active": True,
+                        "tag": "UI",
+                        "layer": "UI",
+                        "parent": "CanvasRoot",
+                        "components": {
+                            "RectTransform": _rect_transform_payload(
+                                width=320.0,
+                                height=180.0,
+                                layout_mode="vertical_stack",
+                                layout_order=3,
+                                layout_ignore=True,
+                                size_mode_x="stretch",
+                                size_mode_y="fixed",
+                                layout_align="end",
+                                padding_left=4.0,
+                                padding_top=6.0,
+                                padding_right=8.0,
+                                padding_bottom=10.0,
+                                spacing=12.0,
+                            ),
+                        },
+                    },
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+
+        self.api.game.save_current_scene()
+
+        raw = json.loads(scene_path.read_text(encoding="utf-8"))
+        panel = next(entity for entity in raw["entities"] if entity["name"] == "Panel")
+        rect_payload = panel["components"]["RectTransform"]
+
+        self.assertEqual(rect_payload["layout_mode"], "vertical_stack")
+        self.assertEqual(rect_payload["layout_order"], 3)
+        self.assertTrue(rect_payload["layout_ignore"])
+        self.assertEqual(rect_payload["size_mode_x"], "stretch")
+        self.assertEqual(rect_payload["size_mode_y"], "fixed")
+        self.assertEqual(rect_payload["layout_align"], "end")
+        self.assertEqual(rect_payload["padding_left"], 4.0)
+        self.assertEqual(rect_payload["padding_top"], 6.0)
+        self.assertEqual(rect_payload["padding_right"], 8.0)
+        self.assertEqual(rect_payload["padding_bottom"], 10.0)
+        self.assertEqual(rect_payload["spacing"], 12.0)
 
     def test_ui_hit_testing_prefers_rect_transform_nodes_over_canvas_root(self) -> None:
         scene_path = self._write_scene(
