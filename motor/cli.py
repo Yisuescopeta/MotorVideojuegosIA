@@ -73,6 +73,13 @@ from motor.cli_core import (
     cmd_agent_session_create,
     cmd_agent_message_send,
     cmd_agent_action_approve,
+    cmd_agent_providers_list,
+    cmd_agent_providers_login,
+    cmd_agent_providers_logout,
+    cmd_agent_providers_status,
+    cmd_agent_session_compact,
+    cmd_agent_session_inspect,
+    cmd_agent_usage,
     cmd_animator_info,
     cmd_animator_set_sheet,
     cmd_animator_upsert_state,
@@ -131,8 +138,15 @@ AI-Facing Commands:
   asset slice manual <a>    Save manual slices
 
   agent session create      Create an experimental agent session
+  agent session compact     Compact an agent session transcript
+  agent session inspect     Inspect an agent session without mutating it
   agent message send        Send a message to an agent session
   agent action approve      Approve or reject a pending agent action
+  agent providers list      List configured agent providers
+  agent providers login     Store provider credentials from stdin
+  agent providers status    Show provider auth status
+  agent providers logout    Remove provider credentials
+  agent usage               Show token/cost usage for a session
 
 Examples:
   motor doctor --project . --json
@@ -674,7 +688,28 @@ Documentation:
         help="Permission mode for mutating agent actions"
     )
     agent_session_create_parser.add_argument("--title", default="", help="Optional session title")
+    agent_session_create_parser.add_argument("--provider-id", default="fake", help="Provider id for the session")
+    agent_session_create_parser.add_argument("--model", default="", help="Optional provider model")
+    agent_session_create_parser.add_argument("--temperature", type=float, default=None, help="Optional provider temperature")
+    agent_session_create_parser.add_argument("--max-tokens", type=int, default=None, help="Optional max output tokens")
+    agent_session_create_parser.add_argument("--stream", action="store_true", help="Enable provider streaming when supported")
     agent_session_create_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    agent_session_compact_parser = agent_session_subparsers.add_parser(
+        "compact",
+        help="Compact an experimental agent session transcript",
+    )
+    agent_session_compact_parser.add_argument("session_id", help="Agent session id")
+    agent_session_compact_parser.add_argument("--project", dest="project_root", default=".", help="Path to project directory")
+    agent_session_compact_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    agent_session_inspect_parser = agent_session_subparsers.add_parser(
+        "inspect",
+        help="Inspect an experimental agent session",
+    )
+    agent_session_inspect_parser.add_argument("session_id", help="Agent session id")
+    agent_session_inspect_parser.add_argument("--project", dest="project_root", default=".", help="Path to project directory")
+    agent_session_inspect_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     agent_message_parser = agent_subparsers.add_parser(
         "message",
@@ -716,6 +751,53 @@ Documentation:
         help="Path to project directory"
     )
     agent_action_approve_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    agent_providers_parser = agent_subparsers.add_parser(
+        "providers",
+        help="Agent provider operations",
+    )
+    agent_providers_subparsers = agent_providers_parser.add_subparsers(dest="agent_providers_subcommand", required=True)
+    agent_providers_list_parser = agent_providers_subparsers.add_parser(
+        "list",
+        help="List configured agent providers",
+    )
+    agent_providers_list_parser.add_argument("--project", dest="project_root", default=".", help="Path to project directory")
+    agent_providers_list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    agent_providers_login_parser = agent_providers_subparsers.add_parser(
+        "login",
+        help="Store provider credentials from stdin",
+    )
+    agent_providers_login_parser.add_argument("provider", help="Provider id, e.g. opencode-go or openai")
+    agent_providers_login_parser.add_argument("--api-key-stdin", action="store_true", help="Read API key from stdin")
+    agent_providers_login_parser.add_argument("--base-url", default="", help="Optional provider base URL")
+    agent_providers_login_parser.add_argument("--model", default="", help="Optional default model")
+    agent_providers_login_parser.add_argument("--project", dest="project_root", default=".", help="Path to project directory")
+    agent_providers_login_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    agent_providers_logout_parser = agent_providers_subparsers.add_parser(
+        "logout",
+        help="Remove provider credentials",
+    )
+    agent_providers_logout_parser.add_argument("provider", help="Provider id")
+    agent_providers_logout_parser.add_argument("--project", dest="project_root", default=".", help="Path to project directory")
+    agent_providers_logout_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    agent_providers_status_parser = agent_providers_subparsers.add_parser(
+        "status",
+        help="Show provider auth status",
+    )
+    agent_providers_status_parser.add_argument("provider", nargs="?", default="", help="Optional provider id")
+    agent_providers_status_parser.add_argument("--project", dest="project_root", default=".", help="Path to project directory")
+    agent_providers_status_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    agent_usage_parser = agent_subparsers.add_parser(
+        "usage",
+        help="Show token/cost usage for an agent session",
+    )
+    agent_usage_parser.add_argument("session_id", help="Agent session id")
+    agent_usage_parser.add_argument("--project", dest="project_root", default=".", help="Path to project directory")
+    agent_usage_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     return parser
 
@@ -993,6 +1075,23 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 project_path=Path(parsed.project_root).resolve(),
                 permission_mode=parsed.permission_mode,
                 title=parsed.title,
+                provider_id=parsed.provider_id,
+                model=parsed.model,
+                temperature=parsed.temperature,
+                max_tokens=parsed.max_tokens,
+                stream=parsed.stream,
+                json_output=parsed.json,
+            )
+        elif parsed.agent_subcommand == "session" and parsed.agent_session_subcommand == "compact":
+            return cmd_agent_session_compact(
+                project_path=Path(parsed.project_root).resolve(),
+                session_id=parsed.session_id,
+                json_output=parsed.json,
+            )
+        elif parsed.agent_subcommand == "session" and parsed.agent_session_subcommand == "inspect":
+            return cmd_agent_session_inspect(
+                project_path=Path(parsed.project_root).resolve(),
+                session_id=parsed.session_id,
                 json_output=parsed.json,
             )
         elif parsed.agent_subcommand == "message" and parsed.agent_message_subcommand == "send":
@@ -1008,6 +1107,38 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 session_id=parsed.session_id,
                 action_id=parsed.action_id,
                 approved=not parsed.reject,
+                json_output=parsed.json,
+            )
+        elif parsed.agent_subcommand == "providers" and parsed.agent_providers_subcommand == "list":
+            return cmd_agent_providers_list(
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
+        elif parsed.agent_subcommand == "providers" and parsed.agent_providers_subcommand == "login":
+            return cmd_agent_providers_login(
+                project_path=Path(parsed.project_root).resolve(),
+                provider_id=parsed.provider,
+                api_key_stdin=parsed.api_key_stdin,
+                base_url=parsed.base_url,
+                model=parsed.model,
+                json_output=parsed.json,
+            )
+        elif parsed.agent_subcommand == "providers" and parsed.agent_providers_subcommand == "logout":
+            return cmd_agent_providers_logout(
+                project_path=Path(parsed.project_root).resolve(),
+                provider_id=parsed.provider,
+                json_output=parsed.json,
+            )
+        elif parsed.agent_subcommand == "providers" and parsed.agent_providers_subcommand == "status":
+            return cmd_agent_providers_status(
+                project_path=Path(parsed.project_root).resolve(),
+                provider_id=parsed.provider,
+                json_output=parsed.json,
+            )
+        elif parsed.agent_subcommand == "usage":
+            return cmd_agent_usage(
+                project_path=Path(parsed.project_root).resolve(),
+                session_id=parsed.session_id,
                 json_output=parsed.json,
             )
     

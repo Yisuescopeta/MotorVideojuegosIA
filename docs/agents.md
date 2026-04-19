@@ -70,8 +70,23 @@ final, aprobacion pendiente, cancelacion o limite de iteraciones.
 - Las mutaciones de escenas deben pasar por herramientas que usan `EngineAPI` o
   `AuthoringExecutionService`.
 - No incluyas la carpeta local `Claude Code/` como contexto del agente.
-- El provider por defecto sigue siendo `fake` y offline; proveedores online
-  quedan fuera del contrato v2.
+- El provider por defecto `fake` es determinista, offline y `test_only`; no debe
+  presentarse como inteligencia real. `ReplayLLMProvider` cubre contratos
+  multi-turn en tests. `OpenAIProvider` es el primer provider online real de V3a
+  y exige `OPENAI_API_KEY`; no hay fallback silencioso a fake.
+- `run_command` no es una shell generica: acepta solo perfiles allowlist con
+  `shell=False`. `full_access` autoaprueba acciones permitidas, pero no desactiva
+  la policy de comandos ni los guards de `Claude Code/`, `.git`, `.motor`,
+  rutas externas y secretos evidentes.
+- `run_command` se ejecuta mediante `AgentCommandRunner`, con cwd confinado,
+  entorno minimo, timeout, limite de output y auditoria.
+- Streaming V3a se refleja como eventos `assistant_delta` y mensaje final
+  persistido; si el provider no soporta streaming, se conserva el flujo no
+  streaming.
+- La memoria/compactacion guarda resumen local sanitizado y el coste queda
+  `unknown` si no existen datos fiables de usage/precios.
+- Las sesiones legacy se migran explicitamente con backup `.legacy-v1.bak` y
+  evento `session_migrated`; una sesion corrupta se conserva sin sobrescribir.
 
 Para CLI:
 

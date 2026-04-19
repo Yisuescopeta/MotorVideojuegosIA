@@ -146,16 +146,59 @@ def cmd_agent_session_create(
     project_path: Path,
     permission_mode: str,
     title: str,
-    json_output: bool,
+    provider_id: str = "fake",
+    model: str = "",
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    stream: bool = False,
+    json_output: bool = False,
 ) -> int:
     """Create an experimental agent session."""
     try:
         _ensure_project(project_path)
         service = AgentSessionService(project_root=project_path)
-        session = service.create_session(permission_mode=permission_mode, title=title)
+        session = service.create_session(
+            permission_mode=permission_mode,
+            title=title,
+            provider_id=provider_id,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=stream,
+        )
         return _output(True, "Agent session created", session, json_output)
     except Exception as exc:
         return _output(False, f"Agent session create failed: {exc}", None, json_output)
+
+
+def cmd_agent_session_compact(
+    project_path: Path,
+    session_id: str,
+    json_output: bool,
+) -> int:
+    """Compact an experimental agent session."""
+    try:
+        _ensure_project(project_path)
+        service = AgentSessionService(project_root=project_path)
+        data = service.compact_session(session_id)
+        return _output(True, "Agent session compacted", data, json_output)
+    except Exception as exc:
+        return _output(False, f"Agent session compact failed: {exc}", None, json_output)
+
+
+def cmd_agent_session_inspect(
+    project_path: Path,
+    session_id: str,
+    json_output: bool,
+) -> int:
+    """Inspect an experimental agent session without mutating it."""
+    try:
+        _ensure_project(project_path)
+        service = AgentSessionService(project_root=project_path)
+        data = service.inspect_session(session_id)
+        return _output(True, "Agent session inspected", data, json_output)
+    except Exception as exc:
+        return _output(False, f"Agent session inspect failed: {exc}", None, json_output)
 
 
 def cmd_agent_message_send(
@@ -205,6 +248,84 @@ def cmd_agent_action_approve(
                 api.shutdown()
             except Exception:
                 pass
+
+
+def cmd_agent_providers_list(
+    project_path: Path,
+    json_output: bool,
+) -> int:
+    """List configured experimental agent providers."""
+    try:
+        _ensure_project(project_path)
+        service = AgentSessionService(project_root=project_path)
+        return _output(True, "Agent providers listed", service.list_providers(), json_output)
+    except Exception as exc:
+        return _output(False, f"Agent providers list failed: {exc}", None, json_output)
+
+
+def cmd_agent_providers_login(
+    project_path: Path,
+    provider_id: str,
+    api_key_stdin: bool,
+    base_url: str,
+    model: str,
+    json_output: bool,
+) -> int:
+    """Store a user-local provider credential read from stdin."""
+    try:
+        _ensure_project(project_path)
+        if not api_key_stdin:
+            raise ValueError("Use --api-key-stdin to provide credentials without exposing them in shell history.")
+        api_key = sys.stdin.read().strip()
+        service = AgentSessionService(project_root=project_path)
+        data = service.login_provider(provider_id, api_key=api_key, base_url=base_url, model=model)
+        return _output(True, "Agent provider logged in", data, json_output)
+    except Exception as exc:
+        return _output(False, f"Agent provider login failed: {exc}", None, json_output)
+
+
+def cmd_agent_providers_logout(
+    project_path: Path,
+    provider_id: str,
+    json_output: bool,
+) -> int:
+    """Remove a user-local provider credential."""
+    try:
+        _ensure_project(project_path)
+        service = AgentSessionService(project_root=project_path)
+        data = service.logout_provider(provider_id)
+        return _output(True, "Agent provider logged out", data, json_output)
+    except Exception as exc:
+        return _output(False, f"Agent provider logout failed: {exc}", None, json_output)
+
+
+def cmd_agent_providers_status(
+    project_path: Path,
+    provider_id: str,
+    json_output: bool,
+) -> int:
+    """Show provider auth status without revealing credentials."""
+    try:
+        _ensure_project(project_path)
+        service = AgentSessionService(project_root=project_path)
+        data = service.get_provider_status(provider_id)
+        return _output(True, "Agent provider status loaded", data, json_output)
+    except Exception as exc:
+        return _output(False, f"Agent provider status failed: {exc}", None, json_output)
+
+
+def cmd_agent_usage(
+    project_path: Path,
+    session_id: str,
+    json_output: bool,
+) -> int:
+    """Show token/cost usage for an experimental agent session."""
+    try:
+        _ensure_project(project_path)
+        service = AgentSessionService(project_root=project_path)
+        return _output(True, "Agent usage loaded", service.get_usage(session_id), json_output)
+    except Exception as exc:
+        return _output(False, f"Agent usage failed: {exc}", None, json_output)
 
 
 def cmd_doctor(project_path: Path, json_output: bool) -> int:

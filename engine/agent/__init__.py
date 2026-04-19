@@ -1,5 +1,22 @@
+from engine.agent.command_policy import AgentCommandDecision, AgentCommandPolicy, AgentCommandProfile, AgentCommandRequest
+from engine.agent.command_runner import AgentCommandRunner, AgentCommandRunResult
+from engine.agent.credentials import AgentCredentialStore, AgentProviderLoginService, AgentProviderLoginStatus, AgentProviderSettingsStore
 from engine.agent.engine_port import AgentEnginePort, EditorLiveAgentEnginePort, EngineAPIAgentEnginePort
-from engine.agent.provider import AgentProviderRequest, AgentProviderResolver, AgentProviderResponse, FakeLLMProvider, LLMProvider
+from engine.agent.migration import AgentSessionMigrationError, AgentSessionMigrator
+from engine.agent.memory import AgentCompactionService, AgentMemorySnapshot, AgentMemoryStore
+from engine.agent.provider import (
+    AgentProviderMetadata,
+    AgentProviderRequest,
+    AgentProviderResolver,
+    AgentProviderResponse,
+    AgentProviderStreamEvent,
+    FakeLLMProvider,
+    LLMProvider,
+    OpenAICompatibleChatProvider,
+    OpenAIProvider,
+    ReplayLLMProvider,
+    create_opencode_go_provider,
+)
 from engine.agent.runtime import AgentRuntime
 from engine.agent.session_service import AgentSessionService
 from engine.agent.tools import AgentToolRegistry
@@ -27,21 +44,38 @@ from engine.agent.types import (
 __all__ = [
     "AgentActionRequest",
     "AgentActionStatus",
+    "AgentCommandDecision",
+    "AgentCommandPolicy",
+    "AgentCommandProfile",
+    "AgentCommandRequest",
+    "AgentCommandRunner",
+    "AgentCommandRunResult",
     "AgentContentBlock",
+    "AgentCredentialStore",
     "AgentEvent",
     "AgentEventKind",
     "AgentMessage",
     "AgentMessageRole",
+    "AgentMemorySnapshot",
+    "AgentMemoryStore",
+    "AgentCompactionService",
     "AgentPermissionDecision",
     "AgentPermissionMode",
     "AgentEnginePort",
+    "AgentProviderLoginService",
+    "AgentProviderLoginStatus",
+    "AgentProviderMetadata",
     "AgentProviderRequest",
     "AgentProviderResolver",
     "AgentProviderResponse",
+    "AgentProviderStreamEvent",
+    "AgentProviderSettingsStore",
     "AgentRuntime",
     "AgentRuntimeConfig",
     "AgentSession",
     "AgentSuspension",
+    "AgentSessionMigrationError",
+    "AgentSessionMigrator",
     "AgentSessionService",
     "AgentToolCall",
     "AgentToolRegistry",
@@ -54,4 +88,8 @@ __all__ = [
     "EngineAPIAgentEnginePort",
     "FakeLLMProvider",
     "LLMProvider",
+    "OpenAICompatibleChatProvider",
+    "OpenAIProvider",
+    "ReplayLLMProvider",
+    "create_opencode_go_provider",
 ]

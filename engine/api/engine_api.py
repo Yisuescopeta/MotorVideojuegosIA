@@ -141,29 +141,19 @@ class EngineAPI:
 
     @classmethod
     def from_runtime(cls, game: Any, scene_manager: SceneManager, project_service: ProjectService) -> "EngineAPI":
-        """Build an EngineAPI facade over an already running editor/runtime.
+        """Experimental/internal tooling helper over an already running editor/runtime.
 
-        This avoids creating a second headless engine when editor tooling needs the
-        public API contract over the live scene workspace.
+        Use this only from editor/tooling adapters that need the public facade over
+        live state. It is intentionally not promoted as a stable core constructor.
         """
-        from engine.assets.asset_service import AssetService
+        from engine.api._runtime_bound import create_runtime_bound_engine_api
 
-        api = cls.__new__(cls)
-        api.game = game
-        api.scene_manager = scene_manager
-        api.project_service = project_service
-        api.asset_service = AssetService(project_service)
-        api._registry = getattr(scene_manager, "_registry", create_default_registry())
-        api._project_root = project_service.project_root.as_posix()
-        api._global_state_dir = getattr(project_service, "global_state_dir", None)
-        api._sandbox_paths = False
-        api._auto_ensure_project = False
-        api._read_only = bool(getattr(project_service, "read_only", False))
-        api._context = EngineAPIContext(api)
-        api._contracts = None
-        api._initialize_collaborators()
-        api._refresh_contracts()
-        return api
+        return create_runtime_bound_engine_api(
+            cls,
+            game=game,
+            scene_manager=scene_manager,
+            project_service=project_service,
+        )
 
     def attach_runtime(self, game: Any, scene_manager: SceneManager, project_service: ProjectService) -> None:
         from engine.assets.asset_service import AssetService

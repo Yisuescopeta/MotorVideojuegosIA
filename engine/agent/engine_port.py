@@ -131,8 +131,10 @@ class EditorLiveAgentEnginePort:
     def _port(self) -> EngineAPIAgentEnginePort:
         if self._api_port is None:
             from engine.api import EngineAPI
+            from engine.api._runtime_bound import create_runtime_bound_engine_api
 
-            api = EngineAPI.from_runtime(
+            api = create_runtime_bound_engine_api(
+                EngineAPI,
                 game=self.game,
                 scene_manager=self.scene_manager,
                 project_service=self.project_service,

@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
+from engine.agent.command_policy import AgentCommandPolicy, AgentCommandRequest
+from engine.agent.command_runner import AgentCommandRunner
 from engine.agent.engine_port import AgentEnginePort
 from engine.agent.types import AgentToolCall, AgentToolResult
 
@@ -22,15 +24,7 @@ SECRET_PATTERN = re.compile(
     r"(api[_-]?key|secret|password|token)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{12,}|BEGIN [A-Z ]*PRIVATE KEY",
     re.IGNORECASE,
 )
-BLOCKED_COMMAND_PATTERNS = (
-    "git reset --hard",
-    "git clean -fd",
-    "rm -rf",
-    "rmdir /s",
-    "del /s",
-    "format ",
-    "remove-item -recurse",
-)
+COMMAND_POLICY = AgentCommandPolicy()
 
 
 @dataclass(frozen=True)
@@ -288,39 +282,51 @@ class EditFileTool(BaseAgentTool):
 class RunCommandTool(BaseAgentTool):
     spec = AgentToolSpec(
         "run_command",
-        "Run a shell command from the project root.",
+        "Run an allowlisted command from the project root.",
         mutating=True,
         permission_scope="shell",
         requires_approval=True,
         supports_preview=True,
     )
 
+    def validate(self, args: dict[str, Any], context: AgentToolContext) -> str:
+        command = str(args.get("command", "")).strip()
+        timeout_seconds = int(args.get("timeout_seconds", 30))
+        decision = COMMAND_POLICY.decide(
+            AgentCommandRequest(command=command, project_root=context.project_root, timeout_seconds=timeout_seconds)
+        )
+        return "" if decision.allowed else decision.reason
+
     def preview(self, args: dict[str, Any], context: AgentToolContext) -> str:
         command = str(args.get("command", "")).strip()
-        return f"Run from {context.project_root.as_posix()}: {command}"
+        timeout_seconds = int(args.get("timeout_seconds", 30))
+        decision = COMMAND_POLICY.decide(
+            AgentCommandRequest(command=command, project_root=context.project_root, timeout_seconds=timeout_seconds)
+        )
+        return json.dumps(decision.to_dict(), indent=2, ensure_ascii=True)
 
     def execute(self, call: AgentToolCall, context: AgentToolContext) -> AgentToolResult:
         command = str(call.args.get("command", "")).strip()
-        if not command:
-            return self.fail(call, "command is required")
-        lowered = command.lower()
-        if any(pattern in lowered for pattern in BLOCKED_COMMAND_PATTERNS):
-            return self.fail(call, "Hard guard blocked a destructive command.")
-        if REFERENCE_DIR_NAME.lower() in lowered:
-            return self.fail(call, "Hard guard blocked access to the local Claude Code reference.")
-        try:
-            completed = subprocess.run(
-                command,
-                cwd=context.project_root,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=int(call.args.get("timeout_seconds", 30)),
-            )
-            output = (completed.stdout or "") + (completed.stderr or "")
-            return self.ok(call, output[-20000:], {"returncode": completed.returncode})
-        except Exception as exc:
-            return self.fail(call, str(exc))
+        timeout_seconds = int(call.args.get("timeout_seconds", 30))
+        decision = COMMAND_POLICY.decide(
+            AgentCommandRequest(command=command, project_root=context.project_root, timeout_seconds=timeout_seconds)
+        )
+        if not decision.allowed:
+            return self.fail(call, decision.reason, {"command_policy": decision.to_dict()})
+        result = AgentCommandRunner(context.project_root).run(decision)
+        return AgentToolResult(
+            call.tool_call_id,
+            call.tool_name,
+            result.success,
+            output=result.output,
+            data={
+                "returncode": result.returncode,
+                "duration_ms": result.duration_ms,
+                "command_policy": decision.to_dict(),
+                "command_runner": result.audit,
+            },
+            error=result.error,
+        )
 
 
 class GitStatusTool(BaseAgentTool):

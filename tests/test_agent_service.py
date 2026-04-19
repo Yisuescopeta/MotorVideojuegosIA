@@ -1,10 +1,29 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from engine.agent import AgentActionStatus, AgentPermissionMode, AgentProviderRequest, AgentProviderResponse, AgentSessionService
-from engine.agent.types import AgentToolCall, new_id
+from engine.agent import (
+    AgentActionStatus,
+    AgentCommandPolicy,
+    AgentCommandRequest,
+    AgentCredentialStore,
+    AgentPermissionMode,
+    AgentProviderRequest,
+    AgentProviderResolver,
+    AgentProviderResponse,
+    AgentSessionMigrationError,
+    AgentSessionService,
+    FakeLLMProvider,
+    OpenAICompatibleChatProvider,
+    OpenAIProvider,
+    ReplayLLMProvider,
+)
+from engine.agent.store import AgentSessionStore
+from engine.agent.types import AgentContentBlock, AgentToolCall, AgentTurnStatus, new_id
+from engine.ai import get_default_registry
 from engine.api import EngineAPI
 
 
@@ -186,8 +205,393 @@ class AgentSessionServiceTests(unittest.TestCase):
             tool_messages = [message for message in result["data"]["messages"] if message["role"] == "tool"]
             self.assertTrue(tool_messages)
             self.assertTrue(tool_messages[-1]["tool_result"]["success"])
+            self.assertTrue(any(provider["provider_id"] == "openai" for provider in api.list_agent_providers()))
+            self.assertEqual(api.get_agent_usage(session_id)["session_id"], session_id)
+            self.assertEqual(api.inspect_agent_session(session_id)["session_id"], session_id)
         finally:
             api.shutdown()
+
+    def test_run_command_policy_accepts_only_allowlisted_profiles(self) -> None:
+        policy = AgentCommandPolicy()
+
+        unittest_decision = policy.decide(
+            AgentCommandRequest(command="py -m unittest tests.test_agent_service -v", project_root=self.project)
+        )
+        motor_decision = policy.decide(
+            AgentCommandRequest(command="py -m motor doctor --project . --json", project_root=self.project)
+        )
+
+        self.assertTrue(unittest_decision.allowed)
+        self.assertEqual(unittest_decision.profile, "python_tests")
+        self.assertTrue(motor_decision.allowed)
+        self.assertEqual(motor_decision.profile, "motor_cli_read")
+
+        blocked = [
+            "py -c print(1)",
+            "python -c print(1)",
+            "powershell Get-ChildItem",
+            "cmd /c dir",
+            "bash -lc ls",
+            "git reset --hard",
+            "git clean -fd",
+            "git add .",
+            "git commit -m x",
+            "rm -rf tmp",
+            "del /s tmp",
+            "Remove-Item tmp",
+            "py -m motor doctor --project . --json | more",
+            "py -m motor doctor --project . --json > out.txt",
+            "py -m motor doctor --project . --json && echo ok",
+            "py -m motor doctor --project %USERPROFILE% --json",
+            "py -m motor doctor --project Claude Code --json",
+        ]
+        for command in blocked:
+            with self.subTest(command=command):
+                self.assertFalse(policy.decide(AgentCommandRequest(command=command, project_root=self.project)).allowed)
+
+    def test_confirm_actions_creates_pending_run_command_for_allowed_profile(self) -> None:
+        service = AgentSessionService(project_root=self.project)
+        session = service.create_session(permission_mode=AgentPermissionMode.CONFIRM_ACTIONS.value)
+
+        updated = service.send_message(session["session_id"], "run py -m motor --help")
+
+        pending = [item for item in updated["pending_actions"] if item["status"] == AgentActionStatus.PENDING.value]
+        self.assertEqual(len(pending), 1)
+        self.assertIn('"profile": "motor_cli_read"', pending[0]["preview"])
+        self.assertIn('"argv"', pending[0]["preview"])
+
+    def test_full_access_does_not_bypass_run_command_policy(self) -> None:
+        service = AgentSessionService(project_root=self.project)
+        session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value)
+
+        updated = service.send_message(session["session_id"], "run powershell Get-ChildItem")
+
+        tool_messages = [message for message in updated["messages"] if message["role"] == "tool"]
+        self.assertFalse(tool_messages[-1]["tool_result"]["success"])
+        self.assertIn("Blocked executable", tool_messages[-1]["tool_result"]["error"])
+
+    def test_provider_metadata_marks_fake_as_offline_test_only(self) -> None:
+        metadata = FakeLLMProvider.metadata.to_dict()
+
+        self.assertEqual(metadata["provider_kind"], "test")
+        self.assertTrue(metadata["offline"])
+        self.assertTrue(metadata["test_only"])
+
+    def test_provider_resolver_reports_unknown_provider_explicitly(self) -> None:
+        resolver = AgentProviderResolver([FakeLLMProvider()])
+
+        with self.assertRaisesRegex(ValueError, "Available providers: fake"):
+            resolver.resolve("missing")
+
+    def test_default_provider_list_includes_openai_as_online_credentialed_provider(self) -> None:
+        service = AgentSessionService(project_root=self.project)
+
+        providers = {provider["provider_id"]: provider for provider in service.list_providers()}
+
+        self.assertIn("fake", providers)
+        self.assertIn("openai", providers)
+        self.assertIn("opencode-go", providers)
+        self.assertEqual(providers["openai"]["provider_kind"], "online")
+        self.assertTrue(providers["openai"]["online"])
+        self.assertTrue(providers["openai"]["requires_credentials"])
+        self.assertTrue(providers["openai"]["supports_streaming"])
+        self.assertTrue(providers["opencode-go"]["login_supported"])
+        self.assertEqual(providers["opencode-go"]["auth_status"], "missing")
+
+    def test_openai_provider_fails_without_credentials(self) -> None:
+        with patch.dict(os.environ, {"OPENAI_API_KEY": ""}, clear=False):
+            service = AgentSessionService(project_root=self.project)
+            with self.assertRaisesRegex(RuntimeError, "OPENAI_API_KEY"):
+                service.create_session(provider_id="openai")
+
+    def test_opencode_go_provider_requires_login(self) -> None:
+        service = AgentSessionService(project_root=self.project, global_state_dir=self.root / "global")
+
+        with self.assertRaisesRegex(RuntimeError, "requires a configured API key"):
+            service.create_session(provider_id="opencode-go")
+
+    def test_login_command_does_not_write_transcript_and_requests_secure_input(self) -> None:
+        service = AgentSessionService(project_root=self.project, global_state_dir=self.root / "global")
+        session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value)
+
+        updated = service.send_message(session["session_id"], "/login opencode-go")
+
+        self.assertEqual(updated["messages"], [])
+        self.assertEqual(updated["command_result"]["action"], "open_login")
+        self.assertEqual(updated["command_result"]["provider_id"], "opencode-go")
+
+    def test_chat_rejects_api_key_like_input_without_persisting_it(self) -> None:
+        service = AgentSessionService(project_root=self.project, global_state_dir=self.root / "global")
+        session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value)
+        secret = "sk-testsecretvalue1234567890"
+
+        with self.assertRaisesRegex(RuntimeError, "Secrets are not accepted"):
+            service.send_message(session["session_id"], secret)
+
+        stored = service.get_session(session["session_id"])
+        self.assertNotIn(secret, json.dumps(stored))
+
+    def test_login_stores_secret_outside_project_and_sets_default_provider(self) -> None:
+        service = AgentSessionService(project_root=self.project, global_state_dir=self.root / "global")
+        if not service.credential_store.supports_local_secrets():
+            self.skipTest("Local secret storage requires Windows DPAPI")
+        secret = "sk-opencodego-test-secret-123456789"
+
+        result = service.login_provider("opencode-go", api_key=secret)
+        status = service.get_provider_status("opencode-go")
+
+        self.assertEqual(result["provider"]["auth_status"], "configured")
+        self.assertEqual(status["credential_source"], "user_local")
+        self.assertEqual(service.login_service.api_key("opencode-go"), secret)
+        self.assertFalse((self.project / ".motor" / "agent_state" / "agent_credentials.json").exists())
+        self.assertNotIn(secret, (self.root / "global" / "agent_credentials.json").read_text(encoding="utf-8"))
+        default_status = service.get_provider_status()
+        self.assertEqual(default_status["default_provider_id"], "opencode-go")
+
+    def test_logout_removes_secret_and_resets_default_provider(self) -> None:
+        service = AgentSessionService(project_root=self.project, global_state_dir=self.root / "global")
+        if not service.credential_store.supports_local_secrets():
+            self.skipTest("Local secret storage requires Windows DPAPI")
+        service.login_provider("opencode-go", api_key="sk-opencodego-test-secret-123456789")
+
+        result = service.logout_provider("opencode-go")
+
+        self.assertEqual(result["provider"]["auth_status"], "missing")
+        self.assertEqual(service.login_service.api_key("opencode-go"), "")
+        self.assertEqual(service.get_provider_status()["default_provider_id"], "fake")
+
+    def test_openai_compatible_provider_maps_chat_tool_calls_and_usage(self) -> None:
+        class StaticChatProvider(OpenAICompatibleChatProvider):
+            def _post_json(self, payload):
+                return {
+                    "model": payload["model"],
+                    "choices": [
+                        {
+                            "message": {
+                                "role": "assistant",
+                                "content": "need file",
+                                "tool_calls": [
+                                    {
+                                        "id": "call-1",
+                                        "type": "function",
+                                        "function": {"name": "read_file", "arguments": "{\"path\":\"project.json\"}"},
+                                    }
+                                ],
+                            }
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+                }
+
+        provider = StaticChatProvider(
+            provider_id="chat-test",
+            base_url="https://example.invalid/v1/chat/completions",
+            default_model="chat-model",
+            api_key="sk-test",
+        )
+
+        response = provider.run_turn(
+            AgentProviderRequest("session", "turn", [], [{"name": "read_file", "description": ""}]),
+            AgentRuntimeConfig(provider_id="chat-test", model="chat-model"),
+        )
+
+        self.assertEqual(response.provider_id, "chat-test")
+        self.assertEqual(response.tool_calls[0].tool_name, "read_file")
+        self.assertEqual(response.tool_calls[0].args["path"], "project.json")
+        self.assertEqual(response.usage["total_tokens"], 5)
+
+    def test_replay_provider_runs_deterministic_multi_turn_contract(self) -> None:
+        (self.project / "notes.txt").write_text("replay context", encoding="utf-8")
+        provider = ReplayLLMProvider(
+            [
+                AgentProviderResponse.from_text(
+                    "scripted read",
+                    [AgentToolCall("tool-replay-read", "read_file", {"path": "notes.txt"})],
+                    stop_reason="tool_use",
+                    provider_id="replay",
+                ),
+                AgentProviderResponse.from_text("scripted final", provider_id="replay"),
+            ]
+        )
+        service = AgentSessionService(project_root=self.project, provider=provider)
+        session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value, provider_id="replay")
+
+        updated = service.send_message(session["session_id"], "ignored")
+
+        roles = [message["role"] for message in updated["messages"]]
+        self.assertEqual(roles, ["user", "assistant", "tool", "assistant"])
+        self.assertEqual(updated["messages"][-1]["content"], "scripted final")
+        self.assertEqual(updated["provider_metadata"]["provider_kind"], "test")
+
+    def test_streaming_replay_provider_records_delta_events_and_final_message(self) -> None:
+        provider = ReplayLLMProvider(
+            [AgentProviderResponse.from_text("streamed final", provider_id="replay")],
+            streaming=True,
+        )
+        service = AgentSessionService(project_root=self.project, provider=provider)
+        session = service.create_session(
+            permission_mode=AgentPermissionMode.FULL_ACCESS.value,
+            provider_id="replay",
+            stream=True,
+        )
+
+        updated = service.send_message(session["session_id"], "stream")
+
+        self.assertEqual(updated["messages"][-1]["content"], "streamed final")
+        event_kinds = [event["kind"] for event in updated["events"]]
+        self.assertIn("provider_stream_started", event_kinds)
+        self.assertIn("assistant_delta", event_kinds)
+        self.assertIn("provider_stream_completed", event_kinds)
+
+    def test_usage_records_are_persisted_when_provider_returns_usage(self) -> None:
+        provider = ReplayLLMProvider(
+            [
+                AgentProviderResponse(
+                    [AgentContentBlock.text_block("usage final")],
+                    provider_id="replay",
+                    model="replay-model",
+                    usage={"input_tokens": 3, "output_tokens": 4, "total_tokens": 7},
+                )
+            ]
+        )
+        service = AgentSessionService(project_root=self.project, provider=provider)
+        session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value, provider_id="replay")
+
+        updated = service.send_message(session["session_id"], "usage")
+        usage = service.get_usage(session["session_id"])
+
+        self.assertEqual(len(updated["usage_records"]), 1)
+        self.assertEqual(usage["totals"]["input_tokens"], 3)
+        self.assertEqual(usage["totals"]["output_tokens"], 4)
+        self.assertEqual(usage["totals"]["total_tokens"], 7)
+        self.assertEqual(usage["totals"]["status"], "usage_recorded_cost_unknown")
+
+    def test_compact_slash_command_stores_memory_without_protected_paths(self) -> None:
+        service = AgentSessionService(project_root=self.project)
+        session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value)
+
+        for index in range(14):
+            service.send_message(session["session_id"], f"remember item {index} .git Claude Code")
+        compacted = service.send_message(session["session_id"], "/compact")
+
+        self.assertTrue(compacted["memory_summary"])
+        self.assertNotIn(".git", compacted["memory_summary"])
+        self.assertNotIn("Claude Code", compacted["memory_summary"])
+        self.assertTrue((self.project / ".motor" / "agent_state" / "memory" / f"{session['session_id']}.json").exists())
+
+    def test_corrupt_memory_file_reports_error_without_breaking_session(self) -> None:
+        service = AgentSessionService(project_root=self.project)
+        session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value)
+        memory_path = self.project / ".motor" / "agent_state" / "memory" / f"{session['session_id']}.json"
+        memory_path.write_text("{not-json", encoding="utf-8")
+
+        updated = service.send_message(session["session_id"], "/memory")
+
+        payload = json.loads(updated["messages"][-1]["content"])
+        self.assertEqual(payload["status"], "memory_error")
+        self.assertIn("corrupt", payload["memory"]["errors"][0].lower())
+        self.assertEqual(memory_path.read_text(encoding="utf-8"), "{not-json")
+
+    def test_full_access_run_command_uses_command_runner_audit(self) -> None:
+        service = AgentSessionService(project_root=self.project)
+        session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value)
+
+        updated = service.send_message(session["session_id"], "run py --version")
+
+        tool_messages = [message for message in updated["messages"] if message["role"] == "tool"]
+        self.assertTrue(tool_messages[-1]["tool_result"]["success"])
+        self.assertIn("command_runner", tool_messages[-1]["tool_result"]["data"])
+        self.assertTrue((self.project / ".motor" / "agent_state" / "command_audit.jsonl").exists())
+
+    def test_status_discloses_offline_test_provider(self) -> None:
+        service = AgentSessionService(project_root=self.project)
+        session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value)
+
+        updated = service.send_message(session["session_id"], "/status")
+
+        self.assertIn("kind=test", updated["messages"][-1]["content"])
+        self.assertIn("test_only=True", updated["messages"][-1]["content"])
+
+    def test_agent_editor_capability_does_not_promote_from_runtime_as_core_api(self) -> None:
+        capability = get_default_registry().get("agent:editor_panel")
+
+        self.assertIsNotNone(capability)
+        self.assertNotIn("EngineAPI.from_runtime", capability.api_methods)
+        self.assertIn("EditorLiveAgentEnginePort", capability.api_methods)
+
+    def test_legacy_session_migrates_to_v2_with_backup_and_event_log(self) -> None:
+        store = AgentSessionStore(self.project)
+        legacy_path = store.sessions_dir / "legacy.json"
+        legacy_path.write_text(
+            json.dumps(
+                {
+                    "session_id": "legacy",
+                    "permission_mode": "confirm_actions",
+                    "provider_id": "fake",
+                    "messages": [{"message_id": "msg-1", "role": "user", "content": "read project.json"}],
+                    "pending_actions": [],
+                    "events": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        session = store.load_session("legacy")
+
+        self.assertEqual(session.schema_version, 2)
+        self.assertTrue((store.sessions_dir / "legacy.legacy-v1.bak").exists())
+        self.assertTrue(session.messages[0].content_blocks)
+        audit = store.audit_path.read_text(encoding="utf-8")
+        self.assertIn("session_migrated", audit)
+
+    def test_legacy_pending_action_migrates_to_suspended_turn(self) -> None:
+        store = AgentSessionStore(self.project)
+        legacy_path = store.sessions_dir / "legacy-pending.json"
+        legacy_path.write_text(
+            json.dumps(
+                {
+                    "session_id": "legacy-pending",
+                    "permission_mode": "confirm_actions",
+                    "provider_id": "fake",
+                    "messages": [],
+                    "pending_actions": [
+                        {
+                            "action_id": "action-1",
+                            "tool_call": {
+                                "tool_call_id": "tool-1",
+                                "tool_name": "write_file",
+                                "args": {"path": "out.txt", "content": "x"},
+                            },
+                            "reason": "legacy approval",
+                            "preview": "preview",
+                            "status": "pending",
+                        }
+                    ],
+                    "events": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        session = store.load_session("legacy-pending")
+
+        self.assertIsNotNone(session.active_turn)
+        self.assertIsNotNone(session.suspended_turn)
+        self.assertEqual(session.active_turn.status, AgentTurnStatus.SUSPENDED)
+        self.assertEqual(session.suspended_turn.action_id, "action-1")
+        self.assertEqual(session.pending_actions[0].turn_id, session.suspended_turn.turn_id)
+
+    def test_corrupt_legacy_session_is_not_overwritten(self) -> None:
+        store = AgentSessionStore(self.project)
+        legacy_path = store.sessions_dir / "corrupt.json"
+        raw = "{not-json"
+        legacy_path.write_text(raw, encoding="utf-8")
+
+        with self.assertRaises(AgentSessionMigrationError):
+            store.load_session("corrupt")
+
+        self.assertEqual(legacy_path.read_text(encoding="utf-8"), raw)
+        self.assertFalse((store.sessions_dir / "corrupt.legacy-v1.bak").exists())
 
 
 if __name__ == "__main__":

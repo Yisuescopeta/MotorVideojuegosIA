@@ -82,6 +82,9 @@ class ProjectWorkspaceController:
             self._terminal_panel.set_project_service(service)
         if editor_layout is not None:
             editor_layout.terminal_panel = self._terminal_panel
+            agent_panel = getattr(editor_layout, "agent_panel", None)
+            if agent_panel is not None and hasattr(agent_panel, "set_project_service"):
+                agent_panel.set_project_service(service)
             editor_layout.set_recent_projects(service.list_launcher_projects())
             editor_layout.set_project_scene_entries(service.list_project_scenes() if service.has_project else [])
             if getattr(editor_layout, "flow_panel", None) is not None:

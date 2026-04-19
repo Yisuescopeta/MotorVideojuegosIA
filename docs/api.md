@@ -44,9 +44,10 @@ cambia la API publica; solo reduce acoplamiento interno para fases posteriores.
 
 `attach_runtime(...)` conserva firma y sigue siendo la ruta de integracion para
 inyectar un runtime/scene manager externos compatibles con ese contrato base.
-`EngineAPI.from_runtime(...)` crea una fachada sobre un runtime vivo del editor
-sin inicializar un segundo motor headless; se usa para tooling experimental como
-el panel Agent.
+`EngineAPI.from_runtime(...)` existe solo como helper `experimental/internal
+tooling` para adaptadores del editor que necesitan una fachada sobre runtime
+vivo sin inicializar un segundo motor headless. No es un constructor core
+estable ni debe usarse desde CLI o automatizaciones generales.
 
 ## Agente experimental
 
@@ -56,12 +57,16 @@ El agente nativo v2 es una superficie `experimental/tooling` para sesiones
 clean-room dentro del motor. Mantiene la API publica de v1, pero internamente
 usa un runtime iterativo `provider -> tool_use -> tool_result -> provider`:
 
-- `create_agent_session(permission_mode="confirm_actions", title="", provider_id="fake")`
+- `create_agent_session(permission_mode="confirm_actions", title="", provider_id="fake", model="", temperature=None, max_tokens=None, stream=False)`
 - `send_agent_message(session_id, message)`
 - `get_agent_session(session_id)`
 - `approve_agent_action(session_id, action_id, approved)`
 - `cancel_agent_session(session_id)`
 - `list_agent_tools()`
+- `list_agent_providers()`
+- `compact_agent_session(session_id)`
+- `get_agent_usage(session_id)`
+- `inspect_agent_session(session_id)`
 
 Modos de permiso:
 
@@ -73,6 +78,41 @@ Modos de permiso:
 El estado de sesiones y auditoria vive en `.motor/agent_state`.
 Las sesiones se guardan con `schema_version=2`, transcript serializable y log
 de eventos por sesion en `.motor/agent_state/events/`.
+Las sesiones legacy sin `schema_version` se migran de forma explicita al cargar:
+se crea backup `.legacy-v1.bak`, se valida el payload, se reconstruyen
+`content_blocks`/turnos suspendidos y se registra `session_migrated`. Si el
+JSON esta corrupto no se sobrescribe el archivo original.
+
+Provider:
+
+- `fake` es un provider determinista offline de pruebas, marcado como
+  `provider_kind=test`, `offline=True`, `test_only=True`.
+- `replay` permite tests de contrato multi-turn declarativos sin simular
+  inteligencia real.
+- `openai` es el primer provider online real de V3a; usa Responses API,
+  requiere `OPENAI_API_KEY` y no se usa como fallback silencioso.
+- Un `provider_id` desconocido falla con diagnostico explicito.
+- `stream=True` activa eventos `assistant_delta` y persistencia del mensaje final
+  cuando el provider soporta streaming.
+
+Shell tool:
+
+- `run_command` mantiene su nombre publico, pero ya no ejecuta shell generica.
+- Internamente normaliza a `argv` y usa `subprocess.run(..., shell=False)`.
+- Solo acepta perfiles `python_tests`, `motor_cli_read` y probes de lectura
+  estrechos; `full_access` no salta esta policy.
+- La ejecucion pasa por `AgentCommandRunner`, que confina cwd al proyecto, usa
+  env minimo, timeout, limite de output y auditoria local.
+- Pipes, redirecciones, chaining, shells, inline Python, comandos Git mutantes,
+  comandos destructivos y acceso a `Claude Code/` se bloquean antes de ejecutar.
+
+Memoria y coste:
+
+- `compact_agent_session(...)` y `/compact` generan resumen local sanitizado en
+  `.motor/agent_state/memory/`.
+- `get_agent_usage(...)` y `/cost` reportan tokens si el provider los devuelve.
+- El coste estimado permanece `unknown` si no hay precios configurados; no se
+  inventan importes.
 
 ## Forma de respuesta
 

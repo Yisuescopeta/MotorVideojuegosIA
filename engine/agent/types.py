@@ -37,6 +37,7 @@ class AgentActionStatus(StrEnum):
 
 class AgentEventKind(StrEnum):
     SESSION_CREATED = "session_created"
+    SESSION_MIGRATED = "session_migrated"
     TURN_STARTED = "turn_started"
     TURN_SUSPENDED = "turn_suspended"
     TURN_COMPLETED = "turn_completed"
@@ -45,6 +46,11 @@ class AgentEventKind(StrEnum):
     PROVIDER_STARTED = "provider_started"
     PROVIDER_COMPLETED = "provider_completed"
     PROVIDER_FAILED = "provider_failed"
+    PROVIDER_STREAM_STARTED = "provider_stream_started"
+    ASSISTANT_DELTA = "assistant_delta"
+    TOOL_USE_DELTA = "tool_use_delta"
+    PROVIDER_STREAM_COMPLETED = "provider_stream_completed"
+    PROVIDER_STREAM_FAILED = "provider_stream_failed"
     TOOL_CALLED = "tool_called"
     TOOL_RESULT_ADDED = "tool_result_added"
     ACTION_REQUESTED = "action_requested"
@@ -237,9 +243,72 @@ class AgentTurnState:
 class AgentRuntimeConfig:
     provider_id: str = "fake"
     max_iterations_per_turn: int = 8
+    model: str = ""
+    temperature: float | None = None
+    max_tokens: int | None = None
+    stream: bool = False
+    compaction_message_budget: int = 24
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+@dataclass(frozen=True)
+class AgentUsageRecord:
+    usage_id: str
+    provider_id: str
+    model: str = ""
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+    estimated_cost: float | None = None
+    currency: str = ""
+    status: str = "unknown"
+    created_at: str = field(default_factory=utc_now_iso)
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "usage_id": self.usage_id,
+            "provider_id": self.provider_id,
+            "model": self.model,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+            "estimated_cost": self.estimated_cost,
+            "currency": self.currency,
+            "status": self.status,
+            "created_at": self.created_at,
+            "raw": dict(self.raw),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AgentUsageRecord":
+        def _int_or_none(value: Any) -> int | None:
+            try:
+                return int(value) if value is not None else None
+            except (TypeError, ValueError):
+                return None
+
+        def _float_or_none(value: Any) -> float | None:
+            try:
+                return float(value) if value is not None else None
+            except (TypeError, ValueError):
+                return None
+
+        return cls(
+            usage_id=str(data.get("usage_id", "")) or new_id("agent-usage"),
+            provider_id=str(data.get("provider_id", "")),
+            model=str(data.get("model", "")),
+            input_tokens=_int_or_none(data.get("input_tokens")),
+            output_tokens=_int_or_none(data.get("output_tokens")),
+            total_tokens=_int_or_none(data.get("total_tokens")),
+            estimated_cost=_float_or_none(data.get("estimated_cost")),
+            currency=str(data.get("currency", "")),
+            status=str(data.get("status", "unknown")),
+            created_at=str(data.get("created_at", "")) or utc_now_iso(),
+            raw=dict(data.get("raw", {})) if isinstance(data.get("raw"), dict) else {},
+        )
 
 
 @dataclass
@@ -388,6 +457,9 @@ class AgentSession:
     active_turn: AgentTurnState | None = None
     suspended_turn: AgentSuspension | None = None
     runtime_config: AgentRuntimeConfig = field(default_factory=AgentRuntimeConfig)
+    provider_metadata: dict[str, Any] = field(default_factory=dict)
+    memory_summary: str = ""
+    usage_records: list[AgentUsageRecord] = field(default_factory=list)
     cancelled: bool = False
     schema_version: int = 2
 
@@ -406,6 +478,9 @@ class AgentSession:
             "active_turn": self.active_turn.to_dict() if self.active_turn is not None else None,
             "suspended_turn": self.suspended_turn.to_dict() if self.suspended_turn is not None else None,
             "runtime_config": self.runtime_config.to_dict(),
+            "provider_metadata": dict(self.provider_metadata),
+            "memory_summary": self.memory_summary,
+            "usage_records": [record.to_dict() for record in self.usage_records],
             "cancelled": self.cancelled,
         }
 
@@ -429,5 +504,10 @@ class AgentSession:
             runtime_config=AgentRuntimeConfig(**dict(data.get("runtime_config", {})))
             if isinstance(data.get("runtime_config"), dict)
             else AgentRuntimeConfig(),
+            provider_metadata=dict(data.get("provider_metadata", {})) if isinstance(data.get("provider_metadata"), dict) else {},
+            memory_summary=str(data.get("memory_summary", "")),
+            usage_records=[AgentUsageRecord.from_dict(item) for item in data.get("usage_records", [])]
+            if isinstance(data.get("usage_records"), list)
+            else [],
             cancelled=bool(data.get("cancelled", False)),
         )

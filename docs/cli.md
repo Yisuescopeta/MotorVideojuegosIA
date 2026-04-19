@@ -306,19 +306,57 @@ Estos comandos exponen el agente clean-room nativo del motor como herramienta
 experimental. Las sesiones se guardan en estado local del proyecto bajo
 `.motor/agent_state/`.
 
+### `motor agent providers list`
+
+Lista providers configurados y su metadata.
+
+```bash
+py -m motor agent providers list --project . --json
+```
+
+`fake` y `replay` son providers offline de prueba. `openai` es online, requiere
+`OPENAI_API_KEY` y no se usa como fallback silencioso.
+
 ### `motor agent session create`
 
-Crea una sesion de agente con proveedor fake determinista.
+Crea una sesion de agente. Por defecto usa proveedor fake determinista.
 
 ```bash
 py -m motor agent session create --project . --permission-mode confirm_actions --json
 py -m motor agent session create --project . --permission-mode full_access --title "Sesion local" --json
+py -m motor agent session create --project . --provider-id openai --model gpt-5 --stream --json
 ```
 
 Modos de permisos:
 
 - `confirm_actions` permite lecturas seguras y deja ediciones, shell y Git como acciones pendientes.
 - `full_access` autoejecuta acciones permitidas, manteniendo limites de ruta, auditoria y bloqueo de secretos evidentes.
+
+Opciones de provider:
+
+- `--provider-id`: `fake` por defecto; `openai` requiere `OPENAI_API_KEY`.
+- `--model`: modelo del provider.
+- `--temperature`, `--max-tokens`: limites opcionales del provider.
+- `--stream`: activa streaming si el provider lo soporta.
+
+### `motor agent session compact <session_id>`
+
+Compacta el transcript en memoria local sanitizada.
+
+```bash
+py -m motor agent session compact agent-session-id --project . --json
+```
+
+No compacta acciones pendientes sin conservar referencia; excluye rutas
+protegidas y secretos evidentes.
+
+### `motor agent session inspect <session_id>`
+
+Inspecciona una sesion sin mutarla.
+
+```bash
+py -m motor agent session inspect agent-session-id --project . --json
+```
 
 ### `motor agent message send <session_id> <message>`
 
@@ -337,6 +375,15 @@ Aprueba o rechaza una accion pendiente generada en modo `confirm_actions`.
 ```bash
 py -m motor agent action approve agent-session-id agent-action-id --project . --json
 py -m motor agent action approve agent-session-id agent-action-id --reject --project . --json
+```
+
+### `motor agent usage <session_id>`
+
+Muestra usage registrado por providers. El coste queda `unknown` si faltan
+tokens o tabla de precios.
+
+```bash
+py -m motor agent usage agent-session-id --project . --json
 ```
 
 ## Comandos del registry que aun no estan en la CLI

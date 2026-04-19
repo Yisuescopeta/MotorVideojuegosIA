@@ -30,6 +30,10 @@ class AgentPanel:
         self.has_focus = False
         self.status_text = "No active project"
         self.preview_action_id = ""
+        self.pending_login_provider = ""
+        self.login_input_text = ""
+        self.login_has_focus = False
+        self.live_port_connected = False
         self._binding_key: tuple[str, int, int] | None = None
         self.content_rect = rl.Rectangle(0, 0, 0, 0)
         self.input_rect = rl.Rectangle(0, 0, 0, 0)
@@ -57,6 +61,7 @@ class AgentPanel:
             self.agent_service = None
             self.session_id = ""
             self._binding_key = None
+            self.live_port_connected = False
             self.status_text = "No active project"
             return
         binding_key = (
@@ -66,6 +71,11 @@ class AgentPanel:
         )
         if self._binding_key == binding_key and self.agent_service is not None and self.session_id:
             return
+        if self.agent_service is not None and self.session_id:
+            try:
+                self.agent_service.cancel_session(self.session_id)
+            except Exception:
+                pass
         self._binding_key = binding_key
         engine_port = None
         if self.live_game is not None and self.live_scene_manager is not None:
@@ -74,16 +84,38 @@ class AgentPanel:
                 scene_manager=self.live_scene_manager,
                 project_service=self.project_service,
             )
+        self.live_port_connected = engine_port is not None
         self.agent_service = AgentSessionService(
             project_root=self.project_service.project_root_display,
             engine_port=engine_port,
         )
+        provider_id = "fake"
+        model = ""
+        stream = False
+        try:
+            status = self.agent_service.get_provider_status()
+            provider_id = str(status.get("default_provider_id", "fake") or "fake")
+            settings = dict(status.get("settings", {}))
+            model = str(settings.get("model", ""))
+            stream = bool(settings.get("stream", False))
+            if provider_id != "fake":
+                selected = self.agent_service.get_provider_status(provider_id)
+                if selected.get("auth_status") == "missing":
+                    provider_id = "fake"
+                    model = ""
+                    stream = False
+        except Exception:
+            provider_id = "fake"
         session = self.agent_service.create_session(
             permission_mode=self.permission_mode.value,
             title="Editor Agent",
+            provider_id=provider_id,
+            model=model,
+            stream=stream,
         )
         self.session_id = str(session["session_id"])
-        self.status_text = "Agent ready"
+        project_name = self.project_service.project_name if self.project_service.has_project else "project"
+        self.status_text = f"Agent ready: {project_name}"
 
     def set_agent_service(self, service: AgentSessionService | None) -> None:
         self.agent_service = service
@@ -113,8 +145,23 @@ class AgentPanel:
             self.has_focus = rl.check_collision_point_rec(mouse, self.input_rect)
         if not self.has_focus:
             return
-        if rl.is_key_pressed(rl.KEY_BACKSPACE) and self.input_text:
-            self.input_text = self.input_text[:-1]
+        target = "login" if self.pending_login_provider else "chat"
+        if rl.is_key_down(rl.KEY_LEFT_CONTROL) or rl.is_key_down(rl.KEY_RIGHT_CONTROL):
+            if rl.is_key_pressed(rl.KEY_C):
+                text_to_copy = self.login_input_text if target == "login" else self.input_text
+                rl.set_clipboard_text(text_to_copy)
+            elif rl.is_key_pressed(rl.KEY_V):
+                clipboard_content = rl.get_clipboard_text()
+                if clipboard_content:
+                    if target == "login" and len(self.login_input_text) + len(clipboard_content) <= 2000:
+                        self.login_input_text += clipboard_content
+                    elif target == "chat" and len(self.input_text) + len(clipboard_content) <= 1000:
+                        self.input_text += clipboard_content
+        if rl.is_key_pressed(rl.KEY_BACKSPACE):
+            if target == "login" and self.login_input_text:
+                self.login_input_text = self.login_input_text[:-1]
+            elif target == "chat" and self.input_text:
+                self.input_text = self.input_text[:-1]
         while True:
             codepoint = rl.get_char_pressed()
             if codepoint == 0:
@@ -125,8 +172,11 @@ class AgentPanel:
                 char = chr(codepoint)
             except ValueError:
                 continue
-            if char.isprintable() and len(self.input_text) < 1000:
-                self.input_text += char
+            if char.isprintable():
+                if target == "login" and len(self.login_input_text) < 2000:
+                    self.login_input_text += char
+                elif target == "chat" and len(self.input_text) < 1000:
+                    self.input_text += char
         if rl.is_key_pressed(rl.KEY_ENTER) or rl.is_key_pressed(rl.KEY_KP_ENTER):
             self._send_current_input()
 
@@ -168,8 +218,11 @@ class AgentPanel:
 
         rl.draw_rectangle_rec(self.input_rect, rl.Color(38, 38, 38, 255))
         rl.draw_rectangle_lines_ex(self.input_rect, 1, self.UNITY_BLUE if self.has_focus else self.UNITY_BORDER)
-        display = self.input_text if self.input_text else "Ask the engine agent..."
-        color = self.UNITY_TEXT if self.input_text else self.UNITY_TEXT_DIM
+        if self.pending_login_provider:
+            display = "*" * min(len(self.login_input_text), 160) if self.login_input_text else f"Paste API key for {self.pending_login_provider}..."
+        else:
+            display = self.input_text if self.input_text else "Ask the engine agent..."
+        color = self.UNITY_TEXT if (self.login_input_text if self.pending_login_provider else self.input_text) else self.UNITY_TEXT_DIM
         rl.draw_text(display[-160:], int(self.input_rect.x + 6), int(self.input_rect.y + 7), 10, color)
 
     def _draw_session_content(self) -> None:
@@ -189,6 +242,25 @@ class AgentPanel:
             return
 
         line_y = int(self.content_rect.y + 8)
+        if self.project_service is not None and self.project_service.has_project:
+            live_label = "live engine" if self.live_port_connected else "file tools only"
+            rl.draw_text(
+                f"Proyecto: {self.project_service.project_name} ({live_label})",
+                int(self.content_rect.x + 8),
+                line_y,
+                10,
+                self.UNITY_TEXT_DIM,
+            )
+            line_y += 16
+        if self.pending_login_provider:
+            rl.draw_text(
+                f"Secure login: {self.pending_login_provider}. Press Enter after pasting API key.",
+                int(self.content_rect.x + 8),
+                line_y,
+                10,
+                self.UNITY_WARN,
+            )
+            line_y += 16
         messages = session.get("messages", [])[-8:]
         for message in messages:
             role = str(message.get("role", ""))
@@ -196,9 +268,30 @@ class AgentPanel:
             rl.draw_text(f"{role}: {content}", int(self.content_rect.x + 8), line_y, 10, self.UNITY_TEXT)
             line_y += 16
 
-        provider_id = str(session.get("provider_id", "fake"))
-        rl.draw_text(f"Proveedor: {provider_id}", int(self.content_rect.x + 8), line_y, 10, self.UNITY_TEXT_DIM)
+        provider = dict(session.get("provider_metadata", {}))
+        provider_id = str(provider.get("provider_id", session.get("provider_id", "fake")))
+        provider_kind = str(provider.get("provider_kind", "unknown"))
+        auth_status = str(provider.get("auth_status", ""))
+        test_label = " test/offline" if provider.get("test_only") else ""
+        rl.draw_text(
+            f"Proveedor: {provider_id} ({provider_kind}{test_label}) auth={auth_status or 'n/a'}",
+            int(self.content_rect.x + 8),
+            line_y,
+            10,
+            self.UNITY_TEXT_DIM,
+        )
         line_y += 18
+        events = session.get("events", [])
+        if events:
+            last_event = str(events[-1].get("kind", ""))
+            if last_event in {"assistant_delta", "provider_stream_started", "provider_stream_completed", "provider_stream_failed"}:
+                rl.draw_text(f"Streaming: {last_event}", int(self.content_rect.x + 8), line_y, 10, self.UNITY_TEXT_DIM)
+                line_y += 16
+        usage = session.get("usage_records", [])
+        if usage:
+            total_tokens = sum(int(item.get("total_tokens") or 0) for item in usage if isinstance(item, dict))
+            rl.draw_text(f"Tokens: {total_tokens} (coste: unknown)", int(self.content_rect.x + 8), line_y, 10, self.UNITY_TEXT_DIM)
+            line_y += 16
 
         pending = [action for action in session.get("pending_actions", []) if action.get("status") == AgentActionStatus.PENDING.value]
         for action in pending[:3]:
@@ -226,6 +319,9 @@ class AgentPanel:
                     line_y += 14
 
     def _send_current_input(self) -> None:
+        if self.pending_login_provider:
+            self._complete_login()
+            return
         text = self.input_text.strip()
         if not text:
             return
@@ -237,7 +333,33 @@ class AgentPanel:
             self.status_text = "No active project"
             return
         try:
-            self.agent_service.send_message(self.session_id, text)
-            self.status_text = "Agent ready"
+            result = self.agent_service.send_message(self.session_id, text)
+            command_result = dict(result.get("command_result", {})) if isinstance(result, dict) else {}
+            if command_result.get("action") == "open_login":
+                self.pending_login_provider = str(command_result.get("provider_id", "opencode-go"))
+                self.login_input_text = ""
+                self.status_text = str(command_result.get("message", "Enter API key."))
+            elif command_result:
+                self.status_text = str(command_result.get("message", "Agent command processed"))
+            else:
+                self.status_text = "Agent ready"
         except Exception as exc:
             self.status_text = f"Agent error: {exc}"
+
+    def _complete_login(self) -> None:
+        if self.agent_service is None or not self.pending_login_provider:
+            return
+        api_key = self.login_input_text.strip()
+        provider_id = self.pending_login_provider
+        self.login_input_text = ""
+        self.pending_login_provider = ""
+        if not api_key:
+            self.status_text = "Login cancelled"
+            return
+        try:
+            result = self.agent_service.login_provider(provider_id, api_key=api_key)
+            self.status_text = str(result.get("message", "Provider configured"))
+            self._binding_key = None
+            self._restart_project_session()
+        except Exception as exc:
+            self.status_text = f"Login failed: {exc}"

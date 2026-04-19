@@ -919,7 +919,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Returns a session id and empty session state",
             ),
-            notes="Experimental/tooling API and CLI. Uses a deterministic fake provider by default.",
+            notes="Experimental/tooling API and CLI. Uses an offline deterministic test provider by default.",
             tags=["agent", "experimental", "tooling"],
         ))
 
@@ -965,7 +965,7 @@ class CapabilityRegistryBuilder:
 
         self._add(Capability(
             id="agent:runtime",
-            summary="Run the v2 clean-room agent turn loop with provider/tool-result continuation",
+            summary="Run the v3 clean-room agent turn loop with provider/tool-result continuation",
             mode="both",
             api_methods=["AgentAPI.send_agent_message", "AgentRuntime.continue_turn"],
             cli_command="motor agent message send <session> <message>",
@@ -979,8 +979,76 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="The session records provider events, tool results and a final assistant response",
             ),
-            notes="Experimental/tooling. Provider is fake/offline by default in v2.",
+            notes="Experimental/tooling. Fake/replay remain offline test providers; OpenAI is available as opt-in online provider requiring environment credentials.",
             tags=["agent", "experimental", "runtime"],
+        ))
+
+        self._add(Capability(
+            id="agent:providers:list",
+            summary="List configured agent providers and metadata",
+            mode="both",
+            api_methods=["AgentAPI.list_agent_providers"],
+            cli_command="motor agent providers list",
+            example=CapabilityExample(
+                description="List offline and online agent provider adapters",
+                api_calls=[
+                    {"method": "list_agent_providers", "args": {}},
+                ],
+                expected_outcome="Returns provider ids, kind, credential requirements, streaming and usage support",
+            ),
+            notes="OpenAI is listed as online and requires OPENAI_API_KEY; fake/replay are test-only.",
+            tags=["agent", "experimental", "providers"],
+        ))
+
+        self._add(Capability(
+            id="agent:session:compact",
+            summary="Compact an agent session transcript into local memory",
+            mode="both",
+            api_methods=["AgentAPI.compact_agent_session"],
+            cli_command="motor agent session compact <session>",
+            example=CapabilityExample(
+                description="Compact an agent session",
+                api_calls=[
+                    {"method": "compact_agent_session", "args": {"session_id": "agent-session-id"}},
+                ],
+                expected_outcome="Stores a sanitized session summary and keeps recent messages",
+            ),
+            notes="Experimental/tooling. Protected paths and obvious secrets are excluded from memory summaries.",
+            tags=["agent", "experimental", "memory"],
+        ))
+
+        self._add(Capability(
+            id="agent:session:inspect",
+            summary="Inspect an agent session without mutating it",
+            mode="both",
+            api_methods=["AgentAPI.inspect_agent_session"],
+            cli_command="motor agent session inspect <session>",
+            example=CapabilityExample(
+                description="Inspect session state and runtime config",
+                api_calls=[
+                    {"method": "inspect_agent_session", "args": {"session_id": "agent-session-id"}},
+                ],
+                expected_outcome="Returns schema, provider, pending actions, runtime config and usage counts",
+            ),
+            notes="Read-only diagnostic command for migrated or manually edited sessions.",
+            tags=["agent", "experimental", "diagnostics"],
+        ))
+
+        self._add(Capability(
+            id="agent:usage",
+            summary="Show token and cost usage recorded for an agent session",
+            mode="both",
+            api_methods=["AgentAPI.get_agent_usage"],
+            cli_command="motor agent usage <session>",
+            example=CapabilityExample(
+                description="Inspect session token usage",
+                api_calls=[
+                    {"method": "get_agent_usage", "args": {"session_id": "agent-session-id"}},
+                ],
+                expected_outcome="Returns usage records and totals; cost is unknown unless pricing is configured",
+            ),
+            notes="Cost is never invented. It remains unknown when provider usage or prices are unavailable.",
+            tags=["agent", "experimental", "usage"],
         ))
 
         self._add(Capability(
@@ -1024,7 +1092,7 @@ class CapabilityRegistryBuilder:
             id="agent:editor_panel",
             summary="Use the Agent panel next to Terminal with a live engine port",
             mode="both",
-            api_methods=["AgentPanel.set_live_engine", "EngineAPI.from_runtime"],
+            api_methods=["AgentPanel.set_live_engine", "EditorLiveAgentEnginePort"],
             cli_command="motor agent message send <session> /status",
             example=CapabilityExample(
                 description="Inspect agent status from the same session model used by the editor panel",
@@ -1033,7 +1101,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Returns session mode, pending actions and provider state",
             ),
-            notes="UI capability documented in the registry for AI discovery; the visual entrypoint is Window -> Agent.",
+            notes="UI capability documented for AI discovery; runtime-bound EngineAPI construction is internal editor tooling, not a core API.",
             tags=["agent", "experimental", "editor", "tooling"],
         ))
 

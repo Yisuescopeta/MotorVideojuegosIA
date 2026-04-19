@@ -235,10 +235,25 @@ del motor. Es `experimental/tooling`: no cambia `Scene`, `World`,
   con un `tool_result` de ejecucion o rechazo.
 - Las herramientas pasan por pipeline de validacion, preview, permiso,
   ejecucion y mapeo de resultado.
+- `run_command` esta endurecida por `AgentCommandPolicy` y `AgentCommandRunner`:
+  no usa shell, ejecuta `argv` con `shell=False`, confina cwd al proyecto, limita
+  entorno/output/timeout y conserva la misma policy en `confirm_actions` y
+  `full_access`.
+- `FakeLLMProvider` y `ReplayLLMProvider` son providers offline de prueba con
+  metadata explicita (`provider_kind=test`, `test_only=True`); `OpenAIProvider`
+  es el primer adapter online real y exige credenciales por entorno.
+- El runtime soporta eventos de streaming (`assistant_delta` y lifecycle de
+  provider) y persiste el mensaje final reconstruido.
+- `AgentMemoryStore` y `AgentCompactionService` guardan resumen local sanitizado;
+  `AgentUsageRecord` conserva usage de provider con coste `unknown` si no hay
+  precios configurados.
 - Las herramientas de authoring del motor usan un puerto de engine: `EngineAPI`
   en API/CLI y un adaptador vivo del editor para el panel visual.
+- La construccion `EngineAPI` ligada a runtime vivo vive en tooling interno del
+  editor; no se promociona como constructor core estable.
 - Los modos de permiso iniciales son `confirm_actions` y `full_access`.
-- El estado versionado y la auditoria local viven bajo `.motor/agent_state`.
+- El estado versionado y la auditoria local viven bajo `.motor/agent_state`; las
+  sesiones legacy se migran con backup, validacion y evento `session_migrated`.
 - `AgentPanel` monta una interfaz simple en el panel inferior del editor, junto
   a `Terminal`.
 

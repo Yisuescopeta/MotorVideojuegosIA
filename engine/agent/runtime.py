@@ -19,6 +19,7 @@ from engine.agent.types import (
     AgentSuspension,
     AgentToolCall,
     AgentToolResult,
+    AgentUsageRecord,
     AgentTurnState,
     AgentTurnStatus,
     new_id,
@@ -75,6 +76,7 @@ class AgentRuntime:
             turn.status = AgentTurnStatus.RUNNING
             turn.suspended_action_id = ""
         provider = self.provider_resolver.resolve(session.provider_id)
+        provider_metadata = self.provider_resolver.metadata_for(provider.provider_id).to_dict()
 
         while not session.cancelled:
             if turn.iteration >= turn.max_iterations:
@@ -103,10 +105,19 @@ class AgentRuntime:
             self.append_event(
                 session,
                 AgentEventKind.PROVIDER_STARTED,
-                {"turn_id": turn.turn_id, "provider_id": provider.provider_id, "iteration": turn.iteration},
+                {
+                    "turn_id": turn.turn_id,
+                    "provider_id": provider.provider_id,
+                    "iteration": turn.iteration,
+                    "provider": provider_metadata,
+                },
             )
             try:
-                response = provider.run_turn(request, self._runtime_config(session, provider))
+                runtime_config = self._runtime_config(session, provider)
+                if runtime_config.stream and bool(provider_metadata.get("supports_streaming")) and hasattr(provider, "stream_turn"):
+                    response = self._run_streaming_provider(session, turn, provider, request, runtime_config)
+                else:
+                    response = provider.run_turn(request, runtime_config)
             except Exception as exc:
                 turn.status = AgentTurnStatus.FAILED
                 turn.updated_at = utc_now_iso()
@@ -128,6 +139,7 @@ class AgentRuntime:
                     "tool_call_count": len(response.tool_calls),
                 },
             )
+            self._record_usage(session, response)
             self.append_event(
                 session,
                 AgentEventKind.MESSAGE_ADDED,
@@ -244,6 +256,52 @@ class AgentRuntime:
             self._append_tool_result_message(session, result, turn.turn_id)
         return False
 
+    def _run_streaming_provider(
+        self,
+        session: AgentSession,
+        turn: AgentTurnState,
+        provider: LLMProvider,
+        request: AgentProviderRequest,
+        config: AgentRuntimeConfig,
+    ):
+        self.append_event(
+            session,
+            AgentEventKind.PROVIDER_STREAM_STARTED,
+            {"turn_id": turn.turn_id, "provider_id": provider.provider_id, "iteration": turn.iteration},
+        )
+        final_response = None
+        try:
+            stream = getattr(provider, "stream_turn")(request, config)
+            for event in stream:
+                kind = str(getattr(event, "kind", ""))
+                if kind == "text_delta":
+                    self.append_event(session, AgentEventKind.ASSISTANT_DELTA, {"turn_id": turn.turn_id, "delta": getattr(event, "delta", "")})
+                elif kind == "tool_use_delta":
+                    self.append_event(session, AgentEventKind.TOOL_USE_DELTA, {"turn_id": turn.turn_id, **dict(getattr(event, "data", {}))})
+                elif kind == "completed":
+                    final_response = getattr(event, "response", None)
+                elif kind == "failed":
+                    self.append_event(
+                        session,
+                        AgentEventKind.PROVIDER_STREAM_FAILED,
+                        {"turn_id": turn.turn_id, **dict(getattr(event, "data", {}))},
+                    )
+            if final_response is None:
+                raise RuntimeError("Streaming provider completed without a final response.")
+            self.append_event(
+                session,
+                AgentEventKind.PROVIDER_STREAM_COMPLETED,
+                {"turn_id": turn.turn_id, "provider_id": provider.provider_id},
+            )
+            return final_response
+        except Exception as exc:
+            self.append_event(
+                session,
+                AgentEventKind.PROVIDER_STREAM_FAILED,
+                {"turn_id": turn.turn_id, "error": str(exc)},
+            )
+            raise
+
     def _append_tool_result_message(self, session: AgentSession, result: AgentToolResult, turn_id: str) -> None:
         session.messages.append(
             AgentMessage(
@@ -281,6 +339,41 @@ class AgentRuntime:
             tool_calls=list(calls),
             content_blocks=list(blocks),
         )
+
+    def _record_usage(self, session: AgentSession, response) -> None:
+        usage = dict(getattr(response, "usage", {})) if isinstance(getattr(response, "usage", {}), dict) else {}
+        if not usage:
+            return
+        input_tokens = usage.get("input_tokens", usage.get("prompt_tokens"))
+        output_tokens = usage.get("output_tokens", usage.get("completion_tokens"))
+        total_tokens = usage.get("total_tokens")
+        try:
+            input_value = int(input_tokens) if input_tokens is not None else None
+        except (TypeError, ValueError):
+            input_value = None
+        try:
+            output_value = int(output_tokens) if output_tokens is not None else None
+        except (TypeError, ValueError):
+            output_value = None
+        try:
+            total_value = int(total_tokens) if total_tokens is not None else None
+        except (TypeError, ValueError):
+            total_value = None
+        if total_value is None and (input_value is not None or output_value is not None):
+            total_value = int(input_value or 0) + int(output_value or 0)
+        record = AgentUsageRecord(
+            usage_id=new_id("agent-usage"),
+            provider_id=response.provider_id,
+            model=str(getattr(response, "model", "")),
+            input_tokens=input_value,
+            output_tokens=output_value,
+            total_tokens=total_value,
+            estimated_cost=None,
+            currency="",
+            status="unknown",
+            raw=usage,
+        )
+        session.usage_records.append(record)
 
     def _runtime_config(self, session: AgentSession, provider: LLMProvider) -> AgentRuntimeConfig:
         config = session.runtime_config
