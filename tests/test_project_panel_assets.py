@@ -149,6 +149,19 @@ class ProjectPanelAssetTests(unittest.TestCase):
 
 
 class ProjectPanelSourceRegressionTests(unittest.TestCase):
+    def test_project_panel_accepts_service_without_loaded_project(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project_service = ProjectService(root, auto_ensure=False)
+            panel = ProjectPanel(root.as_posix())
+
+            panel.set_project_service(project_service)
+
+            self.assertIs(panel.project_service, project_service)
+            self.assertIsNone(panel.asset_service)
+            self.assertEqual(panel.root_path, project_service.editor_root.as_posix())
+            self.assertFalse(project_service.has_project)
+
     def test_project_panel_does_not_reference_modal_or_private_runtime_hooks(self) -> None:
         source = Path("engine/editor/project_panel.py").read_text(encoding="utf-8")
         forbidden_tokens = (

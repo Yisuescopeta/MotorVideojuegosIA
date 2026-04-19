@@ -78,9 +78,13 @@ class ProjectPanel:
 
     def set_project_service(self, project_service: ProjectService) -> None:
         self.project_service = project_service
-        self.asset_service = AssetService(project_service)
-        self.asset_service.refresh_catalog()
-        self.root_path = project_service.project_root_display.as_posix()
+        self.asset_service = None
+        if project_service.has_project:
+            self.asset_service = AssetService(project_service)
+            self.asset_service.refresh_catalog()
+            self.root_path = project_service.project_root_display.as_posix()
+        else:
+            self.root_path = project_service.editor_root.as_posix()
         self.current_path = self.root_path
         self.selected_file = None
         self.request_open_sprite_editor_for = None
