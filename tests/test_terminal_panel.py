@@ -5,7 +5,9 @@ from unittest.mock import Mock, patch
 
 import pyray as rl
 
+from engine.agent import AgentSessionService
 from engine.core.game import Game
+from engine.editor.agent_panel import AgentPanel
 from engine.editor.editor_layout import EditorLayout
 from engine.editor.terminal_panel import TerminalPanel, _TerminalScreen
 from engine.levels.component_registry import create_default_registry
@@ -444,6 +446,48 @@ class TerminalPanelTests(unittest.TestCase):
         self.assertEqual(backend.writes[0], "\x1b[4;316;960t")
 
 
+class AgentPanelTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp_dir = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._temp_dir.name)
+        self.global_state_dir = self.workspace / "global_state"
+        self.project_service = ProjectService(self.workspace / "AgentPanelProject", global_state_dir=self.global_state_dir)
+
+    def tearDown(self) -> None:
+        self._temp_dir.cleanup()
+
+    def test_agent_panel_launches_codex_login_when_openai_login_is_requested(self) -> None:
+        panel = AgentPanel()
+        service = AgentSessionService(project_root=self.project_service.project_root_display, global_state_dir=self.global_state_dir)
+        panel.set_agent_service(service)
+
+        with patch.object(service.login_service.codex_auth_store, "_resolve_cli_command", return_value="codex"):
+            with patch.object(panel, "_launch_codex_login") as mock_launch:
+                panel._send_text("/login openai")
+
+        mock_launch.assert_called_once()
+        self.assertIn("Codex login", panel.status_text)
+
+    def test_agent_panel_rebinds_when_default_provider_becomes_runtime_ready(self) -> None:
+        panel = AgentPanel()
+        service = AgentSessionService(project_root=self.project_service.project_root_display, global_state_dir=self.global_state_dir)
+        panel.set_agent_service(service)
+
+        with patch.object(service, "get_session", return_value={"provider_id": "fake"}):
+            with patch.object(
+                service,
+                "get_provider_status",
+                side_effect=[
+                    {"default_provider_id": "openai"},
+                    {"runtime_ready": True},
+                ],
+            ):
+                with patch.object(panel, "_restart_project_session") as mock_restart:
+                    panel._maybe_rebind_authenticated_provider()
+
+        mock_restart.assert_called_once()
+
+
 class GameTerminalIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:
         self._temp_dir = tempfile.TemporaryDirectory()
@@ -476,6 +520,42 @@ class GameTerminalIntegrationTests(unittest.TestCase):
         self.assertIsNotNone(self.game.agent_panel.agent_service)
         self.assertIsNotNone(self.game.agent_panel.agent_service.engine_port)
         self.assertIs(self.game.editor_layout.agent_panel, self.game.agent_panel)
+
+    def test_set_project_service_reuses_agent_panel_binding_without_redundant_restarts(self) -> None:
+        session_id_inicial = self.game.agent_panel.session_id
+
+        with patch.object(
+            self.game.agent_panel,
+            "_restart_project_session",
+            wraps=self.game.agent_panel._restart_project_session,
+        ) as mock_restart:
+            self.game.set_project_service(self.project_service)
+
+        self.assertLessEqual(mock_restart.call_count, 1)
+        self.assertEqual(self.game.agent_panel.session_id, session_id_inicial)
+
+    def test_open_project_rebinds_agent_panel_to_active_project_and_clears_no_active_project_status(self) -> None:
+        result = self.game.open_project(self.second_project_root.as_posix())
+
+        self.assertTrue(result)
+        self.assertIsNotNone(self.game.agent_panel.agent_service)
+        self.assertTrue(self.game.agent_panel.session_id)
+        self.assertEqual(self.game.agent_panel.agent_service.project_root, self.second_project_root.resolve())
+        self.assertTrue(self.game.agent_panel.live_port_connected)
+        self.assertNotEqual(self.game.agent_panel.status_text, "No active project")
+        self.assertIn("GameProjectTwo", self.game.agent_panel.status_text)
+
+    def test_open_project_cancels_previous_agent_session_before_binding_new_project(self) -> None:
+        servicio_anterior = self.game.agent_panel.agent_service
+        session_id_anterior = self.game.agent_panel.session_id
+
+        result = self.game.open_project(self.second_project_root.as_posix())
+
+        self.assertTrue(result)
+        self.assertIsNotNone(servicio_anterior)
+        self.assertTrue(servicio_anterior.get_session(session_id_anterior)["cancelled"])
+        self.assertNotEqual(self.game.agent_panel.session_id, session_id_anterior)
+        self.assertEqual(self.game.agent_panel.agent_service.project_root, self.second_project_root.resolve())
 
     def test_agent_panel_live_engine_port_serves_engine_tools(self) -> None:
         self.game.set_project_service(self.project_service)

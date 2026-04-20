@@ -22,7 +22,7 @@ from engine.agent import (
     ReplayLLMProvider,
 )
 from engine.agent.store import AgentSessionStore
-from engine.agent.types import AgentContentBlock, AgentToolCall, AgentTurnStatus, new_id
+from engine.agent.types import AgentContentBlock, AgentRuntimeConfig, AgentToolCall, AgentTurnStatus, new_id
 from engine.ai import get_default_registry
 from engine.api import EngineAPI
 
@@ -60,8 +60,19 @@ class AgentSessionServiceTests(unittest.TestCase):
         self._temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self._temp_dir.name)
         self.project = _make_project(self.root)
+        self._env_patch = patch.dict(
+            os.environ,
+            {
+                "OPENAI_API_KEY": "",
+                "OPENCODE_GO_API_KEY": "",
+                "CODEX_HOME": "",
+            },
+            clear=False,
+        )
+        self._env_patch.start()
 
     def tearDown(self) -> None:
+        self._env_patch.stop()
         self._temp_dir.cleanup()
 
     def test_confirm_actions_creates_pending_write_and_approval_applies(self) -> None:
@@ -298,10 +309,35 @@ class AgentSessionServiceTests(unittest.TestCase):
         self.assertTrue(providers["opencode-go"]["login_supported"])
         self.assertEqual(providers["opencode-go"]["auth_status"], "missing")
 
+    def test_openai_status_reads_codex_managed_auth_from_auth_json(self) -> None:
+        global_state_dir = self.root / "global"
+        auth_path = global_state_dir / "codex" / "auth.json"
+        auth_path.parent.mkdir(parents=True, exist_ok=True)
+        auth_path.write_text(
+            json.dumps(
+                {
+                    "auth_mode": "chatgpt",
+                    "OPENAI_API_KEY": "sk-codex-bridge-test-1234567890",
+                    "planType": "plus",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        service = AgentSessionService(project_root=self.project, global_state_dir=global_state_dir)
+        status = service.get_provider_status("openai")
+
+        self.assertEqual(status["auth_status"], "configured")
+        self.assertEqual(status["credential_source"], "codex_chatgpt")
+        self.assertEqual(status["auth_method"], "chatgpt")
+        self.assertTrue(status["runtime_ready"])
+        self.assertEqual(status["plan_type"], "plus")
+        self.assertEqual(service.login_service.api_key("openai"), "sk-codex-bridge-test-1234567890")
+
     def test_openai_provider_fails_without_credentials(self) -> None:
         with patch.dict(os.environ, {"OPENAI_API_KEY": ""}, clear=False):
-            service = AgentSessionService(project_root=self.project)
-            with self.assertRaisesRegex(RuntimeError, "OPENAI_API_KEY"):
+            service = AgentSessionService(project_root=self.project, global_state_dir=self.root / "global")
+            with self.assertRaisesRegex(RuntimeError, "configured credential"):
                 service.create_session(provider_id="openai")
 
     def test_opencode_go_provider_requires_login(self) -> None:
@@ -319,6 +355,30 @@ class AgentSessionServiceTests(unittest.TestCase):
         self.assertEqual(updated["messages"], [])
         self.assertEqual(updated["command_result"]["action"], "open_login")
         self.assertEqual(updated["command_result"]["provider_id"], "opencode-go")
+
+    def test_openai_login_command_returns_codex_launch_payload(self) -> None:
+        service = AgentSessionService(project_root=self.project, global_state_dir=self.root / "global")
+        session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value)
+
+        with patch.object(service.login_service.codex_auth_store, "_resolve_cli_command", return_value="codex"):
+            updated = service.send_message(session["session_id"], "/login openai")
+
+        self.assertEqual(updated["messages"], [])
+        self.assertEqual(updated["command_result"]["action"], "launch_codex_login")
+        self.assertEqual(updated["command_result"]["provider_id"], "openai")
+        self.assertEqual(updated["command_result"]["command"], ["codex", "login"])
+        self.assertEqual(service.get_provider_status()["default_provider_id"], "openai")
+
+    def test_openai_device_login_command_returns_device_auth_payload(self) -> None:
+        service = AgentSessionService(project_root=self.project, global_state_dir=self.root / "global")
+        session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value)
+
+        with patch.object(service.login_service.codex_auth_store, "_resolve_cli_command", return_value="codex"):
+            updated = service.send_message(session["session_id"], "/login openai device")
+
+        self.assertEqual(updated["command_result"]["action"], "launch_codex_login")
+        self.assertTrue(updated["command_result"]["device_auth"])
+        self.assertEqual(updated["command_result"]["command"], ["codex", "login", "--device-auth"])
 
     def test_chat_rejects_api_key_like_input_without_persisting_it(self) -> None:
         service = AgentSessionService(project_root=self.project, global_state_dir=self.root / "global")
@@ -348,6 +408,33 @@ class AgentSessionServiceTests(unittest.TestCase):
         default_status = service.get_provider_status()
         self.assertEqual(default_status["default_provider_id"], "opencode-go")
 
+    def test_codex_managed_login_sets_default_openai_when_bridge_key_is_available(self) -> None:
+        global_state_dir = self.root / "global"
+        service = AgentSessionService(project_root=self.project, global_state_dir=global_state_dir)
+        auth_path = global_state_dir / "codex" / "auth.json"
+
+        def _fake_run_login(*args, **kwargs):
+            auth_path.parent.mkdir(parents=True, exist_ok=True)
+            auth_path.write_text(
+                json.dumps(
+                    {
+                        "auth_mode": "chatgpt",
+                        "OPENAI_API_KEY": "sk-managed-openai-test-1234567890",
+                        "planType": "pro",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return service.login_service.codex_auth_store.load_snapshot()
+
+        with patch.object(service.login_service.codex_auth_store, "run_login", side_effect=_fake_run_login):
+            result = service.login_provider("openai", api_key="", credential_source="codex_chatgpt")
+
+        self.assertEqual(result["provider"]["credential_source"], "codex_chatgpt")
+        self.assertTrue(result["provider"]["runtime_ready"])
+        self.assertEqual(result["settings"]["default_provider_id"], "openai")
+        self.assertEqual(service.login_service.api_key("openai"), "sk-managed-openai-test-1234567890")
+
     def test_logout_removes_secret_and_resets_default_provider(self) -> None:
         service = AgentSessionService(project_root=self.project, global_state_dir=self.root / "global")
         if not service.credential_store.supports_local_secrets():
@@ -359,6 +446,28 @@ class AgentSessionServiceTests(unittest.TestCase):
         self.assertEqual(result["provider"]["auth_status"], "missing")
         self.assertEqual(service.login_service.api_key("opencode-go"), "")
         self.assertEqual(service.get_provider_status()["default_provider_id"], "fake")
+
+    def test_logout_openai_uses_codex_logout_when_auth_is_codex_managed(self) -> None:
+        global_state_dir = self.root / "global"
+        auth_path = global_state_dir / "codex" / "auth.json"
+        auth_path.parent.mkdir(parents=True, exist_ok=True)
+        auth_path.write_text(
+            json.dumps(
+                {
+                    "auth_mode": "chatgpt",
+                    "OPENAI_API_KEY": "sk-codex-managed-logout-1234567890",
+                }
+            ),
+            encoding="utf-8",
+        )
+        service = AgentSessionService(project_root=self.project, global_state_dir=global_state_dir)
+        service.set_default_provider("openai")
+
+        with patch.object(service.login_service.codex_auth_store, "run_logout") as mock_logout:
+            result = service.logout_provider("openai")
+
+        mock_logout.assert_called_once()
+        self.assertEqual(result["settings"]["default_provider_id"], "fake")
 
     def test_openai_compatible_provider_maps_chat_tool_calls_and_usage(self) -> None:
         class StaticChatProvider(OpenAICompatibleChatProvider):

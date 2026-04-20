@@ -315,7 +315,39 @@ py -m motor agent providers list --project . --json
 ```
 
 `fake` y `replay` son providers offline de prueba. `openai` es online, requiere
-`OPENAI_API_KEY` y no se usa como fallback silencioso.
+una credencial usable y no se usa como fallback silencioso. Esa credencial puede
+venir de `OPENAI_API_KEY`, del secreto local del agente o de login gestionado
+por Codex/OpenAI cuando el bridge expone una API key reutilizable.
+
+### `motor agent providers login <provider>`
+
+Configura credenciales de provider.
+
+```bash
+py -m motor agent providers login opencode-go --api-key-stdin --project .
+py -m motor agent providers login openai --codex-chatgpt --project .
+py -m motor agent providers login openai --device-auth --project .
+```
+
+Modos soportados:
+
+- `--api-key-stdin`: guarda un secreto local del agente sin dejarlo en el historial.
+- `--codex-chatgpt`: delega el login real al CLI oficial `codex login`.
+- `--device-auth`: usa el flujo oficial device-code de Codex para entornos sin navegador local.
+
+### `motor agent providers status [provider]`
+
+Inspecciona estado de auth sin revelar secretos.
+
+```bash
+py -m motor agent providers status openai --project . --json
+```
+
+Campos relevantes:
+
+- `credential_source`: `env`, `user_local`, `codex_chatgpt`, `codex_api_key`, `codex_keyring` o `none`.
+- `auth_method`: metodo observable (`api_key` o `chatgpt`) cuando el origen lo permite.
+- `runtime_ready`: indica si el runtime actual puede reutilizar la credencial detectada.
 
 ### `motor agent session create`
 
@@ -334,7 +366,7 @@ Modos de permisos:
 
 Opciones de provider:
 
-- `--provider-id`: `fake` por defecto; `openai` requiere `OPENAI_API_KEY`.
+- `--provider-id`: `fake` por defecto; `openai` requiere una credencial usable (`OPENAI_API_KEY`, secreto local o bridge gestionado por Codex/OpenAI).
 - `--model`: modelo del provider.
 - `--temperature`, `--max-tokens`: limites opcionales del provider.
 - `--stream`: activa streaming si el provider lo soporta.

@@ -73,7 +73,10 @@ final, aprobacion pendiente, cancelacion o limite de iteraciones.
 - El provider por defecto `fake` es determinista, offline y `test_only`; no debe
   presentarse como inteligencia real. `ReplayLLMProvider` cubre contratos
   multi-turn en tests. `OpenAIProvider` es el primer provider online real de V3a
-  y exige `OPENAI_API_KEY`; no hay fallback silencioso a fake.
+  y acepta `OPENAI_API_KEY`, secreto local del agente o bridge desde auth
+  gestionada por Codex/OpenAI. El estado `runtime_ready` indica si ese login
+  gestionado expone una credencial reutilizable para el runtime actual; no hay
+  fallback silencioso a fake.
 - `run_command` no es una shell generica: acepta solo perfiles allowlist con
   `shell=False`. `full_access` autoaprueba acciones permitidas, pero no desactiva
   la policy de comandos ni los guards de `Claude Code/`, `.git`, `.motor`,

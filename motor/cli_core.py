@@ -267,18 +267,32 @@ def cmd_agent_providers_login(
     project_path: Path,
     provider_id: str,
     api_key_stdin: bool,
+    codex_chatgpt: bool,
+    device_auth: bool,
     base_url: str,
     model: str,
     json_output: bool,
 ) -> int:
-    """Store a user-local provider credential read from stdin."""
+    """Store provider credentials or delegate managed Codex login."""
     try:
         _ensure_project(project_path)
-        if not api_key_stdin:
-            raise ValueError("Use --api-key-stdin to provide credentials without exposing them in shell history.")
-        api_key = sys.stdin.read().strip()
         service = AgentSessionService(project_root=project_path)
-        data = service.login_provider(provider_id, api_key=api_key, base_url=base_url, model=model)
+        if codex_chatgpt or device_auth:
+            data = service.login_provider(
+                provider_id,
+                api_key="",
+                base_url=base_url,
+                model=model,
+                credential_source="codex_chatgpt",
+                device_auth=device_auth,
+            )
+        else:
+            if not api_key_stdin:
+                raise ValueError(
+                    "Use --api-key-stdin to provide credentials without exposing them in shell history, or use --codex-chatgpt/--device-auth for managed Codex login."
+                )
+            api_key = sys.stdin.read().strip()
+            data = service.login_provider(provider_id, api_key=api_key, base_url=base_url, model=model)
         return _output(True, "Agent provider logged in", data, json_output)
     except Exception as exc:
         return _output(False, f"Agent provider login failed: {exc}", None, json_output)

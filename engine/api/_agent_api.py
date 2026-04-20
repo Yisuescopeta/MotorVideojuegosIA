@@ -67,10 +67,18 @@ class AgentAPI(EngineAPIComponent):
         base_url: str = "",
         model: str = "",
         api_key: str = "",
+        device_auth: bool = False,
     ) -> ActionResult:
-        if credential_source != "user_local":
+        if credential_source not in {"user_local", "codex_chatgpt", "codex_api_key"}:
             return self.fail(f"Unsupported agent credential source: {credential_source}")
-        data = self._agent_service().login_provider(provider_id, api_key=api_key, base_url=base_url, model=model)
+        data = self._agent_service().login_provider(
+            provider_id,
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            credential_source=credential_source,
+            device_auth=device_auth,
+        )
         return self.ok("Agent provider logged in", data)
 
     def logout_agent_provider(self, provider_id: str) -> ActionResult:

@@ -76,9 +76,6 @@ class EditorShell:
             panel = getattr(self.panel_slots, panel_name, None)
             if panel is not None and hasattr(panel, "set_project_service"):
                 panel.set_project_service(service)
-        agent_panel = getattr(self.panel_slots, "agent_panel", None)
-        if agent_panel is not None and hasattr(agent_panel, "set_project_service"):
-            agent_panel.set_project_service(service)
 
     def bind_terminal_panel(self, panel: Any) -> None:
         self.panel_slots.terminal_panel = panel

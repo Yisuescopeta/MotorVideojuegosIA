@@ -572,7 +572,7 @@ class Game:
         self._sync_editor_shell()
         if self._ui_render_system is not None and hasattr(self._ui_render_system, "set_project_service"):
             self._ui_render_system.set_project_service(service)
-        self._project_workspace_controller.set_project_service(service)
+        self._project_workspace_controller.set_project_service(service, notify_agent_panel=False)
 
     def _refresh_project_scene_entries(self) -> None:
         self._project_workspace_controller.refresh_project_scene_entries()

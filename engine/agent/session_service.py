@@ -134,6 +134,10 @@ class AgentSessionService:
             max_tokens=max_tokens,
             stream=bool(stream or (provider.provider_id == settings.get("default_provider_id") and settings.get("stream"))),
         )
+        if provider.provider_id == "openai" and provider_metadata.get("auth_status") == "configured" and not provider_metadata.get("runtime_ready", False):
+            raise RuntimeError(
+                "OpenAI provider detected Codex-managed authentication, but no reusable API key bridge is available yet. Complete Codex login again or configure an API key."
+            )
         if hasattr(provider, "validate_runtime_config"):
             getattr(provider, "validate_runtime_config")(runtime_config)
         session = AgentSession(
@@ -161,8 +165,24 @@ class AgentSessionService:
     def list_providers(self) -> list[dict[str, object]]:
         return [self._provider_metadata(str(provider["provider_id"])) for provider in self.provider_resolver.list_provider_metadata()]
 
-    def login_provider(self, provider_id: str, *, api_key: str, base_url: str = "", model: str = "") -> dict[str, Any]:
-        result = self.login_service.login(provider_id, api_key=api_key, base_url=base_url, model=model)
+    def login_provider(
+        self,
+        provider_id: str,
+        *,
+        api_key: str,
+        base_url: str = "",
+        model: str = "",
+        credential_source: str = "user_local",
+        device_auth: bool = False,
+    ) -> dict[str, Any]:
+        result = self.login_service.login(
+            provider_id,
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            credential_source=credential_source,
+            device_auth=device_auth,
+        )
         return {**result, "provider": self._provider_metadata(str(result["provider"]["provider_id"]))}
 
     def logout_provider(self, provider_id: str) -> dict[str, Any]:
@@ -177,6 +197,26 @@ class AgentSessionService:
             "default_provider_id": settings.get("default_provider_id", "fake"),
             "settings": settings,
             "providers": self.list_providers(),
+        }
+
+    def prepare_managed_provider_login(self, provider_id: str, *, device_auth: bool = False) -> dict[str, Any]:
+        self.provider_resolver.resolve(provider_id)
+        prepared = self.login_service.prepare_managed_login(provider_id, device_auth=device_auth)
+        self.login_service.set_default_provider(provider_id)
+        provider = self._provider_metadata(provider_id)
+        message = (
+            "Complete the Codex device login flow and return to the editor when it finishes."
+            if device_auth
+            else "Complete the Codex login flow in the opened window and then return to the editor."
+        )
+        return {
+            "action": "launch_codex_login",
+            "provider_id": provider_id,
+            "provider": provider,
+            "command": prepared["command"],
+            "codex_home": prepared["codex_home"],
+            "device_auth": prepared["device_auth"],
+            "message": message,
         }
 
     def set_default_provider(self, provider_id: str, *, model: str = "", base_url: str = "") -> dict[str, Any]:
@@ -365,19 +405,27 @@ class AgentSessionService:
         return AgentToolContext(project_root=self.project_root, api=self.api, engine_port=self.engine_port)
 
     def _handle_login_command(self, session: AgentSession, arg: str) -> dict[str, Any]:
-        provider_id = arg.strip() or "opencode-go"
+        parts = [item.strip().lower() for item in arg.split() if item.strip()]
+        provider_id = parts[0] if parts else "opencode-go"
+        mode = parts[1] if len(parts) > 1 else ""
         if provider_id == "status":
             result = self.get_provider_status()
         else:
             provider_id = "opencode-go" if provider_id in {"opencode", "opencodego", "go"} else provider_id
-            self.provider_resolver.resolve(provider_id)
-            status = self._provider_metadata(provider_id)
-            result = {
-                "action": "open_login",
-                "provider_id": provider_id,
-                "provider": status,
-                "message": f"Enter API key for {provider_id} in the secure login input.",
-            }
+            if provider_id == "openai" and mode not in {"api-key", "apikey", "key"}:
+                result = self.prepare_managed_provider_login(
+                    provider_id,
+                    device_auth=mode in {"device", "device-auth", "code", "headless"},
+                )
+            else:
+                self.provider_resolver.resolve(provider_id)
+                status = self._provider_metadata(provider_id)
+                result = {
+                    "action": "open_login",
+                    "provider_id": provider_id,
+                    "provider": status,
+                    "message": f"Enter API key for {provider_id} in the secure login input.",
+                }
         session.updated_at = utc_now_iso()
         return {**session.to_dict(), "command_result": result}
 

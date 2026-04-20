@@ -143,7 +143,7 @@ AI-Facing Commands:
   agent message send        Send a message to an agent session
   agent action approve      Approve or reject a pending agent action
   agent providers list      List configured agent providers
-  agent providers login     Store provider credentials from stdin
+  agent providers login     Store provider credentials or delegate managed Codex login
   agent providers status    Show provider auth status
   agent providers logout    Remove provider credentials
   agent usage               Show token/cost usage for a session
@@ -766,10 +766,12 @@ Documentation:
 
     agent_providers_login_parser = agent_providers_subparsers.add_parser(
         "login",
-        help="Store provider credentials from stdin",
+        help="Store provider credentials or delegate managed Codex login",
     )
     agent_providers_login_parser.add_argument("provider", help="Provider id, e.g. opencode-go or openai")
     agent_providers_login_parser.add_argument("--api-key-stdin", action="store_true", help="Read API key from stdin")
+    agent_providers_login_parser.add_argument("--codex-chatgpt", action="store_true", help="Delegate OpenAI login to the official Codex ChatGPT flow")
+    agent_providers_login_parser.add_argument("--device-auth", action="store_true", help="Use the official Codex device-code login flow")
     agent_providers_login_parser.add_argument("--base-url", default="", help="Optional provider base URL")
     agent_providers_login_parser.add_argument("--model", default="", help="Optional default model")
     agent_providers_login_parser.add_argument("--project", dest="project_root", default=".", help="Path to project directory")
@@ -1119,6 +1121,8 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 project_path=Path(parsed.project_root).resolve(),
                 provider_id=parsed.provider,
                 api_key_stdin=parsed.api_key_stdin,
+                codex_chatgpt=parsed.codex_chatgpt,
+                device_auth=parsed.device_auth,
                 base_url=parsed.base_url,
                 model=parsed.model,
                 json_output=parsed.json,

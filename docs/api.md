@@ -90,7 +90,14 @@ Provider:
 - `replay` permite tests de contrato multi-turn declarativos sin simular
   inteligencia real.
 - `openai` es el primer provider online real de V3a; usa Responses API,
-  requiere `OPENAI_API_KEY` y no se usa como fallback silencioso.
+  acepta `OPENAI_API_KEY`, secreto local del agente y login gestionado por
+  Codex/OpenAI mediante `credential_source=codex_chatgpt` o
+  `credential_source=codex_api_key`.
+- `get_agent_provider_status(...)` y `list_agent_providers()` exponen
+  `credential_source`, `auth_method`, `runtime_ready`, `codex_cli_available`,
+  `codex_home` y `plan_type` cuando aplica.
+- Si existe auth gestionada pero no hay bridge reutilizable para el runtime
+  actual, `runtime_ready=False` y no hay fallback silencioso a `fake`.
 - Un `provider_id` desconocido falla con diagnostico explicito.
 - `stream=True` activa eventos `assistant_delta` y persistencia del mensaje final
   cuando el provider soporta streaming.

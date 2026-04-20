@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import subprocess
+
 import pyray as rl
 
 from engine.agent import AgentActionStatus, AgentPermissionMode, AgentSessionService, EditorLiveAgentEnginePort
@@ -100,7 +103,7 @@ class AgentPanel:
             stream = bool(settings.get("stream", False))
             if provider_id != "fake":
                 selected = self.agent_service.get_provider_status(provider_id)
-                if selected.get("auth_status") == "missing":
+                if selected.get("auth_status") == "missing" or not selected.get("runtime_ready", False):
                     provider_id = "fake"
                     model = ""
                     stream = False
@@ -333,18 +336,55 @@ class AgentPanel:
             self.status_text = "No active project"
             return
         try:
+            self._maybe_rebind_authenticated_provider()
             result = self.agent_service.send_message(self.session_id, text)
             command_result = dict(result.get("command_result", {})) if isinstance(result, dict) else {}
             if command_result.get("action") == "open_login":
                 self.pending_login_provider = str(command_result.get("provider_id", "opencode-go"))
                 self.login_input_text = ""
                 self.status_text = str(command_result.get("message", "Enter API key."))
+            elif command_result.get("action") == "launch_codex_login":
+                self.pending_login_provider = ""
+                self.login_input_text = ""
+                self._launch_codex_login(command_result)
+                self.status_text = str(command_result.get("message", "Codex login started."))
             elif command_result:
                 self.status_text = str(command_result.get("message", "Agent command processed"))
             else:
                 self.status_text = "Agent ready"
         except Exception as exc:
             self.status_text = f"Agent error: {exc}"
+
+    def _maybe_rebind_authenticated_provider(self) -> None:
+        if self.agent_service is None or not self.session_id:
+            return
+        try:
+            session = self.agent_service.get_session(self.session_id)
+            current_provider = str(session.get("provider_id", "fake") or "fake")
+            status = self.agent_service.get_provider_status()
+            default_provider_id = str(status.get("default_provider_id", "fake") or "fake")
+            if default_provider_id == current_provider:
+                return
+            selected = self.agent_service.get_provider_status(default_provider_id)
+            if not selected.get("runtime_ready", False):
+                return
+            self._binding_key = None
+            self._restart_project_session()
+        except Exception:
+            return
+
+    def _launch_codex_login(self, command_result: dict[str, object]) -> None:
+        raw_command = command_result.get("command", [])
+        if not isinstance(raw_command, list) or not raw_command or not all(isinstance(item, str) for item in raw_command):
+            raise RuntimeError("Invalid Codex login command payload.")
+        env = os.environ.copy()
+        codex_home = str(command_result.get("codex_home", "") or "").strip()
+        if codex_home:
+            env["CODEX_HOME"] = codex_home
+        kwargs: dict[str, object] = {"env": env}
+        if os.name == "nt":
+            kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+        subprocess.Popen(raw_command, **kwargs)
 
     def _complete_login(self) -> None:
         if self.agent_service is None or not self.pending_login_provider:

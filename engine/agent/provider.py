@@ -667,7 +667,7 @@ class OpenAIProvider:
 
     def validate_runtime_config(self, config: AgentRuntimeConfig) -> None:
         if not self._api_key():
-            raise RuntimeError("OpenAI provider requires OPENAI_API_KEY in the environment.")
+            raise RuntimeError("OpenAI provider requires a configured credential. Use /login openai, motor agent providers login openai --codex-chatgpt, or OPENAI_API_KEY.")
 
     def run_turn(self, request: AgentProviderRequest, config: AgentRuntimeConfig) -> AgentProviderResponse:
         self.validate_runtime_config(config)
