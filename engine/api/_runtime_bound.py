@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from engine.api._context import EngineAPIContext
 from engine.levels.component_registry import create_default_registry
 
 
 def create_runtime_bound_engine_api(
-    engine_api_cls: type,
+    engine_api_cls: type[Any],
     *,
     game: Any,
     scene_manager: Any,
@@ -17,7 +17,7 @@ def create_runtime_bound_engine_api(
 
     from engine.assets.asset_service import AssetService
 
-    api = engine_api_cls.__new__(engine_api_cls)
+    api = cast(Any, engine_api_cls).__new__(engine_api_cls)
     api.game = game
     api.scene_manager = scene_manager
     api.project_service = project_service

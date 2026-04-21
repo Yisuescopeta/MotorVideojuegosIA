@@ -967,7 +967,7 @@ class CapabilityRegistryBuilder:
             id="agent:runtime",
             summary="Run the v3 clean-room agent turn loop with provider/tool-result continuation",
             mode="both",
-            api_methods=["AgentAPI.send_agent_message", "AgentRuntime.continue_turn"],
+            api_methods=["AgentAPI.send_agent_message", "AgentAPI.approve_agent_action"],
             cli_command="motor agent message send <session> <message>",
             example=CapabilityExample(
                 description="Send a message that may trigger tools and continue after tool results",
@@ -1055,7 +1055,7 @@ class CapabilityRegistryBuilder:
             id="agent:tools",
             summary="List and execute safe engine-native agent tools through the v2 tool pipeline",
             mode="both",
-            api_methods=["AgentAPI.list_agent_tools", "AgentToolRegistry.prepare"],
+            api_methods=["AgentAPI.list_agent_tools", "AgentAPI.send_agent_message"],
             cli_command="motor agent message send <session> /tools",
             example=CapabilityExample(
                 description="Ask the session to list available tools",
@@ -1092,7 +1092,7 @@ class CapabilityRegistryBuilder:
             id="agent:editor_panel",
             summary="Use the Agent panel next to Terminal with a live engine port",
             mode="both",
-            api_methods=["AgentPanel.set_live_engine", "EditorLiveAgentEnginePort"],
+            api_methods=["AgentAPI.get_agent_session", "AgentAPI.send_agent_message"],
             cli_command="motor agent message send <session> /status",
             example=CapabilityExample(
                 description="Inspect agent status from the same session model used by the editor panel",
@@ -1113,38 +1113,38 @@ class CapabilityRegistryBuilder:
         # Scene flow (no CLI commands exist)
         "scene:flow:set_next",
         "scene:flow:load_next",
-        
+
         # Entity operations beyond create (no CLI commands exist)
         "entity:delete",
         "entity:parent",
         "entity:list",
         "introspect:entity",  # motor entity inspect not in parser
-        
+
         # Component operations beyond add (no CLI commands exist)
         "component:edit",
         "component:remove",
-        
+
         # Asset operations beyond list/slice (no CLI commands exist)
         "asset:find",
         "asset:metadata:get",
         "asset:refresh",
-        
+
         # Project operations beyond info/bootstrap-ai (no CLI commands exist)
         "project:open",
         "project:editor_state",
-        
+
         # Runtime operations (no CLI commands exist)
         "runtime:play",
         "runtime:stop",
         "runtime:step",
         "runtime:undo",
         "runtime:redo",
-        
+
         # Physics operations (no CLI commands exist)
         "physics:query:aabb",
         "physics:query:ray",
         "physics:backend:list",
-        
+
         # Introspection beyond capabilities (no CLI command exists)
         "introspect:status",
 

@@ -4,6 +4,7 @@ import json
 import os
 import shlex
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Callable, Iterable, Protocol
@@ -19,6 +20,13 @@ from engine.agent.types import (
     AgentToolResult,
     new_id,
 )
+
+
+def _validated_https_url(url: str, provider_id: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise RuntimeError(f"{provider_id} provider requires an https base URL.")
+    return url
 
 
 @dataclass(frozen=True)
@@ -377,7 +385,7 @@ class OpenAICompatibleChatProvider:
         self.validate_runtime_config(config)
         payload = self._build_payload(request, config, stream=True)
         request_obj = urllib.request.Request(
-            self._base_url(),
+            self._validated_base_url(),
             data=json.dumps(payload).encode("utf-8"),
             headers=self._headers(),
             method="POST",
@@ -385,7 +393,7 @@ class OpenAICompatibleChatProvider:
         text_parts: list[str] = []
         tool_fragments: dict[int, dict[str, str]] = {}
         try:
-            with urllib.request.urlopen(request_obj, timeout=self.timeout_seconds) as response:
+            with urllib.request.urlopen(request_obj, timeout=self.timeout_seconds) as response:  # nosec B310
                 for raw_line in response:
                     line = raw_line.decode("utf-8", errors="replace").strip()
                     if not line or not line.startswith("data:"):
@@ -450,18 +458,21 @@ class OpenAICompatibleChatProvider:
                 return value
         return self.base_url
 
+    def _validated_base_url(self) -> str:
+        return _validated_https_url(self._base_url(), self.provider_id)
+
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._api_key()}", "Content-Type": "application/json"}
 
     def _post_json(self, payload: dict[str, object]) -> dict[str, object]:
         request = urllib.request.Request(
-            self._base_url(),
+            self._validated_base_url(),
             data=json.dumps(payload).encode("utf-8"),
             headers=self._headers(),
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:  # nosec B310
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             raise RuntimeError(self._http_error_message(exc)) from exc
@@ -686,7 +697,7 @@ class OpenAIProvider:
         self.validate_runtime_config(config)
         payload = self._build_payload(request, config, stream=True)
         request_obj = urllib.request.Request(
-            self.api_url,
+            self._validated_api_url(),
             data=json.dumps(payload).encode("utf-8"),
             headers=self._headers(),
             method="POST",
@@ -696,7 +707,7 @@ class OpenAIProvider:
         usage: dict[str, object] = {}
         model = str(payload.get("model", ""))
         try:
-            with urllib.request.urlopen(request_obj, timeout=self.timeout_seconds) as response:
+            with urllib.request.urlopen(request_obj, timeout=self.timeout_seconds) as response:  # nosec B310
                 for raw_line in response:
                     line = raw_line.decode("utf-8", errors="replace").strip()
                     if not line or not line.startswith("data:"):
@@ -763,15 +774,18 @@ class OpenAIProvider:
             "Content-Type": "application/json",
         }
 
+    def _validated_api_url(self) -> str:
+        return _validated_https_url(self.api_url, self.provider_id)
+
     def _post_json(self, payload: dict[str, object]) -> dict[str, object]:
         request = urllib.request.Request(
-            self.api_url,
+            self._validated_api_url(),
             data=json.dumps(payload).encode("utf-8"),
             headers=self._headers(),
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:  # nosec B310
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             raise RuntimeError(self._http_error_message(exc)) from exc

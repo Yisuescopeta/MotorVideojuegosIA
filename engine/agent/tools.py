@@ -3,6 +3,7 @@ from __future__ import annotations
 import difflib
 import json
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -462,9 +463,12 @@ class GitCommitTool(BaseAgentTool):
 
 
 def _run_git(call: AgentToolCall, context: AgentToolContext, args: list[str]) -> AgentToolResult:
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        return AgentToolResult(call.tool_call_id, call.tool_name, False, error="git executable not found")
     try:
         completed = subprocess.run(
-            ["git", *args],
+            [git_executable, *args],
             cwd=context.project_root,
             capture_output=True,
             text=True,

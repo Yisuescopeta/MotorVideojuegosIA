@@ -9,7 +9,6 @@ from engine.agent import (
     AgentActionStatus,
     AgentCommandPolicy,
     AgentCommandRequest,
-    AgentCredentialStore,
     AgentPermissionMode,
     AgentProviderRequest,
     AgentProviderResolver,
@@ -832,7 +831,8 @@ class AgentSessionServiceTests(unittest.TestCase):
 
         self.assertIsNotNone(capability)
         self.assertNotIn("EngineAPI.from_runtime", capability.api_methods)
-        self.assertIn("EditorLiveAgentEnginePort", capability.api_methods)
+        self.assertNotIn("EditorLiveAgentEnginePort", capability.api_methods)
+        self.assertIn("AgentAPI.get_agent_session", capability.api_methods)
 
     def test_legacy_session_migrates_to_v2_with_backup_and_event_log(self) -> None:
         store = AgentSessionStore(self.project)
