@@ -21,8 +21,18 @@ from engine.agent import (
     OpenAIProvider,
     ReplayLLMProvider,
 )
+from engine.agent.memory import AgentMemoryStore
 from engine.agent.store import AgentSessionStore
-from engine.agent.types import AgentContentBlock, AgentRuntimeConfig, AgentToolCall, AgentTurnStatus, new_id
+from engine.agent.types import (
+    AgentContentBlock,
+    AgentEvent,
+    AgentEventKind,
+    AgentRuntimeConfig,
+    AgentToolCall,
+    AgentTurnStatus,
+    AgentUsageRecord,
+    new_id,
+)
 from engine.ai import get_default_registry
 from engine.api import EngineAPI
 
@@ -133,6 +143,47 @@ class AgentSessionServiceTests(unittest.TestCase):
         self.assertEqual(rejected["messages"][-1]["role"], "assistant")
         self.assertIn("Tool write_file failed", rejected["messages"][-1]["content"])
 
+    def test_confirm_actions_handles_multiple_pending_tools_without_transcript_marker(self) -> None:
+        provider = ReplayLLMProvider(
+            [
+                AgentProviderResponse.from_text(
+                    "write both",
+                    [
+                        AgentToolCall("tool-write-one", "write_file", {"path": "one.txt", "content": "one"}),
+                        AgentToolCall("tool-write-two", "write_file", {"path": "two.txt", "content": "two"}),
+                    ],
+                    stop_reason="tool_use",
+                    provider_id="replay",
+                ),
+                AgentProviderResponse.from_text("all done", provider_id="replay"),
+            ]
+        )
+        service = AgentSessionService(project_root=self.project, provider=provider)
+        session = service.create_session(permission_mode=AgentPermissionMode.CONFIRM_ACTIONS.value, provider_id="replay")
+
+        updated = service.send_message(session["session_id"], "write files")
+
+        pending = [item for item in updated["pending_actions"] if item["status"] == AgentActionStatus.PENDING.value]
+        self.assertEqual(len(pending), 2)
+        self.assertEqual([message["role"] for message in updated["messages"]], ["user", "assistant"])
+        self.assertNotIn("Action pending approval", json.dumps(updated["messages"]))
+        self.assertEqual(len([event for event in updated["events"] if event["kind"] == "provider_started"]), 1)
+
+        first = service.approve_action(session["session_id"], pending[0]["action_id"], True)
+
+        self.assertEqual((self.project / "one.txt").read_text(encoding="utf-8"), "one")
+        self.assertFalse((self.project / "two.txt").exists())
+        self.assertEqual(len([event for event in first["events"] if event["kind"] == "provider_started"]), 1)
+        remaining = [item for item in first["pending_actions"] if item["status"] == AgentActionStatus.PENDING.value]
+        self.assertEqual(len(remaining), 1)
+
+        final = service.approve_action(session["session_id"], remaining[0]["action_id"], True)
+
+        self.assertEqual((self.project / "two.txt").read_text(encoding="utf-8"), "two")
+        self.assertEqual(len([event for event in final["events"] if event["kind"] == "provider_started"]), 2)
+        self.assertEqual([message["role"] for message in final["messages"]], ["user", "assistant", "tool", "tool", "assistant"])
+        self.assertEqual(final["messages"][-1]["content"], "all done")
+
     def test_new_user_message_is_blocked_while_action_is_pending(self) -> None:
         service = AgentSessionService(project_root=self.project)
         session = service.create_session(permission_mode=AgentPermissionMode.CONFIRM_ACTIONS.value)
@@ -186,21 +237,72 @@ class AgentSessionServiceTests(unittest.TestCase):
     def test_protected_project_paths_are_blocked(self) -> None:
         (self.project / ".git").mkdir()
         (self.project / ".git" / "config").write_text("[remote]\n", encoding="utf-8")
-        reference_dir = self.project / "Claude Code"
-        reference_dir.mkdir()
-        (reference_dir / "README.md").write_text("reference", encoding="utf-8")
+        lowercase_reference_dir = self.project / "claude code"
+        lowercase_reference_dir.mkdir()
+        (lowercase_reference_dir / "README.md").write_text("reference", encoding="utf-8")
         service = AgentSessionService(project_root=self.project)
         session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value)
 
         git_result = service.send_message(session["session_id"], "read .git/config")
         reference_result = service.send_message(session["session_id"], "read Claude Code/README.md")
+        lowercase_reference_result = service.send_message(session["session_id"], "read claude code/README.md")
 
         git_tool = [message for message in git_result["messages"] if message["role"] == "tool"][-1]
         reference_tool = [message for message in reference_result["messages"] if message["role"] == "tool"][-1]
+        lowercase_reference_tool = [message for message in lowercase_reference_result["messages"] if message["role"] == "tool"][-1]
         self.assertFalse(git_tool["tool_result"]["success"])
         self.assertFalse(reference_tool["tool_result"]["success"])
+        self.assertFalse(lowercase_reference_tool["tool_result"]["success"])
         self.assertIn("protected project path", git_tool["tool_result"]["error"])
         self.assertIn("protected project path", reference_tool["tool_result"]["error"])
+        self.assertIn("protected project path", lowercase_reference_tool["tool_result"]["error"])
+
+    def test_session_id_paths_are_validated_before_file_access(self) -> None:
+        store = AgentSessionStore(self.project)
+        memory_store = AgentMemoryStore(self.project)
+
+        with self.assertRaisesRegex(ValueError, "Invalid agent session id"):
+            store.load_session("../x")
+        with self.assertRaisesRegex(ValueError, "Invalid agent session id"):
+            store.append_event("../x", AgentEvent(new_id("event"), AgentEventKind.MESSAGE_ADDED))
+        with self.assertRaisesRegex(ValueError, "Invalid agent session id"):
+            memory_store.save_session_summary("../x", "summary")
+        with self.assertRaisesRegex(ValueError, "Invalid agent session id"):
+            memory_store.append_usage("../x", AgentUsageRecord(new_id("agent-usage"), "fake"))
+
+    def test_edit_file_preview_replace_all_matches_execution(self) -> None:
+        target = self.project / "replace.txt"
+        target.write_text("alpha beta alpha", encoding="utf-8")
+        service = AgentSessionService(project_root=self.project)
+        call = AgentToolCall(
+            "tool-edit",
+            "edit_file",
+            {"path": "replace.txt", "old_text": "alpha", "new_text": "omega", "replace_all": True},
+        )
+
+        prepared = service.tools.prepare(call, service._tool_context(), require_confirmation=True)
+
+        self.assertIsNone(prepared.blocked_result)
+        self.assertIn("-alpha beta alpha", prepared.preview)
+        self.assertIn("+omega beta omega", prepared.preview)
+
+    def test_edit_file_rejects_empty_old_text_without_writing(self) -> None:
+        target = self.project / "empty-old.txt"
+        target.write_text("abc", encoding="utf-8")
+        service = AgentSessionService(project_root=self.project)
+        call = AgentToolCall(
+            "tool-edit-empty",
+            "edit_file",
+            {"path": "empty-old.txt", "old_text": "", "new_text": "x"},
+        )
+
+        prepared = service.tools.prepare(call, service._tool_context(), require_confirmation=False)
+        result = service.tools.execute(call, service._tool_context())
+
+        self.assertIsNotNone(prepared.blocked_result)
+        self.assertIn("old_text is required", prepared.blocked_result.error)
+        self.assertFalse(result.success)
+        self.assertEqual(target.read_text(encoding="utf-8"), "abc")
 
     def test_engine_api_exposes_agent_surface_and_fake_tool_call(self) -> None:
         api = EngineAPI(project_root=self.project.as_posix(), global_state_dir=(self.root / "global").as_posix())
@@ -308,6 +410,51 @@ class AgentSessionServiceTests(unittest.TestCase):
         self.assertTrue(providers["openai"]["supports_streaming"])
         self.assertTrue(providers["opencode-go"]["login_supported"])
         self.assertEqual(providers["opencode-go"]["auth_status"], "missing")
+
+    def test_list_agent_tools_exposes_argument_schemas(self) -> None:
+        service = AgentSessionService(project_root=self.project)
+
+        tools = {tool["name"]: tool for tool in service.list_tools()}
+
+        read_schema = tools["read_file"]["parameters_schema"]
+        write_schema = tools["write_file"]["parameters_schema"]
+        self.assertEqual(read_schema["required"], ["path"])
+        self.assertIn("path", read_schema["properties"])
+        self.assertEqual(write_schema["required"], ["path", "content"])
+        self.assertFalse(write_schema["additionalProperties"])
+
+    def test_online_provider_payloads_use_declared_tool_schemas(self) -> None:
+        service = AgentSessionService(project_root=self.project)
+        tools = service.list_tools()
+        request = AgentProviderRequest("session", "turn", [], tools)
+
+        chat_provider = OpenAICompatibleChatProvider(
+            provider_id="chat-test",
+            base_url="https://example.invalid/v1/chat/completions",
+            default_model="chat-model",
+            api_key="sk-test",
+        )
+        chat_payload = chat_provider._build_payload(
+            request,
+            AgentRuntimeConfig(provider_id="chat-test", model="chat-model"),
+            stream=False,
+        )
+
+        openai_provider = OpenAIProvider(api_key="sk-test")
+        openai_payload = openai_provider._build_payload(
+            request,
+            AgentRuntimeConfig(provider_id="openai", model="gpt-test"),
+            stream=False,
+        )
+
+        chat_read = next(tool for tool in chat_payload["tools"] if tool["function"]["name"] == "read_file")
+        openai_read = next(tool for tool in openai_payload["tools"] if tool["name"] == "read_file")
+        self.assertEqual(chat_read["function"]["parameters"]["required"], ["path"])
+        self.assertIn("path", chat_read["function"]["parameters"]["properties"])
+        self.assertFalse(chat_read["function"]["parameters"]["additionalProperties"])
+        self.assertEqual(openai_read["parameters"]["required"], ["path"])
+        self.assertIn("path", openai_read["parameters"]["properties"])
+        self.assertFalse(openai_read["parameters"]["additionalProperties"])
 
     def test_openai_status_reads_codex_managed_auth_from_auth_json(self) -> None:
         global_state_dir = self.root / "global"
@@ -689,11 +836,12 @@ class AgentSessionServiceTests(unittest.TestCase):
 
     def test_legacy_session_migrates_to_v2_with_backup_and_event_log(self) -> None:
         store = AgentSessionStore(self.project)
-        legacy_path = store.sessions_dir / "legacy.json"
+        legacy_id = "agent-session-aaaaaaaaaaaa"
+        legacy_path = store.sessions_dir / f"{legacy_id}.json"
         legacy_path.write_text(
             json.dumps(
                 {
-                    "session_id": "legacy",
+                    "session_id": legacy_id,
                     "permission_mode": "confirm_actions",
                     "provider_id": "fake",
                     "messages": [{"message_id": "msg-1", "role": "user", "content": "read project.json"}],
@@ -704,21 +852,22 @@ class AgentSessionServiceTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        session = store.load_session("legacy")
+        session = store.load_session(legacy_id)
 
         self.assertEqual(session.schema_version, 2)
-        self.assertTrue((store.sessions_dir / "legacy.legacy-v1.bak").exists())
+        self.assertTrue((store.sessions_dir / f"{legacy_id}.legacy-v1.bak").exists())
         self.assertTrue(session.messages[0].content_blocks)
         audit = store.audit_path.read_text(encoding="utf-8")
         self.assertIn("session_migrated", audit)
 
     def test_legacy_pending_action_migrates_to_suspended_turn(self) -> None:
         store = AgentSessionStore(self.project)
-        legacy_path = store.sessions_dir / "legacy-pending.json"
+        legacy_id = "agent-session-bbbbbbbbbbbb"
+        legacy_path = store.sessions_dir / f"{legacy_id}.json"
         legacy_path.write_text(
             json.dumps(
                 {
-                    "session_id": "legacy-pending",
+                    "session_id": legacy_id,
                     "permission_mode": "confirm_actions",
                     "provider_id": "fake",
                     "messages": [],
@@ -741,7 +890,7 @@ class AgentSessionServiceTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        session = store.load_session("legacy-pending")
+        session = store.load_session(legacy_id)
 
         self.assertIsNotNone(session.active_turn)
         self.assertIsNotNone(session.suspended_turn)
@@ -751,15 +900,16 @@ class AgentSessionServiceTests(unittest.TestCase):
 
     def test_corrupt_legacy_session_is_not_overwritten(self) -> None:
         store = AgentSessionStore(self.project)
-        legacy_path = store.sessions_dir / "corrupt.json"
+        legacy_id = "agent-session-cccccccccccc"
+        legacy_path = store.sessions_dir / f"{legacy_id}.json"
         raw = "{not-json"
         legacy_path.write_text(raw, encoding="utf-8")
 
         with self.assertRaises(AgentSessionMigrationError):
-            store.load_session("corrupt")
+            store.load_session(legacy_id)
 
         self.assertEqual(legacy_path.read_text(encoding="utf-8"), raw)
-        self.assertFalse((store.sessions_dir / "corrupt.legacy-v1.bak").exists())
+        self.assertFalse((store.sessions_dir / f"{legacy_id}.legacy-v1.bak").exists())
 
 
 if __name__ == "__main__":

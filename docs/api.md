@@ -75,9 +75,14 @@ Modos de permiso:
 - `full_access`: ejecuta sin confirmacion, conservando hard guards de rutas,
   carpeta de referencia `Claude Code/`, secretos evidentes y auditoria local.
 
+`list_agent_tools()` devuelve metadatos de cada tool, incluido
+`parameters_schema` como JSON Schema minimo para proveedores con function
+calling.
+
 El estado de sesiones y auditoria vive en `.motor/agent_state`.
 Las sesiones se guardan con `schema_version=2`, transcript serializable y log
 de eventos por sesion en `.motor/agent_state/events/`.
+Los `session_id` son opacos y se validan antes de resolver rutas locales.
 Las sesiones legacy sin `schema_version` se migran de forma explicita al cargar:
 se crea backup `.legacy-v1.bak`, se valida el payload, se reconstruyen
 `content_blocks`/turnos suspendidos y se registra `session_migrated`. Si el

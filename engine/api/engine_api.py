@@ -21,7 +21,7 @@ from engine.api.errors import InvalidOperationError
 from engine.api.types import ActionResult
 from engine.events.event_bus import EventBus
 from engine.levels.component_registry import create_default_registry
-from engine.physics.box2d_backend import Box2DPhysicsBackend
+from engine.physics.box2d_backend import Box2DDependencyUnavailable, Box2DPhysicsBackend
 from engine.project.project_service import ProjectService
 from engine.scenes.scene_manager import SceneManager
 
@@ -135,6 +135,8 @@ class EngineAPI:
                 Box2DPhysicsBackend(gravity=self.game.physics_system.gravity, event_bus=self.game.event_bus),
                 backend_name="box2d",
             )
+        except Box2DDependencyUnavailable as exc:
+            self.game.set_physics_backend_unavailable("box2d", str(exc))
         except Exception as exc:
             self.game.set_physics_backend_unavailable("box2d", str(exc))
             print(f"[WARNING] Box2D backend unavailable: {exc}")

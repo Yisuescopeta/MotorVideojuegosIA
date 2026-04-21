@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from engine.agent.ids import resolve_agent_session_path, validate_agent_session_id
 from engine.agent.types import AgentMessage, AgentMessageRole, AgentSession, AgentUsageRecord, new_id, utc_now_iso
 
 
@@ -47,24 +48,26 @@ class AgentMemoryStore:
         self.usage_dir.mkdir(parents=True, exist_ok=True)
 
     def save_session_summary(self, session_id: str, summary: str) -> AgentMemorySnapshot:
-        snapshot = AgentMemorySnapshot(session_id=session_id, session_summary=self._sanitize(summary))
-        path = self.memory_dir / f"{session_id}.json"
+        valid_id = validate_agent_session_id(session_id)
+        snapshot = AgentMemorySnapshot(session_id=valid_id, session_summary=self._sanitize(summary))
+        path = resolve_agent_session_path(self.memory_dir, valid_id, ".json")
         path.write_text(json.dumps(snapshot.to_dict(), indent=2, ensure_ascii=True), encoding="utf-8")
         return snapshot
 
     def load_session_summary(self, session_id: str) -> AgentMemorySnapshot:
-        path = self.memory_dir / f"{session_id}.json"
+        valid_id = validate_agent_session_id(session_id)
+        path = resolve_agent_session_path(self.memory_dir, valid_id, ".json")
         if not path.exists():
-            return AgentMemorySnapshot(session_id=session_id)
+            return AgentMemorySnapshot(session_id=valid_id)
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except Exception as exc:
-            return AgentMemorySnapshot(session_id=session_id, errors=[f"Memory file is corrupt and was ignored: {exc}"])
+            return AgentMemorySnapshot(session_id=valid_id, errors=[f"Memory file is corrupt and was ignored: {exc}"])
         if not isinstance(data, dict):
-            return AgentMemorySnapshot(session_id=session_id, errors=["Memory file is invalid and was ignored."])
+            return AgentMemorySnapshot(session_id=valid_id, errors=["Memory file is invalid and was ignored."])
         return AgentMemorySnapshot(
             schema_version=int(data.get("schema_version", 1)),
-            session_id=str(data.get("session_id", session_id)),
+            session_id=valid_id,
             session_summary=self._sanitize(str(data.get("session_summary", ""))),
             project_memory_enabled=bool(data.get("project_memory_enabled", False)),
             project_memory=self._sanitize(str(data.get("project_memory", ""))),
@@ -73,7 +76,7 @@ class AgentMemoryStore:
         )
 
     def append_usage(self, session_id: str, record: AgentUsageRecord) -> None:
-        path = self.usage_dir / f"{session_id}.jsonl"
+        path = resolve_agent_session_path(self.usage_dir, session_id, ".jsonl")
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record.to_dict(), ensure_ascii=True) + "\n")
 

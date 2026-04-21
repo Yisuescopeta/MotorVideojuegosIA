@@ -65,11 +65,14 @@ final, aprobacion pendiente, cancelacion o limite de iteraciones.
 - Crea sesiones con `EngineAPI.create_agent_session`.
 - Envia mensajes con `EngineAPI.send_agent_message`.
 - Aprueba acciones pendientes con `EngineAPI.approve_agent_action`.
+- Trata los `session_id` como opacos: el runtime solo acepta ids validados y
+  no deben construirse como rutas.
 - Una aprobacion o rechazo reanuda el mismo turno logico y vuelve al provider
   con el resultado de tool.
 - Las mutaciones de escenas deben pasar por herramientas que usan `EngineAPI` o
   `AuthoringExecutionService`.
-- No incluyas la carpeta local `Claude Code/` como contexto del agente.
+- No incluyas la carpeta local `Claude Code/` o `claude code/` como contexto
+  del agente.
 - El provider por defecto `fake` es determinista, offline y `test_only`; no debe
   presentarse como inteligencia real. `ReplayLLMProvider` cubre contratos
   multi-turn en tests. `OpenAIProvider` es el primer provider online real de V3a

@@ -188,6 +188,8 @@ class AgentRuntime:
             action.result = result
             self._append_tool_result_message(session, result, turn.turn_id)
             self.append_event(session, AgentEventKind.ACTION_REJECTED, {"action_id": action.action_id, "turn_id": turn.turn_id})
+            if self._suspend_if_pending_actions(session, turn):
+                return
             self.continue_turn(session)
             return
 
@@ -197,6 +199,8 @@ class AgentRuntime:
         action.result = result
         action.status = AgentActionStatus.EXECUTED if result.success else AgentActionStatus.FAILED
         self._append_tool_result_message(session, result, turn.turn_id)
+        if self._suspend_if_pending_actions(session, turn):
+            return
         self.continue_turn(session)
 
     def _execute_or_suspend_tool_calls(
@@ -207,6 +211,7 @@ class AgentRuntime:
     ) -> bool:
         context = self.tool_context_factory()
         require_confirmation = session.permission_mode == AgentPermissionMode.CONFIRM_ACTIONS
+        created_pending = False
         for call in calls:
             prepared = self.tools.prepare(call, context, require_confirmation=require_confirmation)
             if prepared.blocked_result is not None:
@@ -221,40 +226,46 @@ class AgentRuntime:
                     turn_id=turn.turn_id,
                 )
                 session.pending_actions.append(action)
-                suspension = AgentSuspension(
-                    action_id=action.action_id,
-                    turn_id=turn.turn_id,
-                    tool_call=prepared.call,
-                    reason=prepared.reason,
-                    preview=prepared.preview,
-                )
-                session.suspended_turn = suspension
-                turn.status = AgentTurnStatus.SUSPENDED
-                turn.suspended_action_id = action.action_id
-                turn.updated_at = utc_now_iso()
+                created_pending = True
                 self.append_event(
                     session,
                     AgentEventKind.ACTION_REQUESTED,
                     {"action_id": action.action_id, "tool_name": call.tool_name, "turn_id": turn.turn_id},
                 )
-                self.append_event(session, AgentEventKind.TURN_SUSPENDED, suspension.to_dict())
-                session.messages.append(
-                    AgentMessage(
-                        new_id("msg"),
-                        AgentMessageRole.ASSISTANT,
-                        f"Action pending approval: {call.tool_name} ({action.action_id})",
-                        content_blocks=[AgentContentBlock.text_block(f"Action pending approval: {call.tool_name} ({action.action_id})")],
-                    )
-                )
-                self.append_event(
-                    session,
-                    AgentEventKind.MESSAGE_ADDED,
-                    {"role": AgentMessageRole.ASSISTANT.value, "turn_id": turn.turn_id},
-                )
-                return True
+                continue
             result = self.tools.execute(prepared.call, context)
             self._append_tool_result_message(session, result, turn.turn_id)
-        return False
+        return self._suspend_if_pending_actions(session, turn) if created_pending else False
+
+    def _pending_actions_for_turn(self, session: AgentSession, turn_id: str) -> list[AgentActionRequest]:
+        return [
+            action
+            for action in session.pending_actions
+            if action.status == AgentActionStatus.PENDING and (not action.turn_id or action.turn_id == turn_id)
+        ]
+
+    def _suspend_if_pending_actions(self, session: AgentSession, turn: AgentTurnState) -> bool:
+        pending = self._pending_actions_for_turn(session, turn.turn_id)
+        if not pending:
+            session.suspended_turn = None
+            turn.suspended_action_id = ""
+            turn.status = AgentTurnStatus.RUNNING
+            turn.updated_at = utc_now_iso()
+            return False
+        action = pending[0]
+        suspension = AgentSuspension(
+            action_id=action.action_id,
+            turn_id=turn.turn_id,
+            tool_call=action.tool_call,
+            reason=action.reason,
+            preview=action.preview,
+        )
+        session.suspended_turn = suspension
+        turn.status = AgentTurnStatus.SUSPENDED
+        turn.suspended_action_id = action.action_id
+        turn.updated_at = utc_now_iso()
+        self.append_event(session, AgentEventKind.TURN_SUSPENDED, suspension.to_dict())
+        return True
 
     def _run_streaming_provider(
         self,

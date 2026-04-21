@@ -521,13 +521,16 @@ class OpenAICompatibleChatProvider:
             name = str(tool.get("name", "")).strip()
             if not name:
                 continue
+            parameters = tool.get("parameters_schema")
+            if not isinstance(parameters, dict):
+                parameters = {"type": "object", "properties": {}, "additionalProperties": False}
             specs.append(
                 {
                     "type": "function",
                     "function": {
                         "name": name,
                         "description": str(tool.get("description", "")),
-                        "parameters": {"type": "object", "additionalProperties": True},
+                        "parameters": parameters,
                     },
                 }
             )
@@ -825,15 +828,15 @@ class OpenAIProvider:
             name = str(tool.get("name", "")).strip()
             if not name:
                 continue
+            parameters = tool.get("parameters_schema")
+            if not isinstance(parameters, dict):
+                parameters = {"type": "object", "properties": {}, "additionalProperties": False}
             specs.append(
                 {
                     "type": "function",
                     "name": name,
                     "description": str(tool.get("description", "")),
-                    "parameters": {
-                        "type": "object",
-                        "additionalProperties": True,
-                    },
+                    "parameters": parameters,
                 }
             )
         return specs

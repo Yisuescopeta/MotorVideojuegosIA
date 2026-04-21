@@ -4,7 +4,7 @@ import difflib
 import json
 import re
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -17,9 +17,11 @@ if TYPE_CHECKING:
     from engine.api import EngineAPI
 
 
-REFERENCE_DIR_NAME = "Claude Code"
+REFERENCE_DIR_NAME = "claude code"
 SENSITIVE_DIRS = {".git", ".motor", REFERENCE_DIR_NAME}
 IGNORED_DIRS = {*SENSITIVE_DIRS, "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache"}
+SENSITIVE_DIR_KEYS = {item.casefold() for item in SENSITIVE_DIRS}
+IGNORED_DIR_KEYS = {item.casefold() for item in IGNORED_DIRS}
 SECRET_PATTERN = re.compile(
     r"(api[_-]?key|secret|password|token)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{12,}|BEGIN [A-Z ]*PRIVATE KEY",
     re.IGNORECASE,
@@ -37,6 +39,9 @@ class AgentToolSpec:
     requires_approval: bool = False
     allowed_in_full_access: bool = True
     supports_preview: bool = False
+    parameters_schema: dict[str, Any] = field(
+        default_factory=lambda: {"type": "object", "properties": {}, "additionalProperties": False}
+    )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -49,6 +54,7 @@ class AgentToolSpec:
             "requires_approval": self.requires_approval or self.mutating,
             "allowed_in_full_access": self.allowed_in_full_access,
             "supports_preview": self.supports_preview,
+            "parameters_schema": json.loads(json.dumps(self.parameters_schema)),
         }
 
 
@@ -107,12 +113,20 @@ def _resolve_project_path(project_root: Path, path_value: Any, *, allow_missing:
         resolved.relative_to(project_root)
     except ValueError as exc:
         raise PermissionError(f"Path outside project root: {resolved.as_posix()}") from exc
-    sensitive_part = next((part for part in resolved.parts if part in SENSITIVE_DIRS), "")
+    sensitive_part = _protected_part(resolved)
     if sensitive_part:
         raise PermissionError(f"Agent tools cannot use protected project path: {sensitive_part}")
     if not allow_missing and not resolved.exists():
         raise FileNotFoundError(resolved.as_posix())
     return resolved
+
+
+def _protected_part(path: Path) -> str:
+    return next((part for part in path.parts if part.casefold() in SENSITIVE_DIR_KEYS), "")
+
+
+def _is_ignored(path: Path) -> bool:
+    return any(part.casefold() in IGNORED_DIR_KEYS for part in path.parts)
 
 
 def _relative(path: Path, project_root: Path) -> str:
@@ -151,8 +165,27 @@ def _default_capabilities() -> dict[str, Any]:
     return get_default_registry().to_dict()
 
 
+def _object_schema(properties: dict[str, Any] | None = None, required: tuple[str, ...] = ()) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": properties or {},
+        "required": list(required),
+        "additionalProperties": False,
+    }
+
+
+STRING_SCHEMA = {"type": "string"}
+INTEGER_SCHEMA = {"type": "integer", "minimum": 1}
+BOOLEAN_SCHEMA = {"type": "boolean"}
+ARRAY_SCHEMA = {"type": "array"}
+
+
 class ReadFileTool(BaseAgentTool):
-    spec = AgentToolSpec("read_file", "Read a UTF-8 text file inside the project.")
+    spec = AgentToolSpec(
+        "read_file",
+        "Read a UTF-8 text file inside the project.",
+        parameters_schema=_object_schema({"path": STRING_SCHEMA}, ("path",)),
+    )
 
     def execute(self, call: AgentToolCall, context: AgentToolContext) -> AgentToolResult:
         try:
@@ -166,7 +199,11 @@ class ReadFileTool(BaseAgentTool):
 
 
 class ListFilesTool(BaseAgentTool):
-    spec = AgentToolSpec("list_files", "List files and folders inside the project.")
+    spec = AgentToolSpec(
+        "list_files",
+        "List files and folders inside the project.",
+        parameters_schema=_object_schema({"path": STRING_SCHEMA, "limit": INTEGER_SCHEMA}),
+    )
 
     def execute(self, call: AgentToolCall, context: AgentToolContext) -> AgentToolResult:
         try:
@@ -175,7 +212,7 @@ class ListFilesTool(BaseAgentTool):
                 return self.fail(call, f"Not a directory: {_relative(root, context.project_root)}")
             entries: list[dict[str, Any]] = []
             for item in sorted(root.iterdir(), key=lambda value: value.name.lower()):
-                if item.name in IGNORED_DIRS:
+                if item.name.casefold() in IGNORED_DIR_KEYS:
                     continue
                 entries.append({"path": _relative(item, context.project_root), "type": "dir" if item.is_dir() else "file"})
                 if len(entries) >= int(call.args.get("limit", 200)):
@@ -186,7 +223,11 @@ class ListFilesTool(BaseAgentTool):
 
 
 class SearchTextTool(BaseAgentTool):
-    spec = AgentToolSpec("search_text", "Search text files inside the project.")
+    spec = AgentToolSpec(
+        "search_text",
+        "Search text files inside the project.",
+        parameters_schema=_object_schema({"pattern": STRING_SCHEMA, "path": STRING_SCHEMA, "limit": INTEGER_SCHEMA}, ("pattern",)),
+    )
 
     def execute(self, call: AgentToolCall, context: AgentToolContext) -> AgentToolResult:
         try:
@@ -198,7 +239,7 @@ class SearchTextTool(BaseAgentTool):
             files = [root] if root.is_file() else [path for path in root.rglob("*") if path.is_file()]
             matches: list[dict[str, Any]] = []
             for path in files:
-                if any(part in IGNORED_DIRS for part in path.parts):
+                if _is_ignored(path):
                     continue
                 if path.stat().st_size > 1_000_000:
                     continue
@@ -220,6 +261,10 @@ class WriteFileTool(BaseAgentTool):
         permission_scope="write",
         requires_approval=True,
         supports_preview=True,
+        parameters_schema=_object_schema(
+            {"path": STRING_SCHEMA, "content": STRING_SCHEMA, "overwrite": BOOLEAN_SCHEMA},
+            ("path", "content"),
+        ),
     )
 
     def preview(self, args: dict[str, Any], context: AgentToolContext) -> str:
@@ -252,14 +297,24 @@ class EditFileTool(BaseAgentTool):
         permission_scope="write",
         requires_approval=True,
         supports_preview=True,
+        parameters_schema=_object_schema(
+            {"path": STRING_SCHEMA, "old_text": STRING_SCHEMA, "new_text": STRING_SCHEMA, "replace_all": BOOLEAN_SCHEMA},
+            ("path", "old_text", "new_text"),
+        ),
     )
+
+    def validate(self, args: dict[str, Any], context: AgentToolContext) -> str:
+        if str(args.get("old_text", "")) == "":
+            return "old_text is required"
+        return ""
 
     def preview(self, args: dict[str, Any], context: AgentToolContext) -> str:
         path = _resolve_project_path(context.project_root, args.get("path"), allow_missing=False)
         old_content = path.read_text(encoding="utf-8", errors="replace")
         old_text = str(args.get("old_text", ""))
         new_text = str(args.get("new_text", ""))
-        new_content = old_content.replace(old_text, new_text, 0 if bool(args.get("replace_all", False)) else 1)
+        count = -1 if bool(args.get("replace_all", False)) else 1
+        new_content = old_content.replace(old_text, new_text, count)
         return _diff(old_content, new_content, _relative(path, context.project_root))
 
     def execute(self, call: AgentToolCall, context: AgentToolContext) -> AgentToolResult:
@@ -268,6 +323,8 @@ class EditFileTool(BaseAgentTool):
             old_text = str(call.args.get("old_text", ""))
             new_text = str(call.args.get("new_text", ""))
             replace_all = bool(call.args.get("replace_all", False))
+            if old_text == "":
+                return self.fail(call, "old_text is required")
             _reject_secrets(new_text)
             content = path.read_text(encoding="utf-8", errors="replace")
             if old_text not in content:
@@ -287,6 +344,7 @@ class RunCommandTool(BaseAgentTool):
         permission_scope="shell",
         requires_approval=True,
         supports_preview=True,
+        parameters_schema=_object_schema({"command": STRING_SCHEMA, "timeout_seconds": INTEGER_SCHEMA}, ("command",)),
     )
 
     def validate(self, args: dict[str, Any], context: AgentToolContext) -> str:
@@ -337,7 +395,11 @@ class GitStatusTool(BaseAgentTool):
 
 
 class GitDiffTool(BaseAgentTool):
-    spec = AgentToolSpec("git_diff", "Show git diff for the project.")
+    spec = AgentToolSpec(
+        "git_diff",
+        "Show git diff for the project.",
+        parameters_schema=_object_schema({"path": STRING_SCHEMA}),
+    )
 
     def execute(self, call: AgentToolCall, context: AgentToolContext) -> AgentToolResult:
         args = ["diff"]
@@ -356,6 +418,10 @@ class GitStageTool(BaseAgentTool):
         permission_scope="git_write",
         requires_approval=True,
         supports_preview=True,
+        parameters_schema=_object_schema(
+            {"paths": {"oneOf": [STRING_SCHEMA, {"type": "array", "items": STRING_SCHEMA}]}},
+            ("paths",),
+        ),
     )
 
     def preview(self, args: dict[str, Any], context: AgentToolContext) -> str:
@@ -382,6 +448,7 @@ class GitCommitTool(BaseAgentTool):
         permission_scope="git_write",
         requires_approval=True,
         supports_preview=True,
+        parameters_schema=_object_schema({"message": STRING_SCHEMA}, ("message",)),
     )
 
     def preview(self, args: dict[str, Any], context: AgentToolContext) -> str:
@@ -417,7 +484,11 @@ def _run_git(call: AgentToolCall, context: AgentToolContext, args: list[str]) ->
 
 
 class EngineContextTool(BaseAgentTool):
-    spec = AgentToolSpec("engine_context", "Capture an AI workflow context snapshot through EngineAPI.")
+    spec = AgentToolSpec(
+        "engine_context",
+        "Capture an AI workflow context snapshot through EngineAPI.",
+        parameters_schema=_object_schema({"snapshot_id": STRING_SCHEMA}),
+    )
 
     def execute(self, call: AgentToolCall, context: AgentToolContext) -> AgentToolResult:
         if context.engine_port is None:
@@ -448,6 +519,10 @@ class EngineAuthoringExecuteTool(BaseAgentTool):
         permission_scope="engine_authoring",
         requires_approval=True,
         supports_preview=True,
+        parameters_schema=_object_schema(
+            {"operations": ARRAY_SCHEMA, "target_scene_ref": STRING_SCHEMA},
+            ("operations",),
+        ),
     )
 
     def preview(self, args: dict[str, Any], context: AgentToolContext) -> str:
@@ -465,7 +540,11 @@ class EngineAuthoringExecuteTool(BaseAgentTool):
 
 
 class EngineValidateTool(BaseAgentTool):
-    spec = AgentToolSpec("engine_validate", "Validate a scene payload or scene file through workflow validators.")
+    spec = AgentToolSpec(
+        "engine_validate",
+        "Validate a scene payload or scene file through workflow validators.",
+        parameters_schema=_object_schema({"path": STRING_SCHEMA, "scene_payload": {"type": "object"}}),
+    )
 
     def execute(self, call: AgentToolCall, context: AgentToolContext) -> AgentToolResult:
         try:
@@ -485,7 +564,18 @@ class EngineValidateTool(BaseAgentTool):
 
 
 class EngineVerifyTool(BaseAgentTool):
-    spec = AgentToolSpec("engine_verify", "Run a headless verification scenario.")
+    spec = AgentToolSpec(
+        "engine_verify",
+        "Run a headless verification scenario.",
+        parameters_schema=_object_schema(
+            {
+                "scenario_id": STRING_SCHEMA,
+                "project_root": STRING_SCHEMA,
+                "scene_path": STRING_SCHEMA,
+                "assertions": ARRAY_SCHEMA,
+            }
+        ),
+    )
 
     def execute(self, call: AgentToolCall, context: AgentToolContext) -> AgentToolResult:
         try:

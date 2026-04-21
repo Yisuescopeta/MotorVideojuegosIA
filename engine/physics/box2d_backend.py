@@ -9,6 +9,11 @@ from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
 from engine.physics.backend import PhysicsAABBHit, PhysicsBackend, PhysicsContact, PhysicsRayHit
 
+
+class Box2DDependencyUnavailable(RuntimeError):
+    """Raised when the optional Box2D package is not installed."""
+
+
 try:
     from Box2D import (
         b2AABB,
@@ -81,7 +86,7 @@ class Box2DPhysicsBackend(PhysicsBackend):
 
     def __init__(self, gravity: float = 600.0, event_bus: Optional[Any] = None, fixed_dt: float = 1.0 / 60.0) -> None:
         if b2World is None:
-            raise RuntimeError("Box2D python package is not available")
+            raise Box2DDependencyUnavailable("Box2D python package is not available")
         self._event_bus = event_bus
         self._gravity = float(gravity)
         self._fixed_dt = float(fixed_dt)
