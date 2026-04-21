@@ -6,6 +6,9 @@ from engine.core.engine_state import EngineState
 from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.core.runtime_loop import RuntimeLoopState, RuntimePhase, RuntimeTickPlan
 from engine.editor.console_panel import log_info
+from engine.events.callable_resolver import CallableResolver, CallableResolverContext
+from engine.events.deferred_queue import DeferredCallQueue
+from engine.events.signals import SignalRuntime
 from engine.physics.backend import PhysicsBackendSelection
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
 from engine.tilemap.collision_builder import bake_tilemap_colliders
@@ -48,10 +51,31 @@ class RuntimeController:
         self._update_ui_overlay = update_ui_overlay
         self._phase_observer = phase_observer
         self._loop_state = RuntimeLoopState()
+        self._deferred_queue = DeferredCallQueue()
+        self._signal_runtime = SignalRuntime(self._deferred_queue)
+        self._callable_resolver = CallableResolver(
+            CallableResolverContext(
+                get_world=self._get_world,
+                get_script_behaviour_system=self._get_script_behaviour_system,
+                get_event_bus=self._get_event_bus,
+            )
+        )
 
     @property
     def loop_state(self) -> RuntimeLoopState:
         return self._loop_state
+
+    @property
+    def deferred_queue(self) -> DeferredCallQueue:
+        return self._deferred_queue
+
+    @property
+    def signal_runtime(self) -> SignalRuntime:
+        return self._signal_runtime
+
+    @property
+    def callable_resolver(self) -> CallableResolver:
+        return self._callable_resolver
 
     def _emit_phase(self, phase: RuntimePhase, plan: RuntimeTickPlan) -> None:
         if self._phase_observer is not None:
@@ -59,9 +83,13 @@ class RuntimeController:
 
     def begin_runtime_session(self) -> None:
         self._loop_state.reset()
+        self._deferred_queue.clear()
+        self._signal_runtime.clear()
 
     def end_runtime_session(self) -> None:
         self._loop_state.reset()
+        self._deferred_queue.clear()
+        self._signal_runtime.clear()
 
     def build_tick_plan(self, dt: float, *, should_render_like: bool = True) -> RuntimeTickPlan:
         frame_dt = max(0.0, float(dt))
@@ -89,6 +117,7 @@ class RuntimeController:
             is_stepping=is_stepping,
             should_render_like=bool(should_render_like),
         )
+
     def play(self) -> None:
         """Inicia el juego (EDIT -> PLAY)."""
         if self._get_state() != EngineState.EDIT:
@@ -96,11 +125,13 @@ class RuntimeController:
 
         log_info("Estado: EDIT -> PLAY")
         self._reset_profiler(run_label="play_session")
+        self.begin_runtime_session()
 
         scene_runtime = self._get_scene_runtime()
         if scene_runtime is not None:
             runtime_world = scene_runtime.enter_play()
             if runtime_world is None:
+                self.end_runtime_session()
                 return
             self._set_world(runtime_world)
             bake_tilemap_colliders(runtime_world, merge_shapes=True)
@@ -116,7 +147,6 @@ class RuntimeController:
             if script_behaviour_system is not None:
                 script_behaviour_system.on_play(runtime_world)
 
-        self.begin_runtime_session()
         self._set_state(EngineState.PLAY)
 
         event_bus = self._get_event_bus()
@@ -240,6 +270,8 @@ class RuntimeController:
         active_tab: Optional[str] = None,
     ) -> None:
         self._emit_phase(RuntimePhase.POST_UPDATE, plan)
+
+        self._deferred_queue.flush()
 
         if (
             world is not None

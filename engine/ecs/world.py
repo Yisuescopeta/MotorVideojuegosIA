@@ -13,7 +13,7 @@ from collections import defaultdict, deque
 from typing import Any, TypeVar
 
 from engine.ecs.component import Component
-from engine.ecs.entity import Entity
+from engine.ecs.entity import Entity, normalize_entity_groups
 
 T = TypeVar("T", bound=Component)
 
@@ -26,6 +26,72 @@ class WorldSerializationError(RuntimeError):
     """Se lanza cuando la serializacion de la escena perderia datos."""
 
 
+class GroupRegistry:
+    """Indice runtime de grupos para consultas rapidas por entidad."""
+
+    def __init__(self, world: "World") -> None:
+        self._world = world
+        self._group_index: dict[str, set[int]] = defaultdict(set)
+
+    def clear(self) -> None:
+        self._group_index.clear()
+
+    def register_entity(self, entity: Entity) -> None:
+        for group_name in entity.groups:
+            self._group_index[group_name].add(entity.id)
+
+    def unregister_entity(self, entity: Entity, groups: Any = None) -> None:
+        normalized_groups = normalize_entity_groups(entity.groups if groups is None else groups)
+        for group_name in normalized_groups:
+            member_ids = self._group_index.get(group_name)
+            if member_ids is None:
+                continue
+            member_ids.discard(entity.id)
+            if not member_ids:
+                self._group_index.pop(group_name, None)
+
+    def update_entity_groups(self, entity: Entity, previous_groups: Any, current_groups: Any) -> None:
+        previous = set(normalize_entity_groups(previous_groups))
+        current = set(normalize_entity_groups(current_groups))
+        for group_name in previous - current:
+            member_ids = self._group_index.get(group_name)
+            if member_ids is None:
+                continue
+            member_ids.discard(entity.id)
+            if not member_ids:
+                self._group_index.pop(group_name, None)
+        for group_name in current - previous:
+            self._group_index[group_name].add(entity.id)
+
+    def list_groups(self) -> list[str]:
+        return sorted(self._group_index.keys())
+
+    def get_entity_names(self, group_name: str) -> list[str]:
+        normalized_group = str(group_name or "").strip()
+        if not normalized_group:
+            return []
+        entity_names = []
+        for entity_id in sorted(self._group_index.get(normalized_group, set())):
+            entity = self._world.get_entity(entity_id)
+            if entity is not None:
+                entity_names.append(entity.name)
+        return sorted(entity_names)
+
+    def get_entities(self, group_name: str) -> list[Entity]:
+        normalized_group = str(group_name or "").strip()
+        if not normalized_group:
+            return []
+        entities = []
+        for entity_id in sorted(self._group_index.get(normalized_group, set())):
+            entity = self._world.get_entity(entity_id)
+            if entity is not None:
+                entities.append(entity)
+        return sorted(entities, key=lambda entity: entity.name)
+
+    def has(self, group_name: str, entity_name: str) -> bool:
+        return entity_name in self.get_entity_names(group_name)
+
+
 class World:
     """Contenedor principal de todas las entidades del juego."""
 
@@ -35,6 +101,7 @@ class World:
         self._children_index: dict[str | None, set[int]] = defaultdict(set)
         self._component_index: dict[type, set[int]] = defaultdict(set)
         self._component_owner_index: dict[int, int] = {}
+        self.group_registry = GroupRegistry(self)
         self._version: int = 0
         self._selection_version: int = 0
         self._selected_entity_name: str | None = None
@@ -148,6 +215,7 @@ class World:
         self._children_index.clear()
         self._component_index.clear()
         self._component_owner_index.clear()
+        self.group_registry.clear()
         self.selected_entity_name = None
         self.touch()
 
@@ -161,6 +229,7 @@ class World:
             new_entity.active = entity.active
             new_entity.tag = entity.tag
             new_entity.layer = entity.layer
+            new_entity.groups = entity.groups
             new_entity.parent_name = entity.parent_name
             new_entity.prefab_instance = copy.deepcopy(entity.prefab_instance)
             new_entity.prefab_source_path = entity.prefab_source_path
@@ -249,6 +318,7 @@ class World:
     def _index_entity(self, entity: Entity) -> None:
         self._name_index[entity.name] = entity.id
         self._children_index[entity.parent_name].add(entity.id)
+        self.group_registry.register_entity(entity)
         for component in entity.get_all_components():
             self._index_component(entity, type(component), component)
 
@@ -260,6 +330,7 @@ class World:
             child_ids.discard(entity.id)
             if not child_ids:
                 self._children_index.pop(entity.parent_name, None)
+        self.group_registry.unregister_entity(entity)
         for component in entity.get_all_components():
             self._deindex_component(entity, type(component), component)
 
@@ -296,6 +367,8 @@ class World:
                     if not previous_children:
                         self._children_index.pop(previous, None)
                 self._children_index[current].add(entity.id)
+            elif field == "groups":
+                self.group_registry.update_entity_groups(entity, previous, current)
             self.touch()
             return
 
@@ -336,7 +409,7 @@ class World:
                 overrides = {}
                 for node in subtree:
                     relative_path = node.prefab_source_path or ""
-                    overrides[relative_path] = {
+                    override_data = {
                         "active": node.active,
                         "tag": node.tag,
                         "layer": node.layer,
@@ -345,21 +418,25 @@ class World:
                             for component in node.get_all_components()
                         },
                     }
+                    if node.groups:
+                        override_data["groups"] = list(node.groups)
+                    overrides[relative_path] = override_data
                     consumed_prefab_entities.add(node.name)
-                entities_data.append(
-                    {
-                        "name": entity.name,
-                        "active": entity.active,
-                        "tag": entity.tag,
-                        "layer": entity.layer,
-                        "parent": entity.parent_name,
-                        "prefab_instance": {
-                            "prefab_path": entity.prefab_instance.get("prefab_path", ""),
-                            "root_name": entity.prefab_instance.get("root_name", entity.name),
-                            "overrides": overrides,
-                        },
-                    }
-                )
+                prefab_entity_data = {
+                    "name": entity.name,
+                    "active": entity.active,
+                    "tag": entity.tag,
+                    "layer": entity.layer,
+                    "parent": entity.parent_name,
+                    "prefab_instance": {
+                        "prefab_path": entity.prefab_instance.get("prefab_path", ""),
+                        "root_name": entity.prefab_instance.get("root_name", entity.name),
+                        "overrides": overrides,
+                    },
+                }
+                if entity.groups:
+                    prefab_entity_data["groups"] = list(entity.groups)
+                entities_data.append(prefab_entity_data)
                 continue
 
             ent_data = {
@@ -369,6 +446,8 @@ class World:
                 "layer": entity.layer,
                 "components": {},
             }
+            if entity.groups:
+                ent_data["groups"] = list(entity.groups)
             if entity.parent_name is not None:
                 ent_data["parent"] = entity.parent_name
             if entity.prefab_instance is not None:

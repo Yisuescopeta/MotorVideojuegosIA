@@ -443,6 +443,97 @@ class SceneManagerSyncTests(unittest.TestCase):
         self.assertEqual(persisted["feature_metadata"]["input_profile"], {"source": "api"})
         self.assertEqual(reloaded.current_scene.feature_metadata["input_profile"], {"source": "api"})
 
+    def test_signal_feature_metadata_roundtrips_through_save_and_reload(self) -> None:
+        manager = SceneManager(create_default_registry())
+        manager.load_scene(
+            {
+                "name": "SignalMetadata",
+                "entities": [
+                    {
+                        "name": "Emitter",
+                        "active": True,
+                        "tag": "Untagged",
+                        "layer": "Default",
+                        "components": {
+                            "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0}
+                        },
+                    }
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+        signals = {
+            "connections": [
+                {
+                    "id": "emit_to_event",
+                    "source": {"id": "Emitter", "signal": "pressed"},
+                    "target": {"kind": "event_bus"},
+                    "callable": {"event": "ui.emitter_pressed"},
+                    "flags": ["deferred"],
+                    "binds": [{"button": "left"}],
+                    "description": "Emitir click al bus",
+                }
+            ]
+        }
+
+        updated = manager.set_feature_metadata("signals", signals)
+
+        self.assertTrue(updated)
+        self.assertEqual(manager.current_scene.list_signal_connections(), signals["connections"])
+        self.assertEqual(manager.get_edit_world().feature_metadata["signals"], signals)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            scene_path = Path(temp_dir) / "signal_metadata_scene.json"
+            self.assertTrue(manager.save_scene_to_file(scene_path.as_posix()))
+            persisted = json.loads(scene_path.read_text(encoding="utf-8"))
+
+            reloaded = SceneManager(create_default_registry())
+            reloaded.load_scene_from_file(scene_path.as_posix())
+
+        self.assertEqual(persisted["feature_metadata"]["signals"], signals)
+        self.assertEqual(reloaded.current_scene.list_signal_connections(), signals["connections"])
+
+    def test_entity_groups_roundtrip_through_save_reload_and_edit_world(self) -> None:
+        manager = SceneManager(create_default_registry())
+        manager.load_scene(
+            {
+                "name": "EntityGroups",
+                "entities": [
+                    {
+                        "name": "EnemySpawner",
+                        "active": True,
+                        "tag": "Spawner",
+                        "layer": "Gameplay",
+                        "components": {
+                            "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0}
+                        },
+                    }
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+
+        updated = manager.set_entity_groups("EnemySpawner", ["Enemies", " Gameplay ", "Enemies", ""])
+
+        self.assertTrue(updated)
+        self.assertEqual(manager.current_scene.get_entity_groups("EnemySpawner"), ["Enemies", "Gameplay"])
+        self.assertEqual(manager.current_scene.find_entity("EnemySpawner")["groups"], ["Enemies", "Gameplay"])
+        self.assertEqual(list(manager.get_edit_world().get_entity_by_name("EnemySpawner").groups), ["Enemies", "Gameplay"])
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            scene_path = Path(temp_dir) / "entity_groups_scene.json"
+            self.assertTrue(manager.save_scene_to_file(scene_path.as_posix()))
+            persisted = json.loads(scene_path.read_text(encoding="utf-8"))
+
+            reloaded = SceneManager(create_default_registry())
+            reloaded.load_scene_from_file(scene_path.as_posix())
+
+        self.assertEqual(persisted["entities"][0]["groups"], ["Enemies", "Gameplay"])
+        self.assertEqual(reloaded.current_scene.get_entity_groups("EnemySpawner"), ["Enemies", "Gameplay"])
+        self.assertEqual(list(reloaded.get_edit_world().get_entity_by_name("EnemySpawner").groups), ["Enemies", "Gameplay"])
+
     def test_invalid_camera_zoom_edit_is_rejected_and_save_remains_reloadable(self) -> None:
         manager = SceneManager(create_default_registry())
         manager.load_scene(

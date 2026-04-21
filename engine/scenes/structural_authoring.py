@@ -524,7 +524,7 @@ class ScenePrefabAuthoring:
         for target_path, payload in list(overrides.items()):
             if not isinstance(payload, dict):
                 continue
-            for field_name in ("active", "tag", "layer", "parent"):
+            for field_name in ("active", "tag", "layer", "groups", "parent"):
                 if field_name in payload:
                     operations.append(
                         {

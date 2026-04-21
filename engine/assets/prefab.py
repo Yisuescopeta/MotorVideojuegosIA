@@ -31,7 +31,7 @@ def _normalize_legacy_overrides(overrides: dict[str, Any]) -> dict[str, Any]:
     for target_path, payload in overrides.items():
         if not isinstance(payload, dict):
             continue
-        for field_name in ("active", "tag", "layer", "parent"):
+        for field_name in ("active", "tag", "layer", "groups", "parent"):
             if field_name in payload:
                 operations.append(
                     {

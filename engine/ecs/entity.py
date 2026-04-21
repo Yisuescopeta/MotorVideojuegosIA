@@ -38,6 +38,28 @@ def _generate_entity_id() -> int:
     return next(_ENTITY_ID_COUNTER)
 
 
+def normalize_entity_groups(value: Any) -> tuple[str, ...]:
+    """Normaliza grupos de entidad a una tupla ordenada y sin duplicados."""
+    if value is None:
+        return ()
+    if isinstance(value, (str, bytes)):
+        raw_groups = [value]
+    else:
+        try:
+            raw_groups = list(value)
+        except TypeError:
+            raw_groups = [value]
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw_group in raw_groups:
+        group_name = str(raw_group or "").strip()
+        if not group_name or group_name in seen:
+            continue
+        seen.add(group_name)
+        normalized.append(group_name)
+    return tuple(normalized)
+
+
 class Entity:
     """
     Contenedor de componentes identificado por un ID único.
@@ -51,6 +73,7 @@ class Entity:
         "active",
         "tag",
         "layer",
+        "groups",
         "parent_name",
         "prefab_instance",
         "prefab_source_path",
@@ -71,6 +94,7 @@ class Entity:
         self.active: bool = True
         self.tag: str = "Untagged"
         self.layer: str = "Default"
+        self.groups: tuple[str, ...] = ()
         self.parent_name: str | None = None
         self.prefab_instance: dict[str, Any] | None = None
         self.prefab_source_path: str | None = None
@@ -80,6 +104,8 @@ class Entity:
         object.__setattr__(self, "_notifications_suspended", False)
 
     def __setattr__(self, name: str, value: Any) -> None:
+        if name == "groups":
+            value = normalize_entity_groups(value)
         notifications_suspended = bool(getattr(self, "_notifications_suspended", True))
         tracked = name in self._TRACKED_FIELDS and not notifications_suspended and hasattr(self, name)
         previous = getattr(self, name, None) if tracked else None
@@ -219,6 +245,8 @@ class Entity:
                 if self._component_metadata.get(comp_type)
             },
         }
+        if self.groups:
+            data["groups"] = list(self.groups)
         if self.parent_name is not None:
             data["parent"] = self.parent_name
         if self.prefab_instance is not None:

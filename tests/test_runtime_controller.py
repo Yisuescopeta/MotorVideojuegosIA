@@ -289,6 +289,19 @@ class RuntimeControllerTests(unittest.TestCase):
         self.update_ui_overlay.assert_called_once_with(world, (320.0, 180.0), "GAME")
         self.assertEqual(self.state["value"], EngineState.PAUSED)
 
+    def test_run_post_update_flushes_deferred_queue_before_overlay(self) -> None:
+        world = SimpleNamespace(feature_metadata={})
+        plan = self.controller.build_tick_plan(0.0, should_render_like=True)
+        orden: list[str] = []
+
+        self.controller.deferred_queue.enqueue(lambda: orden.append("deferred"), description="prueba_post_update")
+        self.update_ui_overlay.side_effect = lambda *_args, **_kwargs: orden.append("overlay")
+
+        self.controller.run_post_update(world, plan, viewport_size=(320.0, 180.0), active_tab="GAME")
+
+        self.assertEqual(orden, ["deferred", "overlay"])
+        self.assertEqual(self.controller.deferred_queue.size, 0)
+
     def test_play_and_stop_reset_runtime_loop_state(self) -> None:
         runtime_world = SimpleNamespace(feature_metadata={})
         edit_world = SimpleNamespace(feature_metadata={})
@@ -304,6 +317,21 @@ class RuntimeControllerTests(unittest.TestCase):
         self.world_holder["world"] = runtime_world
         self.controller.stop()
         self.assertEqual(self.controller.loop_state.accumulator, 0.0)
+
+    def test_stop_clears_signal_runtime_and_deferred_queue(self) -> None:
+        runtime_world = SimpleNamespace(feature_metadata={})
+        edit_world = SimpleNamespace(feature_metadata={})
+        self.state["value"] = EngineState.PLAY
+        self.world_holder["world"] = runtime_world
+        self.scene_manager.exit_play.return_value = edit_world
+
+        connection_id = self.controller.signal_runtime.connect("Emitter", "tick", lambda: None)
+        self.controller.deferred_queue.enqueue(lambda: None, description="cleanup_test")
+
+        self.controller.stop()
+
+        self.assertFalse(self.controller.signal_runtime.is_connected(connection_id))
+        self.assertEqual(self.controller.deferred_queue.size, 0)
 
     def test_refresh_default_physics_backend_registers_legacy_backend_when_ready(self) -> None:
         with patch("engine.app.runtime_controller.LegacyAABBPhysicsBackend", return_value="legacy-backend") as backend_class:
