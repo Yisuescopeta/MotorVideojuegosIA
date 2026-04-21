@@ -9,6 +9,7 @@ from engine.editor.console_panel import log_info
 from engine.events.callable_resolver import CallableResolver, CallableResolverContext
 from engine.events.deferred_queue import DeferredCallQueue
 from engine.events.signals import SignalRuntime
+from engine.services.registro_servicios import RegistroServicios
 from engine.physics.backend import PhysicsBackendSelection
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
 from engine.tilemap.collision_builder import bake_tilemap_colliders
@@ -53,11 +54,13 @@ class RuntimeController:
         self._loop_state = RuntimeLoopState()
         self._deferred_queue = DeferredCallQueue()
         self._signal_runtime = SignalRuntime(self._deferred_queue)
+        self._servicios = RegistroServicios()
         self._callable_resolver = CallableResolver(
             CallableResolverContext(
                 get_world=self._get_world,
                 get_script_behaviour_system=self._get_script_behaviour_system,
                 get_event_bus=self._get_event_bus,
+                get_service_registry=lambda: self._servicios,
             )
         )
 
@@ -77,6 +80,11 @@ class RuntimeController:
     def callable_resolver(self) -> CallableResolver:
         return self._callable_resolver
 
+    @property
+    def servicios(self) -> RegistroServicios:
+        """Registro de servicios globales / autoloads del runtime actual."""
+        return self._servicios
+
     def _emit_phase(self, phase: RuntimePhase, plan: RuntimeTickPlan) -> None:
         if self._phase_observer is not None:
             self._phase_observer(phase, plan)
@@ -85,11 +93,13 @@ class RuntimeController:
         self._loop_state.reset()
         self._deferred_queue.clear()
         self._signal_runtime.clear()
+        self._servicios.limpiar_runtime()
 
     def end_runtime_session(self) -> None:
         self._loop_state.reset()
         self._deferred_queue.clear()
         self._signal_runtime.clear()
+        self._servicios.limpiar_runtime()
 
     def build_tick_plan(self, dt: float, *, should_render_like: bool = True) -> RuntimeTickPlan:
         frame_dt = max(0.0, float(dt))
@@ -134,6 +144,8 @@ class RuntimeController:
                 self.end_runtime_session()
                 return
             self._set_world(runtime_world)
+            if hasattr(runtime_world, "on_entity_destroyed"):
+                runtime_world.on_entity_destroyed.append(self._on_entity_destroyed)
             bake_tilemap_colliders(runtime_world, merge_shapes=True)
 
             rule_system = self._get_rule_system()
@@ -286,6 +298,11 @@ class RuntimeController:
 
     def begin_render_phase(self, plan: RuntimeTickPlan) -> None:
         self._emit_phase(RuntimePhase.RENDER, plan)
+
+    def _on_entity_destroyed(self, entity: "Entity") -> None:
+        """Poda automáticamente conexiones de señales ligadas a la entidad destruida."""
+        self._signal_runtime.prune_by_source(entity.name)
+        self._signal_runtime.prune_by_target(entity.name)
 
     def get_physics_backend_selection(self, world: Optional["World"]) -> PhysicsBackendSelection:
         return self._get_physics_backend_registry().resolve(world).selection

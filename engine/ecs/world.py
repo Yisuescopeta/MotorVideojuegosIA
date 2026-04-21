@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import copy
 from collections import defaultdict, deque
-from typing import Any, TypeVar
+from typing import Any, Callable, TypeVar
 
 from engine.ecs.component import Component
 from engine.ecs.entity import Entity, normalize_entity_groups
@@ -106,6 +106,7 @@ class World:
         self._selection_version: int = 0
         self._selected_entity_name: str | None = None
         self.feature_metadata: dict = {}
+        self.on_entity_destroyed: list[Callable[[Entity], None]] = []
 
     @property
     def version(self) -> int:
@@ -149,6 +150,8 @@ class World:
         entity = self._entities.get(entity_id)
         if entity is None:
             return
+        for callback in list(self.on_entity_destroyed):
+            callback(entity)
         self._deindex_entity(entity)
         entity._set_owner_world(None)
         del self._entities[entity_id]

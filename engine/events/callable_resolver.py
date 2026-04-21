@@ -18,6 +18,7 @@ class CallableResolverContext:
     get_world: Callable[[], Optional["World"]]
     get_script_behaviour_system: Callable[[], Any]
     get_event_bus: Callable[[], Any]
+    get_service_registry: Callable[[], Optional[Any]] = lambda: None
 
 
 class CallableResolver:
@@ -27,12 +28,23 @@ class CallableResolver:
         self._get_world = context.get_world
         self._get_script_behaviour_system = context.get_script_behaviour_system
         self._get_event_bus = context.get_event_bus
+        self._get_service_registry = context.get_service_registry
 
     def resolve(
         self,
         target: dict[str, Any] | None,
         callable_ref: dict[str, Any] | None = None,
     ) -> ResolvedCallable | None:
+        """Resuelve un destino serializable a un callable runtime.
+
+        Ejemplos de payloads válidos:
+            - target={"kind": "entity", "name": "Player", "component": "ScriptBehaviour"}
+              callable_ref={"method": "on_jump"}
+            - target={"kind": "event_bus"}
+              callable_ref={"event": "ui.clicked"}
+            - target={"kind": "service", "name": "GameState"}
+              callable_ref={"method": "add_score"}
+        """
         normalized_target = dict(target or {})
         normalized_callable = dict(callable_ref or {})
         kind = str(normalized_target.get("kind", "")).strip().lower()
@@ -42,8 +54,7 @@ class CallableResolver:
         if kind == "event_bus":
             return self._resolve_event_bus_callable(normalized_target, normalized_callable)
         if kind == "service":
-            log_warn("CallableResolver: targets de tipo service aún no están soportados")
-            return None
+            return self._resolve_service_callable(normalized_target, normalized_callable)
 
         log_warn(f"CallableResolver: target kind no soportado: {kind or '<vacío>'}")
         return None
@@ -93,6 +104,45 @@ class CallableResolver:
             if event_bus is None:
                 return False
             event_bus.emit(event_name, self._build_event_payload(args, kwargs))
+            return True
+
+        return invoke
+
+    def _resolve_service_callable(
+        self,
+        target: dict[str, Any],
+        callable_ref: dict[str, Any],
+    ) -> ResolvedCallable | None:
+        service_name = str(target.get("name", "")).strip()
+        method_name = str(callable_ref.get("method", "")).strip()
+
+        if not service_name or not method_name:
+            log_warn("CallableResolver: target service requiere name y callable.method")
+            return None
+
+        def invoke(*args: Any, **kwargs: Any) -> bool:
+            registry = self._get_service_registry()
+            if registry is None:
+                log_warn(f"CallableResolver: no hay registro de servicios disponible")
+                return False
+            # Se asume que el registro expone .obtener() o .get()
+            servicio = getattr(registry, "obtener", getattr(registry, "get", None))
+            if servicio is None:
+                log_warn("CallableResolver: el registro de servicios no tiene método de consulta")
+                return False
+            instancia = servicio(service_name)
+            if instancia is None:
+                log_warn(f"CallableResolver: servicio '{service_name}' no encontrado")
+                return False
+            actual = getattr(instancia, method_name, None)
+            if actual is None:
+                log_warn(f"CallableResolver: método '{method_name}' no encontrado en servicio '{service_name}'")
+                return False
+            try:
+                actual(*args, **kwargs)
+            except Exception as exc:
+                log_warn(f"CallableResolver: falló invocación a {service_name}.{method_name}: {exc}")
+                return False
             return True
 
         return invoke

@@ -38,6 +38,7 @@ class SignalConnection:
     flags: SignalConnectionFlags = SignalConnectionFlags.NONE
     binds: tuple[Any, ...] = ()
     enabled: bool = True
+    target_id: str | None = None
     reference_count: int = 1
     description: str = ""
 
@@ -64,6 +65,7 @@ class SignalRuntime:
         self._deferred_queue = deferred_queue or DeferredCallQueue()
         self._connections_by_signal: dict[SignalRef, list[SignalConnection]] = {}
         self._connections_by_id: dict[str, SignalConnection] = {}
+        self._connections_by_target: dict[str, list[str]] = {}
         self._next_connection_number = 1
 
     @property
@@ -81,6 +83,7 @@ class SignalRuntime:
         binds: tuple[Any, ...] | list[Any] | None = None,
         connection_id: str | None = None,
         description: str = "",
+        target_id: str | None = None,
     ) -> str:
         """Conecta una señal a un callback y retorna el id runtime de la conexión."""
         signal = SignalRef(source_id=str(source_id), signal_name=str(signal_name))
@@ -100,9 +103,12 @@ class SignalRuntime:
             flags=flags,
             binds=normalized_binds,
             description=description,
+            target_id=target_id,
         )
         self._connections_by_signal.setdefault(signal, []).append(connection)
         self._connections_by_id[normalized_connection_id] = connection
+        if connection.target_id is not None:
+            self._connections_by_target.setdefault(connection.target_id, []).append(normalized_connection_id)
         return normalized_connection_id
 
     def disconnect(self, connection_id: str) -> bool:
@@ -124,6 +130,24 @@ class SignalRuntime:
         removed = 0
         for connection in signal_connections:
             removed += 1 if self._remove_connection(connection.connection_id) else 0
+        return removed
+
+    def prune_by_source(self, source_id: str) -> int:
+        """Elimina todas las conexiones cuyo emisor coincida con source_id."""
+        removed = 0
+        for signal in list(self._connections_by_signal.keys()):
+            if signal.source_id != source_id:
+                continue
+            for conn in list(self._connections_by_signal.get(signal, [])):
+                removed += 1 if self._remove_connection(conn.connection_id) else 0
+        return removed
+
+    def prune_by_target(self, target_id: str) -> int:
+        """Elimina todas las conexiones cuyo receptor coincida con target_id."""
+        connection_ids = list(self._connections_by_target.get(str(target_id), []))
+        removed = 0
+        for connection_id in connection_ids:
+            removed += 1 if self._remove_connection(connection_id) else 0
         return removed
 
     def is_connected(self, connection_id: str) -> bool:
@@ -183,6 +207,7 @@ class SignalRuntime:
         """Limpia todas las conexiones runtime."""
         self._connections_by_signal.clear()
         self._connections_by_id.clear()
+        self._connections_by_target.clear()
 
     def _remove_connection(self, connection_id: str) -> bool:
         """Elimina una conexión runtime sin respetar reference_count."""
@@ -192,6 +217,16 @@ class SignalRuntime:
 
         signal_connections = self._connections_by_signal.get(connection.signal)
         self._connections_by_id.pop(connection_id, None)
+
+        if connection.target_id is not None:
+            target_connections = self._connections_by_target.get(connection.target_id)
+            if target_connections is not None:
+                target_connections = [cid for cid in target_connections if cid != connection_id]
+                if target_connections:
+                    self._connections_by_target[connection.target_id] = target_connections
+                else:
+                    self._connections_by_target.pop(connection.target_id, None)
+
         if signal_connections is None:
             return True
 

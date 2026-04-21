@@ -399,6 +399,27 @@ class Game:
     def has_project_loaded(self) -> bool:
         return self._project_loaded
 
+    @property
+    def servicios(self) -> Any:
+        """Registro de servicios globales / autoloads del runtime actual."""
+        return self._runtime_controller.servicios if self._runtime_controller is not None else None
+
+    def registrar_servicio_builtin(self, nombre: str, servicio: Any) -> None:
+        """Registra un servicio global persistente entre sesiones de PLAY."""
+        if self._runtime_controller is not None:
+            self._runtime_controller.servicios.registrar_builtin(nombre, servicio)
+
+    def registrar_servicio_runtime(self, nombre: str, servicio: Any) -> None:
+        """Registra un servicio para la sesión de PLAY actual."""
+        if self._runtime_controller is not None:
+            self._runtime_controller.servicios.registrar(nombre, servicio)
+
+    def obtener_servicio(self, nombre: str) -> Any | None:
+        """Obtiene un servicio global por nombre."""
+        if self._runtime_controller is not None:
+            return self._runtime_controller.servicios.obtener(nombre)
+        return None
+
     def _stop_runtime_flow(self) -> None:
         self.stop()
 
@@ -570,7 +591,8 @@ class Game:
             if not source_id or not signal_name:
                 log_warn(f"Game: source incompleto en conexión de señal persistida {index}")
                 continue
-            callback = callable_resolver.resolve(connection.get("target"), connection.get("callable"))
+            target = connection.get("target", {})
+            callback = callable_resolver.resolve(target, connection.get("callable"))
             if callback is None:
                 log_warn(f"Game: no se pudo resolver la conexión de señal persistida {index}")
                 continue
@@ -580,6 +602,9 @@ class Game:
                 continue
             connection_id = str(connection.get("id", "") or "").strip() or None
             description = str(connection.get("description", "") or "")
+            target_id = None
+            if isinstance(target, dict) and target.get("kind") == "entity":
+                target_id = str(target.get("name", "") or "").strip() or None
             signal_runtime.connect(
                 source_id,
                 signal_name,
@@ -588,6 +613,7 @@ class Game:
                 binds=binds,
                 connection_id=connection_id,
                 description=description,
+                target_id=target_id,
             )
             compiled += 1
         return compiled

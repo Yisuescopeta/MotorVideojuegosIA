@@ -7,6 +7,7 @@ from engine.core.engine_state import EngineState
 from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.core.runtime_loop import RuntimePhase
 from engine.physics.registry import PhysicsBackendRegistry
+from engine.services.registro_servicios import RegistroServicios
 
 
 class RuntimeControllerTests(unittest.TestCase):
@@ -375,6 +376,39 @@ class RuntimeControllerTests(unittest.TestCase):
 
         backend_class.assert_not_called()
         self.set_physics_backend.assert_not_called()
+
+    def test_runtime_controller_exposes_service_registry(self) -> None:
+        self.assertIsInstance(self.controller.servicios, RegistroServicios)
+
+    def test_play_clears_runtime_services_but_keeps_builtins(self) -> None:
+        runtime_world = SimpleNamespace(feature_metadata={})
+        edit_world = SimpleNamespace(feature_metadata={})
+        self.scene_manager.enter_play.return_value = runtime_world
+        self.scene_manager.exit_play.return_value = edit_world
+
+        self.controller.servicios.registrar_builtin("GlobalConfig", {"version": 1})
+        self.controller.servicios.registrar("SessionTemp", {"session_id": 42})
+
+        with patch("engine.app.runtime_controller.bake_tilemap_colliders"):
+            self.controller.play()
+
+        self.assertTrue(self.controller.servicios.tiene("GlobalConfig"))
+        self.assertFalse(self.controller.servicios.tiene("SessionTemp"))
+
+    def test_stop_clears_runtime_services_but_keeps_builtins(self) -> None:
+        runtime_world = SimpleNamespace(feature_metadata={})
+        edit_world = SimpleNamespace(feature_metadata={})
+        self.state["value"] = EngineState.PLAY
+        self.world_holder["world"] = runtime_world
+        self.scene_manager.exit_play.return_value = edit_world
+
+        self.controller.servicios.registrar_builtin("GlobalConfig", {"version": 1})
+        self.controller.servicios.registrar("SessionTemp", {"session_id": 42})
+
+        self.controller.stop()
+
+        self.assertTrue(self.controller.servicios.tiene("GlobalConfig"))
+        self.assertFalse(self.controller.servicios.tiene("SessionTemp"))
 
 
 if __name__ == "__main__":

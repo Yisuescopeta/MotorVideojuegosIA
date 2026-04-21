@@ -105,6 +105,79 @@ class SignalRuntimeTests(unittest.TestCase):
         self.assertEqual(orden, ["primero", "segundo"])
         self.assertFalse(self.runtime.is_connected(second_connection_id))
 
+    def test_prune_by_source_removes_all_connections_for_emitter(self) -> None:
+        valores: list[int] = []
+        self.runtime.connect("Player", "hit", lambda d: valores.append(d), target_id="Target1")
+        self.runtime.connect("Player", "die", lambda: valores.append(1), target_id="Target2")
+        self.runtime.connect("Enemy", "hit", lambda d: valores.append(d), target_id="Target3")
+
+        self.assertEqual(self.runtime.prune_by_source("Player"), 2)
+        self.assertEqual(self.runtime.emit("Player", "hit", 5), 0)
+        self.assertEqual(self.runtime.emit("Player", "die"), 0)
+        self.assertEqual(self.runtime.emit("Enemy", "hit", 3), 1)
+
+    def test_prune_by_target_removes_all_connections_for_receiver(self) -> None:
+        valores: list[int] = []
+        self.runtime.connect("Player", "hit", lambda d: valores.append(d), target_id="Target1")
+        self.runtime.connect("Enemy", "hit", lambda d: valores.append(d), target_id="Target1")
+        self.runtime.connect("Enemy", "die", lambda: valores.append(1), target_id="Target2")
+
+        self.assertEqual(self.runtime.prune_by_target("Target1"), 2)
+        self.assertEqual(self.runtime.emit("Player", "hit", 5), 0)
+        self.assertEqual(self.runtime.emit("Enemy", "hit", 3), 0)
+        self.assertEqual(self.runtime.emit("Enemy", "die"), 1)
+
+    def test_prune_by_target_with_reference_counted_removes_connection_completely(self) -> None:
+        valores: list[int] = []
+
+        def on_hit(d: int) -> None:
+            valores.append(d)
+
+        self.runtime.connect(
+            "Player", "hit", on_hit,
+            flags=SignalConnectionFlags.REFERENCE_COUNTED,
+            target_id="Target1",
+        )
+        self.runtime.connect(
+            "Player", "hit", on_hit,
+            flags=SignalConnectionFlags.REFERENCE_COUNTED,
+            target_id="Target1",
+        )
+        self.assertEqual(self.runtime.list_connections("Player", "hit")[0].reference_count, 2)
+        self.assertEqual(self.runtime.prune_by_target("Target1"), 1)
+        self.assertEqual(self.runtime.emit("Player", "hit", 5), 0)
+
+    def test_emit_after_pruning_source_or_target_does_not_explode(self) -> None:
+        self.runtime.connect("Player", "hit", lambda d: None, target_id="Target1")
+        self.runtime.prune_by_source("Player")
+        self.assertEqual(self.runtime.emit("Player", "hit", 5), 0)
+
+        self.runtime.connect("Enemy", "hit", lambda d: None, target_id="Target2")
+        self.runtime.prune_by_target("Target2")
+        self.assertEqual(self.runtime.emit("Enemy", "hit", 3), 0)
+
+    def test_one_shot_and_deferred_still_work_after_pruning(self) -> None:
+        deferred_vals: list[str] = []
+        one_shot_vals: list[int] = []
+
+        self.runtime.connect(
+            "Button", "pressed", lambda s: deferred_vals.append(s),
+            flags=SignalConnectionFlags.DEFERRED,
+            target_id="DeferredTarget",
+        )
+        self.runtime.connect(
+            "Enemy", "die", lambda v: one_shot_vals.append(v),
+            flags=SignalConnectionFlags.ONE_SHOT,
+            target_id="OneShotTarget",
+        )
+
+        self.runtime.prune_by_target("DeferredTarget")
+        self.assertEqual(self.runtime.emit("Button", "pressed", "x"), 0)
+        self.assertEqual(self.deferred_queue.size, 0)
+
+        self.assertEqual(self.runtime.emit("Enemy", "die", 1), 1)
+        self.assertEqual(one_shot_vals, [1])
+
 
 if __name__ == "__main__":
     unittest.main()

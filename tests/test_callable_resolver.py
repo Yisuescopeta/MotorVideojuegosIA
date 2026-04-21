@@ -8,6 +8,7 @@ from engine.ecs.world import World
 from engine.events.callable_resolver import CallableResolver, CallableResolverContext
 from engine.events.event_bus import EventBus
 from engine.project.project_service import ProjectService
+from engine.services.registro_servicios import RegistroServicios
 from engine.systems.script_behaviour_system import ScriptBehaviourSystem
 
 
@@ -38,11 +39,13 @@ class CallableResolverTests(unittest.TestCase):
         self.script_behaviour_system = ScriptBehaviourSystem()
         self.script_behaviour_system.set_hot_reload_manager(HotReloadManager((self.root / "scripts").as_posix()))
         self.script_behaviour_system.set_project_service(self.project_service)
+        self.registry = RegistroServicios()
         self.resolver = CallableResolver(
             CallableResolverContext(
                 get_world=lambda: self.world,
                 get_script_behaviour_system=lambda: self.script_behaviour_system,
                 get_event_bus=lambda: self.event_bus,
+                get_service_registry=lambda: self.registry,
             )
         )
 
@@ -74,13 +77,47 @@ class CallableResolverTests(unittest.TestCase):
         self.assertTrue(callable_obj({"entity": "Enemy", "points": 10}))
         self.assertEqual(captured, [{"entity": "Enemy", "points": 10}])
 
-    def test_resolve_unsupported_service_target_returns_none(self) -> None:
+    def test_resolve_service_callable_invokes_service_method(self) -> None:
+        class GameState:
+            def __init__(self):
+                self.score = 0
+
+            def add_score(self, points: int) -> None:
+                self.score += points
+
+        game_state = GameState()
+        self.registry.registrar_builtin("GameState", game_state)
         callable_obj = self.resolver.resolve(
             {"kind": "service", "name": "GameState"},
             {"method": "add_score"},
         )
 
-        self.assertIsNone(callable_obj)
+        self.assertIsNotNone(callable_obj)
+        self.assertTrue(callable_obj(5))
+        self.assertEqual(game_state.score, 5)
+
+    def test_resolve_service_callable_returns_none_when_service_missing(self) -> None:
+        # La resolución es lazy: devuelve callable incluso si el servicio no existe aún.
+        callable_obj = self.resolver.resolve(
+            {"kind": "service", "name": "MissingService"},
+            {"method": "do_thing"},
+        )
+
+        self.assertIsNotNone(callable_obj)
+        self.assertFalse(callable_obj())
+
+    def test_resolve_service_callable_returns_none_when_method_missing(self) -> None:
+        class GameState:
+            pass
+
+        self.registry.registrar_builtin("GameState", GameState())
+        callable_obj = self.resolver.resolve(
+            {"kind": "service", "name": "GameState"},
+            {"method": "missing_method"},
+        )
+
+        self.assertIsNotNone(callable_obj)
+        self.assertFalse(callable_obj())
 
 
 class RuntimeControllerCallableResolverIntegrationTests(unittest.TestCase):

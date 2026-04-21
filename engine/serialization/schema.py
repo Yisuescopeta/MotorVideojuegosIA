@@ -1505,8 +1505,8 @@ def _validate_signal_target_metadata(value: Any, *, path: str) -> tuple[list[str
         return errors, ""
     kind = _expect_string(payload.get("kind"), path=f"{path}.kind", errors=errors, non_empty=True)
     normalized_kind = kind.strip().lower() if isinstance(kind, str) else ""
-    if normalized_kind and normalized_kind not in {"entity", "event_bus"}:
-        errors.append(f"{path}.kind: expected one of ['entity', 'event_bus']")
+    if normalized_kind and normalized_kind not in {"entity", "event_bus", "service"}:
+        errors.append(f"{path}.kind: expected one of ['entity', 'event_bus', 'service']")
     if normalized_kind == "entity":
         _expect_string(payload.get("name"), path=f"{path}.name", errors=errors, non_empty=True)
         if "component" in payload:
@@ -1516,6 +1516,8 @@ def _validate_signal_target_metadata(value: Any, *, path: str) -> tuple[list[str
     elif normalized_kind == "event_bus":
         if "event" in payload:
             _expect_string(payload.get("event"), path=f"{path}.event", errors=errors, non_empty=True)
+    elif normalized_kind == "service":
+        _expect_string(payload.get("name"), path=f"{path}.name", errors=errors, non_empty=True)
     for key, item in payload.items():
         if key not in {"kind", "name", "component", "event"}:
             _expect_json_serializable(item, path=f"{path}.{key}", errors=errors)
@@ -1533,7 +1535,7 @@ def _validate_signal_callable_metadata(
     payload: dict[str, Any]
     if value is None:
         payload = {}
-        if target_kind == "entity":
+        if target_kind in {"entity", "service"}:
             errors.append(f"{path}: expected object")
             return errors
     else:
@@ -1549,6 +1551,8 @@ def _validate_signal_callable_metadata(
             _expect_string(payload.get("event"), path=f"{path}.event", errors=errors, non_empty=True)
         elif not has_target_event:
             errors.append(f"{path}.event: expected non-empty string")
+    elif target_kind == "service":
+        _expect_string(payload.get("method"), path=f"{path}.method", errors=errors, non_empty=True)
     for key, item in payload.items():
         if key not in {"method", "event"}:
             _expect_json_serializable(item, path=f"{path}.{key}", errors=errors)

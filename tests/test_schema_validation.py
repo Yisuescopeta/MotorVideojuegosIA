@@ -581,7 +581,34 @@ class SchemaValidationTests(unittest.TestCase):
                         ]
                     }
                 },
-                "$.feature_metadata.signals.connections[0].target.kind: expected one of ['entity', 'event_bus']",
+                "$.feature_metadata.signals.connections[0].target.name: expected string",
+            ),
+            (
+                {
+                    "signals": {
+                        "connections": [
+                            {
+                                "source": {"id": "Emitter", "signal": "pressed"},
+                                "target": {"kind": "service", "name": "GameState"},
+                            }
+                        ]
+                    }
+                },
+                "$.feature_metadata.signals.connections[0].callable: expected object",
+            ),
+            (
+                {
+                    "signals": {
+                        "connections": [
+                            {
+                                "source": {"id": "Emitter", "signal": "pressed"},
+                                "target": {"kind": "service", "name": "GameState"},
+                                "callable": {"method": ""},
+                            }
+                        ]
+                    }
+                },
+                "$.feature_metadata.signals.connections[0].callable.method: expected non-empty string",
             ),
             (
                 {
@@ -627,6 +654,30 @@ class SchemaValidationTests(unittest.TestCase):
                                 "callable": {"event": "ui.play_clicked"},
                                 "flags": ["deferred"],
                                 "binds": [{"screen": "main_menu"}],
+                            }
+                        ]
+                    }
+                },
+            )
+        )
+
+        self.assertEqual(validate_scene_data(payload), [])
+
+    def test_scene_validation_accepts_valid_service_signal_feature_metadata(self) -> None:
+        payload = migrate_scene_data(
+            _scene_payload(
+                name="SignalServiceValid",
+                entities=[_entity_payload("Emitter")],
+                feature_metadata={
+                    "signals": {
+                        "connections": [
+                            {
+                                "id": "emit_to_service",
+                                "source": {"id": "Emitter", "signal": "pressed"},
+                                "target": {"kind": "service", "name": "GameState"},
+                                "callable": {"method": "add_score"},
+                                "flags": ["one_shot"],
+                                "binds": [10],
                             }
                         ]
                     }
