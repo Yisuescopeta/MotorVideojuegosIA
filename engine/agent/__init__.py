@@ -4,6 +4,7 @@ from engine.agent.credentials import AgentCredentialStore, AgentProviderLoginSer
 from engine.agent.engine_port import AgentEnginePort, EditorLiveAgentEnginePort, EngineAPIAgentEnginePort
 from engine.agent.migration import AgentSessionMigrationError, AgentSessionMigrator
 from engine.agent.memory import AgentCompactionService, AgentMemorySnapshot, AgentMemoryStore
+from engine.agent.model_presets import list_model_presets, recommended_model
 from engine.agent.provider import (
     AgentProviderMetadata,
     AgentProviderRequest,
@@ -92,4 +93,6 @@ __all__ = [
     "OpenAIProvider",
     "ReplayLLMProvider",
     "create_opencode_go_provider",
+    "list_model_presets",
+    "recommended_model",
 ]

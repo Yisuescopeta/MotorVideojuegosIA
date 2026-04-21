@@ -487,6 +487,95 @@ class AgentPanelTests(unittest.TestCase):
 
         mock_restart.assert_called_once()
 
+    def test_agent_panel_apply_model_change_persists_default_and_updates_session(self) -> None:
+        panel = AgentPanel()
+        service = AgentSessionService(
+            project_root=self.project_service.project_root_display,
+            global_state_dir=self.global_state_dir,
+        )
+        panel.set_agent_service(service)
+
+        panel._apply_model_change("opencode-go/kimi-k2.5")
+
+        persisted = service.provider_settings_store.load()
+        self.assertEqual(persisted.get("model"), "opencode-go/kimi-k2.5")
+        session = service.get_session(panel.session_id)
+        self.assertEqual(session["runtime_config"]["model"], "opencode-go/kimi-k2.5")
+
+    def test_agent_panel_apply_provider_change_persists_and_restarts_session(self) -> None:
+        panel = AgentPanel()
+        panel.set_project_service(self.project_service)
+        self.assertIsNotNone(panel.agent_service)
+        previous_session_id = panel.session_id
+
+        with patch.object(
+            panel,
+            "_restart_project_session",
+            wraps=panel._restart_project_session,
+        ) as mock_restart:
+            panel._apply_provider_change("fake")
+
+        mock_restart.assert_called_once()
+        self.assertIsNotNone(panel.agent_service)
+        persisted = panel.agent_service.provider_settings_store.load()
+        self.assertEqual(persisted.get("default_provider_id"), "fake")
+        self.assertNotEqual(panel.session_id, previous_session_id)
+
+    def test_agent_panel_new_session_keeps_current_provider_choice(self) -> None:
+        panel = AgentPanel()
+        panel.set_project_service(self.project_service)
+        initial_session_id = panel.session_id
+        provider_before, model_before, _stream = panel._current_session_config()
+
+        panel._new_session()
+
+        self.assertNotEqual(panel.session_id, initial_session_id)
+        provider_after, model_after, _stream_after = panel._current_session_config()
+        self.assertEqual(provider_after, provider_before)
+        self.assertEqual(model_after, model_before)
+
+    def test_agent_panel_captures_keyboard_when_composer_focused(self) -> None:
+        panel = AgentPanel()
+        self.assertFalse(panel.captures_keyboard())
+        panel.has_focus = True
+        self.assertTrue(panel.captures_keyboard())
+        panel.has_focus = False
+        panel._model_custom_has_focus = True
+        self.assertTrue(panel.captures_keyboard())
+
+
+class AgentModelPresetsTests(unittest.TestCase):
+    def test_openai_presets_include_default_model(self) -> None:
+        from engine.agent.credentials import DEFAULT_OPENAI_MODEL
+        from engine.agent.model_presets import list_model_presets
+
+        presets = list_model_presets("openai")
+
+        self.assertIn(DEFAULT_OPENAI_MODEL, presets)
+        self.assertEqual(presets[0], DEFAULT_OPENAI_MODEL)
+
+    def test_opencode_go_presets_include_default_model_and_normalize_aliases(self) -> None:
+        from engine.agent.credentials import DEFAULT_OPENCODE_GO_MODEL
+        from engine.agent.model_presets import list_model_presets
+
+        presets_canonical = list_model_presets("opencode-go")
+        presets_alias = list_model_presets("opencode")
+
+        self.assertIn(DEFAULT_OPENCODE_GO_MODEL, presets_canonical)
+        self.assertEqual(presets_canonical, presets_alias)
+
+    def test_unknown_provider_returns_empty_list(self) -> None:
+        from engine.agent.model_presets import list_model_presets
+
+        self.assertEqual(list_model_presets("nonexistent-provider"), [])
+
+    def test_recommended_model_matches_first_preset(self) -> None:
+        from engine.agent.model_presets import list_model_presets, recommended_model
+
+        presets = list_model_presets("openai")
+        self.assertEqual(recommended_model("openai"), presets[0])
+        self.assertEqual(recommended_model("nonexistent"), "")
+
 
 class GameTerminalIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:
