@@ -39,6 +39,7 @@ class CapabilityRegistryBuilder:
         self._register_runtime_capabilities()
         self._register_physics_capabilities()
         self._register_introspection_capabilities()
+        self._register_agent_capabilities()
         return self._registry
 
     def _register_scene_capabilities(self) -> None:
@@ -904,6 +905,206 @@ class CapabilityRegistryBuilder:
             tags=["introspection", "runtime"],
         ))
 
+    def _register_agent_capabilities(self) -> None:
+        self._add(Capability(
+            id="agent:session:create",
+            summary="Create an experimental clean-room agent session inside the engine",
+            mode="both",
+            api_methods=["AgentAPI.create_agent_session"],
+            cli_command="motor agent session create",
+            example=CapabilityExample(
+                description="Create a confirm-actions agent session",
+                api_calls=[
+                    {"method": "create_agent_session", "args": {"permission_mode": "confirm_actions"}},
+                ],
+                expected_outcome="Returns a session id and empty session state",
+            ),
+            notes="Experimental/tooling API and CLI. Uses an offline deterministic test provider by default.",
+            tags=["agent", "experimental", "tooling"],
+        ))
+
+        self._add(Capability(
+            id="agent:message:send",
+            summary="Send a message to an engine-native agent session",
+            mode="both",
+            api_methods=["AgentAPI.send_agent_message"],
+            cli_command="motor agent message send <session> <message>",
+            example=CapabilityExample(
+                description="Ask the fake provider to read a project file",
+                api_calls=[
+                    {
+                        "method": "send_agent_message",
+                        "args": {"session_id": "agent-session-id", "message": "read README.md"},
+                    },
+                ],
+                expected_outcome="The session records the user message, assistant response and tool result or pending action",
+            ),
+            notes="Experimental/tooling API. Mutating tool calls require approval unless the session is full_access.",
+            tags=["agent", "experimental", "tooling"],
+        ))
+
+        self._add(Capability(
+            id="agent:action:approve",
+            summary="Approve or reject a pending agent action",
+            mode="both",
+            api_methods=["AgentAPI.approve_agent_action"],
+            cli_command="motor agent action approve <session> <action>",
+            example=CapabilityExample(
+                description="Approve a pending file write",
+                api_calls=[
+                    {
+                        "method": "approve_agent_action",
+                        "args": {"session_id": "agent-session-id", "action_id": "agent-action-id", "approved": True},
+                    },
+                ],
+                expected_outcome="The pending action is executed and audited",
+            ),
+            notes="Experimental/tooling API. Hard guards still block unsafe paths and obvious secrets.",
+            tags=["agent", "experimental", "permissions"],
+        ))
+
+        self._add(Capability(
+            id="agent:runtime",
+            summary="Run the v3 clean-room agent turn loop with provider/tool-result continuation",
+            mode="both",
+            api_methods=["AgentAPI.send_agent_message", "AgentAPI.approve_agent_action"],
+            cli_command="motor agent message send <session> <message>",
+            example=CapabilityExample(
+                description="Send a message that may trigger tools and continue after tool results",
+                api_calls=[
+                    {
+                        "method": "send_agent_message",
+                        "args": {"session_id": "agent-session-id", "message": "read README.md"},
+                    },
+                ],
+                expected_outcome="The session records provider events, tool results and a final assistant response",
+            ),
+            notes="Experimental/tooling. Fake/replay remain offline test providers; OpenAI is available as opt-in online provider requiring environment credentials.",
+            tags=["agent", "experimental", "runtime"],
+        ))
+
+        self._add(Capability(
+            id="agent:providers:list",
+            summary="List configured agent providers and metadata",
+            mode="both",
+            api_methods=["AgentAPI.list_agent_providers"],
+            cli_command="motor agent providers list",
+            example=CapabilityExample(
+                description="List offline and online agent provider adapters",
+                api_calls=[
+                    {"method": "list_agent_providers", "args": {}},
+                ],
+                expected_outcome="Returns provider ids, kind, credential requirements, streaming and usage support",
+            ),
+            notes="OpenAI is listed as online and requires OPENAI_API_KEY; fake/replay are test-only.",
+            tags=["agent", "experimental", "providers"],
+        ))
+
+        self._add(Capability(
+            id="agent:session:compact",
+            summary="Compact an agent session transcript into local memory",
+            mode="both",
+            api_methods=["AgentAPI.compact_agent_session"],
+            cli_command="motor agent session compact <session>",
+            example=CapabilityExample(
+                description="Compact an agent session",
+                api_calls=[
+                    {"method": "compact_agent_session", "args": {"session_id": "agent-session-id"}},
+                ],
+                expected_outcome="Stores a sanitized session summary and keeps recent messages",
+            ),
+            notes="Experimental/tooling. Protected paths and obvious secrets are excluded from memory summaries.",
+            tags=["agent", "experimental", "memory"],
+        ))
+
+        self._add(Capability(
+            id="agent:session:inspect",
+            summary="Inspect an agent session without mutating it",
+            mode="both",
+            api_methods=["AgentAPI.inspect_agent_session"],
+            cli_command="motor agent session inspect <session>",
+            example=CapabilityExample(
+                description="Inspect session state and runtime config",
+                api_calls=[
+                    {"method": "inspect_agent_session", "args": {"session_id": "agent-session-id"}},
+                ],
+                expected_outcome="Returns schema, provider, pending actions, runtime config and usage counts",
+            ),
+            notes="Read-only diagnostic command for migrated or manually edited sessions.",
+            tags=["agent", "experimental", "diagnostics"],
+        ))
+
+        self._add(Capability(
+            id="agent:usage",
+            summary="Show token and cost usage recorded for an agent session",
+            mode="both",
+            api_methods=["AgentAPI.get_agent_usage"],
+            cli_command="motor agent usage <session>",
+            example=CapabilityExample(
+                description="Inspect session token usage",
+                api_calls=[
+                    {"method": "get_agent_usage", "args": {"session_id": "agent-session-id"}},
+                ],
+                expected_outcome="Returns usage records and totals; cost is unknown unless pricing is configured",
+            ),
+            notes="Cost is never invented. It remains unknown when provider usage or prices are unavailable.",
+            tags=["agent", "experimental", "usage"],
+        ))
+
+        self._add(Capability(
+            id="agent:tools",
+            summary="List and execute safe engine-native agent tools through the v2 tool pipeline",
+            mode="both",
+            api_methods=["AgentAPI.list_agent_tools", "AgentAPI.send_agent_message"],
+            cli_command="motor agent message send <session> /tools",
+            example=CapabilityExample(
+                description="Ask the session to list available tools",
+                api_calls=[
+                    {"method": "list_agent_tools", "args": {}},
+                ],
+                expected_outcome="Returns tool specs with permission and preview metadata",
+            ),
+            notes="Tools validate input, build previews, resolve permissions, execute and map tool_result records.",
+            tags=["agent", "experimental", "tools"],
+        ))
+
+        self._add(Capability(
+            id="agent:permissions",
+            summary="Suspend mutating agent tools for approval and resume the same logical turn",
+            mode="both",
+            api_methods=["AgentAPI.approve_agent_action"],
+            cli_command="motor agent action approve <session> <action>",
+            example=CapabilityExample(
+                description="Approve a pending write and continue the agent turn",
+                api_calls=[
+                    {
+                        "method": "approve_agent_action",
+                        "args": {"session_id": "agent-session-id", "action_id": "agent-action-id", "approved": True},
+                    },
+                ],
+                expected_outcome="The action emits a tool_result and the provider receives the result for continuation",
+            ),
+            notes="Modes are confirm_actions and full_access. Hard guards still apply in both modes.",
+            tags=["agent", "experimental", "permissions"],
+        ))
+
+        self._add(Capability(
+            id="agent:editor_panel",
+            summary="Use the Agent panel next to Terminal with a live engine port",
+            mode="both",
+            api_methods=["AgentAPI.get_agent_session", "AgentAPI.send_agent_message"],
+            cli_command="motor agent message send <session> /status",
+            example=CapabilityExample(
+                description="Inspect agent status from the same session model used by the editor panel",
+                api_calls=[
+                    {"method": "send_agent_message", "args": {"session_id": "agent-session-id", "message": "/status"}},
+                ],
+                expected_outcome="Returns session mode, pending actions and provider state",
+            ),
+            notes="UI capability documented for AI discovery; runtime-bound EngineAPI construction is internal editor tooling, not a core API.",
+            tags=["agent", "experimental", "editor", "tooling"],
+        ))
+
     # Capabilities that are planned but not yet implemented.
     # These do NOT have corresponding implementations in the official motor CLI parser.
     # They are API-level capabilities that may be used programmatically but are not
@@ -912,40 +1113,41 @@ class CapabilityRegistryBuilder:
         # Scene flow (no CLI commands exist)
         "scene:flow:set_next",
         "scene:flow:load_next",
-        
+
         # Entity operations beyond create (no CLI commands exist)
         "entity:delete",
         "entity:parent",
         "entity:list",
         "introspect:entity",  # motor entity inspect not in parser
-        
+
         # Component operations beyond add (no CLI commands exist)
         "component:edit",
         "component:remove",
-        
+
         # Asset operations beyond list/slice (no CLI commands exist)
         "asset:find",
         "asset:metadata:get",
         "asset:refresh",
-        
+
         # Project operations beyond info/bootstrap-ai (no CLI commands exist)
         "project:open",
         "project:editor_state",
-        
+
         # Runtime operations (no CLI commands exist)
         "runtime:play",
         "runtime:stop",
         "runtime:step",
         "runtime:undo",
         "runtime:redo",
-        
+
         # Physics operations (no CLI commands exist)
         "physics:query:aabb",
         "physics:query:ray",
         "physics:backend:list",
-        
+
         # Introspection beyond capabilities (no CLI command exists)
         "introspect:status",
+
     }
 
     def _add(self, capability: Capability) -> None:

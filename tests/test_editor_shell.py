@@ -15,6 +15,7 @@ class EditorShellTests(unittest.TestCase):
             flow_workspace_panel=Mock(),
             console_panel=Mock(),
             terminal_panel=Mock(),
+            agent_panel=Mock(),
         )
 
         with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
@@ -24,6 +25,7 @@ class EditorShellTests(unittest.TestCase):
         self.assertEqual(shell.layout.active_tab, "FLOW")
         self.assertIs(shell.layout.project_panel, slots.project_panel)
         self.assertIs(shell.layout.terminal_panel, slots.terminal_panel)
+        self.assertIs(shell.layout.agent_panel, slots.agent_panel)
 
         shell.layout.active_bottom_tab = "PROJECT"
         self.assertEqual(state.active_bottom_tab, "PROJECT")
@@ -38,6 +40,7 @@ class EditorShellTests(unittest.TestCase):
                 flow_workspace_panel=flow_workspace_panel,
                 console_panel=Mock(),
                 terminal_panel=None,
+                agent_panel=Mock(),
             ),
             hierarchy_panel=HierarchyPanel(),
         )

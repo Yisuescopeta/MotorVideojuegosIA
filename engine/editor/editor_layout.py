@@ -91,6 +91,7 @@ _PANEL_SLOT_FIELDS = (
     "flow_workspace_panel",
     "console_panel",
     "terminal_panel",
+    "agent_panel",
 )
 
 
@@ -202,6 +203,7 @@ class EditorLayout:
             ("Flow Panel", "", "bottom_flow"),
             ("Console", "", "bottom_console"),
             ("Terminal", "", "bottom_terminal"),
+            ("Agent", "", "bottom_agent"),
         ],
         "Help": [
             ("About Motor 2D", "", "about"),
@@ -877,6 +879,13 @@ class EditorLayout:
                     int(self.bottom_content_rect.width),
                     int(self.bottom_content_rect.height),
                 )
+            elif self.active_bottom_tab == "AGENT" and self.agent_panel is not None:
+                self.agent_panel.render(
+                    int(self.bottom_content_rect.x),
+                    int(self.bottom_content_rect.y),
+                    int(self.bottom_content_rect.width),
+                    int(self.bottom_content_rect.height),
+                )
         except Exception as exc:
             log_err(f"Bottom panel render error ({self.active_bottom_tab}): {exc}")
             safe_reset_clip_state()
@@ -1536,6 +1545,8 @@ class EditorLayout:
             self.active_bottom_tab = "CONSOLE"
         elif action_id == "bottom_terminal":
             self.active_bottom_tab = "TERMINAL"
+        elif action_id == "bottom_agent":
+            self.active_bottom_tab = "AGENT"
         elif action_id == "about":
             self.show_about_modal = True
 
@@ -1798,10 +1809,12 @@ class EditorLayout:
         flow_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 75, bottom_tab_y, 62, bottom_tab_h)
         cons_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 140, bottom_tab_y, 70, bottom_tab_h)
         term_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 213, bottom_tab_y, 70, bottom_tab_h)
+        agent_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 286, bottom_tab_y, 62, bottom_tab_h)
         self._register_cursor_rect(proj_tab_rect)
         self._register_cursor_rect(flow_tab_rect)
         self._register_cursor_rect(cons_tab_rect)
         self._register_cursor_rect(term_tab_rect)
+        self._register_cursor_rect(agent_tab_rect)
 
         if rl.check_collision_point_rec(mouse_pos, proj_tab_rect):
             self.active_bottom_tab = "PROJECT"
@@ -1811,6 +1824,8 @@ class EditorLayout:
             self.active_bottom_tab = "CONSOLE"
         elif rl.check_collision_point_rec(mouse_pos, term_tab_rect):
             self.active_bottom_tab = "TERMINAL"
+        elif rl.check_collision_point_rec(mouse_pos, agent_tab_rect):
+            self.active_bottom_tab = "AGENT"
 
     def draw_bottom_tabs(self) -> None:
         rl.draw_rectangle_rec(self.bottom_header_rect, self.UNITY_BG_DARK)
@@ -1828,11 +1843,13 @@ class EditorLayout:
         flow_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 75, bottom_tab_y, 62, bottom_tab_h)
         cons_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 140, bottom_tab_y, 70, bottom_tab_h)
         term_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 213, bottom_tab_y, 70, bottom_tab_h)
+        agent_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 286, bottom_tab_y, 62, bottom_tab_h)
 
         self._draw_tab("Project", proj_tab_rect, self.active_bottom_tab == "PROJECT")
         self._draw_tab("Flow", flow_tab_rect, self.active_bottom_tab == "FLOW")
         self._draw_tab("Console", cons_tab_rect, self.active_bottom_tab == "CONSOLE")
         self._draw_tab("Terminal", term_tab_rect, self.active_bottom_tab == "TERMINAL")
+        self._draw_tab("Agent", agent_tab_rect, self.active_bottom_tab == "AGENT")
 
     def _clamp_bottom_height(self, value: int, screen_height: int | None = None) -> int:
         height = self.screen_height if screen_height is None else int(screen_height)

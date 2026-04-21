@@ -44,6 +44,87 @@ cambia la API publica; solo reduce acoplamiento interno para fases posteriores.
 
 `attach_runtime(...)` conserva firma y sigue siendo la ruta de integracion para
 inyectar un runtime/scene manager externos compatibles con ese contrato base.
+`EngineAPI.from_runtime(...)` existe solo como helper `experimental/internal
+tooling` para adaptadores del editor que necesitan una fachada sobre runtime
+vivo sin inicializar un segundo motor headless. No es un constructor core
+estable ni debe usarse desde CLI o automatizaciones generales.
+
+## Agente experimental
+
+Fuente: `engine/api/_agent_api.py`.
+
+El agente nativo v2 es una superficie `experimental/tooling` para sesiones
+clean-room dentro del motor. Mantiene la API publica de v1, pero internamente
+usa un runtime iterativo `provider -> tool_use -> tool_result -> provider`:
+
+- `create_agent_session(permission_mode="confirm_actions", title="", provider_id="fake", model="", temperature=None, max_tokens=None, stream=False)`
+- `send_agent_message(session_id, message)`
+- `get_agent_session(session_id)`
+- `approve_agent_action(session_id, action_id, approved)`
+- `cancel_agent_session(session_id)`
+- `list_agent_tools()`
+- `list_agent_providers()`
+- `compact_agent_session(session_id)`
+- `get_agent_usage(session_id)`
+- `inspect_agent_session(session_id)`
+
+Modos de permiso:
+
+- `confirm_actions`: lectura segura sin confirmacion; escrituras, shell, Git y
+  authoring estructurado quedan pendientes de aprobacion.
+- `full_access`: ejecuta sin confirmacion, conservando hard guards de rutas,
+  carpeta de referencia `Claude Code/`, secretos evidentes y auditoria local.
+
+`list_agent_tools()` devuelve metadatos de cada tool, incluido
+`parameters_schema` como JSON Schema minimo para proveedores con function
+calling.
+
+El estado de sesiones y auditoria vive en `.motor/agent_state`.
+Las sesiones se guardan con `schema_version=2`, transcript serializable y log
+de eventos por sesion en `.motor/agent_state/events/`.
+Los `session_id` son opacos y se validan antes de resolver rutas locales.
+Las sesiones legacy sin `schema_version` se migran de forma explicita al cargar:
+se crea backup `.legacy-v1.bak`, se valida el payload, se reconstruyen
+`content_blocks`/turnos suspendidos y se registra `session_migrated`. Si el
+JSON esta corrupto no se sobrescribe el archivo original.
+
+Provider:
+
+- `fake` es un provider determinista offline de pruebas, marcado como
+  `provider_kind=test`, `offline=True`, `test_only=True`.
+- `replay` permite tests de contrato multi-turn declarativos sin simular
+  inteligencia real.
+- `openai` es el primer provider online real de V3a; usa Responses API,
+  acepta `OPENAI_API_KEY`, secreto local del agente y login gestionado por
+  Codex/OpenAI mediante `credential_source=codex_chatgpt` o
+  `credential_source=codex_api_key`.
+- `get_agent_provider_status(...)` y `list_agent_providers()` exponen
+  `credential_source`, `auth_method`, `runtime_ready`, `codex_cli_available`,
+  `codex_home` y `plan_type` cuando aplica.
+- Si existe auth gestionada pero no hay bridge reutilizable para el runtime
+  actual, `runtime_ready=False` y no hay fallback silencioso a `fake`.
+- Un `provider_id` desconocido falla con diagnostico explicito.
+- `stream=True` activa eventos `assistant_delta` y persistencia del mensaje final
+  cuando el provider soporta streaming.
+
+Shell tool:
+
+- `run_command` mantiene su nombre publico, pero ya no ejecuta shell generica.
+- Internamente normaliza a `argv` y usa `subprocess.run(..., shell=False)`.
+- Solo acepta perfiles `python_tests`, `motor_cli_read` y probes de lectura
+  estrechos; `full_access` no salta esta policy.
+- La ejecucion pasa por `AgentCommandRunner`, que confina cwd al proyecto, usa
+  env minimo, timeout, limite de output y auditoria local.
+- Pipes, redirecciones, chaining, shells, inline Python, comandos Git mutantes,
+  comandos destructivos y acceso a `Claude Code/` se bloquean antes de ejecutar.
+
+Memoria y coste:
+
+- `compact_agent_session(...)` y `/compact` generan resumen local sanitizado en
+  `.motor/agent_state/memory/`.
+- `get_agent_usage(...)` y `/cost` reportan tokens si el provider los devuelve.
+- El coste estimado permanece `unknown` si no hay precios configurados; no se
+  inventan importes.
 
 ## Forma de respuesta
 

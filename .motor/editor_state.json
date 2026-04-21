@@ -1,10 +1,10 @@
 {
     "recent_assets": {},
-    "last_scene": "levels/platformer_test_scene.json",
+    "last_scene": "projects/Caballerito1/levels/level_1.json",
     "open_scenes": [
-        "levels/platformer_test_scene.json"
+        "projects/Caballerito1/levels/level_1.json"
     ],
-    "active_scene": "levels/platformer_test_scene.json",
+    "active_scene": "projects/Caballerito1/levels/level_1.json",
     "scene_view_states": {},
     "preferences": {}
 }

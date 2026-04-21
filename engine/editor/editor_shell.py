@@ -81,3 +81,8 @@ class EditorShell:
         self.panel_slots.terminal_panel = panel
         if self.layout is not None:
             self.layout.terminal_panel = panel
+
+    def bind_agent_panel(self, panel: Any) -> None:
+        self.panel_slots.agent_panel = panel
+        if self.layout is not None:
+            self.layout.agent_panel = panel

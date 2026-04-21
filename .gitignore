@@ -36,6 +36,9 @@ htmlcov/
 *.tmp
 *.temp
 .claude/worktrees/
+Claude Code/
+motor_ai.json
+START_HERE_AI.md
 autosave.json
 close_debug.txt
 pty_debug*.txt

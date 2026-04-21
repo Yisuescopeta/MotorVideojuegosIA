@@ -300,6 +300,124 @@ Guarda slices definidos manualmente como JSON inline o ruta a archivo JSON.
 py -m motor asset slice manual assets/player.png --slices '[{"name":"idle_0","x":0,"y":0,"width":32,"height":32}]' --project . --json
 ```
 
+## Agente experimental
+
+Estos comandos exponen el agente clean-room nativo del motor como herramienta
+experimental. Las sesiones se guardan en estado local del proyecto bajo
+`.motor/agent_state/`.
+
+### `motor agent providers list`
+
+Lista providers configurados y su metadata.
+
+```bash
+py -m motor agent providers list --project . --json
+```
+
+`fake` y `replay` son providers offline de prueba. `openai` es online, requiere
+una credencial usable y no se usa como fallback silencioso. Esa credencial puede
+venir de `OPENAI_API_KEY`, del secreto local del agente o de login gestionado
+por Codex/OpenAI cuando el bridge expone una API key reutilizable.
+
+### `motor agent providers login <provider>`
+
+Configura credenciales de provider.
+
+```bash
+py -m motor agent providers login opencode-go --api-key-stdin --project .
+py -m motor agent providers login openai --codex-chatgpt --project .
+py -m motor agent providers login openai --device-auth --project .
+```
+
+Modos soportados:
+
+- `--api-key-stdin`: guarda un secreto local del agente sin dejarlo en el historial.
+- `--codex-chatgpt`: delega el login real al CLI oficial `codex login`.
+- `--device-auth`: usa el flujo oficial device-code de Codex para entornos sin navegador local.
+
+### `motor agent providers status [provider]`
+
+Inspecciona estado de auth sin revelar secretos.
+
+```bash
+py -m motor agent providers status openai --project . --json
+```
+
+Campos relevantes:
+
+- `credential_source`: `env`, `user_local`, `codex_chatgpt`, `codex_api_key`, `codex_keyring` o `none`.
+- `auth_method`: metodo observable (`api_key` o `chatgpt`) cuando el origen lo permite.
+- `runtime_ready`: indica si el runtime actual puede reutilizar la credencial detectada.
+
+### `motor agent session create`
+
+Crea una sesion de agente. Por defecto usa proveedor fake determinista.
+
+```bash
+py -m motor agent session create --project . --permission-mode confirm_actions --json
+py -m motor agent session create --project . --permission-mode full_access --title "Sesion local" --json
+py -m motor agent session create --project . --provider-id openai --model gpt-5 --stream --json
+```
+
+Modos de permisos:
+
+- `confirm_actions` permite lecturas seguras y deja ediciones, shell y Git como acciones pendientes.
+- `full_access` autoejecuta acciones permitidas, manteniendo limites de ruta, auditoria y bloqueo de secretos evidentes.
+
+Opciones de provider:
+
+- `--provider-id`: `fake` por defecto; `openai` requiere una credencial usable (`OPENAI_API_KEY`, secreto local o bridge gestionado por Codex/OpenAI).
+- `--model`: modelo del provider.
+- `--temperature`, `--max-tokens`: limites opcionales del provider.
+- `--stream`: activa streaming si el provider lo soporta.
+
+### `motor agent session compact <session_id>`
+
+Compacta el transcript en memoria local sanitizada.
+
+```bash
+py -m motor agent session compact agent-session-id --project . --json
+```
+
+No compacta acciones pendientes sin conservar referencia; excluye rutas
+protegidas y secretos evidentes.
+
+### `motor agent session inspect <session_id>`
+
+Inspecciona una sesion sin mutarla.
+
+```bash
+py -m motor agent session inspect agent-session-id --project . --json
+```
+
+### `motor agent message send <session_id> <message>`
+
+Envia texto a una sesion. El proveedor fake puede ejecutar herramientas simples
+como `read README.md`, `list .`, `search pattern in path`, `write path :: text`,
+`edit path :: old => new`, `run <command>`, `git status` y `git diff`.
+
+```bash
+py -m motor agent message send agent-session-id "read README.md" --project . --json
+```
+
+### `motor agent action approve <session_id> <action_id>`
+
+Aprueba o rechaza una accion pendiente generada en modo `confirm_actions`.
+
+```bash
+py -m motor agent action approve agent-session-id agent-action-id --project . --json
+py -m motor agent action approve agent-session-id agent-action-id --reject --project . --json
+```
+
+### `motor agent usage <session_id>`
+
+Muestra usage registrado por providers. El coste queda `unknown` si faltan
+tokens o tabla de precios.
+
+```bash
+py -m motor agent usage agent-session-id --project . --json
+```
+
 ## Comandos del registry que aun no estan en la CLI
 
 `motor capabilities --json` puede listar capacidades con `status = "planned"`.

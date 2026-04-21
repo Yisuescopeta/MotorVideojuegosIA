@@ -90,3 +90,13 @@ Automation-owned runs should also stay self-contained. The AI-assisted workflow
 CLI and headless verification paths use project-local state under
 `.motor/ai_assist_state` instead of user-global editor state so repeated runs
 remain deterministic and isolated.
+
+`engine/agent/` is a separate experimental layer for clean-room agent sessions,
+offline test providers (`fake`/`replay`), the opt-in OpenAI provider, runtime
+loop, streaming events, tools and permissions. It consumes this foundation for
+context, structured authoring and verification; it does not replace these
+workflow contracts. Agent V3a keeps MCP, web, remote execution and subagents out
+of scope until providers, memory/compaction, usage and the command runner are
+stable. Its `run_command` tool is restricted to explicit allowlist profiles,
+executes through `AgentCommandRunner`, and legacy session files are migrated with
+backup and audit events.

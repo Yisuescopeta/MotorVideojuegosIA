@@ -25,7 +25,7 @@ from engine.events.event_bus import EventBus
 from engine.events.rule_system import RuleSystem
 from engine.inspector.inspector_system import InspectorSystem
 from engine.levels.component_registry import create_default_registry
-from engine.physics.box2d_backend import Box2DPhysicsBackend
+from engine.physics.box2d_backend import Box2DDependencyUnavailable, Box2DPhysicsBackend
 from engine.project.project_service import ProjectService
 from engine.scenes.scene_manager import SceneManager
 from engine.systems.animation_system import AnimationSystem
@@ -77,6 +77,9 @@ def _register_optional_box2d_backend(game: Game, gravity: float, event_bus: Even
         backend = Box2DPhysicsBackend(gravity=gravity, event_bus=event_bus)
         game.set_physics_backend(backend, backend_name="box2d")
         return True
+    except Box2DDependencyUnavailable as exc:
+        game.set_physics_backend_unavailable("box2d", str(exc))
+        return False
     except Exception as exc:
         game.set_physics_backend_unavailable("box2d", str(exc))
         print(f"[WARNING] Box2D backend unavailable: {exc}")

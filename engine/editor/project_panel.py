@@ -390,6 +390,13 @@ class ProjectPanel:
             self.search_focused = rl.check_collision_point_rec(mouse, self._search_rect)
         if not self.search_focused:
             return
+        if rl.is_key_down(rl.KEY_LEFT_CONTROL) or rl.is_key_down(rl.KEY_RIGHT_CONTROL):
+            if rl.is_key_pressed(rl.KEY_C):
+                rl.set_clipboard_text(self.search_text)
+            elif rl.is_key_pressed(rl.KEY_V):
+                clipboard_content = rl.get_clipboard_text()
+                if clipboard_content and len(self.search_text) + len(clipboard_content) <= 64:
+                    self.set_search_text(self.search_text + clipboard_content)
         if rl.is_key_pressed(rl.KEY_BACKSPACE) and self.search_text:
             self.set_search_text(self.search_text[:-1])
         while True:

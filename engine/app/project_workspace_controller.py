@@ -75,13 +75,16 @@ class ProjectWorkspaceController:
         self._stop_runtime = stop_runtime
         self._set_running = set_running
 
-    def set_project_service(self, service: Any) -> None:
+    def set_project_service(self, service: Any, *, notify_agent_panel: bool = True) -> None:
         editor_layout = self._get_editor_layout()
         scene_manager = self._get_scene_manager()
         if self._terminal_panel is not None:
             self._terminal_panel.set_project_service(service)
         if editor_layout is not None:
             editor_layout.terminal_panel = self._terminal_panel
+            agent_panel = getattr(editor_layout, "agent_panel", None)
+            if notify_agent_panel and agent_panel is not None and hasattr(agent_panel, "set_project_service"):
+                agent_panel.set_project_service(service)
             editor_layout.set_recent_projects(service.list_launcher_projects())
             editor_layout.set_project_scene_entries(service.list_project_scenes() if service.has_project else [])
             if getattr(editor_layout, "flow_panel", None) is not None:

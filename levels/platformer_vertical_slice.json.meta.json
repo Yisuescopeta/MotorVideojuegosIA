@@ -1,0 +1,21 @@
+{
+    "guid": "ast_1db17c5126e047d8835b34b218350e01",
+    "source_path": "levels/platformer_vertical_slice.json",
+    "path": "levels/platformer_vertical_slice.json",
+    "asset_kind": "scene_data",
+    "importer": "scene_data",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "scene_data",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "scene_data",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

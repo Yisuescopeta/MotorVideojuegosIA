@@ -517,6 +517,29 @@ def _install_pyray_stub(*, force: bool = False) -> None:
     def load_font_default() -> object:
         return object()
 
+    def get_clipboard_text() -> str:
+        try:
+            import tkinter as tk
+            root = tk.Tk()
+            root.withdraw()
+            text = root.clipboard_get()
+            root.destroy()
+            return text
+        except Exception:
+            return ""
+
+    def set_clipboard_text(text: str) -> None:
+        try:
+            import tkinter as tk
+            root = tk.Tk()
+            root.withdraw()
+            root.clipboard_clear()
+            root.clipboard_append(text)
+            root.update()
+            root.destroy()
+        except Exception:
+            pass
+
     for name, value in {
         "Vector2": Vector2,
         "Rectangle": Rectangle,
@@ -595,6 +618,8 @@ def _install_pyray_stub(*, force: bool = False) -> None:
         "gui_button": gui_button,
         "get_window_position": get_window_position,
         "load_font_default": load_font_default,
+        "get_clipboard_text": get_clipboard_text,
+        "set_clipboard_text": set_clipboard_text,
         "load_image_from_texture": load_image_from_texture,
         "image_flip_vertical": image_flip_vertical,
         "unload_render_texture": unload_render_texture,

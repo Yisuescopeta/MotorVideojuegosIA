@@ -40,6 +40,7 @@ from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.core.time_manager import TimeManager
 from engine.debug.profiler import EngineProfiler
 from engine.debug.timeline import Timeline
+from engine.editor.agent_panel import AgentPanel
 from engine.editor.animator_panel import AnimatorPanel
 from engine.editor.cursor_manager import CustomCursorRenderer
 from engine.editor.editor_layout import EditorLayout
@@ -135,8 +136,9 @@ class Game:
         self.animator_panel: Optional["AnimatorPanel"] = AnimatorPanel()
         self.sprite_editor_modal: Optional["SpriteEditorModal"] = SpriteEditorModal()
         self.terminal_panel: Optional["TerminalPanel"] = TerminalPanel()
+        self.agent_panel: Optional["AgentPanel"] = AgentPanel()
         self.editor_shell: EditorShell = EditorShell(
-            panel_slots=EditorPanelSlots(terminal_panel=self.terminal_panel),
+            panel_slots=EditorPanelSlots(terminal_panel=self.terminal_panel, agent_panel=self.agent_panel),
         )
         self._editor_selection_state = self.editor_shell.selection_state
         self.hierarchy_panel: Optional["HierarchyPanel"] = self.editor_shell.hierarchy_panel
@@ -332,12 +334,19 @@ class Game:
         elif self.editor_layout is None and self.editor_shell.layout is not None:
             self.editor_layout = self.editor_shell.layout
         self.editor_shell.bind_terminal_panel(self.terminal_panel)
+        self.editor_shell.bind_agent_panel(self.agent_panel)
         self.hierarchy_panel = self.editor_shell.hierarchy_panel
         self.hierarchy_panel.set_selection_state(self._editor_selection_state)
         if self._scene_manager is not None:
             self.editor_shell.bind_scene_manager(self._scene_manager)
         if self._project_service is not None:
             self.editor_shell.bind_project_service(self._project_service)
+        if self.agent_panel is not None and hasattr(self.agent_panel, "set_live_engine"):
+            self.agent_panel.set_live_engine(
+                game=self,
+                scene_manager=self._scene_manager,
+                project_service=self._project_service,
+            )
 
     # === PROPIEDADES ===
     
@@ -563,7 +572,7 @@ class Game:
         self._sync_editor_shell()
         if self._ui_render_system is not None and hasattr(self._ui_render_system, "set_project_service"):
             self._ui_render_system.set_project_service(service)
-        self._project_workspace_controller.set_project_service(service)
+        self._project_workspace_controller.set_project_service(service, notify_agent_panel=False)
 
     def _refresh_project_scene_entries(self) -> None:
         self._project_workspace_controller.refresh_project_scene_entries()
@@ -763,6 +772,7 @@ class Game:
         if self.editor_layout is None:
             self.editor_layout = self.editor_shell.ensure_layout(self.width, self.height)
             self.editor_shell.bind_terminal_panel(self.terminal_panel)
+            self.editor_shell.bind_agent_panel(self.agent_panel)
             if self._project_service is not None:
                 self._project_workspace_controller.refresh_launcher_projects()
                 if self._project_service.has_project:
@@ -807,7 +817,13 @@ class Game:
                 and self.editor_layout.active_bottom_tab == "TERMINAL"
                 and self.terminal_panel.captures_keyboard()
             )
-            if not terminal_captures_keyboard:
+            agent_captures_keyboard = (
+                self.agent_panel is not None
+                and self.editor_layout is not None
+                and self.editor_layout.active_bottom_tab == "AGENT"
+                and self.agent_panel.captures_keyboard()
+            )
+            if not terminal_captures_keyboard and not agent_captures_keyboard:
                 self._process_input()
             
             # Script Update (Visual Automation)
@@ -831,6 +847,8 @@ class Game:
                     self.editor_layout.update_input()
                     if self.terminal_panel is not None:
                         self.terminal_panel.update_input(self.editor_layout.active_bottom_tab == "TERMINAL")
+                    if self.agent_panel is not None:
+                        self.agent_panel.update_input(self.editor_layout.active_bottom_tab == "AGENT")
                     self._persist_editor_preferences()
                 if self.animator_panel is not None and active_world is not None:
                     self.animator_panel.update(active_world, dt)
@@ -1298,6 +1316,8 @@ class Game:
         self._cursor_renderer.show_system_cursor()
         if self.terminal_panel is not None:
             self.terminal_panel.shutdown()
+        if self.agent_panel is not None:
+            self.agent_panel.shutdown()
         if self._ui_render_system is not None and hasattr(self._ui_render_system, "cleanup"):
             self._ui_render_system.cleanup()
         if self._render_system is not None:

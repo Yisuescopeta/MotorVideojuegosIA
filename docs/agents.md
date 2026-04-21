@@ -54,6 +54,46 @@ finally:
     api.shutdown()
 ```
 
+## Agente nativo experimental
+
+El repo incluye una base clean-room en `engine/agent/` para un agente de
+asistencia integrado. Usalo como `experimental/tooling`, no como contrato core.
+La v2 usa un runtime de turnos suspendibles: el provider puede pedir tools, cada
+tool devuelve un `tool_result` emparejado y el runtime continua hasta respuesta
+final, aprobacion pendiente, cancelacion o limite de iteraciones.
+
+- Crea sesiones con `EngineAPI.create_agent_session`.
+- Envia mensajes con `EngineAPI.send_agent_message`.
+- Aprueba acciones pendientes con `EngineAPI.approve_agent_action`.
+- Trata los `session_id` como opacos: el runtime solo acepta ids validados y
+  no deben construirse como rutas.
+- Una aprobacion o rechazo reanuda el mismo turno logico y vuelve al provider
+  con el resultado de tool.
+- Las mutaciones de escenas deben pasar por herramientas que usan `EngineAPI` o
+  `AuthoringExecutionService`.
+- No incluyas la carpeta local `Claude Code/` o `claude code/` como contexto
+  del agente.
+- El provider por defecto `fake` es determinista, offline y `test_only`; no debe
+  presentarse como inteligencia real. `ReplayLLMProvider` cubre contratos
+  multi-turn en tests. `OpenAIProvider` es el primer provider online real de V3a
+  y acepta `OPENAI_API_KEY`, secreto local del agente o bridge desde auth
+  gestionada por Codex/OpenAI. El estado `runtime_ready` indica si ese login
+  gestionado expone una credencial reutilizable para el runtime actual; no hay
+  fallback silencioso a fake.
+- `run_command` no es una shell generica: acepta solo perfiles allowlist con
+  `shell=False`. `full_access` autoaprueba acciones permitidas, pero no desactiva
+  la policy de comandos ni los guards de `Claude Code/`, `.git`, `.motor`,
+  rutas externas y secretos evidentes.
+- `run_command` se ejecuta mediante `AgentCommandRunner`, con cwd confinado,
+  entorno minimo, timeout, limite de output y auditoria.
+- Streaming V3a se refleja como eventos `assistant_delta` y mensaje final
+  persistido; si el provider no soporta streaming, se conserva el flujo no
+  streaming.
+- La memoria/compactacion guarda resumen local sanitizado y el coste queda
+  `unknown` si no existen datos fiables de usage/precios.
+- Las sesiones legacy se migran explicitamente con backup `.legacy-v1.bak` y
+  evento `session_migrated`; una sesion corrupta se conserva sin sobrescribir.
+
 Para CLI:
 
 ```bash

@@ -1,0 +1,21 @@
+{
+    "guid": "ast_3456d4c02cfd4ee99ea68c5d63c170d9",
+    "source_path": "scripts/audit_registry.py",
+    "path": "scripts/audit_registry.py",
+    "asset_kind": "script",
+    "importer": "script",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "script",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "script",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

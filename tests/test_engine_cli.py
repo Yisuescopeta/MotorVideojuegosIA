@@ -209,6 +209,31 @@ class MotorCliOfficialInterfaceTests(unittest.TestCase):
                 self.assertIsInstance(data["message"], str)
                 self.assertIsInstance(data["data"], dict)
 
+    def test_motor_agent_provider_login_help_includes_codex_flags(self) -> None:
+        """motor agent providers login --help expone flags de login gestionado por Codex."""
+        result = _run_module("agent", "providers", "login", "--help", cwd=self.workspace)
+
+        self.assertIn("--codex-chatgpt", result.stdout)
+        self.assertIn("--device-auth", result.stdout)
+
+    def test_motor_agent_provider_status_reports_runtime_ready_field(self) -> None:
+        """motor agent providers status devuelve metadata extendida de auth."""
+        result = _run_module(
+            "agent",
+            "providers",
+            "status",
+            "openai",
+            "--project",
+            str(self.project_root),
+            "--json",
+            cwd=self.workspace,
+        )
+        data = json.loads(result.stdout[result.stdout.index("{"):])
+
+        self.assertTrue(data["success"])
+        self.assertIn("runtime_ready", data["data"])
+        self.assertIn("codex_cli_available", data["data"])
+
 
 class LegacyEngineCliCompatibilityTests(unittest.TestCase):
     """Backward compatibility tests for legacy tools.engine_cli.

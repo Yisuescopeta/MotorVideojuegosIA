@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
+from engine.api._agent_api import AgentAPI
 from engine.api._assets_project_api import AssetsProjectAPI
 from engine.api._authoring_api import AuthoringAPI
 from engine.api._context import EngineAPIContext
@@ -20,7 +21,7 @@ from engine.api.errors import InvalidOperationError
 from engine.api.types import ActionResult
 from engine.events.event_bus import EventBus
 from engine.levels.component_registry import create_default_registry
-from engine.physics.box2d_backend import Box2DPhysicsBackend
+from engine.physics.box2d_backend import Box2DDependencyUnavailable, Box2DPhysicsBackend
 from engine.project.project_service import ProjectService
 from engine.scenes.scene_manager import SceneManager
 
@@ -111,6 +112,7 @@ class EngineAPI:
         self._assets_project_api = AssetsProjectAPI(self._context)
         self._debug_api = DebugAPI(self._context)
         self._ui_api = UIAPI(self._context)
+        self._agent_api = AgentAPI(self._context)
         self._delegates = (
             self._runtime_api,
             self._debug_api,
@@ -118,6 +120,7 @@ class EngineAPI:
             self._scene_workspace_api,
             self._assets_project_api,
             self._ui_api,
+            self._agent_api,
         )
 
     def _refresh_contracts(self) -> EngineAPIContracts:
@@ -132,9 +135,27 @@ class EngineAPI:
                 Box2DPhysicsBackend(gravity=self.game.physics_system.gravity, event_bus=self.game.event_bus),
                 backend_name="box2d",
             )
+        except Box2DDependencyUnavailable as exc:
+            self.game.set_physics_backend_unavailable("box2d", str(exc))
         except Exception as exc:
             self.game.set_physics_backend_unavailable("box2d", str(exc))
             print(f"[WARNING] Box2D backend unavailable: {exc}")
+
+    @classmethod
+    def from_runtime(cls, game: Any, scene_manager: SceneManager, project_service: ProjectService) -> "EngineAPI":
+        """Experimental/internal tooling helper over an already running editor/runtime.
+
+        Use this only from editor/tooling adapters that need the public facade over
+        live state. It is intentionally not promoted as a stable core constructor.
+        """
+        from engine.api._runtime_bound import create_runtime_bound_engine_api
+
+        return create_runtime_bound_engine_api(
+            cls,
+            game=game,
+            scene_manager=scene_manager,
+            project_service=project_service,
+        )
 
     def attach_runtime(self, game: Any, scene_manager: SceneManager, project_service: ProjectService) -> None:
         from engine.assets.asset_service import AssetService

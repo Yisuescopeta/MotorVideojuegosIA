@@ -5,7 +5,9 @@ from unittest.mock import Mock, patch
 
 import pyray as rl
 
+from engine.agent import AgentSessionService
 from engine.core.game import Game
+from engine.editor.agent_panel import AgentPanel
 from engine.editor.editor_layout import EditorLayout
 from engine.editor.terminal_panel import TerminalPanel, _TerminalScreen
 from engine.levels.component_registry import create_default_registry
@@ -69,8 +71,18 @@ class TerminalPanelTests(unittest.TestCase):
             self.assertEqual(layout.active_bottom_tab, "CONSOLE")
             layout.handle_bottom_tab_input(rl.Vector2(240, 544))
             self.assertEqual(layout.active_bottom_tab, "TERMINAL")
+            layout.handle_bottom_tab_input(rl.Vector2(310, 544))
+            self.assertEqual(layout.active_bottom_tab, "AGENT")
             layout.handle_bottom_tab_input(rl.Vector2(20, 544))
             self.assertEqual(layout.active_bottom_tab, "PROJECT")
+
+    def test_window_agent_action_opens_agent_bottom_panel(self) -> None:
+        with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
+            layout = EditorLayout(1280, 720)
+
+        layout._execute_menu_action("bottom_agent")
+
+        self.assertEqual(layout.active_bottom_tab, "AGENT")
 
     def test_bottom_panel_height_round_trips_preferences(self) -> None:
         with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
@@ -434,6 +446,199 @@ class TerminalPanelTests(unittest.TestCase):
         self.assertEqual(backend.writes[0], "\x1b[4;316;960t")
 
 
+class AgentPanelTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp_dir = tempfile.TemporaryDirectory()
+        self.workspace = Path(self._temp_dir.name)
+        self.global_state_dir = self.workspace / "global_state"
+        self.project_service = ProjectService(self.workspace / "AgentPanelProject", global_state_dir=self.global_state_dir)
+
+    def tearDown(self) -> None:
+        self._temp_dir.cleanup()
+
+    def test_agent_panel_launches_codex_login_when_openai_login_is_requested(self) -> None:
+        panel = AgentPanel()
+        service = AgentSessionService(project_root=self.project_service.project_root_display, global_state_dir=self.global_state_dir)
+        panel.set_agent_service(service)
+
+        with patch.object(service.login_service.codex_auth_store, "_resolve_cli_command", return_value="codex"):
+            with patch.object(panel, "_launch_codex_login") as mock_launch:
+                panel._send_text("/login openai")
+
+        mock_launch.assert_called_once()
+        self.assertIn("Codex login", panel.status_text)
+
+    def test_agent_panel_rebinds_when_default_provider_becomes_runtime_ready(self) -> None:
+        panel = AgentPanel()
+        service = AgentSessionService(project_root=self.project_service.project_root_display, global_state_dir=self.global_state_dir)
+        panel.set_agent_service(service)
+
+        with patch.object(service, "get_session", return_value={"provider_id": "fake"}):
+            with patch.object(
+                service,
+                "get_provider_status",
+                side_effect=[
+                    {"default_provider_id": "openai"},
+                    {"runtime_ready": True},
+                ],
+            ):
+                with patch.object(panel, "_restart_project_session") as mock_restart:
+                    panel._maybe_rebind_authenticated_provider()
+
+        mock_restart.assert_called_once()
+
+    def test_agent_panel_apply_model_change_persists_default_and_updates_session(self) -> None:
+        panel = AgentPanel()
+        service = AgentSessionService(
+            project_root=self.project_service.project_root_display,
+            global_state_dir=self.global_state_dir,
+        )
+        panel.set_agent_service(service)
+
+        panel._apply_model_change("opencode-go/kimi-k2.5")
+
+        persisted = service.provider_settings_store.load()
+        self.assertEqual(persisted.get("model"), "opencode-go/kimi-k2.5")
+        session = service.get_session(panel.session_id)
+        self.assertEqual(session["runtime_config"]["model"], "opencode-go/kimi-k2.5")
+
+    def test_agent_panel_apply_provider_change_persists_and_restarts_session(self) -> None:
+        panel = AgentPanel()
+        panel.set_project_service(self.project_service)
+        self.assertIsNotNone(panel.agent_service)
+        previous_session_id = panel.session_id
+
+        with patch.object(
+            panel,
+            "_restart_project_session",
+            wraps=panel._restart_project_session,
+        ) as mock_restart:
+            panel._apply_provider_change("fake")
+
+        mock_restart.assert_called_once()
+        self.assertIsNotNone(panel.agent_service)
+        persisted = panel.agent_service.provider_settings_store.load()
+        self.assertEqual(persisted.get("default_provider_id"), "fake")
+        self.assertNotEqual(panel.session_id, previous_session_id)
+
+    def test_agent_panel_new_session_keeps_current_provider_choice(self) -> None:
+        panel = AgentPanel()
+        panel.set_project_service(self.project_service)
+        initial_session_id = panel.session_id
+        provider_before, model_before, _stream = panel._current_session_config()
+
+        panel._new_session()
+
+        self.assertNotEqual(panel.session_id, initial_session_id)
+        provider_after, model_after, _stream_after = panel._current_session_config()
+        self.assertEqual(provider_after, provider_before)
+        self.assertEqual(model_after, model_before)
+
+    def test_agent_panel_captures_keyboard_when_composer_focused(self) -> None:
+        panel = AgentPanel()
+        self.assertFalse(panel.captures_keyboard())
+        panel.has_focus = True
+        self.assertTrue(panel.captures_keyboard())
+        panel.has_focus = False
+        panel._model_custom_has_focus = True
+        self.assertTrue(panel.captures_keyboard())
+
+    def test_agent_panel_opens_command_palette_for_single_slash(self) -> None:
+        panel = AgentPanel()
+        service = AgentSessionService(project_root=self.project_service.project_root_display, global_state_dir=self.global_state_dir)
+        panel.set_agent_service(service)
+        panel.input_text = "/"
+
+        panel._refresh_command_palette()
+
+        self.assertTrue(panel._command_palette_open)
+        self.assertTrue(panel._command_palette_items)
+        self.assertEqual(panel._command_palette_items[0]["name"], "help")
+
+    def test_agent_panel_preserves_selected_command_when_palette_refreshes(self) -> None:
+        panel = AgentPanel()
+        service = AgentSessionService(project_root=self.project_service.project_root_display, global_state_dir=self.global_state_dir)
+        panel.set_agent_service(service)
+        panel.input_text = "/"
+        panel._refresh_command_palette()
+        panel._move_command_palette_selection(2)
+        selected_name = panel._command_palette_items[panel._command_palette_index]["name"]
+
+        panel.input_text = "/" + selected_name[:3]
+        panel._refresh_command_palette()
+
+        self.assertTrue(panel._command_palette_open)
+        self.assertEqual(panel._command_palette_items[panel._command_palette_index]["name"], selected_name)
+
+    def test_agent_panel_accepts_command_suggestion_into_composer(self) -> None:
+        panel = AgentPanel()
+        service = AgentSessionService(project_root=self.project_service.project_root_display, global_state_dir=self.global_state_dir)
+        panel.set_agent_service(service)
+        panel.input_text = "/sta"
+        panel._refresh_command_palette()
+
+        accepted = panel._accept_command_palette_selection()
+
+        self.assertTrue(accepted)
+        self.assertEqual(panel.input_text, "/status ")
+        self.assertFalse(panel._command_palette_open)
+
+    def test_agent_panel_does_not_open_command_palette_for_multiline_input(self) -> None:
+        panel = AgentPanel()
+        service = AgentSessionService(project_root=self.project_service.project_root_display, global_state_dir=self.global_state_dir)
+        panel.set_agent_service(service)
+        panel.input_text = "/status\nsegundo"
+
+        panel._refresh_command_palette()
+
+        self.assertFalse(panel._command_palette_open)
+
+    def test_agent_panel_new_slash_command_updates_visible_session(self) -> None:
+        panel = AgentPanel()
+        service = AgentSessionService(project_root=self.project_service.project_root_display, global_state_dir=self.global_state_dir)
+        panel.set_agent_service(service)
+        session_id_anterior = panel.session_id
+
+        panel._send_text("/new")
+
+        self.assertNotEqual(panel.session_id, session_id_anterior)
+        self.assertEqual(panel.status_text, "Nueva sesion creada.")
+        self.assertTrue(service.get_session(session_id_anterior)["cancelled"])
+
+
+class AgentModelPresetsTests(unittest.TestCase):
+    def test_openai_presets_include_default_model(self) -> None:
+        from engine.agent.credentials import DEFAULT_OPENAI_MODEL
+        from engine.agent.model_presets import list_model_presets
+
+        presets = list_model_presets("openai")
+
+        self.assertIn(DEFAULT_OPENAI_MODEL, presets)
+        self.assertEqual(presets[0], DEFAULT_OPENAI_MODEL)
+
+    def test_opencode_go_presets_include_default_model_and_normalize_aliases(self) -> None:
+        from engine.agent.credentials import DEFAULT_OPENCODE_GO_MODEL
+        from engine.agent.model_presets import list_model_presets
+
+        presets_canonical = list_model_presets("opencode-go")
+        presets_alias = list_model_presets("opencode")
+
+        self.assertIn(DEFAULT_OPENCODE_GO_MODEL, presets_canonical)
+        self.assertEqual(presets_canonical, presets_alias)
+
+    def test_unknown_provider_returns_empty_list(self) -> None:
+        from engine.agent.model_presets import list_model_presets
+
+        self.assertEqual(list_model_presets("nonexistent-provider"), [])
+
+    def test_recommended_model_matches_first_preset(self) -> None:
+        from engine.agent.model_presets import list_model_presets, recommended_model
+
+        presets = list_model_presets("openai")
+        self.assertEqual(recommended_model("openai"), presets[0])
+        self.assertEqual(recommended_model("nonexistent"), "")
+
+
 class GameTerminalIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:
         self._temp_dir = tempfile.TemporaryDirectory()
@@ -459,6 +664,59 @@ class GameTerminalIntegrationTests(unittest.TestCase):
 
         mock_set_project_service.assert_called_once_with(self.project_service)
         self.assertIs(self.game.editor_layout.terminal_panel, self.game.terminal_panel)
+
+    def test_set_project_service_connects_agent_panel_to_live_engine_port(self) -> None:
+        self.game.set_project_service(self.project_service)
+
+        self.assertIsNotNone(self.game.agent_panel.agent_service)
+        self.assertIsNotNone(self.game.agent_panel.agent_service.engine_port)
+        self.assertIs(self.game.editor_layout.agent_panel, self.game.agent_panel)
+
+    def test_set_project_service_reuses_agent_panel_binding_without_redundant_restarts(self) -> None:
+        session_id_inicial = self.game.agent_panel.session_id
+
+        with patch.object(
+            self.game.agent_panel,
+            "_restart_project_session",
+            wraps=self.game.agent_panel._restart_project_session,
+        ) as mock_restart:
+            self.game.set_project_service(self.project_service)
+
+        self.assertLessEqual(mock_restart.call_count, 1)
+        self.assertEqual(self.game.agent_panel.session_id, session_id_inicial)
+
+    def test_open_project_rebinds_agent_panel_to_active_project_and_clears_no_active_project_status(self) -> None:
+        result = self.game.open_project(self.second_project_root.as_posix())
+
+        self.assertTrue(result)
+        self.assertIsNotNone(self.game.agent_panel.agent_service)
+        self.assertTrue(self.game.agent_panel.session_id)
+        self.assertEqual(self.game.agent_panel.agent_service.project_root, self.second_project_root.resolve())
+        self.assertTrue(self.game.agent_panel.live_port_connected)
+        self.assertNotEqual(self.game.agent_panel.status_text, "No active project")
+        self.assertIn("GameProjectTwo", self.game.agent_panel.status_text)
+
+    def test_open_project_cancels_previous_agent_session_before_binding_new_project(self) -> None:
+        servicio_anterior = self.game.agent_panel.agent_service
+        session_id_anterior = self.game.agent_panel.session_id
+
+        result = self.game.open_project(self.second_project_root.as_posix())
+
+        self.assertTrue(result)
+        self.assertIsNotNone(servicio_anterior)
+        self.assertTrue(servicio_anterior.get_session(session_id_anterior)["cancelled"])
+        self.assertNotEqual(self.game.agent_panel.session_id, session_id_anterior)
+        self.assertEqual(self.game.agent_panel.agent_service.project_root, self.second_project_root.resolve())
+
+    def test_agent_panel_live_engine_port_serves_engine_tools(self) -> None:
+        self.game.set_project_service(self.project_service)
+        service = self.game.agent_panel.agent_service
+
+        result = service.send_message(self.game.agent_panel.session_id, "capabilities")
+
+        tool_messages = [message for message in result["messages"] if message["role"] == "tool"]
+        self.assertTrue(tool_messages)
+        self.assertTrue(tool_messages[-1]["tool_result"]["success"])
 
     def test_open_project_restarts_terminal_panel_for_new_root(self) -> None:
         self.game.set_project_service(self.project_service)

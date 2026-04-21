@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from engine.api import EngineAPI
+from engine.physics.box2d_backend import Box2DDependencyUnavailable
 
 MINIMAL_PNG_BYTES = (
     b"\x89PNG\r\n\x1a\n"
@@ -307,6 +308,28 @@ class EngineAPIOptionalBox2DTests(unittest.TestCase):
             api.list_physics_backends(),
             [
                 {"name": "box2d", "available": False, "unavailable_reason": "box2d init failed"},
+                {"name": "legacy_aabb", "available": True, "unavailable_reason": None},
+            ],
+        )
+
+    @patch(
+        "engine.api.engine_api.Box2DPhysicsBackend",
+        side_effect=Box2DDependencyUnavailable("Box2D python package is not available"),
+    )
+    @patch("builtins.print")
+    def test_initialize_engine_silences_missing_optional_box2d_dependency(self, print_mock, _box2d_backend_mock) -> None:
+        api = EngineAPI(
+            project_root=self.project_root.as_posix(),
+            global_state_dir=self.global_state_dir.as_posix(),
+        )
+        self.addCleanup(api.shutdown)
+
+        self.assertIsNotNone(api.game)
+        print_mock.assert_not_called()
+        self.assertEqual(
+            api.list_physics_backends(),
+            [
+                {"name": "box2d", "available": False, "unavailable_reason": "Box2D python package is not available"},
                 {"name": "legacy_aabb", "available": True, "unavailable_reason": None},
             ],
         )
