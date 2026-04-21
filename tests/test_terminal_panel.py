@@ -543,6 +543,68 @@ class AgentPanelTests(unittest.TestCase):
         panel._model_custom_has_focus = True
         self.assertTrue(panel.captures_keyboard())
 
+    def test_agent_panel_opens_command_palette_for_single_slash(self) -> None:
+        panel = AgentPanel()
+        service = AgentSessionService(project_root=self.project_service.project_root_display, global_state_dir=self.global_state_dir)
+        panel.set_agent_service(service)
+        panel.input_text = "/"
+
+        panel._refresh_command_palette()
+
+        self.assertTrue(panel._command_palette_open)
+        self.assertTrue(panel._command_palette_items)
+        self.assertEqual(panel._command_palette_items[0]["name"], "help")
+
+    def test_agent_panel_preserves_selected_command_when_palette_refreshes(self) -> None:
+        panel = AgentPanel()
+        service = AgentSessionService(project_root=self.project_service.project_root_display, global_state_dir=self.global_state_dir)
+        panel.set_agent_service(service)
+        panel.input_text = "/"
+        panel._refresh_command_palette()
+        panel._move_command_palette_selection(2)
+        selected_name = panel._command_palette_items[panel._command_palette_index]["name"]
+
+        panel.input_text = "/" + selected_name[:3]
+        panel._refresh_command_palette()
+
+        self.assertTrue(panel._command_palette_open)
+        self.assertEqual(panel._command_palette_items[panel._command_palette_index]["name"], selected_name)
+
+    def test_agent_panel_accepts_command_suggestion_into_composer(self) -> None:
+        panel = AgentPanel()
+        service = AgentSessionService(project_root=self.project_service.project_root_display, global_state_dir=self.global_state_dir)
+        panel.set_agent_service(service)
+        panel.input_text = "/sta"
+        panel._refresh_command_palette()
+
+        accepted = panel._accept_command_palette_selection()
+
+        self.assertTrue(accepted)
+        self.assertEqual(panel.input_text, "/status ")
+        self.assertFalse(panel._command_palette_open)
+
+    def test_agent_panel_does_not_open_command_palette_for_multiline_input(self) -> None:
+        panel = AgentPanel()
+        service = AgentSessionService(project_root=self.project_service.project_root_display, global_state_dir=self.global_state_dir)
+        panel.set_agent_service(service)
+        panel.input_text = "/status\nsegundo"
+
+        panel._refresh_command_palette()
+
+        self.assertFalse(panel._command_palette_open)
+
+    def test_agent_panel_new_slash_command_updates_visible_session(self) -> None:
+        panel = AgentPanel()
+        service = AgentSessionService(project_root=self.project_service.project_root_display, global_state_dir=self.global_state_dir)
+        panel.set_agent_service(service)
+        session_id_anterior = panel.session_id
+
+        panel._send_text("/new")
+
+        self.assertNotEqual(panel.session_id, session_id_anterior)
+        self.assertEqual(panel.status_text, "Nueva sesion creada.")
+        self.assertTrue(service.get_session(session_id_anterior)["cancelled"])
+
 
 class AgentModelPresetsTests(unittest.TestCase):
     def test_openai_presets_include_default_model(self) -> None:

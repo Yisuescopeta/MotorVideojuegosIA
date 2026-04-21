@@ -122,6 +122,10 @@ class AgentPanel:
         self._model_custom_buffer = ""
         self._model_custom_rect = rl.Rectangle(0, 0, 0, 0)
         self._model_custom_has_focus = False
+        self._command_palette_open = False
+        self._command_palette_index = 0
+        self._command_palette_items: list[dict[str, Any]] = []
+        self._command_palette_rect = rl.Rectangle(0, 0, 0, 0)
 
     # ========================================
     # API publica (firmas preservadas)
@@ -132,6 +136,7 @@ class AgentPanel:
             self.agent_service = None
             self.session_id = ""
             self._binding_key = None
+            self._close_command_palette()
             self.status_text = "No active project"
             return
         self._restart_project_session()
@@ -154,6 +159,7 @@ class AgentPanel:
         self.agent_service = service
         self.session_id = ""
         self._binding_key = None
+        self._close_command_palette()
         if service is not None:
             session = service.create_session(
                 permission_mode=self.permission_mode.value, title="Editor Agent"
@@ -167,6 +173,7 @@ class AgentPanel:
                 self.agent_service.cancel_session(self.session_id)
             except Exception:
                 pass
+        self._close_command_palette()
         self.status_text = "Agent stopped"
 
     def captures_keyboard(self) -> bool:
@@ -181,6 +188,7 @@ class AgentPanel:
             self.session_id = ""
             self._binding_key = None
             self.live_port_connected = False
+            self._close_command_palette()
             self.status_text = "No active project"
             return
         binding_key = (
@@ -239,6 +247,7 @@ class AgentPanel:
         project_name = (
             self.project_service.project_name if self.project_service.has_project else "project"
         )
+        self._close_command_palette()
         self.status_text = f"Agent ready: {project_name}"
         self._reset_scroll()
 
@@ -263,6 +272,7 @@ class AgentPanel:
             self.session_id = str(session["session_id"])
             self.status_text = "Nueva sesion creada"
             self._expanded_action_ids.clear()
+            self._close_command_palette()
             self._reset_scroll()
         except Exception as exc:
             self.status_text = f"New session failed: {exc}"
@@ -363,6 +373,12 @@ class AgentPanel:
                 self._model_custom_editing
                 and rl.check_collision_point_rec(mouse, self._model_custom_rect)
             )
+            if (
+                self._command_palette_open
+                and not rl.check_collision_point_rec(mouse, self.input_rect)
+                and not rl.check_collision_point_rec(mouse, self._command_palette_rect)
+            ):
+                self._close_command_palette()
 
         # Scroll con rueda sobre el transcript
         if rl.check_collision_point_rec(mouse, self._transcript_rect):
@@ -380,6 +396,7 @@ class AgentPanel:
         target = "login" if self.pending_login_provider else "chat"
         ctrl_down = rl.is_key_down(rl.KEY_LEFT_CONTROL) or rl.is_key_down(rl.KEY_RIGHT_CONTROL)
         shift_down = rl.is_key_down(rl.KEY_LEFT_SHIFT) or rl.is_key_down(rl.KEY_RIGHT_SHIFT)
+        text_changed = False
 
         if ctrl_down:
             if rl.is_key_pressed(rl.KEY_C):
@@ -392,12 +409,14 @@ class AgentPanel:
                         self.login_input_text += clipboard_content
                     elif target == "chat" and len(self.input_text) + len(clipboard_content) <= 2000:
                         self.input_text += clipboard_content
+                        text_changed = True
 
         if rl.is_key_pressed(rl.KEY_BACKSPACE):
             if target == "login" and self.login_input_text:
                 self.login_input_text = self.login_input_text[:-1]
             elif target == "chat" and self.input_text:
                 self.input_text = self.input_text[:-1]
+                text_changed = True
 
         while True:
             codepoint = rl.get_char_pressed()
@@ -414,11 +433,34 @@ class AgentPanel:
                     self.login_input_text += char
                 elif target == "chat" and len(self.input_text) < 2000:
                     self.input_text += char
+                    text_changed = True
+
+        if target == "chat":
+            if text_changed:
+                self._refresh_command_palette()
+            if self._command_palette_open:
+                if rl.is_key_pressed(rl.KEY_UP):
+                    self._move_command_palette_selection(-1)
+                    return
+                if rl.is_key_pressed(rl.KEY_DOWN):
+                    self._move_command_palette_selection(1)
+                    return
+                if rl.is_key_pressed(rl.KEY_ESCAPE):
+                    self._close_command_palette()
+                    return
+                if rl.is_key_pressed(rl.KEY_TAB) and self._accept_command_palette_selection():
+                    return
 
         if rl.is_key_pressed(rl.KEY_ENTER) or rl.is_key_pressed(rl.KEY_KP_ENTER):
-            if target == "chat" and shift_down and len(self.input_text) < 2000:
-                # Shift+Enter: salto de linea manual
-                self.input_text += "\n"
+            if target == "chat":
+                if not shift_down and self._command_palette_open and self._accept_command_palette_selection():
+                    return
+                if shift_down and len(self.input_text) < 2000:
+                    # Shift+Enter: salto de linea manual
+                    self.input_text += "\n"
+                    self._close_command_palette()
+                else:
+                    self._send_current_input()
             else:
                 self._send_current_input()
 
@@ -1117,10 +1159,75 @@ class AgentPanel:
     def _draw_overlay_dropdowns(self) -> None:
         mouse = rl.get_mouse_position()
         clicked = rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT)
+        if self._command_palette_open:
+            self._draw_command_palette(mouse, clicked)
         if self._provider_dropdown_open:
             self._draw_provider_dropdown(mouse, clicked)
         if self._model_dropdown_open:
             self._draw_model_dropdown(mouse, clicked)
+
+    def _draw_command_palette(self, mouse: Any, clicked: bool) -> None:
+        width = min(max(320.0, self.input_rect.width), 520.0)
+        item_h = 32
+        visible_count = max(1, min(6, len(self._command_palette_items) or 1))
+        height = 24 + visible_count * item_h + 6
+        y = self.input_rect.y - height - 6
+        min_y = self._context_rect.y + self._context_rect.height + 6
+        if y < min_y:
+            y = self.input_rect.y + self.input_rect.height + 6
+        rect = rl.Rectangle(float(self.input_rect.x), float(y), float(width), float(height))
+        self._command_palette_rect = rect
+        rl.draw_rectangle_rec(rect, self.UNITY_BG_MID)
+        rl.draw_rectangle_lines_ex(rect, 1, self.UNITY_BORDER_DIM)
+        title = "Comandos"
+        if self._command_palette_items:
+            title = f"Comandos ({len(self._command_palette_items)})"
+        rl.draw_text(title, int(rect.x + 8), int(rect.y + 6), 10, self.UNITY_TEXT_DIM)
+        if not self._command_palette_items:
+            rl.draw_text(
+                "Sin comandos coincidentes",
+                int(rect.x + 8),
+                int(rect.y + 26),
+                10,
+                self.UNITY_TEXT,
+            )
+            return
+        visible_items = self._command_palette_items[:6]
+        start_y = int(rect.y + 22)
+        for index, item in enumerate(visible_items):
+            item_rect = rl.Rectangle(float(rect.x + 4), float(start_y + index * item_h), float(rect.width - 8), float(item_h - 2))
+            hovered = rl.check_collision_point_rec(mouse, item_rect)
+            selected = index == self._command_palette_index
+            bg = self.UNITY_BLUE if selected else (self.UNITY_BUTTON_HOVER if hovered else self.UNITY_BG_DEEP)
+            rl.draw_rectangle_rec(item_rect, bg)
+            rl.draw_rectangle_lines_ex(item_rect, 1, self.UNITY_BORDER)
+            label = f"/{item.get('name', '')}"
+            hint = str(item.get("argument_hint", "") or "")
+            alias_display = str(item.get("alias_display", "") or "")
+            descripcion = str(item.get("short_description", "") or "")
+            categoria = str(item.get("category", "") or "")
+            etiqueta = f"{label} {hint}".strip()
+            rl.draw_text(self._clip_text(etiqueta, int(item_rect.width * 0.56)), int(item_rect.x + 8), int(item_rect.y + 5), 10, self.UNITY_TEXT_BRIGHT)
+            rl.draw_text(self._clip_text(descripcion, int(item_rect.width * 0.7)), int(item_rect.x + 8), int(item_rect.y + 17), 9, self.UNITY_TEXT)
+            if alias_display:
+                rl.draw_text(
+                    self._clip_text(alias_display, int(item_rect.width * 0.3)),
+                    int(item_rect.x + item_rect.width - item_rect.width * 0.32),
+                    int(item_rect.y + 5),
+                    9,
+                    self.UNITY_TEXT_DIM,
+                )
+            rl.draw_text(
+                self._clip_text(categoria, int(item_rect.width * 0.2)),
+                int(item_rect.x + item_rect.width - item_rect.width * 0.22),
+                int(item_rect.y + 17),
+                9,
+                self.UNITY_TEXT_DIM,
+            )
+            if clicked and hovered:
+                self._command_palette_index = index
+                self._accept_command_palette_selection()
+                return
 
     def _draw_provider_dropdown(self, mouse: Any, clicked: bool) -> None:
         if self.agent_service is None:
@@ -1311,12 +1418,12 @@ class AgentPanel:
         self._send_text("/status")
 
     def _toggle_permission_mode(self) -> None:
-        self.permission_mode = (
+        target_mode = (
             AgentPermissionMode.FULL_ACCESS
             if self.permission_mode == AgentPermissionMode.CONFIRM_ACTIONS
             else AgentPermissionMode.CONFIRM_ACTIONS
         )
-        self._send_text(f"/permissions {self.permission_mode.value}")
+        self._send_text(f"/permissions {target_mode.value}")
 
     # ========================================
     # Envio / login / rebind (logica conservada)
@@ -1329,6 +1436,7 @@ class AgentPanel:
         if not text:
             return
         self.input_text = ""
+        self._close_command_palette()
         self._send_text(text)
 
     def _send_text(self, text: str) -> None:
@@ -1338,6 +1446,7 @@ class AgentPanel:
         try:
             self._maybe_rebind_authenticated_provider()
             result = self.agent_service.send_message(self.session_id, text)
+            self._sync_session_state(result)
             command_result = (
                 dict(result.get("command_result", {})) if isinstance(result, dict) else {}
             )
@@ -1352,8 +1461,17 @@ class AgentPanel:
                 self.login_input_text = ""
                 self._launch_codex_login(command_result)
                 self.status_text = str(command_result.get("message", "Codex login started."))
+            elif command_result.get("action") == "new_session":
+                self.pending_login_provider = ""
+                self.login_input_text = ""
+                self._expanded_action_ids.clear()
+                self._close_command_palette()
+                self.status_text = str(command_result.get("message", "Nueva sesion creada."))
+                self._reset_scroll()
             elif command_result:
                 self.status_text = str(command_result.get("message", "Agent command processed"))
+            elif text.strip().startswith("/"):
+                self.status_text = self._command_status_text(result)
             else:
                 self.status_text = "Agent ready"
             self._auto_scroll = True
@@ -1402,6 +1520,7 @@ class AgentPanel:
         provider_id = self.pending_login_provider
         self.login_input_text = ""
         self.pending_login_provider = ""
+        self._close_command_palette()
         if not api_key:
             self.status_text = "Login cancelled"
             return
@@ -1424,6 +1543,80 @@ class AgentPanel:
             return dict(status) if isinstance(status, dict) else {}
         except Exception:
             return {}
+
+    def _sync_session_state(self, result: dict[str, Any]) -> None:
+        if not isinstance(result, dict):
+            return
+        session_id = str(result.get("session_id", "") or "")
+        if session_id:
+            self.session_id = session_id
+        mode = str(result.get("permission_mode", "") or "")
+        if mode:
+            try:
+                self.permission_mode = AgentPermissionMode(mode)
+            except ValueError:
+                pass
+
+    def _command_status_text(self, result: dict[str, Any]) -> str:
+        if not isinstance(result, dict):
+            return "Agent ready"
+        messages = result.get("messages", [])
+        if not isinstance(messages, list):
+            return "Agent ready"
+        for message in reversed(messages):
+            if not isinstance(message, dict):
+                continue
+            if message.get("role") != "assistant":
+                continue
+            content = str(message.get("content", "") or "").strip()
+            if content:
+                return content.splitlines()[0][:180]
+        return "Agent ready"
+
+    def _refresh_command_palette(self) -> None:
+        if self.agent_service is None or self.pending_login_provider:
+            self._close_command_palette()
+            return
+        if not self.agent_service.is_slash_command_query(self.input_text):
+            self._close_command_palette()
+            return
+        suggestions = self.agent_service.suggest_slash_commands(self.input_text)
+        selected_name = ""
+        if self._command_palette_items and 0 <= self._command_palette_index < len(self._command_palette_items):
+            selected_name = str(self._command_palette_items[self._command_palette_index].get("name", "") or "")
+        self._command_palette_items = suggestions
+        self._command_palette_open = True
+        if not self._command_palette_items:
+            self._command_palette_index = 0
+            return
+        if selected_name:
+            for index, item in enumerate(self._command_palette_items):
+                if str(item.get("name", "") or "") == selected_name:
+                    self._command_palette_index = index
+                    return
+        self._command_palette_index = min(self._command_palette_index, len(self._command_palette_items) - 1)
+
+    def _move_command_palette_selection(self, delta: int) -> None:
+        if not self._command_palette_items:
+            return
+        self._command_palette_index = (self._command_palette_index + delta) % len(self._command_palette_items)
+
+    def _accept_command_palette_selection(self) -> bool:
+        if not self._command_palette_open or not self._command_palette_items:
+            return False
+        selected = self._command_palette_items[self._command_palette_index]
+        insert_text = str(selected.get("insert_text", "") or "")
+        if not insert_text:
+            return False
+        self.input_text = insert_text[:2000]
+        self._close_command_palette()
+        return True
+
+    def _close_command_palette(self) -> None:
+        self._command_palette_open = False
+        self._command_palette_index = 0
+        self._command_palette_items = []
+        self._command_palette_rect = rl.Rectangle(0, 0, 0, 0)
 
     def _status_color(self, status: dict) -> rl.Color:
         if not status:

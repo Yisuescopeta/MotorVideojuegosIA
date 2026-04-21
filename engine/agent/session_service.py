@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 from typing import TYPE_CHECKING, Any
 
+from engine.agent.AgentSlashCommands import AgentSlashCommandRegistry
 from engine.agent.credentials import (
     AgentCredentialStore,
     AgentProviderLoginService,
@@ -85,6 +86,7 @@ class AgentSessionService:
             append_event=self._append_event,
             max_iterations_per_turn=max_iterations_per_turn,
         )
+        self.slash_commands = AgentSlashCommandRegistry(self)
 
     def _resolve_project_root(self, project_root: str | Path | None) -> Path:
         if project_root is not None:
@@ -161,6 +163,15 @@ class AgentSessionService:
 
     def list_tools(self) -> list[dict[str, Any]]:
         return self.tools.list_specs()
+
+    def list_slash_commands(self) -> list[dict[str, Any]]:
+        return self.slash_commands.list_commands()
+
+    def suggest_slash_commands(self, input_text: str) -> list[dict[str, Any]]:
+        return self.slash_commands.suggest(input_text)
+
+    def is_slash_command_query(self, input_text: str) -> bool:
+        return self.slash_commands.is_command_query(input_text)
 
     def list_providers(self) -> list[dict[str, object]]:
         return [self._provider_metadata(str(provider["provider_id"])) for provider in self.provider_resolver.list_provider_metadata()]
@@ -318,88 +329,7 @@ class AgentSessionService:
         return session.to_dict()
 
     def _handle_slash_command(self, session: AgentSession, content: str) -> dict[str, Any] | None:
-        if not content.startswith("/"):
-            return None
-        parts = content.split(maxsplit=1)
-        command = parts[0].lower()
-        arg = parts[1].strip() if len(parts) > 1 else ""
-        if command == "/help":
-            body = (
-                "Commands: /help, /status, /model [name], /providers, "
-                "/login [provider|status], /logout <provider>, /permissions <confirm_actions|full_access>, "
-                "/compact, /memory, /cost, /diff, /review, /clear, /tools."
-            )
-        elif command == "/login":
-            return self._handle_login_command(session, arg)
-        elif command == "/logout":
-            return self._handle_logout_command(session, arg)
-        elif command == "/status":
-            pending_count = len([action for action in session.pending_actions if action.status == AgentActionStatus.PENDING])
-            provider = session.provider_metadata or self.provider_resolver.metadata_for(session.provider_id).to_dict()
-            body = (
-                f"Session {session.session_id} | mode={session.permission_mode.value} | "
-                f"pending={pending_count} | provider={provider.get('provider_id', session.provider_id)} | "
-                f"kind={provider.get('provider_kind', 'unknown')} | offline={provider.get('offline', True)} | "
-                f"test_only={provider.get('test_only', False)}"
-            )
-        elif command == "/model":
-            if arg:
-                session.runtime_config = AgentRuntimeConfig(
-                    provider_id=session.runtime_config.provider_id,
-                    max_iterations_per_turn=session.runtime_config.max_iterations_per_turn,
-                    model=arg,
-                    temperature=session.runtime_config.temperature,
-                    max_tokens=session.runtime_config.max_tokens,
-                    stream=session.runtime_config.stream,
-                    compaction_message_budget=session.runtime_config.compaction_message_budget,
-                )
-                body = f"Model set to {session.runtime_config.model}."
-            else:
-                body = f"Model: {session.runtime_config.model or 'default'}."
-        elif command == "/providers":
-            body = "\n".join(
-                f"{provider['provider_id']} kind={provider['provider_kind']} online={provider['online']} auth={provider.get('auth_status', 'missing')}"
-                for provider in self.list_providers()
-            )
-        elif command == "/permissions":
-            if arg:
-                session.permission_mode = AgentPermissionMode(arg)
-                body = f"Permission mode set to {session.permission_mode.value}."
-            else:
-                body = f"Permission mode: {session.permission_mode.value}."
-        elif command == "/clear":
-            session.messages.clear()
-            session.pending_actions.clear()
-            body = "Session messages and pending actions cleared."
-        elif command == "/tools":
-            body = "\n".join(tool["name"] for tool in self.list_tools())
-        elif command == "/compact":
-            result = self.compaction.compact(session)
-            body = json_dump_line({"compact": result})
-        elif command == "/memory":
-            snapshot = self.memory_store.load_session_summary(session.session_id)
-            if snapshot.errors:
-                body = json_dump_line({"memory": snapshot.to_dict(), "status": "memory_error"})
-            else:
-                body = snapshot.session_summary or "No session memory stored."
-        elif command == "/cost":
-            body = json_dump_line(self.get_usage_from_session(session))
-        elif command == "/diff":
-            result = self.tools.execute(
-                AgentToolCall(new_id("tool"), "git_diff", {"path": arg}),
-                self._tool_context(),
-            )
-            body = result.output if result.success else result.error
-        elif command == "/review":
-            body = "Review baseline: use /diff for current changes; automated review heuristics are not expanded in V3a."
-        else:
-            body = f"Unknown command: {command}"
-        session.messages.append(AgentMessage(new_id("msg"), AgentMessageRole.USER, content))
-        session.messages.append(AgentMessage(new_id("msg"), AgentMessageRole.ASSISTANT, body))
-        session.active_turn = None
-        session.suspended_turn = None
-        session.updated_at = utc_now_iso()
-        return session.to_dict()
+        return self.slash_commands.handle(session, content)
 
     def _tool_context(self) -> AgentToolContext:
         return AgentToolContext(project_root=self.project_root, api=self.api, engine_port=self.engine_port)

@@ -380,6 +380,65 @@ class AgentSessionServiceTests(unittest.TestCase):
         self.assertTrue(updated["command_result"]["device_auth"])
         self.assertEqual(updated["command_result"]["command"], ["codex", "login", "--device-auth"])
 
+    def test_list_slash_commands_exposes_formal_metadata(self) -> None:
+        service = AgentSessionService(project_root=self.project)
+
+        commands = {item["name"]: item for item in service.list_slash_commands()}
+
+        self.assertIn("help", commands)
+        self.assertIn("status", commands)
+        self.assertIn("context", commands)
+        self.assertEqual(commands["help"]["category"], "ayuda")
+        self.assertIn("ctx", commands["context"]["aliases"])
+        self.assertEqual(commands["provider"]["argument_hint"], "[provider_id]")
+
+    def test_suggest_slash_commands_returns_full_catalog_for_single_slash(self) -> None:
+        service = AgentSessionService(project_root=self.project)
+
+        suggestions = service.suggest_slash_commands("/")
+        names = [item["name"] for item in suggestions]
+
+        self.assertIn("help", names)
+        self.assertIn("status", names)
+        self.assertIn("verify", names)
+        self.assertGreaterEqual(len(names), 10)
+
+    def test_suggest_slash_commands_matches_aliases(self) -> None:
+        service = AgentSessionService(project_root=self.project)
+
+        suggestions = service.suggest_slash_commands("/ctx")
+
+        self.assertTrue(suggestions)
+        self.assertEqual(suggestions[0]["name"], "context")
+
+    def test_single_slash_command_returns_catalog_message(self) -> None:
+        service = AgentSessionService(project_root=self.project)
+        session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value)
+
+        updated = service.send_message(session["session_id"], "/")
+
+        self.assertIn("/help", updated["messages"][-1]["content"])
+        self.assertIn("/status", updated["messages"][-1]["content"])
+
+    def test_unknown_slash_command_returns_helpful_error(self) -> None:
+        service = AgentSessionService(project_root=self.project)
+        session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value)
+
+        updated = service.send_message(session["session_id"], "/missing")
+
+        self.assertEqual(updated["messages"][-1]["role"], "assistant")
+        self.assertIn("Unknown command: /missing", updated["messages"][-1]["content"])
+
+    def test_new_slash_command_creates_new_session_and_cancels_previous(self) -> None:
+        service = AgentSessionService(project_root=self.project)
+        session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value)
+
+        updated = service.send_message(session["session_id"], "/new")
+
+        self.assertNotEqual(updated["session_id"], session["session_id"])
+        self.assertEqual(updated["command_result"]["action"], "new_session")
+        self.assertTrue(service.get_session(session["session_id"])["cancelled"])
+
     def test_chat_rejects_api_key_like_input_without_persisting_it(self) -> None:
         service = AgentSessionService(project_root=self.project, global_state_dir=self.root / "global")
         session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value)
