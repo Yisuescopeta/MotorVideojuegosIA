@@ -236,7 +236,13 @@ class World:
         return len(self._entities)
 
     def clear(self) -> None:
-        for entity in self._entities.values():
+        # Snapshot de entidades para permitir que los observers vean la entidad
+        # antes de que sea desindexada, respetando el mismo contrato que remove_entity().
+        entidades = list(self._entities.values())
+        for entity in entidades:
+            for callback in list(self.on_entity_destroyed):
+                callback(entity)
+        for entity in entidades:
             entity._set_owner_world(None)
         self._entities.clear()
         self._name_index.clear()

@@ -410,6 +410,96 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertTrue(self.controller.servicios.tiene("GlobalConfig"))
         self.assertFalse(self.controller.servicios.tiene("SessionTemp"))
 
+    def test_play_registers_entity_destroyed_listener_once(self) -> None:
+        runtime_world = SimpleNamespace(feature_metadata={}, on_entity_destroyed=[])
+        self.scene_manager.enter_play.return_value = runtime_world
+
+        with patch("engine.app.runtime_controller.bake_tilemap_colliders"):
+            self.controller.play()
+
+        self.assertEqual(len(runtime_world.on_entity_destroyed), 1)
+        self.assertEqual(runtime_world.on_entity_destroyed[0], self.controller._on_entity_destroyed)
+
+    def test_stop_removes_entity_destroyed_listener(self) -> None:
+        runtime_world = SimpleNamespace(feature_metadata={}, on_entity_destroyed=[])
+        edit_world = SimpleNamespace(feature_metadata={})
+        self.state["value"] = EngineState.PLAY
+        self.world_holder["world"] = runtime_world
+        self.scene_manager.exit_play.return_value = edit_world
+        runtime_world.on_entity_destroyed.append(self.controller._on_entity_destroyed)
+        self.controller._entity_destroyed_listener_registered = True
+
+        self.controller.stop()
+
+        self.assertEqual(len(runtime_world.on_entity_destroyed), 0)
+        self.assertFalse(self.controller._entity_destroyed_listener_registered)
+
+    def test_play_stop_play_no_duplicate_listeners(self) -> None:
+        runtime_world = SimpleNamespace(feature_metadata={}, on_entity_destroyed=[])
+        edit_world = SimpleNamespace(feature_metadata={})
+        self.scene_manager.enter_play.return_value = runtime_world
+        self.scene_manager.exit_play.return_value = edit_world
+
+        with patch("engine.app.runtime_controller.bake_tilemap_colliders"):
+            self.controller.play()
+
+        self.assertEqual(len(runtime_world.on_entity_destroyed), 1)
+
+        self.controller.stop()
+
+        self.assertEqual(len(runtime_world.on_entity_destroyed), 0)
+
+        # Segunda sesión PLAY
+        runtime_world2 = SimpleNamespace(feature_metadata={}, on_entity_destroyed=[])
+        self.scene_manager.enter_play.return_value = runtime_world2
+        with patch("engine.app.runtime_controller.bake_tilemap_colliders"):
+            self.controller.play()
+
+        self.assertEqual(len(runtime_world2.on_entity_destroyed), 1)
+        self.assertEqual(runtime_world2.on_entity_destroyed[0], self.controller._on_entity_destroyed)
+
+    def test_stop_graceful_when_world_missing_on_entity_destroyed(self) -> None:
+        runtime_world = SimpleNamespace(feature_metadata={})
+        edit_world = SimpleNamespace(feature_metadata={})
+        self.state["value"] = EngineState.PLAY
+        self.world_holder["world"] = runtime_world
+        self.scene_manager.exit_play.return_value = edit_world
+        self.controller._entity_destroyed_listener_registered = True
+
+        self.controller.stop()
+
+        self.assertEqual(self.state["value"], EngineState.EDIT)
+        self.assertFalse(self.controller._entity_destroyed_listener_registered)
+
+    def test_stop_graceful_when_world_is_none(self) -> None:
+        self.state["value"] = EngineState.PLAY
+        self.world_holder["world"] = None
+        self.scene_manager.exit_play.return_value = None
+        self.controller._entity_destroyed_listener_registered = True
+
+        self.controller.stop()
+
+        self.assertEqual(self.state["value"], EngineState.EDIT)
+        self.assertFalse(self.controller._entity_destroyed_listener_registered)
+
+    def test_on_entity_destroyed_prunes_signals_during_play(self) -> None:
+        runtime_world = SimpleNamespace(feature_metadata={}, on_entity_destroyed=[])
+        self.scene_manager.enter_play.return_value = runtime_world
+
+        with patch("engine.app.runtime_controller.bake_tilemap_colliders"):
+            self.controller.play()
+
+        emitter_entity = SimpleNamespace(name="Emitter")
+        receiver_entity = SimpleNamespace(name="Receiver")
+        self.controller.signal_runtime.connect("Emitter", "tick", lambda: None)
+        conn_receiver = self.controller.signal_runtime.connect("Receiver", "tick", lambda: None)
+
+        self.controller._on_entity_destroyed(emitter_entity)
+
+        conexiones_restantes = self.controller.signal_runtime.list_connections()
+        self.assertEqual(len(conexiones_restantes), 1)
+        self.assertEqual(conexiones_restantes[0].connection_id, conn_receiver)
+
 
 if __name__ == "__main__":
     unittest.main()

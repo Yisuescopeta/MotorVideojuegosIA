@@ -56,6 +56,7 @@ class RuntimeController:
         self._deferred_queue = DeferredCallQueue()
         self._signal_runtime = SignalRuntime(self._deferred_queue)
         self._servicios = RegistroServicios()
+        self._entity_destroyed_listener_registered = False
         self._callable_resolver = CallableResolver(
             CallableResolverContext(
                 get_world=self._get_world,
@@ -107,12 +108,14 @@ class RuntimeController:
         self._deferred_queue.clear()
         self._signal_runtime.clear()
         self._servicios.limpiar_runtime()
+        self._entity_destroyed_listener_registered = False
 
     def end_runtime_session(self) -> None:
         self._loop_state.reset()
         self._deferred_queue.clear()
         self._signal_runtime.clear()
         self._servicios.limpiar_runtime()
+        self._entity_destroyed_listener_registered = False
 
     def build_tick_plan(self, dt: float, *, should_render_like: bool = True) -> RuntimeTickPlan:
         frame_dt = max(0.0, float(dt))
@@ -157,8 +160,9 @@ class RuntimeController:
                 self.end_runtime_session()
                 return
             self._set_world(runtime_world)
-            if hasattr(runtime_world, "on_entity_destroyed"):
+            if hasattr(runtime_world, "on_entity_destroyed") and not self._entity_destroyed_listener_registered:
                 runtime_world.on_entity_destroyed.append(self._on_entity_destroyed)
+                self._entity_destroyed_listener_registered = True
             bake_tilemap_colliders(runtime_world, merge_shapes=True)
 
             rule_system = self._get_rule_system()
@@ -203,6 +207,13 @@ class RuntimeController:
             event_bus.clear_history()
 
         runtime_world = self._get_world()
+        if runtime_world is not None and hasattr(runtime_world, "on_entity_destroyed") and self._entity_destroyed_listener_registered:
+            try:
+                runtime_world.on_entity_destroyed.remove(self._on_entity_destroyed)
+            except ValueError:
+                pass
+            self._entity_destroyed_listener_registered = False
+
         script_behaviour_system = self._get_script_behaviour_system()
         if script_behaviour_system is not None and runtime_world is not None:
             script_behaviour_system.on_stop(runtime_world)

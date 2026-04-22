@@ -104,6 +104,50 @@ class SignalLifecycleIntegrationTests(unittest.TestCase):
         self.assertEqual(self.runtime.emit("Player", "attack"), 2)
         self.assertEqual(orden, ["callback", "second"])
 
+    def test_clear_fires_on_entity_destroyed_for_each_entity(self) -> None:
+        nombres_destruidos: list[str] = []
+        self.world.on_entity_destroyed.append(lambda e: nombres_destruidos.append(e.name))
+
+        self.world.create_entity("A")
+        self.world.create_entity("B")
+        self.world.create_entity("C")
+
+        self.world.clear()
+        self.assertEqual(sorted(nombres_destruidos), ["A", "B", "C"])
+
+    def test_clear_prunes_signal_connections_by_source_and_target(self) -> None:
+        valores: list[int] = []
+        self.runtime.connect("Player", "hit", lambda d: valores.append(d), target_id="Enemy")
+        self.runtime.connect("Enemy", "die", lambda: valores.append(1), target_id="Player")
+
+        self.world.create_entity("Player")
+        self.world.create_entity("Enemy")
+
+        self.world.clear()
+        self.assertEqual(self.runtime.emit("Player", "hit", 5), 0)
+        self.assertEqual(self.runtime.emit("Enemy", "die"), 0)
+        self.assertEqual(len(self.runtime.list_connections()), 0)
+
+    def test_clear_leaves_world_in_consistent_state(self) -> None:
+        ent = self.world.create_entity("Hero")
+        ent.groups = ["heroes"]
+        self.world.selected_entity_name = "Hero"
+
+        self.world.clear()
+        self.assertEqual(self.world.entity_count(), 0)
+        self.assertEqual(self.world.group_registry.list_groups(), [])
+        self.assertIsNone(self.world.get_entity_by_name("Hero"))
+        self.assertIsNone(self.world.selected_entity_name)
+
+    def test_remove_entity_still_works_after_clear_changes(self) -> None:
+        notificado: list[str] = []
+        self.world.on_entity_destroyed.append(lambda e: notificado.append(e.name))
+
+        ent = self.world.create_entity("Solo")
+        self.world.destroy_entity(ent.id)
+        self.assertEqual(notificado, ["Solo"])
+        self.assertEqual(self.world.entity_count(), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
