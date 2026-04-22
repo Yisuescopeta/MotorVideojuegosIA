@@ -404,6 +404,21 @@ class Game:
         """Registro de servicios globales / autoloads del runtime actual."""
         return self._runtime_controller.servicios if self._runtime_controller is not None else None
 
+    @property
+    def signal_runtime(self) -> Any:
+        """SignalRuntime activo del runtime actual."""
+        return self._runtime_controller.signal_runtime if self._runtime_controller is not None else None
+
+    @property
+    def callable_resolver(self) -> Any:
+        """CallableResolver activo del runtime actual."""
+        return self._runtime_controller.callable_resolver if self._runtime_controller is not None else None
+
+    @property
+    def group_operations(self) -> Any:
+        """GroupOperations activo del runtime actual."""
+        return self._runtime_controller.group_operations if self._runtime_controller is not None else None
+
     def registrar_servicio_builtin(self, nombre: str, servicio: Any) -> None:
         """Registra un servicio global persistente entre sesiones de PLAY."""
         if self._runtime_controller is not None:

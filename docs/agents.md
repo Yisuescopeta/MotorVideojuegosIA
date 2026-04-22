@@ -66,6 +66,18 @@ py -m motor component add Player Transform --data '{"x":0,"y":0}' --project . --
 Para UI serializable usa los helpers publicos de `EngineAPI` como
 `create_canvas`, `create_ui_text`, `create_ui_button` y `create_ui_image`.
 
+Para gameplay runtime usa la fachada publica de `EngineAPI` en lugar de tocar
+`Game`, `RuntimeController` o utilidades internas:
+
+- señales runtime: `connect_signal`, `emit_signal`, `disconnect_signal`, `list_signal_connections`
+- señales declarativas (persistencia): `add_signal_connection`, `remove_signal_connection`, `list_signal_connections_declarative`
+- grupos: `get_entities_in_group`, `get_entity_groups`, `add_entity_to_group`, `remove_entity_from_group`, `call_group`, `emit_group`
+- servicios globales: `get_service`, `has_service`, `register_service_runtime`, `register_service_builtin`
+
+Cuando el motor esta en `EDIT`, los cambios persistentes de grupos deben entrar
+por la ruta de authoring expuesta por `EngineAPI`; en `PLAY`, esos cambios solo
+afectan al runtime activo.
+
 ## Que evitar
 
 - No editar `SceneManager.edit_world` directamente para flujos publicos nuevos.

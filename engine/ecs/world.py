@@ -91,6 +91,31 @@ class GroupRegistry:
     def has(self, group_name: str, entity_name: str) -> bool:
         return entity_name in self.get_entity_names(group_name)
 
+    def has_entity(self, group_name: str, entity: Entity) -> bool:
+        """Comprueba si una entidad concreta pertenece al grupo por su id."""
+        normalized_group = str(group_name or "").strip()
+        if not normalized_group:
+            return False
+        return entity.id in self._group_index.get(normalized_group, set())
+
+    def get_first_entity(self, group_name: str) -> Entity | None:
+        """Obtiene la primera entidad activa del grupo, o None si está vacío."""
+        for ent in self.get_entities(group_name):
+            if ent.active:
+                return ent
+        return None
+
+    def count(self, group_name: str) -> int:
+        """Número de entidades actualmente en el grupo."""
+        normalized_group = str(group_name or "").strip()
+        if not normalized_group:
+            return 0
+        return len(self._group_index.get(normalized_group, set()))
+
+    def is_empty(self, group_name: str) -> bool:
+        """Indica si el grupo no tiene miembros."""
+        return self.count(group_name) == 0
+
 
 class World:
     """Contenedor principal de todas las entidades del juego."""

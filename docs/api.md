@@ -101,6 +101,13 @@ Metadata:
 
 - `set_feature_metadata(key, value)`
 
+Señales declarativas (persistencia en escena):
+
+- `get_signal_metadata()`
+- `list_signal_connections_declarative()`
+- `add_signal_connection(connection_data)`
+- `remove_signal_connection(connection_id)`
+
 Reglas:
 
 - Los metodos de authoring requieren modo `EDIT`.
@@ -145,6 +152,41 @@ Fisica:
 - `query_physics_ray(origin_x, origin_y, direction_x, direction_y, max_distance)`
 - `list_physics_backends()`
 - `get_physics_backend_selection()`
+
+Señales runtime:
+
+- `connect_signal(source_id, signal_name, callback, flags=None, binds=None, connection_id=None, description="", target_id=None)`
+- `emit_signal(source_id, signal_name, *args, **kwargs)`
+- `disconnect_signal(connection_id)`
+- `list_signal_connections(source_id=None, signal_name=None)`
+
+Grupos:
+
+- `get_group_entities(group_name)`
+- `get_entities_in_group(group_name)`
+- `get_first_in_group(group_name)`
+- `is_in_group(entity_name, group_name)`
+- `count_group(group_name)`
+- `get_entity_groups(entity_name)`
+- `add_entity_to_group(entity_name, group_name)`
+- `remove_entity_from_group(entity_name, group_name)`
+- `call_group(group_name, method_name, *args, **kwargs)`
+- `emit_group(group_name, signal_name, *args, **kwargs)`
+
+Servicios globales y autoloads:
+
+- `get_service(name)`
+- `has_service(name)`
+- `register_service_runtime(name, service)`
+- `register_service_builtin(name, service)`
+
+Contrato de uso:
+
+- `connect_signal` crea conexiones sobre `SignalRuntime` del runtime activo y espera un callable Python directo.
+- `list_signal_connections` devuelve conexiones runtime activas serializadas a diccionario.
+- `add_entity_to_group` y `remove_entity_from_group` persisten el cambio via `SceneManager` cuando el motor esta en `EDIT`.
+- En `PLAY`, las mutaciones de grupos afectan solo al `World` runtime activo.
+- `get_service` y `has_service` consultan el `RegistroServicios` del runtime actual, incluyendo builtins y servicios de la sesion de juego.
 
 `legacy_aabb` debe permanecer disponible como fallback. `box2d` es opcional.
 

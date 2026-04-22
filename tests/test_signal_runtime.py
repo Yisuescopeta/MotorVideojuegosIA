@@ -179,5 +179,43 @@ class SignalRuntimeTests(unittest.TestCase):
         self.assertEqual(one_shot_vals, [1])
 
 
+    def test_duplicate_normal_connection_returns_existing_id(self) -> None:
+        """Una conexión normal idéntica no debe duplicarse; devuelve el id existente."""
+        valores: list[int] = []
+        callback = lambda d: valores.append(d)
+
+        first_id = self.runtime.connect("Player", "hit", callback)
+        second_id = self.runtime.connect("Player", "hit", callback)
+
+        self.assertEqual(first_id, second_id)
+        self.assertEqual(len(self.runtime.list_connections("Player", "hit")), 1)
+        self.assertEqual(self.runtime.emit("Player", "hit", 5), 1)
+        self.assertEqual(valores, [5])
+
+    def test_duplicate_normal_connection_with_different_target_is_different(self) -> None:
+        """Conexiones idénticas pero con distinto target_id se consideran separadas."""
+        valores: list[int] = []
+        callback = lambda d: valores.append(d)
+
+        first_id = self.runtime.connect("Player", "hit", callback, target_id="Target1")
+        second_id = self.runtime.connect("Player", "hit", callback, target_id="Target2")
+
+        self.assertNotEqual(first_id, second_id)
+        self.assertEqual(len(self.runtime.list_connections("Player", "hit")), 2)
+        self.assertEqual(self.runtime.emit("Player", "hit", 3), 2)
+        self.assertEqual(valores, [3, 3])
+
+    def test_duplicate_normal_connection_with_different_binds_is_different(self) -> None:
+        """Conexiones con distintos binds se consideran separadas aunque el callback sea el mismo."""
+        valores: list[tuple[int, int]] = []
+        callback = lambda d, extra: valores.append((d, extra))
+
+        first_id = self.runtime.connect("Player", "hit", callback, binds=(10,))
+        second_id = self.runtime.connect("Player", "hit", callback, binds=(20,))
+
+        self.assertNotEqual(first_id, second_id)
+        self.assertEqual(len(self.runtime.list_connections("Player", "hit")), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

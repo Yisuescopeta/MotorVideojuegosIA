@@ -860,6 +860,58 @@ class AuthoringAPI(EngineAPIComponent):
             set_default=False,
         )
 
+    # --- Señales declarativas persistentes (feature_metadata["signals"]) ---
+
+    def list_signal_connections_declarative(self) -> list[dict[str, Any]]:
+        """Devuelve la lista de conexiones de señales declarativas persistentes en la escena activa."""
+        metadata = self.api.get_feature_metadata()
+        signals = metadata.get("signals", {})
+        if not isinstance(signals, dict):
+            return []
+        connections = signals.get("connections", [])
+        return copy.deepcopy(connections) if isinstance(connections, list) else []
+
+    def get_signal_metadata(self) -> dict[str, Any]:
+        """Devuelve el bloque completo de metadata de señales de la escena activa."""
+        metadata = self.api.get_feature_metadata()
+        signals = metadata.get("signals", {})
+        return copy.deepcopy(signals) if isinstance(signals, dict) else {}
+
+    def add_signal_connection(self, connection_data: dict[str, Any]) -> ActionResult:
+        """Añade una conexión de señal declarativa a la escena activa."""
+        self.ensure_edit_mode()
+        if not isinstance(connection_data, dict):
+            return self.fail("Connection data must be a dictionary")
+        if "id" not in connection_data:
+            return self.fail("Connection data must contain an 'id' field")
+
+        metadata = self.api.get_feature_metadata()
+        signals = dict(metadata.get("signals", {}))
+        connections = list(signals.get("connections", []))
+
+        existing_ids = {c.get("id") for c in connections if isinstance(c, dict)}
+        if connection_data["id"] in existing_ids:
+            return self.fail(f"Connection with id '{connection_data['id']}' already exists")
+
+        connections.append(copy.deepcopy(connection_data))
+        signals["connections"] = connections
+        return self.set_feature_metadata("signals", signals)
+
+    def remove_signal_connection(self, connection_id: str) -> ActionResult:
+        """Remueve una conexión de señal declarativa por su id."""
+        self.ensure_edit_mode()
+        metadata = self.api.get_feature_metadata()
+        signals = dict(metadata.get("signals", {}))
+        connections = list(signals.get("connections", []))
+
+        new_connections = [c for c in connections if isinstance(c, dict) and c.get("id") != connection_id]
+
+        if len(new_connections) == len(connections):
+            return self.fail(f"Connection with id '{connection_id}' not found")
+
+        signals["connections"] = new_connections
+        return self.set_feature_metadata("signals", signals)
+
     def _apply_entity_property(self, name: str, property_name: str, value: Any, message: str) -> ActionResult:
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")

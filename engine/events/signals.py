@@ -85,15 +85,25 @@ class SignalRuntime:
         description: str = "",
         target_id: str | None = None,
     ) -> str:
-        """Conecta una señal a un callback y retorna el id runtime de la conexión."""
+        """Conecta una señal a un callback y retorna el id runtime de la conexión.
+
+        Política de duplicados:
+        - Si una conexión idéntica (mismo source, signal, callback, binds, flags, target_id)
+          ya existe y no tiene REFERENCE_COUNTED, se devuelve el connection_id existente
+          sin crear un duplicado.
+        - Si la conexión existente tiene REFERENCE_COUNTED, se incrementa su contador
+          de referencias y se devuelve el mismo connection_id.
+        """
         signal = SignalRef(source_id=str(source_id), signal_name=str(signal_name))
         normalized_binds = tuple(binds or ())
 
-        if flags & SignalConnectionFlags.REFERENCE_COUNTED:
-            existing = self._find_connection(signal, callback, normalized_binds, flags)
-            if existing is not None:
+        existing = self._find_connection(
+            signal, callback, normalized_binds, flags, target_id=target_id
+        )
+        if existing is not None:
+            if flags & SignalConnectionFlags.REFERENCE_COUNTED:
                 existing.reference_count += 1
-                return existing.connection_id
+            return existing.connection_id
 
         normalized_connection_id = connection_id or self._generate_connection_id(signal)
         connection = SignalConnection(
@@ -243,6 +253,7 @@ class SignalRuntime:
         callback: SignalCallback,
         binds: tuple[Any, ...],
         flags: SignalConnectionFlags,
+        target_id: str | None = None,
     ) -> SignalConnection | None:
         for connection in self._connections_by_signal.get(signal, []):
             if connection.callback is not callback:
@@ -250,6 +261,8 @@ class SignalRuntime:
             if connection.binds != binds:
                 continue
             if connection.flags != flags:
+                continue
+            if connection.target_id != target_id:
                 continue
             return connection
         return None

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 from engine.core.engine_state import EngineState
 from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.core.runtime_loop import RuntimeLoopState, RuntimePhase, RuntimeTickPlan
+from engine.ecs.group_operations import GroupOperations
 from engine.editor.console_panel import log_info
 from engine.events.callable_resolver import CallableResolver, CallableResolverContext
 from engine.events.deferred_queue import DeferredCallQueue
@@ -84,6 +85,18 @@ class RuntimeController:
     def servicios(self) -> RegistroServicios:
         """Registro de servicios globales / autoloads del runtime actual."""
         return self._servicios
+
+    @property
+    def group_operations(self) -> GroupOperations | None:
+        """Operaciones de gameplay sobre grupos de entidades, disponible cuando hay world."""
+        world = self._get_world()
+        if world is None:
+            return None
+        return GroupOperations(
+            world,
+            script_behaviour_system=self._get_script_behaviour_system(),
+            signal_runtime=self._signal_runtime,
+        )
 
     def _emit_phase(self, phase: RuntimePhase, plan: RuntimeTickPlan) -> None:
         if self._phase_observer is not None:
