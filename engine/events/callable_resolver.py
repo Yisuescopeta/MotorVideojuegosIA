@@ -123,7 +123,7 @@ class CallableResolver:
         def invoke(*args: Any, **kwargs: Any) -> bool:
             registry = self._get_service_registry()
             if registry is None:
-                log_warn(f"CallableResolver: no hay registro de servicios disponible")
+                log_warn("CallableResolver: no hay registro de servicios disponible")
                 return False
             # Se asume que el registro expone .obtener() o .get()
             servicio = getattr(registry, "obtener", getattr(registry, "get", None))

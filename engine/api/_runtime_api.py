@@ -286,7 +286,7 @@ class RuntimeAPI(EngineAPIComponent):
             return 0
         return ops.count(group_name)
 
-    def call_group(self, group_name: str, method_name: str, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def call_group(self, group_name: str, method_name: str, *args: Any, **kwargs: Any) -> ActionResult:
         runtime = self.runtime
         if runtime is None or runtime.world is None:
             return self.fail("Engine not initialized")
@@ -295,11 +295,11 @@ class RuntimeAPI(EngineAPIComponent):
             return self.fail("Group operations unavailable")
         invoked = ops.call_group(group_name, method_name, *args, **kwargs)
         return self.ok(
-            f"Group call completed",
+            "Group call completed",
             {"group": group_name, "method": method_name, "invoked": invoked},
         )
 
-    def emit_group(self, group_name: str, signal_name: str, *args: Any, **kwargs: Any) -> dict[str, Any]:
+    def emit_group(self, group_name: str, signal_name: str, *args: Any, **kwargs: Any) -> ActionResult:
         runtime = self.runtime
         if runtime is None or runtime.world is None:
             return self.fail("Engine not initialized")
@@ -308,7 +308,7 @@ class RuntimeAPI(EngineAPIComponent):
             return self.fail("Group operations unavailable")
         total = ops.emit_group(group_name, signal_name, *args, **kwargs)
         return self.ok(
-            f"Group emit completed",
+            "Group emit completed",
             {"group": group_name, "signal": signal_name, "executed": total},
         )
 
@@ -480,11 +480,11 @@ class RuntimeAPI(EngineAPIComponent):
         entity = runtime.world.get_entity_by_name(entity_name)
         if entity is None:
             return self.fail(f"Entity '{entity_name}' not found")
-        current = set(entity.groups)
-        if normalized_group in current:
+        runtime_groups = set(entity.groups)
+        if normalized_group in runtime_groups:
             return self.ok("Entity already in group", {"entity": entity_name, "group": normalized_group})
-        current.add(normalized_group)
-        entity.groups = tuple(current)
+        runtime_groups.add(normalized_group)
+        entity.groups = tuple(runtime_groups)
         return self.ok("Entity added to group", {"entity": entity_name, "group": normalized_group})
 
     def remove_entity_from_group(self, entity_name: str, group_name: str) -> ActionResult:
@@ -510,11 +510,11 @@ class RuntimeAPI(EngineAPIComponent):
         entity = runtime.world.get_entity_by_name(entity_name)
         if entity is None:
             return self.fail(f"Entity '{entity_name}' not found")
-        current = set(entity.groups)
-        if normalized_group not in current:
+        runtime_groups = set(entity.groups)
+        if normalized_group not in runtime_groups:
             return self.ok("Entity was not in group", {"entity": entity_name, "group": normalized_group})
-        current.discard(normalized_group)
-        entity.groups = tuple(current)
+        runtime_groups.discard(normalized_group)
+        entity.groups = tuple(runtime_groups)
         return self.ok("Entity removed from group", {"entity": entity_name, "group": normalized_group})
 
     def get_entity_groups(self, entity_name: str) -> list[str]:

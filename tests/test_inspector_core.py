@@ -621,8 +621,11 @@ class InspectorCoreTests(unittest.TestCase):
 
         self.assertTrue(self.inspector.activate_tilemap_tool(self.api.game.world, "TileNavProbe", layer_name="Ground"))
 
+        def key_value(key: int) -> int:
+            return int(getattr(key, "value", key))
+
         def right_pressed(key: int) -> bool:
-            return key == rl.KEY_RIGHT
+            return key_value(key) == key_value(rl.KEY_RIGHT)
 
         with patch("pyray.is_key_down", return_value=False), patch("pyray.is_key_pressed", side_effect=right_pressed):
             self.inspector.update(0.0, self.api.game.world, True)
@@ -632,7 +635,7 @@ class InspectorCoreTests(unittest.TestCase):
 
         def enter_pressed(key: int) -> bool:
             nonlocal enter_seen
-            if key == rl.KEY_ENTER and not enter_seen:
+            if key_value(key) == key_value(rl.KEY_ENTER) and not enter_seen:
                 enter_seen = True
                 return True
             return False
@@ -642,7 +645,7 @@ class InspectorCoreTests(unittest.TestCase):
         self.assertEqual(self.inspector.get_tilemap_tool_state()["tile_id"], "1")
 
         def flood_shortcut(key: int) -> bool:
-            return key == rl.KEY_G
+            return key_value(key) == key_value(rl.KEY_G)
 
         with patch("pyray.is_key_down", return_value=False), patch("pyray.is_key_pressed", side_effect=flood_shortcut):
             self.inspector.update(0.0, self.api.game.world, True)
