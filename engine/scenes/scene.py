@@ -8,6 +8,7 @@ import copy
 from pathlib import Path
 from typing import Any, Dict, Optional, TYPE_CHECKING
 
+from engine.ecs.entity import normalize_entity_groups
 from engine.serialization.schema import migrate_scene_data
 
 if TYPE_CHECKING:
@@ -54,6 +55,17 @@ class Scene:
     def feature_metadata(self) -> Dict[str, Any]:
         return self._data.setdefault("feature_metadata", {})
 
+    def get_signal_metadata(self) -> Dict[str, Any]:
+        signals = self.feature_metadata.get("signals", {})
+        return copy.deepcopy(signals) if isinstance(signals, dict) else {}
+
+    def list_signal_connections(self) -> list[Dict[str, Any]]:
+        signals = self.feature_metadata.get("signals", {})
+        if not isinstance(signals, dict):
+            return []
+        connections = signals.get("connections", [])
+        return copy.deepcopy(connections) if isinstance(connections, list) else []
+
     @property
     def source_path(self) -> Optional[str]:
         return self._source_path
@@ -96,6 +108,7 @@ class Scene:
                 entity.active = expanded_data.get("active", True)
                 entity.tag = expanded_data.get("tag", "Untagged")
                 entity.layer = expanded_data.get("layer", "Default")
+                entity.groups = normalize_entity_groups(expanded_data.get("groups", ()))
                 entity.parent_name = expanded_data.get("parent")
                 entity.prefab_instance = copy.deepcopy(expanded_data.get("prefab_instance"))
                 entity.prefab_source_path = expanded_data.get("prefab_source_path")
@@ -144,11 +157,30 @@ class Scene:
         return False
 
     def update_entity_property(self, entity_name: str, property_name: str, value: Any) -> bool:
+        if property_name == "groups":
+            return self.set_entity_groups(entity_name, value)
         for entity_data in self._data.get("entities", []):
             if entity_data.get("name") == entity_name:
                 entity_data[property_name] = value
                 return True
         return False
+
+    def get_entity_groups(self, entity_name: str) -> list[str]:
+        entity_data = self.find_entity(entity_name)
+        if entity_data is None:
+            return []
+        return list(normalize_entity_groups(entity_data.get("groups", ())))
+
+    def set_entity_groups(self, entity_name: str, groups: Any) -> bool:
+        entity_data = self.find_entity(entity_name)
+        if entity_data is None:
+            return False
+        normalized_groups = list(normalize_entity_groups(groups))
+        if normalized_groups:
+            entity_data["groups"] = normalized_groups
+        else:
+            entity_data.pop("groups", None)
+        return True
 
     def replace_component_data(self, entity_name: str, component_name: str, component_data: Dict[str, Any]) -> bool:
         entity_data = self.find_entity(entity_name)

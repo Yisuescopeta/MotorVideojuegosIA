@@ -165,6 +165,22 @@ class EngineRuntimePort(Protocol):
     def set_world(self, world: "World") -> None:
         ...
 
+    @property
+    def signal_runtime(self) -> Any:
+        ...
+
+    @property
+    def callable_resolver(self) -> Any:
+        ...
+
+    @property
+    def group_operations(self) -> Any:
+        ...
+
+    @property
+    def servicios(self) -> Any:
+        ...
+
     def request_shutdown(self) -> None:
         ...
 

@@ -261,6 +261,92 @@ class SceneWorkspaceTests(unittest.TestCase):
         self.assertFalse(self.scene_manager.is_dirty)
         self.assertEqual(restored_world.selected_entity_name, "Player")
 
+    def test_enter_play_invokes_runtime_signal_compiler_with_runtime_world(self) -> None:
+        self.scene_manager.load_scene(
+            {
+                "name": "SignalPlayProbe",
+                "entities": [
+                    {
+                        "name": "Emitter",
+                        "active": True,
+                        "tag": "Untagged",
+                        "layer": "Default",
+                        "components": {"Transform": self._transform_payload()},
+                    }
+                ],
+                "rules": [],
+                "feature_metadata": {
+                    "signals": {
+                        "connections": [
+                            {
+                                "id": "emit_to_event",
+                                "source": {"id": "Emitter", "signal": "pressed"},
+                                "target": {"kind": "event_bus"},
+                                "callable": {"event": "ui.emitter_pressed"},
+                            }
+                        ]
+                    }
+                },
+            }
+        )
+        invocaciones: list[tuple[str, object]] = []
+
+        def compilar(scene, world):
+            invocaciones.append((scene.name, world))
+            return len(scene.list_signal_connections())
+
+        self.scene_manager.set_runtime_signal_compiler(compilar)
+
+        runtime_world = self.scene_manager.enter_play()
+
+        self.assertIsNotNone(runtime_world)
+        self.assertEqual(len(invocaciones), 1)
+        self.assertEqual(invocaciones[0][0], "SignalPlayProbe")
+        self.assertIs(invocaciones[0][1], runtime_world)
+
+    def test_enter_play_builds_runtime_group_registry_from_entity_groups(self) -> None:
+        self.scene_manager.load_scene(
+            {
+                "name": "GroupPlayProbe",
+                "entities": [
+                    {
+                        "name": "EnemyA",
+                        "active": True,
+                        "tag": "Enemy",
+                        "layer": "Gameplay",
+                        "groups": ["Enemies", "Damageables"],
+                        "components": {"Transform": self._transform_payload()},
+                    },
+                    {
+                        "name": "EnemyB",
+                        "active": True,
+                        "tag": "Enemy",
+                        "layer": "Gameplay",
+                        "groups": ["Enemies"],
+                        "components": {"Transform": self._transform_payload()},
+                    },
+                    {
+                        "name": "Pickup",
+                        "active": True,
+                        "tag": "Collectible",
+                        "layer": "Gameplay",
+                        "components": {"Transform": self._transform_payload()},
+                    },
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+
+        runtime_world = self.scene_manager.enter_play()
+
+        self.assertIsNotNone(runtime_world)
+        self.assertEqual(runtime_world.group_registry.list_groups(), ["Damageables", "Enemies"])
+        self.assertEqual(runtime_world.group_registry.get_entity_names("Enemies"), ["EnemyA", "EnemyB"])
+        self.assertEqual(runtime_world.group_registry.get_entity_names("Damageables"), ["EnemyA"])
+        self.assertTrue(runtime_world.group_registry.has("Enemies", "EnemyA"))
+        self.assertFalse(runtime_world.group_registry.has("Enemies", "Pickup"))
+
     def test_save_scene_preserves_component_metadata(self) -> None:
         self.scene_manager.load_scene(
             {

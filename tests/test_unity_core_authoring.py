@@ -127,6 +127,47 @@ class UnityCoreAuthoringTests(unittest.TestCase):
         reloaded_api.load_level("levels/feature_metadata_roundtrip.json")
         self.assertEqual(reloaded_api.get_feature_metadata()["input_profile"]["source"], "code")
 
+    def test_persisted_signal_connections_compile_on_play_and_emit_to_event_bus(self) -> None:
+        self.assertTrue(self.api.create_entity("SignalEmitter")["success"])
+        self.assertTrue(
+            self.api.set_feature_metadata(
+                "signals",
+                {
+                    "connections": [
+                        {
+                            "id": "emit_to_event",
+                            "source": {"id": "SignalEmitter", "signal": "pressed"},
+                            "target": {"kind": "event_bus"},
+                            "callable": {"event": "ui.signal_pressed"},
+                        }
+                    ]
+                },
+            )["success"]
+        )
+
+        save_path = self.project_root / "levels" / "signal_runtime_roundtrip.json"
+        self.assertTrue(self.api.save_scene(path=save_path.as_posix())["success"])
+        self.api.load_level("levels/signal_runtime_roundtrip.json")
+
+        self.api.play()
+        self.api.game.event_bus.clear_history()
+
+        ejecutadas = self.api.game._runtime_controller.signal_runtime.emit(
+            "SignalEmitter",
+            "pressed",
+            {"button": "left"},
+        )
+        eventos = self.api.game.event_bus.get_recent_events(5)
+
+        self.assertEqual(ejecutadas, 1)
+        self.assertTrue(
+            any(
+                evento.name == "ui.signal_pressed" and evento.data.get("button") == "left"
+                for evento in eventos
+            )
+        )
+        self.api.stop()
+
     def test_component_enablement_round_trip(self) -> None:
         result = self.api.set_component_enabled("Ground", "Collider", False)
         self.assertTrue(result["success"])

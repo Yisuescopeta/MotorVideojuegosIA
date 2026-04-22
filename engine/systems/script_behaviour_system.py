@@ -27,6 +27,9 @@ class ScriptBehaviourContext:
     def get_entity(self):
         return self.world.get_entity_by_name(self.entity_name)
 
+    def get_entity_by_name(self, entity_name: str):
+        return self.world.get_entity_by_name(str(entity_name))
+
     def get_component(self, component_name: str):
         entity = self.get_entity()
         if entity is None:
@@ -81,6 +84,33 @@ class ScriptBehaviourSystem:
     def update(self, world: World, dt: float, is_edit_mode: bool = False) -> bool:
         return self._invoke_for_world(world, "on_update", dt, is_edit_mode=is_edit_mode)
 
+    def invoke_callable(
+        self,
+        world: World,
+        entity_name: str,
+        method_name: str,
+        *args: Any,
+        **kwargs: Any,
+    ) -> bool:
+        entity = world.get_entity_by_name(entity_name)
+        if entity is None:
+            log_err(f"[Script:{entity_name}] Entidad no encontrada para invocar {method_name}")
+            return False
+
+        script_behaviour = entity.get_component(ScriptBehaviour)
+        if script_behaviour is None or not script_behaviour.enabled:
+            log_err(f"[Script:{entity_name}] ScriptBehaviour no disponible para invocar {method_name}")
+            return False
+
+        return self._invoke_module_callable(
+            entity_name,
+            world,
+            script_behaviour,
+            method_name,
+            args=args,
+            kwargs=kwargs,
+        )
+
     def _invoke_for_world(self, world: World, hook_name: str, dt: Optional[float], is_edit_mode: bool) -> bool:
         invoked = False
         for entity in world.get_entities_with(ScriptBehaviour):
@@ -101,6 +131,27 @@ class ScriptBehaviourSystem:
         hook_name: str,
         dt: Optional[float],
     ) -> bool:
+        args: tuple[Any, ...] = ()
+        if hook_name == "on_update":
+            args = (dt,)
+        return self._invoke_module_callable(
+            entity_name,
+            world,
+            script_behaviour,
+            hook_name,
+            args=args,
+        )
+
+    def _invoke_module_callable(
+        self,
+        entity_name: str,
+        world: World,
+        script_behaviour: ScriptBehaviour,
+        callable_name: str,
+        *,
+        args: tuple[Any, ...] = (),
+        kwargs: Optional[dict[str, Any]] = None,
+    ) -> bool:
         module_name = self._resolve_module_name(script_behaviour)
         if not module_name:
             return False
@@ -113,27 +164,32 @@ class ScriptBehaviourSystem:
             log_err(f"[Script:{entity_name}] Modulo no encontrado: {module_name}")
             return False
 
-        hook = getattr(module, hook_name, None)
-        if hook is None:
+        callable_obj = getattr(module, callable_name, None)
+        if callable_obj is None:
             return False
 
-        context = ScriptBehaviourContext(
+        context = self._build_context(world, entity_name, script_behaviour)
+
+        try:
+            callable_obj(context, *args, **dict(kwargs or {}))
+            return True
+        except Exception as exc:
+            log_err(f"[Script:{entity_name}] Error en {module_name}.{callable_name}: {exc}")
+            return False
+
+    def _build_context(
+        self,
+        world: World,
+        entity_name: str,
+        script_behaviour: ScriptBehaviour,
+    ) -> ScriptBehaviourContext:
+        return ScriptBehaviourContext(
             world=world,
             entity_name=entity_name,
             public_data=script_behaviour.public_data,
             scene_manager=self._scene_manager,
             scene_flow_loader=self._scene_flow_loader,
         )
-
-        try:
-            if hook_name == "on_update":
-                hook(context, dt)
-            else:
-                hook(context)
-            return True
-        except Exception as exc:
-            log_err(f"[Script:{entity_name}] Error en {module_name}.{hook_name}: {exc}")
-            return False
 
     def _resolve_module_name(self, script_behaviour: ScriptBehaviour) -> str:
         if self._asset_resolver is not None:

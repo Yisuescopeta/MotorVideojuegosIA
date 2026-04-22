@@ -621,8 +621,11 @@ class InspectorCoreTests(unittest.TestCase):
 
         self.assertTrue(self.inspector.activate_tilemap_tool(self.api.game.world, "TileNavProbe", layer_name="Ground"))
 
+        def key_value(key: int) -> int:
+            return int(getattr(key, "value", key))
+
         def right_pressed(key: int) -> bool:
-            return key == rl.KEY_RIGHT
+            return key_value(key) == key_value(rl.KEY_RIGHT)
 
         with patch("pyray.is_key_down", return_value=False), patch("pyray.is_key_pressed", side_effect=right_pressed):
             self.inspector.update(0.0, self.api.game.world, True)
@@ -632,7 +635,7 @@ class InspectorCoreTests(unittest.TestCase):
 
         def enter_pressed(key: int) -> bool:
             nonlocal enter_seen
-            if key == rl.KEY_ENTER and not enter_seen:
+            if key_value(key) == key_value(rl.KEY_ENTER) and not enter_seen:
                 enter_seen = True
                 return True
             return False
@@ -641,20 +644,28 @@ class InspectorCoreTests(unittest.TestCase):
             self.inspector.update(0.0, self.api.game.world, True)
         self.assertEqual(self.inspector.get_tilemap_tool_state()["tile_id"], "1")
 
-        def flood_shortcut(key: int) -> bool:
-            return key == rl.KEY_G
+        # The CI raylib binding can expose key constants with a wrapper type that
+        # is awkward to compare directly in mocks. This sequence follows the
+        # keyboard handler order: B, D, I, U, G, then palette navigation keys.
+        flood_shortcut_sequence = [False, False, False, False, True] + [False] * 10
 
-        with patch("pyray.is_key_down", return_value=False), patch("pyray.is_key_pressed", side_effect=flood_shortcut):
+        with patch("pyray.is_key_down", return_value=False), patch(
+            "pyray.is_key_pressed",
+            side_effect=flood_shortcut_sequence,
+        ):
             self.inspector.update(0.0, self.api.game.world, True)
         self.assertEqual(self.inspector.get_tilemap_tool_state()["mode"], "flood_fill")
 
         self.inspector.editing_text_field = "dummy"
-        with patch("pyray.is_key_down", return_value=False), patch("pyray.is_key_pressed", side_effect=lambda key: key == rl.KEY_D):
+        with patch("pyray.is_key_down", return_value=False), patch(
+            "pyray.is_key_pressed",
+            side_effect=lambda key: key_value(key) == key_value(rl.KEY_D),
+        ):
             self.inspector.update(0.0, self.api.game.world, True)
         self.assertEqual(self.inspector.get_tilemap_tool_state()["mode"], "flood_fill")
         self.inspector.editing_text_field = None
 
-        with patch("pyray.is_key_down", side_effect=lambda key: key == rl.KEY_LEFT_SHIFT), patch("pyray.is_key_pressed", return_value=False):
+        with patch("pyray.is_key_down", side_effect=[False, False, True]), patch("pyray.is_key_pressed", return_value=False):
             self.inspector.update(0.0, self.api.game.world, True)
             self.assertEqual(self.inspector.get_tilemap_tool_state()["effective_mode"], "erase")
 

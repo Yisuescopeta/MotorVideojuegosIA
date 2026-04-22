@@ -47,3 +47,9 @@ zzz_test.txt
 
 # Local projects created from the launcher
 projects/
+
+# Godot engine source / submodule (no se versiona)
+godot/
+
+# Claude Code workspace (no se versiona)
+claude code/

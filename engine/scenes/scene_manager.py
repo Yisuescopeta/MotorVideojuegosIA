@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from engine.authoring.changes import Change
 from engine.components.recttransform import RectTransform
@@ -73,6 +73,7 @@ class SceneManager:
         self._runtime_port: SceneRuntimePort = SceneManagerRuntimeAdapter(self)
         self._authoring_port: SceneAuthoringPort = SceneManagerAuthoringAdapter(self)
         self._workspace_port: SceneWorkspacePort = SceneManagerWorkspaceAdapter(self)
+        self._runtime_signal_compiler: Optional[Callable[[Scene, "World"], int]] = None
 
     @property
     def _entries(self) -> dict[str, SceneWorkspaceEntry]:
@@ -133,6 +134,12 @@ class SceneManager:
 
     def set_history_manager(self, history: Any) -> None:
         self._change_history.set_history_manager(history)
+
+    def set_runtime_signal_compiler(
+        self,
+        compiler: Optional[Callable[[Scene, "World"], int]],
+    ) -> None:
+        self._runtime_signal_compiler = compiler
 
     def list_open_scenes(self) -> list[Dict[str, Any]]:
         return self._workspace.list_open_scenes()
@@ -348,7 +355,12 @@ class SceneManager:
         return self._workspace.create_new_scene(name, activate=activate)
 
     def enter_play(self) -> Optional["World"]:
-        return self._workspace.enter_play()
+        runtime_world = self._workspace.enter_play()
+        entry = self._get_active_entry()
+        if runtime_world is None or entry is None:
+            return runtime_world
+        self._compile_runtime_signals_for_entry(entry, runtime_world)
+        return runtime_world
 
     def exit_play(self) -> Optional["World"]:
         return self._workspace.exit_play()
@@ -438,6 +450,9 @@ class SceneManager:
         entry.dirty = True
         self._record_scene_change(entry, f"{entity_name}.{property_name}", before)
         return True
+
+    def set_entity_groups(self, entity_name: str, groups: list[str]) -> bool:
+        return self.update_entity_property(entity_name, "groups", groups)
 
     def replace_component_data(self, entity_name: str, component_name: str, component_data: Dict[str, Any]) -> bool:
         entry = self._get_active_entry()
@@ -889,6 +904,15 @@ class SceneManager:
         entry.dirty = True
         self._record_scene_change(entry, f"scene_flow:{scene_key}", before)
         return True
+
+    def _compile_runtime_signals_for_entry(self, entry: SceneWorkspaceEntry, runtime_world: "World") -> None:
+        compiler = self._runtime_signal_compiler
+        if compiler is None:
+            return
+        try:
+            compiler(entry.scene, runtime_world)
+        except Exception as exc:
+            log_err(f"SceneManager: no se pudieron compilar las señales runtime: {exc}")
 
     def _get_active_entry(self) -> Optional[SceneWorkspaceEntry]:
         return self._workspace.get_active_entry()

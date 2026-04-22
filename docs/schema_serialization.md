@@ -39,6 +39,8 @@ Una escena canonica incluye:
 - `feature_metadata`
 
 Cada entidad define identidad, estado, jerarquia y componentes serializables.
+Opcionalmente puede incluir `groups` como lista de strings no vacios y sin
+duplicados para persistir membresias declarativas por entidad.
 Los componentes publicos deben estar registrados en
 `engine/levels/component_registry.py`.
 
@@ -131,9 +133,15 @@ oficiales. Ejemplos actuales:
 - `render_2d`
 - `physics_2d`
 - `scene_flow`
+- `signals`
 
-El backend fisico solicitado se mantiene como dato serializable. El runtime
-puede usar fallback efectivo sin sobrescribir el valor solicitado.
+ El backend fisico solicitado se mantiene como dato serializable. El runtime
+ puede usar fallback efectivo sin sobrescribir el valor solicitado.
+
+`signals` serializa conexiones persistentes bajo `feature_metadata.signals.connections`.
+Cada conexion define `source.id`, `source.signal`, un `target` soportado
+(`entity` o `event_bus`), una referencia `callable`, y opcionalmente `flags`,
+`binds`, `enabled`, `description` e `id` estable.
 
 ## Alcance de validacion
 

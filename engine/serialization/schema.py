@@ -1200,6 +1200,21 @@ def _validate_entity(entity: Any, *, path: str) -> list[str]:
             validator = CORE_COMPONENT_VALIDATORS.get(component_name)
             if validator is not None:
                 errors.extend(validator(component_data, f"{path}.components.{component_name}"))
+    if "groups" in payload:
+        groups = payload.get("groups")
+        if not isinstance(groups, list):
+            errors.append(f"{path}.groups: expected list")
+        else:
+            seen_groups: set[str] = set()
+            for index, group_name in enumerate(groups):
+                if not isinstance(group_name, str) or not group_name.strip():
+                    errors.append(f"{path}.groups[{index}]: expected non-empty string")
+                    continue
+                normalized_group = group_name.strip()
+                if normalized_group in seen_groups:
+                    errors.append(f"{path}.groups[{index}]: duplicate group '{normalized_group}'")
+                    continue
+                seen_groups.add(normalized_group)
     if "component_metadata" in payload and not isinstance(payload.get("component_metadata"), dict):
         errors.append(f"{path}.component_metadata: expected object")
     if "prefab_instance" in payload:
@@ -1459,11 +1474,170 @@ def _validate_feature_metadata(value: Any, *, path: str) -> list[str]:
     for key, item in payload.items():
         if key == "scene_flow":
             errors.extend(_validate_scene_flow_metadata(item, path=f"{path}.scene_flow"))
+        elif key == "signals":
+            errors.extend(_validate_signals_metadata(item, path=f"{path}.signals"))
         elif key == "render_2d":
             errors.extend(_validate_render_2d_metadata(item, path=f"{path}.render_2d"))
         elif key == "physics_2d":
             errors.extend(_validate_physics_2d_metadata(item, path=f"{path}.physics_2d"))
         else:
+            _expect_json_serializable(item, path=f"{path}.{key}", errors=errors)
+    return errors
+
+
+def _validate_signal_source_metadata(value: Any, *, path: str) -> list[str]:
+    errors: list[str] = []
+    payload = _expect_object(value, path=path, errors=errors)
+    if payload is None:
+        return errors
+    _expect_string(payload.get("id"), path=f"{path}.id", errors=errors, non_empty=True)
+    _expect_string(payload.get("signal"), path=f"{path}.signal", errors=errors, non_empty=True)
+    for key, item in payload.items():
+        if key not in {"id", "signal"}:
+            _expect_json_serializable(item, path=f"{path}.{key}", errors=errors)
+    return errors
+
+
+def _validate_signal_target_metadata(value: Any, *, path: str) -> tuple[list[str], str]:
+    errors: list[str] = []
+    payload = _expect_object(value, path=path, errors=errors)
+    if payload is None:
+        return errors, ""
+    kind = _expect_string(payload.get("kind"), path=f"{path}.kind", errors=errors, non_empty=True)
+    normalized_kind = kind.strip().lower() if isinstance(kind, str) else ""
+    if normalized_kind and normalized_kind not in {"entity", "event_bus", "service"}:
+        errors.append(f"{path}.kind: expected one of ['entity', 'event_bus', 'service']")
+    if normalized_kind == "entity":
+        _expect_string(payload.get("name"), path=f"{path}.name", errors=errors, non_empty=True)
+        if "component" in payload:
+            component = _expect_string(payload.get("component"), path=f"{path}.component", errors=errors, non_empty=True)
+            if isinstance(component, str) and component.strip() != "ScriptBehaviour":
+                errors.append(f"{path}.component: expected 'ScriptBehaviour'")
+    elif normalized_kind == "event_bus":
+        if "event" in payload:
+            _expect_string(payload.get("event"), path=f"{path}.event", errors=errors, non_empty=True)
+    elif normalized_kind == "service":
+        _expect_string(payload.get("name"), path=f"{path}.name", errors=errors, non_empty=True)
+    for key, item in payload.items():
+        if key not in {"kind", "name", "component", "event"}:
+            _expect_json_serializable(item, path=f"{path}.{key}", errors=errors)
+    return errors, normalized_kind
+
+
+def _validate_signal_callable_metadata(
+    value: Any,
+    *,
+    path: str,
+    target_kind: str,
+    target_event: str,
+) -> list[str]:
+    errors: list[str] = []
+    payload: dict[str, Any]
+    if value is None:
+        payload = {}
+        if target_kind in {"entity", "service"}:
+            errors.append(f"{path}: expected object")
+            return errors
+    else:
+        resolved_payload = _expect_object(value, path=path, errors=errors)
+        if resolved_payload is None:
+            return errors
+        payload = resolved_payload
+    if target_kind == "entity":
+        _expect_string(payload.get("method"), path=f"{path}.method", errors=errors, non_empty=True)
+    elif target_kind == "event_bus":
+        has_target_event = bool(str(target_event or "").strip())
+        if "event" in payload:
+            _expect_string(payload.get("event"), path=f"{path}.event", errors=errors, non_empty=True)
+        elif not has_target_event:
+            errors.append(f"{path}.event: expected non-empty string")
+    elif target_kind == "service":
+        _expect_string(payload.get("method"), path=f"{path}.method", errors=errors, non_empty=True)
+    for key, item in payload.items():
+        if key not in {"method", "event"}:
+            _expect_json_serializable(item, path=f"{path}.{key}", errors=errors)
+    return errors
+
+
+def _validate_signal_connection_metadata(value: Any, *, path: str) -> list[str]:
+    errors: list[str] = []
+    payload = _expect_object(value, path=path, errors=errors)
+    if payload is None:
+        return errors
+    if "id" in payload:
+        _expect_string(payload.get("id"), path=f"{path}.id", errors=errors, non_empty=True)
+    errors.extend(_validate_signal_source_metadata(payload.get("source"), path=f"{path}.source"))
+    target_errors, target_kind = _validate_signal_target_metadata(payload.get("target"), path=f"{path}.target")
+    errors.extend(target_errors)
+    target_payload = payload.get("target") if isinstance(payload.get("target"), dict) else {}
+    target_event = str(target_payload.get("event", "") or "") if isinstance(target_payload, dict) else ""
+    errors.extend(
+        _validate_signal_callable_metadata(
+            payload.get("callable"),
+            path=f"{path}.callable",
+            target_kind=target_kind,
+            target_event=target_event,
+        )
+    )
+    if "flags" in payload:
+        flags = payload.get("flags")
+        if not isinstance(flags, list):
+            errors.append(f"{path}.flags: expected array")
+        else:
+            seen_flags: set[str] = set()
+            allowed_flags = {"deferred", "persist", "one_shot", "reference_counted"}
+            for index, item in enumerate(flags):
+                if not isinstance(item, str) or not item.strip():
+                    errors.append(f"{path}.flags[{index}]: expected non-empty string")
+                    continue
+                normalized_flag = item.strip().lower()
+                if normalized_flag not in allowed_flags:
+                    errors.append(
+                        f"{path}.flags[{index}]: expected one of {sorted(allowed_flags)}"
+                    )
+                if normalized_flag in seen_flags:
+                    errors.append(f"{path}.flags[{index}]: duplicate flag '{normalized_flag}'")
+                seen_flags.add(normalized_flag)
+    if "binds" in payload:
+        binds = payload.get("binds")
+        if not isinstance(binds, list):
+            errors.append(f"{path}.binds: expected array")
+        else:
+            for index, item in enumerate(binds):
+                _expect_json_serializable(item, path=f"{path}.binds[{index}]", errors=errors)
+    if "enabled" in payload:
+        _expect_bool(payload.get("enabled"), path=f"{path}.enabled", errors=errors)
+    if "description" in payload:
+        _expect_string(payload.get("description"), path=f"{path}.description", errors=errors)
+    for key, item in payload.items():
+        if key not in {"id", "source", "target", "callable", "flags", "binds", "enabled", "description"}:
+            _expect_json_serializable(item, path=f"{path}.{key}", errors=errors)
+    return errors
+
+
+def _validate_signals_metadata(value: Any, *, path: str) -> list[str]:
+    errors: list[str] = []
+    payload = _expect_object(value, path=path, errors=errors)
+    if payload is None:
+        return errors
+    connections = payload.get("connections")
+    if not isinstance(connections, list):
+        errors.append(f"{path}.connections: expected array")
+    else:
+        seen_connection_ids: set[str] = set()
+        for index, item in enumerate(connections):
+            errors.extend(_validate_signal_connection_metadata(item, path=f"{path}.connections[{index}]"))
+            if not isinstance(item, dict):
+                continue
+            connection_id = item.get("id")
+            if not isinstance(connection_id, str) or not connection_id.strip():
+                continue
+            normalized_id = connection_id.strip()
+            if normalized_id in seen_connection_ids:
+                errors.append(f"{path}.connections[{index}].id: duplicate connection id '{normalized_id}'")
+            seen_connection_ids.add(normalized_id)
+    for key, item in payload.items():
+        if key not in {"connections"}:
             _expect_json_serializable(item, path=f"{path}.{key}", errors=errors)
     return errors
 

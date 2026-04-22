@@ -55,6 +55,7 @@ from engine.editor.render_safety import safe_reset_clip_state
 from engine.editor.sprite_editor_modal import SpriteEditorModal
 from engine.editor.terminal_panel import TerminalPanel
 from engine.editor.undo_redo import UndoRedoManager
+from engine.events.signals import SignalConnectionFlags
 from engine.physics.backend import PhysicsBackendInfo, PhysicsBackendSelection
 from engine.physics.registry import PhysicsBackendRegistry
 from engine.project.project_service import ProjectService
@@ -66,6 +67,7 @@ if TYPE_CHECKING:
     from engine.events.rule_system import RuleSystem
     from engine.inspector.inspector_system import InspectorSystem
     from engine.levels.level_loader import LevelLoader
+    from engine.scenes.scene import Scene
     from engine.scenes.scene_manager import SceneManager
     from engine.systems.animation_system import AnimationSystem
     from engine.systems.audio_system import AudioSystem
@@ -406,6 +408,42 @@ class Game:
     def has_project_loaded(self) -> bool:
         return self._project_loaded
 
+    @property
+    def servicios(self) -> Any:
+        """Registro de servicios globales / autoloads del runtime actual."""
+        return self._runtime_controller.servicios if self._runtime_controller is not None else None
+
+    @property
+    def signal_runtime(self) -> Any:
+        """SignalRuntime activo del runtime actual."""
+        return self._runtime_controller.signal_runtime if self._runtime_controller is not None else None
+
+    @property
+    def callable_resolver(self) -> Any:
+        """CallableResolver activo del runtime actual."""
+        return self._runtime_controller.callable_resolver if self._runtime_controller is not None else None
+
+    @property
+    def group_operations(self) -> Any:
+        """GroupOperations activo del runtime actual."""
+        return self._runtime_controller.group_operations if self._runtime_controller is not None else None
+
+    def registrar_servicio_builtin(self, nombre: str, servicio: Any) -> None:
+        """Registra un servicio global persistente entre sesiones de PLAY."""
+        if self._runtime_controller is not None:
+            self._runtime_controller.servicios.registrar_builtin(nombre, servicio)
+
+    def registrar_servicio_runtime(self, nombre: str, servicio: Any) -> None:
+        """Registra un servicio para la sesión de PLAY actual."""
+        if self._runtime_controller is not None:
+            self._runtime_controller.servicios.registrar(nombre, servicio)
+
+    def obtener_servicio(self, nombre: str) -> Any | None:
+        """Obtiene un servicio global por nombre."""
+        if self._runtime_controller is not None:
+            return self._runtime_controller.servicios.obtener(nombre)
+        return None
+
     def _stop_runtime_flow(self) -> None:
         self.stop()
 
@@ -524,6 +562,7 @@ class Game:
     def set_scene_manager(self, manager: "SceneManager") -> None:
         self._scene_manager = manager
         self._scene_manager.set_history_manager(self._history_manager)
+        self._scene_manager.set_runtime_signal_compiler(self._compile_runtime_signal_connections)
         self._sync_editor_shell()
         # Conectar inspector al scene_manager para edición
         if self._inspector_system is not None:
@@ -555,6 +594,72 @@ class Game:
 
     def _load_runtime_scene_from_ui(self, path: str) -> bool:
         return self._scene_workflow_controller.load_scene_by_path_runtime(path)
+
+    def _compile_runtime_signal_connections(self, scene: "Scene", runtime_world: "World") -> int:
+        _ = runtime_world
+        compiled = 0
+        signal_runtime = self._runtime_controller.signal_runtime
+        callable_resolver = self._runtime_controller.callable_resolver
+        for index, connection in enumerate(scene.list_signal_connections()):
+            if not isinstance(connection, dict):
+                log_warn(f"Game: conexión de señal persistida inválida en índice {index}")
+                continue
+            if not bool(connection.get("enabled", True)):
+                continue
+            source = connection.get("source", {})
+            if not isinstance(source, dict):
+                log_warn(f"Game: source inválido en conexión de señal persistida {index}")
+                continue
+            source_id = str(source.get("id", "") or "").strip()
+            signal_name = str(source.get("signal", "") or "").strip()
+            if not source_id or not signal_name:
+                log_warn(f"Game: source incompleto en conexión de señal persistida {index}")
+                continue
+            target = connection.get("target", {})
+            callback = callable_resolver.resolve(target, connection.get("callable"))
+            if callback is None:
+                log_warn(f"Game: no se pudo resolver la conexión de señal persistida {index}")
+                continue
+            binds = connection.get("binds", [])
+            if not isinstance(binds, list):
+                log_warn(f"Game: binds inválidos en conexión de señal persistida {index}")
+                continue
+            connection_id = str(connection.get("id", "") or "").strip() or None
+            description = str(connection.get("description", "") or "")
+            target_id = None
+            if isinstance(target, dict) and target.get("kind") == "entity":
+                target_id = str(target.get("name", "") or "").strip() or None
+            signal_runtime.connect(
+                source_id,
+                signal_name,
+                callback,
+                flags=self._build_signal_connection_flags(connection.get("flags", [])),
+                binds=binds,
+                connection_id=connection_id,
+                description=description,
+                target_id=target_id,
+            )
+            compiled += 1
+        return compiled
+
+    def _build_signal_connection_flags(self, flags_payload: Any) -> SignalConnectionFlags:
+        if not isinstance(flags_payload, list):
+            return SignalConnectionFlags.NONE
+        flags = SignalConnectionFlags.NONE
+        normalized_flags = {
+            str(item).strip().lower()
+            for item in flags_payload
+            if isinstance(item, str) and str(item).strip()
+        }
+        if "deferred" in normalized_flags:
+            flags |= SignalConnectionFlags.DEFERRED
+        if "persist" in normalized_flags:
+            flags |= SignalConnectionFlags.PERSIST
+        if "one_shot" in normalized_flags:
+            flags |= SignalConnectionFlags.ONE_SHOT
+        if "reference_counted" in normalized_flags:
+            flags |= SignalConnectionFlags.REFERENCE_COUNTED
+        return flags
 
     def set_ui_render_system(self, system: "UIRenderSystem") -> None:
         self._ui_render_system = system

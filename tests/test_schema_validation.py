@@ -553,6 +553,170 @@ class SchemaValidationTests(unittest.TestCase):
                 errors = validate_scene_data(payload)
                 self.assertTrue(any(expected in error for error in errors), errors)
 
+    def test_scene_validation_rejects_invalid_signal_feature_metadata(self) -> None:
+        cases = [
+            (
+                {
+                    "signals": {
+                        "connections": [
+                            {
+                                "source": {"id": "Emitter"},
+                                "target": {"kind": "event_bus"},
+                                "callable": {"event": "ui.clicked"},
+                            }
+                        ]
+                    }
+                },
+                "$.feature_metadata.signals.connections[0].source.signal: expected string",
+            ),
+            (
+                {
+                    "signals": {
+                        "connections": [
+                            {
+                                "source": {"id": "Emitter", "signal": "pressed"},
+                                "target": {"kind": "service"},
+                                "callable": {"method": "run"},
+                            }
+                        ]
+                    }
+                },
+                "$.feature_metadata.signals.connections[0].target.name: expected string",
+            ),
+            (
+                {
+                    "signals": {
+                        "connections": [
+                            {
+                                "source": {"id": "Emitter", "signal": "pressed"},
+                                "target": {"kind": "service", "name": "GameState"},
+                            }
+                        ]
+                    }
+                },
+                "$.feature_metadata.signals.connections[0].callable: expected object",
+            ),
+            (
+                {
+                    "signals": {
+                        "connections": [
+                            {
+                                "source": {"id": "Emitter", "signal": "pressed"},
+                                "target": {"kind": "service", "name": "GameState"},
+                                "callable": {"method": ""},
+                            }
+                        ]
+                    }
+                },
+                "$.feature_metadata.signals.connections[0].callable.method: expected non-empty string",
+            ),
+            (
+                {
+                    "signals": {
+                        "connections": [
+                            {
+                                "id": "dup",
+                                "source": {"id": "Emitter", "signal": "pressed"},
+                                "target": {"kind": "event_bus"},
+                                "callable": {"event": "ui.clicked"},
+                            },
+                            {
+                                "id": "dup",
+                                "source": {"id": "Emitter", "signal": "released"},
+                                "target": {"kind": "event_bus"},
+                                "callable": {"event": "ui.released"},
+                            },
+                        ]
+                    }
+                },
+                "$.feature_metadata.signals.connections[1].id: duplicate connection id 'dup'",
+            ),
+        ]
+
+        for feature_metadata, expected in cases:
+            with self.subTest(feature_metadata=feature_metadata):
+                payload = migrate_scene_data(_scene_payload(feature_metadata=feature_metadata))
+                errors = validate_scene_data(payload)
+                self.assertTrue(any(expected in error for error in errors), errors)
+
+    def test_scene_validation_accepts_valid_signal_feature_metadata(self) -> None:
+        payload = migrate_scene_data(
+            _scene_payload(
+                name="SignalValid",
+                entities=[_entity_payload("Emitter")],
+                feature_metadata={
+                    "signals": {
+                        "connections": [
+                            {
+                                "id": "emit_to_event",
+                                "source": {"id": "Emitter", "signal": "pressed"},
+                                "target": {"kind": "event_bus"},
+                                "callable": {"event": "ui.play_clicked"},
+                                "flags": ["deferred"],
+                                "binds": [{"screen": "main_menu"}],
+                            }
+                        ]
+                    }
+                },
+            )
+        )
+
+        self.assertEqual(validate_scene_data(payload), [])
+
+    def test_scene_validation_accepts_valid_service_signal_feature_metadata(self) -> None:
+        payload = migrate_scene_data(
+            _scene_payload(
+                name="SignalServiceValid",
+                entities=[_entity_payload("Emitter")],
+                feature_metadata={
+                    "signals": {
+                        "connections": [
+                            {
+                                "id": "emit_to_service",
+                                "source": {"id": "Emitter", "signal": "pressed"},
+                                "target": {"kind": "service", "name": "GameState"},
+                                "callable": {"method": "add_score"},
+                                "flags": ["one_shot"],
+                                "binds": [10],
+                            }
+                        ]
+                    }
+                },
+            )
+        )
+
+        self.assertEqual(validate_scene_data(payload), [])
+
+    def test_scene_validation_accepts_valid_entity_groups(self) -> None:
+        payload = migrate_scene_data(
+            _scene_payload(
+                entities=[
+                    {
+                        **_entity_payload("GroupedActor"),
+                        "groups": ["Gameplay", "Enemies"],
+                    }
+                ]
+            )
+        )
+
+        self.assertEqual(validate_scene_data(payload), [])
+
+    def test_scene_validation_rejects_invalid_entity_groups(self) -> None:
+        cases = [
+            ({**_entity_payload("Actor"), "groups": "Gameplay"}, "$.entities[0].groups: expected list"),
+            ({**_entity_payload("Actor"), "groups": [""]}, "$.entities[0].groups[0]: expected non-empty string"),
+            (
+                {**_entity_payload("Actor"), "groups": ["Gameplay", "Gameplay"]},
+                "$.entities[0].groups[1]: duplicate group 'Gameplay'",
+            ),
+        ]
+
+        for entity_payload, expected in cases:
+            with self.subTest(entity_payload=entity_payload):
+                payload = migrate_scene_data(_scene_payload(entities=[entity_payload]))
+                errors = validate_scene_data(payload)
+                self.assertTrue(any(expected in error for error in errors), errors)
+
     def test_prefab_validation_rejects_invalid_core_component_shape(self) -> None:
         with self.assertRaisesRegex(ValueError, "Cannot migrate .*AudioSource: inconsistent asset and asset_path"):
             migrate_prefab_data(
