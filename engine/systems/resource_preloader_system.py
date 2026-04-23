@@ -7,6 +7,7 @@ stalls durante el gameplay.
 
 from __future__ import annotations
 
+import ast
 from typing import Any, Dict, Optional, Set, Tuple
 
 from engine.assets.asset_reference import normalize_asset_reference, reference_has_identity
@@ -64,7 +65,13 @@ class ResourcePreloaderSystem:
         resolver = self._asset_service.get_asset_resolver() if self._asset_service is not None else None
 
         for ref_str in references:
-            ref = eval(ref_str) if ref_str.startswith("{") else {"path": ref_str}
+            if ref_str.startswith("{"):
+                try:
+                    ref = ast.literal_eval(ref_str)
+                except (ValueError, SyntaxError):
+                    ref = {"path": ref_str}
+            else:
+                ref = {"path": ref_str}
             if not isinstance(ref, dict):
                 ref = {"path": ref_str}
 

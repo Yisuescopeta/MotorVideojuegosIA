@@ -15,7 +15,7 @@ EJEMPLO DE USO:
     player = Entity("Player")
     player.add_component(Transform(x=100, y=200))
     player.add_component(Sprite(texture="player.png"))
-    
+
     transform = player.get_component(Transform)
     print(transform.x)  # 100
 """
@@ -63,11 +63,11 @@ def normalize_entity_groups(value: Any) -> tuple[str, ...]:
 class Entity:
     """
     Contenedor de componentes identificado por un ID único.
-    
+
     Una entidad es solo un ID con un nombre y una colección de componentes.
     No contiene lógica de juego, solo organiza datos.
     """
-    
+
     _TRACKED_FIELDS = {
         "name",
         "active",
@@ -83,7 +83,7 @@ class Entity:
     def __init__(self, name: str = "Entity") -> None:
         """
         Crea una nueva entidad con un ID único.
-        
+
         Args:
             name: Nombre legible para identificar la entidad (debug)
         """
@@ -125,14 +125,14 @@ class Entity:
         owner_world = getattr(self, "_owner_world", None)
         if owner_world is not None and hasattr(owner_world, "_on_entity_changed"):
             owner_world._on_entity_changed(self, event, **payload)
-    
+
     def add_component(self, component: Component, metadata: dict[str, Any] | None = None) -> None:
         """
         Añade un componente a la entidad.
-        
+
         Solo puede haber un componente de cada tipo por entidad.
         Si ya existe un componente del mismo tipo, se reemplaza.
-        
+
         Args:
             component: Instancia del componente a añadir
         """
@@ -146,16 +146,16 @@ class Entity:
             previous_component=previous_component,
             component=component,
         )
-    
+
     def get_component(self, component_type: type[T]) -> T | None:
         """
         Obtiene un componente por su tipo.
-        
+
         Si no existe exactamente, busca una subclase registrada.
-        
+
         Args:
             component_type: Clase del componente a buscar
-            
+
         Returns:
             El componente si existe, None en caso contrario
         """
@@ -167,14 +167,14 @@ class Entity:
             if issubclass(registered_type, component_type):
                 return instance  # type: ignore
         return None
-    
+
     def has_component(self, component_type: type) -> bool:
         """
         Verifica si la entidad tiene un componente de un tipo específico.
-        
+
         Args:
             component_type: Clase del componente a verificar
-            
+
         Returns:
             True si el componente existe, False en caso contrario
         """
@@ -185,11 +185,11 @@ class Entity:
         if component is None:
             return False
         return bool(getattr(component, "enabled", True))
-    
+
     def remove_component(self, component_type: type) -> None:
         """
         Elimina un componente de la entidad.
-        
+
         Args:
             component_type: Clase del componente a eliminar
         """
@@ -203,11 +203,11 @@ class Entity:
             )
         if component_type in self._component_metadata:
             del self._component_metadata[component_type]
-    
+
     def get_all_components(self) -> list[Component]:
         """
         Retorna una lista con todos los componentes de la entidad.
-        
+
         Returns:
             Lista de todos los componentes
         """
@@ -230,11 +230,11 @@ class Entity:
             if component_type.__name__ == component_name:
                 return self.get_component_metadata(component_type)
         return {}
-    
+
     def to_dict(self) -> dict[str, Any]:
         """
         Serializa la entidad a un diccionario.
-        
+
         Returns:
             Diccionario con id, name y componentes serializados
         """
@@ -244,10 +244,7 @@ class Entity:
             "active": self.active,
             "tag": self.tag,
             "layer": self.layer,
-            "components": {
-                comp_type.__name__: comp.to_dict()
-                for comp_type, comp in self._components.items()
-            },
+            "components": {comp_type.__name__: comp.to_dict() for comp_type, comp in self._components.items()},
             "component_metadata": {
                 comp_type.__name__: copy.deepcopy(self._component_metadata.get(comp_type, {}))
                 for comp_type in self._components.keys()
@@ -267,7 +264,7 @@ class Entity:
         if not data["component_metadata"]:
             del data["component_metadata"]
         return data
-    
+
     def __repr__(self) -> str:
         """Representación legible de la entidad para debug."""
         comp_names = [t.__name__ for t in self._components.keys()]

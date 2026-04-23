@@ -6,7 +6,7 @@ from engine.core.engine_state import EngineState
 from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.core.runtime_loop import RuntimeLoopState, RuntimePhase, RuntimeTickPlan
 from engine.ecs.group_operations import GroupOperations
-from engine.editor.console_panel import log_info
+from engine.editor.console_panel import log_info, log_warn
 from engine.events.callable_resolver import CallableResolver, CallableResolverContext
 from engine.events.deferred_queue import DeferredCallQueue
 from engine.events.signals import SignalRuntime
@@ -14,6 +14,7 @@ from engine.services.registro_servicios import RegistroServicios
 from engine.physics.backend import PhysicsBackendSelection
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
 from engine.tilemap.collision_builder import bake_tilemap_colliders
+from engine.utils.viewport import resolve_world_viewport_rect
 
 if TYPE_CHECKING:
     from engine.ecs.world import World
@@ -175,7 +176,7 @@ class RuntimeController:
                 try:
                     resource_preloader_system.preload(runtime_world)
                 except Exception as exc:
-                    log_info(f"ResourcePreloader: precarga fallida: {exc}")
+                    log_warn(f"ResourcePreloader: precarga fallida: {exc}")
 
             rule_system = self._get_rule_system()
             if rule_system is not None:
@@ -219,7 +220,11 @@ class RuntimeController:
             event_bus.clear_history()
 
         runtime_world = self._get_world()
-        if runtime_world is not None and hasattr(runtime_world, "on_entity_destroyed") and self._entity_destroyed_listener_registered:
+        if (
+            runtime_world is not None
+            and hasattr(runtime_world, "on_entity_destroyed")
+            and self._entity_destroyed_listener_registered
+        ):
             try:
                 runtime_world.on_entity_destroyed.remove(self._on_entity_destroyed)
             except ValueError:
@@ -298,7 +303,7 @@ class RuntimeController:
         visible_on_screen_system = self._get_visible_on_screen_system()
         if visible_on_screen_system is not None:
             # Obtener viewport rect en coordenadas de mundo desde la camara
-            viewport_rect = self._resolve_world_viewport_rect(world)
+            viewport_rect = resolve_world_viewport_rect(world)
             visible_on_screen_system.update(world, viewport_rect)
 
         scene_transition_controller = self._get_scene_transition_controller()
@@ -353,46 +358,6 @@ class RuntimeController:
         """Poda automáticamente conexiones de señales ligadas a la entidad destruida."""
         self._signal_runtime.prune_by_source(entity.name)
         self._signal_runtime.prune_by_target(entity.name)
-
-    def _resolve_world_viewport_rect(
-        self,
-        world: Optional["World"],
-        viewport_size: Optional[tuple[float, float]] = None,
-    ) -> tuple[float, float, float, float] | None:
-        """Calcula el rect del viewport en coordenadas de mundo usando la camara primaria."""
-        if world is None or not hasattr(world, "get_entities_with"):
-            return None
-        from engine.components.camera2d import Camera2D
-        from engine.components.transform import Transform
-
-        primary_entity = None
-        for entity in world.get_entities_with(Transform, Camera2D):
-            camera_component = entity.get_component(Camera2D)
-            if camera_component is not None and camera_component.enabled and camera_component.is_primary:
-                primary_entity = entity
-                break
-        if primary_entity is None:
-            return None
-
-        transform = primary_entity.get_component(Transform)
-        camera_component = primary_entity.get_component(Camera2D)
-        if transform is None or camera_component is None:
-            return None
-
-        view_w = viewport_size[0] if viewport_size else 800.0
-        view_h = viewport_size[1] if viewport_size else 600.0
-        zoom = max(float(camera_component.zoom), 0.0001)
-        target_x = transform.x
-        target_y = transform.y
-
-        half_w = (view_w * 0.5) / zoom
-        half_h = (view_h * 0.5) / zoom
-        return (
-            target_x - half_w,
-            target_y - half_h,
-            target_x + half_w,
-            target_y + half_h,
-        )
 
     def get_physics_backend_selection(self, world: Optional["World"]) -> PhysicsBackendSelection:
         return self._get_physics_backend_registry().resolve(world).selection

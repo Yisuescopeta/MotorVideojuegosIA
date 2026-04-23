@@ -51,7 +51,7 @@ class VisibleOnScreenSystem:
                 if entity.id in seen_ids:
                     continue
                 seen_ids.add(entity.id)
-                notifier = entity.get_component(VisibleOnScreenNotifier2D)
+                notifier = entity.get_component(component_type)
                 if notifier is None or not notifier.enabled:
                     continue
                 self._update_notifier(entity, notifier, left, top, right, bottom)
@@ -78,12 +78,7 @@ class VisibleOnScreenSystem:
         abs_bottom = abs_top + notifier.rect_height
 
         # Interseccion AABB vs viewport
-        intersects = not (
-            abs_right < left
-            or abs_left > right
-            or abs_bottom < top
-            or abs_top > bottom
-        )
+        intersects = not (abs_right < left or abs_left > right or abs_bottom < top or abs_top > bottom)
 
         was_on_screen = notifier._is_on_screen
         is_first_check = not hasattr(notifier, "_vos_checked")

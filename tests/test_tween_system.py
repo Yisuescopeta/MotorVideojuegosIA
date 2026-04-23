@@ -100,13 +100,15 @@ class TweenSystemTests(unittest.TestCase):
     def test_tween_updates_sprite_tint_alpha(self) -> None:
         entity = Entity("SpriteEntity")
         entity.add_component(Sprite())
-        entity.add_component(Tween(
-            property_path="Sprite.tint_3",
-            from_value=0.0,
-            to_value=255.0,
-            duration=1.0,
-            autostart=True,
-        ))
+        entity.add_component(
+            Tween(
+                property_path="Sprite.tint_3",
+                from_value=0.0,
+                to_value=255.0,
+                duration=1.0,
+                autostart=True,
+            )
+        )
         self.world.add_entity(entity)
 
         sprite = entity.get_component(Sprite)
@@ -164,6 +166,32 @@ class TweenSystemTests(unittest.TestCase):
         transform = entity.get_component(Transform)
         assert transform is not None
         self.assertAlmostEqual(transform.x, 25.0, places=5)
+
+    def test_custom_component_map(self) -> None:
+        class FakeComponent:
+            def __init__(self) -> None:
+                self.value: float = 0.0
+
+        entity = Entity("CustomEntity")
+        entity.add_component(FakeComponent())
+        entity.add_component(
+            Tween(
+                property_path="FakeComponent.value",
+                from_value=0.0,
+                to_value=100.0,
+                duration=1.0,
+                autostart=True,
+            )
+        )
+        self.world.add_entity(entity)
+
+        system = TweenSystem(self.signal_runtime, component_map={"FakeComponent": FakeComponent})
+        system.update(self.world, 0.0)
+        system.update(self.world, 0.5)
+
+        fake = entity.get_component(FakeComponent)
+        assert fake is not None
+        self.assertAlmostEqual(fake.value, 50.0, places=5)
 
 
 if __name__ == "__main__":

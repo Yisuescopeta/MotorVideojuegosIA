@@ -24,8 +24,21 @@ if TYPE_CHECKING:
 class TweenSystem:
     """Sistema que actualiza Tweens y muta propiedades de componentes."""
 
-    def __init__(self, signal_runtime: Optional["SignalRuntime"] = None) -> None:
+    DEFAULT_COMPONENT_MAP: dict[str, type] = {
+        "Transform": Transform,
+        "Camera2D": Camera2D,
+        "Sprite": Sprite,
+    }
+
+    def __init__(
+        self,
+        signal_runtime: Optional["SignalRuntime"] = None,
+        component_map: Optional[dict[str, type]] = None,
+    ) -> None:
         self._signal_runtime: Optional["SignalRuntime"] = signal_runtime
+        self._component_map: dict[str, type] = (
+            dict(component_map) if component_map is not None else dict(self.DEFAULT_COMPONENT_MAP)
+        )
 
     def set_signal_runtime(self, signal_runtime: "SignalRuntime") -> None:
         self._signal_runtime = signal_runtime
@@ -108,12 +121,12 @@ class TweenSystem:
                         # Reconstruir tupla inmutable
                         lst = list(seq)
                         if 0 <= index < len(lst):
-                            lst[index] = max(0, min(255, int(value))) if base_name == "tint" else value
+                            lst[index] = value
                             setattr(component, base_name, tuple(lst))
                             return True
                     else:
                         if 0 <= index < len(seq):
-                            seq[index] = max(0, min(255, int(value))) if base_name == "tint" else value
+                            seq[index] = value
                             return True
             else:
                 setattr(component, base_name, value)
@@ -124,12 +137,7 @@ class TweenSystem:
         return False
 
     def _resolve_component(self, entity: Entity, name: str) -> Any:
-        mapping: dict[str, type] = {
-            "Transform": Transform,
-            "Camera2D": Camera2D,
-            "Sprite": Sprite,
-        }
-        component_type = mapping.get(name)
+        component_type = self._component_map.get(name)
         if component_type is None:
             return None
         return entity.get_component(component_type)

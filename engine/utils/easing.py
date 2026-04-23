@@ -6,6 +6,7 @@ Basado en ecuaciones Robert Penner adaptadas a Python.
 from __future__ import annotations
 
 import math
+from typing import Callable
 
 
 def linear(t: float) -> float:
@@ -76,7 +77,7 @@ def expo_in_out(t: float) -> float:
     return 0.5 * (2.0 - math.pow(2.0, -10.0 * (t - 1.0)))
 
 
-EASING_FUNCTIONS: dict[str, callable] = {
+EASING_FUNCTIONS: dict[str, Callable[[float], float]] = {
     "linear": linear,
     "sine_in": sine_in,
     "sine_out": sine_out,
@@ -93,6 +94,6 @@ EASING_FUNCTIONS: dict[str, callable] = {
 }
 
 
-def get_easing(name: str) -> callable:
+def get_easing(name: str) -> Callable[[float], float]:
     """Obtiene una funcion de easing por nombre; devuelve linear si no existe."""
     return EASING_FUNCTIONS.get(str(name or "linear").strip().lower(), linear)

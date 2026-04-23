@@ -150,6 +150,7 @@ class RuntimeControllerCallableResolverIntegrationTests(unittest.TestCase):
                 get_timer_system=lambda: None,
                 get_tween_system=lambda: None,
                 get_visible_on_screen_system=lambda: None,
+                get_resource_preloader_system=lambda: None,
                 get_scene_transition_controller=lambda: None,
                 get_physics_backend_registry=lambda: PhysicsBackendRegistry(),
                 reset_profiler=lambda **_kwargs: None,
