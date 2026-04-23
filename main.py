@@ -36,11 +36,11 @@ from engine.systems.input_system import InputSystem
 from engine.systems.physics_system import PhysicsSystem
 from engine.systems.player_controller_system import PlayerControllerSystem
 from engine.systems.render_system import RenderSystem
+from engine.systems.resource_preloader_system import ResourcePreloaderSystem
 from engine.systems.script_behaviour_system import ScriptBehaviourSystem
 from engine.systems.selection_system import SelectionSystem
 from engine.systems.timer_system import TimerSystem
 from engine.systems.tween_system import TweenSystem
-from engine.systems.resource_preloader_system import ResourcePreloaderSystem
 from engine.systems.ui_render_system import UIRenderSystem
 from engine.systems.ui_system import UISystem
 from engine.systems.visible_on_screen_system import VisibleOnScreenSystem
