@@ -151,13 +151,22 @@ class Entity:
         """
         Obtiene un componente por su tipo.
         
+        Si no existe exactamente, busca una subclase registrada.
+        
         Args:
             component_type: Clase del componente a buscar
             
         Returns:
             El componente si existe, None en caso contrario
         """
-        return self._components.get(component_type)  # type: ignore
+        comp = self._components.get(component_type)
+        if comp is not None:
+            return comp  # type: ignore
+        # Buscar subclase registrada
+        for registered_type, instance in self._components.items():
+            if issubclass(registered_type, component_type):
+                return instance  # type: ignore
+        return None
     
     def has_component(self, component_type: type) -> bool:
         """

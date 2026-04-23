@@ -45,6 +45,10 @@ class RuntimeController:
         self._get_physics_system = context.get_physics_system
         self._get_collision_system = context.get_collision_system
         self._get_audio_system = context.get_audio_system
+        self._get_timer_system = context.get_timer_system
+        self._get_tween_system = context.get_tween_system
+        self._get_visible_on_screen_system = context.get_visible_on_screen_system
+        self._get_resource_preloader_system = context.get_resource_preloader_system
         self._get_scene_transition_controller = context.get_scene_transition_controller
         self._get_physics_backend_registry = context.get_physics_backend_registry
         self._reset_profiler = context.reset_profiler
@@ -165,6 +169,14 @@ class RuntimeController:
                 self._entity_destroyed_listener_registered = True
             bake_tilemap_colliders(runtime_world, merge_shapes=True)
 
+            # Precarga de assets para evitar stalls durante el gameplay
+            resource_preloader_system = self._get_resource_preloader_system()
+            if resource_preloader_system is not None:
+                try:
+                    resource_preloader_system.preload(runtime_world)
+                except Exception as exc:
+                    log_info(f"ResourcePreloader: precarga fallida: {exc}")
+
             rule_system = self._get_rule_system()
             if rule_system is not None:
                 rule_system.set_world(runtime_world)
@@ -275,6 +287,20 @@ class RuntimeController:
         if audio_system is not None:
             audio_system.update(world)
 
+        timer_system = self._get_timer_system()
+        if timer_system is not None:
+            timer_system.update(world, dt, time_scale=1.0)
+
+        tween_system = self._get_tween_system()
+        if tween_system is not None:
+            tween_system.update(world, dt)
+
+        visible_on_screen_system = self._get_visible_on_screen_system()
+        if visible_on_screen_system is not None:
+            # Obtener viewport rect en coordenadas de mundo desde la camara
+            viewport_rect = self._resolve_world_viewport_rect(world)
+            visible_on_screen_system.update(world, viewport_rect)
+
         scene_transition_controller = self._get_scene_transition_controller()
         if scene_transition_controller is not None:
             scene_transition_controller.update(world)
@@ -327,6 +353,46 @@ class RuntimeController:
         """Poda automáticamente conexiones de señales ligadas a la entidad destruida."""
         self._signal_runtime.prune_by_source(entity.name)
         self._signal_runtime.prune_by_target(entity.name)
+
+    def _resolve_world_viewport_rect(
+        self,
+        world: Optional["World"],
+        viewport_size: Optional[tuple[float, float]] = None,
+    ) -> tuple[float, float, float, float] | None:
+        """Calcula el rect del viewport en coordenadas de mundo usando la camara primaria."""
+        if world is None or not hasattr(world, "get_entities_with"):
+            return None
+        from engine.components.camera2d import Camera2D
+        from engine.components.transform import Transform
+
+        primary_entity = None
+        for entity in world.get_entities_with(Transform, Camera2D):
+            camera_component = entity.get_component(Camera2D)
+            if camera_component is not None and camera_component.enabled and camera_component.is_primary:
+                primary_entity = entity
+                break
+        if primary_entity is None:
+            return None
+
+        transform = primary_entity.get_component(Transform)
+        camera_component = primary_entity.get_component(Camera2D)
+        if transform is None or camera_component is None:
+            return None
+
+        view_w = viewport_size[0] if viewport_size else 800.0
+        view_h = viewport_size[1] if viewport_size else 600.0
+        zoom = max(float(camera_component.zoom), 0.0001)
+        target_x = transform.x
+        target_y = transform.y
+
+        half_w = (view_w * 0.5) / zoom
+        half_h = (view_h * 0.5) / zoom
+        return (
+            target_x - half_w,
+            target_y - half_h,
+            target_x + half_w,
+            target_y + half_h,
+        )
 
     def get_physics_backend_selection(self, world: Optional["World"]) -> PhysicsBackendSelection:
         return self._get_physics_backend_registry().resolve(world).selection

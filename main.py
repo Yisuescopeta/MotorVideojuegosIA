@@ -38,8 +38,12 @@ from engine.systems.player_controller_system import PlayerControllerSystem
 from engine.systems.render_system import RenderSystem
 from engine.systems.script_behaviour_system import ScriptBehaviourSystem
 from engine.systems.selection_system import SelectionSystem
+from engine.systems.timer_system import TimerSystem
+from engine.systems.tween_system import TweenSystem
+from engine.systems.resource_preloader_system import ResourcePreloaderSystem
 from engine.systems.ui_render_system import UIRenderSystem
 from engine.systems.ui_system import UISystem
+from engine.systems.visible_on_screen_system import VisibleOnScreenSystem
 
 
 def parse_args() -> argparse.Namespace:
@@ -131,6 +135,10 @@ def main() -> None:
     player_controller_system = PlayerControllerSystem()
     character_controller_system = CharacterControllerSystem()
     script_behaviour_system = ScriptBehaviourSystem()
+    timer_system = TimerSystem()
+    tween_system = TweenSystem()
+    visible_on_screen_system = VisibleOnScreenSystem()
+    resource_preloader_system = ResourcePreloaderSystem()
     inspector_system = InspectorSystem()
     selection_system = SelectionSystem()
     ui_system = UISystem()
@@ -155,6 +163,10 @@ def main() -> None:
     game.set_character_controller_system(character_controller_system)
     game.set_player_controller_system(player_controller_system)
     game.set_script_behaviour_system(script_behaviour_system)
+    game.set_timer_system(timer_system)
+    game.set_tween_system(tween_system)
+    game.set_visible_on_screen_system(visible_on_screen_system)
+    game.set_resource_preloader_system(resource_preloader_system)
     game.set_inspector_system(inspector_system)
     game.set_event_bus(event_bus)
     game.set_rule_system(rule_system)

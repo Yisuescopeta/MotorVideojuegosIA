@@ -122,6 +122,10 @@ class Game:
         self._character_controller_system: Optional["CharacterControllerSystem"] = None
         self._script_behaviour_system: Optional["ScriptBehaviourSystem"] = None
         self._inspector_system: Optional["InspectorSystem"] = None
+        self._timer_system: Optional["TimerSystem"] = None
+        self._tween_system: Optional["TweenSystem"] = None
+        self._visible_on_screen_system: Optional["VisibleOnScreenSystem"] = None
+        self._resource_preloader_system: Optional["ResourcePreloaderSystem"] = None
         self._level_loader: Optional["LevelLoader"] = None
         self._event_bus: Optional["EventBus"] = None
         self._rule_system: Optional["RuleSystem"] = None
@@ -232,6 +236,10 @@ class Game:
                 get_physics_system=lambda: self._physics_system,
                 get_collision_system=lambda: self._collision_system,
                 get_audio_system=lambda: self._audio_system,
+                get_timer_system=lambda: self._timer_system,
+                get_tween_system=lambda: self._tween_system,
+                get_visible_on_screen_system=lambda: self._visible_on_screen_system,
+                get_resource_preloader_system=lambda: self._resource_preloader_system,
                 get_scene_transition_controller=lambda: self._scene_transition_controller,
                 get_physics_backend_registry=lambda: self._physics_backend_registry,
                 reset_profiler=self.reset_profiler,
@@ -508,6 +516,28 @@ class Game:
         self._audio_system = system
         if self._project_service is not None and hasattr(self._audio_system, "set_project_service"):
             self._audio_system.set_project_service(self._project_service)
+
+    def set_timer_system(self, system: "TimerSystem") -> None:
+        self._timer_system = system
+        if self._runtime_controller is not None:
+            self._timer_system.set_signal_runtime(self._runtime_controller.signal_runtime)
+
+    def set_tween_system(self, system: "TweenSystem") -> None:
+        self._tween_system = system
+        if self._runtime_controller is not None:
+            self._tween_system.set_signal_runtime(self._runtime_controller.signal_runtime)
+
+    def set_visible_on_screen_system(self, system: "VisibleOnScreenSystem") -> None:
+        self._visible_on_screen_system = system
+        if self._runtime_controller is not None:
+            self._visible_on_screen_system.set_signal_runtime(self._runtime_controller.signal_runtime)
+
+    def set_resource_preloader_system(self, system: "ResourcePreloaderSystem") -> None:
+        self._resource_preloader_system = system
+        if self._render_system is not None and hasattr(self._render_system, "_texture_manager"):
+            self._resource_preloader_system.set_texture_manager(self._render_system._texture_manager)
+        if self._project_service is not None:
+            self._resource_preloader_system.set_project_service(self._project_service)
 
     def set_input_system(self, system: "InputSystem") -> None:
         self._input_system = system

@@ -26,6 +26,10 @@ class RuntimeControllerTests(unittest.TestCase):
         self.physics_system = Mock()
         self.collision_system = Mock()
         self.audio_system = Mock()
+        self.timer_system = Mock()
+        self.tween_system = Mock()
+        self.visible_on_screen_system = Mock()
+        self.resource_preloader_system = Mock()
         self.scene_transition_controller = Mock()
         self.physics_backend_registry = PhysicsBackendRegistry()
         self.reset_profiler = Mock()
@@ -49,6 +53,10 @@ class RuntimeControllerTests(unittest.TestCase):
                 get_physics_system=lambda: self.physics_system,
                 get_collision_system=lambda: self.collision_system,
                 get_audio_system=lambda: self.audio_system,
+                get_timer_system=lambda: self.timer_system,
+                get_tween_system=lambda: self.tween_system,
+                get_visible_on_screen_system=lambda: self.visible_on_screen_system,
+                get_resource_preloader_system=lambda: self.resource_preloader_system,
                 get_scene_transition_controller=lambda: self.scene_transition_controller,
                 get_physics_backend_registry=lambda: self.physics_backend_registry,
                 reset_profiler=self.reset_profiler,
@@ -362,6 +370,10 @@ class RuntimeControllerTests(unittest.TestCase):
                 get_character_controller_system=lambda: self.character_controller_system,
                 get_physics_system=lambda: None,
                 get_collision_system=lambda: self.collision_system,
+                get_timer_system=lambda: self.timer_system,
+                get_tween_system=lambda: self.tween_system,
+                get_visible_on_screen_system=lambda: self.visible_on_screen_system,
+                get_resource_preloader_system=lambda: self.resource_preloader_system,
                 get_audio_system=lambda: self.audio_system,
                 get_scene_transition_controller=lambda: self.scene_transition_controller,
                 get_physics_backend_registry=lambda: self.physics_backend_registry,

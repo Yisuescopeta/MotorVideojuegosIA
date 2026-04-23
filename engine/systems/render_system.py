@@ -76,6 +76,11 @@ class RenderSystem:
         self._sort_cache_hits: int = 0
         self._sort_cache_misses: int = 0
 
+    @property
+    def texture_manager(self) -> TextureManager:
+        """Acceso publico al cache de texturas para sistemas externos (p. ej. precarga)."""
+        return self._texture_manager
+
     def set_project_service(self, project_service: Any) -> None:
         self._project_service = project_service
         self._asset_service = AssetService(project_service) if project_service is not None else None
