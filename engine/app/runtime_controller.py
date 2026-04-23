@@ -6,7 +6,7 @@ from engine.core.engine_state import EngineState
 from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.core.runtime_loop import RuntimeLoopState, RuntimePhase, RuntimeTickPlan
 from engine.ecs.group_operations import GroupOperations
-from engine.editor.console_panel import log_info
+from engine.editor.console_panel import log_info, log_warn
 from engine.events.callable_resolver import CallableResolver, CallableResolverContext
 from engine.events.deferred_queue import DeferredCallQueue
 from engine.events.signals import SignalRuntime
@@ -14,6 +14,7 @@ from engine.services.registro_servicios import RegistroServicios
 from engine.physics.backend import PhysicsBackendSelection
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
 from engine.tilemap.collision_builder import bake_tilemap_colliders
+from engine.utils.viewport import resolve_world_viewport_rect
 
 if TYPE_CHECKING:
     from engine.ecs.world import World
@@ -45,6 +46,10 @@ class RuntimeController:
         self._get_physics_system = context.get_physics_system
         self._get_collision_system = context.get_collision_system
         self._get_audio_system = context.get_audio_system
+        self._get_timer_system = context.get_timer_system
+        self._get_tween_system = context.get_tween_system
+        self._get_visible_on_screen_system = context.get_visible_on_screen_system
+        self._get_resource_preloader_system = context.get_resource_preloader_system
         self._get_scene_transition_controller = context.get_scene_transition_controller
         self._get_physics_backend_registry = context.get_physics_backend_registry
         self._reset_profiler = context.reset_profiler
@@ -165,6 +170,14 @@ class RuntimeController:
                 self._entity_destroyed_listener_registered = True
             bake_tilemap_colliders(runtime_world, merge_shapes=True)
 
+            # Precarga de assets para evitar stalls durante el gameplay
+            resource_preloader_system = self._get_resource_preloader_system()
+            if resource_preloader_system is not None:
+                try:
+                    resource_preloader_system.preload(runtime_world)
+                except Exception as exc:
+                    log_warn(f"ResourcePreloader: precarga fallida: {exc}")
+
             rule_system = self._get_rule_system()
             if rule_system is not None:
                 rule_system.set_world(runtime_world)
@@ -207,7 +220,11 @@ class RuntimeController:
             event_bus.clear_history()
 
         runtime_world = self._get_world()
-        if runtime_world is not None and hasattr(runtime_world, "on_entity_destroyed") and self._entity_destroyed_listener_registered:
+        if (
+            runtime_world is not None
+            and hasattr(runtime_world, "on_entity_destroyed")
+            and self._entity_destroyed_listener_registered
+        ):
             try:
                 runtime_world.on_entity_destroyed.remove(self._on_entity_destroyed)
             except ValueError:
@@ -274,6 +291,20 @@ class RuntimeController:
         audio_system = self._get_audio_system()
         if audio_system is not None:
             audio_system.update(world)
+
+        timer_system = self._get_timer_system()
+        if timer_system is not None:
+            timer_system.update(world, dt, time_scale=1.0)
+
+        tween_system = self._get_tween_system()
+        if tween_system is not None:
+            tween_system.update(world, dt)
+
+        visible_on_screen_system = self._get_visible_on_screen_system()
+        if visible_on_screen_system is not None:
+            # Obtener viewport rect en coordenadas de mundo desde la camara
+            viewport_rect = resolve_world_viewport_rect(world)
+            visible_on_screen_system.update(world, viewport_rect)
 
         scene_transition_controller = self._get_scene_transition_controller()
         if scene_transition_controller is not None:

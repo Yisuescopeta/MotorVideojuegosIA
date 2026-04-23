@@ -32,6 +32,7 @@ from engine.app import (
     SceneWorkflowController,
 )
 from engine.components.canvas import Canvas
+from engine.components.transform import Transform
 from engine.config import EDIT_ANIMATION_SPEED, ENGINE_VERSION, SCRIPTS_DIRECTORY, TIMELINE_CAPACITY
 from engine.core.engine_state import EngineState
 from engine.core.runtime_loop import RuntimeTickPlan
@@ -85,35 +86,31 @@ if TYPE_CHECKING:
 
 class Game:
     """Clase principal del motor con gestión de estados y escenas."""
-    
+
     EDIT_ANIMATION_SPEED: float = EDIT_ANIMATION_SPEED
-    
-    def __init__(
-        self,
-        title: str = "Motor 2D",
-        width: int = 800,
-        height: int = 600,
-        target_fps: int = 60
-    ) -> None:
+
+    def __init__(self, title: str = "Motor 2D", width: int = 800, height: int = 600, target_fps: int = 60) -> None:
         self.title = title
         self.width = width
         self.height = height
         self.target_fps = target_fps
-        
+
         self.running: bool = False
         self.time: TimeManager = TimeManager()
-        
+
         # Estado del motor
         self._state: EngineState = EngineState.EDIT
-        
+
         # World activo (cambia según estado)
         self._world: Optional["World"] = None
-        
+
         # Sistemas
         self._render_system: Optional["RenderSystem"] = None
         self._physics_system: Optional["PhysicsSystem"] = None
         self._collision_system: Optional["CollisionSystem"] = None
-        self._physics_backend_registry: PhysicsBackendRegistry = PhysicsBackendRegistry(default_backend_name="legacy_aabb")
+        self._physics_backend_registry: PhysicsBackendRegistry = PhysicsBackendRegistry(
+            default_backend_name="legacy_aabb"
+        )
         self._physics_backend_name: str = "legacy_aabb"
         self._animation_system: Optional["AnimationSystem"] = None
         self._audio_system: Optional["AudioSystem"] = None
@@ -122,18 +119,22 @@ class Game:
         self._character_controller_system: Optional["CharacterControllerSystem"] = None
         self._script_behaviour_system: Optional["ScriptBehaviourSystem"] = None
         self._inspector_system: Optional["InspectorSystem"] = None
+        self._timer_system: Optional["TimerSystem"] = None
+        self._tween_system: Optional["TweenSystem"] = None
+        self._visible_on_screen_system: Optional["VisibleOnScreenSystem"] = None
+        self._resource_preloader_system: Optional["ResourcePreloaderSystem"] = None
         self._level_loader: Optional["LevelLoader"] = None
         self._event_bus: Optional["EventBus"] = None
         self._rule_system: Optional["RuleSystem"] = None
         self._selection_system: Optional["SelectionSystem"] = None
         self._ui_system: Optional["UISystem"] = None
         self._ui_render_system: Optional["UIRenderSystem"] = None
-        
+
         self.script_executor: Optional["ScriptExecutor"] = None
-        
+
         # Debug / Timeline
         self.timeline: "Timeline" = Timeline(capacity=TIMELINE_CAPACITY)
-        
+
         # Editor Panels
         self.animator_panel: Optional["AnimatorPanel"] = AnimatorPanel()
         self.sprite_editor_modal: Optional["SpriteEditorModal"] = SpriteEditorModal()
@@ -147,21 +148,21 @@ class Game:
         self.gizmo_system: Optional["GizmoSystem"] = GizmoSystem()
         self.editor_layout: Optional["EditorLayout"] = self.editor_shell.layout
         self._cursor_renderer: CustomCursorRenderer = CustomCursorRenderer()
-        
+
         # Gestión de escenas
         self._scene_manager: Optional["SceneManager"] = None
-        
+
         # Estado de Persistencia
         self.current_scene_path: str = ""
         self._project_loaded: bool = False
-        
+
         # Hot-Reload
         self.hot_reload_manager: HotReloadManager = HotReloadManager(SCRIPTS_DIRECTORY)
         self.hot_reload_manager.scan_directory()
 
         self._project_service: Optional[ProjectService] = None
         self._history_manager: UndoRedoManager = UndoRedoManager()
-        
+
         self.autosave_timer: float = 0.0
         self.show_performance_overlay: bool = False
         self.enable_runtime_metrics: bool = False
@@ -232,6 +233,10 @@ class Game:
                 get_physics_system=lambda: self._physics_system,
                 get_collision_system=lambda: self._collision_system,
                 get_audio_system=lambda: self._audio_system,
+                get_timer_system=lambda: self._timer_system,
+                get_tween_system=lambda: self._tween_system,
+                get_visible_on_screen_system=lambda: self._visible_on_screen_system,
+                get_resource_preloader_system=lambda: self._resource_preloader_system,
                 get_scene_transition_controller=lambda: self._scene_transition_controller,
                 get_physics_backend_registry=lambda: self._physics_backend_registry,
                 reset_profiler=self.reset_profiler,
@@ -351,7 +356,7 @@ class Game:
             )
 
     # === PROPIEDADES ===
-    
+
     @property
     def state(self) -> EngineState:
         return self._state
@@ -360,19 +365,19 @@ class Game:
         self.random_seed = None if seed is None else int(seed)
         if self.random_seed is not None:
             random.seed(self.random_seed)
-    
+
     @property
     def is_edit_mode(self) -> bool:
         return self._state.is_edit()
-    
+
     @property
     def is_play_mode(self) -> bool:
         return self._state.is_play()
-    
+
     @property
     def is_paused(self) -> bool:
         return self._state.is_paused()
-    
+
     @property
     def world(self) -> Optional["World"]:
         """World activo según el estado."""
@@ -462,15 +467,15 @@ class Game:
             self._rule_system.clear_rules()
         if self._event_bus is not None:
             self._event_bus.clear_history()
-    
+
     # === MÉTODOS DE CONTROL DE ESTADO ===
-    
+
     def play(self) -> None:
         self._runtime_controller.play()
-    
+
     def pause(self) -> None:
         self._runtime_controller.pause()
-    
+
     def stop(self) -> None:
         self._runtime_controller.stop()
 
@@ -481,26 +486,26 @@ class Game:
 
     def get_profiler_report(self) -> dict[str, Any]:
         return self._debug_tools_controller.get_profiler_report()
-    
+
     # === SETTERS ===
-    
+
     def set_world(self, world: Optional["World"]) -> None:
         self._world = world
-    
+
     def set_render_system(self, system: "RenderSystem") -> None:
         self._render_system = system
         if self._project_service is not None:
             self._render_system.set_project_service(self._project_service)
         self._debug_tools_controller.apply_render_debug_options(self._render_system)
-    
+
     def set_physics_system(self, system: "PhysicsSystem") -> None:
         self._physics_system = system
         self._refresh_default_physics_backend()
-    
+
     def set_collision_system(self, system: "CollisionSystem") -> None:
         self._collision_system = system
         self._refresh_default_physics_backend()
-    
+
     def set_animation_system(self, system: "AnimationSystem") -> None:
         self._animation_system = system
 
@@ -508,6 +513,28 @@ class Game:
         self._audio_system = system
         if self._project_service is not None and hasattr(self._audio_system, "set_project_service"):
             self._audio_system.set_project_service(self._project_service)
+
+    def set_timer_system(self, system: "TimerSystem") -> None:
+        self._timer_system = system
+        if self._runtime_controller is not None:
+            self._timer_system.set_signal_runtime(self._runtime_controller.signal_runtime)
+
+    def set_tween_system(self, system: "TweenSystem") -> None:
+        self._tween_system = system
+        if self._runtime_controller is not None:
+            self._tween_system.set_signal_runtime(self._runtime_controller.signal_runtime)
+
+    def set_visible_on_screen_system(self, system: "VisibleOnScreenSystem") -> None:
+        self._visible_on_screen_system = system
+        if self._runtime_controller is not None:
+            self._visible_on_screen_system.set_signal_runtime(self._runtime_controller.signal_runtime)
+
+    def set_resource_preloader_system(self, system: "ResourcePreloaderSystem") -> None:
+        self._resource_preloader_system = system
+        if self._render_system is not None:
+            self._resource_preloader_system.set_texture_manager(self._render_system.texture_manager)
+        if self._project_service is not None:
+            self._resource_preloader_system.set_project_service(self._project_service)
 
     def set_input_system(self, system: "InputSystem") -> None:
         self._input_system = system
@@ -528,21 +555,23 @@ class Game:
             self._script_behaviour_system.set_scene_manager(self._scene_manager)
         if self._project_service is not None and hasattr(self._script_behaviour_system, "set_project_service"):
             self._script_behaviour_system.set_project_service(self._project_service)
-    
+
     def set_inspector_system(self, system: "InspectorSystem") -> None:
         self._inspector_system = system
         # Conectar scene_manager si ya existe
         if self._scene_manager is not None:
             self._inspector_system.set_scene_manager(self._scene_manager)
-    
+
     def set_level_loader(self, loader: "LevelLoader") -> None:
         self._level_loader = loader
-    
+
     def set_event_bus(self, event_bus: "EventBus") -> None:
         self._event_bus = event_bus
         for backend in self._physics_backend_registry.iter_available_backends():
             backend.set_event_bus(event_bus)
-        if self._character_controller_system is not None and hasattr(self._character_controller_system, "set_event_bus"):
+        if self._character_controller_system is not None and hasattr(
+            self._character_controller_system, "set_event_bus"
+        ):
             self._character_controller_system.set_event_bus(event_bus)
         if self._ui_system is not None:
             self._ui_system.set_event_bus(event_bus)
@@ -555,10 +584,10 @@ class Game:
 
     def set_physics_backend_unavailable(self, backend_name: str, reason: str) -> None:
         self._physics_backend_registry.mark_backend_unavailable(backend_name, reason=reason)
-    
+
     def set_rule_system(self, rule_system: "RuleSystem") -> None:
         self._rule_system = rule_system
-    
+
     def set_scene_manager(self, manager: "SceneManager") -> None:
         self._scene_manager = manager
         self._scene_manager.set_history_manager(self._history_manager)
@@ -575,7 +604,7 @@ class Game:
             self._script_behaviour_system.set_scene_manager(manager)
         if self.editor_layout is not None:
             self.editor_layout.set_scene_tabs(manager.list_open_scenes(), manager.active_scene_key)
-            
+
     def set_selection_system(self, system: "SelectionSystem") -> None:
         self._selection_system = system
 
@@ -647,9 +676,7 @@ class Game:
             return SignalConnectionFlags.NONE
         flags = SignalConnectionFlags.NONE
         normalized_flags = {
-            str(item).strip().lower()
-            for item in flags_payload
-            if isinstance(item, str) and str(item).strip()
+            str(item).strip().lower() for item in flags_payload if isinstance(item, str) and str(item).strip()
         }
         if "deferred" in normalized_flags:
             flags |= SignalConnectionFlags.DEFERRED
@@ -665,7 +692,7 @@ class Game:
         self._ui_render_system = system
         if self._project_service is not None and hasattr(self._ui_render_system, "set_project_service"):
             self._ui_render_system.set_project_service(self._project_service)
-        
+
     def set_script_executor(self, executor: "ScriptExecutor") -> None:
         """Asigna un ejecutor de scripts para automatización visual."""
         self.script_executor = executor
@@ -705,7 +732,9 @@ class Game:
         self._world = self._scene_manager.active_world
         self._sync_current_scene_path()
         if self.editor_layout is not None:
-            self.editor_layout.set_scene_tabs(self._scene_manager.list_open_scenes(), self._scene_manager.active_scene_key)
+            self.editor_layout.set_scene_tabs(
+                self._scene_manager.list_open_scenes(), self._scene_manager.active_scene_key
+            )
             if getattr(self.editor_layout, "flow_panel", None) is not None:
                 self.editor_layout.flow_panel.refresh(force=True)
             if getattr(self.editor_layout, "flow_workspace_panel", None) is not None:
@@ -846,9 +875,9 @@ class Game:
 
     def request_shutdown(self) -> None:
         self.running = False
-    
+
     # === GAME LOOP ===
-    
+
     def run(self) -> None:
         "Inicia el game loop."
         rl.init_window(self.width, self.height, f"{self.title}  —  v{ENGINE_VERSION}")
@@ -856,23 +885,24 @@ class Game:
 
         # Comprobación de actualizaciones (no bloquea el arranque)
         from engine.update_checker import start_update_check
+
         start_update_check()
         # Título de barra oscuro (Windows 11) para coherencia visual con el tema dark
         try:
             import ctypes
+
             hwnd = ctypes.windll.user32.GetForegroundWindow()
             DWMWA_USE_IMMERSIVE_DARK_MODE = 20
             ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
-                ctypes.byref(ctypes.c_int(1)), ctypes.sizeof(ctypes.c_int)
+                hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ctypes.byref(ctypes.c_int(1)), ctypes.sizeof(ctypes.c_int)
             )
         except Exception:
             pass
         self._cursor_renderer.hide_system_cursor()
-        
+
         # Aplicar tema Raygui
         apply_unity_dark_theme()
-        
+
         # Crear EditorLayout (necesita ventana Raylib inicializada)
         if self.editor_layout is None:
             self.editor_layout = self.editor_shell.ensure_layout(self.width, self.height)
@@ -886,12 +916,14 @@ class Game:
                     self.editor_layout.show_project_launcher = True
             if self._scene_manager is not None:
                 self.editor_shell.bind_scene_manager(self._scene_manager)
-                self.editor_layout.set_scene_tabs(self._scene_manager.list_open_scenes(), self._scene_manager.active_scene_key)
+                self.editor_layout.set_scene_tabs(
+                    self._scene_manager.list_open_scenes(), self._scene_manager.active_scene_key
+                )
         self._sync_editor_shell()
-        
+
         self.running = True
         print(f"[INFO] Motor iniciado en modo: {self._state}")
-        
+
         while self.running and not rl.window_should_close():
             frame_start = time.perf_counter()
             self.time.update()
@@ -912,10 +944,10 @@ class Game:
                 finally:
                     rl.end_drawing()
                 continue
-            
+
             # World activo
             active_world = self.world
-            
+
             terminal_captures_keyboard = (
                 self.terminal_panel is not None
                 and self.editor_layout is not None
@@ -930,7 +962,7 @@ class Game:
             )
             if not terminal_captures_keyboard and not agent_captures_keyboard:
                 self._process_input()
-            
+
             # Script Update (Visual Automation)
             if self.script_executor:
                 running = self.script_executor.update()
@@ -939,14 +971,16 @@ class Game:
 
             # Sistemas de edición (Layout, Gizmos, Selection)
             # Permite interacción si está en EDIT O si está en PLAY pero viendo la escena
-            enable_scene_interaction = self._state.is_edit() or (self.editor_layout and self.editor_layout.active_tab == "SCENE")
-            
+            enable_scene_interaction = self._state.is_edit() or (
+                self.editor_layout and self.editor_layout.active_tab == "SCENE"
+            )
+
             # 1. Update Layout Input (Always, for toolbar/tabs)
             if self.editor_layout:
                 if rl.is_window_resized():
-                     self.editor_layout.update_layout(rl.get_screen_width(), rl.get_screen_height())
-                     self.width = rl.get_screen_width()
-                     self.height = rl.get_screen_height()
+                    self.editor_layout.update_layout(rl.get_screen_width(), rl.get_screen_height())
+                    self.width = rl.get_screen_width()
+                    self.height = rl.get_screen_height()
 
                 if self.sprite_editor_modal is None or not self.sprite_editor_modal.is_open:
                     self.editor_layout.update_input()
@@ -957,7 +991,7 @@ class Game:
                     self._persist_editor_preferences()
                 if self.animator_panel is not None and active_world is not None:
                     self.animator_panel.update(active_world, dt)
-                
+
                 # Procesar requests de UI
                 if self.editor_layout.request_play:
                     self.editor_layout.request_play = False
@@ -967,12 +1001,12 @@ class Game:
                     else:
                         self.stop()
                         self.editor_layout.active_tab = "SCENE"
-                
+
                 if self.editor_layout.request_pause:
                     self.editor_layout.request_pause = False
                     if self._state in (EngineState.PLAY, EngineState.PAUSED):
                         self.pause()
-                
+
                 # --- SCENE UI REQUESTS ---
                 self._process_ui_requests()
 
@@ -980,7 +1014,7 @@ class Game:
                     self.editor_layout.request_step = False
                     if self._state in (EngineState.PLAY, EngineState.PAUSED):
                         self.step()
-                
+
                 self._editor_interaction_controller.handle_scene_view_drag_drop(active_world)
 
             # 2. Gizmos & Selection (Only if interaction enabled)
@@ -1009,9 +1043,8 @@ class Game:
                 on_edit_scripts_ran=on_edit_scripts_ran,
             )
 
-            
             # Actualización de gameplay (Física, Colisiones, Reglas)
-            
+
             # Si estábamos en STEPPING, volvemos a PAUSED después de un frame
             if self._state == EngineState.EDIT:
                 self._autosave_dirty_scenes()
@@ -1022,6 +1055,7 @@ class Game:
                 self._perf_stats["render"] = (time.perf_counter() - render_start) * 1000.0
             except Exception as e:
                 from engine.editor.console_panel import log_err
+
                 log_err(f"CRITICAL RENDER ERROR: {e}")
             self._perf_stats["frame"] = (time.perf_counter() - frame_start) * 1000.0
             should_collect_metrics = self._should_collect_metrics()
@@ -1095,7 +1129,7 @@ class Game:
         self._perf_stats["scripts"] = scripts_elapsed
         self._perf_stats["ui"] = ui_elapsed
         return plan
-    
+
     def _update_animation(self, world: Optional["World"], dt: float) -> None:
         self._runtime_controller.update_animation(world, dt)
 
@@ -1119,7 +1153,9 @@ class Game:
                 bool(rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT)),
                 bool(rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT)),
             )
-        self._ui_system.update(world, viewport_size, allow_interaction=self._is_runtime_ui_interaction_enabled(active_tab=tab))
+        self._ui_system.update(
+            world, viewport_size, allow_interaction=self._is_runtime_ui_interaction_enabled(active_tab=tab)
+        )
 
     def _current_viewport_size(self) -> tuple[float, float]:
         if self.editor_layout is not None and self.editor_layout.game_texture is not None:
@@ -1145,7 +1181,9 @@ class Game:
             return False
         return self._state in (EngineState.PLAY, EngineState.PAUSED, EngineState.STEPPING)
 
-    def _render_ui_to_texture(self, world: Optional["World"], texture: Any, *, render_editor_overlay: bool = False) -> None:
+    def _render_ui_to_texture(
+        self, world: Optional["World"], texture: Any, *, render_editor_overlay: bool = False
+    ) -> None:
         if self._ui_render_system is None or self._ui_system is None or world is None or texture is None:
             return
         rl.begin_texture_mode(texture)
@@ -1161,13 +1199,13 @@ class Game:
                 )
         finally:
             rl.end_texture_mode()
-    
+
     def _process_input(self) -> None:
         self._debug_tools_controller.handle_debug_shortcuts(
             step_callback=self.step,
             toggle_fullscreen_callback=self._toggle_fullscreen,
         )
-        
+
         # Ctrl+S: Save
         if rl.is_key_down(rl.KEY_LEFT_CONTROL) and rl.is_key_pressed(rl.KEY_S):
             self.save_current_scene()
@@ -1175,11 +1213,11 @@ class Game:
             self._history_manager.undo()
         if rl.is_key_down(rl.KEY_LEFT_CONTROL) and rl.is_key_pressed(rl.KEY_Y):
             self._history_manager.redo()
-            
+
     def save_current_scene(self) -> None:
         """Guarda la escena actual a disco."""
         self._scene_workflow_controller.save_current_scene()
-    
+
     def _update_gameplay(self, world: "World", dt: float) -> None:
         """Actualiza la lógica del juego (Física, Colisiones, Reglas)."""
         self._runtime_controller.update_gameplay(world, dt)
@@ -1189,18 +1227,18 @@ class Game:
 
     def _refresh_default_physics_backend(self) -> None:
         self._runtime_controller.refresh_default_physics_backend()
-            
+
     def step(self) -> None:
         self._runtime_controller.step()
-        
+
     def save_snapshot(self) -> None:
         """Guarda un snapshot del estado actual."""
         self._debug_tools_controller.save_snapshot()
-        
+
     def load_last_snapshot(self) -> None:
         """Carga el último snapshot guardado."""
         self._debug_tools_controller.load_last_snapshot()
-    
+
     def undo(self) -> bool:
         """Revierte el ultimo cambio de authoring en modo edicion."""
         if self._state != EngineState.EDIT:
@@ -1239,14 +1277,14 @@ class Game:
 
     def _draw_performance_overlay(self) -> None:
         self._debug_tools_controller.draw_performance_overlay()
-        
+
     def _render_frame(self, active_world: "World") -> None:
         """Renderiza un frame completo de la aplicación (Scene, Game, UI)."""
         rl.begin_drawing()
         rl.clear_background(rl.DARKGRAY)
         self._perf_stats["inspector"] = 0.0
         self._perf_stats["hierarchy"] = 0.0
-        
+
         try:
             editor_world = self._scene_manager.get_edit_world() if self._scene_manager is not None else None
             overlay_world = active_world
@@ -1298,12 +1336,16 @@ class Game:
                     )
                 )
                 if should_render_scene_ui and self.editor_layout.scene_texture is not None:
-                    self._render_ui_to_texture(active_world, self.editor_layout.scene_texture, render_editor_overlay=True)
-            
+                    self._render_ui_to_texture(
+                        active_world, self.editor_layout.scene_texture, render_editor_overlay=True
+                    )
+
             # --- GAME VIEW RENDER ---
             if self.editor_layout and self.editor_layout.active_tab == "GAME":
-                target_world = self.world if self._state == EngineState.PLAY or self._state == EngineState.PAUSED else None
-                
+                target_world = (
+                    self.world if self._state == EngineState.PLAY or self._state == EngineState.PAUSED else None
+                )
+
                 self.editor_layout.begin_game_render()
                 if target_world and self._render_system:
                     texture = self.editor_layout.game_texture.texture
@@ -1311,17 +1353,17 @@ class Game:
                     self._render_system.render(target_world, viewport_size=viewport_size)
                 else:
                     rl.draw_text("Press PLAY to start", 10, 10, 20, rl.GRAY)
-                    
+
                 self.editor_layout.end_game_render()
                 if target_world is not None and self.editor_layout.game_texture is not None:
                     self._render_ui_to_texture(target_world, self.editor_layout.game_texture)
-            
+
             if self.editor_layout and self.editor_layout.active_tab == "ANIMATOR":
                 pass
-            
+
             # --- MAIN SCREEN RENDER (LAYOUT & OVERLAYS) ---
             if self.editor_layout:
-                is_playing = (self._state == EngineState.PLAY or self._state == EngineState.PAUSED)
+                is_playing = self._state == EngineState.PLAY or self._state == EngineState.PAUSED
                 safe_reset_clip_state()
                 try:
                     self.editor_layout.draw_layout(is_playing)
@@ -1330,8 +1372,8 @@ class Game:
                     log_err(f"Editor layout render error: {exc}")
                     self.editor_layout.draw_bottom_tabs()
             else:
-                 # Fallback
-                 if self._render_system is not None and active_world is not None:
+                # Fallback
+                if self._render_system is not None and active_world is not None:
                     self._render_system.render(active_world)
 
             # Inspector Render (Overlay on Layout)
@@ -1342,17 +1384,24 @@ class Game:
                     inspector_start = time.perf_counter()
                     try:
                         self._inspector_system.render(
-                            overlay_world, 
-                            int(rect.x), int(rect.y), 
-                            int(rect.width), int(rect.height),
-                            is_edit_mode=self.is_edit_mode
+                            overlay_world,
+                            int(rect.x),
+                            int(rect.y),
+                            int(rect.width),
+                            int(rect.height),
+                            is_edit_mode=self.is_edit_mode,
                         )
                     except Exception as exc:
                         safe_reset_clip_state()
                         log_err(f"Inspector render error: {exc}")
                     self._perf_stats["inspector"] = (time.perf_counter() - inspector_start) * 1000.0
 
-            if self.animator_panel is not None and active_world is not None and self.editor_layout and self.editor_layout.active_tab == "ANIMATOR":
+            if (
+                self.animator_panel is not None
+                and active_world is not None
+                and self.editor_layout
+                and self.editor_layout.active_tab == "ANIMATOR"
+            ):
                 safe_reset_clip_state()
                 rect = self.editor_layout.get_center_view_rect()
                 self.animator_panel.render(
@@ -1384,7 +1433,7 @@ class Game:
 
             self._draw_debug_info()
             self._draw_performance_overlay()
-            
+
             # Hierachy Panel Overlay
             if self.hierarchy_panel is not None and overlay_world is not None:
                 safe_reset_clip_state()
@@ -1393,7 +1442,14 @@ class Game:
                 try:
                     if self.editor_layout:
                         rect = self.editor_layout.hierarchy_rect
-                        self.hierarchy_panel.render(overlay_world, int(rect.x), int(rect.y), int(rect.width), int(rect.height), input_blocked=dropdown_open)
+                        self.hierarchy_panel.render(
+                            overlay_world,
+                            int(rect.x),
+                            int(rect.y),
+                            int(rect.width),
+                            int(rect.height),
+                            input_blocked=dropdown_open,
+                        )
                     else:
                         self.hierarchy_panel.render(overlay_world, 0, 0, 200, self.height)
                 except Exception as exc:
@@ -1450,12 +1506,16 @@ class Game:
                 self.load_scene_by_path(target_scene)
             for panel_name in ("flow_panel", "flow_workspace_panel"):
                 flow_panel = getattr(self.editor_layout, panel_name, None)
-                request_open_source = getattr(flow_panel, "request_open_source", None) if flow_panel is not None else None
+                request_open_source = (
+                    getattr(flow_panel, "request_open_source", None) if flow_panel is not None else None
+                )
                 if isinstance(request_open_source, dict) and request_open_source:
                     request = dict(request_open_source)
                     flow_panel.request_open_source = None
                     self._open_flow_source(request)
-                request_open_target = getattr(flow_panel, "request_open_target", None) if flow_panel is not None else None
+                request_open_target = (
+                    getattr(flow_panel, "request_open_target", None) if flow_panel is not None else None
+                )
                 if isinstance(request_open_target, dict) and request_open_target:
                     request = dict(request_open_target)
                     flow_panel.request_open_target = None
@@ -1610,7 +1670,7 @@ class Game:
                         },
                     },
                 )
-    
+
     def _process_ui_requests(self) -> None:
         """Procesa peticiones de UI (Escenas, Menús de archivo)."""
         if self._scene_manager is None:
@@ -1665,7 +1725,6 @@ class Game:
         # CREATE EMPTY ENTITY
         if self.editor_layout.request_create_entity:
             self.editor_layout.request_create_entity = False
-            from engine.components.transform import Transform
             active_world = self.world
             if active_world is not None:
                 name = "New Entity"

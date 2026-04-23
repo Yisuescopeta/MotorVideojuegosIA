@@ -34,7 +34,34 @@ class Sprite(Component):
         self.origin_y: float = origin_y
         self.flip_x: bool = flip_x
         self.flip_y: bool = flip_y
-        self.tint: Tuple[int, int, int, int] = tint
+        self.tint = tint
+
+    @property
+    def tint(self) -> Tuple[int, int, int, int]:
+        return self._tint
+
+    @tint.setter
+    def tint(self, value: Any) -> None:
+        self._tint = self._clamp_tint(value)
+
+    @staticmethod
+    def _clamp_tint(value: Any) -> Tuple[int, int, int, int]:
+        from engine.editor.console_panel import log_warn
+
+        if not isinstance(value, (tuple, list)):
+            log_warn(
+                f"Sprite tint: valor invalido (esperado tuple/list, recibido {type(value).__name__}); usando tint por defecto"
+            )
+            return (255, 255, 255, 255)
+        seq = list(value)
+        while len(seq) < 4:
+            seq.append(255)
+        seq = seq[:4]
+        try:
+            return tuple(max(0, min(255, int(v))) for v in seq)
+        except (ValueError, TypeError):
+            log_warn("Sprite tint: error al convertir valores a int; usando tint por defecto")
+            return (255, 255, 255, 255)
 
     def get_texture_reference(self) -> dict[str, str]:
         return clone_asset_reference(self.texture)

@@ -33,7 +33,15 @@ from engine.components.scene_transition_on_contact import SceneTransitionOnConta
 from engine.components.scene_transition_on_interact import SceneTransitionOnInteract
 from engine.components.scene_transition_on_player_death import SceneTransitionOnPlayerDeath
 from engine.components.scriptbehaviour import ScriptBehaviour
+from engine.components.marker2d import Marker2D
 from engine.components.tilemap import Tilemap
+from engine.components.timer import Timer
+from engine.components.tween import Tween
+from engine.components.resource_preloader import ResourcePreloader
+from engine.components.visible_on_screen_notifier_2d import (
+    VisibleOnScreenEnabler2D,
+    VisibleOnScreenNotifier2D,
+)
 
 __all__ = [
     "Transform",
@@ -58,4 +66,10 @@ __all__ = [
     "SceneTransitionOnPlayerDeath",
     "ScriptBehaviour",
     "Tilemap",
+    "Timer",
+    "Marker2D",
+    "ResourcePreloader",
+    "Tween",
+    "VisibleOnScreenNotifier2D",
+    "VisibleOnScreenEnabler2D",
 ]

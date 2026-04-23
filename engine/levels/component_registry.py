@@ -103,12 +103,20 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.scene_transition_on_interact import SceneTransitionOnInteract
     from engine.components.scene_transition_on_player_death import SceneTransitionOnPlayerDeath
     from engine.components.scriptbehaviour import ScriptBehaviour
+    from engine.components.resource_preloader import ResourcePreloader
     from engine.components.sprite import Sprite
     from engine.components.tilemap import Tilemap
     from engine.components.transform import Transform
     from engine.components.uibutton import UIButton
     from engine.components.uiimage import UIImage
     from engine.components.uitext import UIText
+    from engine.components.marker2d import Marker2D
+    from engine.components.timer import Timer
+    from engine.components.tween import Tween
+    from engine.components.visible_on_screen_notifier_2d import (
+        VisibleOnScreenEnabler2D,
+        VisibleOnScreenNotifier2D,
+    )
 
     registry = ComponentRegistry()
     registry.register("Transform", Transform)
@@ -131,10 +139,16 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("SceneTransitionOnInteract", SceneTransitionOnInteract)
     registry.register("SceneTransitionOnPlayerDeath", SceneTransitionOnPlayerDeath)
     registry.register("ScriptBehaviour", ScriptBehaviour)
+    registry.register("ResourcePreloader", ResourcePreloader)
     registry.register("Tilemap", Tilemap)
     registry.register("Canvas", Canvas)
     registry.register("RectTransform", RectTransform)
     registry.register("UIText", UIText)
     registry.register("UIButton", UIButton)
     registry.register("UIImage", UIImage)
+    registry.register("Timer", Timer)
+    registry.register("Marker2D", Marker2D)
+    registry.register("Tween", Tween)
+    registry.register("VisibleOnScreenNotifier2D", VisibleOnScreenNotifier2D)
+    registry.register("VisibleOnScreenEnabler2D", VisibleOnScreenEnabler2D)
     return registry
