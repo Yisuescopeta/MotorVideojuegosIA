@@ -93,7 +93,7 @@ class RuntimeAPI(EngineAPIComponent):
         if runtime is None or runtime.world is None:
             return []
         entities: list[EntityData] = []
-        for entity in runtime.world.get_all_entities():
+        for entity in runtime.world.iter_all_entities():
             if tag is not None and entity.tag != tag:
                 continue
             if layer is not None and entity.layer != layer:

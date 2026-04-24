@@ -34,7 +34,7 @@ class ScriptBehaviourContext:
         entity = self.get_entity()
         if entity is None:
             return None
-        for component in entity.get_all_components():
+        for component in entity.iter_components():
             if type(component).__name__ == component_name:
                 return component
         return None

@@ -116,6 +116,17 @@ class SceneChangeCoordinator:
             redo=lambda key=key, after=after: self.restore_scene_data_for_key(key, after),
         )
 
+    def record_differential_change(
+        self,
+        *,
+        label: str,
+        undo: Callable[[], bool],
+        redo: Callable[[], bool],
+    ) -> None:
+        if self._history is None or self._suspend_history:
+            return
+        self._history.push(label=label, undo=undo, redo=redo)
+
     def restore_scene_data_for_key(self, key: str, data: dict[str, Any]) -> bool:
         entry = self._context.resolve_entry(key)
         if entry is None or entry.is_playing:

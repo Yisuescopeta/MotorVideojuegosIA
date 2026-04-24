@@ -198,7 +198,7 @@ class UIAPI(EngineAPIComponent):
         if runtime is None or runtime.world is None:
             return []
         nodes: list[EntityData] = []
-        for entity in runtime.world.get_all_entities():
+        for entity in runtime.world.iter_all_entities():
             if any(entity.has_component(component) for component in (Canvas, RectTransform, UIText, UIButton, UIImage)):
                 nodes.append(self.api.get_entity(entity.name))
         return nodes

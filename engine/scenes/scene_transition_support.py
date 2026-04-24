@@ -97,7 +97,8 @@ def find_scene_entry_point_in_world(world: Any, entry_id: str) -> Any | None:
     normalized_entry_id = str(entry_id or "").strip()
     if not normalized_entry_id:
         return None
-    for entity in world.get_all_entities():
+    entities = world.iter_all_entities() if hasattr(world, "iter_all_entities") else world.get_all_entities()
+    for entity in entities:
         component = entity.get_component(SceneEntryPoint) if hasattr(entity, "get_component") else None
         if component is None or not bool(getattr(component, "enabled", True)):
             continue

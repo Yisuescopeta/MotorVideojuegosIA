@@ -102,6 +102,94 @@ class RenderGraphTests(unittest.TestCase):
                     return command
         raise AssertionError("No tilemap chunk command found in private graph")
 
+    def test_selection_change_does_not_invalidate_sorted_entities_cache(self) -> None:
+        world = World()
+        self._make_sprite_entity(world, "Hero", x=0.0)
+        self._make_sprite_entity(world, "Enemy", x=10.0)
+
+        render_system = RenderSystem()
+        first_graph = render_system._build_render_graph(world)
+        first_sort_cache = first_graph["totals"]["sort_cache"]
+
+        world.selected_entity_name = "Hero"
+        second_graph = render_system._build_render_graph(world)
+        second_sort_cache = second_graph["totals"]["sort_cache"]
+
+        self.assertEqual(first_sort_cache, {"hits": 0, "misses": 1})
+        self.assertEqual(second_sort_cache, {"hits": 1, "misses": 1})
+
+    def test_selection_change_invalidates_debug_selection_graph(self) -> None:
+        world = World()
+        self._make_sprite_entity(world, "Hero", x=0.0)
+        render_system = RenderSystem()
+
+        first_graph = render_system._public_graph(render_system._build_render_graph(world))
+        first_debug_kinds = [command["debug_kind"] for command in first_graph["passes"][2]["commands"]]
+
+        world.selected_entity_name = "Hero"
+        second_graph = render_system._public_graph(render_system._build_render_graph(world))
+        second_debug_kinds = [command["debug_kind"] for command in second_graph["passes"][2]["commands"]]
+
+        self.assertNotIn("selection", first_debug_kinds)
+        self.assertIn("selection", second_debug_kinds)
+
+    def test_structure_change_invalidates_render_graph(self) -> None:
+        world = World()
+        self._make_sprite_entity(world, "Hero", x=0.0)
+        render_system = RenderSystem()
+
+        first_graph = render_system._public_graph(render_system._build_render_graph(world))
+        self._make_sprite_entity(world, "Enemy", x=10.0)
+        second_graph = render_system._public_graph(render_system._build_render_graph(world))
+
+        self.assertEqual([command["entity_name"] for command in first_graph["passes"][0]["commands"]], ["Hero"])
+        self.assertEqual([command["entity_name"] for command in second_graph["passes"][0]["commands"]], ["Hero", "Enemy"])
+
+    def test_render_cache_keys_fallback_to_version_for_legacy_worlds(self) -> None:
+        class LegacyWorldProxy:
+            def __init__(self, wrapped: World) -> None:
+                self._wrapped = wrapped
+
+            @property
+            def version(self) -> int:
+                return self._wrapped.version
+
+            @property
+            def selection_version(self) -> int:
+                return self._wrapped.selection_version
+
+            @property
+            def selected_entity_name(self) -> str | None:
+                return self._wrapped.selected_entity_name
+
+            @property
+            def feature_metadata(self) -> dict:
+                return self._wrapped.feature_metadata
+
+            def get_entities_with(self, *component_types: type):
+                return self._wrapped.get_entities_with(*component_types)
+
+            def get_entity_by_name(self, name: str):
+                return self._wrapped.get_entity_by_name(name)
+
+        world = World()
+        self._make_sprite_entity(world, "Hero", x=0.0)
+        legacy_world = LegacyWorldProxy(world)
+        render_system = RenderSystem()
+
+        render_system._sorted_render_entities(legacy_world)
+        render_system._sorted_render_entities(legacy_world)
+        self.assertEqual(render_system._sort_cache_hits, 1)
+        self.assertEqual(render_system._sort_cache_misses, 1)
+
+        world.touch()
+        render_system._sorted_render_entities(legacy_world)
+        self.assertEqual(render_system._sort_cache_hits, 1)
+        self.assertEqual(render_system._sort_cache_misses, 2)
+
+        graph = render_system._public_graph(render_system._build_render_graph(legacy_world))
+        self.assertEqual([command["entity_name"] for command in graph["passes"][0]["commands"]], ["Hero"])
+
     def test_render_graph_splits_world_overlay_and_debug_passes(self) -> None:
         world = World()
         world.feature_metadata = {
@@ -221,7 +309,7 @@ class RenderGraphTests(unittest.TestCase):
 
         tilemap = tilemap_entity.get_component(Tilemap)
         tilemap.set_tile("Ground", 2, 0, "grass_edge")
-        world.touch()
+        world._touch_component_specific(Tilemap)
         third_stats = render_system.profile_world(world)
         self.assertEqual(third_stats["tilemap_chunks"], 2)
         self.assertEqual(third_stats["tilemap_chunk_rebuilds"], 1)

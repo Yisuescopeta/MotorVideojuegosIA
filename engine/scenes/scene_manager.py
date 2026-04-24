@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
@@ -29,6 +30,21 @@ if TYPE_CHECKING:
 
 LEGACY_AUTHORING_SYNC_REASON = "legacy_authoring"
 TRANSIENT_PREVIEW_SYNC_REASON = "transient_preview"
+
+
+@dataclass
+class AuthoringComponentDelta:
+    entity_name: str
+    component_name: str
+    old_properties: Dict[str, Any] = field(default_factory=dict)
+    new_properties: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class AuthoringTransactionState:
+    label: str
+    key: str
+    changes: Dict[tuple[str, str], AuthoringComponentDelta] = field(default_factory=dict)
 
 
 class SceneManager:
@@ -74,6 +90,7 @@ class SceneManager:
         self._authoring_port: SceneAuthoringPort = SceneManagerAuthoringAdapter(self)
         self._workspace_port: SceneWorkspacePort = SceneManagerWorkspaceAdapter(self)
         self._runtime_signal_compiler: Optional[Callable[[Scene, "World"], int]] = None
+        self._authoring_transaction: AuthoringTransactionState | None = None
 
     @property
     def _entries(self) -> dict[str, SceneWorkspaceEntry]:
@@ -700,6 +717,14 @@ class SceneManager:
         entry = self._resolve_entry(key_or_path)
         if entry is None:
             return False
+        if self._can_apply_direct_transform_state(entry, entity_name):
+            return self._apply_direct_transform_state(
+                entry,
+                entity_name,
+                transform_state,
+                record_history=record_history,
+                label=label or f"transform:{entity_name}",
+            )
         return self._apply_authoring_component_state(
             entry,
             entity_name,
@@ -722,6 +747,18 @@ class SceneManager:
         entry = self._resolve_entry(key_or_path)
         if entry is None:
             return False
+        if self._authoring_transaction is not None:
+            if not self._can_apply_direct_component_state(entry, entity_name, "RectTransform"):
+                return False
+            return self._apply_direct_component_state(
+                entry,
+                entity_name,
+                "RectTransform",
+                rect_state,
+                editable_fields=("anchored_x", "anchored_y", "width", "height", "rotation", "scale_x", "scale_y"),
+                record_history=record_history,
+                label=label or f"rect_transform:{entity_name}",
+            )
         return self._apply_authoring_component_state(
             entry,
             entity_name,
@@ -853,6 +890,78 @@ class SceneManager:
 
     def rollback_transaction(self) -> bool:
         return self._change_history.rollback_transaction()
+
+    def begin_authoring_transaction(self, label: str, key_or_path: Optional[str] = None) -> bool:
+        entry = self._resolve_entry(key_or_path)
+        if entry is None or entry.is_playing or self._authoring_transaction is not None:
+            return False
+        self._authoring_transaction = AuthoringTransactionState(
+            label=str(label or "authoring_transaction"),
+            key=entry.key,
+        )
+        return True
+
+    def update_authoring_transaction(
+        self,
+        entity_name: str,
+        component_name: str,
+        component_state: Dict[str, Any],
+        key_or_path: Optional[str] = None,
+    ) -> bool:
+        if self._authoring_transaction is None:
+            return False
+        entry = self._resolve_entry(key_or_path)
+        if entry is None or entry.key != self._authoring_transaction.key:
+            return False
+        if component_name == "Transform":
+            return self.apply_transform_state(entity_name, component_state, entry.key, record_history=True)
+        if component_name == "RectTransform":
+            return self.apply_rect_transform_state(entity_name, component_state, entry.key, record_history=True)
+        return False
+
+    def commit_authoring_transaction(self) -> Optional[Dict[str, Any]]:
+        transaction = self._authoring_transaction
+        if transaction is None:
+            return None
+        self._authoring_transaction = None
+        changes = [
+            copy.deepcopy(delta)
+            for delta in transaction.changes.values()
+            if delta.old_properties != delta.new_properties
+        ]
+        if changes:
+            key = transaction.key
+            undo_changes = copy.deepcopy(changes)
+            redo_changes = copy.deepcopy(changes)
+            self._change_history.record_differential_change(
+                label=transaction.label,
+                undo=lambda key=key, changes=undo_changes: self._apply_authoring_transaction_deltas(
+                    key,
+                    changes,
+                    use_old=True,
+                ),
+                redo=lambda key=key, changes=redo_changes: self._apply_authoring_transaction_deltas(
+                    key,
+                    changes,
+                    use_old=False,
+                ),
+            )
+        return {
+            "label": transaction.label,
+            "scene_key": transaction.key,
+            "changed_component_count": len(changes),
+        }
+
+    def cancel_authoring_transaction(self) -> bool:
+        transaction = self._authoring_transaction
+        if transaction is None:
+            return False
+        self._authoring_transaction = None
+        return self._apply_authoring_transaction_deltas(
+            transaction.key,
+            list(transaction.changes.values()),
+            use_old=True,
+        )
 
     def get_scene_flow(self) -> Dict[str, str]:
         entry = self._get_active_entry()
@@ -1048,6 +1157,332 @@ class SceneManager:
                 failure_context=failure_context,
                 error=exc,
             )
+
+    def _can_apply_direct_transform_state(self, entry: SceneWorkspaceEntry, entity_name: str) -> bool:
+        return self._can_apply_direct_component_state(entry, entity_name, "Transform")
+
+    def _can_apply_direct_component_state(self, entry: SceneWorkspaceEntry, entity_name: str, component_name: str) -> bool:
+        if entry.is_playing:
+            return False
+        entity_data = entry.scene.find_entity(entity_name)
+        if entity_data is None:
+            return False
+        component_data = entity_data.get("components", {}).get(component_name)
+        return isinstance(component_data, dict)
+
+    def _apply_direct_transform_state(
+        self,
+        entry: SceneWorkspaceEntry,
+        entity_name: str,
+        transform_state: Dict[str, Any],
+        *,
+        record_history: bool,
+        label: str,
+    ) -> bool:
+        old_properties, new_properties = self._apply_transform_properties_to_entry(
+            entry,
+            entity_name,
+            transform_state,
+        )
+        if not new_properties:
+            return True
+        if self._record_authoring_transaction_delta(
+            entry,
+            entity_name,
+            "Transform",
+            old_properties,
+            new_properties,
+        ):
+            return True
+        if record_history:
+            key = entry.key
+            old_snapshot = copy.deepcopy(old_properties)
+            new_snapshot = copy.deepcopy(new_properties)
+            self._change_history.record_differential_change(
+                label=label,
+                undo=lambda key=key, entity_name=entity_name, old=old_snapshot: self._apply_transform_history_delta(
+                    key,
+                    entity_name,
+                    old,
+                ),
+                redo=lambda key=key, entity_name=entity_name, new=new_snapshot: self._apply_transform_history_delta(
+                    key,
+                    entity_name,
+                    new,
+                ),
+            )
+        return True
+
+    def _apply_direct_component_state(
+        self,
+        entry: SceneWorkspaceEntry,
+        entity_name: str,
+        component_name: str,
+        component_state: Dict[str, Any],
+        *,
+        editable_fields: tuple[str, ...],
+        record_history: bool,
+        label: str,
+    ) -> bool:
+        old_properties, new_properties = self._apply_component_properties_to_entry(
+            entry,
+            entity_name,
+            component_name,
+            component_state,
+            editable_fields=editable_fields,
+        )
+        if not new_properties:
+            return True
+        if self._record_authoring_transaction_delta(
+            entry,
+            entity_name,
+            component_name,
+            old_properties,
+            new_properties,
+        ):
+            return True
+        if record_history:
+            key = entry.key
+            old_snapshot = copy.deepcopy(old_properties)
+            new_snapshot = copy.deepcopy(new_properties)
+            self._change_history.record_differential_change(
+                label=label,
+                undo=lambda key=key, entity_name=entity_name, component_name=component_name, old=old_snapshot: self._apply_component_history_delta(
+                    key,
+                    entity_name,
+                    component_name,
+                    old,
+                ),
+                redo=lambda key=key, entity_name=entity_name, component_name=component_name, new=new_snapshot: self._apply_component_history_delta(
+                    key,
+                    entity_name,
+                    component_name,
+                    new,
+                ),
+            )
+        return True
+
+    def _apply_transform_history_delta(
+        self,
+        key: str,
+        entity_name: str,
+        properties: Dict[str, Any],
+    ) -> bool:
+        entry = self._resolve_entry(key)
+        if entry is None:
+            return False
+        self._apply_transform_properties_to_entry(entry, entity_name, properties)
+        return True
+
+    def _apply_component_history_delta(
+        self,
+        key: str,
+        entity_name: str,
+        component_name: str,
+        properties: Dict[str, Any],
+    ) -> bool:
+        entry = self._resolve_entry(key)
+        if entry is None:
+            return False
+        editable_fields = self._editable_fields_for_authoring_component(component_name)
+        if editable_fields is None:
+            return False
+        self._apply_component_properties_to_entry(
+            entry,
+            entity_name,
+            component_name,
+            properties,
+            editable_fields=editable_fields,
+        )
+        return True
+
+    def _apply_transform_properties_to_entry(
+        self,
+        entry: SceneWorkspaceEntry,
+        entity_name: str,
+        transform_state: Dict[str, Any],
+    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        entity_data = entry.scene.find_entity(entity_name)
+        if entity_data is None:
+            return {}, {}
+        component_data = entity_data.get("components", {}).get("Transform")
+        if not isinstance(component_data, dict):
+            return {}, {}
+
+        editable_fields = ("x", "y", "rotation", "scale_x", "scale_y")
+        old_properties: Dict[str, Any] = {}
+        new_properties: Dict[str, Any] = {}
+        for field_name in editable_fields:
+            if field_name not in transform_state:
+                continue
+            value = float(transform_state[field_name])
+            previous = component_data.get(field_name)
+            if previous == value:
+                continue
+            old_properties[field_name] = previous
+            new_properties[field_name] = value
+            component_data[field_name] = value
+
+        if not new_properties:
+            return old_properties, new_properties
+
+        entry.selected_entity_name = entity_name
+        entry.dirty = True
+        self._clear_pending_edit_world_sync(entry)
+        self._apply_transform_properties_to_edit_world(entry, entity_name, component_data)
+        if entry.edit_world is not None:
+            entry.edit_world_version = entry.edit_world.version
+        return old_properties, new_properties
+
+    def _apply_component_properties_to_entry(
+        self,
+        entry: SceneWorkspaceEntry,
+        entity_name: str,
+        component_name: str,
+        component_state: Dict[str, Any],
+        *,
+        editable_fields: tuple[str, ...],
+    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        entity_data = entry.scene.find_entity(entity_name)
+        if entity_data is None:
+            return {}, {}
+        component_data = entity_data.get("components", {}).get(component_name)
+        if not isinstance(component_data, dict):
+            return {}, {}
+
+        old_properties: Dict[str, Any] = {}
+        new_properties: Dict[str, Any] = {}
+        for field_name in editable_fields:
+            if field_name not in component_state:
+                continue
+            value = float(component_state[field_name])
+            previous = component_data.get(field_name)
+            if previous == value:
+                continue
+            old_properties[field_name] = previous
+            new_properties[field_name] = value
+            component_data[field_name] = value
+
+        if not new_properties:
+            return old_properties, new_properties
+
+        entry.selected_entity_name = entity_name
+        entry.dirty = True
+        self._clear_pending_edit_world_sync(entry)
+        self._apply_component_properties_to_edit_world(entry, entity_name, component_name, component_data)
+        if entry.edit_world is not None:
+            entry.edit_world_version = entry.edit_world.version
+        return old_properties, new_properties
+
+    def _record_authoring_transaction_delta(
+        self,
+        entry: SceneWorkspaceEntry,
+        entity_name: str,
+        component_name: str,
+        old_properties: Dict[str, Any],
+        new_properties: Dict[str, Any],
+    ) -> bool:
+        transaction = self._authoring_transaction
+        if transaction is None:
+            return False
+        if transaction.key != entry.key:
+            return False
+        delta_key = (entity_name, component_name)
+        delta = transaction.changes.get(delta_key)
+        if delta is None:
+            delta = AuthoringComponentDelta(entity_name=entity_name, component_name=component_name)
+            transaction.changes[delta_key] = delta
+        for field_name, old_value in old_properties.items():
+            if field_name not in delta.old_properties:
+                delta.old_properties[field_name] = old_value
+            delta.new_properties[field_name] = new_properties[field_name]
+            if delta.new_properties[field_name] == delta.old_properties[field_name]:
+                delta.old_properties.pop(field_name, None)
+                delta.new_properties.pop(field_name, None)
+        if not delta.new_properties:
+            transaction.changes.pop(delta_key, None)
+        return True
+
+    def _apply_authoring_transaction_deltas(
+        self,
+        key: str,
+        changes: list[AuthoringComponentDelta],
+        *,
+        use_old: bool,
+    ) -> bool:
+        entry = self._resolve_entry(key)
+        if entry is None:
+            return False
+        for delta in changes:
+            editable_fields = self._editable_fields_for_authoring_component(delta.component_name)
+            if editable_fields is None:
+                return False
+            properties = delta.old_properties if use_old else delta.new_properties
+            self._apply_component_properties_to_entry(
+                entry,
+                delta.entity_name,
+                delta.component_name,
+                properties,
+                editable_fields=editable_fields,
+            )
+        return True
+
+    def _editable_fields_for_authoring_component(self, component_name: str) -> tuple[str, ...] | None:
+        if component_name == "Transform":
+            return ("x", "y", "rotation", "scale_x", "scale_y")
+        if component_name == "RectTransform":
+            return ("anchored_x", "anchored_y", "width", "height", "rotation", "scale_x", "scale_y")
+        return None
+
+    def _apply_transform_properties_to_edit_world(
+        self,
+        entry: SceneWorkspaceEntry,
+        entity_name: str,
+        properties: Dict[str, Any],
+    ) -> None:
+        if entry.edit_world is None:
+            return
+        entity = entry.edit_world.get_entity_by_name(entity_name)
+        if entity is None:
+            return
+        transform = entity.get_component(Transform)
+        if transform is None:
+            return
+        field_to_attribute = {
+            "x": "local_x",
+            "y": "local_y",
+            "rotation": "local_rotation",
+            "scale_x": "local_scale_x",
+            "scale_y": "local_scale_y",
+        }
+        for field_name, value in properties.items():
+            attribute = field_to_attribute.get(field_name)
+            if attribute is not None:
+                setattr(transform, attribute, float(value))
+        entry.edit_world.touch()
+
+    def _apply_component_properties_to_edit_world(
+        self,
+        entry: SceneWorkspaceEntry,
+        entity_name: str,
+        component_name: str,
+        properties: Dict[str, Any],
+    ) -> None:
+        if component_name == "Transform":
+            self._apply_transform_properties_to_edit_world(entry, entity_name, properties)
+            return
+        if entry.edit_world is None:
+            return
+        entity = entry.edit_world.get_entity_by_name(entity_name)
+        if entity is None:
+            return
+        component = entity.get_component(RectTransform) if component_name == "RectTransform" else None
+        if component is None:
+            return
+        for field_name, value in properties.items():
+            if hasattr(component, field_name):
+                setattr(component, field_name, float(value))
+        entry.edit_world.touch()
 
     def _sync_entry_from_edit_world(self, entry: SceneWorkspaceEntry) -> bool:
         if entry.is_playing or entry.edit_world is None:

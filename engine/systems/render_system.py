@@ -53,9 +53,9 @@ class RenderSystem:
         self.debug_draw_tile_chunks: bool = False
         self.debug_draw_camera: bool = False
         self._debug_primitives: list[dict[str, Any]] = []
-        self._sorted_entities_cache_key: tuple[int, int, tuple[str, ...]] | None = None
+        self._sorted_entities_cache_key: tuple[int, int, int, tuple[str, ...]] | None = None
         self._sorted_entities_cache: list[Entity] = []
-        self._render_graph_cache_key: tuple[int, int, int, tuple[str, ...], bool, bool, bool, bool, tuple[Any, ...], tuple[int, int]] | None = None
+        self._render_graph_cache_key: tuple[int, int, int, int, tuple[int, int], tuple[str, ...], bool, bool, bool, bool, tuple[Any, ...]] | None = None
         self._render_graph_cache: dict[str, Any] = {"passes": [], "totals": {}}
         self._tilemap_chunk_cache: dict[tuple[int, str, int, int], dict[str, Any]] = {}
         self._last_render_stats: dict[str, Any] = {
@@ -201,7 +201,12 @@ class RenderSystem:
 
     def _sorted_render_entities(self, world: World) -> list[Entity]:
         sorting_layers = self._get_sorting_layers(world)
-        cache_key = (id(world), int(getattr(world, "version", -1)), tuple(sorting_layers))
+        cache_key = (
+            id(world),
+            self._world_version(world, "render_version"),
+            self._world_version(world, "structure_version"),
+            tuple(sorting_layers),
+        )
         if self._sorted_entities_cache_key == cache_key:
             self._sort_cache_hits += 1
             return self._sorted_entities_cache
@@ -230,15 +235,16 @@ class RenderSystem:
         normalized_viewport = self._normalize_viewport_size(viewport_size)
         cache_key = (
             id(world),
-            int(getattr(world, "version", -1)),
+            self._world_version(world, "render_version"),
+            self._world_version(world, "transform_version"),
             int(getattr(world, "selection_version", -1)),
+            normalized_viewport,
             tuple(sorting_layers),
             bool(self.debug_draw_colliders),
             bool(self.debug_draw_labels),
             bool(self.debug_draw_tile_chunks),
             bool(self.debug_draw_camera),
             self._debug_overlay_signature(),
-            normalized_viewport,
         )
         if self._render_graph_cache_key == cache_key:
             return {
@@ -429,6 +435,11 @@ class RenderSystem:
         self._render_graph_cache_key = cache_key
         self._render_graph_cache = graph
         return graph
+
+    def _world_version(self, world: World, name: str) -> int:
+        if hasattr(world, name):
+            return int(getattr(world, name))
+        return int(getattr(world, "version", -1))
 
     def _command_draw_call_count(self, command: dict[str, Any]) -> int:
         if command.get("kind") == "tilemap_chunk":

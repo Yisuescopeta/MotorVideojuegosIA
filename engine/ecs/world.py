@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import copy
 from collections import defaultdict, deque
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Iterable, Iterator, TypeVar
 
 from engine.ecs.component import Component
 from engine.ecs.entity import Entity, normalize_entity_groups
@@ -128,6 +128,11 @@ class World:
         self._component_owner_index: dict[int, int] = {}
         self.group_registry = GroupRegistry(self)
         self._version: int = 0
+        self._structure_version: int = 0
+        self._transform_version: int = 0
+        self._render_version: int = 0
+        self._physics_version: int = 0
+        self._ui_layout_version: int = 0
         self._selection_version: int = 0
         self._selected_entity_name: str | None = None
         self.feature_metadata: dict = {}
@@ -136,6 +141,26 @@ class World:
     @property
     def version(self) -> int:
         return self._version
+
+    @property
+    def structure_version(self) -> int:
+        return self._structure_version
+
+    @property
+    def transform_version(self) -> int:
+        return self._transform_version
+
+    @property
+    def render_version(self) -> int:
+        return self._render_version
+
+    @property
+    def physics_version(self) -> int:
+        return self._physics_version
+
+    @property
+    def ui_layout_version(self) -> int:
+        return self._ui_layout_version
 
     @property
     def selection_version(self) -> int:
@@ -156,6 +181,37 @@ class World:
     def touch(self) -> None:
         self._version += 1
 
+    def _touch_structure(self) -> None:
+        self._structure_version += 1
+        self.touch()
+
+    def _touch_component_membership(self, component_type: type | None) -> None:
+        self._touch_structure()
+        self._touch_component_specific(component_type)
+
+    def _touch_component_specific(self, component_type: type | None) -> None:
+        if component_type is None:
+            return
+
+        from engine.components.canvas import Canvas
+        from engine.components.collider import Collider
+        from engine.components.recttransform import RectTransform
+        from engine.components.renderorder2d import RenderOrder2D
+        from engine.components.renderstyle2d import RenderStyle2D
+        from engine.components.sprite import Sprite
+        from engine.components.tilemap import Tilemap
+        from engine.components.transform import Transform
+        from engine.components.uibutton import UIButton
+
+        if issubclass(component_type, Transform):
+            self._transform_version += 1
+        if issubclass(component_type, Collider):
+            self._physics_version += 1
+        if issubclass(component_type, (Sprite, Tilemap, RenderOrder2D, RenderStyle2D)):
+            self._render_version += 1
+        if issubclass(component_type, (RectTransform, Canvas, UIButton)):
+            self._ui_layout_version += 1
+
     def create_entity(self, name: str = "Entity") -> Entity:
         entity = Entity(name)
         self.add_entity(entity)
@@ -169,7 +225,7 @@ class World:
         self._entities[entity.id] = entity
         entity._set_owner_world(self)
         self._index_entity(entity)
-        self.touch()
+        self._touch_structure()
 
     def remove_entity(self, entity_id: int) -> None:
         entity = self._entities.get(entity_id)
@@ -182,7 +238,7 @@ class World:
         del self._entities[entity_id]
         if self._selected_entity_name == entity.name:
             self.selected_entity_name = None
-        self.touch()
+        self._touch_structure()
 
     def destroy_entity(self, entity_id: int) -> None:
         self.remove_entity(entity_id)
@@ -199,7 +255,15 @@ class World:
         return self._entities.get(entity_id) if entity_id is not None else None
 
     def get_all_entities(self) -> list[Entity]:
-        return list(self._entities.values())
+        return list(self.iter_all_entities())
+
+    def iter_all_entities(self) -> Iterable[Entity]:
+        """Itera todas las entidades sin crear una lista temporal."""
+        return self._entities.values()
+
+    def iter_entities(self) -> Iterator[Entity]:
+        """Itera entidades activas sin crear una lista temporal."""
+        return (entity for entity in self._entities.values() if entity.active)
 
     def get_children(self, parent_name: str | None) -> list[Entity]:
         child_ids = self._children_index.get(parent_name, set())
@@ -217,7 +281,7 @@ class World:
 
     def get_entities_with(self, *component_types: type) -> list[Entity]:
         if not component_types:
-            return [entity for entity in self._entities.values() if entity.active]
+            return list(self.iter_entities())
 
         candidate_ids: set[int] | None = None
         for component_type in component_types:
@@ -251,14 +315,14 @@ class World:
         self._component_owner_index.clear()
         self.group_registry.clear()
         self.selected_entity_name = None
-        self.touch()
+        self._touch_structure()
 
     def clone(self) -> "World":
         new_world = World()
         new_world.feature_metadata = copy.deepcopy(self.feature_metadata)
         pending_links: list[tuple[Entity, str]] = []
 
-        for entity in self._entities.values():
+        for entity in self.iter_all_entities():
             new_entity = Entity(entity.name)
             new_entity.active = entity.active
             new_entity.tag = entity.tag
@@ -269,7 +333,7 @@ class World:
             new_entity.prefab_source_path = entity.prefab_source_path
             new_entity.prefab_root_name = entity.prefab_root_name
 
-            for component in entity.get_all_components():
+            for component in entity.iter_components():
                 cloned_component = self._clone_component(component, entity_name=entity.name)
                 new_entity.add_component(
                     cloned_component,
@@ -353,7 +417,7 @@ class World:
         self._name_index[entity.name] = entity.id
         self._children_index[entity.parent_name].add(entity.id)
         self.group_registry.register_entity(entity)
-        for component in entity.get_all_components():
+        for component in entity.iter_components():
             self._index_component(entity, type(component), component)
 
     def _deindex_entity(self, entity: Entity) -> None:
@@ -365,7 +429,7 @@ class World:
             if not child_ids:
                 self._children_index.pop(entity.parent_name, None)
         self.group_registry.unregister_entity(entity)
-        for component in entity.get_all_components():
+        for component in entity.iter_components():
             self._deindex_component(entity, type(component), component)
 
     def _index_component(self, entity: Entity, component_type: type, component: Component) -> None:
@@ -403,7 +467,10 @@ class World:
                 self._children_index[current].add(entity.id)
             elif field == "groups":
                 self.group_registry.update_entity_groups(entity, previous, current)
-            self.touch()
+            if field in {"name", "parent_name", "groups", "active"}:
+                self._touch_structure()
+            else:
+                self.touch()
             return
 
         if event == "component_added":
@@ -414,7 +481,7 @@ class World:
                 self._deindex_component(entity, component_type, previous_component)
             if component_type is not None and component is not None:
                 self._index_component(entity, component_type, component)
-            self.touch()
+            self._touch_component_membership(component_type if isinstance(component_type, type) else None)
             return
 
         if event == "component_removed":
@@ -422,7 +489,7 @@ class World:
             component = payload.get("component")
             if component_type is not None and component is not None:
                 self._deindex_component(entity, component_type, component)
-            self.touch()
+            self._touch_component_membership(component_type if isinstance(component_type, type) else None)
             return
 
         if event == "component_metadata_changed":
@@ -434,7 +501,7 @@ class World:
     def serialize(self) -> dict:
         entities_data = []
         consumed_prefab_entities: set[str] = set()
-        for entity in self._entities.values():
+        for entity in self.iter_all_entities():
             if entity.name in consumed_prefab_entities:
                 continue
 
@@ -449,7 +516,7 @@ class World:
                         "layer": node.layer,
                         "components": {
                             type(component).__name__: self._serialize_component(node, component)
-                            for component in node.get_all_components()
+                            for component in node.iter_components()
                         },
                     }
                     if node.groups:
@@ -491,7 +558,7 @@ class World:
             if entity.prefab_root_name is not None:
                 ent_data["prefab_root_name"] = entity.prefab_root_name
 
-            for component in entity.get_all_components():
+            for component in entity.iter_components():
                 comp_name = type(component).__name__
                 ent_data["components"][comp_name] = self._serialize_component(entity, component)
 

@@ -250,9 +250,7 @@ class SceneTransitionController:
     def _find_primary_player(self, world: "World") -> Optional["Entity"]:
         for entity in world.get_entities_with(PlayerController2D, Transform):
             return entity
-        for entity in world.get_all_entities():
-            if not entity.active:
-                continue
+        for entity in world.iter_entities():
             if entity.get_component(Transform) is None:
                 continue
             if str(entity.tag or "").strip().lower() in {"player", "hero"}:

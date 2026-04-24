@@ -330,7 +330,7 @@ class HierarchyPanel:
             return self._cached_roots
 
         roots: List[Entity] = []
-        for entity in world.get_all_entities():
+        for entity in world.iter_all_entities():
             transform = entity.get_component(Transform)
             if transform is None or transform.parent is None:
                 roots.append(entity)

@@ -594,7 +594,7 @@ class InspectorSystem:
             content_y = self._draw_scene_transition_block(entity, panel_x, content_y, panel_w, is_edit_mode, world)
             content_y += 4
 
-            for component in entity.get_all_components():
+            for component in entity.iter_components():
                 if type(component).__name__ in self.SCENE_TRANSITION_HIDDEN_COMPONENTS:
                     continue
                 content_y = self._draw_component(component, entity.id, panel_x, content_y, panel_w, is_edit_mode, world)
@@ -1023,7 +1023,7 @@ class InspectorSystem:
         return payload
 
     def _find_component(self, entity: Entity, component_name: str) -> Optional[Component]:
-        for component in entity.get_all_components():
+        for component in entity.iter_components():
             if type(component).__name__ == component_name:
                 return component
         return None

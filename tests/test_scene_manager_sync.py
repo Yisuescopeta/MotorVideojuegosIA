@@ -7,6 +7,7 @@ from pathlib import Path
 from engine.components.recttransform import RectTransform
 from engine.components.sprite import Sprite
 from engine.components.transform import Transform
+from engine.editor.undo_redo import UndoRedoManager
 from engine.levels.component_registry import create_default_registry
 from engine.scenes.scene_manager import SceneManager
 from engine.serialization.schema import CURRENT_SCENE_SCHEMA_VERSION
@@ -224,6 +225,132 @@ class SceneManagerSyncTests(unittest.TestCase):
         self.assertEqual(refreshed_transform.x, 45.0)
         self.assertEqual(refreshed_transform.y, 64.0)
         self.assertFalse(self.scene_manager.resolve_entry(self.scene_manager.active_scene_key).edit_world_sync_pending)
+
+    def test_apply_transform_state_uses_differential_history_for_undo_redo(self) -> None:
+        history = UndoRedoManager()
+        self.scene_manager.set_history_manager(history)
+        scene = self.scene_manager.current_scene
+
+        with patch.object(scene, "to_dict", wraps=scene.to_dict) as to_dict_mock, patch.object(
+            self.scene_manager,
+            "_commit_serializable_scene_mutation",
+            wraps=self.scene_manager._commit_serializable_scene_mutation,
+        ) as commit_mock:
+            updated = self.scene_manager.apply_transform_state(
+                "Player",
+                {"x": 25.0},
+                record_history=True,
+                label="Player.Transform.x",
+            )
+
+        self.assertTrue(updated)
+        self.assertEqual(to_dict_mock.call_count, 0)
+        self.assertEqual(commit_mock.call_count, 0)
+        self.assertEqual(scene.find_entity("Player")["components"]["Transform"]["x"], 25.0)
+        transform = self.scene_manager.get_edit_world().get_entity_by_name("Player").get_component(Transform)
+        self.assertEqual(transform.x, 25.0)
+
+        self.assertTrue(history.undo())
+        self.assertEqual(scene.find_entity("Player")["components"]["Transform"]["x"], 10.0)
+        transform = self.scene_manager.get_edit_world().get_entity_by_name("Player").get_component(Transform)
+        self.assertEqual(transform.x, 10.0)
+
+        self.assertTrue(history.redo())
+        self.assertEqual(scene.find_entity("Player")["components"]["Transform"]["x"], 25.0)
+        transform = self.scene_manager.get_edit_world().get_entity_by_name("Player").get_component(Transform)
+        self.assertEqual(transform.x, 25.0)
+
+    def test_authoring_transaction_groups_transform_drag_into_single_undo(self) -> None:
+        history = UndoRedoManager()
+        self.scene_manager.set_history_manager(history)
+
+        self.assertTrue(self.scene_manager.begin_authoring_transaction("drag-player"))
+        for index in range(10):
+            self.assertTrue(
+                self.scene_manager.update_authoring_transaction(
+                    "Player",
+                    "Transform",
+                    {"x": float(index + 11)},
+                )
+            )
+        result = self.scene_manager.commit_authoring_transaction()
+
+        self.assertEqual(result["changed_component_count"], 1)
+        scene_transform = self.scene_manager.current_scene.find_entity("Player")["components"]["Transform"]
+        self.assertEqual(scene_transform["x"], 20.0)
+        transform = self.scene_manager.get_edit_world().get_entity_by_name("Player").get_component(Transform)
+        self.assertEqual(transform.x, 20.0)
+
+        self.assertTrue(history.undo())
+        scene_transform = self.scene_manager.current_scene.find_entity("Player")["components"]["Transform"]
+        self.assertEqual(scene_transform["x"], 10.0)
+        transform = self.scene_manager.get_edit_world().get_entity_by_name("Player").get_component(Transform)
+        self.assertEqual(transform.x, 10.0)
+
+        self.assertFalse(history.undo())
+
+        self.assertTrue(history.redo())
+        scene_transform = self.scene_manager.current_scene.find_entity("Player")["components"]["Transform"]
+        self.assertEqual(scene_transform["x"], 20.0)
+        transform = self.scene_manager.get_edit_world().get_entity_by_name("Player").get_component(Transform)
+        self.assertEqual(transform.x, 20.0)
+
+    def test_authoring_transaction_groups_rect_transform_changes(self) -> None:
+        history = UndoRedoManager()
+        self.scene_manager.set_history_manager(history)
+        self.assertTrue(
+            self.scene_manager.create_entity(
+                "Panel",
+                components={
+                    "RectTransform": {
+                        "enabled": True,
+                        "anchor_min_x": 0.5,
+                        "anchor_min_y": 0.5,
+                        "anchor_max_x": 0.5,
+                        "anchor_max_y": 0.5,
+                        "pivot_x": 0.5,
+                        "pivot_y": 0.5,
+                        "anchored_x": 0.0,
+                        "anchored_y": 0.0,
+                        "width": 100.0,
+                        "height": 40.0,
+                        "rotation": 0.0,
+                        "scale_x": 1.0,
+                        "scale_y": 1.0,
+                    }
+                },
+            )
+        )
+
+        self.assertTrue(self.scene_manager.begin_authoring_transaction("resize-panel"))
+        self.assertTrue(self.scene_manager.update_authoring_transaction("Panel", "RectTransform", {"width": 120.0}))
+        self.assertTrue(self.scene_manager.update_authoring_transaction("Panel", "RectTransform", {"height": 80.0}))
+        result = self.scene_manager.commit_authoring_transaction()
+
+        self.assertEqual(result["changed_component_count"], 1)
+        rect_data = self.scene_manager.current_scene.find_entity("Panel")["components"]["RectTransform"]
+        self.assertEqual(rect_data["width"], 120.0)
+        self.assertEqual(rect_data["height"], 80.0)
+
+        self.assertTrue(history.undo())
+        rect_data = self.scene_manager.current_scene.find_entity("Panel")["components"]["RectTransform"]
+        self.assertEqual(rect_data["width"], 100.0)
+        self.assertEqual(rect_data["height"], 40.0)
+
+    def test_transform_history_outside_authoring_transaction_remains_per_edit(self) -> None:
+        history = UndoRedoManager()
+        self.scene_manager.set_history_manager(history)
+
+        self.assertTrue(self.scene_manager.apply_transform_state("Player", {"x": 25.0}, record_history=True))
+        self.assertTrue(self.scene_manager.apply_transform_state("Player", {"x": 50.0}, record_history=True))
+
+        self.assertTrue(history.undo())
+        transform_data = self.scene_manager.current_scene.find_entity("Player")["components"]["Transform"]
+        self.assertEqual(transform_data["x"], 25.0)
+
+        self.assertTrue(history.undo())
+        transform_data = self.scene_manager.current_scene.find_entity("Player")["components"]["Transform"]
+        self.assertEqual(transform_data["x"], 10.0)
 
     def test_transient_preview_is_not_flushed_before_generic_scene_edit(self) -> None:
         manager = SceneManager(create_default_registry())

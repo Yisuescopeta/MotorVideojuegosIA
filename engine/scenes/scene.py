@@ -34,6 +34,8 @@ class Scene:
         self._data.setdefault("rules", [])
         self._data.setdefault("feature_metadata", {})
         self._source_path: Optional[str] = source_path
+        self._entity_index: Dict[str, Dict[str, Any]] = {}
+        self._rebuild_entity_index()
 
     @property
     def name(self) -> str:
@@ -146,24 +148,46 @@ class Scene:
             return path.as_posix()
         return (Path(self._source_path).resolve().parent / path).resolve().as_posix()
 
+    def _rebuild_entity_index(self) -> None:
+        self._entity_index.clear()
+        for entity_data in self.entities_data:
+            if not isinstance(entity_data, dict):
+                continue
+            entity_name = entity_data.get("name")
+            if isinstance(entity_name, str) and entity_name not in self._entity_index:
+                self._entity_index[entity_name] = entity_data
+
     def update_component(self, entity_name: str, component_name: str, property_name: str, value: Any) -> bool:
-        for entity_data in self._data.get("entities", []):
-            if entity_data.get("name") == entity_name:
-                components = entity_data.get("components", {})
-                if component_name in components:
-                    components[component_name][property_name] = value
-                    print(f"[EDIT] Scene: {entity_name}.{component_name}.{property_name} = {value}")
-                    return True
+        entity_data = self.find_entity(entity_name)
+        if entity_data is None:
+            return False
+        components = entity_data.get("components", {})
+        if component_name in components:
+            components[component_name][property_name] = value
+            print(f"[EDIT] Scene: {entity_name}.{component_name}.{property_name} = {value}")
+            return True
         return False
 
     def update_entity_property(self, entity_name: str, property_name: str, value: Any) -> bool:
         if property_name == "groups":
             return self.set_entity_groups(entity_name, value)
-        for entity_data in self._data.get("entities", []):
-            if entity_data.get("name") == entity_name:
-                entity_data[property_name] = value
+        entity_data = self.find_entity(entity_name)
+        if entity_data is None:
+            return False
+        if property_name == "name":
+            new_name = value
+            if not isinstance(new_name, str):
+                return False
+            if new_name == entity_name:
                 return True
-        return False
+            existing = self.find_entity(new_name)
+            if existing is not None and existing is not entity_data:
+                return False
+            entity_data[property_name] = new_name
+            self._rebuild_entity_index()
+            return True
+        entity_data[property_name] = value
+        return True
 
     def get_entity_groups(self, entity_name: str) -> list[str]:
         entity_data = self.find_entity(entity_name)
@@ -221,16 +245,22 @@ class Scene:
         return True
 
     def add_entity(self, entity_data: Dict[str, Any]) -> bool:
-        if self.find_entity(entity_data.get("name", "")) is not None:
+        entity_name = entity_data.get("name", "")
+        if self.find_entity(entity_name) is not None:
             return False
         self._data.setdefault("entities", []).append(entity_data)
+        if isinstance(entity_name, str):
+            self._entity_index[entity_name] = entity_data
         return True
 
     def remove_entity(self, entity_name: str) -> bool:
+        if self.find_entity(entity_name) is None:
+            return False
         entities = self._data.get("entities", [])
         for index, entity_data in enumerate(entities):
             if entity_data.get("name") == entity_name:
                 del entities[index]
+                self._rebuild_entity_index()
                 return True
         return False
 
@@ -261,10 +291,9 @@ class Scene:
         self.feature_metadata[key] = value
 
     def find_entity(self, entity_name: str) -> Optional[Dict[str, Any]]:
-        for entity_data in self._data.get("entities", []):
-            if entity_data.get("name") == entity_name:
-                return entity_data
-        return None
+        if not isinstance(entity_name, str):
+            return None
+        return self._entity_index.get(entity_name)
 
     def to_dict(self) -> Dict[str, Any]:
         return migrate_scene_data(copy.deepcopy(self._data))

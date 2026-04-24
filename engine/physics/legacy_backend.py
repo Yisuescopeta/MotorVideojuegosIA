@@ -176,8 +176,14 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
                 )
 
     def _find_entity(self, world: Any, entity_id: int) -> Any:
+        normalized_id = int(entity_id)
+        get_entity = getattr(world, "get_entity", None)
+        if get_entity is not None:
+            entity = get_entity(normalized_id)
+            if entity is not None:
+                return entity
         for entity in world.get_all_entities():
-            if int(entity.id) == int(entity_id):
+            if int(entity.id) == normalized_id:
                 return entity
         return None
 

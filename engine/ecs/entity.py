@@ -22,7 +22,7 @@ EJEMPLO DE USO:
 
 import copy
 import itertools
-from typing import Any, TypeVar
+from typing import Any, Iterable, TypeVar
 
 from engine.ecs.component import Component
 
@@ -211,7 +211,11 @@ class Entity:
         Returns:
             Lista de todos los componentes
         """
-        return list(self._components.values())
+        return list(self.iter_components())
+
+    def iter_components(self) -> Iterable[Component]:
+        """Itera todos los componentes sin crear una lista temporal."""
+        return self._components.values()
 
     def get_component_metadata(self, component_type: type[T]) -> dict[str, Any]:
         return copy.deepcopy(self._component_metadata.get(component_type, {}))

@@ -1559,7 +1559,7 @@ class Game:
             return None
         if active_world.selected_entity_name:
             return active_world.selected_entity_name
-        for entity in active_world.get_all_entities():
+        for entity in active_world.iter_all_entities():
             if entity.has_component(Canvas):
                 return entity.name
         return None
