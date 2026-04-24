@@ -188,6 +188,25 @@ class BenchmarkRunTests(unittest.TestCase):
         operation = report["operations"]["render_preparation"]
         self.assertGreaterEqual(operation["ms"], 0.0)
         self.assertGreater(operation["stats"]["render_entities"], 0)
+        self.assertTrue(operation["stats"]["spatial_culling_enabled"])
+        self.assertLess(operation["stats"]["spatial_visible_entities"], operation["stats"]["spatial_total_entities"])
+        self.assertEqual(operation["visible_entities"], operation["stats"]["spatial_visible_entities"])
+        self.assertEqual(operation["total_entities"], operation["stats"]["spatial_total_entities"])
+
+    def test_huge_tilemap_benchmark_reports_visible_chunk_reduction(self) -> None:
+        report = run_benchmark(
+            scenario="huge_tilemap",
+            backend="legacy_aabb",
+            frames=1,
+            tilemap_width=128,
+            tilemap_height=128,
+        )
+
+        stats = report["operations"]["render_preparation"]["stats"]
+        self.assertGreater(stats["tilemap_total_chunks"], 0)
+        self.assertGreater(stats["tilemap_visible_chunks"], 0)
+        self.assertLess(stats["tilemap_visible_chunks"], stats["tilemap_total_chunks"])
+        self.assertEqual(stats["tilemap_chunks"], stats["tilemap_visible_chunks"])
 
     def test_benchmark_runner_does_not_enable_deep_profiling_by_default(self) -> None:
         report = run_benchmark(

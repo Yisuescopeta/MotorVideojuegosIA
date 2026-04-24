@@ -132,7 +132,7 @@ class ResourcePreloaderSystem:
                         refs.add(str(tileset_ref))
                     # Tiles individuales pueden referenciar texturas
                     for layer in tilemap.layers:
-                        for tile_key, tile in layer.get("tiles", {}).items():
+                        for tile in layer.get("tiles", {}).values():
                             source = tile.get("source")
                             if source is not None:
                                 normalized = normalize_asset_reference(source)

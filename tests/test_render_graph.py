@@ -72,6 +72,20 @@ class RenderGraphTests(unittest.TestCase):
         entity.add_component(RenderOrder2D(sorting_layer=sorting_layer, order_in_layer=order_in_layer, render_pass=render_pass))
         return entity
 
+    def _make_camera_entity(
+        self,
+        world: World,
+        *,
+        x: float = 50.0,
+        y: float = 0.0,
+        offset_x: float = 50.0,
+        offset_y: float = 50.0,
+    ):
+        entity = world.create_entity("Camera")
+        entity.add_component(Transform(x=x, y=y, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        entity.add_component(Camera2D(offset_x=offset_x, offset_y=offset_y, framing_mode="locked"))
+        return entity
+
     def _create_temp_render_project(self) -> tuple[ProjectService, AssetService]:
         temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(temp_dir.cleanup)
@@ -233,6 +247,74 @@ class RenderGraphTests(unittest.TestCase):
         self.assertEqual(graph["totals"]["render_commands"], 5)
         self.assertEqual(graph["totals"]["draw_calls"], 5)
 
+    def test_spatial_culling_limits_render_commands_to_camera_bounds(self) -> None:
+        world = World()
+        world.feature_metadata = {"render_2d": {"sorting_layers": ["Default", "Gameplay"]}}
+        self._make_camera_entity(world)
+        self._make_sprite_entity(world, "Near", x=10.0, sorting_layer="Gameplay")
+        self._make_sprite_entity(world, "Far", x=300.0, sorting_layer="Gameplay")
+
+        render_system = RenderSystem()
+        graph = render_system._public_graph(render_system._build_render_graph(world, viewport_size=(100.0, 100.0)))
+
+        self.assertEqual([command["entity_name"] for command in graph["passes"][0]["commands"]], ["Near"])
+        self.assertTrue(graph["totals"]["spatial_culling_enabled"])
+        self.assertLess(graph["totals"]["spatial_visible_entities"], graph["totals"]["spatial_total_entities"])
+
+    def test_spatial_culling_falls_back_without_camera(self) -> None:
+        world = World()
+        self._make_sprite_entity(world, "Near", x=10.0)
+        self._make_sprite_entity(world, "Far", x=300.0)
+
+        render_system = RenderSystem()
+        stats = render_system.profile_world(world, viewport_size=(100.0, 100.0))
+
+        self.assertFalse(stats["spatial_culling_enabled"])
+        self.assertEqual(stats["render_entities"], 2)
+
+    def test_spatial_culling_can_be_disabled(self) -> None:
+        world = World()
+        self._make_camera_entity(world)
+        self._make_sprite_entity(world, "Near", x=10.0)
+        self._make_sprite_entity(world, "Far", x=300.0)
+
+        render_system = RenderSystem()
+        render_system.set_spatial_culling_enabled(False)
+        stats = render_system.profile_world(world, viewport_size=(100.0, 100.0))
+
+        self.assertFalse(stats["spatial_culling_enabled"])
+        self.assertEqual(stats["render_entities"], 3)
+
+    def test_spatial_culling_preserves_render_sort_order_for_visible_entities(self) -> None:
+        world = World()
+        world.feature_metadata = {"render_2d": {"sorting_layers": ["Default", "Gameplay", "Foreground"]}}
+        self._make_camera_entity(world)
+        self._make_sprite_entity(world, "Gameplay", x=20.0, sorting_layer="Gameplay", order_in_layer=5)
+        self._make_sprite_entity(world, "Ground", x=20.0, sorting_layer="Default", order_in_layer=0)
+        self._make_sprite_entity(world, "Foreground", x=20.0, sorting_layer="Foreground", order_in_layer=0)
+        self._make_sprite_entity(world, "Outside", x=300.0, sorting_layer="Default", order_in_layer=-10)
+
+        render_system = RenderSystem()
+        graph = render_system._public_graph(render_system._build_render_graph(world, viewport_size=(100.0, 100.0)))
+
+        self.assertEqual([command["entity_name"] for command in graph["passes"][0]["commands"]], ["Ground", "Gameplay", "Foreground"])
+
+    def test_spatial_culling_cache_key_tracks_viewport_and_flag(self) -> None:
+        world = World()
+        self._make_camera_entity(world)
+        self._make_sprite_entity(world, "Near", x=10.0)
+        self._make_sprite_entity(world, "Far", x=140.0)
+
+        render_system = RenderSystem()
+        small = render_system._public_graph(render_system._build_render_graph(world, viewport_size=(100.0, 100.0)))
+        large = render_system._public_graph(render_system._build_render_graph(world, viewport_size=(240.0, 100.0)))
+        render_system.set_spatial_culling_enabled(False)
+        disabled = render_system._public_graph(render_system._build_render_graph(world, viewport_size=(100.0, 100.0)))
+
+        self.assertEqual([command["entity_name"] for command in small["passes"][0]["commands"]], ["Near"])
+        self.assertEqual([command["entity_name"] for command in large["passes"][0]["commands"]], ["Near", "Far"])
+        self.assertEqual([command["entity_name"] for command in disabled["passes"][0]["commands"]], ["Camera", "Near", "Far"])
+
     def test_headless_profile_reports_stable_metrics_for_large_scene(self) -> None:
         world = World()
         world.feature_metadata = {"render_2d": {"sorting_layers": ["Default", "Gameplay"]}}
@@ -313,6 +395,90 @@ class RenderGraphTests(unittest.TestCase):
         third_stats = render_system.profile_world(world)
         self.assertEqual(third_stats["tilemap_chunks"], 2)
         self.assertEqual(third_stats["tilemap_chunk_rebuilds"], 1)
+
+    def test_tilemap_render_graph_uses_precomputed_runtime_chunks(self) -> None:
+        world = World()
+        tilemap_entity = world.create_entity("Map")
+        tilemap_entity.add_component(Transform(x=0.0, y=0.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        tilemap_entity.add_component(
+            Tilemap(
+                cell_width=16,
+                cell_height=16,
+                layers=[{"name": "Ground", "tiles": [{"x": 0, "y": 0, "tile_id": "grass"}, {"x": 20, "y": 0, "tile_id": "stone"}]}],
+            )
+        )
+        tilemap_entity.add_component(RenderOrder2D(sorting_layer="Default", order_in_layer=0, render_pass="World"))
+
+        render_system = RenderSystem()
+        with patch.object(render_system, "_partition_tilemap_layer", side_effect=AssertionError("legacy partition should not run")):
+            stats = render_system.profile_world(world)
+
+        self.assertEqual(stats["tilemap_chunks"], 2)
+        self.assertEqual(stats["tilemap_chunk_rebuilds"], 2)
+
+    def test_tilemap_render_graph_culls_chunks_to_camera_bounds(self) -> None:
+        world = World()
+        self._make_camera_entity(world)
+        tilemap_entity = world.create_entity("Map")
+        tilemap_entity.add_component(Transform(x=0.0, y=0.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        tilemap_entity.add_component(
+            Tilemap(
+                cell_width=16,
+                cell_height=16,
+                layers=[{"name": "Ground", "tiles": [{"x": 0, "y": 0, "tile_id": "grass"}, {"x": 20, "y": 0, "tile_id": "stone"}]}],
+            )
+        )
+        tilemap_entity.add_component(RenderOrder2D(sorting_layer="Default", order_in_layer=0, render_pass="World"))
+
+        render_system = RenderSystem()
+        stats = render_system.profile_world(world, viewport_size=(100.0, 100.0))
+
+        self.assertEqual(stats["tilemap_total_chunks"], 2)
+        self.assertEqual(stats["tilemap_visible_chunks"], 1)
+        self.assertEqual(stats["tilemap_chunks"], 1)
+        self.assertEqual(stats["render_commands"], 1)
+
+    def test_tilemap_render_graph_without_camera_keeps_all_chunks(self) -> None:
+        world = World()
+        tilemap_entity = world.create_entity("Map")
+        tilemap_entity.add_component(Transform(x=0.0, y=0.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        tilemap_entity.add_component(
+            Tilemap(
+                cell_width=16,
+                cell_height=16,
+                layers=[{"name": "Ground", "tiles": [{"x": 0, "y": 0, "tile_id": "grass"}, {"x": 20, "y": 0, "tile_id": "stone"}]}],
+            )
+        )
+        tilemap_entity.add_component(RenderOrder2D(sorting_layer="Default", order_in_layer=0, render_pass="World"))
+
+        render_system = RenderSystem()
+        stats = render_system.profile_world(world, viewport_size=(100.0, 100.0))
+
+        self.assertEqual(stats["tilemap_total_chunks"], 2)
+        self.assertEqual(stats["tilemap_visible_chunks"], 2)
+        self.assertEqual(stats["tilemap_chunks"], 2)
+
+    def test_tilemap_debug_chunk_draw_keeps_all_chunks(self) -> None:
+        world = World()
+        self._make_camera_entity(world)
+        tilemap_entity = world.create_entity("Map")
+        tilemap_entity.add_component(Transform(x=0.0, y=0.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        tilemap_entity.add_component(
+            Tilemap(
+                cell_width=16,
+                cell_height=16,
+                layers=[{"name": "Ground", "tiles": [{"x": 0, "y": 0, "tile_id": "grass"}, {"x": 20, "y": 0, "tile_id": "stone"}]}],
+            )
+        )
+        tilemap_entity.add_component(RenderOrder2D(sorting_layer="Default", order_in_layer=0, render_pass="World"))
+
+        render_system = RenderSystem()
+        render_system.set_debug_options(draw_tile_chunks=True)
+        stats = render_system.profile_world(world, viewport_size=(100.0, 100.0))
+
+        self.assertEqual(stats["tilemap_total_chunks"], 2)
+        self.assertEqual(stats["tilemap_visible_chunks"], 2)
+        self.assertEqual(stats["tilemap_chunks"], 2)
 
     def test_large_tilemap_profile_reports_chunked_batches(self) -> None:
         world = World()

@@ -157,7 +157,10 @@ La foundation del dominio vive en `engine/tilemap/model.py`. Esa capa mantiene:
 
 `engine/components/tilemap.py` sigue siendo el componente serializable estable;
 usa esa foundation para parseo y serializacion canonica, sin convertirse en un
-espejo complejo del dominio ni en una integracion fuerte con editor/runtime.
+espejo complejo del dominio ni en una integracion fuerte con editor/runtime. En
+runtime mantiene tiles por coordenada `tuple[int, int]` y chunks efimeros con
+`version`/`dirty`; ese cache alimenta el render sin cambiar el payload de
+escena ni serializar estado runtime.
 
 Esta foundation prepara evolucion futura de metadata por tile, layers y reglas
 sin mezclar aun editor visual nuevo ni cambios amplios en runtime/render.

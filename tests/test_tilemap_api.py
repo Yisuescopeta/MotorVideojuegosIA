@@ -607,6 +607,102 @@ class TilemapComponentTests(unittest.TestCase):
         self.assertEqual(tile["animation_id"], "")
         self.assertEqual(tile["terrain_type"], "")
 
+    def test_tilemap_runtime_tiles_use_tuple_keys_after_loading_legacy_dict(self) -> None:
+        from engine.components.tilemap import Tilemap
+
+        tilemap = Tilemap.from_dict(
+            {
+                "cell_width": 16,
+                "cell_height": 16,
+                "layers": [{"name": "Ground", "tiles": {"2,3": {"tile_id": "dirt"}}}],
+            }
+        )
+
+        layer = tilemap.layers[0]
+        self.assertIn((2, 3), layer["tiles"])
+        self.assertNotIn("2,3", layer["tiles"])
+        self.assertEqual(layer["tiles"][(2, 3)]["tile_id"], "dirt")
+
+    def test_tilemap_set_tile_marks_only_target_chunk_dirty(self) -> None:
+        from engine.components.tilemap import Tilemap
+
+        tilemap = Tilemap(
+            cell_width=16,
+            cell_height=16,
+            layers=[{"name": "Ground", "tiles": [{"x": 0, "y": 0, "tile_id": "grass"}, {"x": 20, "y": 0, "tile_id": "stone"}]}],
+        )
+        tilemap.mark_runtime_chunk_clean(tilemap.layers[0], 0, 0)
+        tilemap.mark_runtime_chunk_clean(tilemap.layers[0], 1, 0)
+
+        tilemap.set_tile("Ground", 2, 0, "grass_edge")
+
+        first_chunk = tilemap.get_runtime_chunk("Ground", 0, 0)
+        second_chunk = tilemap.get_runtime_chunk("Ground", 1, 0)
+        self.assertIsNotNone(first_chunk)
+        self.assertIsNotNone(second_chunk)
+        self.assertTrue(first_chunk["dirty"])
+        self.assertFalse(second_chunk["dirty"])
+        self.assertIn((2, 0), first_chunk["tiles"])
+
+    def test_tilemap_clear_tile_marks_chunk_dirty_and_serialization_stays_list(self) -> None:
+        from engine.components.tilemap import Tilemap
+
+        tilemap = Tilemap(
+            cell_width=16,
+            cell_height=16,
+            layers=[{"name": "Ground", "tiles": [{"x": 1, "y": 1, "tile_id": "grass"}]}],
+        )
+        tilemap.mark_runtime_chunk_clean(tilemap.layers[0], 0, 0)
+
+        tilemap.clear_tile("Ground", 1, 1)
+
+        chunk = tilemap.get_runtime_chunk("Ground", 0, 0)
+        self.assertIsNotNone(chunk)
+        self.assertTrue(chunk["dirty"])
+        self.assertNotIn((1, 1), chunk["tiles"])
+        serialized = tilemap.to_dict()
+        self.assertEqual(serialized["layers"][0]["tiles"], [])
+
+    def test_tilemap_serialization_stays_scene_format_after_tuple_runtime_mutation(self) -> None:
+        from engine.components.tilemap import Tilemap
+
+        tilemap = Tilemap(layers=[{"name": "Ground", "tiles": {"0,0": {"tile_id": "grass"}}}])
+        tilemap.set_tile("Ground", 2, 3, "stone")
+
+        serialized_tiles = tilemap.to_dict()["layers"][0]["tiles"]
+        self.assertEqual(
+            [(tile["x"], tile["y"], tile["tile_id"]) for tile in serialized_tiles],
+            [(0, 0, "grass"), (2, 3, "stone")],
+        )
+
+    def test_tilemap_visible_chunk_query_returns_single_intersecting_chunk(self) -> None:
+        from engine.components.tilemap import Tilemap
+        from engine.components.transform import Transform
+
+        tilemap = Tilemap(
+            cell_width=16,
+            cell_height=16,
+            layers=[{"name": "Ground", "tiles": [{"x": 0, "y": 0, "tile_id": "grass"}, {"x": 16, "y": 0, "tile_id": "stone"}]}],
+        )
+
+        chunks = tilemap.iter_visible_runtime_chunks(tilemap.layers[0], Transform(), (0.0, 0.0, 128.0, 128.0))
+
+        self.assertEqual([chunk["coord"] for chunk in chunks], [(0, 0)])
+
+    def test_tilemap_visible_chunk_query_returns_adjacent_chunks_on_boundary(self) -> None:
+        from engine.components.tilemap import Tilemap
+        from engine.components.transform import Transform
+
+        tilemap = Tilemap(
+            cell_width=16,
+            cell_height=16,
+            layers=[{"name": "Ground", "tiles": [{"x": 0, "y": 0, "tile_id": "grass"}, {"x": 16, "y": 0, "tile_id": "stone"}]}],
+        )
+
+        chunks = tilemap.iter_visible_runtime_chunks(tilemap.layers[0], Transform(), (250.0, 0.0, 260.0, 64.0))
+
+        self.assertEqual([chunk["coord"] for chunk in chunks], [(0, 0), (1, 0)])
+
     def test_tilemap_set_tile_create_layer_false_raises(self) -> None:
         from engine.components.tilemap import Tilemap
 

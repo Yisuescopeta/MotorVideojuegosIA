@@ -66,8 +66,11 @@ def build_tilemap_collision_regions(tilemap: Tilemap, *, merge_shapes: bool = Tr
         for key, tile in layer.get("tiles", {}).items():
             if not _tile_is_solid(tile):
                 continue
-            x_value, y_value = key.split(",", 1)
-            solid_cells.add((int(x_value), int(y_value)))
+            if isinstance(key, tuple) and len(key) == 2:
+                solid_cells.add((int(key[0]), int(key[1])))
+            else:
+                x_value, y_value = str(key).split(",", 1)
+                solid_cells.add((int(x_value), int(y_value)))
     if not solid_cells:
         return []
     if not merge_shapes:

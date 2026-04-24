@@ -24,6 +24,7 @@ from engine.rendering.pipeline_executor import RenderPipelineExecutor2D
 from engine.rendering.pipeline_planner import RenderPipelinePlanner2D
 from engine.rendering.pipeline_types import FramePlan2D
 from engine.rendering.render_targets import RenderTargetPool
+from engine.rendering.render_spatial_index import AABB, RenderSpatialIndex
 from engine.rendering.tilemap_chunk_renderer import TilemapChunkRenderer
 from engine.resources.texture_manager import TextureManager
 
@@ -52,10 +53,12 @@ class RenderSystem:
         self.debug_draw_labels: bool = False
         self.debug_draw_tile_chunks: bool = False
         self.debug_draw_camera: bool = False
+        self.spatial_culling_enabled: bool = True
         self._debug_primitives: list[dict[str, Any]] = []
+        self._render_spatial_index: RenderSpatialIndex = RenderSpatialIndex()
         self._sorted_entities_cache_key: tuple[int, int, int, tuple[str, ...]] | None = None
         self._sorted_entities_cache: list[Entity] = []
-        self._render_graph_cache_key: tuple[int, int, int, int, tuple[int, int], tuple[str, ...], bool, bool, bool, bool, tuple[Any, ...]] | None = None
+        self._render_graph_cache_key: tuple[Any, ...] | None = None
         self._render_graph_cache: dict[str, Any] = {"passes": [], "totals": {}}
         self._tilemap_chunk_cache: dict[tuple[int, str, int, int], dict[str, Any]] = {}
         self._last_render_stats: dict[str, Any] = {
@@ -65,11 +68,16 @@ class RenderSystem:
             "batches": 0,
             "state_changes": 0,
             "tilemap_chunks": 0,
+            "tilemap_total_chunks": 0,
+            "tilemap_visible_chunks": 0,
             "tilemap_tile_draw_calls": 0,
             "tilemap_chunk_rebuilds": 0,
             "pass_count": len(self.PASS_SEQUENCE),
             "render_target_passes": 0,
             "render_target_composites": 0,
+            "spatial_culling_enabled": False,
+            "spatial_total_entities": 0,
+            "spatial_visible_entities": 0,
             "sort_cache": {"hits": 0, "misses": 0},
             "passes": {},
         }
@@ -89,6 +97,9 @@ class RenderSystem:
     def reset_project_resources(self) -> None:
         self._texture_manager.unload_all()
         self._tilemap_chunk_renderer.invalidate_cached_targets(self._tilemap_chunk_cache)
+
+    def set_spatial_culling_enabled(self, enabled: bool) -> None:
+        self.spatial_culling_enabled = bool(enabled)
 
     def set_debug_options(
         self,
@@ -233,13 +244,16 @@ class RenderSystem:
     def _build_render_graph(self, world: World, viewport_size: Optional[tuple[float, float]] = None) -> dict[str, Any]:
         sorting_layers = self._get_sorting_layers(world)
         normalized_viewport = self._normalize_viewport_size(viewport_size)
+        camera_bounds = self._resolve_spatial_camera_bounds(world, viewport_size, normalized_viewport)
         cache_key = (
             id(world),
             self._world_version(world, "render_version"),
             self._world_version(world, "transform_version"),
             int(getattr(world, "selection_version", -1)),
             normalized_viewport,
+            camera_bounds,
             tuple(sorting_layers),
+            bool(self.spatial_culling_enabled),
             bool(self.debug_draw_colliders),
             bool(self.debug_draw_labels),
             bool(self.debug_draw_tile_chunks),
@@ -256,11 +270,14 @@ class RenderSystem:
             }
 
         sorted_entities = self._sorted_render_entities(world)
+        render_entities, spatial_stats = self._spatially_filter_render_entities(sorted_entities, camera_bounds)
         pass_commands: dict[str, list[dict[str, Any]]] = {name: [] for name in self.PASS_SEQUENCE}
         tilemap_chunks = 0
+        tilemap_total_chunks = 0
+        tilemap_visible_chunks = 0
         tilemap_chunk_rebuilds = 0
 
-        for entity in sorted_entities:
+        for entity in render_entities:
             transform = entity.get_component(Transform)
             if transform is None:
                 continue
@@ -270,9 +287,18 @@ class RenderSystem:
             sorting_layer = self._get_sorting_layer(render_order)
             order_in_layer = self._get_order_in_layer(render_order)
             if tilemap is not None and tilemap.enabled:
-                chunk_commands, rebuilds = self._build_tilemap_commands(entity, transform, tilemap, sorting_layer, order_in_layer)
+                chunk_commands, rebuilds, total_chunks, visible_chunks = self._build_tilemap_commands(
+                    entity,
+                    transform,
+                    tilemap,
+                    sorting_layer,
+                    order_in_layer,
+                    camera_bounds=None if self.debug_draw_tile_chunks else camera_bounds,
+                )
                 pass_commands[pass_name].extend(chunk_commands)
                 tilemap_chunks += len(chunk_commands)
+                tilemap_total_chunks += total_chunks
+                tilemap_visible_chunks += visible_chunks
                 tilemap_chunk_rebuilds += rebuilds
                 if self.debug_draw_tile_chunks:
                     for chunk_command in chunk_commands:
@@ -419,9 +445,12 @@ class RenderSystem:
             "batches": total_batches,
             "state_changes": total_state_changes,
             "tilemap_chunks": tilemap_chunks,
+            "tilemap_total_chunks": tilemap_total_chunks,
+            "tilemap_visible_chunks": tilemap_visible_chunks,
             "tilemap_tile_draw_calls": total_tilemap_tile_draw_calls,
             "tilemap_chunk_rebuilds": tilemap_chunk_rebuilds,
             "pass_count": len(self.PASS_SEQUENCE),
+            **spatial_stats,
             "sort_cache": {"hits": self._sort_cache_hits, "misses": self._sort_cache_misses},
             "passes": {
                 pass_data["name"]: dict(pass_data["stats"])
@@ -448,6 +477,30 @@ class RenderSystem:
 
     def _tilemap_command_draw_call_count(self, command: dict[str, Any]) -> int:
         return self._tilemap_chunk_renderer.tile_draw_call_count(command)
+
+    def _spatially_filter_render_entities(
+        self,
+        sorted_entities: list[Entity],
+        camera_bounds: AABB | None,
+    ) -> tuple[list[Entity], dict[str, Any]]:
+        stats = {
+            "spatial_culling_enabled": False,
+            "spatial_total_entities": len(sorted_entities),
+            "spatial_visible_entities": len(sorted_entities),
+        }
+        if not self.spatial_culling_enabled or self.debug_draw_tile_chunks or camera_bounds is None:
+            return sorted_entities, stats
+
+        try:
+            self._render_spatial_index.rebuild(sorted_entities)
+            visible_ids = self._render_spatial_index.query(camera_bounds)
+        except Exception:
+            return sorted_entities, stats
+
+        filtered = [entity for entity in sorted_entities if int(entity.id) in visible_ids]
+        stats["spatial_culling_enabled"] = True
+        stats["spatial_visible_entities"] = len(filtered)
+        return filtered, stats
 
     def _build_frame_plan(
         self,
@@ -668,11 +721,13 @@ class RenderSystem:
         tilemap: Tilemap,
         sorting_layer: str,
         order_in_layer: int,
-    ) -> tuple[list[dict[str, Any]], int]:
-        del transform
+        camera_bounds: AABB | None = None,
+    ) -> tuple[list[dict[str, Any]], int, int, int]:
         commands: list[dict[str, Any]] = []
         rebuilds = 0
         live_keys: set[tuple[int, str, int, int]] = set()
+        total_chunks = 0
+        visible_chunks = 0
         tileset_ref = tilemap.get_tileset_reference()
         fallback_atlas_id = self._resolve_atlas_id(tileset_ref)
         if not fallback_atlas_id:
@@ -680,26 +735,42 @@ class RenderSystem:
         for layer_index, layer in enumerate(tilemap.layers):
             if not bool(layer.get("visible", True)):
                 continue
-            chunks = self._partition_tilemap_layer(tilemap, layer)
-            for (chunk_x, chunk_y), chunk_tiles in sorted(chunks.items()):
-                cache_key = (int(entity.id), str(layer.get("name", f"Layer_{layer_index}")), int(chunk_x), int(chunk_y))
-                live_keys.add(cache_key)
+            layer_name = str(layer.get("name", f"Layer_{layer_index}"))
+            all_chunks = tilemap.iter_runtime_chunks(layer)
+            total_chunks += len(all_chunks)
+            for runtime_chunk in all_chunks:
+                chunk_x, chunk_y = runtime_chunk.get("coord", (0, 0))
+                live_keys.add((int(entity.id), layer_name, int(chunk_x), int(chunk_y)))
+            runtime_chunks = (
+                all_chunks
+                if camera_bounds is None
+                else tilemap.iter_visible_runtime_chunks(layer, transform, camera_bounds)
+            )
+            visible_chunks += len(runtime_chunks)
+            for runtime_chunk in runtime_chunks:
+                chunk_x, chunk_y = runtime_chunk.get("coord", (0, 0))
+                chunk_tiles = self._runtime_chunk_tiles(runtime_chunk)
+                cache_key = (int(entity.id), layer_name, int(chunk_x), int(chunk_y))
                 signature = self._tilemap_chunk_signature(tilemap, layer, chunk_tiles)
+                runtime_version = int(runtime_chunk.get("version", 0))
+                runtime_dirty = bool(runtime_chunk.get("dirty", True))
                 cached = self._tilemap_chunk_cache.get(cache_key)
-                if cached is None or cached.get("signature") != signature:
+                if cached is None or cached.get("signature") != signature or cached.get("runtime_version") != runtime_version or runtime_dirty:
                     chunk_data = self._build_tilemap_chunk_data(tilemap, layer, chunk_x, chunk_y, chunk_tiles)
                     cached = {
                         "signature": signature,
+                        "runtime_version": runtime_version,
                         "data": chunk_data,
                         "render_target_dirty": True,
                         "render_target_name": self._tilemap_chunk_render_target_name(
                             int(entity.id),
-                            str(layer.get("name", f"Layer_{layer_index}")),
+                            layer_name,
                             int(chunk_x),
                             int(chunk_y),
                         ),
                     }
                     self._tilemap_chunk_cache[cache_key] = cached
+                    tilemap.mark_runtime_chunk_clean(layer, chunk_x, chunk_y, runtime_version)
                     rebuilds += 1
                 chunk_atlas_id = self._tilemap_chunk_atlas_id(cached["data"], fallback_atlas_id)
                 commands.append(
@@ -709,7 +780,7 @@ class RenderSystem:
                         "entity_name": entity.name,
                         "sorting_layer": sorting_layer,
                         "order_in_layer": order_in_layer + layer_index,
-                        "chunk_id": f"{layer.get('name', f'Layer_{layer_index}')}/{chunk_x},{chunk_y}",
+                        "chunk_id": f"{layer_name}/{chunk_x},{chunk_y}",
                         "chunk_data": cached["data"],
                         "cache_key": cache_key,
                         "render_target_name": cached.get("render_target_name", ""),
@@ -729,19 +800,51 @@ class RenderSystem:
             cached = self._tilemap_chunk_cache.pop(key, None)
             if cached is not None:
                 self._tilemap_chunk_renderer.unload_target(str(cached.get("render_target_name", "")))
-        return commands, rebuilds
+        return commands, rebuilds, total_chunks, visible_chunks
 
     @staticmethod
     def _tilemap_chunk_render_target_name(entity_id: int, layer_name: str, chunk_x: int, chunk_y: int) -> str:
         safe_layer = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in str(layer_name or "Layer"))
         return f"tilemap_chunk_{int(entity_id)}_{safe_layer}_{int(chunk_x)}_{int(chunk_y)}"
 
+    def _runtime_chunk_tiles(self, runtime_chunk: dict[str, Any]) -> list[dict[str, Any]]:
+        tiles: list[dict[str, Any]] = []
+        raw_tiles = runtime_chunk.get("tiles", {})
+        if not isinstance(raw_tiles, dict):
+            return tiles
+        for coord, tile in raw_tiles.items():
+            if not isinstance(tile, dict):
+                continue
+            if isinstance(coord, tuple) and len(coord) == 2:
+                tile_x = int(coord[0])
+                tile_y = int(coord[1])
+            else:
+                x_value, y_value = str(coord).split(",", 1)
+                tile_x = int(x_value)
+                tile_y = int(y_value)
+            tiles.append(
+                {
+                    "x": tile_x,
+                    "y": tile_y,
+                    "tile_id": str(tile.get("tile_id", "")),
+                    "flags": list(tile.get("flags", [])),
+                    "tags": list(tile.get("tags", [])),
+                    "custom": dict(tile.get("custom", {})),
+                    "source": dict(tile.get("source", {})),
+                }
+            )
+        return tiles
+
     def _partition_tilemap_layer(self, tilemap: Tilemap, layer: dict[str, Any]) -> dict[tuple[int, int], list[dict[str, Any]]]:
         chunks: dict[tuple[int, int], list[dict[str, Any]]] = {}
         for key, tile in layer.get("tiles", {}).items():
-            x_value, y_value = key.split(",", 1)
-            tile_x = int(x_value)
-            tile_y = int(y_value)
+            if isinstance(key, tuple) and len(key) == 2:
+                tile_x = int(key[0])
+                tile_y = int(key[1])
+            else:
+                x_value, y_value = str(key).split(",", 1)
+                tile_x = int(x_value)
+                tile_y = int(y_value)
             chunk = (tile_x // self.TILEMAP_CHUNK_SIZE, tile_y // self.TILEMAP_CHUNK_SIZE)
             chunks.setdefault(chunk, []).append(
                 {
@@ -924,6 +1027,26 @@ class RenderSystem:
             return (800, 600)
         return (max(1, int(viewport_size[0])), max(1, int(viewport_size[1])))
 
+    def _resolve_spatial_camera_bounds(
+        self,
+        world: World,
+        viewport_size: Optional[tuple[float, float]],
+        normalized_viewport: tuple[int, int],
+    ) -> AABB | None:
+        if not self.spatial_culling_enabled:
+            return None
+        if viewport_size is None and not bool(hasattr(rl, "is_window_ready") and rl.is_window_ready()):
+            return None
+        camera = self._build_camera_from_world(world, viewport_size=normalized_viewport)
+        if camera is None:
+            return None
+        zoom = max(abs(float(camera.zoom)), 0.0001)
+        width = float(normalized_viewport[0]) / zoom
+        height = float(normalized_viewport[1]) / zoom
+        left = float(camera.target.x) - (float(camera.offset.x) / zoom)
+        top = float(camera.target.y) - (float(camera.offset.y) / zoom)
+        return (left, top, left + width, top + height)
+
     def _compute_minimap_bounds(self, entities: list[Entity]) -> tuple[float, float, float, float]:
         min_x = min((entity.get_component(Transform).x for entity in entities if entity.get_component(Transform) is not None), default=-100.0)
         max_x = max((entity.get_component(Transform).x for entity in entities if entity.get_component(Transform) is not None), default=100.0)
@@ -1019,11 +1142,16 @@ class RenderSystem:
             "batches": int(payload.get("batches", 0)),
             "state_changes": int(payload.get("state_changes", 0)),
             "tilemap_chunks": int(payload.get("tilemap_chunks", 0)),
+            "tilemap_total_chunks": int(payload.get("tilemap_total_chunks", payload.get("tilemap_chunks", 0))),
+            "tilemap_visible_chunks": int(payload.get("tilemap_visible_chunks", payload.get("tilemap_chunks", 0))),
             "tilemap_tile_draw_calls": int(payload.get("tilemap_tile_draw_calls", 0)),
             "tilemap_chunk_rebuilds": int(payload.get("tilemap_chunk_rebuilds", 0)),
             "pass_count": int(payload.get("pass_count", len(self.PASS_SEQUENCE))),
             "render_target_passes": int(payload.get("render_target_passes", 0)),
             "render_target_composites": int(payload.get("render_target_composites", 0)),
+            "spatial_culling_enabled": bool(payload.get("spatial_culling_enabled", False)),
+            "spatial_total_entities": int(payload.get("spatial_total_entities", 0)),
+            "spatial_visible_entities": int(payload.get("spatial_visible_entities", 0)),
             "sort_cache": {
                 "hits": int(payload.get("sort_cache", {}).get("hits", 0)),
                 "misses": int(payload.get("sort_cache", {}).get("misses", 0)),

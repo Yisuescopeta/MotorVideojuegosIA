@@ -186,6 +186,8 @@ def run_benchmark(
                     operations["render_preparation"] = {
                         "ms": _elapsed_ms(render_prep_start),
                         "stats": render_stats,
+                        "visible_entities": int(render_stats.get("spatial_visible_entities", render_stats.get("render_entities", 0))),
+                        "total_entities": int(render_stats.get("spatial_total_entities", render_stats.get("render_entities", 0))),
                     }
 
                 api.reset_profiler(

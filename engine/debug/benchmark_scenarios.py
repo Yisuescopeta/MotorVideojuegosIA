@@ -116,6 +116,26 @@ def _make_sprite_payload(index: int = 0) -> dict[str, Any]:
     }
 
 
+def _make_camera_payload(*, offset_x: float = 400.0, offset_y: float = 300.0, zoom: float = 1.0) -> dict[str, Any]:
+    return {
+        "enabled": True,
+        "offset_x": float(offset_x),
+        "offset_y": float(offset_y),
+        "zoom": float(zoom),
+        "rotation": 0.0,
+        "is_primary": True,
+        "follow_entity": "",
+        "framing_mode": "locked",
+        "dead_zone_width": 0.0,
+        "dead_zone_height": 0.0,
+        "clamp_left": None,
+        "clamp_right": None,
+        "clamp_top": None,
+        "clamp_bottom": None,
+        "recenter_on_play": True,
+    }
+
+
 def _make_rect_transform_payload(
     x: float,
     y: float,
@@ -385,6 +405,17 @@ def many_sprite_entities(
     normalized_columns = _normalize_columns(columns)
     normalized_spacing = _normalize_spacing(spacing)
     entities = [
+        {
+            "name": "BenchmarkCamera",
+            "active": True,
+            "tag": "",
+            "layer": "Default",
+            "components": {
+                "Transform": _make_transform_payload(400.0, 300.0),
+                "Camera2D": _make_camera_payload(),
+            },
+        },
+        *[
         _make_sprite_entity(
             f"Entity_{index}",
             x=float((index % normalized_columns) * normalized_spacing),
@@ -392,9 +423,11 @@ def many_sprite_entities(
             index=index,
         )
         for index in range(normalized_entity_count)
+        ],
     ]
     params = {
         "entity_count": normalized_entity_count,
+        "total_entities": len(entities),
         "columns": normalized_columns,
         "spacing": normalized_spacing,
     }
@@ -527,14 +560,25 @@ def huge_tilemap(
             },
         },
     }
+    camera = {
+        "name": "BenchmarkCamera",
+        "active": True,
+        "tag": "",
+        "layer": "Default",
+        "components": {
+            "Transform": _make_transform_payload(400.0, 300.0),
+            "Camera2D": _make_camera_payload(),
+        },
+    }
     params = {
         "tilemap_width": width,
         "tilemap_height": height,
         "tile_count": width * height,
+        "total_entities": 2,
     }
     return {
         "name": "huge_tilemap",
-        "entities": [entity],
+        "entities": [camera, entity],
         "rules": [],
         "feature_metadata": _base_feature_metadata(backend),
     }, params

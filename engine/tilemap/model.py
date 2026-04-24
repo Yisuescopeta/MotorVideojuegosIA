@@ -30,6 +30,8 @@ class TileCoord:
 
     @classmethod
     def from_key(cls, key: Any) -> "TileCoord":
+        if isinstance(key, tuple) and len(key) == 2:
+            return cls(int(key[0]), int(key[1]))
         x_value, y_value = str(key).split(",", 1)
         return cls(int(x_value), int(y_value))
 
