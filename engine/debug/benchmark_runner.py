@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,10 @@ def _write_scene(path: Path, payload: dict[str, Any]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
     return path
+
+
+def _elapsed_ms(start: float) -> float:
+    return (time.perf_counter() - start) * 1000.0
 
 
 def _system_metric(report: dict[str, Any], name: str, field: str) -> float:
@@ -74,9 +79,12 @@ def run_benchmark(
     deep: bool = False,
     static_count: int = 100,
     dynamic_count: int = 12,
+    entity_count: int = 1000,
     columns: int = 10,
     spacing: float = 24.0,
     velocity: float = 160.0,
+    tilemap_width: int = 128,
+    tilemap_height: int = 128,
 ) -> dict[str, Any]:
     if bool(scenario) == bool(scene_path):
         raise ValueError("Provide exactly one of scenario or scene_path")
@@ -94,6 +102,7 @@ def run_benchmark(
         source: str
         scenario_name: str | None = None
         resolved_scene_path: Path
+        operations: dict[str, Any] = {}
 
         if scenario is not None:
             source = "scenario"
@@ -104,9 +113,12 @@ def run_benchmark(
                 backend=backend,
                 static_count=static_count,
                 dynamic_count=dynamic_count,
+                entity_count=entity_count,
                 columns=columns,
                 spacing=spacing,
                 velocity=velocity,
+                tilemap_width=tilemap_width,
+                tilemap_height=tilemap_height,
             )
             resolved_scene_path = _write_scene(
                 benchmark_project_root / "levels" / f"{scenario_name}.json",
@@ -125,7 +137,9 @@ def run_benchmark(
             global_state_dir=(temp_root / "global_state").as_posix(),
         )
         try:
+            load_start = time.perf_counter()
             api.load_level(resolved_scene_path.as_posix())
+            operations["load_level"] = {"ms": _elapsed_ms(load_start)}
             if api.game is None:
                 raise RuntimeError("Engine game is not initialized")
             game = api.game
@@ -142,8 +156,37 @@ def run_benchmark(
             previous_deep = bool(getattr(game, "enable_deep_profiling", False))
 
             try:
+                if scenario_name == "transform_edit_stress":
+                    target_entity = str(parameters.get("target_entity") or f"Entity_{max(0, int(entity_count) - 1)}")
+                    target_component = str(parameters.get("target_component") or "Transform")
+                    target_property = str(parameters.get("target_property") or "x")
+                    target_value = parameters.get("target_value", 123456.0)
+                    edit_start = time.perf_counter()
+                    edit_result = api.edit_component(target_entity, target_component, target_property, target_value)
+                    operations["transform_edit"] = {
+                        "ms": _elapsed_ms(edit_start),
+                        "success": bool(edit_result.get("success", False)),
+                        "target_entity": target_entity,
+                        "field": f"{target_component}.{target_property}",
+                    }
+
                 if normalized_mode == "play":
+                    play_start = time.perf_counter()
                     api.play()
+                    operations["edit_to_play"] = {"ms": _elapsed_ms(play_start)}
+
+                render_system = getattr(game, "render_system", None)
+                active_world = game.world
+                if render_system is not None and active_world is not None and hasattr(render_system, "profile_world"):
+                    render_prep_start = time.perf_counter()
+                    render_stats = render_system.profile_world(
+                        active_world,
+                        viewport_size=(float(getattr(game, "width", 800)), float(getattr(game, "height", 600))),
+                    )
+                    operations["render_preparation"] = {
+                        "ms": _elapsed_ms(render_prep_start),
+                        "stats": render_stats,
+                    }
 
                 api.reset_profiler(
                     run_label=f"benchmark:{scenario_name or resolved_scene_path.name}:{normalized_mode}"
@@ -163,6 +206,10 @@ def run_benchmark(
                     if world is not None and hasattr(game, "_resolve_physics_backend_name")
                     else str(backend)
                 )
+                if normalized_mode == "play":
+                    stop_start = time.perf_counter()
+                    api.stop()
+                    operations["play_to_edit"] = {"ms": _elapsed_ms(stop_start)}
             finally:
                 game._metrics_sample_every = previous_sample_every
                 game.show_performance_overlay = previous_overlay
@@ -184,6 +231,7 @@ def run_benchmark(
         "profiler_frames_recorded": int(profiler_report.get("frames", 0)),
         "dt": delta_time,
         "parameters": parameters,
+        "operations": operations,
         "profiler_report": profiler_report,
         "last_sample": last_sample,
         "summary": _build_summary(profiler_report),

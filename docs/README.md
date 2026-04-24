@@ -85,6 +85,7 @@ Estos documentos describen tooling real cuando el codigo existe, pero no amplian
 el contrato de `core obligatorio`.
 
 - [navigation.md](navigation.md) - busqueda de rutas experimental.
+- [performance.md](performance.md) - benchmarks headless y mediciones sinteticas.
 - [rl.md](rl.md) - wrappers RL, datasets y runners headless.
 - [ai_assisted_workflows.md](ai_assisted_workflows.md) - modelos de flujo para automatizacion.
 - [tooling_foundation.md](tooling_foundation.md) - tooling local para checks enfocados, audit del registry y soporte read-only de worktrees.
