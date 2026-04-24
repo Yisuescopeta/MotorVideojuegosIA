@@ -8,8 +8,15 @@ from uuid import uuid4
 
 from engine.components.scriptbehaviour import ScriptBehaviour
 from engine.core.hot_reload import HotReloadManager
+from engine.ecs.component import Component
 from engine.ecs.world import World
-from engine.systems.script_behaviour_system import ScriptBehaviourSystem
+from engine.systems.script_behaviour_system import ScriptBehaviourContext, ScriptBehaviourSystem
+
+
+class ProbeComponent(Component):
+    def __init__(self, value: int = 0) -> None:
+        self.enabled = True
+        self.value = value
 
 
 class ScriptBehaviourSystemTests(unittest.TestCase):
@@ -155,6 +162,15 @@ class ScriptBehaviourSystemTests(unittest.TestCase):
         self.assertTrue(invoked)
         self.assertEqual(script.public_data["amount"], 7)
         self.assertEqual(script.public_data["source"], "signal")
+
+    def test_context_get_component_uses_component_name(self) -> None:
+        world = World()
+        entity = world.create_entity("Actor")
+        component = ProbeComponent(3)
+        entity.add_component(component)
+        context = ScriptBehaviourContext(world=world, entity_name="Actor", public_data={})
+
+        self.assertIs(context.get_component("ProbeComponent"), component)
 
     def test_hot_reload_invalidates_runtime_cache(self) -> None:
         module_name = self._module_name("reload_actor")

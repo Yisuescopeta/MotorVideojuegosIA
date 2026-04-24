@@ -37,10 +37,7 @@ class ScriptBehaviourContext:
         entity = self.get_entity()
         if entity is None:
             return None
-        for component in entity.iter_components():
-            if type(component).__name__ == component_name:
-                return component
-        return None
+        return entity.get_component_by_name(component_name)
 
     def log_info(self, message: str) -> None:
         log_info(f"[Script:{self.entity_name}] {message}")

@@ -46,6 +46,7 @@ class CollisionSystem:
             "narrow_phase_pairs": 0,
             "actual_collisions": 0,
         }
+        self._query_buffer: set[int] = set()
         self._spatial_hash_cell_size: float = 128.0
 
     def set_event_bus(self, event_bus: "EventBus") -> None:
@@ -78,7 +79,7 @@ class CollisionSystem:
         checked_pairs: set[tuple[int, int]] = set()
         for entity_id in sorted(entries_by_id):
             entry_a = entries_by_id[entity_id]
-            for entity_b_id in sorted(grid.query(entry_a.aabb)):
+            for entity_b_id in sorted(grid.query_into(entry_a.aabb, self._query_buffer)):
                 if entity_b_id <= entity_id:
                     continue
                 pair = (entity_id, entity_b_id)

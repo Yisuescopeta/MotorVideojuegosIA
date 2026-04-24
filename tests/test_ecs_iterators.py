@@ -16,6 +16,10 @@ class ExtraProbeComponent(Component):
         self.enabled = True
 
 
+class DerivedProbeComponent(ProbeComponent):
+    pass
+
+
 class ECSIteratorTests(unittest.TestCase):
     def test_iter_all_entities_returns_all_entities_without_list(self) -> None:
         world = World()
@@ -69,6 +73,47 @@ class ECSIteratorTests(unittest.TestCase):
 
         self.assertIsInstance(components, list)
         self.assertEqual(components, [component])
+
+    def test_get_component_exact_returns_exact_type(self) -> None:
+        entity = Entity("Entity")
+        component = ProbeComponent(1)
+        entity.add_component(component)
+
+        self.assertIs(entity.get_component_exact(ProbeComponent), component)
+
+    def test_get_component_exact_does_not_match_subclass(self) -> None:
+        entity = Entity("Entity")
+        component = DerivedProbeComponent(1)
+        entity.add_component(component)
+
+        self.assertIsNone(entity.get_component_exact(ProbeComponent))
+        self.assertIs(entity.get_component(ProbeComponent), component)
+
+    def test_get_component_by_name_returns_component(self) -> None:
+        entity = Entity("Entity")
+        component = ProbeComponent(1)
+        entity.add_component(component)
+
+        self.assertIs(entity.get_component_by_name("ProbeComponent"), component)
+
+    def test_replacing_component_updates_name_index(self) -> None:
+        entity = Entity("Entity")
+        first = ProbeComponent(1)
+        replacement = ProbeComponent(2)
+        entity.add_component(first)
+        entity.add_component(replacement)
+
+        self.assertIs(entity.get_component_by_name("ProbeComponent"), replacement)
+        self.assertIs(entity.get_component_exact(ProbeComponent), replacement)
+
+    def test_remove_component_updates_name_index(self) -> None:
+        entity = Entity("Entity")
+        component = ProbeComponent(1)
+        entity.add_component(component)
+
+        entity.remove_component(ProbeComponent)
+
+        self.assertIsNone(entity.get_component_by_name("ProbeComponent"))
 
 
 if __name__ == "__main__":
