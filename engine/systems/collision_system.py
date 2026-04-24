@@ -38,7 +38,7 @@ class _CollisionEntry:
 class CollisionSystem:
     """Sistema de deteccion de colisiones AABB."""
 
-    def __init__(self, event_bus: Optional["EventBus"] = None) -> None:
+    def __init__(self, event_bus: Optional["EventBus"] = None, *, deterministic_debug: bool = False) -> None:
         self._collisions: list[CollisionInfo] = []
         self._event_bus: Optional["EventBus"] = event_bus
         self._step_metrics: dict[str, int] = {
@@ -48,19 +48,21 @@ class CollisionSystem:
         }
         self._query_buffer: set[int] = set()
         self._spatial_hash_cell_size: float = 128.0
+        self.deterministic_debug: bool = bool(deterministic_debug)
+        self._grid: SpatialHash2D = SpatialHash2D(cell_size=self._spatial_hash_cell_size)
+        self._entries_by_id: dict[int, _CollisionEntry] = {}
+        self._checked_pairs: set[int] = set()
 
     def set_event_bus(self, event_bus: "EventBus") -> None:
         self._event_bus = event_bus
 
     def update(self, world: World) -> None:
         self._collisions.clear()
-        self._step_metrics = {
-            "candidate_pairs": 0,
-            "narrow_phase_pairs": 0,
-            "actual_collisions": 0,
-        }
-        grid = SpatialHash2D(cell_size=self._spatial_hash_cell_size)
-        entries_by_id: dict[int, _CollisionEntry] = {}
+        self._reset_step_metrics()
+        self._query_buffer.clear()
+        grid = self._prepare_grid()
+        entries_by_id = self._entries_by_id
+        entries_by_id.clear()
 
         for entity in world.get_entities_with(Transform, Collider):
             transform = entity.get_component(Transform)
@@ -76,16 +78,24 @@ class CollisionSystem:
             entries_by_id[int(entity.id)] = entry
             grid.insert(entity.id, entry.aabb)
 
-        checked_pairs: set[tuple[int, int]] = set()
-        for entity_id in sorted(entries_by_id):
-            entry_a = entries_by_id[entity_id]
-            for entity_b_id in sorted(grid.query_into(entry_a.aabb, self._query_buffer)):
+        checked_pairs = self._checked_pairs
+        checked_pairs.clear()
+        pair_shift = self._pair_shift(entries_by_id)
+        entry_items = (
+            ((entity_id, entries_by_id[entity_id]) for entity_id in sorted(entries_by_id))
+            if self.deterministic_debug
+            else entries_by_id.items()
+        )
+        for entity_id, entry_a in entry_items:
+            query_result = grid.query_into(entry_a.aabb, self._query_buffer)
+            candidate_ids = sorted(query_result) if self.deterministic_debug else query_result
+            for entity_b_id in candidate_ids:
                 if entity_b_id <= entity_id:
                     continue
-                pair = (entity_id, entity_b_id)
-                if pair in checked_pairs:
+                pair_key = self._pair_key(entity_id, entity_b_id, pair_shift)
+                if pair_key in checked_pairs:
                     continue
-                checked_pairs.add(pair)
+                checked_pairs.add(pair_key)
                 self._step_metrics["candidate_pairs"] += 1
 
                 entry_b = entries_by_id.get(entity_b_id)
@@ -104,6 +114,28 @@ class CollisionSystem:
                 self._collisions.append(collision)
                 self._step_metrics["actual_collisions"] += 1
                 self._emit_collision_event(collision)
+
+    def _reset_step_metrics(self) -> None:
+        self._step_metrics["candidate_pairs"] = 0
+        self._step_metrics["narrow_phase_pairs"] = 0
+        self._step_metrics["actual_collisions"] = 0
+
+    def _prepare_grid(self) -> SpatialHash2D:
+        if self._grid.cell_size != max(float(self._spatial_hash_cell_size), 1.0):
+            self._grid = SpatialHash2D(cell_size=self._spatial_hash_cell_size)
+        else:
+            self._grid.clear()
+        return self._grid
+
+    def _pair_shift(self, entries_by_id: dict[int, _CollisionEntry]) -> int:
+        if not entries_by_id:
+            return 1
+        return max(1, max(entries_by_id).bit_length())
+
+    def _pair_key(self, entity_a_id: int, entity_b_id: int, pair_shift: int) -> int:
+        if entity_a_id > entity_b_id:
+            entity_a_id, entity_b_id = entity_b_id, entity_a_id
+        return (entity_a_id << pair_shift) | entity_b_id
 
     def _emit_collision_event(self, collision: CollisionInfo) -> None:
         if self._event_bus is None:
