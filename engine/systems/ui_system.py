@@ -31,6 +31,7 @@ class UISystem:
         self._layout_cache: dict[str, dict[str, Any]] = {}
         self._canvas_order: list[str] = []
         self._draw_order: list[str] = []
+        self._visible_button_entities: list[Entity] = []
         self._button_runtime: dict[int, dict[str, bool]] = {}
         self._pointer_override: Optional[dict[str, Any]] = None
         self._layout_world_id: int = -1
@@ -168,11 +169,7 @@ class UISystem:
     ) -> None:
         self._ensure_layout_cache(world, viewport_size)
 
-        visible_buttons = {
-            entity.id
-            for entity in world.get_entities_with(UIButton)
-            if entity.name in self._layout_cache and entity.get_component(UIButton) is not None
-        }
+        visible_buttons = {entity.id for entity in self._visible_button_entities}
         self._button_runtime = {
             entity_id: state
             for entity_id, state in self._button_runtime.items()
@@ -184,7 +181,7 @@ class UISystem:
 
         interaction_enabled = self._resolve_interaction_enabled(allow_interaction)
         if not interaction_enabled:
-            for entity in world.get_entities_with(UIButton):
+            for entity in self._visible_button_entities:
                 button = entity.get_component(UIButton)
                 layout = self._layout_cache.get(entity.name)
                 if button is None or layout is None:
@@ -196,7 +193,7 @@ class UISystem:
 
         pointer = self._resolve_pointer_state()
 
-        for entity in world.get_entities_with(UIButton):
+        for entity in self._visible_button_entities:
             button = entity.get_component(UIButton)
             layout = self._layout_cache.get(entity.name)
             if button is None or layout is None:
@@ -219,7 +216,7 @@ class UISystem:
 
     def _ensure_layout_cache(self, world: World, viewport_size: tuple[float, float]) -> None:
         world_id = id(world)
-        world_version = int(getattr(world, "version", -1))
+        world_version = self._resolve_layout_version(world)
         normalized_viewport = (float(viewport_size[0]), float(viewport_size[1]))
         if (
             self._layout_world_id == world_id
@@ -231,6 +228,7 @@ class UISystem:
         self._layout_cache = {}
         self._canvas_order = []
         self._draw_order = []
+        self._visible_button_entities = []
 
         canvas_entities = []
         for entity in world.get_entities_with(Canvas):
@@ -259,9 +257,20 @@ class UISystem:
             self._draw_order.append(canvas_entity.name)
             self._layout_children(world, canvas_entity.name, canvas_rect)
 
+        self._visible_button_entities = [
+            entity
+            for entity in world.get_entities_with(UIButton)
+            if entity.name in self._layout_cache and entity.get_component(UIButton) is not None
+        ]
         self._layout_world_id = world_id
         self._layout_world_version = world_version
         self._layout_viewport_size = normalized_viewport
+
+    def _resolve_layout_version(self, world: World) -> int:
+        try:
+            return int(getattr(world, "ui_layout_version"))
+        except (AttributeError, TypeError, ValueError):
+            return int(getattr(world, "version", -1))
 
     def get_button_state(self, entity: Entity) -> dict[str, bool]:
         return dict(self._button_runtime.get(entity.id, {"hovered": False, "pressed": False}))

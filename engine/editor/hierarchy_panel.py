@@ -7,7 +7,7 @@ PROPÓSITO:
 """
 
 import pyray as rl
-from typing import List, Optional, Tuple, Set
+from typing import List, Optional, Set, Tuple
 
 from engine.ecs.world import World
 from engine.ecs.entity import Entity
@@ -44,8 +44,12 @@ class HierarchyPanel:
         self._scene_manager = None
         self._selection_state: Optional[EditorSelectionState] = selection_state
         self._cached_world_id: int = -1
-        self._cached_world_version: int = -1
+        self._cached_structure_version: int = -1
         self._cached_roots: List[Entity] = []
+        self._cached_rows_world_id: int = -1
+        self._cached_rows_structure_version: int = -1
+        self._cached_rows_expanded_ids: Tuple[int, ...] = ()
+        self._cached_visible_rows: List[Tuple[int, int]] = []
         
         # Context Menu State
         self.context_menu_active: bool = False
@@ -154,22 +158,33 @@ class HierarchyPanel:
             # 2. Content Area
             # ========================================
             content_y_start = y + self.HEADER_HEIGHT + 5
-            content_y = content_y_start - self.scroll_offset
             content_height = height - self.HEADER_HEIGHT
             
             # Fondo del contenido
             rl.draw_rectangle(x, int(y + self.HEADER_HEIGHT), width, int(content_height), self.UNITY_BG)
             
             # Obtener entidades raíz
-            roots = self._get_root_entities(world)
+            visible_rows = self._get_visible_rows(world)
             
             # Reset drop target each frame
             self._drop_target_name = None
             self._drop_as_root = False
 
             # Renderizar árbol
-            for entity in roots:
-                content_y = self._render_node(entity, 0, x, content_y, world, content_y_start, content_height)
+            row_height = self.LINE_HEIGHT
+            first_row = max(0, self.scroll_offset // row_height)
+            last_row = min(
+                len(visible_rows),
+                ((self.scroll_offset + content_height) // row_height) + 2,
+            )
+            base_y = content_y_start - self.scroll_offset
+            for row_index in range(first_row, last_row):
+                entity_id, depth = visible_rows[row_index]
+                entity = world.get_entity(entity_id)
+                if entity is None:
+                    continue
+                row_y = base_y + (row_index * row_height)
+                self._render_row(entity, depth, x, row_y, world, content_y_start, content_height)
 
             # Drag-and-drop reparenting logic
             mouse_pos = rl.get_mouse_position()
@@ -205,31 +220,12 @@ class HierarchyPanel:
         if self.context_menu_active:
              self._draw_context_menu(world)
             
-    def _render_node(self, entity: Entity, depth: int, panel_x: int, y: int, world: "World", panel_y: int, panel_h: int) -> int:
-        """Renderiza un nodo y sus hijos recursivamente. Retorna la nueva Y."""
-        
-        transform = entity.get_component(Transform)
-        has_children = False
-        children = []
-        
-        if transform:
-            valid_children = []
-            for child_trans in transform.children:
-                child_ent = self._find_entity_by_transform(world, child_trans)
-                if child_ent:
-                    valid_children.append(child_ent)
-            children = valid_children
-            has_children = len(children) > 0
+    def _render_row(self, entity: Entity, depth: int, panel_x: int, y: int, world: "World", panel_y: int, panel_h: int) -> None:
+        """Renderiza una fila visible de la jerarquia."""
+        has_children = bool(self._get_child_entities(world, entity))
 
         # Dibujar fila
         row_height = self.LINE_HEIGHT
-        
-        # Culling simple
-        if y + row_height < panel_y:
-             # Skip draw but must Calc children height if expanded
-             pass 
-        elif y > panel_y + panel_h:
-             return y + row_height # Skip render but stop? Recurse stops too.
         
         # Input Check (Solo si está en pantalla y dentro del panel)
         mouse_pos = rl.get_mouse_position()
@@ -311,35 +307,88 @@ class HierarchyPanel:
             self.UNITY_TEXT
         )
         
-        current_y = y + row_height
-        
-        # Render hijos si está expandido
-        if has_children and entity.id in self.expanded_ids:
-            for child in children:
-                current_y = self._render_node(child, depth + 1, panel_x, current_y, world, panel_y, panel_h)
-                
-        return current_y
+        return None
 
     def _find_entity_by_transform(self, world: "World", transform: Transform) -> Optional[Entity]:
         return world.get_entity_by_component_instance(transform)
 
+    def _get_world_structure_version(self, world: "World") -> int:
+        return int(getattr(world, "structure_version", getattr(world, "version", -1)))
+
     def _get_root_entities(self, world: "World") -> List[Entity]:
         world_id = id(world)
-        world_version = int(getattr(world, "version", -1))
-        if self._cached_world_id == world_id and self._cached_world_version == world_version:
+        structure_version = self._get_world_structure_version(world)
+        if self._cached_world_id == world_id and self._cached_structure_version == structure_version:
             return self._cached_roots
 
-        roots: List[Entity] = []
-        for entity in world.iter_all_entities():
-            transform = entity.get_component(Transform)
-            if transform is None or transform.parent is None:
-                roots.append(entity)
+        get_children = getattr(world, "get_children", None)
+        if callable(get_children):
+            roots = list(get_children(None))
+        else:
+            roots = []
+            for entity in world.iter_all_entities():
+                transform = entity.get_component(Transform)
+                if transform is None or transform.parent is None:
+                    roots.append(entity)
         roots.sort(key=lambda item: item.id)
 
         self._cached_world_id = world_id
-        self._cached_world_version = world_version
+        self._cached_structure_version = structure_version
         self._cached_roots = roots
         return roots
+
+    def _get_child_entities(self, world: "World", entity: Entity) -> List[Entity]:
+        get_children = getattr(world, "get_children", None)
+        if callable(get_children):
+            children = list(get_children(entity.name))
+        else:
+            children = []
+            transform = entity.get_component(Transform)
+            if transform:
+                for child_trans in transform.children:
+                    child_ent = self._find_entity_by_transform(world, child_trans)
+                    if child_ent:
+                        children.append(child_ent)
+        children.sort(key=lambda item: item.id)
+        return children
+
+    def _get_visible_rows(self, world: "World") -> List[Tuple[int, int]]:
+        world_id = id(world)
+        structure_version = self._get_world_structure_version(world)
+        expanded_ids = tuple(sorted(self.expanded_ids))
+        if (
+            self._cached_rows_world_id == world_id
+            and self._cached_rows_structure_version == structure_version
+            and self._cached_rows_expanded_ids == expanded_ids
+        ):
+            return self._cached_visible_rows
+
+        rows = self._build_visible_rows(world, self._get_root_entities(world))
+        self._cached_rows_world_id = world_id
+        self._cached_rows_structure_version = structure_version
+        self._cached_rows_expanded_ids = expanded_ids
+        self._cached_visible_rows = rows
+        return rows
+
+    def _build_visible_rows(self, world: "World", roots: List[Entity]) -> List[Tuple[int, int]]:
+        rows: List[Tuple[int, int]] = []
+        stack: List[Tuple[Entity, int]] = [(entity, 0) for entity in reversed(roots)]
+        visited: Set[int] = set()
+
+        while stack:
+            entity, depth = stack.pop()
+            if entity.id in visited:
+                continue
+            visited.add(entity.id)
+            rows.append((entity.id, depth))
+
+            if entity.id not in self.expanded_ids:
+                continue
+
+            for child in reversed(self._get_child_entities(world, entity)):
+                stack.append((child, depth + 1))
+
+        return rows
 
     def _complete_hierarchy_drag(self, world: "World") -> None:
         """Finish a drag-and-drop reparenting operation."""
