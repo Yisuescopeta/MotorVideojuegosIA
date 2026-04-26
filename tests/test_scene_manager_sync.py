@@ -9,7 +9,7 @@ from engine.components.sprite import Sprite
 from engine.components.transform import Transform
 from engine.editor.undo_redo import UndoRedoManager
 from engine.levels.component_registry import create_default_registry
-from engine.scenes.scene_manager import SceneManager
+from engine.scenes.scene_manager import COMPACT_SCENE_SAVE_ENTITY_THRESHOLD, SceneManager
 from engine.serialization.schema import CURRENT_SCENE_SCHEMA_VERSION
 
 
@@ -435,6 +435,95 @@ class SceneManagerSyncTests(unittest.TestCase):
 
         self.assertEqual(persisted["entities"][0]["components"]["Transform"]["x"], 77.0)
         self.assertEqual(self.scene_manager.current_scene.find_entity("Player")["components"]["Transform"]["x"], 77.0)
+
+    def test_small_scene_default_save_remains_pretty_printed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            scene_path = Path(temp_dir) / "small_pretty_scene.json"
+
+            self.assertTrue(self.scene_manager.save_scene_to_file(scene_path.as_posix()))
+            persisted_text = scene_path.read_text(encoding="utf-8")
+
+        self.assertIn("\n    ", persisted_text)
+        self.assertNotEqual(persisted_text.count("\n"), 0)
+
+    def test_large_scene_default_save_uses_compact_json_and_reloads(self) -> None:
+        manager = SceneManager(create_default_registry())
+        entity_count = COMPACT_SCENE_SAVE_ENTITY_THRESHOLD + 1
+        manager.load_scene(
+            {
+                "name": "LargeCompactScene",
+                "entities": [
+                    self._transform_entity(f"Entity_{index}", float(index)) for index in range(entity_count)
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            scene_path = Path(temp_dir) / "large_compact_scene.json"
+
+            self.assertTrue(manager.save_scene_to_file(scene_path.as_posix()))
+            persisted_text = scene_path.read_text(encoding="utf-8")
+            persisted = json.loads(persisted_text)
+
+            reloaded = SceneManager(create_default_registry())
+            self.assertIsNotNone(reloaded.load_scene_from_file(scene_path.as_posix()))
+
+        self.assertNotIn("\n    ", persisted_text)
+        self.assertEqual(persisted["entities"][entity_count - 1]["name"], f"Entity_{entity_count - 1}")
+        self.assertIsNotNone(reloaded.current_scene.find_entity(f"Entity_{entity_count - 1}"))
+
+    def test_compact_save_true_forces_compact_json_for_small_scene(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            scene_path = Path(temp_dir) / "small_compact_scene.json"
+
+            self.assertTrue(self.scene_manager.save_scene_to_file(scene_path.as_posix(), compact_save=True))
+            persisted_text = scene_path.read_text(encoding="utf-8")
+
+        self.assertNotIn("\n    ", persisted_text)
+        self.assertEqual(json.loads(persisted_text)["entities"][0]["name"], "Player")
+
+    def test_compact_save_false_forces_pretty_print_for_large_scene(self) -> None:
+        manager = SceneManager(create_default_registry())
+        entity_count = COMPACT_SCENE_SAVE_ENTITY_THRESHOLD + 1
+        manager.load_scene(
+            {
+                "name": "LargePrettyScene",
+                "entities": [
+                    self._transform_entity(f"Entity_{index}", float(index)) for index in range(entity_count)
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            scene_path = Path(temp_dir) / "large_pretty_scene.json"
+
+            self.assertTrue(manager.save_scene_to_file(scene_path.as_posix(), compact_save=False))
+            persisted_text = scene_path.read_text(encoding="utf-8")
+
+        self.assertIn("\n    ", persisted_text)
+
+    @staticmethod
+    def _transform_entity(name: str, x: float) -> dict:
+        return {
+            "name": name,
+            "active": True,
+            "tag": "Untagged",
+            "layer": "Default",
+            "components": {
+                "Transform": {
+                    "enabled": True,
+                    "x": x,
+                    "y": 0.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0,
+                }
+            },
+        }
 
     def test_sync_from_edit_world_preserves_rules_and_feature_metadata(self) -> None:
         manager = SceneManager(create_default_registry())

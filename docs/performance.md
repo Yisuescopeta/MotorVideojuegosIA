@@ -80,6 +80,18 @@ puntuales viven en `operations`:
 Las claves no aplicables se omiten. Por ejemplo, `transform_edit` solo aparece en
 `transform_edit_stress`.
 
+## Guardado compacto de escenas grandes
+
+`SceneManager.save_scene_to_file` mantiene por defecto el JSON legible con
+`indent=4` para escenas pequenas. Cuando una escena supera
+`COMPACT_SCENE_SAVE_ENTITY_THRESHOLD` entidades, el guardado automatico usa JSON
+compacto con `separators=(",", ":")` para reducir tamano y tiempo de escritura.
+
+El parametro `compact_save` permite forzar el modo: `True` guarda compacto y
+`False` conserva el formato legible aunque la escena supere el umbral. Este
+cambio solo afecta espacios y saltos de linea; el payload serializable y
+`load_scene_from_file` siguen usando el mismo contrato.
+
 ## Escenarios
 
 - `many_transform_entities`: muchas entidades con `Transform`.

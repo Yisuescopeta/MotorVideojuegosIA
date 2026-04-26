@@ -30,6 +30,8 @@ if TYPE_CHECKING:
 
 LEGACY_AUTHORING_SYNC_REASON = "legacy_authoring"
 TRANSIENT_PREVIEW_SYNC_REASON = "transient_preview"
+COMPACT_SCENE_SAVE_ENTITY_THRESHOLD = 1000
+COMPACT_SCENE_SAVE_SEPARATORS = (",", ":")
 
 
 @dataclass
@@ -783,7 +785,12 @@ class SceneManager:
             entry.runtime_world.selected_entity_name = entity_name
         return True
 
-    def save_scene_to_file(self, path: str, key: Optional[str] = None) -> bool:
+    def save_scene_to_file(
+        self,
+        path: str,
+        key: Optional[str] = None,
+        compact_save: Optional[bool] = None,
+    ) -> bool:
         entry = self._resolve_entry(key)
         if entry is None or entry.edit_world is None:
             return False
@@ -802,8 +809,15 @@ class SceneManager:
             data = self._validated_scene_payload(entry.scene.to_dict())
             target_path = Path(path)
             temp_path = target_path.with_name(f"{target_path.name}.tmp")
+            entity_count = len(data.get("entities", [])) if isinstance(data.get("entities"), list) else 0
+            use_compact_save = (
+                compact_save if compact_save is not None else entity_count > COMPACT_SCENE_SAVE_ENTITY_THRESHOLD
+            )
             with open(temp_path, "w", encoding="utf-8") as handle:
-                json.dump(data, handle, indent=4)
+                if use_compact_save:
+                    json.dump(data, handle, separators=COMPACT_SCENE_SAVE_SEPARATORS)
+                else:
+                    json.dump(data, handle, indent=4)
             self._install_scene_payload(entry, data, source_path=path)
             self._workspace.rekey_entry(entry, self._build_scene_key(path, entry.scene.name))
             temp_path.replace(target_path)

@@ -494,6 +494,12 @@ class ProjectService:
         projects.insert(0, entry)
         self._write_registry_entries(projects)
 
+    def refresh_asset_index(self) -> None:
+        self._guard_writable("refresh_asset_index")
+        from engine.assets.asset_database import AssetDatabase
+
+        AssetDatabase(self).update_changed()
+
     def list_assets(
         self,
         search: str = "",
@@ -502,8 +508,52 @@ class ProjectService:
         assets_root = self.get_project_path("assets")
         if not assets_root.exists():
             return []
+        indexed = self._list_assets_from_current_index(search=search, extensions=extensions)
+        if indexed is not None:
+            return indexed
+        return self._list_assets_from_files(search=search, extensions=extensions)
+
+    def _list_assets_from_current_index(
+        self,
+        search: str = "",
+        extensions: Optional[List[str]] = None,
+    ) -> Optional[List[Dict[str, Any]]]:
+        try:
+            from engine.assets.asset_database import AssetDatabase
+
+            database = AssetDatabase(self)
+            if not database.has_current_index():
+                return None
+            rows = database.list_assets_from_index(
+                search=search,
+                extensions=extensions or [".png", ".jpg", ".jpeg", ".bmp"],
+            )
+        except Exception:
+            return None
+
+        result: List[Dict[str, Any]] = []
+        for row in rows:
+            rel = str(row.get("path", "")).replace("\\", "/")
+            if not rel.startswith("assets/"):
+                continue
+            result.append(
+                {
+                    "name": Path(rel).name,
+                    "path": rel,
+                    "absolute_path": str(row.get("absolute_path", "")),
+                    "folder": Path(rel).parent.as_posix(),
+                }
+            )
+        return result
+
+    def _list_assets_from_files(
+        self,
+        search: str = "",
+        extensions: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        assets_root = self.get_project_path("assets")
         search_value = search.lower().strip()
-        allowed = {ext.lower() for ext in extensions or [".png", ".jpg", ".jpeg", ".bmp"]}
+        allowed = self._normalize_asset_extensions(extensions or [".png", ".jpg", ".jpeg", ".bmp"])
         result: List[Dict[str, Any]] = []
         for path in assets_root.rglob("*"):
             if not path.is_file():
@@ -524,12 +574,54 @@ class ProjectService:
         result.sort(key=lambda item: item["path"])
         return result
 
+    def _normalize_asset_extensions(self, extensions: List[str]) -> set[str]:
+        allowed: set[str] = set()
+        for extension in extensions:
+            value = str(extension).lower().strip()
+            if not value:
+                continue
+            if not value.startswith("."):
+                value = f".{value}"
+            allowed.add(value)
+        return allowed
+
     def list_project_scenes(self) -> List[Dict[str, Any]]:
         if not self.has_project:
             return []
         levels_root = self.get_project_path("levels")
         if not levels_root.exists():
             return []
+        indexed = self._list_project_scenes_from_current_index()
+        if indexed is not None:
+            return indexed
+        return self._list_project_scenes_from_files(levels_root)
+
+    def _list_project_scenes_from_current_index(self) -> Optional[List[Dict[str, Any]]]:
+        try:
+            from engine.assets.asset_database import AssetDatabase
+
+            database = AssetDatabase(self)
+            if not database.has_current_index():
+                return None
+            rows = database.list_assets_from_index(extensions=[".json"], asset_type="scene_data")
+        except Exception:
+            return None
+
+        result: List[Dict[str, Any]] = []
+        for row in rows:
+            rel = str(row.get("path", "")).replace("\\", "/")
+            if not rel.startswith("levels/") or rel.endswith(".meta.json"):
+                continue
+            result.append(
+                {
+                    "name": str(row.get("display_name", "")).strip() or Path(rel).stem.replace("_", " ").strip() or Path(rel).stem or "Scene",
+                    "path": rel,
+                    "absolute_path": str(row.get("absolute_path", "")),
+                }
+            )
+        return result
+
+    def _list_project_scenes_from_files(self, levels_root: Path) -> List[Dict[str, Any]]:
         result: List[Dict[str, Any]] = []
         for path in sorted(levels_root.rglob("*.json")):
             if path.name.endswith(".meta.json"):

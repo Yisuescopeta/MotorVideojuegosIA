@@ -55,6 +55,32 @@ class AssetDatabase:
     def get_index_path(self) -> Path:
         return self._project_service.project_root / ProjectService.PROJECT_STATE_DIR / "asset_index.sqlite"
 
+    def has_current_index(self) -> bool:
+        index_path = self.get_index_path()
+        if not index_path.exists():
+            return False
+        try:
+            with closing(self._connect_index()) as connection:
+                rows = {
+                    str(row["path"]): {"mtime": float(row["mtime"]), "size": int(row["size"])}
+                    for row in connection.execute("SELECT path, mtime, size FROM assets").fetchall()
+                }
+        except Exception:
+            return False
+
+        current: dict[str, dict[str, Any]] = {}
+        try:
+            for path in self._iter_indexable_asset_files():
+                asset_path = self._project_service.to_relative_path(path)
+                stat = path.stat()
+                current[asset_path] = {"mtime": stat.st_mtime, "size": stat.st_size}
+        except Exception:
+            return False
+
+        if set(rows) != set(current):
+            return False
+        return all(rows[path]["mtime"] == current[path]["mtime"] and rows[path]["size"] == current[path]["size"] for path in current)
+
     def rebuild(self, project_service: ProjectService | None = None) -> None:
         self._activate_project_service(project_service)
         index_path = self.get_index_path()
@@ -140,8 +166,17 @@ class AssetDatabase:
 
     def list_assets(self, search: str = "", extensions: Optional[Iterable[str]] = None) -> List[Dict[str, Any]]:
         self._ensure_index_exists()
+        return self.list_assets_from_index(search=search, extensions=extensions)
+
+    def list_assets_from_index(
+        self,
+        search: str = "",
+        extensions: Optional[Iterable[str]] = None,
+        asset_type: str = "",
+    ) -> List[Dict[str, Any]]:
         search_value = search.lower().strip()
         allowed_extensions = self._normalize_extension_filter(extensions)
+        wanted_type = asset_type.strip().lower()
         where: list[str] = []
         params: list[Any] = []
         if search_value:
@@ -152,12 +187,14 @@ class AssetDatabase:
             placeholders = ", ".join("?" for _ in allowed_extensions)
             where.append(f"extension IN ({placeholders})")
             params.extend(sorted(allowed_extensions))
+        if wanted_type:
+            where.append("type = ?")
+            params.append(wanted_type)
         query = "SELECT guid, path, absolute_path, extension, type, mtime, size, display_name FROM assets"
         if where:
             query += " WHERE " + " AND ".join(where)
         query += " ORDER BY path"
         with closing(self._connect_index()) as connection:
-            self._ensure_index_schema(connection)
             return [dict(row) for row in connection.execute(query, params).fetchall()]
 
     def get_by_path(self, path: str) -> Optional[Dict[str, Any]]:
@@ -524,16 +561,30 @@ class AssetDatabase:
     def _build_index_row(self, asset_path: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
         resolved = self._project_service.resolve_path(asset_path)
         stat = resolved.stat()
+        asset_kind = self._infer_asset_kind(asset_path)
         return {
             "guid": str(metadata.get("guid", "")),
             "path": asset_path,
             "absolute_path": resolved.as_posix(),
             "extension": resolved.suffix.lower(),
-            "type": self._infer_asset_kind(asset_path),
+            "type": asset_kind,
             "mtime": stat.st_mtime,
             "size": stat.st_size,
-            "display_name": resolved.stem,
+            "display_name": self._display_name_for_index(asset_path, resolved, asset_kind),
         }
+
+    def _display_name_for_index(self, asset_path: str, resolved: Path, asset_kind: str) -> str:
+        if asset_kind == "scene_data":
+            try:
+                payload = json.loads(resolved.read_text(encoding="utf-8"))
+                if isinstance(payload, dict):
+                    scene_name = str(payload.get("name", "")).strip()
+                    if scene_name:
+                        return scene_name
+            except Exception:
+                pass
+            return resolved.stem.replace("_", " ").strip() or resolved.stem or "Scene"
+        return resolved.stem
 
     def _normalize_extension_filter(self, extensions: Optional[Iterable[str]]) -> set[str]:
         result: set[str] = set()
