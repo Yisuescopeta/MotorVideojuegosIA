@@ -139,3 +139,51 @@ desde SQLite y crean el indice si falta.
 
 Este indice todavia no reemplaza `ProjectService.list_assets`; esa ruta legacy
 sigue vigente hasta una integracion publica dedicada.
+
+## Validacion rama Fix/optimizacion5.5 - 2026-04-26
+
+Estado tomado sobre la rama local `Fix/optimizacion5.5`, alineada con
+`origin/Fix/optimizacion5.5` en el momento de la validacion. El comando
+`python -m ...` no pudo ejecutarse por configuracion local: `python` apunta al
+alias de Microsoft Store. Las validaciones reales se ejecutaron con `py -m ...`.
+
+Comandos ejecutados:
+
+- `python -m unittest discover -s tests`: no ejecuta por el alias local de
+  Microsoft Store.
+- `py -m unittest discover -s tests`: falla tras 1565 tests, con 3 failures y
+  3 errors.
+- `py -m tools.benchmark_suite --quick --out artifacts/benchmarks/performance_suite.json`:
+  pasa con 4/4 escenarios, 0 warnings y 0 failures. Duracion aproximada:
+  29.34 s. El JSON generado queda en
+  `artifacts/benchmarks/performance_suite.json`.
+- `py -m ruff check engine cli tools main.py`: falla con 277 errores.
+- `py -m mypy engine cli tools main.py`: falla con 196 errores en 31 archivos.
+
+Fallos principales de `unittest`:
+
+- `engine/app/debug_tools_controller.py`: `_FakePerfWorld` no tiene
+  `iter_all_entities`.
+- `engine/core/game.py`: `_resolve_default_ui_parent` intenta iterar un `Mock`.
+- `tests/test_agent_service.py`: `opencode-go` aparece como `configured` en vez
+  de `missing`; parece dependiente del entorno local de credenciales.
+- `tests/test_inspector_core.py`: el test esperaba rebuild con cambio de
+  `entity.id`, pero el id no cambia.
+- `tests/test_performance_infra.py`: la cache de layout no se invalida como
+  espera el test.
+
+Resumen de analisis estatico:
+
+- Ruff reporta principalmente whitespace, imports sin ordenar, imports no
+  usados, nombres indefinidos y sentencias multiples en una linea.
+- Mypy reporta principalmente problemas de tipos en ECS/world, render, editor,
+  scene manager, agent provider y sistemas runtime.
+
+Clasificacion de riesgo:
+
+- Varios archivos implicados en los fallos estan modificados frente a
+  `origin/main`, asi que algunos fallos podrian haber sido introducidos por
+  esta rama, especialmente los de performance/debug/ui cache.
+- No se puede afirmar preexistencia definitiva sin ejecutar las mismas
+  validaciones en `origin/main`.
+- El fallo de disponibilidad de `python` es de entorno local, no de la rama.
