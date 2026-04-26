@@ -250,6 +250,15 @@ class World:
         entity_id = self._name_index.get(name)
         return self._entities.get(entity_id) if entity_id is not None else None
 
+    def get_entity_by_serialized_id(self, entity_id: str) -> Entity | None:
+        normalized = str(entity_id or "").strip()
+        if not normalized:
+            return None
+        for entity in self._entities.values():
+            if getattr(entity, "serialized_id", None) == normalized:
+                return entity
+        return None
+
     def get_entity_by_component_instance(self, component: Component) -> Entity | None:
         entity_id = self._component_owner_index.get(id(component))
         return self._entities.get(entity_id) if entity_id is not None else None
@@ -324,6 +333,7 @@ class World:
 
         for entity in self.iter_all_entities():
             new_entity = Entity(entity.name)
+            new_entity.serialized_id = getattr(entity, "serialized_id", None)
             new_entity.active = entity.active
             new_entity.tag = entity.tag
             new_entity.layer = entity.layer

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
@@ -20,6 +19,7 @@ from engine.scenes.contracts import (
     SceneWorkspacePort,
 )
 from engine.scenes.scene import Scene
+from engine.scenes.storage import JsonSceneStorage, SceneStorage
 from engine.scenes.structural_authoring import SceneStructuralAuthoring, SceneStructuralAuthoringContext
 from engine.scenes.workspace_lifecycle import SceneWorkspace, SceneWorkspaceEntry
 from engine.serialization.schema import build_canonical_scene_payload, migrate_scene_data, validate_scene_data
@@ -271,6 +271,7 @@ class SceneManager:
             return False
         before = copy.deepcopy(entry.scene.to_dict())
         rollback_selected_name = entry.selected_entity_name
+        rollback_selected_id = entry.selected_entity_id
         rollback_dirty = entry.dirty
         rollback_pending_reason = entry.pending_edit_world_sync_reason
         normalized_payload = self._canonicalize_component_payload(component_name, component_data)
@@ -288,6 +289,7 @@ class SceneManager:
             entry,
             before,
             rollback_selected_name=rollback_selected_name,
+            rollback_selected_id=rollback_selected_id,
             rollback_dirty=rollback_dirty,
             rollback_pending_reason=rollback_pending_reason,
             failure_context=f"upsert_component:{entity_name}.{component_name}",
@@ -321,6 +323,7 @@ class SceneManager:
             return False
         before = copy.deepcopy(entry.scene.to_dict())
         rollback_selected_name = entry.selected_entity_name
+        rollback_selected_id = entry.selected_entity_id
         rollback_dirty = entry.dirty
         rollback_pending_reason = entry.pending_edit_world_sync_reason
         if not entry.scene.remove_component(entity_name, component_name):
@@ -331,6 +334,7 @@ class SceneManager:
             entry,
             before,
             rollback_selected_name=rollback_selected_name,
+            rollback_selected_id=rollback_selected_id,
             rollback_dirty=rollback_dirty,
             rollback_pending_reason=rollback_pending_reason,
             failure_context=f"remove_component:{entity_name}.{component_name}",
@@ -363,8 +367,13 @@ class SceneManager:
     def load_scene(self, data: Dict[str, Any], source_path: Optional[str] = None, activate: bool = True) -> "World":
         return self._workspace.load_scene(data, source_path=source_path, activate=activate)
 
-    def load_scene_from_file(self, path: str, activate: bool = True) -> Optional["World"]:
-        return self._workspace.load_scene_from_file(path, activate=activate)
+    def load_scene_from_file(
+        self,
+        path: str,
+        activate: bool = True,
+        storage: Optional[SceneStorage] = None,
+    ) -> Optional["World"]:
+        return self._workspace.load_scene_from_file(path, activate=activate, storage=storage)
 
     def get_edit_world(self) -> Optional["World"]:
         entry = self._get_active_entry()
@@ -422,6 +431,7 @@ class SceneManager:
             return False
         before = copy.deepcopy(entry.scene.to_dict())
         rollback_selected_name = entry.selected_entity_name
+        rollback_selected_id = entry.selected_entity_id
         rollback_dirty = entry.dirty
         rollback_pending_reason = entry.pending_edit_world_sync_reason
         if not entry.scene.update_component(entity_name, component_name, property_name, value):
@@ -433,6 +443,7 @@ class SceneManager:
             entry,
             before,
             rollback_selected_name=rollback_selected_name,
+            rollback_selected_id=rollback_selected_id,
             rollback_dirty=rollback_dirty,
             rollback_pending_reason=rollback_pending_reason,
             failure_context=f"{entity_name}.{component_name}.{property_name}",
@@ -446,21 +457,34 @@ class SceneManager:
         entry = self._get_active_entry()
         if entry is None or entry.is_playing:
             return False
+        entity_id = self._entity_id_for_name(entry, entity_name)
         if property_name == "parent" and value is not None and not self._structural_authoring.validate_parent(entry, entity_name, value):
             return False
         if not self._flush_pending_edit_world(entry, failure_context=f"{entity_name}.{property_name}"):
             return False
         before = copy.deepcopy(entry.scene.to_dict())
         rollback_selected_name = entry.selected_entity_name
+        rollback_selected_id = entry.selected_entity_id
         rollback_dirty = entry.dirty
         rollback_pending_reason = entry.pending_edit_world_sync_reason
         if not entry.scene.update_entity_property(entity_name, property_name, value):
             if not self._structural_authoring.update_prefab_entity_override(entry, entity_name, property_name, value):
                 return False
+        if property_name == "name" and isinstance(value, str):
+            selected_matches = (
+                (entity_id is not None and entry.selected_entity_id == entity_id)
+                or (entry.selected_entity_id is None and entry.selected_entity_name == entity_name)
+            )
+            if selected_matches:
+                entry.selected_entity_name = value
+                entry.selected_entity_id = entity_id
+            if entry.edit_world is not None and entry.edit_world.selected_entity_name == entity_name:
+                entry.edit_world.selected_entity_name = value
         if not self._commit_serializable_scene_mutation(
             entry,
             before,
             rollback_selected_name=rollback_selected_name,
+            rollback_selected_id=rollback_selected_id,
             rollback_dirty=rollback_dirty,
             rollback_pending_reason=rollback_pending_reason,
             failure_context=f"{entity_name}.{property_name}",
@@ -481,6 +505,7 @@ class SceneManager:
             return False
         before = copy.deepcopy(entry.scene.to_dict())
         rollback_selected_name = entry.selected_entity_name
+        rollback_selected_id = entry.selected_entity_id
         rollback_dirty = entry.dirty
         rollback_pending_reason = entry.pending_edit_world_sync_reason
         normalized_component_data = self._canonicalize_component_payload(component_name, component_data)
@@ -493,6 +518,7 @@ class SceneManager:
             entry,
             before,
             rollback_selected_name=rollback_selected_name,
+            rollback_selected_id=rollback_selected_id,
             rollback_dirty=rollback_dirty,
             rollback_pending_reason=rollback_pending_reason,
             failure_context=f"{entity_name}.{component_name}",
@@ -540,6 +566,7 @@ class SceneManager:
             payload["component_metadata"][component_name] = {"origin": self._registry.get_origin(component_name)}
         before = copy.deepcopy(entry.scene.to_dict())
         rollback_selected_name = entry.selected_entity_name
+        rollback_selected_id = entry.selected_entity_id
         rollback_dirty = entry.dirty
         rollback_pending_reason = entry.pending_edit_world_sync_reason
         if not entry.scene.add_entity(payload):
@@ -552,6 +579,7 @@ class SceneManager:
             entry,
             before,
             rollback_selected_name=rollback_selected_name,
+            rollback_selected_id=rollback_selected_id,
             rollback_dirty=rollback_dirty,
             rollback_pending_reason=rollback_pending_reason,
             failure_context=f"create_entity:{name}",
@@ -580,6 +608,7 @@ class SceneManager:
             payload["component_metadata"][component_name].setdefault("origin", self._registry.get_origin(component_name))
         before = copy.deepcopy(entry.scene.to_dict())
         rollback_selected_name = entry.selected_entity_name
+        rollback_selected_id = entry.selected_entity_id
         rollback_dirty = entry.dirty
         rollback_pending_reason = entry.pending_edit_world_sync_reason
         if not entry.scene.add_entity(payload):
@@ -590,6 +619,7 @@ class SceneManager:
             entry,
             before,
             rollback_selected_name=rollback_selected_name,
+            rollback_selected_id=rollback_selected_id,
             rollback_dirty=rollback_dirty,
             rollback_pending_reason=rollback_pending_reason,
             failure_context=f"create_entity:{payload.get('name', '')}",
@@ -610,6 +640,7 @@ class SceneManager:
             return False
         before = copy.deepcopy(entry.scene.to_dict())
         rollback_selected_name = entry.selected_entity_name
+        rollback_selected_id = entry.selected_entity_id
         rollback_dirty = entry.dirty
         rollback_pending_reason = entry.pending_edit_world_sync_reason
         data = self._canonicalize_component_payload(component_name, component_data or {"enabled": True})
@@ -623,6 +654,7 @@ class SceneManager:
             entry,
             before,
             rollback_selected_name=rollback_selected_name,
+            rollback_selected_id=rollback_selected_id,
             rollback_dirty=rollback_dirty,
             rollback_pending_reason=rollback_pending_reason,
             failure_context=f"add_component:{entity_name}.{component_name}",
@@ -659,6 +691,48 @@ class SceneManager:
         self._flush_pending_edit_world(entry, failure_context=f"read_entity:{entity_name}")
         return entry.scene.find_entity(entity_name)
 
+    def find_entity_data_by_id(self, entity_id: str) -> Optional[Dict[str, Any]]:
+        entry = self._get_active_entry()
+        if entry is None:
+            return None
+        self._flush_pending_edit_world(entry, failure_context=f"read_entity_id:{entity_id}")
+        return entry.scene.find_entity_by_id(entity_id)
+
+    def update_entity_property_by_id(self, entity_id: str, property_name: str, value: Any) -> bool:
+        entity_data = self.find_entity_data_by_id(entity_id)
+        entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
+        return self.update_entity_property(entity_name, property_name, value) if isinstance(entity_name, str) else False
+
+    def apply_edit_to_world_by_id(self, entity_id: str, component_name: str, property_name: str, value: Any) -> bool:
+        entity_data = self.find_entity_data_by_id(entity_id)
+        entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
+        return self.apply_edit_to_world(entity_name, component_name, property_name, value) if isinstance(entity_name, str) else False
+
+    def replace_component_data_by_id(self, entity_id: str, component_name: str, component_data: Dict[str, Any]) -> bool:
+        entity_data = self.find_entity_data_by_id(entity_id)
+        entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
+        return self.replace_component_data(entity_name, component_name, component_data) if isinstance(entity_name, str) else False
+
+    def add_component_to_entity_by_id(
+        self,
+        entity_id: str,
+        component_name: str,
+        component_data: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        entity_data = self.find_entity_data_by_id(entity_id)
+        entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
+        return self.add_component_to_entity(entity_name, component_name, component_data) if isinstance(entity_name, str) else False
+
+    def remove_component_from_entity_by_id(self, entity_id: str, component_name: str) -> bool:
+        entity_data = self.find_entity_data_by_id(entity_id)
+        entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
+        return self.remove_component_from_entity(entity_name, component_name) if isinstance(entity_name, str) else False
+
+    def remove_entity_by_id(self, entity_id: str) -> bool:
+        entity_data = self.find_entity_data_by_id(entity_id)
+        entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
+        return self.remove_entity(entity_name) if isinstance(entity_name, str) else False
+
     def sync_from_edit_world(self, force: bool = False) -> bool:
         entry = self._get_active_entry()
         if entry is None or entry.is_playing or entry.edit_world is None:
@@ -691,6 +765,7 @@ class SceneManager:
             return False
         before = copy.deepcopy(entry.scene.to_dict())
         rollback_selected_name = entry.selected_entity_name
+        rollback_selected_id = entry.selected_entity_id
         rollback_dirty = entry.dirty
         rollback_pending_reason = entry.pending_edit_world_sync_reason
         entry.scene.set_feature_metadata(key, copy.deepcopy(value))
@@ -698,6 +773,7 @@ class SceneManager:
             entry,
             before,
             rollback_selected_name=rollback_selected_name,
+            rollback_selected_id=rollback_selected_id,
             rollback_dirty=rollback_dirty,
             rollback_pending_reason=rollback_pending_reason,
             failure_context=f"feature_metadata:{key}",
@@ -778,6 +854,7 @@ class SceneManager:
         if entity_name and entry.active_world.get_entity_by_name(entity_name) is None:
             return False
         entry.selected_entity_name = entity_name
+        entry.selected_entity_id = self._entity_id_for_name(entry, entity_name)
         entry.active_world.selected_entity_name = entity_name
         if entry.edit_world is not None:
             entry.edit_world.selected_entity_name = entity_name
@@ -790,6 +867,7 @@ class SceneManager:
         path: str,
         key: Optional[str] = None,
         compact_save: Optional[bool] = None,
+        storage: Optional[SceneStorage] = None,
     ) -> bool:
         entry = self._resolve_entry(key)
         if entry is None or entry.edit_world is None:
@@ -808,19 +886,18 @@ class SceneManager:
                 self._sync_entry_from_edit_world(entry)
             data = self._validated_scene_payload(entry.scene.to_dict())
             target_path = Path(path)
-            temp_path = target_path.with_name(f"{target_path.name}.tmp")
-            entity_count = len(data.get("entities", [])) if isinstance(data.get("entities"), list) else 0
-            use_compact_save = (
-                compact_save if compact_save is not None else entity_count > COMPACT_SCENE_SAVE_ENTITY_THRESHOLD
-            )
-            with open(temp_path, "w", encoding="utf-8") as handle:
-                if use_compact_save:
-                    json.dump(data, handle, separators=COMPACT_SCENE_SAVE_SEPARATORS)
-                else:
-                    json.dump(data, handle, indent=4)
+            if storage is None:
+                temp_path = target_path.with_name(f"{target_path.name}.tmp")
+                entity_count = len(data.get("entities", [])) if isinstance(data.get("entities"), list) else 0
+                use_compact_save = (
+                    compact_save if compact_save is not None else entity_count > COMPACT_SCENE_SAVE_ENTITY_THRESHOLD
+                )
+                JsonSceneStorage(compact=use_compact_save, separators=COMPACT_SCENE_SAVE_SEPARATORS).save(temp_path, data)
+                temp_path.replace(target_path)
+            else:
+                storage.save(target_path, data)
             self._install_scene_payload(entry, data, source_path=path)
             self._workspace.rekey_entry(entry, self._build_scene_key(path, entry.scene.name))
-            temp_path.replace(target_path)
             entry.dirty = False
             self._clear_pending_edit_world_sync(entry)
             return True
@@ -1019,6 +1096,7 @@ class SceneManager:
             entry,
             before,
             rollback_selected_name=entry.selected_entity_name,
+            rollback_selected_id=entry.selected_entity_id,
             rollback_dirty=entry.dirty,
             rollback_pending_reason=entry.pending_edit_world_sync_reason,
             failure_context=f"scene_flow:{scene_key}",
@@ -1116,15 +1194,35 @@ class SceneManager:
         return payload
 
     def _rebuild_edit_world(self, entry: SceneWorkspaceEntry) -> None:
-        selected_name = entry.selected_entity_name or (entry.edit_world.selected_entity_name if entry.edit_world is not None else None)
+        world_selected_name = entry.edit_world.selected_entity_name if entry.edit_world is not None else None
+        selected_id = entry.selected_entity_id or self._entity_id_for_name(entry, entry.selected_entity_name)
+        if selected_id is None:
+            selected_id = self._entity_id_for_name(entry, world_selected_name)
+        selected_name = self._entity_name_for_id(entry, selected_id) or entry.selected_entity_name or world_selected_name
         entry.edit_world = entry.scene.create_world(self._registry)
         if selected_name and entry.edit_world.get_entity_by_name(selected_name) is not None:
             entry.edit_world.selected_entity_name = selected_name
             entry.selected_entity_name = selected_name
+            entry.selected_entity_id = self._entity_id_for_name(entry, selected_name)
         else:
             entry.selected_entity_name = None
+            entry.selected_entity_id = None
             entry.edit_world.selected_entity_name = None
         entry.edit_world_version = entry.edit_world.version
+
+    def _entity_id_for_name(self, entry: SceneWorkspaceEntry, entity_name: Optional[str]) -> Optional[str]:
+        if not entity_name:
+            return None
+        entity_data = entry.scene.find_entity(entity_name)
+        entity_id = entity_data.get("id") if isinstance(entity_data, dict) else None
+        return entity_id.strip() if isinstance(entity_id, str) and entity_id.strip() else None
+
+    def _entity_name_for_id(self, entry: SceneWorkspaceEntry, entity_id: Optional[str]) -> Optional[str]:
+        if not entity_id:
+            return None
+        entity_data = entry.scene.find_entity_by_id(entity_id)
+        entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
+        return entity_name if isinstance(entity_name, str) and entity_name else None
 
     def _has_pending_legacy_world_sync(self, entry: SceneWorkspaceEntry) -> bool:
         return entry.pending_edit_world_sync_reason == LEGACY_AUTHORING_SYNC_REASON
@@ -1341,6 +1439,7 @@ class SceneManager:
             return old_properties, new_properties
 
         entry.selected_entity_name = entity_name
+        entry.selected_entity_id = self._entity_id_for_name(entry, entity_name)
         entry.dirty = True
         self._clear_pending_edit_world_sync(entry)
         self._apply_transform_properties_to_edit_world(entry, entity_name, component_data)
@@ -1381,6 +1480,7 @@ class SceneManager:
             return old_properties, new_properties
 
         entry.selected_entity_name = entity_name
+        entry.selected_entity_id = self._entity_id_for_name(entry, entity_name)
         entry.dirty = True
         self._clear_pending_edit_world_sync(entry)
         self._apply_component_properties_to_edit_world(entry, entity_name, component_name, component_data)
@@ -1502,6 +1602,7 @@ class SceneManager:
         if entry.is_playing or entry.edit_world is None:
             return False
         entry.selected_entity_name = entry.edit_world.selected_entity_name
+        entry.selected_entity_id = self._entity_id_for_name(entry, entry.selected_entity_name)
         data = self._build_canonical_scene_payload(entry)
         self._install_scene_payload(entry, data)
         self._sync_feature_metadata_from_scene_links(entry)
@@ -1519,6 +1620,7 @@ class SceneManager:
         rollback_dirty: bool,
         rollback_pending_reason: Optional[str],
         failure_context: str,
+        rollback_selected_id: Optional[str] = None,
     ) -> bool:
         try:
             self._install_scene_payload(entry, entry.scene.to_dict())
@@ -1526,6 +1628,7 @@ class SceneManager:
         except ValueError as exc:
             self._restore_entry_scene(entry, before)
             entry.selected_entity_name = rollback_selected_name
+            entry.selected_entity_id = rollback_selected_id
             if entry.edit_world is not None:
                 entry.edit_world.selected_entity_name = rollback_selected_name
             entry.dirty = rollback_dirty
@@ -1556,9 +1659,11 @@ class SceneManager:
             updated_state[field_name] = float(component_state[field_name])
         before = copy.deepcopy(entry.scene.to_dict())
         rollback_selected_name = entry.selected_entity_name
+        rollback_selected_id = entry.selected_entity_id
         rollback_dirty = entry.dirty
         rollback_pending_reason = entry.pending_edit_world_sync_reason
         entry.selected_entity_name = entity_name
+        entry.selected_entity_id = self._entity_id_for_name(entry, entity_name)
         if not entry.scene.replace_component_data(entity_name, component_name, updated_state):
             if not self._structural_authoring.replace_prefab_component_override(entry, entity_name, component_name, updated_state):
                 return False
@@ -1566,6 +1671,7 @@ class SceneManager:
             entry,
             before,
             rollback_selected_name=rollback_selected_name,
+            rollback_selected_id=rollback_selected_id,
             rollback_dirty=rollback_dirty,
             rollback_pending_reason=rollback_pending_reason,
             failure_context=label,

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import gc
+import importlib
 import json
 import time
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import pyray as rl
-
 from engine.components.canvas import Canvas
 from engine.components.scriptbehaviour import ScriptBehaviour
 from engine.components.uibutton import UIButton
@@ -213,8 +214,11 @@ class DebugToolsController:
 
     def update_perf_counters(self, active_world: Optional["World"]) -> None:
         if active_world is None:
+            gc_counts = gc.get_count()
             counters = {
                 "entities": 0,
+                "components": 0,
+                "component_count": 0,
                 "render_entities": 0,
                 "draw_calls": 0,
                 "batches": 0,
@@ -230,6 +234,15 @@ class DebugToolsController:
                 "canvases": 0,
                 "buttons": 0,
                 "scripts": 0,
+                "gc_gen0_count": gc_counts[0],
+                "gc_gen1_count": gc_counts[1],
+                "gc_gen2_count": gc_counts[2],
+                "textures_loaded": 0,
+                "texture_load_failures": 0,
+                "texture_cache_approx_bytes": 0,
+                "render_sorted_entities_cache_size": 0,
+                "render_graph_pass_cache_size": 0,
+                "tilemap_chunk_cache_size": 0,
             }
             self._perf_counters.clear()
             self._perf_counters.update(counters)
@@ -258,6 +271,11 @@ class DebugToolsController:
             tilemap_chunk_rebuilds = int(render_stats.get("tilemap_chunk_rebuilds", 0))
             render_target_passes = int(render_stats.get("render_target_passes", 0))
 
+        component_count = self._count_world_components(active_world)
+        gc_gen0_count, gc_gen1_count, gc_gen2_count = gc.get_count()
+        texture_metrics = self._collect_texture_metrics(render_system)
+        cache_metrics = self._collect_cache_metrics(render_system)
+
         resolved_backend = self._get_physics_backend_registry().resolve(active_world)
         backend = resolved_backend.backend
         if backend is not None:
@@ -275,6 +293,8 @@ class DebugToolsController:
 
         counters = {
             "entities": active_world.entity_count(),
+            "components": component_count,
+            "component_count": component_count,
             "render_entities": render_entities,
             "draw_calls": draw_calls,
             "batches": batches,
@@ -290,12 +310,72 @@ class DebugToolsController:
             "canvases": len(active_world.get_entities_with(Canvas)),
             "buttons": len(active_world.get_entities_with(UIButton)),
             "scripts": len(active_world.get_entities_with(ScriptBehaviour)),
+            "gc_gen0_count": int(gc_gen0_count),
+            "gc_gen1_count": int(gc_gen1_count),
+            "gc_gen2_count": int(gc_gen2_count),
+            **texture_metrics,
+            **cache_metrics,
         }
         self._perf_counters.clear()
         self._perf_counters.update(counters)
 
+    def _count_world_components(self, active_world: "World") -> int:
+        total = 0
+        for entity in active_world.iter_all_entities():
+            if hasattr(entity, "iter_components"):
+                total += sum(1 for _ in entity.iter_components())
+            elif hasattr(entity, "get_all_components"):
+                total += len(entity.get_all_components())
+        return total
+
+    def _collect_texture_metrics(self, render_system: Any) -> dict[str, int]:
+        metrics = {
+            "textures_loaded": 0,
+            "texture_load_failures": 0,
+            "texture_cache_approx_bytes": 0,
+        }
+        texture_manager = getattr(render_system, "texture_manager", None)
+        if texture_manager is None or not hasattr(texture_manager, "get_metrics"):
+            return metrics
+        raw_metrics = texture_manager.get_metrics()
+        metrics["textures_loaded"] = int(raw_metrics.get("loaded_count", 0))
+        metrics["texture_load_failures"] = int(raw_metrics.get("failed_count", 0))
+        metrics["texture_cache_approx_bytes"] = int(raw_metrics.get("approx_memory", 0))
+        return metrics
+
+    def _collect_cache_metrics(self, render_system: Any) -> dict[str, int]:
+        metrics = {
+            "render_sorted_entities_cache_size": 0,
+            "render_graph_pass_cache_size": 0,
+            "tilemap_chunk_cache_size": 0,
+        }
+        if render_system is None:
+            return metrics
+        sorted_entities_cache = getattr(render_system, "_sorted_entities_cache", None)
+        if sorted_entities_cache is not None:
+            metrics["render_sorted_entities_cache_size"] = len(sorted_entities_cache)
+        render_graph_cache = getattr(render_system, "_render_graph_cache", None)
+        if isinstance(render_graph_cache, dict):
+            passes = render_graph_cache.get("passes", [])
+            metrics["render_graph_pass_cache_size"] = len(passes) if hasattr(passes, "__len__") else 0
+        tilemap_chunk_cache = getattr(render_system, "_tilemap_chunk_cache", None)
+        if tilemap_chunk_cache is not None:
+            metrics["tilemap_chunk_cache_size"] = len(tilemap_chunk_cache)
+        return metrics
+
     def _empty_memory_counters(self) -> dict[str, float]:
         return {"world_json_bytes": 0.0, "entity_avg_json_bytes": 0.0}
+
+    def _process_memory_counters(self) -> dict[str, float]:
+        try:
+            psutil = importlib.import_module("psutil")
+            memory_info = psutil.Process().memory_info()
+        except Exception:
+            return {}
+        return {
+            "process_rss_bytes": float(getattr(memory_info, "rss", 0.0)),
+            "process_vms_bytes": float(getattr(memory_info, "vms", 0.0)),
+        }
 
     def approximate_memory_counters(self, active_world: Optional["World"]) -> dict[str, float]:
         if active_world is None:
@@ -352,6 +432,7 @@ class DebugToolsController:
             timings_ms["animation"] = float(self._perf_stats.get("animation", 0.0))
             timings_ms["gameplay"] = float(self._perf_stats.get("gameplay", 0.0))
         memory = self.approximate_memory_counters(active_world) if deep else self._empty_memory_counters()
+        memory.update(self._process_memory_counters())
         self._profiler.record_frame(
             timings_ms=timings_ms,
             counters=dict(self._perf_counters),

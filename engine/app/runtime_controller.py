@@ -358,6 +358,10 @@ class RuntimeController:
         """Poda automáticamente conexiones de señales ligadas a la entidad destruida."""
         self._signal_runtime.prune_by_source(entity.name)
         self._signal_runtime.prune_by_target(entity.name)
+        serialized_id = getattr(entity, "serialized_id", None)
+        if isinstance(serialized_id, str) and serialized_id.strip():
+            self._signal_runtime.prune_by_source(serialized_id.strip())
+            self._signal_runtime.prune_by_target(serialized_id.strip())
 
     def get_physics_backend_selection(self, world: Optional["World"]) -> PhysicsBackendSelection:
         return self._get_physics_backend_registry().resolve(world).selection

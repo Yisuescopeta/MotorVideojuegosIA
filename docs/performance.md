@@ -12,6 +12,23 @@ Comando base:
 py -m tools.benchmark_run --scenario many_transform_entities --mode play --frames 120 --entity-count 10000 --out reports/bench_10k.json
 ```
 
+Suite pequena para CI con umbrales suaves:
+
+```bash
+py -m tools.benchmark_suite --quick --out artifacts/benchmarks/performance_suite.json
+```
+
+La suite ejecuta `transform_edit_stress` 10k, `play_mode_clone_stress` 10k,
+`many_static_colliders` y `many_sprite_entities` en headless. `--quick` reduce
+los escenarios no 10k para mantener el coste de CI acotado. Sin `--quick`, esos
+escenarios usan cargas locales algo mayores para comparacion manual.
+
+Por defecto, la suite solo devuelve codigo distinto de cero ante regresiones
+enormes o comportamiento roto: crash del benchmark, operaciones obligatorias
+ausentes, conteos inesperados o umbrales duros superados. Los umbrales suaves
+quedan registrados como warnings en el JSON y no fallan CI salvo que se use
+`--fail-on-warning`.
+
 Escenas grandes con `Transform`:
 
 ```bash
@@ -103,8 +120,10 @@ cambio solo afecta espacios y saltos de linea; el payload serializable y
 - Escenarios existentes de fisica: `many_static_colliders`,
   `one_dynamic_many_static`, `many_dynamic_and_static`.
 
-Estos benchmarks no definen umbrales de exito. Su objetivo es generar mediciones
-comparables antes de cambios de optimizacion.
+Los benchmarks individuales no fallan por umbral. La suite
+`tools.benchmark_suite` agrega warnings suaves y puertas duras amplias para CI,
+pensadas para detectar regresiones grandes sin depender de pequenas variaciones
+de hardware.
 
 ## Asset index incremental
 

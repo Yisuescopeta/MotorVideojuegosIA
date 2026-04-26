@@ -61,6 +61,7 @@ operativa y no prueba de capacidades implementadas del motor.
 - [architecture/branch-strategy.md](architecture/branch-strategy.md) - convencion de ramas y workspaces.
 - [architecture/module-boundaries.md](architecture/module-boundaries.md) - mapa practico de carpetas y subsistemas.
 - [architecture/integration-strategy.md](architecture/integration-strategy.md) - integracion temporal por dominios.
+- [scene_streaming_design.md](scene_streaming_design.md) - diseno futuro de escenas chunked; no es contrato implementado.
 - [ai/codex-prompt-guidelines.md](ai/codex-prompt-guidelines.md) - formato recomendado de prompt para Codex.
 
 ## Agentes e IA

@@ -65,11 +65,12 @@ class CallableResolver:
         callable_ref: dict[str, Any],
     ) -> ResolvedCallable | None:
         entity_name = str(target.get("name", "")).strip()
+        entity_id = str(target.get("id", "")).strip()
         component_name = str(target.get("component", "ScriptBehaviour") or "ScriptBehaviour").strip()
         method_name = str(callable_ref.get("method", "")).strip()
 
-        if not entity_name or not method_name:
-            log_warn("CallableResolver: target entity requiere name y callable.method")
+        if not (entity_id or entity_name) or not method_name:
+            log_warn("CallableResolver: target entity requiere id/name y callable.method")
             return None
         if component_name != "ScriptBehaviour":
             log_warn(
@@ -85,9 +86,25 @@ class CallableResolver:
             script_behaviour_system = self._get_script_behaviour_system()
             if script_behaviour_system is None:
                 return False
-            return bool(script_behaviour_system.invoke_callable(world, entity_name, method_name, *args, **kwargs))
+            resolved_name = self._resolve_entity_name(world, entity_id, entity_name)
+            if not resolved_name:
+                return False
+            return bool(script_behaviour_system.invoke_callable(world, resolved_name, method_name, *args, **kwargs))
 
         return invoke
+
+    def _resolve_entity_name(self, world: "World", entity_id: str, fallback_name: str) -> str:
+        if entity_id:
+            get_by_serialized_id = getattr(world, "get_entity_by_serialized_id", None)
+            entity = get_by_serialized_id(entity_id) if callable(get_by_serialized_id) else None
+            if entity is None:
+                for candidate in world.iter_all_entities():
+                    if getattr(candidate, "serialized_id", None) == entity_id:
+                        entity = candidate
+                        break
+            if entity is not None:
+                return str(entity.name)
+        return fallback_name
 
     def _resolve_event_bus_callable(
         self,

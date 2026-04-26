@@ -90,6 +90,7 @@ class Entity:
         object.__setattr__(self, "_owner_world", None)
         object.__setattr__(self, "_notifications_suspended", True)
         self.id: int = _generate_entity_id()
+        self.serialized_id: str | None = None
         self.name: str = name
         self.active: bool = True
         self.tag: str = "Untagged"
@@ -259,7 +260,7 @@ class Entity:
             Diccionario con id, name y componentes serializados
         """
         data = {
-            "id": self.id,
+            "id": self.serialized_id if self.serialized_id else self.id,
             "name": self.name,
             "active": self.active,
             "tag": self.tag,

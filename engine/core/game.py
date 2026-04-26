@@ -657,7 +657,7 @@ class Game:
             description = str(connection.get("description", "") or "")
             target_id = None
             if isinstance(target, dict) and target.get("kind") == "entity":
-                target_id = str(target.get("name", "") or "").strip() or None
+                target_id = str(target.get("id", "") or target.get("name", "") or "").strip() or None
             signal_runtime.connect(
                 source_id,
                 signal_name,

@@ -19,7 +19,7 @@ from engine.ecs.world import World
 from engine.project.project_service import ProjectService
 from engine.rendering.render_targets import RenderTargetPool
 from engine.rendering.tilemap_chunk_renderer import TilemapChunkRenderer
-from engine.systems.render_system import RenderSystem
+from engine.systems.render_system import RenderBatchKey, RenderSystem
 
 
 class RenderGraphTests(unittest.TestCase):
@@ -246,6 +246,86 @@ class RenderGraphTests(unittest.TestCase):
         self.assertEqual(world_pass["stats"]["batches"], 4)
         self.assertEqual(graph["totals"]["render_commands"], 5)
         self.assertEqual(graph["totals"]["draw_calls"], 5)
+
+    def test_render_stats_public_graph_and_internal_batch_keys_stay_compatible(self) -> None:
+        world = World()
+        world.feature_metadata = {"render_2d": {"sorting_layers": ["Default", "Gameplay", "Foreground"]}}
+        self._make_sprite_entity(world, "A", x=0.0, sorting_layer="Gameplay", texture_path="assets/atlas_a.png")
+        self._make_sprite_entity(world, "B", x=10.0, sorting_layer="Gameplay", texture_path="assets/atlas_a.png")
+        self._make_sprite_entity(world, "C", x=20.0, sorting_layer="Gameplay", texture_path="assets/atlas_b.png")
+        self._make_sprite_entity(world, "Hud", x=30.0, sorting_layer="Foreground", render_pass="Overlay")
+        self._make_tilemap_entity(
+            world,
+            Tilemap(
+                cell_width=16,
+                cell_height=16,
+                layers=[{"name": "Ground", "tiles": [{"x": 0, "y": 0, "tile_id": "0"}]}],
+            ),
+            sorting_layer="Default",
+        )
+        world.selected_entity_name = "A"
+
+        render_system = RenderSystem()
+        internal_graph = render_system._build_render_graph(world)
+        public_graph = render_system.get_last_render_graph()
+
+        expected_totals = {
+            "render_entities": 4,
+            "render_commands": 6,
+            "draw_calls": 5,
+            "batches": 5,
+            "state_changes": 2,
+            "tilemap_chunks": 1,
+            "tilemap_total_chunks": 1,
+            "tilemap_visible_chunks": 1,
+            "tilemap_tile_draw_calls": 0,
+            "tilemap_chunk_rebuilds": 1,
+            "pass_count": 3,
+            "render_target_passes": 0,
+            "render_target_composites": 0,
+            "spatial_culling_enabled": False,
+            "spatial_total_entities": 5,
+            "spatial_visible_entities": 5,
+            "sort_cache": {"hits": 0, "misses": 1},
+            "passes": {
+                "World": {
+                    "render_entities": 3,
+                    "render_commands": 4,
+                    "draw_calls": 3,
+                    "tilemap_tile_draw_calls": 0,
+                    "batches": 3,
+                    "state_changes": 2,
+                },
+                "Overlay": {
+                    "render_entities": 1,
+                    "render_commands": 1,
+                    "draw_calls": 1,
+                    "tilemap_tile_draw_calls": 0,
+                    "batches": 1,
+                    "state_changes": 0,
+                },
+                "Debug": {
+                    "render_entities": 0,
+                    "render_commands": 1,
+                    "draw_calls": 1,
+                    "tilemap_tile_draw_calls": 0,
+                    "batches": 1,
+                    "state_changes": 0,
+                },
+            },
+        }
+
+        self.assertEqual(public_graph["totals"], expected_totals)
+        self.assertIsInstance(public_graph["passes"][0]["commands"][0], dict)
+        self.assertIsInstance(public_graph["passes"][0]["commands"][0]["batch_key"], dict)
+        self.assertIsInstance(public_graph["passes"][0]["batches"][0]["key"], dict)
+
+        first_internal_batch_key = internal_graph["passes"][0]["batches"][0]["key"]
+        self.assertIsInstance(first_internal_batch_key, RenderBatchKey)
+        self.assertIsInstance(first_internal_batch_key, tuple)
+        self.assertNotIsInstance(first_internal_batch_key, dict)
+        with self.assertRaises(AttributeError):
+            first_internal_batch_key.atlas_id = "mutated"
 
     def test_spatial_culling_limits_render_commands_to_camera_bounds(self) -> None:
         world = World()

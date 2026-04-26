@@ -24,6 +24,32 @@ jobs:
       - name: Run unittest suite
         run: python -m unittest discover -s tests
 
+  benchmarks:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install project
+        run: |
+          python -m pip install --upgrade "pip>=25.3" "setuptools>=78.1.1" "wheel>=0.46"
+          python -m pip install -e .[dev]
+
+      - name: Run performance benchmark suite
+        run: python -m tools.benchmark_suite --quick --out artifacts/benchmarks/performance_suite.json
+
+      - name: Upload benchmark report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-benchmark-suite
+          path: artifacts/benchmarks/performance_suite.json
+
   lint:
     runs-on: windows-latest
     steps:

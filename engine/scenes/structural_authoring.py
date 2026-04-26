@@ -234,7 +234,10 @@ class SceneHierarchyAuthoring:
                 changed = True
         before_count = len(entities)
         entry.scene.data["entities"] = [entity_data for entity_data in entities if entity_data.get("name") not in names_to_remove]
-        return len(entry.scene.data["entities"]) != before_count
+        changed = len(entry.scene.data["entities"]) != before_count
+        if changed:
+            entry.scene._rebuild_entity_index()
+        return changed
 
     def compute_world_transform_from_scene_data(
         self,
@@ -276,7 +279,10 @@ class SceneHierarchyAuthoring:
         entities = entry.scene.data.get("entities", [])
         before_count = len(entities)
         entry.scene.data["entities"] = [entity_data for entity_data in entities if entity_data.get("name") != entity_name]
-        return len(entry.scene.data["entities"]) != before_count
+        changed = len(entry.scene.data["entities"]) != before_count
+        if changed:
+            entry.scene._rebuild_entity_index()
+        return changed
 
 
 @dataclass
@@ -597,6 +603,11 @@ class ScenePrefabAuthoring:
         if entity is None or entity.prefab_root_name is None:
             return None
         root_scene_data = entry.scene.find_entity(entity.prefab_root_name)
+        if root_scene_data is None:
+            root = entry.edit_world.get_entity_by_name(entity.prefab_root_name)
+            root_id = getattr(root, "serialized_id", None) if root is not None else None
+            if isinstance(root_id, str) and root_id.strip():
+                root_scene_data = entry.scene.find_entity_by_id(root_id.strip())
         if root_scene_data is None or "prefab_instance" not in root_scene_data:
             return None
         return root_scene_data, str(entity.prefab_source_path or "")

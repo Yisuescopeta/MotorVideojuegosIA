@@ -61,9 +61,11 @@ class HierarchyPanel:
 
         # Drag-and-drop reparenting state
         self._drag_entity_id: Optional[int] = None
+        self._drag_entity_scene_id: Optional[str] = None
         self._drag_start_y: float = 0.0
         self._is_dragging_entity: bool = False
         self._drop_target_name: Optional[str] = None
+        self._drop_target_scene_id: Optional[str] = None
         self._drop_as_root: bool = False
         self._DRAG_THRESHOLD: int = 5
 
@@ -168,6 +170,7 @@ class HierarchyPanel:
             
             # Reset drop target each frame
             self._drop_target_name = None
+            self._drop_target_scene_id = None
             self._drop_as_root = False
 
             # Renderizar árbol
@@ -212,6 +215,7 @@ class HierarchyPanel:
 
             if not rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT):
                 self._drag_entity_id = None
+                self._drag_entity_scene_id = None
                 self._is_dragging_entity = False
 
         # Context Menu Logic (After scissor to draw on top)
@@ -246,6 +250,7 @@ class HierarchyPanel:
             # Drag-and-drop: track potential drag start
             if not self._input_blocked and not self._is_dragging_entity and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 self._drag_entity_id = entity.id
+                self._drag_entity_scene_id = self._serialized_entity_id(entity)
                 self._drag_start_y = mouse_pos.y
 
             if not self._input_blocked and not self._is_dragging_entity and rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
@@ -264,6 +269,7 @@ class HierarchyPanel:
             drag_entity = world.get_entity(self._drag_entity_id) if self._drag_entity_id is not None else None
             if drag_entity is not None and entity.id != self._drag_entity_id:
                 self._drop_target_name = entity.name
+                self._drop_target_scene_id = self._serialized_entity_id(entity)
                 self._drop_as_root = False
                 rl.draw_rectangle(panel_x, y, self.panel_width, row_height, rl.Color(44, 93, 135, 100))
 
@@ -392,16 +398,18 @@ class HierarchyPanel:
 
     def _complete_hierarchy_drag(self, world: "World") -> None:
         """Finish a drag-and-drop reparenting operation."""
-        drag_entity = world.get_entity(self._drag_entity_id) if self._drag_entity_id is not None else None
+        drag_entity = self._resolve_drag_entity(world)
         if drag_entity is None or self._scene_manager is None:
             self._is_dragging_entity = False
             self._drag_entity_id = None
+            self._drag_entity_scene_id = None
             return
 
-        if self._drop_target_name is not None and self._drop_target_name != drag_entity.name:
-            self._scene_manager.set_entity_parent(drag_entity.name, self._drop_target_name)
+        drop_target_name = self._resolve_entity_name_by_serialized_id(world, self._drop_target_scene_id) or self._drop_target_name
+        if drop_target_name is not None and drop_target_name != drag_entity.name:
+            self._scene_manager.set_entity_parent(drag_entity.name, drop_target_name)
             # Auto-expand the drop target so user sees the child
-            target = world.get_entity_by_name(self._drop_target_name)
+            target = world.get_entity_by_name(drop_target_name)
             if target is not None:
                 self.expanded_ids.add(target.id)
         elif self._drop_as_root and drag_entity.parent_name is not None:
@@ -409,8 +417,36 @@ class HierarchyPanel:
 
         self._is_dragging_entity = False
         self._drag_entity_id = None
+        self._drag_entity_scene_id = None
         self._drop_target_name = None
+        self._drop_target_scene_id = None
         self._drop_as_root = False
+
+    def _resolve_drag_entity(self, world: "World") -> Optional[Entity]:
+        entity = self._resolve_entity_by_serialized_id(world, self._drag_entity_scene_id)
+        if entity is not None:
+            return entity
+        return world.get_entity(self._drag_entity_id) if self._drag_entity_id is not None else None
+
+    def _resolve_entity_by_serialized_id(self, world: "World", entity_id: Optional[str]) -> Optional[Entity]:
+        if not entity_id:
+            return None
+        get_by_serialized_id = getattr(world, "get_entity_by_serialized_id", None)
+        if callable(get_by_serialized_id):
+            return get_by_serialized_id(entity_id)
+        for entity in world.iter_all_entities():
+            if self._serialized_entity_id(entity) == entity_id:
+                return entity
+        return None
+
+    def _resolve_entity_name_by_serialized_id(self, world: "World", entity_id: Optional[str]) -> Optional[str]:
+        entity = self._resolve_entity_by_serialized_id(world, entity_id)
+        return entity.name if entity is not None else None
+
+    @staticmethod
+    def _serialized_entity_id(entity: Entity) -> Optional[str]:
+        value = getattr(entity, "serialized_id", None)
+        return value.strip() if isinstance(value, str) and value.strip() else None
 
     def _handle_context_input(self, world: "World", x: int, y: int, w: int, h: int) -> None:
         """Maneja el input para abrir el menú contextual en el panel."""

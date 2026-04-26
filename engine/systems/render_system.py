@@ -4,7 +4,8 @@ engine/systems/render_system.py - Sistema de renderizado 2D con render graph min
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from dataclasses import dataclass, field
+from typing import Any, NamedTuple, Optional
 
 import pyray as rl
 from engine.assets.asset_reference import clone_asset_reference, normalize_asset_reference
@@ -27,6 +28,130 @@ from engine.rendering.render_targets import RenderTargetPool
 from engine.rendering.render_spatial_index import AABB, RenderSpatialIndex
 from engine.rendering.tilemap_chunk_renderer import TilemapChunkRenderer
 from engine.resources.texture_manager import TextureManager
+
+
+class RenderBatchKey(NamedTuple):
+    atlas_id: str = ""
+    material_id: str = ""
+    shader_id: str = ""
+    blend_mode: str = "alpha"
+    layer: str = ""
+    chunk: str = ""
+
+    @classmethod
+    def from_payload(cls, payload: Any) -> "RenderBatchKey":
+        if isinstance(payload, cls):
+            return payload
+        if isinstance(payload, dict):
+            return cls(
+                atlas_id=str(payload.get("atlas_id", "")),
+                material_id=str(payload.get("material_id", "")),
+                shader_id=str(payload.get("shader_id", "")),
+                blend_mode=str(payload.get("blend_mode", "alpha")),
+                layer=str(payload.get("layer", "")),
+                chunk=str(payload.get("chunk", "")),
+            )
+        values = tuple(payload) if isinstance(payload, tuple) else ()
+        padded = values + ("", "", "", "alpha", "", "")
+        return cls(*(str(value) for value in padded[:6]))
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self.to_dict().get(key, default)
+
+    def to_dict(self) -> dict[str, str]:
+        payload = {
+            "atlas_id": self.atlas_id,
+            "material_id": self.material_id,
+            "shader_id": self.shader_id,
+            "blend_mode": self.blend_mode,
+            "layer": self.layer,
+        }
+        if self.chunk:
+            payload["chunk"] = self.chunk
+        return payload
+
+
+@dataclass(slots=True)
+class RenderCommand:
+    kind: str
+    entity: Entity | None = None
+    entity_name: str = ""
+    sorting_layer: str = ""
+    order_in_layer: int = 0
+    batch_key: RenderBatchKey = field(default_factory=RenderBatchKey)
+    debug_kind: str = ""
+    chunk_id: str = ""
+    chunk_data: dict[str, Any] = field(default_factory=dict)
+    geometry: dict[str, Any] = field(default_factory=dict)
+    cache_key: Any = None
+    render_target_name: str = ""
+    render_target_dirty: bool = True
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return getattr(self, key, default)
+
+    def __getitem__(self, key: str) -> Any:
+        return getattr(self, key)
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        setattr(self, key, value)
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "entity": self.entity,
+            "entity_name": self.entity_name,
+            "sorting_layer": self.sorting_layer,
+            "order_in_layer": self.order_in_layer,
+            "batch_key": self.batch_key.to_dict(),
+            "debug_kind": self.debug_kind,
+            "chunk_id": self.chunk_id,
+            "chunk_data": self.chunk_data,
+            "geometry": self.geometry,
+            "cache_key": self.cache_key,
+            "render_target_name": self.render_target_name,
+            "render_target_dirty": self.render_target_dirty,
+        }
+
+
+@dataclass(slots=True)
+class RenderBatch:
+    key: RenderBatchKey
+    commands: list[RenderCommand] = field(default_factory=list)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return getattr(self, key, default)
+
+    def __getitem__(self, key: str) -> Any:
+        return getattr(self, key)
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "key": self.key.to_dict(),
+            "commands": [command.to_payload() for command in self.commands],
+        }
+
+
+@dataclass(slots=True)
+class RenderPass:
+    name: str
+    commands: list[RenderCommand] = field(default_factory=list)
+    batches: list[RenderBatch] = field(default_factory=list)
+    stats: dict[str, Any] = field(default_factory=dict)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return getattr(self, key, default)
+
+    def __getitem__(self, key: str) -> Any:
+        return getattr(self, key)
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "commands": [command.to_payload() for command in self.commands],
+            "batches": [batch.to_payload() for batch in self.batches],
+            "stats": dict(self.stats),
+        }
 
 
 class RenderSystem:
@@ -271,7 +396,7 @@ class RenderSystem:
 
         sorted_entities = self._sorted_render_entities(world)
         render_entities, spatial_stats = self._spatially_filter_render_entities(sorted_entities, camera_bounds)
-        pass_commands: dict[str, list[dict[str, Any]]] = {name: [] for name in self.PASS_SEQUENCE}
+        pass_commands: dict[str, list[RenderCommand]] = {name: [] for name in self.PASS_SEQUENCE}
         tilemap_chunks = 0
         tilemap_total_chunks = 0
         tilemap_visible_chunks = 0
@@ -311,20 +436,20 @@ class RenderSystem:
                                     "debug_kind": "tile_chunk",
                                     "entity": entity,
                                     "entity_name": entity.name,
-                                    "chunk_id": chunk_command.get("chunk_id", ""),
+                                    "chunk_id": chunk_command.chunk_id,
                                     "geometry": geometry,
                                 },
                             )
                 continue
             pass_commands[pass_name].append(
-                {
-                    "kind": "entity",
-                    "entity": entity,
-                    "entity_name": entity.name,
-                    "sorting_layer": sorting_layer,
-                    "order_in_layer": order_in_layer,
-                    "batch_key": self._build_batch_key(entity, sorting_layer),
-                }
+                RenderCommand(
+                    kind="entity",
+                    entity=entity,
+                    entity_name=entity.name,
+                    sorting_layer=sorting_layer,
+                    order_in_layer=order_in_layer,
+                    batch_key=self._build_batch_key(entity, sorting_layer),
+                )
             )
 
         if self.debug_draw_colliders:
@@ -399,7 +524,7 @@ class RenderSystem:
                 },
             )
 
-        passes: list[dict[str, Any]] = []
+        passes: list[RenderPass] = []
         total_draw_calls = 0
         total_render_commands = 0
         total_tilemap_tile_draw_calls = 0
@@ -417,11 +542,11 @@ class RenderSystem:
             batch_count = len(batches)
             state_changes = max(0, batch_count - 1)
             passes.append(
-                {
-                    "name": pass_name,
-                    "commands": commands,
-                    "batches": batches,
-                    "stats": {
+                RenderPass(
+                    name=pass_name,
+                    commands=commands,
+                    batches=batches,
+                    stats={
                         "render_entities": entity_count,
                         "render_commands": render_commands,
                         "draw_calls": draw_calls,
@@ -429,7 +554,7 @@ class RenderSystem:
                         "batches": batch_count,
                         "state_changes": state_changes,
                     },
-                }
+                )
             )
             total_entities += entity_count
             total_draw_calls += draw_calls
@@ -453,7 +578,7 @@ class RenderSystem:
             **spatial_stats,
             "sort_cache": {"hits": self._sort_cache_hits, "misses": self._sort_cache_misses},
             "passes": {
-                pass_data["name"]: dict(pass_data["stats"])
+                pass_data.name: dict(pass_data.stats)
                 for pass_data in passes
             },
         }
@@ -552,16 +677,16 @@ class RenderSystem:
             self._build_frame_plan(world, viewport_size=viewport_size)
         )
 
-    def _build_batches(self, commands: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        batches: list[dict[str, Any]] = []
-        current: dict[str, Any] | None = None
+    def _build_batches(self, commands: list[RenderCommand]) -> list[RenderBatch]:
+        batches: list[RenderBatch] = []
+        current: RenderBatch | None = None
 
         for command in commands:
-            batch_key = dict(command["batch_key"])
-            if current is None or current["key"] != batch_key:
-                current = {"key": batch_key, "commands": []}
+            batch_key = RenderBatchKey.from_payload(command.batch_key)
+            if current is None or current.key != batch_key:
+                current = RenderBatch(key=batch_key)
                 batches.append(current)
-            current["commands"].append(command)
+            current.commands.append(command)
 
         return batches
 
@@ -680,7 +805,7 @@ class RenderSystem:
         destination = rl.Rectangle(float(viewport_width - width - margin), float(margin), float(width), float(height))
         self._render_targets.compose("minimap", destination, rl.WHITE)
 
-    def _build_batch_key(self, entity: Entity, sorting_layer: str) -> dict[str, str]:
+    def _build_batch_key(self, entity: Entity, sorting_layer: str) -> RenderBatchKey:
         style = entity.get_component(RenderStyle2D)
         sprite = entity.get_component(Sprite)
         animator = entity.get_component(Animator)
@@ -706,13 +831,13 @@ class RenderSystem:
         if not resolved_atlas_id:
             resolved_atlas_id = "__placeholder__"
 
-        return {
-            "atlas_id": resolved_atlas_id,
-            "material_id": material_id,
-            "shader_id": shader_id,
-            "blend_mode": blend_mode,
-            "layer": sorting_layer,
-        }
+        return RenderBatchKey(
+            atlas_id=resolved_atlas_id,
+            material_id=material_id,
+            shader_id=shader_id,
+            blend_mode=blend_mode,
+            layer=sorting_layer,
+        )
 
     def _build_tilemap_commands(
         self,
@@ -722,8 +847,8 @@ class RenderSystem:
         sorting_layer: str,
         order_in_layer: int,
         camera_bounds: AABB | None = None,
-    ) -> tuple[list[dict[str, Any]], int, int, int]:
-        commands: list[dict[str, Any]] = []
+    ) -> tuple[list[RenderCommand], int, int, int]:
+        commands: list[RenderCommand] = []
         rebuilds = 0
         live_keys: set[tuple[int, str, int, int]] = set()
         total_chunks = 0
@@ -774,26 +899,26 @@ class RenderSystem:
                     rebuilds += 1
                 chunk_atlas_id = self._tilemap_chunk_atlas_id(cached["data"], fallback_atlas_id)
                 commands.append(
-                    {
-                        "kind": "tilemap_chunk",
-                        "entity": entity,
-                        "entity_name": entity.name,
-                        "sorting_layer": sorting_layer,
-                        "order_in_layer": order_in_layer + layer_index,
-                        "chunk_id": f"{layer_name}/{chunk_x},{chunk_y}",
-                        "chunk_data": cached["data"],
-                        "cache_key": cache_key,
-                        "render_target_name": cached.get("render_target_name", ""),
-                        "render_target_dirty": bool(cached.get("render_target_dirty", True)),
-                        "batch_key": {
-                            "atlas_id": chunk_atlas_id,
-                            "material_id": "tilemap_chunk",
-                            "shader_id": "default",
-                            "blend_mode": "alpha",
-                            "layer": sorting_layer,
-                            "chunk": f"{chunk_x},{chunk_y}",
-                        },
-                    }
+                    RenderCommand(
+                        kind="tilemap_chunk",
+                        entity=entity,
+                        entity_name=entity.name,
+                        sorting_layer=sorting_layer,
+                        order_in_layer=order_in_layer + layer_index,
+                        chunk_id=f"{layer_name}/{chunk_x},{chunk_y}",
+                        chunk_data=cached["data"],
+                        cache_key=cache_key,
+                        render_target_name=cached.get("render_target_name", ""),
+                        render_target_dirty=bool(cached.get("render_target_dirty", True)),
+                        batch_key=RenderBatchKey(
+                            atlas_id=chunk_atlas_id,
+                            material_id="tilemap_chunk",
+                            shader_id="default",
+                            blend_mode="alpha",
+                            layer=sorting_layer,
+                            chunk=f"{chunk_x},{chunk_y}",
+                        ),
+                    )
                 )
         stale_keys = [key for key in self._tilemap_chunk_cache.keys() if key[0] == int(entity.id) and key not in live_keys]
         for key in stale_keys:
@@ -1113,7 +1238,7 @@ class RenderSystem:
                             "chunk_id": command.get("chunk_id", ""),
                             "sorting_layer": command.get("sorting_layer", ""),
                             "order_in_layer": command.get("order_in_layer", 0),
-                            "batch_key": dict(command.get("batch_key", {})),
+                            "batch_key": self._batch_key_to_dict(command.get("batch_key", {})),
                             "chunk_data": self._clone_geometry(command.get("chunk_data")),
                             "geometry": self._clone_geometry(command.get("geometry")),
                         }
@@ -1121,7 +1246,7 @@ class RenderSystem:
                     ],
                     "batches": [
                         {
-                            "key": dict(batch.get("key", {})),
+                            "key": self._batch_key_to_dict(batch.get("key", {})),
                             "entity_names": [command.get("entity_name", "") for command in batch.get("commands", [])],
                         }
                         for batch in pass_data.get("batches", [])
@@ -1133,6 +1258,9 @@ class RenderSystem:
             "passes": public_passes,
             "totals": self._copy_stats(graph.get("totals", {})),
         }
+
+    def _batch_key_to_dict(self, batch_key: Any) -> dict[str, str]:
+        return RenderBatchKey.from_payload(batch_key).to_dict()
 
     def _copy_stats(self, payload: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -1416,19 +1544,29 @@ class RenderSystem:
                 color,
             )
 
-    def _append_debug_command(self, commands: list[dict[str, Any]], command: dict[str, Any]) -> None:
-        payload = dict(command)
-        payload.setdefault(
-            "batch_key",
-            {
-                "atlas_id": "__debug__",
-                "material_id": "debug_lines",
-                "shader_id": "default",
-                "blend_mode": "alpha",
-                "layer": "Debug",
-            },
+    def _append_debug_command(self, commands: list[RenderCommand], command: dict[str, Any]) -> None:
+        commands.append(
+            RenderCommand(
+                kind=str(command.get("kind", "debug")),
+                debug_kind=str(command.get("debug_kind", "")),
+                entity=command.get("entity"),
+                entity_name=str(command.get("entity_name", "")),
+                chunk_id=str(command.get("chunk_id", "")),
+                geometry=dict(command.get("geometry") or {}),
+                batch_key=RenderBatchKey.from_payload(
+                    command.get(
+                        "batch_key",
+                        {
+                            "atlas_id": "__debug__",
+                            "material_id": "debug_lines",
+                            "shader_id": "default",
+                            "blend_mode": "alpha",
+                            "layer": "Debug",
+                        },
+                    )
+                ),
+            )
         )
-        commands.append(payload)
 
     def _build_collider_geometry(self, transform: Transform, collider: Collider) -> dict[str, Any]:
         left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
@@ -1442,11 +1580,11 @@ class RenderSystem:
             "color": [0, 255, 0, 255],
         }
 
-    def _build_tile_chunk_geometry(self, entity: Entity, command: dict[str, Any]) -> dict[str, Any] | None:
+    def _build_tile_chunk_geometry(self, entity: Entity, command: RenderCommand) -> dict[str, Any] | None:
         transform = entity.get_component(Transform)
         if transform is None:
             return None
-        bounds = command.get("chunk_data", {}).get("bounds", {})
+        bounds = command.chunk_data.get("bounds", {})
         return {
             "kind": "rect",
             "x": float(transform.x) + float(bounds.get("x", 0.0)),
