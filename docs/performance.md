@@ -93,3 +93,18 @@ Las claves no aplicables se omiten. Por ejemplo, `transform_edit` solo aparece e
 
 Estos benchmarks no definen umbrales de exito. Su objetivo es generar mediciones
 comparables antes de cambios de optimizacion.
+
+## Asset index incremental
+
+`engine.assets.asset_database.AssetDatabase` mantiene un indice SQLite basico en
+`.motor/asset_index.sqlite`. El indice guarda `guid`, ruta relativa, ruta
+absoluta, extension, tipo, `mtime`, tamano y nombre visible de assets bajo
+`assets/`, `scripts/`, `prefabs/` y `levels/`.
+
+`rebuild()` recrea el indice completo. `update_changed()` compara `mtime` y
+tamano para insertar nuevos archivos, actualizar modificados y borrar entradas
+de archivos eliminados. `list_assets()`, `get_by_path()` y `get_by_guid()` leen
+desde SQLite y crean el indice si falta.
+
+Este indice todavia no reemplaza `ProjectService.list_assets`; esa ruta legacy
+sigue vigente hasta una integracion publica dedicada.

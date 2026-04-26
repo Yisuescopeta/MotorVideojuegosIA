@@ -3,13 +3,14 @@ tests/test_resource_preloader_system.py - Tests para ResourcePreloaderSystem.
 """
 
 import unittest
-from unittest.mock import MagicMock, Mock
+from unittest.mock import Mock
 
 from engine.assets.asset_reference import normalize_asset_reference
 from engine.components.resource_preloader import ResourcePreloader
 from engine.components.sprite import Sprite
 from engine.components.animator import Animator
 from engine.components.audiosource import AudioSource
+from engine.components.tilemap import Tilemap
 from engine.ecs.world import World
 from engine.systems.resource_preloader_system import ResourcePreloaderSystem
 
@@ -40,6 +41,22 @@ class MockAssetService:
                 "absolute_path": "c:/project/assets/sound.wav",
                 "guid": "sound-guid-456",
                 "path": "assets/sound.wav",
+            },
+            "assets/extra.png": {
+                "absolute_path": "c:/project/assets/extra.png",
+                "guid": "extra-guid-789",
+                "path": "assets/extra.png",
+            },
+            "assets/tiledep.png": {
+                "absolute_path": "c:/project/assets/tiledep.png",
+                "guid": "tiledep-guid-101",
+                "path": "assets/tiledep.png",
+            },
+            "assets/tileset.json": {
+                "absolute_path": "c:/project/assets/tileset.json",
+                "guid": "tileset-guid-202",
+                "path": "assets/tileset.json",
+                "dependencies": ["assets/tiledep.png"],
             },
         }
 
@@ -146,6 +163,109 @@ class TestResourcePreloaderSystem(unittest.TestCase):
 
         self.assertEqual(texture_count, 0)
         self.assertEqual(resolved_count, 0)
+
+    def test_build_preload_plan_returns_unique_references_without_duplicates(self) -> None:
+        """Verifica que el plan deduplique referencias preservando el primer orden."""
+        world = World()
+        manual = world.create_entity()
+        manual.add_component(
+            ResourcePreloader(
+                auto_scan=True,
+                assets=[{"path": "assets/test.png"}, {"path": "assets/test.png"}],
+            )
+        )
+
+        sprite_entity = world.create_entity()
+        sprite_entity.add_component(Sprite(texture_path="assets/test.png"))
+
+        animator_entity = world.create_entity()
+        animator_entity.add_component(Animator(sprite_sheet="assets/test.png"))
+
+        plan = self.system.build_preload_plan(world)
+
+        self.assertEqual(plan, [{"guid": "", "path": "assets/test.png"}])
+
+    def test_preload_budgeted_loads_only_requested_items_per_call(self) -> None:
+        """Verifica que la precarga budgeted avance por chunks."""
+        world = World()
+        entity = world.create_entity()
+        entity.add_component(
+            ResourcePreloader(
+                auto_scan=False,
+                assets=[
+                    {"path": "assets/test.png"},
+                    {"path": "assets/extra.png"},
+                    {"path": "assets/tiledep.png"},
+                ],
+            )
+        )
+
+        first_texture_count, first_resolved_count = self.system.preload_budgeted(world, 2)
+        self.assertEqual(first_texture_count, 2)
+        self.assertEqual(first_resolved_count, 2)
+        self.assertEqual(set(self.texture_manager.loaded), {"test-guid-123", "extra-guid-789"})
+
+        second_texture_count, second_resolved_count = self.system.preload_budgeted(world, 2)
+        self.assertEqual(second_texture_count, 1)
+        self.assertEqual(second_resolved_count, 1)
+        self.assertEqual(
+            set(self.texture_manager.loaded),
+            {"test-guid-123", "extra-guid-789", "tiledep-guid-101"},
+        )
+
+    def test_preload_full_loads_complete_plan(self) -> None:
+        """Verifica que preload siga cargando todo el plan completo."""
+        world = World()
+        entity = world.create_entity()
+        entity.add_component(
+            ResourcePreloader(
+                auto_scan=False,
+                assets=[
+                    {"path": "assets/test.png"},
+                    {"path": "assets/extra.png"},
+                    {"path": "assets/tiledep.png"},
+                ],
+            )
+        )
+
+        texture_count, resolved_count = self.system.preload(world)
+
+        self.assertEqual(texture_count, 3)
+        self.assertEqual(resolved_count, 3)
+        self.assertEqual(
+            set(self.texture_manager.loaded),
+            {"test-guid-123", "extra-guid-789", "tiledep-guid-101"},
+        )
+
+    def test_tilemap_uses_summary_dependencies_before_scanning_tiles(self) -> None:
+        """Verifica que dependencias resumidas eviten recorrer tiles individuales."""
+        world = World()
+        entity = world.create_entity()
+        entity.add_component(
+            Tilemap(
+                tileset={"path": "assets/tileset.json"},
+                layers=[
+                    {
+                        "name": "Ground",
+                        "tiles": [
+                            {
+                                "x": 0,
+                                "y": 0,
+                                "tile_id": "grass",
+                                "source": {"path": "assets/unused.png"},
+                            }
+                        ],
+                    }
+                ],
+            )
+        )
+
+        plan = self.system.build_preload_plan(world)
+        paths = [ref["path"] for ref in plan]
+
+        self.assertIn("assets/tileset.json", paths)
+        self.assertIn("assets/tiledep.png", paths)
+        self.assertNotIn("assets/unused.png", paths)
 
 
 if __name__ == "__main__":
