@@ -11,6 +11,7 @@ from engine.editor.undo_redo import UndoRedoManager
 from engine.levels.component_registry import create_default_registry
 from engine.scenes.scene_manager import COMPACT_SCENE_SAVE_ENTITY_THRESHOLD, SceneManager
 from engine.serialization.schema import CURRENT_SCENE_SCHEMA_VERSION
+from engine.systems.render_system import RenderSystem
 
 
 class SceneManagerSyncTests(unittest.TestCase):
@@ -51,6 +52,63 @@ class SceneManagerSyncTests(unittest.TestCase):
 
         self.assertFalse(changed)
         self.assertEqual(serialize_mock.call_count, 0)
+
+    def test_apply_transform_state_increments_transform_version_and_invalidates_render_graph(self) -> None:
+        edit_world = self.scene_manager.get_edit_world()
+        self.assertIsNotNone(edit_world)
+        render_system = RenderSystem()
+        render_system._build_render_graph(edit_world)
+        first_cache_key = render_system._render_graph_cache_key
+        transform_before = edit_world.transform_version
+        structure_before = edit_world.structure_version
+
+        applied = self.scene_manager.apply_transform_state("Player", {"x": 77.0})
+
+        self.assertTrue(applied)
+        self.assertEqual(edit_world.transform_version, transform_before + 1)
+        self.assertEqual(edit_world.structure_version, structure_before)
+        render_system._build_render_graph(edit_world)
+        self.assertNotEqual(render_system._render_graph_cache_key, first_cache_key)
+
+    def test_apply_transform_state_noop_does_not_increment_transform_version(self) -> None:
+        edit_world = self.scene_manager.get_edit_world()
+        self.assertIsNotNone(edit_world)
+        transform_before = edit_world.transform_version
+        structure_before = edit_world.structure_version
+
+        applied = self.scene_manager.apply_transform_state("Player", {"x": 10.0, "y": 20.0})
+
+        self.assertTrue(applied)
+        self.assertEqual(edit_world.transform_version, transform_before)
+        self.assertEqual(edit_world.structure_version, structure_before)
+
+    def test_apply_rect_transform_state_increments_ui_layout_version(self) -> None:
+        self.assertTrue(
+            self.scene_manager.add_component_to_entity(
+                "Player",
+                "RectTransform",
+                component_data={
+                    "enabled": True,
+                    "anchored_x": 0.0,
+                    "anchored_y": 0.0,
+                    "width": 100.0,
+                    "height": 40.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0,
+                },
+            )
+        )
+        edit_world = self.scene_manager.get_edit_world()
+        self.assertIsNotNone(edit_world)
+        layout_before = edit_world.ui_layout_version
+        structure_before = edit_world.structure_version
+
+        applied = self.scene_manager.apply_rect_transform_state("Player", {"width": 150.0})
+
+        self.assertTrue(applied)
+        self.assertEqual(edit_world.ui_layout_version, layout_before + 1)
+        self.assertEqual(edit_world.structure_version, structure_before)
 
     def test_sync_from_edit_world_skips_transient_preview_without_force(self) -> None:
         edit_world = self.scene_manager.get_edit_world()

@@ -23,6 +23,7 @@ class AssetDatabase:
     """Mantiene un catalogo serializable de los assets del proyecto."""
 
     CATALOG_FILE_NAME = "asset_catalog.json"
+    INDEX_SCHEMA_VERSION = 1
     SCAN_PATH_KEYS = ("assets", "scripts", "prefabs", "levels")
     IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp"}
     AUDIO_EXTENSIONS = {".wav", ".ogg", ".mp3"}
@@ -55,7 +56,55 @@ class AssetDatabase:
     def get_index_path(self) -> Path:
         return self._project_service.project_root / ProjectService.PROJECT_STATE_DIR / "asset_index.sqlite"
 
+    def index_exists(self) -> bool:
+        return self.get_index_path().exists()
+
+    def get_index_metadata(self) -> Dict[str, Any]:
+        if not self.index_exists():
+            return {}
+        try:
+            with closing(self._connect_index()) as connection:
+                tables = {
+                    str(row["name"])
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('assets', 'index_metadata')"
+                    ).fetchall()
+                }
+                metadata: Dict[str, Any] = {
+                    "index_exists": True,
+                    "assets_table": "assets" in tables,
+                    "metadata_table": "index_metadata" in tables,
+                }
+                if "index_metadata" in tables:
+                    rows = connection.execute("SELECT key, value FROM index_metadata").fetchall()
+                    metadata.update(
+                        {
+                            str(row["key"]): self._parse_index_metadata_value(str(row["key"]), row["value"])
+                            for row in rows
+                        }
+                    )
+                metadata["assets_schema_valid"] = self._has_expected_assets_schema(connection) if "assets" in tables else False
+                metadata["schema_valid"] = (
+                    metadata.get("schema_version") == self.INDEX_SCHEMA_VERSION
+                    and bool(metadata["assets_schema_valid"])
+                )
+                return metadata
+        except Exception:
+            return {}
+
+    def get_index_version(self) -> int | None:
+        version = self.get_index_metadata().get("schema_version")
+        try:
+            return int(version)
+        except (TypeError, ValueError):
+            return None
+
     def has_current_index(self) -> bool:
+        """Return whether the SQLite index exactly matches disk state.
+
+        This is an expensive validation: it scans every indexable asset and
+        stats each file. Do not use it on hot listing paths.
+        """
         index_path = self.get_index_path()
         if not index_path.exists():
             return False
@@ -165,7 +214,8 @@ class AssetDatabase:
             connection.commit()
 
     def list_assets(self, search: str = "", extensions: Optional[Iterable[str]] = None) -> List[Dict[str, Any]]:
-        self._ensure_index_exists()
+        if not self._can_read_index():
+            return []
         return self.list_assets_from_index(search=search, extensions=extensions)
 
     def list_assets_from_index(
@@ -198,7 +248,8 @@ class AssetDatabase:
             return [dict(row) for row in connection.execute(query, params).fetchall()]
 
     def get_by_path(self, path: str) -> Optional[Dict[str, Any]]:
-        self._ensure_index_exists()
+        if not self._can_read_index():
+            return None
         normalized_path = normalize_asset_path(path)
         normalized_path = self._project_service.to_relative_path(normalized_path) if normalized_path else ""
         if not normalized_path:
@@ -212,7 +263,8 @@ class AssetDatabase:
             return dict(row) if row is not None else None
 
     def get_by_guid(self, guid: str) -> Optional[Dict[str, Any]]:
-        self._ensure_index_exists()
+        if not self._can_read_index():
+            return None
         guid = str(guid or "").strip()
         if not guid:
             return None
@@ -500,9 +552,30 @@ class AssetDatabase:
         connection.row_factory = sqlite3.Row
         return connection
 
-    def _ensure_index_exists(self) -> None:
-        if not self.get_index_path().exists():
-            self.rebuild()
+    def _can_read_index(self) -> bool:
+        return self.index_exists() and bool(self.get_index_metadata().get("schema_valid"))
+
+    def _parse_index_metadata_value(self, key: str, value: Any) -> Any:
+        if key == "schema_version":
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+        return value
+
+    def _has_expected_assets_schema(self, connection: sqlite3.Connection) -> bool:
+        expected = {
+            "guid",
+            "path",
+            "absolute_path",
+            "extension",
+            "type",
+            "mtime",
+            "size",
+            "display_name",
+        }
+        columns = {str(row["name"]) for row in connection.execute("PRAGMA table_info(assets)").fetchall()}
+        return expected.issubset(columns)
 
     def _ensure_index_schema(self, connection: sqlite3.Connection) -> None:
         connection.execute(
@@ -519,9 +592,28 @@ class AssetDatabase:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS index_metadata (
+                key TEXT NOT NULL PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
         connection.execute("CREATE INDEX IF NOT EXISTS idx_assets_guid ON assets(guid)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_assets_extension ON assets(extension)")
         connection.execute("CREATE INDEX IF NOT EXISTS idx_assets_type ON assets(type)")
+        connection.executemany(
+            """
+            INSERT INTO index_metadata (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            [
+                ("schema_version", str(self.INDEX_SCHEMA_VERSION)),
+                ("updated_at_utc", datetime.now(timezone.utc).isoformat()),
+            ],
+        )
         connection.commit()
 
     def _iter_indexable_asset_files(self) -> Iterable[Path]:

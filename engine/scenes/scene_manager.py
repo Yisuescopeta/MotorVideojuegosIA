@@ -825,9 +825,7 @@ class SceneManager:
         entry = self._resolve_entry(key_or_path)
         if entry is None:
             return False
-        if self._authoring_transaction is not None:
-            if not self._can_apply_direct_component_state(entry, entity_name, "RectTransform"):
-                return False
+        if self._can_apply_direct_component_state(entry, entity_name, "RectTransform"):
             return self._apply_direct_component_state(
                 entry,
                 entity_name,
@@ -1569,11 +1567,18 @@ class SceneManager:
             "scale_x": "local_scale_x",
             "scale_y": "local_scale_y",
         }
+        changed = False
         for field_name, value in properties.items():
             attribute = field_to_attribute.get(field_name)
-            if attribute is not None:
-                setattr(transform, attribute, float(value))
-        entry.edit_world.touch()
+            if attribute is None:
+                continue
+            next_value = float(value)
+            if getattr(transform, attribute) == next_value:
+                continue
+            setattr(transform, attribute, next_value)
+            changed = True
+        if changed:
+            entry.edit_world.touch_transform()
 
     def _apply_component_properties_to_edit_world(
         self,
@@ -1593,10 +1598,18 @@ class SceneManager:
         component = entity.get_component(RectTransform) if component_name == "RectTransform" else None
         if component is None:
             return
+        editable_fields = {"anchored_x", "anchored_y", "width", "height", "rotation", "scale_x", "scale_y"}
+        changed = False
         for field_name, value in properties.items():
-            if hasattr(component, field_name):
-                setattr(component, field_name, float(value))
-        entry.edit_world.touch()
+            if field_name not in editable_fields or not hasattr(component, field_name):
+                continue
+            next_value = float(value)
+            if getattr(component, field_name) == next_value:
+                continue
+            setattr(component, field_name, next_value)
+            changed = True
+        if changed:
+            entry.edit_world.touch_ui_layout()
 
     def _sync_entry_from_edit_world(self, entry: SceneWorkspaceEntry) -> bool:
         if entry.is_playing or entry.edit_world is None:

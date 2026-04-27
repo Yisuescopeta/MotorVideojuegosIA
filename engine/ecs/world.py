@@ -181,6 +181,22 @@ class World:
     def touch(self) -> None:
         self._version += 1
 
+    def touch_transform(self) -> None:
+        self._transform_version += 1
+        self.touch()
+
+    def touch_render(self) -> None:
+        self._render_version += 1
+        self.touch()
+
+    def touch_physics(self) -> None:
+        self._physics_version += 1
+        self.touch()
+
+    def touch_ui_layout(self) -> None:
+        self._ui_layout_version += 1
+        self.touch()
+
     def _touch_structure(self) -> None:
         self._structure_version += 1
         self.touch()

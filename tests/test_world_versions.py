@@ -141,6 +141,27 @@ class WorldVersionTests(unittest.TestCase):
         self.assertEqual(world.structure_version, structure_before)
         self.assertEqual(world.version, version_before)
 
+    def test_public_granular_touch_methods_do_not_increment_structure_version(self) -> None:
+        cases = (
+            ("touch_transform", "transform_version"),
+            ("touch_render", "render_version"),
+            ("touch_physics", "physics_version"),
+            ("touch_ui_layout", "ui_layout_version"),
+        )
+
+        for method_name, version_name in cases:
+            with self.subTest(method_name=method_name):
+                world = World()
+                structure_before = world.structure_version
+                version_before = world.version
+                specific_before = getattr(world, version_name)
+
+                getattr(world, method_name)()
+
+                self.assertEqual(world.structure_version, structure_before)
+                self.assertEqual(world.version, version_before + 1)
+                self.assertEqual(getattr(world, version_name), specific_before + 1)
+
     def test_internal_component_mutation_does_not_increment_world_versions(self) -> None:
         world = World()
         entity = world.create_entity("Entity")

@@ -38,7 +38,7 @@ class PerformanceInfraTests(unittest.TestCase):
         child.remove_component(Transform)
         self.assertEqual([entity.name for entity in world.get_entities_with(Transform)], ["Parent"])
 
-    def test_ui_layout_cache_reuses_layout_until_world_changes(self) -> None:
+    def test_ui_layout_cache_reuses_layout_until_ui_layout_changes(self) -> None:
         world = World()
         canvas = world.create_entity("CanvasRoot")
         canvas.add_component(Canvas())
@@ -67,7 +67,8 @@ class PerformanceInfraTests(unittest.TestCase):
             system.update(world, (800.0, 600.0))
             self.assertEqual(layout_children.call_count, first_call_count)
 
-            button.layer = "UI"
+            button.get_component(RectTransform).width = 220.0
+            world.touch_ui_layout()
             system.update(world, (800.0, 600.0))
             self.assertGreater(layout_children.call_count, first_call_count)
 

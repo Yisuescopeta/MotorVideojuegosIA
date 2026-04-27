@@ -134,11 +134,23 @@ absoluta, extension, tipo, `mtime`, tamano y nombre visible de assets bajo
 
 `rebuild()` recrea el indice completo. `update_changed()` compara `mtime` y
 tamano para insertar nuevos archivos, actualizar modificados y borrar entradas
-de archivos eliminados. `list_assets()`, `get_by_path()` y `get_by_guid()` leen
-desde SQLite y crean el indice si falta.
+de archivos eliminados.
 
-Este indice todavia no reemplaza `ProjectService.list_assets`; esa ruta legacy
-sigue vigente hasta una integracion publica dedicada.
+El refresco del indice es explicito: las rutas publicas de listado no actualizan
+ni validan contra todo el filesystem. `ProjectService.refresh_asset_index()`,
+`AssetDatabase.update_changed()` y `AssetDatabase.rebuild()` son las rutas que
+sincronizan el indice con disco.
+
+`ProjectService.list_assets()` y `ProjectService.list_project_scenes()` usan
+SQLite cuando existe un indice con version de schema valida. En rutas calientes
+solo hacen comprobaciones baratas de existencia y metadata del schema; si el
+indice falta o tiene schema invalido, conservan el fallback legacy por
+filesystem.
+
+`AssetDatabase.has_current_index()` se conserva como diagnostico de compatibilidad,
+pero es una comprobacion cara: recorre todos los assets indexables y hace
+`stat()` de cada archivo para comparar contra SQLite. No debe usarse en rutas
+calientes de listado.
 
 ## Validacion rama Fix/optimizacion5.5 - 2026-04-26
 

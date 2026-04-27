@@ -80,10 +80,19 @@ class AssetDatabaseTests(unittest.TestCase):
         self._write_script("scripts/brain.py")
         database = self.asset_service.get_asset_database()
 
+        self.assertFalse(database.index_exists())
+        self.assertEqual(database.get_index_metadata(), {})
+        self.assertIsNone(database.get_index_version())
+
         database.rebuild()
 
         self.assertEqual(database.get_index_path(), self.root / ".motor" / "asset_index.sqlite")
-        self.assertTrue(database.get_index_path().exists())
+        self.assertTrue(database.index_exists())
+        metadata = database.get_index_metadata()
+        self.assertEqual(metadata["schema_version"], database.INDEX_SCHEMA_VERSION)
+        self.assertTrue(metadata["schema_valid"])
+        self.assertTrue(metadata["assets_schema_valid"])
+        self.assertEqual(database.get_index_version(), database.INDEX_SCHEMA_VERSION)
         entries = {item["path"]: item for item in database.list_assets()}
         player = entries["assets/player.png"]
         self.assertTrue(player["guid"].startswith("ast_"))
@@ -139,8 +148,10 @@ class AssetDatabaseTests(unittest.TestCase):
         self.assertGreater(updated["mtime"], original["mtime"])
         self.assertIsNotNone(database.get_by_path("assets/added.png"))
         self.assertIsNone(database.get_by_path("assets/removed.png"))
+        self.assertEqual(database.get_index_version(), database.INDEX_SCHEMA_VERSION)
+        self.assertTrue(database.get_index_metadata()["schema_valid"])
 
-    def test_project_service_list_assets_is_not_replaced_by_sqlite_index(self) -> None:
+    def test_project_service_index_listing_still_exposes_only_project_assets(self) -> None:
         self._write_png("assets/icon.png")
         self._write_script("scripts/brain.py")
         database = self.asset_service.get_asset_database()

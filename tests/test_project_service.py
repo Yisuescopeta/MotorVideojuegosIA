@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from cli.script_executor import ScriptExecutor
 from engine.api import EngineAPI
+from engine.assets.asset_database import AssetDatabase
 from engine.project.project_service import ProjectService
 
 
@@ -291,7 +292,12 @@ class ProjectServiceTests(unittest.TestCase):
         (project_root / "assets" / "notes.txt").write_text("ignored", encoding="utf-8")
 
         service.refresh_asset_index()
-        with patch.object(service, "_list_assets_from_files", side_effect=AssertionError("fallback scan should not run")):
+        path_class = type(project_root)
+        with (
+            patch.object(service, "_list_assets_from_files", side_effect=AssertionError("fallback scan should not run")),
+            patch.object(path_class, "rglob", side_effect=AssertionError("rglob should not run when index exists")),
+            patch.object(AssetDatabase, "has_current_index", side_effect=AssertionError("has_current_index should not run")),
+        ):
             assets = service.list_assets()
 
         self.assertEqual([item["path"] for item in assets], ["assets/icon.png"])
@@ -317,14 +323,19 @@ class ProjectServiceTests(unittest.TestCase):
         self._write_level(project_root, "intro_scene.json", "Intro Scene")
         service.refresh_asset_index()
 
-        with patch("engine.project.project_service.json.load", side_effect=AssertionError("fallback JSON read should not run")):
+        path_class = type(project_root)
+        with (
+            patch("engine.project.project_service.json.load", side_effect=AssertionError("fallback JSON read should not run")),
+            patch.object(path_class, "rglob", side_effect=AssertionError("rglob should not run when index exists")),
+            patch.object(AssetDatabase, "has_current_index", side_effect=AssertionError("has_current_index should not run")),
+        ):
             scenes = service.list_project_scenes()
 
         by_path = {item["path"]: item["name"] for item in scenes}
         self.assertEqual(by_path["levels/intro_scene.json"], "Intro Scene")
         self.assertEqual(by_path["levels/main_scene.json"], "Main Scene")
 
-    def test_stale_index_falls_back_to_files(self) -> None:
+    def test_valid_stale_index_requires_explicit_refresh(self) -> None:
         project_root, service = self._make_project("StaleIndex")
         self._write_level(project_root, "intro.json", "Intro")
         service.refresh_asset_index()
@@ -342,8 +353,16 @@ class ProjectServiceTests(unittest.TestCase):
         assets = service.list_assets()
 
         by_path = {item["path"]: item["name"] for item in scenes}
-        self.assertEqual(by_path["levels/intro.json"], "Updated Intro")
-        self.assertIn("assets/late.png", [item["path"] for item in assets])
+        self.assertEqual(by_path["levels/intro.json"], "Intro")
+        self.assertNotIn("assets/late.png", [item["path"] for item in assets])
+
+        service.refresh_asset_index()
+
+        refreshed_scenes = service.list_project_scenes()
+        refreshed_assets = service.list_assets()
+        refreshed_by_path = {item["path"]: item["name"] for item in refreshed_scenes}
+        self.assertEqual(refreshed_by_path["levels/intro.json"], "Updated Intro")
+        self.assertIn("assets/late.png", [item["path"] for item in refreshed_assets])
 
     def test_build_scene_file_path_sanitizes_name_and_avoids_collisions(self) -> None:
         _project_root, service = self._make_project("ScenePaths")

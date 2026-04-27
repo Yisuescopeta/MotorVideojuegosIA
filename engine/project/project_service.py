@@ -522,7 +522,7 @@ class ProjectService:
             from engine.assets.asset_database import AssetDatabase
 
             database = AssetDatabase(self)
-            if not database.has_current_index():
+            if not self._asset_index_is_usable(database):
                 return None
             rows = database.list_assets_from_index(
                 search=search,
@@ -545,6 +545,13 @@ class ProjectService:
                 }
             )
         return result
+
+    def _asset_index_is_usable(self, database: Any) -> bool:
+        if not database.index_exists():
+            return False
+        if database.get_index_version() != database.INDEX_SCHEMA_VERSION:
+            return False
+        return bool(database.get_index_metadata().get("schema_valid"))
 
     def _list_assets_from_files(
         self,
@@ -601,7 +608,7 @@ class ProjectService:
             from engine.assets.asset_database import AssetDatabase
 
             database = AssetDatabase(self)
-            if not database.has_current_index():
+            if not self._asset_index_is_usable(database):
                 return None
             rows = database.list_assets_from_index(extensions=[".json"], asset_type="scene_data")
         except Exception:

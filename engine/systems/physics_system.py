@@ -63,14 +63,27 @@ class PhysicsSystem:
 
         moving_candidates.sort(key=lambda candidate: int(candidate.entity.id))
 
+        transform_changed = False
+        physics_changed = False
         for entity in entities:
             transform = entity.get_component(Transform)
             rigidbody = entity.get_component(RigidBody)
             if transform is None or rigidbody is None or not rigidbody.simulated:
                 continue
+            before_transform_state = (transform.x, transform.y)
+            before_rigidbody_state = (
+                rigidbody.velocity_x,
+                rigidbody.velocity_y,
+                rigidbody.is_grounded,
+            )
             if rigidbody.body_type == "static":
                 rigidbody.velocity_x = 0.0
                 rigidbody.velocity_y = 0.0
+                physics_changed = physics_changed or before_rigidbody_state != (
+                    rigidbody.velocity_x,
+                    rigidbody.velocity_y,
+                    rigidbody.is_grounded,
+                )
                 continue
 
             collider = entity.get_component(Collider)
@@ -123,6 +136,18 @@ class PhysicsSystem:
                 transform.y = GROUND_Y_TEMP
                 rigidbody.velocity_y = 0.0
                 rigidbody.is_grounded = True
+
+            transform_changed = transform_changed or before_transform_state != (transform.x, transform.y)
+            physics_changed = physics_changed or before_rigidbody_state != (
+                rigidbody.velocity_x,
+                rigidbody.velocity_y,
+                rigidbody.is_grounded,
+            )
+
+        if transform_changed:
+            world.touch_transform()
+        if physics_changed:
+            world.touch_physics()
 
     def get_step_metrics(self) -> dict[str, float]:
         return dict(self._step_metrics)

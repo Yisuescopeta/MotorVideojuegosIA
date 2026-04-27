@@ -220,6 +220,58 @@ class PhysicsSystemTests(unittest.TestCase):
         self.assertLess(metrics["candidate_solids"], 6)
         self.assertLess(metrics["swept_checks"], 6)
 
+    def test_dynamic_body_movement_increments_transform_version_not_structure(self) -> None:
+        world = World()
+        entity = world.create_entity("Mover")
+        entity.add_component(Transform(x=0.0, y=0.0))
+        entity.add_component(RigidBody(velocity_x=10.0, velocity_y=0.0, gravity_scale=0.0, is_grounded=True))
+        structure_before = world.structure_version
+        transform_before = world.transform_version
+
+        PhysicsSystem().update(world, 0.5)
+
+        self.assertEqual(entity.get_component(Transform).x, 5.0)
+        self.assertEqual(world.transform_version, transform_before + 1)
+        self.assertEqual(world.structure_version, structure_before)
+
+    def test_rigidbody_runtime_changes_increment_physics_version(self) -> None:
+        world = World()
+        entity = world.create_entity("Faller")
+        entity.add_component(Transform(x=0.0, y=0.0))
+        entity.add_component(RigidBody(velocity_x=0.0, velocity_y=0.0, gravity_scale=1.0, is_grounded=False))
+        physics_before = world.physics_version
+        structure_before = world.structure_version
+
+        PhysicsSystem(gravity=10.0).update(world, 0.5)
+
+        self.assertGreater(entity.get_component(RigidBody).velocity_y, 0.0)
+        self.assertEqual(world.physics_version, physics_before + 1)
+        self.assertEqual(world.structure_version, structure_before)
+
+    def test_noop_physics_update_does_not_increment_granular_versions(self) -> None:
+        world = World()
+        entity = world.create_entity("Static")
+        entity.add_component(Transform(x=0.0, y=0.0))
+        entity.add_component(RigidBody(body_type="static", velocity_x=0.0, velocity_y=0.0, is_grounded=False))
+        versions_before = (
+            world.transform_version,
+            world.physics_version,
+            world.structure_version,
+            world.version,
+        )
+
+        PhysicsSystem().update(world, 1.0)
+
+        self.assertEqual(
+            versions_before,
+            (
+                world.transform_version,
+                world.physics_version,
+                world.structure_version,
+                world.version,
+            ),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
