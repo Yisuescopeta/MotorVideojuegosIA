@@ -1171,7 +1171,8 @@ class SceneManager:
         if world_snapshot is not None:
             snapshot_source = world_snapshot
         else:
-            assert edit_world is not None
+            if edit_world is None:
+                raise ValueError("Cannot build scene payload without edit world")
             snapshot_source = edit_world.serialize()
         snapshot = copy.deepcopy(snapshot_source)
         payload = build_canonical_scene_payload(

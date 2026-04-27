@@ -80,7 +80,7 @@ def _migrate_entity_defaults(entity: dict[str, Any]) -> None:
 
 def _build_deterministic_entity_id(scene_name: str, entity_name: str, index: int) -> str:
     seed = f"{scene_name}|{index}|{entity_name}"
-    digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:12]
+    digest = hashlib.sha1(seed.encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
     return f"entity_{digest}"
 
 

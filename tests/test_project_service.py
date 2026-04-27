@@ -300,7 +300,7 @@ class ProjectServiceTests(unittest.TestCase):
             assets = service.list_assets()
 
         self.assertEqual([item["path"] for item in assets], ["assets/icon.png"])
-        self.assertEqual(assets[0]["absolute_path"], (project_root / "assets" / "icon.png").as_posix())
+        self.assertEqual(assets[0]["absolute_path"], (project_root / "assets" / "icon.png").resolve().as_posix())
 
     def test_refresh_asset_index_updates_changed_files(self) -> None:
         project_root, service = self._make_project("AssetIndexUpdate")

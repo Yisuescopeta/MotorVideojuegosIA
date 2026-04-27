@@ -85,7 +85,7 @@ class AssetDatabaseTests(unittest.TestCase):
 
         database.rebuild()
 
-        self.assertEqual(database.get_index_path(), self.root / ".motor" / "asset_index.sqlite")
+        self.assertEqual(database.get_index_path(), (self.root / ".motor" / "asset_index.sqlite").resolve())
         self.assertTrue(database.index_exists())
         metadata = database.get_index_metadata()
         self.assertEqual(metadata["schema_version"], database.INDEX_SCHEMA_VERSION)
@@ -95,7 +95,7 @@ class AssetDatabaseTests(unittest.TestCase):
         entries = {item["path"]: item for item in database.list_assets()}
         player = entries["assets/player.png"]
         self.assertTrue(player["guid"].startswith("ast_"))
-        self.assertEqual(player["absolute_path"], (self.root / "assets" / "player.png").as_posix())
+        self.assertEqual(player["absolute_path"], (self.root / "assets" / "player.png").resolve().as_posix())
         self.assertEqual(player["extension"], ".png")
         self.assertEqual(player["type"], "texture")
         self.assertEqual(player["size"], len(MINIMAL_PNG_BYTES))
