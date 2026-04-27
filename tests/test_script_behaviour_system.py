@@ -98,6 +98,88 @@ class ScriptBehaviourSystemTests(unittest.TestCase):
         self.assertEqual(script.public_data["dt"], 0.25)
         self.assertEqual(script.public_data["updates"], 1)
 
+    def test_runtime_removed_script_behaviour_does_not_run_stale_hook(self) -> None:
+        module_name = self._module_name("removed_actor")
+        self._write_module(
+            module_name,
+            "def on_update(context, dt):\n"
+            "    context.public_data['updates'] = context.public_data.get('updates', 0) + 1\n",
+        )
+        world, script = self._world_with_script(module_name, public_data={})
+        entity = world.get_entity_by_name("Actor")
+        self.assertIsNotNone(entity)
+
+        self.system.on_play(world)
+        entity.remove_component(ScriptBehaviour)
+        invoked = self.system.update(world, 0.016)
+
+        self.assertFalse(invoked)
+        self.assertEqual(script.public_data, {})
+
+    def test_compiled_hook_checks_component_is_still_installed(self) -> None:
+        module_name = self._module_name("guarded_actor")
+        self._write_module(
+            module_name,
+            "def on_update(context, dt):\n"
+            "    context.public_data['updates'] = context.public_data.get('updates', 0) + 1\n",
+        )
+        world, script = self._world_with_script(module_name, public_data={})
+        entity = world.get_entity_by_name("Actor")
+        self.assertIsNotNone(entity)
+
+        self.system.on_play(world)
+        compiled = self.system._runtime_compiled_scripts[0]
+        entity.remove_component(ScriptBehaviour)
+        invoked = self.system._invoke_compiled_hook(compiled, "on_update", args=(0.016,))
+
+        self.assertFalse(invoked)
+        self.assertEqual(script.public_data, {})
+
+    def test_runtime_replaced_script_behaviour_rebuilds_without_running_stale_hook(self) -> None:
+        old_module_name = self._module_name("old_actor")
+        new_module_name = self._module_name("new_actor")
+        self._write_module(
+            old_module_name,
+            "def on_update(context, dt):\n"
+            "    context.public_data['old_updates'] = context.public_data.get('old_updates', 0) + 1\n",
+        )
+        self._write_module(
+            new_module_name,
+            "def on_update(context, dt):\n"
+            "    context.public_data['new_updates'] = context.public_data.get('new_updates', 0) + 1\n",
+        )
+        world, old_script = self._world_with_script(old_module_name, public_data={})
+        entity = world.get_entity_by_name("Actor")
+        self.assertIsNotNone(entity)
+        new_script = ScriptBehaviour(module_path=new_module_name, public_data={})
+
+        self.system.on_play(world)
+        entity.add_component(new_script)
+        invoked = self.system.update(world, 0.016)
+
+        self.assertTrue(invoked)
+        self.assertEqual(old_script.public_data, {})
+        self.assertEqual(new_script.public_data["new_updates"], 1)
+        self.assertIs(self.system._runtime_compiled_scripts[0].script_behaviour, new_script)
+
+    def test_runtime_added_script_behaviour_rebuilds_after_structure_version_change(self) -> None:
+        module_name = self._module_name("added_actor")
+        self._write_module(
+            module_name,
+            "def on_update(context, dt):\n"
+            "    context.public_data['updates'] = context.public_data.get('updates', 0) + 1\n",
+        )
+        world = World()
+
+        self.system.on_play(world)
+        entity = world.create_entity("AddedActor")
+        script = ScriptBehaviour(module_path=module_name, public_data={})
+        entity.add_component(script)
+        invoked = self.system.update(world, 0.016)
+
+        self.assertTrue(invoked)
+        self.assertEqual(script.public_data["updates"], 1)
+
     def test_on_stop_calls_compiled_hook_and_clears_cache(self) -> None:
         module_name = self._module_name("stop_actor")
         self._write_module(

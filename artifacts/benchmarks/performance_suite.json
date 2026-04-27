@@ -3,8 +3,8 @@
   "quick": true,
   "backend": "legacy_aabb",
   "fail_on_warning": false,
-  "started_at": "2026-04-26T20:12:15.300460Z",
-  "duration_ms": 29337.020300001313,
+  "started_at": "2026-04-27T08:09:59.655928Z",
+  "duration_ms": 53016.15270000184,
   "status": "passed",
   "summary": {
     "total": 4,
@@ -22,33 +22,33 @@
         "entity_count": 10000,
         "columns": 100
       },
-      "duration_ms": 4951.772200001869,
+      "duration_ms": 14040.822200011462,
       "status": "passed",
       "threshold_checks": [
         {
           "metric": "operations.load_level.ms",
-          "value": 2164.557699998113,
+          "value": 4693.724400014617,
           "soft_ms": 15000.0,
           "hard_ms": 60000.0,
           "status": "passed"
         },
         {
           "metric": "operations.transform_edit.ms",
-          "value": 0.1632999992580153,
+          "value": 0.28390000807121396,
           "soft_ms": 50.0,
           "hard_ms": 500.0,
           "status": "passed"
         },
         {
           "metric": "operations.render_preparation.ms",
-          "value": 100.71980000066105,
+          "value": 168.6749000218697,
           "soft_ms": 3000.0,
           "hard_ms": 15000.0,
           "status": "passed"
         },
         {
           "metric": "summary.frame_max_ms",
-          "value": 0.06539999958476983,
+          "value": 0.2174999681301415,
           "soft_ms": 1000.0,
           "hard_ms": 5000.0,
           "status": "passed"
@@ -77,16 +77,16 @@
         },
         "operations": {
           "load_level": {
-            "ms": 2164.557699998113
+            "ms": 4693.724400014617
           },
           "transform_edit": {
-            "ms": 0.1632999992580153,
+            "ms": 0.28390000807121396,
             "success": true,
             "target_entity": "Entity_9999",
             "field": "Transform.x"
           },
           "render_preparation": {
-            "ms": 100.71980000066105,
+            "ms": 168.6749000218697,
             "stats": {
               "render_entities": 10000,
               "render_commands": 10000,
@@ -145,16 +145,16 @@
           "frames": 1,
           "systems": {
             "animation": {
-              "avg_ms": 0.016000001778593287,
-              "min_ms": 0.016000001778593287,
-              "max_ms": 0.016000001778593287,
-              "total_ms": 0.016000001778593287
+              "avg_ms": 0.05070003680884838,
+              "min_ms": 0.05070003680884838,
+              "max_ms": 0.05070003680884838,
+              "total_ms": 0.05070003680884838
             },
             "frame": {
-              "avg_ms": 0.06539999958476983,
-              "min_ms": 0.06539999958476983,
-              "max_ms": 0.06539999958476983,
-              "total_ms": 0.06539999958476983
+              "avg_ms": 0.2174999681301415,
+              "min_ms": 0.2174999681301415,
+              "max_ms": 0.2174999681301415,
+              "total_ms": 0.2174999681301415
             },
             "gameplay": {
               "avg_ms": 0.0,
@@ -193,10 +193,10 @@
               "total_ms": 0.0
             },
             "ui": {
-              "avg_ms": 0.02099999983329326,
-              "min_ms": 0.02099999983329326,
-              "max_ms": 0.02099999983329326,
-              "total_ms": 0.02099999983329326
+              "avg_ms": 0.061400001868605614,
+              "min_ms": 0.061400001868605614,
+              "max_ms": 0.061400001868605614,
+              "total_ms": 0.061400001868605614
             }
           },
           "counters": {
@@ -219,9 +219,9 @@
               "canvases": 0.0,
               "buttons": 0.0,
               "scripts": 0.0,
-              "gc_gen0_count": 137.0,
-              "gc_gen1_count": 9.0,
-              "gc_gen2_count": 5.0,
+              "gc_gen0_count": 111.0,
+              "gc_gen1_count": 7.0,
+              "gc_gen2_count": 6.0,
               "textures_loaded": 0.0,
               "texture_load_failures": 0.0,
               "texture_cache_approx_bytes": 0.0,
@@ -243,9 +243,9 @@
               "draw_calls": 0.0,
               "entities": 10000.0,
               "entity_avg_json_bytes": 0.0,
-              "gc_gen0_count": 137.0,
-              "gc_gen1_count": 9.0,
-              "gc_gen2_count": 5.0,
+              "gc_gen0_count": 111.0,
+              "gc_gen1_count": 7.0,
+              "gc_gen2_count": 6.0,
               "physics_candidate_solids": 0.0,
               "physics_ccd_bodies": 0.0,
               "physics_contacts": 0.0,
@@ -268,14 +268,14 @@
             "mode": "EDIT",
             "backend": "legacy_aabb",
             "timings_ms": {
-              "frame": 0.06539999958476983,
+              "frame": 0.2174999681301415,
               "render": 0.0,
               "inspector": 0.0,
               "hierarchy": 0.0,
-              "ui": 0.02099999983329326,
+              "ui": 0.061400001868605614,
               "scripts": 0.0,
               "selection_gizmo": 0.0,
-              "animation": 0.016000001778593287,
+              "animation": 0.05070003680884838,
               "gameplay": 0.0
             },
             "counters": {
@@ -297,9 +297,9 @@
               "canvases": 0,
               "buttons": 0,
               "scripts": 0,
-              "gc_gen0_count": 137,
-              "gc_gen1_count": 9,
-              "gc_gen2_count": 5,
+              "gc_gen0_count": 111,
+              "gc_gen1_count": 7,
+              "gc_gen2_count": 6,
               "textures_loaded": 0,
               "texture_load_failures": 0,
               "texture_cache_approx_bytes": 0,
@@ -323,14 +323,14 @@
           "mode": "EDIT",
           "backend": "legacy_aabb",
           "timings_ms": {
-            "frame": 0.06539999958476983,
+            "frame": 0.2174999681301415,
             "render": 0.0,
             "inspector": 0.0,
             "hierarchy": 0.0,
-            "ui": 0.02099999983329326,
+            "ui": 0.061400001868605614,
             "scripts": 0.0,
             "selection_gizmo": 0.0,
-            "animation": 0.016000001778593287,
+            "animation": 0.05070003680884838,
             "gameplay": 0.0
           },
           "counters": {
@@ -352,9 +352,9 @@
             "canvases": 0,
             "buttons": 0,
             "scripts": 0,
-            "gc_gen0_count": 137,
-            "gc_gen1_count": 9,
-            "gc_gen2_count": 5,
+            "gc_gen0_count": 111,
+            "gc_gen1_count": 7,
+            "gc_gen2_count": 6,
             "textures_loaded": 0,
             "texture_load_failures": 0,
             "texture_cache_approx_bytes": 0,
@@ -373,8 +373,8 @@
           }
         },
         "summary": {
-          "frame_avg_ms": 0.06539999958476983,
-          "frame_max_ms": 0.06539999958476983,
+          "frame_avg_ms": 0.2174999681301415,
+          "frame_max_ms": 0.2174999681301415,
           "gameplay_avg_ms": 0.0,
           "gameplay_max_ms": 0.0,
           "candidate_solids_avg": 0.0,
@@ -403,40 +403,40 @@
         "entity_count": 10000,
         "columns": 100
       },
-      "duration_ms": 18949.416499999643,
+      "duration_ms": 31130.364599986933,
       "status": "passed",
       "threshold_checks": [
         {
           "metric": "operations.load_level.ms",
-          "value": 5987.733500001923,
+          "value": 9933.540900005028,
           "soft_ms": 30000.0,
           "hard_ms": 120000.0,
           "status": "passed"
         },
         {
           "metric": "operations.edit_to_play.ms",
-          "value": 678.9234999996552,
+          "value": 1130.514700023923,
           "soft_ms": 10000.0,
           "hard_ms": 60000.0,
           "status": "passed"
         },
         {
           "metric": "operations.play_to_edit.ms",
-          "value": 1459.680899999512,
+          "value": 1849.639699968975,
           "soft_ms": 15000.0,
           "hard_ms": 90000.0,
           "status": "passed"
         },
         {
           "metric": "operations.render_preparation.ms",
-          "value": 76.69739999982994,
+          "value": 186.73260003561154,
           "soft_ms": 5000.0,
           "hard_ms": 30000.0,
           "status": "passed"
         },
         {
           "metric": "summary.frame_max_ms",
-          "value": 10.871499998756917,
+          "value": 28.3282000455074,
           "soft_ms": 1000.0,
           "hard_ms": 5000.0,
           "status": "passed"
@@ -462,17 +462,17 @@
         },
         "operations": {
           "load_level": {
-            "ms": 5987.733500001923
+            "ms": 9933.540900005028
           },
           "edit_to_play": {
-            "ms": 678.9234999996552
+            "ms": 1130.514700023923
           },
           "render_preparation": {
-            "ms": 76.69739999982994,
+            "ms": 186.73260003561154,
             "stats": {
-              "render_entities": 884,
-              "render_commands": 884,
-              "draw_calls": 884,
+              "render_entities": 885,
+              "render_commands": 885,
+              "draw_calls": 885,
               "batches": 1,
               "state_changes": 0,
               "tilemap_chunks": 0,
@@ -485,16 +485,16 @@
               "render_target_composites": 0,
               "spatial_culling_enabled": true,
               "spatial_total_entities": 10001,
-              "spatial_visible_entities": 884,
+              "spatial_visible_entities": 885,
               "sort_cache": {
                 "hits": 0,
                 "misses": 1
               },
               "passes": {
                 "World": {
-                  "render_entities": 884,
-                  "render_commands": 884,
-                  "draw_calls": 884,
+                  "render_entities": 885,
+                  "render_commands": 885,
+                  "draw_calls": 885,
                   "tilemap_tile_draw_calls": 0,
                   "batches": 1,
                   "state_changes": 0
@@ -517,11 +517,11 @@
                 }
               }
             },
-            "visible_entities": 884,
+            "visible_entities": 885,
             "total_entities": 10001
           },
           "play_to_edit": {
-            "ms": 1459.680899999512
+            "ms": 1849.639699968975
           }
         },
         "profiler_report": {
@@ -530,22 +530,22 @@
           "frames": 1,
           "systems": {
             "animation": {
-              "avg_ms": 0.011300002370262519,
-              "min_ms": 0.011300002370262519,
-              "max_ms": 0.011300002370262519,
-              "total_ms": 0.011300002370262519
+              "avg_ms": 0.03160000778734684,
+              "min_ms": 0.03160000778734684,
+              "max_ms": 0.03160000778734684,
+              "total_ms": 0.03160000778734684
             },
             "frame": {
-              "avg_ms": 10.871499998756917,
-              "min_ms": 10.871499998756917,
-              "max_ms": 10.871499998756917,
-              "total_ms": 10.871499998756917
+              "avg_ms": 28.3282000455074,
+              "min_ms": 28.3282000455074,
+              "max_ms": 28.3282000455074,
+              "total_ms": 28.3282000455074
             },
             "gameplay": {
-              "avg_ms": 10.81510000221897,
-              "min_ms": 10.81510000221897,
-              "max_ms": 10.81510000221897,
-              "total_ms": 10.81510000221897
+              "avg_ms": 28.098100039642304,
+              "min_ms": 28.098100039642304,
+              "max_ms": 28.098100039642304,
+              "total_ms": 28.098100039642304
             },
             "hierarchy": {
               "avg_ms": 0.0,
@@ -578,10 +578,10 @@
               "total_ms": 0.0
             },
             "ui": {
-              "avg_ms": 0.01809999957913533,
-              "min_ms": 0.01809999957913533,
-              "max_ms": 0.01809999957913533,
-              "total_ms": 0.01809999957913533
+              "avg_ms": 0.07949996506795287,
+              "min_ms": 0.07949996506795287,
+              "max_ms": 0.07949996506795287,
+              "total_ms": 0.07949996506795287
             }
           },
           "counters": {
@@ -604,9 +604,9 @@
               "canvases": 0.0,
               "buttons": 0.0,
               "scripts": 0.0,
-              "gc_gen0_count": 535.0,
-              "gc_gen1_count": 4.0,
-              "gc_gen2_count": 3.0,
+              "gc_gen0_count": 523.0,
+              "gc_gen1_count": 1.0,
+              "gc_gen2_count": 9.0,
               "textures_loaded": 0.0,
               "texture_load_failures": 0.0,
               "texture_cache_approx_bytes": 0.0,
@@ -628,9 +628,9 @@
               "draw_calls": 0.0,
               "entities": 10001.0,
               "entity_avg_json_bytes": 0.0,
-              "gc_gen0_count": 535.0,
-              "gc_gen1_count": 4.0,
-              "gc_gen2_count": 3.0,
+              "gc_gen0_count": 523.0,
+              "gc_gen1_count": 1.0,
+              "gc_gen2_count": 9.0,
               "physics_candidate_solids": 0.0,
               "physics_ccd_bodies": 0.0,
               "physics_contacts": 0.0,
@@ -653,15 +653,15 @@
             "mode": "PLAY",
             "backend": "legacy_aabb",
             "timings_ms": {
-              "frame": 10.871499998756917,
+              "frame": 28.3282000455074,
               "render": 0.0,
               "inspector": 0.0,
               "hierarchy": 0.0,
-              "ui": 0.01809999957913533,
+              "ui": 0.07949996506795287,
               "scripts": 0.0,
               "selection_gizmo": 0.0,
-              "animation": 0.011300002370262519,
-              "gameplay": 10.81510000221897
+              "animation": 0.03160000778734684,
+              "gameplay": 28.098100039642304
             },
             "counters": {
               "entities": 10001,
@@ -682,9 +682,9 @@
               "canvases": 0,
               "buttons": 0,
               "scripts": 0,
-              "gc_gen0_count": 535,
-              "gc_gen1_count": 4,
-              "gc_gen2_count": 3,
+              "gc_gen0_count": 523,
+              "gc_gen1_count": 1,
+              "gc_gen2_count": 9,
               "textures_loaded": 0,
               "texture_load_failures": 0,
               "texture_cache_approx_bytes": 0,
@@ -708,15 +708,15 @@
           "mode": "PLAY",
           "backend": "legacy_aabb",
           "timings_ms": {
-            "frame": 10.871499998756917,
+            "frame": 28.3282000455074,
             "render": 0.0,
             "inspector": 0.0,
             "hierarchy": 0.0,
-            "ui": 0.01809999957913533,
+            "ui": 0.07949996506795287,
             "scripts": 0.0,
             "selection_gizmo": 0.0,
-            "animation": 0.011300002370262519,
-            "gameplay": 10.81510000221897
+            "animation": 0.03160000778734684,
+            "gameplay": 28.098100039642304
           },
           "counters": {
             "entities": 10001,
@@ -737,9 +737,9 @@
             "canvases": 0,
             "buttons": 0,
             "scripts": 0,
-            "gc_gen0_count": 535,
-            "gc_gen1_count": 4,
-            "gc_gen2_count": 3,
+            "gc_gen0_count": 523,
+            "gc_gen1_count": 1,
+            "gc_gen2_count": 9,
             "textures_loaded": 0,
             "texture_load_failures": 0,
             "texture_cache_approx_bytes": 0,
@@ -758,10 +758,10 @@
           }
         },
         "summary": {
-          "frame_avg_ms": 10.871499998756917,
-          "frame_max_ms": 10.871499998756917,
-          "gameplay_avg_ms": 10.81510000221897,
-          "gameplay_max_ms": 10.81510000221897,
+          "frame_avg_ms": 28.3282000455074,
+          "frame_max_ms": 28.3282000455074,
+          "gameplay_avg_ms": 28.098100039642304,
+          "gameplay_max_ms": 28.098100039642304,
           "candidate_solids_avg": 0.0,
           "candidate_solids_max": 0.0,
           "collision_candidates_avg": 0.0,
@@ -788,33 +788,33 @@
         "static_count": 1000,
         "columns": 50
       },
-      "duration_ms": 1949.5877000008477,
+      "duration_ms": 2841.5488000027835,
       "status": "passed",
       "threshold_checks": [
         {
           "metric": "operations.load_level.ms",
-          "value": 426.8441000021994,
+          "value": 427.0033999928273,
           "soft_ms": 10000.0,
           "hard_ms": 60000.0,
           "status": "passed"
         },
         {
           "metric": "operations.edit_to_play.ms",
-          "value": 30.23150000080932,
+          "value": 54.60269999457523,
           "soft_ms": 5000.0,
           "hard_ms": 30000.0,
           "status": "passed"
         },
         {
           "metric": "operations.play_to_edit.ms",
-          "value": 76.82619999832241,
+          "value": 100.5445999908261,
           "soft_ms": 10000.0,
           "hard_ms": 60000.0,
           "status": "passed"
         },
         {
           "metric": "summary.frame_max_ms",
-          "value": 53.292999997211155,
+          "value": 156.73620003508404,
           "soft_ms": 2000.0,
           "hard_ms": 10000.0,
           "status": "passed"
@@ -839,13 +839,13 @@
         },
         "operations": {
           "load_level": {
-            "ms": 426.8441000021994
+            "ms": 427.0033999928273
           },
           "edit_to_play": {
-            "ms": 30.23150000080932
+            "ms": 54.60269999457523
           },
           "render_preparation": {
-            "ms": 9.816800000407966,
+            "ms": 17.834600002970546,
             "stats": {
               "render_entities": 1000,
               "render_commands": 1000,
@@ -898,7 +898,7 @@
             "total_entities": 1000
           },
           "play_to_edit": {
-            "ms": 76.82619999832241
+            "ms": 100.5445999908261
           }
         },
         "profiler_report": {
@@ -907,22 +907,22 @@
           "frames": 5,
           "systems": {
             "animation": {
-              "avg_ms": 0.010800000745803118,
-              "min_ms": 0.007599999662488699,
-              "max_ms": 0.01720000000204891,
-              "total_ms": 0.05400000372901559
+              "avg_ms": 0.021939980797469616,
+              "min_ms": 0.018599967006593943,
+              "max_ms": 0.026899971999228,
+              "total_ms": 0.10969990398734808
             },
             "frame": {
-              "avg_ms": 40.717659998335876,
-              "min_ms": 25.255900000047404,
-              "max_ms": 53.292999997211155,
-              "total_ms": 203.58829999167938
+              "avg_ms": 82.80242000473663,
+              "min_ms": 60.59170002117753,
+              "max_ms": 156.73620003508404,
+              "total_ms": 414.01210002368316
             },
             "gameplay": {
-              "avg_ms": 40.65861999915796,
-              "min_ms": 25.212900000042282,
-              "max_ms": 53.19679999956861,
-              "total_ms": 203.29309999578982
+              "avg_ms": 82.666220003739,
+              "min_ms": 60.40260003646836,
+              "max_ms": 156.639399996493,
+              "total_ms": 413.331100018695
             },
             "hierarchy": {
               "avg_ms": 0.0,
@@ -955,10 +955,10 @@
               "total_ms": 0.0
             },
             "ui": {
-              "avg_ms": 0.023559999681310728,
-              "min_ms": 0.013900000340072438,
-              "max_ms": 0.052999999752501026,
-              "total_ms": 0.11779999840655364
+              "avg_ms": 0.03887999337166548,
+              "min_ms": 0.032100011594593525,
+              "max_ms": 0.05319999763742089,
+              "total_ms": 0.1943999668583274
             }
           },
           "counters": {
@@ -981,9 +981,9 @@
               "canvases": 0.0,
               "buttons": 0.0,
               "scripts": 0.0,
-              "gc_gen0_count": 416.6,
-              "gc_gen1_count": 7.4,
-              "gc_gen2_count": 2.8,
+              "gc_gen0_count": 417.2,
+              "gc_gen1_count": 4.4,
+              "gc_gen2_count": 6.2,
               "textures_loaded": 0.0,
               "texture_load_failures": 0.0,
               "texture_cache_approx_bytes": 0.0,
@@ -1005,9 +1005,9 @@
               "draw_calls": 0.0,
               "entities": 1000.0,
               "entity_avg_json_bytes": 0.0,
-              "gc_gen0_count": 661.0,
-              "gc_gen1_count": 11.0,
-              "gc_gen2_count": 3.0,
+              "gc_gen0_count": 659.0,
+              "gc_gen1_count": 9.0,
+              "gc_gen2_count": 11.0,
               "physics_candidate_solids": 0.0,
               "physics_ccd_bodies": 0.0,
               "physics_contacts": 0.0,
@@ -1030,15 +1030,15 @@
             "mode": "PLAY",
             "backend": "legacy_aabb",
             "timings_ms": {
-              "frame": 29.731399998127017,
+              "frame": 62.705299991648644,
               "render": 0.0,
               "inspector": 0.0,
               "hierarchy": 0.0,
-              "ui": 0.020600000425474718,
+              "ui": 0.04269997589290142,
               "scripts": 0.0,
               "selection_gizmo": 0.0,
-              "animation": 0.011200001608813182,
-              "gameplay": 29.67770000032033
+              "animation": 0.026899971999228,
+              "gameplay": 62.56270001176745
             },
             "counters": {
               "entities": 1000,
@@ -1059,9 +1059,9 @@
               "canvases": 0,
               "buttons": 0,
               "scripts": 0,
-              "gc_gen0_count": 355,
-              "gc_gen1_count": 11,
-              "gc_gen2_count": 3,
+              "gc_gen0_count": 358,
+              "gc_gen1_count": 5,
+              "gc_gen2_count": 0,
               "textures_loaded": 0,
               "texture_load_failures": 0,
               "texture_cache_approx_bytes": 0,
@@ -1085,15 +1085,15 @@
           "mode": "PLAY",
           "backend": "legacy_aabb",
           "timings_ms": {
-            "frame": 29.731399998127017,
+            "frame": 62.705299991648644,
             "render": 0.0,
             "inspector": 0.0,
             "hierarchy": 0.0,
-            "ui": 0.020600000425474718,
+            "ui": 0.04269997589290142,
             "scripts": 0.0,
             "selection_gizmo": 0.0,
-            "animation": 0.011200001608813182,
-            "gameplay": 29.67770000032033
+            "animation": 0.026899971999228,
+            "gameplay": 62.56270001176745
           },
           "counters": {
             "entities": 1000,
@@ -1114,9 +1114,9 @@
             "canvases": 0,
             "buttons": 0,
             "scripts": 0,
-            "gc_gen0_count": 355,
-            "gc_gen1_count": 11,
-            "gc_gen2_count": 3,
+            "gc_gen0_count": 358,
+            "gc_gen1_count": 5,
+            "gc_gen2_count": 0,
             "textures_loaded": 0,
             "texture_load_failures": 0,
             "texture_cache_approx_bytes": 0,
@@ -1135,10 +1135,10 @@
           }
         },
         "summary": {
-          "frame_avg_ms": 40.717659998335876,
-          "frame_max_ms": 53.292999997211155,
-          "gameplay_avg_ms": 40.65861999915796,
-          "gameplay_max_ms": 53.19679999956861,
+          "frame_avg_ms": 82.80242000473663,
+          "frame_max_ms": 156.73620003508404,
+          "gameplay_avg_ms": 82.666220003739,
+          "gameplay_max_ms": 156.639399996493,
           "candidate_solids_avg": 0.0,
           "candidate_solids_max": 0.0,
           "collision_candidates_avg": 15852.0,
@@ -1165,40 +1165,40 @@
         "entity_count": 2000,
         "columns": 50
       },
-      "duration_ms": 3486.123200000293,
+      "duration_ms": 5002.884700021241,
       "status": "passed",
       "threshold_checks": [
         {
           "metric": "operations.load_level.ms",
-          "value": 764.6338000013202,
+          "value": 1342.78920001816,
           "soft_ms": 20000.0,
           "hard_ms": 90000.0,
           "status": "passed"
         },
         {
           "metric": "operations.edit_to_play.ms",
-          "value": 127.25900000077672,
+          "value": 267.6460999646224,
           "soft_ms": 8000.0,
           "hard_ms": 45000.0,
           "status": "passed"
         },
         {
           "metric": "operations.play_to_edit.ms",
-          "value": 216.1019999985001,
+          "value": 294.87099999096245,
           "soft_ms": 12000.0,
           "hard_ms": 60000.0,
           "status": "passed"
         },
         {
           "metric": "operations.render_preparation.ms",
-          "value": 32.78180000052089,
+          "value": 58.63179999869317,
           "soft_ms": 4000.0,
           "hard_ms": 20000.0,
           "status": "passed"
         },
         {
           "metric": "summary.frame_max_ms",
-          "value": 5.267600001388928,
+          "value": 5.331899970769882,
           "soft_ms": 1000.0,
           "hard_ms": 5000.0,
           "status": "passed"
@@ -1224,17 +1224,17 @@
         },
         "operations": {
           "load_level": {
-            "ms": 764.6338000013202
+            "ms": 1342.78920001816
           },
           "edit_to_play": {
-            "ms": 127.25900000077672
+            "ms": 267.6460999646224
           },
           "render_preparation": {
-            "ms": 32.78180000052089,
+            "ms": 58.63179999869317,
             "stats": {
-              "render_entities": 884,
-              "render_commands": 884,
-              "draw_calls": 884,
+              "render_entities": 885,
+              "render_commands": 885,
+              "draw_calls": 885,
               "batches": 1,
               "state_changes": 0,
               "tilemap_chunks": 0,
@@ -1247,16 +1247,16 @@
               "render_target_composites": 0,
               "spatial_culling_enabled": true,
               "spatial_total_entities": 2001,
-              "spatial_visible_entities": 884,
+              "spatial_visible_entities": 885,
               "sort_cache": {
                 "hits": 0,
                 "misses": 1
               },
               "passes": {
                 "World": {
-                  "render_entities": 884,
-                  "render_commands": 884,
-                  "draw_calls": 884,
+                  "render_entities": 885,
+                  "render_commands": 885,
+                  "draw_calls": 885,
                   "tilemap_tile_draw_calls": 0,
                   "batches": 1,
                   "state_changes": 0
@@ -1279,11 +1279,11 @@
                 }
               }
             },
-            "visible_entities": 884,
+            "visible_entities": 885,
             "total_entities": 2001
           },
           "play_to_edit": {
-            "ms": 216.1019999985001
+            "ms": 294.87099999096245
           }
         },
         "profiler_report": {
@@ -1292,22 +1292,22 @@
           "frames": 5,
           "systems": {
             "animation": {
-              "avg_ms": 0.011359999189153314,
-              "min_ms": 0.004599998646881431,
-              "max_ms": 0.03369999831193127,
-              "total_ms": 0.05679999594576657
+              "avg_ms": 0.013579998631030321,
+              "min_ms": 0.008600007276982069,
+              "max_ms": 0.018599967006593943,
+              "total_ms": 0.0678999931551516
             },
             "frame": {
-              "avg_ms": 1.1975000001257285,
-              "min_ms": 0.13330000001587905,
-              "max_ms": 5.267600001388928,
-              "total_ms": 5.987500000628643
+              "avg_ms": 1.5341399936005473,
+              "min_ms": 0.3389000194147229,
+              "max_ms": 5.331899970769882,
+              "total_ms": 7.670699968002737
             },
             "gameplay": {
-              "avg_ms": 1.1307799992209766,
-              "min_ms": 0.10599999950500205,
-              "max_ms": 5.079399998066947,
-              "total_ms": 5.653899996104883
+              "avg_ms": 1.4369200100190938,
+              "min_ms": 0.28119998751208186,
+              "max_ms": 5.210200033616275,
+              "total_ms": 7.184600050095469
             },
             "hierarchy": {
               "avg_ms": 0.0,
@@ -1340,10 +1340,10 @@
               "total_ms": 0.0
             },
             "ui": {
-              "avg_ms": 0.027160000172443688,
-              "min_ms": 0.007899998308857903,
-              "max_ms": 0.08490000254823826,
-              "total_ms": 0.13580000086221844
+              "avg_ms": 0.025999988429248333,
+              "min_ms": 0.015199999324977398,
+              "max_ms": 0.04529999569058418,
+              "total_ms": 0.12999994214624166
             }
           },
           "counters": {
@@ -1366,9 +1366,9 @@
               "canvases": 0.0,
               "buttons": 0.0,
               "scripts": 0.0,
-              "gc_gen0_count": 102.8,
+              "gc_gen0_count": 169.4,
               "gc_gen1_count": 4.0,
-              "gc_gen2_count": 9.0,
+              "gc_gen2_count": 3.0,
               "textures_loaded": 0.0,
               "texture_load_failures": 0.0,
               "texture_cache_approx_bytes": 0.0,
@@ -1390,9 +1390,9 @@
               "draw_calls": 0.0,
               "entities": 2001.0,
               "entity_avg_json_bytes": 0.0,
-              "gc_gen0_count": 119.0,
+              "gc_gen0_count": 186.0,
               "gc_gen1_count": 4.0,
-              "gc_gen2_count": 9.0,
+              "gc_gen2_count": 3.0,
               "physics_candidate_solids": 0.0,
               "physics_ccd_bodies": 0.0,
               "physics_contacts": 0.0,
@@ -1415,15 +1415,15 @@
             "mode": "PLAY",
             "backend": "legacy_aabb",
             "timings_ms": {
-              "frame": 0.17830000069807284,
+              "frame": 0.4965999978594482,
               "render": 0.0,
               "inspector": 0.0,
               "hierarchy": 0.0,
-              "ui": 0.022000000171829015,
+              "ui": 0.016900012269616127,
               "scripts": 0.0,
               "selection_gizmo": 0.0,
-              "animation": 0.005800000508315861,
-              "gameplay": 0.13649999891640618
+              "animation": 0.009499955922365189,
+              "gameplay": 0.40389999048784375
             },
             "counters": {
               "entities": 2001,
@@ -1444,9 +1444,9 @@
               "canvases": 0,
               "buttons": 0,
               "scripts": 0,
-              "gc_gen0_count": 119,
+              "gc_gen0_count": 186,
               "gc_gen1_count": 4,
-              "gc_gen2_count": 9,
+              "gc_gen2_count": 3,
               "textures_loaded": 0,
               "texture_load_failures": 0,
               "texture_cache_approx_bytes": 0,
@@ -1470,15 +1470,15 @@
           "mode": "PLAY",
           "backend": "legacy_aabb",
           "timings_ms": {
-            "frame": 0.17830000069807284,
+            "frame": 0.4965999978594482,
             "render": 0.0,
             "inspector": 0.0,
             "hierarchy": 0.0,
-            "ui": 0.022000000171829015,
+            "ui": 0.016900012269616127,
             "scripts": 0.0,
             "selection_gizmo": 0.0,
-            "animation": 0.005800000508315861,
-            "gameplay": 0.13649999891640618
+            "animation": 0.009499955922365189,
+            "gameplay": 0.40389999048784375
           },
           "counters": {
             "entities": 2001,
@@ -1499,9 +1499,9 @@
             "canvases": 0,
             "buttons": 0,
             "scripts": 0,
-            "gc_gen0_count": 119,
+            "gc_gen0_count": 186,
             "gc_gen1_count": 4,
-            "gc_gen2_count": 9,
+            "gc_gen2_count": 3,
             "textures_loaded": 0,
             "texture_load_failures": 0,
             "texture_cache_approx_bytes": 0,
@@ -1520,10 +1520,10 @@
           }
         },
         "summary": {
-          "frame_avg_ms": 1.1975000001257285,
-          "frame_max_ms": 5.267600001388928,
-          "gameplay_avg_ms": 1.1307799992209766,
-          "gameplay_max_ms": 5.079399998066947,
+          "frame_avg_ms": 1.5341399936005473,
+          "frame_max_ms": 5.331899970769882,
+          "gameplay_avg_ms": 1.4369200100190938,
+          "gameplay_max_ms": 5.210200033616275,
           "candidate_solids_avg": 0.0,
           "candidate_solids_max": 0.0,
           "collision_candidates_avg": 0.0,

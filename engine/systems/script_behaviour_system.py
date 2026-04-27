@@ -5,16 +5,15 @@ engine/systems/script_behaviour_system.py - Ejecucion de ScriptBehaviour.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from engine.assets.asset_service import AssetService
 from engine.components.scriptbehaviour import ScriptBehaviour
-from engine.editor.console_panel import log_err, log_info
 from engine.ecs.world import World
-
+from engine.editor.console_panel import log_err, log_info
 
 ScriptHook = Callable[..., Any]
+ScriptMembershipSignature = tuple[tuple[int, str, int], ...]
 
 
 @dataclass
@@ -76,6 +75,8 @@ class ScriptBehaviourSystem:
         self._scene_flow_loader: Optional[Callable[[str], bool]] = None
         self._runtime_compiled_scripts: list[CompiledScriptBehaviour] = []
         self._runtime_world: World | None = None
+        self._runtime_world_structure_version: int | None = None
+        self._runtime_script_membership_signature: ScriptMembershipSignature = ()
         self._runtime_cache_dirty: bool = False
 
     def set_hot_reload_manager(self, manager: Any) -> None:
@@ -185,7 +186,11 @@ class ScriptBehaviourSystem:
         return invoked
 
     def _runtime_cache_needs_rebuild(self, world: World) -> bool:
-        return self._runtime_world is not world or self._runtime_cache_dirty
+        if self._runtime_world is not world or self._runtime_cache_dirty:
+            return True
+        if self._runtime_world_structure_version != world.structure_version:
+            return True
+        return self._runtime_script_membership_signature != self._script_membership_signature(world)
 
     def _compile_runtime_scripts(self, world: World) -> None:
         compiled_scripts: list[CompiledScriptBehaviour] = []
@@ -216,7 +221,18 @@ class ScriptBehaviourSystem:
 
         self._runtime_compiled_scripts = compiled_scripts
         self._runtime_world = world
+        self._runtime_world_structure_version = world.structure_version
+        self._runtime_script_membership_signature = self._script_membership_signature(world)
         self._runtime_cache_dirty = False
+
+    def _script_membership_signature(self, world: World) -> ScriptMembershipSignature:
+        signature: list[tuple[int, str, int]] = []
+        for entity in world.get_entities_with(ScriptBehaviour):
+            script_behaviour = entity.get_component(ScriptBehaviour)
+            if script_behaviour is None or not script_behaviour.enabled:
+                continue
+            signature.append((entity.id, entity.name, id(script_behaviour)))
+        return tuple(signature)
 
     def _runtime_cache_invalidated_by_hot_reload(self) -> bool:
         if self._hot_reload_manager is None:
@@ -252,9 +268,15 @@ class ScriptBehaviourSystem:
         *,
         args: tuple[Any, ...] = (),
     ) -> bool:
-        if not compiled.script_behaviour.enabled:
+        entity = compiled.context.world.get_entity_by_name(compiled.entity_name)
+        if entity is None or not entity.active:
             return False
-        if compiled.context.world.get_entity_by_name(compiled.entity_name) is None:
+        script_behaviour = entity.get_component(ScriptBehaviour)
+        if script_behaviour is None:
+            return False
+        if script_behaviour is not compiled.script_behaviour:
+            return False
+        if not script_behaviour.enabled:
             return False
 
         callable_obj = getattr(compiled, hook_name)
@@ -271,6 +293,8 @@ class ScriptBehaviourSystem:
     def _clear_runtime_cache(self) -> None:
         self._runtime_compiled_scripts = []
         self._runtime_world = None
+        self._runtime_world_structure_version = None
+        self._runtime_script_membership_signature = ()
         self._runtime_cache_dirty = False
 
     def _invoke_module_callable(

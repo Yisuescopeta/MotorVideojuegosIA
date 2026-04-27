@@ -276,26 +276,44 @@ class Tilemap(Component):
         chunks = layer.get("_runtime_chunks", {})
         if not isinstance(chunks, dict):
             chunks = self._rebuild_layer_chunks(layer)
-        return [
+        list_version = int(layer.get("_runtime_chunk_list_version", 0))
+        cached_version = int(layer.get("_runtime_chunk_list_cached_version", -1))
+        cached_chunks = layer.get("_runtime_chunk_list")
+        if isinstance(cached_chunks, list) and cached_version == list_version:
+            return cached_chunks
+        runtime_chunks = [
             chunk
             for _coord, chunk in sorted(chunks.items(), key=lambda item: (int(item[0][1]), int(item[0][0])))
             if isinstance(chunk, dict) and chunk.get("tiles")
         ]
+        layer["_runtime_chunk_list"] = runtime_chunks
+        layer["_runtime_chunk_list_cached_version"] = list_version
+        return runtime_chunks
 
     def iter_visible_runtime_chunks(
         self,
         layer: dict[str, Any],
         transform: Any,
         camera_bounds: tuple[float, float, float, float] | None,
+        *,
+        deterministic: bool = False,
     ) -> list[dict[str, Any]]:
-        chunks = self.iter_runtime_chunks(layer)
         if camera_bounds is None:
-            return chunks
-        return [
+            return self.iter_runtime_chunks(layer)
+        chunks = layer.get("_runtime_chunks", {})
+        if not isinstance(chunks, dict):
+            chunks = self._rebuild_layer_chunks(layer)
+        candidates = self._runtime_chunk_candidates_for_camera(layer, transform, camera_bounds, chunks)
+        visible_chunks = [
             chunk
-            for chunk in chunks
+            for chunk in candidates
+            if isinstance(chunk, dict)
+            and chunk.get("tiles")
             if self._chunk_intersects_camera(layer, transform, chunk, camera_bounds)
         ]
+        if deterministic:
+            visible_chunks.sort(key=lambda chunk: (int(chunk.get("coord", (0, 0))[1]), int(chunk.get("coord", (0, 0))[0])))
+        return visible_chunks
 
     def get_runtime_chunk(self, layer_name: str, chunk_x: int, chunk_y: int) -> dict[str, Any] | None:
         layer = self._find_layer(layer_name)
@@ -425,6 +443,48 @@ class Tilemap(Component):
     def _chunk_coord_for_tile(self, coord: tuple[int, int]) -> tuple[int, int]:
         return (int(coord[0]) // self.DEFAULT_CHUNK_SIZE, int(coord[1]) // self.DEFAULT_CHUNK_SIZE)
 
+    def _runtime_chunk_candidates_for_camera(
+        self,
+        layer: dict[str, Any],
+        transform: Any,
+        camera_bounds: tuple[float, float, float, float],
+        chunks: dict[tuple[int, int], dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        rotation = float(getattr(transform, "rotation", 0.0))
+        if not math.isclose(rotation % 360.0, 0.0, abs_tol=1e-6):
+            return [chunk for chunk in chunks.values() if isinstance(chunk, dict)]
+        scale_x = float(getattr(transform, "scale_x", 1.0))
+        scale_y = float(getattr(transform, "scale_y", 1.0))
+        if math.isclose(scale_x, 0.0, abs_tol=1e-12) or math.isclose(scale_y, 0.0, abs_tol=1e-12):
+            return [chunk for chunk in chunks.values() if isinstance(chunk, dict)]
+        chunk_width = self.DEFAULT_CHUNK_SIZE * float(self.cell_width)
+        chunk_height = self.DEFAULT_CHUNK_SIZE * float(self.cell_height)
+        if math.isclose(chunk_width, 0.0, abs_tol=1e-12) or math.isclose(chunk_height, 0.0, abs_tol=1e-12):
+            return [chunk for chunk in chunks.values() if isinstance(chunk, dict)]
+
+        query_left, query_top, query_right, query_bottom = camera_bounds
+        world_x = float(getattr(transform, "x", 0.0))
+        world_y = float(getattr(transform, "y", 0.0))
+        local_x_values = ((float(query_left) - world_x) / scale_x, (float(query_right) - world_x) / scale_x)
+        local_y_values = ((float(query_top) - world_y) / scale_y, (float(query_bottom) - world_y) / scale_y)
+        layer_offset_x = float(layer.get("offset_x", 0.0))
+        layer_offset_y = float(layer.get("offset_y", 0.0))
+        min_chunk_x = math.floor((min(local_x_values) - layer_offset_x) / chunk_width)
+        max_chunk_x = math.floor((max(local_x_values) - layer_offset_x) / chunk_width)
+        min_chunk_y = math.floor((min(local_y_values) - layer_offset_y) / chunk_height)
+        max_chunk_y = math.floor((max(local_y_values) - layer_offset_y) / chunk_height)
+        candidate_count = (max_chunk_x - min_chunk_x + 1) * (max_chunk_y - min_chunk_y + 1)
+        chunk_count = len(chunks)
+        if candidate_count <= 0 or candidate_count > chunk_count:
+            return [chunk for chunk in chunks.values() if isinstance(chunk, dict)]
+        candidates: list[dict[str, Any]] = []
+        for chunk_y in range(min_chunk_y, max_chunk_y + 1):
+            for chunk_x in range(min_chunk_x, max_chunk_x + 1):
+                chunk = chunks.get((chunk_x, chunk_y))
+                if isinstance(chunk, dict):
+                    candidates.append(chunk)
+        return candidates
+
     def _chunk_intersects_camera(
         self,
         layer: dict[str, Any],
@@ -496,25 +556,37 @@ class Tilemap(Component):
             chunk = chunks.setdefault(chunk_coord, {"coord": chunk_coord, "tiles": {}, "version": 0, "dirty": True})
             chunk["tiles"][normalized_coord] = tile
         layer["_runtime_chunks"] = chunks
+        self._invalidate_runtime_chunk_list(layer)
         return chunks
 
     def _set_chunk_tile(self, layer: dict[str, Any], coord: tuple[int, int]) -> None:
         chunks = layer.setdefault("_runtime_chunks", {})
         chunk_coord = self._chunk_coord_for_tile(coord)
+        existing_chunk = chunks.get(chunk_coord)
+        was_empty = not isinstance(existing_chunk, dict) or not existing_chunk.get("tiles")
         chunk = chunks.setdefault(chunk_coord, {"coord": chunk_coord, "tiles": {}, "version": 0, "dirty": False})
         chunk["tiles"][coord] = layer.setdefault("tiles", {})[coord]
+        if was_empty:
+            self._invalidate_runtime_chunk_list(layer)
         self._mark_chunk_dirty(chunk)
 
     def _clear_chunk_tile(self, layer: dict[str, Any], coord: tuple[int, int]) -> None:
         chunks = layer.setdefault("_runtime_chunks", {})
         chunk_coord = self._chunk_coord_for_tile(coord)
         chunk = chunks.setdefault(chunk_coord, {"coord": chunk_coord, "tiles": {}, "version": 0, "dirty": False})
+        was_non_empty = bool(chunk.get("tiles"))
         chunk.setdefault("tiles", {}).pop(coord, None)
+        if was_non_empty and not chunk.get("tiles"):
+            self._invalidate_runtime_chunk_list(layer)
         self._mark_chunk_dirty(chunk)
 
     def _mark_chunk_dirty(self, chunk: dict[str, Any]) -> None:
         chunk["version"] = int(chunk.get("version", 0)) + 1
         chunk["dirty"] = True
+
+    def _invalidate_runtime_chunk_list(self, layer: dict[str, Any]) -> None:
+        layer["_runtime_chunk_list_version"] = int(layer.get("_runtime_chunk_list_version", 0)) + 1
+        layer["_runtime_chunk_list_cached_version"] = -1
 
     def _mark_layer_chunks_dirty(self, layer: dict[str, Any]) -> None:
         chunks = layer.get("_runtime_chunks", {})

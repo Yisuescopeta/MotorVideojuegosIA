@@ -74,6 +74,7 @@ class Entity:
         "tag",
         "layer",
         "groups",
+        "serialized_id",
         "parent_name",
         "prefab_instance",
         "prefab_source_path",
@@ -259,8 +260,9 @@ class Entity:
         Returns:
             Diccionario con id, name y componentes serializados
         """
+        serialized_id = str(self.serialized_id or "").strip()
         data = {
-            "id": self.serialized_id if self.serialized_id else self.id,
+            "id": serialized_id if serialized_id else f"runtime_{self.id}",
             "name": self.name,
             "active": self.active,
             "tag": self.tag,

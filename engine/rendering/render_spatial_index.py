@@ -63,7 +63,7 @@ class RenderSpatialIndex:
         if render_order is not None and bool(getattr(render_order, "enabled", True)):
             return cls._placeholder_bounds(transform)
 
-        return None
+        return cls._placeholder_bounds(transform)
 
     @classmethod
     def _sprite_bounds(cls, transform: Transform, sprite: Sprite) -> AABB:

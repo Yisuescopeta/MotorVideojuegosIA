@@ -159,6 +159,37 @@ class RenderGraphTests(unittest.TestCase):
         self.assertEqual([command["entity_name"] for command in first_graph["passes"][0]["commands"]], ["Hero"])
         self.assertEqual([command["entity_name"] for command in second_graph["passes"][0]["commands"]], ["Hero", "Enemy"])
 
+    def test_structure_change_invalidates_sorted_entities_cache(self) -> None:
+        world = World()
+        self._make_sprite_entity(world, "Hero", x=0.0)
+        render_system = RenderSystem()
+
+        first_entities = render_system._sorted_render_entities(world)
+        self._make_sprite_entity(world, "Enemy", x=10.0)
+        second_entities = render_system._sorted_render_entities(world)
+
+        self.assertEqual([entity.name for entity in first_entities], ["Hero"])
+        self.assertEqual([entity.name for entity in second_entities], ["Hero", "Enemy"])
+        self.assertEqual(render_system._sort_cache_hits, 0)
+        self.assertEqual(render_system._sort_cache_misses, 2)
+
+    def test_transform_move_invalidates_render_graph_cache(self) -> None:
+        world = World()
+        self._make_camera_entity(world)
+        self._make_sprite_entity(world, "Near", x=10.0)
+        far = self._make_sprite_entity(world, "Far", x=300.0)
+        render_system = RenderSystem()
+
+        first_graph = render_system._public_graph(render_system._build_render_graph(world, viewport_size=(100.0, 100.0)))
+        far_transform = far.get_component(Transform)
+        self.assertIsNotNone(far_transform)
+        far_transform.x = 20.0
+        world.touch_transform()
+        second_graph = render_system._public_graph(render_system._build_render_graph(world, viewport_size=(100.0, 100.0)))
+
+        self.assertEqual([command["entity_name"] for command in first_graph["passes"][0]["commands"]], ["Camera", "Near"])
+        self.assertEqual([command["entity_name"] for command in second_graph["passes"][0]["commands"]], ["Camera", "Near", "Far"])
+
     def test_render_cache_keys_fallback_to_version_for_legacy_worlds(self) -> None:
         class LegacyWorldProxy:
             def __init__(self, wrapped: World) -> None:
@@ -337,9 +368,37 @@ class RenderGraphTests(unittest.TestCase):
         render_system = RenderSystem()
         graph = render_system._public_graph(render_system._build_render_graph(world, viewport_size=(100.0, 100.0)))
 
-        self.assertEqual([command["entity_name"] for command in graph["passes"][0]["commands"]], ["Near"])
+        self.assertEqual([command["entity_name"] for command in graph["passes"][0]["commands"]], ["Camera", "Near"])
         self.assertTrue(graph["totals"]["spatial_culling_enabled"])
         self.assertLess(graph["totals"]["spatial_visible_entities"], graph["totals"]["spatial_total_entities"])
+
+    def test_spatial_culling_keeps_transform_only_entities_inside_camera_bounds(self) -> None:
+        world = World()
+        self._make_camera_entity(world)
+        marker = world.create_entity("Marker")
+        marker.add_component(Transform(x=10.0, y=0.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+
+        render_system = RenderSystem()
+        graph = render_system._public_graph(render_system._build_render_graph(world, viewport_size=(100.0, 100.0)))
+
+        self.assertEqual([command["entity_name"] for command in graph["passes"][0]["commands"]], ["Camera", "Marker"])
+        self.assertTrue(graph["totals"]["spatial_culling_enabled"])
+        self.assertEqual(graph["totals"]["spatial_total_entities"], 2)
+        self.assertEqual(graph["totals"]["spatial_visible_entities"], 2)
+
+    def test_spatial_culling_filters_transform_only_entities_outside_camera_bounds(self) -> None:
+        world = World()
+        self._make_camera_entity(world)
+        marker = world.create_entity("Marker")
+        marker.add_component(Transform(x=300.0, y=0.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+
+        render_system = RenderSystem()
+        graph = render_system._public_graph(render_system._build_render_graph(world, viewport_size=(100.0, 100.0)))
+
+        self.assertEqual([command["entity_name"] for command in graph["passes"][0]["commands"]], ["Camera"])
+        self.assertTrue(graph["totals"]["spatial_culling_enabled"])
+        self.assertEqual(graph["totals"]["spatial_total_entities"], 2)
+        self.assertEqual(graph["totals"]["spatial_visible_entities"], 1)
 
     def test_spatial_culling_falls_back_without_camera(self) -> None:
         world = World()
@@ -377,7 +436,7 @@ class RenderGraphTests(unittest.TestCase):
         render_system = RenderSystem()
         graph = render_system._public_graph(render_system._build_render_graph(world, viewport_size=(100.0, 100.0)))
 
-        self.assertEqual([command["entity_name"] for command in graph["passes"][0]["commands"]], ["Ground", "Gameplay", "Foreground"])
+        self.assertEqual([command["entity_name"] for command in graph["passes"][0]["commands"]], ["Camera", "Ground", "Gameplay", "Foreground"])
 
     def test_spatial_culling_cache_key_tracks_viewport_and_flag(self) -> None:
         world = World()
@@ -391,8 +450,8 @@ class RenderGraphTests(unittest.TestCase):
         render_system.set_spatial_culling_enabled(False)
         disabled = render_system._public_graph(render_system._build_render_graph(world, viewport_size=(100.0, 100.0)))
 
-        self.assertEqual([command["entity_name"] for command in small["passes"][0]["commands"]], ["Near"])
-        self.assertEqual([command["entity_name"] for command in large["passes"][0]["commands"]], ["Near", "Far"])
+        self.assertEqual([command["entity_name"] for command in small["passes"][0]["commands"]], ["Camera", "Near"])
+        self.assertEqual([command["entity_name"] for command in large["passes"][0]["commands"]], ["Camera", "Near", "Far"])
         self.assertEqual([command["entity_name"] for command in disabled["passes"][0]["commands"]], ["Camera", "Near", "Far"])
 
     def test_headless_profile_reports_stable_metrics_for_large_scene(self) -> None:
@@ -516,7 +575,7 @@ class RenderGraphTests(unittest.TestCase):
         self.assertEqual(stats["tilemap_total_chunks"], 2)
         self.assertEqual(stats["tilemap_visible_chunks"], 1)
         self.assertEqual(stats["tilemap_chunks"], 1)
-        self.assertEqual(stats["render_commands"], 1)
+        self.assertEqual(stats["render_commands"], 2)
 
     def test_tilemap_render_graph_without_camera_keeps_all_chunks(self) -> None:
         world = World()

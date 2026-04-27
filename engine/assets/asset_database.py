@@ -94,10 +94,7 @@ class AssetDatabase:
 
     def get_index_version(self) -> int | None:
         version = self.get_index_metadata().get("schema_version")
-        try:
-            return int(version)
-        except (TypeError, ValueError):
-            return None
+        return version if isinstance(version, int) else None
 
     def has_current_index(self) -> bool:
         """Return whether the SQLite index exactly matches disk state.

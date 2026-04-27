@@ -116,6 +116,19 @@ class AssetDatabaseTests(unittest.TestCase):
         png_paths = [item["path"] for item in database.list_assets(extensions=["png"])]
         self.assertEqual(png_paths, ["assets/enemy.png", "assets/player.png"])
 
+    def test_list_assets_with_existing_index_does_not_scan_filesystem(self) -> None:
+        self._write_png("assets/player.png")
+        self._write_png("assets/enemy.png")
+        self._write_script("scripts/player_brain.py")
+        database = self.asset_service.get_asset_database()
+        database.rebuild()
+
+        path_class = type(self.root)
+        with patch.object(path_class, "rglob", side_effect=AssertionError("rglob should not run when index exists")):
+            assets = database.list_assets(search="player")
+
+        self.assertEqual([item["path"] for item in assets], ["assets/player.png", "scripts/player_brain.py"])
+
     def test_sqlite_get_by_path_and_guid_return_indexed_rows(self) -> None:
         self._write_png("assets/icon.png")
         database = self.asset_service.get_asset_database()

@@ -180,9 +180,9 @@ class BenchmarkRunTests(unittest.TestCase):
             scenario="many_sprite_entities",
             backend="legacy_aabb",
             frames=1,
-            entity_count=8,
-            columns=4,
-            spacing=12.0,
+            entity_count=100,
+            columns=10,
+            spacing=128.0,
         )
 
         operation = report["operations"]["render_preparation"]
@@ -203,7 +203,7 @@ class BenchmarkRunTests(unittest.TestCase):
         )
 
         stats = report["operations"]["render_preparation"]["stats"]
-        self.assertGreater(stats["tilemap_total_chunks"], 0)
+        self.assertGreaterEqual(stats["tilemap_total_chunks"], 64)
         self.assertGreater(stats["tilemap_visible_chunks"], 0)
         self.assertLess(stats["tilemap_visible_chunks"], stats["tilemap_total_chunks"])
         self.assertEqual(stats["tilemap_chunks"], stats["tilemap_visible_chunks"])

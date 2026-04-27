@@ -26,14 +26,15 @@ class RenderSpatialIndexTests(unittest.TestCase):
 
         self.assertEqual(index.query((0.0, 0.0, 32.0, 32.0)), {visible.id})
 
-    def test_entities_without_renderable_component_are_not_indexed(self) -> None:
+    def test_transform_only_entities_use_placeholder_bounds(self) -> None:
         world = World()
-        self._entity_with_transform(world, "TransformOnly", x=10.0, y=10.0)
+        entity = self._entity_with_transform(world, "TransformOnly", x=10.0, y=10.0)
 
         index = RenderSpatialIndex(cell_size=32.0)
         index.rebuild(world.get_all_entities())
 
-        self.assertEqual(index.query((0.0, 0.0, 32.0, 32.0)), set())
+        self.assertEqual(index.query((0.0, 0.0, 32.0, 32.0)), {entity.id})
+        self.assertEqual(index.query((40.0, 40.0, 50.0, 50.0)), set())
 
     def test_sprite_bounds_respect_origin_and_negative_scale(self) -> None:
         world = World()

@@ -362,7 +362,9 @@ class PhysicsSystem:
         return safe_delta
 
     def _record_swept_contact(self, entity: Entity, other: Entity) -> None:
-        pair = tuple(sorted((int(entity.id), int(other.id))))
+        left_id = int(entity.id)
+        right_id = int(other.id)
+        pair = (min(left_id, right_id), max(left_id, right_id))
         if pair not in self._swept_contact_set:
             self._swept_contact_set.add(pair)
             self._swept_contacts.append(pair)

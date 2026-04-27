@@ -1130,7 +1130,7 @@ class InspectorCoreTests(unittest.TestCase):
         )
 
         after_entity = self.api.game.world.get_entity_by_name("InspectorFoldProbe")
-        self.assertNotEqual(before_entity.id, after_entity.id)
+        self.assertEqual(before_entity.id, after_entity.id)
         self.assertIn(expansion_key, self.inspector.expanded_components)
         self.assertEqual(after_entity.get_component(Transform).x, 99.0)
 
@@ -1169,7 +1169,7 @@ class InspectorCoreTests(unittest.TestCase):
         )
 
         after_entity = self.api.game.world.get_entity_by_name("InspectorRectProbe")
-        self.assertNotEqual(before_entity.id, after_entity.id)
+        self.assertEqual(before_entity.id, after_entity.id)
         self.assertIn(expansion_key, self.inspector.expanded_components)
         self.assertEqual(after_entity.get_component(RectTransform).width, 220.0)
 

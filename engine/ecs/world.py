@@ -123,6 +123,7 @@ class World:
     def __init__(self) -> None:
         self._entities: dict[int, Entity] = {}
         self._name_index: dict[str, int] = {}
+        self._serialized_id_index: dict[str, int] = {}
         self._children_index: dict[str | None, set[int]] = defaultdict(set)
         self._component_index: dict[type, set[int]] = defaultdict(set)
         self._component_owner_index: dict[int, int] = {}
@@ -270,10 +271,8 @@ class World:
         normalized = str(entity_id or "").strip()
         if not normalized:
             return None
-        for entity in self._entities.values():
-            if getattr(entity, "serialized_id", None) == normalized:
-                return entity
-        return None
+        runtime_id = self._serialized_id_index.get(normalized)
+        return self._entities.get(runtime_id) if runtime_id is not None else None
 
     def get_entity_by_component_instance(self, component: Component) -> Entity | None:
         entity_id = self._component_owner_index.get(id(component))
@@ -335,6 +334,7 @@ class World:
             entity._set_owner_world(None)
         self._entities.clear()
         self._name_index.clear()
+        self._serialized_id_index.clear()
         self._children_index.clear()
         self._component_index.clear()
         self._component_owner_index.clear()
@@ -441,6 +441,9 @@ class World:
 
     def _index_entity(self, entity: Entity) -> None:
         self._name_index[entity.name] = entity.id
+        serialized_id = self._normalize_serialized_id(getattr(entity, "serialized_id", None))
+        if serialized_id is not None:
+            self._serialized_id_index[serialized_id] = entity.id
         self._children_index[entity.parent_name].add(entity.id)
         self.group_registry.register_entity(entity)
         for component in entity.iter_components():
@@ -449,6 +452,9 @@ class World:
     def _deindex_entity(self, entity: Entity) -> None:
         if self._name_index.get(entity.name) == entity.id:
             del self._name_index[entity.name]
+        serialized_id = self._normalize_serialized_id(getattr(entity, "serialized_id", None))
+        if serialized_id is not None and self._serialized_id_index.get(serialized_id) == entity.id:
+            del self._serialized_id_index[serialized_id]
         child_ids = self._children_index.get(entity.parent_name)
         if child_ids is not None:
             child_ids.discard(entity.id)
@@ -470,6 +476,11 @@ class World:
                 self._component_index.pop(component_type, None)
         self._component_owner_index.pop(id(component), None)
 
+    @staticmethod
+    def _normalize_serialized_id(value: object) -> str | None:
+        normalized = str(value or "").strip()
+        return normalized if normalized else None
+
     def _on_entity_changed(self, entity: Entity, event: str, **payload: object) -> None:
         if entity.id not in self._entities:
             return
@@ -484,13 +495,22 @@ class World:
                 self._name_index[str(current)] = entity.id
                 if self._selected_entity_name == previous:
                     self.selected_entity_name = str(current)
+            elif field == "serialized_id":
+                previous_id = self._normalize_serialized_id(previous)
+                if previous_id is not None and self._serialized_id_index.get(previous_id) == entity.id:
+                    del self._serialized_id_index[previous_id]
+                current_id = self._normalize_serialized_id(current)
+                if current_id is not None:
+                    self._serialized_id_index[current_id] = entity.id
             elif field == "parent_name":
-                previous_children = self._children_index.get(previous)
+                previous_parent = str(previous) if previous is not None else None
+                current_parent = str(current) if current is not None else None
+                previous_children = self._children_index.get(previous_parent)
                 if previous_children is not None:
                     previous_children.discard(entity.id)
                     if not previous_children:
-                        self._children_index.pop(previous, None)
-                self._children_index[current].add(entity.id)
+                        self._children_index.pop(previous_parent, None)
+                self._children_index[current_parent].add(entity.id)
             elif field == "groups":
                 self.group_registry.update_entity_groups(entity, previous, current)
             if field in {"name", "parent_name", "groups", "active"}:
@@ -503,9 +523,9 @@ class World:
             component_type = payload.get("component_type")
             previous_component = payload.get("previous_component")
             component = payload.get("component")
-            if previous_component is not None and component_type is not None:
+            if isinstance(component_type, type) and isinstance(previous_component, Component):
                 self._deindex_component(entity, component_type, previous_component)
-            if component_type is not None and component is not None:
+            if isinstance(component_type, type) and isinstance(component, Component):
                 self._index_component(entity, component_type, component)
             self._touch_component_membership(component_type if isinstance(component_type, type) else None)
             return
@@ -513,7 +533,7 @@ class World:
         if event == "component_removed":
             component_type = payload.get("component_type")
             component = payload.get("component")
-            if component_type is not None and component is not None:
+            if isinstance(component_type, type) and isinstance(component, Component):
                 self._deindex_component(entity, component_type, component)
             self._touch_component_membership(component_type if isinstance(component_type, type) else None)
             return
@@ -566,7 +586,7 @@ class World:
                 entities_data.append(prefab_entity_data)
                 continue
 
-            ent_data = {
+            ent_data: dict[str, Any] = {
                 "name": entity.name,
                 "active": entity.active,
                 "tag": entity.tag,

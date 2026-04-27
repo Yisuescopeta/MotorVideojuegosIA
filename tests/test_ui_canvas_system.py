@@ -928,6 +928,40 @@ class CanvasUISystemTests(unittest.TestCase):
             button_queries = sum(1 for args, _ in get_entities_with.call_args_list if args == (UIButton,))
             self.assertEqual(button_queries, first_button_queries)
 
+    def test_rect_transform_change_invalidates_layout_cache(self) -> None:
+        scene_path = self._write_scene(
+            "ui_rect_transform_cache_invalidation.json",
+            {
+                "name": "UI RectTransform Cache Invalidation",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+        self.assertTrue(self.api.create_canvas(name="CanvasRoot")["success"])
+        self.assertTrue(
+            self.api.create_ui_button(
+                "PlayButton",
+                "Play",
+                "CanvasRoot",
+                {"width": 280.0, "height": 84.0},
+                {"type": "emit_event", "name": "ui.play_clicked"},
+            )["success"]
+        )
+
+        world = self.api.game.world
+        ui_system = self.api.game._ui_system
+        ui_system.update(world, (800.0, 600.0), allow_interaction=False)
+        base_layout = ui_system.get_entity_screen_rect("PlayButton")
+
+        self.assertTrue(self.api.edit_component("PlayButton", "RectTransform", "width", 320.0)["success"])
+        ui_system.update(world, (800.0, 600.0), allow_interaction=False)
+        updated_layout = ui_system.get_entity_screen_rect("PlayButton")
+
+        self.assertEqual(base_layout, {"x": 260.0, "y": 258.0, "width": 280.0, "height": 84.0})
+        self.assertEqual(updated_layout, {"x": 240.0, "y": 258.0, "width": 320.0, "height": 84.0})
+
     def test_ui_button_update_still_fires_click(self) -> None:
         scene_path = self._write_scene(
             "ui_update_button_click.json",

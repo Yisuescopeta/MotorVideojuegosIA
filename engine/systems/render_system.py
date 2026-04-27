@@ -5,7 +5,7 @@ engine/systems/render_system.py - Sistema de renderizado 2D con render graph min
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, NamedTuple, Optional
+from typing import Any, NamedTuple, Optional, cast
 
 import pyray as rl
 from engine.assets.asset_reference import clone_asset_reference, normalize_asset_reference
@@ -24,8 +24,8 @@ from engine.ecs.world import World
 from engine.rendering.pipeline_executor import RenderPipelineExecutor2D
 from engine.rendering.pipeline_planner import RenderPipelinePlanner2D
 from engine.rendering.pipeline_types import FramePlan2D
-from engine.rendering.render_targets import RenderTargetPool
 from engine.rendering.render_spatial_index import AABB, RenderSpatialIndex
+from engine.rendering.render_targets import RenderTargetPool
 from engine.rendering.tilemap_chunk_renderer import TilemapChunkRenderer
 from engine.resources.texture_manager import TextureManager
 
@@ -181,7 +181,7 @@ class RenderSystem:
         self.spatial_culling_enabled: bool = True
         self._debug_primitives: list[dict[str, Any]] = []
         self._render_spatial_index: RenderSpatialIndex = RenderSpatialIndex()
-        self._sorted_entities_cache_key: tuple[int, int, int, tuple[str, ...]] | None = None
+        self._sorted_entities_cache_key: tuple[int, int, int, int, tuple[str, ...]] | None = None
         self._sorted_entities_cache: list[Entity] = []
         self._render_graph_cache_key: tuple[Any, ...] | None = None
         self._render_graph_cache: dict[str, Any] = {"passes": [], "totals": {}}
@@ -266,7 +266,10 @@ class RenderSystem:
 
     def get_debug_geometry_dump(self, world: World, viewport_size: Optional[tuple[float, float]] = None) -> dict[str, Any]:
         graph = self._public_graph(self._build_render_graph(world, viewport_size=viewport_size))
-        debug_pass = next((entry for entry in graph.get("passes", []) if entry.get("name") == "Debug"), {"commands": [], "stats": {}})
+        debug_pass = cast(
+            dict[str, Any],
+            next((entry for entry in graph.get("passes", []) if entry.get("name") == "Debug"), {"commands": [], "stats": {}}),
+        )
         return {
             "pass": "Debug",
             "viewport": {
@@ -340,6 +343,7 @@ class RenderSystem:
         cache_key = (
             id(world),
             self._world_version(world, "render_version"),
+            self._world_version(world, "transform_version"),
             self._world_version(world, "structure_version"),
             tuple(sorting_layers),
         )
@@ -595,13 +599,13 @@ class RenderSystem:
             return int(getattr(world, name))
         return int(getattr(world, "version", -1))
 
-    def _command_draw_call_count(self, command: dict[str, Any]) -> int:
-        if command.get("kind") == "tilemap_chunk":
-            return self._tilemap_chunk_renderer.command_draw_call_count(command)
+    def _command_draw_call_count(self, command: RenderCommand) -> int:
+        if command.kind == "tilemap_chunk":
+            return self._tilemap_chunk_renderer.command_draw_call_count(command.to_payload())
         return 1
 
-    def _tilemap_command_draw_call_count(self, command: dict[str, Any]) -> int:
-        return self._tilemap_chunk_renderer.tile_draw_call_count(command)
+    def _tilemap_command_draw_call_count(self, command: RenderCommand) -> int:
+        return self._tilemap_chunk_renderer.tile_draw_call_count(command.to_payload())
 
     def _spatially_filter_render_entities(
         self,
@@ -635,7 +639,7 @@ class RenderSystem:
     ) -> dict[str, Any]:
         graph = self._build_render_graph(world, viewport_size=viewport_size)
         minimap_config = self._get_minimap_config(world)
-        debug_commands = next((entry["commands"] for entry in graph["passes"] if entry["name"] == "Debug"), [])
+        debug_commands: list[RenderCommand] = next((entry["commands"] for entry in graph["passes"] if entry["name"] == "Debug"), [])
         target_jobs: list[dict[str, Any]] = []
         if debug_commands:
             width, height = self._normalize_viewport_size(viewport_size)
@@ -738,7 +742,10 @@ class RenderSystem:
             self._pipeline_executor.execute_render_target_job(job, world=None, camera=camera, viewport_size=viewport_size)
             return
         width, height = self._normalize_viewport_size(viewport_size)
-        debug_commands = next((entry["commands"] for entry in frame_plan["graph"]["passes"] if entry["name"] == "Debug"), [])
+        debug_commands: list[RenderCommand] = next(
+            (entry["commands"] for entry in frame_plan["graph"]["passes"] if entry["name"] == "Debug"),
+            [],
+        )
         if not debug_commands:
             return
         self._render_targets.begin("selection_overlay", width, height, rl.Color(0, 0, 0, 0))
@@ -861,13 +868,17 @@ class RenderSystem:
             if not bool(layer.get("visible", True)):
                 continue
             layer_name = str(layer.get("name", f"Layer_{layer_index}"))
-            all_chunks = tilemap.iter_runtime_chunks(layer)
-            total_chunks += len(all_chunks)
-            for runtime_chunk in all_chunks:
+            raw_chunks = layer.get("_runtime_chunks", {})
+            if isinstance(raw_chunks, dict):
+                live_chunks = [chunk for chunk in raw_chunks.values() if isinstance(chunk, dict) and chunk.get("tiles")]
+            else:
+                live_chunks = tilemap.iter_runtime_chunks(layer)
+            total_chunks += len(live_chunks)
+            for runtime_chunk in live_chunks:
                 chunk_x, chunk_y = runtime_chunk.get("coord", (0, 0))
                 live_keys.add((int(entity.id), layer_name, int(chunk_x), int(chunk_y)))
             runtime_chunks = (
-                all_chunks
+                tilemap.iter_runtime_chunks(layer)
                 if camera_bounds is None
                 else tilemap.iter_visible_runtime_chunks(layer, transform, camera_bounds)
             )
@@ -1173,10 +1184,11 @@ class RenderSystem:
         return (left, top, left + width, top + height)
 
     def _compute_minimap_bounds(self, entities: list[Entity]) -> tuple[float, float, float, float]:
-        min_x = min((entity.get_component(Transform).x for entity in entities if entity.get_component(Transform) is not None), default=-100.0)
-        max_x = max((entity.get_component(Transform).x for entity in entities if entity.get_component(Transform) is not None), default=100.0)
-        min_y = min((entity.get_component(Transform).y for entity in entities if entity.get_component(Transform) is not None), default=-100.0)
-        max_y = max((entity.get_component(Transform).y for entity in entities if entity.get_component(Transform) is not None), default=100.0)
+        transforms = [transform for entity in entities if (transform := entity.get_component(Transform)) is not None]
+        min_x = min((transform.x for transform in transforms), default=-100.0)
+        max_x = max((transform.x for transform in transforms), default=100.0)
+        min_y = min((transform.y for transform in transforms), default=-100.0)
+        max_y = max((transform.y for transform in transforms), default=100.0)
         if min_x == max_x:
             max_x += 1.0
         if min_y == max_y:
@@ -1639,8 +1651,8 @@ class RenderSystem:
         if transform is None:
             return None
 
-        width = self.PLACEHOLDER_WIDTH
-        height = self.PLACEHOLDER_HEIGHT
+        width = float(self.PLACEHOLDER_WIDTH)
+        height = float(self.PLACEHOLDER_HEIGHT)
         offset_x = 0.5
         offset_y = 0.5
 
