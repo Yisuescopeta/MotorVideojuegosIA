@@ -1,26 +1,24 @@
 # Optimization 5.5 validation
 
-Fecha: 2026-04-27
-Rama revisada: `Fix/optimización5.5`
+Fecha de ejecucion: 2026-04-27
+Rama revisada: `Fix/optimizacion5.5`
 
-## Checks ejecutados
+## Checks finales ejecutados
 
 | Comando | Resultado |
 | --- | --- |
-| `python -m unittest discover -s tests` | OK: 1595 tests, 9 skipped, 988.335 s |
+| `python -m unittest discover -s tests` | OK: 1595 tests, 9 skipped, 1383.794 s |
 | `python -m tools.benchmark_suite --quick --out artifacts/benchmarks/performance_suite.json` | OK: suite `passed`, 4/4 escenarios, 0 warnings, 0 failures |
 | `python -m ruff check engine cli tools main.py` | OK: all checks passed |
 | `python -m ruff check tests` | OK: all checks passed |
 | `python -m mypy engine cli tools main.py` | OK: no issues found in 242 source files |
 
-Nota: `artifacts/benchmarks/performance_suite.json` fue regenerado para leer métricas y luego restaurado para no dejar el artifact modificado.
-
-## Benchmarks quick
+## Benchmark quick
 
 Suite:
 
 - Status: `passed`
-- Duracion total: 44904.83 ms
+- Duracion total: 42998.06 ms
 - Total: 4
 - Passed: 4
 - Warnings: 0
@@ -30,16 +28,30 @@ Escenarios:
 
 | Escenario | Status | Duracion ms | Metricas clave |
 | --- | --- | ---: | --- |
-| `transform_edit_stress_10k` | passed | 9540.13 | load_level 3474.55; transform_edit **0.15**; render_preparation 139.17; frame_max 0.11 |
-| `play_mode_clone_stress_10k` | passed | 27129.10 | load_level 8772.29; edit_to_play 1499.91; play_to_edit 1984.17; render_preparation 166.60; frame_max 24.12 |
-| `many_static_colliders` | passed | 2636.85 | load_level 549.13; edit_to_play 60.15; play_to_edit 130.43; render_preparation 14.57; frame_max 141.85 |
-| `many_sprite_entities_headless` | passed | 5598.47 | load_level 1493.33; edit_to_play 226.71; play_to_edit 366.89; render_preparation **35.92**; frame_max 4.51 |
+| `transform_edit_stress_10k` | passed | 9793.83 | load_level 3474.41; transform_edit **0.13**; render_preparation 144.77; frame_max 0.11 |
+| `play_mode_clone_stress_10k` | passed | 25946.59 | load_level 8203.19; edit_to_play 1106.85; play_to_edit 2180.61; render_preparation 172.06; frame_max 28.55 |
+| `many_static_colliders` | passed | 2383.07 | load_level 517.20; edit_to_play 68.07; play_to_edit 141.56; render_preparation 14.25; frame_max 92.90 |
+| `many_sprite_entities_headless` | passed | 4874.33 | load_level 1457.45; edit_to_play 219.11; play_to_edit 365.36; render_preparation **37.57**; frame_max 4.54 |
 
-Confirmaciones de metricas clave:
+Confirmaciones:
 
-- `transform_edit_stress_10k`: `transform_edit` se mantiene en ~0.15 ms, muy bajo y dentro del umbral.
-- `many_sprite_entities_headless`: `render_preparation` se mantiene en ~35.92 ms, razonable y dentro del umbral.
-- `play_mode_clone_stress_10k` y `many_static_colliders` pasan sin warnings ni failures; no muestran empeoramiento extremo frente a umbrales quick.
+- Tests completos pasan.
+- Benchmark quick pasa con 4/4 escenarios, 0 warnings y 0 failures.
+- Ruff global sobre `engine cli tools main.py` pasa.
+- Ruff sobre `tests` pasa.
+- Mypy global sobre `engine cli tools main.py` pasa.
+- `.github/workflows/ci.yml` contiene los checks estrictos:
+  - `python -m ruff check engine cli tools main.py`
+  - `python -m ruff check tests`
+  - `python -m mypy engine cli tools main.py`
+
+## Artifact de benchmark
+
+`artifacts/benchmarks/performance_suite.json` es un artifact local generado por el benchmark quick. No queda versionado ni staged:
+
+- `git ls-files -- artifacts/benchmarks/performance_suite.json` no devuelve entradas.
+- `.gitignore` mantiene `artifacts/benchmarks/*.json`.
+- `git check-ignore -v artifacts/benchmarks/performance_suite.json` confirma que el archivo queda ignorado por esa regla.
 
 ## Verificaciones 5.5
 
@@ -57,11 +69,11 @@ Estas verificaciones quedan cubiertas por la suite completa y las pruebas headle
 
 ## Riesgos restantes
 
-- Se aplico un ajuste menor en `tests/test_audio_system.py` para evitar una asercion exacta sobre tiempo de pared sub-frame al pausar audio; el comportamiento runtime no cambio.
-- Los cambios de Ruff tocaron muchos archivos con orden de imports, whitespace y variables no usadas. No se hicieron refactors funcionales amplios.
+- No se detectan riesgos bloqueantes en la validacion final.
+- `artifacts/benchmarks/performance_suite.json` se conserva solo como artifact local ignorado tras ejecutar el benchmark.
 
 ## Recomendacion
 
 **Lista para merge.**
 
-Con criterio estricto, la rama esta lista porque tests completos, benchmarks quick, Ruff global, Ruff tests y Mypy global estan verdes, y no se detectaron regresiones en las optimizaciones 5.5.
+Con criterio estricto, la rama esta lista porque tests completos, benchmark quick, Ruff global, Ruff tests y Mypy global estan verdes; CI protege los checks globales estrictos; y el artifact local de benchmark no queda versionado.
