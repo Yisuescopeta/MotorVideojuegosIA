@@ -67,7 +67,10 @@ jobs:
           python -m pip install -e .[dev]
 
       - name: Ruff
-        run: python -m ruff check engine/api engine/project engine/rl engine/serialization engine/events cli tools main.py
+        run: python -m ruff check engine cli tools main.py
+
+      - name: Ruff tests
+        run: python -m ruff check tests
 
   types:
     runs-on: windows-latest
@@ -86,7 +89,7 @@ jobs:
           python -m pip install -e .[dev]
 
       - name: Mypy
-        run: python -m mypy engine/api engine/project engine/rl engine/serialization engine/events cli tools main.py
+        run: python -m mypy engine cli tools main.py
 
   security:
     runs-on: windows-latest
