@@ -34,7 +34,7 @@ from engine.ecs.component import Component
 class Collider(Component):
     """
     Componente de colisión AABB (caja alineada a ejes).
-    
+
     Atributos:
         width: Ancho del área de colisión
         height: Alto del área de colisión
@@ -42,7 +42,7 @@ class Collider(Component):
         offset_y: Desplazamiento vertical desde Transform
         is_trigger: Si es True, solo detecta sin bloquear
     """
-    
+
     def __init__(
         self,
         width: float = 32.0,
@@ -59,7 +59,7 @@ class Collider(Component):
     ) -> None:
         """
         Inicializa el Collider.
-        
+
         Args:
             width: Ancho del área de colisión
             height: Alto del área de colisión
@@ -79,32 +79,32 @@ class Collider(Component):
         self.friction: float = friction
         self.restitution: float = restitution
         self.density: float = density
-    
+
     def get_bounds(self, x: float, y: float) -> tuple[float, float, float, float]:
         """
         Calcula los límites del collider en coordenadas mundo.
-        
+
         Args:
             x: Posición X del Transform
             y: Posición Y del Transform
-            
+
         Returns:
             Tupla (left, top, right, bottom)
         """
         # El collider está centrado en la posición
         half_w = self.width / 2
         half_h = self.height / 2
-        
+
         cx = x + self.offset_x
         cy = y + self.offset_y
-        
+
         return (
             cx - half_w,  # left
             cy - half_h,  # top
             cx + half_w,  # right
             cy + half_h   # bottom
         )
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Serializa el Collider a diccionario."""
         return {
@@ -121,7 +121,7 @@ class Collider(Component):
             "restitution": self.restitution,
             "density": self.density,
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Collider":
         """Crea un Collider desde un diccionario."""

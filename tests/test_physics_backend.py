@@ -2,9 +2,16 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from engine.api import EngineAPI
+from engine.components.collider import Collider
+from engine.components.rigidbody import RigidBody
+from engine.components.transform import Transform
+from engine.ecs.entity import Entity
+from engine.ecs.world import World
+from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
 
 try:
     import Box2D  # noqa: F401
@@ -92,6 +99,154 @@ class PhysicsBackendTests(unittest.TestCase):
         self.assertIn("entity", aabb_hit)
         self.assertIn("entity_id", aabb_hit)
         self.assertIn("is_trigger", aabb_hit)
+
+    def test_legacy_backend_registers_collider_after_structure_version_change(self) -> None:
+        world = World()
+        entity = world.create_entity("Actor")
+        entity.add_component(Transform())
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        backend.sync_world(world)
+
+        self.assertNotIn(entity.id, backend._registered_shapes)
+        structure_before = world.structure_version
+
+        entity.add_component(Collider())
+        backend.sync_world(world)
+
+        self.assertGreater(world.structure_version, structure_before)
+        self.assertIn(entity.id, backend._registered_shapes)
+
+    def test_legacy_backend_sync_skips_scan_when_structure_version_is_unchanged(self) -> None:
+        class CountingWorld(World):
+            def __init__(self) -> None:
+                super().__init__()
+                self.get_all_entities_calls = 0
+
+            def get_all_entities(self) -> list[Entity]:
+                self.get_all_entities_calls += 1
+                return super().get_all_entities()
+
+        world = CountingWorld()
+        entity = world.create_entity("Mover")
+        transform = Transform()
+        rigidbody = RigidBody(velocity_x=12.0)
+        entity.add_component(transform)
+        entity.add_component(rigidbody)
+        entity.add_component(Collider())
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        backend.sync_world(world)
+        transform.x = 25.0
+        rigidbody.velocity_x = 48.0
+        backend.sync_world(world)
+
+        self.assertEqual(world.get_all_entities_calls, 1)
+        self.assertIn(entity.id, backend._registered_bodies)
+        self.assertIn(entity.id, backend._registered_shapes)
+
+    def test_legacy_backend_sync_keeps_full_scan_fallback_without_structure_version(self) -> None:
+        entity = Entity("Legacy")
+        entity.add_component(Transform())
+        entity.add_component(Collider())
+
+        class LegacyWorld:
+            def __init__(self) -> None:
+                self.get_all_entities_calls = 0
+
+            def get_all_entities(self) -> list[Entity]:
+                self.get_all_entities_calls += 1
+                return [entity]
+
+        world = LegacyWorld()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        backend.sync_world(world)
+        backend.sync_world(world)
+
+        self.assertEqual(world.get_all_entities_calls, 2)
+        self.assertIn(entity.id, backend._registered_shapes)
+
+    def test_legacy_backend_unregisters_collider_after_structure_version_change(self) -> None:
+        world = World()
+        entity = world.create_entity("Actor")
+        entity.add_component(Transform())
+        entity.add_component(Collider())
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        backend.sync_world(world)
+        self.assertIn(entity.id, backend._registered_shapes)
+        structure_before = world.structure_version
+
+        entity.remove_component(Collider)
+        backend.sync_world(world)
+
+        self.assertGreater(world.structure_version, structure_before)
+        self.assertNotIn(entity.id, backend._registered_shapes)
+
+    def test_legacy_backend_swept_contacts_use_world_get_entity(self) -> None:
+        bullet = SimpleNamespace(id=101, name="Bullet", get_component=lambda _component_type: None)
+        wall = SimpleNamespace(id=202, name="Wall", get_component=lambda _component_type: None)
+
+        class SweptPhysicsSystem:
+            def update(self, _world, _dt: float) -> None:
+                pass
+
+            def consume_swept_contacts(self) -> list[tuple[int, int]]:
+                return [(bullet.id, wall.id)]
+
+        class IndexedWorld:
+            def __init__(self) -> None:
+                self.get_entity_calls: list[int] = []
+
+            def get_all_entities(self) -> list[SimpleNamespace]:
+                return [bullet, wall]
+
+            def get_entity(self, entity_id: int) -> SimpleNamespace | None:
+                self.get_entity_calls.append(entity_id)
+                return {bullet.id: bullet, wall.id: wall}.get(entity_id)
+
+        world = IndexedWorld()
+        backend = LegacyAABBPhysicsBackend(SweptPhysicsSystem(), None)
+
+        backend.step(world, 1.0 / 60.0)
+        contacts = backend.collect_contacts(world)
+
+        self.assertEqual(world.get_entity_calls, [bullet.id, wall.id])
+        self.assertEqual(len(contacts), 1)
+        self.assertEqual(contacts[0].entity_a, "Bullet")
+        self.assertEqual(contacts[0].entity_b, "Wall")
+        self.assertEqual(contacts[0].entity_a_id, bullet.id)
+        self.assertEqual(contacts[0].entity_b_id, wall.id)
+        self.assertFalse(contacts[0].is_trigger)
+
+    def test_legacy_backend_swept_contacts_fall_back_without_world_get_entity(self) -> None:
+        bullet = SimpleNamespace(id=303, name="Bullet", get_component=lambda _component_type: None)
+        wall = SimpleNamespace(id=404, name="Wall", get_component=lambda _component_type: None)
+
+        class SweptPhysicsSystem:
+            def update(self, _world, _dt: float) -> None:
+                pass
+
+            def consume_swept_contacts(self) -> list[tuple[int, int]]:
+                return [(bullet.id, wall.id)]
+
+        class LegacyWorld:
+            def get_all_entities(self) -> list[SimpleNamespace]:
+                return [bullet, wall]
+
+        world = LegacyWorld()
+        backend = LegacyAABBPhysicsBackend(SweptPhysicsSystem(), None)
+
+        backend.step(world, 1.0 / 60.0)
+        contacts = backend.collect_contacts(world)
+
+        self.assertEqual(len(contacts), 1)
+        self.assertEqual(contacts[0].entity_a, "Bullet")
+        self.assertEqual(contacts[0].entity_b, "Wall")
+        self.assertEqual(contacts[0].entity_a_id, bullet.id)
+        self.assertEqual(contacts[0].entity_b_id, wall.id)
+        self.assertFalse(contacts[0].is_trigger)
 
     def test_legacy_backend_selection_persists_in_feature_metadata(self) -> None:
         scene_path = self._write_scene(

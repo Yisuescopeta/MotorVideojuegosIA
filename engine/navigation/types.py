@@ -141,3 +141,6 @@ class NavigationPathfinder(Protocol):
 
     def request_path(self, request: PathRequest) -> PathResult:
         ...
+
+    def get_line_of_sight(self, start: Vec2, goal: Vec2) -> bool:
+        ...

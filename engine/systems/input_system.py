@@ -5,10 +5,8 @@ engine/systems/input_system.py - Lectura declarativa de InputMap
 from typing import Dict, Tuple
 
 import pyray as rl
-
 from engine.components.inputmap import InputMap
 from engine.ecs.world import World
-
 
 KEY_LOOKUP: Dict[str, int] = {
     "A": rl.KEY_A,

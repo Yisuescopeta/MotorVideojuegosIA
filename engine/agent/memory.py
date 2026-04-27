@@ -9,7 +9,6 @@ from typing import Any
 from engine.agent.ids import resolve_agent_session_path, validate_agent_session_id
 from engine.agent.types import AgentMessage, AgentMessageRole, AgentSession, AgentUsageRecord, new_id, utc_now_iso
 
-
 PROTECTED_MEMORY_PATTERN = re.compile(r"(Claude Code|\.git|\.motor)", re.IGNORECASE)
 SECRET_MEMORY_PATTERN = re.compile(
     r"(api[_-]?key|secret|password|token)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{12,}|BEGIN [A-Z ]*PRIVATE KEY",

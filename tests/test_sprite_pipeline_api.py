@@ -6,9 +6,7 @@ import unittest
 from pathlib import Path
 
 import pyray as rl
-
 from engine.api import EngineAPI
-
 
 GRID_PNG_BYTES = bytes([
     0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,

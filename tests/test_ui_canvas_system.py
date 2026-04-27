@@ -3,12 +3,12 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from engine.api import EngineAPI
 from engine.components.uibutton import UIButton
 from engine.editor.cursor_manager import CursorVisualState
 from engine.systems.ui_render_system import UIRenderSystem
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -890,6 +890,141 @@ class CanvasUISystemTests(unittest.TestCase):
         self.api.game._ui_system.update(self.api.game.world, (800.0, 600.0), allow_interaction=True)
         event_names = [event.name for event in self.api.game._event_bus.get_recent_events()]
         self.assertNotIn("ui.play_clicked", event_names)
+
+    def test_ui_layout_cache_uses_ui_layout_version_for_cache_hits(self) -> None:
+        scene_path = self._write_scene(
+            "ui_layout_cache_hit.json",
+            {
+                "name": "UI Layout Cache Hit",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+        self.assertTrue(self.api.create_canvas(name="CanvasRoot")["success"])
+        self.assertTrue(
+            self.api.create_ui_button(
+                "PlayButton",
+                "Play",
+                "CanvasRoot",
+                {"width": 280.0, "height": 84.0},
+                {"type": "emit_event", "name": "ui.play_clicked"},
+            )["success"]
+        )
+
+        world = self.api.game.world
+        ui_system = self.api.game._ui_system
+        with patch.object(world, "get_entities_with", wraps=world.get_entities_with) as get_entities_with:
+            ui_system.update(world, (800.0, 600.0), allow_interaction=False)
+            first_call_count = get_entities_with.call_count
+            first_button_queries = sum(1 for args, _ in get_entities_with.call_args_list if args == (UIButton,))
+
+            world.touch()
+            ui_system.update(world, (800.0, 600.0), allow_interaction=False)
+
+            self.assertEqual(get_entities_with.call_count, first_call_count)
+            button_queries = sum(1 for args, _ in get_entities_with.call_args_list if args == (UIButton,))
+            self.assertEqual(button_queries, first_button_queries)
+
+    def test_rect_transform_change_invalidates_layout_cache(self) -> None:
+        scene_path = self._write_scene(
+            "ui_rect_transform_cache_invalidation.json",
+            {
+                "name": "UI RectTransform Cache Invalidation",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+        self.assertTrue(self.api.create_canvas(name="CanvasRoot")["success"])
+        self.assertTrue(
+            self.api.create_ui_button(
+                "PlayButton",
+                "Play",
+                "CanvasRoot",
+                {"width": 280.0, "height": 84.0},
+                {"type": "emit_event", "name": "ui.play_clicked"},
+            )["success"]
+        )
+
+        world = self.api.game.world
+        ui_system = self.api.game._ui_system
+        ui_system.update(world, (800.0, 600.0), allow_interaction=False)
+        base_layout = ui_system.get_entity_screen_rect("PlayButton")
+
+        self.assertTrue(self.api.edit_component("PlayButton", "RectTransform", "width", 320.0)["success"])
+        ui_system.update(world, (800.0, 600.0), allow_interaction=False)
+        updated_layout = ui_system.get_entity_screen_rect("PlayButton")
+
+        self.assertEqual(base_layout, {"x": 260.0, "y": 258.0, "width": 280.0, "height": 84.0})
+        self.assertEqual(updated_layout, {"x": 240.0, "y": 258.0, "width": 320.0, "height": 84.0})
+
+    def test_ui_button_update_still_fires_click(self) -> None:
+        scene_path = self._write_scene(
+            "ui_update_button_click.json",
+            {
+                "name": "UI Update Button Click",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+        self.assertTrue(self.api.create_canvas(name="CanvasRoot")["success"])
+        self.assertTrue(
+            self.api.create_ui_button(
+                "PlayButton",
+                "Play",
+                "CanvasRoot",
+                {"width": 280.0, "height": 84.0},
+                {"type": "emit_event", "name": "ui.play_clicked"},
+            )["success"]
+        )
+
+        ui_system = self.api.game._ui_system
+        world = self.api.game.world
+        ui_system.inject_pointer_state(400.0, 300.0, down=True, pressed=True, released=False)
+        ui_system.update(world, (800.0, 600.0), allow_interaction=True)
+        ui_system.inject_pointer_state(400.0, 300.0, down=False, pressed=False, released=True)
+        ui_system.update(world, (800.0, 600.0), allow_interaction=True)
+
+        event_names = [event.name for event in self.api.game._event_bus.get_recent_events()]
+        self.assertIn("ui.play_clicked", event_names)
+
+    def test_ui_layout_cache_invalidates_on_viewport_change(self) -> None:
+        scene_path = self._write_scene(
+            "ui_viewport_cache_invalidation.json",
+            {
+                "name": "UI Viewport Cache Invalidation",
+                "entities": [],
+                "rules": [],
+                "feature_metadata": {},
+            },
+        )
+        self.api.load_level(scene_path.as_posix())
+        self.assertTrue(self.api.create_canvas(name="CanvasRoot")["success"])
+        self.assertTrue(
+            self.api.create_ui_button(
+                "PlayButton",
+                "Play",
+                "CanvasRoot",
+                {"width": 280.0, "height": 84.0},
+                {"type": "emit_event", "name": "ui.play_clicked"},
+            )["success"]
+        )
+
+        ui_system = self.api.game._ui_system
+        world = self.api.game.world
+        ui_system.update(world, (800.0, 600.0), allow_interaction=False)
+        base_layout = ui_system.get_entity_screen_rect("PlayButton")
+        world.touch()
+        ui_system.update(world, (1600.0, 1200.0), allow_interaction=False)
+        scaled_layout = ui_system.get_entity_screen_rect("PlayButton")
+
+        self.assertEqual(base_layout, {"x": 260.0, "y": 258.0, "width": 280.0, "height": 84.0})
+        self.assertEqual(scaled_layout, {"x": 520.0, "y": 516.0, "width": 560.0, "height": 168.0})
 
     def test_button_does_not_fire_when_ui_overlay_is_updated_without_runtime_interaction(self) -> None:
         scene_path = self._write_scene(

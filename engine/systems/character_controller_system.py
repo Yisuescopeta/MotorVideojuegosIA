@@ -22,14 +22,11 @@ class CharacterControllerSystem:
 
     def update(self, world: World, delta_time: float) -> None:
         self._emitted_contacts = set()
-        solids = [
-            entity
-            for entity in world.get_entities_with(Transform, Collider)
-            if entity.active
-            and entity.get_component(Collider) is not None
-            and entity.get_component(Collider).enabled
-            and not entity.get_component(Collider).is_trigger
-        ]
+        solids: list[Entity] = []
+        for entity in world.get_entities_with(Transform, Collider):
+            collider = entity.get_component(Collider)
+            if entity.active and collider is not None and collider.enabled and not collider.is_trigger:
+                solids.append(entity)
         for entity in world.get_entities_with(Transform, Collider, CharacterController2D):
             transform = entity.get_component(Transform)
             collider = entity.get_component(Collider)
@@ -221,7 +218,9 @@ class CharacterControllerSystem:
     def _emit_collision(self, entity: Entity, other: Entity) -> None:
         if self._event_bus is None:
             return
-        pair = tuple(sorted((int(entity.id), int(other.id))))
+        entity_id = int(entity.id)
+        other_id = int(other.id)
+        pair = (min(entity_id, other_id), max(entity_id, other_id))
         if pair in self._emitted_contacts:
             return
         self._emitted_contacts.add(pair)

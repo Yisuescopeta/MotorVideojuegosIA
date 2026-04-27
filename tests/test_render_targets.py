@@ -2,7 +2,6 @@ import unittest
 from unittest.mock import patch
 
 import pyray as rl
-
 from engine.components.renderorder2d import RenderOrder2D
 from engine.components.sprite import Sprite
 from engine.components.transform import Transform

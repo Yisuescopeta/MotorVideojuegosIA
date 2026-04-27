@@ -22,7 +22,6 @@ import time
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import pyray as rl
-
 from engine.app import (
     DebugToolsController,
     EditorInteractionController,
@@ -35,14 +34,15 @@ from engine.components.canvas import Canvas
 from engine.components.transform import Transform
 from engine.config import EDIT_ANIMATION_SPEED, ENGINE_VERSION, SCRIPTS_DIRECTORY, TIMELINE_CAPACITY
 from engine.core.engine_state import EngineState
-from engine.core.runtime_loop import RuntimeTickPlan
 from engine.core.hot_reload import HotReloadManager
 from engine.core.runtime_contracts import RuntimeControllerContext
+from engine.core.runtime_loop import RuntimeTickPlan
 from engine.core.time_manager import TimeManager
 from engine.debug.profiler import EngineProfiler
 from engine.debug.timeline import Timeline
 from engine.editor.agent_panel import AgentPanel
 from engine.editor.animator_panel import AnimatorPanel
+from engine.editor.console_panel import log_err, log_warn
 from engine.editor.cursor_manager import CustomCursorRenderer
 from engine.editor.editor_layout import EditorLayout
 from engine.editor.editor_shell import EditorShell
@@ -50,14 +50,13 @@ from engine.editor.editor_shell_state import EditorPanelSlots
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
 from engine.editor.gizmo_system import GizmoSystem
 from engine.editor.hierarchy_panel import HierarchyPanel
-from engine.editor.console_panel import log_err, log_warn
 from engine.editor.raygui_theme import apply_unity_dark_theme
 from engine.editor.render_safety import safe_reset_clip_state
 from engine.editor.sprite_editor_modal import SpriteEditorModal
 from engine.editor.terminal_panel import TerminalPanel
 from engine.editor.undo_redo import UndoRedoManager
 from engine.events.signals import SignalConnectionFlags
-from engine.physics.backend import PhysicsBackendInfo, PhysicsBackendSelection
+from engine.physics.backend import PhysicsAABBHit, PhysicsBackendInfo, PhysicsBackendSelection, PhysicsRayHit
 from engine.physics.registry import PhysicsBackendRegistry
 from engine.project.project_service import ProjectService
 
@@ -78,10 +77,14 @@ if TYPE_CHECKING:
     from engine.systems.physics_system import PhysicsSystem
     from engine.systems.player_controller_system import PlayerControllerSystem
     from engine.systems.render_system import RenderSystem
+    from engine.systems.resource_preloader_system import ResourcePreloaderSystem
     from engine.systems.script_behaviour_system import ScriptBehaviourSystem
     from engine.systems.selection_system import SelectionSystem
+    from engine.systems.timer_system import TimerSystem
+    from engine.systems.tween_system import TweenSystem
     from engine.systems.ui_render_system import UIRenderSystem
     from engine.systems.ui_system import UISystem
+    from engine.systems.visible_on_screen_system import VisibleOnScreenSystem
 
 
 class Game:
@@ -657,7 +660,7 @@ class Game:
             description = str(connection.get("description", "") or "")
             target_id = None
             if isinstance(target, dict) and target.get("kind") == "entity":
-                target_id = str(target.get("name", "") or "").strip() or None
+                target_id = str(target.get("id", "") or target.get("name", "") or "").strip() or None
             signal_runtime.connect(
                 source_id,
                 signal_name,
@@ -809,7 +812,7 @@ class Game:
     def refresh_runtime_physics_backend(self) -> None:
         self._refresh_default_physics_backend()
 
-    def query_physics_aabb(self, left: float, top: float, right: float, bottom: float) -> list[dict[str, Any]]:
+    def query_physics_aabb(self, left: float, top: float, right: float, bottom: float) -> list[PhysicsAABBHit]:
         active_world = self.world
         if active_world is None:
             return []
@@ -828,7 +831,7 @@ class Game:
         direction_x: float,
         direction_y: float,
         max_distance: float,
-    ) -> list[dict[str, Any]]:
+    ) -> list[PhysicsRayHit]:
         active_world = self.world
         if active_world is None:
             return []
@@ -1051,7 +1054,8 @@ class Game:
             try:
                 render_start = time.perf_counter()
                 self._runtime_controller.begin_render_phase(tick_plan)
-                self._render_frame(active_world)
+                if active_world is not None:
+                    self._render_frame(active_world)
                 self._perf_stats["render"] = (time.perf_counter() - render_start) * 1000.0
             except Exception as e:
                 from engine.editor.console_panel import log_err
@@ -1347,8 +1351,9 @@ class Game:
                 )
 
                 self.editor_layout.begin_game_render()
-                if target_world and self._render_system:
-                    texture = self.editor_layout.game_texture.texture
+                game_texture = self.editor_layout.game_texture
+                if target_world and self._render_system and game_texture is not None:
+                    texture = game_texture.texture
                     viewport_size = (float(texture.width), float(texture.height))
                     self._render_system.render(target_world, viewport_size=viewport_size)
                 else:
@@ -1511,14 +1516,14 @@ class Game:
                 )
                 if isinstance(request_open_source, dict) and request_open_source:
                     request = dict(request_open_source)
-                    flow_panel.request_open_source = None
+                    setattr(flow_panel, "request_open_source", None)
                     self._open_flow_source(request)
                 request_open_target = (
                     getattr(flow_panel, "request_open_target", None) if flow_panel is not None else None
                 )
                 if isinstance(request_open_target, dict) and request_open_target:
                     request = dict(request_open_target)
-                    flow_panel.request_open_target = None
+                    setattr(flow_panel, "request_open_target", None)
                     self._open_flow_target(request)
 
         if self.animator_panel is not None and self.animator_panel.request_open_sprite_editor_for:
@@ -1559,7 +1564,7 @@ class Game:
             return None
         if active_world.selected_entity_name:
             return active_world.selected_entity_name
-        for entity in active_world.get_all_entities():
+        for entity in active_world.iter_all_entities():
             if entity.has_component(Canvas):
                 return entity.name
         return None
@@ -1730,7 +1735,7 @@ class Game:
                 name = "New Entity"
                 base = name
                 idx = 1
-                while active_world.get_entity(name) is not None:
+                while active_world.get_entity_by_name(name) is not None:
                     name = f"{base} ({idx})"
                     idx += 1
                 if self._scene_manager is not None:

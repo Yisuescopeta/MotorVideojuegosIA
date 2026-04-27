@@ -2,7 +2,6 @@
 tests/test_easing.py - Tests de funciones de interpolacion (easing).
 """
 
-import math
 import unittest
 
 from engine.utils.easing import (

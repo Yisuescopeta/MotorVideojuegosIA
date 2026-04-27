@@ -152,7 +152,12 @@ class SceneWorkspacePort(Protocol):
     def close_scene(self, key_or_path: str, discard_changes: bool = False) -> bool:
         ...
 
-    def save_scene_to_file(self, path: str, key: Optional[str] = None) -> bool:
+    def save_scene_to_file(
+        self,
+        path: str,
+        key: Optional[str] = None,
+        compact_save: Optional[bool] = None,
+    ) -> bool:
         ...
 
     def get_feature_metadata(self) -> Dict[str, Any]:
@@ -334,8 +339,13 @@ class SceneManagerWorkspaceAdapter(_SceneManagerAdapter):
     def close_scene(self, key_or_path: str, discard_changes: bool = False) -> bool:
         return self._manager.close_scene(key_or_path, discard_changes=discard_changes)
 
-    def save_scene_to_file(self, path: str, key: Optional[str] = None) -> bool:
-        return self._manager.save_scene_to_file(path, key=key)
+    def save_scene_to_file(
+        self,
+        path: str,
+        key: Optional[str] = None,
+        compact_save: Optional[bool] = None,
+    ) -> bool:
+        return self._manager.save_scene_to_file(path, key=key, compact_save=compact_save)
 
     def get_feature_metadata(self) -> Dict[str, Any]:
         return self._manager.get_feature_metadata()

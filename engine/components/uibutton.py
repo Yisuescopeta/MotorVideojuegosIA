@@ -11,6 +11,11 @@ from engine.assets.asset_reference import clone_asset_reference, normalize_asset
 from engine.ecs.component import Component
 
 
+def _color_tuple(value: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    r, g, b, a = value
+    return (int(r), int(g), int(b), int(a))
+
+
 class UIButton(Component):
     """Boton UI con accion declarativa ejecutada al soltar dentro del control."""
 
@@ -39,10 +44,10 @@ class UIButton(Component):
         self.enabled = enabled
         self.interactable = bool(interactable)
         self.label = str(label)
-        self.normal_color = tuple(int(v) for v in normal_color)
-        self.hover_color = tuple(int(v) for v in hover_color)
-        self.pressed_color = tuple(int(v) for v in pressed_color)
-        self.disabled_color = tuple(int(v) for v in disabled_color)
+        self.normal_color = _color_tuple(normal_color)
+        self.hover_color = _color_tuple(hover_color)
+        self.pressed_color = _color_tuple(pressed_color)
+        self.disabled_color = _color_tuple(disabled_color)
         self.transition_scale_pressed = float(transition_scale_pressed)
         self.on_click = copy.deepcopy(on_click or {})
         self.normal_sprite = normalize_asset_reference(normal_sprite)
@@ -53,7 +58,7 @@ class UIButton(Component):
         self.hover_slice = str(hover_slice or "")
         self.pressed_slice = str(pressed_slice or "")
         self.disabled_slice = str(disabled_slice or "")
-        self.image_tint = tuple(int(v) for v in image_tint)
+        self.image_tint = _color_tuple(image_tint)
         self.preserve_aspect = bool(preserve_aspect)
 
     def has_sprite_visuals(self) -> bool:

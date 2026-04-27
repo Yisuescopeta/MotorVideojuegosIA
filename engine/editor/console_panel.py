@@ -5,7 +5,6 @@ engine/editor/console_panel.py - Panel de Consola estilo Unity
 from typing import List, Tuple
 
 import pyray as rl
-
 from engine.editor.render_safety import gui_toggle_bool
 
 # Sistema de Logs Global

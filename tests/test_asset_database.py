@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,7 +8,6 @@ from unittest.mock import patch
 from engine.api import EngineAPI
 from engine.assets.asset_service import AssetService
 from engine.project.project_service import ProjectService
-
 
 MINIMAL_PNG_BYTES = (
     b"\x89PNG\r\n\x1a\n"
@@ -73,6 +73,107 @@ class AssetDatabaseTests(unittest.TestCase):
         self.assertTrue((self.root / "assets" / "player.png.meta.json").exists())
         self.assertTrue((self.root / "scripts" / "brain.py.meta.json").exists())
         self.assertTrue(by_path["assets/player.png"]["guid"].startswith("ast_"))
+
+    def test_sqlite_rebuild_creates_incremental_index_with_expected_fields(self) -> None:
+        self._write_png("assets/player.png")
+        self._write_script("scripts/brain.py")
+        database = self.asset_service.get_asset_database()
+
+        self.assertFalse(database.index_exists())
+        self.assertEqual(database.get_index_metadata(), {})
+        self.assertIsNone(database.get_index_version())
+
+        database.rebuild()
+
+        self.assertEqual(database.get_index_path(), (self.root / ".motor" / "asset_index.sqlite").resolve())
+        self.assertTrue(database.index_exists())
+        metadata = database.get_index_metadata()
+        self.assertEqual(metadata["schema_version"], database.INDEX_SCHEMA_VERSION)
+        self.assertTrue(metadata["schema_valid"])
+        self.assertTrue(metadata["assets_schema_valid"])
+        self.assertEqual(database.get_index_version(), database.INDEX_SCHEMA_VERSION)
+        entries = {item["path"]: item for item in database.list_assets()}
+        player = entries["assets/player.png"]
+        self.assertTrue(player["guid"].startswith("ast_"))
+        self.assertEqual(player["absolute_path"], (self.root / "assets" / "player.png").resolve().as_posix())
+        self.assertEqual(player["extension"], ".png")
+        self.assertEqual(player["type"], "texture")
+        self.assertEqual(player["size"], len(MINIMAL_PNG_BYTES))
+        self.assertEqual(player["display_name"], "player")
+        self.assertEqual(entries["scripts/brain.py"]["type"], "script")
+
+    def test_sqlite_list_assets_filters_by_search_and_extensions(self) -> None:
+        self._write_png("assets/player.png")
+        self._write_png("assets/enemy.png")
+        self._write_script("scripts/player_brain.py")
+        database = self.asset_service.get_asset_database()
+
+        database.rebuild()
+
+        paths = [item["path"] for item in database.list_assets(search="player")]
+        self.assertEqual(paths, ["assets/player.png", "scripts/player_brain.py"])
+        png_paths = [item["path"] for item in database.list_assets(extensions=["png"])]
+        self.assertEqual(png_paths, ["assets/enemy.png", "assets/player.png"])
+
+    def test_list_assets_with_existing_index_does_not_scan_filesystem(self) -> None:
+        self._write_png("assets/player.png")
+        self._write_png("assets/enemy.png")
+        self._write_script("scripts/player_brain.py")
+        database = self.asset_service.get_asset_database()
+        database.rebuild()
+
+        path_class = type(self.root)
+        with patch.object(path_class, "rglob", side_effect=AssertionError("rglob should not run when index exists")):
+            assets = database.list_assets(search="player")
+
+        self.assertEqual([item["path"] for item in assets], ["assets/player.png", "scripts/player_brain.py"])
+
+    def test_sqlite_get_by_path_and_guid_return_indexed_rows(self) -> None:
+        self._write_png("assets/icon.png")
+        database = self.asset_service.get_asset_database()
+
+        database.rebuild()
+
+        by_path = database.get_by_path("assets/icon.png")
+        self.assertIsNotNone(by_path)
+        by_guid = database.get_by_guid(by_path["guid"])
+        self.assertEqual(by_guid, by_path)
+
+    def test_sqlite_update_changed_adds_updates_and_removes_assets(self) -> None:
+        script_path = self._write_script("scripts/brain.py", "value = 1\n")
+        removed_path = self._write_png("assets/removed.png")
+        database = self.asset_service.get_asset_database()
+        database.rebuild()
+        original = database.get_by_path("scripts/brain.py")
+
+        script_path.write_text("value = 100\n", encoding="utf-8")
+        future = script_path.stat().st_mtime + 10.0
+        os.utime(script_path, (future, future))
+        self._write_png("assets/added.png")
+        removed_path.unlink()
+
+        database.update_changed()
+
+        updated = database.get_by_path("scripts/brain.py")
+        self.assertIsNotNone(updated)
+        self.assertEqual(updated["size"], script_path.stat().st_size)
+        self.assertGreater(updated["mtime"], original["mtime"])
+        self.assertIsNotNone(database.get_by_path("assets/added.png"))
+        self.assertIsNone(database.get_by_path("assets/removed.png"))
+        self.assertEqual(database.get_index_version(), database.INDEX_SCHEMA_VERSION)
+        self.assertTrue(database.get_index_metadata()["schema_valid"])
+
+    def test_project_service_index_listing_still_exposes_only_project_assets(self) -> None:
+        self._write_png("assets/icon.png")
+        self._write_script("scripts/brain.py")
+        database = self.asset_service.get_asset_database()
+
+        database.rebuild()
+
+        sqlite_paths = [item["path"] for item in database.list_assets()]
+        project_service_paths = [item["path"] for item in self.project_service.list_assets()]
+        self.assertIn("scripts/brain.py", sqlite_paths)
+        self.assertEqual(project_service_paths, ["assets/icon.png"])
 
     def test_guid_resolution_survives_asset_move_and_updates_level_reference_paths(self) -> None:
         self._write_png("assets/player.png")

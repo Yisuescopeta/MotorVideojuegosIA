@@ -23,9 +23,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out", type=str, default="", help="Optional JSON output path.")
     parser.add_argument("--static-count", type=int, default=100)
     parser.add_argument("--dynamic-count", type=int, default=12)
+    parser.add_argument("--entity-count", type=int, default=1000)
     parser.add_argument("--columns", type=int, default=10)
     parser.add_argument("--spacing", type=float, default=24.0)
     parser.add_argument("--velocity", type=float, default=160.0)
+    parser.add_argument("--tilemap-width", type=int, default=128)
+    parser.add_argument("--tilemap-height", type=int, default=128)
     return parser.parse_args()
 
 
@@ -43,9 +46,12 @@ def main() -> int:
         deep=bool(args.deep),
         static_count=args.static_count,
         dynamic_count=args.dynamic_count,
+        entity_count=args.entity_count,
         columns=args.columns,
         spacing=args.spacing,
         velocity=args.velocity,
+        tilemap_width=args.tilemap_width,
+        tilemap_height=args.tilemap_height,
     )
     payload = json.dumps(report, indent=2, ensure_ascii=True)
     if args.out:

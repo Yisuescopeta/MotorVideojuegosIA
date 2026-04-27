@@ -58,7 +58,8 @@ class Sprite(Component):
             seq.append(255)
         seq = seq[:4]
         try:
-            return tuple(max(0, min(255, int(v))) for v in seq)
+            r, g, b, a = (max(0, min(255, int(v))) for v in seq)
+            return (r, g, b, a)
         except (ValueError, TypeError):
             log_warn("Sprite tint: error al convertir valores a int; usando tint por defecto")
             return (255, 255, 255, 255)

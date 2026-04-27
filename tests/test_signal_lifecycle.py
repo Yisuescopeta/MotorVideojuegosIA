@@ -56,7 +56,7 @@ class SignalLifecycleIntegrationTests(unittest.TestCase):
         )
 
         button = self.world.create_entity("Button")
-        enemy = self.world.create_entity("Enemy")
+        self.world.create_entity("Enemy")
 
         self.world.destroy_entity(button.id)
         self.assertEqual(self.runtime.emit("Button", "pressed", "x"), 0)
@@ -98,8 +98,8 @@ class SignalLifecycleIntegrationTests(unittest.TestCase):
         self.runtime.connect("Player", "attack", callback_that_destroys, target_id="Player")
         self.runtime.connect("Player", "attack", lambda: orden.append("second"), target_id="Enemy")
 
-        player = self.world.create_entity("Player")
-        enemy = self.world.create_entity("Enemy")
+        self.world.create_entity("Player")
+        self.world.create_entity("Enemy")
 
         self.assertEqual(self.runtime.emit("Player", "attack"), 2)
         self.assertEqual(orden, ["callback", "second"])

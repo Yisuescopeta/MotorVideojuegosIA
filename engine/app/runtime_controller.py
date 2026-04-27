@@ -10,13 +10,14 @@ from engine.editor.console_panel import log_info, log_warn
 from engine.events.callable_resolver import CallableResolver, CallableResolverContext
 from engine.events.deferred_queue import DeferredCallQueue
 from engine.events.signals import SignalRuntime
-from engine.services.registro_servicios import RegistroServicios
 from engine.physics.backend import PhysicsBackendSelection
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
+from engine.services.registro_servicios import RegistroServicios
 from engine.tilemap.collision_builder import bake_tilemap_colliders
 from engine.utils.viewport import resolve_world_viewport_rect
 
 if TYPE_CHECKING:
+    from engine.ecs.entity import Entity
     from engine.ecs.world import World
 
 
@@ -358,6 +359,10 @@ class RuntimeController:
         """Poda automáticamente conexiones de señales ligadas a la entidad destruida."""
         self._signal_runtime.prune_by_source(entity.name)
         self._signal_runtime.prune_by_target(entity.name)
+        serialized_id = getattr(entity, "serialized_id", None)
+        if isinstance(serialized_id, str) and serialized_id.strip():
+            self._signal_runtime.prune_by_source(serialized_id.strip())
+            self._signal_runtime.prune_by_target(serialized_id.strip())
 
     def get_physics_backend_selection(self, world: Optional["World"]) -> PhysicsBackendSelection:
         return self._get_physics_backend_registry().resolve(world).selection

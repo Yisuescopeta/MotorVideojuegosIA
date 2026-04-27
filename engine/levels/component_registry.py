@@ -83,18 +83,20 @@ class ComponentRegistry:
 
 def create_default_registry() -> ComponentRegistry:
     """Crea un registro con los componentes predeterminados del motor."""
-    from engine.components.audiosource import AudioSource
     from engine.components.animator import Animator
+    from engine.components.audiosource import AudioSource
     from engine.components.camera2d import Camera2D
-    from engine.components.charactercontroller2d import CharacterController2D
     from engine.components.canvas import Canvas
+    from engine.components.charactercontroller2d import CharacterController2D
     from engine.components.collider import Collider
     from engine.components.inputmap import InputMap
     from engine.components.joint2d import Joint2D
+    from engine.components.marker2d import Marker2D
     from engine.components.playercontroller2d import PlayerController2D
     from engine.components.recttransform import RectTransform
     from engine.components.renderorder2d import RenderOrder2D
     from engine.components.renderstyle2d import RenderStyle2D
+    from engine.components.resource_preloader import ResourcePreloader
     from engine.components.rigidbody import RigidBody
     from engine.components.scene_entry_point import SceneEntryPoint
     from engine.components.scene_link import SceneLink
@@ -103,16 +105,14 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.scene_transition_on_interact import SceneTransitionOnInteract
     from engine.components.scene_transition_on_player_death import SceneTransitionOnPlayerDeath
     from engine.components.scriptbehaviour import ScriptBehaviour
-    from engine.components.resource_preloader import ResourcePreloader
     from engine.components.sprite import Sprite
     from engine.components.tilemap import Tilemap
+    from engine.components.timer import Timer
     from engine.components.transform import Transform
+    from engine.components.tween import Tween
     from engine.components.uibutton import UIButton
     from engine.components.uiimage import UIImage
     from engine.components.uitext import UIText
-    from engine.components.marker2d import Marker2D
-    from engine.components.timer import Timer
-    from engine.components.tween import Tween
     from engine.components.visible_on_screen_notifier_2d import (
         VisibleOnScreenEnabler2D,
         VisibleOnScreenNotifier2D,

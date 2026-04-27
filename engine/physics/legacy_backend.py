@@ -21,6 +21,8 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         self._registered_bodies: set[int] = set()
         self._registered_shapes: set[int] = set()
         self._latest_contacts: list[PhysicsContact] = []
+        self._synced_world_id: int | None = None
+        self._synced_structure_version: int | None = None
 
     def set_event_bus(self, event_bus: Optional[Any]) -> None:
         self._event_bus = event_bus
@@ -29,26 +31,42 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
 
     def create_body(self, entity: Any) -> None:
         self._registered_bodies.add(int(entity.id))
+        self._invalidate_sync_cache()
 
     def destroy_body(self, entity_id: int) -> None:
         self._registered_bodies.discard(int(entity_id))
         self._registered_shapes.discard(int(entity_id))
+        self._invalidate_sync_cache()
 
     def create_shape(self, entity: Any) -> None:
         self._registered_shapes.add(int(entity.id))
+        self._invalidate_sync_cache()
 
     def sync_world(self, world: Any) -> None:
-        current_ids = {int(entity.id) for entity in world.get_all_entities()}
-        tracked = self._registered_bodies | self._registered_shapes
-        for entity_id in list(tracked - current_ids):
-            self.destroy_body(entity_id)
+        world_id = id(world)
+        structure_version = self._get_structure_version(world)
+        if (
+            structure_version is not None
+            and self._synced_world_id == world_id
+            and self._synced_structure_version == structure_version
+        ):
+            return
+
+        registered_bodies: set[int] = set()
+        registered_shapes: set[int] = set()
         for entity in world.get_all_entities():
             if entity.get_component(Transform) is None:
                 continue
+            entity_id = int(entity.id)
             if entity.get_component(Collider) is not None:
-                self.create_shape(entity)
+                registered_shapes.add(entity_id)
             if entity.get_component(RigidBody) is not None:
-                self.create_body(entity)
+                registered_bodies.add(entity_id)
+
+        self._registered_bodies = registered_bodies
+        self._registered_shapes = registered_shapes
+        self._synced_world_id = world_id if structure_version is not None else None
+        self._synced_structure_version = structure_version
 
     def step(self, world: Any, dt: float) -> None:
         self.sync_world(world)
@@ -123,6 +141,16 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             return dict(self._physics_system.get_step_metrics())
         return {"ccd_bodies": 0, "swept_checks": 0}
 
+    def _get_structure_version(self, world: Any) -> int | None:
+        try:
+            return int(world.structure_version)
+        except (AttributeError, TypeError, ValueError):
+            return None
+
+    def _invalidate_sync_cache(self) -> None:
+        self._synced_world_id = None
+        self._synced_structure_version = None
+
     def _build_overlap_contacts(self) -> list[PhysicsContact]:
         if self._collision_system is None:
             return []
@@ -176,8 +204,14 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
                 )
 
     def _find_entity(self, world: Any, entity_id: int) -> Any:
+        normalized_id = int(entity_id)
+        get_entity = getattr(world, "get_entity", None)
+        if get_entity is not None:
+            entity = get_entity(normalized_id)
+            if entity is not None:
+                return entity
         for entity in world.get_all_entities():
-            if int(entity.id) == int(entity_id):
+            if int(entity.id) == normalized_id:
                 return entity
         return None
 

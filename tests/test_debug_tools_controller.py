@@ -1,9 +1,7 @@
 import unittest
-from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pyray as rl
-
 from engine.app.debug_tools_controller import DebugToolsController
 from engine.components.transform import Transform
 from engine.core.engine_state import EngineState
@@ -39,6 +37,9 @@ class _FakePerfWorld:
             "ScriptBehaviour": [object(), object(), object()],
         }
         return list(mapping.get(component_type.__name__, []))
+
+    def iter_all_entities(self):
+        return iter(())
 
     def serialize(self) -> dict:
         self.serialize_calls += 1
@@ -90,6 +91,10 @@ class DebugToolsControllerTests(unittest.TestCase):
             "tilemap_chunk_rebuilds": 1,
             "render_target_passes": 4,
         }
+        self.render_system.texture_manager = None
+        self.render_system._sorted_entities_cache = []
+        self.render_system._render_graph_cache = {"passes": []}
+        self.render_system._tilemap_chunk_cache = {}
         self.backend = Mock()
         self.backend.backend_name = "stub_backend"
         self.backend.get_step_metrics.return_value = {"ccd_bodies": 8, "contacts": 7, "candidate_solids": 13}

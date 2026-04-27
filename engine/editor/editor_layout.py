@@ -20,7 +20,7 @@ import os
 import platform
 import subprocess
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 import pyray as rl
 from engine.editor.console_panel import log_err
@@ -96,6 +96,24 @@ _PANEL_SLOT_FIELDS = (
 
 
 class EditorLayout:
+    active_bottom_tab: str
+    show_project_launcher: bool
+    show_create_project_modal: bool
+    show_project_modal: bool
+    show_about_modal: bool
+    launcher_scroll_offset: float
+    launcher_create_name: str
+    launcher_search_text: str
+    scene_browser_scroll_offset: float
+    scene_create_name: str
+    dirty_modal_context: str
+    project_panel: Any
+    flow_panel: Any
+    flow_workspace_panel: Any
+    console_panel: Any
+    terminal_panel: Any
+    agent_panel: Any
+
     # ========================================
     # Layout Dimensions (Unity-style)
     # ========================================
@@ -360,9 +378,8 @@ class EditorLayout:
         )
         self.pivot_mode = PivotMode.from_value(preferences.get("editor_pivot_mode", PivotMode.PIVOT.value))
         self.snap_settings = SnapSettings.from_preferences(preferences)
-        self.bottom_height = int(
-            preferences.get("editor_bottom_panel_height", self.BOTTOM_HEIGHT) or self.BOTTOM_HEIGHT
-        )
+        raw_bottom_height = preferences.get("editor_bottom_panel_height", self.BOTTOM_HEIGHT) or self.BOTTOM_HEIGHT
+        self.bottom_height = int(raw_bottom_height) if isinstance(raw_bottom_height, (int, float, str)) else self.BOTTOM_HEIGHT
         self.bottom_height = self._clamp_bottom_height(self.bottom_height)
         self._editor_preferences_dirty = False
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from engine.ecs.entity import normalize_entity_groups
 from engine.serialization.schema import migrate_scene_data
@@ -34,6 +34,9 @@ class Scene:
         self._data.setdefault("rules", [])
         self._data.setdefault("feature_metadata", {})
         self._source_path: Optional[str] = source_path
+        self._entity_index: Dict[str, Dict[str, Any]] = {}
+        self._entity_id_index: Dict[str, Dict[str, Any]] = {}
+        self._rebuild_entity_index()
 
     @property
     def name(self) -> str:
@@ -99,12 +102,21 @@ class Scene:
                         prefab_path=prefab_instance.get("prefab_path", ""),
                         overrides=copy.deepcopy(prefab_instance.get("overrides", {})),
                     )
+                    root_entity_id = entity_data.get("id")
+                    if isinstance(root_entity_id, str) and root_entity_id.strip():
+                        for expanded_data in expanded_entities:
+                            if expanded_data.get("prefab_source_path", "") == "":
+                                expanded_data["id"] = root_entity_id.strip()
+                                break
             else:
                 expanded_entities = [copy.deepcopy(entity_data)]
 
             for expanded_data in expanded_entities:
                 entity_name = expanded_data.get("name", "Entity")
                 entity = world.create_entity(entity_name)
+                entity_id = expanded_data.get("id")
+                if isinstance(entity_id, str) and entity_id.strip():
+                    entity.serialized_id = entity_id.strip()
                 entity.active = expanded_data.get("active", True)
                 entity.tag = expanded_data.get("tag", "Untagged")
                 entity.layer = expanded_data.get("layer", "Default")
@@ -125,11 +137,11 @@ class Scene:
                     pending_links.append((entity_name, entity.parent_name))
 
         for entity_name, parent_name in pending_links:
-            entity = created_entities.get(entity_name)
+            linked_entity = created_entities.get(entity_name)
             parent = created_entities.get(parent_name)
-            if entity is None or parent is None:
+            if linked_entity is None or parent is None:
                 continue
-            child_transform = entity.get_component(Transform)
+            child_transform = linked_entity.get_component(Transform)
             parent_transform = parent.get_component(Transform)
             if child_transform is not None:
                 if child_transform.parent and child_transform in child_transform.parent.children:
@@ -146,24 +158,104 @@ class Scene:
             return path.as_posix()
         return (Path(self._source_path).resolve().parent / path).resolve().as_posix()
 
+    def _rebuild_entity_index(self) -> None:
+        self._entity_index.clear()
+        self._entity_id_index.clear()
+        for entity_data in self.entities_data:
+            if not isinstance(entity_data, dict):
+                continue
+            entity_name = entity_data.get("name")
+            if isinstance(entity_name, str) and entity_name not in self._entity_index:
+                self._entity_index[entity_name] = entity_data
+            entity_id = entity_data.get("id")
+            if isinstance(entity_id, str) and entity_id.strip() and entity_id not in self._entity_id_index:
+                self._entity_id_index[entity_id] = entity_data
+
+    def _canonicalize_entity_for_add(self, entity_data: Dict[str, Any]) -> Dict[str, Any]:
+        payload = copy.deepcopy(self._data)
+        payload.setdefault("entities", []).append(copy.deepcopy(entity_data))
+        canonical = migrate_scene_data(payload)
+        entities = canonical.get("entities", [])
+        if not entities or not isinstance(entities[-1], dict):
+            return copy.deepcopy(entity_data)
+        return entities[-1]
+
+    def _rename_entity_references(self, old_name: str, new_name: str, entity_id: str | None = None) -> None:
+        for entity_data in self.entities_data:
+            if not isinstance(entity_data, dict):
+                continue
+            if entity_data.get("parent") == old_name:
+                entity_data["parent"] = new_name
+            scene_link = entity_data.get("components", {}).get("SceneLink")
+            if isinstance(scene_link, dict) and scene_link.get("target_entity_name") == old_name:
+                scene_link["target_entity_name"] = new_name
+
+        for rule in self.rules_data:
+            if not isinstance(rule, dict):
+                continue
+            actions = rule.get("do", [])
+            if not isinstance(actions, list):
+                continue
+            for action in actions:
+                if isinstance(action, dict) and action.get("entity") == old_name:
+                    action["entity"] = new_name
+
+        signals = self.feature_metadata.get("signals", {})
+        connections = signals.get("connections", []) if isinstance(signals, dict) else []
+        if not isinstance(connections, list):
+            return
+        for connection in connections:
+            if not isinstance(connection, dict):
+                continue
+            target = connection.get("target")
+            if not (
+                isinstance(target, dict)
+                and str(target.get("kind", "") or "").strip().lower() == "entity"
+            ):
+                continue
+            target_id = str(target.get("id", "") or "").strip()
+            if entity_id and target_id == entity_id:
+                target["name"] = new_name
+            elif target.get("name") == old_name:
+                target["name"] = new_name
+
     def update_component(self, entity_name: str, component_name: str, property_name: str, value: Any) -> bool:
-        for entity_data in self._data.get("entities", []):
-            if entity_data.get("name") == entity_name:
-                components = entity_data.get("components", {})
-                if component_name in components:
-                    components[component_name][property_name] = value
-                    print(f"[EDIT] Scene: {entity_name}.{component_name}.{property_name} = {value}")
-                    return True
+        entity_data = self.find_entity(entity_name)
+        if entity_data is None:
+            return False
+        components = entity_data.get("components", {})
+        if component_name in components:
+            components[component_name][property_name] = value
+            print(f"[EDIT] Scene: {entity_name}.{component_name}.{property_name} = {value}")
+            return True
         return False
 
     def update_entity_property(self, entity_name: str, property_name: str, value: Any) -> bool:
         if property_name == "groups":
             return self.set_entity_groups(entity_name, value)
-        for entity_data in self._data.get("entities", []):
-            if entity_data.get("name") == entity_name:
-                entity_data[property_name] = value
+        entity_data = self.find_entity(entity_name)
+        if entity_data is None:
+            return False
+        if property_name == "name":
+            new_name = value
+            if not isinstance(new_name, str):
+                return False
+            if new_name == entity_name:
                 return True
-        return False
+            existing = self.find_entity(new_name)
+            if existing is not None and existing is not entity_data:
+                return False
+            entity_id = entity_data.get("id")
+            entity_data[property_name] = new_name
+            self._rename_entity_references(
+                entity_name,
+                new_name,
+                entity_id.strip() if isinstance(entity_id, str) else None,
+            )
+            self._rebuild_entity_index()
+            return True
+        entity_data[property_name] = value
+        return True
 
     def get_entity_groups(self, entity_name: str) -> list[str]:
         entity_data = self.find_entity(entity_name)
@@ -221,21 +313,48 @@ class Scene:
         return True
 
     def add_entity(self, entity_data: Dict[str, Any]) -> bool:
-        if self.find_entity(entity_data.get("name", "")) is not None:
+        canonical_entity = self._canonicalize_entity_for_add(entity_data)
+        entity_name = canonical_entity.get("name", "")
+        if self.find_entity(entity_name) is not None:
             return False
-        self._data.setdefault("entities", []).append(entity_data)
+        entity_id = canonical_entity.get("id")
+        if isinstance(entity_id, str) and entity_id.strip() and self.find_entity_by_id(entity_id) is not None:
+            return False
+        self._data.setdefault("entities", []).append(canonical_entity)
+        if isinstance(entity_name, str):
+            self._entity_index[entity_name] = canonical_entity
+        if isinstance(entity_id, str) and entity_id.strip():
+            self._entity_id_index[entity_id] = canonical_entity
         return True
 
     def remove_entity(self, entity_name: str) -> bool:
+        if self.find_entity(entity_name) is None:
+            return False
         entities = self._data.get("entities", [])
         for index, entity_data in enumerate(entities):
             if entity_data.get("name") == entity_name:
                 del entities[index]
+                self._rebuild_entity_index()
                 return True
         return False
 
+    def remove_entity_by_id(self, entity_id: str) -> bool:
+        entity_data = self.find_entity_by_id(entity_id)
+        if entity_data is None:
+            return False
+        entity_name = entity_data.get("name")
+        return self.remove_entity(entity_name) if isinstance(entity_name, str) else False
+
     def add_component(self, entity_name: str, component_name: str, component_data: Dict[str, Any]) -> bool:
         entity_data = self.find_entity(entity_name)
+        if entity_data is None:
+            return False
+        components = entity_data.setdefault("components", {})
+        components[component_name] = component_data
+        return True
+
+    def add_component_by_id(self, entity_id: str, component_name: str, component_data: Dict[str, Any]) -> bool:
+        entity_data = self.find_entity_by_id(entity_id)
         if entity_data is None:
             return False
         components = entity_data.setdefault("components", {})
@@ -257,14 +376,55 @@ class Scene:
                 entity_data.pop("component_metadata", None)
         return True
 
+    def remove_component_by_id(self, entity_id: str, component_name: str) -> bool:
+        entity_data = self.find_entity_by_id(entity_id)
+        if entity_data is None:
+            return False
+        entity_name = entity_data.get("name")
+        return self.remove_component(entity_name, component_name) if isinstance(entity_name, str) else False
+
     def set_feature_metadata(self, key: str, value: Any) -> None:
         self.feature_metadata[key] = value
 
     def find_entity(self, entity_name: str) -> Optional[Dict[str, Any]]:
-        for entity_data in self._data.get("entities", []):
-            if entity_data.get("name") == entity_name:
-                return entity_data
-        return None
+        if not isinstance(entity_name, str):
+            return None
+        return self._entity_index.get(entity_name)
+
+    def find_entity_by_id(self, entity_id: str) -> Optional[Dict[str, Any]]:
+        if not isinstance(entity_id, str):
+            return None
+        return self._entity_id_index.get(entity_id)
+
+    def update_component_by_id(self, entity_id: str, component_name: str, property_name: str, value: Any) -> bool:
+        entity_data = self.find_entity_by_id(entity_id)
+        if entity_data is None:
+            return False
+        components = entity_data.get("components", {})
+        if component_name in components:
+            components[component_name][property_name] = value
+            print(f"[EDIT] Scene: {entity_id}.{component_name}.{property_name} = {value}")
+            return True
+        return False
+
+    def update_entity_property_by_id(self, entity_id: str, property_name: str, value: Any) -> bool:
+        entity_data = self.find_entity_by_id(entity_id)
+        if entity_data is None:
+            return False
+        entity_name = entity_data.get("name")
+        if isinstance(entity_name, str):
+            return self.update_entity_property(entity_name, property_name, value)
+        return False
+
+    def replace_component_data_by_id(self, entity_id: str, component_name: str, component_data: Dict[str, Any]) -> bool:
+        entity_data = self.find_entity_by_id(entity_id)
+        if entity_data is None:
+            return False
+        components = entity_data.setdefault("components", {})
+        if component_name not in components:
+            return False
+        components[component_name] = component_data
+        return True
 
     def to_dict(self) -> Dict[str, Any]:
         return migrate_scene_data(copy.deepcopy(self._data))

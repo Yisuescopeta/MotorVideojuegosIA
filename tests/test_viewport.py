@@ -3,11 +3,9 @@ tests/test_viewport.py - Tests de utilidades de viewport.
 """
 
 import unittest
-from unittest.mock import MagicMock
 
 from engine.components.camera2d import Camera2D
 from engine.components.transform import Transform
-from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.utils.viewport import resolve_world_viewport_rect
 

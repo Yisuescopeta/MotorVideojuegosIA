@@ -4,7 +4,6 @@ import copy
 from dataclasses import dataclass, field
 from typing import Any
 
-
 PROFILE_REPORT_VERSION = 1
 
 

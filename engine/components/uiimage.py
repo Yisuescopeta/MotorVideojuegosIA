@@ -10,6 +10,11 @@ from engine.assets.asset_reference import clone_asset_reference, normalize_asset
 from engine.ecs.component import Component
 
 
+def _color_tuple(value: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    r, g, b, a = value
+    return (int(r), int(g), int(b), int(a))
+
+
 class UIImage(Component):
     """Imagen UI overlay serializable para banners, logos y decoracion."""
 
@@ -24,7 +29,7 @@ class UIImage(Component):
         self.enabled = bool(enabled)
         self.sprite = normalize_asset_reference(sprite)
         self.slice_name = str(slice_name or "")
-        self.tint = tuple(int(v) for v in tint)
+        self.tint = _color_tuple(tint)
         self.preserve_aspect = bool(preserve_aspect)
 
     def has_sprite(self) -> bool:

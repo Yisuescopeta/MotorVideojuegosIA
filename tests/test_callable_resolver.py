@@ -65,6 +65,21 @@ class CallableResolverTests(unittest.TestCase):
         self.assertEqual(script.public_data["amount"], 5)
         self.assertEqual(script.public_data["source"], "button")
 
+    def test_resolve_entity_script_callable_prefers_stable_id_after_rename(self) -> None:
+        actor = self.world.get_entity_by_name("Actor")
+        actor.serialized_id = "entity_actor"
+        actor.name = "RenamedActor"
+        callable_obj = self.resolver.resolve(
+            {"kind": "entity", "id": "entity_actor", "name": "Actor", "component": "ScriptBehaviour"},
+            {"method": "on_signal"},
+        )
+
+        self.assertIsNotNone(callable_obj)
+        self.assertTrue(callable_obj(7, source="signal"))
+        script = actor.get_component(ScriptBehaviour)
+        self.assertEqual(script.public_data["amount"], 7)
+        self.assertEqual(script.public_data["source"], "signal")
+
     def test_resolve_event_bus_callable_emits_payload(self) -> None:
         captured: list[dict] = []
         self.event_bus.subscribe("enemy.defeated", lambda event: captured.append(dict(event.data)))

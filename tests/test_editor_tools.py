@@ -430,6 +430,7 @@ class GameUiAuthoringRequestTests(unittest.TestCase):
         active_world = Mock()
         active_world.selected_entity_name = None
         active_world.get_all_entities.return_value = [non_canvas_entity, canvas_entity]
+        active_world.iter_all_entities.return_value = iter([non_canvas_entity, canvas_entity])
 
         game._scene_manager = Mock()
         game._scene_manager.active_world = active_world

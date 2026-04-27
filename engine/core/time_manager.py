@@ -22,17 +22,17 @@ import pyray as rl
 class TimeManager:
     """
     Gestiona el tiempo del juego: delta time, FPS y tiempo total.
-    
+
     Debe llamarse update() una vez por frame para actualizar los valores.
     """
-    
+
     def __init__(self) -> None:
         """Inicializa el gestor de tiempo con valores por defecto."""
         self._delta_time: float = 0.0
         self._total_time: float = 0.0
         self._fps: int = 0
         self._frame_count: int = 0
-    
+
     def update(self) -> None:
         """
         Actualiza los valores de tiempo desde Raylib.
@@ -42,11 +42,11 @@ class TimeManager:
         self._total_time += self._delta_time
         self._fps = rl.get_fps()
         self._frame_count += 1
-        
+
     def update_manual(self, dt: float) -> None:
         """
         Actualiza los valores de tiempo manualmente (Headless/Tests).
-        
+
         Args:
             dt: Delta time en segundos
         """
@@ -54,17 +54,17 @@ class TimeManager:
         self._total_time += dt
         self._fps = int(1.0 / dt) if dt > 0 else 0
         self._frame_count += 1
-    
+
     @property
     def delta_time(self) -> float:
         """Tiempo en segundos desde el último frame."""
         return self._delta_time
-    
+
     @property
     def fps(self) -> int:
         """Frames por segundo actuales."""
         return self._fps
-    
+
     @property
     def total_time(self) -> float:
         """Tiempo total transcurrido desde el inicio del juego."""

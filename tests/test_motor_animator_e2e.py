@@ -29,11 +29,11 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
         """Set up a clean project for each test."""
         self._temp_dir = tempfile.TemporaryDirectory()
         self.workspace = Path(self._temp_dir.name)
-        
+
         # Create a minimal valid project
         self.project_root = self.workspace / "TestGame"
         self.project_root.mkdir()
-        
+
         # Create project.json
         (self.project_root / "project.json").write_text(
             json.dumps({
@@ -53,11 +53,11 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
             }),
             encoding="utf-8",
         )
-        
+
         # Create required directories
         for dir_name in ["assets", "levels", "scripts", "settings", ".motor"]:
             (self.project_root / dir_name).mkdir(parents=True, exist_ok=True)
-        
+
         # Create a simple test image (16x16 PNG with 4 8x8 cells)
         png_data = bytes([
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
@@ -87,15 +87,15 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
             cmd_args = cmd_args + ["--project", str(self.project_root)]
         if "--json" not in cmd_args:
             cmd_args = cmd_args + ["--json"]
-        
+
         cmd = [sys.executable, "-m", "motor"] + cmd_args
-        
+
         # Set PYTHONPATH to include the workspace root
         root = Path(__file__).resolve().parents[1]
         env = os.environ.copy()
         python_path = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = str(root) if not python_path else str(root) + os.pathsep + python_path
-        
+
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -118,12 +118,12 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
         # Create scene
         result = self._run_motor("scene", "create", scene_name)
         self.assertTrue(result.get("success"), f"Scene creation failed: {result.get('message')}")
-        
+
         # Load the scene (required for subsequent operations)
         scene_path = result["data"]["path"]
         load_result = self._run_motor("scene", "load", scene_path)
         self.assertTrue(load_result.get("success"), f"Scene load failed: {load_result.get('message')}")
-        
+
         # Create entity (auto-saves scene)
         entity_result = self._run_motor("entity", "create", entity_name)
         self.assertTrue(entity_result.get("success"), f"Entity creation failed: {entity_result.get('message')}")
@@ -132,13 +132,13 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
         """motor animator ensure creates Animator component if missing."""
         # Setup
         self._setup_scene_and_entity("EnsureTest", "TestPlayer")
-        
+
         # Ensure Animator exists
         result = self._run_motor("animator", "ensure", "TestPlayer")
-        
+
         self.assertTrue(result.get("success"), f"Ensure failed: {result.get('message')}")
         self.assertTrue(result["data"].get("created"), "Animator should be created")
-        
+
         # Verify Animator exists by getting info
         info = self._run_motor("animator", "info", "TestPlayer")
         self.assertTrue(info["data"].get("exists"), "Animator should exist after ensure")
@@ -148,10 +148,10 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
         # Setup
         self._setup_scene_and_entity("IdempotentTest", "IdemPlayer")
         self._run_motor("animator", "ensure", "IdemPlayer")
-        
+
         # Ensure again
         result = self._run_motor("animator", "ensure", "IdemPlayer")
-        
+
         self.assertTrue(result.get("success"))
         self.assertFalse(result["data"].get("created"), "Animator should not be recreated")
 
@@ -159,13 +159,13 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
         """motor animator ensure can set initial sprite sheet."""
         # Setup
         self._setup_scene_and_entity("SheetTest", "SheetPlayer")
-        
+
         # Ensure with sprite sheet
         result = self._run_motor("animator", "ensure", "SheetPlayer", "--sheet", "assets/player.png")
-        
+
         self.assertTrue(result.get("success"))
         self.assertTrue(result["data"].get("created"))
-        
+
         # Verify sprite sheet is set
         info = self._run_motor("animator", "info", "SheetPlayer")
         self.assertEqual(info["data"].get("sprite_sheet"), "assets/player.png")
@@ -175,12 +175,12 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
         # Setup
         self._setup_scene_and_entity("SetSheetTest", "SheetPlayer2")
         self._run_motor("animator", "ensure", "SheetPlayer2")
-        
+
         # Set sprite sheet
         result = self._run_motor("animator", "set-sheet", "SheetPlayer2", "assets/player.png")
-        
+
         self.assertTrue(result.get("success"))
-        
+
         # Verify
         info = self._run_motor("animator", "info", "SheetPlayer2")
         self.assertEqual(info["data"].get("sprite_sheet"), "assets/player.png")
@@ -190,7 +190,7 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
         # Setup
         self._setup_scene_and_entity("LoopTest", "LoopPlayer")
         self._run_motor("animator", "ensure", "LoopPlayer")
-        
+
         # Create looping state
         result = self._run_motor(
             "animator", "state", "create", "LoopPlayer", "idle",
@@ -199,9 +199,9 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
             "--loop",
             "--set-default",
         )
-        
+
         self.assertTrue(result.get("success"), f"State create failed: {result.get('message')}")
-        
+
         # Verify state exists and is looping
         info = self._run_motor("animator", "info", "LoopPlayer")
         states = info["data"].get("states", [])
@@ -215,7 +215,7 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
         # Setup
         self._setup_scene_and_entity("NoLoopTest", "NoLoopPlayer")
         self._run_motor("animator", "ensure", "NoLoopPlayer")
-        
+
         # Create non-looping state
         result = self._run_motor(
             "animator", "state", "create", "NoLoopPlayer", "attack",
@@ -223,9 +223,9 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
             "--fps", "12",
             "--no-loop",
         )
-        
+
         self.assertTrue(result.get("success"))
-        
+
         # Verify state exists and is not looping
         info = self._run_motor("animator", "info", "NoLoopPlayer")
         states = info["data"].get("states", [])
@@ -238,16 +238,16 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
         # Setup
         self._setup_scene_and_entity("DefaultLoopTest", "DefLoopPlayer")
         self._run_motor("animator", "ensure", "DefLoopPlayer")
-        
+
         # Create state without explicit loop flag
         result = self._run_motor(
             "animator", "state", "create", "DefLoopPlayer", "walk",
             "--slices", "slice_0",
             "--fps", "10",
         )
-        
+
         self.assertTrue(result.get("success"))
-        
+
         # Verify state defaults to looping
         info = self._run_motor("animator", "info", "DefLoopPlayer")
         states = info["data"].get("states", [])
@@ -258,7 +258,7 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
         """motor animator state create --auto-create creates Animator if missing."""
         # Setup (note: NOT calling animator ensure)
         self._setup_scene_and_entity("AutoCreateTest", "AutoPlayer")
-        
+
         # Create state with auto-create
         result = self._run_motor(
             "animator", "state", "create", "AutoPlayer", "idle",
@@ -267,9 +267,9 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
             "--loop",
             "--auto-create",
         )
-        
+
         self.assertTrue(result.get("success"), f"State create with auto-create failed: {result.get('message')}")
-        
+
         # Verify Animator was created
         info = self._run_motor("animator", "info", "AutoPlayer")
         self.assertTrue(info["data"].get("exists"))
@@ -286,19 +286,19 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
             "--loop",
             "--set-default",
         )
-        
+
         # Get info
         result = self._run_motor("animator", "info", "InfoPlayer")
-        
+
         self.assertTrue(result.get("success"))
         data = result["data"]
-        
+
         # Verify structure
         self.assertTrue(data.get("exists"))
         self.assertEqual(data.get("sprite_sheet"), "assets/player.png")
         self.assertIn("states", data)
         self.assertEqual(len(data["states"]), 1)
-        
+
         state = data["states"][0]
         self.assertIn("name", state)
         self.assertIn("frame_count", state)
@@ -317,12 +317,12 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
             "--slices", "slice_0",
             "--fps", "8",
         )
-        
+
         # Remove state
         result = self._run_motor("animator", "state", "remove", "RemovePlayer", "idle")
-        
+
         self.assertTrue(result.get("success"))
-        
+
         # Verify state removed
         info = self._run_motor("animator", "info", "RemovePlayer")
         self.assertEqual(len(info["data"].get("states", [])), 0)
@@ -331,13 +331,13 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
         """Complete animator workflow: ensure → set-sheet → states → info."""
         # 1. Create scene, load it, create entity
         self._setup_scene_and_entity("FullWorkflow", "Hero")
-        
+
         # 2. Ensure Animator exists
         ensure_result = self._run_motor(
             "animator", "ensure", "Hero", "--sheet", "assets/player.png",
         )
         self.assertTrue(ensure_result["success"])
-        
+
         # 3. Create looping idle state
         idle_result = self._run_motor(
             "animator", "state", "create", "Hero", "idle",
@@ -347,7 +347,7 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
             "--set-default",
         )
         self.assertTrue(idle_result["success"])
-        
+
         # 4. Create non-looping attack state
         attack_result = self._run_motor(
             "animator", "state", "create", "Hero", "attack",
@@ -356,26 +356,26 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
             "--no-loop",
         )
         self.assertTrue(attack_result["success"])
-        
+
         # 5. Verify final state
         info = self._run_motor("animator", "info", "Hero")
         self.assertTrue(info["success"])
-        
+
         data = info["data"]
         self.assertEqual(data["sprite_sheet"], "assets/player.png")
         self.assertEqual(len(data["states"]), 2)
-        
+
         # Find states
         idle_state = next((s for s in data["states"] if s["name"] == "idle"), None)
         attack_state = next((s for s in data["states"] if s["name"] == "attack"), None)
-        
+
         self.assertIsNotNone(idle_state)
         self.assertIsNotNone(attack_state)
-        
+
         self.assertTrue(idle_state["loop"])
         self.assertTrue(idle_state["is_default"])
         self.assertEqual(idle_state["fps"], 8.0)
-        
+
         self.assertFalse(attack_state["loop"])
         self.assertEqual(attack_state["fps"], 12.0)
 
@@ -384,7 +384,7 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
         # Setup
         self._setup_scene_and_entity("MutualTest", "MutualPlayer")
         self._run_motor("animator", "ensure", "MutualPlayer")
-        
+
         # Try passing both flags (last one should win in argparse)
         result = self._run_motor(
             "animator", "state", "create", "MutualPlayer", "test",
@@ -392,9 +392,9 @@ class MotorAnimatorEndToEndTests(unittest.TestCase):
             "--loop",
             "--no-loop",  # This should win
         )
-        
+
         self.assertTrue(result.get("success"))
-        
+
         # Verify non-looping (last flag wins)
         info = self._run_motor("animator", "info", "MutualPlayer")
         states = info["data"].get("states", [])

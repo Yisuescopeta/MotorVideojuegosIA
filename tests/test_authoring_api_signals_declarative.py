@@ -62,6 +62,22 @@ class TestAuthoringAPISignalDeclarative(unittest.TestCase):
         self.assertEqual(len(args[1]["connections"]), 1)
         self.assertEqual(args[1]["connections"][0]["id"], "c2")
 
+    def test_add_signal_connection_backfills_entity_target_id(self):
+        ctx = FakeContext(feature_metadata={"signals": {"connections": []}})
+        ctx.scene_authoring.find_entity_data.return_value = {"id": "entity_player", "name": "Player"}
+        api = AuthoringAPI(ctx)
+        conn = {
+            "id": "c2",
+            "source": {"id": "button", "signal": "pressed"},
+            "target": {"kind": "entity", "name": "Player", "component": "ScriptBehaviour"},
+        }
+
+        result = api.add_signal_connection(conn)
+
+        self.assertTrue(result["success"])
+        args = ctx.scene_authoring.set_feature_metadata.call_args[0]
+        self.assertEqual(args[1]["connections"][0]["target"]["id"], "entity_player")
+
     def test_add_signal_connection_duplicate_id_fails(self):
         ctx = FakeContext(feature_metadata={"signals": {"connections": [{"id": "c1"}]}})
         api = AuthoringAPI(ctx)

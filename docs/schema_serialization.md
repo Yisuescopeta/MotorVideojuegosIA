@@ -11,6 +11,21 @@ migracion y validacion.
 Toda carga migra primero a la version actual y valida despues. Todo guardado de
 escena o prefab emite payload canonico `v2`.
 
+## Formatos fisicos de escena
+
+El formato oficial y default sigue siendo un unico archivo `.json` con el
+payload canonico de escena.
+
+Existe un backend experimental opt-in interno, `ChunkedSceneStorage`, para
+carpetas `.scene/`. En esta fase solo guarda y carga entidades en chunks simples
+desde `scene.json` y `entities/chunk_*.json`, y ensambla de vuelta el mismo
+payload canonico que consume `Scene`. No esta activado por defecto ni expuesto
+como contrato publico de CLI o `EngineAPI`.
+
+Limitaciones actuales de `.scene/`: no hay streaming parcial, dirty chunks,
+tilemaps chunked, migracion automatica desde `.json` ni promocion a formato
+oficial.
+
 ## Politica de compatibilidad
 
 Se aceptan en carga:
@@ -39,6 +54,9 @@ Una escena canonica incluye:
 - `feature_metadata`
 
 Cada entidad define identidad, estado, jerarquia y componentes serializables.
+La identidad canonica incluye `id` estable como string no vacio y `name` como
+nombre humano compatible. `name` sigue siendo requerido y unico para APIs
+existentes; `id` tambien es unico dentro de la escena y se conserva al renombrar.
 Opcionalmente puede incluir `groups` como lista de strings no vacios y sin
 duplicados para persistir membresias declarativas por entidad.
 Los componentes publicos deben estar registrados en
@@ -88,6 +106,8 @@ La migracion cubre:
 - ausencia de `schema_version`
 - defaults top-level: `name`, `entities`, `rules`, `feature_metadata`
 - defaults de entidad: `active`, `tag`, `layer`, `components`
+- `id` estable de entidad cuando falta o esta vacio, generado de forma
+  determinista desde la escena, posicion y nombre legacy
 - canonicalizacion de componentes core legacy
 - referencias de asset legacy en campos publicos core: `Sprite.texture`, `Animator.sprite_sheet`, `Tilemap.tileset`, `AudioSource.asset`, `ScriptBehaviour.script`
 
@@ -142,6 +162,8 @@ oficiales. Ejemplos actuales:
 Cada conexion define `source.id`, `source.signal`, un `target` soportado
 (`entity` o `event_bus`), una referencia `callable`, y opcionalmente `flags`,
 `binds`, `enabled`, `description` e `id` estable.
+Para `target.kind == "entity"`, `target.id` es la identidad estable preferida
+cuando existe; `target.name` se mantiene como compatibilidad y fallback.
 
 ## Alcance de validacion
 

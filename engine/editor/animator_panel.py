@@ -458,6 +458,8 @@ class AnimatorPanel:
         recommended = self._get_recommended_group_from_context(context)
         if not can_refresh_from_recommended_group(context, recommended):
             return False
+        if recommended is None:
+            return False
         return self.apply_slice_group_to_state(
             world,
             str(context.get("selected_state_name", "")),

@@ -219,7 +219,10 @@ class TestRuntimeAPISignals(unittest.TestCase):
     def test_connect_signal(self):
         runtime, signal_runtime = self._make_runtime_with_signals()
         api = RuntimeAPI(FakeContext(runtime))
-        callback = lambda x: x
+
+        def callback(x):
+            return x
+
         cid = api.connect_signal("Player", "on_jump", callback, flags=["one_shot"], binds=(10,))
         self.assertEqual(cid, "conn::1")
         signal_runtime.connect.assert_called_once()

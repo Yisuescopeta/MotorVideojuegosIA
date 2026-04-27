@@ -12,7 +12,7 @@ from engine.scenes.workspace_lifecycle import SceneWorkspaceEntry
 class SceneStructuralAuthoringContext:
     get_active_entry: Callable[[], Optional[SceneWorkspaceEntry]]
     resolve_entry: Callable[[Optional[str]], Optional[SceneWorkspaceEntry]]
-    flush_pending_edit_world: Callable[[SceneWorkspaceEntry], None]
+    flush_pending_edit_world: Callable[..., bool]
     rebuild_edit_world: Callable[[SceneWorkspaceEntry], None]
     record_scene_change: Callable[[SceneWorkspaceEntry, str, dict[str, Any]], None]
     sync_scene_links_from_feature_metadata: Callable[[SceneWorkspaceEntry], None]
@@ -84,13 +84,14 @@ class SceneHierarchyAuthoring:
         if target is None or parent is None:
             return False
         visited = {entity_name}
-        current = parent_name
+        current: str | None = parent_name
         while current is not None:
             if current in visited:
                 return False
             visited.add(current)
             current_entity = entry.scene.find_entity(current)
-            current = current_entity.get("parent") if current_entity is not None else None
+            current_parent = current_entity.get("parent") if current_entity is not None else None
+            current = str(current_parent) if current_parent is not None else None
         return True
 
     def set_entity_parent(self, entity_name: str, parent_name: Optional[str]) -> bool:
@@ -234,7 +235,10 @@ class SceneHierarchyAuthoring:
                 changed = True
         before_count = len(entities)
         entry.scene.data["entities"] = [entity_data for entity_data in entities if entity_data.get("name") not in names_to_remove]
-        return len(entry.scene.data["entities"]) != before_count
+        changed = len(entry.scene.data["entities"]) != before_count
+        if changed:
+            entry.scene._rebuild_entity_index()
+        return changed
 
     def compute_world_transform_from_scene_data(
         self,
@@ -276,7 +280,10 @@ class SceneHierarchyAuthoring:
         entities = entry.scene.data.get("entities", [])
         before_count = len(entities)
         entry.scene.data["entities"] = [entity_data for entity_data in entities if entity_data.get("name") != entity_name]
-        return len(entry.scene.data["entities"]) != before_count
+        changed = len(entry.scene.data["entities"]) != before_count
+        if changed:
+            entry.scene._rebuild_entity_index()
+        return changed
 
 
 @dataclass
@@ -597,6 +604,11 @@ class ScenePrefabAuthoring:
         if entity is None or entity.prefab_root_name is None:
             return None
         root_scene_data = entry.scene.find_entity(entity.prefab_root_name)
+        if root_scene_data is None:
+            root = entry.edit_world.get_entity_by_name(entity.prefab_root_name)
+            root_id = getattr(root, "serialized_id", None) if root is not None else None
+            if isinstance(root_id, str) and root_id.strip():
+                root_scene_data = entry.scene.find_entity_by_id(root_id.strip())
         if root_scene_data is None or "prefab_instance" not in root_scene_data:
             return None
         return root_scene_data, str(entity.prefab_source_path or "")

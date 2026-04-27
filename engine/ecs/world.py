@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import copy
 from collections import defaultdict, deque
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Iterable, Iterator, TypeVar
 
 from engine.ecs.component import Component
 from engine.ecs.entity import Entity, normalize_entity_groups
@@ -123,11 +123,17 @@ class World:
     def __init__(self) -> None:
         self._entities: dict[int, Entity] = {}
         self._name_index: dict[str, int] = {}
+        self._serialized_id_index: dict[str, int] = {}
         self._children_index: dict[str | None, set[int]] = defaultdict(set)
         self._component_index: dict[type, set[int]] = defaultdict(set)
         self._component_owner_index: dict[int, int] = {}
         self.group_registry = GroupRegistry(self)
         self._version: int = 0
+        self._structure_version: int = 0
+        self._transform_version: int = 0
+        self._render_version: int = 0
+        self._physics_version: int = 0
+        self._ui_layout_version: int = 0
         self._selection_version: int = 0
         self._selected_entity_name: str | None = None
         self.feature_metadata: dict = {}
@@ -136,6 +142,26 @@ class World:
     @property
     def version(self) -> int:
         return self._version
+
+    @property
+    def structure_version(self) -> int:
+        return self._structure_version
+
+    @property
+    def transform_version(self) -> int:
+        return self._transform_version
+
+    @property
+    def render_version(self) -> int:
+        return self._render_version
+
+    @property
+    def physics_version(self) -> int:
+        return self._physics_version
+
+    @property
+    def ui_layout_version(self) -> int:
+        return self._ui_layout_version
 
     @property
     def selection_version(self) -> int:
@@ -156,6 +182,53 @@ class World:
     def touch(self) -> None:
         self._version += 1
 
+    def touch_transform(self) -> None:
+        self._transform_version += 1
+        self.touch()
+
+    def touch_render(self) -> None:
+        self._render_version += 1
+        self.touch()
+
+    def touch_physics(self) -> None:
+        self._physics_version += 1
+        self.touch()
+
+    def touch_ui_layout(self) -> None:
+        self._ui_layout_version += 1
+        self.touch()
+
+    def _touch_structure(self) -> None:
+        self._structure_version += 1
+        self.touch()
+
+    def _touch_component_membership(self, component_type: type | None) -> None:
+        self._touch_structure()
+        self._touch_component_specific(component_type)
+
+    def _touch_component_specific(self, component_type: type | None) -> None:
+        if component_type is None:
+            return
+
+        from engine.components.canvas import Canvas
+        from engine.components.collider import Collider
+        from engine.components.recttransform import RectTransform
+        from engine.components.renderorder2d import RenderOrder2D
+        from engine.components.renderstyle2d import RenderStyle2D
+        from engine.components.sprite import Sprite
+        from engine.components.tilemap import Tilemap
+        from engine.components.transform import Transform
+        from engine.components.uibutton import UIButton
+
+        if issubclass(component_type, Transform):
+            self._transform_version += 1
+        if issubclass(component_type, Collider):
+            self._physics_version += 1
+        if issubclass(component_type, (Sprite, Tilemap, RenderOrder2D, RenderStyle2D)):
+            self._render_version += 1
+        if issubclass(component_type, (RectTransform, Canvas, UIButton)):
+            self._ui_layout_version += 1
+
     def create_entity(self, name: str = "Entity") -> Entity:
         entity = Entity(name)
         self.add_entity(entity)
@@ -169,7 +242,7 @@ class World:
         self._entities[entity.id] = entity
         entity._set_owner_world(self)
         self._index_entity(entity)
-        self.touch()
+        self._touch_structure()
 
     def remove_entity(self, entity_id: int) -> None:
         entity = self._entities.get(entity_id)
@@ -182,7 +255,7 @@ class World:
         del self._entities[entity_id]
         if self._selected_entity_name == entity.name:
             self.selected_entity_name = None
-        self.touch()
+        self._touch_structure()
 
     def destroy_entity(self, entity_id: int) -> None:
         self.remove_entity(entity_id)
@@ -194,12 +267,27 @@ class World:
         entity_id = self._name_index.get(name)
         return self._entities.get(entity_id) if entity_id is not None else None
 
+    def get_entity_by_serialized_id(self, entity_id: str) -> Entity | None:
+        normalized = str(entity_id or "").strip()
+        if not normalized:
+            return None
+        runtime_id = self._serialized_id_index.get(normalized)
+        return self._entities.get(runtime_id) if runtime_id is not None else None
+
     def get_entity_by_component_instance(self, component: Component) -> Entity | None:
         entity_id = self._component_owner_index.get(id(component))
         return self._entities.get(entity_id) if entity_id is not None else None
 
     def get_all_entities(self) -> list[Entity]:
-        return list(self._entities.values())
+        return list(self.iter_all_entities())
+
+    def iter_all_entities(self) -> Iterable[Entity]:
+        """Itera todas las entidades sin crear una lista temporal."""
+        return self._entities.values()
+
+    def iter_entities(self) -> Iterator[Entity]:
+        """Itera entidades activas sin crear una lista temporal."""
+        return (entity for entity in self._entities.values() if entity.active)
 
     def get_children(self, parent_name: str | None) -> list[Entity]:
         child_ids = self._children_index.get(parent_name, set())
@@ -217,7 +305,7 @@ class World:
 
     def get_entities_with(self, *component_types: type) -> list[Entity]:
         if not component_types:
-            return [entity for entity in self._entities.values() if entity.active]
+            return list(self.iter_entities())
 
         candidate_ids: set[int] | None = None
         for component_type in component_types:
@@ -246,20 +334,22 @@ class World:
             entity._set_owner_world(None)
         self._entities.clear()
         self._name_index.clear()
+        self._serialized_id_index.clear()
         self._children_index.clear()
         self._component_index.clear()
         self._component_owner_index.clear()
         self.group_registry.clear()
         self.selected_entity_name = None
-        self.touch()
+        self._touch_structure()
 
     def clone(self) -> "World":
         new_world = World()
         new_world.feature_metadata = copy.deepcopy(self.feature_metadata)
         pending_links: list[tuple[Entity, str]] = []
 
-        for entity in self._entities.values():
+        for entity in self.iter_all_entities():
             new_entity = Entity(entity.name)
+            new_entity.serialized_id = getattr(entity, "serialized_id", None)
             new_entity.active = entity.active
             new_entity.tag = entity.tag
             new_entity.layer = entity.layer
@@ -269,7 +359,7 @@ class World:
             new_entity.prefab_source_path = entity.prefab_source_path
             new_entity.prefab_root_name = entity.prefab_root_name
 
-            for component in entity.get_all_components():
+            for component in entity.iter_components():
                 cloned_component = self._clone_component(component, entity_name=entity.name)
                 new_entity.add_component(
                     cloned_component,
@@ -351,21 +441,27 @@ class World:
 
     def _index_entity(self, entity: Entity) -> None:
         self._name_index[entity.name] = entity.id
+        serialized_id = self._normalize_serialized_id(getattr(entity, "serialized_id", None))
+        if serialized_id is not None:
+            self._serialized_id_index[serialized_id] = entity.id
         self._children_index[entity.parent_name].add(entity.id)
         self.group_registry.register_entity(entity)
-        for component in entity.get_all_components():
+        for component in entity.iter_components():
             self._index_component(entity, type(component), component)
 
     def _deindex_entity(self, entity: Entity) -> None:
         if self._name_index.get(entity.name) == entity.id:
             del self._name_index[entity.name]
+        serialized_id = self._normalize_serialized_id(getattr(entity, "serialized_id", None))
+        if serialized_id is not None and self._serialized_id_index.get(serialized_id) == entity.id:
+            del self._serialized_id_index[serialized_id]
         child_ids = self._children_index.get(entity.parent_name)
         if child_ids is not None:
             child_ids.discard(entity.id)
             if not child_ids:
                 self._children_index.pop(entity.parent_name, None)
         self.group_registry.unregister_entity(entity)
-        for component in entity.get_all_components():
+        for component in entity.iter_components():
             self._deindex_component(entity, type(component), component)
 
     def _index_component(self, entity: Entity, component_type: type, component: Component) -> None:
@@ -379,6 +475,11 @@ class World:
             if not component_ids:
                 self._component_index.pop(component_type, None)
         self._component_owner_index.pop(id(component), None)
+
+    @staticmethod
+    def _normalize_serialized_id(value: object) -> str | None:
+        normalized = str(value or "").strip()
+        return normalized if normalized else None
 
     def _on_entity_changed(self, entity: Entity, event: str, **payload: object) -> None:
         if entity.id not in self._entities:
@@ -394,35 +495,47 @@ class World:
                 self._name_index[str(current)] = entity.id
                 if self._selected_entity_name == previous:
                     self.selected_entity_name = str(current)
+            elif field == "serialized_id":
+                previous_id = self._normalize_serialized_id(previous)
+                if previous_id is not None and self._serialized_id_index.get(previous_id) == entity.id:
+                    del self._serialized_id_index[previous_id]
+                current_id = self._normalize_serialized_id(current)
+                if current_id is not None:
+                    self._serialized_id_index[current_id] = entity.id
             elif field == "parent_name":
-                previous_children = self._children_index.get(previous)
+                previous_parent = str(previous) if previous is not None else None
+                current_parent = str(current) if current is not None else None
+                previous_children = self._children_index.get(previous_parent)
                 if previous_children is not None:
                     previous_children.discard(entity.id)
                     if not previous_children:
-                        self._children_index.pop(previous, None)
-                self._children_index[current].add(entity.id)
+                        self._children_index.pop(previous_parent, None)
+                self._children_index[current_parent].add(entity.id)
             elif field == "groups":
                 self.group_registry.update_entity_groups(entity, previous, current)
-            self.touch()
+            if field in {"name", "parent_name", "groups", "active"}:
+                self._touch_structure()
+            else:
+                self.touch()
             return
 
         if event == "component_added":
             component_type = payload.get("component_type")
             previous_component = payload.get("previous_component")
             component = payload.get("component")
-            if previous_component is not None and component_type is not None:
+            if isinstance(component_type, type) and isinstance(previous_component, Component):
                 self._deindex_component(entity, component_type, previous_component)
-            if component_type is not None and component is not None:
+            if isinstance(component_type, type) and isinstance(component, Component):
                 self._index_component(entity, component_type, component)
-            self.touch()
+            self._touch_component_membership(component_type if isinstance(component_type, type) else None)
             return
 
         if event == "component_removed":
             component_type = payload.get("component_type")
             component = payload.get("component")
-            if component_type is not None and component is not None:
+            if isinstance(component_type, type) and isinstance(component, Component):
                 self._deindex_component(entity, component_type, component)
-            self.touch()
+            self._touch_component_membership(component_type if isinstance(component_type, type) else None)
             return
 
         if event == "component_metadata_changed":
@@ -434,7 +547,7 @@ class World:
     def serialize(self) -> dict:
         entities_data = []
         consumed_prefab_entities: set[str] = set()
-        for entity in self._entities.values():
+        for entity in self.iter_all_entities():
             if entity.name in consumed_prefab_entities:
                 continue
 
@@ -449,7 +562,7 @@ class World:
                         "layer": node.layer,
                         "components": {
                             type(component).__name__: self._serialize_component(node, component)
-                            for component in node.get_all_components()
+                            for component in node.iter_components()
                         },
                     }
                     if node.groups:
@@ -473,7 +586,7 @@ class World:
                 entities_data.append(prefab_entity_data)
                 continue
 
-            ent_data = {
+            ent_data: dict[str, Any] = {
                 "name": entity.name,
                 "active": entity.active,
                 "tag": entity.tag,
@@ -491,7 +604,7 @@ class World:
             if entity.prefab_root_name is not None:
                 ent_data["prefab_root_name"] = entity.prefab_root_name
 
-            for component in entity.get_all_components():
+            for component in entity.iter_components():
                 comp_name = type(component).__name__
                 ent_data["components"][comp_name] = self._serialize_component(entity, component)
 

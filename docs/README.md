@@ -61,6 +61,7 @@ operativa y no prueba de capacidades implementadas del motor.
 - [architecture/branch-strategy.md](architecture/branch-strategy.md) - convencion de ramas y workspaces.
 - [architecture/module-boundaries.md](architecture/module-boundaries.md) - mapa practico de carpetas y subsistemas.
 - [architecture/integration-strategy.md](architecture/integration-strategy.md) - integracion temporal por dominios.
+- [scene_streaming_design.md](scene_streaming_design.md) - diseno futuro de escenas chunked; no es contrato implementado.
 - [ai/codex-prompt-guidelines.md](ai/codex-prompt-guidelines.md) - formato recomendado de prompt para Codex.
 
 ## Agentes e IA
@@ -85,6 +86,7 @@ Estos documentos describen tooling real cuando el codigo existe, pero no amplian
 el contrato de `core obligatorio`.
 
 - [navigation.md](navigation.md) - busqueda de rutas experimental.
+- [performance.md](performance.md) - benchmarks headless y mediciones sinteticas.
 - [rl.md](rl.md) - wrappers RL, datasets y runners headless.
 - [ai_assisted_workflows.md](ai_assisted_workflows.md) - modelos de flujo para automatizacion.
 - [tooling_foundation.md](tooling_foundation.md) - tooling local para checks enfocados, audit del registry y soporte read-only de worktrees.

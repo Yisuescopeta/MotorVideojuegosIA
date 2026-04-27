@@ -12,9 +12,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pyray as rl
-
 from engine.assets.asset_database import AssetDatabase
-from engine.assets.asset_reference import build_asset_reference, normalize_asset_reference
+from engine.assets.asset_reference import normalize_asset_reference
 from engine.assets.asset_resolver import AssetResolver
 from engine.project.project_service import ProjectService
 from engine.rendering.materials import Material2D
@@ -669,7 +668,7 @@ class AssetService:
                 and abs(int(color.b) - background_color[2]) <= color_tolerance
             )
 
-        queue = deque()
+        queue: deque[tuple[int, int]] = deque()
         for px in range(width):
             if is_background_color(px, 0):
                 idx = px

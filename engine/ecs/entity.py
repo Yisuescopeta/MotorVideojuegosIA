@@ -22,7 +22,7 @@ EJEMPLO DE USO:
 
 import copy
 import itertools
-from typing import Any, TypeVar
+from typing import Any, Iterable, TypeVar
 
 from engine.ecs.component import Component
 
@@ -74,6 +74,7 @@ class Entity:
         "tag",
         "layer",
         "groups",
+        "serialized_id",
         "parent_name",
         "prefab_instance",
         "prefab_source_path",
@@ -90,6 +91,7 @@ class Entity:
         object.__setattr__(self, "_owner_world", None)
         object.__setattr__(self, "_notifications_suspended", True)
         self.id: int = _generate_entity_id()
+        self.serialized_id: str | None = None
         self.name: str = name
         self.active: bool = True
         self.tag: str = "Untagged"
@@ -100,6 +102,7 @@ class Entity:
         self.prefab_source_path: str | None = None
         self.prefab_root_name: str | None = None
         self._components: dict[type, Component] = {}
+        self._component_types_by_name: dict[str, type] = {}
         self._component_metadata: dict[type, dict[str, Any]] = {}
         object.__setattr__(self, "_notifications_suspended", False)
 
@@ -139,6 +142,7 @@ class Entity:
         component_type = type(component)
         previous_component = self._components.get(component_type)
         self._components[component_type] = component
+        self._component_types_by_name[component_type.__name__] = component_type
         self._component_metadata[component_type] = copy.deepcopy(metadata or {})
         self._notify_owner_world(
             "component_added",
@@ -168,6 +172,17 @@ class Entity:
                 return instance  # type: ignore
         return None
 
+    def get_component_exact(self, component_type: type[T]) -> T | None:
+        """Obtiene un componente solo si el tipo coincide exactamente."""
+        return self._components.get(component_type)  # type: ignore
+
+    def get_component_by_name(self, component_name: str) -> Component | None:
+        """Obtiene un componente por el nombre de su clase."""
+        component_type = self._component_types_by_name.get(component_name)
+        if component_type is None:
+            return None
+        return self._components.get(component_type)
+
     def has_component(self, component_type: type) -> bool:
         """
         Verifica si la entidad tiene un componente de un tipo específico.
@@ -196,6 +211,9 @@ class Entity:
         if component_type in self._components:
             removed_component = self._components[component_type]
             del self._components[component_type]
+            component_name = component_type.__name__
+            if self._component_types_by_name.get(component_name) is component_type:
+                del self._component_types_by_name[component_name]
             self._notify_owner_world(
                 "component_removed",
                 component_type=component_type,
@@ -211,7 +229,11 @@ class Entity:
         Returns:
             Lista de todos los componentes
         """
-        return list(self._components.values())
+        return list(self.iter_components())
+
+    def iter_components(self) -> Iterable[Component]:
+        """Itera todos los componentes sin crear una lista temporal."""
+        return self._components.values()
 
     def get_component_metadata(self, component_type: type[T]) -> dict[str, Any]:
         return copy.deepcopy(self._component_metadata.get(component_type, {}))
@@ -226,9 +248,9 @@ class Entity:
         )
 
     def get_component_metadata_by_name(self, component_name: str) -> dict[str, Any]:
-        for component_type in self._components.keys():
-            if component_type.__name__ == component_name:
-                return self.get_component_metadata(component_type)
+        component_type = self._component_types_by_name.get(component_name)
+        if component_type is not None:
+            return self.get_component_metadata(component_type)
         return {}
 
     def to_dict(self) -> dict[str, Any]:
@@ -238,8 +260,9 @@ class Entity:
         Returns:
             Diccionario con id, name y componentes serializados
         """
+        serialized_id = str(self.serialized_id or "").strip()
         data = {
-            "id": self.id,
+            "id": serialized_id if serialized_id else f"runtime_{self.id}",
             "name": self.name,
             "active": self.active,
             "tag": self.tag,

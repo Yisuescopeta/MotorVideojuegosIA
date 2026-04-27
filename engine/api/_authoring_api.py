@@ -893,7 +893,7 @@ class AuthoringAPI(EngineAPIComponent):
         if connection_data["id"] in existing_ids:
             return self.fail(f"Connection with id '{connection_data['id']}' already exists")
 
-        connections.append(copy.deepcopy(connection_data))
+        connections.append(self._with_entity_signal_target_id(connection_data))
         signals["connections"] = connections
         return self.set_feature_metadata("signals", signals)
 
@@ -917,6 +917,28 @@ class AuthoringAPI(EngineAPIComponent):
             return self.fail("SceneManager not ready")
         success = self.scene_authoring.update_entity_property(name, property_name, value)
         return self.ok(message, {"entity": name}) if success else self.fail("Entity property update failed")
+
+    def _with_entity_signal_target_id(self, connection_data: dict[str, Any]) -> dict[str, Any]:
+        payload = copy.deepcopy(connection_data)
+        if self.scene_authoring is None:
+            return payload
+        target = payload.get("target")
+        if not isinstance(target, dict):
+            return payload
+        if str(target.get("kind", "") or "").strip().lower() != "entity":
+            return payload
+        if isinstance(target.get("id"), str) and str(target.get("id")).strip():
+            target["id"] = str(target["id"]).strip()
+            return payload
+        target_name = str(target.get("name", "") or "").strip()
+        if not target_name:
+            return payload
+        find_entity_data = getattr(self.scene_authoring, "find_entity_data", None)
+        entity_data = find_entity_data(target_name) if callable(find_entity_data) else None
+        entity_id = entity_data.get("id") if isinstance(entity_data, dict) else None
+        if isinstance(entity_id, str) and entity_id.strip():
+            target["id"] = entity_id.strip()
+        return payload
 
     def _load_animator_payload(self, entity_name: str) -> Optional[Dict[str, Any]]:
         return self.load_component_payload(entity_name, "Animator")

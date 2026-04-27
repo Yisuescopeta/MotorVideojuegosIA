@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from engine.api import EngineAPI
 from engine.debug.profiler import PROFILE_REPORT_VERSION
@@ -44,6 +45,26 @@ def _run_module(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
             f"Subprocess failed: {' '.join(args)}\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
         )
     return result
+
+
+def _assert_memory_diagnostic_counters(test_case: unittest.TestCase, report: dict) -> None:
+    avg_counters = report["counters"]["avg"]
+    last_counters = report["last_frame"]["counters"]
+    for field in (
+        "components",
+        "component_count",
+        "gc_gen0_count",
+        "gc_gen1_count",
+        "gc_gen2_count",
+        "textures_loaded",
+        "texture_load_failures",
+        "texture_cache_approx_bytes",
+        "render_sorted_entities_cache_size",
+        "render_graph_pass_cache_size",
+        "tilemap_chunk_cache_size",
+    ):
+        test_case.assertIn(field, avg_counters)
+        test_case.assertIn(field, last_counters)
 
 
 class ProfilerApiTests(unittest.TestCase):
@@ -114,6 +135,7 @@ class ProfilerApiTests(unittest.TestCase):
         self.assertIn("avg", report["counters"])
         self.assertIn("max", report["counters"])
         self.assertIn("entities", report["counters"]["avg"])
+        _assert_memory_diagnostic_counters(self, report)
         self.assertIn("world_json_bytes", report["counters"]["avg"])
         self.assertEqual(report["last_frame"]["memory"]["world_json_bytes"], 0.0)
         self.assertEqual(report["last_frame"]["memory"]["entity_avg_json_bytes"], 0.0)
@@ -136,6 +158,7 @@ class ProfilerApiTests(unittest.TestCase):
         self.assertIn("avg", report["counters"])
         self.assertIn("max", report["counters"])
         self.assertIn("entities", report["counters"]["avg"])
+        _assert_memory_diagnostic_counters(self, report)
         self.assertIn("world_json_bytes", report["counters"]["avg"])
         self.assertEqual(report["last_frame"]["memory"]["world_json_bytes"], 0.0)
         self.assertEqual(report["last_frame"]["memory"]["entity_avg_json_bytes"], 0.0)
@@ -158,6 +181,27 @@ class ProfilerApiTests(unittest.TestCase):
         self.assertEqual(report["frames"], 3)
         self.assertGreater(report["last_frame"]["memory"]["world_json_bytes"], 0.0)
         self.assertGreater(report["last_frame"]["memory"]["entity_avg_json_bytes"], 0.0)
+
+    def test_profiler_report_succeeds_when_psutil_is_missing(self) -> None:
+        self.game.enable_runtime_metrics = True
+
+        real_import_module = __import__("importlib").import_module
+
+        def import_without_psutil(name: str, package: str | None = None):
+            if name == "psutil":
+                raise ModuleNotFoundError(name)
+            return real_import_module(name, package)
+
+        with mock.patch("engine.app.debug_tools_controller.importlib.import_module", side_effect=import_without_psutil):
+            self.api.reset_profiler("no_psutil_test")
+            self.api.step(frames=31)
+            report = self.api.get_profiler_report()
+
+        self.assertEqual(report["run_label"], "no_psutil_test")
+        self.assertEqual(report["frames"], 3)
+        self.assertIn("world_json_bytes", report["last_frame"]["memory"])
+        self.assertNotIn("process_rss_bytes", report["last_frame"]["memory"])
+        self.assertNotIn("process_vms_bytes", report["last_frame"]["memory"])
 
     def test_profile_run_cli_writes_stable_report_schema(self) -> None:
         original_catalog = _read_catalog_snapshot()

@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional
 from engine.assets.asset_reference import build_asset_reference, clone_asset_reference, normalize_asset_reference
 from engine.ecs.component import Component
 
-
 PARAMETER_TYPES = {"bool", "int", "float", "trigger"}
 CONDITION_OPERATORS = {"==", "!=", ">", ">=", "<", "<="}
 

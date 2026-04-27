@@ -27,10 +27,12 @@ def _normalize_value(value: Any, float_precision: int) -> Any:
 
 def world_state_payload(world: Any, *, float_precision: int = 6) -> dict[str, Any]:
     entities: list[dict[str, Any]] = []
-    for entity in sorted(world.get_all_entities(), key=lambda item: item.name):
+    world_entities = world.iter_all_entities() if hasattr(world, "iter_all_entities") else world.get_all_entities()
+    for entity in sorted(world_entities, key=lambda item: item.name):
         components: dict[str, Any] = {}
         metadata: dict[str, Any] = {}
-        for component in sorted(entity.get_all_components(), key=lambda item: type(item).__name__):
+        entity_components = entity.iter_components() if hasattr(entity, "iter_components") else entity.get_all_components()
+        for component in sorted(entity_components, key=lambda item: type(item).__name__):
             component_name = type(component).__name__
             if hasattr(component, "to_dict"):
                 components[component_name] = _normalize_value(component.to_dict(), float_precision)

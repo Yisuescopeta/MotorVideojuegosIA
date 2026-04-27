@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 from typing import Any, Callable
@@ -75,6 +76,41 @@ def _migrate_entity_defaults(entity: dict[str, Any]) -> None:
     entity.setdefault("tag", "Untagged")
     entity.setdefault("layer", "Default")
     entity.setdefault("components", {})
+
+
+def _build_deterministic_entity_id(scene_name: str, entity_name: str, index: int) -> str:
+    seed = f"{scene_name}|{index}|{entity_name}"
+    digest = hashlib.sha1(seed.encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
+    return f"entity_{digest}"
+
+
+def _ensure_entity_ids(data: dict[str, Any]) -> None:
+    scene_name = str(data.get("name", "Untitled") or "Untitled")
+    entities = data.get("entities", [])
+    if not isinstance(entities, list):
+        return
+    used_ids = {
+        str(entity.get("id")).strip()
+        for entity in entities
+        if isinstance(entity, dict) and isinstance(entity.get("id"), str) and str(entity.get("id")).strip()
+    }
+    generated_ids: set[str] = set()
+    for index, entity in enumerate(entities):
+        if not isinstance(entity, dict):
+            continue
+        entity_id = entity.get("id")
+        if isinstance(entity_id, str) and entity_id.strip():
+            entity["id"] = entity_id.strip()
+            continue
+        entity_name = str(entity.get("name", "Entity") or "Entity")
+        base_id = _build_deterministic_entity_id(scene_name, entity_name, index)
+        candidate = base_id
+        suffix = 1
+        while candidate in used_ids or candidate in generated_ids:
+            suffix += 1
+            candidate = f"{base_id}_{suffix}"
+        entity["id"] = candidate
+        generated_ids.add(candidate)
 
 
 def _normalize_prefab_override_map(overrides: dict[str, Any]) -> dict[str, Any]:
@@ -345,6 +381,7 @@ def _migrate_scene_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
     migrated = copy.deepcopy(data)
     migrated["schema_version"] = 2
     _default_scene_fields(migrated)
+    _ensure_entity_ids(migrated)
     entities = migrated.get("entities", [])
     if isinstance(entities, list):
         for index, entity in enumerate(entities):
@@ -357,6 +394,7 @@ def _canonicalize_scene_v2(data: dict[str, Any]) -> dict[str, Any]:
     migrated = copy.deepcopy(data)
     migrated["schema_version"] = CURRENT_SCENE_SCHEMA_VERSION
     _default_scene_fields(migrated)
+    _ensure_entity_ids(migrated)
     entities = migrated.get("entities", [])
     if isinstance(entities, list):
         for index, entity in enumerate(entities):
@@ -1177,7 +1215,7 @@ def _validate_prefab_instance(prefab_instance: Any, *, path: str) -> list[str]:
     return errors
 
 
-def _validate_entity(entity: Any, *, path: str) -> list[str]:
+def _validate_entity(entity: Any, *, path: str, require_id: bool = False) -> list[str]:
     errors: list[str] = []
     payload = _expect_object(entity, path=path, errors=errors)
     if payload is None:
@@ -1186,6 +1224,10 @@ def _validate_entity(entity: Any, *, path: str) -> list[str]:
         errors.append(f"{path}.name: expected non-empty string")
     else:
         _expect_string(payload.get("name"), path=f"{path}.name", errors=errors, non_empty=True)
+    if require_id and "id" not in payload:
+        errors.append(f"{path}.id: expected non-empty string")
+    elif "id" in payload:
+        _expect_string(payload.get("id"), path=f"{path}.id", errors=errors, non_empty=True)
     components = payload.get("components", {})
     if not isinstance(components, dict):
         errors.append(f"{path}.components: expected object")
@@ -1231,6 +1273,7 @@ def _validate_entity_graph(
 ) -> tuple[list[str], int]:
     errors: list[str] = []
     names_to_indexes: dict[str, int] = {}
+    ids_to_indexes: dict[str, int] = {}
     parents_by_name: dict[str, Any] = {}
     roots = 0
     counted_root_values = counted_root_values if counted_root_values is not None else root_parent_values
@@ -1240,6 +1283,12 @@ def _validate_entity_graph(
         name = str(entity.get("name", "")).strip()
         if not name:
             continue
+        entity_id = str(entity.get("id", "")).strip() if isinstance(entity.get("id"), str) else ""
+        if entity_id:
+            if entity_id in ids_to_indexes:
+                errors.append(f"{path}[{index}].id: duplicate entity id '{entity_id}'")
+            else:
+                ids_to_indexes[entity_id] = index
         if name in names_to_indexes:
             errors.append(f"{path}[{index}].name: duplicate entity name '{name}'")
         else:
@@ -1656,7 +1705,7 @@ def validate_scene_data(data: Any) -> list[str]:
         errors.append("$.entities: expected array")
     else:
         for index, entity in enumerate(entities):
-            errors.extend(_validate_entity(entity, path=f"$.entities[{index}]"))
+            errors.extend(_validate_entity(entity, path=f"$.entities[{index}]", require_id=True))
         graph_errors, _ = _validate_entity_graph(
             entities,
             path="$.entities",

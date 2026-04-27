@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from engine.components.camera2d import Camera2D
 from engine.components.sprite import Sprite
-from engine.components.tween import Tween
 from engine.components.transform import Transform
+from engine.components.tween import Tween
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.utils.easing import get_easing

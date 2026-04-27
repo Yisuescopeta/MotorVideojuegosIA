@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from engine.agent.AgentSlashCommands import AgentSlashCommandRegistry
@@ -12,7 +12,13 @@ from engine.agent.credentials import (
 )
 from engine.agent.engine_port import AgentEnginePort, EngineAPIAgentEnginePort
 from engine.agent.memory import AgentCompactionService, AgentMemoryStore
-from engine.agent.provider import AgentProviderResolver, FakeLLMProvider, LLMProvider, OpenAIProvider, create_opencode_go_provider
+from engine.agent.provider import (
+    AgentProviderResolver,
+    FakeLLMProvider,
+    LLMProvider,
+    OpenAIProvider,
+    create_opencode_go_provider,
+)
 from engine.agent.runtime import AgentRuntime
 from engine.agent.store import AgentSessionStore
 from engine.agent.tools import AgentToolContext, AgentToolRegistry
@@ -20,12 +26,9 @@ from engine.agent.types import (
     AgentActionStatus,
     AgentEvent,
     AgentEventKind,
-    AgentMessage,
-    AgentMessageRole,
     AgentPermissionMode,
     AgentRuntimeConfig,
     AgentSession,
-    AgentToolCall,
     AgentTurnStatus,
     new_id,
     utc_now_iso,
@@ -385,10 +388,11 @@ class AgentSessionService:
                 metadata["default_model"] = settings.get("model", metadata.get("default_model", ""))
         return metadata
 
-    def _append_event(self, session: AgentSession, kind: AgentEventKind, data: dict[str, Any]) -> None:
+    def _append_event(self, session: AgentSession, kind: AgentEventKind, data: dict[str, Any]) -> AgentEvent:
         event = AgentEvent(new_id("event"), kind, data=data)
         session.events.append(event)
         self.store.append_event(session.session_id, event)
+        return event
 
     def get_usage_from_session(self, session: AgentSession) -> dict[str, Any]:
         total_input = sum(record.input_tokens or 0 for record in session.usage_records)

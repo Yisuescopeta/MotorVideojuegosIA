@@ -73,6 +73,44 @@ class SchemaValidationTests(unittest.TestCase):
         self.assertEqual(migrated["schema_version"], CURRENT_SCENE_SCHEMA_VERSION)
         self.assertEqual(validate_scene_data(migrated), [])
 
+    def test_legacy_scene_entities_receive_deterministic_ids(self) -> None:
+        legacy = _scene_payload(
+            name="LegacyIds",
+            entities=[_entity_payload("Player"), _entity_payload("Enemy")],
+        )
+
+        migrated_once = migrate_scene_data(legacy)
+        migrated_twice = migrate_scene_data(legacy)
+
+        ids_once = [entity["id"] for entity in migrated_once["entities"]]
+        ids_twice = [entity["id"] for entity in migrated_twice["entities"]]
+        self.assertEqual(ids_once, ids_twice)
+        self.assertEqual(len(set(ids_once)), 2)
+        self.assertTrue(all(str(entity_id).startswith("entity_") for entity_id in ids_once))
+        self.assertEqual(validate_scene_data(migrated_once), [])
+
+    def test_scene_migration_preserves_existing_entity_id(self) -> None:
+        payload = _scene_payload(entities=[{**_entity_payload("Player"), "id": "player_001"}])
+
+        migrated = migrate_scene_data(payload)
+
+        self.assertEqual(migrated["entities"][0]["id"], "player_001")
+        self.assertEqual(validate_scene_data(migrated), [])
+
+    def test_scene_validation_rejects_duplicate_entity_ids(self) -> None:
+        payload = migrate_scene_data(
+            _scene_payload(
+                entities=[
+                    {**_entity_payload("Player"), "id": "duplicate"},
+                    {**_entity_payload("Enemy"), "id": "duplicate"},
+                ]
+            )
+        )
+
+        errors = validate_scene_data(payload)
+
+        self.assertTrue(any("$.entities[1].id: duplicate entity id 'duplicate'" in error for error in errors))
+
     def test_scene_v1_collider_is_canonicalized_to_v2(self) -> None:
         migrated = migrate_scene_data(
             {

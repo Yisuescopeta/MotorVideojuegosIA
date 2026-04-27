@@ -12,15 +12,14 @@ Validates:
 from __future__ import annotations
 
 import json
+import tempfile
 import unittest
 from pathlib import Path
-import tempfile
 
 from engine.ai import (
     Capability,
     CapabilityExample,
     CapabilityRegistry,
-    CapabilityRegistryBuilder,
     MotorAIBootstrapBuilder,
     get_default_registry,
 )

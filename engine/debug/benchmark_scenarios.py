@@ -86,6 +86,154 @@ def _make_dynamic_entity(
     }
 
 
+def _make_render_order_payload(order_in_layer: int = 0) -> dict[str, Any]:
+    return {
+        "enabled": True,
+        "sorting_layer": "Default",
+        "order_in_layer": int(order_in_layer),
+        "render_pass": "World",
+    }
+
+
+def _make_sprite_payload(index: int = 0) -> dict[str, Any]:
+    tint_cycle = (
+        [255, 255, 255, 255],
+        [180, 220, 255, 255],
+        [255, 210, 160, 255],
+        [190, 255, 190, 255],
+    )
+    return {
+        "enabled": True,
+        "texture": {"guid": "", "path": ""},
+        "texture_path": "",
+        "width": 16,
+        "height": 16,
+        "origin_x": 0.5,
+        "origin_y": 0.5,
+        "flip_x": False,
+        "flip_y": False,
+        "tint": tint_cycle[int(index) % len(tint_cycle)],
+    }
+
+
+def _make_camera_payload(*, offset_x: float = 400.0, offset_y: float = 300.0, zoom: float = 1.0) -> dict[str, Any]:
+    return {
+        "enabled": True,
+        "offset_x": float(offset_x),
+        "offset_y": float(offset_y),
+        "zoom": float(zoom),
+        "rotation": 0.0,
+        "is_primary": True,
+        "follow_entity": "",
+        "framing_mode": "locked",
+        "dead_zone_width": 0.0,
+        "dead_zone_height": 0.0,
+        "clamp_left": None,
+        "clamp_right": None,
+        "clamp_top": None,
+        "clamp_bottom": None,
+        "recenter_on_play": True,
+    }
+
+
+def _make_rect_transform_payload(
+    x: float,
+    y: float,
+    *,
+    width: float = 160.0,
+    height: float = 36.0,
+    layout_order: int = 0,
+) -> dict[str, Any]:
+    return {
+        "enabled": True,
+        "anchor_min_x": 0.0,
+        "anchor_min_y": 0.0,
+        "anchor_max_x": 0.0,
+        "anchor_max_y": 0.0,
+        "pivot_x": 0.0,
+        "pivot_y": 0.0,
+        "anchored_x": float(x),
+        "anchored_y": float(y),
+        "width": float(width),
+        "height": float(height),
+        "rotation": 0.0,
+        "scale_x": 1.0,
+        "scale_y": 1.0,
+        "layout_mode": "free",
+        "layout_order": int(layout_order),
+        "layout_ignore": False,
+        "size_mode_x": "fixed",
+        "size_mode_y": "fixed",
+        "layout_align": "start",
+        "padding_left": 0.0,
+        "padding_top": 0.0,
+        "padding_right": 0.0,
+        "padding_bottom": 0.0,
+        "spacing": 0.0,
+    }
+
+
+def _make_canvas_payload() -> dict[str, Any]:
+    return {
+        "enabled": True,
+        "render_mode": "screen_space_overlay",
+        "reference_width": 800,
+        "reference_height": 600,
+        "match_mode": "stretch",
+        "sort_order": 0,
+    }
+
+
+def _make_ui_button_payload(index: int) -> dict[str, Any]:
+    return {
+        "enabled": True,
+        "interactable": True,
+        "label": f"Button {index}",
+        "normal_color": [72, 72, 72, 255],
+        "hover_color": [92, 92, 92, 255],
+        "pressed_color": [56, 56, 56, 255],
+        "disabled_color": [48, 48, 48, 200],
+        "transition_scale_pressed": 0.96,
+        "on_click": {"type": "emit_event", "name": f"benchmark_button_{index}"},
+        "normal_sprite": {"guid": "", "path": ""},
+        "hover_sprite": {"guid": "", "path": ""},
+        "pressed_sprite": {"guid": "", "path": ""},
+        "disabled_sprite": {"guid": "", "path": ""},
+        "normal_slice": "",
+        "hover_slice": "",
+        "pressed_slice": "",
+        "disabled_slice": "",
+        "image_tint": [255, 255, 255, 255],
+        "preserve_aspect": True,
+    }
+
+
+def _make_transform_entity(name: str, x: float, y: float) -> dict[str, Any]:
+    return {
+        "name": name,
+        "active": True,
+        "tag": "",
+        "layer": "Gameplay",
+        "components": {
+            "Transform": _make_transform_payload(x, y),
+        },
+    }
+
+
+def _make_sprite_entity(name: str, x: float, y: float, index: int) -> dict[str, Any]:
+    return {
+        "name": name,
+        "active": True,
+        "tag": "",
+        "layer": "Gameplay",
+        "components": {
+            "Transform": _make_transform_payload(x, y),
+            "Sprite": _make_sprite_payload(index),
+            "RenderOrder2D": _make_render_order_payload(order_in_layer=index % 32),
+        },
+    }
+
+
 def _base_feature_metadata(backend: str) -> dict[str, Any]:
     return {
         "physics_2d": {"backend": str(backend or "legacy_aabb")},
@@ -213,10 +361,284 @@ def many_dynamic_and_static(
     }, params
 
 
+def many_transform_entities(
+    *,
+    backend: str,
+    entity_count: int = 1000,
+    columns: int = 100,
+    spacing: float = 8.0,
+    **_: Any,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    normalized_entity_count = _normalize_count(entity_count, minimum=1)
+    normalized_columns = _normalize_columns(columns)
+    normalized_spacing = _normalize_spacing(spacing)
+    entities = [
+        _make_transform_entity(
+            f"Entity_{index}",
+            x=float((index % normalized_columns) * normalized_spacing),
+            y=float((index // normalized_columns) * normalized_spacing),
+        )
+        for index in range(normalized_entity_count)
+    ]
+    params = {
+        "entity_count": normalized_entity_count,
+        "columns": normalized_columns,
+        "spacing": normalized_spacing,
+    }
+    return {
+        "name": "many_transform_entities",
+        "entities": entities,
+        "rules": [],
+        "feature_metadata": _base_feature_metadata(backend),
+    }, params
+
+
+def many_sprite_entities(
+    *,
+    backend: str,
+    entity_count: int = 1000,
+    columns: int = 100,
+    spacing: float = 16.0,
+    **_: Any,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    normalized_entity_count = _normalize_count(entity_count, minimum=1)
+    normalized_columns = _normalize_columns(columns)
+    normalized_spacing = _normalize_spacing(spacing)
+    entities = [
+        {
+            "name": "BenchmarkCamera",
+            "active": True,
+            "tag": "",
+            "layer": "Default",
+            "components": {
+                "Transform": _make_transform_payload(400.0, 300.0),
+                "Camera2D": _make_camera_payload(),
+            },
+        },
+        *[
+        _make_sprite_entity(
+            f"Entity_{index}",
+            x=float((index % normalized_columns) * normalized_spacing),
+            y=float((index // normalized_columns) * normalized_spacing),
+            index=index,
+        )
+        for index in range(normalized_entity_count)
+        ],
+    ]
+    params = {
+        "entity_count": normalized_entity_count,
+        "total_entities": len(entities),
+        "columns": normalized_columns,
+        "spacing": normalized_spacing,
+    }
+    return {
+        "name": "many_sprite_entities",
+        "entities": entities,
+        "rules": [],
+        "feature_metadata": _base_feature_metadata(backend),
+    }, params
+
+
+def many_ui_buttons(
+    *,
+    backend: str,
+    entity_count: int = 1000,
+    columns: int = 10,
+    spacing: float = 44.0,
+    **_: Any,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    normalized_button_count = _normalize_count(entity_count, minimum=1)
+    normalized_columns = _normalize_columns(columns)
+    normalized_spacing = _normalize_spacing(spacing)
+    entities = [
+        {
+            "name": "CanvasRoot",
+            "active": True,
+            "tag": "",
+            "layer": "UI",
+            "components": {
+                "Canvas": _make_canvas_payload(),
+                "RectTransform": _make_rect_transform_payload(
+                    0.0,
+                    0.0,
+                    width=800.0,
+                    height=600.0,
+                ),
+            },
+        }
+    ]
+    for index in range(normalized_button_count):
+        entities.append(
+            {
+                "name": f"Entity_{index}",
+                "active": True,
+                "tag": "",
+                "layer": "UI",
+                "parent": "CanvasRoot",
+                "components": {
+                    "RectTransform": _make_rect_transform_payload(
+                        x=float((index % normalized_columns) * (160.0 + 8.0)),
+                        y=float((index // normalized_columns) * normalized_spacing),
+                        layout_order=index,
+                    ),
+                    "UIButton": _make_ui_button_payload(index),
+                },
+            }
+        )
+    params = {
+        "entity_count": normalized_button_count,
+        "total_entities": len(entities),
+        "columns": normalized_columns,
+        "spacing": normalized_spacing,
+    }
+    return {
+        "name": "many_ui_buttons",
+        "entities": entities,
+        "rules": [],
+        "feature_metadata": _base_feature_metadata(backend),
+    }, params
+
+
+def huge_tilemap(
+    *,
+    backend: str,
+    tilemap_width: int = 128,
+    tilemap_height: int = 128,
+    **_: Any,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    width = _normalize_count(tilemap_width, minimum=1)
+    height = _normalize_count(tilemap_height, minimum=1)
+    tiles = {
+        f"{x},{y}": {
+            "tile_id": str((x + y) % 8),
+            "source": {"guid": "", "path": ""},
+            "flags": [],
+            "tags": [],
+            "custom": {},
+            "animated": False,
+            "animation_id": "",
+            "terrain_type": "",
+        }
+        for y in range(height)
+        for x in range(width)
+    }
+    entity = {
+        "name": "HugeTilemap",
+        "active": True,
+        "tag": "",
+        "layer": "Gameplay",
+        "components": {
+            "Transform": _make_transform_payload(0.0, 0.0),
+            "Tilemap": {
+                "enabled": True,
+                "cell_width": 16,
+                "cell_height": 16,
+                "orientation": "orthogonal",
+                "tileset": {"guid": "", "path": ""},
+                "tileset_path": "",
+                "layers": [
+                    {
+                        "name": "Ground",
+                        "visible": True,
+                        "opacity": 1.0,
+                        "locked": False,
+                        "offset_x": 0.0,
+                        "offset_y": 0.0,
+                        "collision_layer": 0,
+                        "tilemap_source": {"guid": "", "path": ""},
+                        "metadata": {},
+                        "tiles": tiles,
+                    }
+                ],
+                "metadata": {"benchmark_width": width, "benchmark_height": height},
+                "tileset_tile_width": 16,
+                "tileset_tile_height": 16,
+                "tileset_columns": 8,
+                "tileset_spacing": 0,
+                "tileset_margin": 0,
+                "default_layer_name": "Ground",
+            },
+        },
+    }
+    camera = {
+        "name": "BenchmarkCamera",
+        "active": True,
+        "tag": "",
+        "layer": "Default",
+        "components": {
+            "Transform": _make_transform_payload(400.0, 300.0),
+            "Camera2D": _make_camera_payload(),
+        },
+    }
+    params = {
+        "tilemap_width": width,
+        "tilemap_height": height,
+        "tile_count": width * height,
+        "total_entities": 2,
+    }
+    return {
+        "name": "huge_tilemap",
+        "entities": [camera, entity],
+        "rules": [],
+        "feature_metadata": _base_feature_metadata(backend),
+    }, params
+
+
+def transform_edit_stress(
+    *,
+    backend: str,
+    entity_count: int = 1000,
+    columns: int = 100,
+    spacing: float = 8.0,
+    **kwargs: Any,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    payload, params = many_transform_entities(
+        backend=backend,
+        entity_count=entity_count,
+        columns=columns,
+        spacing=spacing,
+        **kwargs,
+    )
+    payload["name"] = "transform_edit_stress"
+    params = {
+        **params,
+        "target_entity": f"Entity_{int(params['entity_count']) - 1}",
+        "target_component": "Transform",
+        "target_property": "x",
+        "target_value": 123456.0,
+    }
+    return payload, params
+
+
+def play_mode_clone_stress(
+    *,
+    backend: str,
+    entity_count: int = 1000,
+    columns: int = 100,
+    spacing: float = 12.0,
+    **kwargs: Any,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    payload, params = many_sprite_entities(
+        backend=backend,
+        entity_count=entity_count,
+        columns=columns,
+        spacing=spacing,
+        **kwargs,
+    )
+    payload["name"] = "play_mode_clone_stress"
+    return payload, params
+
+
 SCENARIO_BUILDERS = {
     "many_static_colliders": many_static_colliders,
     "one_dynamic_many_static": one_dynamic_many_static,
     "many_dynamic_and_static": many_dynamic_and_static,
+    "many_transform_entities": many_transform_entities,
+    "many_sprite_entities": many_sprite_entities,
+    "many_ui_buttons": many_ui_buttons,
+    "huge_tilemap": huge_tilemap,
+    "transform_edit_stress": transform_edit_stress,
+    "play_mode_clone_stress": play_mode_clone_stress,
 }
 
 

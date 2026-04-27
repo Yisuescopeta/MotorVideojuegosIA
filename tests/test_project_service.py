@@ -1,12 +1,14 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from cli.script_executor import ScriptExecutor
 from engine.api import EngineAPI
+from engine.assets.asset_database import AssetDatabase
 from engine.project.project_service import ProjectService
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -272,6 +274,95 @@ class ProjectServiceTests(unittest.TestCase):
         self.assertEqual(scenes[1]["name"], "Intro Scene")
         self.assertEqual(scenes[2]["name"], "Main Scene")
 
+    def test_list_assets_falls_back_without_index(self) -> None:
+        project_root, service = self._make_project("AssetFallback")
+        (project_root / "assets" / "icon.png").write_bytes(b"png")
+
+        assets = service.list_assets()
+
+        self.assertFalse((project_root / ".motor" / "asset_index.sqlite").exists())
+        self.assertEqual([item["path"] for item in assets], ["assets/icon.png"])
+        self.assertEqual(assets[0]["name"], "icon.png")
+        self.assertEqual(assets[0]["folder"], "assets")
+
+    def test_list_assets_uses_current_index(self) -> None:
+        project_root, service = self._make_project("AssetIndex")
+        (project_root / "assets" / "icon.png").write_bytes(b"png")
+        (project_root / "assets" / "notes.txt").write_text("ignored", encoding="utf-8")
+
+        service.refresh_asset_index()
+        path_class = type(project_root)
+        with (
+            patch.object(service, "_list_assets_from_files", side_effect=AssertionError("fallback scan should not run")),
+            patch.object(path_class, "rglob", side_effect=AssertionError("rglob should not run when index exists")),
+            patch.object(AssetDatabase, "has_current_index", side_effect=AssertionError("has_current_index should not run")),
+        ):
+            assets = service.list_assets()
+
+        self.assertEqual([item["path"] for item in assets], ["assets/icon.png"])
+        self.assertEqual(assets[0]["absolute_path"], (project_root / "assets" / "icon.png").resolve().as_posix())
+
+    def test_refresh_asset_index_updates_changed_files(self) -> None:
+        project_root, service = self._make_project("AssetIndexUpdate")
+        original = project_root / "assets" / "old.png"
+        original.write_bytes(b"old")
+        service.refresh_asset_index()
+
+        original.unlink()
+        updated = project_root / "assets" / "new.png"
+        updated.write_bytes(b"new")
+        future = updated.stat().st_mtime + 10.0
+        os.utime(updated, (future, future))
+        service.refresh_asset_index()
+
+        self.assertEqual([item["path"] for item in service.list_assets()], ["assets/new.png"])
+
+    def test_list_project_scenes_uses_current_index_names(self) -> None:
+        project_root, service = self._make_project("SceneIndex")
+        self._write_level(project_root, "intro_scene.json", "Intro Scene")
+        service.refresh_asset_index()
+
+        path_class = type(project_root)
+        with (
+            patch("engine.project.project_service.json.load", side_effect=AssertionError("fallback JSON read should not run")),
+            patch.object(path_class, "rglob", side_effect=AssertionError("rglob should not run when index exists")),
+            patch.object(AssetDatabase, "has_current_index", side_effect=AssertionError("has_current_index should not run")),
+        ):
+            scenes = service.list_project_scenes()
+
+        by_path = {item["path"]: item["name"] for item in scenes}
+        self.assertEqual(by_path["levels/intro_scene.json"], "Intro Scene")
+        self.assertEqual(by_path["levels/main_scene.json"], "Main Scene")
+
+    def test_valid_stale_index_requires_explicit_refresh(self) -> None:
+        project_root, service = self._make_project("StaleIndex")
+        self._write_level(project_root, "intro.json", "Intro")
+        service.refresh_asset_index()
+
+        changed_scene = project_root / "levels" / "intro.json"
+        changed_scene.write_text(
+            json.dumps({"name": "Updated Intro", "entities": [], "rules": []}, indent=4),
+            encoding="utf-8",
+        )
+        future = changed_scene.stat().st_mtime + 10.0
+        os.utime(changed_scene, (future, future))
+        (project_root / "assets" / "late.png").write_bytes(b"png")
+
+        scenes = service.list_project_scenes()
+        assets = service.list_assets()
+
+        by_path = {item["path"]: item["name"] for item in scenes}
+        self.assertEqual(by_path["levels/intro.json"], "Intro")
+        self.assertNotIn("assets/late.png", [item["path"] for item in assets])
+
+        service.refresh_asset_index()
+
+        refreshed_scenes = service.list_project_scenes()
+        refreshed_assets = service.list_assets()
+        refreshed_by_path = {item["path"]: item["name"] for item in refreshed_scenes}
+        self.assertEqual(refreshed_by_path["levels/intro.json"], "Updated Intro")
+        self.assertIn("assets/late.png", [item["path"] for item in refreshed_assets])
+
     def test_build_scene_file_path_sanitizes_name_and_avoids_collisions(self) -> None:
         _project_root, service = self._make_project("ScenePaths")
         first = service.build_scene_file_path("Boss Intro")
@@ -409,7 +500,7 @@ class AIDiscoverabilityTests(unittest.TestCase):
         original_content = json.dumps({"schema_version": 99}, indent=4)
         motor_ai_path.write_text(original_content, encoding="utf-8")
 
-        result = service.generate_ai_bootstrap()
+        service.generate_ai_bootstrap()
 
         data = json.loads(motor_ai_path.read_text(encoding="utf-8"))
         self.assertEqual(data["schema_version"], 3)  # Updated for status field
@@ -671,7 +762,7 @@ class ProjectSwitchIntegrationTests(unittest.TestCase):
     def test_script_context_can_load_next_scene_in_play_mode(self) -> None:
         project_root, _ = self._make_project("FlowScriptProject")
         first_path = self._write_level(project_root, "first.json", "First")
-        second_path = self._write_level(project_root, "second.json", "Second")
+        self._write_level(project_root, "second.json", "Second")
         script_path = project_root / "scripts" / "flow_jump.py"
         script_path.write_text(
             "def on_update(context, dt):\n"

@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
-from engine.components.collider import Collider
 from engine.components.inputmap import InputMap
 from engine.components.playercontroller2d import PlayerController2D
 from engine.components.rigidbody import RigidBody
-from engine.components.scene_entry_point import SceneEntryPoint
 from engine.components.scene_transition_action import SceneTransitionAction
 from engine.components.scene_transition_on_contact import SceneTransitionOnContact
 from engine.components.scene_transition_on_interact import SceneTransitionOnInteract
@@ -250,9 +248,7 @@ class SceneTransitionController:
     def _find_primary_player(self, world: "World") -> Optional["Entity"]:
         for entity in world.get_entities_with(PlayerController2D, Transform):
             return entity
-        for entity in world.get_all_entities():
-            if not entity.active:
-                continue
+        for entity in world.iter_entities():
             if entity.get_component(Transform) is None:
                 continue
             if str(entity.tag or "").strip().lower() in {"player", "hero"}:

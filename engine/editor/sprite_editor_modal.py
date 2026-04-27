@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any, Optional
 
 import pyray as rl
-
 from engine.assets.asset_service import AssetService
 from engine.resources.texture_manager import TextureManager
 

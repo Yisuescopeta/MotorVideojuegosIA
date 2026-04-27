@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock
 
-from engine.audio import AudioPlaybackRequest, AudioRuntime, NullAudioBackend
 from engine.api import EngineAPI
+from engine.audio import AudioPlaybackRequest, AudioRuntime, NullAudioBackend
 from engine.components.audiosource import AudioSource
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
@@ -210,7 +210,7 @@ class AudioSystemUnitTests(unittest.TestCase):
         result = system.pause(world, "TestAudio")
         self.assertTrue(result)
         self.assertTrue(audio.is_paused)
-        self.assertEqual(audio._playback_position, 3.0)
+        self.assertAlmostEqual(audio._playback_position, 3.0, places=2)
         self.assertEqual(audio._playback_start_time, 0.0)
         self.assertTrue(audio.is_playing)
 

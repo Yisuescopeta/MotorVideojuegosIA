@@ -19,13 +19,12 @@ from engine.agent.types import (
     AgentSuspension,
     AgentToolCall,
     AgentToolResult,
-    AgentUsageRecord,
     AgentTurnState,
     AgentTurnStatus,
+    AgentUsageRecord,
     new_id,
     utc_now_iso,
 )
-
 
 AppendEvent = Callable[[AgentSession, AgentEventKind, dict], AgentEvent]
 

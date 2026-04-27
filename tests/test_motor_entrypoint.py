@@ -37,7 +37,7 @@ class MotorEntrypointImportTests(unittest.TestCase):
 
     def test_motor_main_function_exists(self) -> None:
         """motor.cli.main function exists and is callable."""
-        from motor.cli import main, cli_main, run_motor_command
+        from motor.cli import cli_main, main, run_motor_command
         self.assertTrue(callable(main))
         self.assertTrue(callable(cli_main))
         self.assertTrue(callable(run_motor_command))
@@ -69,7 +69,7 @@ class MotorCommandExecutionTests(unittest.TestCase):
         output = result.stdout
         if "{" in output:
             output = output[output.index("{"):]
-        
+
         try:
             data = json.loads(output)
             self.assertIn("success", data)
@@ -87,11 +87,11 @@ class MotorEntrypointIntegrationTests(unittest.TestCase):
         """Set up a test project."""
         self._temp_dir = tempfile.TemporaryDirectory()
         self.workspace = Path(self._temp_dir.name)
-        
+
         # Create minimal project
         self.project_root = self.workspace / "TestGame"
         self.project_root.mkdir()
-        
+
         (self.project_root / "project.json").write_text(
             json.dumps({
                 "name": "TestGame",
@@ -110,7 +110,7 @@ class MotorEntrypointIntegrationTests(unittest.TestCase):
             }),
             encoding="utf-8",
         )
-        
+
         for dir_name in ["assets", "levels", "scripts", "settings", ".motor"]:
             (self.project_root / dir_name).mkdir(parents=True, exist_ok=True)
 
@@ -120,10 +120,10 @@ class MotorEntrypointIntegrationTests(unittest.TestCase):
 
     def test_motor_doctor_command(self) -> None:
         """motor doctor command works with a project."""
-        from motor.cli import run_motor_command
-        
         # Change to project directory and run doctor
         import os
+
+        from motor.cli import run_motor_command
         old_cwd = os.getcwd()
         try:
             os.chdir(self.project_root)
@@ -139,17 +139,18 @@ class MotorEntrypointIntegrationTests(unittest.TestCase):
 
     def test_motor_capabilities_via_function(self) -> None:
         """motor capabilities works via run_motor_command function."""
-        from motor.cli import run_motor_command
-        import io
         import contextlib
-        
+        import io
+
+        from motor.cli import run_motor_command
+
         # Capture stdout
         captured = io.StringIO()
         with contextlib.redirect_stdout(captured):
             exit_code = run_motor_command(["capabilities", "--json"])
-        
+
         self.assertEqual(exit_code, 0)
-        
+
         output = captured.getvalue()
         if "{" in output:
             output = output[output.index("{"):]
@@ -164,7 +165,7 @@ class MotorEntrypointContractTests(unittest.TestCase):
     def test_run_motor_command_accepts_list_of_strings(self) -> None:
         """run_motor_command accepts List[str] argument."""
         from motor.cli import run_motor_command
-        
+
         # Should not raise type error
         try:
             result = run_motor_command(["--help"])
@@ -177,7 +178,7 @@ class MotorEntrypointContractTests(unittest.TestCase):
     def test_run_motor_command_accepts_none(self) -> None:
         """run_motor_command accepts None (uses sys.argv)."""
         from motor.cli import run_motor_command
-        
+
         # Save original sys.argv
         old_argv = sys.argv
         try:
@@ -193,7 +194,7 @@ class MotorEntrypointContractTests(unittest.TestCase):
     def test_motor_exports_stable_api(self) -> None:
         """motor package exports stable public API."""
         import motor
-        
+
         # Check expected exports exist
         expected = ["main", "cli_main"]
         for name in expected:
@@ -209,7 +210,7 @@ class MotorBackwardCompatibilityTests(unittest.TestCase):
     def test_tools_engine_cli_still_works(self) -> None:
         """tools.engine_cli remains functional as backend."""
         from tools import engine_cli
-        
+
         self.assertTrue(hasattr(engine_cli, "cmd_capabilities"))
         self.assertTrue(hasattr(engine_cli, "cmd_doctor"))
         # create_parser is now create_motor_parser in motor.cli
@@ -219,7 +220,7 @@ class MotorBackwardCompatibilityTests(unittest.TestCase):
         """motor.cli imports from tools.engine_cli."""
         from motor import cli
         from tools import engine_cli
-        
+
         # Verify motor.cli imports the actual functions
         self.assertIs(cli.cmd_capabilities, engine_cli.cmd_capabilities)
         self.assertIs(cli.cmd_doctor, engine_cli.cmd_doctor)

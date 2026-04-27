@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import copy
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from engine.editor.console_panel import log_err, log_info, log_warn
 from engine.scenes.scene import Scene
+from engine.scenes.storage import JsonSceneStorage, SceneStorage
 
 if TYPE_CHECKING:
     from engine.ecs.world import World
@@ -23,6 +23,7 @@ class SceneWorkspaceEntry:
     runtime_world: Optional["World"] = None
     is_playing: bool = False
     selected_entity_name: Optional[str] = None
+    selected_entity_id: Optional[str] = None
     dirty: bool = False
     pending_edit_world_sync_reason: Optional[str] = None
     dirty_before_pending_edit_world_sync: Optional[bool] = None
@@ -170,7 +171,12 @@ class SceneWorkspace:
         log_info(f"SceneManager: Scene '{entry.scene.name}' loaded in workspace.")
         return entry.edit_world  # type: ignore[return-value]
 
-    def load_scene_from_file(self, path: str, activate: bool = True) -> Optional["World"]:
+    def load_scene_from_file(
+        self,
+        path: str,
+        activate: bool = True,
+        storage: Optional[SceneStorage] = None,
+    ) -> Optional["World"]:
         resolved_path = Path(path).resolve().as_posix()
         existing = self.resolve_entry(resolved_path)
         if existing is not None:
@@ -178,8 +184,7 @@ class SceneWorkspace:
                 self.active_scene_key = existing.key
             return existing.edit_world
         try:
-            with open(resolved_path, "r", encoding="utf-8") as handle:
-                data = json.load(handle)
+            data = (storage or JsonSceneStorage()).load(resolved_path)
         except Exception as exc:
             log_err(f"SceneManager: Error cargando {resolved_path}: {exc}")
             return None
@@ -201,6 +206,7 @@ class SceneWorkspace:
             log_warn("SceneManager: no hay world para play")
             return None
         entry.selected_entity_name = entry.edit_world.selected_entity_name
+        entry.selected_entity_id = self._entity_id_for_name(entry, entry.selected_entity_name) or entry.selected_entity_id
         try:
             entry.runtime_world = entry.edit_world.clone()
         except Exception as exc:
@@ -208,8 +214,10 @@ class SceneWorkspace:
             entry.is_playing = False
             log_err(f"SceneManager: no se pudo entrar en PLAY por fallo de clonacion: {exc}")
             return None
-        if entry.selected_entity_name and entry.runtime_world.get_entity_by_name(entry.selected_entity_name) is not None:
-            entry.runtime_world.selected_entity_name = entry.selected_entity_name
+        selected_name = self._entity_name_for_id(entry, entry.selected_entity_id) or entry.selected_entity_name
+        if selected_name and entry.runtime_world.get_entity_by_name(selected_name) is not None:
+            entry.runtime_world.selected_entity_name = selected_name
+            entry.selected_entity_name = selected_name
         entry.is_playing = True
         return entry.runtime_world
 
@@ -219,6 +227,7 @@ class SceneWorkspace:
             return None
         if entry.runtime_world is not None:
             entry.selected_entity_name = entry.runtime_world.selected_entity_name or entry.selected_entity_name
+            entry.selected_entity_id = self._entity_id_for_name(entry, entry.selected_entity_name) or entry.selected_entity_id
         entry.runtime_world = None
         entry.is_playing = False
         entry.edit_world_sync_pending = False
@@ -252,6 +261,22 @@ class SceneWorkspace:
         self.entries[new_key] = entry
         if self.active_scene_key == old_key:
             self.active_scene_key = new_key
+
+    @staticmethod
+    def _entity_id_for_name(entry: SceneWorkspaceEntry, entity_name: Optional[str]) -> Optional[str]:
+        if not entity_name:
+            return None
+        entity_data = entry.scene.find_entity(entity_name)
+        entity_id = entity_data.get("id") if isinstance(entity_data, dict) else None
+        return entity_id.strip() if isinstance(entity_id, str) and entity_id.strip() else None
+
+    @staticmethod
+    def _entity_name_for_id(entry: SceneWorkspaceEntry, entity_id: Optional[str]) -> Optional[str]:
+        if not entity_id:
+            return None
+        entity_data = entry.scene.find_entity_by_id(entity_id)
+        entity_name = entity_data.get("name") if isinstance(entity_data, dict) else None
+        return entity_name if isinstance(entity_name, str) and entity_name else None
 
     @staticmethod
     def _entry_path_or_key(entry: Optional[SceneWorkspaceEntry]) -> str:

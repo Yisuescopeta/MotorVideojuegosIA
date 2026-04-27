@@ -4,8 +4,8 @@ tests/test_resource_preloader.py - Tests para ResourcePreloader.
 
 import unittest
 
-from engine.components.resource_preloader import ResourcePreloader
 from engine.assets.asset_reference import normalize_asset_reference
+from engine.components.resource_preloader import ResourcePreloader
 
 
 class TestResourcePreloader(unittest.TestCase):

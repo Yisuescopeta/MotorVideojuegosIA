@@ -87,7 +87,7 @@ class DoctorReadOnlyContractTests(_ContractTestMixin, unittest.TestCase):
 
     def test_doctor_passes_read_only_to_engine_api(self) -> None:
         """doctor must pass read_only=True to EngineAPI so no global storage is created.
-        
+
         Uses an isolated MOTORVIDEOJUEGOSIA_HOME so the test is deterministic.
         """
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -232,7 +232,7 @@ class StatusEndToEndContractTests(_ContractTestMixin, unittest.TestCase):
 
         self.assertEqual(
             len(mismatches), 0,
-            f"Status mismatch between registry and CLI:\n" + "\n".join(mismatches)
+            "Status mismatch between registry and CLI:\n" + "\n".join(mismatches)
         )
 
     def test_bootstrap_respects_registry_status(self) -> None:
@@ -260,7 +260,7 @@ class StatusEndToEndContractTests(_ContractTestMixin, unittest.TestCase):
 
             self.assertEqual(
                 len(mismatches), 0,
-                f"Status mismatch between registry and bootstrap:\n" + "\n".join(mismatches)
+                "Status mismatch between registry and bootstrap:\n" + "\n".join(mismatches)
             )
 
     def test_doctor_reads_status_from_bootstrap(self) -> None:

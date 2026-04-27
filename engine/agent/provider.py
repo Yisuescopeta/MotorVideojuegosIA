@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 from typing import Callable, Iterable, Protocol
 
 from engine.agent.credentials import DEFAULT_OPENCODE_GO_BASE_URL, DEFAULT_OPENCODE_GO_MODEL
-
 from engine.agent.types import (
     AgentContentBlock,
     AgentMessage,
@@ -410,7 +409,9 @@ class OpenAICompatibleChatProvider:
                     if content:
                         text_parts.append(content)
                         yield AgentProviderStreamEvent("text_delta", delta=content)
-                    for raw_call in delta.get("tool_calls", []) if isinstance(delta.get("tool_calls"), list) else []:
+                    raw_tool_calls = delta.get("tool_calls", [])
+                    tool_calls_stream = raw_tool_calls if isinstance(raw_tool_calls, list) else []
+                    for raw_call in tool_calls_stream:
                         if not isinstance(raw_call, dict):
                             continue
                         index = int(raw_call.get("index", 0) or 0)
@@ -553,10 +554,13 @@ class OpenAICompatibleChatProvider:
         content = str(message.get("content", "") or "")
         if content:
             blocks.append(AgentContentBlock.text_block(content))
-        for raw_call in message.get("tool_calls", []) if isinstance(message.get("tool_calls"), list) else []:
+        raw_tool_calls = message.get("tool_calls", [])
+        tool_calls_payload = raw_tool_calls if isinstance(raw_tool_calls, list) else []
+        for raw_call in tool_calls_payload:
             if isinstance(raw_call, dict):
                 blocks.append(AgentContentBlock.tool_use_block(self._tool_call_from_chat(raw_call)))
-        usage = dict(data.get("usage", {})) if isinstance(data.get("usage"), dict) else {}
+        usage_payload = data.get("usage", {})
+        usage = dict(usage_payload) if isinstance(usage_payload, dict) else {}
         tool_calls = [block.tool_use.tool_call for block in blocks if block.tool_use is not None]
         return AgentProviderResponse(
             blocks,
@@ -874,7 +878,8 @@ class OpenAIProvider:
                     blocks.append(AgentContentBlock.tool_use_block(call))
         if not blocks and isinstance(data.get("output_text"), str):
             blocks.append(AgentContentBlock.text_block(str(data["output_text"])))
-        usage = dict(data.get("usage", {})) if isinstance(data.get("usage"), dict) else {}
+        usage_payload = data.get("usage", {})
+        usage = dict(usage_payload) if isinstance(usage_payload, dict) else {}
         tool_calls = [block.tool_use.tool_call for block in blocks if block.tool_use is not None]
         return AgentProviderResponse(
             blocks,

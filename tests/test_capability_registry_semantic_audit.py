@@ -30,23 +30,23 @@ class ComponentNameSemanticTests(unittest.TestCase):
     def test_all_component_examples_use_canonical_names(self) -> None:
         """All component names in examples must exist in ComponentRegistry."""
         invalid_components = []
-        
+
         for cap in self.capability_registry.list_all():
             # Check api_calls in examples
             if hasattr(cap.example, 'api_calls') and cap.example.api_calls:
                 for call in cap.example.api_calls:
                     args = call.get('args', {})
-                    
+
                     # Check component_name parameter
                     if 'component_name' in args:
                         comp_name = args['component_name']
                         if comp_name not in self.valid_components:
                             invalid_components.append((
-                                cap.id, 
+                                cap.id,
                                 f"component_name='{comp_name}'"
                             ))
-                    
-                    # Check component parameter  
+
+                    # Check component parameter
                     if 'component' in args:
                         comp_name = args['component']
                         if comp_name not in self.valid_components:
@@ -54,7 +54,7 @@ class ComponentNameSemanticTests(unittest.TestCase):
                                 cap.id,
                                 f"component='{comp_name}'"
                             ))
-        
+
         self.assertEqual(
             len(invalid_components),
             0,
@@ -68,7 +68,7 @@ class ComponentNameSemanticTests(unittest.TestCase):
             'Transform', 'Sprite', 'Collider', 'RigidBody',
             'Animator', 'Camera2D', 'ScriptBehaviour'
         }
-        
+
         components_in_examples = set()
         for cap in self.capability_registry.list_all():
             if hasattr(cap.example, 'api_calls') and cap.example.api_calls:
@@ -78,7 +78,7 @@ class ComponentNameSemanticTests(unittest.TestCase):
                         components_in_examples.add(args['component_name'])
                     if 'component' in args:
                         components_in_examples.add(args['component'])
-        
+
         # At least some common components should be in examples
         common_documented = common_components & components_in_examples
         self.assertTrue(
@@ -97,12 +97,12 @@ class ModeSemanticTests(unittest.TestCase):
     def test_all_capabilities_have_valid_mode(self) -> None:
         """All capabilities must have mode: edit, play, or both."""
         valid_modes = {'edit', 'play', 'both'}
-        
+
         invalid_modes = []
         for cap in self.registry.list_all():
             if cap.mode not in valid_modes:
                 invalid_modes.append((cap.id, cap.mode))
-        
+
         self.assertEqual(
             len(invalid_modes),
             0,
@@ -120,7 +120,7 @@ class ModeSemanticTests(unittest.TestCase):
         edit_capabilities = [
             'component:add', 'component:edit', 'component:remove'
         ]
-        
+
         for cap_id in edit_capabilities:
             cap = self.registry.get(cap_id)
             if cap:
@@ -136,7 +136,7 @@ class CLISyntaxSemanticTests(unittest.TestCase):
     def setUp(self) -> None:
         self.registry = get_default_registry()
         self.parser = create_motor_parser()
-        
+
         # Get all available commands
         self.available_commands = set()
         for action in self.parser._actions:
@@ -146,11 +146,11 @@ class CLISyntaxSemanticTests(unittest.TestCase):
     def test_all_cli_commands_use_motor_syntax(self) -> None:
         """All cli_command entries must use 'motor ...' syntax."""
         non_motor = []
-        
+
         for cap in self.registry.list_all():
             if not cap.cli_command.startswith('motor '):
                 non_motor.append((cap.id, cap.cli_command))
-        
+
         self.assertEqual(
             len(non_motor),
             0,
@@ -163,7 +163,7 @@ class CLISyntaxSemanticTests(unittest.TestCase):
         future_commands = {
             'runtime', 'undo', 'redo', 'status', 'physics'
         }
-        
+
         mismatches = []
         for cap in self.registry.list_all():
             parts = cap.cli_command.split()
@@ -172,7 +172,7 @@ class CLISyntaxSemanticTests(unittest.TestCase):
                 if subcommand not in self.available_commands and \
                    subcommand not in future_commands:
                     mismatches.append((cap.id, cap.cli_command, subcommand))
-        
+
         self.assertEqual(
             len(mismatches),
             0,
@@ -196,7 +196,7 @@ class APIMethodSemanticTests(unittest.TestCase):
             'RuntimeAPI',
             'CapabilityRegistry',
         }
-        
+
         invalid_patterns = []
         for cap in self.registry.list_all():
             for method in cap.api_methods:
@@ -204,12 +204,12 @@ class APIMethodSemanticTests(unittest.TestCase):
                 if '.' not in method:
                     invalid_patterns.append((cap.id, method, "missing class prefix"))
                     continue
-                
+
                 class_name = method.split('.')[0]
                 # Allow CapabilityRegistry methods (self-referential) and CLI handlers.
                 if class_name not in valid_prefixes and class_name != 'CapabilityRegistry':
                     invalid_patterns.append((cap.id, method, f"unknown class '{class_name}'"))
-        
+
         # Only fail on clearly invalid patterns
         clear_errors = [p for p in invalid_patterns if "unknown class" not in p[2]]
         self.assertEqual(
@@ -228,7 +228,7 @@ class CapabilityFidelityTests(unittest.TestCase):
     def test_all_capability_ids_use_valid_format(self) -> None:
         """Capability IDs must follow 'scope:action' format."""
         invalid_ids = []
-        
+
         for cap in self.registry.list_all():
             if ':' not in cap.id:
                 invalid_ids.append(cap.id)
@@ -236,7 +236,7 @@ class CapabilityFidelityTests(unittest.TestCase):
                 parts = cap.id.split(':')
                 if len(parts) < 2 or not all(parts):
                     invalid_ids.append(cap.id)
-        
+
         self.assertEqual(
             len(invalid_ids),
             0,
@@ -246,7 +246,7 @@ class CapabilityFidelityTests(unittest.TestCase):
     def test_capabilities_have_required_fields(self) -> None:
         """All capabilities must have summary, mode, api_methods, and cli_command."""
         incomplete = []
-        
+
         for cap in self.registry.list_all():
             issues = []
             if not cap.summary:
@@ -257,10 +257,10 @@ class CapabilityFidelityTests(unittest.TestCase):
                 issues.append("missing api_methods")
             if not cap.cli_command:
                 issues.append("missing cli_command")
-            
+
             if issues:
                 incomplete.append((cap.id, issues))
-        
+
         self.assertEqual(
             len(incomplete),
             0,
@@ -270,13 +270,13 @@ class CapabilityFidelityTests(unittest.TestCase):
     def test_examples_have_required_fields(self) -> None:
         """All capability examples must have description and api_calls."""
         incomplete = []
-        
+
         for cap in self.registry.list_all():
             if not hasattr(cap.example, 'description') or not cap.example.description:
                 incomplete.append((cap.id, "missing example.description"))
             elif not hasattr(cap.example, 'api_calls') or not cap.example.api_calls:
                 incomplete.append((cap.id, "missing example.api_calls"))
-        
+
         self.assertEqual(
             len(incomplete),
             0,
@@ -294,7 +294,7 @@ class RegistryCoherenceTests(unittest.TestCase):
         """All capability IDs must be unique."""
         ids = [cap.id for cap in self.registry.list_all()]
         duplicates = set([i for i in ids if ids.count(i) > 1])
-        
+
         self.assertEqual(
             len(duplicates),
             0,
@@ -304,14 +304,14 @@ class RegistryCoherenceTests(unittest.TestCase):
     def test_summary_lengths_are_reasonable(self) -> None:
         """Summaries should be concise but informative (10-200 chars)."""
         invalid = []
-        
+
         for cap in self.registry.list_all():
             length = len(cap.summary)
             if length < 10:
                 invalid.append((cap.id, f"summary too short ({length} chars)"))
             elif length > 200:
                 invalid.append((cap.id, f"summary too long ({length} chars)"))
-        
+
         self.assertEqual(
             len(invalid),
             0,

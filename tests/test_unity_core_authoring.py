@@ -6,11 +6,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pyray as rl
-
 from cli.script_executor import ScriptExecutor
 from engine.api import EngineAPI
 from engine.components.animator import Animator
-from engine.components.camera2d import Camera2D
 from engine.components.collider import Collider
 from engine.components.inputmap import InputMap
 from engine.components.rigidbody import RigidBody

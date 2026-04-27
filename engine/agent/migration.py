@@ -6,7 +6,6 @@ from typing import Any
 
 from engine.agent.types import AgentEventKind, new_id, utc_now_iso
 
-
 CURRENT_SCHEMA_VERSION = 2
 
 

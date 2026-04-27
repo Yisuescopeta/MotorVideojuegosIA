@@ -5,13 +5,15 @@ engine/systems/script_behaviour_system.py - Ejecucion de ScriptBehaviour.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from engine.assets.asset_service import AssetService
 from engine.components.scriptbehaviour import ScriptBehaviour
-from engine.editor.console_panel import log_err, log_info
 from engine.ecs.world import World
+from engine.editor.console_panel import log_err, log_info
+
+ScriptHook = Callable[..., Any]
+ScriptMembershipSignature = tuple[tuple[int, str, int], ...]
 
 
 @dataclass
@@ -34,10 +36,7 @@ class ScriptBehaviourContext:
         entity = self.get_entity()
         if entity is None:
             return None
-        for component in entity.get_all_components():
-            if type(component).__name__ == component_name:
-                return component
-        return None
+        return entity.get_component_by_name(component_name)
 
     def log_info(self, message: str) -> None:
         log_info(f"[Script:{self.entity_name}] {message}")
@@ -52,6 +51,19 @@ class ScriptBehaviourContext:
         return bool(self.scene_flow_loader(str(key)))
 
 
+@dataclass
+class CompiledScriptBehaviour:
+    """ScriptBehaviour resuelto para ejecucion runtime."""
+
+    entity_name: str
+    script_behaviour: ScriptBehaviour
+    module_name: str
+    context: ScriptBehaviourContext
+    on_play: Optional[ScriptHook] = None
+    on_update: Optional[ScriptHook] = None
+    on_stop: Optional[ScriptHook] = None
+
+
 class ScriptBehaviourSystem:
     """Ejecuta hooks simples de modulos Python sobre entidades serializables."""
 
@@ -61,27 +73,45 @@ class ScriptBehaviourSystem:
         self._asset_service: AssetService | None = None
         self._asset_resolver: Any = None
         self._scene_flow_loader: Optional[Callable[[str], bool]] = None
+        self._runtime_compiled_scripts: list[CompiledScriptBehaviour] = []
+        self._runtime_world: World | None = None
+        self._runtime_world_structure_version: int | None = None
+        self._runtime_script_membership_signature: ScriptMembershipSignature = ()
+        self._runtime_cache_dirty: bool = False
 
     def set_hot_reload_manager(self, manager: Any) -> None:
         self._hot_reload_manager = manager
+        self._runtime_cache_dirty = True
 
     def set_scene_manager(self, manager: Any) -> None:
         self._scene_manager = manager
+        self._runtime_cache_dirty = True
 
     def set_project_service(self, project_service: Any) -> None:
         self._asset_service = AssetService(project_service) if project_service is not None else None
         self._asset_resolver = self._asset_service.get_asset_resolver() if self._asset_service is not None else None
+        self._runtime_cache_dirty = True
 
     def set_scene_flow_loader(self, loader: Optional[Callable[[str], bool]]) -> None:
         self._scene_flow_loader = loader
+        self._runtime_cache_dirty = True
 
     def on_play(self, world: World) -> None:
-        self._invoke_for_world(world, "on_play", None, is_edit_mode=False)
+        self._compile_runtime_scripts(world)
+        for compiled in self._runtime_compiled_scripts:
+            self._invoke_compiled_hook(compiled, "on_play")
 
     def on_stop(self, world: World) -> None:
-        self._invoke_for_world(world, "on_stop", None, is_edit_mode=False)
+        if self._runtime_world is world and self._runtime_compiled_scripts:
+            for compiled in self._runtime_compiled_scripts:
+                self._invoke_compiled_hook(compiled, "on_stop")
+        else:
+            self._invoke_for_world(world, "on_stop", None, is_edit_mode=False)
+        self._clear_runtime_cache()
 
     def update(self, world: World, dt: float, is_edit_mode: bool = False) -> bool:
+        if not is_edit_mode:
+            return self._invoke_runtime_update(world, dt)
         return self._invoke_for_world(world, "on_update", dt, is_edit_mode=is_edit_mode)
 
     def invoke_callable(
@@ -142,6 +172,131 @@ class ScriptBehaviourSystem:
             args=args,
         )
 
+    def _invoke_runtime_update(self, world: World, dt: float) -> bool:
+        if self._runtime_cache_needs_rebuild(world):
+            self._compile_runtime_scripts(world)
+
+        if self._runtime_cache_invalidated_by_hot_reload():
+            self._compile_runtime_scripts(world)
+
+        invoked = False
+        for compiled in self._runtime_compiled_scripts:
+            if self._invoke_compiled_hook(compiled, "on_update", args=(dt,)):
+                invoked = True
+        return invoked
+
+    def _runtime_cache_needs_rebuild(self, world: World) -> bool:
+        if self._runtime_world is not world or self._runtime_cache_dirty:
+            return True
+        if self._runtime_world_structure_version != world.structure_version:
+            return True
+        return self._runtime_script_membership_signature != self._script_membership_signature(world)
+
+    def _compile_runtime_scripts(self, world: World) -> None:
+        compiled_scripts: list[CompiledScriptBehaviour] = []
+        for entity in world.get_entities_with(ScriptBehaviour):
+            script_behaviour = entity.get_component(ScriptBehaviour)
+            if script_behaviour is None or not script_behaviour.enabled:
+                continue
+
+            module_name = self._resolve_module_name(script_behaviour)
+            if not module_name:
+                continue
+
+            module = self._load_module(entity.name, module_name)
+            if module is None:
+                continue
+
+            compiled_scripts.append(
+                CompiledScriptBehaviour(
+                    entity_name=entity.name,
+                    script_behaviour=script_behaviour,
+                    module_name=module_name,
+                    context=self._build_context(world, entity.name, script_behaviour),
+                    on_play=getattr(module, "on_play", None),
+                    on_update=getattr(module, "on_update", None),
+                    on_stop=getattr(module, "on_stop", None),
+                )
+            )
+
+        self._runtime_compiled_scripts = compiled_scripts
+        self._runtime_world = world
+        self._runtime_world_structure_version = world.structure_version
+        self._runtime_script_membership_signature = self._script_membership_signature(world)
+        self._runtime_cache_dirty = False
+
+    def _script_membership_signature(self, world: World) -> ScriptMembershipSignature:
+        signature: list[tuple[int, str, int]] = []
+        for entity in world.get_entities_with(ScriptBehaviour):
+            script_behaviour = entity.get_component(ScriptBehaviour)
+            if script_behaviour is None or not script_behaviour.enabled:
+                continue
+            signature.append((entity.id, entity.name, id(script_behaviour)))
+        return tuple(signature)
+
+    def _runtime_cache_invalidated_by_hot_reload(self) -> bool:
+        if self._hot_reload_manager is None:
+            return False
+
+        modules: dict[str, Any] = {}
+        for compiled in self._runtime_compiled_scripts:
+            if compiled.module_name in modules:
+                continue
+            module = self._hot_reload_manager.ensure_module_loaded(compiled.module_name)
+            if module is None:
+                self._runtime_cache_dirty = True
+                return True
+            modules[compiled.module_name] = module
+
+        for compiled in self._runtime_compiled_scripts:
+            module = modules.get(compiled.module_name)
+            if module is None:
+                continue
+            if (
+                getattr(module, "on_play", None) is not compiled.on_play
+                or getattr(module, "on_update", None) is not compiled.on_update
+                or getattr(module, "on_stop", None) is not compiled.on_stop
+            ):
+                self._runtime_cache_dirty = True
+                return True
+        return False
+
+    def _invoke_compiled_hook(
+        self,
+        compiled: CompiledScriptBehaviour,
+        hook_name: str,
+        *,
+        args: tuple[Any, ...] = (),
+    ) -> bool:
+        entity = compiled.context.world.get_entity_by_name(compiled.entity_name)
+        if entity is None or not entity.active:
+            return False
+        script_behaviour = entity.get_component(ScriptBehaviour)
+        if script_behaviour is None:
+            return False
+        if script_behaviour is not compiled.script_behaviour:
+            return False
+        if not script_behaviour.enabled:
+            return False
+
+        callable_obj = getattr(compiled, hook_name)
+        if callable_obj is None:
+            return False
+
+        try:
+            callable_obj(compiled.context, *args)
+            return True
+        except Exception as exc:
+            log_err(f"[Script:{compiled.entity_name}] Error en {compiled.module_name}.{hook_name}: {exc}")
+            return False
+
+    def _clear_runtime_cache(self) -> None:
+        self._runtime_compiled_scripts = []
+        self._runtime_world = None
+        self._runtime_world_structure_version = None
+        self._runtime_script_membership_signature = ()
+        self._runtime_cache_dirty = False
+
     def _invoke_module_callable(
         self,
         entity_name: str,
@@ -156,12 +311,8 @@ class ScriptBehaviourSystem:
         if not module_name:
             return False
 
-        module = None
-        if self._hot_reload_manager is not None:
-            module = self._hot_reload_manager.ensure_module_loaded(module_name)
-
+        module = self._load_module(entity_name, module_name)
         if module is None:
-            log_err(f"[Script:{entity_name}] Modulo no encontrado: {module_name}")
             return False
 
         callable_obj = getattr(module, callable_name, None)
@@ -176,6 +327,15 @@ class ScriptBehaviourSystem:
         except Exception as exc:
             log_err(f"[Script:{entity_name}] Error en {module_name}.{callable_name}: {exc}")
             return False
+
+    def _load_module(self, entity_name: str, module_name: str) -> Any:
+        module = None
+        if self._hot_reload_manager is not None:
+            module = self._hot_reload_manager.ensure_module_loaded(module_name)
+
+        if module is None:
+            log_err(f"[Script:{entity_name}] Modulo no encontrado: {module_name}")
+        return module
 
     def _build_context(
         self,

@@ -5,7 +5,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pyray as rl
-
 from engine.api import EngineAPI
 from engine.editor.console_panel import GLOBAL_LOGS
 

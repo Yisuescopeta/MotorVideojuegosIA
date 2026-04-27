@@ -189,6 +189,10 @@ Señales declarativas (persistencia en escena):
 - `add_signal_connection(connection_data)`
 - `remove_signal_connection(connection_id)`
 
+En conexiones declarativas con `target.kind == "entity"`, `target.id` se usa
+como identidad estable interna cuando esta disponible; `target.name` sigue
+aceptado por compatibilidad.
+
 Reglas:
 
 - Los metodos de authoring requieren modo `EDIT`.
