@@ -53,3 +53,6 @@ godot/
 
 # Claude Code workspace (no se versiona)
 claude code/
+
+# Benchmark artifacts (generados localmente, no baselines versionados)
+artifacts/benchmarks/*.json
