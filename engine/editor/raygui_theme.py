@@ -80,31 +80,31 @@ def apply_unity_dark_theme() -> None:
     """
     # Cargar estilo por defecto primero
     rl.gui_load_style_default()
-    
+
     # ========================================
     # DEFAULT (afecta a todos los controles)
     # ========================================
     rl.gui_set_style(DEFAULT, BORDER_COLOR_NORMAL, UNITY_BORDER)
     rl.gui_set_style(DEFAULT, BASE_COLOR_NORMAL, UNITY_BG)
     rl.gui_set_style(DEFAULT, TEXT_COLOR_NORMAL, UNITY_TEXT)
-    
+
     rl.gui_set_style(DEFAULT, BORDER_COLOR_FOCUSED, UNITY_BLUE)
     rl.gui_set_style(DEFAULT, BASE_COLOR_FOCUSED, UNITY_BUTTON_HOVER)
     rl.gui_set_style(DEFAULT, TEXT_COLOR_FOCUSED, UNITY_TEXT)
-    
+
     rl.gui_set_style(DEFAULT, BORDER_COLOR_PRESSED, UNITY_BLUE)
     rl.gui_set_style(DEFAULT, BASE_COLOR_PRESSED, UNITY_BLUE)
     rl.gui_set_style(DEFAULT, TEXT_COLOR_PRESSED, UNITY_TEXT)
-    
+
     rl.gui_set_style(DEFAULT, BORDER_COLOR_DISABLED, UNITY_DARK)
     rl.gui_set_style(DEFAULT, BASE_COLOR_DISABLED, UNITY_DARK)
     rl.gui_set_style(DEFAULT, TEXT_COLOR_DISABLED, UNITY_TEXT_DIM)
-    
+
     rl.gui_set_style(DEFAULT, TEXT_SIZE, 10)
     rl.gui_set_style(DEFAULT, TEXT_SPACING, 1)
     rl.gui_set_style(DEFAULT, LINE_COLOR, UNITY_BORDER)
     rl.gui_set_style(DEFAULT, BACKGROUND_COLOR, UNITY_PANEL)
-    
+
     # ========================================
     # BUTTON
     # ========================================
@@ -112,41 +112,41 @@ def apply_unity_dark_theme() -> None:
     rl.gui_set_style(BUTTON, BORDER_COLOR_NORMAL, UNITY_BORDER)
     rl.gui_set_style(BUTTON, BASE_COLOR_FOCUSED, UNITY_BUTTON_HOVER)
     rl.gui_set_style(BUTTON, BASE_COLOR_PRESSED, UNITY_BLUE)
-    
+
     # ========================================
     # TOGGLE (para tabs)
     # ========================================
     rl.gui_set_style(TOGGLE, BASE_COLOR_NORMAL, UNITY_PANEL)
     rl.gui_set_style(TOGGLE, BASE_COLOR_PRESSED, UNITY_BG)  # Activo = más claro
-    
+
     # ========================================
     # SLIDER
     # ========================================
     rl.gui_set_style(SLIDER, BASE_COLOR_NORMAL, UNITY_DARK)
     rl.gui_set_style(SLIDER, BASE_COLOR_PRESSED, UNITY_BLUE)
-    
+
     # ========================================
     # CHECKBOX
     # ========================================
     rl.gui_set_style(CHECKBOX, BASE_COLOR_NORMAL, UNITY_DARK)
     rl.gui_set_style(CHECKBOX, BASE_COLOR_PRESSED, UNITY_BLUE)
-    
+
     # ========================================
     # TEXTBOX
     # ========================================
     rl.gui_set_style(TEXTBOX, BASE_COLOR_NORMAL, UNITY_DARK)
     rl.gui_set_style(TEXTBOX, BORDER_COLOR_FOCUSED, UNITY_BLUE)
-    
+
     # ========================================
     # LISTVIEW
     # ========================================
     rl.gui_set_style(LISTVIEW, BASE_COLOR_NORMAL, UNITY_PANEL)
     rl.gui_set_style(LISTVIEW, BASE_COLOR_FOCUSED, UNITY_BLUE)
-    
+
     # ========================================
     # SCROLLBAR
     # ========================================
     rl.gui_set_style(SCROLLBAR, BASE_COLOR_NORMAL, UNITY_DARK)
     rl.gui_set_style(SCROLLBAR, BASE_COLOR_PRESSED, UNITY_BUTTON)
-    
+
     print("[THEME] Unity Dark Theme aplicado a Raygui")

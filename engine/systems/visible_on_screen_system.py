@@ -7,7 +7,7 @@ AABB contra el rect del viewport en coordenadas de mundo.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 from engine.components.visible_on_screen_notifier_2d import (
     VisibleOnScreenEnabler2D,
@@ -81,7 +81,7 @@ class VisibleOnScreenSystem:
         intersects = not (abs_right < left or abs_left > right or abs_bottom < top or abs_top > bottom)
 
         was_on_screen = notifier._is_on_screen
-        is_first_check = not hasattr(notifier, "_vos_checked")
+        is_first_check = not notifier._vos_checked
         notifier._vos_checked = True
         notifier._is_on_screen = intersects
 
@@ -101,7 +101,6 @@ class VisibleOnScreenSystem:
         if not isinstance(notifier, VisibleOnScreenEnabler2D):
             return
 
-        target_name = notifier.enable_node_path or entity.name
         target_entity = None
         if notifier.enable_node_path:
             # Buscar por nombre en el mundo

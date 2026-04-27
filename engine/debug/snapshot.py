@@ -14,18 +14,18 @@ DEPENDENCIAS:
     - World: Debe implementar clone() correctamente
 """
 
-from typing import Any
 from engine.ecs.world import World
+
 
 class Snapshot:
     """
     Representa el estado del juego en un momento específico.
     """
-    
+
     def __init__(self, world: World, frame: int, time: float) -> None:
         """
         Crea un snapshot del mundo actual.
-        
+
         Args:
             world: El mundo a capturar (se clonará)
             frame: Número de frame actual
@@ -35,15 +35,15 @@ class Snapshot:
         self.time: float = time
         # Creamos una copia profunda del mundo para aislar el estado
         self.world_state: World = world.clone()
-        
+
     def restore(self) -> World:
         """
         Devuelve una COPIA del estado guardado.
-        
-        IMPORTANTE: Devolvemos una copia (clone) del snapshot, 
+
+        IMPORTANTE: Devolvemos una copia (clone) del snapshot,
         no el snapshot mismo, para que si se modifica el mundo restaurado
         no se corrompa el historial guardado en el snapshot.
-        
+
         Returns:
             Nuevo World con el estado de este snapshot
         """

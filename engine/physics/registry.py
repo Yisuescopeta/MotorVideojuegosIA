@@ -53,7 +53,7 @@ class PhysicsBackendRegistry:
         return self._default_backend_name
 
     def register_backend(self, backend: PhysicsBackend, backend_name: Optional[str] = None) -> None:
-        normalized_name = self._normalize_backend_name(backend_name or getattr(backend, "backend_name", ""))
+        normalized_name = self._normalize_backend_name(str(backend_name or getattr(backend, "backend_name", "")))
         self._records[normalized_name] = _PhysicsBackendRecord(
             name=normalized_name,
             backend=backend,

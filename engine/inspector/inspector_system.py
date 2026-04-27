@@ -32,8 +32,8 @@ from engine.project.project_service import ProjectService
 from engine.resources.texture_manager import TextureManager
 from engine.scenes.scene_transition_support import list_scene_entry_points, validate_scene_transition_references
 
-PayloadUpdater = Callable[[Dict[str, Any]], None]
-CommitCallback = Callable[[Any], bool]
+PayloadUpdater = Callable[..., Any]
+CommitCallback = Callable[..., Any]
 
 
 @dataclass
@@ -519,6 +519,7 @@ class InspectorSystem:
 
         try:
             value_text = self.text_buffer.decode("utf-8").rstrip("\x00")
+            value: Any
             if self.editing_value_type == "float":
                 value = float(value_text) if value_text else 0.0
             elif self.editing_value_type == "int":
@@ -1676,7 +1677,7 @@ class InspectorSystem:
                 first_tile = preview_tiles[0]
                 texture_path = str(first_tile.get("texture_path", ""))
                 source_rect = first_tile.get("source_rect")
-                resolution = first_tile.get("resolution")
+                resolution = str(first_tile.get("resolution", "unresolved") or "unresolved")
         if mode == "flood_fill":
             self._tilemap_authoring.flood_effective_bounds = None
             self._tilemap_authoring.flood_preview_count = 0
@@ -3152,9 +3153,13 @@ class InspectorSystem:
 
         if entity_name is None:
             return current_y
+        resolved_entity_name = entity_name
 
-        payload = self._current_component_payload(world, entity_name, "Tilemap") or {}
-        active_layer_name = self._resolve_tilemap_layer_name(payload, self._tilemap_authoring.layer_name if self._tilemap_authoring.entity_name == entity_name else None)
+        payload = self._current_component_payload(world, resolved_entity_name, "Tilemap") or {}
+        active_layer_name = self._resolve_tilemap_layer_name(
+            payload,
+            self._tilemap_authoring.layer_name if self._tilemap_authoring.entity_name == resolved_entity_name else None,
+        )
         layer_options = [
             (str(layer.get("name", "")).strip(), str(layer.get("name", "")).strip())
             for layer in payload.get("layers", [])
@@ -3162,7 +3167,13 @@ class InspectorSystem:
         ]
         if not layer_options:
             layer_options = [(component.default_layer_name, component.default_layer_name)]
-        brush_active = bool(self._tilemap_authoring.enabled and self._tilemap_authoring.entity_name == entity_name)
+        brush_active = bool(self._tilemap_authoring.enabled and self._tilemap_authoring.entity_name == resolved_entity_name)
+
+        def toggle_tilemap_tool(enabled: Any, entity_name: str = resolved_entity_name) -> bool:
+            if enabled:
+                return self.activate_tilemap_tool(world, entity_name)
+            self.deactivate_tilemap_tool()
+            return True
 
         current_y = self._draw_bool_row(
             "Brush Active",
@@ -3173,8 +3184,11 @@ class InspectorSystem:
             width,
             is_edit,
             world,
-            on_toggle=lambda enabled, entity_name=entity_name: self.activate_tilemap_tool(world, entity_name) if enabled else (self.deactivate_tilemap_tool() or True),
+            on_toggle=toggle_tilemap_tool,
         )
+        def select_tilemap_active_layer(value: str, entity_name: str = resolved_entity_name) -> bool:
+            return self.set_tilemap_active_layer(world, entity_name, value)
+
         current_y = self._draw_choice_row(
             "Edit Layer",
             layer_options,
@@ -3183,7 +3197,7 @@ class InspectorSystem:
             current_y,
             width,
             is_edit,
-            on_select=lambda value, entity_name=entity_name: self.set_tilemap_active_layer(world, entity_name, value),
+            on_select=select_tilemap_active_layer,
         )
         current_y = self._draw_choice_row(
             "Brush Mode",
@@ -3203,13 +3217,20 @@ class InspectorSystem:
             on_select=lambda value: self.set_tilemap_tool_mode(value),
         )
 
-        self._synchronize_tilemap_tool_selection(world, entity_name)
-        palette_entries = self.list_tilemap_palette_entries(world, entity_name, active_layer_name)
+        self._synchronize_tilemap_tool_selection(world, resolved_entity_name)
+        palette_entries = self.list_tilemap_palette_entries(world, resolved_entity_name, active_layer_name)
         source_path = self._resolve_tilemap_palette_source(payload, active_layer_name).get("path", "")
         current_y = self._draw_readonly_row("Paint Source", source_path or "(none)", x, current_y, width)
         if palette_entries:
             selected_tile = self._tilemap_authoring.tile_id or str(palette_entries[0].get("tile_id", ""))
             current_y = self._draw_readonly_row("Selected Tile", selected_tile or "(none)", x, current_y, width)
+            def select_tilemap_palette_tile(
+                value: str,
+                entity_name: str = resolved_entity_name,
+                source_path: str = source_path,
+            ) -> bool:
+                return self.set_tilemap_selected_tile(world, entity_name, value, source=source_path)
+
             current_y = self._draw_tilemap_palette_grid(
                 palette_entries,
                 selected_tile,
@@ -3217,11 +3238,11 @@ class InspectorSystem:
                 current_y,
                 width,
                 is_edit,
-                on_select=lambda value, entity_name=entity_name, source_path=source_path: self.set_tilemap_selected_tile(world, entity_name, value, source=source_path),
+                on_select=select_tilemap_palette_tile,
             )
         else:
             current_y = self._draw_readonly_row("Selected Tile", "(unresolved)", x, current_y, width)
-        preview = self.get_tilemap_preview_snapshot(world) if brush_active and self._tilemap_authoring.entity_name == entity_name else None
+        preview = self.get_tilemap_preview_snapshot(world) if brush_active and self._tilemap_authoring.entity_name == resolved_entity_name else None
         if preview is not None:
             current_y = self._draw_readonly_row("Brush Preview", str(preview.get("status_label", "")), x, current_y, width)
         elif brush_active:

@@ -9,7 +9,6 @@ from engine.api import EngineAPI
 from engine.assets.asset_service import AssetService
 from engine.project.project_service import ProjectService
 
-
 MINIMAL_PNG_BYTES = (
     b"\x89PNG\r\n\x1a\n"
     b"\x00\x00\x00\rIHDR"

@@ -8,7 +8,6 @@ from types import SimpleNamespace
 from typing import Any
 
 import pyray as rl
-
 from engine.assets.asset_reference import normalize_asset_reference, reference_has_identity
 from engine.assets.asset_service import AssetService
 from engine.components.uibutton import UIButton

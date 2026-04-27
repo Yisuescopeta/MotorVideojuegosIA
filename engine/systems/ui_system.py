@@ -8,7 +8,6 @@ import copy
 from typing import Any, Optional
 
 import pyray as rl
-
 from engine.components.canvas import Canvas
 from engine.components.recttransform import RectTransform
 from engine.components.uibutton import UIButton

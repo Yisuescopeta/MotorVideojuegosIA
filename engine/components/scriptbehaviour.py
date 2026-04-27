@@ -7,7 +7,12 @@ from __future__ import annotations
 import copy
 from typing import Any, Dict
 
-from engine.assets.asset_reference import build_asset_reference, clone_asset_reference, normalize_asset_path, normalize_asset_reference
+from engine.assets.asset_reference import (
+    build_asset_reference,
+    clone_asset_reference,
+    normalize_asset_path,
+    normalize_asset_reference,
+)
 from engine.ecs.component import Component
 
 

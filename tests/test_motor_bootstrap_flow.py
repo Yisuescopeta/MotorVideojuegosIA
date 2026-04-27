@@ -29,11 +29,11 @@ class MotorBootstrapFlowTests(unittest.TestCase):
         """Set up a clean project for each test."""
         self._temp_dir = tempfile.TemporaryDirectory()
         self.workspace = Path(self._temp_dir.name)
-        
+
         # Create a minimal valid project
         self.project_root = self.workspace / "TestGame"
         self.project_root.mkdir()
-        
+
         (self.project_root / "project.json").write_text(
             json.dumps({
                 "name": "TestGame",
@@ -52,7 +52,7 @@ class MotorBootstrapFlowTests(unittest.TestCase):
             }),
             encoding="utf-8",
         )
-        
+
         # Create required directories
         for dir_name in ["assets", "levels", "scripts", "settings", ".motor"]:
             (self.project_root / dir_name).mkdir(parents=True, exist_ok=True)
@@ -63,10 +63,9 @@ class MotorBootstrapFlowTests(unittest.TestCase):
 
     def test_doctor_detects_missing_ai_files(self) -> None:
         """Step 1: doctor detects missing motor_ai.json and START_HERE_AI.md."""
-        import io
-        import sys
         import contextlib
-        
+        import io
+
         captured = io.StringIO()
         with contextlib.redirect_stdout(captured):
             exit_code = run_motor_command([
@@ -74,15 +73,16 @@ class MotorBootstrapFlowTests(unittest.TestCase):
                 "--project", str(self.project_root),
                 "--json"
             ])
-        
+        self.assertEqual(exit_code, 0)
+
         output = captured.getvalue()
         data = json.loads(output[output.index("{"):])
-        
+
         # Doctor should report missing files
         self.assertTrue(data["success"])
         self.assertFalse(data["data"]["checks"]["motor_ai_exists"])
         self.assertFalse(data["data"]["checks"]["start_here_exists"])
-        
+
         # Should recommend bootstrap-ai command
         recommendations = data["data"].get("recommendations", [])
         bootstrap_recommendation = [r for r in recommendations if "bootstrap-ai" in r]
@@ -95,13 +95,12 @@ class MotorBootstrapFlowTests(unittest.TestCase):
         """doctor does not create AI bootstrap files or modify critical project state."""
         # Record initial manifest
         initial_manifest = (self.project_root / "project.json").read_text()
-        
+
         # Run doctor multiple times
         for _ in range(3):
-            import io
-            import sys
             import contextlib
-            
+            import io
+
             captured = io.StringIO()
             with contextlib.redirect_stdout(captured):
                 run_motor_command([
@@ -109,7 +108,7 @@ class MotorBootstrapFlowTests(unittest.TestCase):
                     "--project", str(self.project_root),
                     "--json"
                 ])
-        
+
         # Verify AI bootstrap files were NOT created
         self.assertFalse(
             (self.project_root / "motor_ai.json").exists(),
@@ -119,17 +118,16 @@ class MotorBootstrapFlowTests(unittest.TestCase):
             (self.project_root / "START_HERE_AI.md").exists(),
             "doctor should not create START_HERE_AI.md"
         )
-        
+
         # Verify manifest unchanged
         final_manifest = (self.project_root / "project.json").read_text()
         self.assertEqual(initial_manifest, final_manifest)
 
     def test_bootstrap_ai_creates_files(self) -> None:
         """Step 2: bootstrap-ai creates motor_ai.json and START_HERE_AI.md."""
-        import io
-        import sys
         import contextlib
-        
+        import io
+
         captured = io.StringIO()
         with contextlib.redirect_stdout(captured):
             exit_code = run_motor_command([
@@ -137,17 +135,17 @@ class MotorBootstrapFlowTests(unittest.TestCase):
                 "--project", str(self.project_root),
                 "--json"
             ])
-        
+
         # Verify command succeeded
         self.assertEqual(exit_code, 0)
-        
+
         # Verify files created
         motor_ai_path = self.project_root / "motor_ai.json"
         start_here_path = self.project_root / "START_HERE_AI.md"
-        
+
         self.assertTrue(motor_ai_path.exists(), "motor_ai.json should be created")
         self.assertTrue(start_here_path.exists(), "START_HERE_AI.md should be created")
-        
+
         # Verify motor_ai.json is valid (schema v3)
         motor_ai_data = json.loads(motor_ai_path.read_text())
         self.assertIn("schema_version", motor_ai_data)
@@ -155,7 +153,7 @@ class MotorBootstrapFlowTests(unittest.TestCase):
         self.assertIn("implemented_capabilities", motor_ai_data)
         self.assertIn("planned_capabilities", motor_ai_data)
         self.assertIn("capability_counts", motor_ai_data)
-        
+
         # Verify START_HERE_AI.md contains motor commands
         start_here_content = start_here_path.read_text()
         self.assertIn("motor doctor", start_here_content)
@@ -163,10 +161,9 @@ class MotorBootstrapFlowTests(unittest.TestCase):
 
     def test_full_bootstrap_flow(self) -> None:
         """Step 3: Complete flow doctor -> bootstrap-ai -> doctor."""
-        import io
-        import sys
         import contextlib
-        
+        import io
+
         # Phase 1: Initial doctor (files missing)
         captured = io.StringIO()
         with contextlib.redirect_stdout(captured):
@@ -175,11 +172,11 @@ class MotorBootstrapFlowTests(unittest.TestCase):
                 "--project", str(self.project_root),
                 "--json"
             ])
-        
+
         output = captured.getvalue()
         data1 = json.loads(output[output.index("{"):])
         self.assertFalse(data1["data"]["checks"]["motor_ai_exists"])
-        
+
         # Phase 2: Bootstrap AI files
         captured = io.StringIO()
         with contextlib.redirect_stdout(captured):
@@ -188,7 +185,7 @@ class MotorBootstrapFlowTests(unittest.TestCase):
                 "--project", str(self.project_root),
                 "--json"
             ])
-        
+
         # Phase 3: Final doctor (files present)
         captured = io.StringIO()
         with contextlib.redirect_stdout(captured):
@@ -197,14 +194,14 @@ class MotorBootstrapFlowTests(unittest.TestCase):
                 "--project", str(self.project_root),
                 "--json"
             ])
-        
+
         output = captured.getvalue()
         data3 = json.loads(output[output.index("{"):])
-        
+
         # Verify files now exist
         self.assertTrue(data3["data"]["checks"]["motor_ai_exists"])
         self.assertTrue(data3["data"]["checks"]["start_here_exists"])
-        
+
         # Should have no bootstrap recommendation
         recommendations = data3["data"].get("recommendations", [])
         bootstrap_recommendation = [r for r in recommendations if "bootstrap-ai" in r]
@@ -215,10 +212,9 @@ class MotorBootstrapFlowTests(unittest.TestCase):
 
     def test_bootstrap_ai_is_idempotent(self) -> None:
         """bootstrap-ai can be run multiple times safely."""
-        import io
-        import sys
         import contextlib
-        
+        import io
+
         # Run bootstrap-ai twice
         for i in range(2):
             captured = io.StringIO()
@@ -229,14 +225,14 @@ class MotorBootstrapFlowTests(unittest.TestCase):
                     "--json"
                 ])
             self.assertEqual(exit_code, 0)
-        
+
         # Verify files still exist and are valid
         motor_ai_path = self.project_root / "motor_ai.json"
         start_here_path = self.project_root / "START_HERE_AI.md"
-        
+
         self.assertTrue(motor_ai_path.exists())
         self.assertTrue(start_here_path.exists())
-        
+
         motor_ai_data = json.loads(motor_ai_path.read_text())
         self.assertIn("implemented_capabilities", motor_ai_data)
         self.assertIn("planned_capabilities", motor_ai_data)
@@ -249,7 +245,7 @@ class MotorDoctorReadOnlyTests(unittest.TestCase):
         self._temp_dir = tempfile.TemporaryDirectory()
         self.project_root = Path(self._temp_dir.name) / "TestGame"
         self.project_root.mkdir(parents=True)
-        
+
         (self.project_root / "project.json").write_text(
             json.dumps({
                 "name": "TestGame",
@@ -270,9 +266,9 @@ class MotorDoctorReadOnlyTests(unittest.TestCase):
 
     def test_doctor_does_not_create_ai_files(self) -> None:
         """doctor never creates AI bootstrap files."""
-        import io
         import contextlib
-        
+        import io
+
         # Run doctor
         captured = io.StringIO()
         with contextlib.redirect_stdout(captured):
@@ -281,19 +277,19 @@ class MotorDoctorReadOnlyTests(unittest.TestCase):
                 "--project", str(self.project_root),
                 "--json"
             ])
-        
+
         # Verify AI files were NOT created
         self.assertFalse((self.project_root / "motor_ai.json").exists())
         self.assertFalse((self.project_root / "START_HERE_AI.md").exists())
 
     def test_doctor_does_not_modify_manifest(self) -> None:
         """doctor never modifies project.json."""
-        import io
         import contextlib
-        
+        import io
+
         original_content = (self.project_root / "project.json").read_text()
         original_mtime = (self.project_root / "project.json").stat().st_mtime
-        
+
         # Run doctor
         captured = io.StringIO()
         with contextlib.redirect_stdout(captured):
@@ -302,10 +298,12 @@ class MotorDoctorReadOnlyTests(unittest.TestCase):
                 "--project", str(self.project_root),
                 "--json"
             ])
-        
+
         # Verify manifest unchanged
         current_content = (self.project_root / "project.json").read_text()
+        current_mtime = (self.project_root / "project.json").stat().st_mtime
         self.assertEqual(original_content, current_content)
+        self.assertEqual(original_mtime, current_mtime)
 
 
 class MotorCommandSyntaxTests(unittest.TestCase):
@@ -315,7 +313,7 @@ class MotorCommandSyntaxTests(unittest.TestCase):
         self._temp_dir = tempfile.TemporaryDirectory()
         self.project_root = Path(self._temp_dir.name) / "TestGame"
         self.project_root.mkdir(parents=True)
-        
+
         (self.project_root / "project.json").write_text(
             json.dumps({
                 "name": "TestGame",
@@ -336,9 +334,9 @@ class MotorCommandSyntaxTests(unittest.TestCase):
 
     def test_doctor_recommends_motor_commands(self) -> None:
         """doctor recommendations use 'motor ...' syntax exclusively."""
-        import io
         import contextlib
-        
+        import io
+
         captured = io.StringIO()
         with contextlib.redirect_stdout(captured):
             run_motor_command([
@@ -346,10 +344,10 @@ class MotorCommandSyntaxTests(unittest.TestCase):
                 "--project", str(self.project_root),
                 "--json"
             ])
-        
+
         output = captured.getvalue()
         data = json.loads(output[output.index("{"):])
-        
+
         recommendations = data["data"].get("recommendations", [])
         for rec in recommendations:
             # Should not contain deprecated syntax

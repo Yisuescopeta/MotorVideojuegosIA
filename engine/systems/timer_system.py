@@ -6,7 +6,7 @@ Actualiza todos los Timer del mundo, emite señales via SignalRuntime.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 from engine.components.timer import Timer
 from engine.ecs.entity import Entity

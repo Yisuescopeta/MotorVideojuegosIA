@@ -14,7 +14,7 @@ PROPIEDADES:
 EJEMPLO DE USO:
     rb = RigidBody(gravity_scale=1.0)
     entity.add_component(rb)
-    
+
     # El PhysicsSystem actualizará la posición
     rb.velocity_x = 100  # Mover a la derecha
 
@@ -35,14 +35,14 @@ from engine.ecs.component import Component
 class RigidBody(Component):
     """
     Componente de física básica con velocidad y gravedad.
-    
+
     Atributos:
         velocity_x: Velocidad horizontal (px/s)
         velocity_y: Velocidad vertical (px/s)
         gravity_scale: Multiplicador de gravedad
         is_grounded: Si está tocando el suelo
     """
-    
+
     VALID_CONSTRAINTS = {
         "None",
         "FreezePositionX",
@@ -66,7 +66,7 @@ class RigidBody(Component):
     ) -> None:
         """
         Inicializa el RigidBody.
-        
+
         Args:
             velocity_x: Velocidad horizontal inicial
             velocity_y: Velocidad vertical inicial
@@ -89,7 +89,7 @@ class RigidBody(Component):
         self.constraints: list[str] = self.constraints_from_freeze(self.freeze_x, self.freeze_y)
         self.use_full_kinematic_contacts: bool = use_full_kinematic_contacts
         self.collision_detection_mode: str = str(collision_detection_mode or "discrete")
-    
+
     def to_dict(self) -> dict[str, Any]:
         """Serializa el RigidBody a diccionario."""
         self.constraints = self.constraints_from_freeze(self.freeze_x, self.freeze_y)
@@ -107,7 +107,7 @@ class RigidBody(Component):
             "use_full_kinematic_contacts": self.use_full_kinematic_contacts,
             "collision_detection_mode": self.collision_detection_mode,
         }
-    
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "RigidBody":
         """Crea un RigidBody desde un diccionario."""

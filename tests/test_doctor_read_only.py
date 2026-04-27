@@ -44,7 +44,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
             "dirs": set(),
             "file_count": 0,
         }
-        
+
         if project_path.exists():
             for path in project_path.rglob("*"):
                 relative = path.relative_to(project_path)
@@ -57,7 +57,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
                     state["file_count"] += 1
                 elif path.is_dir():
                     state["dirs"].add(str(relative))
-        
+
         return state
 
     def test_doctor_does_not_create_directories(self) -> None:
@@ -65,7 +65,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             project = Path(tmpdir) / "TestProject"
             project.mkdir()
-            
+
             # Create minimal project structure (only project.json)
             (project / "project.json").write_text(json.dumps({
                 "name": "TestProject",
@@ -81,10 +81,10 @@ class DoctorReadOnlyTests(unittest.TestCase):
                     "build": ".motor/build",
                 },
             }))
-            
+
             # Record state before doctor
             state_before = self._get_project_state(project)
-            
+
             # Run doctor
             result = subprocess.run(
                 [sys.executable, "-m", "motor", "doctor", "--project", str(project), "--json"],
@@ -92,12 +92,12 @@ class DoctorReadOnlyTests(unittest.TestCase):
                 text=True,
                 env=self.env,
             )
-            
+
             self.assertEqual(result.returncode, 0, "doctor should succeed")
-            
+
             # Record state after doctor
             state_after = self._get_project_state(project)
-            
+
             # Verify no new directories were created
             new_dirs = state_after["dirs"] - state_before["dirs"]
             self.assertEqual(
@@ -110,7 +110,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             project = Path(tmpdir) / "TestProject"
             project.mkdir()
-            
+
             # Create minimal project WITHOUT motor_ai.json
             (project / "project.json").write_text(json.dumps({
                 "name": "TestProject",
@@ -125,11 +125,11 @@ class DoctorReadOnlyTests(unittest.TestCase):
                     "build": ".motor/build",
                 },
             }))
-            
+
             # Verify motor_ai.json does not exist
             motor_ai_path = project / "motor_ai.json"
             self.assertFalse(motor_ai_path.exists(), "motor_ai.json should not exist initially")
-            
+
             # Run doctor
             result = subprocess.run(
                 [sys.executable, "-m", "motor", "doctor", "--project", str(project), "--json"],
@@ -137,9 +137,9 @@ class DoctorReadOnlyTests(unittest.TestCase):
                 text=True,
                 env=self.env,
             )
-            
+
             self.assertEqual(result.returncode, 0, "doctor should succeed")
-            
+
             # Verify motor_ai.json was NOT created
             self.assertFalse(
                 motor_ai_path.exists(),
@@ -151,7 +151,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             project = Path(tmpdir) / "TestProject"
             project.mkdir()
-            
+
             # Create minimal project WITHOUT START_HERE_AI.md
             (project / "project.json").write_text(json.dumps({
                 "name": "TestProject",
@@ -166,11 +166,11 @@ class DoctorReadOnlyTests(unittest.TestCase):
                     "build": ".motor/build",
                 },
             }))
-            
+
             # Verify START_HERE_AI.md does not exist
             start_here_path = project / "START_HERE_AI.md"
             self.assertFalse(start_here_path.exists(), "START_HERE_AI.md should not exist initially")
-            
+
             # Run doctor
             result = subprocess.run(
                 [sys.executable, "-m", "motor", "doctor", "--project", str(project), "--json"],
@@ -178,9 +178,9 @@ class DoctorReadOnlyTests(unittest.TestCase):
                 text=True,
                 env=self.env,
             )
-            
+
             self.assertEqual(result.returncode, 0, "doctor should succeed")
-            
+
             # Verify START_HERE_AI.md was NOT created
             self.assertFalse(
                 start_here_path.exists(),
@@ -189,7 +189,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
 
     def test_doctor_does_not_create_global_storage(self) -> None:
         """CRITICAL: motor doctor must not create global storage directory.
-        
+
         Uses an isolated MOTORVIDEOJUEGOSIA_HOME so the test is fully deterministic
         and does not depend on the real home directory or prior state.
         """
@@ -212,7 +212,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
                     "build": ".motor/build",
                 },
             }))
-            
+
             # Check for global storage in isolated directory
             global_dir = self.isolated_home / ".motorvideojuegosia"
             recents_file = global_dir / "recent_projects.json"
@@ -224,9 +224,9 @@ class DoctorReadOnlyTests(unittest.TestCase):
                 text=True,
                 env=self.env,
             )
-            
+
             self.assertEqual(result.returncode, 0, "doctor should succeed")
-            
+
             # Verify no global storage was created in isolated home
             self.assertFalse(
                 global_dir.exists(),
@@ -247,7 +247,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             project = Path(tmpdir) / "TestProject"
             project.mkdir()
-            
+
             # Create minimal project
             project_json = project / "project.json"
             project_json.write_text(json.dumps({
@@ -263,11 +263,11 @@ class DoctorReadOnlyTests(unittest.TestCase):
                     "build": ".motor/build",
                 },
             }))
-            
+
             # Record file state before doctor
             stat_before = project_json.stat()
             content_before = project_json.read_text()
-            
+
             # Run doctor multiple times
             for _ in range(3):
                 result = subprocess.run(
@@ -277,11 +277,11 @@ class DoctorReadOnlyTests(unittest.TestCase):
                     env=self.env,
                 )
                 self.assertEqual(result.returncode, 0, "doctor should succeed")
-            
+
             # Verify file was not modified
             stat_after = project_json.stat()
             content_after = project_json.read_text()
-            
+
             self.assertEqual(
                 content_before, content_after,
                 "doctor must not modify project.json content"
@@ -300,11 +300,11 @@ class DoctorReadOnlyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             project = Path(tmpdir) / "TestProject"
             project.mkdir()
-            
+
             # Create directories (simulating an existing project)
             for d in ["assets", "levels", "scripts", "settings"]:
                 (project / d).mkdir(parents=True, exist_ok=True)
-            
+
             # Create project.json
             (project / "project.json").write_text(json.dumps({
                 "name": "TestProject",
@@ -319,7 +319,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
                     "build": ".motor/build",
                 },
             }))
-            
+
             # Run doctor
             result = subprocess.run(
                 [sys.executable, "-m", "motor", "doctor", "--project", str(project), "--json"],
@@ -327,25 +327,25 @@ class DoctorReadOnlyTests(unittest.TestCase):
                 text=True,
                 env=self.env,
             )
-            
+
             self.assertEqual(result.returncode, 0, "doctor should succeed")
-            
+
             # Parse output
             output = result.stdout
             if "{" in output:
                 output = output[output.index("{"):]
             data = json.loads(output)
-            
+
             # Should report missing bootstrap
             checks = data.get("data", {}).get("checks", {})
             self.assertFalse(checks.get("motor_ai_exists", True), "should report motor_ai missing")
             self.assertFalse(checks.get("start_here_exists", True), "should report START_HERE missing")
-            
+
             # Should recommend bootstrap-ai (not create it)
             recommendations = data.get("data", {}).get("recommendations", [])
             has_bootstrap_rec = any("bootstrap-ai" in rec for rec in recommendations)
             self.assertTrue(has_bootstrap_rec, "should recommend bootstrap-ai command")
-            
+
             # Verify files were NOT created
             self.assertFalse((project / "motor_ai.json").exists(), "must not create motor_ai.json")
             self.assertFalse((project / "START_HERE_AI.md").exists(), "must not create START_HERE_AI.md")
@@ -355,7 +355,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             project = Path(tmpdir) / "TestProject"
             project.mkdir()
-            
+
             # Create project
             (project / "project.json").write_text(json.dumps({
                 "name": "TestProject",
@@ -370,7 +370,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
                     "build": ".motor/build",
                 },
             }))
-            
+
             # Run doctor once and capture state
             subprocess.run(
                 [sys.executable, "-m", "motor", "doctor", "--project", str(project), "--json"],
@@ -379,7 +379,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
                 env=self.env,
             )
             state_after_1 = self._get_project_state(project)
-            
+
             # Run doctor 5 more times
             for _ in range(5):
                 subprocess.run(
@@ -389,7 +389,7 @@ class DoctorReadOnlyTests(unittest.TestCase):
                     env=self.env,
                 )
             state_after_6 = self._get_project_state(project)
-            
+
             # States should be identical
             self.assertEqual(
                 state_after_1["file_count"], state_after_6["file_count"],

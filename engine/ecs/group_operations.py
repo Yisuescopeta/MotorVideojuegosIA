@@ -7,7 +7,7 @@ No replica SceneTree: solo expone operaciones útiles sobre el GroupRegistry exi
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from engine.ecs.entity import Entity

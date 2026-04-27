@@ -52,7 +52,7 @@ class ForniteRPGSharedTests(unittest.TestCase):
         enemy_state = {"hp": enemy_profile["max_hp"], "mp": 0}
         player_state = {"hp": 70, "mp": 55}
 
-        heal = self.rpg_shared.perform_player_action("curar", player_state, enemy_state, enemy_profile)
+        self.rpg_shared.perform_player_action("curar", player_state, enemy_state, enemy_profile)
         self.assertEqual(player_state["hp"], 120)
         self.assertEqual(enemy_state["hp"], enemy_profile["max_hp"])
 

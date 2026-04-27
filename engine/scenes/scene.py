@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from engine.ecs.entity import normalize_entity_groups
 from engine.serialization.schema import migrate_scene_data
@@ -137,11 +137,11 @@ class Scene:
                     pending_links.append((entity_name, entity.parent_name))
 
         for entity_name, parent_name in pending_links:
-            entity = created_entities.get(entity_name)
+            linked_entity = created_entities.get(entity_name)
             parent = created_entities.get(parent_name)
-            if entity is None or parent is None:
+            if linked_entity is None or parent is None:
                 continue
-            child_transform = entity.get_component(Transform)
+            child_transform = linked_entity.get_component(Transform)
             parent_transform = parent.get_component(Transform)
             if child_transform is not None:
                 if child_transform.parent and child_transform in child_transform.parent.children:

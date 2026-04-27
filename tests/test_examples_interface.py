@@ -19,20 +19,20 @@ README_PATH = EXAMPLES_DIR / "README.md"
 
 class ExamplesInterfaceTests(unittest.TestCase):
     """Tests that examples use the official motor CLI interface."""
-    
+
     LEGACY_PATTERNS = [
         r"python\s+-m\s+tools\.engine_cli",
         r"tools\.engine_cli",
         r"from\s+tools\.engine_cli",
         r"import\s+tools\.engine_cli",
     ]
-    
+
     def _get_example_files(self) -> list[Path]:
         """Get all Python example files."""
         if not EXAMPLES_DIR.exists():
             return []
         return list(EXAMPLES_DIR.glob("*.py"))
-    
+
     def test_examples_use_motor_not_legacy_cli(self) -> None:
         """All examples must use 'motor' command via python -m, not legacy tools.engine_cli."""
         examples = self._get_example_files()
@@ -62,11 +62,11 @@ class ExamplesInterfaceTests(unittest.TestCase):
 
         if violations:
             self.fail(
-                f"Examples using legacy interface or wrong execution pattern found:\n" +
+                "Examples using legacy interface or wrong execution pattern found:\n" +
                 "\n".join(f"  {v}" for v in violations) +
                 "\n\nUse [sys.executable, \"-m\", \"motor\", ...] for execution."
             )
-    
+
     def test_examples_have_proper_env_setup(self) -> None:
         """Examples should set up PYTHONPATH properly for motor execution."""
         examples = self._get_example_files()
@@ -94,23 +94,23 @@ class ExamplesInterfaceTests(unittest.TestCase):
                     f"{py_file.name} should use 'sys.executable, \"-m\", \"motor\"' "
                     f"for robust execution in clean checkouts"
                 )
-    
+
     def test_examples_use_official_grammar(self) -> None:
         """Examples should use official command grammar (not legacy aliases).
-        
+
         Legacy commands like 'upsert-state' should not be in examples.
         """
         LEGACY_COMMANDS = [
             "animator upsert-state",
             "animator remove-state",
         ]
-        
+
         examples = self._get_example_files()
-        
+
         violations = []
         for py_file in examples:
             content = py_file.read_text(encoding="utf-8")
-            
+
             for legacy_cmd in LEGACY_COMMANDS:
                 if legacy_cmd in content:
                     # Find line number
@@ -119,28 +119,28 @@ class ExamplesInterfaceTests(unittest.TestCase):
                             # Skip if in a comment explaining it's legacy
                             if "legacy" not in line.lower() and "deprecated" not in line.lower():
                                 violations.append(f"{py_file.name}:{i}: {line.strip()}")
-        
+
         if violations:
             self.fail(
-                f"Examples using legacy command grammar found:\n" +
+                "Examples using legacy command grammar found:\n" +
                 "\n".join(f"  {v}" for v in violations) +
                 "\n\nUse 'animator state create/remove' instead."
             )
-    
+
     def test_readme_uses_official_interface(self) -> None:
         """README.md should teach the official motor interface."""
         if not README_PATH.exists():
             self.skipTest("README.md not found")
-        
+
         content = README_PATH.read_text(encoding="utf-8")
-        
+
         # Check that official motor is shown first and prominently
         self.assertIn(
             "motor doctor --project .",
             content,
             "README should show official motor command"
         )
-        
+
         # Check legacy is marked as deprecated (not primary)
         legacy_section = re.search(
             r"legacy.*deprecated|deprecated.*legacy",
@@ -151,76 +151,76 @@ class ExamplesInterfaceTests(unittest.TestCase):
             legacy_section,
             "README should mark legacy interface as deprecated"
         )
-    
+
     def test_readme_not_use_legacy_as_primary(self) -> None:
         """README.md should not use legacy commands as primary examples.
-        
+
         Legacy commands should only appear in compatibility notes, not
         as the main teaching examples.
         """
         if not README_PATH.exists():
             self.skipTest("README.md not found")
-        
+
         content = README_PATH.read_text(encoding="utf-8")
-        
+
         # Extract code blocks
         code_blocks = re.findall(r"```bash(.*?)```", content, re.DOTALL)
-        
+
         LEGACY_PATTERNS = [
             "tools.engine_cli",
             "upsert-state",
         ]
-        
+
         violations = []
         for block in code_blocks:
             for pattern in LEGACY_PATTERNS:
                 if pattern in block:
                     violations.append(f"Code block contains '{pattern}':\n{block[:200]}")
-        
+
         if violations:
             self.fail(
-                f"README.md uses legacy patterns in code examples:\n" +
+                "README.md uses legacy patterns in code examples:\n" +
                 "\n".join(f"  {v}" for v in violations)
             )
-    
+
     def test_examples_are_executable_python(self) -> None:
         """All example files should be valid Python syntax."""
         examples = self._get_example_files()
-        
+
         for py_file in examples:
             with self.subTest(example=py_file.name):
                 content = py_file.read_text(encoding="utf-8")
-                
+
                 # Should parse as valid Python
                 try:
                     ast.parse(content)
                 except SyntaxError as e:
                     self.fail(f"{py_file.name} has syntax error: {e}")
-    
+
     def test_examples_import_structure(self) -> None:
         """Examples should use proper imports for motor execution."""
         examples = self._get_example_files()
-        
+
         for py_file in examples:
             with self.subTest(example=py_file.name):
                 content = py_file.read_text(encoding="utf-8")
-                
+
                 # Should have shebang or main guard
                 has_shebang = content.startswith("#!/usr/bin/env python")
                 has_main_guard = 'if __name__ == "__main__"' in content
-                
+
                 self.assertTrue(
                     has_shebang or has_main_guard,
                     f"{py_file.name} should have shebang or main guard"
                 )
-                
+
                 # Should import subprocess
                 self.assertIn(
                     "import subprocess",
                     content,
                     f"{py_file.name} should import subprocess for motor execution"
                 )
-                
+
                 # Should import json for parsing
                 self.assertIn(
                     "import json",
@@ -263,7 +263,7 @@ class ExamplesNoRegressionTests(unittest.TestCase):
 
         if violations:
             self.fail(
-                f"tools.engine_cli found outside deprecation context:\n" +
+                "tools.engine_cli found outside deprecation context:\n" +
                 "\n".join(f"  {v}" for v in violations) +
                 "\n\nUse 'motor' command instead."
             )

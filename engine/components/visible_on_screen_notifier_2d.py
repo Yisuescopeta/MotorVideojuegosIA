@@ -31,6 +31,7 @@ class VisibleOnScreenNotifier2D(Component):
 
         # Estado de runtime (no serializable)
         self._is_on_screen: bool = False
+        self._vos_checked: bool = False
 
     @property
     def is_on_screen(self) -> bool:

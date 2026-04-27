@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-
 AGENT_SESSION_ID_PATTERN = re.compile(r"^agent-session-[a-f0-9]{12}$")
 
 

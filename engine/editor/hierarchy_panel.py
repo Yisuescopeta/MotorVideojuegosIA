@@ -6,21 +6,22 @@ PROPÓSITO:
     Permite seleccionar entidades y visualizar relaciones padre-hijo.
 """
 
-import pyray as rl
-from typing import List, Optional, Set, Tuple
+from typing import Any, List, Optional, Set, Tuple
 
-from engine.ecs.world import World
-from engine.ecs.entity import Entity
+import pyray as rl
 from engine.components.transform import Transform
+from engine.ecs.entity import Entity
+from engine.ecs.world import World
 from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.editor_selection import EditorSelectionState
 from engine.editor.render_safety import editor_scissor
+
 
 class HierarchyPanel:
     """
     Panel lateral izquierdo que muestra la jerarquía de la escena.
     """
-    
+
     # Unity Colors
     UNITY_BG = rl.Color(42, 42, 42, 255)        # Panel background
     UNITY_HEADER = rl.Color(56, 56, 56, 255)    # Header/Tab background
@@ -30,18 +31,18 @@ class HierarchyPanel:
     UNITY_TEXT = rl.Color(200, 200, 200, 255)
     UNITY_TEXT_DIM = rl.Color(128, 128, 128, 255)
     UNITY_TAB_LINE = rl.Color(58, 121, 187, 255)
-    
+
     HEADER_HEIGHT: int = 22
     FONT_SIZE: int = 10
     LINE_HEIGHT: int = 18
     INDENT_SIZE: int = 14
-    
+
     def __init__(self, selection_state: Optional[EditorSelectionState] = None) -> None:
         self.visible: bool = True
         self.scroll_offset: int = 0
         self.expanded_ids: Set[int] = set()
         self.panel_width: int = 200
-        self._scene_manager = None
+        self._scene_manager: Any = None
         self._selection_state: Optional[EditorSelectionState] = selection_state
         self._cached_world_id: int = -1
         self._cached_structure_version: int = -1
@@ -50,7 +51,7 @@ class HierarchyPanel:
         self._cached_rows_structure_version: int = -1
         self._cached_rows_expanded_ids: Tuple[int, ...] = ()
         self._cached_visible_rows: List[Tuple[int, int]] = []
-        
+
         # Context Menu State
         self.context_menu_active: bool = False
         self.context_menu_pos = rl.Vector2(0, 0)
@@ -69,7 +70,7 @@ class HierarchyPanel:
         self._drop_as_root: bool = False
         self._DRAG_THRESHOLD: int = 5
 
-    def set_scene_manager(self, manager: object) -> None:
+    def set_scene_manager(self, manager: Any) -> None:
         """Permite que la UI use el mismo camino serializable que la API."""
         self._scene_manager = manager
 
@@ -112,8 +113,7 @@ class HierarchyPanel:
 
         # Input: Close menu if clicking elsewhere (logic inside _draw_context_menu handles its own clicks)
         if self.context_menu_active and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-            mouse = rl.get_mouse_position()
-            # Simple check: if not in menu (evaluated later), close. 
+            # Simple check: if not in menu (evaluated later), close.
             # Actually, let's defer closing to _draw_context_menu to check collision properly.
             pass
 
@@ -126,7 +126,7 @@ class HierarchyPanel:
             # ========================================
             header_rect = rl.Rectangle(x, y, width, self.HEADER_HEIGHT)
             rl.draw_rectangle_rec(header_rect, self.UNITY_HEADER)
-            
+
             # Tab "Hierarchy" con línea azul
             tab_width = 70
             tab_rect = rl.Rectangle(x + 2, y + 2, tab_width, self.HEADER_HEIGHT - 4)
@@ -135,7 +135,7 @@ class HierarchyPanel:
             rl.draw_rectangle(int(x + 2), int(y + self.HEADER_HEIGHT - 2), tab_width, 2, self.UNITY_TAB_LINE)
             # Texto
             rl.draw_text("Hierarchy", int(x + 10), int(y + 6), 10, self.UNITY_TEXT)
-            
+
             # Botón + (crear objeto)
             plus_rect = rl.Rectangle(x + width - 22, y + 2, 18, 18)
             self._register_cursor_rect(plus_rect)
@@ -143,7 +143,7 @@ class HierarchyPanel:
             plus_color = self.UNITY_HOVER if is_hover_plus else self.UNITY_HEADER
             rl.draw_rectangle_rec(plus_rect, plus_color)
             rl.draw_text("+", int(x + width - 17), int(y + 4), 14, self.UNITY_TEXT)
-            
+
             if is_hover_plus and not self._input_blocked and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 new_name = f"New Entity {world.entity_count()}"
                 if self._scene_manager is not None and self._scene_manager.create_entity(new_name):
@@ -152,22 +152,22 @@ class HierarchyPanel:
                     new_entity = world.create_entity(new_name)
                     new_entity.add_component(Transform())
                     self._set_selected_entity(world, new_entity.name)
-            
+
             # Línea separadora
             rl.draw_line(x, int(y + self.HEADER_HEIGHT), x + width, int(y + self.HEADER_HEIGHT), self.UNITY_BORDER)
-            
+
             # ========================================
             # 2. Content Area
             # ========================================
             content_y_start = y + self.HEADER_HEIGHT + 5
             content_height = height - self.HEADER_HEIGHT
-            
+
             # Fondo del contenido
             rl.draw_rectangle(x, int(y + self.HEADER_HEIGHT), width, int(content_height), self.UNITY_BG)
-            
+
             # Obtener entidades raíz
             visible_rows = self._get_visible_rows(world)
-            
+
             # Reset drop target each frame
             self._drop_target_name = None
             self._drop_target_scene_id = None
@@ -223,25 +223,25 @@ class HierarchyPanel:
 
         if self.context_menu_active:
              self._draw_context_menu(world)
-            
+
     def _render_row(self, entity: Entity, depth: int, panel_x: int, y: int, world: "World", panel_y: int, panel_h: int) -> None:
         """Renderiza una fila visible de la jerarquia."""
         has_children = bool(self._get_child_entities(world, entity))
 
         # Dibujar fila
         row_height = self.LINE_HEIGHT
-        
+
         # Input Check (Solo si está en pantalla y dentro del panel)
         mouse_pos = rl.get_mouse_position()
         # Verificar si el mouse está dentro del panel globalmente
-        is_mouse_in_panel = (panel_x <= mouse_pos.x <= panel_x + self.panel_width and 
+        is_mouse_in_panel = (panel_x <= mouse_pos.x <= panel_x + self.panel_width and
                              panel_y <= mouse_pos.y <= panel_y + panel_h)
-                             
-        is_hover = (panel_x <= mouse_pos.x <= panel_x + self.panel_width and 
+
+        is_hover = (panel_x <= mouse_pos.x <= panel_x + self.panel_width and
                     y <= mouse_pos.y < y + row_height) and is_mouse_in_panel
         if y + row_height >= panel_y and y <= panel_y + panel_h:
             self._register_cursor_rect(rl.Rectangle(panel_x, y, self.panel_width, row_height))
-            
+
         if is_hover:
             self.hovered_entity_id = entity.id
             if not self._is_dragging_entity:
@@ -279,14 +279,14 @@ class HierarchyPanel:
 
         # Indentación
         indent_x = panel_x + 10 + (depth * self.INDENT_SIZE)
-        
+
         # Triángulo de expansión
         if has_children:
             is_expanded = entity.id in self.expanded_ids
             tri_color = rl.GRAY
             tri_x = indent_x - 10
             tri_y = y + 4
-            
+
             if is_expanded:
                 # Abajo
                 rl.draw_triangle(
@@ -303,16 +303,16 @@ class HierarchyPanel:
                     rl.Vector2(tri_x + 8, tri_y + 4),
                     tri_color
                 )
-        
+
         # Nombre
         rl.draw_text(
-            f"{entity.name}", 
-            int(indent_x), 
-            int(y + 4), 
-            self.FONT_SIZE, 
+            f"{entity.name}",
+            int(indent_x),
+            int(y + 4),
+            self.FONT_SIZE,
             self.UNITY_TEXT
         )
-        
+
         return None
 
     def _find_entity_by_transform(self, world: "World", transform: Transform) -> Optional[Entity]:
@@ -452,15 +452,15 @@ class HierarchyPanel:
         """Maneja el input para abrir el menú contextual en el panel."""
         mouse = rl.get_mouse_position()
         in_panel = rl.check_collision_point_rec(mouse, rl.Rectangle(x, y, w, h))
-        
+
         if in_panel and not self._input_blocked and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_RIGHT):
             self.context_menu_active = True
             self.context_menu_pos = mouse
             self.context_target_id = self.hovered_entity_id
-            
+
     def _draw_context_menu(self, world: "World") -> None:
         """Dibuja el menú contextual y procesa sus opciones."""
-        
+
         # Options
         options = ["Create Entity"]
         if self.context_target_id is not None:
@@ -471,21 +471,23 @@ class HierarchyPanel:
              if entity is not None and entity.parent_name is not None:
                  options.append("Unparent")
              options.append("Save as Prefab")
-             
+
         item_height = 24
         menu_width = 140
         menu_height = len(options) * item_height
-        
+
         mx = int(self.context_menu_pos.x)
         my = int(self.context_menu_pos.y)
-        
+
         # Keep in screen
-        if mx + menu_width > rl.get_screen_width(): mx -= menu_width
-        if my + menu_height > rl.get_screen_height(): my -= menu_height
-        
+        if mx + menu_width > rl.get_screen_width():
+            mx -= menu_width
+        if my + menu_height > rl.get_screen_height():
+            my -= menu_height
+
         menu_rect = rl.Rectangle(mx, my, menu_width, menu_height)
         self._register_cursor_rect(menu_rect)
-        
+
         # Check close (Click outside)
         if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
             if not rl.check_collision_point_rec(rl.get_mouse_position(), menu_rect):
@@ -495,27 +497,27 @@ class HierarchyPanel:
         # Draw Menu Background
         rl.draw_rectangle_rec(menu_rect, self.UNITY_BG)
         rl.draw_rectangle_lines_ex(menu_rect, 1, self.UNITY_BORDER)
-        
+
         # Draw Items
         mouse = rl.get_mouse_position()
-        
+
         for i, option in enumerate(options):
             item_y = my + (i * item_height)
             item_rect = rl.Rectangle(mx, item_y, menu_width, item_height)
             self._register_cursor_rect(item_rect)
-            
+
             is_hover = rl.check_collision_point_rec(mouse, item_rect)
-            
+
             if is_hover:
                 rl.draw_rectangle_rec(item_rect, self.UNITY_HOVER)
-                
+
             rl.draw_text(option, mx + 10, item_y + 6, 10, self.UNITY_TEXT)
-            
+
             # Click Handler
             if is_hover and rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
                 self._execute_context_action(world, option)
                 self.context_menu_active = False
-                
+
     def _execute_context_action(self, world: "World", action: str) -> None:
         if action == "Create Entity":
             new_name = f"New Entity {world.entity_count()}"
@@ -525,7 +527,7 @@ class HierarchyPanel:
                 new_ent = world.create_entity(new_name)
                 new_ent.add_component(Transform())
                 self._set_selected_entity(world, new_ent.name)
-            
+
         elif action == "Delete Entity" and self.context_target_id is not None:
             entity = world.get_entity(self.context_target_id)
             if entity:
@@ -536,7 +538,7 @@ class HierarchyPanel:
                 # Si era el seleccionado, deseleccionar
                 if self._get_selected_entity_name(world) == entity.name:
                     self._set_selected_entity(world, None)
-                    
+
         elif action == "Create Child Entity" and self.context_target_id is not None:
             parent_entity = world.get_entity(self.context_target_id)
             if parent_entity is not None and self._scene_manager is not None:
@@ -571,7 +573,7 @@ class HierarchyPanel:
                         title="Save Entity as Prefab"
                     )
                     root.destroy()
-                    
+
                     if path and self._scene_manager is not None:
                         self._scene_manager.create_prefab(entity.name, path)
                 except Exception as e:

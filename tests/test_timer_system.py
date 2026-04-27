@@ -3,12 +3,11 @@ tests/test_timer_system.py - Tests del TimerSystem integrado con SignalRuntime.
 """
 
 import unittest
-from unittest.mock import Mock
 
 from engine.components.timer import Timer
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
-from engine.events.signals import SignalConnectionFlags, SignalRuntime
+from engine.events.signals import SignalRuntime
 from engine.systems.timer_system import TimerSystem
 
 

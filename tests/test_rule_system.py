@@ -4,9 +4,9 @@ from unittest.mock import patch
 from engine.components.animator import AnimationData, Animator
 from engine.components.transform import Transform
 from engine.core.game import Game
+from engine.ecs.world import World
 from engine.events.event_bus import EventBus
 from engine.events.rule_system import RuleSystem
-from engine.ecs.world import World
 
 
 class RuleSystemTests(unittest.TestCase):

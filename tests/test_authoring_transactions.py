@@ -4,7 +4,6 @@ import unittest
 from pathlib import Path
 
 from engine.api import EngineAPI
-from engine.assets.prefab import PrefabManager
 from engine.project.project_service import ProjectService
 
 

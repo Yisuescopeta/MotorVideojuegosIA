@@ -4,7 +4,6 @@ Covers: reparenting, unparenting, delete-orphan, cycle prevention,
 serialization round-trip, and hierarchical movement.
 """
 
-import copy
 import unittest
 
 from engine.components.transform import Transform

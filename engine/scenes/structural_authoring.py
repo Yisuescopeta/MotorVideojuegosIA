@@ -12,7 +12,7 @@ from engine.scenes.workspace_lifecycle import SceneWorkspaceEntry
 class SceneStructuralAuthoringContext:
     get_active_entry: Callable[[], Optional[SceneWorkspaceEntry]]
     resolve_entry: Callable[[Optional[str]], Optional[SceneWorkspaceEntry]]
-    flush_pending_edit_world: Callable[[SceneWorkspaceEntry], None]
+    flush_pending_edit_world: Callable[..., bool]
     rebuild_edit_world: Callable[[SceneWorkspaceEntry], None]
     record_scene_change: Callable[[SceneWorkspaceEntry, str, dict[str, Any]], None]
     sync_scene_links_from_feature_metadata: Callable[[SceneWorkspaceEntry], None]
@@ -84,13 +84,14 @@ class SceneHierarchyAuthoring:
         if target is None or parent is None:
             return False
         visited = {entity_name}
-        current = parent_name
+        current: str | None = parent_name
         while current is not None:
             if current in visited:
                 return False
             visited.add(current)
             current_entity = entry.scene.find_entity(current)
-            current = current_entity.get("parent") if current_entity is not None else None
+            current_parent = current_entity.get("parent") if current_entity is not None else None
+            current = str(current_parent) if current_parent is not None else None
         return True
 
     def set_entity_parent(self, entity_name: str, parent_name: Optional[str]) -> bool:

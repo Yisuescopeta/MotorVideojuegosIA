@@ -502,7 +502,6 @@ class RuntimeControllerTests(unittest.TestCase):
             self.controller.play()
 
         emitter_entity = SimpleNamespace(name="Emitter")
-        receiver_entity = SimpleNamespace(name="Receiver")
         self.controller.signal_runtime.connect("Emitter", "tick", lambda: None)
         conn_receiver = self.controller.signal_runtime.connect("Receiver", "tick", lambda: None)
 

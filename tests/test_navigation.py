@@ -16,10 +16,10 @@ from pathlib import Path
 
 from engine.navigation import (
     AStarPathfinder,
-    NeighborMode,
     NavigationGrid,
     NavigationQuery,
     NavigationService,
+    NeighborMode,
     PathRequest,
     PathResult,
     Vec2,

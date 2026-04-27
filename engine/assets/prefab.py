@@ -86,14 +86,14 @@ def _apply_override_operations(entities: list[dict[str, Any]], overrides: dict[s
             continue
         op_name = str(operation.get("op", "")).strip()
         target = operation.get("target", "")
-        target_name = None
-        for entity_name, entity_payload in by_name.items():
-            if entity_payload.get("prefab_source_path", "") == target:
+        target_name: str | None = None
+        for entity_name, source_entity_payload in by_name.items():
+            if source_entity_payload.get("prefab_source_path", "") == target:
                 target_name = entity_name
                 break
         if target_name is None and target in ("", None):
             target_name = next((entity["name"] for entity in entities if entity.get("prefab_source_path", "") == ""), None)
-        entity_payload = by_name.get(target_name) if target_name is not None else None
+        entity_payload: dict[str, Any] | None = by_name.get(target_name) if target_name is not None else None
         if op_name == "reorder_child":
             _reorder_entities(
                 entities,
@@ -277,8 +277,8 @@ class PrefabManager:
             overrides=overrides,
         )
         registry = None
-        from engine.levels.component_registry import create_default_registry
         from engine.components.transform import Transform
+        from engine.levels.component_registry import create_default_registry
 
         registry = create_default_registry()
         created: dict[str, Entity] = {}

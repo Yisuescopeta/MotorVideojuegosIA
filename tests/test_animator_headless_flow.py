@@ -33,11 +33,11 @@ class AnimatorHeadlessFlowTests(unittest.TestCase):
         """Set up a clean project for each test."""
         self._temp_dir = tempfile.TemporaryDirectory()
         self.workspace = Path(self._temp_dir.name)
-        
+
         # Create a minimal valid project
         self.project_root = self.workspace / "TestGame"
         self.project_root.mkdir()
-        
+
         # Create project.json
         (self.project_root / "project.json").write_text(
             json.dumps({
@@ -57,11 +57,11 @@ class AnimatorHeadlessFlowTests(unittest.TestCase):
             }),
             encoding="utf-8",
         )
-        
+
         # Create required directories
         for dir_name in ["assets", "levels", "scripts", "settings", ".motor"]:
             (self.project_root / dir_name).mkdir(parents=True, exist_ok=True)
-        
+
         # Create a simple test image (16x16 PNG with 4 8x8 cells)
         png_data = bytes([
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
@@ -78,7 +78,7 @@ class AnimatorHeadlessFlowTests(unittest.TestCase):
             0xAE, 0x42, 0x60, 0x82,
         ])
         (self.project_root / "assets" / "player.png").write_bytes(png_data)
-        
+
         # Set up environment
         self.env = os.environ.copy()
         root = Path(__file__).resolve().parents[1]
@@ -96,9 +96,9 @@ class AnimatorHeadlessFlowTests(unittest.TestCase):
             cmd_args = cmd_args + ["--project", str(self.project_root)]
         if "--json" not in cmd_args:
             cmd_args = cmd_args + ["--json"]
-        
+
         cmd = [sys.executable, "-m", "motor"] + cmd_args
-        
+
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -118,32 +118,32 @@ class AnimatorHeadlessFlowTests(unittest.TestCase):
     def test_complete_headless_animator_flow(self) -> None:
         """Complete headless workflow: scene -> entity -> animator -> states."""
         entity_name = "Hero"
-        
+
         # Step 1: Create scene
         print("\n1. Creating scene...")
         result = self._run_motor("scene", "create", "TestLevel")
         self.assertTrue(result.get("success"), f"Scene creation failed: {result.get('message')}")
-        
+
         # Step 2: Create entity
         print("2. Creating entity...")
         result = self._run_motor("entity", "create", entity_name)
         self.assertTrue(result.get("success"), f"Entity creation failed: {result.get('message')}")
-        
+
         # Step 3: Ensure Animator component
         print("3. Ensuring Animator component...")
         result = self._run_motor("animator", "ensure", entity_name)
         self.assertTrue(result.get("success"), f"Animator ensure failed: {result.get('message')}")
         self.assertTrue(result["data"].get("created"), "Animator should be created")
-        
+
         # Verify Animator exists
         result = self._run_motor("animator", "info", entity_name)
         self.assertTrue(result["data"].get("exists"), "Animator should exist after ensure")
-        
+
         # Step 4: Set sprite sheet
         print("4. Setting sprite sheet...")
         result = self._run_motor("animator", "set-sheet", entity_name, "assets/player.png")
         self.assertTrue(result.get("success"), f"Set sheet failed: {result.get('message')}")
-        
+
         # Step 5: Create slices (using API directly for reliability in tests)
         print("5. Creating slices...")
         # For the E2E test, we use manual slices to avoid asset service initialization issues
@@ -157,7 +157,7 @@ class AnimatorHeadlessFlowTests(unittest.TestCase):
         ]
         api.save_manual_slices("assets/player.png", manual_slices)
         api.shutdown()
-        
+
         # Step 6: Create loop state (idle)
         print("6. Creating loop state (idle)...")
         result = self._run_motor(
@@ -168,7 +168,7 @@ class AnimatorHeadlessFlowTests(unittest.TestCase):
             "--set-default"
         )
         self.assertTrue(result.get("success"), f"Idle state creation failed: {result.get('message')}")
-        
+
         # Step 7: Create no-loop state (attack)
         print("7. Creating no-loop state (attack)...")
         result = self._run_motor(
@@ -178,30 +178,30 @@ class AnimatorHeadlessFlowTests(unittest.TestCase):
             "--no-loop"
         )
         self.assertTrue(result.get("success"), f"Attack state creation failed: {result.get('message')}")
-        
+
         # Step 8: Query final info
         print("8. Querying final animator info...")
         result = self._run_motor("animator", "info", entity_name)
         self.assertTrue(result.get("success"), f"Info query failed: {result.get('message')}")
-        
+
         info = result["data"]
         self.assertTrue(info.get("exists"), "Animator should exist")
         self.assertEqual(info.get("sprite_sheet"), "assets/player.png", "Sprite sheet should be set")
-        
+
         states = info.get("states", [])
         self.assertGreaterEqual(len(states), 2, "Should have idle and attack states")
-        
+
         # Verify idle state
         idle_state = next((s for s in states if s["name"] == "idle"), None)
         self.assertIsNotNone(idle_state, "Should have idle state")
         self.assertTrue(idle_state.get("loop"), "Idle should be looping")
         self.assertTrue(idle_state.get("is_default"), "Idle should be default")
-        
+
         # Verify attack state
         attack_state = next((s for s in states if s["name"] == "attack"), None)
         self.assertIsNotNone(attack_state, "Should have attack state")
         self.assertFalse(attack_state.get("loop"), "Attack should not be looping")
-        
+
         print("\n[OK] Complete headless animator flow successful!")
 
     def test_animator_flow_without_editor(self) -> None:

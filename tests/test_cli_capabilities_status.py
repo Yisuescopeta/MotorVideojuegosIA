@@ -99,16 +99,16 @@ class CLICapabilitiesStatusTests(unittest.TestCase):
         for cap in capabilities:
             with self.subTest(capability=cap["id"]):
                 # Required fields
-                self.assertIn("id", cap, f"Capability missing 'id'")
-                self.assertIn("summary", cap, f"Capability missing 'summary'")
-                self.assertIn("mode", cap, f"Capability missing 'mode'")
-                self.assertIn("status", cap, f"Capability missing 'status'")
-                self.assertIn("api_methods", cap, f"Capability missing 'api_methods'")
-                self.assertIn("cli_command", cap, f"Capability missing 'cli_command'")
-                self.assertIn("tags", cap, f"Capability missing 'tags'")
+                self.assertIn("id", cap, "Capability missing 'id'")
+                self.assertIn("summary", cap, "Capability missing 'summary'")
+                self.assertIn("mode", cap, "Capability missing 'mode'")
+                self.assertIn("status", cap, "Capability missing 'status'")
+                self.assertIn("api_methods", cap, "Capability missing 'api_methods'")
+                self.assertIn("cli_command", cap, "Capability missing 'cli_command'")
+                self.assertIn("tags", cap, "Capability missing 'tags'")
 
                 # Validate field types/values
-                self.assertTrue(cap["id"], f"Capability id should not be empty")
+                self.assertTrue(cap["id"], "Capability id should not be empty")
                 self.assertIn(cap["mode"], {"edit", "play", "both"}, f"Invalid mode for {cap['id']}")
                 self.assertIsInstance(cap["api_methods"], list, f"api_methods should be list for {cap['id']}")
                 self.assertTrue(cap["cli_command"], f"cli_command should not be empty for {cap['id']}")

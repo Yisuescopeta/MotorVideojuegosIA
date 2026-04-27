@@ -28,11 +28,11 @@ class AIFacingEndToEndTests(unittest.TestCase):
         """Set up a clean project for each test."""
         self._temp_dir = tempfile.TemporaryDirectory()
         self.workspace = Path(self._temp_dir.name)
-        
+
         # Create a minimal valid project
         self.project_root = self.workspace / "TestGame"
         self.project_root.mkdir()
-        
+
         # Create project.json
         (self.project_root / "project.json").write_text(
             json.dumps({
@@ -52,11 +52,11 @@ class AIFacingEndToEndTests(unittest.TestCase):
             }),
             encoding="utf-8",
         )
-        
+
         # Create required directories
         for dir_name in ["assets", "levels", "scripts", "settings", ".motor"]:
             (self.project_root / dir_name).mkdir(parents=True, exist_ok=True)
-        
+
         # Create a simple scene
         (self.project_root / "levels" / "main_scene.json").write_text(
             json.dumps({
@@ -66,7 +66,7 @@ class AIFacingEndToEndTests(unittest.TestCase):
             }),
             encoding="utf-8",
         )
-        
+
         # Create motor_ai.json (AI bootstrap)
         (self.project_root / "motor_ai.json").write_text(
             json.dumps({
@@ -96,7 +96,7 @@ class AIFacingEndToEndTests(unittest.TestCase):
             }),
             encoding="utf-8",
         )
-        
+
         # Create START_HERE_AI.md
         (self.project_root / "START_HERE_AI.md").write_text(
             "# TestGame - AI Quick Start\n\nThis is a test project.\n",
@@ -114,14 +114,14 @@ class AIFacingEndToEndTests(unittest.TestCase):
         env = os.environ.copy()
         python_path = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = str(root) if not python_path else str(root) + os.pathsep + python_path
-        
+
         # Commands that don't need --project
         no_project_commands = ["capabilities"]
-        
+
         cmd = [sys.executable, "-m", "motor"] + list(args) + ["--json"]
         if args[0] not in no_project_commands:
             cmd.extend(["--project", str(self.project_root)])
-        
+
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -142,10 +142,10 @@ class AIFacingEndToEndTests(unittest.TestCase):
         """Step 1: AI opens project folder and finds motor_ai.json."""
         motor_ai_path = self.project_root / "motor_ai.json"
         start_here_path = self.project_root / "START_HERE_AI.md"
-        
+
         self.assertTrue(motor_ai_path.exists(), "motor_ai.json should exist")
         self.assertTrue(start_here_path.exists(), "START_HERE_AI.md should exist")
-        
+
         # Verify motor_ai.json is valid
         data = json.loads(motor_ai_path.read_text())
         self.assertIn("schema_version", data)
@@ -155,15 +155,15 @@ class AIFacingEndToEndTests(unittest.TestCase):
     def test_step_2_ai_runs_doctor(self) -> None:
         """Step 2: AI runs doctor to validate project health."""
         result = self._run_motor("doctor")
-        
+
         self.assertIn("success", result)
         self.assertIn("data", result)
-        
+
         data = result["data"]
         self.assertIn("healthy", data)
         self.assertIn("status", data)
         self.assertIn("checks", data)
-        
+
         # Verify critical checks passed
         checks = data["checks"]
         self.assertTrue(checks.get("project_manifest_exists"))
@@ -175,14 +175,14 @@ class AIFacingEndToEndTests(unittest.TestCase):
     def test_step_3_ai_queries_capabilities(self) -> None:
         """Step 3: AI queries engine capabilities."""
         result = self._run_motor("capabilities")
-        
+
         self.assertTrue(result.get("success"), "Capabilities query should succeed")
-        
+
         data = result["data"]
         self.assertIn("count", data)
         self.assertIn("capabilities", data)
         self.assertIn("engine_version", data)
-        
+
         # Should have multiple capabilities
         self.assertGreater(data["count"], 0, "Should have at least one capability")
         self.assertIsInstance(data["capabilities"], list)
@@ -190,13 +190,13 @@ class AIFacingEndToEndTests(unittest.TestCase):
     def test_step_4_ai_lists_scenes(self) -> None:
         """Step 4: AI lists available scenes."""
         result = self._run_motor("scene", "list")
-        
+
         self.assertTrue(result.get("success"), "Scene list should succeed")
-        
+
         data = result["data"]
         self.assertIn("count", data)
         self.assertIn("scenes", data)
-        
+
         # Should find the main_scene we created
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["scenes"][0]["name"], "Main Scene")
@@ -204,12 +204,12 @@ class AIFacingEndToEndTests(unittest.TestCase):
     def test_step_5_ai_creates_scene_headless(self) -> None:
         """Step 5: AI creates a new scene headlessly."""
         result = self._run_motor("scene", "create", "AI Test Level")
-        
+
         self.assertTrue(result.get("success"), "Scene creation should succeed")
-        
+
         data = result["data"]
         self.assertIn("path", data)
-        
+
         # Verify scene file was created
         scene_path = self.project_root / "levels" / "ai_test_level.json"
         self.assertTrue(scene_path.exists(), "Scene file should be created")
@@ -218,12 +218,12 @@ class AIFacingEndToEndTests(unittest.TestCase):
         """Step 6: AI creates an entity in the active scene."""
         # First create a scene
         self._run_motor("scene", "create", "EntityTest")
-        
+
         # Create entity
         result = self._run_motor("entity", "create", "AIPlayer")
-        
+
         self.assertTrue(result.get("success"), "Entity creation should succeed")
-        
+
         data = result["data"]
         self.assertIn("entity", data)
         self.assertEqual(data["entity"], "AIPlayer")
@@ -233,37 +233,37 @@ class AIFacingEndToEndTests(unittest.TestCase):
         # Setup
         self._run_motor("scene", "create", "ComponentTest")
         self._run_motor("entity", "create", "Player")
-        
+
         # Add component
         result = self._run_motor(
             "component", "add", "Player", "Transform",
             "--data", '{"x":100,"y":200}'
         )
-        
+
         self.assertTrue(result.get("success"), "Component add should succeed")
 
     def test_full_ai_workflow(self) -> None:
         """Complete AI workflow: detect → validate → query → create → configure."""
         # 1. Detect motor project
         self.assertTrue((self.project_root / "motor_ai.json").exists())
-        
+
         # 2. Validate with doctor
         doctor_result = self._run_motor("doctor")
         self.assertTrue(doctor_result["data"]["healthy"])
-        
+
         # 3. Query capabilities
         caps_result = self._run_motor("capabilities")
         self.assertTrue(caps_result["success"])
         self.assertGreater(caps_result["data"]["count"], 0)
-        
+
         # 4. Create scene
         scene_result = self._run_motor("scene", "create", "AIWorkflow")
         self.assertTrue(scene_result["success"])
-        
+
         # 5. Create entity
         entity_result = self._run_motor("entity", "create", "Hero")
         self.assertTrue(entity_result["success"])
-        
+
         # 6. Add components
         transform_result = self._run_motor(
             "component", "add", "Hero", "Transform",
@@ -280,7 +280,7 @@ class AIFacingEndToEndTests(unittest.TestCase):
             json.dumps({"name": "Bad"}),  # Missing version and paths
             encoding="utf-8",
         )
-        
+
         cmd = [
             sys.executable, "-m", "motor",
             "doctor",
@@ -295,11 +295,11 @@ class AIFacingEndToEndTests(unittest.TestCase):
         if "{" in output:
             output = output[output.index("{"):]
         data = json.loads(output)
-        
+
         # Should report warnings for missing fields (but still healthy)
         self.assertIn("warnings", data["data"])
         self.assertTrue(len(data["data"]["warnings"]) > 0, "Should have warnings for missing fields")
-        
+
         # Should have specific checks
         checks = data["data"]["checks"]
         self.assertTrue(checks.get("project_manifest_exists"))
@@ -329,7 +329,7 @@ class AIFacingContractTests(unittest.TestCase):
             )
             for d in ["assets", "levels", "scripts", "settings", ".motor"]:
                 (project / d).mkdir(parents=True, exist_ok=True)
-            
+
             # Test multiple commands
             commands = [
                 (["capabilities"], False),  # No project needed
@@ -337,7 +337,7 @@ class AIFacingContractTests(unittest.TestCase):
                 (["scene", "list"], True),
                 (["asset", "list"], True),
             ]
-            
+
             for cmd_args, needs_project in commands:
                 cmd = [sys.executable, "-m", "motor"] + cmd_args + ["--json"]
                 if needs_project:
@@ -353,7 +353,7 @@ class AIFacingContractTests(unittest.TestCase):
                     data = json.loads(output)
                 except json.JSONDecodeError:
                     self.fail(f"Command {cmd_args} returned invalid JSON: {output[:200]}")
-                
+
                 # Contract: must have these fields
                 self.assertIn("success", data, f"Command {cmd_args} missing 'success'")
                 self.assertIn("message", data, f"Command {cmd_args} missing 'message'")
@@ -367,7 +367,7 @@ class AIFacingContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             project = Path(tmpdir) / "Test"
             project.mkdir()
-            
+
             # Create minimal valid motor_ai.json
             motor_ai = {
                 "schema_version": 2,
@@ -389,7 +389,7 @@ class AIFacingContractTests(unittest.TestCase):
                 },
             }
             (project / "motor_ai.json").write_text(json.dumps(motor_ai), encoding="utf-8")
-            
+
             # Verify schema
             data = json.loads((project / "motor_ai.json").read_text())
             self.assertEqual(data["schema_version"], 2)

@@ -7,7 +7,6 @@ from engine.components.collider import Collider
 from engine.components.tilemap import Tilemap
 from engine.components.transform import Transform
 
-
 RUNTIME_TILE_COLLIDER_PREFIX = "__tilecollider__"
 
 

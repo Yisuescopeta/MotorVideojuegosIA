@@ -15,7 +15,6 @@ import ast
 import inspect
 import unittest
 from pathlib import Path
-from typing import Set
 
 import motor.cli_core as cli_core_module
 

@@ -6,7 +6,6 @@ from pathlib import Path
 from engine.api import EngineAPI
 from engine.project.project_service import ProjectManifest, ProjectService
 
-
 AI_ASSIST_STATE_DIR = ".motor/ai_assist_state"
 
 

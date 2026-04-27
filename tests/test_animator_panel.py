@@ -3,7 +3,6 @@ import unittest
 from pathlib import Path
 
 import pyray as rl
-
 from engine.api import EngineAPI
 from engine.editor.animator_panel import (
     build_state_payload_from_slice_group,
@@ -12,18 +11,17 @@ from engine.editor.animator_panel import (
     detect_slice_groups,
     detect_slice_sequences,
     expand_slice_sequence,
+    get_default_state_name_for_group,
     get_recommended_group_action_hint,
     get_recommended_group_refresh_label,
     get_recommended_group_refresh_variant,
     get_recommended_group_sync_badge_variant,
     get_recommended_group_sync_status,
     get_recommended_slice_group,
-    get_default_state_name_for_group,
     get_selected_state_slice_names,
     normalize_group_match_name,
 )
 from engine.editor.project_panel import ProjectPanel
-
 
 MINIMAL_PNG_BYTES = (
     b"\x89PNG\r\n\x1a\n"

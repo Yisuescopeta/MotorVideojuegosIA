@@ -120,8 +120,8 @@ class SceneChangeCoordinator:
         self,
         *,
         label: str,
-        undo: Callable[[], bool],
-        redo: Callable[[], bool],
+        undo: Callable[..., bool],
+        redo: Callable[..., bool],
     ) -> None:
         if self._history is None or self._suspend_history:
             return

@@ -27,19 +27,19 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self._home_tmp.cleanup()
-    
+
     def _run_motor(self, *args: str, cwd: Path) -> tuple[int, str, str]:
         """Run motor CLI command and return (returncode, stdout, stderr)."""
         import os
         cmd = [sys.executable, "-m", "motor"] + list(args)
-        
+
         # Set up environment with project root in PYTHONPATH
         root = Path(__file__).resolve().parents[1]
         env = os.environ.copy()
         python_path = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = str(root) if not python_path else str(root) + os.pathsep + python_path
         env["MOTORVIDEOJUEGOSIA_HOME"] = self.isolated_home.as_posix()
-        
+
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -48,12 +48,12 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
             env=env,
         )
         return result.returncode, result.stdout, result.stderr
-    
+
     def _create_test_project(self, workspace: Path, name: str = "TestProject") -> Path:
         """Create a minimal valid test project without bootstrap files."""
         project_root = workspace / name
         project_root.mkdir()
-        
+
         # Create project.json
         (project_root / "project.json").write_text(
             json.dumps({
@@ -73,39 +73,39 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
             }),
             encoding="utf-8",
         )
-        
+
         # Create required directories
         for dir_name in ["assets", "levels", "scripts", "settings", "prefabs", ".motor"]:
             (project_root / dir_name).mkdir(parents=True, exist_ok=True)
-        
+
         return project_root
-    
+
     def test_doctor_detects_missing_bootstrap_files(self) -> None:
         """Doctor should detect missing motor_ai.json and START_HERE_AI.md."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project = self._create_test_project(Path(tmpdir))
-            
+
             # Run doctor
             returncode, stdout, stderr = self._run_motor(
                 "doctor", "--project", str(project), "--json",
                 cwd=project
             )
-            
+
             self.assertEqual(returncode, 0, f"doctor should succeed: {stderr}")
-            
+
             # Parse output
             output = stdout
             if "{" in output:
                 output = output[output.index("{"):]
             result = json.loads(output)
-            
+
             # Should have warnings about missing files
             checks = result.get("data", {}).get("checks", {})
-            self.assertFalse(checks.get("motor_ai_exists", True), 
+            self.assertFalse(checks.get("motor_ai_exists", True),
                            "motor_ai.json should not exist initially")
             self.assertFalse(checks.get("start_here_exists", True),
                            "START_HERE_AI.md should not exist initially")
-            
+
             # Should recommend bootstrap-ai
             recommendations = result.get("data", {}).get("recommendations", [])
             has_bootstrap_recommendation = any(
@@ -113,48 +113,48 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
             )
             self.assertTrue(has_bootstrap_recommendation,
                           "Doctor should recommend 'motor project bootstrap-ai'")
-    
+
     def test_bootstrap_ai_generates_files(self) -> None:
         """Bootstrap-ai should generate motor_ai.json and START_HERE_AI.md."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project = self._create_test_project(Path(tmpdir))
-            
+
             # Verify files don't exist initially
             self.assertFalse((project / "motor_ai.json").exists())
             self.assertFalse((project / "START_HERE_AI.md").exists())
-            
+
             # Run bootstrap-ai
             returncode, stdout, stderr = self._run_motor(
                 "project", "bootstrap-ai", "--project", str(project), "--json",
                 cwd=project
             )
-            
+
             self.assertEqual(returncode, 0, f"bootstrap-ai should succeed: {stderr}")
-            
+
             # Parse output
             output = stdout
             if "{" in output:
                 output = output[output.index("{"):]
             result = json.loads(output)
-            
+
             self.assertTrue(result.get("success"), "bootstrap-ai should report success")
-            
+
             # Verify files were created
             self.assertTrue((project / "motor_ai.json").exists(),
                           "motor_ai.json should be created")
             self.assertTrue((project / "START_HERE_AI.md").exists(),
                           "START_HERE_AI.md should be created")
-            
+
             # Verify motor_ai.json is valid and portable
             motor_ai = json.loads((project / "motor_ai.json").read_text())
             self.assertEqual(motor_ai.get("project", {}).get("root"), ".",
                            "motor_ai.json should use relative paths")
-    
+
     def test_doctor_recognizes_bootstrap_after_generation(self) -> None:
         """After bootstrap-ai, doctor should recognize the files exist."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project = self._create_test_project(Path(tmpdir))
-            
+
             # First doctor run - should detect missing files
             _, stdout1, _ = self._run_motor(
                 "doctor", "--project", str(project), "--json",
@@ -162,21 +162,21 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
             )
             output1 = stdout1[stdout1.index("{"):]
             result1 = json.loads(output1)
-            
+
             initial_warnings = result1.get("data", {}).get("warnings", [])
             has_missing_bootstrap_warning1 = any(
-                "motor_ai.json" in w or "START_HERE_AI.md" in w 
+                "motor_ai.json" in w or "START_HERE_AI.md" in w
                 for w in initial_warnings
             )
             self.assertTrue(has_missing_bootstrap_warning1,
                           "Initial doctor run should warn about missing bootstrap")
-            
+
             # Run bootstrap-ai
             self._run_motor(
                 "project", "bootstrap-ai", "--project", str(project),
                 cwd=project
             )
-            
+
             # Second doctor run - should recognize files
             _, stdout2, _ = self._run_motor(
                 "doctor", "--project", str(project), "--json",
@@ -184,13 +184,13 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
             )
             output2 = stdout2[stdout2.index("{"):]
             result2 = json.loads(output2)
-            
+
             checks = result2.get("data", {}).get("checks", {})
             self.assertTrue(checks.get("motor_ai_exists", False),
                           "Second doctor run should find motor_ai.json")
             self.assertTrue(checks.get("start_here_exists", False),
                           "Second doctor run should find START_HERE_AI.md")
-            
+
             # Should not have warnings about missing bootstrap files
             final_warnings = result2.get("data", {}).get("warnings", [])
             has_missing_bootstrap_warning2 = any(
@@ -199,41 +199,43 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
             )
             self.assertFalse(has_missing_bootstrap_warning2,
                            "Doctor should not warn about bootstrap after generation")
-    
+
     def test_bootstrap_ai_is_idempotent(self) -> None:
         """Running bootstrap-ai twice should succeed both times."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project = self._create_test_project(Path(tmpdir))
-            
+
             # First run
             returncode1, _, _ = self._run_motor(
                 "project", "bootstrap-ai", "--project", str(project),
                 cwd=project
             )
             self.assertEqual(returncode1, 0, "First bootstrap-ai should succeed")
-            
+
             # Get first generation timestamp
             motor_ai1 = (project / "motor_ai.json").read_text()
-            
+
             # Second run
             returncode2, _, _ = self._run_motor(
                 "project", "bootstrap-ai", "--project", str(project),
                 cwd=project
             )
             self.assertEqual(returncode2, 0, "Second bootstrap-ai should succeed")
-            
+
             # File should still be valid
-            motor_ai2 = json.loads((project / "motor_ai.json").read_text())
+            motor_ai2_text = (project / "motor_ai.json").read_text()
+            motor_ai2 = json.loads(motor_ai2_text)
             self.assertIn("implemented_capabilities", motor_ai2)
-    
+            self.assertEqual(motor_ai1, motor_ai2_text)
+
     def test_doctor_is_read_only(self) -> None:
         """Doctor should not modify project files or create editor state."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project = self._create_test_project(Path(tmpdir))
-            
+
             # Get initial state of critical project files
             initial_project_json = (project / "project.json").read_text()
-            
+
             # Run doctor multiple times
             for _ in range(3):
                 returncode, _, _ = self._run_motor(
@@ -241,7 +243,7 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
                     cwd=project
                 )
                 self.assertEqual(returncode, 0)
-            
+
             # Verify project.json was not modified
             final_project_json = (project / "project.json").read_text()
             self.assertEqual(initial_project_json, final_project_json,
@@ -250,7 +252,7 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
                            "Doctor should not create .motor/editor_state.json")
             self.assertFalse((project / "settings" / "project_settings.json").exists(),
                            "Doctor should not create settings/project_settings.json")
-            
+
             # Verify motor_ai.json and START_HERE_AI.md were not created by doctor
             self.assertFalse((project / "motor_ai.json").exists(),
                            "Doctor should not create motor_ai.json")
@@ -260,21 +262,21 @@ class DoctorBootstrapFlowTests(unittest.TestCase):
                 self.isolated_home.exists(),
                 "Doctor should not create isolated MOTORVIDEOJUEGOSIA_HOME artifacts"
             )
-    
+
     def test_bootstrap_ai_fails_without_project(self) -> None:
         """Bootstrap-ai should fail gracefully when run outside a project."""
         with tempfile.TemporaryDirectory() as tmpdir:
             empty_dir = Path(tmpdir) / "empty"
             empty_dir.mkdir()
-            
+
             returncode, stdout, _ = self._run_motor(
                 "project", "bootstrap-ai", "--project", str(empty_dir), "--json",
                 cwd=empty_dir
             )
-            
-            self.assertNotEqual(returncode, 0, 
+
+            self.assertNotEqual(returncode, 0,
                               "bootstrap-ai should fail without project.json")
-            
+
             # Parse output
             if "{" in stdout:
                 output = stdout[stdout.index("{"):]

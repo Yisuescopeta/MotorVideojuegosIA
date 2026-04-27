@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 import unittest
 
-from engine.ai import get_default_registry, MotorAIBootstrapBuilder
+from engine.ai import MotorAIBootstrapBuilder, get_default_registry
 
 
 class StartHereAICoherenceTests(unittest.TestCase):
@@ -66,7 +66,7 @@ class StartHereAICoherenceTests(unittest.TestCase):
             "animator:set_sheet", "animator:state:create", "animator:info",
             "introspect:capabilities",
         ]
-        
+
         for cap_id in expected_implemented:
             cap = self.registry.get(cap_id)
             self.assertIsNotNone(
@@ -145,7 +145,6 @@ class StartHereAICoherenceTests(unittest.TestCase):
         workflow_content = self.content[workflow_start:naming_start]
 
         # Extract all 'motor X Y Z' commands from the workflow
-        import re
         commands = re.findall(r'motor \w+(?: \w+)*', workflow_content)
 
         registry = get_default_registry()
@@ -172,14 +171,14 @@ class StartHereAICoherenceTests(unittest.TestCase):
     def test_official_cli_syntax_used(self) -> None:
         """All CLI examples should use 'motor' prefix."""
         # Find all CLI command examples (lines starting with motor)
-        motor_lines = [line for line in self.content.split('\n') 
+        motor_lines = [line for line in self.content.split('\n')
                       if line.strip().startswith('motor ')]
-        
+
         self.assertGreater(
             len(motor_lines), 0,
             "START_HERE_AI.md should contain CLI examples"
         )
-        
+
         for line in motor_lines:
             # Should not use legacy commands
             self.assertNotIn(
@@ -192,14 +191,14 @@ class StartHereAICoherenceTests(unittest.TestCase):
         # Find the "Configure animator" workflow section
         workflow_start = self.content.find("## Quick Workflow")
         self.assertGreater(workflow_start, 0, "Should have Quick Workflow section")
-        
+
         # Only look at content after workflow section
         workflow_content = self.content[workflow_start:]
-        
+
         ensure_pos = workflow_content.find("animator ensure")
         set_sheet_pos = workflow_content.find("animator set-sheet")
         state_create_pos = workflow_content.find("animator state create")
-        
+
         self.assertGreater(
             ensure_pos, 0,
             "Quick workflow should document 'animator ensure' step"

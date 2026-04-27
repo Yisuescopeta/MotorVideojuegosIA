@@ -4,7 +4,6 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pyray as rl
-
 from engine.agent import AgentSessionService
 from engine.core.game import Game
 from engine.editor.agent_panel import AgentPanel

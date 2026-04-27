@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pyray as rl
-
 from engine.app.project_workspace_controller import ProjectWorkspaceController
 from engine.core.engine_state import EngineState
 from engine.editor.editor_selection import EditorSelectionState

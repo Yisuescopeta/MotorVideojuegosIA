@@ -10,13 +10,14 @@ from engine.editor.console_panel import log_info, log_warn
 from engine.events.callable_resolver import CallableResolver, CallableResolverContext
 from engine.events.deferred_queue import DeferredCallQueue
 from engine.events.signals import SignalRuntime
-from engine.services.registro_servicios import RegistroServicios
 from engine.physics.backend import PhysicsBackendSelection
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
+from engine.services.registro_servicios import RegistroServicios
 from engine.tilemap.collision_builder import bake_tilemap_colliders
 from engine.utils.viewport import resolve_world_viewport_rect
 
 if TYPE_CHECKING:
+    from engine.ecs.entity import Entity
     from engine.ecs.world import World
 
 

@@ -13,8 +13,8 @@ MÓDULOS:
     - world: Registro y gestión de entidades
 """
 
-from engine.ecs.entity import Entity
 from engine.ecs.component import Component
+from engine.ecs.entity import Entity
 from engine.ecs.world import World
 
 __all__ = [

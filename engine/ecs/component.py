@@ -16,7 +16,7 @@ EJEMPLO DE USO:
         def __init__(self, x=0, y=0):
             self.x = x
             self.y = y
-        
+
         def to_dict(self):
             return {"x": self.x, "y": self.y}
 """
@@ -27,20 +27,20 @@ from typing import Any
 class Component:
     """
     Clase base para todos los componentes del ECS.
-    
+
     Los componentes son contenedores de datos puros.
     La lógica de procesamiento va en los Systems.
-    
+
     Todos los componentes deben:
     - Heredar de esta clase
     - Implementar to_dict() para serialización
     - Implementar from_dict() para deserialización
     """
-    
+
     def to_dict(self) -> dict[str, Any]:
         """
         Serializa el componente a un diccionario.
-        
+
         Returns:
             Diccionario con todos los datos del componente.
             Las claves deben ser strings, los valores tipos básicos.
@@ -53,15 +53,15 @@ class Component:
         }
         data.setdefault("enabled", getattr(self, "enabled", True))
         return data
-    
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Component":
         """
         Crea una instancia del componente desde un diccionario.
-        
+
         Args:
             data: Diccionario con los datos del componente
-            
+
         Returns:
             Nueva instancia del componente con los datos cargados
         """
@@ -72,7 +72,7 @@ class Component:
             if hasattr(instance, key):
                 setattr(instance, key, value)
         return instance
-    
+
     def __repr__(self) -> str:
         """Representación legible del componente para debug."""
         class_name = self.__class__.__name__

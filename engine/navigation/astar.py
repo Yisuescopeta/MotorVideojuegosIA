@@ -203,6 +203,8 @@ class AStarPathfinder:
     ) -> int:
         if len(path) < 2:
             return 0
+        if self._grid is None:
+            raise RuntimeError("AStarPathfinder._calculate_path_cost: grid is not set")
         total = 0
         for i in range(1, len(path)):
             prev = path[i - 1]

@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from engine.editor.console_panel import ConsolePanel, GLOBAL_LOGS, log_err, log_info
+from engine.editor.console_panel import GLOBAL_LOGS, ConsolePanel, log_err, log_info
 
 
 class ConsolePanelRenderTests(unittest.TestCase):

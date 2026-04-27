@@ -5,7 +5,6 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pyray as rl
-
 from engine.core.game import Game
 from engine.editor.scene_flow_panel import SceneFlowPanel
 from engine.levels.component_registry import create_default_registry

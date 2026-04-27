@@ -18,9 +18,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from engine.ai import get_default_registry, MotorAIBootstrapBuilder
-from engine.project.project_service import ProjectService, ProjectManifest
 import motor.cli_core as cli_core_module
+from engine.project.project_service import ProjectManifest, ProjectService
 
 
 class BootstrapSingleSourceOfTruthTests(unittest.TestCase):

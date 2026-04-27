@@ -562,8 +562,11 @@ class SceneManager:
             or {"Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0}},
             "component_metadata": {},
         }
-        for component_name in payload["components"].keys():
-            payload["component_metadata"][component_name] = {"origin": self._registry.get_origin(component_name)}
+        components_payload = payload["components"]
+        metadata_payload = payload["component_metadata"]
+        if isinstance(components_payload, dict) and isinstance(metadata_payload, dict):
+            for component_name in components_payload.keys():
+                metadata_payload[component_name] = {"origin": self._registry.get_origin(str(component_name))}
         before = copy.deepcopy(entry.scene.to_dict())
         rollback_selected_name = entry.selected_entity_name
         rollback_selected_id = entry.selected_entity_id
@@ -1162,9 +1165,15 @@ class SceneManager:
         entry: SceneWorkspaceEntry,
         world_snapshot: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        if entry.edit_world is None and world_snapshot is None:
+        edit_world = entry.edit_world
+        if edit_world is None and world_snapshot is None:
             raise ValueError("Cannot build scene payload without edit world")
-        snapshot = copy.deepcopy(world_snapshot if world_snapshot is not None else entry.edit_world.serialize())
+        if world_snapshot is not None:
+            snapshot_source = world_snapshot
+        else:
+            assert edit_world is not None
+            snapshot_source = edit_world.serialize()
+        snapshot = copy.deepcopy(snapshot_source)
         payload = build_canonical_scene_payload(
             scene_name=entry.scene.name,
             world_snapshot=snapshot,
@@ -1712,6 +1721,7 @@ class SceneManager:
         entity = entry.edit_world.get_entity_by_name(entity_name)
         if entity is None:
             return None
+        component: Any
         if component_name == "Transform":
             component = entity.get_component(Transform)
         elif component_name == "RectTransform":

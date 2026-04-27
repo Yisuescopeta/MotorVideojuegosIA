@@ -1,9 +1,19 @@
-from engine.agent.command_policy import AgentCommandDecision, AgentCommandPolicy, AgentCommandProfile, AgentCommandRequest
+from engine.agent.command_policy import (
+    AgentCommandDecision,
+    AgentCommandPolicy,
+    AgentCommandProfile,
+    AgentCommandRequest,
+)
 from engine.agent.command_runner import AgentCommandRunner, AgentCommandRunResult
-from engine.agent.credentials import AgentCredentialStore, AgentProviderLoginService, AgentProviderLoginStatus, AgentProviderSettingsStore
+from engine.agent.credentials import (
+    AgentCredentialStore,
+    AgentProviderLoginService,
+    AgentProviderLoginStatus,
+    AgentProviderSettingsStore,
+)
 from engine.agent.engine_port import AgentEnginePort, EditorLiveAgentEnginePort, EngineAPIAgentEnginePort
-from engine.agent.migration import AgentSessionMigrationError, AgentSessionMigrator
 from engine.agent.memory import AgentCompactionService, AgentMemorySnapshot, AgentMemoryStore
+from engine.agent.migration import AgentSessionMigrationError, AgentSessionMigrator
 from engine.agent.model_presets import list_model_presets, recommended_model
 from engine.agent.provider import (
     AgentProviderMetadata,

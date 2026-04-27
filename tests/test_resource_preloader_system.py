@@ -6,10 +6,10 @@ import unittest
 from unittest.mock import Mock
 
 from engine.assets.asset_reference import normalize_asset_reference
-from engine.components.resource_preloader import ResourcePreloader
-from engine.components.sprite import Sprite
 from engine.components.animator import Animator
 from engine.components.audiosource import AudioSource
+from engine.components.resource_preloader import ResourcePreloader
+from engine.components.sprite import Sprite
 from engine.components.tilemap import Tilemap
 from engine.ecs.world import World
 from engine.systems.resource_preloader_system import ResourcePreloaderSystem

@@ -5,9 +5,9 @@ from pathlib import Path
 
 from engine.api import EngineAPI
 from engine.components.tilemap import Tilemap
-from engine.tilemap.collision_builder import bake_tilemap_colliders, build_tilemap_collision_regions
 from engine.components.transform import Transform
 from engine.ecs.world import World
+from engine.tilemap.collision_builder import bake_tilemap_colliders, build_tilemap_collision_regions
 
 
 class TilemapCollisionTests(unittest.TestCase):

@@ -1,8 +1,8 @@
 import unittest
 from unittest.mock import patch
 
-from engine.editor.hierarchy_panel import HierarchyPanel
 from engine.ecs.world import World
+from engine.editor.hierarchy_panel import HierarchyPanel
 
 
 class HierarchyPanelRowsTests(unittest.TestCase):

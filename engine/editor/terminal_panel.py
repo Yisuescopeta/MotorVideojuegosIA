@@ -9,25 +9,25 @@ import math
 import os
 import queue
 import threading
-from ctypes import byref, c_size_t, c_void_p, create_string_buffer, sizeof
-from ctypes import wintypes
+from ctypes import byref, c_size_t, c_void_p, create_string_buffer, sizeof, wintypes
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 import pyray as rl
-try:
-    from PIL import ImageFont
-except ImportError:  # pragma: no cover - optional dependency at runtime
-    ImageFont = None
-
 from engine.editor.render_safety import editor_scissor
 from engine.project.project_service import ProjectService
+
+ImageFont: Any
+try:
+    from PIL import ImageFont as ImageFont
+except ImportError:  # pragma: no cover - optional dependency at runtime
+    ImageFont = None
 
 ColorTuple = tuple[int, int, int, int]
 
 
-def _rgba(r: int, g: int, b: int, a: int = 255) -> ColorTuple:
+def _rgba(r: float, g: float, b: float, a: float = 255) -> ColorTuple:
     return (max(0, min(255, int(r))), max(0, min(255, int(g))), max(0, min(255, int(b))), max(0, min(255, int(a))))
 
 
@@ -167,7 +167,7 @@ class _WinConPtyBackend(_TerminalBackend):
         self._input_write = wintypes.HANDLE()
         self._output_read = wintypes.HANDLE()
         self._process_info = _PROCESS_INFORMATION()
-        self._attribute_buffer = None
+        self._attribute_buffer: Any = None
         self._reader_thread: Optional[threading.Thread] = None
         self._close_thread: Optional[threading.Thread] = None
         self._closed = False
@@ -972,7 +972,8 @@ class TerminalPanel:
         return None
 
     def _load_font_from_codepoints(self, font_path: Path, codepoints: list[int]):
-        codepoints_ptr = rl.ffi.cast("int *", rl.ffi.new("int[]", codepoints))
+        ffi = getattr(rl, "ffi")
+        codepoints_ptr = ffi.cast("int *", ffi.new("int[]", codepoints))
         return rl.load_font_ex(str(font_path), self.FONT_SIZE, codepoints_ptr, len(codepoints))
 
     def _reset_font_support_cache(self) -> None:

@@ -99,7 +99,7 @@ class AssetSlicingAPITests(unittest.TestCase):
             spacing=0,
         )
         self.assertTrue(result.get("success"))
-        
+
         data = result.get("data", {})
         self.assertIn("slices", data)
         # 16x16 image with 8x8 cells = 4 slices
@@ -113,11 +113,11 @@ class AssetSlicingAPITests(unittest.TestCase):
             cell_width=8,
             cell_height=8,
         )
-        
+
         # Then list them
         slices = self.api.list_asset_slices("assets/spritesheet.png")
         self.assertEqual(len(slices), 4)
-        
+
         # Check slice structure
         if slices:
             slice_data = slices[0]
@@ -139,13 +139,13 @@ class AssetSlicingAPITests(unittest.TestCase):
             {"name": "slice_0", "x": 0, "y": 0, "width": 8, "height": 8},
             {"name": "slice_1", "x": 8, "y": 0, "width": 8, "height": 8},
         ]
-        
+
         result = self.api.save_manual_slices(
             asset_path="assets/spritesheet.png",
             slices=manual_slices,
         )
         self.assertTrue(result.get("success"))
-        
+
         # Verify slices were saved
         saved_slices = self.api.list_asset_slices("assets/spritesheet.png")
         self.assertEqual(len(saved_slices), 2)
@@ -155,14 +155,14 @@ class AssetSlicingAPITests(unittest.TestCase):
         manual_slices = [
             {"name": "custom_name", "x": 0, "y": 0, "width": 8, "height": 8, "pivot_x": 0.25, "pivot_y": 0.75},
         ]
-        
+
         result = self.api.save_manual_slices(
             asset_path="assets/spritesheet.png",
             slices=manual_slices,
         )
-        
+
         self.assertTrue(result.get("success"))
-        
+
         # Check metadata
         data = result.get("data", {})
         self.assertEqual(data.get("import_mode"), "manual")

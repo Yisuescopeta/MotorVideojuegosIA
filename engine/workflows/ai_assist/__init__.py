@@ -2,7 +2,6 @@ from engine.workflows.ai_assist.context import build_project_context_snapshot
 from engine.workflows.ai_assist.context_pack import ProjectContextPackGenerator
 from engine.workflows.ai_assist.diagnostics import AuthoringValidationService
 from engine.workflows.ai_assist.execution import AuthoringExecutionService
-from engine.workflows.ai_assist.verification_harness import HeadlessVerificationService
 from engine.workflows.ai_assist.types import (
     AssetInventoryEntry,
     AuthoringEntityPropertyKind,
@@ -15,10 +14,10 @@ from engine.workflows.ai_assist.types import (
     AuthoringExecutionRequest,
     AuthoringExecutionResult,
     AuthoringExecutionStatus,
+    AuthoringOperationKind,
     AuthoringPlan,
     AuthoringPlanStep,
     AuthoringRequest,
-    AuthoringOperationKind,
     ContextPackAssetMetadataRecord,
     ContextPackAssetRecord,
     ContextPackFeatureSection,
@@ -30,22 +29,22 @@ from engine.workflows.ai_assist.types import (
     ContextPackScriptBehaviourSection,
     ContextPackScriptBehaviourUsage,
     ContextPackSourceKind,
-    PlanStepKind,
-    ProjectContextPack,
-    ProjectContextPackArtifacts,
-    ProjectContextSnapshot,
-    RollbackStatus,
-    SceneContextEntry,
     HeadlessVerificationAssertion,
     HeadlessVerificationAssertionKind,
     HeadlessVerificationAssertionResult,
     HeadlessVerificationReport,
     HeadlessVerificationScenario,
     HeadlessVerificationSetupResult,
+    PlanStepKind,
+    ProjectContextPack,
+    ProjectContextPackArtifacts,
+    ProjectContextSnapshot,
+    RollbackStatus,
+    SceneContextEntry,
     ValidationDiagnostic,
     ValidationDiagnosticCategory,
-    ValidationDiagnosticsReport,
     ValidationDiagnosticSeverity,
+    ValidationDiagnosticsReport,
     ValidationIssue,
     ValidationIssueSeverity,
     ValidationReport,
@@ -65,6 +64,7 @@ from engine.workflows.ai_assist.validation import (
     validate_workflow,
 )
 from engine.workflows.ai_assist.verification import verify_headless_capture, verify_script_commands
+from engine.workflows.ai_assist.verification_harness import HeadlessVerificationService
 from engine.workflows.ai_assist.workflow import summarize_workflow_result
 
 __all__ = [

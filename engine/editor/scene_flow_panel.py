@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any, Optional
 
 import pyray as rl
-
 from engine.editor.console_panel import log_err, log_warn
 from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.render_safety import gui_toggle_bool
@@ -809,9 +808,12 @@ class SceneFlowPanel:
                 return
 
         if self._drag_node_key and rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT):
-            node = next((item for item in nodes if str(item.get("node_key", "")) == self._drag_node_key), None)
-            if node is not None:
-                self._persist_node_position(node, mouse.x - self._drag_offset.x, mouse.y - self._drag_offset.y)
+            dragged_node: dict[str, Any] | None = next(
+                (item for item in nodes if str(item.get("node_key", "")) == self._drag_node_key),
+                None,
+            )
+            if dragged_node is not None:
+                self._persist_node_position(dragged_node, mouse.x - self._drag_offset.x, mouse.y - self._drag_offset.y)
                 self.refresh(force=True)
             return
 

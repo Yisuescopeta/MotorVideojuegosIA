@@ -6,8 +6,8 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from engine.audio import AudioPlaybackRequest, AudioRuntime, AudioRuntimeEvent
 from engine.assets.asset_service import AssetService
+from engine.audio import AudioPlaybackRequest, AudioRuntime, AudioRuntimeEvent
 from engine.components.audiosource import AudioSource
 from engine.components.transform import Transform
 from engine.ecs.world import World

@@ -10,7 +10,6 @@ from typing import Any
 from engine.api import EngineAPI
 from engine.debug.benchmark_scenarios import build_benchmark_scenario
 
-
 BENCHMARK_REPORT_VERSION = 1
 
 

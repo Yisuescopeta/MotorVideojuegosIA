@@ -11,20 +11,17 @@ and actual implementation.
 from __future__ import annotations
 
 import json
-import tempfile
 import unittest
-from pathlib import Path
 
 from engine.ai.registry_builder import CapabilityRegistryBuilder, MotorAIBootstrapBuilder
-from engine.api.engine_api import EngineAPI
 
 
 class EntityDeleteSemanticTests(unittest.TestCase):
     """
     Tests that entity:delete capability description matches actual behavior.
-    
+
     Actual behavior: Children are REPARENTED to grandparent, not deleted.
-    
+
     Note: Behavioral tests are covered by structural_authoring tests.
     These tests verify the registry description accuracy.
     """
@@ -58,10 +55,10 @@ class EntityDeleteSemanticTests(unittest.TestCase):
 class AnimatorStateRemoveSemanticTests(unittest.TestCase):
     """
     Tests that animator:state:remove capability description matches actual behavior.
-    
+
     Documented behavior (WRONG): "Cannot remove the last state"
     Actual behavior: CAN remove the last state (schema uses placeholder)
-    
+
     Note: Behavioral tests are covered by test_motor_animator_e2e tests.
     These tests verify the registry description accuracy.
     """

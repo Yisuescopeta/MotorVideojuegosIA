@@ -11,7 +11,6 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 
 import pyray as rl
-
 from engine.assets.asset_service import AssetService
 from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.render_safety import editor_scissor
@@ -465,11 +464,11 @@ class ProjectPanel:
                 result.append(item)
                 self._item_display_cache[(name, entry_type)] = item
                 continue
-            item = self._build_file_entry(absolute_path)
-            if item is None or not self._matches_filter(item):
+            file_item = self._build_file_entry(absolute_path)
+            if file_item is None or not self._matches_filter(file_item):
                 continue
-            result.append(item)
-            self._item_display_cache[(name, entry_type)] = item
+            result.append(file_item)
+            self._item_display_cache[(name, entry_type)] = file_item
         return result
 
     def _build_search_entries(self) -> List[Dict[str, Any]]:

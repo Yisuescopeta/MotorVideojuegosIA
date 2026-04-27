@@ -4,8 +4,7 @@ engine/inspector/component_editor_registry.py - Registro de editores dedicados.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional
-
+from typing import Callable, Dict, Optional
 
 ComponentEditor = Callable[..., int]
 

@@ -4,7 +4,6 @@ import os
 from typing import Any, Callable
 
 import pyray as rl
-
 from engine.core.engine_state import EngineState
 from engine.editor.console_panel import log_err, log_info
 

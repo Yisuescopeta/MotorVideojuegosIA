@@ -10,7 +10,6 @@ from engine.api import EngineAPI
 from engine.assets.asset_database import AssetDatabase
 from engine.project.project_service import ProjectService
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -501,7 +500,7 @@ class AIDiscoverabilityTests(unittest.TestCase):
         original_content = json.dumps({"schema_version": 99}, indent=4)
         motor_ai_path.write_text(original_content, encoding="utf-8")
 
-        result = service.generate_ai_bootstrap()
+        service.generate_ai_bootstrap()
 
         data = json.loads(motor_ai_path.read_text(encoding="utf-8"))
         self.assertEqual(data["schema_version"], 3)  # Updated for status field
@@ -763,7 +762,7 @@ class ProjectSwitchIntegrationTests(unittest.TestCase):
     def test_script_context_can_load_next_scene_in_play_mode(self) -> None:
         project_root, _ = self._make_project("FlowScriptProject")
         first_path = self._write_level(project_root, "first.json", "First")
-        second_path = self._write_level(project_root, "second.json", "Second")
+        self._write_level(project_root, "second.json", "Second")
         script_path = project_root / "scripts" / "flow_jump.py"
         script_path.write_text(
             "def on_update(context, dt):\n"

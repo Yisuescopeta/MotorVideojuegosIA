@@ -2,9 +2,13 @@ import unittest
 from unittest.mock import patch
 
 import pyray as rl
-
 from engine.editor.console_panel import ConsolePanel
-from engine.editor.render_safety import editor_scissor, gui_toggle_bool, logical_rect_to_scissor_rect, safe_reset_clip_state
+from engine.editor.render_safety import (
+    editor_scissor,
+    gui_toggle_bool,
+    logical_rect_to_scissor_rect,
+    safe_reset_clip_state,
+)
 from engine.editor.scene_flow_panel import SceneFlowPanel
 
 

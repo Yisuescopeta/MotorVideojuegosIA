@@ -7,12 +7,11 @@ import os
 import shutil
 import subprocess
 from ctypes import wintypes
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from engine.agent.types import utc_now_iso
-
 
 DEFAULT_OPENCODE_GO_BASE_URL = "https://opencode.ai/zen/go/v1/chat/completions"
 DEFAULT_OPENCODE_GO_MODEL = "opencode-go/kimi-k2.5"

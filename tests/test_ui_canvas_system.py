@@ -10,7 +10,6 @@ from engine.components.uibutton import UIButton
 from engine.editor.cursor_manager import CursorVisualState
 from engine.systems.ui_render_system import UIRenderSystem
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 

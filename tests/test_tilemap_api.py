@@ -184,7 +184,7 @@ class TilemapApiTests(unittest.TestCase):
         try:
             reloaded.load_level(scene_path.as_posix())
             tilemap = reloaded.get_tilemap("Grid")
-            ground_layer = next((l for l in tilemap["layers"] if l["name"] == "Ground"), None)
+            ground_layer = next((layer for layer in tilemap["layers"] if layer["name"] == "Ground"), None)
             self.assertIsNotNone(ground_layer)
             tile_map = {(t["x"], t["y"]): t for t in ground_layer["tiles"]}
             self.assertEqual(tile_map[(0, 0)]["tile_id"], "grass")
@@ -314,7 +314,7 @@ class TilemapApiTests(unittest.TestCase):
         self.assertEqual(tilemap["tileset_columns"], 8)
         self.assertEqual(tilemap["default_layer_name"], "Ground")
 
-        layers = {l["name"]: l for l in tilemap["layers"]}
+        layers = {layer["name"]: layer for layer in tilemap["layers"]}
         self.assertEqual(layers["Ground"]["locked"], False)
         self.assertEqual(layers["Ground"]["offset_x"], 0.0)
         self.assertEqual(layers["Ground"]["collision_layer"], 0)
@@ -341,7 +341,7 @@ class TilemapApiTests(unittest.TestCase):
             tilemap_reloaded = reloaded.get_tilemap("Map")
             self.assertEqual(tilemap_reloaded["tileset_tile_width"], 32)
             self.assertEqual(tilemap_reloaded["default_layer_name"], "Ground")
-            layers_reloaded = {l["name"]: l for l in tilemap_reloaded["layers"]}
+            layers_reloaded = {layer["name"]: layer for layer in tilemap_reloaded["layers"]}
             self.assertEqual(layers_reloaded["Walls"]["locked"], True)
             self.assertEqual(layers_reloaded["Walls"]["offset_x"], 10.0)
             self.assertEqual(layers_reloaded["Walls"]["collision_layer"], 1)

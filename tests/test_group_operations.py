@@ -3,7 +3,6 @@ tests/test_group_operations.py - Validación de operaciones de gameplay sobre gr
 """
 
 import unittest
-from unittest.mock import MagicMock
 
 from engine.ecs.entity import Entity
 from engine.ecs.group_operations import GroupOperations

@@ -23,8 +23,8 @@ from engine.serialization.schema import (
 from engine.workflows.ai_assist.types import (
     ValidationDiagnostic,
     ValidationDiagnosticCategory,
-    ValidationDiagnosticsReport,
     ValidationDiagnosticSeverity,
+    ValidationDiagnosticsReport,
     ValidationTargetKind,
 )
 

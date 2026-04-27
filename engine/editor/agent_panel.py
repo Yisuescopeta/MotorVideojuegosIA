@@ -17,10 +17,9 @@ from __future__ import annotations
 
 import os
 import subprocess
-from typing import Any, Callable
+from typing import Any
 
 import pyray as rl
-
 from engine.agent import (
     AgentActionStatus,
     AgentPermissionMode,
@@ -1508,10 +1507,11 @@ class AgentPanel:
         codex_home = str(command_result.get("codex_home", "") or "").strip()
         if codex_home:
             env["CODEX_HOME"] = codex_home
-        kwargs: dict[str, object] = {"env": env}
+        command = [str(item) for item in raw_command]
+        kwargs: dict[str, Any] = {"env": env}
         if os.name == "nt":
             kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
-        subprocess.Popen(raw_command, **kwargs)
+        subprocess.Popen(command, **kwargs)
 
     def _complete_login(self) -> None:
         if self.agent_service is None or not self.pending_login_provider:
