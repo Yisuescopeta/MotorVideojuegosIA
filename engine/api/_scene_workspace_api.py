@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 from engine.api._context import EngineAPIComponent
@@ -89,77 +88,14 @@ class SceneWorkspaceAPI(EngineAPIComponent):
                 "entity_count": 0,
             }
         summary = workspace.get_active_scene_summary()
-        runtime = self.runtime
-        world = runtime.world if runtime is not None else None
         return {
             "has_scene": summary.get("path", "") != "",
             "path": summary.get("path", ""),
             "name": summary.get("name", ""),
             "key": summary.get("key", ""),
             "dirty": summary.get("dirty", False),
-            "entity_count": world.entity_count() if world is not None else 0,
+            "entity_count": summary.get("entity_count", 0),
         }
-
-    def load_scene_for_runtime_inspection(self) -> ActionResult:
-        """Load a project scene into the current headless projection without persistence."""
-        runtime = self.runtime
-        scene_manager = self.scene_manager
-        project_service = self.project_service
-        if runtime is None or scene_manager is None or project_service is None:
-            return self.fail("Engine not initialized")
-        if not project_service.has_project:
-            return self.fail("Project manifest not loaded")
-
-        for scene_ref, source_field in self._runtime_inspection_scene_candidates():
-            resolved_path = project_service.resolve_path(scene_ref)
-            if not resolved_path.exists() or not resolved_path.is_file():
-                continue
-            world = scene_manager.load_scene_from_file(resolved_path.as_posix(), activate=True)
-            if world is None:
-                continue
-            runtime.set_world(world)
-            runtime.current_scene_path = resolved_path.as_posix()
-            scene = scene_manager.current_scene
-            relative_path = project_service.to_relative_path(resolved_path)
-            return self.ok(
-                "Scene loaded for read-only runtime inspection",
-                {
-                    "path": relative_path,
-                    "source_field": source_field,
-                    "name": scene.name if scene is not None else Path(relative_path).stem,
-                    "entity_count": world.entity_count(),
-                },
-            )
-        return self.fail("No loadable scene found for runtime inspection")
-
-    def _runtime_inspection_scene_candidates(self) -> list[tuple[str, str]]:
-        project_service = self.project_service
-        if project_service is None:
-            return []
-
-        candidates: list[tuple[str, str]] = []
-        seen: set[str] = set()
-
-        def add(scene_ref: Any, source_field: str) -> None:
-            value = str(scene_ref or "").strip()
-            if not value:
-                return
-            key = value.replace("\\", "/")
-            if key in seen:
-                return
-            seen.add(key)
-            candidates.append((value, source_field))
-
-        editor_state = project_service.load_editor_state()
-        add(editor_state.get("active_scene"), "editor_state.active_scene")
-        add(editor_state.get("last_scene"), "editor_state.last_scene")
-        add(project_service.load_project_settings().get("startup_scene"), "settings.startup_scene")
-
-        for scene in project_service.list_project_scenes():
-            add(scene.get("path"), "levels.first_scene")
-            break
-
-        return candidates
 
     def activate_scene(self, key_or_path: str) -> ActionResult:
         runtime = self.runtime

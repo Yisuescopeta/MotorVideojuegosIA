@@ -35,7 +35,6 @@ class CapabilityRegistryBuilder:
         self._register_slicing_capabilities()
         self._register_animator_capabilities()
         self._register_prefab_capabilities()
-        self._register_ai_capabilities()
         self._register_project_capabilities()
         self._register_runtime_capabilities()
         self._register_physics_capabilities()
@@ -624,41 +623,6 @@ class CapabilityRegistryBuilder:
             tags=["prefab", "query"],
         ))
 
-    def _register_ai_capabilities(self) -> None:
-        self._add(Capability(
-            id="ai:start",
-            summary="Show the compact AI entrypoint contract for this project",
-            mode="both",
-            api_methods=["CapabilityRegistry.cmd_ai_start"],
-            cli_command="motor ai start [--project <path>] [--json]",
-            example=CapabilityExample(
-                description="Load the project contract an AI assistant should follow first",
-                api_calls=[
-                    {"method": "cmd_ai_start", "args": {"project_path": ".", "json_output": True}},
-                ],
-                expected_outcome="Returns engine identity, official CLI/API, scene context, initial commands, workflows and anti-runtime rules",
-            ),
-            notes="Read-only. This is the recommended first command for AI assistants working on a project.",
-            tags=["ai", "introspection", "bootstrap", "contract"],
-        ))
-
-        self._add(Capability(
-            id="ai:compliance",
-            summary="Validate whether a project follows the AI-native engine contract",
-            mode="both",
-            api_methods=["run_ai_compliance", "cmd_ai_compliance"],
-            cli_command="motor ai compliance [--project <path>] [--strict] [--json]",
-            example=CapabilityExample(
-                description="Run strict AI compliance checks after a change",
-                api_calls=[
-                    {"method": "cmd_ai_compliance", "args": {"project_path": ".", "strict": True, "json_output": True}},
-                ],
-                expected_outcome="Returns native score, strict status, runtime warnings and next actions",
-            ),
-            notes="Read-only. Strict mode fails on suspicious external runtimes or missing native loadable scenes.",
-            tags=["ai", "introspection", "validation", "compliance"],
-        ))
-
     def _register_project_capabilities(self) -> None:
         self._add(Capability(
             id="project:bootstrap-ai",
@@ -1037,60 +1001,6 @@ class CapabilityRegistryBuilder:
         ))
 
         self._add(Capability(
-            id="agent:providers:login",
-            summary="Store provider credentials or delegate managed Codex/OpenAI login",
-            mode="both",
-            api_methods=["AgentAPI.login_agent_provider"],
-            cli_command="motor agent providers login <provider> [--api-key-stdin] [--codex-chatgpt] [--device-auth] [--base-url <url>] [--model <model>]",
-            example=CapabilityExample(
-                description="Configure an agent provider credential without exposing the key in shell history",
-                api_calls=[
-                    {
-                        "method": "login_agent_provider",
-                        "args": {"provider_id": "openai", "credential_source": "user_local"},
-                    },
-                ],
-                expected_outcome="Stores local provider auth metadata or delegates to managed Codex/OpenAI auth",
-            ),
-            notes="Experimental/tooling. CLI requires --api-key-stdin for raw keys, or --codex-chatgpt/--device-auth for managed login.",
-            tags=["agent", "experimental", "providers", "auth"],
-        ))
-
-        self._add(Capability(
-            id="agent:providers:logout",
-            summary="Remove user-local provider credentials",
-            mode="both",
-            api_methods=["AgentAPI.logout_agent_provider"],
-            cli_command="motor agent providers logout <provider>",
-            example=CapabilityExample(
-                description="Remove a stored provider credential",
-                api_calls=[
-                    {"method": "logout_agent_provider", "args": {"provider_id": "openai"}},
-                ],
-                expected_outcome="Provider credential metadata is removed without revealing secrets",
-            ),
-            notes="Experimental/tooling. Does not remove environment variables or external managed auth state.",
-            tags=["agent", "experimental", "providers", "auth"],
-        ))
-
-        self._add(Capability(
-            id="agent:providers:status",
-            summary="Show provider authentication status without revealing secrets",
-            mode="both",
-            api_methods=["AgentAPI.get_agent_provider_status"],
-            cli_command="motor agent providers status [provider]",
-            example=CapabilityExample(
-                description="Inspect whether OpenAI provider auth is available",
-                api_calls=[
-                    {"method": "get_agent_provider_status", "args": {"provider_id": "openai"}},
-                ],
-                expected_outcome="Returns credential source, auth method and runtime readiness without secret values",
-            ),
-            notes="Experimental/tooling. Omitting provider returns default/provider-wide status.",
-            tags=["agent", "experimental", "providers", "auth", "diagnostics"],
-        ))
-
-        self._add(Capability(
             id="agent:session:compact",
             summary="Compact an agent session transcript into local memory",
             mode="both",
@@ -1349,7 +1259,6 @@ class MotorAIBootstrapBuilder:
 
         # Only implemented capabilities - verified to exist in CLI
         common_caps = [
-            "ai:start", "ai:compliance",
             "scene:load", "scene:save", "scene:create",
             "entity:create",
             "component:add",
@@ -1372,7 +1281,6 @@ class MotorAIBootstrapBuilder:
         ])
 
         categories: Dict[str, List[str]] = {
-            "AI": ["ai:"],
             "Scene Management": ["scene:"],
             "Entity Operations": ["entity:"],
             "Component Operations": ["component:"],
@@ -1380,7 +1288,6 @@ class MotorAIBootstrapBuilder:
             "Animation": ["animator:"],
             "Prefabs": ["prefab:"],
             "Project": ["project:"],
-            "Agent": ["agent:"],
             "Runtime": ["runtime:"],
             "Physics": ["physics:"],
             "Introspection": ["introspect:"],
@@ -1430,54 +1337,34 @@ class MotorAIBootstrapBuilder:
             "",
             "## Getting Started",
             "",
-            "Start here before making changes:",
-            "```bash",
-            "motor ai start --project . --json",
-            "```",
-            "",
-            "Rules for AI agents:",
-            "- Use MotorVideojuegosIA through `motor`, `EngineAPI` and serialized scenes/components.",
-            "- Do not create an external runtime for this project.",
-            "- Do not deliver `run_game.py` or an alternate main loop as the main game.",
-            "",
             "### Quick Workflow",
             "",
-            "1. **Load the AI contract**:",
-            "   ```bash",
-            "   motor ai start --project . --json",
-            "   ```",
-            "",
-            "2. **Check project health**:",
+            "1. **Check project health**:",
             "   ```bash",
             "   motor doctor --project . --json",
             "   ```",
             "",
-            "3. **Check AI-native compliance**:",
-            "   ```bash",
-            "   motor ai compliance --project . --strict --json",
-            "   ```",
-            "",
-            "4. **Create a scene**:",
+            "2. **Create a scene**:",
             "   ```bash",
             "   motor scene create \"Level 1\" --project .",
             "   ```",
             "",
-            "5. **Create an entity**:",
+            "3. **Create an entity**:",
             "   ```bash",
             "   motor entity create Player --project . --json",
             "   ```",
             "",
-            "6. **Add a component**:",
+            "4. **Add a component**:",
             "   ```bash",
             '   motor component add Player Transform --data \'{"x": 100, "y": 200}\' --project .',
             "   ```",
             "",
-            "7. **Slice a sprite sheet**:",
+            "5. **Slice a sprite sheet**:",
             "   ```bash",
             "   motor asset slice grid assets/player.png --cell-width 32 --cell-height 32 --project .",
             "   ```",
             "",
-            "8. **Configure animator**:",
+            "6. **Configure animator**:",
             "   ```bash",
             "   motor animator ensure Player --project .",
             "   motor animator set-sheet Player assets/player.png --project .",

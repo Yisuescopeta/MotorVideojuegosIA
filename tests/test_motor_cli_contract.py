@@ -143,7 +143,6 @@ class RegistryToCLIExecutableContractTests(unittest.TestCase):
 
         # Mapeo de capability scope a comandos CLI
         scope_to_command = {
-            "ai": "ai",
             "scene": "scene",
             "entity": "entity",
             "component": "component",
@@ -186,8 +185,6 @@ class RegistryToCLIExecutableContractTests(unittest.TestCase):
         # Comandos que deberían funcionar (no marcados como futuro)
         # Usando gramática oficial: motor <noun> [<subnoun>] <verb>
         implemented_patterns = [
-            ("ai", ["start"]),
-            ("ai", ["compliance"]),
             ("capabilities", []),
             ("doctor", []),
             ("project", ["info"]),
@@ -235,61 +232,6 @@ class RegistryToCLIExecutableContractTests(unittest.TestCase):
                     f"Capability '{cap.id}' usa sintaxis legacy en cli_command: {cmd}\n"
                     f"Use 'animator state create/remove' en su lugar."
                 )
-
-
-class AIStartCLIContractTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self._temp_dir = tempfile.TemporaryDirectory()
-        self.project = _create_test_project(Path(self._temp_dir.name), "AIStartCLI")
-        self.env = os.environ.copy()
-        python_path = self.env.get("PYTHONPATH", "")
-        self.env["PYTHONPATH"] = str(ROOT) if not python_path else str(ROOT) + os.pathsep + python_path
-        scene_path = self.project / "levels" / "main_scene.json"
-        scene_path.write_text(
-            json.dumps({"name": "Main Scene", "entities": [], "rules": [], "feature_metadata": {}}, indent=2),
-            encoding="utf-8",
-        )
-
-    def tearDown(self) -> None:
-        self._temp_dir.cleanup()
-
-    def test_motor_ai_start_returns_contract_json(self) -> None:
-        returncode, stdout, stderr = _run_motor(
-            "ai",
-            "start",
-            "--project",
-            self.project.as_posix(),
-            "--json",
-            env=self.env,
-        )
-
-        self.assertEqual(returncode, 0, stderr + stdout)
-        payload = json.loads(stdout[stdout.index("{"):])
-        self.assertTrue(payload["success"])
-
-        data = payload["data"]
-        self.assertEqual(data["engine"]["name"], "MotorVideojuegosIA")
-        self.assertTrue(data["engine"]["version"])
-        self.assertEqual(data["recommended_cli"], "motor")
-        self.assertEqual(data["recommended_api"], "EngineAPI")
-        self.assertIn("serialized Scene", data["authoring_contract"])
-        self.assertIn("EngineAPI", data["authoring_contract"])
-        self.assertGreaterEqual(data["scene_context"]["detected_scene_count"], 1)
-        self.assertIn("motor ai start --project . --json", data["initial_commands"])
-        self.assertIn("motor doctor --project . --json", data["initial_commands"])
-
-        rules_text = json.dumps(data["rules"])
-        self.assertIn("external runtime", rules_text)
-        self.assertIn("run_game.py", rules_text)
-        self.assertIn("alternate main loop", rules_text)
-
-        self.assertEqual(
-            data["validation"]["command"],
-            "motor ai compliance --project . --strict --json",
-        )
-        self.assertEqual(data["validation"]["status"], "implemented")
-        self.assertTrue(data["validation"]["next_step"])
-        self.assertTrue(data["recommended_workflows"])
 
 
 class PrefabCLIContractTests(unittest.TestCase):
@@ -766,7 +708,6 @@ class CommandCoverageTests(unittest.TestCase):
         # Mapeo inverso: comandos CLI a scopes
         command_to_scope = {
             "capabilities": "introspect",
-            "ai": "ai",
             "doctor": "project",
             "project": "project",
             "scene": "scene",

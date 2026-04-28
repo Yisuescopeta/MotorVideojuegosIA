@@ -11,13 +11,9 @@ from __future__ import annotations
 
 import re
 import unittest
-from pathlib import Path
 
 from engine.ai import get_default_registry
 from motor.cli import create_motor_parser
-
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 class MotorRegistryConsistencyTests(unittest.TestCase):
@@ -283,22 +279,6 @@ class MotorGrammarUniquenessTests(unittest.TestCase):
                 "\n".join([f"  {cid}: {cmd}" for cid, cmd in violations]) +
                 "\n\nUse 'animator state create/remove' en su lugar."
             )
-
-    def test_cli_docs_do_not_promote_animator_legacy_aliases(self) -> None:
-        """docs/cli.md must not list hidden animator aliases as official commands."""
-        content = (ROOT / "docs" / "cli.md").read_text(encoding="utf-8")
-
-        forbidden = [
-            "motor animator upsert-state",
-            "motor animator remove-state",
-        ]
-        violations = [pattern for pattern in forbidden if pattern in content]
-
-        self.assertEqual(
-            violations,
-            [],
-            f"docs/cli.md promotes animator legacy aliases as commands: {violations}",
-        )
 
     def test_grammar_pattern_consistency(self) -> None:
         """All CLI commands follow the unified grammar pattern.

@@ -11,7 +11,6 @@ from engine.ai.registry_builder import (
     MotorAIBootstrapBuilder,
     get_default_registry,
 )
-from engine.ai.compliance import run_ai_compliance
 
 __all__ = [
     "Capability",
@@ -21,5 +20,4 @@ __all__ = [
     "CapabilityRegistryBuilder",
     "MotorAIBootstrapBuilder",
     "get_default_registry",
-    "run_ai_compliance",
 ]

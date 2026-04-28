@@ -357,7 +357,6 @@ class NoFutureArchitectureAssumptionsTests(unittest.TestCase):
         """Tests should only use commands that are actually implemented."""
         # List of implemented commands verified to work
         implemented = {
-            "ai start", "ai compliance",
             "capabilities", "doctor", "project info", "project bootstrap-ai",
             "scene list", "scene create", "scene load", "scene save",
             "entity create", "component add",
