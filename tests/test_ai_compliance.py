@@ -113,6 +113,7 @@ class AIComplianceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             project = _create_project(Path(tmpdir))
             _write_scene(project)
+            clean_report = run_ai_compliance(project, strict=True)
             (project / "run_game.py").write_text(
                 "import pyray\nwhile not pyray.window_should_close():\n    pyray.begin_drawing()\n    pyray.end_drawing()\n",
                 encoding="utf-8",
@@ -143,8 +144,59 @@ class AIComplianceTests(unittest.TestCase):
             self.assertFalse(data["strict_pass"])
             self.assertTrue(data["external_runtime_detected"])
             self.assertTrue(data["external_runtime_blocking"])
+            self.assertLessEqual(data["native_score"], clean_report["native_score"] - 25)
             codes = {item["code"] for item in data["problems"]}
             self.assertIn("external_runtime_run_game", codes)
+
+    def test_demo_run_game_warns_without_strict_failure_or_score_drop(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = _create_project(Path(tmpdir))
+            _write_scene(project)
+            clean_report = run_ai_compliance(project, strict=True)
+            demo_dir = project / "demo"
+            demo_dir.mkdir()
+            (demo_dir / "run_game.py").write_text(
+                "import pyray\nwhile not pyray.window_should_close():\n    pyray.begin_drawing()\n    pyray.end_drawing()\n",
+                encoding="utf-8",
+            )
+
+            report = run_ai_compliance(project, strict=True)
+
+            self.assertTrue(report["success"], report)
+            self.assertTrue(report["strict_pass"], report)
+            self.assertTrue(report["external_runtime_detected"])
+            self.assertFalse(report["external_runtime_blocking"])
+            self.assertTrue(report["external_runtime_warnings"])
+            self.assertGreaterEqual(report["native_score"], clean_report["native_score"])
+            problem_codes = {item["code"] for item in report["problems"]}
+            self.assertNotIn("external_runtime_run_game", problem_codes)
+            warning_codes = {item["code"] for item in report["warnings"]}
+            self.assertIn("external_runtime_run_game", warning_codes)
+
+    def test_docs_archive_external_runtime_is_not_scanned(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = _create_project(Path(tmpdir))
+            _write_scene(project)
+            archive_dir = project / "docs" / "archive"
+            archive_dir.mkdir(parents=True)
+            (archive_dir / "run_game.py").write_text(
+                "import pyray\nwhile not pyray.window_should_close():\n    pyray.begin_drawing()\n    pyray.end_drawing()\n",
+                encoding="utf-8",
+            )
+
+            report = run_ai_compliance(project, strict=True)
+
+            self.assertTrue(report["success"], report)
+            self.assertTrue(report["strict_pass"], report)
+            self.assertFalse(report["external_runtime_blocking"])
+            external_codes = {
+                item["code"]
+                for item in [*report["problems"], *report["warnings"]]
+                if item["code"].startswith("external_runtime_")
+            }
+            self.assertNotIn("external_runtime_run_game", external_codes)
+            self.assertNotIn("external_runtime_loop", external_codes)
+            self.assertNotIn("external_runtime_raylib", external_codes)
 
     def test_demo_bat_under_demo_is_warning_not_blocking(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

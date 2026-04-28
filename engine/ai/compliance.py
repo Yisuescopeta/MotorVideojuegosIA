@@ -101,12 +101,17 @@ def run_ai_compliance(project_root: str | Path, *, strict: bool = False) -> dict
 
     strict_pass = not problems and native_scene_valid and not external_runtime_blocking
     command_success = bool(checks.get("project_initializable")) and (strict_pass if strict else True)
-    native_score = _calculate_native_score(checks, external_runtime_detected)
+    native_score = _calculate_native_score(
+        checks,
+        external_runtime_blocking=external_runtime_blocking,
+        external_runtime_warnings=external_runtime_warnings,
+    )
 
     recommended_next_actions = _recommend_actions(
         checks=checks,
         strict=strict,
-        external_runtime_detected=external_runtime_detected,
+        external_runtime_blocking=external_runtime_blocking,
+        external_runtime_warnings=external_runtime_warnings,
         native_scene_valid=native_scene_valid,
     )
 
@@ -308,7 +313,7 @@ def _check_scene_contract(
 
 def _is_demo_or_legacy_path(rel_path: str) -> bool:
     lower = rel_path.lower().replace("\\", "/")
-    return lower.startswith("demo/") or lower.startswith("examples/") or lower.startswith("docs/archive/")
+    return lower.startswith("demo/") or lower.startswith("examples/")
 
 
 def _is_demo_named(path: Path) -> bool:
@@ -381,8 +386,8 @@ def _iter_candidate_files(root: Path) -> list[Path]:
             rel_str = rel.as_posix()
         except ValueError:
             continue
-        # Skip docs/ except docs/archive/
-        if rel_str.startswith("docs/") and not rel_str.startswith("docs/archive/"):
+        # Skip documentation, including archived historical material.
+        if rel_str.startswith("docs/"):
             continue
         if any(part in _SKIP_SCAN_DIRS for part in rel_parts[:-1]):
             continue
@@ -405,7 +410,12 @@ def _relative_path(root: Path, path: Path) -> str:
         return path.as_posix()
 
 
-def _calculate_native_score(checks: dict[str, Any], external_runtime_detected: bool) -> int:
+def _calculate_native_score(
+    checks: dict[str, Any],
+    *,
+    external_runtime_blocking: bool,
+    external_runtime_warnings: bool,
+) -> int:
     score = 100
     penalties = [
         (not checks.get("project_initializable"), 25),
@@ -417,7 +427,8 @@ def _calculate_native_score(checks: dict[str, Any], external_runtime_detected: b
         (not checks.get("serialized_entities_present"), 15),
         (not checks.get("scene_is_persistent_source"), 15),
         (bool(checks.get("unknown_components")), 5),
-        (external_runtime_detected, 25),
+        (external_runtime_blocking, 25),
+        (external_runtime_warnings, 0),
     ]
     for applies, penalty in penalties:
         if applies:
@@ -429,7 +440,8 @@ def _recommend_actions(
     *,
     checks: dict[str, Any],
     strict: bool,
-    external_runtime_detected: bool,
+    external_runtime_blocking: bool,
+    external_runtime_warnings: bool,
     native_scene_valid: bool,
 ) -> list[str]:
     actions: list[str] = []
@@ -443,8 +455,10 @@ def _recommend_actions(
         actions.append("Represent gameplay objects as serialized Scene entities with registered components.")
     if checks.get("unknown_components"):
         actions.append("Register public components in engine/levels/component_registry.py or replace unknown component names.")
-    if external_runtime_detected:
-        actions.append("Route the playable flow through the public motor CLI or EngineAPI and keep external runtime scripts non-primary.")
+    if external_runtime_blocking:
+        actions.append("Route the playable flow through the public motor CLI or EngineAPI.")
+    elif external_runtime_warnings:
+        actions.append("Review demo/legacy external runtime scripts and keep them non-primary.")
     if strict and not actions:
         actions.append("No strict compliance action required.")
     return actions

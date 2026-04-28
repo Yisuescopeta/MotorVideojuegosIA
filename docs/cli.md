@@ -91,8 +91,10 @@ Checks principales:
 
 Modo normal reporta sospechas como warnings. Modo `--strict` falla ante runtime
 externo sospechoso o ausencia de escena nativa valida. Puede haber falsos
-positivos en scripts auxiliares o demos antiguas; el comando no borra ni edita
-archivos sospechosos.
+positivos en scripts auxiliares o demos antiguas fuera de `docs/`. La
+documentacion, incluido el material historico en `docs/archive/`, no forma
+parte del escaneo de runtimes externos. El comando no borra ni edita archivos
+sospechosos.
 
 ### `motor capabilities`
 
