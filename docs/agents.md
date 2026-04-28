@@ -103,10 +103,16 @@ Para CLI:
 py -m motor ai start --project . --json
 py -m motor ai compliance --project . --json
 py -m motor doctor --project . --json
+py -m motor runtime step --project . --frames 300 --json
 py -m motor scene create "Level 1" --project . --json
 py -m motor entity create Player --project . --json
 py -m motor component add Player Transform --data '{"x":0,"y":0}' --project . --json
 ```
+
+Para verificacion runtime headless, usa `motor runtime play/step/stop`. Estos
+comandos son stateless: inicializan `EngineAPI`, cargan una escena mediante
+superficies publicas, ejecutan el control runtime y salen sin guardar mutaciones
+runtime como authoring state.
 
 Para UI serializable usa los helpers publicos de `EngineAPI` como
 `create_canvas`, `create_ui_text`, `create_ui_button` y `create_ui_image`.

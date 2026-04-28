@@ -111,6 +111,173 @@ def _auto_load_scene(api: EngineAPI) -> tuple[bool, str]:
         return False, "No active scene. Create or load a scene first."
 
 
+def _runtime_status(api: EngineAPI) -> Dict[str, Any]:
+    """Return a serializable runtime status through the public API."""
+    try:
+        return dict(api.get_status())
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def _runtime_scene_info(api: EngineAPI) -> Dict[str, Any]:
+    """Return active scene info through the public API."""
+    try:
+        return dict(api.get_active_scene_info())
+    except Exception as exc:
+        return {
+            "has_scene": False,
+            "path": "",
+            "name": "",
+            "key": "",
+            "dirty": False,
+            "entity_count": 0,
+            "error": str(exc),
+        }
+
+
+def _ensure_runtime_scene(api: EngineAPI, warnings: List[str]) -> tuple[bool, Dict[str, Any]]:
+    """Load a scene for headless runtime verification without persisting state."""
+    if api.has_active_scene():
+        return True, _runtime_scene_info(api)
+
+    warnings.append(
+        "No active scene in this stateless CLI process; attempting to load a scene for headless runtime inspection."
+    )
+    result = api.load_scene_for_runtime_inspection()
+    if not result.get("success"):
+        warnings.append("No active scene could be loaded. Create or load a scene before runtime validation.")
+        return False, {"has_scene": False, "load_result": result}
+
+    warnings.append("Loaded a fallback scene for this headless runtime process only; authoring state was not saved.")
+    return True, _runtime_scene_info(api)
+
+
+def _runtime_response_base(command: str, headless: bool, warnings: List[str]) -> Dict[str, Any]:
+    return {
+        "command": command,
+        "headless": bool(headless),
+        "stateless": True,
+        "warnings": list(warnings),
+    }
+
+
+def cmd_runtime_play(project_path: Path, headless: bool, json_output: bool) -> int:
+    """Start a stateless headless PLAY smoke check through EngineAPI."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        status_before = _runtime_status(api)
+
+        data = _runtime_response_base("runtime play", True, warnings)
+        data.update({
+            "scene": scene,
+            "status_before": status_before,
+            "status_after": status_before,
+            "cleanup_status": status_before,
+        })
+        if not scene_ready:
+            return _output(False, "Runtime play failed: no active scene", data, json_output)
+
+        api.play()
+        data["status_after"] = _runtime_status(api)
+        api.stop()
+        data["cleanup_status"] = _runtime_status(api)
+        data["warnings"] = list(warnings)
+        return _output(True, "Runtime play completed in stateless headless mode", data, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Runtime play failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_runtime_step(project_path: Path, frames: int, json_output: bool) -> int:
+    """Run PLAY -> STEP -> STOP headlessly in one stateless CLI process."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    normalized_frames = max(1, int(frames))
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        status_before = _runtime_status(api)
+
+        data = _runtime_response_base("runtime step", True, warnings)
+        data.update({
+            "scene": scene,
+            "frames_requested": normalized_frames,
+            "status_before": status_before,
+            "status_after_play": status_before,
+            "status_after_step": status_before,
+            "status_after": status_before,
+        })
+        if not scene_ready:
+            return _output(False, "Runtime step failed: no active scene", data, json_output)
+
+        api.play()
+        data["status_after_play"] = _runtime_status(api)
+        api.step(normalized_frames)
+        data["status_after_step"] = _runtime_status(api)
+        api.stop()
+        data["status_after"] = _runtime_status(api)
+        data["warnings"] = list(warnings)
+        return _output(True, "Runtime step completed in stateless headless mode", data, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Runtime step failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_runtime_stop(project_path: Path, json_output: bool) -> int:
+    """Stop runtime safely in a stateless CLI process."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = [
+        "Runtime CLI is stateless; this command cannot stop a PLAY session from a previous process."
+    ]
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        if not api.has_active_scene():
+            warnings.append("No active scene in this stateless CLI process.")
+        status_before = _runtime_status(api)
+        api.stop()
+        status_after = _runtime_status(api)
+        data = _runtime_response_base("runtime stop", True, warnings)
+        data.update({
+            "scene": _runtime_scene_info(api),
+            "status_before": status_before,
+            "status_after": status_after,
+        })
+        return _output(True, "Runtime stop completed in stateless headless mode", data, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Runtime stop failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
 
 # ============================================================================
 # Core Command Handlers
@@ -161,6 +328,7 @@ def _compact_workflows_from_registry() -> List[Dict[str, Any]]:
         "asset:list",
         "animator:ensure",
         "animator:state:create",
+        "runtime:step",
     ]
     workflows: List[Dict[str, Any]] = []
     for capability_id in selected_ids:

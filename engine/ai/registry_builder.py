@@ -731,52 +731,54 @@ class CapabilityRegistryBuilder:
     def _register_runtime_capabilities(self) -> None:
         self._add(Capability(
             id="runtime:play",
-            summary="Start play mode to test game logic",
+            summary="Start play mode for a stateless headless runtime check",
             mode="edit",
             api_methods=["RuntimeAPI.play"],
-            cli_command="motor runtime play",
+            cli_command="motor runtime play [--project <path>] [--headless]",
             example=CapabilityExample(
-                description="Start play mode",
+                description="Start play mode headlessly",
                 api_calls=[
                     {"method": "play", "args": {}},
                 ],
-                expected_outcome="Engine enters PLAY mode, scripts with run_in_edit_mode execute",
+                expected_outcome="Engine enters PLAY mode in the current CLI process and then cleans up before exit",
             ),
-            notes="Only available in EDIT mode. Scripts can control entities during play.",
+            notes="The official CLI command is stateless: it initializes EngineAPI, loads a scene for headless verification, calls play(), reports status, then stops before process exit without saving authoring state.",
             tags=["runtime", "play"],
         ))
 
         self._add(Capability(
             id="runtime:stop",
-            summary="Stop play mode and return to edit mode",
+            summary="Stop runtime in the current stateless headless process",
             mode="play",
             api_methods=["RuntimeAPI.stop"],
-            cli_command="motor runtime stop",
+            cli_command="motor runtime stop [--project <path>]",
             example=CapabilityExample(
-                description="Stop play mode",
+                description="Stop runtime in the current process",
                 api_calls=[
                     {"method": "stop", "args": {}},
                 ],
-                expected_outcome="Engine returns to EDIT mode, world state is restored",
+                expected_outcome="Current process runtime returns to EDIT mode; previous CLI invocations are not affected",
             ),
-            notes="Restores world to pre-play state. Autosave may preserve changes.",
+            notes="The official CLI command is stateless and idempotent. It cannot stop a PLAY session from a previous process and reports that as a warning.",
             tags=["runtime", "play"],
         ))
 
         self._add(Capability(
             id="runtime:step",
-            summary="Advance the simulation by N frames",
+            summary="Run PLAY -> STEP -> STOP headlessly for N frames",
             mode="play",
             api_methods=["RuntimeAPI.step"],
-            cli_command="motor runtime step [--frames <n>]",
+            cli_command="motor runtime step [--project <path>] [--frames <n>]",
             example=CapabilityExample(
-                description="Advance simulation by 10 frames",
+                description="Advance simulation by 300 frames",
                 api_calls=[
-                    {"method": "step", "args": {"frames": 10}},
+                    {"method": "play", "args": {}},
+                    {"method": "step", "args": {"frames": 300}},
+                    {"method": "stop", "args": {}},
                 ],
-                expected_outcome="World updates for 10 frames",
+                expected_outcome="World updates for 300 frames and returns to EDIT without saving runtime mutations",
             ),
-            notes="Useful for debugging. Can be called during play or step-through mode.",
+            notes="The official CLI command runs the whole validation sequence in one stateless headless process: load scene, play, step, stop. Runtime mutations are not persisted as authoring state.",
             tags=["runtime", "play"],
         ))
 
@@ -1223,10 +1225,7 @@ class CapabilityRegistryBuilder:
         "project:open",
         "project:editor_state",
 
-        # Runtime operations (no CLI commands exist)
-        "runtime:play",
-        "runtime:stop",
-        "runtime:step",
+        # Runtime operations without CLI commands
         "runtime:undo",
         "runtime:redo",
 
@@ -1355,6 +1354,7 @@ class MotorAIBootstrapBuilder:
             "component:add",
             "asset:list", "asset:slice:grid", "asset:slice:list",
             "animator:set_sheet", "animator:state:create", "animator:info",
+            "runtime:play", "runtime:step", "runtime:stop",
             "introspect:capabilities",
         ]
 

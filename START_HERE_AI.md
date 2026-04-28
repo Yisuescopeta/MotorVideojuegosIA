@@ -64,13 +64,17 @@ The entries below are available now and are safe to use from the CLI.
   - API: `AuthoringAPI.get_animator_info`
   - CLI: `motor animator info <entity>`
 
-- **runtime:status**: Inspect read-only runtime/project status without starting play mode
-  - API: `SceneWorkspaceAPI.load_scene_for_runtime_inspection`
-  - CLI: `motor runtime status [--project <path>]`
+- **runtime:play**: Start play mode for a stateless headless runtime check
+  - API: `RuntimeAPI.play`
+  - CLI: `motor runtime play [--project <path>] [--headless]`
 
-- **runtime:entities**: List compact read-only runtime entity summaries for AI inspection
-  - API: `SceneWorkspaceAPI.load_scene_for_runtime_inspection`
-  - CLI: `motor runtime entities [--project <path>]`
+- **runtime:step**: Run PLAY -> STEP -> STOP headlessly for N frames
+  - API: `RuntimeAPI.step`
+  - CLI: `motor runtime step [--project <path>] [--frames <n>]`
+
+- **runtime:stop**: Stop runtime in the current stateless headless process
+  - API: `RuntimeAPI.stop`
+  - CLI: `motor runtime stop [--project <path>]`
 
 - **introspect:capabilities**: Query this capability registry itself
   - API: `CapabilityRegistry.cmd_capabilities`
@@ -146,10 +150,9 @@ The entries below are available now and are safe to use from the CLI.
 
 ### Runtime
 
-- `runtime:entities`: List compact read-only runtime entity summaries for AI inspection
-- `runtime:events`: List recent runtime events without advancing simulation
-- `runtime:inspect`: Inspect one entity from the read-only runtime projection
-- `runtime:status`: Inspect read-only runtime/project status without starting play mode
+- `runtime:play`: Start play mode for a stateless headless runtime check
+- `runtime:step`: Run PLAY -> STEP -> STOP headlessly for N frames
+- `runtime:stop`: Stop runtime in the current stateless headless process
 
 ### Introspection
 
@@ -180,10 +183,7 @@ and should not be attempted until they are marked as `implemented`.
 | `physics:query:ray` | Cast a ray and find intersecting physics bodies |
 | `project:editor_state` | Get or set editor state including recent assets and last scene |
 | `project:open` | Open a different project and load its startup scene |
-| `runtime:play` | Start play mode to test game logic |
 | `runtime:redo` | Redo a previously undone operation |
-| `runtime:step` | Advance the simulation by N frames |
-| `runtime:stop` | Stop play mode and return to edit mode |
 | `runtime:undo` | Undo the last edit operation |
 | `scene:flow:load_next` | Load the configured next scene in the scene flow |
 | `scene:flow:set_next` | Set the next scene connection for scene flow navigation |

@@ -178,6 +178,47 @@ Guarda la escena activa en su ruta fuente.
 py -m motor scene save --project . --json
 ```
 
+## Runtime headless
+
+Los comandos `runtime` usan la fachada publica `EngineAPI` dentro del proceso
+CLI actual. Son stateless: no comparten una sesion viva entre invocaciones y no
+guardan mutaciones runtime como estado de authoring.
+
+Si el proceso no tiene escena activa, intentan cargar una escena para
+inspeccion runtime desde estado de editor, `startup_scene` o la primera escena
+detectada. El JSON incluye `warnings` cuando ocurre este fallback.
+
+### `motor runtime play`
+
+Inicializa el runtime headless, carga una escena, ejecuta `EngineAPI.play()`,
+reporta estado y limpia con `EngineAPI.stop()` antes de salir.
+
+```bash
+py -m motor runtime play --project . --headless --json
+```
+
+### `motor runtime step`
+
+Ejecuta la validacion headless completa en un solo proceso:
+`PLAY -> STEP(frames) -> STOP`.
+
+```bash
+py -m motor runtime step --project . --frames 300 --json
+```
+
+El JSON incluye `frames_requested`, `status_before`, `status_after_play`,
+`status_after_step`, `status_after` y `scene`.
+
+### `motor runtime stop`
+
+Llama `EngineAPI.stop()` en el proceso actual. Como la CLI es stateless, no
+puede detener una sesion `PLAY` iniciada por una invocacion anterior y lo
+declara en `warnings`.
+
+```bash
+py -m motor runtime stop --project . --json
+```
+
 ## Entidades
 
 ### `motor entity create <name>`

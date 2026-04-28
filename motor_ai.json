@@ -1088,138 +1088,88 @@
             ]
         },
         {
-            "id": "runtime:entities",
-            "summary": "List compact read-only runtime entity summaries for AI inspection",
-            "mode": "both",
+            "id": "runtime:play",
+            "summary": "Start play mode for a stateless headless runtime check",
+            "mode": "edit",
             "status": "implemented",
             "api_methods": [
-                "SceneWorkspaceAPI.load_scene_for_runtime_inspection",
-                "RuntimeAPI.list_entities"
+                "RuntimeAPI.play"
             ],
-            "cli_command": "motor runtime entities [--project <path>]",
+            "cli_command": "motor runtime play [--project <path>] [--headless]",
             "example": {
-                "description": "List entities in the selected project scene",
+                "description": "Start play mode headlessly",
                 "api_calls": [
                     {
-                        "method": "load_scene_for_runtime_inspection",
-                        "args": {}
-                    },
-                    {
-                        "method": "list_entities",
+                        "method": "play",
                         "args": {}
                     }
                 ],
-                "expected_outcome": "Returns entity names, hierarchy, active/tag/layer, component names and scene reference"
+                "expected_outcome": "Engine enters PLAY mode in the current CLI process and then cleans up before exit"
             },
-            "notes": "Designed so AI agents can inspect a project scene without reading scene JSON manually.",
+            "notes": "The official CLI command is stateless: it initializes EngineAPI, loads a scene for headless verification, calls play(), reports status, then stops before process exit without saving authoring state.",
             "tags": [
                 "runtime",
-                "entity",
-                "introspection",
-                "query",
-                "read-only"
+                "play"
             ]
         },
         {
-            "id": "runtime:events",
-            "summary": "List recent runtime events without advancing simulation",
-            "mode": "both",
+            "id": "runtime:step",
+            "summary": "Run PLAY -> STEP -> STOP headlessly for N frames",
+            "mode": "play",
             "status": "implemented",
             "api_methods": [
-                "SceneWorkspaceAPI.load_scene_for_runtime_inspection",
-                "RuntimeAPI.get_recent_events"
+                "RuntimeAPI.step"
             ],
-            "cli_command": "motor runtime events [--project <path>]",
+            "cli_command": "motor runtime step [--project <path>] [--frames <n>]",
             "example": {
-                "description": "Inspect recent runtime events",
+                "description": "Advance simulation by 300 frames",
                 "api_calls": [
                     {
-                        "method": "load_scene_for_runtime_inspection",
+                        "method": "play",
                         "args": {}
                     },
                     {
-                        "method": "get_recent_events",
+                        "method": "step",
                         "args": {
-                            "count": 50
+                            "frames": 300
                         }
+                    },
+                    {
+                        "method": "stop",
+                        "args": {}
                     }
                 ],
-                "expected_outcome": "Returns a recent event list; an empty list is valid for a fresh read-only invocation"
+                "expected_outcome": "World updates for 300 frames and returns to EDIT without saving runtime mutations"
             },
-            "notes": "Does not create a gameplay loop or step frames.",
+            "notes": "The official CLI command runs the whole validation sequence in one stateless headless process: load scene, play, step, stop. Runtime mutations are not persisted as authoring state.",
             "tags": [
                 "runtime",
-                "events",
-                "introspection",
-                "query",
-                "read-only"
+                "play"
             ]
         },
         {
-            "id": "runtime:inspect",
-            "summary": "Inspect one entity from the read-only runtime projection",
-            "mode": "both",
+            "id": "runtime:stop",
+            "summary": "Stop runtime in the current stateless headless process",
+            "mode": "play",
             "status": "implemented",
             "api_methods": [
-                "SceneWorkspaceAPI.load_scene_for_runtime_inspection",
-                "RuntimeAPI.get_entity"
+                "RuntimeAPI.stop"
             ],
-            "cli_command": "motor runtime inspect <entity> [--project <path>]",
+            "cli_command": "motor runtime stop [--project <path>]",
             "example": {
-                "description": "Inspect the Player entity",
+                "description": "Stop runtime in the current process",
                 "api_calls": [
                     {
-                        "method": "load_scene_for_runtime_inspection",
-                        "args": {}
-                    },
-                    {
-                        "method": "get_entity",
-                        "args": {
-                            "name": "Player"
-                        }
-                    }
-                ],
-                "expected_outcome": "Returns full EntityData with component payloads for the requested entity"
-            },
-            "notes": "Read-only. Missing entities fail without mutating scene state.",
-            "tags": [
-                "runtime",
-                "entity",
-                "introspection",
-                "query",
-                "read-only"
-            ]
-        },
-        {
-            "id": "runtime:status",
-            "summary": "Inspect read-only runtime/project status without starting play mode",
-            "mode": "both",
-            "status": "implemented",
-            "api_methods": [
-                "SceneWorkspaceAPI.load_scene_for_runtime_inspection",
-                "RuntimeAPI.get_status"
-            ],
-            "cli_command": "motor runtime status [--project <path>]",
-            "example": {
-                "description": "Inspect runtime status for the current project scene",
-                "api_calls": [
-                    {
-                        "method": "load_scene_for_runtime_inspection",
-                        "args": {}
-                    },
-                    {
-                        "method": "get_status",
+                        "method": "stop",
                         "args": {}
                     }
                 ],
-                "expected_outcome": "Returns state, frame, time, fps, entity count, scene context and read_only=true"
+                "expected_outcome": "Current process runtime returns to EDIT mode; previous CLI invocations are not affected"
             },
-            "notes": "Read-only CLI introspection. Loads a scene into the existing headless projection and does not call play, step, stop or save_scene.",
+            "notes": "The official CLI command is stateless and idempotent. It cannot stop a PLAY session from a previous process and reports that as a warning.",
             "tags": [
                 "runtime",
-                "introspection",
-                "query",
-                "read-only"
+                "play"
             ]
         },
         {
@@ -1749,31 +1699,6 @@
             ]
         },
         {
-            "id": "runtime:play",
-            "summary": "Start play mode to test game logic",
-            "mode": "edit",
-            "status": "planned",
-            "api_methods": [
-                "RuntimeAPI.play"
-            ],
-            "cli_command": "motor runtime play",
-            "example": {
-                "description": "Start play mode",
-                "api_calls": [
-                    {
-                        "method": "play",
-                        "args": {}
-                    }
-                ],
-                "expected_outcome": "Engine enters PLAY mode, scripts with run_in_edit_mode execute"
-            },
-            "notes": "Only available in EDIT mode. Scripts can control entities during play.",
-            "tags": [
-                "runtime",
-                "play"
-            ]
-        },
-        {
             "id": "runtime:redo",
             "summary": "Redo a previously undone operation",
             "mode": "edit",
@@ -1796,58 +1721,6 @@
             "tags": [
                 "runtime",
                 "edit"
-            ]
-        },
-        {
-            "id": "runtime:step",
-            "summary": "Advance the simulation by N frames",
-            "mode": "play",
-            "status": "planned",
-            "api_methods": [
-                "RuntimeAPI.step"
-            ],
-            "cli_command": "motor runtime step [--frames <n>]",
-            "example": {
-                "description": "Advance simulation by 10 frames",
-                "api_calls": [
-                    {
-                        "method": "step",
-                        "args": {
-                            "frames": 10
-                        }
-                    }
-                ],
-                "expected_outcome": "World updates for 10 frames"
-            },
-            "notes": "Useful for debugging. Can be called during play or step-through mode.",
-            "tags": [
-                "runtime",
-                "play"
-            ]
-        },
-        {
-            "id": "runtime:stop",
-            "summary": "Stop play mode and return to edit mode",
-            "mode": "play",
-            "status": "planned",
-            "api_methods": [
-                "RuntimeAPI.stop"
-            ],
-            "cli_command": "motor runtime stop",
-            "example": {
-                "description": "Stop play mode",
-                "api_calls": [
-                    {
-                        "method": "stop",
-                        "args": {}
-                    }
-                ],
-                "expected_outcome": "Engine returns to EDIT mode, world state is restored"
-            },
-            "notes": "Restores world to pre-play state. Autosave may preserve changes.",
-            "tags": [
-                "runtime",
-                "play"
             ]
         },
         {
@@ -1932,9 +1805,9 @@
         }
     ],
     "capability_counts": {
-        "implemented": 45,
-        "planned": 22,
-        "total": 67
+        "implemented": 44,
+        "planned": 19,
+        "total": 63
     },
     "project": {
         "name": "MotorVideojuegosIA",

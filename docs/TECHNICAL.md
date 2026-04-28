@@ -210,6 +210,7 @@ Comandos base:
 - `motor project info`
 - `motor project bootstrap-ai`
 - `motor scene list/create/load/save`
+- `motor runtime play/step/stop`
 - `motor entity create`
 - `motor component add`
 - `motor prefab create/instantiate/unpack/apply/list`
@@ -217,6 +218,11 @@ Comandos base:
 - `motor asset ...`
 
 La referencia completa vive en [cli.md](cli.md).
+
+Los comandos `motor runtime play/step/stop` son verificacion headless stateless:
+cada invocacion inicializa `EngineAPI`, carga una escena mediante la fachada
+publica, ejecuta `play`, `step` o `stop` y termina sin persistir mutaciones
+runtime como estado de authoring.
 
 ## IA, RL y tooling experimental
 

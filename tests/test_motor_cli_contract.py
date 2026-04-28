@@ -158,7 +158,7 @@ class RegistryToCLIExecutableContractTests(unittest.TestCase):
         }
 
         # Comandos que pueden no estar implementados aún pero están documentados
-        future_scopes = {"runtime", "physics", "introspect"}
+        future_scopes = {"physics", "introspect"}
 
         violations = []
         for cap in self.registry.list_all():
@@ -193,6 +193,9 @@ class RegistryToCLIExecutableContractTests(unittest.TestCase):
             ("project", ["info"]),
             ("scene", ["list"]),
             ("scene", ["create"]),
+            ("runtime", ["play"]),
+            ("runtime", ["step"]),
+            ("runtime", ["stop"]),
             ("entity", ["create"]),
             ("component", ["add"]),
             ("prefab", ["create"]),
@@ -290,6 +293,163 @@ class AIStartCLIContractTests(unittest.TestCase):
         self.assertEqual(data["validation"]["status"], "implemented")
         self.assertTrue(data["validation"]["next_step"])
         self.assertTrue(data["recommended_workflows"])
+
+
+class RuntimeCLIContractTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp_dir = tempfile.TemporaryDirectory()
+        self.project = _create_test_project(Path(self._temp_dir.name), "RuntimeCLI")
+        self.env = os.environ.copy()
+        python_path = self.env.get("PYTHONPATH", "")
+        self.env["PYTHONPATH"] = str(ROOT) if not python_path else str(ROOT) + os.pathsep + python_path
+
+    def tearDown(self) -> None:
+        self._temp_dir.cleanup()
+
+    def _write_scene(self, relative_path: str = "levels/main_scene.json") -> Path:
+        scene_path = self.project / relative_path
+        scene_path.parent.mkdir(parents=True, exist_ok=True)
+        scene_path.write_text(
+            json.dumps(
+                {
+                    "name": "Runtime Scene",
+                    "entities": [
+                        {
+                            "name": "RuntimeProbe",
+                            "active": True,
+                            "components": {
+                                "Transform": {
+                                    "enabled": True,
+                                    "x": 0.0,
+                                    "y": 0.0,
+                                    "rotation": 0.0,
+                                    "scale_x": 1.0,
+                                    "scale_y": 1.0,
+                                }
+                            },
+                        }
+                    ],
+                    "rules": [],
+                    "feature_metadata": {},
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        return scene_path
+
+    def _payload(self, stdout: str) -> dict:
+        return json.loads(stdout[stdout.index("{"):])
+
+    def test_motor_runtime_play_headless_json(self) -> None:
+        self._write_scene()
+
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "play",
+            "--project",
+            self.project.as_posix(),
+            "--headless",
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        payload = self._payload(stdout)
+        self.assertTrue(payload["success"])
+        data = payload["data"]
+        self.assertEqual(data["command"], "runtime play")
+        self.assertTrue(data["headless"])
+        self.assertTrue(data["stateless"])
+        self.assertTrue(data["scene"]["has_scene"])
+        self.assertIn("PLAY", data["status_after"]["state"])
+        self.assertIn("EDIT", data["cleanup_status"]["state"])
+
+    def test_motor_runtime_step_play_step_stop_does_not_save_scene(self) -> None:
+        scene_path = self._write_scene()
+        before = scene_path.read_text(encoding="utf-8")
+
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "step",
+            "--project",
+            self.project.as_posix(),
+            "--frames",
+            "300",
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        payload = self._payload(stdout)
+        self.assertTrue(payload["success"])
+        data = payload["data"]
+        self.assertEqual(data["command"], "runtime step")
+        self.assertTrue(data["headless"])
+        self.assertTrue(data["stateless"])
+        self.assertEqual(data["frames_requested"], 300)
+        self.assertIn("EDIT", data["status_before"]["state"])
+        self.assertIn("PLAY", data["status_after_play"]["state"])
+        self.assertIn("PLAY", data["status_after_step"]["state"])
+        self.assertIn("EDIT", data["status_after"]["state"])
+        self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+
+    def test_motor_runtime_stop_is_stateless_and_warns(self) -> None:
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "stop",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        payload = self._payload(stdout)
+        self.assertTrue(payload["success"])
+        data = payload["data"]
+        self.assertEqual(data["command"], "runtime stop")
+        self.assertTrue(data["stateless"])
+        self.assertTrue(any("stateless" in warning for warning in data["warnings"]))
+        self.assertTrue(any("No active scene" in warning for warning in data["warnings"]))
+
+    def test_motor_runtime_play_fails_without_loadable_scene(self) -> None:
+        returncode, stdout, _stderr = _run_motor(
+            "runtime",
+            "play",
+            "--project",
+            self.project.as_posix(),
+            "--headless",
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 1, stdout)
+        payload = self._payload(stdout)
+        self.assertFalse(payload["success"])
+        warnings = payload["data"]["warnings"]
+        self.assertTrue(any("No active scene" in warning for warning in warnings))
+
+    def test_motor_runtime_step_warns_when_fallback_scene_loaded(self) -> None:
+        self._write_scene()
+
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "step",
+            "--project",
+            self.project.as_posix(),
+            "--frames",
+            "1",
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        payload = self._payload(stdout)
+        self.assertTrue(payload["success"])
+        warnings = payload["data"]["warnings"]
+        self.assertTrue(any("No active scene" in warning for warning in warnings))
+        self.assertTrue(any("fallback scene" in warning for warning in warnings))
 
 
 class PrefabCLIContractTests(unittest.TestCase):

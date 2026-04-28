@@ -60,6 +60,9 @@ from motor.cli_core import (
     cmd_scene_create,
     cmd_scene_load,
     cmd_scene_save,
+    cmd_runtime_play,
+    cmd_runtime_step,
+    cmd_runtime_stop,
     cmd_entity_create,
     cmd_component_add,
     cmd_prefab_create,
@@ -118,6 +121,10 @@ AI-Facing Commands:
   scene create <name>       Create new scene
   scene load <path>         Load a scene
   scene save                Save active scene
+
+  runtime play              Start a stateless headless runtime check
+  runtime step              Run PLAY -> STEP -> STOP headlessly
+  runtime stop              Stop runtime in the current stateless process
   
   entity create <name>      Create entity in active scene
   
@@ -157,6 +164,7 @@ Examples:
   motor ai compliance --project . --strict --json
   motor doctor --project . --json
   motor capabilities
+  motor runtime step --project . --frames 300 --json
   motor scene create "Level 1"
   motor entity create Player --components '{"Transform":{"x":100}}'
   motor prefab create Player prefabs/player.prefab --project .
@@ -310,6 +318,55 @@ Documentation:
         help="Path to project directory"
     )
     scene_save_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    # === runtime ===
+    runtime_parser = subparsers.add_parser(
+        "runtime",
+        help="Stateless headless runtime controls",
+        description="Run official EngineAPI runtime controls in a stateless headless CLI process.",
+    )
+    runtime_subparsers = runtime_parser.add_subparsers(dest="runtime_subcommand", required=True)
+
+    runtime_play_parser = runtime_subparsers.add_parser(
+        "play",
+        help="Start play mode for a stateless headless runtime check",
+    )
+    runtime_play_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_play_parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Explicitly request the headless runtime path",
+    )
+    runtime_play_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    runtime_step_parser = runtime_subparsers.add_parser(
+        "step",
+        help="Run PLAY -> STEP -> STOP in a stateless headless process",
+    )
+    runtime_step_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_step_parser.add_argument(
+        "--frames",
+        type=int,
+        default=1,
+        help="Number of frames to step (default: 1)",
+    )
+    runtime_step_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    runtime_stop_parser = runtime_subparsers.add_parser(
+        "stop",
+        help="Stop runtime in the current stateless process",
+    )
+    runtime_stop_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_stop_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === entity ===
     entity_parser = subparsers.add_parser(
@@ -910,6 +967,26 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
             )
         elif parsed.scene_subcommand == "save":
             return cmd_scene_save(
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
+
+    # === runtime ===
+    elif parsed.command == "runtime":
+        if parsed.runtime_subcommand == "play":
+            return cmd_runtime_play(
+                project_path=Path(parsed.project_root).resolve(),
+                headless=parsed.headless,
+                json_output=parsed.json,
+            )
+        elif parsed.runtime_subcommand == "step":
+            return cmd_runtime_step(
+                project_path=Path(parsed.project_root).resolve(),
+                frames=parsed.frames,
+                json_output=parsed.json,
+            )
+        elif parsed.runtime_subcommand == "stop":
+            return cmd_runtime_stop(
                 project_path=Path(parsed.project_root).resolve(),
                 json_output=parsed.json,
             )

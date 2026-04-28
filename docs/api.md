@@ -241,6 +241,17 @@ Fisica:
 - `list_physics_backends()`
 - `get_physics_backend_selection()`
 
+La CLI oficial expone verificacion headless stateless sobre estos metodos:
+
+```bash
+py -m motor runtime play --project . --headless --json
+py -m motor runtime step --project . --frames 300 --json
+py -m motor runtime stop --project . --json
+```
+
+Cada invocacion inicializa `EngineAPI`, carga una escena mediante superficies
+publicas y sale sin guardar mutaciones runtime como authoring state.
+
 Señales runtime:
 
 - `connect_signal(source_id, signal_name, callback, flags=None, binds=None, connection_id=None, description="", target_id=None)`
