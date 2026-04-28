@@ -64,6 +64,9 @@ usa un runtime iterativo `provider -> tool_use -> tool_result -> provider`:
 - `cancel_agent_session(session_id)`
 - `list_agent_tools()`
 - `list_agent_providers()`
+- `login_agent_provider(provider_id, credential_source="user_local", base_url="", model="", api_key="", device_auth=False)`
+- `logout_agent_provider(provider_id)`
+- `get_agent_provider_status(provider_id="")`
 - `compact_agent_session(session_id)`
 - `get_agent_usage(session_id)`
 - `inspect_agent_session(session_id)`

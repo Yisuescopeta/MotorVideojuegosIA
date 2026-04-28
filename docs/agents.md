@@ -5,11 +5,14 @@ vigentes. Para reglas operativas completas, lee [../AGENTS.md](../AGENTS.md).
 
 ## Primeros 5 minutos
 
-1. Lee [README.md](README.md) para ubicar canon, referencia, tooling y archivo.
-2. Lee [glossary.md](glossary.md) si algun termino del repo no es obvio.
-3. Lee [../AGENTS.md](../AGENTS.md) antes de tocar archivos o elegir perimetro.
-4. Usa [api.md](api.md) o [cli.md](cli.md) para flujos publicos.
-5. Revisa [documentation_governance.md](documentation_governance.md) si el cambio
+1. Ejecuta `py -m motor ai start --project . --json` para cargar el contrato
+   compacto del proyecto.
+2. Ejecuta `py -m motor ai compliance --project . --json` para detectar si el
+   proyecto sigue el flujo nativo o tiene senales de runtime externo.
+3. Lee [README.md](README.md) para ubicar canon, referencia, tooling y archivo.
+4. Lee [../AGENTS.md](../AGENTS.md) antes de tocar archivos o elegir perimetro.
+5. Usa [api.md](api.md) o [cli.md](cli.md) para flujos publicos.
+6. Revisa [documentation_governance.md](documentation_governance.md) si el cambio
    crea, mueve o actualiza documentacion.
 
 ## Fuentes de verdad
@@ -97,6 +100,8 @@ final, aprobacion pendiente, cancelacion o limite de iteraciones.
 Para CLI:
 
 ```bash
+py -m motor ai start --project . --json
+py -m motor ai compliance --project . --json
 py -m motor doctor --project . --json
 py -m motor scene create "Level 1" --project . --json
 py -m motor entity create Player --project . --json
@@ -121,6 +126,10 @@ afectan al runtime activo.
 ## Que evitar
 
 - No editar `SceneManager.edit_world` directamente para flujos publicos nuevos.
+- No crear un runtime externo ni entregar `run_game.py` o un main loop alternativo
+  como juego principal.
+- Usa `py -m motor ai compliance --project . --strict --json` antes de entregar
+  cuando el cambio pueda haber creado scripts ejecutables o flujo de juego.
 - No asumir soporte de componentes no registrados.
 - No documentar capacidades planificadas como implementadas.
 - No ejecutar comandos listados como `planned` en `motor_ai.json` o
@@ -147,6 +156,8 @@ afectan al runtime activo.
 py -m unittest tests.test_repository_governance tests.test_motor_cli_contract tests.test_start_here_ai_coherence -v
 py -m unittest tests.test_official_contract_regression tests.test_parser_registry_alignment tests.test_motor_interface_coherence tests.test_motor_registry_consistency -v
 py -m motor --help
+py -m motor ai start --project . --json
+py -m motor ai compliance --project . --json
 py -m motor doctor --project . --json
 ```
 

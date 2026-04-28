@@ -43,8 +43,8 @@
             "mode": "both",
             "status": "implemented",
             "api_methods": [
-                "AgentPanel.set_live_engine",
-                "EditorLiveAgentEnginePort"
+                "AgentAPI.get_agent_session",
+                "AgentAPI.send_agent_message"
             ],
             "cli_command": "motor agent message send <session> /status",
             "example": {
@@ -154,13 +154,102 @@
             ]
         },
         {
+            "id": "agent:providers:login",
+            "summary": "Store provider credentials or delegate managed Codex/OpenAI login",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.login_agent_provider"
+            ],
+            "cli_command": "motor agent providers login <provider> [--api-key-stdin] [--codex-chatgpt] [--device-auth] [--base-url <url>] [--model <model>]",
+            "example": {
+                "description": "Configure an agent provider credential without exposing the key in shell history",
+                "api_calls": [
+                    {
+                        "method": "login_agent_provider",
+                        "args": {
+                            "provider_id": "openai",
+                            "credential_source": "user_local"
+                        }
+                    }
+                ],
+                "expected_outcome": "Stores local provider auth metadata or delegates to managed Codex/OpenAI auth"
+            },
+            "notes": "Experimental/tooling. CLI requires --api-key-stdin for raw keys, or --codex-chatgpt/--device-auth for managed login.",
+            "tags": [
+                "agent",
+                "experimental",
+                "providers",
+                "auth"
+            ]
+        },
+        {
+            "id": "agent:providers:logout",
+            "summary": "Remove user-local provider credentials",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.logout_agent_provider"
+            ],
+            "cli_command": "motor agent providers logout <provider>",
+            "example": {
+                "description": "Remove a stored provider credential",
+                "api_calls": [
+                    {
+                        "method": "logout_agent_provider",
+                        "args": {
+                            "provider_id": "openai"
+                        }
+                    }
+                ],
+                "expected_outcome": "Provider credential metadata is removed without revealing secrets"
+            },
+            "notes": "Experimental/tooling. Does not remove environment variables or external managed auth state.",
+            "tags": [
+                "agent",
+                "experimental",
+                "providers",
+                "auth"
+            ]
+        },
+        {
+            "id": "agent:providers:status",
+            "summary": "Show provider authentication status without revealing secrets",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.get_agent_provider_status"
+            ],
+            "cli_command": "motor agent providers status [provider]",
+            "example": {
+                "description": "Inspect whether OpenAI provider auth is available",
+                "api_calls": [
+                    {
+                        "method": "get_agent_provider_status",
+                        "args": {
+                            "provider_id": "openai"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns credential source, auth method and runtime readiness without secret values"
+            },
+            "notes": "Experimental/tooling. Omitting provider returns default/provider-wide status.",
+            "tags": [
+                "agent",
+                "experimental",
+                "providers",
+                "auth",
+                "diagnostics"
+            ]
+        },
+        {
             "id": "agent:runtime",
             "summary": "Run the v3 clean-room agent turn loop with provider/tool-result continuation",
             "mode": "both",
             "status": "implemented",
             "api_methods": [
                 "AgentAPI.send_agent_message",
-                "AgentRuntime.continue_turn"
+                "AgentAPI.approve_agent_action"
             ],
             "cli_command": "motor agent message send <session> <message>",
             "example": {
@@ -274,7 +363,7 @@
             "status": "implemented",
             "api_methods": [
                 "AgentAPI.list_agent_tools",
-                "AgentToolRegistry.prepare"
+                "AgentAPI.send_agent_message"
             ],
             "cli_command": "motor agent message send <session> /tools",
             "example": {
@@ -320,6 +409,68 @@
                 "agent",
                 "experimental",
                 "usage"
+            ]
+        },
+        {
+            "id": "ai:compliance",
+            "summary": "Validate whether a project follows the AI-native engine contract",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "run_ai_compliance",
+                "cmd_ai_compliance"
+            ],
+            "cli_command": "motor ai compliance [--project <path>] [--strict] [--json]",
+            "example": {
+                "description": "Run strict AI compliance checks after a change",
+                "api_calls": [
+                    {
+                        "method": "cmd_ai_compliance",
+                        "args": {
+                            "project_path": ".",
+                            "strict": true,
+                            "json_output": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns native score, strict status, runtime warnings and next actions"
+            },
+            "notes": "Read-only. Strict mode fails on suspicious external runtimes or missing native loadable scenes.",
+            "tags": [
+                "ai",
+                "introspection",
+                "validation",
+                "compliance"
+            ]
+        },
+        {
+            "id": "ai:start",
+            "summary": "Show the compact AI entrypoint contract for this project",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "CapabilityRegistry.cmd_ai_start"
+            ],
+            "cli_command": "motor ai start [--project <path>] [--json]",
+            "example": {
+                "description": "Load the project contract an AI assistant should follow first",
+                "api_calls": [
+                    {
+                        "method": "cmd_ai_start",
+                        "args": {
+                            "project_path": ".",
+                            "json_output": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns engine identity, official CLI/API, scene context, initial commands, workflows and anti-runtime rules"
+            },
+            "notes": "Read-only. This is the recommended first command for AI assistants working on a project.",
+            "tags": [
+                "ai",
+                "introspection",
+                "bootstrap",
+                "contract"
             ]
         },
         {
@@ -934,6 +1085,141 @@
             "tags": [
                 "project",
                 "query"
+            ]
+        },
+        {
+            "id": "runtime:entities",
+            "summary": "List compact read-only runtime entity summaries for AI inspection",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.load_scene_for_runtime_inspection",
+                "RuntimeAPI.list_entities"
+            ],
+            "cli_command": "motor runtime entities [--project <path>]",
+            "example": {
+                "description": "List entities in the selected project scene",
+                "api_calls": [
+                    {
+                        "method": "load_scene_for_runtime_inspection",
+                        "args": {}
+                    },
+                    {
+                        "method": "list_entities",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns entity names, hierarchy, active/tag/layer, component names and scene reference"
+            },
+            "notes": "Designed so AI agents can inspect a project scene without reading scene JSON manually.",
+            "tags": [
+                "runtime",
+                "entity",
+                "introspection",
+                "query",
+                "read-only"
+            ]
+        },
+        {
+            "id": "runtime:events",
+            "summary": "List recent runtime events without advancing simulation",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.load_scene_for_runtime_inspection",
+                "RuntimeAPI.get_recent_events"
+            ],
+            "cli_command": "motor runtime events [--project <path>]",
+            "example": {
+                "description": "Inspect recent runtime events",
+                "api_calls": [
+                    {
+                        "method": "load_scene_for_runtime_inspection",
+                        "args": {}
+                    },
+                    {
+                        "method": "get_recent_events",
+                        "args": {
+                            "count": 50
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns a recent event list; an empty list is valid for a fresh read-only invocation"
+            },
+            "notes": "Does not create a gameplay loop or step frames.",
+            "tags": [
+                "runtime",
+                "events",
+                "introspection",
+                "query",
+                "read-only"
+            ]
+        },
+        {
+            "id": "runtime:inspect",
+            "summary": "Inspect one entity from the read-only runtime projection",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.load_scene_for_runtime_inspection",
+                "RuntimeAPI.get_entity"
+            ],
+            "cli_command": "motor runtime inspect <entity> [--project <path>]",
+            "example": {
+                "description": "Inspect the Player entity",
+                "api_calls": [
+                    {
+                        "method": "load_scene_for_runtime_inspection",
+                        "args": {}
+                    },
+                    {
+                        "method": "get_entity",
+                        "args": {
+                            "name": "Player"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns full EntityData with component payloads for the requested entity"
+            },
+            "notes": "Read-only. Missing entities fail without mutating scene state.",
+            "tags": [
+                "runtime",
+                "entity",
+                "introspection",
+                "query",
+                "read-only"
+            ]
+        },
+        {
+            "id": "runtime:status",
+            "summary": "Inspect read-only runtime/project status without starting play mode",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.load_scene_for_runtime_inspection",
+                "RuntimeAPI.get_status"
+            ],
+            "cli_command": "motor runtime status [--project <path>]",
+            "example": {
+                "description": "Inspect runtime status for the current project scene",
+                "api_calls": [
+                    {
+                        "method": "load_scene_for_runtime_inspection",
+                        "args": {}
+                    },
+                    {
+                        "method": "get_status",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns state, frame, time, fps, entity count, scene context and read_only=true"
+            },
+            "notes": "Read-only CLI introspection. Loads a scene into the existing headless projection and does not call play, step, stop or save_scene.",
+            "tags": [
+                "runtime",
+                "introspection",
+                "query",
+                "read-only"
             ]
         },
         {
@@ -1646,9 +1932,9 @@
         }
     ],
     "capability_counts": {
-        "implemented": 36,
+        "implemented": 45,
         "planned": 22,
-        "total": 58
+        "total": 67
     },
     "project": {
         "name": "MotorVideojuegosIA",

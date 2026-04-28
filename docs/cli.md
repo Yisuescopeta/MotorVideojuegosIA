@@ -33,6 +33,67 @@ Convenciones:
 
 ## Comandos de introspeccion
 
+### `motor ai start`
+
+Entrada compacta recomendada para agentes IA. Es de solo lectura y resume el
+contrato operativo del proyecto.
+
+```bash
+py -m motor ai start --project . --json
+```
+
+El JSON usa la envoltura estandar `{ "success": bool, "message": str, "data": object }`.
+`data` incluye:
+
+- `engine`: nombre y version de MotorVideojuegosIA.
+- `recommended_cli`: `motor`.
+- `recommended_api`: `EngineAPI`.
+- `scene_context`: escena activa desde estado de editor si existe, ultima escena,
+  escenas abiertas y escenas detectadas.
+- `initial_commands`: comandos iniciales recomendados para orientacion.
+- `recommended_workflows`: workflows compactos derivados del capability registry.
+- `rules`: prohibe crear runtime externo y entregar `run_game.py` o main loop
+  alternativo como juego principal.
+- `validation`: apunta a `motor ai compliance --project . --strict --json` con
+  `status = "implemented"`.
+
+### `motor ai compliance`
+
+Diagnostico read-only para validar si un proyecto usa MotorVideojuegosIA de
+forma nativa y detectar senales de runtimes externos priorizados por IA.
+
+```bash
+py -m motor ai compliance --project . --json
+py -m motor ai compliance --project . --strict --json
+```
+
+El JSON usa la envoltura estandar `{ "success": bool, "message": str, "data": object }`.
+`data` incluye:
+
+- `success`: indica si el diagnostico completo paso para el modo usado.
+- `native_score`: puntuacion determinista de 0 a 100.
+- `strict_pass`: `false` si strict detecta runtime externo o no hay escena nativa valida.
+- `external_runtime_detected`: `true` si encuentra senales sospechosas.
+- `problems`: fallos de contrato o strict.
+- `warnings`: bootstrap faltante/regenerable, componentes desconocidos y sospechas en modo normal.
+- `recommended_next_actions`: acciones concretas para volver al flujo nativo.
+
+Checks principales:
+
+- `project.json` inicializable.
+- `motor_ai.json` y `START_HERE_AI.md` presentes o regenerables.
+- escenas detectables y escena activa/startup/fallback cargable.
+- schema de escena soportado, entidades serializadas y componentes como fuente persistente.
+- componentes registrados o warnings por componentes desconocidos.
+- posibles runtimes externos como `run_game.py`, loops propios de ventana/render,
+  `.bat` que lancen demos, uso directo de `pyray`/`raylib` fuera del motor, o
+  scripts que usen `main.py`/`HeadlessGame` como camino final sin `motor`/`EngineAPI`.
+
+Modo normal reporta sospechas como warnings. Modo `--strict` falla ante runtime
+externo sospechoso o ausencia de escena nativa valida. Puede haber falsos
+positivos en scripts auxiliares o demos antiguas; el comando no borra ni edita
+archivos sospechosos.
+
 ### `motor capabilities`
 
 Lista el registry de capacidades del motor.
@@ -241,12 +302,9 @@ Elimina un estado de animacion.
 py -m motor animator state remove Player idle --project . --json
 ```
 
-Alias legacy no documentados en `--help`:
-
-- `motor animator upsert-state`
-- `motor animator remove-state`
-
-Se mantienen solo por compatibilidad temporal.
+Existen aliases legacy ocultos para compatibilidad temporal, pero no forman
+parte de la interfaz oficial ni se documentan como comandos disponibles. Usa
+siempre la gramatica `animator state create/remove`.
 
 ## Assets
 
@@ -334,6 +392,17 @@ Modos soportados:
 - `--api-key-stdin`: guarda un secreto local del agente sin dejarlo en el historial.
 - `--codex-chatgpt`: delega el login real al CLI oficial `codex login`.
 - `--device-auth`: usa el flujo oficial device-code de Codex para entornos sin navegador local.
+
+### `motor agent providers logout <provider>`
+
+Elimina credenciales locales de provider sin revelar secretos.
+
+```bash
+py -m motor agent providers logout openai --project . --json
+```
+
+No elimina variables de entorno ni sesiones externas gestionadas por otras
+herramientas.
 
 ### `motor agent providers status [provider]`
 
