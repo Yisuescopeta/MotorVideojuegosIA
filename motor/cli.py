@@ -50,6 +50,8 @@ from typing import List, Optional
 
 from motor.cli_core import (
     # Commands
+    cmd_ai_compliance,
+    cmd_ai_start,
     cmd_capabilities,
     cmd_doctor,
     cmd_project_info,
@@ -104,6 +106,8 @@ def create_motor_parser() -> argparse.ArgumentParser:
 GRAMMAR: motor <noun> [<subnoun>] <verb> [<args>] [options]
 
 AI-Facing Commands:
+  ai start                  Compact AI entrypoint contract
+  ai compliance             Validate AI-native project compliance
   capabilities              Discover engine capabilities
   doctor                    Validate project health
   
@@ -149,6 +153,8 @@ AI-Facing Commands:
   agent usage               Show token/cost usage for a session
 
 Examples:
+  motor ai start --project . --json
+  motor ai compliance --project . --strict --json
   motor doctor --project . --json
   motor capabilities
   motor scene create "Level 1"
@@ -173,6 +179,40 @@ Documentation:
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # === ai ===
+    ai_parser = subparsers.add_parser(
+        "ai",
+        help="AI assistant entrypoints",
+    )
+    ai_subparsers = ai_parser.add_subparsers(dest="ai_subcommand", required=True)
+
+    ai_start_parser = ai_subparsers.add_parser(
+        "start",
+        help="Show compact AI entrypoint contract",
+        description="Return a read-only compact project contract for AI assistants.",
+    )
+    ai_start_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory (default: current directory)"
+    )
+    ai_start_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    ai_compliance_parser = ai_subparsers.add_parser(
+        "compliance",
+        help="Run read-only AI-native project compliance diagnostics",
+        description="Validate whether a project follows the MotorVideojuegosIA AI-native contract.",
+    )
+    ai_compliance_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory (default: current directory)"
+    )
+    ai_compliance_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Fail when suspicious external runtime signals or no native scene are found",
+    )
+    ai_compliance_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === capabilities ===
     cap_parser = subparsers.add_parser(
@@ -811,6 +851,20 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
     if not parsed.command:
         return 0  # Help was already printed
     
+    # === capabilities ===
+    if parsed.command == "ai":
+        if parsed.ai_subcommand == "start":
+            return cmd_ai_start(
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
+        if parsed.ai_subcommand == "compliance":
+            return cmd_ai_compliance(
+                project_path=Path(parsed.project_root).resolve(),
+                strict=parsed.strict,
+                json_output=parsed.json,
+            )
+
     # === capabilities ===
     if parsed.command == "capabilities":
         return cmd_capabilities(json_output=parsed.json)
