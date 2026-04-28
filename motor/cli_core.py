@@ -279,6 +279,147 @@ def cmd_runtime_stop(project_path: Path, json_output: bool) -> int:
 
 
 
+def cmd_runtime_status(project_path: Path, json_output: bool) -> int:
+    """Return runtime status and active scene info read-only."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        status = _runtime_status(api)
+        data = _runtime_response_base("runtime status", True, warnings)
+        data.update({
+            "status": status,
+            "scene": scene,
+        })
+        if not scene_ready:
+            return _output(False, "Runtime status: no active scene", data, json_output)
+        return _output(True, "Runtime status read-only inspection completed", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Runtime status failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_runtime_entities(
+    project_path: Path,
+    tag: Optional[str],
+    layer: Optional[str],
+    active_only: bool,
+    json_output: bool,
+) -> int:
+    """List entities in the active scene read-only."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        if not scene_ready:
+            return _output(False, "Runtime entities failed: no active scene", {
+                "command": "runtime entities",
+                "headless": True,
+                "stateless": True,
+                "warnings": warnings,
+                "entities": [],
+                "count": 0,
+            }, json_output)
+        active = True if active_only else None
+        entities = api.list_entities(tag=tag, layer=layer, active=active)
+        data = _runtime_response_base("runtime entities", True, warnings)
+        data.update({
+            "scene": scene,
+            "entities": entities,
+            "count": len(entities),
+        })
+        return _output(True, f"Listed {len(entities)} entities", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Runtime entities failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_runtime_inspect(project_path: Path, entity_name: str, json_output: bool) -> int:
+    """Inspect a specific entity read-only."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        if not scene_ready:
+            return _output(False, "Runtime inspect failed: no active scene", {
+                "command": "runtime inspect",
+                "headless": True,
+                "stateless": True,
+                "warnings": warnings,
+                "entity": None,
+            }, json_output)
+        entity_data = api.get_entity(entity_name)
+        data = _runtime_response_base("runtime inspect", True, warnings)
+        data.update({
+            "scene": scene,
+            "entity": entity_data,
+        })
+        return _output(True, f"Entity '{entity_name}' inspected", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Runtime inspect failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_runtime_events(project_path: Path, count: int, json_output: bool) -> int:
+    """Return recent runtime events read-only."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        if not scene_ready:
+            warnings.append("No active scene in this stateless CLI process; event bus may be empty.")
+        events = api.get_recent_events(count)
+        if not events:
+            warnings.append("No recent events available. The event bus may be empty or the runtime has not emitted events yet.")
+        data = _runtime_response_base("runtime events", True, warnings)
+        data.update({
+            "scene": scene,
+            "events": events,
+            "count": len(events),
+            "requested_count": count,
+        })
+        return _output(True, f"Retrieved {len(events)} recent events", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Runtime events failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
 # ============================================================================
 # Core Command Handlers
 # ============================================================================

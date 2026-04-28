@@ -248,6 +248,55 @@ class ParserRegistryNoDivergenceTests(unittest.TestCase):
             "Planned capabilities with public parser commands:\n" + "\n".join(violations),
         )
 
+    def test_implemented_capabilities_have_parser_leaf(self) -> None:
+        """FAIL if an implemented capability's full command path is missing from parser."""
+        registry = get_default_registry()
+        parser = create_motor_parser()
+
+        mismatches = []
+        for cap in registry.list_implemented():
+            path = _registry_command_path(cap.cli_command)
+            if not path:
+                mismatches.append(f"{cap.id}: could not derive path from '{cap.cli_command}'")
+                continue
+
+            current = parser
+            valid = True
+            for part in path:
+                found = False
+                for action in current._actions:
+                    if isinstance(action, argparse._SubParsersAction) and action.choices:
+                        if part in action.choices:
+                            current = action.choices[part]
+                            found = True
+                            break
+                if not found:
+                    valid = False
+                    break
+
+            if not valid:
+                mismatches.append(
+                    f"{cap.id}: path 'motor {' '.join(path)}' not found in parser"
+                )
+                continue
+
+            # Verify we arrived at a leaf (no further public subparsers)
+            has_public_subparsers = any(
+                isinstance(action, argparse._SubParsersAction) and action.choices
+                for action in current._actions
+            )
+            if has_public_subparsers:
+                mismatches.append(
+                    f"{cap.id}: path 'motor {' '.join(path)}' is not a leaf command in parser"
+                )
+
+        self.assertEqual(
+            mismatches,
+            [],
+            "Implemented capabilities with missing or non-leaf parser paths:\n"
+            + "\n".join(mismatches),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

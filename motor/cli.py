@@ -63,6 +63,10 @@ from motor.cli_core import (
     cmd_runtime_play,
     cmd_runtime_step,
     cmd_runtime_stop,
+    cmd_runtime_status,
+    cmd_runtime_entities,
+    cmd_runtime_inspect,
+    cmd_runtime_events,
     cmd_entity_create,
     cmd_component_add,
     cmd_prefab_create,
@@ -367,6 +371,54 @@ Documentation:
         help="Path to project directory"
     )
     runtime_stop_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    runtime_status_parser = runtime_subparsers.add_parser(
+        "status",
+        help="Read-only runtime status and active scene info",
+    )
+    runtime_status_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_status_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    runtime_entities_parser = runtime_subparsers.add_parser(
+        "entities",
+        help="List entities in the active scene (read-only)",
+    )
+    runtime_entities_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_entities_parser.add_argument("--tag", default=None, help="Filter by tag")
+    runtime_entities_parser.add_argument("--layer", default=None, help="Filter by layer")
+    runtime_entities_parser.add_argument("--active-only", action="store_true", help="Only active entities")
+    runtime_entities_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    runtime_inspect_parser = runtime_subparsers.add_parser(
+        "inspect",
+        help="Inspect a specific entity (read-only)",
+    )
+    runtime_inspect_parser.add_argument("entity", help="Entity name")
+    runtime_inspect_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_inspect_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    runtime_events_parser = runtime_subparsers.add_parser(
+        "events",
+        help="Return recent runtime events (read-only)",
+    )
+    runtime_events_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_events_parser.add_argument(
+        "--count", type=int, default=50,
+        help="Number of recent events to retrieve (default: 50)"
+    )
+    runtime_events_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === entity ===
     entity_parser = subparsers.add_parser(
@@ -990,7 +1042,32 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 project_path=Path(parsed.project_root).resolve(),
                 json_output=parsed.json,
             )
-    
+        elif parsed.runtime_subcommand == "status":
+            return cmd_runtime_status(
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
+        elif parsed.runtime_subcommand == "entities":
+            return cmd_runtime_entities(
+                project_path=Path(parsed.project_root).resolve(),
+                tag=parsed.tag,
+                layer=parsed.layer,
+                active_only=parsed.active_only,
+                json_output=parsed.json,
+            )
+        elif parsed.runtime_subcommand == "inspect":
+            return cmd_runtime_inspect(
+                project_path=Path(parsed.project_root).resolve(),
+                entity_name=parsed.entity,
+                json_output=parsed.json,
+            )
+        elif parsed.runtime_subcommand == "events":
+            return cmd_runtime_events(
+                project_path=Path(parsed.project_root).resolve(),
+                count=parsed.count,
+                json_output=parsed.json,
+            )
+
     # === entity ===
     elif parsed.command == "entity":
         if parsed.entity_subcommand == "create":

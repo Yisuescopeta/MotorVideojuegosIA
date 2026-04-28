@@ -219,6 +219,66 @@ declara en `warnings`.
 py -m motor runtime stop --project . --json
 ```
 
+### `motor runtime status`
+
+Devuelve el estado actual del runtime y la informacion de la escena activa.
+Es de solo lectura y no modifica el estado de authoring.
+
+```bash
+py -m motor runtime status --project . --json
+```
+
+El JSON incluye:
+
+- `status`: estado del runtime (`state`, `frame`, `time`, `fps`, `entity_count`).
+- `scene`: metadatos de la escena activa (o advertencia si se uso fallback).
+- `warnings`: lista de advertencias, por ejemplo si se cargo una escena fallback.
+
+### `motor runtime entities`
+
+Lista las entidades de la escena activa. Es de solo lectura.
+
+```bash
+py -m motor runtime entities --project . --json
+py -m motor runtime entities --project . --tag Player --active-only --json
+```
+
+Opciones:
+
+- `--tag`: filtra por tag.
+- `--layer`: filtra por layer.
+- `--active-only`: muestra solo entidades activas.
+
+El JSON incluye `entities` (lista de `EntityData`) y `count`.
+
+### `motor runtime inspect <entity>`
+
+Devuelve los datos completos de una entidad concreta. Es de solo lectura.
+
+```bash
+py -m motor runtime inspect Player --project . --json
+```
+
+El JSON incluye `entity` con `name`, `active`, `tag`, `layer`, `parent`,
+`components` y `component_metadata`.
+
+### `motor runtime events`
+
+Devuelve los eventos recientes del bus de eventos del runtime. Es de solo
+lectura.
+
+```bash
+py -m motor runtime events --project . --json
+py -m motor runtime events --project . --count 10 --json
+```
+
+Opciones:
+
+- `--count`: numero de eventos a recuperar (por defecto: 50).
+
+Si no hay eventos disponibles, devuelve una lista vacia y una advertencia.
+El JSON incluye `events` y `count`.
+
 ## Entidades
 
 ### `motor entity create <name>`

@@ -196,6 +196,10 @@ class RegistryToCLIExecutableContractTests(unittest.TestCase):
             ("runtime", ["play"]),
             ("runtime", ["step"]),
             ("runtime", ["stop"]),
+            ("runtime", ["status"]),
+            ("runtime", ["entities"]),
+            ("runtime", ["inspect"]),
+            ("runtime", ["events"]),
             ("entity", ["create"]),
             ("component", ["add"]),
             ("prefab", ["create"]),
@@ -450,6 +454,198 @@ class RuntimeCLIContractTests(unittest.TestCase):
         warnings = payload["data"]["warnings"]
         self.assertTrue(any("No active scene" in warning for warning in warnings))
         self.assertTrue(any("fallback scene" in warning for warning in warnings))
+
+    def test_motor_runtime_status_returns_json_with_scene_and_status(self) -> None:
+        self._write_scene()
+
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "status",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        payload = self._payload(stdout)
+        self.assertTrue(payload["success"])
+        data = payload["data"]
+        self.assertEqual(data["command"], "runtime status")
+        self.assertTrue(data["stateless"])
+        self.assertIn("status", data)
+        self.assertIn("scene", data)
+        self.assertTrue(data["scene"]["has_scene"])
+
+    def test_motor_runtime_status_does_not_modify_scene_file(self) -> None:
+        scene_path = self._write_scene()
+        before = scene_path.read_text(encoding="utf-8")
+
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "status",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+
+    def test_motor_runtime_entities_lists_entities(self) -> None:
+        self._write_scene()
+
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "entities",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        payload = self._payload(stdout)
+        self.assertTrue(payload["success"])
+        data = payload["data"]
+        self.assertEqual(data["command"], "runtime entities")
+        self.assertTrue(data["stateless"])
+        self.assertIn("entities", data)
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["entities"][0]["name"], "RuntimeProbe")
+
+    def test_motor_runtime_entities_with_filters(self) -> None:
+        self._write_scene()
+
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "entities",
+            "--project",
+            self.project.as_posix(),
+            "--active-only",
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        payload = self._payload(stdout)
+        self.assertTrue(payload["success"])
+        data = payload["data"]
+        self.assertEqual(data["count"], 1)
+
+    def test_motor_runtime_entities_does_not_modify_scene_file(self) -> None:
+        scene_path = self._write_scene()
+        before = scene_path.read_text(encoding="utf-8")
+
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "entities",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+
+    def test_motor_runtime_inspect_returns_entity_data(self) -> None:
+        self._write_scene()
+
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "inspect",
+            "RuntimeProbe",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        payload = self._payload(stdout)
+        self.assertTrue(payload["success"])
+        data = payload["data"]
+        self.assertEqual(data["command"], "runtime inspect")
+        self.assertTrue(data["stateless"])
+        self.assertIn("entity", data)
+        self.assertEqual(data["entity"]["name"], "RuntimeProbe")
+        self.assertIn("components", data["entity"])
+
+    def test_motor_runtime_inspect_fails_for_missing_entity(self) -> None:
+        self._write_scene()
+
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "inspect",
+            "MissingEntity",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 1, stderr + stdout)
+        payload = self._payload(stdout)
+        self.assertFalse(payload["success"])
+
+    def test_motor_runtime_inspect_does_not_modify_scene_file(self) -> None:
+        scene_path = self._write_scene()
+        before = scene_path.read_text(encoding="utf-8")
+
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "inspect",
+            "RuntimeProbe",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+
+    def test_motor_runtime_events_returns_list(self) -> None:
+        self._write_scene()
+
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "events",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        payload = self._payload(stdout)
+        self.assertTrue(payload["success"])
+        data = payload["data"]
+        self.assertEqual(data["command"], "runtime events")
+        self.assertTrue(data["stateless"])
+        self.assertIn("events", data)
+        self.assertIsInstance(data["events"], list)
+        self.assertIsInstance(data["count"], int)
+
+    def test_motor_runtime_events_does_not_modify_scene_file(self) -> None:
+        scene_path = self._write_scene()
+        before = scene_path.read_text(encoding="utf-8")
+
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "events",
+            "--project",
+            self.project.as_posix(),
+            "--count",
+            "10",
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
 
 
 class PrefabCLIContractTests(unittest.TestCase):

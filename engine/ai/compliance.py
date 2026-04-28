@@ -37,7 +37,6 @@ _SKIP_SCAN_DIRS = {
     ".ruff_cache",
     "__pycache__",
     "build",
-    "docs",
     "engine",
     "motor",
     "motorvideojuegosia.egg-info",
@@ -79,13 +78,17 @@ def run_ai_compliance(project_root: str | Path, *, strict: bool = False) -> dict
     else:
         scenes = []
 
-    external_findings = _detect_external_runtime(root)
-    checks["external_runtime_findings"] = [finding.to_dict() for finding in external_findings]
-    external_runtime_detected = bool(external_findings)
+    blocking_findings, warning_findings = _detect_external_runtime(root)
+    checks["external_runtime_blocking_findings"] = [finding.to_dict() for finding in blocking_findings]
+    checks["external_runtime_warning_findings"] = [finding.to_dict() for finding in warning_findings]
+    external_runtime_detected = bool(blocking_findings or warning_findings)
+    external_runtime_blocking = bool(blocking_findings)
+    external_runtime_warnings = bool(warning_findings)
     if strict:
-        problems.extend(external_findings)
+        problems.extend(blocking_findings)
     else:
-        warnings.extend(external_findings)
+        warnings.extend(blocking_findings)
+    warnings.extend(warning_findings)
 
     native_scene_valid = bool(checks.get("selected_scene_valid"))
     if strict and not native_scene_valid:
@@ -96,7 +99,7 @@ def run_ai_compliance(project_root: str | Path, *, strict: bool = False) -> dict
             )
         )
 
-    strict_pass = not problems and native_scene_valid and not external_runtime_detected
+    strict_pass = not problems and native_scene_valid and not external_runtime_blocking
     command_success = bool(checks.get("project_initializable")) and (strict_pass if strict else True)
     native_score = _calculate_native_score(checks, external_runtime_detected)
 
@@ -112,6 +115,8 @@ def run_ai_compliance(project_root: str | Path, *, strict: bool = False) -> dict
         "native_score": native_score,
         "strict_pass": strict_pass,
         "external_runtime_detected": external_runtime_detected,
+        "external_runtime_blocking": external_runtime_blocking,
+        "external_runtime_warnings": external_runtime_warnings,
         "problems": [problem.to_dict() for problem in _dedupe_findings(problems)],
         "warnings": [warning.to_dict() for warning in _dedupe_findings(warnings)],
         "recommended_next_actions": recommended_next_actions,
@@ -301,56 +306,68 @@ def _check_scene_contract(
         )
 
 
-def _detect_external_runtime(root: Path) -> list[ComplianceFinding]:
-    findings: list[ComplianceFinding] = []
+def _is_demo_or_legacy_path(rel_path: str) -> bool:
+    lower = rel_path.lower().replace("\\", "/")
+    return lower.startswith("demo/") or lower.startswith("examples/") or lower.startswith("docs/archive/")
+
+
+def _is_demo_named(path: Path) -> bool:
+    return "demo" in path.stem.lower()
+
+
+def _detect_external_runtime(root: Path) -> tuple[list[ComplianceFinding], list[ComplianceFinding]]:
+    blocking: list[ComplianceFinding] = []
+    warnings: list[ComplianceFinding] = []
     for path in _iter_candidate_files(root):
         rel_path = _relative_path(root, path)
         lower_name = path.name.lower()
         content = _read_text(path)
+        is_demo_path = _is_demo_or_legacy_path(rel_path)
 
         if lower_name == "run_game.py":
-            findings.append(ComplianceFinding("external_runtime_run_game", "run_game.py suggests an alternate runtime entrypoint", rel_path))
+            finding = ComplianceFinding("external_runtime_run_game", "run_game.py suggests an alternate runtime entrypoint", rel_path)
+            (warnings if is_demo_path else blocking).append(finding)
 
         if path.suffix.lower() == ".py":
+            is_demo_py = is_demo_path or _is_demo_named(path)
+
             if any(pattern.search(content) for pattern in _WINDOW_LOOP_PATTERNS) or (
                 "while " in content and any(pattern.search(content) for pattern in _RENDER_LOOP_PATTERNS)
             ):
-                findings.append(
-                    ComplianceFinding(
-                        "external_runtime_loop",
-                        "python script appears to own a window/render loop outside the motor runtime",
-                        rel_path,
-                    )
+                finding = ComplianceFinding(
+                    "external_runtime_loop",
+                    "python script appears to own a window/render loop outside the motor runtime",
+                    rel_path,
                 )
+                (warnings if is_demo_py else blocking).append(finding)
+
             if re.search(r"^\s*(import|from)\s+(pyray|raylib)\b", content, re.MULTILINE):
-                findings.append(
-                    ComplianceFinding(
-                        "external_runtime_raylib",
-                        "python script imports pyray/raylib directly outside the motor runtime",
-                        rel_path,
-                    )
+                finding = ComplianceFinding(
+                    "external_runtime_raylib",
+                    "python script imports pyray/raylib directly outside the motor runtime",
+                    rel_path,
                 )
+                (warnings if is_demo_py else blocking).append(finding)
+
             if re.search(r"\b(main\.py|HeadlessGame)\b", content) and "EngineAPI" not in content and "motor " not in content:
-                findings.append(
-                    ComplianceFinding(
-                        "external_runtime_internal_entrypoint",
-                        "script invokes main.py or HeadlessGame without going through the public CLI/API",
-                        rel_path,
-                    )
+                finding = ComplianceFinding(
+                    "external_runtime_internal_entrypoint",
+                    "script invokes main.py or HeadlessGame without going through the public CLI/API",
+                    rel_path,
                 )
+                (warnings if is_demo_py else blocking).append(finding)
 
         if path.suffix.lower() in {".bat", ".cmd"}:
             bat_lower = content.lower()
             if any(token in bat_lower for token in ("run_game.py", "main.py", "demo", "headlessgame")) and "motor " not in bat_lower:
-                findings.append(
-                    ComplianceFinding(
-                        "external_runtime_batch",
-                        "batch script appears to launch an external demo/runtime as the main flow",
-                        rel_path,
-                    )
+                finding = ComplianceFinding(
+                    "external_runtime_batch",
+                    "batch script appears to launch an external demo/runtime as the main flow",
+                    rel_path,
                 )
+                (warnings if is_demo_path else blocking).append(finding)
 
-    return _dedupe_findings(findings)
+    return _dedupe_findings(blocking), _dedupe_findings(warnings)
 
 
 def _iter_candidate_files(root: Path) -> list[Path]:
@@ -359,8 +376,13 @@ def _iter_candidate_files(root: Path) -> list[Path]:
         if not path.is_file():
             continue
         try:
-            rel_parts = path.relative_to(root).parts
+            rel = path.relative_to(root)
+            rel_parts = rel.parts
+            rel_str = rel.as_posix()
         except ValueError:
+            continue
+        # Skip docs/ except docs/archive/
+        if rel_str.startswith("docs/") and not rel_str.startswith("docs/archive/"):
             continue
         if any(part in _SKIP_SCAN_DIRS for part in rel_parts[:-1]):
             continue

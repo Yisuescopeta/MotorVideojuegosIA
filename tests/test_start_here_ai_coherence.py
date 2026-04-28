@@ -84,8 +84,12 @@ class StartHereAICoherenceTests(unittest.TestCase):
         planned_ids = [
             "entity:delete", "entity:parent", "entity:list",
             "component:edit", "component:remove",
-            "runtime:play", "runtime:stop", "runtime:step",
             "introspect:status", "introspect:entity",
+            "asset:find", "asset:metadata:get", "asset:refresh",
+            "project:open", "project:editor_state",
+            "scene:flow:set_next", "scene:flow:load_next",
+            "physics:query:aabb", "physics:query:ray", "physics:backend:list",
+            "runtime:undo", "runtime:redo",
         ]
 
         for cap_id in planned_ids:

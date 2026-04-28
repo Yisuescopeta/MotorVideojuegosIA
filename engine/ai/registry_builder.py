@@ -816,6 +816,75 @@ class CapabilityRegistryBuilder:
             tags=["runtime", "edit"],
         ))
 
+        self._add(Capability(
+            id="runtime:status",
+            summary="Read-only runtime status and active scene info",
+            mode="both",
+            api_methods=["RuntimeAPI.get_status", "SceneWorkspaceAPI.get_active_scene_info"],
+            cli_command="motor runtime status [--project <path>]",
+            example=CapabilityExample(
+                description="Get runtime status and scene info",
+                api_calls=[
+                    {"method": "get_status", "args": {}},
+                    {"method": "get_active_scene_info", "args": {}},
+                ],
+                expected_outcome="Returns engine state, frame, fps, entity count and active scene metadata",
+            ),
+            notes="Read-only. Loads a fallback scene for inspection if none is active, without persisting state.",
+            tags=["runtime", "introspection"],
+        ))
+
+        self._add(Capability(
+            id="runtime:entities",
+            summary="List entities in the active scene (read-only)",
+            mode="both",
+            api_methods=["RuntimeAPI.list_entities"],
+            cli_command="motor runtime entities [--project <path>] [--tag <tag>] [--layer <layer>] [--active-only]",
+            example=CapabilityExample(
+                description="List all active entities",
+                api_calls=[
+                    {"method": "list_entities", "args": {"active": True}},
+                ],
+                expected_outcome="Returns list of EntityData for matching entities",
+            ),
+            notes="Read-only. Supports optional filtering by tag, layer and active state.",
+            tags=["runtime", "introspection", "entity"],
+        ))
+
+        self._add(Capability(
+            id="runtime:inspect",
+            summary="Inspect a specific entity (read-only)",
+            mode="both",
+            api_methods=["RuntimeAPI.get_entity"],
+            cli_command="motor runtime inspect <entity> [--project <path>]",
+            example=CapabilityExample(
+                description="Get full data for the Player entity",
+                api_calls=[
+                    {"method": "get_entity", "args": {"name": "Player"}},
+                ],
+                expected_outcome="Returns EntityData with all components and values",
+            ),
+            notes="Read-only. Throws if entity does not exist. Loads a fallback scene for inspection if none is active.",
+            tags=["runtime", "introspection", "entity"],
+        ))
+
+        self._add(Capability(
+            id="runtime:events",
+            summary="Return recent runtime events (read-only)",
+            mode="both",
+            api_methods=["RuntimeAPI.get_recent_events"],
+            cli_command="motor runtime events [--project <path>] [--count <n>]",
+            example=CapabilityExample(
+                description="Get last 50 runtime events",
+                api_calls=[
+                    {"method": "get_recent_events", "args": {"count": 50}},
+                ],
+                expected_outcome="Returns list of recent events with name and data",
+            ),
+            notes="Read-only. Returns empty list with a warning if no events are available. Loads a fallback scene for inspection if none is active.",
+            tags=["runtime", "introspection", "events"],
+        ))
+
     def _register_physics_capabilities(self) -> None:
         self._add(Capability(
             id="physics:query:aabb",
@@ -1355,6 +1424,7 @@ class MotorAIBootstrapBuilder:
             "asset:list", "asset:slice:grid", "asset:slice:list",
             "animator:set_sheet", "animator:state:create", "animator:info",
             "runtime:play", "runtime:step", "runtime:stop",
+            "runtime:status", "runtime:entities", "runtime:inspect", "runtime:events",
             "introspect:capabilities",
         ]
 
