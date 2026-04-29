@@ -88,6 +88,17 @@ class InspectorSystem:
         "SceneTransitionOnInteract",
         "SceneTransitionOnPlayerDeath",
     }
+    SEMANTIC_2D_COMPONENTS: Set[str] = {
+        "Collectible2D",
+        "Hazard2D",
+        "Goal2D",
+        "RespawnPoint2D",
+    }
+    SEMANTIC_2D_TRIGGER_COMPONENTS: Set[str] = {
+        "Collectible2D",
+        "Hazard2D",
+        "Goal2D",
+    }
 
     BG_COLOR = rl.Color(30, 30, 30, 255)
     HEADER_COLOR = rl.Color(50, 50, 50, 255)
@@ -498,6 +509,10 @@ class InspectorSystem:
         self.component_editors.register("RectTransform", self._draw_rect_transform_editor)
         self.component_editors.register("UIText", self._draw_ui_text_editor)
         self.component_editors.register("UIButton", self._draw_ui_button_editor)
+        self.component_editors.register("Collectible2D", self._draw_collectible2d_editor)
+        self.component_editors.register("Hazard2D", self._draw_hazard2d_editor)
+        self.component_editors.register("Goal2D", self._draw_goal2d_editor)
+        self.component_editors.register("RespawnPoint2D", self._draw_respawn_point2d_editor)
 
     def update(self, dt: float, world: "World", is_edit_mode: bool) -> None:
         """Processes keyboard-only inspector input."""
@@ -2911,6 +2926,131 @@ class InspectorSystem:
 
             current_y = self._draw_int_row(channel, int(tint[index]), prop_id, x, current_y, width, is_edit, world, on_commit=on_commit)
         return current_y
+
+    def _draw_component_metadata_summary(self, component_name: str, x: int, y: int, width: int) -> int:
+        descriptor = self.registry.get_descriptor(component_name)
+        current_y = y
+        if descriptor is None:
+            return current_y
+        if descriptor.description:
+            current_y = self._draw_readonly_row("Role", descriptor.description, x, current_y, width)
+        if descriptor.default_payload:
+            current_y = self._draw_readonly_row("Defaults", self._format_default_payload(descriptor.default_payload), x, current_y, width)
+        if descriptor.editor_tags:
+            current_y = self._draw_readonly_row("Hints", ", ".join(descriptor.editor_tags), x, current_y, width)
+        return current_y
+
+    def _format_default_payload(self, payload: Dict[str, Any]) -> str:
+        parts: list[str] = []
+        for key, value in payload.items():
+            if isinstance(value, str):
+                parts.append(f"{key}='{value}'")
+            else:
+                parts.append(f"{key}={value}")
+        return ", ".join(parts)
+
+    def _draw_semantic2d_validation_messages(
+        self,
+        component_name: str,
+        component: Any,
+        entity_id: int,
+        x: int,
+        y: int,
+        width: int,
+        world: "World",
+    ) -> int:
+        current_y = y
+        entity = world.get_entity(entity_id)
+        entity_name = entity.name if entity is not None else ""
+        payload = self._current_component_payload(world, entity_name, component_name) if entity_name else None
+        data = payload if isinstance(payload, dict) else {}
+
+        if component_name == "Collectible2D":
+            if self._payload_number(data, "points", getattr(component, "points", 0)) < 0:
+                current_y = self._draw_message_row("error", "points must be >= 0", x, current_y, width)
+            if not str(data.get("event_name", getattr(component, "event_name", "")) or "").strip():
+                current_y = self._draw_message_row("warning", "event_name is empty; default will be used", x, current_y, width)
+        elif component_name == "Hazard2D":
+            if self._payload_number(data, "damage", getattr(component, "damage", 0)) < 0:
+                current_y = self._draw_message_row("error", "damage must be >= 0", x, current_y, width)
+            if not str(data.get("event_name", getattr(component, "event_name", "")) or "").strip():
+                current_y = self._draw_message_row("warning", "event_name is empty; default will be used", x, current_y, width)
+        elif component_name == "Goal2D":
+            if not str(data.get("event_name", getattr(component, "event_name", "")) or "").strip():
+                current_y = self._draw_message_row("warning", "event_name is empty; default will be used", x, current_y, width)
+        elif component_name == "RespawnPoint2D":
+            if not str(data.get("spawn_id", getattr(component, "spawn_id", "")) or "").strip():
+                current_y = self._draw_message_row("error", "spawn_id must not be empty", x, current_y, width)
+
+        if component_name in self.SEMANTIC_2D_TRIGGER_COMPONENTS and not self._entity_has_enabled_trigger_collider(entity):
+            current_y = self._draw_message_row("warning", f"{component_name} needs an enabled Collider trigger", x, current_y, width)
+        if component_name in self.SEMANTIC_2D_COMPONENTS and not self._scene_has_active_respawn_point(world):
+            current_y = self._draw_message_row("warning", "Scene has no active RespawnPoint2D", x, current_y, width)
+        return current_y
+
+    def _payload_number(self, payload: Dict[str, Any], key: str, default: float) -> float:
+        try:
+            return float(payload.get(key, default))
+        except (TypeError, ValueError):
+            return float(default)
+
+    def _entity_has_enabled_trigger_collider(self, entity: Optional[Entity]) -> bool:
+        if entity is None:
+            return False
+        collider = self._find_component(entity, "Collider")
+        return bool(collider is not None and getattr(collider, "enabled", True) and getattr(collider, "is_trigger", False))
+
+    def _scene_has_active_respawn_point(self, world: "World") -> bool:
+        for entity in world.iter_all_entities():
+            respawn = self._find_component(entity, "RespawnPoint2D")
+            if respawn is None:
+                continue
+            if bool(entity.active) and bool(getattr(respawn, "enabled", True)) and bool(getattr(respawn, "active", True)):
+                return True
+        return False
+
+    def _draw_collectible2d_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:
+        current_y = self._draw_component_metadata_summary("Collectible2D", x, y, width)
+        for label, prop_name in (
+            ("Enabled", "enabled"),
+            ("Points", "points"),
+            ("Destroy", "destroy_on_collect"),
+            ("Event", "event_name"),
+        ):
+            current_y = self._draw_component_field(label, getattr(component, prop_name), entity_id, "Collectible2D", prop_name, x, current_y, width, is_edit, world)
+        return self._draw_semantic2d_validation_messages("Collectible2D", component, entity_id, x, current_y, width, world)
+
+    def _draw_hazard2d_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:
+        current_y = self._draw_component_metadata_summary("Hazard2D", x, y, width)
+        for label, prop_name in (
+            ("Enabled", "enabled"),
+            ("Damage", "damage"),
+            ("Respawn", "respawn_on_touch"),
+            ("Event", "event_name"),
+        ):
+            current_y = self._draw_component_field(label, getattr(component, prop_name), entity_id, "Hazard2D", prop_name, x, current_y, width, is_edit, world)
+        return self._draw_semantic2d_validation_messages("Hazard2D", component, entity_id, x, current_y, width, world)
+
+    def _draw_goal2d_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:
+        current_y = self._draw_component_metadata_summary("Goal2D", x, y, width)
+        for label, prop_name in (
+            ("Enabled", "enabled"),
+            ("Complete", "complete_on_touch"),
+            ("Next Scene", "next_scene"),
+            ("Event", "event_name"),
+        ):
+            current_y = self._draw_component_field(label, getattr(component, prop_name), entity_id, "Goal2D", prop_name, x, current_y, width, is_edit, world)
+        return self._draw_semantic2d_validation_messages("Goal2D", component, entity_id, x, current_y, width, world)
+
+    def _draw_respawn_point2d_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:
+        current_y = self._draw_component_metadata_summary("RespawnPoint2D", x, y, width)
+        for label, prop_name in (
+            ("Enabled", "enabled"),
+            ("Spawn ID", "spawn_id"),
+            ("Active", "active"),
+        ):
+            current_y = self._draw_component_field(label, getattr(component, prop_name), entity_id, "RespawnPoint2D", prop_name, x, current_y, width, is_edit, world)
+        return self._draw_semantic2d_validation_messages("RespawnPoint2D", component, entity_id, x, current_y, width, world)
 
     def _draw_collider_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:
         current_y = y

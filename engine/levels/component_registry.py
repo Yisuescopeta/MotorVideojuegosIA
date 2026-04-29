@@ -4,7 +4,8 @@ engine/levels/component_registry.py - Registro de componentes para instanciacion
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import copy
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Type
 
 from engine.ecs.component import Component
@@ -18,6 +19,9 @@ class ComponentDescriptor:
     component_class: Type[Component]
     origin: str = "native"
     badge: str = "CORE"
+    description: str = ""
+    default_payload: Dict[str, Any] = field(default_factory=dict)
+    editor_tags: tuple[str, ...] = ()
 
 
 class ComponentRegistry:
@@ -38,14 +42,21 @@ class ComponentRegistry:
         *,
         origin: str = "native",
         badge: str | None = None,
+        description: str = "",
+        default_payload: Dict[str, Any] | None = None,
+        editor_tags: tuple[str, ...] | list[str] | None = None,
     ) -> None:
         normalized_origin = str(origin or "native").strip().lower() or "native"
         resolved_badge = badge or ("AI" if normalized_origin == "ai_custom" else "CORE")
+        normalized_tags = tuple(str(tag).strip() for tag in (editor_tags or ()) if str(tag).strip())
         self._components[name] = ComponentDescriptor(
             name=name,
             component_class=component_class,
             origin=normalized_origin,
             badge=resolved_badge,
+            description=str(description or "").strip(),
+            default_payload=copy.deepcopy(default_payload or {}),
+            editor_tags=normalized_tags,
         )
 
     def get(self, name: str) -> Optional[Type[Component]]:
@@ -133,10 +144,34 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("Transform", Transform)
     registry.register("Sprite", Sprite)
     registry.register("Collider", Collider)
-    registry.register("Collectible2D", Collectible2D)
-    registry.register("Hazard2D", Hazard2D)
-    registry.register("Goal2D", Goal2D)
-    registry.register("RespawnPoint2D", RespawnPoint2D)
+    registry.register(
+        "Collectible2D",
+        Collectible2D,
+        description="Platformer pickup collected by trigger contact.",
+        default_payload=Collectible2D().to_dict(),
+        editor_tags=("platformer", "tag:Collectible", "layer:Gameplay", "trigger"),
+    )
+    registry.register(
+        "Hazard2D",
+        Hazard2D,
+        description="Platformer danger area that can damage or respawn the player.",
+        default_payload=Hazard2D().to_dict(),
+        editor_tags=("platformer", "tag:Hazard", "layer:Gameplay", "trigger"),
+    )
+    registry.register(
+        "Goal2D",
+        Goal2D,
+        description="Platformer level goal reached by trigger contact.",
+        default_payload=Goal2D().to_dict(),
+        editor_tags=("platformer", "tag:Goal", "layer:Gameplay", "trigger"),
+    )
+    registry.register(
+        "RespawnPoint2D",
+        RespawnPoint2D,
+        description="Platformer respawn marker used by hazards and checkpoints.",
+        default_payload=RespawnPoint2D().to_dict(),
+        editor_tags=("platformer", "tag:Respawn", "layer:Gameplay"),
+    )
     registry.register("MovingPlatform2D", MovingPlatform2D)
     registry.register("EnemyPatrol2D", EnemyPatrol2D)
     registry.register("Checkpoint2D", Checkpoint2D)

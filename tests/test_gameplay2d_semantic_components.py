@@ -279,6 +279,24 @@ class Gameplay2DSemanticComponentTests(unittest.TestCase):
         self.assertIsInstance(registry.create("KillZone2D", {"damage": 2}), KillZone2D)
         self.assertIsInstance(registry.create("LevelBounds2D", {"right": 10}), LevelBounds2D)
 
+    def test_semantic_component_metadata_exposes_editor_defaults(self) -> None:
+        registry = create_default_registry()
+        expected_defaults = {
+            "Collectible2D": Collectible2D().to_dict(),
+            "Hazard2D": Hazard2D().to_dict(),
+            "Goal2D": Goal2D().to_dict(),
+            "RespawnPoint2D": RespawnPoint2D().to_dict(),
+        }
+
+        for component_name, default_payload in expected_defaults.items():
+            with self.subTest(component=component_name):
+                descriptor = registry.get_descriptor(component_name)
+                self.assertIsNotNone(descriptor)
+                assert descriptor is not None
+                self.assertEqual(descriptor.default_payload, default_payload)
+                self.assertIn("platformer", descriptor.editor_tags)
+                self.assertTrue(descriptor.description)
+
     def test_scene_creates_world_with_semantic_components(self) -> None:
         scene = Scene.from_dict(_scene_payload())
         world = scene.create_world(create_default_registry())

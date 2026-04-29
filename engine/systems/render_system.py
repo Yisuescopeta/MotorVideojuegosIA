@@ -1520,7 +1520,14 @@ class RenderSystem:
 
     def _draw_collider(self, transform: Transform, collider: Collider) -> None:
         left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
-        rl.draw_rectangle_lines(int(left), int(top), int(right - left), int(bottom - top), rl.GREEN)
+        is_trigger = bool(getattr(collider, "is_trigger", False))
+        color = rl.Color(0, 180, 255, 255) if is_trigger else rl.GREEN
+        thickness = 2 if is_trigger else 1
+        rl.draw_rectangle_lines_ex(
+            rl.Rectangle(float(left), float(top), float(right - left), float(bottom - top)),
+            thickness,
+            color,
+        )
 
     def _draw_debug_primitive(self, geometry: dict[str, Any]) -> None:
         kind = geometry.get("kind", "")
@@ -1582,14 +1589,16 @@ class RenderSystem:
 
     def _build_collider_geometry(self, transform: Transform, collider: Collider) -> dict[str, Any]:
         left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
+        is_trigger = bool(getattr(collider, "is_trigger", False))
         return {
             "kind": "rect",
             "x": float(left),
             "y": float(top),
             "width": float(right - left),
             "height": float(bottom - top),
-            "thickness": 1,
-            "color": [0, 255, 0, 255],
+            "thickness": 2 if is_trigger else 1,
+            "color": [0, 180, 255, 255] if is_trigger else [0, 255, 0, 255],
+            "is_trigger": is_trigger,
         }
 
     def _build_tile_chunk_geometry(self, entity: Entity, command: RenderCommand) -> dict[str, Any] | None:
