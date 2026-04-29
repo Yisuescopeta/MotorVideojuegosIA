@@ -19,11 +19,11 @@ class Gameplay2DSemanticSystem:
     def reset(self) -> None:
         self._handled_contacts.clear()
 
-    def update(self, world: World, contacts: list[Any], event_bus: Any | None) -> None:
+    def update(self, world: World, contacts: Any, event_bus: Any | None) -> None:
         if event_bus is None:
             return
         destroyed_ids: set[int] = set()
-        for contact in contacts:
+        for contact in self._iter_contacts(contacts):
             entity_a = self._entity_from_contact(world, contact, "a")
             entity_b = self._entity_from_contact(world, contact, "b")
             if entity_a is None or entity_b is None:
@@ -39,14 +39,26 @@ class Gameplay2DSemanticSystem:
             self._handle_hazard(world, event_bus, player, target)
             self._handle_goal(event_bus, player, target)
 
+    def _iter_contacts(self, contacts: Any) -> list[Any]:
+        if contacts is None:
+            return []
+        if isinstance(contacts, list):
+            return contacts
+        try:
+            return list(contacts)
+        except TypeError:
+            return []
+
     def _entity_from_contact(self, world: World, contact: Any, side: str) -> Entity | None:
         entity_id = getattr(contact, f"entity_{side}_id", None)
         if entity_id is None and isinstance(contact, dict):
             entity_id = contact.get(f"entity_{side}_id")
-        try:
-            entity = world.get_entity(int(entity_id))
-        except (TypeError, ValueError):
-            entity = None
+        entity = None
+        if entity_id is not None:
+            try:
+                entity = world.get_entity(int(entity_id))
+            except (TypeError, ValueError):
+                entity = None
         if entity is not None:
             return entity if entity.active else None
 
