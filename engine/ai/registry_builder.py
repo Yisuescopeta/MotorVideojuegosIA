@@ -295,6 +295,114 @@ class CapabilityRegistryBuilder:
         ))
 
         self._add(Capability(
+            id="game:platformer:add-moving-platform",
+            summary="Create or update a named native moving platform in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-moving-platform --name <entity> --x <px> --y <px> --width <px> --height <px> --to-x <px> --to-y <px> --speed <px_per_sec> [--project <path>]",
+            example=CapabilityExample(
+                description="Ensure Lift_A moves between two pixel positions",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "Lift_A"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains Lift_A with Transform, Collider and MovingPlatform2D",
+            ),
+            notes="Requires --name for idempotent authoring. Data-only; no runtime movement system is introduced by this command.",
+            tags=["game", "platformer", "authoring"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:add-enemy-patrol",
+            summary="Create or update a named native enemy patrol in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-enemy-patrol --name <entity> --x <px> --y <px> --point <x,y> [--point <x,y> ...] --damage <int> --speed <px_per_sec> [--project <path>]",
+            example=CapabilityExample(
+                description="Ensure Slime_A has two patrol points",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "Slime_A"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains Slime_A with Transform, trigger Collider and EnemyPatrol2D",
+            ),
+            notes="Requires --name. Patrol points use x,y pixel pairs. Data-only; no enemy AI runtime is introduced by this command.",
+            tags=["game", "platformer", "authoring"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:add-checkpoint",
+            summary="Create or update a named native checkpoint in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-checkpoint --name <entity> --x <px> --y <px> --id <id> [--project <path>]",
+            example=CapabilityExample(
+                description="Ensure Checkpoint_A uses checkpoint id cp_a",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "Checkpoint_A"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains Checkpoint_A with Transform, trigger Collider, Checkpoint2D and RespawnPoint2D",
+            ),
+            notes="Requires --name. Adds RespawnPoint2D with the same id for simple gameplay2d compatibility.",
+            tags=["game", "platformer", "authoring"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:add-killzone",
+            summary="Create or update a named native killzone in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-killzone --name <entity> --x <px> --y <px> --width <px> --height <px> --damage <int> [--project <path>]",
+            example=CapabilityExample(
+                description="Ensure Pit_A is a killzone trigger",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "Pit_A"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains Pit_A with Transform, trigger Collider and KillZone2D",
+            ),
+            notes="Requires --name. Data-only; no new runtime killzone system is introduced by this command.",
+            tags=["game", "platformer", "authoring"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:set-camera-follow",
+            summary="Create or update Camera2D follow settings in the selected platformer scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer set-camera-follow --name <camera> --target <entity> [--offset-x <px>] [--offset-y <px>] [--dead-zone-width <px>] [--dead-zone-height <px>] [--zoom <float>] [--project <path>]",
+            example=CapabilityExample(
+                description="Make MainCamera follow Player",
+                api_calls=[
+                    {"method": "replace_component_data", "args": {"entity_name": "MainCamera", "component_name": "Camera2D"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene has MainCamera Camera2D.follow_entity set to Player",
+            ),
+            notes="Uses existing Camera2D fields instead of adding a CameraFollowTarget2D component.",
+            tags=["game", "platformer", "authoring", "camera"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:set-bounds",
+            summary="Create or update native platformer level bounds in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer set-bounds --name <entity> --left <px> --right <px> --top <px> --bottom <px> [--camera <camera>] [--project <path>]",
+            example=CapabilityExample(
+                description="Set level bounds and clamp MainCamera",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "LevelBounds"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains LevelBounds2D and optional Camera2D clamp values",
+            ),
+            notes="Requires --name. If --camera is provided, Camera2D clamp fields are synchronized.",
+            tags=["game", "platformer", "authoring", "camera"],
+        ))
+
+        self._add(Capability(
             id="game:platformer:validate",
             summary="Validate selected native platformer scene contract",
             mode="both",
@@ -1646,7 +1754,10 @@ class MotorAIBootstrapBuilder:
             "runtime:status", "runtime:entities", "runtime:inspect", "runtime:events",
             "game:platformer:create", "game:platformer:add-coin",
             "game:platformer:add-hazard", "game:platformer:add-goal",
-            "game:platformer:add-respawn", "game:platformer:validate",
+            "game:platformer:add-respawn", "game:platformer:add-moving-platform",
+            "game:platformer:add-enemy-patrol", "game:platformer:add-checkpoint",
+            "game:platformer:add-killzone", "game:platformer:set-camera-follow",
+            "game:platformer:set-bounds", "game:platformer:validate",
             "recipe:list", "recipe:show", "recipe:run",
             "introspect:capabilities",
         ]

@@ -1176,6 +1176,88 @@ def _validate_scene_transition_on_player_death(data: dict[str, Any], *, path: st
     return errors
 
 
+def _validate_point2d_list(value: Any, *, path: str, errors: list[str]) -> None:
+    if not isinstance(value, list):
+        errors.append(f"{path}: expected array")
+        return
+    for index, point in enumerate(value):
+        item_path = f"{path}[{index}]"
+        payload = _expect_object(point, path=item_path, errors=errors)
+        if payload is None:
+            continue
+        for key in ("x", "y"):
+            if key not in payload:
+                errors.append(f"{item_path}.{key}: expected number")
+            else:
+                _expect_number(payload[key], path=f"{item_path}.{key}", errors=errors)
+
+
+def _validate_moving_platform2d(data: dict[str, Any], *, path: str) -> list[str]:
+    errors: list[str] = []
+    if "enabled" in data:
+        _expect_bool(data["enabled"], path=f"{path}.enabled", errors=errors)
+    if "path" in data:
+        _validate_point2d_list(data["path"], path=f"{path}.path", errors=errors)
+    if "speed" in data:
+        _expect_number(data["speed"], path=f"{path}.speed", errors=errors, minimum=0.0)
+    for key in ("loop", "start_active"):
+        if key in data:
+            _expect_bool(data[key], path=f"{path}.{key}", errors=errors)
+    return errors
+
+
+def _validate_enemy_patrol2d(data: dict[str, Any], *, path: str) -> list[str]:
+    errors: list[str] = []
+    if "enabled" in data:
+        _expect_bool(data["enabled"], path=f"{path}.enabled", errors=errors)
+    if "patrol_points" in data:
+        _validate_point2d_list(data["patrol_points"], path=f"{path}.patrol_points", errors=errors)
+    if "speed" in data:
+        _expect_number(data["speed"], path=f"{path}.speed", errors=errors, minimum=0.0)
+    if "damage" in data:
+        _expect_int(data["damage"], path=f"{path}.damage", errors=errors, minimum=0)
+    if "event_name" in data:
+        _expect_string(data["event_name"], path=f"{path}.event_name", errors=errors, non_empty=True)
+    return errors
+
+
+def _validate_checkpoint2d(data: dict[str, Any], *, path: str) -> list[str]:
+    errors: list[str] = []
+    if "enabled" in data:
+        _expect_bool(data["enabled"], path=f"{path}.enabled", errors=errors)
+    if "checkpoint_id" in data:
+        _expect_string(data["checkpoint_id"], path=f"{path}.checkpoint_id", errors=errors, non_empty=True)
+    for key in ("active", "set_respawn_on_touch"):
+        if key in data:
+            _expect_bool(data[key], path=f"{path}.{key}", errors=errors)
+    if "event_name" in data:
+        _expect_string(data["event_name"], path=f"{path}.event_name", errors=errors, non_empty=True)
+    return errors
+
+
+def _validate_killzone2d(data: dict[str, Any], *, path: str) -> list[str]:
+    errors: list[str] = []
+    if "enabled" in data:
+        _expect_bool(data["enabled"], path=f"{path}.enabled", errors=errors)
+    if "damage" in data:
+        _expect_int(data["damage"], path=f"{path}.damage", errors=errors, minimum=0)
+    if "respawn_on_touch" in data:
+        _expect_bool(data["respawn_on_touch"], path=f"{path}.respawn_on_touch", errors=errors)
+    if "event_name" in data:
+        _expect_string(data["event_name"], path=f"{path}.event_name", errors=errors, non_empty=True)
+    return errors
+
+
+def _validate_level_bounds2d(data: dict[str, Any], *, path: str) -> list[str]:
+    errors: list[str] = []
+    if "enabled" in data:
+        _expect_bool(data["enabled"], path=f"{path}.enabled", errors=errors)
+    for key in ("left", "right", "top", "bottom"):
+        if key in data:
+            _expect_number(data[key], path=f"{path}.{key}", errors=errors)
+    return errors
+
+
 CORE_COMPONENT_VALIDATORS: dict[str, Callable[[dict[str, Any], str], list[str]]] = {
     "Transform": lambda data, path: _validate_transform(data, path=path),
     "RectTransform": lambda data, path: _validate_rect_transform(data, path=path),
@@ -1198,6 +1280,11 @@ CORE_COMPONENT_VALIDATORS: dict[str, Callable[[dict[str, Any], str], list[str]]]
     "SceneTransitionOnContact": lambda data, path: _validate_scene_transition_on_contact(data, path=path),
     "SceneTransitionOnInteract": lambda data, path: _validate_scene_transition_on_interact(data, path=path),
     "SceneTransitionOnPlayerDeath": lambda data, path: _validate_scene_transition_on_player_death(data, path=path),
+    "MovingPlatform2D": lambda data, path: _validate_moving_platform2d(data, path=path),
+    "EnemyPatrol2D": lambda data, path: _validate_enemy_patrol2d(data, path=path),
+    "Checkpoint2D": lambda data, path: _validate_checkpoint2d(data, path=path),
+    "KillZone2D": lambda data, path: _validate_killzone2d(data, path=path),
+    "LevelBounds2D": lambda data, path: _validate_level_bounds2d(data, path=path),
 }
 
 

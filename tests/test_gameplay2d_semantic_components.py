@@ -11,9 +11,14 @@ from pathlib import Path
 from engine.ai.compliance import run_ai_compliance
 from engine.api import EngineAPI
 from engine.components.gameplay2d import (
+    Checkpoint2D,
     Collectible2D,
+    EnemyPatrol2D,
     Goal2D,
     Hazard2D,
+    KillZone2D,
+    LevelBounds2D,
+    MovingPlatform2D,
     RespawnPoint2D,
 )
 from engine.components.transform import Transform
@@ -41,6 +46,11 @@ def _component_payloads() -> dict[str, dict[str, object]]:
         "Hazard2D": Hazard2D().to_dict(),
         "Goal2D": Goal2D().to_dict(),
         "RespawnPoint2D": RespawnPoint2D().to_dict(),
+        "MovingPlatform2D": MovingPlatform2D().to_dict(),
+        "EnemyPatrol2D": EnemyPatrol2D().to_dict(),
+        "Checkpoint2D": Checkpoint2D().to_dict(),
+        "KillZone2D": KillZone2D().to_dict(),
+        "LevelBounds2D": LevelBounds2D().to_dict(),
     }
 
 
@@ -165,6 +175,11 @@ class Gameplay2DSemanticComponentTests(unittest.TestCase):
         hazard = Hazard2D()
         goal = Goal2D()
         respawn = RespawnPoint2D()
+        moving_platform = MovingPlatform2D()
+        enemy = EnemyPatrol2D()
+        checkpoint = Checkpoint2D()
+        killzone = KillZone2D()
+        bounds = LevelBounds2D()
 
         self.assertTrue(collectible.enabled)
         self.assertEqual(collectible.points, 1)
@@ -178,6 +193,19 @@ class Gameplay2DSemanticComponentTests(unittest.TestCase):
         self.assertEqual(goal.event_name, "goal_reached")
         self.assertEqual(respawn.spawn_id, "default")
         self.assertTrue(respawn.active)
+        self.assertEqual(moving_platform.path, [])
+        self.assertEqual(moving_platform.speed, 80.0)
+        self.assertTrue(moving_platform.loop)
+        self.assertTrue(moving_platform.start_active)
+        self.assertEqual(enemy.patrol_points, [])
+        self.assertEqual(enemy.damage, 1)
+        self.assertEqual(enemy.event_name, "enemy_touched")
+        self.assertEqual(checkpoint.checkpoint_id, "default")
+        self.assertTrue(checkpoint.set_respawn_on_touch)
+        self.assertEqual(checkpoint.event_name, "checkpoint_reached")
+        self.assertEqual(killzone.damage, 1)
+        self.assertEqual(killzone.event_name, "killzone_touched")
+        self.assertEqual(bounds.to_dict()["right"], 1280.0)
 
     def test_roundtrip_serialization(self) -> None:
         cases = [
@@ -185,6 +213,11 @@ class Gameplay2DSemanticComponentTests(unittest.TestCase):
             Hazard2D(damage=3, respawn_on_touch=False, event_name=" spike "),
             Goal2D(complete_on_touch=False, next_scene=" levels/next.json ", event_name=" win "),
             RespawnPoint2D(spawn_id=" checkpoint_a ", active=False),
+            MovingPlatform2D(path=[{"x": 0.0, "y": 0.0}, {"x": 128.0, "y": 0.0}], speed=120.0, loop=False),
+            EnemyPatrol2D(patrol_points=[{"x": 16.0, "y": 32.0}], speed=90.0, damage=2, event_name=" hit "),
+            Checkpoint2D(checkpoint_id=" cp_a ", active=False, set_respawn_on_touch=False, event_name=" cp "),
+            KillZone2D(damage=4, respawn_on_touch=False, event_name=" kill "),
+            LevelBounds2D(left=-32.0, right=2048.0, top=-16.0, bottom=720.0),
         ]
 
         for component in cases:
@@ -197,6 +230,10 @@ class Gameplay2DSemanticComponentTests(unittest.TestCase):
         collectible = Collectible2D.from_dict({"points": -10, "event_name": " "})
         hazard = Hazard2D.from_dict({"damage": "bad", "event_name": ""})
         respawn = RespawnPoint2D.from_dict({"active": "bad", "spawn_id": " "})
+        moving_platform = MovingPlatform2D.from_dict({"speed": -10, "loop": "bad", "path": [["1", "2"], {"x": "bad"}]})
+        enemy = EnemyPatrol2D.from_dict({"damage": "bad", "event_name": "", "patrol_points": "bad"})
+        checkpoint = Checkpoint2D.from_dict({"checkpoint_id": " ", "active": "bad", "event_name": ""})
+        killzone = KillZone2D.from_dict({"damage": -2, "respawn_on_touch": "bad", "event_name": ""})
 
         self.assertEqual(collectible.points, 0)
         self.assertEqual(collectible.event_name, "collectible_collected")
@@ -204,16 +241,43 @@ class Gameplay2DSemanticComponentTests(unittest.TestCase):
         self.assertEqual(hazard.event_name, "hazard_touched")
         self.assertTrue(respawn.active)
         self.assertEqual(respawn.spawn_id, "default")
+        self.assertEqual(moving_platform.speed, 0.0)
+        self.assertTrue(moving_platform.loop)
+        self.assertEqual(moving_platform.path, [{"x": 1.0, "y": 2.0}, {"x": 0.0, "y": 0.0}])
+        self.assertEqual(enemy.damage, 1)
+        self.assertEqual(enemy.event_name, "enemy_touched")
+        self.assertEqual(enemy.patrol_points, [])
+        self.assertEqual(checkpoint.checkpoint_id, "default")
+        self.assertTrue(checkpoint.active)
+        self.assertEqual(checkpoint.event_name, "checkpoint_reached")
+        self.assertEqual(killzone.damage, 0)
+        self.assertTrue(killzone.respawn_on_touch)
+        self.assertEqual(killzone.event_name, "killzone_touched")
 
     def test_default_registry_lists_and_creates_components(self) -> None:
         registry = create_default_registry()
-        expected = {"Collectible2D", "Hazard2D", "Goal2D", "RespawnPoint2D"}
+        expected = {
+            "Collectible2D",
+            "Hazard2D",
+            "Goal2D",
+            "RespawnPoint2D",
+            "MovingPlatform2D",
+            "EnemyPatrol2D",
+            "Checkpoint2D",
+            "KillZone2D",
+            "LevelBounds2D",
+        }
 
         self.assertTrue(expected.issubset(set(registry.list_registered())))
         self.assertIsInstance(registry.create("Collectible2D", {"points": 2}), Collectible2D)
         self.assertIsInstance(registry.create("Hazard2D", {"damage": 4}), Hazard2D)
         self.assertIsInstance(registry.create("Goal2D", {"next_scene": "next"}), Goal2D)
         self.assertIsInstance(registry.create("RespawnPoint2D", {"spawn_id": "start"}), RespawnPoint2D)
+        self.assertIsInstance(registry.create("MovingPlatform2D", {"speed": 2}), MovingPlatform2D)
+        self.assertIsInstance(registry.create("EnemyPatrol2D", {"damage": 2}), EnemyPatrol2D)
+        self.assertIsInstance(registry.create("Checkpoint2D", {"checkpoint_id": "a"}), Checkpoint2D)
+        self.assertIsInstance(registry.create("KillZone2D", {"damage": 2}), KillZone2D)
+        self.assertIsInstance(registry.create("LevelBounds2D", {"right": 10}), LevelBounds2D)
 
     def test_scene_creates_world_with_semantic_components(self) -> None:
         scene = Scene.from_dict(_scene_payload())
@@ -228,6 +292,11 @@ class Gameplay2DSemanticComponentTests(unittest.TestCase):
         self.assertIsNotNone(entity.get_component(Hazard2D))
         self.assertIsNotNone(entity.get_component(Goal2D))
         self.assertIsNotNone(entity.get_component(RespawnPoint2D))
+        self.assertIsNotNone(entity.get_component(MovingPlatform2D))
+        self.assertIsNotNone(entity.get_component(EnemyPatrol2D))
+        self.assertIsNotNone(entity.get_component(Checkpoint2D))
+        self.assertIsNotNone(entity.get_component(KillZone2D))
+        self.assertIsNotNone(entity.get_component(LevelBounds2D))
 
     def test_scene_schema_accepts_semantic_components(self) -> None:
         migrated = migrate_scene_data(_scene_payload())

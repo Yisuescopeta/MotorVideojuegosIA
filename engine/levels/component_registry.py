@@ -90,9 +90,14 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.charactercontroller2d import CharacterController2D
     from engine.components.collider import Collider
     from engine.components.gameplay2d import (
+        Checkpoint2D,
         Collectible2D,
+        EnemyPatrol2D,
         Goal2D,
         Hazard2D,
+        KillZone2D,
+        LevelBounds2D,
+        MovingPlatform2D,
         RespawnPoint2D,
     )
     from engine.components.inputmap import InputMap
@@ -132,6 +137,11 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("Hazard2D", Hazard2D)
     registry.register("Goal2D", Goal2D)
     registry.register("RespawnPoint2D", RespawnPoint2D)
+    registry.register("MovingPlatform2D", MovingPlatform2D)
+    registry.register("EnemyPatrol2D", EnemyPatrol2D)
+    registry.register("Checkpoint2D", Checkpoint2D)
+    registry.register("KillZone2D", KillZone2D)
+    registry.register("LevelBounds2D", LevelBounds2D)
     registry.register("CharacterController2D", CharacterController2D)
     registry.register("Joint2D", Joint2D)
     registry.register("RigidBody", RigidBody)

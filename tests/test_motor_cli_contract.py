@@ -735,6 +735,203 @@ class GamePlatformerCLIContractTests(unittest.TestCase):
         self.assertIn("Collectible2D", inspect_payload["data"]["entity"]["components"])
         self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
 
+    def test_motor_game_platformer_advanced_authoring_commands_create_named_entities(self) -> None:
+        setup_commands = [
+            ("game", "platformer", "create", "Level 1"),
+            (
+                "game",
+                "platformer",
+                "add-moving-platform",
+                "--name",
+                "Lift_A",
+                "--x",
+                "320",
+                "--y",
+                "300",
+                "--width",
+                "96",
+                "--height",
+                "24",
+                "--to-x",
+                "640",
+                "--to-y",
+                "300",
+                "--speed",
+                "80",
+            ),
+            (
+                "game",
+                "platformer",
+                "add-enemy-patrol",
+                "--name",
+                "Slime_A",
+                "--x",
+                "500",
+                "--y",
+                "480",
+                "--point",
+                "500,480",
+                "--point",
+                "700,480",
+                "--damage",
+                "1",
+                "--speed",
+                "60",
+            ),
+            ("game", "platformer", "add-checkpoint", "--name", "Checkpoint_A", "--x", "200", "--y", "420", "--id", "cp_a"),
+            (
+                "game",
+                "platformer",
+                "add-killzone",
+                "--name",
+                "Pit_A",
+                "--x",
+                "640",
+                "--y",
+                "620",
+                "--width",
+                "1280",
+                "--height",
+                "64",
+                "--damage",
+                "1",
+            ),
+            (
+                "game",
+                "platformer",
+                "set-camera-follow",
+                "--name",
+                "MainCamera",
+                "--target",
+                "Player",
+                "--offset-x",
+                "16",
+                "--offset-y",
+                "-8",
+                "--dead-zone-width",
+                "120",
+                "--dead-zone-height",
+                "80",
+                "--zoom",
+                "1.25",
+            ),
+            (
+                "game",
+                "platformer",
+                "set-bounds",
+                "--name",
+                "LevelBounds",
+                "--left",
+                "0",
+                "--right",
+                "1600",
+                "--top",
+                "0",
+                "--bottom",
+                "720",
+                "--camera",
+                "MainCamera",
+            ),
+        ]
+
+        payloads: list[dict] = []
+        for command in setup_commands:
+            returncode, stdout, stderr = _run_motor(
+                *command,
+                "--project",
+                self.project.as_posix(),
+                "--json",
+                env=self.env,
+            )
+            self.assertEqual(returncode, 0, stderr + stdout)
+            payload = self._payload(stdout)
+            self.assertTrue(payload["success"], payload)
+            payloads.append(payload)
+
+        self.assertEqual(payloads[1]["data"]["entities_created"], ["Lift_A"])
+        self.assertEqual(payloads[2]["data"]["entities_created"], ["Slime_A"])
+        self.assertEqual(payloads[3]["data"]["entities_created"], ["Checkpoint_A"])
+        self.assertEqual(payloads[4]["data"]["entities_created"], ["Pit_A"])
+        self.assertEqual(payloads[5]["data"]["entities_created"], [])
+        self.assertEqual(payloads[6]["data"]["entities_created"], ["LevelBounds"])
+
+        returncode, stdout, stderr = _run_motor(
+            "game",
+            "platformer",
+            "add-moving-platform",
+            "--name",
+            "Lift_A",
+            "--x",
+            "320",
+            "--y",
+            "300",
+            "--width",
+            "128",
+            "--height",
+            "24",
+            "--to-x",
+            "700",
+            "--to-y",
+            "300",
+            "--speed",
+            "90",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+        self.assertEqual(returncode, 0, stderr + stdout)
+        update_payload = self._payload(stdout)
+        self.assertTrue(update_payload["success"], update_payload)
+        self.assertEqual(update_payload["data"]["entities_created"], [])
+
+        scene_path = self.project / "levels" / "level_1.json"
+        scene = json.loads(scene_path.read_text(encoding="utf-8"))
+        self.assertEqual(scene["schema_version"], 2)
+        by_name = {entity["name"]: entity for entity in scene["entities"]}
+
+        self.assertIn("MovingPlatform2D", by_name["Lift_A"]["components"])
+        self.assertEqual(by_name["Lift_A"]["components"]["Collider"]["width"], 128.0)
+        self.assertEqual(by_name["Lift_A"]["components"]["MovingPlatform2D"]["path"][1]["x"], 700.0)
+        self.assertIn("EnemyPatrol2D", by_name["Slime_A"]["components"])
+        self.assertEqual(len(by_name["Slime_A"]["components"]["EnemyPatrol2D"]["patrol_points"]), 2)
+        self.assertIn("Checkpoint2D", by_name["Checkpoint_A"]["components"])
+        self.assertIn("RespawnPoint2D", by_name["Checkpoint_A"]["components"])
+        self.assertEqual(by_name["Checkpoint_A"]["components"]["Checkpoint2D"]["checkpoint_id"], "cp_a")
+        self.assertIn("KillZone2D", by_name["Pit_A"]["components"])
+        self.assertTrue(by_name["Pit_A"]["components"]["Collider"]["is_trigger"])
+        self.assertIn("LevelBounds2D", by_name["LevelBounds"]["components"])
+        self.assertEqual(by_name["LevelBounds"]["components"]["LevelBounds2D"]["right"], 1600.0)
+
+        camera = by_name["MainCamera"]["components"]["Camera2D"]
+        self.assertEqual(camera["follow_entity"], "Player")
+        self.assertEqual(camera["zoom"], 1.25)
+        self.assertEqual(camera["clamp_right"], 1600.0)
+
+        returncode, stdout, stderr = _run_motor(
+            "game",
+            "platformer",
+            "validate",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+        self.assertEqual(returncode, 0, stderr + stdout)
+        validate_payload = self._payload(stdout)
+        self.assertTrue(validate_payload["success"], validate_payload)
+        semantic_entities = validate_payload["data"]["semantic_entities"]
+        self.assertEqual(semantic_entities["moving_platforms"], ["Lift_A"])
+        self.assertEqual(semantic_entities["enemy_patrols"], ["Slime_A"])
+        self.assertEqual(semantic_entities["checkpoints"], ["Checkpoint_A"])
+        self.assertEqual(semantic_entities["killzones"], ["Pit_A"])
+        self.assertEqual(semantic_entities["bounds"], ["LevelBounds"])
+        self.assertIn("MainCamera", semantic_entities["cameras"])
+
+        compliance = run_ai_compliance(self.project, strict=True)
+        self.assertTrue(compliance["success"], compliance)
+        self.assertTrue(compliance["strict_pass"], compliance)
+
     def test_motor_game_platformer_incremental_scene_runtime_read_only(self) -> None:
         for command in [
             ("game", "platformer", "create", "Level 1"),

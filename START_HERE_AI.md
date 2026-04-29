@@ -112,6 +112,30 @@ The entries below are available now and are safe to use from the CLI.
   - API: `AuthoringAPI.create_entity`
   - CLI: `motor game platformer add-respawn [--x <px>] [--y <px>] [--id <id>] [--project <path>]`
 
+- **game:platformer:add-moving-platform**: Create or update a named native moving platform in the selected scene
+  - API: `AuthoringAPI.create_entity`
+  - CLI: `motor game platformer add-moving-platform --name <entity> --x <px> --y <px> --width <px> --height <px> --to-x <px> --to-y <px> --speed <px_per_sec> [--project <path>]`
+
+- **game:platformer:add-enemy-patrol**: Create or update a named native enemy patrol in the selected scene
+  - API: `AuthoringAPI.create_entity`
+  - CLI: `motor game platformer add-enemy-patrol --name <entity> --x <px> --y <px> --point <x,y> [--point <x,y> ...] --damage <int> --speed <px_per_sec> [--project <path>]`
+
+- **game:platformer:add-checkpoint**: Create or update a named native checkpoint in the selected scene
+  - API: `AuthoringAPI.create_entity`
+  - CLI: `motor game platformer add-checkpoint --name <entity> --x <px> --y <px> --id <id> [--project <path>]`
+
+- **game:platformer:add-killzone**: Create or update a named native killzone in the selected scene
+  - API: `AuthoringAPI.create_entity`
+  - CLI: `motor game platformer add-killzone --name <entity> --x <px> --y <px> --width <px> --height <px> --damage <int> [--project <path>]`
+
+- **game:platformer:set-camera-follow**: Create or update Camera2D follow settings in the selected platformer scene
+  - API: `AuthoringAPI.create_entity`
+  - CLI: `motor game platformer set-camera-follow --name <camera> --target <entity> [--offset-x <px>] [--offset-y <px>] [--dead-zone-width <px>] [--dead-zone-height <px>] [--zoom <float>] [--project <path>]`
+
+- **game:platformer:set-bounds**: Create or update native platformer level bounds in the selected scene
+  - API: `AuthoringAPI.create_entity`
+  - CLI: `motor game platformer set-bounds --name <entity> --left <px> --right <px> --top <px> --bottom <px> [--camera <camera>] [--project <path>]`
+
 - **game:platformer:validate**: Validate selected native platformer scene contract
   - API: `SceneWorkspaceAPI.load_scene_for_runtime_inspection`
   - CLI: `motor game platformer validate [--project <path>]`
@@ -208,14 +232,20 @@ The entries below are available now and are safe to use from the CLI.
 
 ### Game
 
+- `game:platformer:add-checkpoint`: Create or update a named native checkpoint in the selected scene
 - `game:platformer:add-coin`: Create or update native platformer Coin in the selected scene
+- `game:platformer:add-enemy-patrol`: Create or update a named native enemy patrol in the selected scene
 - `game:platformer:add-goal`: Create or update native platformer Goal in the selected scene
 - `game:platformer:add-ground`: Create or update native platformer Ground in the selected scene
 - `game:platformer:add-hazard`: Create or update native platformer Hazard in the selected scene
+- `game:platformer:add-killzone`: Create or update a named native killzone in the selected scene
+- `game:platformer:add-moving-platform`: Create or update a named native moving platform in the selected scene
 - `game:platformer:add-platform`: Create or update native platformer Platform in the selected scene
 - `game:platformer:add-player`: Create or update the native platformer Player in the selected scene
 - `game:platformer:add-respawn`: Create or update native platformer RespawnPoint in the selected scene
 - `game:platformer:create`: Create a minimal native 2D platformer scene scaffold
+- `game:platformer:set-bounds`: Create or update native platformer level bounds in the selected scene
+- `game:platformer:set-camera-follow`: Create or update Camera2D follow settings in the selected platformer scene
 - `game:platformer:validate`: Validate selected native platformer scene contract
 
 ### Runtime

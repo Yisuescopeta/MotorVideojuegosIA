@@ -19,9 +19,14 @@ from engine.components.camera2d import Camera2D
 from engine.components.charactercontroller2d import CharacterController2D
 from engine.components.collider import Collider
 from engine.components.gameplay2d import (
+    Checkpoint2D,
     Collectible2D,
+    EnemyPatrol2D,
     Goal2D,
     Hazard2D,
+    KillZone2D,
+    LevelBounds2D,
+    MovingPlatform2D,
     RespawnPoint2D,
 )
 from engine.components.inputmap import InputMap
@@ -57,6 +62,11 @@ __all__ = [
     "Hazard2D",
     "Goal2D",
     "RespawnPoint2D",
+    "MovingPlatform2D",
+    "EnemyPatrol2D",
+    "Checkpoint2D",
+    "KillZone2D",
+    "LevelBounds2D",
     "CharacterController2D",
     "Joint2D",
     "RigidBody",

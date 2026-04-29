@@ -27,14 +27,20 @@ from engine.recipes import (
     run_recipe,
 )
 from motor.platformer_scaffold import (
+    add_platformer_checkpoint,
     add_platformer_coin,
+    add_platformer_enemy_patrol,
     add_platformer_goal,
     add_platformer_ground,
     add_platformer_hazard,
+    add_platformer_killzone,
+    add_platformer_moving_platform,
     add_platformer_platform,
     add_platformer_player,
     add_platformer_respawn,
     create_minimal_platformer_scene,
+    set_platformer_bounds,
+    set_platformer_camera_follow,
     validate_platformer_scene,
 )
 
@@ -1391,6 +1397,174 @@ def cmd_game_platformer_add_respawn(project_path: Path, x: float, y: float, spaw
         return _output(False, exc.message, None, json_output)
     except Exception as exc:
         return _output(False, f"Failed to add platformer respawn: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_add_moving_platform(
+    project_path: Path,
+    name: str,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    to_x: float,
+    to_y: float,
+    speed: float,
+    json_output: bool,
+) -> int:
+    """Ensure a platformer MovingPlatform2D entity exists in the selected scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = add_platformer_moving_platform(api, name, x, y, width, height, to_x, to_y, speed)
+        return _output(bool(result.get("success")), result.get("message", "Platformer moving platform update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to add platformer moving platform: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_add_enemy_patrol(
+    project_path: Path,
+    name: str,
+    x: float,
+    y: float,
+    points: list[str],
+    damage: int,
+    speed: float,
+    json_output: bool,
+) -> int:
+    """Ensure a platformer EnemyPatrol2D entity exists in the selected scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = add_platformer_enemy_patrol(api, name, x, y, points, damage, speed)
+        return _output(bool(result.get("success")), result.get("message", "Platformer enemy patrol update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to add platformer enemy patrol: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_add_checkpoint(project_path: Path, name: str, x: float, y: float, checkpoint_id: str, json_output: bool) -> int:
+    """Ensure a platformer Checkpoint2D entity exists in the selected scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = add_platformer_checkpoint(api, name, x, y, checkpoint_id)
+        return _output(bool(result.get("success")), result.get("message", "Platformer checkpoint update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to add platformer checkpoint: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_add_killzone(
+    project_path: Path,
+    name: str,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    damage: int,
+    json_output: bool,
+) -> int:
+    """Ensure a platformer KillZone2D entity exists in the selected scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = add_platformer_killzone(api, name, x, y, width, height, damage)
+        return _output(bool(result.get("success")), result.get("message", "Platformer killzone update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to add platformer killzone: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_set_camera_follow(
+    project_path: Path,
+    name: str,
+    target: str,
+    offset_x: float,
+    offset_y: float,
+    dead_zone_width: float,
+    dead_zone_height: float,
+    zoom: float,
+    json_output: bool,
+) -> int:
+    """Configure Camera2D follow data in the selected platformer scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = set_platformer_camera_follow(api, name, target, offset_x, offset_y, dead_zone_width, dead_zone_height, zoom)
+        return _output(bool(result.get("success")), result.get("message", "Platformer camera follow update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to set platformer camera follow: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_set_bounds(
+    project_path: Path,
+    name: str,
+    left: float,
+    right: float,
+    top: float,
+    bottom: float,
+    camera: str | None,
+    json_output: bool,
+) -> int:
+    """Configure LevelBounds2D data in the selected platformer scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = set_platformer_bounds(api, name, left, right, top, bottom, camera=camera)
+        return _output(bool(result.get("success")), result.get("message", "Platformer bounds update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to set platformer bounds: {exc}", None, json_output)
     finally:
         if api is not None:
             try:

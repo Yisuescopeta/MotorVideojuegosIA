@@ -123,6 +123,125 @@ def _respawn_components(x: float, y: float, spawn_id: str) -> Dict[str, Dict[str
     }
 
 
+def _moving_platform_components(
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    to_x: float,
+    to_y: float,
+    speed: float,
+) -> Dict[str, Dict[str, Any]]:
+    return {
+        "Transform": _transform(x, y),
+        "Collider": _collider(width, height),
+        "MovingPlatform2D": {
+            "enabled": True,
+            "path": [{"x": float(x), "y": float(y)}, {"x": float(to_x), "y": float(to_y)}],
+            "speed": max(0.0, float(speed)),
+            "loop": True,
+            "start_active": True,
+        },
+    }
+
+
+def _enemy_patrol_components(
+    x: float,
+    y: float,
+    patrol_points: list[dict[str, float]],
+    damage: int,
+    speed: float,
+) -> Dict[str, Dict[str, Any]]:
+    return {
+        "Transform": _transform(x, y),
+        "Collider": _collider(32.0, 32.0, is_trigger=True),
+        "EnemyPatrol2D": {
+            "enabled": True,
+            "patrol_points": patrol_points,
+            "speed": max(0.0, float(speed)),
+            "damage": max(0, int(damage)),
+            "event_name": "enemy_touched",
+        },
+    }
+
+
+def _checkpoint_components(x: float, y: float, checkpoint_id: str) -> Dict[str, Dict[str, Any]]:
+    normalized_id = str(checkpoint_id or "default").strip() or "default"
+    return {
+        "Transform": _transform(x, y),
+        "Collider": _collider(48.0, 64.0, is_trigger=True),
+        "Checkpoint2D": {
+            "enabled": True,
+            "checkpoint_id": normalized_id,
+            "active": True,
+            "set_respawn_on_touch": True,
+            "event_name": "checkpoint_reached",
+        },
+        "RespawnPoint2D": {
+            "enabled": True,
+            "spawn_id": normalized_id,
+            "active": True,
+        },
+    }
+
+
+def _killzone_components(x: float, y: float, width: float, height: float, damage: int) -> Dict[str, Dict[str, Any]]:
+    return {
+        "Transform": _transform(x, y),
+        "Collider": _collider(width, height, is_trigger=True),
+        "KillZone2D": {
+            "enabled": True,
+            "damage": max(0, int(damage)),
+            "respawn_on_touch": True,
+            "event_name": "killzone_touched",
+        },
+    }
+
+
+def _level_bounds_components(left: float, right: float, top: float, bottom: float) -> Dict[str, Dict[str, Any]]:
+    return {
+        "LevelBounds2D": {
+            "enabled": True,
+            "left": float(left),
+            "right": float(right),
+            "top": float(top),
+            "bottom": float(bottom),
+        },
+    }
+
+
+def _camera_components(
+    target: str = "",
+    *,
+    offset_x: float = 0.0,
+    offset_y: float = 0.0,
+    dead_zone_width: float = 0.0,
+    dead_zone_height: float = 0.0,
+    zoom: float = 1.0,
+    clamps: dict[str, float] | None = None,
+) -> Dict[str, Dict[str, Any]]:
+    camera = {
+        "enabled": True,
+        "offset_x": float(offset_x),
+        "offset_y": float(offset_y),
+        "zoom": max(0.001, float(zoom)),
+        "rotation": 0.0,
+        "is_primary": True,
+        "follow_entity": str(target or "").strip(),
+        "framing_mode": "platformer",
+        "dead_zone_width": max(0.0, float(dead_zone_width)),
+        "dead_zone_height": max(0.0, float(dead_zone_height)),
+        "clamp_left": None,
+        "clamp_right": None,
+        "clamp_top": None,
+        "clamp_bottom": None,
+        "recenter_on_play": True,
+    }
+    if clamps:
+        camera.update(clamps)
+    return {"Transform": _transform(0.0, 0.0), "Camera2D": camera}
+
+
 def _safe_entity_suffix(value: str) -> str:
     suffix = "".join(ch if ch.isalnum() else "_" for ch in str(value or "").strip())
     return suffix.strip("_") or "default"
@@ -293,6 +412,53 @@ def _upsert_platformer_entity(
         return {"success": False, "message": layer_result.get("message", "Failed to set entity layer")}
 
     return {"success": True, "entities_created": created_entities, "warnings": warnings}
+
+
+def _parse_point_specs(point_specs: list[str]) -> tuple[list[dict[str, float]], str]:
+    points: list[dict[str, float]] = []
+    for raw in point_specs:
+        parts = [part.strip() for part in str(raw or "").split(",")]
+        if len(parts) != 2:
+            return [], f"Invalid --point '{raw}'. Expected x,y"
+        try:
+            points.append({"x": float(parts[0]), "y": float(parts[1])})
+        except ValueError:
+            return [], f"Invalid --point '{raw}'. Expected numeric x,y"
+    return points, ""
+
+
+def _camera_payload_for_update(api: EngineAPI, camera_name: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+    entity = _entity_payload(api, camera_name)
+    existing = {}
+    if entity is not None:
+        existing = dict((entity.get("components", {}) or {}).get("Camera2D", {}) or {})
+    payload = _camera_components()["Camera2D"]
+    payload.update(existing)
+    payload.update(updates)
+    return payload
+
+
+def _upsert_camera2d(api: EngineAPI, camera_name: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    if _entity_payload(api, camera_name) is None:
+        result = api.create_entity(camera_name, components={"Transform": _transform(0.0, 0.0), "Camera2D": payload})
+        if not result.get("success"):
+            return {"success": False, "message": result.get("message", f"Failed to create {camera_name}")}
+    else:
+        if "Transform" not in ((_entity_payload(api, camera_name) or {}).get("components", {}) or {}):
+            transform_result = _ensure_component(api, camera_name, "Transform", _transform(0.0, 0.0))
+            if not transform_result.get("success"):
+                return {"success": False, "message": transform_result.get("message", "Failed to ensure camera Transform")}
+        camera_result = _ensure_component(api, camera_name, "Camera2D", payload)
+        if not camera_result.get("success"):
+            return {"success": False, "message": camera_result.get("message", "Failed to update Camera2D")}
+
+    tag_result = api.set_entity_tag(camera_name, "Camera")
+    if not tag_result.get("success"):
+        return {"success": False, "message": tag_result.get("message", "Failed to set camera tag")}
+    layer_result = api.set_entity_layer(camera_name, "System")
+    if not layer_result.get("success"):
+        return {"success": False, "message": layer_result.get("message", "Failed to set camera layer")}
+    return {"success": True}
 
 
 def _save_platformer_result(
@@ -485,6 +651,254 @@ def add_platformer_respawn(api: EngineAPI, x: float, y: float, spawn_id: str) ->
     )
 
 
+def add_platformer_moving_platform(
+    api: EngineAPI,
+    name: str,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    to_x: float,
+    to_y: float,
+    speed: float,
+) -> Dict[str, Any]:
+    scene = _load_platformer_authoring_scene(api)
+    if not scene.get("success"):
+        return scene
+    entity_name = str(name or "").strip()
+    if not entity_name:
+        return {"success": False, "message": "--name is required"}
+    if float(width) <= 0 or float(height) <= 0:
+        return {"success": False, "message": "--width and --height must be greater than zero"}
+    upsert = _upsert_platformer_entity(
+        api,
+        entity_name,
+        _moving_platform_components(x, y, width, height, to_x, to_y, speed),
+        tag="Platform",
+    )
+    if not upsert.get("success"):
+        return upsert
+    warnings = [*scene.get("warnings", []), *upsert.get("warnings", [])]
+    return _save_platformer_result(
+        api,
+        "Platformer moving platform ensured",
+        str(scene.get("scene_path", "")),
+        list(upsert.get("entities_created", [])),
+        warnings,
+        {"entity": entity_name, "path": [{"x": float(x), "y": float(y)}, {"x": float(to_x), "y": float(to_y)}]},
+    )
+
+
+def add_platformer_enemy_patrol(
+    api: EngineAPI,
+    name: str,
+    x: float,
+    y: float,
+    points: list[str],
+    damage: int,
+    speed: float,
+) -> Dict[str, Any]:
+    scene = _load_platformer_authoring_scene(api)
+    if not scene.get("success"):
+        return scene
+    entity_name = str(name or "").strip()
+    if not entity_name:
+        return {"success": False, "message": "--name is required"}
+    patrol_points, error = _parse_point_specs(points)
+    if error:
+        return {"success": False, "message": error}
+    upsert = _upsert_platformer_entity(
+        api,
+        entity_name,
+        _enemy_patrol_components(x, y, patrol_points, damage, speed),
+        tag="Enemy",
+    )
+    if not upsert.get("success"):
+        return upsert
+    warnings = [*scene.get("warnings", []), *upsert.get("warnings", [])]
+    return _save_platformer_result(
+        api,
+        "Platformer enemy patrol ensured",
+        str(scene.get("scene_path", "")),
+        list(upsert.get("entities_created", [])),
+        warnings,
+        {"entity": entity_name, "patrol_points": patrol_points, "damage": max(0, int(damage))},
+    )
+
+
+def add_platformer_checkpoint(api: EngineAPI, name: str, x: float, y: float, checkpoint_id: str) -> Dict[str, Any]:
+    scene = _load_platformer_authoring_scene(api)
+    if not scene.get("success"):
+        return scene
+    entity_name = str(name or "").strip()
+    if not entity_name:
+        return {"success": False, "message": "--name is required"}
+    normalized_id = str(checkpoint_id or "default").strip() or "default"
+    upsert = _upsert_platformer_entity(
+        api,
+        entity_name,
+        _checkpoint_components(x, y, normalized_id),
+        tag="Checkpoint",
+    )
+    if not upsert.get("success"):
+        return upsert
+    warnings = [*scene.get("warnings", []), *upsert.get("warnings", [])]
+    return _save_platformer_result(
+        api,
+        "Platformer checkpoint ensured",
+        str(scene.get("scene_path", "")),
+        list(upsert.get("entities_created", [])),
+        warnings,
+        {"entity": entity_name, "checkpoint_id": normalized_id},
+    )
+
+
+def add_platformer_killzone(
+    api: EngineAPI,
+    name: str,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    damage: int,
+) -> Dict[str, Any]:
+    scene = _load_platformer_authoring_scene(api)
+    if not scene.get("success"):
+        return scene
+    entity_name = str(name or "").strip()
+    if not entity_name:
+        return {"success": False, "message": "--name is required"}
+    if float(width) <= 0 or float(height) <= 0:
+        return {"success": False, "message": "--width and --height must be greater than zero"}
+    upsert = _upsert_platformer_entity(
+        api,
+        entity_name,
+        _killzone_components(x, y, width, height, damage),
+        tag="Hazard",
+    )
+    if not upsert.get("success"):
+        return upsert
+    warnings = [*scene.get("warnings", []), *upsert.get("warnings", [])]
+    return _save_platformer_result(
+        api,
+        "Platformer killzone ensured",
+        str(scene.get("scene_path", "")),
+        list(upsert.get("entities_created", [])),
+        warnings,
+        {"entity": entity_name, "damage": max(0, int(damage))},
+    )
+
+
+def set_platformer_camera_follow(
+    api: EngineAPI,
+    name: str,
+    target: str,
+    offset_x: float,
+    offset_y: float,
+    dead_zone_width: float,
+    dead_zone_height: float,
+    zoom: float,
+) -> Dict[str, Any]:
+    scene = _load_platformer_authoring_scene(api)
+    if not scene.get("success"):
+        return scene
+    camera_name = str(name or "").strip()
+    target_name = str(target or "").strip()
+    if not camera_name:
+        return {"success": False, "message": "--name is required"}
+    if not target_name:
+        return {"success": False, "message": "--target is required"}
+    was_created = _entity_payload(api, camera_name) is None
+    payload = _camera_payload_for_update(
+        api,
+        camera_name,
+        {
+            "follow_entity": target_name,
+            "offset_x": float(offset_x),
+            "offset_y": float(offset_y),
+            "dead_zone_width": max(0.0, float(dead_zone_width)),
+            "dead_zone_height": max(0.0, float(dead_zone_height)),
+            "zoom": max(0.001, float(zoom)),
+            "framing_mode": "platformer",
+        },
+    )
+    upsert = _upsert_camera2d(api, camera_name, payload)
+    if not upsert.get("success"):
+        return upsert
+    return _save_platformer_result(
+        api,
+        "Platformer camera follow configured",
+        str(scene.get("scene_path", "")),
+        [camera_name] if was_created else [],
+        list(scene.get("warnings", [])),
+        {"entity": camera_name, "target": target_name},
+    )
+
+
+def set_platformer_bounds(
+    api: EngineAPI,
+    name: str,
+    left: float,
+    right: float,
+    top: float,
+    bottom: float,
+    camera: str | None = None,
+) -> Dict[str, Any]:
+    scene = _load_platformer_authoring_scene(api)
+    if not scene.get("success"):
+        return scene
+    entity_name = str(name or "").strip()
+    if not entity_name:
+        return {"success": False, "message": "--name is required"}
+    if float(right) < float(left):
+        return {"success": False, "message": "--right must be greater than or equal to --left"}
+    if float(bottom) < float(top):
+        return {"success": False, "message": "--bottom must be greater than or equal to --top"}
+    upsert = _upsert_platformer_entity(
+        api,
+        entity_name,
+        _level_bounds_components(left, right, top, bottom),
+        tag="Bounds",
+        layer="System",
+    )
+    if not upsert.get("success"):
+        return upsert
+
+    created_entities = list(upsert.get("entities_created", []))
+    camera_name = str(camera or "").strip()
+    if camera_name:
+        camera_was_created = _entity_payload(api, camera_name) is None
+        payload = _camera_payload_for_update(
+            api,
+            camera_name,
+            {
+                "clamp_left": float(left),
+                "clamp_right": float(right),
+                "clamp_top": float(top),
+                "clamp_bottom": float(bottom),
+            },
+        )
+        camera_upsert = _upsert_camera2d(api, camera_name, payload)
+        if not camera_upsert.get("success"):
+            return camera_upsert
+        if camera_was_created:
+            created_entities.append(camera_name)
+
+    warnings = [*scene.get("warnings", []), *upsert.get("warnings", [])]
+    return _save_platformer_result(
+        api,
+        "Platformer bounds configured",
+        str(scene.get("scene_path", "")),
+        created_entities,
+        warnings,
+        {
+            "entity": entity_name,
+            "camera": camera_name,
+            "bounds": {"left": float(left), "right": float(right), "top": float(top), "bottom": float(bottom)},
+        },
+    )
+
+
 def validate_platformer_scene(api: EngineAPI) -> Dict[str, Any]:
     scene_selection = _select_platformer_scene_path(api)
     warnings = list(scene_selection.get("warnings", []))
@@ -580,6 +994,36 @@ def validate_platformer_scene(api: EngineAPI) -> Dict[str, Any]:
             entity.get("name", "")
             for entity in entities
             if "RespawnPoint2D" in (entity.get("components", {}) or {})
+        ],
+        "moving_platforms": [
+            entity.get("name", "")
+            for entity in entities
+            if "MovingPlatform2D" in (entity.get("components", {}) or {})
+        ],
+        "enemy_patrols": [
+            entity.get("name", "")
+            for entity in entities
+            if "EnemyPatrol2D" in (entity.get("components", {}) or {})
+        ],
+        "checkpoints": [
+            entity.get("name", "")
+            for entity in entities
+            if "Checkpoint2D" in (entity.get("components", {}) or {})
+        ],
+        "killzones": [
+            entity.get("name", "")
+            for entity in entities
+            if "KillZone2D" in (entity.get("components", {}) or {})
+        ],
+        "bounds": [
+            entity.get("name", "")
+            for entity in entities
+            if "LevelBounds2D" in (entity.get("components", {}) or {})
+        ],
+        "cameras": [
+            entity.get("name", "")
+            for entity in entities
+            if "Camera2D" in (entity.get("components", {}) or {})
         ],
     }
 

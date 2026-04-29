@@ -115,6 +115,12 @@ py -m motor game platformer add-coin --x 320 --y 200 --points 1 --project . --js
 py -m motor game platformer add-hazard --x 640 --y 300 --damage 1 --project . --json
 py -m motor game platformer add-goal --x 1100 --y 200 --project . --json
 py -m motor game platformer add-respawn --x 100 --y 300 --id default --project . --json
+py -m motor game platformer add-moving-platform --name Lift_A --x 320 --y 300 --width 96 --height 24 --to-x 640 --to-y 300 --speed 80 --project . --json
+py -m motor game platformer add-enemy-patrol --name Slime_A --x 500 --y 480 --point 500,480 --point 700,480 --damage 1 --speed 60 --project . --json
+py -m motor game platformer add-checkpoint --name Checkpoint_A --x 200 --y 420 --id cp_a --project . --json
+py -m motor game platformer add-killzone --name Pit_A --x 640 --y 620 --width 1280 --height 64 --damage 1 --project . --json
+py -m motor game platformer set-camera-follow --name MainCamera --target Player --project . --json
+py -m motor game platformer set-bounds --name LevelBounds --left 0 --right 1600 --top 0 --bottom 720 --camera MainCamera --project . --json
 py -m motor game platformer validate --project . --json
 py -m motor scene create "Level 1" --project . --json
 py -m motor entity create Player --project . --json
@@ -123,7 +129,9 @@ py -m motor component add Player Transform --data '{"x":0,"y":0}' --project . --
 
 Para construir plataformas sin tocar JSON, usa `motor game platformer create`
 y luego los comandos incrementales `add-player`, `add-ground`, `add-platform`,
-`add-coin`, `add-hazard`, `add-goal`, `add-respawn` y `validate`. Estos comandos
+`add-coin`, `add-hazard`, `add-goal`, `add-respawn`, los comandos avanzados
+`add-moving-platform`, `add-enemy-patrol`, `add-checkpoint`, `add-killzone`,
+`set-camera-follow`, `set-bounds` y `validate`. Estos comandos
 guardan la escena serializada y eligen escena por esta regla: activa cargada,
 `editor_state.active_scene`, `startup_scene`, o primera escena cargable en
 `levels/`; no usan `last_scene`.
@@ -132,7 +140,7 @@ guardan la escena serializada y eligen escena por esta regla: activa cargada,
 `Goal` y `MainCamera`. En `add-ground`, `add-platform`, `add-coin`,
 `add-hazard` y `add-goal`, `--name` hace idempotente la entidad indicada; sin
 `--name`, se genera el siguiente nombre `*_###` disponible (`Goal` usa primero
-`Goal` si falta).
+`Goal` si falta). En los comandos avanzados, `--name` es obligatorio.
 
 Para workflows comunes, usa recetas IA declarativas con `motor recipe`.
 `platformer-basic` empaqueta el flujo nativo de plataformas, validacion
