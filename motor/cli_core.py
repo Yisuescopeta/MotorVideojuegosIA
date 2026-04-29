@@ -172,6 +172,87 @@ def _runtime_response_base(command: str, headless: bool, warnings: List[str]) ->
     }
 
 
+_SIMULATED_INPUT_TOKENS = {
+    "left",
+    "right",
+    "up",
+    "down",
+    "jump",
+    "action_1",
+    "action_2",
+}
+
+
+def _parse_runtime_input(input_spec: Optional[str], warnings: List[str]) -> tuple[Optional[Dict[str, float]], List[str], List[str]]:
+    if input_spec is None or not str(input_spec).strip():
+        return None, [], []
+
+    tokens = [item.strip().lower() for item in str(input_spec).split(",") if item.strip()]
+    invalid = [token for token in tokens if token not in _SIMULATED_INPUT_TOKENS]
+    if invalid:
+        warnings.append(f"Unsupported runtime input token(s): {', '.join(invalid)}")
+        return None, tokens, invalid
+
+    token_set = set(tokens)
+    horizontal = 0.0
+    if "left" in token_set:
+        horizontal -= 1.0
+    if "right" in token_set:
+        horizontal += 1.0
+    if "left" in token_set and "right" in token_set:
+        warnings.append("Conflicting horizontal input left/right cancelled to 0.")
+
+    vertical = 0.0
+    if "down" in token_set:
+        vertical -= 1.0
+    if "up" in token_set:
+        vertical += 1.0
+    if "up" in token_set and "down" in token_set:
+        warnings.append("Conflicting vertical input up/down cancelled to 0.")
+
+    return {
+        "horizontal": horizontal,
+        "vertical": vertical,
+        "action_1": 1.0 if "jump" in token_set or "action_1" in token_set else 0.0,
+        "action_2": 1.0 if "action_2" in token_set else 0.0,
+    }, tokens, []
+
+
+def _find_runtime_input_player(api: EngineAPI) -> Optional[str]:
+    try:
+        player = api.get_entity("Player")
+        components = player.get("components", {})
+        if "InputMap" in components and "PlayerController2D" in components:
+            return "Player"
+    except Exception:
+        pass
+
+    for entity in api.list_entities(active=True):
+        components = entity.get("components", {})
+        if "InputMap" in components and "PlayerController2D" in components:
+            return str(entity.get("name", "") or "")
+    return None
+
+
+def _player_runtime_snapshot(api: EngineAPI, entity_name: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not entity_name:
+        return None
+    try:
+        entity = api.get_entity(entity_name)
+    except Exception:
+        return None
+    components = entity.get("components", {})
+    return {
+        "name": entity.get("name", entity_name),
+        "tag": entity.get("tag", ""),
+        "layer": entity.get("layer", ""),
+        "Transform": components.get("Transform"),
+        "RigidBody": components.get("RigidBody"),
+        "InputMap": components.get("InputMap"),
+        "PlayerController2D": components.get("PlayerController2D"),
+    }
+
+
 def cmd_runtime_play(project_path: Path, headless: bool, json_output: bool) -> int:
     """Start a stateless headless PLAY smoke check through EngineAPI."""
     api: Optional[EngineAPI] = None
@@ -211,7 +292,7 @@ def cmd_runtime_play(project_path: Path, headless: bool, json_output: bool) -> i
                 pass
 
 
-def cmd_runtime_step(project_path: Path, frames: int, json_output: bool) -> int:
+def cmd_runtime_step(project_path: Path, frames: int, json_output: bool, input_spec: Optional[str] = None) -> int:
     """Run PLAY -> STEP -> STOP headlessly in one stateless CLI process."""
     api: Optional[EngineAPI] = None
     warnings: List[str] = []
@@ -222,21 +303,54 @@ def cmd_runtime_step(project_path: Path, frames: int, json_output: bool) -> int:
         scene_ready, scene = _ensure_runtime_scene(api, warnings)
         status_before = _runtime_status(api)
 
+        input_state, input_sequence, invalid_inputs = _parse_runtime_input(input_spec, warnings)
+
         data = _runtime_response_base("runtime step", True, warnings)
         data.update({
             "scene": scene,
+            "scene_path": str(scene.get("path", "") or ""),
             "frames_requested": normalized_frames,
+            "frames_simulated": 0,
+            "input_sequence": input_sequence,
+            "player_before": None,
+            "player_after": None,
+            "events": [],
             "status_before": status_before,
             "status_after_play": status_before,
             "status_after_step": status_before,
             "status_after": status_before,
         })
+        if invalid_inputs:
+            return _output(False, "Runtime step failed: unsupported input token", data, json_output)
         if not scene_ready:
             return _output(False, "Runtime step failed: no active scene", data, json_output)
 
         api.play()
         data["status_after_play"] = _runtime_status(api)
+        player_name = _find_runtime_input_player(api)
+        if input_state is not None:
+            if not player_name:
+                warnings.append("No Player entity with InputMap and PlayerController2D found for input simulation.")
+                data["warnings"] = list(warnings)
+                api.stop()
+                data["status_after"] = _runtime_status(api)
+                return _output(False, "Runtime step failed: no input-capable player", data, json_output)
+            data["player_before"] = _player_runtime_snapshot(api, player_name)
+            inject_result = api.inject_input_state(player_name, input_state, frames=normalized_frames)
+            if not inject_result.get("success"):
+                warnings.append(str(inject_result.get("message") or "Input injection failed"))
+                data["warnings"] = list(warnings)
+                api.stop()
+                data["status_after"] = _runtime_status(api)
+                return _output(False, "Runtime step failed: input injection failed", data, json_output)
+        elif player_name:
+            data["player_before"] = _player_runtime_snapshot(api, player_name)
+
         api.step(normalized_frames)
+        data["frames_simulated"] = normalized_frames
+        if player_name:
+            data["player_after"] = _player_runtime_snapshot(api, player_name)
+        data["events"] = api.get_recent_events(50)
         data["status_after_step"] = _runtime_status(api)
         api.stop()
         data["status_after"] = _runtime_status(api)

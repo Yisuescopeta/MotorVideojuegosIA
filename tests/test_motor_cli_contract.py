@@ -765,6 +765,88 @@ class GamePlatformerCLIContractTests(unittest.TestCase):
         self.assertTrue(payload["data"]["scene"]["has_scene"])
         self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
 
+    def test_motor_runtime_step_input_moves_platformer_player_without_mutating_scene(self) -> None:
+        returncode, stdout, stderr = _run_motor(
+            "game",
+            "platformer",
+            "create",
+            "Level 1",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+        self.assertEqual(returncode, 0, stderr + stdout)
+        scene_path = self.project / "levels" / "level_1.json"
+        before_scene = scene_path.read_text(encoding="utf-8")
+
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "step",
+            "--project",
+            self.project.as_posix(),
+            "--frames",
+            "60",
+            "--input",
+            "right",
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        self.assertEqual(scene_path.read_text(encoding="utf-8"), before_scene)
+        payload = self._payload(stdout)
+        self.assertTrue(payload["success"], payload)
+        data = payload["data"]
+        self.assertEqual(data["input_sequence"], ["right"])
+        self.assertEqual(data["frames_simulated"], 60)
+        self.assertIsInstance(data["events"], list)
+        before = data["player_before"]
+        after = data["player_after"]
+        self.assertEqual(before["name"], "Player")
+        self.assertEqual(after["name"], "Player")
+        before_x = before["Transform"]["x"]
+        after_x = after["Transform"]["x"]
+        after_velocity_x = after["RigidBody"]["velocity_x"]
+        self.assertTrue(after_x != before_x or after_velocity_x != 0.0, data)
+
+    def test_motor_runtime_step_input_collects_reachable_coin_and_preserves_scene_file(self) -> None:
+        for command in [
+            ("game", "platformer", "create", "Level 1"),
+            ("game", "platformer", "add-coin", "--x", "170", "--y", "460", "--points", "1", "--name", "Coin_Near"),
+        ]:
+            returncode, stdout, stderr = _run_motor(
+                *command,
+                "--project",
+                self.project.as_posix(),
+                "--json",
+                env=self.env,
+            )
+            self.assertEqual(returncode, 0, stderr + stdout)
+        scene_path = self.project / "levels" / "level_1.json"
+        before_scene = scene_path.read_text(encoding="utf-8")
+
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "step",
+            "--project",
+            self.project.as_posix(),
+            "--frames",
+            "5",
+            "--input",
+            "right",
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        self.assertEqual(scene_path.read_text(encoding="utf-8"), before_scene)
+        payload = self._payload(stdout)
+        self.assertTrue(payload["success"], payload)
+        events = payload["data"]["events"]
+        self.assertIsInstance(events, list)
+        self.assertTrue(any(event["name"] == "collectible_collected" for event in events), events)
+
     def test_motor_runtime_stop_is_stateless_and_warns(self) -> None:
         returncode, stdout, stderr = _run_motor(
             "runtime",

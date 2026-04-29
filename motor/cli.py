@@ -180,7 +180,7 @@ Examples:
   motor ai compliance --project . --strict --json
   motor doctor --project . --json
   motor capabilities
-  motor runtime step --project . --frames 300 --json
+  motor runtime step --project . --frames 300 --input "right,jump" --json
   motor game platformer create "Level 1" --project . --json
   motor game platformer add-player --x 100 --y 300 --project . --json
   motor game platformer add-ground --from-x 0 --to-x 20 --y 8 --project . --json
@@ -516,6 +516,12 @@ Documentation:
         type=int,
         default=1,
         help="Number of frames to step (default: 1)",
+    )
+    runtime_step_parser.add_argument(
+        "--input",
+        dest="input_spec",
+        default=None,
+        help="Comma-separated InputMap actions to hold while stepping (left,right,up,down,jump,action_1,action_2)",
     )
     runtime_step_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
@@ -1270,6 +1276,7 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
             return cmd_runtime_step(
                 project_path=Path(parsed.project_root).resolve(),
                 frames=parsed.frames,
+                input_spec=parsed.input_spec,
                 json_output=parsed.json,
             )
         elif parsed.runtime_subcommand == "stop":

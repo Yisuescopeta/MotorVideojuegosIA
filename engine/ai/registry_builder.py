@@ -929,21 +929,23 @@ class CapabilityRegistryBuilder:
 
         self._add(Capability(
             id="runtime:step",
-            summary="Run PLAY -> STEP -> STOP headlessly for N frames",
+            summary="Run PLAY -> STEP -> STOP headlessly for N frames, optionally with simulated InputMap actions",
             mode="play",
-            api_methods=["RuntimeAPI.step"],
-            cli_command="motor runtime step [--project <path>] [--frames <n>]",
+            api_methods=["RuntimeAPI.step", "RuntimeAPI.inject_input_state", "RuntimeAPI.get_recent_events"],
+            cli_command="motor runtime step [--project <path>] [--frames <n>] [--input <actions>]",
             example=CapabilityExample(
-                description="Advance simulation by 300 frames",
+                description="Advance simulation by 300 frames while holding right and jump",
                 api_calls=[
                     {"method": "play", "args": {}},
+                    {"method": "inject_input_state", "args": {"entity_name": "Player", "state": {"horizontal": 1.0, "vertical": 0.0, "action_1": 1.0, "action_2": 0.0}, "frames": 300}},
                     {"method": "step", "args": {"frames": 300}},
+                    {"method": "get_recent_events", "args": {"count": 50}},
                     {"method": "stop", "args": {}},
                 ],
-                expected_outcome="World updates for 300 frames and returns to EDIT without saving runtime mutations",
+                expected_outcome="World updates with synthetic InputMap state, exposes runtime events, and returns to EDIT without saving runtime mutations",
             ),
-            notes="The official CLI command runs the whole validation sequence in one stateless headless process: load scene, play, step, stop. Runtime mutations are not persisted as authoring state.",
-            tags=["runtime", "play"],
+            notes="The official CLI command runs the whole validation sequence in one stateless headless process: load scene, play, optional input injection, step, read events, stop. Supported --input tokens are left, right, up, down, jump, action_1 and action_2. Runtime mutations are not persisted as authoring state.",
+            tags=["runtime", "play", "input", "events"],
         ))
 
         self._add(Capability(

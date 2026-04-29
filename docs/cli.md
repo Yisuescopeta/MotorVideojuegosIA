@@ -327,10 +327,18 @@ Ejecuta la validacion headless completa en un solo proceso:
 
 ```bash
 py -m motor runtime step --project . --frames 300 --json
+py -m motor runtime step --project . --frames 300 --input "right,jump" --json
 ```
 
-El JSON incluye `frames_requested`, `status_before`, `status_after_play`,
-`status_after_step`, `status_after` y `scene`.
+`--input` simula acciones `InputMap` durante todos los frames solicitados.
+Tokens soportados: `left`, `right`, `up`, `down`, `jump`, `action_1`,
+`action_2`. `jump` equivale a `action_1`; ejes opuestos se cancelan y se
+reportan en `warnings`.
+
+El JSON incluye `frames_requested`, `frames_simulated`, `input_sequence`,
+`player_before`, `player_after`, `events`, `status_before`,
+`status_after_play`, `status_after_step`, `status_after`, `scene_path` y
+`scene`.
 
 ### `motor runtime stop`
 
