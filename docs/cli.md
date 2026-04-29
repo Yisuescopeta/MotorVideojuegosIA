@@ -284,13 +284,71 @@ Crea o actualiza `Respawn_<id>` con `Transform` y `RespawnPoint2D`.
 py -m motor game platformer add-respawn --x 100 --y 300 --id default --project . --json
 ```
 
+### `motor game platformer add-moving-platform`
+
+Crea o actualiza una entidad con nombre obligatorio usando `Transform`,
+`Collider` y `MovingPlatform2D`.
+
+```bash
+py -m motor game platformer add-moving-platform --name Lift_A --x 320 --y 300 --width 96 --height 24 --to-x 640 --to-y 300 --speed 80 --project . --json
+```
+
+### `motor game platformer add-enemy-patrol`
+
+Crea o actualiza una entidad con nombre obligatorio usando `Transform`,
+`Collider` trigger y `EnemyPatrol2D`. Cada `--point` usa formato `x,y` en
+pixeles y puede repetirse.
+
+```bash
+py -m motor game platformer add-enemy-patrol --name Slime_A --x 500 --y 480 --point 500,480 --point 700,480 --damage 1 --speed 60 --project . --json
+```
+
+### `motor game platformer add-checkpoint`
+
+Crea o actualiza una entidad con nombre obligatorio usando `Transform`,
+`Collider` trigger, `Checkpoint2D` y `RespawnPoint2D` con el mismo id.
+
+```bash
+py -m motor game platformer add-checkpoint --name Checkpoint_A --x 200 --y 420 --id cp_a --project . --json
+```
+
+### `motor game platformer add-killzone`
+
+Crea o actualiza una entidad con nombre obligatorio usando `Transform`,
+`Collider` trigger y `KillZone2D`.
+
+```bash
+py -m motor game platformer add-killzone --name Pit_A --x 640 --y 620 --width 1280 --height 64 --damage 1 --project . --json
+```
+
+### `motor game platformer set-camera-follow`
+
+Crea o actualiza una entidad `Camera2D` con seguimiento nativo mediante
+`follow_entity`, offsets, dead zone y zoom. No introduce componente de camara
+nuevo.
+
+```bash
+py -m motor game platformer set-camera-follow --name MainCamera --target Player --offset-x 0 --offset-y 0 --dead-zone-width 120 --dead-zone-height 80 --zoom 1 --project . --json
+```
+
+### `motor game platformer set-bounds`
+
+Crea o actualiza una entidad con `LevelBounds2D`. Si se pasa `--camera`, tambien
+sincroniza `Camera2D.clamp_left/right/top/bottom` en esa camara.
+
+```bash
+py -m motor game platformer set-bounds --name LevelBounds --left 0 --right 1600 --top 0 --bottom 720 --camera MainCamera --project . --json
+```
+
 ### `motor game platformer validate`
 
 Valida escena, `Player`, suelo/plataforma, `Goal` semantico, carga de escena y
 compliance estricto sin runtime externo bloqueante. El JSON separa
 `platformer_validation` de `strict_compliance`; `success` requiere ambas. Si
-existen `Collectible2D`, `Hazard2D`, `Goal2D` o `RespawnPoint2D`, los reporta en
-`semantic_entities`.
+existen componentes semanticos o de authoring avanzado, los reporta en
+`semantic_entities`: `collectibles`, `hazards`, `goals`, `respawns`,
+`moving_platforms`, `enemy_patrols`, `checkpoints`, `killzones`, `bounds` y
+`cameras`.
 
 ```bash
 py -m motor game platformer validate --project . --json
@@ -303,7 +361,8 @@ cargable bajo `levels/` ordenada por ruta. No usan `last_scene`.
 
 Cada comando devuelve el envelope JSON oficial con `success`, `message` y
 `data`. En `data` siempre se incluyen `scene_path`, `entities_created` y
-`warnings`; `validate` agrega `validation`.
+`warnings`; `validate` agrega `validation`. Los comandos avanzados requieren
+`--name` para authoring idempotente.
 
 ## Escenas
 

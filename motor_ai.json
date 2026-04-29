@@ -843,6 +843,40 @@
             ]
         },
         {
+            "id": "game:platformer:add-checkpoint",
+            "summary": "Create or update a named native checkpoint in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-checkpoint --name <entity> --x <px> --y <px> --id <id> [--project <path>]",
+            "example": {
+                "description": "Ensure Checkpoint_A uses checkpoint id cp_a",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Checkpoint_A"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Checkpoint_A with Transform, trigger Collider, Checkpoint2D and RespawnPoint2D"
+            },
+            "notes": "Requires --name. Adds RespawnPoint2D with the same id for simple gameplay2d compatibility.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
             "id": "game:platformer:add-coin",
             "summary": "Create or update native platformer Coin in the selected scene",
             "mode": "edit",
@@ -870,6 +904,40 @@
                 "expected_outcome": "Selected scene contains Coin with Transform, trigger Collider and Collectible2D"
             },
             "notes": "Uses semantic Collectible2D data; no external scripts. Without --name, creates the next Coin_###. With --name, updates that entity if it exists.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-enemy-patrol",
+            "summary": "Create or update a named native enemy patrol in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-enemy-patrol --name <entity> --x <px> --y <px> --point <x,y> [--point <x,y> ...] --damage <int> --speed <px_per_sec> [--project <path>]",
+            "example": {
+                "description": "Ensure Slime_A has two patrol points",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Slime_A"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Slime_A with Transform, trigger Collider and EnemyPatrol2D"
+            },
+            "notes": "Requires --name. Patrol points use x,y pixel pairs. Data-only; no enemy AI runtime is introduced by this command.",
             "tags": [
                 "game",
                 "platformer",
@@ -972,6 +1040,74 @@
                 "expected_outcome": "Selected scene contains Hazard with Transform, trigger Collider and Hazard2D"
             },
             "notes": "Uses semantic Hazard2D data; no external scripts. Without --name, creates the next Hazard_###. With --name, updates that entity if it exists.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-killzone",
+            "summary": "Create or update a named native killzone in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-killzone --name <entity> --x <px> --y <px> --width <px> --height <px> --damage <int> [--project <path>]",
+            "example": {
+                "description": "Ensure Pit_A is a killzone trigger",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Pit_A"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Pit_A with Transform, trigger Collider and KillZone2D"
+            },
+            "notes": "Requires --name. Data-only; no new runtime killzone system is introduced by this command.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-moving-platform",
+            "summary": "Create or update a named native moving platform in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-moving-platform --name <entity> --x <px> --y <px> --width <px> --height <px> --to-x <px> --to-y <px> --speed <px_per_sec> [--project <path>]",
+            "example": {
+                "description": "Ensure Lift_A moves between two pixel positions",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Lift_A"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Lift_A with Transform, Collider and MovingPlatform2D"
+            },
+            "notes": "Requires --name for idempotent authoring. Data-only; no runtime movement system is introduced by this command.",
             "tags": [
                 "game",
                 "platformer",
@@ -1121,6 +1257,77 @@
                 "platformer",
                 "authoring",
                 "scaffold"
+            ]
+        },
+        {
+            "id": "game:platformer:set-bounds",
+            "summary": "Create or update native platformer level bounds in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer set-bounds --name <entity> --left <px> --right <px> --top <px> --bottom <px> [--camera <camera>] [--project <path>]",
+            "example": {
+                "description": "Set level bounds and clamp MainCamera",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "LevelBounds"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains LevelBounds2D and optional Camera2D clamp values"
+            },
+            "notes": "Requires --name. If --camera is provided, Camera2D clamp fields are synchronized.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring",
+                "camera"
+            ]
+        },
+        {
+            "id": "game:platformer:set-camera-follow",
+            "summary": "Create or update Camera2D follow settings in the selected platformer scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer set-camera-follow --name <camera> --target <entity> [--offset-x <px>] [--offset-y <px>] [--dead-zone-width <px>] [--dead-zone-height <px>] [--zoom <float>] [--project <path>]",
+            "example": {
+                "description": "Make MainCamera follow Player",
+                "api_calls": [
+                    {
+                        "method": "replace_component_data",
+                        "args": {
+                            "entity_name": "MainCamera",
+                            "component_name": "Camera2D"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene has MainCamera Camera2D.follow_entity set to Player"
+            },
+            "notes": "Uses existing Camera2D fields instead of adding a CameraFollowTarget2D component.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring",
+                "camera"
             ]
         },
         {
@@ -2336,9 +2543,9 @@
         }
     ],
     "capability_counts": {
-        "implemented": 60,
+        "implemented": 66,
         "planned": 19,
-        "total": 79
+        "total": 85
     },
     "project": {
         "name": "MotorVideojuegosIA",

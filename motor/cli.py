@@ -59,14 +59,20 @@ from motor.cli_core import (
     cmd_recipe_list,
     cmd_recipe_show,
     cmd_recipe_run,
+    cmd_game_platformer_add_checkpoint,
     cmd_game_platformer_add_coin,
     cmd_game_platformer_create,
+    cmd_game_platformer_add_enemy_patrol,
     cmd_game_platformer_add_goal,
     cmd_game_platformer_add_ground,
     cmd_game_platformer_add_hazard,
+    cmd_game_platformer_add_killzone,
+    cmd_game_platformer_add_moving_platform,
     cmd_game_platformer_add_platform,
     cmd_game_platformer_add_player,
     cmd_game_platformer_add_respawn,
+    cmd_game_platformer_set_bounds,
+    cmd_game_platformer_set_camera_follow,
     cmd_game_platformer_validate,
     cmd_scene_list,
     cmd_scene_create,
@@ -134,7 +140,7 @@ AI-Facing Commands:
   project bootstrap-ai      Generate AI bootstrap files
   recipe list/show/run      Declarative AI recipes for common workflows
   game platformer create    Create minimal native 2D platformer scene
-  game platformer add-*     Add/update Player, Ground, Platform, Coin, Hazard, Goal or Respawn
+  game platformer add-*     Add/update native platformer entities and semantics
   game platformer validate  Validate native platformer scene
   
   scene list                List all scenes
@@ -195,6 +201,12 @@ Examples:
   motor game platformer add-hazard --x 640 --y 300 --damage 1 --project . --json
   motor game platformer add-goal --x 1100 --y 200 --project . --json
   motor game platformer add-respawn --x 100 --y 300 --id default --project . --json
+  motor game platformer add-moving-platform --name Lift_A --x 320 --y 300 --width 96 --height 24 --to-x 640 --to-y 300 --speed 80 --project . --json
+  motor game platformer add-enemy-patrol --name Slime_A --x 500 --y 480 --point 500,480 --point 700,480 --damage 1 --speed 60 --project . --json
+  motor game platformer add-checkpoint --name Checkpoint_A --x 200 --y 420 --id cp_a --project . --json
+  motor game platformer add-killzone --name Pit_A --x 640 --y 620 --width 1280 --height 64 --damage 1 --project . --json
+  motor game platformer set-camera-follow --name MainCamera --target Player --project . --json
+  motor game platformer set-bounds --name LevelBounds --left 0 --right 1600 --top 0 --bottom 720 --camera MainCamera --project . --json
   motor game platformer validate --project . --json
   motor scene create "Level 1"
   motor entity create Player --components '{"Transform":{"x":100}}'
@@ -468,6 +480,109 @@ Documentation:
         help="Path to project directory"
     )
     game_platformer_add_respawn_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    game_platformer_add_moving_platform_parser = game_platformer_subparsers.add_parser(
+        "add-moving-platform",
+        help="Ensure a named platformer moving platform in the selected scene",
+        description="Create or update a named moving platform using Transform, Collider and MovingPlatform2D.",
+    )
+    game_platformer_add_moving_platform_parser.add_argument("--name", required=True, help="Moving platform entity name")
+    game_platformer_add_moving_platform_parser.add_argument("--x", type=float, required=True, help="Start X position in pixels")
+    game_platformer_add_moving_platform_parser.add_argument("--y", type=float, required=True, help="Start Y position in pixels")
+    game_platformer_add_moving_platform_parser.add_argument("--width", type=float, required=True, help="Collider width in pixels")
+    game_platformer_add_moving_platform_parser.add_argument("--height", type=float, required=True, help="Collider height in pixels")
+    game_platformer_add_moving_platform_parser.add_argument("--to-x", type=float, required=True, help="Destination X position in pixels")
+    game_platformer_add_moving_platform_parser.add_argument("--to-y", type=float, required=True, help="Destination Y position in pixels")
+    game_platformer_add_moving_platform_parser.add_argument("--speed", type=float, required=True, help="Movement speed in pixels per second")
+    game_platformer_add_moving_platform_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    game_platformer_add_moving_platform_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    game_platformer_add_enemy_patrol_parser = game_platformer_subparsers.add_parser(
+        "add-enemy-patrol",
+        help="Ensure a named platformer enemy patrol in the selected scene",
+        description="Create or update a named enemy patrol using Transform, trigger Collider and EnemyPatrol2D.",
+    )
+    game_platformer_add_enemy_patrol_parser.add_argument("--name", required=True, help="Enemy entity name")
+    game_platformer_add_enemy_patrol_parser.add_argument("--x", type=float, required=True, help="Enemy X position in pixels")
+    game_platformer_add_enemy_patrol_parser.add_argument("--y", type=float, required=True, help="Enemy Y position in pixels")
+    game_platformer_add_enemy_patrol_parser.add_argument("--point", action="append", required=True, help="Patrol point as x,y; repeat for multiple points")
+    game_platformer_add_enemy_patrol_parser.add_argument("--damage", type=int, required=True, help="Damage on touch")
+    game_platformer_add_enemy_patrol_parser.add_argument("--speed", type=float, required=True, help="Patrol speed in pixels per second")
+    game_platformer_add_enemy_patrol_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    game_platformer_add_enemy_patrol_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    game_platformer_add_checkpoint_parser = game_platformer_subparsers.add_parser(
+        "add-checkpoint",
+        help="Ensure a named platformer checkpoint in the selected scene",
+        description="Create or update a named checkpoint using Transform, trigger Collider, Checkpoint2D and RespawnPoint2D.",
+    )
+    game_platformer_add_checkpoint_parser.add_argument("--name", required=True, help="Checkpoint entity name")
+    game_platformer_add_checkpoint_parser.add_argument("--x", type=float, required=True, help="Checkpoint X position in pixels")
+    game_platformer_add_checkpoint_parser.add_argument("--y", type=float, required=True, help="Checkpoint Y position in pixels")
+    game_platformer_add_checkpoint_parser.add_argument("--id", dest="checkpoint_id", required=True, help="Checkpoint id")
+    game_platformer_add_checkpoint_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    game_platformer_add_checkpoint_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    game_platformer_add_killzone_parser = game_platformer_subparsers.add_parser(
+        "add-killzone",
+        help="Ensure a named platformer killzone in the selected scene",
+        description="Create or update a named killzone using Transform, trigger Collider and KillZone2D.",
+    )
+    game_platformer_add_killzone_parser.add_argument("--name", required=True, help="Killzone entity name")
+    game_platformer_add_killzone_parser.add_argument("--x", type=float, required=True, help="Killzone X position in pixels")
+    game_platformer_add_killzone_parser.add_argument("--y", type=float, required=True, help="Killzone Y position in pixels")
+    game_platformer_add_killzone_parser.add_argument("--width", type=float, required=True, help="Collider width in pixels")
+    game_platformer_add_killzone_parser.add_argument("--height", type=float, required=True, help="Collider height in pixels")
+    game_platformer_add_killzone_parser.add_argument("--damage", type=int, required=True, help="Damage on touch")
+    game_platformer_add_killzone_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    game_platformer_add_killzone_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    game_platformer_set_camera_follow_parser = game_platformer_subparsers.add_parser(
+        "set-camera-follow",
+        help="Configure named Camera2D follow settings in the selected scene",
+        description="Create or update a named Camera2D using existing native camera follow fields.",
+    )
+    game_platformer_set_camera_follow_parser.add_argument("--name", required=True, help="Camera entity name")
+    game_platformer_set_camera_follow_parser.add_argument("--target", required=True, help="Target entity name to follow")
+    game_platformer_set_camera_follow_parser.add_argument("--offset-x", type=float, default=0.0, help="Camera offset X")
+    game_platformer_set_camera_follow_parser.add_argument("--offset-y", type=float, default=0.0, help="Camera offset Y")
+    game_platformer_set_camera_follow_parser.add_argument("--dead-zone-width", type=float, default=0.0, help="Dead zone width")
+    game_platformer_set_camera_follow_parser.add_argument("--dead-zone-height", type=float, default=0.0, help="Dead zone height")
+    game_platformer_set_camera_follow_parser.add_argument("--zoom", type=float, default=1.0, help="Camera zoom")
+    game_platformer_set_camera_follow_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    game_platformer_set_camera_follow_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    game_platformer_set_bounds_parser = game_platformer_subparsers.add_parser(
+        "set-bounds",
+        help="Configure platformer LevelBounds2D in the selected scene",
+        description="Create or update named LevelBounds2D data and optionally sync Camera2D clamps.",
+    )
+    game_platformer_set_bounds_parser.add_argument("--name", required=True, help="Bounds entity name")
+    game_platformer_set_bounds_parser.add_argument("--left", type=float, required=True, help="Left level bound")
+    game_platformer_set_bounds_parser.add_argument("--right", type=float, required=True, help="Right level bound")
+    game_platformer_set_bounds_parser.add_argument("--top", type=float, required=True, help="Top level bound")
+    game_platformer_set_bounds_parser.add_argument("--bottom", type=float, required=True, help="Bottom level bound")
+    game_platformer_set_bounds_parser.add_argument("--camera", default=None, help="Optional Camera2D entity to receive clamp values")
+    game_platformer_set_bounds_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    game_platformer_set_bounds_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     game_platformer_validate_parser = game_platformer_subparsers.add_parser(
         "validate",
@@ -1300,6 +1415,73 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                     x=parsed.x,
                     y=parsed.y,
                     spawn_id=parsed.spawn_id,
+                    json_output=parsed.json,
+                )
+            if parsed.game_platformer_subcommand == "add-moving-platform":
+                return cmd_game_platformer_add_moving_platform(
+                    project_path=Path(parsed.project_root).resolve(),
+                    name=parsed.name,
+                    x=parsed.x,
+                    y=parsed.y,
+                    width=parsed.width,
+                    height=parsed.height,
+                    to_x=parsed.to_x,
+                    to_y=parsed.to_y,
+                    speed=parsed.speed,
+                    json_output=parsed.json,
+                )
+            if parsed.game_platformer_subcommand == "add-enemy-patrol":
+                return cmd_game_platformer_add_enemy_patrol(
+                    project_path=Path(parsed.project_root).resolve(),
+                    name=parsed.name,
+                    x=parsed.x,
+                    y=parsed.y,
+                    points=parsed.point,
+                    damage=parsed.damage,
+                    speed=parsed.speed,
+                    json_output=parsed.json,
+                )
+            if parsed.game_platformer_subcommand == "add-checkpoint":
+                return cmd_game_platformer_add_checkpoint(
+                    project_path=Path(parsed.project_root).resolve(),
+                    name=parsed.name,
+                    x=parsed.x,
+                    y=parsed.y,
+                    checkpoint_id=parsed.checkpoint_id,
+                    json_output=parsed.json,
+                )
+            if parsed.game_platformer_subcommand == "add-killzone":
+                return cmd_game_platformer_add_killzone(
+                    project_path=Path(parsed.project_root).resolve(),
+                    name=parsed.name,
+                    x=parsed.x,
+                    y=parsed.y,
+                    width=parsed.width,
+                    height=parsed.height,
+                    damage=parsed.damage,
+                    json_output=parsed.json,
+                )
+            if parsed.game_platformer_subcommand == "set-camera-follow":
+                return cmd_game_platformer_set_camera_follow(
+                    project_path=Path(parsed.project_root).resolve(),
+                    name=parsed.name,
+                    target=parsed.target,
+                    offset_x=parsed.offset_x,
+                    offset_y=parsed.offset_y,
+                    dead_zone_width=parsed.dead_zone_width,
+                    dead_zone_height=parsed.dead_zone_height,
+                    zoom=parsed.zoom,
+                    json_output=parsed.json,
+                )
+            if parsed.game_platformer_subcommand == "set-bounds":
+                return cmd_game_platformer_set_bounds(
+                    project_path=Path(parsed.project_root).resolve(),
+                    name=parsed.name,
+                    left=parsed.left,
+                    right=parsed.right,
+                    top=parsed.top,
+                    bottom=parsed.bottom,
+                    camera=parsed.camera,
                     json_output=parsed.json,
                 )
             if parsed.game_platformer_subcommand == "validate":

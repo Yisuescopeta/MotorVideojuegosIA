@@ -75,6 +75,14 @@ logica runtime de colision/interaccion todavia:
 - `Hazard2D`: `damage`, `respawn_on_touch`, `event_name`
 - `Goal2D`: `complete_on_touch`, `next_scene`, `event_name`
 - `RespawnPoint2D`: `spawn_id`, `active`
+- `MovingPlatform2D`: `path` como lista de puntos `{x, y}`, `speed`, `loop`,
+  `start_active`
+- `EnemyPatrol2D`: `patrol_points` como lista de puntos `{x, y}`, `speed`,
+  `damage`, `event_name`
+- `Checkpoint2D`: `checkpoint_id`, `active`, `set_respawn_on_touch`,
+  `event_name`
+- `KillZone2D`: `damage`, `respawn_on_touch`, `event_name`
+- `LevelBounds2D`: `left`, `right`, `top`, `bottom`
 
 En `Animator`, el payload vigente sigue usando `animations`, `default_state`,
 `current_state`, `sprite_sheet` y `sprite_sheet_path`. Como foundation opcional
