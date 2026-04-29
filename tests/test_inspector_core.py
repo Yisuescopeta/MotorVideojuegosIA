@@ -8,8 +8,12 @@ from unittest.mock import patch
 import pyray as rl
 from cli.script_executor import ScriptExecutor
 from engine.api import EngineAPI
+from engine.components.collider import Collider
+from engine.components.gameplay2d import Collectible2D, Goal2D, Hazard2D, RespawnPoint2D
 from engine.components.recttransform import RectTransform
 from engine.components.transform import Transform
+from engine.ecs.world import World
+from engine.systems.render_system import RenderSystem
 
 MINIMAL_PNG_BYTES = (
     b"\x89PNG\r\n\x1a\n"
@@ -130,8 +134,138 @@ class InspectorCoreTests(unittest.TestCase):
             "Tilemap",
             "ScriptBehaviour",
             "SceneEntryPoint",
+            "Collectible2D",
+            "Hazard2D",
+            "Goal2D",
+            "RespawnPoint2D",
         }
         self.assertTrue(expected.issubset(set(self.inspector.list_dedicated_editors())))
+
+    def test_semantic2d_editor_renders_typed_fields_and_metadata_rows(self) -> None:
+        world = World()
+        entity = world.create_entity("CoinUx")
+        component = Collectible2D(points=3, destroy_on_collect=False, event_name="coin_collected")
+        entity.add_component(component)
+        entity.add_component(Collider(is_trigger=True))
+
+        rendered_fields: dict[str, object] = {}
+        readonly_rows: dict[str, str] = {}
+
+        def capture_field(label, value, *args, **kwargs):
+            rendered_fields[label] = value
+            return args[4] + 1
+
+        def capture_readonly(label, value, x, y, width):
+            readonly_rows[label] = value
+            return y + 1
+
+        with patch.object(self.inspector, "_draw_component_field", side_effect=capture_field), patch.object(
+            self.inspector, "_draw_readonly_row", side_effect=capture_readonly
+        ), patch.object(self.inspector, "_draw_message_row", side_effect=lambda severity, message, x, y, width: y + 1):
+            self.inspector._draw_collectible2d_editor(component, entity.id, 0, 0, 240, True, world)
+
+        self.assertIsInstance(rendered_fields["Enabled"], bool)
+        self.assertIsInstance(rendered_fields["Points"], int)
+        self.assertIsInstance(rendered_fields["Destroy"], bool)
+        self.assertIsInstance(rendered_fields["Event"], str)
+        self.assertIn("Role", readonly_rows)
+        self.assertIn("Defaults", readonly_rows)
+        self.assertIn("Hints", readonly_rows)
+
+    def test_semantic2d_payload_edits_update_scene_and_support_undo_redo(self) -> None:
+        self._create_probe(
+            "InspectorCoinProbe",
+            {
+                "Transform": {"enabled": True, "x": 0.0, "y": 0.0, "rotation": 0.0, "scale_x": 1.0, "scale_y": 1.0},
+                "Collectible2D": Collectible2D().to_dict(),
+            },
+        )
+
+        def update(payload: dict) -> None:
+            payload["points"] = 5
+            payload["destroy_on_collect"] = False
+            payload["event_name"] = "coin_taken"
+
+        success = self.inspector.update_component_payload(self.api.game.world, "InspectorCoinProbe", "Collectible2D", update)
+        self.assertTrue(success)
+
+        collectible = self.api.get_entity("InspectorCoinProbe")["components"]["Collectible2D"]
+        self.assertEqual(collectible["points"], 5)
+        self.assertFalse(collectible["destroy_on_collect"])
+        self.assertEqual(collectible["event_name"], "coin_taken")
+
+        self.assertTrue(self.api.undo()["success"])
+        collectible = self.api.get_entity("InspectorCoinProbe")["components"]["Collectible2D"]
+        self.assertEqual(collectible["points"], 1)
+        self.assertTrue(collectible["destroy_on_collect"])
+
+        self.assertTrue(self.api.redo()["success"])
+        collectible = self.api.get_entity("InspectorCoinProbe")["components"]["Collectible2D"]
+        self.assertEqual(collectible["points"], 5)
+        self.assertEqual(collectible["event_name"], "coin_taken")
+
+    def test_semantic2d_editor_warns_about_trigger_and_missing_respawn(self) -> None:
+        cases = [
+            ("Collectible2D", Collectible2D(), Collider(is_trigger=False), self.inspector._draw_collectible2d_editor),
+            ("Hazard2D", Hazard2D(), None, self.inspector._draw_hazard2d_editor),
+            ("Goal2D", Goal2D(), Collider(is_trigger=False), self.inspector._draw_goal2d_editor),
+        ]
+
+        for component_name, component, collider, editor in cases:
+            with self.subTest(component=component_name):
+                world = World()
+                entity = world.create_entity(f"{component_name}Probe")
+                entity.add_component(component)
+                if collider is not None:
+                    entity.add_component(collider)
+                messages: list[str] = []
+
+                with patch.object(self.inspector, "_draw_readonly_row", side_effect=lambda label, value, x, y, width: y + 1), patch.object(
+                    self.inspector, "_draw_component_field", side_effect=lambda label, value, *args, **kwargs: args[4] + 1
+                ), patch.object(
+                    self.inspector,
+                    "_draw_message_row",
+                    side_effect=lambda severity, message, x, y, width: messages.append(message) or y + 1,
+                ):
+                    editor(component, entity.id, 0, 0, 260, True, world)
+
+                self.assertTrue(any("Collider trigger" in message for message in messages), messages)
+                self.assertTrue(any("no active RespawnPoint2D" in message for message in messages), messages)
+
+    def test_semantic2d_editor_accepts_active_respawn_point(self) -> None:
+        world = World()
+        goal_entity = world.create_entity("GoalOk")
+        goal = Goal2D()
+        goal_entity.add_component(goal)
+        goal_entity.add_component(Collider(is_trigger=True))
+        respawn_entity = world.create_entity("RespawnOk")
+        respawn_entity.add_component(RespawnPoint2D(active=True))
+        messages: list[str] = []
+
+        with patch.object(self.inspector, "_draw_readonly_row", side_effect=lambda label, value, x, y, width: y + 1), patch.object(
+            self.inspector, "_draw_component_field", side_effect=lambda label, value, *args, **kwargs: args[4] + 1
+        ), patch.object(
+            self.inspector,
+            "_draw_message_row",
+            side_effect=lambda severity, message, x, y, width: messages.append(message) or y + 1,
+        ):
+            self.inspector._draw_goal2d_editor(goal, goal_entity.id, 0, 0, 260, True, world)
+
+        self.assertFalse(any("no active RespawnPoint2D" in message for message in messages), messages)
+
+    def test_debug_collider_geometry_marks_trigger_colliders(self) -> None:
+        renderer = RenderSystem()
+        transform = Transform(x=10.0, y=20.0)
+
+        normal = renderer._build_collider_geometry(transform, Collider(width=16.0, height=8.0, is_trigger=False))
+        trigger = renderer._build_collider_geometry(transform, Collider(width=16.0, height=8.0, is_trigger=True))
+
+        self.assertEqual(normal["color"], [0, 255, 0, 255])
+        self.assertEqual(normal["thickness"], 1)
+        self.assertFalse(normal["is_trigger"])
+        self.assertNotEqual(trigger["color"], normal["color"])
+        self.assertGreater(trigger["thickness"], normal["thickness"])
+        self.assertTrue(trigger["is_trigger"])
 
     def test_sprite_payload_edits_update_scene_and_support_undo_redo(self) -> None:
         self._create_probe(
