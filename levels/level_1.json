@@ -1,0 +1,220 @@
+{
+    "name": "Level 1",
+    "schema_version": 2,
+    "entities": [
+        {
+            "name": "Player",
+            "active": true,
+            "tag": "Player",
+            "layer": "Gameplay",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 160.0,
+                    "y": 460.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 28.0,
+                    "height": 40.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": false,
+                    "shape_type": "box",
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0,
+                    "radius": 14.0,
+                    "points": []
+                },
+                "RigidBody": {
+                    "enabled": true,
+                    "velocity_x": 0.0,
+                    "velocity_y": 0.0,
+                    "gravity_scale": 1.0,
+                    "is_grounded": false,
+                    "body_type": "dynamic",
+                    "simulated": true,
+                    "freeze_x": false,
+                    "freeze_y": false,
+                    "constraints": [
+                        "None"
+                    ],
+                    "use_full_kinematic_contacts": false,
+                    "collision_detection_mode": "discrete"
+                },
+                "InputMap": {
+                    "enabled": true,
+                    "move_left": "A,LEFT",
+                    "move_right": "D,RIGHT",
+                    "move_up": "W,UP",
+                    "move_down": "S,DOWN",
+                    "action_1": "SPACE",
+                    "action_2": "ENTER"
+                },
+                "PlayerController2D": {
+                    "enabled": true,
+                    "move_speed": 180.0,
+                    "jump_velocity": -320.0,
+                    "air_control": 0.75
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "RigidBody": {
+                    "origin": "native"
+                },
+                "InputMap": {
+                    "origin": "native"
+                },
+                "PlayerController2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_aea6a75d8078"
+        },
+        {
+            "name": "Ground",
+            "active": true,
+            "tag": "Ground",
+            "layer": "Gameplay",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 320.0,
+                    "y": 520.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 640.0,
+                    "height": 48.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": false,
+                    "shape_type": "box",
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0,
+                    "radius": 320.0,
+                    "points": []
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_95ec43ad4625"
+        },
+        {
+            "name": "Goal",
+            "active": true,
+            "tag": "Goal",
+            "layer": "Gameplay",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 580.0,
+                    "y": 440.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 48.0,
+                    "height": 64.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0,
+                    "radius": 24.0,
+                    "points": []
+                },
+                "Goal2D": {
+                    "enabled": true,
+                    "complete_on_touch": true,
+                    "next_scene": "",
+                    "event_name": "goal_reached"
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                },
+                "Goal2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_2206d22737f4"
+        },
+        {
+            "name": "MainCamera",
+            "active": true,
+            "tag": "Camera",
+            "layer": "System",
+            "parent": null,
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 320.0,
+                    "y": 180.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Camera2D": {
+                    "enabled": true,
+                    "offset_x": 320.0,
+                    "offset_y": 180.0,
+                    "zoom": 1.0,
+                    "rotation": 0.0,
+                    "is_primary": true,
+                    "follow_entity": "Player",
+                    "framing_mode": "platformer",
+                    "dead_zone_width": 120.0,
+                    "dead_zone_height": 80.0,
+                    "clamp_left": null,
+                    "clamp_right": null,
+                    "clamp_top": null,
+                    "clamp_bottom": null,
+                    "recenter_on_play": true
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Camera2D": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_b63d3903dfa2"
+        }
+    ],
+    "rules": [],
+    "feature_metadata": {}
+}

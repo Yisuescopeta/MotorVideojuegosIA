@@ -125,6 +125,12 @@ guardan la escena serializada y eligen escena por esta regla: activa cargada,
 `editor_state.active_scene`, `startup_scene`, o primera escena cargable en
 `levels/`; no usan `last_scene`.
 
+`platformer create` ya deja una escena minima validable con `Player`, `Ground`,
+`Goal` y `MainCamera`. En `add-ground`, `add-platform`, `add-coin`,
+`add-hazard` y `add-goal`, `--name` hace idempotente la entidad indicada; sin
+`--name`, se genera el siguiente nombre `*_###` disponible (`Goal` usa primero
+`Goal` si falta).
+
 Para verificacion runtime headless, usa `motor runtime play/step/stop`. Estos
 comandos son stateless: inicializan `EngineAPI`, cargan una escena mediante
 superficies publicas, ejecutan el control runtime y salen sin guardar mutaciones

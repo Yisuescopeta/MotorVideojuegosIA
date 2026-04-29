@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from engine.api._context import EngineAPIComponent
@@ -31,6 +32,54 @@ class AssetsProjectAPI(EngineAPIComponent):
         if self.project_service is None:
             return {}
         return self.project_service.load_editor_state()
+
+    def list_project_scenes(self) -> list[Dict[str, Any]]:
+        if self.project_service is None or not self.project_service.has_project:
+            return []
+        return self.project_service.list_project_scenes()
+
+    def to_project_relative_path(self, path: str) -> str:
+        if self.project_service is None:
+            return str(path or "").replace("\\", "/")
+        return self.project_service.to_relative_path(path).replace("\\", "/")
+
+    def resolve_project_path(self, path: str) -> Dict[str, Any]:
+        if self.project_service is None:
+            resolved = Path(path).expanduser().resolve()
+        else:
+            resolved = self.project_service.resolve_path(path)
+        return {
+            "path": resolved.as_posix(),
+            "exists": resolved.exists(),
+            "is_file": resolved.is_file(),
+            "relative_path": self.to_project_relative_path(resolved.as_posix()),
+        }
+
+    def get_startup_scene(self) -> str:
+        if self.project_service is None:
+            return ""
+        return str(self.project_service.load_project_settings().get("startup_scene", "") or "")
+
+    def set_startup_scene(self, path: str) -> ActionResult:
+        if self.project_service is None:
+            return self.fail("Project service not ready")
+        settings = self.project_service.load_project_settings()
+        settings["startup_scene"] = self.project_service.to_relative_path(path) if path else ""
+        self.project_service.save_project_settings(settings)
+        return self.ok("Startup scene updated", {"startup_scene": settings["startup_scene"]})
+
+    def run_ai_compliance(self, strict: bool = False) -> Dict[str, Any]:
+        if self.project_service is None:
+            return {
+                "success": False,
+                "strict_pass": False,
+                "external_runtime_blocking": True,
+                "errors": [{"code": "project_service_unavailable", "message": "Project service not ready"}],
+                "warnings": [],
+            }
+        from engine.ai.compliance import run_ai_compliance
+
+        return run_ai_compliance(self.project_service.project_root, strict=bool(strict))
 
     def save_editor_state(self, data: Dict[str, Any]) -> ActionResult:
         if self.project_service is None:

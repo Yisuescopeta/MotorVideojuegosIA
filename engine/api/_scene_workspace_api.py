@@ -100,7 +100,7 @@ class SceneWorkspaceAPI(EngineAPIComponent):
             "entity_count": world.entity_count() if world is not None else 0,
         }
 
-    def load_scene_for_runtime_inspection(self) -> ActionResult:
+    def load_scene_for_runtime_inspection(self, scene_ref: str = "") -> ActionResult:
         """Load a project scene into the current headless projection without persistence."""
         runtime = self.runtime
         scene_manager = self.scene_manager
@@ -110,8 +110,13 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         if not project_service.has_project:
             return self.fail("Project manifest not loaded")
 
-        for scene_ref, source_field in self._runtime_inspection_scene_candidates():
-            resolved_path = project_service.resolve_path(scene_ref)
+        candidates = (
+            [(scene_ref, "explicit_scene")]
+            if str(scene_ref or "").strip()
+            else self._runtime_inspection_scene_candidates()
+        )
+        for candidate_ref, source_field in candidates:
+            resolved_path = project_service.resolve_path(candidate_ref)
             if not resolved_path.exists() or not resolved_path.is_file():
                 continue
             world = scene_manager.load_scene_from_file(resolved_path.as_posix(), activate=True)

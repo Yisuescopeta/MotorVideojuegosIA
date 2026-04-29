@@ -167,6 +167,7 @@ Entidades:
 Componentes:
 
 - `add_component(entity_name, component_name, data=None)`
+- `replace_component_data(entity_name, component_name, data)`
 - `remove_component(entity_name, component_name)`
 - `edit_component(entity_name, component, property, value)`
 - `set_component_enabled(entity_name, component_name, enabled)`
@@ -342,6 +343,12 @@ Proyecto:
 - `open_project(path)`
 - `get_editor_state()`
 - `save_editor_state(data)`
+- `list_project_scenes()`
+- `to_project_relative_path(path)`
+- `resolve_project_path(path)`
+- `get_startup_scene()`
+- `set_startup_scene(path)`
+- `run_ai_compliance(strict=False)`
 
 Assets:
 

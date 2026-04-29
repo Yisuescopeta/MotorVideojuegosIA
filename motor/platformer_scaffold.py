@@ -131,16 +131,10 @@ def _safe_entity_suffix(value: str) -> str:
 def _relative_scene_path(api: EngineAPI, scene_path: str) -> str:
     if not scene_path:
         return ""
-    normalized = scene_path.replace("\\", "/")
-    if api.project_service is None:
-        return normalized
-    return api.project_service.to_relative_path(normalized).replace("\\", "/")
+    return api.to_project_relative_path(scene_path)
 
 
 def _scene_candidates(api: EngineAPI) -> list[tuple[str, str]]:
-    if api.project_service is None:
-        return []
-
     candidates: list[tuple[str, str]] = []
     seen: set[str] = set()
 
@@ -154,11 +148,11 @@ def _scene_candidates(api: EngineAPI) -> list[tuple[str, str]]:
         seen.add(key)
         candidates.append((value, source))
 
-    editor_state = api.project_service.load_editor_state()
+    editor_state = api.get_editor_state()
     add(editor_state.get("active_scene"), "editor_state.active_scene")
-    add(api.project_service.load_project_settings().get("startup_scene"), "settings.startup_scene")
+    add(api.get_startup_scene(), "settings.startup_scene")
 
-    for scene in api.project_service.list_project_scenes():
+    for scene in api.list_project_scenes():
         add(scene.get("path"), "levels.first_scene")
         break
 
@@ -175,20 +169,17 @@ def _load_platformer_authoring_scene(api: EngineAPI) -> Dict[str, Any]:
             "warnings": warnings,
         }
 
-    if api.project_service is None:
-        return {"success": False, "message": "Project service not ready", "warnings": warnings}
-
     for scene_ref, source in _scene_candidates(api):
-        resolved = api.project_service.resolve_path(scene_ref)
-        if not resolved.exists() or not resolved.is_file():
+        resolved = api.resolve_project_path(scene_ref)
+        if not resolved.get("exists") or not resolved.get("is_file"):
             warnings.append(f"Scene candidate from {source} is missing: {scene_ref}")
             continue
         result = api.load_scene(scene_ref)
         if result.get("success"):
-            warnings.append(f"Loaded scene from {source}: {_relative_scene_path(api, resolved.as_posix())}")
+            warnings.append(f"Loaded scene from {source}: {resolved.get('relative_path', scene_ref)}")
             return {
                 "success": True,
-                "scene_path": _relative_scene_path(api, resolved.as_posix()),
+                "scene_path": str(resolved.get("relative_path", "")),
                 "warnings": warnings,
             }
         warnings.append(f"Scene candidate from {source} did not load: {scene_ref}")
@@ -213,16 +204,13 @@ def _select_platformer_scene_path(api: EngineAPI) -> Dict[str, Any]:
             "warnings": warnings,
         }
 
-    if api.project_service is None:
-        return {"success": False, "message": "Project service not ready", "warnings": warnings}
-
     for scene_ref, source in _scene_candidates(api):
-        resolved = api.project_service.resolve_path(scene_ref)
-        if resolved.exists() and resolved.is_file():
+        resolved = api.resolve_project_path(scene_ref)
+        if resolved.get("exists") and resolved.get("is_file"):
             return {
                 "success": True,
-                "path": resolved.as_posix(),
-                "scene_path": _relative_scene_path(api, resolved.as_posix()),
+                "path": str(resolved.get("path", "")),
+                "scene_path": str(resolved.get("relative_path", "")),
                 "source": source,
                 "warnings": warnings,
             }
@@ -248,12 +236,31 @@ def _ensure_component(api: EngineAPI, entity_name: str, component_name: str, pay
         return {"success": False, "message": f"Entity not found: {entity_name}"}
     components = entity.get("components", {})
     if component_name in components:
-        authoring = api.scene_authoring
-        if authoring is None:
-            return {"success": False, "message": "SceneManager not ready"}
-        success = authoring.replace_component_data(entity_name, component_name, payload)
-        return {"success": success, "message": "Component replaced" if success else "Component replace failed"}
+        return api.replace_component_data(entity_name, component_name, payload)
     return api.add_component(entity_name, component_name, payload)
+
+
+def _existing_entity_names(api: EngineAPI) -> set[str]:
+    return {str(entity.get("name", "")) for entity in api.list_entities()}
+
+
+def _unique_entity_name(api: EngineAPI, prefix: str) -> str:
+    existing = _existing_entity_names(api)
+    index = 1
+    while True:
+        candidate = f"{prefix}_{index:03d}"
+        if candidate not in existing:
+            return candidate
+        index += 1
+
+
+def _resolved_add_name(api: EngineAPI, default_name: str, explicit_name: str | None) -> tuple[str, bool]:
+    normalized = str(explicit_name or "").strip()
+    if normalized:
+        return normalized, True
+    if default_name == "Goal" and _entity_payload(api, "Goal") is None:
+        return "Goal", False
+    return _unique_entity_name(api, default_name), False
 
 
 def _upsert_platformer_entity(
@@ -326,7 +333,7 @@ def add_platformer_player(api: EngineAPI, x: float, y: float) -> Dict[str, Any]:
     )
 
 
-def add_platformer_ground(api: EngineAPI, from_x: float, to_x: float, y: float) -> Dict[str, Any]:
+def add_platformer_ground(api: EngineAPI, from_x: float, to_x: float, y: float, name: str | None = None) -> Dict[str, Any]:
     scene = _load_platformer_authoring_scene(api)
     if not scene.get("success"):
         return scene
@@ -337,9 +344,10 @@ def add_platformer_ground(api: EngineAPI, from_x: float, to_x: float, y: float) 
     width = (end - start) * GRID_SIZE
     center_x = (start + (end - start) / 2.0) * GRID_SIZE
     center_y = float(y) * GRID_SIZE
+    entity_name, explicit_name = _resolved_add_name(api, "Ground", name)
     upsert = _upsert_platformer_entity(
         api,
-        "Ground",
+        entity_name,
         _terrain_components(center_x, center_y, width, 48.0),
         tag="Ground",
     )
@@ -352,11 +360,11 @@ def add_platformer_ground(api: EngineAPI, from_x: float, to_x: float, y: float) 
         str(scene.get("scene_path", "")),
         list(upsert.get("entities_created", [])),
         warnings,
-        {"grid_size": GRID_SIZE, "from_x": start, "to_x": end, "y": float(y)},
+        {"grid_size": GRID_SIZE, "from_x": start, "to_x": end, "y": float(y), "entity": entity_name, "explicit_name": explicit_name},
     )
 
 
-def add_platformer_platform(api: EngineAPI, x: float, y: float, width: float) -> Dict[str, Any]:
+def add_platformer_platform(api: EngineAPI, x: float, y: float, width: float, name: str | None = None) -> Dict[str, Any]:
     scene = _load_platformer_authoring_scene(api)
     if not scene.get("success"):
         return scene
@@ -365,9 +373,10 @@ def add_platformer_platform(api: EngineAPI, x: float, y: float, width: float) ->
         return {"success": False, "message": "--width must be greater than zero"}
     center_x = (float(x) + platform_width / 2.0) * GRID_SIZE
     center_y = float(y) * GRID_SIZE
+    entity_name, explicit_name = _resolved_add_name(api, "Platform", name)
     upsert = _upsert_platformer_entity(
         api,
-        "Platform",
+        entity_name,
         _terrain_components(center_x, center_y, platform_width * GRID_SIZE, 32.0),
         tag="Platform",
     )
@@ -380,15 +389,16 @@ def add_platformer_platform(api: EngineAPI, x: float, y: float, width: float) ->
         str(scene.get("scene_path", "")),
         list(upsert.get("entities_created", [])),
         warnings,
-        {"grid_size": GRID_SIZE, "x": float(x), "y": float(y), "width": platform_width},
+        {"grid_size": GRID_SIZE, "x": float(x), "y": float(y), "width": platform_width, "entity": entity_name, "explicit_name": explicit_name},
     )
 
 
-def add_platformer_goal(api: EngineAPI, x: float, y: float) -> Dict[str, Any]:
+def add_platformer_goal(api: EngineAPI, x: float, y: float, name: str | None = None) -> Dict[str, Any]:
     scene = _load_platformer_authoring_scene(api)
     if not scene.get("success"):
         return scene
-    upsert = _upsert_platformer_entity(api, "Goal", _goal_components(x, y), tag="Goal")
+    entity_name, explicit_name = _resolved_add_name(api, "Goal", name)
+    upsert = _upsert_platformer_entity(api, entity_name, _goal_components(x, y), tag="Goal")
     if not upsert.get("success"):
         return upsert
     warnings = [*scene.get("warnings", []), *upsert.get("warnings", [])]
@@ -398,16 +408,18 @@ def add_platformer_goal(api: EngineAPI, x: float, y: float) -> Dict[str, Any]:
         str(scene.get("scene_path", "")),
         list(upsert.get("entities_created", [])),
         warnings,
+        {"entity": entity_name, "explicit_name": explicit_name},
     )
 
 
-def add_platformer_coin(api: EngineAPI, x: float, y: float, points: int) -> Dict[str, Any]:
+def add_platformer_coin(api: EngineAPI, x: float, y: float, points: int, name: str | None = None) -> Dict[str, Any]:
     scene = _load_platformer_authoring_scene(api)
     if not scene.get("success"):
         return scene
+    entity_name, explicit_name = _resolved_add_name(api, "Coin", name)
     upsert = _upsert_platformer_entity(
         api,
-        "Coin",
+        entity_name,
         _coin_components(x, y, points),
         tag="Collectible",
     )
@@ -420,17 +432,18 @@ def add_platformer_coin(api: EngineAPI, x: float, y: float, points: int) -> Dict
         str(scene.get("scene_path", "")),
         list(upsert.get("entities_created", [])),
         warnings,
-        {"points": max(0, int(points))},
+        {"points": max(0, int(points)), "entity": entity_name, "explicit_name": explicit_name},
     )
 
 
-def add_platformer_hazard(api: EngineAPI, x: float, y: float, damage: int) -> Dict[str, Any]:
+def add_platformer_hazard(api: EngineAPI, x: float, y: float, damage: int, name: str | None = None) -> Dict[str, Any]:
     scene = _load_platformer_authoring_scene(api)
     if not scene.get("success"):
         return scene
+    entity_name, explicit_name = _resolved_add_name(api, "Hazard", name)
     upsert = _upsert_platformer_entity(
         api,
-        "Hazard",
+        entity_name,
         _hazard_components(x, y, damage),
         tag="Hazard",
     )
@@ -443,7 +456,7 @@ def add_platformer_hazard(api: EngineAPI, x: float, y: float, damage: int) -> Di
         str(scene.get("scene_path", "")),
         list(upsert.get("entities_created", [])),
         warnings,
-        {"damage": max(0, int(damage))},
+        {"damage": max(0, int(damage)), "entity": entity_name, "explicit_name": explicit_name},
     )
 
 
@@ -475,7 +488,7 @@ def add_platformer_respawn(api: EngineAPI, x: float, y: float, spawn_id: str) ->
 def validate_platformer_scene(api: EngineAPI) -> Dict[str, Any]:
     scene_selection = _select_platformer_scene_path(api)
     warnings = list(scene_selection.get("warnings", []))
-    validation: Dict[str, Any] = {
+    platformer_validation: Dict[str, Any] = {
         "scene_exists": False,
         "scene_loads": False,
         "player_exists": False,
@@ -483,8 +496,14 @@ def validate_platformer_scene(api: EngineAPI) -> Dict[str, Any]:
         "terrain_exists": False,
         "goal_exists": False,
         "goal_minimal_components": False,
-        "strict_compliance_passes": False,
+    }
+    strict_compliance: Dict[str, Any] = {
+        "success": False,
+        "strict_pass": False,
         "external_runtime_clean": False,
+        "errors": [],
+        "warnings": [],
+        "report": {},
     }
     if not scene_selection.get("success"):
         return {
@@ -494,44 +513,47 @@ def validate_platformer_scene(api: EngineAPI) -> Dict[str, Any]:
                 "scene_path": "",
                 "entities_created": [],
                 "warnings": warnings,
-                "validation": validation,
+                "validation": {
+                    **platformer_validation,
+                    "strict_compliance_passes": False,
+                    "external_runtime_clean": False,
+                },
+                "platformer_validation": {"success": False, "checks": platformer_validation},
+                "strict_compliance": strict_compliance,
             },
         }
 
     scene_path = str(scene_selection.get("path", ""))
-    validation["scene_exists"] = bool(scene_path and Path(scene_path).exists())
-    try:
-        if api.scene_manager is None or api.runtime is None:
-            raise RuntimeError("Engine not initialized")
-        world = api.scene_manager.load_scene_from_file(scene_path, activate=True)
-        if world is None:
-            raise RuntimeError("SceneManager returned no world")
-        api.runtime.set_world(world)
-        validation["scene_loads"] = True
-    except Exception as exc:
-        warnings.append(f"Scene load failed: {exc}")
+    platformer_validation["scene_exists"] = bool(scene_path and api.resolve_project_path(scene_path).get("exists"))
+    load_result = api.load_scene_for_runtime_inspection(scene_path)
+    if load_result.get("success"):
+        platformer_validation["scene_loads"] = True
+    else:
+        warnings.append(f"Scene load failed: {load_result.get('message', 'Scene load failed')}")
 
-    entities = api.list_entities() if validation["scene_loads"] else []
+    entities = api.list_entities() if platformer_validation["scene_loads"] else []
     by_name = {entity.get("name"): entity for entity in entities}
     player = by_name.get("Player")
-    validation["player_exists"] = player is not None
+    platformer_validation["player_exists"] = player is not None
     required_player = {"Transform", "Collider", "RigidBody", "InputMap", "PlayerController2D"}
     if player is not None:
-        validation["player_minimal_components"] = required_player.issubset(set(player.get("components", {}).keys()))
+        platformer_validation["player_minimal_components"] = required_player.issubset(set(player.get("components", {}).keys()))
 
     for entity in entities:
         name_or_tag = {str(entity.get("name", "")), str(entity.get("tag", ""))}
         collider = entity.get("components", {}).get("Collider")
         if name_or_tag.intersection({"Ground", "Platform"}) and isinstance(collider, dict) and not collider.get("is_trigger", False):
-            validation["terrain_exists"] = True
+            platformer_validation["terrain_exists"] = True
             break
 
     goal = by_name.get("Goal")
-    validation["goal_exists"] = goal is not None
+    if goal is None:
+        goal = next((entity for entity in entities if "Goal2D" in (entity.get("components", {}) or {})), None)
+    platformer_validation["goal_exists"] = goal is not None
     if goal is not None:
         components = goal.get("components", {})
         collider = components.get("Collider")
-        validation["goal_minimal_components"] = (
+        platformer_validation["goal_minimal_components"] = (
             "Transform" in components
             and "Goal2D" in components
             and isinstance(collider, dict)
@@ -561,16 +583,25 @@ def validate_platformer_scene(api: EngineAPI) -> Dict[str, Any]:
         ],
     }
 
-    if api.project_service is not None:
-        from engine.ai.compliance import run_ai_compliance
+    compliance = api.run_ai_compliance(strict=True)
+    strict_compliance = {
+        "success": bool(compliance.get("success")) and bool(compliance.get("strict_pass")),
+        "strict_pass": bool(compliance.get("strict_pass")),
+        "external_runtime_clean": not bool(compliance.get("external_runtime_blocking")),
+        "errors": list(compliance.get("errors", [])),
+        "warnings": list(compliance.get("warnings", [])),
+        "report": compliance,
+    }
+    if not strict_compliance["success"]:
+        warnings.append("Strict AI compliance did not pass.")
 
-        compliance = run_ai_compliance(api.project_service.project_root, strict=True)
-        validation["strict_compliance_passes"] = bool(compliance.get("strict_pass"))
-        validation["external_runtime_clean"] = not bool(compliance.get("external_runtime_blocking"))
-        if not compliance.get("strict_pass"):
-            warnings.append("Strict AI compliance did not pass.")
-
-    success = all(bool(value) for value in validation.values())
+    platformer_success = all(bool(value) for value in platformer_validation.values())
+    validation = {
+        **platformer_validation,
+        "strict_compliance_passes": bool(strict_compliance["strict_pass"]),
+        "external_runtime_clean": bool(strict_compliance["external_runtime_clean"]),
+    }
+    success = platformer_success and bool(strict_compliance["success"])
     return {
         "success": success,
         "message": "Platformer scene validation passed" if success else "Platformer scene validation failed",
@@ -579,6 +610,8 @@ def validate_platformer_scene(api: EngineAPI) -> Dict[str, Any]:
             "entities_created": [],
             "warnings": warnings,
             "validation": validation,
+            "platformer_validation": {"success": platformer_success, "checks": platformer_validation},
+            "strict_compliance": strict_compliance,
             "semantic_entities": semantic_entities,
         },
     }
@@ -611,6 +644,13 @@ def create_minimal_platformer_scene(api: EngineAPI, scene_name: str) -> Dict[str
     api.set_entity_tag("Ground", "Ground")
     api.set_entity_layer("Ground", "Gameplay")
 
+    goal = api.create_entity("Goal", components=_goal_components(580.0, 440.0))
+    if not goal.get("success"):
+        return goal
+    created_entities.append("Goal")
+    api.set_entity_tag("Goal", "Goal")
+    api.set_entity_layer("Goal", "Gameplay")
+
     camera = api.create_camera2d(
         "MainCamera",
         transform={"x": 320.0, "y": 180.0},
@@ -636,14 +676,12 @@ def create_minimal_platformer_scene(api: EngineAPI, scene_name: str) -> Dict[str
     if not save_result.get("success"):
         return save_result
 
-    if api.project_service is not None and scene_path:
-        settings = api.project_service.load_project_settings()
-        settings["startup_scene"] = api.project_service.to_relative_path(scene_path)
-        api.project_service.save_project_settings(settings)
-
     startup_scene = ""
-    if api.project_service is not None:
-        startup_scene = str(api.project_service.load_project_settings().get("startup_scene", "") or "")
+    if scene_path:
+        startup_result = api.set_startup_scene(scene_path)
+        if not startup_result.get("success"):
+            return startup_result
+        startup_scene = str(startup_result.get("data", {}).get("startup_scene", "") or api.get_startup_scene())
 
     return {
         "success": True,

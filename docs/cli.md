@@ -175,6 +175,7 @@ La escena creada usa solo componentes/escenas nativas del motor y no crea
   `PlayerController2D`
 - `MainCamera` con `Transform` y `Camera2D` siguiendo a `Player`
 - `Ground` con `Transform` y `Collider`
+- `Goal` con `Transform`, `Collider` trigger y `Goal2D`
 
 El JSON devuelve `scene_name`, `scene_path`, `startup_scene`,
 `entities_created`, `entity_count` y `scene_file`.
@@ -189,9 +190,10 @@ py -m motor game platformer add-player --x 100 --y 300 --project . --json
 
 ### `motor game platformer add-ground`
 
-Crea o actualiza `Ground` usando celdas de 64 px. `--from-x` es inclusivo y
-`--to-x` es exclusivo; `--from-x 0 --to-x 20 --y 8` genera un suelo de
-`20 * 64` px centrado en `x=640`, `y=512`.
+Crea suelo usando celdas de 64 px. `--from-x` es inclusivo y `--to-x` es
+exclusivo; `--from-x 0 --to-x 20 --y 8` genera un suelo de `20 * 64` px
+centrado en `x=640`, `y=512`. Sin `--name`, crea el siguiente `Ground_###`;
+con `--name`, crea o actualiza esa entidad.
 
 ```bash
 py -m motor game platformer add-ground --from-x 0 --to-x 20 --y 8 --project . --json
@@ -199,8 +201,9 @@ py -m motor game platformer add-ground --from-x 0 --to-x 20 --y 8 --project . --
 
 ### `motor game platformer add-platform`
 
-Crea o actualiza `Platform` usando celdas de 64 px. `--x` es la celda inicial
-izquierda y `--width` mide celdas.
+Crea plataforma usando celdas de 64 px. `--x` es la celda inicial izquierda y
+`--width` mide celdas. Sin `--name`, crea `Platform_001`, `Platform_002`, etc.;
+con `--name`, crea o actualiza esa entidad.
 
 ```bash
 py -m motor game platformer add-platform --x 5 --y 6 --width 3 --project . --json
@@ -208,7 +211,9 @@ py -m motor game platformer add-platform --x 5 --y 6 --width 3 --project . --jso
 
 ### `motor game platformer add-coin`
 
-Crea o actualiza `Coin` con `Transform`, `Collider` trigger y `Collectible2D`.
+Crea moneda con `Transform`, `Collider` trigger y `Collectible2D`. Sin
+`--name`, crea `Coin_001`, `Coin_002`, etc.; con `--name`, crea o actualiza esa
+entidad.
 
 ```bash
 py -m motor game platformer add-coin --x 320 --y 200 --points 1 --project . --json
@@ -216,7 +221,8 @@ py -m motor game platformer add-coin --x 320 --y 200 --points 1 --project . --js
 
 ### `motor game platformer add-hazard`
 
-Crea o actualiza `Hazard` con `Transform`, `Collider` trigger y `Hazard2D`.
+Crea hazard con `Transform`, `Collider` trigger y `Hazard2D`. Sin `--name`, crea
+`Hazard_001`, `Hazard_002`, etc.; con `--name`, crea o actualiza esa entidad.
 
 ```bash
 py -m motor game platformer add-hazard --x 640 --y 300 --damage 1 --project . --json
@@ -224,8 +230,9 @@ py -m motor game platformer add-hazard --x 640 --y 300 --damage 1 --project . --
 
 ### `motor game platformer add-goal`
 
-Crea o actualiza `Goal` con `Transform`, `Collider` trigger y `Goal2D`, sin
-referencias a assets concretos.
+Crea goal con `Transform`, `Collider` trigger y `Goal2D`, sin referencias a
+assets concretos. Sin `--name`, crea `Goal` si falta; si ya existe, crea
+`Goal_001`, `Goal_002`, etc. Con `--name`, crea o actualiza esa entidad.
 
 ```bash
 py -m motor game platformer add-goal --x 1100 --y 200 --project . --json
@@ -242,8 +249,10 @@ py -m motor game platformer add-respawn --x 100 --y 300 --id default --project .
 ### `motor game platformer validate`
 
 Valida escena, `Player`, suelo/plataforma, `Goal` semantico, carga de escena y
-compliance estricto sin runtime externo bloqueante. Si existen `Collectible2D`,
-`Hazard2D`, `Goal2D` o `RespawnPoint2D`, los reporta en `semantic_entities`.
+compliance estricto sin runtime externo bloqueante. El JSON separa
+`platformer_validation` de `strict_compliance`; `success` requiere ambas. Si
+existen `Collectible2D`, `Hazard2D`, `Goal2D` o `RespawnPoint2D`, los reporta en
+`semantic_entities`.
 
 ```bash
 py -m motor game platformer validate --project . --json

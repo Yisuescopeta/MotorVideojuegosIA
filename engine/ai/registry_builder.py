@@ -161,9 +161,9 @@ class CapabilityRegistryBuilder:
                     {"method": "create_entity", "args": {"name": "Player"}},
                     {"method": "create_camera2d", "args": {"name": "MainCamera"}},
                 ],
-                expected_outcome="Creates levels/level_1.json with Player, Ground and MainCamera, then updates startup_scene",
+                expected_outcome="Creates levels/level_1.json with Player, Ground, Goal and MainCamera, then updates startup_scene",
             ),
-            notes="Uses only public EngineAPI authoring surfaces. Creates Player with Transform, Collider, RigidBody, InputMap and PlayerController2D. Uses entity-based ground instead of Tilemap.",
+            notes="Uses only public EngineAPI authoring surfaces. Creates Player with Transform, Collider, RigidBody, InputMap and PlayerController2D. Uses entity-based Ground and Goal instead of Tilemap or scripts.",
             tags=["game", "platformer", "authoring", "scaffold"],
         ))
 
@@ -171,7 +171,7 @@ class CapabilityRegistryBuilder:
             id="game:platformer:add-player",
             summary="Create or update the native platformer Player in the selected scene",
             mode="edit",
-            api_methods=["AuthoringAPI.create_entity", "SceneManager.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
             cli_command="motor game platformer add-player [--x <px>] [--y <px>] [--project <path>]",
             example=CapabilityExample(
                 description="Ensure Player at pixel position (100, 300)",
@@ -189,8 +189,8 @@ class CapabilityRegistryBuilder:
             id="game:platformer:add-ground",
             summary="Create or update native platformer Ground in the selected scene",
             mode="edit",
-            api_methods=["AuthoringAPI.create_entity", "SceneManager.replace_component_data", "SceneWorkspaceAPI.save_scene"],
-            cli_command="motor game platformer add-ground [--from-x <cell>] [--to-x <cell>] [--y <cell>] [--project <path>]",
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-ground [--from-x <cell>] [--to-x <cell>] [--y <cell>] [--name <entity>] [--project <path>]",
             example=CapabilityExample(
                 description="Ensure ground from grid cell 0 to 20 at row 8",
                 api_calls=[
@@ -199,7 +199,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Selected scene contains Ground with Transform and non-trigger Collider",
             ),
-            notes="Grid units use 64 pixels. from-x/to-x form a half-open range [from-x,to-x).",
+            notes="Grid units use 64 pixels. from-x/to-x form a half-open range [from-x,to-x). Without --name, creates the next Ground_###. With --name, updates that entity if it exists.",
             tags=["game", "platformer", "authoring"],
         ))
 
@@ -207,8 +207,8 @@ class CapabilityRegistryBuilder:
             id="game:platformer:add-platform",
             summary="Create or update native platformer Platform in the selected scene",
             mode="edit",
-            api_methods=["AuthoringAPI.create_entity", "SceneManager.replace_component_data", "SceneWorkspaceAPI.save_scene"],
-            cli_command="motor game platformer add-platform [--x <cell>] [--y <cell>] [--width <cells>] [--project <path>]",
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-platform [--x <cell>] [--y <cell>] [--width <cells>] [--name <entity>] [--project <path>]",
             example=CapabilityExample(
                 description="Ensure a platform at grid cell x=5 y=6 width=3",
                 api_calls=[
@@ -217,7 +217,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Selected scene contains Platform with Transform and non-trigger Collider",
             ),
-            notes="Grid units use 64 pixels. x is the left grid cell and width is measured in grid cells.",
+            notes="Grid units use 64 pixels. x is the left grid cell and width is measured in grid cells. Without --name, creates the next Platform_###. With --name, updates that entity if it exists.",
             tags=["game", "platformer", "authoring"],
         ))
 
@@ -225,8 +225,8 @@ class CapabilityRegistryBuilder:
             id="game:platformer:add-goal",
             summary="Create or update native platformer Goal in the selected scene",
             mode="edit",
-            api_methods=["AuthoringAPI.create_entity", "SceneManager.replace_component_data", "SceneWorkspaceAPI.save_scene"],
-            cli_command="motor game platformer add-goal [--x <px>] [--y <px>] [--project <path>]",
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-goal [--x <px>] [--y <px>] [--name <entity>] [--project <path>]",
             example=CapabilityExample(
                 description="Ensure Goal at pixel position (1100, 200)",
                 api_calls=[
@@ -235,7 +235,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Selected scene contains Goal with Transform, trigger Collider and Goal2D",
             ),
-            notes="Uses no concrete asset references.",
+            notes="Uses no concrete asset references. Without --name, creates Goal when missing, otherwise the next Goal_###. With --name, updates that entity if it exists.",
             tags=["game", "platformer", "authoring"],
         ))
 
@@ -243,8 +243,8 @@ class CapabilityRegistryBuilder:
             id="game:platformer:add-coin",
             summary="Create or update native platformer Coin in the selected scene",
             mode="edit",
-            api_methods=["AuthoringAPI.create_entity", "SceneManager.replace_component_data", "SceneWorkspaceAPI.save_scene"],
-            cli_command="motor game platformer add-coin [--x <px>] [--y <px>] [--points <int>] [--project <path>]",
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-coin [--x <px>] [--y <px>] [--points <int>] [--name <entity>] [--project <path>]",
             example=CapabilityExample(
                 description="Ensure Coin at pixel position (320, 200)",
                 api_calls=[
@@ -253,7 +253,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Selected scene contains Coin with Transform, trigger Collider and Collectible2D",
             ),
-            notes="Uses semantic Collectible2D data; no external scripts.",
+            notes="Uses semantic Collectible2D data; no external scripts. Without --name, creates the next Coin_###. With --name, updates that entity if it exists.",
             tags=["game", "platformer", "authoring"],
         ))
 
@@ -261,8 +261,8 @@ class CapabilityRegistryBuilder:
             id="game:platformer:add-hazard",
             summary="Create or update native platformer Hazard in the selected scene",
             mode="edit",
-            api_methods=["AuthoringAPI.create_entity", "SceneManager.replace_component_data", "SceneWorkspaceAPI.save_scene"],
-            cli_command="motor game platformer add-hazard [--x <px>] [--y <px>] [--damage <int>] [--project <path>]",
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-hazard [--x <px>] [--y <px>] [--damage <int>] [--name <entity>] [--project <path>]",
             example=CapabilityExample(
                 description="Ensure Hazard at pixel position (640, 300)",
                 api_calls=[
@@ -271,7 +271,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Selected scene contains Hazard with Transform, trigger Collider and Hazard2D",
             ),
-            notes="Uses semantic Hazard2D data; no external scripts.",
+            notes="Uses semantic Hazard2D data; no external scripts. Without --name, creates the next Hazard_###. With --name, updates that entity if it exists.",
             tags=["game", "platformer", "authoring"],
         ))
 

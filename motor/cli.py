@@ -340,6 +340,7 @@ Documentation:
     game_platformer_add_ground_parser.add_argument("--from-x", type=float, required=True, help="Start grid cell, inclusive")
     game_platformer_add_ground_parser.add_argument("--to-x", type=float, required=True, help="End grid cell, exclusive")
     game_platformer_add_ground_parser.add_argument("--y", type=float, required=True, help="Ground Y grid cell")
+    game_platformer_add_ground_parser.add_argument("--name", default=None, help="Ground entity name; omitted creates Ground_###")
     game_platformer_add_ground_parser.add_argument(
         "--project", dest="project_root", default=".",
         help="Path to project directory"
@@ -354,6 +355,7 @@ Documentation:
     game_platformer_add_platform_parser.add_argument("--x", type=float, required=True, help="Platform start X grid cell")
     game_platformer_add_platform_parser.add_argument("--y", type=float, required=True, help="Platform Y grid cell")
     game_platformer_add_platform_parser.add_argument("--width", type=float, required=True, help="Platform width in grid cells")
+    game_platformer_add_platform_parser.add_argument("--name", default=None, help="Platform entity name; omitted creates Platform_###")
     game_platformer_add_platform_parser.add_argument(
         "--project", dest="project_root", default=".",
         help="Path to project directory"
@@ -367,6 +369,7 @@ Documentation:
     )
     game_platformer_add_goal_parser.add_argument("--x", type=float, required=True, help="Goal X position in pixels")
     game_platformer_add_goal_parser.add_argument("--y", type=float, required=True, help="Goal Y position in pixels")
+    game_platformer_add_goal_parser.add_argument("--name", default=None, help="Goal entity name; omitted creates Goal or Goal_###")
     game_platformer_add_goal_parser.add_argument(
         "--project", dest="project_root", default=".",
         help="Path to project directory"
@@ -381,6 +384,7 @@ Documentation:
     game_platformer_add_coin_parser.add_argument("--x", type=float, required=True, help="Coin X position in pixels")
     game_platformer_add_coin_parser.add_argument("--y", type=float, required=True, help="Coin Y position in pixels")
     game_platformer_add_coin_parser.add_argument("--points", type=int, required=True, help="Points awarded when collected")
+    game_platformer_add_coin_parser.add_argument("--name", default=None, help="Coin entity name; omitted creates Coin_###")
     game_platformer_add_coin_parser.add_argument(
         "--project", dest="project_root", default=".",
         help="Path to project directory"
@@ -395,6 +399,7 @@ Documentation:
     game_platformer_add_hazard_parser.add_argument("--x", type=float, required=True, help="Hazard X position in pixels")
     game_platformer_add_hazard_parser.add_argument("--y", type=float, required=True, help="Hazard Y position in pixels")
     game_platformer_add_hazard_parser.add_argument("--damage", type=int, required=True, help="Damage applied on touch")
+    game_platformer_add_hazard_parser.add_argument("--name", default=None, help="Hazard entity name; omitted creates Hazard_###")
     game_platformer_add_hazard_parser.add_argument(
         "--project", dest="project_root", default=".",
         help="Path to project directory"
@@ -1172,6 +1177,7 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                     from_x=parsed.from_x,
                     to_x=parsed.to_x,
                     y=parsed.y,
+                    name=parsed.name,
                     json_output=parsed.json,
                 )
             if parsed.game_platformer_subcommand == "add-platform":
@@ -1180,6 +1186,7 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                     x=parsed.x,
                     y=parsed.y,
                     width=parsed.width,
+                    name=parsed.name,
                     json_output=parsed.json,
                 )
             if parsed.game_platformer_subcommand == "add-goal":
@@ -1187,6 +1194,7 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                     project_path=Path(parsed.project_root).resolve(),
                     x=parsed.x,
                     y=parsed.y,
+                    name=parsed.name,
                     json_output=parsed.json,
                 )
             if parsed.game_platformer_subcommand == "add-coin":
@@ -1195,6 +1203,7 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                     x=parsed.x,
                     y=parsed.y,
                     points=parsed.points,
+                    name=parsed.name,
                     json_output=parsed.json,
                 )
             if parsed.game_platformer_subcommand == "add-hazard":
@@ -1203,6 +1212,7 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                     x=parsed.x,
                     y=parsed.y,
                     damage=parsed.damage,
+                    name=parsed.name,
                     json_output=parsed.json,
                 )
             if parsed.game_platformer_subcommand == "add-respawn":

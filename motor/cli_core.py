@@ -1149,6 +1149,7 @@ def cmd_game_platformer_add_ground(
     from_x: float,
     to_x: float,
     y: float,
+    name: str | None,
     json_output: bool,
 ) -> int:
     """Ensure platformer ground exists in the selected scene."""
@@ -1156,7 +1157,7 @@ def cmd_game_platformer_add_ground(
     try:
         _ensure_project(project_path)
         api = _init_engine(project_path)
-        result = add_platformer_ground(api, from_x, to_x, y)
+        result = add_platformer_ground(api, from_x, to_x, y, name=name)
         return _output(bool(result.get("success")), result.get("message", "Platformer ground update failed"), result.get("data"), json_output)
     except ProjectNotFoundError as exc:
         return _output(False, exc.message, None, json_output)
@@ -1170,13 +1171,13 @@ def cmd_game_platformer_add_ground(
                 pass
 
 
-def cmd_game_platformer_add_platform(project_path: Path, x: float, y: float, width: float, json_output: bool) -> int:
+def cmd_game_platformer_add_platform(project_path: Path, x: float, y: float, width: float, name: str | None, json_output: bool) -> int:
     """Ensure a platformer platform exists in the selected scene."""
     api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
         api = _init_engine(project_path)
-        result = add_platformer_platform(api, x, y, width)
+        result = add_platformer_platform(api, x, y, width, name=name)
         return _output(bool(result.get("success")), result.get("message", "Platformer platform update failed"), result.get("data"), json_output)
     except ProjectNotFoundError as exc:
         return _output(False, exc.message, None, json_output)
@@ -1190,13 +1191,13 @@ def cmd_game_platformer_add_platform(project_path: Path, x: float, y: float, wid
                 pass
 
 
-def cmd_game_platformer_add_goal(project_path: Path, x: float, y: float, json_output: bool) -> int:
+def cmd_game_platformer_add_goal(project_path: Path, x: float, y: float, name: str | None, json_output: bool) -> int:
     """Ensure a platformer Goal exists in the selected scene."""
     api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
         api = _init_engine(project_path)
-        result = add_platformer_goal(api, x, y)
+        result = add_platformer_goal(api, x, y, name=name)
         return _output(bool(result.get("success")), result.get("message", "Platformer goal update failed"), result.get("data"), json_output)
     except ProjectNotFoundError as exc:
         return _output(False, exc.message, None, json_output)
@@ -1210,13 +1211,13 @@ def cmd_game_platformer_add_goal(project_path: Path, x: float, y: float, json_ou
                 pass
 
 
-def cmd_game_platformer_add_coin(project_path: Path, x: float, y: float, points: int, json_output: bool) -> int:
+def cmd_game_platformer_add_coin(project_path: Path, x: float, y: float, points: int, name: str | None, json_output: bool) -> int:
     """Ensure a platformer Coin exists in the selected scene."""
     api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
         api = _init_engine(project_path)
-        result = add_platformer_coin(api, x, y, points)
+        result = add_platformer_coin(api, x, y, points, name=name)
         return _output(bool(result.get("success")), result.get("message", "Platformer coin update failed"), result.get("data"), json_output)
     except ProjectNotFoundError as exc:
         return _output(False, exc.message, None, json_output)
@@ -1230,13 +1231,13 @@ def cmd_game_platformer_add_coin(project_path: Path, x: float, y: float, points:
                 pass
 
 
-def cmd_game_platformer_add_hazard(project_path: Path, x: float, y: float, damage: int, json_output: bool) -> int:
+def cmd_game_platformer_add_hazard(project_path: Path, x: float, y: float, damage: int, name: str | None, json_output: bool) -> int:
     """Ensure a platformer Hazard exists in the selected scene."""
     api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
         api = _init_engine(project_path)
-        result = add_platformer_hazard(api, x, y, damage)
+        result = add_platformer_hazard(api, x, y, damage, name=name)
         return _output(bool(result.get("success")), result.get("message", "Platformer hazard update failed"), result.get("data"), json_output)
     except ProjectNotFoundError as exc:
         return _output(False, exc.message, None, json_output)

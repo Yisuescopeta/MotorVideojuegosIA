@@ -477,7 +477,7 @@ class GamePlatformerCLIContractTests(unittest.TestCase):
         data = payload["data"]
         self.assertEqual(data["scene_name"], "Level 1")
         self.assertEqual(data["startup_scene"], "levels/level_1.json")
-        self.assertEqual(set(data["entities_created"]), {"Player", "Ground", "MainCamera"})
+        self.assertEqual(set(data["entities_created"]), {"Player", "Ground", "Goal", "MainCamera"})
 
         scene_path = self.project / "levels" / "level_1.json"
         self.assertTrue(scene_path.exists())
@@ -486,6 +486,7 @@ class GamePlatformerCLIContractTests(unittest.TestCase):
         names = {entity["name"] for entity in scene["entities"]}
         self.assertIn("Player", names)
         self.assertIn("Ground", names)
+        self.assertIn("Goal", names)
         self.assertIn("MainCamera", names)
 
         player = next(entity for entity in scene["entities"] if entity["name"] == "Player")
@@ -495,6 +496,11 @@ class GamePlatformerCLIContractTests(unittest.TestCase):
         self.assertIn("RigidBody", player["components"])
         self.assertIn("InputMap", player["components"])
         self.assertIn("PlayerController2D", player["components"])
+
+        goal = next(entity for entity in scene["entities"] if entity["name"] == "Goal")
+        self.assertEqual(goal["tag"], "Goal")
+        self.assertIn("Goal2D", goal["components"])
+        self.assertTrue(goal["components"]["Collider"]["is_trigger"])
 
         settings_path = self.project / "settings" / "project_settings.json"
         settings = json.loads(settings_path.read_text(encoding="utf-8"))
@@ -544,7 +550,6 @@ class GamePlatformerCLIContractTests(unittest.TestCase):
             ("game", "platformer", "create", "Level 1"),
             ("game", "platformer", "add-player", "--x", "100", "--y", "300"),
             ("game", "platformer", "add-ground", "--from-x", "0", "--to-x", "20", "--y", "8"),
-            ("game", "platformer", "add-goal", "--x", "1100", "--y", "200"),
         ]
 
         payloads: list[dict] = []
@@ -565,8 +570,7 @@ class GamePlatformerCLIContractTests(unittest.TestCase):
             payloads.append(payload)
 
         self.assertEqual(payloads[1]["data"]["entities_created"], [])
-        self.assertEqual(payloads[2]["data"]["entities_created"], [])
-        self.assertEqual(payloads[3]["data"]["entities_created"], ["Goal"])
+        self.assertEqual(payloads[2]["data"]["entities_created"], ["Ground_001"])
 
         returncode, stdout, stderr = _run_motor(
             "game",
@@ -582,6 +586,8 @@ class GamePlatformerCLIContractTests(unittest.TestCase):
         self.assertTrue(validate_payload["success"], validate_payload)
         validation = validate_payload["data"]["validation"]
         self.assertTrue(all(validation.values()), validation)
+        self.assertTrue(validate_payload["data"]["platformer_validation"]["success"], validate_payload)
+        self.assertTrue(validate_payload["data"]["strict_compliance"]["success"], validate_payload)
 
         scene_path = self.project / "levels" / "level_1.json"
         scene = json.loads(scene_path.read_text(encoding="utf-8"))
@@ -589,7 +595,7 @@ class GamePlatformerCLIContractTests(unittest.TestCase):
         self.assertEqual(player["components"]["Transform"]["x"], 100.0)
         self.assertEqual(player["components"]["Transform"]["y"], 300.0)
 
-        ground = next(entity for entity in scene["entities"] if entity["name"] == "Ground")
+        ground = next(entity for entity in scene["entities"] if entity["name"] == "Ground_001")
         self.assertEqual(ground["components"]["Transform"]["x"], 640.0)
         self.assertEqual(ground["components"]["Transform"]["y"], 512.0)
         self.assertEqual(ground["components"]["Collider"]["width"], 1280.0)
@@ -607,6 +613,9 @@ class GamePlatformerCLIContractTests(unittest.TestCase):
             ("game", "platformer", "create", "Level 1"),
             ("game", "platformer", "add-goal", "--x", "1100", "--y", "200"),
             ("game", "platformer", "add-coin", "--x", "320", "--y", "200", "--points", "1"),
+            ("game", "platformer", "add-coin", "--x", "360", "--y", "210", "--points", "2"),
+            ("game", "platformer", "add-coin", "--name", "Coin_A", "--x", "400", "--y", "220", "--points", "3"),
+            ("game", "platformer", "add-coin", "--name", "Coin_A", "--x", "420", "--y", "230", "--points", "4"),
             ("game", "platformer", "add-hazard", "--x", "640", "--y", "300", "--damage", "1"),
             ("game", "platformer", "add-respawn", "--x", "100", "--y", "300", "--id", "default"),
         ]
@@ -625,24 +634,32 @@ class GamePlatformerCLIContractTests(unittest.TestCase):
             self.assertTrue(payload["success"], payload)
             payloads.append(payload)
 
-        self.assertEqual(payloads[1]["data"]["entities_created"], ["Goal"])
-        self.assertEqual(payloads[2]["data"]["entities_created"], ["Coin"])
-        self.assertEqual(payloads[3]["data"]["entities_created"], ["Hazard"])
-        self.assertEqual(payloads[4]["data"]["entities_created"], ["Respawn_default"])
+        self.assertIn("Goal", payloads[0]["data"]["entities_created"])
+        self.assertEqual(payloads[1]["data"]["entities_created"], ["Goal_001"])
+        self.assertEqual(payloads[2]["data"]["entities_created"], ["Coin_001"])
+        self.assertEqual(payloads[3]["data"]["entities_created"], ["Coin_002"])
+        self.assertEqual(payloads[4]["data"]["entities_created"], ["Coin_A"])
+        self.assertEqual(payloads[5]["data"]["entities_created"], [])
+        self.assertEqual(payloads[6]["data"]["entities_created"], ["Hazard_001"])
+        self.assertEqual(payloads[7]["data"]["entities_created"], ["Respawn_default"])
 
         scene_path = self.project / "levels" / "level_1.json"
         scene = json.loads(scene_path.read_text(encoding="utf-8"))
         by_name = {entity["name"]: entity for entity in scene["entities"]}
 
-        coin_components = by_name["Coin"]["components"]
+        coin_components = by_name["Coin_001"]["components"]
         self.assertIn("Transform", coin_components)
         self.assertIn("Collider", coin_components)
         self.assertIn("Collectible2D", coin_components)
         self.assertEqual(coin_components["Transform"]["x"], 320.0)
         self.assertEqual(coin_components["Collectible2D"]["points"], 1)
         self.assertTrue(coin_components["Collider"]["is_trigger"])
+        self.assertIn("Coin_002", by_name)
+        self.assertEqual(by_name["Coin_002"]["components"]["Collectible2D"]["points"], 2)
+        self.assertEqual(by_name["Coin_A"]["components"]["Transform"]["x"], 420.0)
+        self.assertEqual(by_name["Coin_A"]["components"]["Collectible2D"]["points"], 4)
 
-        hazard_components = by_name["Hazard"]["components"]
+        hazard_components = by_name["Hazard_001"]["components"]
         self.assertIn("Transform", hazard_components)
         self.assertIn("Collider", hazard_components)
         self.assertIn("Hazard2D", hazard_components)
@@ -672,10 +689,12 @@ class GamePlatformerCLIContractTests(unittest.TestCase):
         validate_payload = self._payload(stdout)
         self.assertTrue(validate_payload["success"], validate_payload)
         semantic_entities = validate_payload["data"]["semantic_entities"]
-        self.assertEqual(semantic_entities["collectibles"], ["Coin"])
-        self.assertEqual(semantic_entities["hazards"], ["Hazard"])
-        self.assertEqual(semantic_entities["goals"], ["Goal"])
+        self.assertEqual(set(semantic_entities["collectibles"]), {"Coin_001", "Coin_002", "Coin_A"})
+        self.assertEqual(semantic_entities["hazards"], ["Hazard_001"])
+        self.assertEqual(set(semantic_entities["goals"]), {"Goal", "Goal_001"})
         self.assertEqual(semantic_entities["respawns"], ["Respawn_default"])
+        self.assertTrue(validate_payload["data"]["platformer_validation"]["success"], validate_payload)
+        self.assertTrue(validate_payload["data"]["strict_compliance"]["success"], validate_payload)
 
         compliance = run_ai_compliance(self.project, strict=True)
         self.assertTrue(compliance["success"], compliance)
@@ -694,13 +713,13 @@ class GamePlatformerCLIContractTests(unittest.TestCase):
         runtime_payload = self._payload(stdout)
         self.assertTrue(runtime_payload["success"], runtime_payload)
         runtime_names = {entity["name"] for entity in runtime_payload["data"]["entities"]}
-        self.assertTrue({"Coin", "Hazard", "Goal", "Respawn_default"}.issubset(runtime_names))
+        self.assertTrue({"Coin_001", "Coin_002", "Coin_A", "Hazard_001", "Goal", "Goal_001", "Respawn_default"}.issubset(runtime_names))
         self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
 
         returncode, stdout, stderr = _run_motor(
             "runtime",
             "inspect",
-            "Coin",
+            "Coin_001",
             "--project",
             self.project.as_posix(),
             "--json",
