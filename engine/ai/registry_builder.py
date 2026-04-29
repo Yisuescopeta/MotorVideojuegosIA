@@ -279,7 +279,7 @@ class CapabilityRegistryBuilder:
             id="game:platformer:add-respawn",
             summary="Create or update native platformer RespawnPoint in the selected scene",
             mode="edit",
-            api_methods=["AuthoringAPI.create_entity", "SceneManager.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
             cli_command="motor game platformer add-respawn [--x <px>] [--y <px>] [--id <id>] [--project <path>]",
             example=CapabilityExample(
                 description="Ensure default respawn point at pixel position (100, 300)",
@@ -297,7 +297,7 @@ class CapabilityRegistryBuilder:
             id="game:platformer:validate",
             summary="Validate selected native platformer scene contract",
             mode="both",
-            api_methods=["SceneManager.load_scene_from_file", "RuntimeAPI.list_entities"],
+            api_methods=["SceneWorkspaceAPI.load_scene_for_runtime_inspection", "RuntimeAPI.list_entities", "AssetsProjectAPI.run_ai_compliance"],
             cli_command="motor game platformer validate [--project <path>]",
             example=CapabilityExample(
                 description="Validate the selected platformer scene",
@@ -810,12 +810,12 @@ class CapabilityRegistryBuilder:
             id="ai:compliance",
             summary="Validate whether a project follows the AI-native engine contract",
             mode="both",
-            api_methods=["run_ai_compliance", "cmd_ai_compliance"],
+            api_methods=["AssetsProjectAPI.run_ai_compliance"],
             cli_command="motor ai compliance [--project <path>] [--strict] [--json]",
             example=CapabilityExample(
                 description="Run strict AI compliance checks after a change",
                 api_calls=[
-                    {"method": "cmd_ai_compliance", "args": {"project_path": ".", "strict": True, "json_output": True}},
+                    {"method": "run_ai_compliance", "args": {"strict": True}},
                 ],
                 expected_outcome="Returns native score, strict status, runtime warnings and next actions",
             ),

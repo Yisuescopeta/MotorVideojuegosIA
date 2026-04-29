@@ -16,7 +16,6 @@ from pathlib import Path
 from engine.ai import get_default_registry
 from motor.cli import create_motor_parser
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 

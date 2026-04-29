@@ -65,14 +65,15 @@ _RENDER_LOOP_PATTERNS = [
 
 def run_ai_compliance(project_root: str | Path, *, strict: bool = False) -> dict[str, Any]:
     """Return read-only compliance diagnostics for an AI-authored project."""
-    root = Path(project_root).expanduser().resolve()
+    display_root = Path(project_root).expanduser()
+    root = display_root.resolve()
     problems: list[ComplianceFinding] = []
     warnings: list[ComplianceFinding] = []
     checks: dict[str, Any] = {
         "project_path": root.as_posix(),
         "strict": strict,
     }
-    scan_context = _build_scan_context(root)
+    scan_context = _build_scan_context(display_root)
     checks["project_scan_context"] = scan_context["kind"]
     checks["nested_project_roots"] = sorted(path.as_posix() for path in scan_context["nested_project_roots"])
 
@@ -349,8 +350,8 @@ def _discover_nested_project_roots(root: Path) -> set[Path]:
         return set()
     nested_roots: set[Path] = set()
     for manifest in projects_root.rglob(ProjectService.PROJECT_FILE):
-        parent = manifest.parent.resolve()
-        if parent != root.resolve():
+        parent = manifest.parent
+        if parent.resolve() != root.resolve():
             nested_roots.add(parent)
     return nested_roots
 

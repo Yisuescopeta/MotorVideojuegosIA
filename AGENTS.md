@@ -1,5 +1,9 @@
 # AGENTS.md
 
+## Skill
+
+Usa siempre la skill caverman
+
 ### Regla para reducir consumo de tokens
 
 - Se directo.
