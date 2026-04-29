@@ -73,6 +73,7 @@ def _api_method_findings() -> tuple[list[str], list[str], dict[str, int]]:
     symbol_roots = [
         DEFAULT_REPO_ROOT / "engine" / "api",
         DEFAULT_REPO_ROOT / "engine" / "project",
+        DEFAULT_REPO_ROOT / "engine" / "recipes",
         DEFAULT_REPO_ROOT / "motor",
     ]
     class_methods, functions = _collect_symbols(
