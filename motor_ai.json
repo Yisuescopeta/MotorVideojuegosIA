@@ -1400,7 +1400,7 @@
             "mode": "both",
             "status": "implemented",
             "api_methods": [
-                "list_recipes"
+                "RecipeRegistry.list_recipes"
             ],
             "cli_command": "motor recipe list [--project <path>]",
             "example": {
@@ -1427,7 +1427,7 @@
             "mode": "edit",
             "status": "implemented",
             "api_methods": [
-                "run_recipe"
+                "RecipeRunner.run_recipe"
             ],
             "cli_command": "motor recipe run <id> [--project <path>]",
             "example": {
@@ -1457,7 +1457,7 @@
             "mode": "both",
             "status": "implemented",
             "api_methods": [
-                "get_recipe"
+                "RecipeRegistry.get_recipe"
             ],
             "cli_command": "motor recipe show <id> [--project <path>]",
             "example": {

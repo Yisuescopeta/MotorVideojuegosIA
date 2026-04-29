@@ -117,15 +117,15 @@ The entries below are available now and are safe to use from the CLI.
   - CLI: `motor game platformer validate [--project <path>]`
 
 - **recipe:list**: List bundled declarative AI recipes
-  - API: `list_recipes`
+  - API: `RecipeRegistry.list_recipes`
   - CLI: `motor recipe list [--project <path>]`
 
 - **recipe:show**: Show a bundled declarative AI recipe
-  - API: `get_recipe`
+  - API: `RecipeRegistry.get_recipe`
   - CLI: `motor recipe show <id> [--project <path>]`
 
 - **recipe:run**: Run a bundled declarative AI recipe through allowlisted motor commands
-  - API: `run_recipe`
+  - API: `RecipeRunner.run_recipe`
   - CLI: `motor recipe run <id> [--project <path>]`
 
 - **introspect:capabilities**: Query this capability registry itself

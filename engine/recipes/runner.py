@@ -114,3 +114,11 @@ def run_recipe(recipe_id: str, project_path: Path) -> Dict[str, Any]:
         "expected_capabilities": list(recipe["expected_capabilities"]),
         "validation_commands": list(recipe["validation_commands"]),
     }
+
+
+class RecipeRunner:
+    """Canonical API-method facade for recipe execution."""
+
+    @staticmethod
+    def run_recipe(recipe_id: str, project_path: Path) -> Dict[str, Any]:
+        return run_recipe(recipe_id, project_path)

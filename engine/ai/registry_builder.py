@@ -898,7 +898,7 @@ class CapabilityRegistryBuilder:
             id="recipe:list",
             summary="List bundled declarative AI recipes",
             mode="both",
-            api_methods=["list_recipes"],
+            api_methods=["RecipeRegistry.list_recipes"],
             cli_command="motor recipe list [--project <path>]",
             example=CapabilityExample(
                 description="List available bundled recipes",
@@ -915,7 +915,7 @@ class CapabilityRegistryBuilder:
             id="recipe:show",
             summary="Show a bundled declarative AI recipe",
             mode="both",
-            api_methods=["get_recipe"],
+            api_methods=["RecipeRegistry.get_recipe"],
             cli_command="motor recipe show <id> [--project <path>]",
             example=CapabilityExample(
                 description="Show the platformer-basic recipe",
@@ -932,7 +932,7 @@ class CapabilityRegistryBuilder:
             id="recipe:run",
             summary="Run a bundled declarative AI recipe through allowlisted motor commands",
             mode="edit",
-            api_methods=["run_recipe"],
+            api_methods=["RecipeRunner.run_recipe"],
             cli_command="motor recipe run <id> [--project <path>]",
             example=CapabilityExample(
                 description="Run the platformer-basic recipe",

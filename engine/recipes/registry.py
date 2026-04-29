@@ -107,3 +107,15 @@ def get_recipe(recipe_id: str) -> Dict[str, Any]:
         if payload["id"] == normalized:
             return payload
     raise RecipeNotFoundError(f"Unknown recipe: {normalized}")
+
+
+class RecipeRegistry:
+    """Canonical API-method facade for bundled recipes."""
+
+    @staticmethod
+    def list_recipes() -> List[Dict[str, Any]]:
+        return list_recipes()
+
+    @staticmethod
+    def get_recipe(recipe_id: str) -> Dict[str, Any]:
+        return get_recipe(recipe_id)
