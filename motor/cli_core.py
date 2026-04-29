@@ -18,6 +18,14 @@ from engine.ai.compliance import run_ai_compliance
 from engine.api import EngineAPI
 from engine.config import ENGINE_VERSION
 from engine.project.project_service import ProjectService
+from engine.recipes import (
+    RecipeError,
+    RecipeNotFoundError,
+    RecipeValidationError,
+    get_recipe,
+    list_recipes,
+    run_recipe,
+)
 from motor.platformer_scaffold import (
     add_platformer_coin,
     add_platformer_goal,
@@ -2220,3 +2228,60 @@ def cmd_project_bootstrap_ai(project_path: Path, json_output: bool) -> int:
         return _output(False, exc.message, None, json_output)
     except Exception as exc:
         return _output(False, f"Failed to generate AI bootstrap files: {exc}", None, json_output)
+
+
+def cmd_recipe_list(project_path: Path, json_output: bool) -> int:
+    """List bundled declarative AI recipes read-only."""
+    try:
+        _ensure_project(project_path)
+        recipes = list_recipes()
+        data = {
+            "schema_version": 1,
+            "count": len(recipes),
+            "recipes": recipes,
+        }
+        return _output(True, f"Found {len(recipes)} recipes", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except RecipeError as exc:
+        return _output(False, str(exc), None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to list recipes: {exc}", None, json_output)
+
+
+def cmd_recipe_show(project_path: Path, recipe_id: str, json_output: bool) -> int:
+    """Show a bundled declarative AI recipe read-only."""
+    try:
+        _ensure_project(project_path)
+        recipe = get_recipe(recipe_id)
+        data = {
+            "schema_version": 1,
+            "recipe": recipe,
+            "read_only": True,
+        }
+        return _output(True, f"Recipe shown: {recipe_id}", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except RecipeNotFoundError as exc:
+        return _output(False, str(exc), None, json_output)
+    except RecipeValidationError as exc:
+        return _output(False, str(exc), None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to show recipe: {exc}", None, json_output)
+
+
+def cmd_recipe_run(project_path: Path, recipe_id: str, json_output: bool) -> int:
+    """Run a bundled declarative AI recipe through allowlisted motor commands."""
+    try:
+        _ensure_project(project_path)
+        data = run_recipe(recipe_id, project_path)
+        message = "Recipe run completed" if data.get("success") else "Recipe run failed"
+        return _output(bool(data.get("success")), message, data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except RecipeNotFoundError as exc:
+        return _output(False, str(exc), None, json_output)
+    except RecipeValidationError as exc:
+        return _output(False, str(exc), None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to run recipe: {exc}", None, json_output)

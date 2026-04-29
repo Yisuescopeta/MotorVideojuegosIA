@@ -230,6 +230,11 @@ runtime como estado de authoring.
 `engine/rl`, datasets, runners paralelos y workflows AI-assisted existen, pero
 pertenecen a `experimental/tooling`, no al `core obligatorio`.
 
+`engine/recipes/` contiene recetas IA declarativas versionadas para workflows
+comunes. La primera receta, `platformer-basic`, empaqueta comandos oficiales
+`motor` allowlist para crear, validar y comprobar un nivel minimo de
+plataformas sin shell, scripts temporales ni runtime externo.
+
 `engine/navigation` mantiene una foundation `grid-first` experimental con
 `NavigationGrid`, `NeighborMode`, `PathRequest`, `PathResult` y una API
 canonica `NavigationService.request_path(...)`; `query_path(...)` y

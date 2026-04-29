@@ -1,0 +1,63 @@
+{
+  "id": "platformer-basic",
+  "version": "1.0.0",
+  "description": "Create and validate a minimal native 2D platformer level using official motor workflows.",
+  "expected_capabilities": [
+    "game:platformer:create",
+    "game:platformer:add-coin",
+    "game:platformer:add-hazard",
+    "game:platformer:add-respawn",
+    "game:platformer:validate",
+    "ai:compliance",
+    "runtime:step",
+    "runtime:events"
+  ],
+  "steps": [
+    {
+      "id": "create-level",
+      "description": "Create Level 1 with native platformer defaults.",
+      "command": ["game", "platformer", "create", "Level 1"]
+    },
+    {
+      "id": "add-coin",
+      "description": "Add a collectible coin.",
+      "command": ["game", "platformer", "add-coin", "--x", "320", "--y", "200", "--points", "1"]
+    },
+    {
+      "id": "add-hazard",
+      "description": "Add a simple hazard.",
+      "command": ["game", "platformer", "add-hazard", "--x", "640", "--y", "300", "--damage", "1"]
+    },
+    {
+      "id": "add-respawn",
+      "description": "Add the default respawn point.",
+      "command": ["game", "platformer", "add-respawn", "--x", "100", "--y", "300", "--id", "default"]
+    },
+    {
+      "id": "validate-platformer",
+      "description": "Validate the platformer authoring contract.",
+      "command": ["game", "platformer", "validate"]
+    },
+    {
+      "id": "ai-compliance-strict",
+      "description": "Validate strict AI-native compliance.",
+      "command": ["ai", "compliance", "--strict"]
+    },
+    {
+      "id": "runtime-step",
+      "description": "Run a minimal stateless runtime step with input.",
+      "command": ["runtime", "step", "--frames", "1", "--input", "right"]
+    },
+    {
+      "id": "runtime-events",
+      "description": "Read runtime events after a minimal stateless step.",
+      "command": ["runtime", "events", "--count", "10", "--step-frames", "1"]
+    }
+  ],
+  "validation_commands": [
+    ["game", "platformer", "validate"],
+    ["ai", "compliance", "--strict"],
+    ["runtime", "step", "--frames", "1", "--input", "right"],
+    ["runtime", "events", "--count", "10", "--step-frames", "1"]
+  ]
+}

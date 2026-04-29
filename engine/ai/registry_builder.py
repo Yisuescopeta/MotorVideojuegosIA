@@ -38,6 +38,7 @@ class CapabilityRegistryBuilder:
         self._register_prefab_capabilities()
         self._register_ai_capabilities()
         self._register_project_capabilities()
+        self._register_recipe_capabilities()
         self._register_runtime_capabilities()
         self._register_physics_capabilities()
         self._register_introspection_capabilities()
@@ -892,6 +893,58 @@ class CapabilityRegistryBuilder:
             tags=["project", "state"],
         ))
 
+    def _register_recipe_capabilities(self) -> None:
+        self._add(Capability(
+            id="recipe:list",
+            summary="List bundled declarative AI recipes",
+            mode="both",
+            api_methods=["RecipeRegistry.list_recipes"],
+            cli_command="motor recipe list [--project <path>]",
+            example=CapabilityExample(
+                description="List available bundled recipes",
+                api_calls=[
+                    {"method": "list_recipes", "args": {}},
+                ],
+                expected_outcome="Returns bundled recipe metadata including platformer-basic",
+            ),
+            notes="Read-only. Recipes are bundled under engine/recipes and are not loaded from arbitrary project files.",
+            tags=["recipe", "ai", "workflow", "tooling"],
+        ))
+
+        self._add(Capability(
+            id="recipe:show",
+            summary="Show a bundled declarative AI recipe",
+            mode="both",
+            api_methods=["RecipeRegistry.get_recipe"],
+            cli_command="motor recipe show <id> [--project <path>]",
+            example=CapabilityExample(
+                description="Show the platformer-basic recipe",
+                api_calls=[
+                    {"method": "get_recipe", "args": {"recipe_id": "platformer-basic"}},
+                ],
+                expected_outcome="Returns recipe version, expected capabilities, steps and validation commands",
+            ),
+            notes="Read-only. Does not mutate project files.",
+            tags=["recipe", "ai", "workflow", "tooling", "query"],
+        ))
+
+        self._add(Capability(
+            id="recipe:run",
+            summary="Run a bundled declarative AI recipe through allowlisted motor commands",
+            mode="edit",
+            api_methods=["RecipeRunner.run_recipe"],
+            cli_command="motor recipe run <id> [--project <path>]",
+            example=CapabilityExample(
+                description="Run the platformer-basic recipe",
+                api_calls=[
+                    {"method": "run_recipe", "args": {"recipe_id": "platformer-basic"}},
+                ],
+                expected_outcome="Creates and validates a minimal native platformer level through official motor commands",
+            ),
+            notes="Runs only validated argv-list recipe steps through the official motor CLI in-process; no shell, no temporary scripts and no external runtime.",
+            tags=["recipe", "ai", "workflow", "tooling", "authoring"],
+        ))
+
     def _register_runtime_capabilities(self) -> None:
         self._add(Capability(
             id="runtime:play",
@@ -1594,6 +1647,7 @@ class MotorAIBootstrapBuilder:
             "game:platformer:create", "game:platformer:add-coin",
             "game:platformer:add-hazard", "game:platformer:add-goal",
             "game:platformer:add-respawn", "game:platformer:validate",
+            "recipe:list", "recipe:show", "recipe:run",
             "introspect:capabilities",
         ]
 
@@ -1619,6 +1673,7 @@ class MotorAIBootstrapBuilder:
             "Animation": ["animator:"],
             "Prefabs": ["prefab:"],
             "Project": ["project:"],
+            "Recipes": ["recipe:"],
             "Agent": ["agent:"],
             "Game": ["game:"],
             "Runtime": ["runtime:"],

@@ -56,6 +56,9 @@ from motor.cli_core import (
     cmd_doctor,
     cmd_project_info,
     cmd_project_bootstrap_ai,
+    cmd_recipe_list,
+    cmd_recipe_show,
+    cmd_recipe_run,
     cmd_game_platformer_add_coin,
     cmd_game_platformer_create,
     cmd_game_platformer_add_goal,
@@ -129,6 +132,7 @@ AI-Facing Commands:
   
   project info              Show project information
   project bootstrap-ai      Generate AI bootstrap files
+  recipe list/show/run      Declarative AI recipes for common workflows
   game platformer create    Create minimal native 2D platformer scene
   game platformer add-*     Add/update Player, Ground, Platform, Coin, Hazard, Goal or Respawn
   game platformer validate  Validate native platformer scene
@@ -179,6 +183,9 @@ Examples:
   motor ai start --project . --json
   motor ai compliance --project . --strict --json
   motor doctor --project . --json
+  motor recipe list --project . --json
+  motor recipe show platformer-basic --project . --json
+  motor recipe run platformer-basic --project . --json
   motor capabilities
   motor runtime step --project . --frames 300 --input "right,jump" --json
   motor game platformer create "Level 1" --project . --json
@@ -293,6 +300,48 @@ Documentation:
         help="Path to project directory"
     )
     proj_bootstrap_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    # === recipe ===
+    recipe_parser = subparsers.add_parser(
+        "recipe",
+        help="Declarative AI recipe operations",
+    )
+    recipe_subparsers = recipe_parser.add_subparsers(dest="recipe_subcommand", required=True)
+
+    recipe_list_parser = recipe_subparsers.add_parser(
+        "list",
+        help="List bundled declarative AI recipes",
+        description="List bundled declarative AI recipes without mutating the project.",
+    )
+    recipe_list_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    recipe_list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    recipe_show_parser = recipe_subparsers.add_parser(
+        "show",
+        help="Show a bundled declarative AI recipe",
+        description="Show a bundled declarative AI recipe without mutating the project.",
+    )
+    recipe_show_parser.add_argument("recipe_id", help="Recipe id")
+    recipe_show_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    recipe_show_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    recipe_run_parser = recipe_subparsers.add_parser(
+        "run",
+        help="Run a bundled declarative AI recipe",
+        description="Run a bundled recipe through allowlisted official motor commands.",
+    )
+    recipe_run_parser.add_argument("recipe_id", help="Recipe id")
+    recipe_run_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    recipe_run_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === game ===
     game_parser = subparsers.add_parser(
@@ -1162,6 +1211,26 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
         elif parsed.project_subcommand == "bootstrap-ai":
             return cmd_project_bootstrap_ai(
                 project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
+
+    # === recipe ===
+    elif parsed.command == "recipe":
+        if parsed.recipe_subcommand == "list":
+            return cmd_recipe_list(
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
+        if parsed.recipe_subcommand == "show":
+            return cmd_recipe_show(
+                project_path=Path(parsed.project_root).resolve(),
+                recipe_id=parsed.recipe_id,
+                json_output=parsed.json,
+            )
+        if parsed.recipe_subcommand == "run":
+            return cmd_recipe_run(
+                project_path=Path(parsed.project_root).resolve(),
+                recipe_id=parsed.recipe_id,
                 json_output=parsed.json,
             )
 
