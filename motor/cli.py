@@ -575,6 +575,10 @@ Documentation:
         "--count", type=int, default=50,
         help="Number of recent events to retrieve (default: 50)"
     )
+    runtime_events_parser.add_argument(
+        "--step-frames", type=int, default=0,
+        help="Run PLAY -> STEP(N) before reading events in this stateless process"
+    )
     runtime_events_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === entity ===
@@ -1296,6 +1300,7 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
             return cmd_runtime_events(
                 project_path=Path(parsed.project_root).resolve(),
                 count=parsed.count,
+                step_frames=parsed.step_frames,
                 json_output=parsed.json,
             )
 

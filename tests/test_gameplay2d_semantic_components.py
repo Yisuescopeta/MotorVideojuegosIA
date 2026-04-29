@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 from engine.ai.compliance import run_ai_compliance
+from engine.api import EngineAPI
 from engine.components.gameplay2d import (
     Collectible2D,
     Goal2D,
@@ -16,6 +20,8 @@ from engine.components.transform import Transform
 from engine.levels.component_registry import create_default_registry
 from engine.scenes.scene import Scene
 from engine.serialization.schema import migrate_scene_data, validate_scene_data
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _transform() -> dict[str, float | bool]:
@@ -53,6 +59,104 @@ def _scene_payload() -> dict[str, object]:
         "rules": [],
         "feature_metadata": {},
     }
+
+
+def _collider_payload(is_trigger: bool = True) -> dict[str, object]:
+    return {
+        "enabled": True,
+        "width": 16.0,
+        "height": 16.0,
+        "offset_x": 0.0,
+        "offset_y": 0.0,
+        "is_trigger": is_trigger,
+    }
+
+
+def _entity_payload(
+    name: str,
+    components: dict[str, dict[str, object]],
+    *,
+    x: float = 0.0,
+    y: float = 0.0,
+    tag: str = "Untagged",
+) -> dict[str, object]:
+    return {
+        "name": name,
+        "active": True,
+        "tag": tag,
+        "layer": "Default",
+        "components": {
+            "Transform": {**_transform(), "x": x, "y": y},
+            **components,
+        },
+    }
+
+
+def _runtime_scene_payload(extra_entities: list[dict[str, object]]) -> dict[str, object]:
+    player = _entity_payload(
+        "Player",
+        {
+            "Collider": _collider_payload(is_trigger=False),
+            "PlayerController2D": {
+                "enabled": True,
+                "move_speed": 180.0,
+                "jump_velocity": -320.0,
+                "air_control": 0.75,
+            },
+        },
+        tag="Player",
+    )
+    return migrate_scene_data(
+        {
+            "name": "Gameplay Runtime Scene",
+            "entities": [player, *extra_entities],
+            "rules": [],
+            "feature_metadata": {"physics_2d": {"backend": "legacy_aabb"}},
+        }
+    )
+
+
+def _write_project_with_scene(root: Path, scene: dict[str, object]) -> Path:
+    project = root / "SemanticRuntimeProject"
+    levels = project / "levels"
+    for path in [levels, project / "assets", project / "scripts", project / "settings"]:
+        path.mkdir(parents=True, exist_ok=True)
+    (project / "project.json").write_text(
+        json.dumps(
+            {
+                "name": "SemanticRuntimeProject",
+                "version": 2,
+                "engine_version": "2026.03",
+                "paths": {
+                    "assets": "assets",
+                    "levels": "levels",
+                    "prefabs": "prefabs",
+                    "scripts": "scripts",
+                    "settings": "settings",
+                    "meta": ".motor/meta",
+                    "build": ".motor/build",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    scene_path = levels / "semantic_runtime.json"
+    scene_path.write_text(json.dumps(scene, indent=2), encoding="utf-8")
+    return scene_path
+
+
+def _recent_event(api: EngineAPI, name: str) -> dict[str, object]:
+    for event in api.get_recent_events(50):
+        if event["name"] == name:
+            return event
+    return {}
+
+
+def _runtime_api(scene_path: Path, workspace: Path) -> EngineAPI:
+    return EngineAPI(
+        project_root=scene_path.parents[1].as_posix(),
+        global_state_dir=(workspace / "global").as_posix(),
+    )
 
 
 class Gameplay2DSemanticComponentTests(unittest.TestCase):
@@ -168,6 +272,170 @@ class Gameplay2DSemanticComponentTests(unittest.TestCase):
             any(item["code"] == "unknown_component" for item in report["warnings"]),
             report["warnings"],
         )
+
+
+class Gameplay2DSemanticRuntimeTests(unittest.TestCase):
+    def test_player_collectible_overlap_emits_collect_event(self) -> None:
+        coin = _entity_payload(
+            "Coin",
+            {
+                "Collider": _collider_payload(is_trigger=True),
+                "Collectible2D": Collectible2D(points=7, destroy_on_collect=False).to_dict(),
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([coin]))
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                event = _recent_event(api, "collectible_collected")
+                self.assertEqual(event["data"]["player"], "Player")
+                self.assertEqual(event["data"]["collectible"], "Coin")
+                self.assertEqual(event["data"]["points"], 7)
+            finally:
+                api.shutdown()
+
+    def test_collectible_destroy_on_collect_removes_runtime_entity_only(self) -> None:
+        coin = _entity_payload(
+            "Coin",
+            {
+                "Collider": _collider_payload(is_trigger=True),
+                "Collectible2D": Collectible2D(points=1, destroy_on_collect=True).to_dict(),
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([coin]))
+            before = scene_path.read_text(encoding="utf-8")
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                entity_names = {entity["name"] for entity in api.list_entities()}
+                self.assertNotIn("Coin", entity_names)
+                self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+            finally:
+                api.shutdown()
+
+    def test_hazard_respawns_player_at_first_active_respawn(self) -> None:
+        hazard = _entity_payload(
+            "Spike",
+            {
+                "Collider": _collider_payload(is_trigger=True),
+                "Hazard2D": Hazard2D(damage=3, respawn_on_touch=True).to_dict(),
+            },
+        )
+        respawn = _entity_payload(
+            "Respawn_default",
+            {"RespawnPoint2D": RespawnPoint2D(spawn_id="default", active=True).to_dict()},
+            x=120.0,
+            y=80.0,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([hazard, respawn]))
+            before = scene_path.read_text(encoding="utf-8")
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                event = _recent_event(api, "hazard_touched")
+                player = api.get_entity("Player")
+                transform = player["components"]["Transform"]
+                self.assertEqual(event["data"]["player"], "Player")
+                self.assertEqual(event["data"]["hazard"], "Spike")
+                self.assertEqual(event["data"]["damage"], 3)
+                self.assertEqual(transform["x"], 120.0)
+                self.assertEqual(transform["y"], 80.0)
+                self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+            finally:
+                api.shutdown()
+
+    def test_hazard_without_respawn_emits_missing_respawn_event(self) -> None:
+        hazard = _entity_payload(
+            "Spike",
+            {
+                "Collider": _collider_payload(is_trigger=True),
+                "Hazard2D": Hazard2D(damage=3, respawn_on_touch=True).to_dict(),
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([hazard]))
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                event = _recent_event(api, "hazard_respawn_missing")
+                self.assertEqual(event["data"]["player"], "Player")
+                self.assertEqual(event["data"]["hazard"], "Spike")
+                self.assertEqual(event["data"]["reason"], "no_active_respawn_point")
+            finally:
+                api.shutdown()
+
+    def test_goal_overlap_emits_goal_reached(self) -> None:
+        goal = _entity_payload(
+            "Goal",
+            {
+                "Collider": _collider_payload(is_trigger=True),
+                "Goal2D": Goal2D(next_scene="levels/next.json").to_dict(),
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([goal]))
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                event = _recent_event(api, "goal_reached")
+                self.assertEqual(event["data"]["player"], "Player")
+                self.assertEqual(event["data"]["goal"], "Goal")
+                self.assertEqual(event["data"]["next_scene"], "levels/next.json")
+            finally:
+                api.shutdown()
+
+    def test_motor_runtime_events_step_frames_sees_semantic_events_without_persisting_scene(self) -> None:
+        coin = _entity_payload(
+            "Coin",
+            {
+                "Collider": _collider_payload(is_trigger=True),
+                "Collectible2D": Collectible2D(points=2, destroy_on_collect=True).to_dict(),
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([coin]))
+            before = scene_path.read_text(encoding="utf-8")
+            env = os.environ.copy()
+            python_path = env.get("PYTHONPATH", "")
+            env["PYTHONPATH"] = str(ROOT) if not python_path else str(ROOT) + os.pathsep + python_path
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "motor",
+                    "runtime",
+                    "events",
+                    "--project",
+                    scene_path.parents[1].as_posix(),
+                    "--step-frames",
+                    "1",
+                    "--json",
+                ],
+                capture_output=True,
+                text=True,
+                cwd=ROOT,
+                env=env,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            payload = json.loads(result.stdout[result.stdout.index("{"):])
+            event_names = [event["name"] for event in payload["data"]["events"]]
+            self.assertIn("collectible_collected", event_names)
+            self.assertEqual(payload["data"]["step_frames"], 1)
+            self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
 
 
 if __name__ == "__main__":

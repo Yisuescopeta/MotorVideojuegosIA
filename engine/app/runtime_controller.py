@@ -13,6 +13,7 @@ from engine.events.signals import SignalRuntime
 from engine.physics.backend import PhysicsBackendSelection
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
 from engine.services.registro_servicios import RegistroServicios
+from engine.systems.gameplay2d_semantic_system import Gameplay2DSemanticSystem
 from engine.tilemap.collision_builder import bake_tilemap_colliders
 from engine.utils.viewport import resolve_world_viewport_rect
 
@@ -62,6 +63,7 @@ class RuntimeController:
         self._deferred_queue = DeferredCallQueue()
         self._signal_runtime = SignalRuntime(self._deferred_queue)
         self._servicios = RegistroServicios()
+        self._gameplay2d_semantic_system = Gameplay2DSemanticSystem()
         self._entity_destroyed_listener_registered = False
         self._callable_resolver = CallableResolver(
             CallableResolverContext(
@@ -114,6 +116,7 @@ class RuntimeController:
         self._deferred_queue.clear()
         self._signal_runtime.clear()
         self._servicios.limpiar_runtime()
+        self._gameplay2d_semantic_system.reset()
         self._entity_destroyed_listener_registered = False
 
     def end_runtime_session(self) -> None:
@@ -121,6 +124,7 @@ class RuntimeController:
         self._deferred_queue.clear()
         self._signal_runtime.clear()
         self._servicios.limpiar_runtime()
+        self._gameplay2d_semantic_system.reset()
         self._entity_destroyed_listener_registered = False
 
     def build_tick_plan(self, dt: float, *, should_render_like: bool = True) -> RuntimeTickPlan:
@@ -288,6 +292,11 @@ class RuntimeController:
         backend = self._get_physics_backend_registry().resolve(world).backend
         if backend is not None and state.allows_physics():
             backend.step(world, dt)
+            self._gameplay2d_semantic_system.update(
+                world,
+                backend.collect_contacts(world),
+                self._get_event_bus(),
+            )
 
         audio_system = self._get_audio_system()
         if audio_system is not None:

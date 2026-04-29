@@ -398,16 +398,20 @@ def cmd_runtime_inspect(project_path: Path, entity_name: str, json_output: bool)
                 pass
 
 
-def cmd_runtime_events(project_path: Path, count: int, json_output: bool) -> int:
-    """Return recent runtime events read-only."""
+def cmd_runtime_events(project_path: Path, count: int, step_frames: int, json_output: bool) -> int:
+    """Return recent runtime events, optionally after a stateless headless step."""
     api: Optional[EngineAPI] = None
     warnings: List[str] = []
+    normalized_step_frames = max(0, int(step_frames))
     try:
         _ensure_project(project_path)
         api = _init_engine(project_path)
         scene_ready, scene = _ensure_runtime_scene(api, warnings)
         if not scene_ready:
             warnings.append("No active scene in this stateless CLI process; event bus may be empty.")
+        elif normalized_step_frames > 0:
+            api.play()
+            api.step(normalized_step_frames)
         events = api.get_recent_events(count)
         if not events:
             warnings.append("No recent events available. The event bus may be empty or the runtime has not emitted events yet.")
@@ -417,6 +421,7 @@ def cmd_runtime_events(project_path: Path, count: int, json_output: bool) -> int
             "events": events,
             "count": len(events),
             "requested_count": count,
+            "step_frames": normalized_step_frames,
         })
         return _output(True, f"Retrieved {len(events)} recent events", data, json_output)
     except ProjectNotFoundError as exc:
@@ -426,6 +431,7 @@ def cmd_runtime_events(project_path: Path, count: int, json_output: bool) -> int
     finally:
         if api is not None:
             try:
+                api.stop()
                 api.shutdown()
             except Exception:
                 pass

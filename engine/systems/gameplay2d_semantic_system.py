@@ -1,0 +1,168 @@
+from __future__ import annotations
+
+from typing import Any
+
+from engine.components.gameplay2d import Collectible2D, Goal2D, Hazard2D, RespawnPoint2D
+from engine.components.playercontroller2d import PlayerController2D
+from engine.components.rigidbody import RigidBody
+from engine.components.transform import Transform
+from engine.ecs.entity import Entity
+from engine.ecs.world import World
+
+
+class Gameplay2DSemanticSystem:
+    """Runtime bridge for data-only 2D semantic gameplay components."""
+
+    def __init__(self) -> None:
+        self._handled_contacts: set[tuple[str, int, int]] = set()
+
+    def reset(self) -> None:
+        self._handled_contacts.clear()
+
+    def update(self, world: World, contacts: list[Any], event_bus: Any | None) -> None:
+        if event_bus is None:
+            return
+        destroyed_ids: set[int] = set()
+        for contact in contacts:
+            entity_a = self._entity_from_contact(world, contact, "a")
+            entity_b = self._entity_from_contact(world, contact, "b")
+            if entity_a is None or entity_b is None:
+                continue
+            if entity_a.id in destroyed_ids or entity_b.id in destroyed_ids:
+                continue
+            player, target = self._player_and_target(entity_a, entity_b)
+            if player is None or target is None:
+                continue
+            if self._handle_collectible(world, event_bus, player, target):
+                destroyed_ids.add(target.id)
+                continue
+            self._handle_hazard(world, event_bus, player, target)
+            self._handle_goal(event_bus, player, target)
+
+    def _entity_from_contact(self, world: World, contact: Any, side: str) -> Entity | None:
+        entity_id = getattr(contact, f"entity_{side}_id", None)
+        if entity_id is None and isinstance(contact, dict):
+            entity_id = contact.get(f"entity_{side}_id")
+        try:
+            entity = world.get_entity(int(entity_id))
+        except (TypeError, ValueError):
+            entity = None
+        if entity is not None:
+            return entity if entity.active else None
+
+        entity_name = getattr(contact, f"entity_{side}", None)
+        if entity_name is None and isinstance(contact, dict):
+            entity_name = contact.get(f"entity_{side}")
+        if not entity_name:
+            return None
+        entity = world.get_entity_by_name(str(entity_name))
+        return entity if entity is not None and entity.active else None
+
+    def _player_and_target(self, entity_a: Entity, entity_b: Entity) -> tuple[Entity | None, Entity | None]:
+        if self._is_player(entity_a):
+            return entity_a, entity_b
+        if self._is_player(entity_b):
+            return entity_b, entity_a
+        return None, None
+
+    def _is_player(self, entity: Entity) -> bool:
+        if entity.tag == "Player":
+            return True
+        controller = entity.get_component(PlayerController2D)
+        return bool(controller is not None and getattr(controller, "enabled", True))
+
+    def _handle_collectible(self, world: World, event_bus: Any, player: Entity, target: Entity) -> bool:
+        collectible = target.get_component(Collectible2D)
+        if collectible is None or not getattr(collectible, "enabled", True):
+            return False
+        key = ("collectible", int(player.id), int(target.id))
+        if key in self._handled_contacts:
+            return False
+        self._handled_contacts.add(key)
+        event_bus.emit(
+            collectible.event_name,
+            {
+                "player": player.name,
+                "collectible": target.name,
+                "points": collectible.points,
+            },
+        )
+        if collectible.destroy_on_collect:
+            world.remove_entity(target.id)
+            return True
+        return False
+
+    def _handle_hazard(self, world: World, event_bus: Any, player: Entity, target: Entity) -> None:
+        hazard = target.get_component(Hazard2D)
+        if hazard is None or not getattr(hazard, "enabled", True):
+            return
+        key = ("hazard", int(player.id), int(target.id))
+        if key in self._handled_contacts:
+            return
+        self._handled_contacts.add(key)
+        event_bus.emit(
+            hazard.event_name,
+            {
+                "player": player.name,
+                "hazard": target.name,
+                "damage": hazard.damage,
+            },
+        )
+        if not hazard.respawn_on_touch:
+            return
+        respawn = self._first_active_respawn(world)
+        if respawn is None:
+            event_bus.emit(
+                "hazard_respawn_missing",
+                {
+                    "player": player.name,
+                    "hazard": target.name,
+                    "damage": hazard.damage,
+                    "reason": "no_active_respawn_point",
+                },
+            )
+            return
+        self._move_to_respawn(world, player, respawn)
+
+    def _handle_goal(self, event_bus: Any, player: Entity, target: Entity) -> None:
+        goal = target.get_component(Goal2D)
+        if goal is None or not getattr(goal, "enabled", True):
+            return
+        key = ("goal", int(player.id), int(target.id))
+        if key in self._handled_contacts:
+            return
+        self._handled_contacts.add(key)
+        event_bus.emit(
+            goal.event_name,
+            {
+                "player": player.name,
+                "goal": target.name,
+                "next_scene": goal.next_scene,
+            },
+        )
+
+    def _first_active_respawn(self, world: World) -> Entity | None:
+        for entity in world.iter_all_entities():
+            if not entity.active:
+                continue
+            respawn = entity.get_component(RespawnPoint2D)
+            transform = entity.get_component(Transform)
+            if respawn is None or transform is None:
+                continue
+            if getattr(respawn, "enabled", True) and respawn.active and getattr(transform, "enabled", True):
+                return entity
+        return None
+
+    def _move_to_respawn(self, world: World, player: Entity, respawn: Entity) -> None:
+        player_transform = player.get_component(Transform)
+        respawn_transform = respawn.get_component(Transform)
+        if player_transform is None or respawn_transform is None:
+            return
+        player_transform.x = respawn_transform.x
+        player_transform.y = respawn_transform.y
+        rigidbody = player.get_component(RigidBody)
+        if rigidbody is not None:
+            rigidbody.velocity_x = 0.0
+            rigidbody.velocity_y = 0.0
+        world.touch_transform()
+        world.touch_physics()
