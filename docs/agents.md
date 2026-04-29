@@ -103,7 +103,7 @@ Para CLI:
 py -m motor ai start --project . --json
 py -m motor ai compliance --project . --json
 py -m motor doctor --project . --json
-py -m motor runtime step --project . --frames 300 --json
+py -m motor runtime step --project . --frames 300 --input "right,jump" --json
 py -m motor game platformer create "Level 1" --project . --json
 py -m motor game platformer add-player --x 100 --y 300 --project . --json
 py -m motor game platformer add-ground --from-x 0 --to-x 20 --y 8 --project . --json
@@ -134,7 +134,10 @@ guardan la escena serializada y eligen escena por esta regla: activa cargada,
 Para verificacion runtime headless, usa `motor runtime play/step/stop`. Estos
 comandos son stateless: inicializan `EngineAPI`, cargan una escena mediante
 superficies publicas, ejecutan el control runtime y salen sin guardar mutaciones
-runtime como authoring state.
+runtime como authoring state. `motor runtime step --input "right,jump"` es la
+via oficial para simular acciones `InputMap` (`left`, `right`, `up`, `down`,
+`jump`, `action_1`, `action_2`) y leer `player_before`, `player_after` y
+eventos runtime desde JSON.
 
 Para UI serializable usa los helpers publicos de `EngineAPI` como
 `create_canvas`, `create_ui_text`, `create_ui_button` y `create_ui_image`.
