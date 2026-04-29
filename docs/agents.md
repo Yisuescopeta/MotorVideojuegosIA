@@ -104,10 +104,26 @@ py -m motor ai start --project . --json
 py -m motor ai compliance --project . --json
 py -m motor doctor --project . --json
 py -m motor runtime step --project . --frames 300 --json
+py -m motor game platformer create "Level 1" --project . --json
+py -m motor game platformer add-player --x 100 --y 300 --project . --json
+py -m motor game platformer add-ground --from-x 0 --to-x 20 --y 8 --project . --json
+py -m motor game platformer add-platform --x 5 --y 6 --width 3 --project . --json
+py -m motor game platformer add-coin --x 320 --y 200 --points 1 --project . --json
+py -m motor game platformer add-hazard --x 640 --y 300 --damage 1 --project . --json
+py -m motor game platformer add-goal --x 1100 --y 200 --project . --json
+py -m motor game platformer add-respawn --x 100 --y 300 --id default --project . --json
+py -m motor game platformer validate --project . --json
 py -m motor scene create "Level 1" --project . --json
 py -m motor entity create Player --project . --json
 py -m motor component add Player Transform --data '{"x":0,"y":0}' --project . --json
 ```
+
+Para construir plataformas sin tocar JSON, usa `motor game platformer create`
+y luego los comandos incrementales `add-player`, `add-ground`, `add-platform`,
+`add-coin`, `add-hazard`, `add-goal`, `add-respawn` y `validate`. Estos comandos
+guardan la escena serializada y eligen escena por esta regla: activa cargada,
+`editor_state.active_scene`, `startup_scene`, o primera escena cargable en
+`levels/`; no usan `last_scene`.
 
 Para verificacion runtime headless, usa `motor runtime play/step/stop`. Estos
 comandos son stateless: inicializan `EngineAPI`, cargan una escena mediante
@@ -134,6 +150,9 @@ afectan al runtime activo.
 - No editar `SceneManager.edit_world` directamente para flujos publicos nuevos.
 - No crear un runtime externo ni entregar `run_game.py` o un main loop alternativo
   como juego principal.
+- Un import directo de `pyray`/`raylib` en scripts de comportamiento o helpers
+  no implica por si solo runtime externo; strict bloquea launchers alternativos
+  y loops propios fuera del flujo publico.
 - Usa `py -m motor ai compliance --project . --strict --json` antes de entregar
   cuando el cambio pueda haber creado scripts ejecutables o flujo de juego.
 - No asumir soporte de componentes no registrados.

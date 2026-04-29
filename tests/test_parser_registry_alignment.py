@@ -108,6 +108,28 @@ class ParserRegistryStrictAlignmentTests(unittest.TestCase):
                 self.assertIn(subcommand, parser_subcommands,
                               f"Capability {cap.id} documents '{subcommand}' but parser doesn't have it")
 
+    def test_game_platformer_commands_alignment(self) -> None:
+        """Verify game:platformer commands match parser nesting exactly."""
+        expected = {
+            "game:platformer:create": ("game", "platformer", "create"),
+            "game:platformer:add-player": ("game", "platformer", "add-player"),
+            "game:platformer:add-ground": ("game", "platformer", "add-ground"),
+            "game:platformer:add-platform": ("game", "platformer", "add-platform"),
+            "game:platformer:add-coin": ("game", "platformer", "add-coin"),
+            "game:platformer:add-hazard": ("game", "platformer", "add-hazard"),
+            "game:platformer:add-goal": ("game", "platformer", "add-goal"),
+            "game:platformer:add-respawn": ("game", "platformer", "add-respawn"),
+            "game:platformer:validate": ("game", "platformer", "validate"),
+        }
+        self.assertIn("platformer", self._get_parser_subcommands("game"))
+        platformer_subcommands = self._get_parser_subcommands("game", "platformer")
+        for capability_id, command_path in expected.items():
+            with self.subTest(capability=capability_id):
+                cap = next((item for item in self.implemented_caps if item.id == capability_id), None)
+                self.assertIsNotNone(cap, f"{capability_id} capability must exist")
+                self.assertEqual(_registry_command_path(cap.cli_command), command_path)
+                self.assertIn(command_path[-1], platformer_subcommands)
+
     def test_entity_create_signature_matches(self) -> None:
         """Verify entity create signature matches exactly."""
         entity_create = next((cap for cap in self.implemented_caps

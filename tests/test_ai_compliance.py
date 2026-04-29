@@ -57,6 +57,16 @@ def _create_project(workspace: Path) -> Path:
     return project
 
 
+def _create_engine_repo_like_project(workspace: Path) -> Path:
+    project = _create_project(workspace)
+    (project / "engine" / "ai").mkdir(parents=True)
+    (project / "motor").mkdir()
+    (project / "tests").mkdir()
+    (project / "engine" / "ai" / "compliance.py").write_text('"""stub"""', encoding="utf-8")
+    (project / "motor" / "cli.py").write_text('"""stub"""', encoding="utf-8")
+    return project
+
+
 def _write_scene(project: Path, components: dict | None = None) -> Path:
     scene = project / "levels" / "main_scene.json"
     scene.write_text(
@@ -238,6 +248,140 @@ class AIComplianceTests(unittest.TestCase):
             self.assertTrue(report["external_runtime_blocking"])
             problem_codes = {item["code"] for item in report["problems"]}
             self.assertIn("external_runtime_loop", problem_codes)
+
+    def test_root_main_py_is_allowed_for_engine_repo_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = _create_engine_repo_like_project(Path(tmpdir))
+            _write_scene(project)
+            (project / "main.py").write_text(
+                "import pyray as rl\n\n"
+                "def main() -> None:\n"
+                "    print('repo launcher')\n\n"
+                "if __name__ == '__main__':\n"
+                "    main()\n",
+                encoding="utf-8",
+            )
+
+            report = run_ai_compliance(project, strict=True)
+
+            self.assertTrue(report["success"], report)
+            self.assertTrue(report["strict_pass"], report)
+            external_codes = {
+                item["code"]
+                for item in [*report["problems"], *report["warnings"]]
+                if item["path"] == "main.py"
+            }
+            self.assertEqual(external_codes, set())
+            self.assertEqual(report["checks"]["project_scan_context"], "engine_repo")
+
+    def test_nested_projects_are_ignored_when_scanning_engine_repo_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = _create_engine_repo_like_project(Path(tmpdir))
+            _write_scene(project)
+            nested = project / "projects" / "NestedGame"
+            (nested / "scripts").mkdir(parents=True)
+            (nested / "levels").mkdir()
+            (nested / "assets").mkdir()
+            (nested / "settings").mkdir()
+            (nested / "project.json").write_text(
+                json.dumps(
+                    {
+                        "name": "NestedGame",
+                        "version": 2,
+                        "engine_version": "2026.03",
+                        "template": "empty",
+                        "paths": {
+                            "assets": "assets",
+                            "levels": "levels",
+                            "prefabs": "prefabs",
+                            "scripts": "scripts",
+                            "settings": "settings",
+                            "meta": ".motor/meta",
+                            "build": ".motor/build",
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (nested / "scripts" / "battle_controller.py").write_text("import pyray as rl\n", encoding="utf-8")
+
+            report = run_ai_compliance(project, strict=True)
+
+            self.assertTrue(report["success"], report)
+            self.assertTrue(report["strict_pass"], report)
+            nested_paths = {
+                item["path"]
+                for item in [*report["problems"], *report["warnings"]]
+                if item.get("path", "").startswith("projects/NestedGame/")
+            }
+            self.assertEqual(nested_paths, set())
+            self.assertEqual(report["checks"]["nested_project_roots"], [nested.as_posix()])
+
+    def test_non_loop_pyray_script_does_not_block(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = _create_project(Path(tmpdir))
+            _write_scene(project)
+            (project / "scripts" / "main_menu_controller.py").write_text(
+                "import pyray as rl\n\n"
+                "def on_update(context, dt):\n"
+                "    return rl.get_mouse_position()\n",
+                encoding="utf-8",
+            )
+
+            report = run_ai_compliance(project, strict=True)
+
+            self.assertTrue(report["success"], report)
+            self.assertTrue(report["strict_pass"], report)
+            external_codes = {
+                item["code"]
+                for item in [*report["problems"], *report["warnings"]]
+                if item.get("path") == "scripts/main_menu_controller.py"
+            }
+            self.assertEqual(external_codes, set())
+
+    def test_sitecustomize_style_stub_does_not_false_positive_in_engine_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = _create_engine_repo_like_project(Path(tmpdir))
+            _write_scene(project)
+            (project / "sitecustomize.py").write_text(
+                "def begin_drawing(*args, **kwargs):\n"
+                "    return None\n\n"
+                "MAPPING = {'begin_drawing': begin_drawing}\n",
+                encoding="utf-8",
+            )
+
+            report = run_ai_compliance(project, strict=True)
+
+            self.assertTrue(report["success"], report)
+            self.assertTrue(report["strict_pass"], report)
+            external_codes = {
+                item["code"]
+                for item in [*report["problems"], *report["warnings"]]
+                if item.get("path") == "sitecustomize.py"
+            }
+            self.assertEqual(external_codes, set())
+
+    def test_archived_legacy_runner_is_not_scanned(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = _create_project(Path(tmpdir))
+            _write_scene(project)
+            archive_dir = project / "docs" / "archive" / "legacy_runners"
+            archive_dir.mkdir(parents=True)
+            (archive_dir / "run_platformer_demo.bat").write_text("@echo off\npython main.py\n", encoding="utf-8")
+
+            report = run_ai_compliance(project, strict=True)
+
+            self.assertTrue(report["success"], report)
+            self.assertTrue(report["strict_pass"], report)
+            external_codes = {
+                item["code"]
+                for item in [*report["problems"], *report["warnings"]]
+                if item.get("path") == "docs/archive/legacy_runners/run_platformer_demo.bat"
+            }
+            self.assertEqual(external_codes, set())
+
+    def test_temp_fix_script_is_absent_from_repo_root(self) -> None:
+        self.assertFalse((ROOT / "fix_game_loop.py").exists())
 
     def test_compliance_is_read_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

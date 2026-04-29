@@ -110,6 +110,7 @@ class MotorRegistryConsistencyTests(unittest.TestCase):
 
                 # Some mappings are expected to differ
                 expected_mappings = {
+                    'game': 'game',
                     'asset': 'asset',
                     'scene': 'scene',
                     'entity': 'entity',
@@ -181,6 +182,7 @@ class MotorCLIOfficialInterfaceTests(unittest.TestCase):
         expected_commands = [
             'capabilities',
             'doctor',
+            'game',
             'project',
             'scene',
             'entity',

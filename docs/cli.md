@@ -86,8 +86,8 @@ Checks principales:
 - schema de escena soportado, entidades serializadas y componentes como fuente persistente.
 - componentes registrados o warnings por componentes desconocidos.
 - posibles runtimes externos como `run_game.py`, loops propios de ventana/render,
-  `.bat` que lancen demos, uso directo de `pyray`/`raylib` fuera del motor, o
-  scripts que usen `main.py`/`HeadlessGame` como camino final sin `motor`/`EngineAPI`.
+  `.bat` que lancen demos o runtime alternativo, o scripts que usen
+  `main.py`/`HeadlessGame` como camino final sin `motor`/`EngineAPI`.
 
 Modo normal reporta sospechas como warnings. Modo `--strict` falla ante runtime
 externo sospechoso o ausencia de escena nativa valida. Puede haber falsos
@@ -95,6 +95,17 @@ positivos en scripts auxiliares o demos antiguas fuera de `docs/`. La
 documentacion, incluido el material historico en `docs/archive/`, no forma
 parte del escaneo de runtimes externos. El comando no borra ni edita archivos
 sospechosos.
+
+Reglas adicionales del escaneo strict:
+
+- `run_game.py` en la raiz del proyecto evaluado sigue bloqueando strict.
+- un script que solo importa `pyray`/`raylib` no bloquea por si mismo; debe
+  aparecer como launcher alternativo o poseer su propio loop de ventana/render.
+- al evaluar este repo del motor, `main.py` en raiz se permite como launcher
+  oficial de compatibilidad del repositorio.
+- al evaluar este repo del motor, proyectos anidados bajo `projects/` con su
+  propio `project.json` se tratan como roots separados y no bloquean el
+  compliance del repo principal.
 
 ### `motor capabilities`
 
@@ -145,6 +156,107 @@ py -m motor project bootstrap-ai --project . --json
 
 El formato actual de `motor_ai.json` es `schema_version = 3`; ver
 [MOTOR_AI_JSON_CONTRACT.md](MOTOR_AI_JSON_CONTRACT.md).
+
+## Game
+
+### `motor game platformer create <name>`
+
+Crea una escena nativa mínima de plataformas 2D bajo `levels/`, la deja activa
+y actualiza `settings/project_settings.json -> startup_scene` al nuevo nivel.
+
+```bash
+py -m motor game platformer create "Level 1" --project . --json
+```
+
+La escena creada usa solo componentes/escenas nativas del motor y no crea
+`run_game.py`, loops externos ni scripts auxiliares. Estructura mínima:
+
+- `Player` con `Transform`, `Collider`, `RigidBody`, `InputMap`,
+  `PlayerController2D`
+- `MainCamera` con `Transform` y `Camera2D` siguiendo a `Player`
+- `Ground` con `Transform` y `Collider`
+
+El JSON devuelve `scene_name`, `scene_path`, `startup_scene`,
+`entities_created`, `entity_count` y `scene_file`.
+
+### `motor game platformer add-player`
+
+Crea o actualiza `Player` en la escena de plataformas seleccionada:
+
+```bash
+py -m motor game platformer add-player --x 100 --y 300 --project . --json
+```
+
+### `motor game platformer add-ground`
+
+Crea o actualiza `Ground` usando celdas de 64 px. `--from-x` es inclusivo y
+`--to-x` es exclusivo; `--from-x 0 --to-x 20 --y 8` genera un suelo de
+`20 * 64` px centrado en `x=640`, `y=512`.
+
+```bash
+py -m motor game platformer add-ground --from-x 0 --to-x 20 --y 8 --project . --json
+```
+
+### `motor game platformer add-platform`
+
+Crea o actualiza `Platform` usando celdas de 64 px. `--x` es la celda inicial
+izquierda y `--width` mide celdas.
+
+```bash
+py -m motor game platformer add-platform --x 5 --y 6 --width 3 --project . --json
+```
+
+### `motor game platformer add-coin`
+
+Crea o actualiza `Coin` con `Transform`, `Collider` trigger y `Collectible2D`.
+
+```bash
+py -m motor game platformer add-coin --x 320 --y 200 --points 1 --project . --json
+```
+
+### `motor game platformer add-hazard`
+
+Crea o actualiza `Hazard` con `Transform`, `Collider` trigger y `Hazard2D`.
+
+```bash
+py -m motor game platformer add-hazard --x 640 --y 300 --damage 1 --project . --json
+```
+
+### `motor game platformer add-goal`
+
+Crea o actualiza `Goal` con `Transform`, `Collider` trigger y `Goal2D`, sin
+referencias a assets concretos.
+
+```bash
+py -m motor game platformer add-goal --x 1100 --y 200 --project . --json
+```
+
+### `motor game platformer add-respawn`
+
+Crea o actualiza `Respawn_<id>` con `Transform` y `RespawnPoint2D`.
+
+```bash
+py -m motor game platformer add-respawn --x 100 --y 300 --id default --project . --json
+```
+
+### `motor game platformer validate`
+
+Valida escena, `Player`, suelo/plataforma, `Goal` semantico, carga de escena y
+compliance estricto sin runtime externo bloqueante. Si existen `Collectible2D`,
+`Hazard2D`, `Goal2D` o `RespawnPoint2D`, los reporta en `semantic_entities`.
+
+```bash
+py -m motor game platformer validate --project . --json
+```
+
+Los comandos incrementales operan sobre esta regla: escena activa ya cargada,
+si existe; si no, `.motor/editor_state.json -> active_scene`; si no,
+`settings/project_settings.json -> startup_scene`; si no, primera escena
+cargable bajo `levels/` ordenada por ruta. No usan `last_scene`.
+
+Cada comando devuelve el envelope JSON oficial con `success`, `message` y
+`data`. En `data` siempre se incluyen `scene_path`, `entities_created` y
+`warnings`; `validate` agrega `validation`.
 
 ## Escenas
 

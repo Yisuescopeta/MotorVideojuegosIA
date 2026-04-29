@@ -29,6 +29,7 @@ class CapabilityRegistryBuilder:
     def build(self) -> CapabilityRegistry:
         """Build and return the full capability registry."""
         self._register_scene_capabilities()
+        self._register_game_capabilities()
         self._register_entity_capabilities()
         self._register_component_capabilities()
         self._register_asset_capabilities()
@@ -144,6 +145,169 @@ class CapabilityRegistryBuilder:
             ),
             notes="Uses next_scene key from feature_metadata.scene_flow. Fails if not configured.",
             tags=["scene", "flow", "navigation", "runtime"],
+        ))
+
+    def _register_game_capabilities(self) -> None:
+        self._add(Capability(
+            id="game:platformer:create",
+            summary="Create a minimal native 2D platformer scene scaffold",
+            mode="edit",
+            api_methods=["SceneWorkspaceAPI.create_scene", "AuthoringAPI.create_entity", "AuthoringAPI.create_camera2d"],
+            cli_command="motor game platformer create <name> [--project <path>]",
+            example=CapabilityExample(
+                description="Create a minimal platformer scene called 'Level 1'",
+                api_calls=[
+                    {"method": "create_scene", "args": {"name": "Level 1"}},
+                    {"method": "create_entity", "args": {"name": "Player"}},
+                    {"method": "create_camera2d", "args": {"name": "MainCamera"}},
+                ],
+                expected_outcome="Creates levels/level_1.json with Player, Ground and MainCamera, then updates startup_scene",
+            ),
+            notes="Uses only public EngineAPI authoring surfaces. Creates Player with Transform, Collider, RigidBody, InputMap and PlayerController2D. Uses entity-based ground instead of Tilemap.",
+            tags=["game", "platformer", "authoring", "scaffold"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:add-player",
+            summary="Create or update the native platformer Player in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "SceneManager.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-player [--x <px>] [--y <px>] [--project <path>]",
+            example=CapabilityExample(
+                description="Ensure Player at pixel position (100, 300)",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "Player"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains Player with Transform, Collider, RigidBody, InputMap and PlayerController2D",
+            ),
+            notes="Selects active scene, editor_state.active_scene, startup_scene or first loadable levels scene. Does not use last_scene.",
+            tags=["game", "platformer", "authoring"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:add-ground",
+            summary="Create or update native platformer Ground in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "SceneManager.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-ground [--from-x <cell>] [--to-x <cell>] [--y <cell>] [--project <path>]",
+            example=CapabilityExample(
+                description="Ensure ground from grid cell 0 to 20 at row 8",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "Ground"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains Ground with Transform and non-trigger Collider",
+            ),
+            notes="Grid units use 64 pixels. from-x/to-x form a half-open range [from-x,to-x).",
+            tags=["game", "platformer", "authoring"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:add-platform",
+            summary="Create or update native platformer Platform in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "SceneManager.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-platform [--x <cell>] [--y <cell>] [--width <cells>] [--project <path>]",
+            example=CapabilityExample(
+                description="Ensure a platform at grid cell x=5 y=6 width=3",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "Platform"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains Platform with Transform and non-trigger Collider",
+            ),
+            notes="Grid units use 64 pixels. x is the left grid cell and width is measured in grid cells.",
+            tags=["game", "platformer", "authoring"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:add-goal",
+            summary="Create or update native platformer Goal in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "SceneManager.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-goal [--x <px>] [--y <px>] [--project <path>]",
+            example=CapabilityExample(
+                description="Ensure Goal at pixel position (1100, 200)",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "Goal"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains Goal with Transform, trigger Collider and Goal2D",
+            ),
+            notes="Uses no concrete asset references.",
+            tags=["game", "platformer", "authoring"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:add-coin",
+            summary="Create or update native platformer Coin in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "SceneManager.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-coin [--x <px>] [--y <px>] [--points <int>] [--project <path>]",
+            example=CapabilityExample(
+                description="Ensure Coin at pixel position (320, 200)",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "Coin"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains Coin with Transform, trigger Collider and Collectible2D",
+            ),
+            notes="Uses semantic Collectible2D data; no external scripts.",
+            tags=["game", "platformer", "authoring"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:add-hazard",
+            summary="Create or update native platformer Hazard in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "SceneManager.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-hazard [--x <px>] [--y <px>] [--damage <int>] [--project <path>]",
+            example=CapabilityExample(
+                description="Ensure Hazard at pixel position (640, 300)",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "Hazard"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains Hazard with Transform, trigger Collider and Hazard2D",
+            ),
+            notes="Uses semantic Hazard2D data; no external scripts.",
+            tags=["game", "platformer", "authoring"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:add-respawn",
+            summary="Create or update native platformer RespawnPoint in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "SceneManager.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-respawn [--x <px>] [--y <px>] [--id <id>] [--project <path>]",
+            example=CapabilityExample(
+                description="Ensure default respawn point at pixel position (100, 300)",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "Respawn_default"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains Respawn_default with Transform and RespawnPoint2D",
+            ),
+            notes="Entity name is Respawn_<id> using a safe id suffix. Uses no external scripts.",
+            tags=["game", "platformer", "authoring"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:validate",
+            summary="Validate selected native platformer scene contract",
+            mode="both",
+            api_methods=["SceneManager.load_scene_from_file", "RuntimeAPI.list_entities"],
+            cli_command="motor game platformer validate [--project <path>]",
+            example=CapabilityExample(
+                description="Validate the selected platformer scene",
+                api_calls=[
+                    {"method": "list_entities", "args": {}},
+                ],
+                expected_outcome="Reports scene, Player, terrain, Goal, loadability and strict compliance checks",
+            ),
+            notes="Read-only. Uses same scene target rule as incremental platformer authoring commands.",
+            tags=["game", "platformer", "validation", "read-only"],
         ))
 
     def _register_entity_capabilities(self) -> None:
@@ -1425,6 +1589,9 @@ class MotorAIBootstrapBuilder:
             "animator:set_sheet", "animator:state:create", "animator:info",
             "runtime:play", "runtime:step", "runtime:stop",
             "runtime:status", "runtime:entities", "runtime:inspect", "runtime:events",
+            "game:platformer:create", "game:platformer:add-coin",
+            "game:platformer:add-hazard", "game:platformer:add-goal",
+            "game:platformer:add-respawn", "game:platformer:validate",
             "introspect:capabilities",
         ]
 
@@ -1451,6 +1618,7 @@ class MotorAIBootstrapBuilder:
             "Prefabs": ["prefab:"],
             "Project": ["project:"],
             "Agent": ["agent:"],
+            "Game": ["game:"],
             "Runtime": ["runtime:"],
             "Physics": ["physics:"],
             "Introspection": ["introspect:"],

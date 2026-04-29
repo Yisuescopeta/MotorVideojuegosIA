@@ -18,6 +18,17 @@ from engine.ai.compliance import run_ai_compliance
 from engine.api import EngineAPI
 from engine.config import ENGINE_VERSION
 from engine.project.project_service import ProjectService
+from motor.platformer_scaffold import (
+    add_platformer_coin,
+    add_platformer_goal,
+    add_platformer_ground,
+    add_platformer_hazard,
+    add_platformer_platform,
+    add_platformer_player,
+    add_platformer_respawn,
+    create_minimal_platformer_scene,
+    validate_platformer_scene,
+)
 
 
 class EngineCLIError(Exception):
@@ -1083,6 +1094,194 @@ def cmd_scene_create(project_path: Path, name: str, json_output: bool) -> int:
         return _output(False, exc.message, None, json_output)
     except Exception as exc:
         return _output(False, f"Failed to create scene: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_create(project_path: Path, name: str, json_output: bool) -> int:
+    """Create a minimal native 2D platformer scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = create_minimal_platformer_scene(api, name)
+        if result.get("success"):
+            return _output(True, result.get("message", "Platformer scene created"), result.get("data"), json_output)
+        return _output(False, result.get("message", "Failed to create platformer scene"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to create platformer scene: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_add_player(project_path: Path, x: float, y: float, json_output: bool) -> int:
+    """Ensure a platformer Player exists in the selected scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = add_platformer_player(api, x, y)
+        return _output(bool(result.get("success")), result.get("message", "Platformer player update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to add platformer player: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_add_ground(
+    project_path: Path,
+    from_x: float,
+    to_x: float,
+    y: float,
+    json_output: bool,
+) -> int:
+    """Ensure platformer ground exists in the selected scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = add_platformer_ground(api, from_x, to_x, y)
+        return _output(bool(result.get("success")), result.get("message", "Platformer ground update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to add platformer ground: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_add_platform(project_path: Path, x: float, y: float, width: float, json_output: bool) -> int:
+    """Ensure a platformer platform exists in the selected scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = add_platformer_platform(api, x, y, width)
+        return _output(bool(result.get("success")), result.get("message", "Platformer platform update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to add platformer platform: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_add_goal(project_path: Path, x: float, y: float, json_output: bool) -> int:
+    """Ensure a platformer Goal exists in the selected scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = add_platformer_goal(api, x, y)
+        return _output(bool(result.get("success")), result.get("message", "Platformer goal update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to add platformer goal: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_add_coin(project_path: Path, x: float, y: float, points: int, json_output: bool) -> int:
+    """Ensure a platformer Coin exists in the selected scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = add_platformer_coin(api, x, y, points)
+        return _output(bool(result.get("success")), result.get("message", "Platformer coin update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to add platformer coin: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_add_hazard(project_path: Path, x: float, y: float, damage: int, json_output: bool) -> int:
+    """Ensure a platformer Hazard exists in the selected scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = add_platformer_hazard(api, x, y, damage)
+        return _output(bool(result.get("success")), result.get("message", "Platformer hazard update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to add platformer hazard: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_add_respawn(project_path: Path, x: float, y: float, spawn_id: str, json_output: bool) -> int:
+    """Ensure a platformer RespawnPoint exists in the selected scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = add_platformer_respawn(api, x, y, spawn_id)
+        return _output(bool(result.get("success")), result.get("message", "Platformer respawn update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to add platformer respawn: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_validate(project_path: Path, json_output: bool) -> int:
+    """Validate the selected platformer scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path, read_only=True)
+        result = validate_platformer_scene(api)
+        return _output(bool(result.get("success")), result.get("message", "Platformer validation failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to validate platformer scene: {exc}", None, json_output)
     finally:
         if api is not None:
             try:

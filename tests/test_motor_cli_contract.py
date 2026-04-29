@@ -27,6 +27,7 @@ from typing import Set, Tuple
 from unittest.mock import patch
 
 from engine.ai import MotorAIBootstrapBuilder, get_default_registry
+from engine.ai.compliance import run_ai_compliance
 from engine.api import EngineAPI
 from motor.cli import create_motor_parser
 from motor.cli_core import cmd_prefab_create
@@ -190,6 +191,7 @@ class RegistryToCLIExecutableContractTests(unittest.TestCase):
             ("ai", ["compliance"]),
             ("capabilities", []),
             ("doctor", []),
+            ("game", ["platformer", "create"]),
             ("project", ["info"]),
             ("scene", ["list"]),
             ("scene", ["create"]),
@@ -396,6 +398,352 @@ class RuntimeCLIContractTests(unittest.TestCase):
         self.assertIn("PLAY", data["status_after_play"]["state"])
         self.assertIn("PLAY", data["status_after_step"]["state"])
         self.assertIn("EDIT", data["status_after"]["state"])
+        self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+
+
+class GamePlatformerCLIContractTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._temp_dir = tempfile.TemporaryDirectory()
+        self.project = _create_test_project(Path(self._temp_dir.name), "PlatformerCLI")
+        self.env = os.environ.copy()
+        python_path = self.env.get("PYTHONPATH", "")
+        self.env["PYTHONPATH"] = str(ROOT) if not python_path else str(ROOT) + os.pathsep + python_path
+
+    def tearDown(self) -> None:
+        self._temp_dir.cleanup()
+
+    def _payload(self, stdout: str) -> dict:
+        return json.loads(stdout[stdout.index("{"):])
+
+    def _write_scene(self, relative_path: str = "levels/main_scene.json") -> Path:
+        scene_path = self.project / relative_path
+        scene_path.parent.mkdir(parents=True, exist_ok=True)
+        scene_path.write_text(
+            json.dumps(
+                {
+                    "name": "Runtime Scene",
+                    "entities": [
+                        {
+                            "name": "RuntimeProbe",
+                            "active": True,
+                            "components": {
+                                "Transform": {
+                                    "enabled": True,
+                                    "x": 0.0,
+                                    "y": 0.0,
+                                    "rotation": 0.0,
+                                    "scale_x": 1.0,
+                                    "scale_y": 1.0,
+                                }
+                            },
+                        }
+                    ],
+                    "rules": [],
+                    "feature_metadata": {},
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        return scene_path
+
+    def test_motor_game_platformer_create_help_exists(self) -> None:
+        returncode, stdout, stderr = _run_motor(
+            "game",
+            "platformer",
+            "create",
+            "--help",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        self.assertIn("Create a minimal native 2D platformer scene", stdout)
+
+    def test_motor_game_platformer_create_scaffolds_loadable_scene(self) -> None:
+        returncode, stdout, stderr = _run_motor(
+            "game",
+            "platformer",
+            "create",
+            "Level 1",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        payload = self._payload(stdout)
+        self.assertTrue(payload["success"], payload)
+        data = payload["data"]
+        self.assertEqual(data["scene_name"], "Level 1")
+        self.assertEqual(data["startup_scene"], "levels/level_1.json")
+        self.assertEqual(set(data["entities_created"]), {"Player", "Ground", "MainCamera"})
+
+        scene_path = self.project / "levels" / "level_1.json"
+        self.assertTrue(scene_path.exists())
+        scene = json.loads(scene_path.read_text(encoding="utf-8"))
+        self.assertEqual(scene["schema_version"], 2)
+        names = {entity["name"] for entity in scene["entities"]}
+        self.assertIn("Player", names)
+        self.assertIn("Ground", names)
+        self.assertIn("MainCamera", names)
+
+        player = next(entity for entity in scene["entities"] if entity["name"] == "Player")
+        self.assertEqual(player["tag"], "Player")
+        self.assertIn("Transform", player["components"])
+        self.assertIn("Collider", player["components"])
+        self.assertIn("RigidBody", player["components"])
+        self.assertIn("InputMap", player["components"])
+        self.assertIn("PlayerController2D", player["components"])
+
+        settings_path = self.project / "settings" / "project_settings.json"
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+        self.assertEqual(settings["startup_scene"], "levels/level_1.json")
+
+        api = EngineAPI(project_root=self.project.as_posix())
+        self.addCleanup(api.shutdown)
+        api.load_level("levels/level_1.json")
+        self.assertEqual(api.get_active_scene()["name"], "Level 1")
+        self.assertIsNotNone(api.game.world.get_entity_by_name("Player"))
+
+        compliance = run_ai_compliance(self.project, strict=True)
+        self.assertTrue(compliance["success"], compliance)
+        self.assertTrue(compliance["strict_pass"], compliance)
+
+    def test_motor_game_platformer_create_runtime_status_can_load_without_mutation(self) -> None:
+        _run_motor(
+            "game",
+            "platformer",
+            "create",
+            "Level 1",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+        scene_path = self.project / "levels" / "level_1.json"
+        before = scene_path.read_text(encoding="utf-8")
+
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "status",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        payload = self._payload(stdout)
+        self.assertTrue(payload["success"], payload)
+        self.assertTrue(payload["data"]["scene"]["has_scene"])
+        self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+
+    def test_motor_game_platformer_incremental_flow_validates(self) -> None:
+        commands = [
+            ("game", "platformer", "create", "Level 1"),
+            ("game", "platformer", "add-player", "--x", "100", "--y", "300"),
+            ("game", "platformer", "add-ground", "--from-x", "0", "--to-x", "20", "--y", "8"),
+            ("game", "platformer", "add-goal", "--x", "1100", "--y", "200"),
+        ]
+
+        payloads: list[dict] = []
+        for command in commands:
+            returncode, stdout, stderr = _run_motor(
+                *command,
+                "--project",
+                self.project.as_posix(),
+                "--json",
+                env=self.env,
+            )
+            self.assertEqual(returncode, 0, stderr + stdout)
+            payload = self._payload(stdout)
+            self.assertTrue(payload["success"], payload)
+            self.assertIn("scene_path", payload["data"])
+            self.assertIn("entities_created", payload["data"])
+            self.assertIn("warnings", payload["data"])
+            payloads.append(payload)
+
+        self.assertEqual(payloads[1]["data"]["entities_created"], [])
+        self.assertEqual(payloads[2]["data"]["entities_created"], [])
+        self.assertEqual(payloads[3]["data"]["entities_created"], ["Goal"])
+
+        returncode, stdout, stderr = _run_motor(
+            "game",
+            "platformer",
+            "validate",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+        self.assertEqual(returncode, 0, stderr + stdout)
+        validate_payload = self._payload(stdout)
+        self.assertTrue(validate_payload["success"], validate_payload)
+        validation = validate_payload["data"]["validation"]
+        self.assertTrue(all(validation.values()), validation)
+
+        scene_path = self.project / "levels" / "level_1.json"
+        scene = json.loads(scene_path.read_text(encoding="utf-8"))
+        player = next(entity for entity in scene["entities"] if entity["name"] == "Player")
+        self.assertEqual(player["components"]["Transform"]["x"], 100.0)
+        self.assertEqual(player["components"]["Transform"]["y"], 300.0)
+
+        ground = next(entity for entity in scene["entities"] if entity["name"] == "Ground")
+        self.assertEqual(ground["components"]["Transform"]["x"], 640.0)
+        self.assertEqual(ground["components"]["Transform"]["y"], 512.0)
+        self.assertEqual(ground["components"]["Collider"]["width"], 1280.0)
+
+        goal = next(entity for entity in scene["entities"] if entity["name"] == "Goal")
+        self.assertIn("Goal2D", goal["components"])
+        self.assertTrue(goal["components"]["Collider"]["is_trigger"])
+
+        compliance = run_ai_compliance(self.project, strict=True)
+        self.assertTrue(compliance["success"], compliance)
+        self.assertTrue(compliance["strict_pass"], compliance)
+
+    def test_motor_game_platformer_semantic_add_commands_create_entities(self) -> None:
+        setup_commands = [
+            ("game", "platformer", "create", "Level 1"),
+            ("game", "platformer", "add-goal", "--x", "1100", "--y", "200"),
+            ("game", "platformer", "add-coin", "--x", "320", "--y", "200", "--points", "1"),
+            ("game", "platformer", "add-hazard", "--x", "640", "--y", "300", "--damage", "1"),
+            ("game", "platformer", "add-respawn", "--x", "100", "--y", "300", "--id", "default"),
+        ]
+
+        payloads: list[dict] = []
+        for command in setup_commands:
+            returncode, stdout, stderr = _run_motor(
+                *command,
+                "--project",
+                self.project.as_posix(),
+                "--json",
+                env=self.env,
+            )
+            self.assertEqual(returncode, 0, stderr + stdout)
+            payload = self._payload(stdout)
+            self.assertTrue(payload["success"], payload)
+            payloads.append(payload)
+
+        self.assertEqual(payloads[1]["data"]["entities_created"], ["Goal"])
+        self.assertEqual(payloads[2]["data"]["entities_created"], ["Coin"])
+        self.assertEqual(payloads[3]["data"]["entities_created"], ["Hazard"])
+        self.assertEqual(payloads[4]["data"]["entities_created"], ["Respawn_default"])
+
+        scene_path = self.project / "levels" / "level_1.json"
+        scene = json.loads(scene_path.read_text(encoding="utf-8"))
+        by_name = {entity["name"]: entity for entity in scene["entities"]}
+
+        coin_components = by_name["Coin"]["components"]
+        self.assertIn("Transform", coin_components)
+        self.assertIn("Collider", coin_components)
+        self.assertIn("Collectible2D", coin_components)
+        self.assertEqual(coin_components["Transform"]["x"], 320.0)
+        self.assertEqual(coin_components["Collectible2D"]["points"], 1)
+        self.assertTrue(coin_components["Collider"]["is_trigger"])
+
+        hazard_components = by_name["Hazard"]["components"]
+        self.assertIn("Transform", hazard_components)
+        self.assertIn("Collider", hazard_components)
+        self.assertIn("Hazard2D", hazard_components)
+        self.assertEqual(hazard_components["Transform"]["x"], 640.0)
+        self.assertEqual(hazard_components["Hazard2D"]["damage"], 1)
+
+        goal_components = by_name["Goal"]["components"]
+        self.assertIn("Transform", goal_components)
+        self.assertIn("Collider", goal_components)
+        self.assertIn("Goal2D", goal_components)
+
+        respawn_components = by_name["Respawn_default"]["components"]
+        self.assertIn("Transform", respawn_components)
+        self.assertIn("RespawnPoint2D", respawn_components)
+        self.assertEqual(respawn_components["RespawnPoint2D"]["spawn_id"], "default")
+
+        returncode, stdout, stderr = _run_motor(
+            "game",
+            "platformer",
+            "validate",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+        self.assertEqual(returncode, 0, stderr + stdout)
+        validate_payload = self._payload(stdout)
+        self.assertTrue(validate_payload["success"], validate_payload)
+        semantic_entities = validate_payload["data"]["semantic_entities"]
+        self.assertEqual(semantic_entities["collectibles"], ["Coin"])
+        self.assertEqual(semantic_entities["hazards"], ["Hazard"])
+        self.assertEqual(semantic_entities["goals"], ["Goal"])
+        self.assertEqual(semantic_entities["respawns"], ["Respawn_default"])
+
+        compliance = run_ai_compliance(self.project, strict=True)
+        self.assertTrue(compliance["success"], compliance)
+        self.assertTrue(compliance["strict_pass"], compliance)
+
+        before = scene_path.read_text(encoding="utf-8")
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "entities",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+        self.assertEqual(returncode, 0, stderr + stdout)
+        runtime_payload = self._payload(stdout)
+        self.assertTrue(runtime_payload["success"], runtime_payload)
+        runtime_names = {entity["name"] for entity in runtime_payload["data"]["entities"]}
+        self.assertTrue({"Coin", "Hazard", "Goal", "Respawn_default"}.issubset(runtime_names))
+        self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "inspect",
+            "Coin",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+        self.assertEqual(returncode, 0, stderr + stdout)
+        inspect_payload = self._payload(stdout)
+        self.assertTrue(inspect_payload["success"], inspect_payload)
+        self.assertIn("Collectible2D", inspect_payload["data"]["entity"]["components"])
+        self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+
+    def test_motor_game_platformer_incremental_scene_runtime_read_only(self) -> None:
+        for command in [
+            ("game", "platformer", "create", "Level 1"),
+            ("game", "platformer", "add-player", "--x", "100", "--y", "300"),
+            ("game", "platformer", "add-ground", "--from-x", "0", "--to-x", "20", "--y", "8"),
+            ("game", "platformer", "add-goal", "--x", "1100", "--y", "200"),
+        ]:
+            returncode, stdout, stderr = _run_motor(
+                *command,
+                "--project",
+                self.project.as_posix(),
+                "--json",
+                env=self.env,
+            )
+            self.assertEqual(returncode, 0, stderr + stdout)
+
+        scene_path = self.project / "levels" / "level_1.json"
+        before = scene_path.read_text(encoding="utf-8")
+
+        returncode, stdout, stderr = _run_motor(
+            "runtime",
+            "status",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        payload = self._payload(stdout)
+        self.assertTrue(payload["success"], payload)
+        self.assertTrue(payload["data"]["scene"]["has_scene"])
         self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
 
     def test_motor_runtime_stop_is_stateless_and_warns(self) -> None:

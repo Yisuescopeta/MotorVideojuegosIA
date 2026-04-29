@@ -30,10 +30,13 @@ Usa Python 3.11 o superior.
 ```bash
 py -m pip install -r requirements.txt
 py -m pip install -e .[dev]
+py -m motor --help
 py main.py
 ```
 
 En plataformas sin launcher `py`, usa el ejecutable activo de Python 3.11.
+`py main.py` se conserva como launcher manual de compatibilidad para este repo;
+la CLI publica y recomendada para automatizacion sigue siendo `py -m motor`.
 
 ## Primeros 10 minutos
 

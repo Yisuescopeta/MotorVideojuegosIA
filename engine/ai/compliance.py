@@ -45,6 +45,10 @@ _SKIP_SCAN_DIRS = {
     "tools",
 }
 
+_ROOT_INFRA_FILES = {
+    "sitecustomize.py",
+}
+
 _WINDOW_LOOP_PATTERNS = [
     re.compile(r"\bwhile\s+not\s+pyray\.window_should_close\s*\(", re.IGNORECASE),
     re.compile(r"\bwhile\s+not\s+raylib\.window_should_close\s*\(", re.IGNORECASE),
@@ -68,6 +72,9 @@ def run_ai_compliance(project_root: str | Path, *, strict: bool = False) -> dict
         "project_path": root.as_posix(),
         "strict": strict,
     }
+    scan_context = _build_scan_context(root)
+    checks["project_scan_context"] = scan_context["kind"]
+    checks["nested_project_roots"] = sorted(path.as_posix() for path in scan_context["nested_project_roots"])
 
     project_service = _load_project_service(root, problems, checks)
     if project_service is not None:
@@ -78,7 +85,7 @@ def run_ai_compliance(project_root: str | Path, *, strict: bool = False) -> dict
     else:
         scenes = []
 
-    blocking_findings, warning_findings = _detect_external_runtime(root)
+    blocking_findings, warning_findings = _detect_external_runtime(root, scan_context=scan_context)
     checks["external_runtime_blocking_findings"] = [finding.to_dict() for finding in blocking_findings]
     checks["external_runtime_warning_findings"] = [finding.to_dict() for finding in warning_findings]
     external_runtime_detected = bool(blocking_findings or warning_findings)
@@ -320,14 +327,48 @@ def _is_demo_named(path: Path) -> bool:
     return "demo" in path.stem.lower()
 
 
-def _detect_external_runtime(root: Path) -> tuple[list[ComplianceFinding], list[ComplianceFinding]]:
+def _build_scan_context(root: Path) -> dict[str, Any]:
+    nested_project_roots = _discover_nested_project_roots(root)
+    return {
+        "kind": "engine_repo" if _looks_like_engine_repo(root) else "game_project",
+        "nested_project_roots": nested_project_roots,
+    }
+
+
+def _looks_like_engine_repo(root: Path) -> bool:
+    return (
+        (root / "engine" / "ai" / "compliance.py").exists()
+        and (root / "motor" / "cli.py").exists()
+        and (root / "tests").exists()
+    )
+
+
+def _discover_nested_project_roots(root: Path) -> set[Path]:
+    projects_root = root / "projects"
+    if not projects_root.exists():
+        return set()
+    nested_roots: set[Path] = set()
+    for manifest in projects_root.rglob(ProjectService.PROJECT_FILE):
+        parent = manifest.parent.resolve()
+        if parent != root.resolve():
+            nested_roots.add(parent)
+    return nested_roots
+
+
+def _detect_external_runtime(root: Path, *, scan_context: dict[str, Any]) -> tuple[list[ComplianceFinding], list[ComplianceFinding]]:
     blocking: list[ComplianceFinding] = []
     warnings: list[ComplianceFinding] = []
-    for path in _iter_candidate_files(root):
+    for path in _iter_candidate_files(root, scan_context=scan_context):
         rel_path = _relative_path(root, path)
         lower_name = path.name.lower()
         content = _read_text(path)
         is_demo_path = _is_demo_or_legacy_path(rel_path)
+        is_engine_repo = scan_context["kind"] == "engine_repo"
+
+        if _is_allowed_repo_launcher(path, rel_path, scan_context):
+            continue
+        if _is_known_infra_file(path, rel_path, scan_context):
+            continue
 
         if lower_name == "run_game.py":
             finding = ComplianceFinding("external_runtime_run_game", "run_game.py suggests an alternate runtime entrypoint", rel_path)
@@ -342,14 +383,6 @@ def _detect_external_runtime(root: Path) -> tuple[list[ComplianceFinding], list[
                 finding = ComplianceFinding(
                     "external_runtime_loop",
                     "python script appears to own a window/render loop outside the motor runtime",
-                    rel_path,
-                )
-                (warnings if is_demo_py else blocking).append(finding)
-
-            if re.search(r"^\s*(import|from)\s+(pyray|raylib)\b", content, re.MULTILINE):
-                finding = ComplianceFinding(
-                    "external_runtime_raylib",
-                    "python script imports pyray/raylib directly outside the motor runtime",
                     rel_path,
                 )
                 (warnings if is_demo_py else blocking).append(finding)
@@ -370,17 +403,29 @@ def _detect_external_runtime(root: Path) -> tuple[list[ComplianceFinding], list[
                     "batch script appears to launch an external demo/runtime as the main flow",
                     rel_path,
                 )
-                (warnings if is_demo_path else blocking).append(finding)
+                (warnings if is_demo_path or is_engine_repo else blocking).append(finding)
 
     return _dedupe_findings(blocking), _dedupe_findings(warnings)
 
 
-def _iter_candidate_files(root: Path) -> list[Path]:
+def _is_allowed_repo_launcher(path: Path, rel_path: str, scan_context: dict[str, Any]) -> bool:
+    return scan_context["kind"] == "engine_repo" and rel_path == "main.py"
+
+
+def _is_known_infra_file(path: Path, rel_path: str, scan_context: dict[str, Any]) -> bool:
+    return scan_context["kind"] == "engine_repo" and path.name.lower() in _ROOT_INFRA_FILES and "/" not in rel_path
+
+
+def _iter_candidate_files(root: Path, *, scan_context: dict[str, Any]) -> list[Path]:
     result: list[Path] = []
+    nested_project_roots = {nested_root.resolve() for nested_root in scan_context["nested_project_roots"]}
     for path in root.rglob("*"):
         if not path.is_file():
             continue
         try:
+            resolved = path.resolve()
+            if any(nested_root in resolved.parents for nested_root in nested_project_roots):
+                continue
             rel = path.relative_to(root)
             rel_parts = rel.parts
             rel_str = rel.as_posix()

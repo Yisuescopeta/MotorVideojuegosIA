@@ -68,6 +68,14 @@ sprite (`*_sprite`, `*_slice`, `image_tint`, `preserve_aspect`) sin romper el
 payload legacy basado en colores. `UIImage` serializa `sprite`, `slice_name`,
 `tint` y `preserve_aspect`.
 
+Los componentes semanticos minimos de gameplay 2D son data-only y no introducen
+logica runtime de colision/interaccion todavia:
+
+- `Collectible2D`: `points`, `destroy_on_collect`, `event_name`
+- `Hazard2D`: `damage`, `respawn_on_touch`, `event_name`
+- `Goal2D`: `complete_on_touch`, `next_scene`, `event_name`
+- `RespawnPoint2D`: `spawn_id`, `active`
+
 En `Animator`, el payload vigente sigue usando `animations`, `default_state`,
 `current_state`, `sprite_sheet` y `sprite_sheet_path`. Como foundation opcional
 de Fase 6 puede incluir tambien:
