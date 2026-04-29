@@ -50,14 +50,32 @@ from typing import List, Optional
 
 from motor.cli_core import (
     # Commands
+    cmd_ai_compliance,
+    cmd_ai_start,
     cmd_capabilities,
     cmd_doctor,
     cmd_project_info,
     cmd_project_bootstrap_ai,
+    cmd_game_platformer_add_coin,
+    cmd_game_platformer_create,
+    cmd_game_platformer_add_goal,
+    cmd_game_platformer_add_ground,
+    cmd_game_platformer_add_hazard,
+    cmd_game_platformer_add_platform,
+    cmd_game_platformer_add_player,
+    cmd_game_platformer_add_respawn,
+    cmd_game_platformer_validate,
     cmd_scene_list,
     cmd_scene_create,
     cmd_scene_load,
     cmd_scene_save,
+    cmd_runtime_play,
+    cmd_runtime_step,
+    cmd_runtime_stop,
+    cmd_runtime_status,
+    cmd_runtime_entities,
+    cmd_runtime_inspect,
+    cmd_runtime_events,
     cmd_entity_create,
     cmd_component_add,
     cmd_prefab_create,
@@ -104,16 +122,25 @@ def create_motor_parser() -> argparse.ArgumentParser:
 GRAMMAR: motor <noun> [<subnoun>] <verb> [<args>] [options]
 
 AI-Facing Commands:
+  ai start                  Compact AI entrypoint contract
+  ai compliance             Validate AI-native project compliance
   capabilities              Discover engine capabilities
   doctor                    Validate project health
   
   project info              Show project information
   project bootstrap-ai      Generate AI bootstrap files
+  game platformer create    Create minimal native 2D platformer scene
+  game platformer add-*     Add/update Player, Ground, Platform, Coin, Hazard, Goal or Respawn
+  game platformer validate  Validate native platformer scene
   
   scene list                List all scenes
   scene create <name>       Create new scene
   scene load <path>         Load a scene
   scene save                Save active scene
+
+  runtime play              Start a stateless headless runtime check
+  runtime step              Run PLAY -> STEP -> STOP headlessly
+  runtime stop              Stop runtime in the current stateless process
   
   entity create <name>      Create entity in active scene
   
@@ -149,8 +176,19 @@ AI-Facing Commands:
   agent usage               Show token/cost usage for a session
 
 Examples:
+  motor ai start --project . --json
+  motor ai compliance --project . --strict --json
   motor doctor --project . --json
   motor capabilities
+  motor runtime step --project . --frames 300 --json
+  motor game platformer create "Level 1" --project . --json
+  motor game platformer add-player --x 100 --y 300 --project . --json
+  motor game platformer add-ground --from-x 0 --to-x 20 --y 8 --project . --json
+  motor game platformer add-coin --x 320 --y 200 --points 1 --project . --json
+  motor game platformer add-hazard --x 640 --y 300 --damage 1 --project . --json
+  motor game platformer add-goal --x 1100 --y 200 --project . --json
+  motor game platformer add-respawn --x 100 --y 300 --id default --project . --json
+  motor game platformer validate --project . --json
   motor scene create "Level 1"
   motor entity create Player --components '{"Transform":{"x":100}}'
   motor prefab create Player prefabs/player.prefab --project .
@@ -173,6 +211,40 @@ Documentation:
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # === ai ===
+    ai_parser = subparsers.add_parser(
+        "ai",
+        help="AI assistant entrypoints",
+    )
+    ai_subparsers = ai_parser.add_subparsers(dest="ai_subcommand", required=True)
+
+    ai_start_parser = ai_subparsers.add_parser(
+        "start",
+        help="Show compact AI entrypoint contract",
+        description="Return a read-only compact project contract for AI assistants.",
+    )
+    ai_start_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory (default: current directory)"
+    )
+    ai_start_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    ai_compliance_parser = ai_subparsers.add_parser(
+        "compliance",
+        help="Run read-only AI-native project compliance diagnostics",
+        description="Validate whether a project follows the MotorVideojuegosIA AI-native contract.",
+    )
+    ai_compliance_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory (default: current directory)"
+    )
+    ai_compliance_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Fail when suspicious external runtime signals or no native scene are found",
+    )
+    ai_compliance_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === capabilities ===
     cap_parser = subparsers.add_parser(
@@ -222,6 +294,143 @@ Documentation:
     )
     proj_bootstrap_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
+    # === game ===
+    game_parser = subparsers.add_parser(
+        "game",
+        help="Game scaffolding operations",
+    )
+    game_subparsers = game_parser.add_subparsers(dest="game_subcommand", required=True)
+
+    game_platformer_parser = game_subparsers.add_parser(
+        "platformer",
+        help="2D platformer scaffolding",
+    )
+    game_platformer_subparsers = game_platformer_parser.add_subparsers(dest="game_platformer_subcommand", required=True)
+
+    game_platformer_create_parser = game_platformer_subparsers.add_parser(
+        "create",
+        help="Create a minimal native 2D platformer scene",
+        description="Create a minimal native 2D platformer scene",
+    )
+    game_platformer_create_parser.add_argument("name", help="Scene name")
+    game_platformer_create_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    game_platformer_create_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    game_platformer_add_player_parser = game_platformer_subparsers.add_parser(
+        "add-player",
+        help="Ensure a platformer Player in the selected scene",
+        description="Create or update Player using native components; saves the selected serialized scene.",
+    )
+    game_platformer_add_player_parser.add_argument("--x", type=float, required=True, help="Player X position in pixels")
+    game_platformer_add_player_parser.add_argument("--y", type=float, required=True, help="Player Y position in pixels")
+    game_platformer_add_player_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    game_platformer_add_player_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    game_platformer_add_ground_parser = game_platformer_subparsers.add_parser(
+        "add-ground",
+        help="Ensure platformer ground in the selected scene",
+        description="Create or update Ground from half-open grid cell range [from-x,to-x); grid size is 64 px.",
+    )
+    game_platformer_add_ground_parser.add_argument("--from-x", type=float, required=True, help="Start grid cell, inclusive")
+    game_platformer_add_ground_parser.add_argument("--to-x", type=float, required=True, help="End grid cell, exclusive")
+    game_platformer_add_ground_parser.add_argument("--y", type=float, required=True, help="Ground Y grid cell")
+    game_platformer_add_ground_parser.add_argument("--name", default=None, help="Ground entity name; omitted creates Ground_###")
+    game_platformer_add_ground_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    game_platformer_add_ground_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    game_platformer_add_platform_parser = game_platformer_subparsers.add_parser(
+        "add-platform",
+        help="Ensure a platformer platform in the selected scene",
+        description="Create or update Platform from grid cell origin and width; grid size is 64 px.",
+    )
+    game_platformer_add_platform_parser.add_argument("--x", type=float, required=True, help="Platform start X grid cell")
+    game_platformer_add_platform_parser.add_argument("--y", type=float, required=True, help="Platform Y grid cell")
+    game_platformer_add_platform_parser.add_argument("--width", type=float, required=True, help="Platform width in grid cells")
+    game_platformer_add_platform_parser.add_argument("--name", default=None, help="Platform entity name; omitted creates Platform_###")
+    game_platformer_add_platform_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    game_platformer_add_platform_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    game_platformer_add_goal_parser = game_platformer_subparsers.add_parser(
+        "add-goal",
+        help="Ensure a platformer Goal in the selected scene",
+        description="Create or update Goal using Transform, trigger Collider and Goal2D; no assets required.",
+    )
+    game_platformer_add_goal_parser.add_argument("--x", type=float, required=True, help="Goal X position in pixels")
+    game_platformer_add_goal_parser.add_argument("--y", type=float, required=True, help="Goal Y position in pixels")
+    game_platformer_add_goal_parser.add_argument("--name", default=None, help="Goal entity name; omitted creates Goal or Goal_###")
+    game_platformer_add_goal_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    game_platformer_add_goal_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    game_platformer_add_coin_parser = game_platformer_subparsers.add_parser(
+        "add-coin",
+        help="Ensure a platformer Coin in the selected scene",
+        description="Create or update Coin using Transform, trigger Collider and Collectible2D.",
+    )
+    game_platformer_add_coin_parser.add_argument("--x", type=float, required=True, help="Coin X position in pixels")
+    game_platformer_add_coin_parser.add_argument("--y", type=float, required=True, help="Coin Y position in pixels")
+    game_platformer_add_coin_parser.add_argument("--points", type=int, required=True, help="Points awarded when collected")
+    game_platformer_add_coin_parser.add_argument("--name", default=None, help="Coin entity name; omitted creates Coin_###")
+    game_platformer_add_coin_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    game_platformer_add_coin_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    game_platformer_add_hazard_parser = game_platformer_subparsers.add_parser(
+        "add-hazard",
+        help="Ensure a platformer Hazard in the selected scene",
+        description="Create or update Hazard using Transform, trigger Collider and Hazard2D.",
+    )
+    game_platformer_add_hazard_parser.add_argument("--x", type=float, required=True, help="Hazard X position in pixels")
+    game_platformer_add_hazard_parser.add_argument("--y", type=float, required=True, help="Hazard Y position in pixels")
+    game_platformer_add_hazard_parser.add_argument("--damage", type=int, required=True, help="Damage applied on touch")
+    game_platformer_add_hazard_parser.add_argument("--name", default=None, help="Hazard entity name; omitted creates Hazard_###")
+    game_platformer_add_hazard_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    game_platformer_add_hazard_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    game_platformer_add_respawn_parser = game_platformer_subparsers.add_parser(
+        "add-respawn",
+        help="Ensure a platformer RespawnPoint in the selected scene",
+        description="Create or update RespawnPoint using Transform and RespawnPoint2D.",
+    )
+    game_platformer_add_respawn_parser.add_argument("--x", type=float, required=True, help="Respawn X position in pixels")
+    game_platformer_add_respawn_parser.add_argument("--y", type=float, required=True, help="Respawn Y position in pixels")
+    game_platformer_add_respawn_parser.add_argument("--id", dest="spawn_id", required=True, help="Respawn point id")
+    game_platformer_add_respawn_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    game_platformer_add_respawn_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    game_platformer_validate_parser = game_platformer_subparsers.add_parser(
+        "validate",
+        help="Validate selected platformer scene",
+        description="Validate selected scene has Player, terrain, Goal, loadability and strict AI compliance.",
+    )
+    game_platformer_validate_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    game_platformer_validate_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
     # === scene ===
     scene_parser = subparsers.add_parser(
         "scene",
@@ -270,6 +479,103 @@ Documentation:
         help="Path to project directory"
     )
     scene_save_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    # === runtime ===
+    runtime_parser = subparsers.add_parser(
+        "runtime",
+        help="Stateless headless runtime controls",
+        description="Run official EngineAPI runtime controls in a stateless headless CLI process.",
+    )
+    runtime_subparsers = runtime_parser.add_subparsers(dest="runtime_subcommand", required=True)
+
+    runtime_play_parser = runtime_subparsers.add_parser(
+        "play",
+        help="Start play mode for a stateless headless runtime check",
+    )
+    runtime_play_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_play_parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Explicitly request the headless runtime path",
+    )
+    runtime_play_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    runtime_step_parser = runtime_subparsers.add_parser(
+        "step",
+        help="Run PLAY -> STEP -> STOP in a stateless headless process",
+    )
+    runtime_step_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_step_parser.add_argument(
+        "--frames",
+        type=int,
+        default=1,
+        help="Number of frames to step (default: 1)",
+    )
+    runtime_step_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    runtime_stop_parser = runtime_subparsers.add_parser(
+        "stop",
+        help="Stop runtime in the current stateless process",
+    )
+    runtime_stop_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_stop_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    runtime_status_parser = runtime_subparsers.add_parser(
+        "status",
+        help="Read-only runtime status and active scene info",
+    )
+    runtime_status_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_status_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    runtime_entities_parser = runtime_subparsers.add_parser(
+        "entities",
+        help="List entities in the active scene (read-only)",
+    )
+    runtime_entities_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_entities_parser.add_argument("--tag", default=None, help="Filter by tag")
+    runtime_entities_parser.add_argument("--layer", default=None, help="Filter by layer")
+    runtime_entities_parser.add_argument("--active-only", action="store_true", help="Only active entities")
+    runtime_entities_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    runtime_inspect_parser = runtime_subparsers.add_parser(
+        "inspect",
+        help="Inspect a specific entity (read-only)",
+    )
+    runtime_inspect_parser.add_argument("entity", help="Entity name")
+    runtime_inspect_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_inspect_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    runtime_events_parser = runtime_subparsers.add_parser(
+        "events",
+        help="Return recent runtime events (read-only)",
+    )
+    runtime_events_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_events_parser.add_argument(
+        "--count", type=int, default=50,
+        help="Number of recent events to retrieve (default: 50)"
+    )
+    runtime_events_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === entity ===
     entity_parser = subparsers.add_parser(
@@ -812,6 +1118,20 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
         return 0  # Help was already printed
     
     # === capabilities ===
+    if parsed.command == "ai":
+        if parsed.ai_subcommand == "start":
+            return cmd_ai_start(
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
+        if parsed.ai_subcommand == "compliance":
+            return cmd_ai_compliance(
+                project_path=Path(parsed.project_root).resolve(),
+                strict=parsed.strict,
+                json_output=parsed.json,
+            )
+
+    # === capabilities ===
     if parsed.command == "capabilities":
         return cmd_capabilities(json_output=parsed.json)
     
@@ -834,6 +1154,80 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 project_path=Path(parsed.project_root).resolve(),
                 json_output=parsed.json,
             )
+
+    # === game ===
+    elif parsed.command == "game":
+        if parsed.game_subcommand == "platformer":
+            if parsed.game_platformer_subcommand == "create":
+                return cmd_game_platformer_create(
+                    project_path=Path(parsed.project_root).resolve(),
+                    name=parsed.name,
+                    json_output=parsed.json,
+                )
+            if parsed.game_platformer_subcommand == "add-player":
+                return cmd_game_platformer_add_player(
+                    project_path=Path(parsed.project_root).resolve(),
+                    x=parsed.x,
+                    y=parsed.y,
+                    json_output=parsed.json,
+                )
+            if parsed.game_platformer_subcommand == "add-ground":
+                return cmd_game_platformer_add_ground(
+                    project_path=Path(parsed.project_root).resolve(),
+                    from_x=parsed.from_x,
+                    to_x=parsed.to_x,
+                    y=parsed.y,
+                    name=parsed.name,
+                    json_output=parsed.json,
+                )
+            if parsed.game_platformer_subcommand == "add-platform":
+                return cmd_game_platformer_add_platform(
+                    project_path=Path(parsed.project_root).resolve(),
+                    x=parsed.x,
+                    y=parsed.y,
+                    width=parsed.width,
+                    name=parsed.name,
+                    json_output=parsed.json,
+                )
+            if parsed.game_platformer_subcommand == "add-goal":
+                return cmd_game_platformer_add_goal(
+                    project_path=Path(parsed.project_root).resolve(),
+                    x=parsed.x,
+                    y=parsed.y,
+                    name=parsed.name,
+                    json_output=parsed.json,
+                )
+            if parsed.game_platformer_subcommand == "add-coin":
+                return cmd_game_platformer_add_coin(
+                    project_path=Path(parsed.project_root).resolve(),
+                    x=parsed.x,
+                    y=parsed.y,
+                    points=parsed.points,
+                    name=parsed.name,
+                    json_output=parsed.json,
+                )
+            if parsed.game_platformer_subcommand == "add-hazard":
+                return cmd_game_platformer_add_hazard(
+                    project_path=Path(parsed.project_root).resolve(),
+                    x=parsed.x,
+                    y=parsed.y,
+                    damage=parsed.damage,
+                    name=parsed.name,
+                    json_output=parsed.json,
+                )
+            if parsed.game_platformer_subcommand == "add-respawn":
+                return cmd_game_platformer_add_respawn(
+                    project_path=Path(parsed.project_root).resolve(),
+                    x=parsed.x,
+                    y=parsed.y,
+                    spawn_id=parsed.spawn_id,
+                    json_output=parsed.json,
+                )
+            if parsed.game_platformer_subcommand == "validate":
+                return cmd_game_platformer_validate(
+                    project_path=Path(parsed.project_root).resolve(),
+                    json_output=parsed.json,
+                )
     
     # === scene ===
     elif parsed.command == "scene":
@@ -859,7 +1253,52 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 project_path=Path(parsed.project_root).resolve(),
                 json_output=parsed.json,
             )
-    
+
+    # === runtime ===
+    elif parsed.command == "runtime":
+        if parsed.runtime_subcommand == "play":
+            return cmd_runtime_play(
+                project_path=Path(parsed.project_root).resolve(),
+                headless=parsed.headless,
+                json_output=parsed.json,
+            )
+        elif parsed.runtime_subcommand == "step":
+            return cmd_runtime_step(
+                project_path=Path(parsed.project_root).resolve(),
+                frames=parsed.frames,
+                json_output=parsed.json,
+            )
+        elif parsed.runtime_subcommand == "stop":
+            return cmd_runtime_stop(
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
+        elif parsed.runtime_subcommand == "status":
+            return cmd_runtime_status(
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
+        elif parsed.runtime_subcommand == "entities":
+            return cmd_runtime_entities(
+                project_path=Path(parsed.project_root).resolve(),
+                tag=parsed.tag,
+                layer=parsed.layer,
+                active_only=parsed.active_only,
+                json_output=parsed.json,
+            )
+        elif parsed.runtime_subcommand == "inspect":
+            return cmd_runtime_inspect(
+                project_path=Path(parsed.project_root).resolve(),
+                entity_name=parsed.entity,
+                json_output=parsed.json,
+            )
+        elif parsed.runtime_subcommand == "events":
+            return cmd_runtime_events(
+                project_path=Path(parsed.project_root).resolve(),
+                count=parsed.count,
+                json_output=parsed.json,
+            )
+
     # === entity ===
     elif parsed.command == "entity":
         if parsed.entity_subcommand == "create":

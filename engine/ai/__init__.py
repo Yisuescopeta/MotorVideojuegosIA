@@ -6,6 +6,7 @@ from engine.ai.capability_registry import (
     CapabilityParam,
     CapabilityRegistry,
 )
+from engine.ai.compliance import run_ai_compliance
 from engine.ai.registry_builder import (
     CapabilityRegistryBuilder,
     MotorAIBootstrapBuilder,
@@ -20,4 +21,5 @@ __all__ = [
     "CapabilityRegistryBuilder",
     "MotorAIBootstrapBuilder",
     "get_default_registry",
+    "run_ai_compliance",
 ]

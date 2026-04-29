@@ -18,6 +18,12 @@ from engine.components.audiosource import AudioSource
 from engine.components.camera2d import Camera2D
 from engine.components.charactercontroller2d import CharacterController2D
 from engine.components.collider import Collider
+from engine.components.gameplay2d import (
+    Collectible2D,
+    Goal2D,
+    Hazard2D,
+    RespawnPoint2D,
+)
 from engine.components.inputmap import InputMap
 from engine.components.joint2d import Joint2D
 from engine.components.marker2d import Marker2D
@@ -47,6 +53,10 @@ __all__ = [
     "Transform",
     "Sprite",
     "Collider",
+    "Collectible2D",
+    "Hazard2D",
+    "Goal2D",
+    "RespawnPoint2D",
     "CharacterController2D",
     "Joint2D",
     "RigidBody",

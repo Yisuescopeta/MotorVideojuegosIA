@@ -64,6 +64,9 @@ usa un runtime iterativo `provider -> tool_use -> tool_result -> provider`:
 - `cancel_agent_session(session_id)`
 - `list_agent_tools()`
 - `list_agent_providers()`
+- `login_agent_provider(provider_id, credential_source="user_local", base_url="", model="", api_key="", device_auth=False)`
+- `logout_agent_provider(provider_id)`
+- `get_agent_provider_status(provider_id="")`
 - `compact_agent_session(session_id)`
 - `get_agent_usage(session_id)`
 - `inspect_agent_session(session_id)`
@@ -164,6 +167,7 @@ Entidades:
 Componentes:
 
 - `add_component(entity_name, component_name, data=None)`
+- `replace_component_data(entity_name, component_name, data)`
 - `remove_component(entity_name, component_name)`
 - `edit_component(entity_name, component, property, value)`
 - `set_component_enabled(entity_name, component_name, enabled)`
@@ -237,6 +241,17 @@ Fisica:
 - `query_physics_ray(origin_x, origin_y, direction_x, direction_y, max_distance)`
 - `list_physics_backends()`
 - `get_physics_backend_selection()`
+
+La CLI oficial expone verificacion headless stateless sobre estos metodos:
+
+```bash
+py -m motor runtime play --project . --headless --json
+py -m motor runtime step --project . --frames 300 --json
+py -m motor runtime stop --project . --json
+```
+
+Cada invocacion inicializa `EngineAPI`, carga una escena mediante superficies
+publicas y sale sin guardar mutaciones runtime como authoring state.
 
 Señales runtime:
 
@@ -328,6 +343,12 @@ Proyecto:
 - `open_project(path)`
 - `get_editor_state()`
 - `save_editor_state(data)`
+- `list_project_scenes()`
+- `to_project_relative_path(path)`
+- `resolve_project_path(path)`
+- `get_startup_scene()`
+- `set_startup_scene(path)`
+- `run_ai_compliance(strict=False)`
 
 Assets:
 

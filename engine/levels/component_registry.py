@@ -89,6 +89,12 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.canvas import Canvas
     from engine.components.charactercontroller2d import CharacterController2D
     from engine.components.collider import Collider
+    from engine.components.gameplay2d import (
+        Collectible2D,
+        Goal2D,
+        Hazard2D,
+        RespawnPoint2D,
+    )
     from engine.components.inputmap import InputMap
     from engine.components.joint2d import Joint2D
     from engine.components.marker2d import Marker2D
@@ -122,6 +128,10 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("Transform", Transform)
     registry.register("Sprite", Sprite)
     registry.register("Collider", Collider)
+    registry.register("Collectible2D", Collectible2D)
+    registry.register("Hazard2D", Hazard2D)
+    registry.register("Goal2D", Goal2D)
+    registry.register("RespawnPoint2D", RespawnPoint2D)
     registry.register("CharacterController2D", CharacterController2D)
     registry.register("Joint2D", Joint2D)
     registry.register("RigidBody", RigidBody)

@@ -22,7 +22,8 @@ def _copy_project_file(project_root: Path, relative_path: str) -> Path:
 
 
 def _read_catalog_snapshot() -> str:
-    return (ROOT / ".motor" / "meta" / "asset_catalog.json").read_text(encoding="utf-8")
+    path = ROOT / ".motor" / "meta" / "asset_catalog.json"
+    return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
 def _read_root_editor_state() -> str:

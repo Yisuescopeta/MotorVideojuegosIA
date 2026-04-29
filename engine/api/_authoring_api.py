@@ -91,6 +91,13 @@ class AuthoringAPI(EngineAPIComponent):
         success = self.scene_authoring.add_component_to_entity(entity_name, component_name, component_data=data)
         return self.ok("Component added", {"entity": entity_name, "component": component_name}) if success else self.fail("Component add failed")
 
+    def replace_component_data(self, entity_name: str, component_name: str, data: Dict[str, Any]) -> ActionResult:
+        self.ensure_edit_mode()
+        if self.scene_authoring is None:
+            return self.fail("SceneManager not ready")
+        success = self.scene_authoring.replace_component_data(entity_name, component_name, data)
+        return self.ok("Component replaced", {"entity": entity_name, "component": component_name}) if success else self.fail("Component replace failed")
+
     def remove_component(self, entity_name: str, component_name: str) -> ActionResult:
         self.ensure_edit_mode()
         if self.scene_authoring is None:

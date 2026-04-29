@@ -35,6 +35,10 @@ htmlcov/
 # Temporary
 *.tmp
 *.temp
+.motor/agent_state/
+.motor/meta/asset_catalog.json
+.motor/build/
+.motor/tmp/
 .claude/worktrees/
 Claude Code/
 motor_ai.json

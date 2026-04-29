@@ -6,11 +6,55 @@ Ensures that every cli_command in the registry matches the actual CLI parser imp
 
 from __future__ import annotations
 
+import argparse
 import re
 import unittest
 
 from engine.ai import get_default_registry
 from motor.cli import create_motor_parser
+
+
+def _public_leaf_commands(parser: argparse.ArgumentParser) -> set[tuple[str, ...]]:
+    """Return public executable command paths, excluding hidden legacy aliases."""
+    leaf_commands: set[tuple[str, ...]] = set()
+
+    def walk(current: argparse.ArgumentParser, path: tuple[str, ...], hidden: bool = False) -> None:
+        subparser_actions = [
+            action for action in current._actions
+            if isinstance(action, argparse._SubParsersAction)
+        ]
+        if not subparser_actions:
+            if path and not hidden:
+                leaf_commands.add(path)
+            return
+
+        for action in subparser_actions:
+            for name, child in action.choices.items():
+                choice_action = next(
+                    (choice for choice in action._choices_actions if choice.dest == name),
+                    None,
+                )
+                child_hidden = hidden or (
+                    choice_action is not None and choice_action.help is argparse.SUPPRESS
+                )
+                walk(child, path + (name,), child_hidden)
+
+    walk(parser, ())
+    return leaf_commands
+
+
+def _registry_command_path(cli_command: str) -> tuple[str, ...]:
+    """Extract the executable command path from a registry cli_command."""
+    parts = cli_command.split()
+    if not parts or parts[0] != "motor":
+        return ()
+
+    command_parts: list[str] = []
+    for part in parts[1:]:
+        if part.startswith(("<", "[", "--")):
+            break
+        command_parts.append(part)
+    return tuple(command_parts)
 
 
 class ParserRegistryStrictAlignmentTests(unittest.TestCase):
@@ -63,6 +107,28 @@ class ParserRegistryStrictAlignmentTests(unittest.TestCase):
                 parser_subcommands = self._get_parser_subcommands("scene")
                 self.assertIn(subcommand, parser_subcommands,
                               f"Capability {cap.id} documents '{subcommand}' but parser doesn't have it")
+
+    def test_game_platformer_commands_alignment(self) -> None:
+        """Verify game:platformer commands match parser nesting exactly."""
+        expected = {
+            "game:platformer:create": ("game", "platformer", "create"),
+            "game:platformer:add-player": ("game", "platformer", "add-player"),
+            "game:platformer:add-ground": ("game", "platformer", "add-ground"),
+            "game:platformer:add-platform": ("game", "platformer", "add-platform"),
+            "game:platformer:add-coin": ("game", "platformer", "add-coin"),
+            "game:platformer:add-hazard": ("game", "platformer", "add-hazard"),
+            "game:platformer:add-goal": ("game", "platformer", "add-goal"),
+            "game:platformer:add-respawn": ("game", "platformer", "add-respawn"),
+            "game:platformer:validate": ("game", "platformer", "validate"),
+        }
+        self.assertIn("platformer", self._get_parser_subcommands("game"))
+        platformer_subcommands = self._get_parser_subcommands("game", "platformer")
+        for capability_id, command_path in expected.items():
+            with self.subTest(capability=capability_id):
+                cap = next((item for item in self.implemented_caps if item.id == capability_id), None)
+                self.assertIsNotNone(cap, f"{capability_id} capability must exist")
+                self.assertEqual(_registry_command_path(cap.cli_command), command_path)
+                self.assertIn(command_path[-1], platformer_subcommands)
 
     def test_entity_create_signature_matches(self) -> None:
         """Verify entity create signature matches exactly."""
@@ -165,6 +231,93 @@ class ParserRegistryNoDivergenceTests(unittest.TestCase):
 
         if mismatches:
             self.fail("Parser-Registry divergences detected:\n" + "\n".join(mismatches))
+
+    def test_public_parser_commands_have_implemented_capability(self) -> None:
+        """FAIL if a public leaf CLI command is missing from implemented capabilities."""
+        registry = get_default_registry()
+        parser = create_motor_parser()
+
+        public_cli_commands = _public_leaf_commands(parser)
+        implemented_commands = {
+            _registry_command_path(cap.cli_command)
+            for cap in registry.list_implemented()
+            if cap.cli_command.startswith("motor ")
+        }
+
+        missing = sorted(public_cli_commands - implemented_commands)
+        self.assertEqual(
+            missing,
+            [],
+            "Public parser commands missing implemented capabilities:\n"
+            + "\n".join("  motor " + " ".join(command) for command in missing),
+        )
+
+    def test_planned_capabilities_do_not_have_public_parser_command(self) -> None:
+        """FAIL if a planned capability points at an executable public CLI command."""
+        registry = get_default_registry()
+        parser = create_motor_parser()
+
+        public_cli_commands = _public_leaf_commands(parser)
+        violations = []
+        for cap in registry.list_planned():
+            command = _registry_command_path(cap.cli_command)
+            if command in public_cli_commands:
+                violations.append(f"{cap.id}: motor {' '.join(command)}")
+
+        self.assertEqual(
+            violations,
+            [],
+            "Planned capabilities with public parser commands:\n" + "\n".join(violations),
+        )
+
+    def test_implemented_capabilities_have_parser_leaf(self) -> None:
+        """FAIL if an implemented capability's full command path is missing from parser."""
+        registry = get_default_registry()
+        parser = create_motor_parser()
+
+        mismatches = []
+        for cap in registry.list_implemented():
+            path = _registry_command_path(cap.cli_command)
+            if not path:
+                mismatches.append(f"{cap.id}: could not derive path from '{cap.cli_command}'")
+                continue
+
+            current = parser
+            valid = True
+            for part in path:
+                found = False
+                for action in current._actions:
+                    if isinstance(action, argparse._SubParsersAction) and action.choices:
+                        if part in action.choices:
+                            current = action.choices[part]
+                            found = True
+                            break
+                if not found:
+                    valid = False
+                    break
+
+            if not valid:
+                mismatches.append(
+                    f"{cap.id}: path 'motor {' '.join(path)}' not found in parser"
+                )
+                continue
+
+            # Verify we arrived at a leaf (no further public subparsers)
+            has_public_subparsers = any(
+                isinstance(action, argparse._SubParsersAction) and action.choices
+                for action in current._actions
+            )
+            if has_public_subparsers:
+                mismatches.append(
+                    f"{cap.id}: path 'motor {' '.join(path)}' is not a leaf command in parser"
+                )
+
+        self.assertEqual(
+            mismatches,
+            [],
+            "Implemented capabilities with missing or non-leaf parser paths:\n"
+            + "\n".join(mismatches),
+        )
 
 
 if __name__ == "__main__":

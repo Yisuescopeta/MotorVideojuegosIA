@@ -43,8 +43,8 @@
             "mode": "both",
             "status": "implemented",
             "api_methods": [
-                "AgentPanel.set_live_engine",
-                "EditorLiveAgentEnginePort"
+                "AgentAPI.get_agent_session",
+                "AgentAPI.send_agent_message"
             ],
             "cli_command": "motor agent message send <session> /status",
             "example": {
@@ -154,13 +154,102 @@
             ]
         },
         {
+            "id": "agent:providers:login",
+            "summary": "Store provider credentials or delegate managed Codex/OpenAI login",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.login_agent_provider"
+            ],
+            "cli_command": "motor agent providers login <provider> [--api-key-stdin] [--codex-chatgpt] [--device-auth] [--base-url <url>] [--model <model>]",
+            "example": {
+                "description": "Configure an agent provider credential without exposing the key in shell history",
+                "api_calls": [
+                    {
+                        "method": "login_agent_provider",
+                        "args": {
+                            "provider_id": "openai",
+                            "credential_source": "user_local"
+                        }
+                    }
+                ],
+                "expected_outcome": "Stores local provider auth metadata or delegates to managed Codex/OpenAI auth"
+            },
+            "notes": "Experimental/tooling. CLI requires --api-key-stdin for raw keys, or --codex-chatgpt/--device-auth for managed login.",
+            "tags": [
+                "agent",
+                "experimental",
+                "providers",
+                "auth"
+            ]
+        },
+        {
+            "id": "agent:providers:logout",
+            "summary": "Remove user-local provider credentials",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.logout_agent_provider"
+            ],
+            "cli_command": "motor agent providers logout <provider>",
+            "example": {
+                "description": "Remove a stored provider credential",
+                "api_calls": [
+                    {
+                        "method": "logout_agent_provider",
+                        "args": {
+                            "provider_id": "openai"
+                        }
+                    }
+                ],
+                "expected_outcome": "Provider credential metadata is removed without revealing secrets"
+            },
+            "notes": "Experimental/tooling. Does not remove environment variables or external managed auth state.",
+            "tags": [
+                "agent",
+                "experimental",
+                "providers",
+                "auth"
+            ]
+        },
+        {
+            "id": "agent:providers:status",
+            "summary": "Show provider authentication status without revealing secrets",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.get_agent_provider_status"
+            ],
+            "cli_command": "motor agent providers status [provider]",
+            "example": {
+                "description": "Inspect whether OpenAI provider auth is available",
+                "api_calls": [
+                    {
+                        "method": "get_agent_provider_status",
+                        "args": {
+                            "provider_id": "openai"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns credential source, auth method and runtime readiness without secret values"
+            },
+            "notes": "Experimental/tooling. Omitting provider returns default/provider-wide status.",
+            "tags": [
+                "agent",
+                "experimental",
+                "providers",
+                "auth",
+                "diagnostics"
+            ]
+        },
+        {
             "id": "agent:runtime",
             "summary": "Run the v3 clean-room agent turn loop with provider/tool-result continuation",
             "mode": "both",
             "status": "implemented",
             "api_methods": [
                 "AgentAPI.send_agent_message",
-                "AgentRuntime.continue_turn"
+                "AgentAPI.approve_agent_action"
             ],
             "cli_command": "motor agent message send <session> <message>",
             "example": {
@@ -274,7 +363,7 @@
             "status": "implemented",
             "api_methods": [
                 "AgentAPI.list_agent_tools",
-                "AgentToolRegistry.prepare"
+                "AgentAPI.send_agent_message"
             ],
             "cli_command": "motor agent message send <session> /tools",
             "example": {
@@ -320,6 +409,68 @@
                 "agent",
                 "experimental",
                 "usage"
+            ]
+        },
+        {
+            "id": "ai:compliance",
+            "summary": "Validate whether a project follows the AI-native engine contract",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "run_ai_compliance",
+                "cmd_ai_compliance"
+            ],
+            "cli_command": "motor ai compliance [--project <path>] [--strict] [--json]",
+            "example": {
+                "description": "Run strict AI compliance checks after a change",
+                "api_calls": [
+                    {
+                        "method": "cmd_ai_compliance",
+                        "args": {
+                            "project_path": ".",
+                            "strict": true,
+                            "json_output": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns native score, strict status, runtime warnings and next actions"
+            },
+            "notes": "Read-only. Strict mode fails on suspicious external runtimes or missing native loadable scenes.",
+            "tags": [
+                "ai",
+                "introspection",
+                "validation",
+                "compliance"
+            ]
+        },
+        {
+            "id": "ai:start",
+            "summary": "Show the compact AI entrypoint contract for this project",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "CapabilityRegistry.cmd_ai_start"
+            ],
+            "cli_command": "motor ai start [--project <path>] [--json]",
+            "example": {
+                "description": "Load the project contract an AI assistant should follow first",
+                "api_calls": [
+                    {
+                        "method": "cmd_ai_start",
+                        "args": {
+                            "project_path": ".",
+                            "json_output": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns engine identity, official CLI/API, scene context, initial commands, workflows and anti-runtime rules"
+            },
+            "notes": "Read-only. This is the recommended first command for AI assistants working on a project.",
+            "tags": [
+                "ai",
+                "introspection",
+                "bootstrap",
+                "contract"
             ]
         },
         {
@@ -937,6 +1088,91 @@
             ]
         },
         {
+            "id": "runtime:play",
+            "summary": "Start play mode for a stateless headless runtime check",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.play"
+            ],
+            "cli_command": "motor runtime play [--project <path>] [--headless]",
+            "example": {
+                "description": "Start play mode headlessly",
+                "api_calls": [
+                    {
+                        "method": "play",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Engine enters PLAY mode in the current CLI process and then cleans up before exit"
+            },
+            "notes": "The official CLI command is stateless: it initializes EngineAPI, loads a scene for headless verification, calls play(), reports status, then stops before process exit without saving authoring state.",
+            "tags": [
+                "runtime",
+                "play"
+            ]
+        },
+        {
+            "id": "runtime:step",
+            "summary": "Run PLAY -> STEP -> STOP headlessly for N frames",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.step"
+            ],
+            "cli_command": "motor runtime step [--project <path>] [--frames <n>]",
+            "example": {
+                "description": "Advance simulation by 300 frames",
+                "api_calls": [
+                    {
+                        "method": "play",
+                        "args": {}
+                    },
+                    {
+                        "method": "step",
+                        "args": {
+                            "frames": 300
+                        }
+                    },
+                    {
+                        "method": "stop",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "World updates for 300 frames and returns to EDIT without saving runtime mutations"
+            },
+            "notes": "The official CLI command runs the whole validation sequence in one stateless headless process: load scene, play, step, stop. Runtime mutations are not persisted as authoring state.",
+            "tags": [
+                "runtime",
+                "play"
+            ]
+        },
+        {
+            "id": "runtime:stop",
+            "summary": "Stop runtime in the current stateless headless process",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.stop"
+            ],
+            "cli_command": "motor runtime stop [--project <path>]",
+            "example": {
+                "description": "Stop runtime in the current process",
+                "api_calls": [
+                    {
+                        "method": "stop",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Current process runtime returns to EDIT mode; previous CLI invocations are not affected"
+            },
+            "notes": "The official CLI command is stateless and idempotent. It cannot stop a PLAY session from a previous process and reports that as a warning.",
+            "tags": [
+                "runtime",
+                "play"
+            ]
+        },
+        {
             "id": "scene:create",
             "summary": "Create a new scene with a unique file path",
             "mode": "both",
@@ -1463,31 +1699,6 @@
             ]
         },
         {
-            "id": "runtime:play",
-            "summary": "Start play mode to test game logic",
-            "mode": "edit",
-            "status": "planned",
-            "api_methods": [
-                "RuntimeAPI.play"
-            ],
-            "cli_command": "motor runtime play",
-            "example": {
-                "description": "Start play mode",
-                "api_calls": [
-                    {
-                        "method": "play",
-                        "args": {}
-                    }
-                ],
-                "expected_outcome": "Engine enters PLAY mode, scripts with run_in_edit_mode execute"
-            },
-            "notes": "Only available in EDIT mode. Scripts can control entities during play.",
-            "tags": [
-                "runtime",
-                "play"
-            ]
-        },
-        {
             "id": "runtime:redo",
             "summary": "Redo a previously undone operation",
             "mode": "edit",
@@ -1510,58 +1721,6 @@
             "tags": [
                 "runtime",
                 "edit"
-            ]
-        },
-        {
-            "id": "runtime:step",
-            "summary": "Advance the simulation by N frames",
-            "mode": "play",
-            "status": "planned",
-            "api_methods": [
-                "RuntimeAPI.step"
-            ],
-            "cli_command": "motor runtime step [--frames <n>]",
-            "example": {
-                "description": "Advance simulation by 10 frames",
-                "api_calls": [
-                    {
-                        "method": "step",
-                        "args": {
-                            "frames": 10
-                        }
-                    }
-                ],
-                "expected_outcome": "World updates for 10 frames"
-            },
-            "notes": "Useful for debugging. Can be called during play or step-through mode.",
-            "tags": [
-                "runtime",
-                "play"
-            ]
-        },
-        {
-            "id": "runtime:stop",
-            "summary": "Stop play mode and return to edit mode",
-            "mode": "play",
-            "status": "planned",
-            "api_methods": [
-                "RuntimeAPI.stop"
-            ],
-            "cli_command": "motor runtime stop",
-            "example": {
-                "description": "Stop play mode",
-                "api_calls": [
-                    {
-                        "method": "stop",
-                        "args": {}
-                    }
-                ],
-                "expected_outcome": "Engine returns to EDIT mode, world state is restored"
-            },
-            "notes": "Restores world to pre-play state. Autosave may preserve changes.",
-            "tags": [
-                "runtime",
-                "play"
             ]
         },
         {
@@ -1646,13 +1805,13 @@
         }
     ],
     "capability_counts": {
-        "implemented": 36,
-        "planned": 22,
-        "total": 58
+        "implemented": 44,
+        "planned": 19,
+        "total": 63
     },
     "project": {
         "name": "MotorVideojuegosIA",
-        "root": ".",
+        "version": 2,
         "engine_version": "2026.03",
         "template": "empty",
         "paths": {
@@ -1665,13 +1824,5 @@
             "build": ".motor/build"
         }
     },
-    "entrypoints": {
-        "manifest": "project.json",
-        "settings": "settings/project_settings.json",
-        "startup_scene": "levels/main_scene.json",
-        "scripts_dir": "scripts",
-        "assets_dir": "assets",
-        "levels_dir": "levels",
-        "prefabs_dir": "prefabs"
-    }
+    "entrypoints": {}
 }

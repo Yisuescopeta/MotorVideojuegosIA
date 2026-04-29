@@ -253,7 +253,6 @@ class RegistryParserAlignmentTests(unittest.TestCase):
             "entity inspect", "component edit", "component remove",
             "asset find", "asset metadata", "asset refresh",
             "prefab", "project open", "project state",
-            "runtime play", "runtime stop", "runtime step",
             "undo", "redo", "status",
             "physics query", "physics backends",
         }
@@ -357,10 +356,12 @@ class NoFutureArchitectureAssumptionsTests(unittest.TestCase):
         """Tests should only use commands that are actually implemented."""
         # List of implemented commands verified to work
         implemented = {
+            "ai start", "ai compliance",
             "capabilities", "doctor", "project info", "project bootstrap-ai",
             "scene list", "scene create", "scene load", "scene save",
             "entity create", "component add",
             "prefab create", "prefab instantiate", "prefab unpack", "prefab apply", "prefab list",
+            "runtime play", "runtime step", "runtime stop",
             "asset list", "asset slice list", "asset slice grid", "asset slice auto", "asset slice manual",
             "animator info", "animator set-sheet", "animator ensure",
             "animator state create", "animator state remove",

@@ -14,8 +14,21 @@ from typing import Any, Dict, List, Optional
 
 from engine.agent import AgentSessionService
 from engine.ai import get_default_registry
+from engine.ai.compliance import run_ai_compliance
 from engine.api import EngineAPI
+from engine.config import ENGINE_VERSION
 from engine.project.project_service import ProjectService
+from motor.platformer_scaffold import (
+    add_platformer_coin,
+    add_platformer_goal,
+    add_platformer_ground,
+    add_platformer_hazard,
+    add_platformer_platform,
+    add_platformer_player,
+    add_platformer_respawn,
+    create_minimal_platformer_scene,
+    validate_platformer_scene,
+)
 
 
 class EngineCLIError(Exception):
@@ -109,6 +122,314 @@ def _auto_load_scene(api: EngineAPI) -> tuple[bool, str]:
         return False, "No active scene. Create or load a scene first."
 
 
+def _runtime_status(api: EngineAPI) -> Dict[str, Any]:
+    """Return a serializable runtime status through the public API."""
+    try:
+        return dict(api.get_status())
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def _runtime_scene_info(api: EngineAPI) -> Dict[str, Any]:
+    """Return active scene info through the public API."""
+    try:
+        return dict(api.get_active_scene_info())
+    except Exception as exc:
+        return {
+            "has_scene": False,
+            "path": "",
+            "name": "",
+            "key": "",
+            "dirty": False,
+            "entity_count": 0,
+            "error": str(exc),
+        }
+
+
+def _ensure_runtime_scene(api: EngineAPI, warnings: List[str]) -> tuple[bool, Dict[str, Any]]:
+    """Load a scene for headless runtime verification without persisting state."""
+    if api.has_active_scene():
+        return True, _runtime_scene_info(api)
+
+    warnings.append(
+        "No active scene in this stateless CLI process; attempting to load a scene for headless runtime inspection."
+    )
+    result = api.load_scene_for_runtime_inspection()
+    if not result.get("success"):
+        warnings.append("No active scene could be loaded. Create or load a scene before runtime validation.")
+        return False, {"has_scene": False, "load_result": result}
+
+    warnings.append("Loaded a fallback scene for this headless runtime process only; authoring state was not saved.")
+    return True, _runtime_scene_info(api)
+
+
+def _runtime_response_base(command: str, headless: bool, warnings: List[str]) -> Dict[str, Any]:
+    return {
+        "command": command,
+        "headless": bool(headless),
+        "stateless": True,
+        "warnings": list(warnings),
+    }
+
+
+def cmd_runtime_play(project_path: Path, headless: bool, json_output: bool) -> int:
+    """Start a stateless headless PLAY smoke check through EngineAPI."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        status_before = _runtime_status(api)
+
+        data = _runtime_response_base("runtime play", True, warnings)
+        data.update({
+            "scene": scene,
+            "status_before": status_before,
+            "status_after": status_before,
+            "cleanup_status": status_before,
+        })
+        if not scene_ready:
+            return _output(False, "Runtime play failed: no active scene", data, json_output)
+
+        api.play()
+        data["status_after"] = _runtime_status(api)
+        api.stop()
+        data["cleanup_status"] = _runtime_status(api)
+        data["warnings"] = list(warnings)
+        return _output(True, "Runtime play completed in stateless headless mode", data, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Runtime play failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_runtime_step(project_path: Path, frames: int, json_output: bool) -> int:
+    """Run PLAY -> STEP -> STOP headlessly in one stateless CLI process."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    normalized_frames = max(1, int(frames))
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        status_before = _runtime_status(api)
+
+        data = _runtime_response_base("runtime step", True, warnings)
+        data.update({
+            "scene": scene,
+            "frames_requested": normalized_frames,
+            "status_before": status_before,
+            "status_after_play": status_before,
+            "status_after_step": status_before,
+            "status_after": status_before,
+        })
+        if not scene_ready:
+            return _output(False, "Runtime step failed: no active scene", data, json_output)
+
+        api.play()
+        data["status_after_play"] = _runtime_status(api)
+        api.step(normalized_frames)
+        data["status_after_step"] = _runtime_status(api)
+        api.stop()
+        data["status_after"] = _runtime_status(api)
+        data["warnings"] = list(warnings)
+        return _output(True, "Runtime step completed in stateless headless mode", data, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Runtime step failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_runtime_stop(project_path: Path, json_output: bool) -> int:
+    """Stop runtime safely in a stateless CLI process."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = [
+        "Runtime CLI is stateless; this command cannot stop a PLAY session from a previous process."
+    ]
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        if not api.has_active_scene():
+            warnings.append("No active scene in this stateless CLI process.")
+        status_before = _runtime_status(api)
+        api.stop()
+        status_after = _runtime_status(api)
+        data = _runtime_response_base("runtime stop", True, warnings)
+        data.update({
+            "scene": _runtime_scene_info(api),
+            "status_before": status_before,
+            "status_after": status_after,
+        })
+        return _output(True, "Runtime stop completed in stateless headless mode", data, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Runtime stop failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+
+def cmd_runtime_status(project_path: Path, json_output: bool) -> int:
+    """Return runtime status and active scene info read-only."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        status = _runtime_status(api)
+        data = _runtime_response_base("runtime status", True, warnings)
+        data.update({
+            "status": status,
+            "scene": scene,
+        })
+        if not scene_ready:
+            return _output(False, "Runtime status: no active scene", data, json_output)
+        return _output(True, "Runtime status read-only inspection completed", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Runtime status failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_runtime_entities(
+    project_path: Path,
+    tag: Optional[str],
+    layer: Optional[str],
+    active_only: bool,
+    json_output: bool,
+) -> int:
+    """List entities in the active scene read-only."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        if not scene_ready:
+            return _output(False, "Runtime entities failed: no active scene", {
+                "command": "runtime entities",
+                "headless": True,
+                "stateless": True,
+                "warnings": warnings,
+                "entities": [],
+                "count": 0,
+            }, json_output)
+        active = True if active_only else None
+        entities = api.list_entities(tag=tag, layer=layer, active=active)
+        data = _runtime_response_base("runtime entities", True, warnings)
+        data.update({
+            "scene": scene,
+            "entities": entities,
+            "count": len(entities),
+        })
+        return _output(True, f"Listed {len(entities)} entities", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Runtime entities failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_runtime_inspect(project_path: Path, entity_name: str, json_output: bool) -> int:
+    """Inspect a specific entity read-only."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        if not scene_ready:
+            return _output(False, "Runtime inspect failed: no active scene", {
+                "command": "runtime inspect",
+                "headless": True,
+                "stateless": True,
+                "warnings": warnings,
+                "entity": None,
+            }, json_output)
+        entity_data = api.get_entity(entity_name)
+        data = _runtime_response_base("runtime inspect", True, warnings)
+        data.update({
+            "scene": scene,
+            "entity": entity_data,
+        })
+        return _output(True, f"Entity '{entity_name}' inspected", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Runtime inspect failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_runtime_events(project_path: Path, count: int, json_output: bool) -> int:
+    """Return recent runtime events read-only."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        if not scene_ready:
+            warnings.append("No active scene in this stateless CLI process; event bus may be empty.")
+        events = api.get_recent_events(count)
+        if not events:
+            warnings.append("No recent events available. The event bus may be empty or the runtime has not emitted events yet.")
+        data = _runtime_response_base("runtime events", True, warnings)
+        data.update({
+            "scene": scene,
+            "events": events,
+            "count": len(events),
+            "requested_count": count,
+        })
+        return _output(True, f"Retrieved {len(events)} recent events", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Runtime events failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
 
 # ============================================================================
 # Core Command Handlers
@@ -140,6 +461,146 @@ def cmd_capabilities(json_output: bool) -> int:
         return _output(True, f"Found {len(capabilities)} capabilities", data, json_output)
     except Exception as exc:
         return _output(False, f"Failed to load capabilities: {exc}", None, json_output)
+
+
+def _compact_workflows_from_registry() -> List[Dict[str, Any]]:
+    """Build compact recommended AI workflows from implemented registry entries."""
+    registry = get_default_registry()
+    selected_ids = [
+        "ai:start",
+        "ai:compliance",
+        "introspect:doctor",
+        "introspect:capabilities",
+        "scene:list",
+        "scene:create",
+        "scene:load",
+        "entity:create",
+        "component:add",
+        "prefab:list",
+        "asset:list",
+        "animator:ensure",
+        "animator:state:create",
+        "runtime:step",
+    ]
+    workflows: List[Dict[str, Any]] = []
+    for capability_id in selected_ids:
+        cap = registry.get(capability_id)
+        if cap is None or cap.status != "implemented":
+            continue
+        workflows.append(
+            {
+                "capability_id": cap.id,
+                "summary": cap.summary,
+                "cli_command": cap.cli_command,
+                "api_methods": cap.api_methods,
+                "tags": cap.tags,
+            }
+        )
+    return workflows
+
+
+def cmd_ai_start(project_path: Path, json_output: bool) -> int:
+    """Return the compact AI entrypoint contract for a project."""
+    try:
+        _ensure_project(project_path)
+
+        project_service = ProjectService(
+            project_root=project_path,
+            auto_ensure=False,
+            read_only=True,
+        )
+        manifest = project_service.manifest.to_dict()
+        editor_state = project_service.load_editor_state()
+        scenes = project_service.list_project_scenes()
+
+        active_scene = str(editor_state.get("active_scene", "") or "").strip()
+        last_scene = str(editor_state.get("last_scene", "") or "").strip()
+        open_scenes = [
+            str(item)
+            for item in editor_state.get("open_scenes", [])
+            if str(item).strip()
+        ]
+
+        data = {
+            "engine": {
+                "name": "MotorVideojuegosIA",
+                "version": ENGINE_VERSION,
+            },
+            "project": manifest,
+            "recommended_cli": "motor",
+            "recommended_api": "EngineAPI",
+            "authoring_contract": (
+                "Use serialized Scene and registered components; persist authoring "
+                "changes through EngineAPI/SceneManager."
+            ),
+            "scene_context": {
+                "active_scene": active_scene,
+                "last_scene": last_scene,
+                "open_scenes": open_scenes,
+                "detected_scene_count": len(scenes),
+                "detected_scenes": [
+                    {
+                        "name": scene.get("name", ""),
+                        "path": scene.get("path", ""),
+                    }
+                    for scene in scenes
+                ],
+            },
+            "initial_commands": [
+                "motor ai start --project . --json",
+                "motor doctor --project . --json",
+                "motor capabilities --json",
+                "motor scene list --project . --json",
+                "motor project info --project . --json",
+            ],
+            "recommended_workflows": _compact_workflows_from_registry(),
+            "rules": {
+                "no_external_runtime": (
+                    "Do not create or use an external runtime for this project; "
+                    "operate through MotorVideojuegosIA."
+                ),
+                "no_alternate_main_loop": (
+                    "Do not deliver run_game.py or any alternate main loop as the "
+                    "main game; use the official motor CLI, EngineAPI and serialized scenes."
+                ),
+                "use_serialized_authoring": (
+                    "Scene is the persistent source of truth; authoring changes must "
+                    "be represented as serialized scenes/components."
+                ),
+            },
+            "validation": {
+                "command": "motor ai compliance --project . --strict --json",
+                "status": "implemented",
+                "next_step": True,
+            },
+        }
+
+        return _output(True, "AI start contract loaded", data, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to load AI start contract: {exc}", None, json_output)
+
+
+def cmd_ai_compliance(project_path: Path, strict: bool, json_output: bool) -> int:
+    """Run read-only AI-native project compliance diagnostics."""
+    try:
+        data = run_ai_compliance(project_path, strict=strict)
+        if strict and not data.get("strict_pass", False):
+            return _output(False, "AI compliance strict check failed", data, json_output)
+        return _output(bool(data.get("success", False)), "AI compliance diagnostics completed", data, json_output)
+    except Exception as exc:
+        data = {
+            "success": False,
+            "native_score": 0,
+            "strict_pass": False,
+            "external_runtime_detected": False,
+            "problems": [{"code": "compliance_error", "message": str(exc)}],
+            "warnings": [],
+            "recommended_next_actions": ["Fix the compliance diagnostic error and rerun the command."],
+        }
+        return _output(False, f"AI compliance failed: {exc}", data, json_output)
 
 
 def cmd_agent_session_create(
@@ -633,6 +1094,195 @@ def cmd_scene_create(project_path: Path, name: str, json_output: bool) -> int:
         return _output(False, exc.message, None, json_output)
     except Exception as exc:
         return _output(False, f"Failed to create scene: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_create(project_path: Path, name: str, json_output: bool) -> int:
+    """Create a minimal native 2D platformer scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = create_minimal_platformer_scene(api, name)
+        if result.get("success"):
+            return _output(True, result.get("message", "Platformer scene created"), result.get("data"), json_output)
+        return _output(False, result.get("message", "Failed to create platformer scene"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to create platformer scene: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_add_player(project_path: Path, x: float, y: float, json_output: bool) -> int:
+    """Ensure a platformer Player exists in the selected scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = add_platformer_player(api, x, y)
+        return _output(bool(result.get("success")), result.get("message", "Platformer player update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to add platformer player: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_add_ground(
+    project_path: Path,
+    from_x: float,
+    to_x: float,
+    y: float,
+    name: str | None,
+    json_output: bool,
+) -> int:
+    """Ensure platformer ground exists in the selected scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = add_platformer_ground(api, from_x, to_x, y, name=name)
+        return _output(bool(result.get("success")), result.get("message", "Platformer ground update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to add platformer ground: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_add_platform(project_path: Path, x: float, y: float, width: float, name: str | None, json_output: bool) -> int:
+    """Ensure a platformer platform exists in the selected scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = add_platformer_platform(api, x, y, width, name=name)
+        return _output(bool(result.get("success")), result.get("message", "Platformer platform update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to add platformer platform: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_add_goal(project_path: Path, x: float, y: float, name: str | None, json_output: bool) -> int:
+    """Ensure a platformer Goal exists in the selected scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = add_platformer_goal(api, x, y, name=name)
+        return _output(bool(result.get("success")), result.get("message", "Platformer goal update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to add platformer goal: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_add_coin(project_path: Path, x: float, y: float, points: int, name: str | None, json_output: bool) -> int:
+    """Ensure a platformer Coin exists in the selected scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = add_platformer_coin(api, x, y, points, name=name)
+        return _output(bool(result.get("success")), result.get("message", "Platformer coin update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to add platformer coin: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_add_hazard(project_path: Path, x: float, y: float, damage: int, name: str | None, json_output: bool) -> int:
+    """Ensure a platformer Hazard exists in the selected scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = add_platformer_hazard(api, x, y, damage, name=name)
+        return _output(bool(result.get("success")), result.get("message", "Platformer hazard update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to add platformer hazard: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_add_respawn(project_path: Path, x: float, y: float, spawn_id: str, json_output: bool) -> int:
+    """Ensure a platformer RespawnPoint exists in the selected scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = add_platformer_respawn(api, x, y, spawn_id)
+        return _output(bool(result.get("success")), result.get("message", "Platformer respawn update failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to add platformer respawn: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_game_platformer_validate(project_path: Path, json_output: bool) -> int:
+    """Validate the selected platformer scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path, read_only=True)
+        result = validate_platformer_scene(api)
+        return _output(bool(result.get("success")), result.get("message", "Platformer validation failed"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to validate platformer scene: {exc}", None, json_output)
     finally:
         if api is not None:
             try:

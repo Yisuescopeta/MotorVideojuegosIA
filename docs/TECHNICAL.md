@@ -24,6 +24,7 @@ Familias principales:
 
 - Espacial/render: `Transform`, `RectTransform`, `Sprite`, `Animator`, `Camera2D`, `RenderOrder2D`, `RenderStyle2D`.
 - Gameplay/fisica: `Collider`, `RigidBody`, `CharacterController2D`, `PlayerController2D`, `Joint2D`, `InputMap`, `AudioSource`, `ScriptBehaviour`.
+- Gameplay semantico 2D: `Collectible2D`, `Hazard2D`, `Goal2D`, `RespawnPoint2D`. Son componentes data-only serializables; no ejecutan interaccion, colision, score, respawn ni carga de escena por si mismos.
 - Escena, tilemap y UI: `Tilemap`, `SceneLink`, `SceneEntryPoint`, `SceneTransition*`, `Canvas`, `UIText`, `UIButton`, `UIImage`.
 
 No se debe asumir soporte publico para componentes no registrados.
@@ -210,6 +211,7 @@ Comandos base:
 - `motor project info`
 - `motor project bootstrap-ai`
 - `motor scene list/create/load/save`
+- `motor runtime play/step/stop`
 - `motor entity create`
 - `motor component add`
 - `motor prefab create/instantiate/unpack/apply/list`
@@ -217,6 +219,11 @@ Comandos base:
 - `motor asset ...`
 
 La referencia completa vive en [cli.md](cli.md).
+
+Los comandos `motor runtime play/step/stop` son verificacion headless stateless:
+cada invocacion inicializa `EngineAPI`, carga una escena mediante la fachada
+publica, ejecuta `play`, `step` o `stop` y termina sin persistir mutaciones
+runtime como estado de authoring.
 
 ## IA, RL y tooling experimental
 

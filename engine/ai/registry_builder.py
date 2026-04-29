@@ -29,12 +29,14 @@ class CapabilityRegistryBuilder:
     def build(self) -> CapabilityRegistry:
         """Build and return the full capability registry."""
         self._register_scene_capabilities()
+        self._register_game_capabilities()
         self._register_entity_capabilities()
         self._register_component_capabilities()
         self._register_asset_capabilities()
         self._register_slicing_capabilities()
         self._register_animator_capabilities()
         self._register_prefab_capabilities()
+        self._register_ai_capabilities()
         self._register_project_capabilities()
         self._register_runtime_capabilities()
         self._register_physics_capabilities()
@@ -143,6 +145,169 @@ class CapabilityRegistryBuilder:
             ),
             notes="Uses next_scene key from feature_metadata.scene_flow. Fails if not configured.",
             tags=["scene", "flow", "navigation", "runtime"],
+        ))
+
+    def _register_game_capabilities(self) -> None:
+        self._add(Capability(
+            id="game:platformer:create",
+            summary="Create a minimal native 2D platformer scene scaffold",
+            mode="edit",
+            api_methods=["SceneWorkspaceAPI.create_scene", "AuthoringAPI.create_entity", "AuthoringAPI.create_camera2d"],
+            cli_command="motor game platformer create <name> [--project <path>]",
+            example=CapabilityExample(
+                description="Create a minimal platformer scene called 'Level 1'",
+                api_calls=[
+                    {"method": "create_scene", "args": {"name": "Level 1"}},
+                    {"method": "create_entity", "args": {"name": "Player"}},
+                    {"method": "create_camera2d", "args": {"name": "MainCamera"}},
+                ],
+                expected_outcome="Creates levels/level_1.json with Player, Ground, Goal and MainCamera, then updates startup_scene",
+            ),
+            notes="Uses only public EngineAPI authoring surfaces. Creates Player with Transform, Collider, RigidBody, InputMap and PlayerController2D. Uses entity-based Ground and Goal instead of Tilemap or scripts.",
+            tags=["game", "platformer", "authoring", "scaffold"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:add-player",
+            summary="Create or update the native platformer Player in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-player [--x <px>] [--y <px>] [--project <path>]",
+            example=CapabilityExample(
+                description="Ensure Player at pixel position (100, 300)",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "Player"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains Player with Transform, Collider, RigidBody, InputMap and PlayerController2D",
+            ),
+            notes="Selects active scene, editor_state.active_scene, startup_scene or first loadable levels scene. Does not use last_scene.",
+            tags=["game", "platformer", "authoring"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:add-ground",
+            summary="Create or update native platformer Ground in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-ground [--from-x <cell>] [--to-x <cell>] [--y <cell>] [--name <entity>] [--project <path>]",
+            example=CapabilityExample(
+                description="Ensure ground from grid cell 0 to 20 at row 8",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "Ground"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains Ground with Transform and non-trigger Collider",
+            ),
+            notes="Grid units use 64 pixels. from-x/to-x form a half-open range [from-x,to-x). Without --name, creates the next Ground_###. With --name, updates that entity if it exists.",
+            tags=["game", "platformer", "authoring"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:add-platform",
+            summary="Create or update native platformer Platform in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-platform [--x <cell>] [--y <cell>] [--width <cells>] [--name <entity>] [--project <path>]",
+            example=CapabilityExample(
+                description="Ensure a platform at grid cell x=5 y=6 width=3",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "Platform"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains Platform with Transform and non-trigger Collider",
+            ),
+            notes="Grid units use 64 pixels. x is the left grid cell and width is measured in grid cells. Without --name, creates the next Platform_###. With --name, updates that entity if it exists.",
+            tags=["game", "platformer", "authoring"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:add-goal",
+            summary="Create or update native platformer Goal in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-goal [--x <px>] [--y <px>] [--name <entity>] [--project <path>]",
+            example=CapabilityExample(
+                description="Ensure Goal at pixel position (1100, 200)",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "Goal"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains Goal with Transform, trigger Collider and Goal2D",
+            ),
+            notes="Uses no concrete asset references. Without --name, creates Goal when missing, otherwise the next Goal_###. With --name, updates that entity if it exists.",
+            tags=["game", "platformer", "authoring"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:add-coin",
+            summary="Create or update native platformer Coin in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-coin [--x <px>] [--y <px>] [--points <int>] [--name <entity>] [--project <path>]",
+            example=CapabilityExample(
+                description="Ensure Coin at pixel position (320, 200)",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "Coin"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains Coin with Transform, trigger Collider and Collectible2D",
+            ),
+            notes="Uses semantic Collectible2D data; no external scripts. Without --name, creates the next Coin_###. With --name, updates that entity if it exists.",
+            tags=["game", "platformer", "authoring"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:add-hazard",
+            summary="Create or update native platformer Hazard in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-hazard [--x <px>] [--y <px>] [--damage <int>] [--name <entity>] [--project <path>]",
+            example=CapabilityExample(
+                description="Ensure Hazard at pixel position (640, 300)",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "Hazard"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains Hazard with Transform, trigger Collider and Hazard2D",
+            ),
+            notes="Uses semantic Hazard2D data; no external scripts. Without --name, creates the next Hazard_###. With --name, updates that entity if it exists.",
+            tags=["game", "platformer", "authoring"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:add-respawn",
+            summary="Create or update native platformer RespawnPoint in the selected scene",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_entity", "AuthoringAPI.replace_component_data", "SceneWorkspaceAPI.save_scene"],
+            cli_command="motor game platformer add-respawn [--x <px>] [--y <px>] [--id <id>] [--project <path>]",
+            example=CapabilityExample(
+                description="Ensure default respawn point at pixel position (100, 300)",
+                api_calls=[
+                    {"method": "create_entity", "args": {"name": "Respawn_default"}},
+                    {"method": "save_scene", "args": {}},
+                ],
+                expected_outcome="Selected scene contains Respawn_default with Transform and RespawnPoint2D",
+            ),
+            notes="Entity name is Respawn_<id> using a safe id suffix. Uses no external scripts.",
+            tags=["game", "platformer", "authoring"],
+        ))
+
+        self._add(Capability(
+            id="game:platformer:validate",
+            summary="Validate selected native platformer scene contract",
+            mode="both",
+            api_methods=["SceneWorkspaceAPI.load_scene_for_runtime_inspection", "RuntimeAPI.list_entities", "AssetsProjectAPI.run_ai_compliance"],
+            cli_command="motor game platformer validate [--project <path>]",
+            example=CapabilityExample(
+                description="Validate the selected platformer scene",
+                api_calls=[
+                    {"method": "list_entities", "args": {}},
+                ],
+                expected_outcome="Reports scene, Player, terrain, Goal, loadability and strict compliance checks",
+            ),
+            notes="Read-only. Uses same scene target rule as incremental platformer authoring commands.",
+            tags=["game", "platformer", "validation", "read-only"],
         ))
 
     def _register_entity_capabilities(self) -> None:
@@ -623,6 +788,41 @@ class CapabilityRegistryBuilder:
             tags=["prefab", "query"],
         ))
 
+    def _register_ai_capabilities(self) -> None:
+        self._add(Capability(
+            id="ai:start",
+            summary="Show the compact AI entrypoint contract for this project",
+            mode="both",
+            api_methods=["CapabilityRegistry.cmd_ai_start"],
+            cli_command="motor ai start [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Load the project contract an AI assistant should follow first",
+                api_calls=[
+                    {"method": "cmd_ai_start", "args": {"project_path": ".", "json_output": True}},
+                ],
+                expected_outcome="Returns engine identity, official CLI/API, scene context, initial commands, workflows and anti-runtime rules",
+            ),
+            notes="Read-only. This is the recommended first command for AI assistants working on a project.",
+            tags=["ai", "introspection", "bootstrap", "contract"],
+        ))
+
+        self._add(Capability(
+            id="ai:compliance",
+            summary="Validate whether a project follows the AI-native engine contract",
+            mode="both",
+            api_methods=["AssetsProjectAPI.run_ai_compliance"],
+            cli_command="motor ai compliance [--project <path>] [--strict] [--json]",
+            example=CapabilityExample(
+                description="Run strict AI compliance checks after a change",
+                api_calls=[
+                    {"method": "run_ai_compliance", "args": {"strict": True}},
+                ],
+                expected_outcome="Returns native score, strict status, runtime warnings and next actions",
+            ),
+            notes="Read-only. Strict mode fails on suspicious external runtimes or missing native loadable scenes.",
+            tags=["ai", "introspection", "validation", "compliance"],
+        ))
+
     def _register_project_capabilities(self) -> None:
         self._add(Capability(
             id="project:bootstrap-ai",
@@ -695,52 +895,54 @@ class CapabilityRegistryBuilder:
     def _register_runtime_capabilities(self) -> None:
         self._add(Capability(
             id="runtime:play",
-            summary="Start play mode to test game logic",
+            summary="Start play mode for a stateless headless runtime check",
             mode="edit",
             api_methods=["RuntimeAPI.play"],
-            cli_command="motor runtime play",
+            cli_command="motor runtime play [--project <path>] [--headless]",
             example=CapabilityExample(
-                description="Start play mode",
+                description="Start play mode headlessly",
                 api_calls=[
                     {"method": "play", "args": {}},
                 ],
-                expected_outcome="Engine enters PLAY mode, scripts with run_in_edit_mode execute",
+                expected_outcome="Engine enters PLAY mode in the current CLI process and then cleans up before exit",
             ),
-            notes="Only available in EDIT mode. Scripts can control entities during play.",
+            notes="The official CLI command is stateless: it initializes EngineAPI, loads a scene for headless verification, calls play(), reports status, then stops before process exit without saving authoring state.",
             tags=["runtime", "play"],
         ))
 
         self._add(Capability(
             id="runtime:stop",
-            summary="Stop play mode and return to edit mode",
+            summary="Stop runtime in the current stateless headless process",
             mode="play",
             api_methods=["RuntimeAPI.stop"],
-            cli_command="motor runtime stop",
+            cli_command="motor runtime stop [--project <path>]",
             example=CapabilityExample(
-                description="Stop play mode",
+                description="Stop runtime in the current process",
                 api_calls=[
                     {"method": "stop", "args": {}},
                 ],
-                expected_outcome="Engine returns to EDIT mode, world state is restored",
+                expected_outcome="Current process runtime returns to EDIT mode; previous CLI invocations are not affected",
             ),
-            notes="Restores world to pre-play state. Autosave may preserve changes.",
+            notes="The official CLI command is stateless and idempotent. It cannot stop a PLAY session from a previous process and reports that as a warning.",
             tags=["runtime", "play"],
         ))
 
         self._add(Capability(
             id="runtime:step",
-            summary="Advance the simulation by N frames",
+            summary="Run PLAY -> STEP -> STOP headlessly for N frames",
             mode="play",
             api_methods=["RuntimeAPI.step"],
-            cli_command="motor runtime step [--frames <n>]",
+            cli_command="motor runtime step [--project <path>] [--frames <n>]",
             example=CapabilityExample(
-                description="Advance simulation by 10 frames",
+                description="Advance simulation by 300 frames",
                 api_calls=[
-                    {"method": "step", "args": {"frames": 10}},
+                    {"method": "play", "args": {}},
+                    {"method": "step", "args": {"frames": 300}},
+                    {"method": "stop", "args": {}},
                 ],
-                expected_outcome="World updates for 10 frames",
+                expected_outcome="World updates for 300 frames and returns to EDIT without saving runtime mutations",
             ),
-            notes="Useful for debugging. Can be called during play or step-through mode.",
+            notes="The official CLI command runs the whole validation sequence in one stateless headless process: load scene, play, step, stop. Runtime mutations are not persisted as authoring state.",
             tags=["runtime", "play"],
         ))
 
@@ -776,6 +978,75 @@ class CapabilityRegistryBuilder:
             ),
             notes="Only available if undo was called. Cleared on new edits.",
             tags=["runtime", "edit"],
+        ))
+
+        self._add(Capability(
+            id="runtime:status",
+            summary="Read-only runtime status and active scene info",
+            mode="both",
+            api_methods=["RuntimeAPI.get_status", "SceneWorkspaceAPI.get_active_scene_info"],
+            cli_command="motor runtime status [--project <path>]",
+            example=CapabilityExample(
+                description="Get runtime status and scene info",
+                api_calls=[
+                    {"method": "get_status", "args": {}},
+                    {"method": "get_active_scene_info", "args": {}},
+                ],
+                expected_outcome="Returns engine state, frame, fps, entity count and active scene metadata",
+            ),
+            notes="Read-only. Loads a fallback scene for inspection if none is active, without persisting state.",
+            tags=["runtime", "introspection"],
+        ))
+
+        self._add(Capability(
+            id="runtime:entities",
+            summary="List entities in the active scene (read-only)",
+            mode="both",
+            api_methods=["RuntimeAPI.list_entities"],
+            cli_command="motor runtime entities [--project <path>] [--tag <tag>] [--layer <layer>] [--active-only]",
+            example=CapabilityExample(
+                description="List all active entities",
+                api_calls=[
+                    {"method": "list_entities", "args": {"active": True}},
+                ],
+                expected_outcome="Returns list of EntityData for matching entities",
+            ),
+            notes="Read-only. Supports optional filtering by tag, layer and active state.",
+            tags=["runtime", "introspection", "entity"],
+        ))
+
+        self._add(Capability(
+            id="runtime:inspect",
+            summary="Inspect a specific entity (read-only)",
+            mode="both",
+            api_methods=["RuntimeAPI.get_entity"],
+            cli_command="motor runtime inspect <entity> [--project <path>]",
+            example=CapabilityExample(
+                description="Get full data for the Player entity",
+                api_calls=[
+                    {"method": "get_entity", "args": {"name": "Player"}},
+                ],
+                expected_outcome="Returns EntityData with all components and values",
+            ),
+            notes="Read-only. Throws if entity does not exist. Loads a fallback scene for inspection if none is active.",
+            tags=["runtime", "introspection", "entity"],
+        ))
+
+        self._add(Capability(
+            id="runtime:events",
+            summary="Return recent runtime events (read-only)",
+            mode="both",
+            api_methods=["RuntimeAPI.get_recent_events"],
+            cli_command="motor runtime events [--project <path>] [--count <n>]",
+            example=CapabilityExample(
+                description="Get last 50 runtime events",
+                api_calls=[
+                    {"method": "get_recent_events", "args": {"count": 50}},
+                ],
+                expected_outcome="Returns list of recent events with name and data",
+            ),
+            notes="Read-only. Returns empty list with a warning if no events are available. Loads a fallback scene for inspection if none is active.",
+            tags=["runtime", "introspection", "events"],
         ))
 
     def _register_physics_capabilities(self) -> None:
@@ -1001,6 +1272,60 @@ class CapabilityRegistryBuilder:
         ))
 
         self._add(Capability(
+            id="agent:providers:login",
+            summary="Store provider credentials or delegate managed Codex/OpenAI login",
+            mode="both",
+            api_methods=["AgentAPI.login_agent_provider"],
+            cli_command="motor agent providers login <provider> [--api-key-stdin] [--codex-chatgpt] [--device-auth] [--base-url <url>] [--model <model>]",
+            example=CapabilityExample(
+                description="Configure an agent provider credential without exposing the key in shell history",
+                api_calls=[
+                    {
+                        "method": "login_agent_provider",
+                        "args": {"provider_id": "openai", "credential_source": "user_local"},
+                    },
+                ],
+                expected_outcome="Stores local provider auth metadata or delegates to managed Codex/OpenAI auth",
+            ),
+            notes="Experimental/tooling. CLI requires --api-key-stdin for raw keys, or --codex-chatgpt/--device-auth for managed login.",
+            tags=["agent", "experimental", "providers", "auth"],
+        ))
+
+        self._add(Capability(
+            id="agent:providers:logout",
+            summary="Remove user-local provider credentials",
+            mode="both",
+            api_methods=["AgentAPI.logout_agent_provider"],
+            cli_command="motor agent providers logout <provider>",
+            example=CapabilityExample(
+                description="Remove a stored provider credential",
+                api_calls=[
+                    {"method": "logout_agent_provider", "args": {"provider_id": "openai"}},
+                ],
+                expected_outcome="Provider credential metadata is removed without revealing secrets",
+            ),
+            notes="Experimental/tooling. Does not remove environment variables or external managed auth state.",
+            tags=["agent", "experimental", "providers", "auth"],
+        ))
+
+        self._add(Capability(
+            id="agent:providers:status",
+            summary="Show provider authentication status without revealing secrets",
+            mode="both",
+            api_methods=["AgentAPI.get_agent_provider_status"],
+            cli_command="motor agent providers status [provider]",
+            example=CapabilityExample(
+                description="Inspect whether OpenAI provider auth is available",
+                api_calls=[
+                    {"method": "get_agent_provider_status", "args": {"provider_id": "openai"}},
+                ],
+                expected_outcome="Returns credential source, auth method and runtime readiness without secret values",
+            ),
+            notes="Experimental/tooling. Omitting provider returns default/provider-wide status.",
+            tags=["agent", "experimental", "providers", "auth", "diagnostics"],
+        ))
+
+        self._add(Capability(
             id="agent:session:compact",
             summary="Compact an agent session transcript into local memory",
             mode="both",
@@ -1133,10 +1458,7 @@ class CapabilityRegistryBuilder:
         "project:open",
         "project:editor_state",
 
-        # Runtime operations (no CLI commands exist)
-        "runtime:play",
-        "runtime:stop",
-        "runtime:step",
+        # Runtime operations without CLI commands
         "runtime:undo",
         "runtime:redo",
 
@@ -1259,11 +1581,17 @@ class MotorAIBootstrapBuilder:
 
         # Only implemented capabilities - verified to exist in CLI
         common_caps = [
+            "ai:start", "ai:compliance",
             "scene:load", "scene:save", "scene:create",
             "entity:create",
             "component:add",
             "asset:list", "asset:slice:grid", "asset:slice:list",
             "animator:set_sheet", "animator:state:create", "animator:info",
+            "runtime:play", "runtime:step", "runtime:stop",
+            "runtime:status", "runtime:entities", "runtime:inspect", "runtime:events",
+            "game:platformer:create", "game:platformer:add-coin",
+            "game:platformer:add-hazard", "game:platformer:add-goal",
+            "game:platformer:add-respawn", "game:platformer:validate",
             "introspect:capabilities",
         ]
 
@@ -1281,6 +1609,7 @@ class MotorAIBootstrapBuilder:
         ])
 
         categories: Dict[str, List[str]] = {
+            "AI": ["ai:"],
             "Scene Management": ["scene:"],
             "Entity Operations": ["entity:"],
             "Component Operations": ["component:"],
@@ -1288,6 +1617,8 @@ class MotorAIBootstrapBuilder:
             "Animation": ["animator:"],
             "Prefabs": ["prefab:"],
             "Project": ["project:"],
+            "Agent": ["agent:"],
+            "Game": ["game:"],
             "Runtime": ["runtime:"],
             "Physics": ["physics:"],
             "Introspection": ["introspect:"],
@@ -1337,34 +1668,54 @@ class MotorAIBootstrapBuilder:
             "",
             "## Getting Started",
             "",
+            "Start here before making changes:",
+            "```bash",
+            "motor ai start --project . --json",
+            "```",
+            "",
+            "Rules for AI agents:",
+            "- Use MotorVideojuegosIA through `motor`, `EngineAPI` and serialized scenes/components.",
+            "- Do not create an external runtime for this project.",
+            "- Do not deliver `run_game.py` or an alternate main loop as the main game.",
+            "",
             "### Quick Workflow",
             "",
-            "1. **Check project health**:",
+            "1. **Load the AI contract**:",
+            "   ```bash",
+            "   motor ai start --project . --json",
+            "   ```",
+            "",
+            "2. **Check project health**:",
             "   ```bash",
             "   motor doctor --project . --json",
             "   ```",
             "",
-            "2. **Create a scene**:",
+            "3. **Check AI-native compliance**:",
+            "   ```bash",
+            "   motor ai compliance --project . --strict --json",
+            "   ```",
+            "",
+            "4. **Create a scene**:",
             "   ```bash",
             "   motor scene create \"Level 1\" --project .",
             "   ```",
             "",
-            "3. **Create an entity**:",
+            "5. **Create an entity**:",
             "   ```bash",
             "   motor entity create Player --project . --json",
             "   ```",
             "",
-            "4. **Add a component**:",
+            "6. **Add a component**:",
             "   ```bash",
             '   motor component add Player Transform --data \'{"x": 100, "y": 200}\' --project .',
             "   ```",
             "",
-            "5. **Slice a sprite sheet**:",
+            "7. **Slice a sprite sheet**:",
             "   ```bash",
             "   motor asset slice grid assets/player.png --cell-width 32 --cell-height 32 --project .",
             "   ```",
             "",
-            "6. **Configure animator**:",
+            "8. **Configure animator**:",
             "   ```bash",
             "   motor animator ensure Player --project .",
             "   motor animator set-sheet Player assets/player.png --project .",

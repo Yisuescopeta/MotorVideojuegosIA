@@ -12,6 +12,14 @@ The entries below are available now and are safe to use from the CLI.
 
 ### Most Common Operations
 
+- **ai:start**: Show the compact AI entrypoint contract for this project
+  - API: `CapabilityRegistry.cmd_ai_start`
+  - CLI: `motor ai start [--project <path>] [--json]`
+
+- **ai:compliance**: Validate whether a project follows the AI-native engine contract
+  - API: `run_ai_compliance`
+  - CLI: `motor ai compliance [--project <path>] [--strict] [--json]`
+
 - **scene:load**: Load a scene from a JSON file path
   - API: `SceneWorkspaceAPI.load_level`
   - CLI: `motor scene load <path>`
@@ -56,11 +64,28 @@ The entries below are available now and are safe to use from the CLI.
   - API: `AuthoringAPI.get_animator_info`
   - CLI: `motor animator info <entity>`
 
+- **runtime:play**: Start play mode for a stateless headless runtime check
+  - API: `RuntimeAPI.play`
+  - CLI: `motor runtime play [--project <path>] [--headless]`
+
+- **runtime:step**: Run PLAY -> STEP -> STOP headlessly for N frames
+  - API: `RuntimeAPI.step`
+  - CLI: `motor runtime step [--project <path>] [--frames <n>]`
+
+- **runtime:stop**: Stop runtime in the current stateless headless process
+  - API: `RuntimeAPI.stop`
+  - CLI: `motor runtime stop [--project <path>]`
+
 - **introspect:capabilities**: Query this capability registry itself
   - API: `CapabilityRegistry.cmd_capabilities`
   - CLI: `motor capabilities [--json]`
 
 ## Capabilities by Category
+
+### AI
+
+- `ai:compliance`: Validate whether a project follows the AI-native engine contract
+- `ai:start`: Show the compact AI entrypoint contract for this project
 
 ### Scene Management
 
@@ -106,6 +131,29 @@ The entries below are available now and are safe to use from the CLI.
 - `project:bootstrap-ai`: Generate AI bootstrap files (motor_ai.json and START_HERE_AI.md)
 - `project:manifest`: Get the current project's manifest summary
 
+### Agent
+
+- `agent:action:approve`: Approve or reject a pending agent action
+- `agent:editor_panel`: Use the Agent panel next to Terminal with a live engine port
+- `agent:message:send`: Send a message to an engine-native agent session
+- `agent:permissions`: Suspend mutating agent tools for approval and resume the same logical turn
+- `agent:providers:list`: List configured agent providers and metadata
+- `agent:providers:login`: Store provider credentials or delegate managed Codex/OpenAI login
+- `agent:providers:logout`: Remove user-local provider credentials
+- `agent:providers:status`: Show provider authentication status without revealing secrets
+- `agent:runtime`: Run the v3 clean-room agent turn loop with provider/tool-result continuation
+- `agent:session:compact`: Compact an agent session transcript into local memory
+- `agent:session:create`: Create an experimental clean-room agent session inside the engine
+- `agent:session:inspect`: Inspect an agent session without mutating it
+- `agent:tools`: List and execute safe engine-native agent tools through the v2 tool pipeline
+- `agent:usage`: Show token and cost usage recorded for an agent session
+
+### Runtime
+
+- `runtime:play`: Start play mode for a stateless headless runtime check
+- `runtime:step`: Run PLAY -> STEP -> STOP headlessly for N frames
+- `runtime:stop`: Stop runtime in the current stateless headless process
+
 ### Introspection
 
 - `introspect:capabilities`: Query this capability registry itself
@@ -135,10 +183,7 @@ and should not be attempted until they are marked as `implemented`.
 | `physics:query:ray` | Cast a ray and find intersecting physics bodies |
 | `project:editor_state` | Get or set editor state including recent assets and last scene |
 | `project:open` | Open a different project and load its startup scene |
-| `runtime:play` | Start play mode to test game logic |
 | `runtime:redo` | Redo a previously undone operation |
-| `runtime:step` | Advance the simulation by N frames |
-| `runtime:stop` | Stop play mode and return to edit mode |
 | `runtime:undo` | Undo the last edit operation |
 | `scene:flow:load_next` | Load the configured next scene in the scene flow |
 | `scene:flow:set_next` | Set the next scene connection for scene flow navigation |
@@ -157,34 +202,54 @@ See `motor_ai.json` for the complete machine-readable registry including:
 
 ## Getting Started
 
+Start here before making changes:
+```bash
+motor ai start --project . --json
+```
+
+Rules for AI agents:
+- Use MotorVideojuegosIA through `motor`, `EngineAPI` and serialized scenes/components.
+- Do not create an external runtime for this project.
+- Do not deliver `run_game.py` or an alternate main loop as the main game.
+
 ### Quick Workflow
 
-1. **Check project health**:
+1. **Load the AI contract**:
+   ```bash
+   motor ai start --project . --json
+   ```
+
+2. **Check project health**:
    ```bash
    motor doctor --project . --json
    ```
 
-2. **Create a scene**:
+3. **Check AI-native compliance**:
+   ```bash
+   motor ai compliance --project . --strict --json
+   ```
+
+4. **Create a scene**:
    ```bash
    motor scene create "Level 1" --project .
    ```
 
-3. **Create an entity**:
+5. **Create an entity**:
    ```bash
    motor entity create Player --project . --json
    ```
 
-4. **Add a component**:
+6. **Add a component**:
    ```bash
    motor component add Player Transform --data '{"x": 100, "y": 200}' --project .
    ```
 
-5. **Slice a sprite sheet**:
+7. **Slice a sprite sheet**:
    ```bash
    motor asset slice grid assets/player.png --cell-width 32 --cell-height 32 --project .
    ```
 
-6. **Configure animator**:
+8. **Configure animator**:
    ```bash
    motor animator ensure Player --project .
    motor animator set-sheet Player assets/player.png --project .

@@ -58,6 +58,7 @@ class StartHereAICoherenceTests(unittest.TestCase):
         """START_HERE_AI.md common capabilities should exist in registry."""
         # These are the IDs that should be in common_caps list
         expected_implemented = [
+            "ai:start", "ai:compliance",
             "scene:load", "scene:save", "scene:create",
             "entity:create",
             "component:add",
@@ -83,8 +84,12 @@ class StartHereAICoherenceTests(unittest.TestCase):
         planned_ids = [
             "entity:delete", "entity:parent", "entity:list",
             "component:edit", "component:remove",
-            "runtime:play", "runtime:stop", "runtime:step",
             "introspect:status", "introspect:entity",
+            "asset:find", "asset:metadata:get", "asset:refresh",
+            "project:open", "project:editor_state",
+            "scene:flow:set_next", "scene:flow:load_next",
+            "physics:query:aabb", "physics:query:ray", "physics:backend:list",
+            "runtime:undo", "runtime:redo",
         ]
 
         for cap_id in planned_ids:
@@ -114,6 +119,24 @@ class StartHereAICoherenceTests(unittest.TestCase):
                 f"because it would mislead an AI into thinking it's available"
             )
 
+    def test_all_implemented_capability_ids_are_in_implemented_section(self) -> None:
+        """Implemented section must list every implemented capability ID."""
+        implemented_ids = {cap.id for cap in self.registry.list_implemented()}
+
+        implemented_start = self.content.find("## Implemented Capabilities")
+        coming_start = self.content.find("## Coming Soon")
+        self.assertGreater(implemented_start, 0, "Should have 'Implemented Capabilities' section")
+        self.assertGreater(coming_start, implemented_start, "Should have 'Coming Soon' after implemented section")
+
+        implemented_section = self.content[implemented_start:coming_start]
+        missing = sorted(cid for cid in implemented_ids if cid not in implemented_section)
+
+        self.assertEqual(
+            missing,
+            [],
+            f"Implemented capability IDs missing from START_HERE_AI.md implemented section: {missing}",
+        )
+
     def test_coming_soon_section_exists_with_planned(self) -> None:
         """'Coming Soon' section must list all planned capabilities."""
         self.assertIn(
@@ -134,6 +157,24 @@ class StartHereAICoherenceTests(unittest.TestCase):
             len(missing), 0,
             f"Planned capabilities missing from 'Coming Soon' section: {missing}"
         )
+
+    def test_planned_capability_ids_are_only_in_coming_soon(self) -> None:
+        """Planned capability IDs must not be listed before Coming Soon."""
+        planned_ids = {cap.id for cap in self.registry.list_planned()}
+
+        coming_start = self.content.find("## Coming Soon")
+        full_registry_start = self.content.find("## Full Capability Registry")
+        self.assertGreater(coming_start, 0, "Should have 'Coming Soon' section")
+        self.assertGreater(full_registry_start, coming_start, "Should have full registry section after Coming Soon")
+
+        before_coming_soon = self.content[:coming_start]
+        coming_soon_section = self.content[coming_start:full_registry_start]
+
+        misplaced = sorted(pid for pid in planned_ids if pid in before_coming_soon)
+        missing = sorted(pid for pid in planned_ids if pid not in coming_soon_section)
+
+        self.assertEqual(misplaced, [], f"Planned capability IDs before Coming Soon: {misplaced}")
+        self.assertEqual(missing, [], f"Planned capability IDs missing from Coming Soon: {missing}")
 
     def test_no_planned_cli_command_in_quick_workflow(self) -> None:
         """Quick Workflow must use only implemented commands (no planned)."""
