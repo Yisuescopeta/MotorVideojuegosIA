@@ -102,6 +102,7 @@ Para CLI:
 ```bash
 py -m motor ai start --project . --json
 py -m motor ai compliance --project . --json
+py -m motor ai self-test --project . --profile platformer --json
 py -m motor doctor --project . --json
 py -m motor recipe list --project . --json
 py -m motor recipe show platformer-basic --project . --json
@@ -147,6 +148,12 @@ Para workflows comunes, usa recetas IA declarativas con `motor recipe`.
 `platformer`, compliance estricto y checks runtime headless. `recipe list` y
 `recipe show` son read-only; `recipe run` ejecuta solo comandos oficiales
 allowlist, sin shell, scripts temporales ni runtime externo.
+
+Para autovalidacion completa de CI, usa
+`py -m motor ai self-test --project . --profile platformer --json`. Por defecto
+crea un proyecto temporal bajo `.motor/tmp`, ejecuta `platformer-basic`, reporta
+comandos, validaciones, escena generada, eventos, cleanup y warnings, y elimina
+el workspace temporal. Solo usa `--in-place` si quieres mutar el proyecto real.
 
 Para verificacion runtime headless, usa `motor runtime play/step/stop`. Estos
 comandos son stateless: inicializan `EngineAPI`, cargan una escena mediante

@@ -51,6 +51,7 @@ from typing import List, Optional
 from motor.cli_core import (
     # Commands
     cmd_ai_compliance,
+    cmd_ai_self_test,
     cmd_ai_start,
     cmd_capabilities,
     cmd_doctor,
@@ -133,6 +134,7 @@ GRAMMAR: motor <noun> [<subnoun>] <verb> [<args>] [options]
 AI-Facing Commands:
   ai start                  Compact AI entrypoint contract
   ai compliance             Validate AI-native project compliance
+  ai self-test              Run controlled AI self-test workflow
   capabilities              Discover engine capabilities
   doctor                    Validate project health
   
@@ -188,6 +190,7 @@ AI-Facing Commands:
 Examples:
   motor ai start --project . --json
   motor ai compliance --project . --strict --json
+  motor ai self-test --project . --profile platformer --json
   motor doctor --project . --json
   motor recipe list --project . --json
   motor recipe show platformer-basic --project . --json
@@ -264,6 +267,27 @@ Documentation:
         help="Fail when suspicious external runtime signals or no native scene are found",
     )
     ai_compliance_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    ai_self_test_parser = ai_subparsers.add_parser(
+        "self-test",
+        help="Run a controlled AI self-test workflow",
+        description="Run a controlled AI self-test in an isolated temporary project by default.",
+    )
+    ai_self_test_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory (default: current directory)"
+    )
+    ai_self_test_parser.add_argument(
+        "--profile",
+        default="platformer",
+        help="Self-test profile to run (default: platformer)",
+    )
+    ai_self_test_parser.add_argument(
+        "--in-place",
+        action="store_true",
+        help="Run against the real project instead of an isolated temporary project",
+    )
+    ai_self_test_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === capabilities ===
     cap_parser = subparsers.add_parser(
@@ -1302,6 +1326,13 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
             return cmd_ai_compliance(
                 project_path=Path(parsed.project_root).resolve(),
                 strict=parsed.strict,
+                json_output=parsed.json,
+            )
+        if parsed.ai_subcommand == "self-test":
+            return cmd_ai_self_test(
+                project_path=Path(parsed.project_root).resolve(),
+                profile=parsed.profile,
+                in_place=parsed.in_place,
                 json_output=parsed.json,
             )
 

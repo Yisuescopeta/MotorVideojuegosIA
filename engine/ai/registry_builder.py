@@ -932,6 +932,28 @@ class CapabilityRegistryBuilder:
             tags=["ai", "introspection", "validation", "compliance"],
         ))
 
+        self._add(Capability(
+            id="ai:self-test",
+            summary="Run a controlled AI self-test workflow in a temporary project by default",
+            mode="both",
+            api_methods=["CapabilityRegistry.cmd_ai_self_test"],
+            cli_command="motor ai self-test [--project <path>] [--profile platformer] [--in-place] [--json]",
+            example=CapabilityExample(
+                description="Run the platformer AI self-test without mutating the real project",
+                api_calls=[
+                    {"method": "cmd_ai_self_test", "args": {
+                        "project_path": ".",
+                        "profile": "platformer",
+                        "in_place": False,
+                        "json_output": True,
+                    }},
+                ],
+                expected_outcome="Creates a temporary platformer project, validates authoring/runtime/compliance, reports JSON, then removes the temporary workspace",
+            ),
+            notes="Uses the bundled platformer-basic recipe through allowlisted motor commands. Does not mutate the real project unless --in-place is provided.",
+            tags=["ai", "validation", "self-test", "ci", "workflow"],
+        ))
+
     def _register_project_capabilities(self) -> None:
         self._add(Capability(
             id="project:bootstrap-ai",
