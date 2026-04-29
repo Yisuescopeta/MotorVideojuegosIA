@@ -107,6 +107,38 @@ Reglas adicionales del escaneo strict:
   propio `project.json` se tratan como roots separados y no bloquean el
   compliance del repo principal.
 
+### `motor ai self-test`
+
+Autovalidacion IA pensada para CI. Por defecto crea un proyecto temporal bajo
+`.motor/tmp`, ejecuta el perfil solicitado, valida resultados y elimina el
+workspace temporal al terminar.
+
+```bash
+py -m motor ai self-test --project . --profile platformer --json
+py -m motor ai self-test --project . --profile platformer --in-place --json
+```
+
+En v1 solo existe `--profile platformer`, que ejecuta la receta
+`platformer-basic`: crea plataforma nativa, valida `platformer`, corre runtime
+headless y ejecuta `ai compliance --strict`. El modo normal no modifica el
+proyecto real; `--in-place` ejecuta el flujo contra `--project`.
+
+El JSON usa la envoltura estandar `{ "success": bool, "message": str, "data": object }`.
+`data` incluye:
+
+- `success`: resultado agregado del self-test.
+- `profile`: perfil ejecutado.
+- `commands_executed`: comandos oficiales ejecutados por la receta.
+- `validations`: validaciones de platformer, runtime y compliance.
+- `generated_scene`: escena generada antes del cleanup.
+- `events`: eventos runtime capturados.
+- `cleanup_status`: modo, workspace temporal y estado de borrado.
+- `warnings`: avisos agregados.
+
+Antes de mutar nada, el comando comprueba que las capacidades esperadas por la
+receta existen y estan `implemented`; si falta alguna, falla con
+`missing_capabilities`.
+
 ### `motor capabilities`
 
 Lista el registry de capacidades del motor.

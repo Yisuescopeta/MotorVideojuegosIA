@@ -8,7 +8,9 @@ It is designed to be independent of argument parsing and can be used programmati
 from __future__ import annotations
 
 import json
+import shutil
 import sys
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -735,6 +737,230 @@ def cmd_ai_compliance(project_path: Path, strict: bool, json_output: bool) -> in
             "recommended_next_actions": ["Fix the compliance diagnostic error and rerun the command."],
         }
         return _output(False, f"AI compliance failed: {exc}", data, json_output)
+
+
+_AI_SELF_TEST_PROFILES: Dict[str, str] = {
+    "platformer": "platformer-basic",
+}
+
+
+def _self_test_project_manifest(name: str) -> Dict[str, Any]:
+    return {
+        "name": name,
+        "version": 2,
+        "engine_version": ENGINE_VERSION,
+        "template": "empty",
+        "paths": {
+            "assets": "assets",
+            "levels": "levels",
+            "prefabs": "prefabs",
+            "scripts": "scripts",
+            "settings": "settings",
+            "meta": ".motor/meta",
+            "build": ".motor/build",
+        },
+    }
+
+
+def _create_self_test_project(project_path: Path) -> None:
+    project_path.mkdir(parents=True, exist_ok=False)
+    (project_path / "project.json").write_text(
+        json.dumps(_self_test_project_manifest(project_path.name), indent=2, ensure_ascii=True),
+        encoding="utf-8",
+    )
+    for dirname in ("assets", "levels", "prefabs", "scripts", "settings", ".motor"):
+        (project_path / dirname).mkdir(parents=True, exist_ok=True)
+
+
+def _missing_self_test_capabilities(recipe: Dict[str, Any]) -> List[Dict[str, str]]:
+    registry = get_default_registry()
+    missing: List[Dict[str, str]] = []
+    for capability_id in recipe.get("expected_capabilities", []):
+        cap = registry.get(str(capability_id))
+        if cap is None:
+            missing.append({"id": str(capability_id), "reason": "not_registered"})
+        elif cap.status != "implemented":
+            missing.append({"id": cap.id, "reason": f"status:{cap.status}"})
+    return missing
+
+
+def _self_test_commands(recipe_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "id": step.get("id", ""),
+            "command": step.get("command", []),
+            "argv": step.get("argv", []),
+            "success": bool(step.get("success", False)),
+            "exit_code": step.get("exit_code"),
+            "message": step.get("message", ""),
+        }
+        for step in recipe_result.get("steps", [])
+    ]
+
+
+def _self_test_validations(recipe_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+    validation_ids = {"validate-platformer", "ai-compliance-strict", "runtime-step", "runtime-events"}
+    validations: List[Dict[str, Any]] = []
+    for step in recipe_result.get("steps", []):
+        if step.get("id") not in validation_ids:
+            continue
+        validations.append(
+            {
+                "id": step.get("id", ""),
+                "command": step.get("command", []),
+                "success": bool(step.get("success", False)),
+                "exit_code": step.get("exit_code"),
+                "message": step.get("message", ""),
+                "data": step.get("data", {}),
+            }
+        )
+    return validations
+
+
+def _self_test_generated_scene(workspace_path: Path, recipe_result: Dict[str, Any]) -> Dict[str, Any]:
+    generated: Dict[str, Any] = {}
+    for step in recipe_result.get("steps", []):
+        if step.get("id") == "create-level":
+            generated.update(step.get("data", {}) or {})
+            break
+
+    scene_refs = [
+        str(generated.get("scene_file") or ""),
+        str(generated.get("scene_path") or ""),
+    ]
+    scene_file = next((ref for ref in scene_refs if ref and (workspace_path / ref).exists()), "")
+    if not scene_file:
+        scene_file = next((ref for ref in scene_refs if ref), "")
+    if scene_file:
+        scene_path = workspace_path / scene_file
+        generated["scene_file"] = scene_file.replace("\\", "/")
+        generated["exists_before_cleanup"] = scene_path.exists()
+        if scene_path.exists():
+            try:
+                scene = json.loads(scene_path.read_text(encoding="utf-8"))
+                entities = scene.get("entities", [])
+                generated["scene_name"] = scene.get("name", generated.get("scene_name", ""))
+                generated["entity_count"] = len(entities) if isinstance(entities, list) else 0
+                generated["entity_names"] = [
+                    str(entity.get("name", ""))
+                    for entity in entities
+                    if isinstance(entity, dict) and entity.get("name")
+                ]
+            except Exception as exc:
+                generated["read_error"] = str(exc)
+    return generated
+
+
+def _self_test_events(recipe_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+    events: List[Dict[str, Any]] = []
+    for step in recipe_result.get("steps", []):
+        if step.get("id") not in {"runtime-step", "runtime-events"}:
+            continue
+        step_events = (step.get("data", {}) or {}).get("events", [])
+        if isinstance(step_events, list):
+            events.extend(event for event in step_events if isinstance(event, dict))
+    return events
+
+
+def _self_test_warnings(recipe_result: Dict[str, Any]) -> List[Any]:
+    warnings: List[Any] = []
+    for step in recipe_result.get("steps", []):
+        step_warnings = (step.get("data", {}) or {}).get("warnings", [])
+        if isinstance(step_warnings, list):
+            warnings.extend(item for item in step_warnings if str(item).strip())
+    return warnings
+
+
+def cmd_ai_self_test(project_path: Path, profile: str, in_place: bool, json_output: bool) -> int:
+    """Run a controlled AI self-test workflow in an isolated project by default."""
+    normalized_profile = str(profile or "").strip().lower()
+    recipe_id = _AI_SELF_TEST_PROFILES.get(normalized_profile)
+    temp_project: Optional[Path] = None
+    cleanup_status: Dict[str, Any] = {
+        "mode": "in_place" if in_place else "temporary",
+        "removed": False,
+        "skipped": bool(in_place),
+        "error": "",
+    }
+    data: Dict[str, Any] = {
+        "success": False,
+        "profile": normalized_profile,
+        "commands_executed": [],
+        "validations": [],
+        "generated_scene": {},
+        "events": [],
+        "cleanup_status": cleanup_status,
+        "warnings": [],
+    }
+    error_message: Optional[str] = None
+
+    try:
+        _ensure_project(project_path)
+        if recipe_id is None:
+            data["warnings"].append(f"Unsupported self-test profile: {profile}")
+            return _output(False, "AI self-test failed: unsupported profile", data, json_output)
+
+        recipe = get_recipe(recipe_id)
+        missing_capabilities = _missing_self_test_capabilities(recipe)
+        if missing_capabilities:
+            data["missing_capabilities"] = missing_capabilities
+            data["warnings"].append("Required capability missing or not implemented.")
+            return _output(False, "AI self-test failed: missing capability", data, json_output)
+
+        workspace_path = project_path
+        if not in_place:
+            tmp_root = project_path / ".motor" / "tmp"
+            tmp_root.mkdir(parents=True, exist_ok=True)
+            temp_project = tmp_root / f"ai-self-test-{uuid.uuid4().hex[:12]}"
+            _create_self_test_project(temp_project)
+            workspace_path = temp_project
+            cleanup_status["temp_project"] = str(temp_project)
+
+        recipe_result = run_recipe(recipe_id, workspace_path)
+        data["commands_executed"] = _self_test_commands(recipe_result)
+        data["validations"] = _self_test_validations(recipe_result)
+        data["generated_scene"] = _self_test_generated_scene(workspace_path, recipe_result)
+        data["events"] = _self_test_events(recipe_result)
+        data["warnings"] = _self_test_warnings(recipe_result)
+        if recipe_result.get("first_failure") is not None:
+            data["first_failure"] = recipe_result.get("first_failure")
+        data["recipe"] = {
+            "id": recipe_result.get("recipe", recipe_id),
+            "version": recipe_result.get("version", ""),
+        }
+        data["success"] = bool(recipe_result.get("success", False))
+
+    except ProjectNotFoundError as exc:
+        data["warnings"].append(exc.message)
+        error_message = exc.message
+    except RecipeError as exc:
+        data["warnings"].append(str(exc))
+        error_message = f"AI self-test failed: {exc}"
+    except Exception as exc:
+        data["warnings"].append(str(exc))
+        error_message = f"AI self-test failed: {exc}"
+    finally:
+        if temp_project is not None:
+            try:
+                shutil.rmtree(temp_project)
+                cleanup_status["removed"] = not temp_project.exists()
+            except Exception as exc:
+                cleanup_status["removed"] = False
+                cleanup_status["error"] = str(exc)
+                data["success"] = False
+            try:
+                tmp_root = temp_project.parent
+                if tmp_root.exists() and not any(tmp_root.iterdir()):
+                    tmp_root.rmdir()
+            except Exception:
+                pass
+
+    if cleanup_status.get("error"):
+        return _output(False, "AI self-test failed: cleanup failed", data, json_output)
+    if error_message is not None:
+        return _output(False, error_message, data, json_output)
+    message = "AI self-test completed" if data["success"] else "AI self-test failed"
+    return _output(bool(data["success"]), message, data, json_output)
 
 
 def cmd_agent_session_create(
