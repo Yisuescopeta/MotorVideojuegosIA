@@ -417,19 +417,16 @@
             "mode": "both",
             "status": "implemented",
             "api_methods": [
-                "run_ai_compliance",
-                "cmd_ai_compliance"
+                "AssetsProjectAPI.run_ai_compliance"
             ],
             "cli_command": "motor ai compliance [--project <path>] [--strict] [--json]",
             "example": {
                 "description": "Run strict AI compliance checks after a change",
                 "api_calls": [
                     {
-                        "method": "cmd_ai_compliance",
+                        "method": "run_ai_compliance",
                         "args": {
-                            "project_path": ".",
-                            "strict": true,
-                            "json_output": true
+                            "strict": true
                         }
                     }
                 ],
@@ -846,6 +843,316 @@
             ]
         },
         {
+            "id": "game:platformer:add-coin",
+            "summary": "Create or update native platformer Coin in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-coin [--x <px>] [--y <px>] [--points <int>] [--name <entity>] [--project <path>]",
+            "example": {
+                "description": "Ensure Coin at pixel position (320, 200)",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Coin"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Coin with Transform, trigger Collider and Collectible2D"
+            },
+            "notes": "Uses semantic Collectible2D data; no external scripts. Without --name, creates the next Coin_###. With --name, updates that entity if it exists.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-goal",
+            "summary": "Create or update native platformer Goal in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-goal [--x <px>] [--y <px>] [--name <entity>] [--project <path>]",
+            "example": {
+                "description": "Ensure Goal at pixel position (1100, 200)",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Goal"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Goal with Transform, trigger Collider and Goal2D"
+            },
+            "notes": "Uses no concrete asset references. Without --name, creates Goal when missing, otherwise the next Goal_###. With --name, updates that entity if it exists.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-ground",
+            "summary": "Create or update native platformer Ground in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-ground [--from-x <cell>] [--to-x <cell>] [--y <cell>] [--name <entity>] [--project <path>]",
+            "example": {
+                "description": "Ensure ground from grid cell 0 to 20 at row 8",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Ground"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Ground with Transform and non-trigger Collider"
+            },
+            "notes": "Grid units use 64 pixels. from-x/to-x form a half-open range [from-x,to-x). Without --name, creates the next Ground_###. With --name, updates that entity if it exists.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-hazard",
+            "summary": "Create or update native platformer Hazard in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-hazard [--x <px>] [--y <px>] [--damage <int>] [--name <entity>] [--project <path>]",
+            "example": {
+                "description": "Ensure Hazard at pixel position (640, 300)",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Hazard"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Hazard with Transform, trigger Collider and Hazard2D"
+            },
+            "notes": "Uses semantic Hazard2D data; no external scripts. Without --name, creates the next Hazard_###. With --name, updates that entity if it exists.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-platform",
+            "summary": "Create or update native platformer Platform in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-platform [--x <cell>] [--y <cell>] [--width <cells>] [--name <entity>] [--project <path>]",
+            "example": {
+                "description": "Ensure a platform at grid cell x=5 y=6 width=3",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Platform"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Platform with Transform and non-trigger Collider"
+            },
+            "notes": "Grid units use 64 pixels. x is the left grid cell and width is measured in grid cells. Without --name, creates the next Platform_###. With --name, updates that entity if it exists.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-player",
+            "summary": "Create or update the native platformer Player in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-player [--x <px>] [--y <px>] [--project <path>]",
+            "example": {
+                "description": "Ensure Player at pixel position (100, 300)",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Player"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Player with Transform, Collider, RigidBody, InputMap and PlayerController2D"
+            },
+            "notes": "Selects active scene, editor_state.active_scene, startup_scene or first loadable levels scene. Does not use last_scene.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-respawn",
+            "summary": "Create or update native platformer RespawnPoint in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-respawn [--x <px>] [--y <px>] [--id <id>] [--project <path>]",
+            "example": {
+                "description": "Ensure default respawn point at pixel position (100, 300)",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Respawn_default"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Respawn_default with Transform and RespawnPoint2D"
+            },
+            "notes": "Entity name is Respawn_<id> using a safe id suffix. Uses no external scripts.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:create",
+            "summary": "Create a minimal native 2D platformer scene scaffold",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.create_scene",
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.create_camera2d"
+            ],
+            "cli_command": "motor game platformer create <name> [--project <path>]",
+            "example": {
+                "description": "Create a minimal platformer scene called 'Level 1'",
+                "api_calls": [
+                    {
+                        "method": "create_scene",
+                        "args": {
+                            "name": "Level 1"
+                        }
+                    },
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Player"
+                        }
+                    },
+                    {
+                        "method": "create_camera2d",
+                        "args": {
+                            "name": "MainCamera"
+                        }
+                    }
+                ],
+                "expected_outcome": "Creates levels/level_1.json with Player, Ground, Goal and MainCamera, then updates startup_scene"
+            },
+            "notes": "Uses only public EngineAPI authoring surfaces. Creates Player with Transform, Collider, RigidBody, InputMap and PlayerController2D. Uses entity-based Ground and Goal instead of Tilemap or scripts.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring",
+                "scaffold"
+            ]
+        },
+        {
+            "id": "game:platformer:validate",
+            "summary": "Validate selected native platformer scene contract",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.load_scene_for_runtime_inspection",
+                "RuntimeAPI.list_entities",
+                "AssetsProjectAPI.run_ai_compliance"
+            ],
+            "cli_command": "motor game platformer validate [--project <path>]",
+            "example": {
+                "description": "Validate the selected platformer scene",
+                "api_calls": [
+                    {
+                        "method": "list_entities",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Reports scene, Player, terrain, Goal, loadability and strict compliance checks"
+            },
+            "notes": "Read-only. Uses same scene target rule as incremental platformer authoring commands.",
+            "tags": [
+                "game",
+                "platformer",
+                "validation",
+                "read-only"
+            ]
+        },
+        {
             "id": "introspect:capabilities",
             "summary": "Query this capability registry itself",
             "mode": "both",
@@ -1088,6 +1395,177 @@
             ]
         },
         {
+            "id": "recipe:list",
+            "summary": "List bundled declarative AI recipes",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RecipeRegistry.list_recipes"
+            ],
+            "cli_command": "motor recipe list [--project <path>]",
+            "example": {
+                "description": "List available bundled recipes",
+                "api_calls": [
+                    {
+                        "method": "list_recipes",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns bundled recipe metadata including platformer-basic"
+            },
+            "notes": "Read-only. Recipes are bundled under engine/recipes and are not loaded from arbitrary project files.",
+            "tags": [
+                "recipe",
+                "ai",
+                "workflow",
+                "tooling"
+            ]
+        },
+        {
+            "id": "recipe:run",
+            "summary": "Run a bundled declarative AI recipe through allowlisted motor commands",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "RecipeRunner.run_recipe"
+            ],
+            "cli_command": "motor recipe run <id> [--project <path>]",
+            "example": {
+                "description": "Run the platformer-basic recipe",
+                "api_calls": [
+                    {
+                        "method": "run_recipe",
+                        "args": {
+                            "recipe_id": "platformer-basic"
+                        }
+                    }
+                ],
+                "expected_outcome": "Creates and validates a minimal native platformer level through official motor commands"
+            },
+            "notes": "Runs only validated argv-list recipe steps through the official motor CLI in-process; no shell, no temporary scripts and no external runtime.",
+            "tags": [
+                "recipe",
+                "ai",
+                "workflow",
+                "tooling",
+                "authoring"
+            ]
+        },
+        {
+            "id": "recipe:show",
+            "summary": "Show a bundled declarative AI recipe",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RecipeRegistry.get_recipe"
+            ],
+            "cli_command": "motor recipe show <id> [--project <path>]",
+            "example": {
+                "description": "Show the platformer-basic recipe",
+                "api_calls": [
+                    {
+                        "method": "get_recipe",
+                        "args": {
+                            "recipe_id": "platformer-basic"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns recipe version, expected capabilities, steps and validation commands"
+            },
+            "notes": "Read-only. Does not mutate project files.",
+            "tags": [
+                "recipe",
+                "ai",
+                "workflow",
+                "tooling",
+                "query"
+            ]
+        },
+        {
+            "id": "runtime:entities",
+            "summary": "List entities in the active scene (read-only)",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.list_entities"
+            ],
+            "cli_command": "motor runtime entities [--project <path>] [--tag <tag>] [--layer <layer>] [--active-only]",
+            "example": {
+                "description": "List all active entities",
+                "api_calls": [
+                    {
+                        "method": "list_entities",
+                        "args": {
+                            "active": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns list of EntityData for matching entities"
+            },
+            "notes": "Read-only. Supports optional filtering by tag, layer and active state.",
+            "tags": [
+                "runtime",
+                "introspection",
+                "entity"
+            ]
+        },
+        {
+            "id": "runtime:events",
+            "summary": "Return recent runtime events, optionally after a headless step",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.get_recent_events"
+            ],
+            "cli_command": "motor runtime events [--project <path>] [--count <n>] [--step-frames <n>]",
+            "example": {
+                "description": "Get last 50 runtime events",
+                "api_calls": [
+                    {
+                        "method": "get_recent_events",
+                        "args": {
+                            "count": 50
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns list of recent events with name and data"
+            },
+            "notes": "Read-only by default. With --step-frames, runs PLAY -> STEP in the same stateless process before reading events and does not persist runtime mutations.",
+            "tags": [
+                "runtime",
+                "introspection",
+                "events"
+            ]
+        },
+        {
+            "id": "runtime:inspect",
+            "summary": "Inspect a specific entity (read-only)",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.get_entity"
+            ],
+            "cli_command": "motor runtime inspect <entity> [--project <path>]",
+            "example": {
+                "description": "Get full data for the Player entity",
+                "api_calls": [
+                    {
+                        "method": "get_entity",
+                        "args": {
+                            "name": "Player"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns EntityData with all components and values"
+            },
+            "notes": "Read-only. Throws if entity does not exist. Loads a fallback scene for inspection if none is active.",
+            "tags": [
+                "runtime",
+                "introspection",
+                "entity"
+            ]
+        },
+        {
             "id": "runtime:play",
             "summary": "Start play mode for a stateless headless runtime check",
             "mode": "edit",
@@ -1113,20 +1591,65 @@
             ]
         },
         {
+            "id": "runtime:status",
+            "summary": "Read-only runtime status and active scene info",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.get_status",
+                "SceneWorkspaceAPI.get_active_scene_info"
+            ],
+            "cli_command": "motor runtime status [--project <path>]",
+            "example": {
+                "description": "Get runtime status and scene info",
+                "api_calls": [
+                    {
+                        "method": "get_status",
+                        "args": {}
+                    },
+                    {
+                        "method": "get_active_scene_info",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns engine state, frame, fps, entity count and active scene metadata"
+            },
+            "notes": "Read-only. Loads a fallback scene for inspection if none is active, without persisting state.",
+            "tags": [
+                "runtime",
+                "introspection"
+            ]
+        },
+        {
             "id": "runtime:step",
-            "summary": "Run PLAY -> STEP -> STOP headlessly for N frames",
+            "summary": "Run PLAY -> STEP -> STOP headlessly for N frames, optionally with simulated InputMap actions",
             "mode": "play",
             "status": "implemented",
             "api_methods": [
-                "RuntimeAPI.step"
+                "RuntimeAPI.step",
+                "RuntimeAPI.inject_input_state",
+                "RuntimeAPI.get_recent_events"
             ],
-            "cli_command": "motor runtime step [--project <path>] [--frames <n>]",
+            "cli_command": "motor runtime step [--project <path>] [--frames <n>] [--input <actions>]",
             "example": {
-                "description": "Advance simulation by 300 frames",
+                "description": "Advance simulation by 300 frames while holding right and jump",
                 "api_calls": [
                     {
                         "method": "play",
                         "args": {}
+                    },
+                    {
+                        "method": "inject_input_state",
+                        "args": {
+                            "entity_name": "Player",
+                            "state": {
+                                "horizontal": 1.0,
+                                "vertical": 0.0,
+                                "action_1": 1.0,
+                                "action_2": 0.0
+                            },
+                            "frames": 300
+                        }
                     },
                     {
                         "method": "step",
@@ -1135,16 +1658,24 @@
                         }
                     },
                     {
+                        "method": "get_recent_events",
+                        "args": {
+                            "count": 50
+                        }
+                    },
+                    {
                         "method": "stop",
                         "args": {}
                     }
                 ],
-                "expected_outcome": "World updates for 300 frames and returns to EDIT without saving runtime mutations"
+                "expected_outcome": "World updates with synthetic InputMap state, exposes runtime events, and returns to EDIT without saving runtime mutations"
             },
-            "notes": "The official CLI command runs the whole validation sequence in one stateless headless process: load scene, play, step, stop. Runtime mutations are not persisted as authoring state.",
+            "notes": "The official CLI command runs the whole validation sequence in one stateless headless process: load scene, play, optional input injection, step, read events, stop. Supported --input tokens are left, right, up, down, jump, action_1 and action_2. Runtime mutations are not persisted as authoring state.",
             "tags": [
                 "runtime",
-                "play"
+                "play",
+                "input",
+                "events"
             ]
         },
         {
@@ -1805,13 +2336,13 @@
         }
     ],
     "capability_counts": {
-        "implemented": 44,
+        "implemented": 60,
         "planned": 19,
-        "total": 63
+        "total": 79
     },
     "project": {
         "name": "MotorVideojuegosIA",
-        "version": 2,
+        "root": ".",
         "engine_version": "2026.03",
         "template": "empty",
         "paths": {
@@ -1824,5 +2355,13 @@
             "build": ".motor/build"
         }
     },
-    "entrypoints": {}
+    "entrypoints": {
+        "manifest": "project.json",
+        "settings": "settings/project_settings.json",
+        "startup_scene": "levels/main_scene.json",
+        "scripts_dir": "scripts",
+        "assets_dir": "assets",
+        "levels_dir": "levels",
+        "prefabs_dir": "prefabs"
+    }
 }

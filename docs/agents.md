@@ -103,6 +103,9 @@ Para CLI:
 py -m motor ai start --project . --json
 py -m motor ai compliance --project . --json
 py -m motor doctor --project . --json
+py -m motor recipe list --project . --json
+py -m motor recipe show platformer-basic --project . --json
+py -m motor recipe run platformer-basic --project . --json
 py -m motor runtime step --project . --frames 300 --input "right,jump" --json
 py -m motor game platformer create "Level 1" --project . --json
 py -m motor game platformer add-player --x 100 --y 300 --project . --json
@@ -130,6 +133,12 @@ guardan la escena serializada y eligen escena por esta regla: activa cargada,
 `add-hazard` y `add-goal`, `--name` hace idempotente la entidad indicada; sin
 `--name`, se genera el siguiente nombre `*_###` disponible (`Goal` usa primero
 `Goal` si falta).
+
+Para workflows comunes, usa recetas IA declarativas con `motor recipe`.
+`platformer-basic` empaqueta el flujo nativo de plataformas, validacion
+`platformer`, compliance estricto y checks runtime headless. `recipe list` y
+`recipe show` son read-only; `recipe run` ejecuta solo comandos oficiales
+allowlist, sin shell, scripts temporales ni runtime externo.
 
 Para verificacion runtime headless, usa `motor runtime play/step/stop`. Estos
 comandos son stateless: inicializan `EngineAPI`, cargan una escena mediante

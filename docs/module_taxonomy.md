@@ -45,6 +45,7 @@ orquestacion. Pueden ser valiosos, pero no son contrato duro del motor.
 | backend `box2d` | `modulos oficiales opcionales` | Mejora oficial opcional; `legacy_aabb` mantiene el core. |
 | `engine/navigation` | `experimental/tooling` | Infraestructura de pathfinding independiente, sin integracion core obligatoria. |
 | `engine/rl` | `experimental/tooling` | Integra workflows IA/RL, no el contrato minimo del runtime. |
+| `engine/recipes` | `experimental/tooling` | Recetas IA declarativas para workflows comunes, ejecutadas solo mediante comandos oficiales allowlist. |
 | agente nativo clean-room (`engine/agent`) | `experimental/tooling` | Orquesta sesiones IA v3a, runtime de tools, permisos, provider OpenAI opt-in, providers offline de prueba, streaming, memoria local, usage y runner allowlist de comandos sin cambiar el contrato persistente del motor. |
 | datasets y runners | `experimental/tooling` | Explotacion y validacion IA, no nucleo contractual. |
 | orquestacion multiagente archivada | `experimental/tooling` | Material de trabajo e investigacion, no contrato vigente. |
@@ -75,8 +76,9 @@ un modulo oficial opcional porque no debe ser dependencia obligatoria.
 
 ### RL y tooling IA
 
-RL, multiagente, datasets y runners existen para investigacion y automatizacion.
-Deben tratarse como `experimental/tooling`, aunque tengan tests y utilidad real.
+RL, recetas IA, multiagente, datasets y runners existen para investigacion y
+automatizacion. Deben tratarse como `experimental/tooling`, aunque tengan tests
+y utilidad real.
 
 ## Regla de promocion
 

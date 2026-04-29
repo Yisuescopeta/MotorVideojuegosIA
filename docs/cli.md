@@ -157,6 +157,44 @@ py -m motor project bootstrap-ai --project . --json
 El formato actual de `motor_ai.json` es `schema_version = 3`; ver
 [MOTOR_AI_JSON_CONTRACT.md](MOTOR_AI_JSON_CONTRACT.md).
 
+## Recetas IA
+
+Las recetas IA son workflows declarativos versionados empaquetados con el
+motor. No cargan recetas arbitrarias desde el proyecto. `list` y `show` son
+read-only; `run` ejecuta solo comandos `motor` allowlist en el proceso actual,
+sin shell, scripts temporales ni runtime externo.
+
+### `motor recipe list`
+
+Lista recetas disponibles.
+
+```bash
+py -m motor recipe list --project . --json
+```
+
+### `motor recipe show <id>`
+
+Muestra la receta completa, incluyendo `steps`, `expected_capabilities` y
+`validation_commands`, sin mutar archivos del proyecto.
+
+```bash
+py -m motor recipe show platformer-basic --project . --json
+```
+
+### `motor recipe run <id>`
+
+Ejecuta una receta declarativa por pasos allowlist. `platformer-basic` crea un
+nivel minimo de plataformas, agrega moneda, hazard y respawn, valida
+`platformer`, ejecuta `ai compliance --strict`, y hace comprobaciones runtime
+headless con `runtime step` y `runtime events`.
+
+```bash
+py -m motor recipe run platformer-basic --project . --json
+```
+
+El JSON devuelve `recipe`, `version`, `steps`, `first_failure`,
+`expected_capabilities` y `validation_commands`.
+
 ## Game
 
 ### `motor game platformer create <name>`

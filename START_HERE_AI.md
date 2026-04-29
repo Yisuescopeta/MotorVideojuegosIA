@@ -17,7 +17,7 @@ The entries below are available now and are safe to use from the CLI.
   - CLI: `motor ai start [--project <path>] [--json]`
 
 - **ai:compliance**: Validate whether a project follows the AI-native engine contract
-  - API: `run_ai_compliance`
+  - API: `AssetsProjectAPI.run_ai_compliance`
   - CLI: `motor ai compliance [--project <path>] [--strict] [--json]`
 
 - **scene:load**: Load a scene from a JSON file path
@@ -68,13 +68,65 @@ The entries below are available now and are safe to use from the CLI.
   - API: `RuntimeAPI.play`
   - CLI: `motor runtime play [--project <path>] [--headless]`
 
-- **runtime:step**: Run PLAY -> STEP -> STOP headlessly for N frames
+- **runtime:step**: Run PLAY -> STEP -> STOP headlessly for N frames, optionally with simulated InputMap actions
   - API: `RuntimeAPI.step`
-  - CLI: `motor runtime step [--project <path>] [--frames <n>]`
+  - CLI: `motor runtime step [--project <path>] [--frames <n>] [--input <actions>]`
 
 - **runtime:stop**: Stop runtime in the current stateless headless process
   - API: `RuntimeAPI.stop`
   - CLI: `motor runtime stop [--project <path>]`
+
+- **runtime:status**: Read-only runtime status and active scene info
+  - API: `RuntimeAPI.get_status`
+  - CLI: `motor runtime status [--project <path>]`
+
+- **runtime:entities**: List entities in the active scene (read-only)
+  - API: `RuntimeAPI.list_entities`
+  - CLI: `motor runtime entities [--project <path>] [--tag <tag>] [--layer <layer>] [--active-only]`
+
+- **runtime:inspect**: Inspect a specific entity (read-only)
+  - API: `RuntimeAPI.get_entity`
+  - CLI: `motor runtime inspect <entity> [--project <path>]`
+
+- **runtime:events**: Return recent runtime events, optionally after a headless step
+  - API: `RuntimeAPI.get_recent_events`
+  - CLI: `motor runtime events [--project <path>] [--count <n>] [--step-frames <n>]`
+
+- **game:platformer:create**: Create a minimal native 2D platformer scene scaffold
+  - API: `SceneWorkspaceAPI.create_scene`
+  - CLI: `motor game platformer create <name> [--project <path>]`
+
+- **game:platformer:add-coin**: Create or update native platformer Coin in the selected scene
+  - API: `AuthoringAPI.create_entity`
+  - CLI: `motor game platformer add-coin [--x <px>] [--y <px>] [--points <int>] [--name <entity>] [--project <path>]`
+
+- **game:platformer:add-hazard**: Create or update native platformer Hazard in the selected scene
+  - API: `AuthoringAPI.create_entity`
+  - CLI: `motor game platformer add-hazard [--x <px>] [--y <px>] [--damage <int>] [--name <entity>] [--project <path>]`
+
+- **game:platformer:add-goal**: Create or update native platformer Goal in the selected scene
+  - API: `AuthoringAPI.create_entity`
+  - CLI: `motor game platformer add-goal [--x <px>] [--y <px>] [--name <entity>] [--project <path>]`
+
+- **game:platformer:add-respawn**: Create or update native platformer RespawnPoint in the selected scene
+  - API: `AuthoringAPI.create_entity`
+  - CLI: `motor game platformer add-respawn [--x <px>] [--y <px>] [--id <id>] [--project <path>]`
+
+- **game:platformer:validate**: Validate selected native platformer scene contract
+  - API: `SceneWorkspaceAPI.load_scene_for_runtime_inspection`
+  - CLI: `motor game platformer validate [--project <path>]`
+
+- **recipe:list**: List bundled declarative AI recipes
+  - API: `RecipeRegistry.list_recipes`
+  - CLI: `motor recipe list [--project <path>]`
+
+- **recipe:show**: Show a bundled declarative AI recipe
+  - API: `RecipeRegistry.get_recipe`
+  - CLI: `motor recipe show <id> [--project <path>]`
+
+- **recipe:run**: Run a bundled declarative AI recipe through allowlisted motor commands
+  - API: `RecipeRunner.run_recipe`
+  - CLI: `motor recipe run <id> [--project <path>]`
 
 - **introspect:capabilities**: Query this capability registry itself
   - API: `CapabilityRegistry.cmd_capabilities`
@@ -131,6 +183,12 @@ The entries below are available now and are safe to use from the CLI.
 - `project:bootstrap-ai`: Generate AI bootstrap files (motor_ai.json and START_HERE_AI.md)
 - `project:manifest`: Get the current project's manifest summary
 
+### Recipes
+
+- `recipe:list`: List bundled declarative AI recipes
+- `recipe:run`: Run a bundled declarative AI recipe through allowlisted motor commands
+- `recipe:show`: Show a bundled declarative AI recipe
+
 ### Agent
 
 - `agent:action:approve`: Approve or reject a pending agent action
@@ -148,10 +206,26 @@ The entries below are available now and are safe to use from the CLI.
 - `agent:tools`: List and execute safe engine-native agent tools through the v2 tool pipeline
 - `agent:usage`: Show token and cost usage recorded for an agent session
 
+### Game
+
+- `game:platformer:add-coin`: Create or update native platformer Coin in the selected scene
+- `game:platformer:add-goal`: Create or update native platformer Goal in the selected scene
+- `game:platformer:add-ground`: Create or update native platformer Ground in the selected scene
+- `game:platformer:add-hazard`: Create or update native platformer Hazard in the selected scene
+- `game:platformer:add-platform`: Create or update native platformer Platform in the selected scene
+- `game:platformer:add-player`: Create or update the native platformer Player in the selected scene
+- `game:platformer:add-respawn`: Create or update native platformer RespawnPoint in the selected scene
+- `game:platformer:create`: Create a minimal native 2D platformer scene scaffold
+- `game:platformer:validate`: Validate selected native platformer scene contract
+
 ### Runtime
 
+- `runtime:entities`: List entities in the active scene (read-only)
+- `runtime:events`: Return recent runtime events, optionally after a headless step
+- `runtime:inspect`: Inspect a specific entity (read-only)
 - `runtime:play`: Start play mode for a stateless headless runtime check
-- `runtime:step`: Run PLAY -> STEP -> STOP headlessly for N frames
+- `runtime:status`: Read-only runtime status and active scene info
+- `runtime:step`: Run PLAY -> STEP -> STOP headlessly for N frames, optionally with simulated InputMap actions
 - `runtime:stop`: Stop runtime in the current stateless headless process
 
 ### Introspection

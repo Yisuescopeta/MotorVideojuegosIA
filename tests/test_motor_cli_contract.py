@@ -152,6 +152,7 @@ class RegistryToCLIExecutableContractTests(unittest.TestCase):
             "animator": "animator",
             "prefab": "prefab",
             "project": "project",
+            "recipe": "recipe",
             "runtime": "runtime",
             "physics": "physics",
             "slice": "asset",  # slice commands are under asset
@@ -193,6 +194,9 @@ class RegistryToCLIExecutableContractTests(unittest.TestCase):
             ("doctor", []),
             ("game", ["platformer", "create"]),
             ("project", ["info"]),
+            ("recipe", ["list"]),
+            ("recipe", ["show"]),
+            ("recipe", ["run"]),
             ("scene", ["list"]),
             ("scene", ["create"]),
             ("runtime", ["play"]),
