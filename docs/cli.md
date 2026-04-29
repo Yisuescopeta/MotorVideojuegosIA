@@ -393,11 +393,15 @@ lectura.
 ```bash
 py -m motor runtime events --project . --json
 py -m motor runtime events --project . --count 10 --json
+py -m motor runtime events --project . --step-frames 1 --json
 ```
 
 Opciones:
 
 - `--count`: numero de eventos a recuperar (por defecto: 50).
+- `--step-frames`: si es mayor que `0`, ejecuta `PLAY -> STEP(N)` en el
+  mismo proceso stateless antes de leer eventos. No guarda mutaciones runtime
+  como estado de authoring.
 
 Si no hay eventos disponibles, devuelve una lista vacia y una advertencia.
 El JSON incluye `events` y `count`.

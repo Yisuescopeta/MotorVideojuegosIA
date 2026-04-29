@@ -1034,10 +1034,10 @@ class CapabilityRegistryBuilder:
 
         self._add(Capability(
             id="runtime:events",
-            summary="Return recent runtime events (read-only)",
+            summary="Return recent runtime events, optionally after a headless step",
             mode="both",
             api_methods=["RuntimeAPI.get_recent_events"],
-            cli_command="motor runtime events [--project <path>] [--count <n>]",
+            cli_command="motor runtime events [--project <path>] [--count <n>] [--step-frames <n>]",
             example=CapabilityExample(
                 description="Get last 50 runtime events",
                 api_calls=[
@@ -1045,7 +1045,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Returns list of recent events with name and data",
             ),
-            notes="Read-only. Returns empty list with a warning if no events are available. Loads a fallback scene for inspection if none is active.",
+            notes="Read-only by default. With --step-frames, runs PLAY -> STEP in the same stateless process before reading events and does not persist runtime mutations.",
             tags=["runtime", "introspection", "events"],
         ))
 
