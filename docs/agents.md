@@ -143,11 +143,19 @@ guardan la escena serializada y eligen escena por esta regla: activa cargada,
 `--name`, se genera el siguiente nombre `*_###` disponible (`Goal` usa primero
 `Goal` si falta). En los comandos avanzados, `--name` es obligatorio.
 
+`MovingPlatform2D`, `EnemyPatrol2D` y `LevelBounds2D` deben tratarse como
+authoring/serializacion data-only. `Checkpoint2D` y `KillZone2D` ya tienen
+runtime support semantico via `Gameplay2DSemanticSystem`: `Checkpoint2D`
+puede activar compatibilidad de respawn de sesion con `RespawnPoint2D`, y
+`KillZone2D` puede respawnear al jugador desde el checkpoint activo o el primer
+`RespawnPoint2D` activo.
+
 Para workflows comunes, usa recetas IA declarativas con `motor recipe`.
 `platformer-basic` empaqueta el flujo nativo de plataformas, validacion
 `platformer`, compliance estricto y checks runtime headless. `recipe list` y
 `recipe show` son read-only; `recipe run` ejecuta solo comandos oficiales
-allowlist, sin shell, scripts temporales ni runtime externo.
+allowlist, sin shell, scripts temporales ni runtime externo, pero si muta el
+`--project` objetivo porque los pasos de authoring guardan escena y estado.
 
 Para autovalidacion completa de CI, usa
 `py -m motor ai self-test --project . --profile platformer --json`. Por defecto
@@ -166,6 +174,10 @@ eventos runtime desde JSON. Los eventos semanticos 2D visibles incluyen
 `checkpoint_reached`, `killzone_touched` y `killzone_respawn_missing`; respawns
 activados por checkpoint son estado runtime de sesion y no se guardan en la
 escena serializada.
+
+Con implementacion actual, `Gameplay2DSemanticSystem` deduplica `hazard` y
+`goal` por par jugador/objetivo durante la misma sesion `PLAY`, asi que esos
+eventos no re-emiten tras contactos repetidos hasta la siguiente invocacion.
 
 Para UI serializable usa los helpers publicos de `EngineAPI` como
 `create_canvas`, `create_ui_text`, `create_ui_button` y `create_ui_image`.
