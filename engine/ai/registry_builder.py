@@ -344,7 +344,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Selected scene contains Checkpoint_A with Transform, trigger Collider, Checkpoint2D and RespawnPoint2D",
             ),
-            notes="Requires --name. Adds RespawnPoint2D with the same id for simple gameplay2d compatibility.",
+            notes="Requires --name. Runtime-supported by Gameplay2DSemanticSystem: touching Player emits checkpoint event and can activate a session respawn. Adds RespawnPoint2D with the same id for simple gameplay2d compatibility.",
             tags=["game", "platformer", "authoring"],
         ))
 
@@ -362,7 +362,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Selected scene contains Pit_A with Transform, trigger Collider and KillZone2D",
             ),
-            notes="Requires --name. Data-only; no new runtime killzone system is introduced by this command.",
+            notes="Requires --name. Runtime-supported by Gameplay2DSemanticSystem: touching Player emits killzone event and can respawn at the active checkpoint or first active RespawnPoint2D.",
             tags=["game", "platformer", "authoring"],
         ))
 

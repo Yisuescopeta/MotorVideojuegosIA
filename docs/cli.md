@@ -467,7 +467,10 @@ reportan en `warnings`.
 El JSON incluye `frames_requested`, `frames_simulated`, `input_sequence`,
 `player_before`, `player_after`, `events`, `status_before`,
 `status_after_play`, `status_after_step`, `status_after`, `scene_path` y
-`scene`.
+`scene`. En escenas de plataformas, `events` puede incluir eventos semanticos
+2D como `checkpoint_reached`, `killzone_touched` y
+`killzone_respawn_missing`; los respawns activados por checkpoint son estado
+runtime y no se guardan como authoring.
 
 ### `motor runtime stop`
 
@@ -541,7 +544,10 @@ Opciones:
   como estado de authoring.
 
 Si no hay eventos disponibles, devuelve una lista vacia y una advertencia.
-El JSON incluye `events` y `count`.
+El JSON incluye `events` y `count`. Con `--step-frames`, los eventos
+semanticos 2D observables incluyen `checkpoint_reached`, `killzone_touched` y
+`killzone_respawn_missing` cuando hay contactos entre `Player` y esos
+componentes.
 
 ## Entidades
 
