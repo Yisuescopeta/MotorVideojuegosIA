@@ -308,7 +308,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Selected scene contains Lift_A with Transform, Collider and MovingPlatform2D",
             ),
-            notes="Requires --name for idempotent authoring. Data-only; no runtime movement system is introduced by this command.",
+            notes="Requires --name for idempotent authoring. Runtime-supported by Gameplay2DSemanticSystem: moves along the serialized path and emits moving_platform_started, moving_platform_reached_point and moving_platform_completed without persisting runtime progress. MovingPlatform2D moves the platform entity, but does not yet carry riders.",
             tags=["game", "platformer", "authoring"],
         ))
 
@@ -1867,6 +1867,7 @@ class MotorAIBootstrapBuilder:
             "- Use MotorVideojuegosIA through `motor`, `EngineAPI` and serialized scenes/components.",
             "- Do not create an external runtime for this project.",
             "- Do not deliver `run_game.py` or an alternate main loop as the main game.",
+            "- Treat `MovingPlatform2D` as runtime-supported by `Gameplay2DSemanticSystem`: it moves the platform entity along its path and emits movement events during PLAY, but does not yet carry riders or persist runtime progress.",
             "",
             "### Quick Workflow",
             "",

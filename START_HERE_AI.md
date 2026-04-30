@@ -161,6 +161,7 @@ The entries below are available now and are safe to use from the CLI.
 ### AI
 
 - `ai:compliance`: Validate whether a project follows the AI-native engine contract
+- `ai:self-test`: Run a controlled AI self-test workflow in a temporary project by default
 - `ai:start`: Show the compact AI entrypoint contract for this project
 
 ### Scene Management
@@ -315,6 +316,7 @@ Rules for AI agents:
 - Use MotorVideojuegosIA through `motor`, `EngineAPI` and serialized scenes/components.
 - Do not create an external runtime for this project.
 - Do not deliver `run_game.py` or an alternate main loop as the main game.
+- Treat `MovingPlatform2D` as runtime-supported by `Gameplay2DSemanticSystem`: it moves the platform entity along its path and emits movement events during PLAY, but does not yet carry riders or persist runtime progress.
 
 ### Quick Workflow
 

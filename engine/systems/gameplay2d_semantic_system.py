@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
-from engine.components.gameplay2d import Collectible2D, Goal2D, Hazard2D, RespawnPoint2D
+from engine.components.gameplay2d import Collectible2D, Goal2D, Hazard2D, MovingPlatform2D, RespawnPoint2D
 from engine.components.playercontroller2d import PlayerController2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
@@ -11,13 +12,94 @@ from engine.ecs.world import World
 
 
 class Gameplay2DSemanticSystem:
-    """Runtime bridge for data-only 2D semantic gameplay components."""
+    """Runtime bridge for 2D semantic gameplay components."""
 
     def __init__(self) -> None:
         self._handled_contacts: set[tuple[str, int, int]] = set()
+        self._moving_platform_state: dict[int, dict[str, Any]] = {}
 
     def reset(self) -> None:
         self._handled_contacts.clear()
+        self._moving_platform_state.clear()
+
+    def update_moving_platforms(self, world: World, dt: float, event_bus: Any | None) -> None:
+        step_seconds = max(0.0, float(dt))
+        if step_seconds <= 0.0:
+            return
+        for entity in world.get_entities_with(Transform, MovingPlatform2D):
+            platform = entity.get_component(MovingPlatform2D)
+            transform = entity.get_component(Transform)
+            if platform is None or transform is None:
+                continue
+            if not platform.start_active or platform.speed <= 0.0 or len(platform.path) < 2:
+                continue
+
+            state = self._moving_platform_state.setdefault(
+                int(entity.id),
+                {"target_index": 1, "started": False, "completed": False},
+            )
+            if state.get("completed"):
+                continue
+
+            target_index = int(state.get("target_index", 1))
+            if target_index < 0 or target_index >= len(platform.path):
+                target_index = 1
+                state["target_index"] = target_index
+
+            target = platform.path[target_index]
+            target_x = float(target.get("x", transform.x))
+            target_y = float(target.get("y", transform.y))
+            dx = target_x - float(transform.x)
+            dy = target_y - float(transform.y)
+            distance = math.hypot(dx, dy)
+            if distance <= 1e-6:
+                self._handle_moving_platform_arrival(
+                    entity,
+                    platform,
+                    state,
+                    target_index,
+                    target_x,
+                    target_y,
+                    event_bus,
+                )
+                continue
+
+            max_distance = platform.speed * step_seconds
+            if max_distance >= distance:
+                new_x = target_x
+                new_y = target_y
+            else:
+                ratio = max_distance / distance
+                new_x = float(transform.x) + dx * ratio
+                new_y = float(transform.y) + dy * ratio
+
+            if new_x == transform.x and new_y == transform.y:
+                continue
+            transform.x = new_x
+            transform.y = new_y
+            world.touch_transform()
+            world.touch_physics()
+            if not state.get("started"):
+                state["started"] = True
+                self._emit_moving_platform_event(
+                    event_bus,
+                    "moving_platform_started",
+                    entity,
+                    platform,
+                    target_index,
+                    new_x,
+                    new_y,
+                )
+            if new_x == target_x and new_y == target_y:
+                self._handle_moving_platform_arrival(
+                    entity,
+                    platform,
+                    state,
+                    target_index,
+                    target_x,
+                    target_y,
+                    event_bus,
+                )
 
     def update(self, world: World, contacts: Any, event_bus: Any | None) -> None:
         if event_bus is None:
@@ -150,6 +232,65 @@ class Gameplay2DSemanticSystem:
                 "player": player.name,
                 "goal": target.name,
                 "next_scene": goal.next_scene,
+            },
+        )
+
+    def _handle_moving_platform_arrival(
+        self,
+        entity: Entity,
+        platform: MovingPlatform2D,
+        state: dict[str, Any],
+        point_index: int,
+        x: float,
+        y: float,
+        event_bus: Any | None,
+    ) -> None:
+        self._emit_moving_platform_event(
+            event_bus,
+            "moving_platform_reached_point",
+            entity,
+            platform,
+            point_index,
+            x,
+            y,
+        )
+        if platform.loop:
+            state["target_index"] = (point_index + 1) % len(platform.path)
+            return
+        if point_index >= len(platform.path) - 1:
+            state["completed"] = True
+            self._emit_moving_platform_event(
+                event_bus,
+                "moving_platform_completed",
+                entity,
+                platform,
+                point_index,
+                x,
+                y,
+            )
+            return
+        state["target_index"] = point_index + 1
+
+    def _emit_moving_platform_event(
+        self,
+        event_bus: Any | None,
+        event_name: str,
+        entity: Entity,
+        platform: MovingPlatform2D,
+        point_index: int,
+        x: float,
+        y: float,
+    ) -> None:
+        if event_bus is None:
+            return
+        event_bus.emit(
+            event_name,
+            {
+                "platform": entity.name,
+                "point_index": int(point_index),
+                "x": float(x),
+                "y": float(y),
+                "loop": bool(platform.loop),
             },
         )
 

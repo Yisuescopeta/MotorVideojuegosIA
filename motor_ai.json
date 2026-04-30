@@ -441,6 +441,39 @@
             ]
         },
         {
+            "id": "ai:self-test",
+            "summary": "Run a controlled AI self-test workflow in a temporary project by default",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "CapabilityRegistry.cmd_ai_self_test"
+            ],
+            "cli_command": "motor ai self-test [--project <path>] [--profile platformer] [--in-place] [--json]",
+            "example": {
+                "description": "Run the platformer AI self-test without mutating the real project",
+                "api_calls": [
+                    {
+                        "method": "cmd_ai_self_test",
+                        "args": {
+                            "project_path": ".",
+                            "profile": "platformer",
+                            "in_place": false,
+                            "json_output": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Creates a temporary platformer project, validates authoring/runtime/compliance, reports JSON, then removes the temporary workspace"
+            },
+            "notes": "Uses the bundled platformer-basic recipe through allowlisted motor commands. Does not mutate the real project unless --in-place is provided.",
+            "tags": [
+                "ai",
+                "validation",
+                "self-test",
+                "ci",
+                "workflow"
+            ]
+        },
+        {
             "id": "ai:start",
             "summary": "Show the compact AI entrypoint contract for this project",
             "mode": "both",
@@ -1107,7 +1140,7 @@
                 ],
                 "expected_outcome": "Selected scene contains Lift_A with Transform, Collider and MovingPlatform2D"
             },
-            "notes": "Requires --name for idempotent authoring. Data-only; no runtime movement system is introduced by this command.",
+            "notes": "Requires --name for idempotent authoring. Runtime-supported by Gameplay2DSemanticSystem: moves along the serialized path and emits moving_platform_started, moving_platform_reached_point and moving_platform_completed without persisting runtime progress. MovingPlatform2D moves the platform entity, but does not yet carry riders.",
             "tags": [
                 "game",
                 "platformer",
@@ -2543,9 +2576,9 @@
         }
     ],
     "capability_counts": {
-        "implemented": 66,
+        "implemented": 67,
         "planned": 19,
-        "total": 85
+        "total": 86
     },
     "project": {
         "name": "MotorVideojuegosIA",

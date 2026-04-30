@@ -163,6 +163,12 @@ via oficial para simular acciones `InputMap` (`left`, `right`, `up`, `down`,
 `jump`, `action_1`, `action_2`) y leer `player_before`, `player_after` y
 eventos runtime desde JSON.
 
+`MovingPlatform2D` tiene soporte runtime minimo: durante PLAY mueve la entidad
+por su path, emite `moving_platform_started`,
+`moving_platform_reached_point` y `moving_platform_completed`, y no persiste
+progreso runtime en la escena. MovingPlatform2D moves the platform entity, but
+does not yet carry riders.
+
 Para UI serializable usa los helpers publicos de `EngineAPI` como
 `create_canvas`, `create_ui_text`, `create_ui_button` y `create_ui_image`.
 

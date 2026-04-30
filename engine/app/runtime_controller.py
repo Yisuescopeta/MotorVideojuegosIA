@@ -291,6 +291,11 @@ class RuntimeController:
         state = self._get_state()
         backend = self._get_physics_backend_registry().resolve(world).backend
         if backend is not None and state.allows_physics():
+            self._gameplay2d_semantic_system.update_moving_platforms(
+                world,
+                dt,
+                self._get_event_bus(),
+            )
             backend.step(world, dt)
             self._gameplay2d_semantic_system.update(
                 world,
