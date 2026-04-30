@@ -26,6 +26,8 @@ class Gameplay2DSemanticSystem:
         step_seconds = max(0.0, float(dt))
         if step_seconds <= 0.0:
             return
+        if not hasattr(world, "get_entities_with"):
+            return
         for entity in world.get_entities_with(Transform, MovingPlatform2D):
             platform = entity.get_component(MovingPlatform2D)
             transform = entity.get_component(Transform)
