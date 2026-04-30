@@ -143,12 +143,14 @@ guardan la escena serializada y eligen escena por esta regla: activa cargada,
 `--name`, se genera el siguiente nombre `*_###` disponible (`Goal` usa primero
 `Goal` si falta). En los comandos avanzados, `--name` es obligatorio.
 
-`MovingPlatform2D`, `EnemyPatrol2D` y `LevelBounds2D` deben tratarse como
-authoring/serializacion data-only. `Checkpoint2D` y `KillZone2D` ya tienen
-runtime support semantico via `Gameplay2DSemanticSystem`: `Checkpoint2D`
-puede activar compatibilidad de respawn de sesion con `RespawnPoint2D`, y
-`KillZone2D` puede respawnear al jugador desde el checkpoint activo o el primer
-`RespawnPoint2D` activo.
+`MovingPlatform2D` y `EnemyPatrol2D` deben tratarse como
+authoring/serializacion data-only. `Checkpoint2D`, `KillZone2D` y
+`LevelBounds2D` tienen runtime support semantico via
+`Gameplay2DSemanticSystem`: `Checkpoint2D` puede activar compatibilidad de
+respawn de sesion con `RespawnPoint2D`, `KillZone2D` puede respawnear al
+jugador desde el checkpoint activo o el primer `RespawnPoint2D` activo, y
+`LevelBounds2D` puede emitir `level_bounds_exited`, clamp horizontal y
+`level_bounds_respawn_missing`.
 
 Para workflows comunes, usa recetas IA declarativas con `motor recipe`.
 `platformer-basic` empaqueta el flujo nativo de plataformas, validacion
@@ -171,9 +173,10 @@ via oficial para simular acciones `InputMap` (`left`, `right`, `up`, `down`,
 `jump`, `action_1`, `action_2`) y leer `player_before`, `player_after` y
 eventos runtime desde JSON. Los eventos semanticos 2D visibles incluyen
 `collectible_collected`, `hazard_touched`, `goal_reached`,
-`checkpoint_reached`, `killzone_touched` y `killzone_respawn_missing`; respawns
-activados por checkpoint son estado runtime de sesion y no se guardan en la
-escena serializada.
+`checkpoint_reached`, `killzone_touched`, `killzone_respawn_missing`,
+`level_bounds_exited` y `level_bounds_respawn_missing`; respawns activados por
+checkpoint y correcciones de bounds son estado runtime de sesion y no se
+guardan en la escena serializada.
 
 Con implementacion actual, `Gameplay2DSemanticSystem` deduplica `hazard` y
 `goal` por par jugador/objetivo durante la misma sesion `PLAY`, asi que esos

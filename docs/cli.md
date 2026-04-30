@@ -386,8 +386,9 @@ py -m motor game platformer set-camera-follow --name MainCamera --target Player 
 Crea o actualiza una entidad con `LevelBounds2D`. Si se pasa `--camera`, tambien
 sincroniza `Camera2D.clamp_left/right/top/bottom` en esa camara.
 
-Es authoring/serializacion data-only. No introduce un runtime de bounds
-separado.
+En runtime headless, `LevelBounds2D` emite `level_bounds_exited`, clampa
+salidas horizontales del `Player` y usa respawn para salidas por `bottom` sin
+guardar mutaciones como authoring.
 
 ```bash
 py -m motor game platformer set-bounds --name LevelBounds --left 0 --right 1600 --top 0 --bottom 720 --camera MainCamera --project . --json
@@ -494,9 +495,10 @@ El JSON incluye `frames_requested`, `frames_simulated`, `input_sequence`,
 `player_before`, `player_after`, `events`, `status_before`,
 `status_after_play`, `status_after_step`, `status_after`, `scene_path` y
 `scene`. En escenas de plataformas, `events` puede incluir eventos semanticos
-2D como `checkpoint_reached`, `killzone_touched` y
-`killzone_respawn_missing`; los respawns activados por checkpoint son estado
-runtime y no se guardan como authoring.
+2D como `checkpoint_reached`, `killzone_touched`, `killzone_respawn_missing`,
+`level_bounds_exited` y `level_bounds_respawn_missing`; los respawns activados
+por checkpoint y las correcciones runtime de bounds no se guardan como
+authoring.
 
 ### `motor runtime stop`
 

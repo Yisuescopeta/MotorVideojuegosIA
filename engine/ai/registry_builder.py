@@ -398,7 +398,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Selected scene contains LevelBounds2D and optional Camera2D clamp values",
             ),
-            notes="Requires --name. Authoring/data-only capability. If --camera is provided, Camera2D clamp fields are synchronized. This command does not introduce a separate runtime bounds system.",
+            notes="Requires --name. Runtime-supported by Gameplay2DSemanticSystem: Player exits emit level_bounds_exited, horizontal exits clamp x, and bottom exits respawn or emit level_bounds_respawn_missing. If --camera is provided, Camera2D clamp fields are synchronized.",
             tags=["game", "platformer", "authoring", "camera"],
         ))
 
@@ -1867,7 +1867,7 @@ class MotorAIBootstrapBuilder:
             "- Use MotorVideojuegosIA through `motor`, `EngineAPI` and serialized scenes/components.",
             "- Do not create an external runtime for this project.",
             "- Do not deliver `run_game.py` or an alternate main loop as the main game.",
-            "- Treat `MovingPlatform2D`, `EnemyPatrol2D` and `LevelBounds2D` as serialized authoring/data-only components. Treat `Checkpoint2D` and `KillZone2D` as runtime-supported semantic gameplay components: `Checkpoint2D` can activate session respawn compatibility via `RespawnPoint2D`, and `KillZone2D` can respawn the player from the active checkpoint or first active `RespawnPoint2D`.",
+            "- Treat `MovingPlatform2D` and `EnemyPatrol2D` as serialized authoring/data-only components. Treat `Checkpoint2D`, `KillZone2D` and `LevelBounds2D` as runtime-supported semantic gameplay components: `Checkpoint2D` can activate session respawn compatibility via `RespawnPoint2D`, `KillZone2D` can respawn the player from the active checkpoint or first active `RespawnPoint2D`, and `LevelBounds2D` can emit `level_bounds_exited`, clamp horizontal exits and emit `level_bounds_respawn_missing` when bottom exit has no respawn.",
             "- Treat `motor runtime play/step/stop/events` as stateless per invocation; runtime mutations are inspection-only and are not persisted as authoring state.",
             "- Treat `motor recipe run` as allowlisted and shell-safe, but mutating for the target `--project`.",
             "- Treat `motor ai self-test` as temporary by default under `.motor/tmp`; use `--in-place` only when real project mutation is intended.",
@@ -1942,7 +1942,6 @@ class MotorAIBootstrapBuilder:
             "- Entrypoint: `motor [command] [options]`",
             "- Alternative: `python -m motor [command] [options]`",
             "- Legacy: `python -m tools.engine_cli` (deprecated, for compatibility only)",
-            "",
         ])
 
         return "\n".join(lines) + "\n"
