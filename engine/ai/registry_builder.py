@@ -326,7 +326,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Selected scene contains Slime_A with Transform, trigger Collider and EnemyPatrol2D",
             ),
-            notes="Requires --name. Patrol points use x,y pixel pairs. Data-only; no enemy AI runtime is introduced by this command.",
+            notes="Requires --name. Patrol points use x,y pixel pairs. Runtime-supported by Gameplay2DSemanticSystem: EnemyPatrol2D patrols cyclically through patrol_points when entity active + component enabled + 2+ points + speed > 0. Emits enemy_patrol_started and enemy_patrol_reached_point. On contact with Player emits enemy_touched, then respawns Player using session checkpoint/runtime respawn or first active RespawnPoint2D; if none exists emits enemy_respawn_missing. If EnemyPatrol2D and Hazard2D coexist on the same entity, EnemyPatrol2D (when enabled) absorbs the interaction to avoid double damage/double respawn. No health or advanced pathfinding.",
             tags=["game", "platformer", "authoring"],
         ))
 
