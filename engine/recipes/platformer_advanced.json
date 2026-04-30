@@ -1,0 +1,116 @@
+{
+  "id": "platformer-advanced",
+  "version": "1.0.0",
+  "description": "Create and validate an advanced native 2D platformer vertical slice using official motor workflows.",
+  "expected_capabilities": [
+    "game:platformer:create",
+    "game:platformer:add-player",
+    "game:platformer:add-ground",
+    "game:platformer:add-platform",
+    "game:platformer:add-coin",
+    "game:platformer:add-hazard",
+    "game:platformer:add-respawn",
+    "game:platformer:add-checkpoint",
+    "game:platformer:add-killzone",
+    "game:platformer:add-moving-platform",
+    "game:platformer:add-enemy-patrol",
+    "game:platformer:set-camera-follow",
+    "game:platformer:set-bounds",
+    "game:platformer:add-goal",
+    "game:platformer:validate",
+    "ai:compliance",
+    "runtime:step"
+  ],
+  "steps": [
+    {
+      "id": "create-level",
+      "description": "Create Advanced Platformer with native platformer defaults.",
+      "command": ["game", "platformer", "create", "Advanced Platformer"]
+    },
+    {
+      "id": "add-player",
+      "description": "Ensure the player spawn.",
+      "command": ["game", "platformer", "add-player", "--x", "160", "--y", "460"]
+    },
+    {
+      "id": "add-ground",
+      "description": "Add main ground.",
+      "command": ["game", "platformer", "add-ground", "--from-x", "0", "--to-x", "24", "--y", "8", "--name", "Ground_Main"]
+    },
+    {
+      "id": "add-platform",
+      "description": "Add a fixed platform.",
+      "command": ["game", "platformer", "add-platform", "--x", "5", "--y", "5", "--width", "4", "--name", "Platform_A"]
+    },
+    {
+      "id": "add-coin",
+      "description": "Add a collectible coin.",
+      "command": ["game", "platformer", "add-coin", "--x", "420", "--y", "240", "--points", "1", "--name", "Coin_A"]
+    },
+    {
+      "id": "add-hazard",
+      "description": "Add a simple hazard.",
+      "command": ["game", "platformer", "add-hazard", "--x", "760", "--y", "460", "--damage", "1", "--name", "Hazard_A"]
+    },
+    {
+      "id": "add-respawn",
+      "description": "Add the default respawn point.",
+      "command": ["game", "platformer", "add-respawn", "--x", "160", "--y", "460", "--id", "default"]
+    },
+    {
+      "id": "add-checkpoint",
+      "description": "Add a checkpoint.",
+      "command": ["game", "platformer", "add-checkpoint", "--name", "Checkpoint_A", "--x", "520", "--y", "420", "--id", "cp_a"]
+    },
+    {
+      "id": "add-killzone",
+      "description": "Add a killzone below the level.",
+      "command": ["game", "platformer", "add-killzone", "--name", "Pit_A", "--x", "768", "--y", "620", "--width", "1536", "--height", "96", "--damage", "1"]
+    },
+    {
+      "id": "add-moving-platform",
+      "description": "Add a moving platform.",
+      "command": ["game", "platformer", "add-moving-platform", "--name", "Lift_A", "--x", "320", "--y", "360", "--width", "128", "--height", "24", "--to-x", "640", "--to-y", "360", "--speed", "80"]
+    },
+    {
+      "id": "add-enemy-patrol",
+      "description": "Add an enemy patrol.",
+      "command": ["game", "platformer", "add-enemy-patrol", "--name", "Slime_A", "--x", "900", "--y", "480", "--point", "900,480", "--point", "1100,480", "--damage", "1", "--speed", "60"]
+    },
+    {
+      "id": "set-camera-follow",
+      "description": "Set camera follow to Player.",
+      "command": ["game", "platformer", "set-camera-follow", "--name", "MainCamera", "--target", "Player", "--zoom", "1.0"]
+    },
+    {
+      "id": "set-bounds",
+      "description": "Set level bounds and camera clamps.",
+      "command": ["game", "platformer", "set-bounds", "--name", "LevelBounds", "--left", "0", "--right", "1600", "--top", "0", "--bottom", "720", "--camera", "MainCamera"]
+    },
+    {
+      "id": "add-goal",
+      "description": "Add the level goal.",
+      "command": ["game", "platformer", "add-goal", "--x", "1400", "--y", "420", "--name", "Goal_A"]
+    },
+    {
+      "id": "validate-platformer",
+      "description": "Validate the platformer authoring contract.",
+      "command": ["game", "platformer", "validate"]
+    },
+    {
+      "id": "ai-compliance-strict",
+      "description": "Validate strict AI-native compliance.",
+      "command": ["ai", "compliance", "--strict"]
+    },
+    {
+      "id": "runtime-step",
+      "description": "Run a minimal stateless runtime step with input.",
+      "command": ["runtime", "step", "--frames", "1", "--input", "right"]
+    }
+  ],
+  "validation_commands": [
+    ["game", "platformer", "validate"],
+    ["ai", "compliance", "--strict"],
+    ["runtime", "step", "--frames", "1", "--input", "right"]
+  ]
+}

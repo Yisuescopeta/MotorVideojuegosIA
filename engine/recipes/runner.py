@@ -13,9 +13,19 @@ AllowedCommand = Tuple[str, ...]
 ALLOWED_RECIPE_COMMANDS: frozenset[AllowedCommand] = frozenset(
     {
         ("game", "platformer", "create"),
+        ("game", "platformer", "add-player"),
+        ("game", "platformer", "add-ground"),
+        ("game", "platformer", "add-platform"),
         ("game", "platformer", "add-coin"),
         ("game", "platformer", "add-hazard"),
+        ("game", "platformer", "add-goal"),
         ("game", "platformer", "add-respawn"),
+        ("game", "platformer", "add-moving-platform"),
+        ("game", "platformer", "add-enemy-patrol"),
+        ("game", "platformer", "add-checkpoint"),
+        ("game", "platformer", "add-killzone"),
+        ("game", "platformer", "set-camera-follow"),
+        ("game", "platformer", "set-bounds"),
         ("game", "platformer", "validate"),
         ("ai", "compliance"),
         ("runtime", "step"),
@@ -75,6 +85,57 @@ def _argv_for_project(command: Iterable[str], project_path: Path) -> List[str]:
     return [*list(command), "--project", str(project_path), "--json"]
 
 
+def _generated_scene(executed_steps: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    for step in executed_steps:
+        if step.get("id") == "create-level":
+            data = step.get("data", {})
+            return dict(data) if isinstance(data, dict) else {}
+    return {}
+
+
+def _validation_steps(executed_steps: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    validations: List[Dict[str, Any]] = []
+    for step in executed_steps:
+        command = step.get("command", [])
+        if not isinstance(command, list):
+            continue
+        path = _command_path([str(token) for token in command])
+        if path in {
+            ("game", "platformer", "validate"),
+            ("ai", "compliance"),
+            ("runtime", "step"),
+            ("runtime", "events"),
+        }:
+            validations.append(
+                {
+                    "id": step.get("id", ""),
+                    "command": command,
+                    "success": bool(step.get("success", False)),
+                    "exit_code": step.get("exit_code"),
+                    "data": step.get("data", {}),
+                }
+            )
+    return validations
+
+
+def _warnings(executed_steps: Sequence[Dict[str, Any]]) -> List[Any]:
+    warnings: List[Any] = []
+    for step in executed_steps:
+        data = step.get("data", {})
+        if isinstance(data, dict) and isinstance(data.get("warnings"), list):
+            warnings.extend(item for item in data["warnings"] if str(item).strip())
+    return warnings
+
+
+def _events(executed_steps: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    events: List[Dict[str, Any]] = []
+    for step in executed_steps:
+        data = step.get("data", {})
+        if isinstance(data, dict) and isinstance(data.get("events"), list):
+            events.extend(item for item in data["events"] if isinstance(item, dict))
+    return events
+
+
 def run_recipe(recipe_id: str, project_path: Path) -> Dict[str, Any]:
     recipe = get_recipe(recipe_id)
     _validate_recipe_commands(recipe)
@@ -104,16 +165,23 @@ def run_recipe(recipe_id: str, project_path: Path) -> Dict[str, Any]:
             first_failure = result
             break
 
-    return {
+    result = {
         "recipe": recipe["id"],
+        "recipe_id": recipe["id"],
         "version": recipe["version"],
         "description": recipe["description"],
         "success": first_failure is None,
         "steps": executed_steps,
+        "commands_executed": executed_steps,
         "first_failure": first_failure,
         "expected_capabilities": list(recipe["expected_capabilities"]),
         "validation_commands": list(recipe["validation_commands"]),
     }
+    result["generated_scene"] = _generated_scene(executed_steps)
+    result["validations"] = _validation_steps(executed_steps)
+    result["warnings"] = _warnings(executed_steps)
+    result["events"] = _events(executed_steps)
+    return result
 
 
 class RecipeRunner:

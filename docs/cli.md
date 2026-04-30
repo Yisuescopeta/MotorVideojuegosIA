@@ -120,9 +120,11 @@ py -m motor ai self-test --project . --profile platformer --in-place --json
 
 En v1 solo existe `--profile platformer`, que ejecuta la receta
 `platformer-basic`: crea plataforma nativa, valida `platformer`, corre runtime
-headless y ejecuta `ai compliance --strict`. El modo normal no modifica el
-proyecto real; `--in-place` ejecuta el flujo contra `--project` y puede mutar
-escenas, `editor_state` y `startup_scene` del proyecto real.
+headless y ejecuta `ai compliance --strict`. Tambien existe
+`platformer-advanced` para crear una vertical slice nativa con plataforma movil,
+enemy patrol, checkpoint, killzone, bounds, camara y goal. El modo normal no
+modifica el proyecto real; `--in-place` ejecuta el flujo contra `--project` y
+puede mutar escenas, `editor_state` y `startup_scene` del proyecto real.
 
 El JSON usa la envoltura estandar `{ "success": bool, "message": str, "data": object }`.
 `data` incluye:
@@ -212,6 +214,7 @@ Muestra la receta completa, incluyendo `steps`, `expected_capabilities` y
 
 ```bash
 py -m motor recipe show platformer-basic --project . --json
+py -m motor recipe show platformer-advanced --project . --json
 ```
 
 ### `motor recipe run <id>`
@@ -219,17 +222,23 @@ py -m motor recipe show platformer-basic --project . --json
 Ejecuta una receta declarativa por pasos allowlist. `platformer-basic` crea un
 nivel minimo de plataformas, agrega moneda, hazard y respawn, valida
 `platformer`, ejecuta `ai compliance --strict`, y hace comprobaciones runtime
-headless con `runtime step` y `runtime events`.
+headless con `runtime step` y `runtime events`. `platformer-advanced` crea una
+vertical slice nativa con player, ground, plataforma fija, coin, hazard,
+respawn, checkpoint, killzone, moving platform, enemy patrol, bounds, camera
+follow, goal, `platformer validate`, `ai compliance --strict` y `runtime step`
+con input minimo.
 
 ```bash
 py -m motor recipe run platformer-basic --project . --json
+py -m motor recipe run platformer-advanced --project . --json
 ```
 
 No usa shell arbitrario ni scripts temporales, pero si muta el `--project`
 objetivo porque los pasos de authoring guardan escena y estado del proyecto.
 
-El JSON devuelve `recipe`, `version`, `steps`, `first_failure`,
-`expected_capabilities` y `validation_commands`.
+El JSON devuelve `recipe`, `recipe_id`, `version`, `steps`,
+`commands_executed`, `generated_scene`, `validations`, `warnings`, `events`,
+`first_failure`, `expected_capabilities` y `validation_commands`.
 
 ## Game
 

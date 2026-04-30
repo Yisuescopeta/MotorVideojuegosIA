@@ -1651,7 +1651,7 @@
                         "args": {}
                     }
                 ],
-                "expected_outcome": "Returns bundled recipe metadata including platformer-basic"
+                "expected_outcome": "Returns bundled recipe metadata including platformer-basic and platformer-advanced"
             },
             "notes": "Read-only. Recipes are bundled under engine/recipes and are not loaded from arbitrary project files.",
             "tags": [
@@ -1671,16 +1671,16 @@
             ],
             "cli_command": "motor recipe run <id> [--project <path>]",
             "example": {
-                "description": "Run the platformer-basic recipe",
+                "description": "Run the platformer-advanced recipe",
                 "api_calls": [
                     {
                         "method": "run_recipe",
                         "args": {
-                            "recipe_id": "platformer-basic"
+                            "recipe_id": "platformer-advanced"
                         }
                     }
                 ],
-                "expected_outcome": "Mutates the target project through official authoring commands, then validates a minimal native platformer level"
+                "expected_outcome": "Mutates the target project through official authoring commands, then validates an advanced native platformer vertical slice"
             },
             "notes": "Runs only validated argv-list recipe steps through the official motor CLI in-process; no shell, no temporary scripts and no external runtime. It does mutate the target --project because bundled authoring commands save scene, editor_state and startup_scene changes.",
             "tags": [
@@ -1701,12 +1701,12 @@
             ],
             "cli_command": "motor recipe show <id> [--project <path>]",
             "example": {
-                "description": "Show the platformer-basic recipe",
+                "description": "Show the platformer-advanced recipe",
                 "api_calls": [
                     {
                         "method": "get_recipe",
                         "args": {
-                            "recipe_id": "platformer-basic"
+                            "recipe_id": "platformer-advanced"
                         }
                     }
                 ],
