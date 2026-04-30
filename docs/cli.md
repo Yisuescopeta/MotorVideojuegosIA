@@ -323,7 +323,9 @@ py -m motor game platformer add-respawn --x 100 --y 300 --id default --project .
 ### `motor game platformer add-moving-platform`
 
 Crea o actualiza una entidad con nombre obligatorio usando `Transform`,
-`Collider` y `MovingPlatform2D`.
+`Collider` y `MovingPlatform2D`. En runtime, la plataforma se mueve por su
+path y emite eventos de movimiento sin persistir esos cambios en la escena.
+MovingPlatform2D moves the platform entity, but does not yet carry riders.
 
 Es authoring/serializacion data-only. Este comando no promete movimiento
 runtime por si mismo.

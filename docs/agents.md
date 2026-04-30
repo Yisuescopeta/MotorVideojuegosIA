@@ -182,6 +182,12 @@ Con implementacion actual, `Gameplay2DSemanticSystem` deduplica `hazard` y
 `goal` por par jugador/objetivo durante la misma sesion `PLAY`, asi que esos
 eventos no re-emiten tras contactos repetidos hasta la siguiente invocacion.
 
+`MovingPlatform2D` tiene soporte runtime minimo: durante PLAY mueve la entidad
+por su path, emite `moving_platform_started`,
+`moving_platform_reached_point` y `moving_platform_completed`, y no persiste
+progreso runtime en la escena. MovingPlatform2D moves the platform entity, but
+does not yet carry riders.
+
 Para UI serializable usa los helpers publicos de `EngineAPI` como
 `create_canvas`, `create_ui_text`, `create_ui_button` y `create_ui_image`.
 
