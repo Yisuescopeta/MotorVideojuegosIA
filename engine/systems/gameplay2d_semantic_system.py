@@ -227,6 +227,10 @@ class Gameplay2DSemanticSystem:
         )
 
     def _handle_level_bounds(self, world: World, event_bus: Any) -> None:
+        if not hasattr(world, "iter_all_entities"):
+            self._bounds_exit_contacts.clear()
+            return
+
         players = self._active_players_with_transform(world)
         if not players:
             self._bounds_exit_contacts.clear()
