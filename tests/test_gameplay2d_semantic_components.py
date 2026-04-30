@@ -203,6 +203,33 @@ def _moving_platform_entity(
     )
 
 
+def _enemy_patrol_entity(
+    *,
+    name: str = "Slime_A",
+    x: float = 0.0,
+    y: float = 0.0,
+    patrol_points: list[dict[str, float]] | None = None,
+    speed: float = 60.0,
+    damage: int = 1,
+    event_name: str = "enemy_touched",
+) -> dict[str, object]:
+    return _entity_payload(
+        name,
+        {
+            "Collider": _collider_payload(is_trigger=True),
+            "EnemyPatrol2D": EnemyPatrol2D(
+                patrol_points=patrol_points if patrol_points is not None else [{"x": x, "y": y}, {"x": x + 60.0, "y": y}],
+                speed=speed,
+                damage=damage,
+                event_name=event_name,
+            ).to_dict(),
+        },
+        x=x,
+        y=y,
+        tag="Enemy",
+    )
+
+
 def _bounds_payload(
     *,
     left: float = 0.0,
@@ -956,6 +983,208 @@ class Gameplay2DSemanticRuntimeTests(unittest.TestCase):
             self.assertIn("collectible_collected", event_names)
             self.assertEqual(payload["data"]["step_frames"], 1)
             self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+
+
+    def test_enemy_patrol_with_two_points_moves_after_step_without_persisting_scene(self) -> None:
+        slime = _enemy_patrol_entity(
+            patrol_points=[{"x": 0.0, "y": 0.0}, {"x": 60.0, "y": 0.0}],
+            speed=60.0,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([slime]))
+            before = scene_path.read_text(encoding="utf-8")
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                transform = api.get_entity("Slime_A")["components"]["Transform"]
+                self.assertGreater(transform["x"], 0.0)
+                self.assertEqual(transform["y"], 0.0)
+                self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+            finally:
+                api.shutdown()
+
+    def test_enemy_patrol_emits_started_on_first_motion(self) -> None:
+        slime = _enemy_patrol_entity(
+            patrol_points=[{"x": 0.0, "y": 0.0}, {"x": 60.0, "y": 0.0}],
+            speed=60.0,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([slime]))
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                event = _recent_event(api, "enemy_patrol_started")
+                self.assertEqual(event["data"]["enemy"], "Slime_A")
+                self.assertEqual(event["data"]["point_index"], 1)
+                self.assertEqual(event["data"]["speed"], 60.0)
+            finally:
+                api.shutdown()
+
+    def test_enemy_patrol_emits_reached_point_when_arriving(self) -> None:
+        slime = _enemy_patrol_entity(
+            patrol_points=[{"x": 0.0, "y": 0.0}, {"x": 10.0, "y": 0.0}],
+            speed=600.0,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([slime]))
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                event = _recent_event(api, "enemy_patrol_reached_point")
+                self.assertEqual(event["data"]["enemy"], "Slime_A")
+                self.assertEqual(event["data"]["point_index"], 1)
+                self.assertEqual(event["data"]["x"], 10.0)
+                self.assertEqual(event["data"]["y"], 0.0)
+            finally:
+                api.shutdown()
+
+    def test_enemy_patrol_empty_or_single_point_does_not_crash_or_move(self) -> None:
+        cases = [
+            ("Slime_Empty", []),
+            ("Slime_Single", [{"x": 5.0, "y": 6.0}]),
+        ]
+        for name, points in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmpdir:
+                slime = _enemy_patrol_entity(name=name, x=5.0, y=6.0, patrol_points=points, speed=60.0)
+                scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([slime]))
+                api = _runtime_api(scene_path, Path(tmpdir))
+                try:
+                    api.load_level(scene_path.as_posix())
+                    api.play()
+                    api.step(1)
+                    transform = api.get_entity(name)["components"]["Transform"]
+                    self.assertEqual(transform["x"], 5.0)
+                    self.assertEqual(transform["y"], 6.0)
+                finally:
+                    api.shutdown()
+
+    def test_enemy_patrol_speed_zero_does_not_move(self) -> None:
+        slime = _enemy_patrol_entity(
+            patrol_points=[{"x": 0.0, "y": 0.0}, {"x": 60.0, "y": 0.0}],
+            speed=0.0,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([slime]))
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                transform = api.get_entity("Slime_A")["components"]["Transform"]
+                self.assertEqual(transform["x"], 0.0)
+                self.assertEqual(transform["y"], 0.0)
+                self.assertEqual(_recent_event(api, "enemy_patrol_started"), {})
+            finally:
+                api.shutdown()
+
+    def test_player_touches_enemy_patrol_emits_enemy_touched(self) -> None:
+        slime = _enemy_patrol_entity(
+            patrol_points=[{"x": 0.0, "y": 0.0}, {"x": 60.0, "y": 0.0}],
+            speed=60.0,
+            damage=2,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([slime]))
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                event = _recent_event(api, "enemy_touched")
+                self.assertEqual(event["data"]["player"], "Player")
+                self.assertEqual(event["data"]["enemy"], "Slime_A")
+                self.assertEqual(event["data"]["damage"], 2)
+            finally:
+                api.shutdown()
+
+    def test_player_touches_enemy_patrol_with_respawn_respawns_player(self) -> None:
+        slime = _enemy_patrol_entity(
+            patrol_points=[{"x": 0.0, "y": 0.0}, {"x": 60.0, "y": 0.0}],
+            speed=60.0,
+            damage=2,
+        )
+        respawn = _entity_payload(
+            "Respawn_default",
+            {"RespawnPoint2D": RespawnPoint2D(spawn_id="default", active=True).to_dict()},
+            x=120.0,
+            y=80.0,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([slime, respawn]))
+            before = scene_path.read_text(encoding="utf-8")
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                event = _recent_event(api, "enemy_touched")
+                player = api.get_entity("Player")
+                transform = player["components"]["Transform"]
+                self.assertEqual(event["data"]["player"], "Player")
+                self.assertEqual(event["data"]["enemy"], "Slime_A")
+                self.assertEqual(event["data"]["damage"], 2)
+                self.assertEqual(transform["x"], 120.0)
+                self.assertEqual(transform["y"], 80.0)
+                self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+            finally:
+                api.shutdown()
+
+    def test_player_touches_enemy_patrol_without_respawn_emits_missing_respawn(self) -> None:
+        slime = _enemy_patrol_entity(
+            patrol_points=[{"x": 0.0, "y": 0.0}, {"x": 60.0, "y": 0.0}],
+            speed=60.0,
+            damage=2,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([slime]))
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                event = _recent_event(api, "enemy_respawn_missing")
+                self.assertEqual(event["data"]["player"], "Player")
+                self.assertEqual(event["data"]["enemy"], "Slime_A")
+                self.assertEqual(event["data"]["damage"], 2)
+                self.assertEqual(event["data"]["reason"], "no_active_respawn_point")
+            finally:
+                api.shutdown()
+
+    def test_enemy_patrol_absorbs_hazard_on_same_entity(self) -> None:
+        slime = _entity_payload(
+            "Slime_Hazard",
+            {
+                "Collider": _collider_payload(is_trigger=True),
+                "EnemyPatrol2D": EnemyPatrol2D(
+                    patrol_points=[{"x": 0.0, "y": 0.0}, {"x": 60.0, "y": 0.0}],
+                    speed=60.0,
+                    damage=2,
+                ).to_dict(),
+                "Hazard2D": Hazard2D(damage=99, respawn_on_touch=False).to_dict(),
+            },
+            x=0.0,
+            y=0.0,
+            tag="Enemy",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([slime]))
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                enemy_event = _recent_event(api, "enemy_touched")
+                hazard_event = _recent_event(api, "hazard_touched")
+                self.assertEqual(enemy_event["data"]["damage"], 2)
+                self.assertEqual(hazard_event, {})
+            finally:
+                api.shutdown()
 
 
 if __name__ == "__main__":
