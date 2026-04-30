@@ -293,8 +293,9 @@ class Gameplay2DSemanticSystem:
         hazard = target.get_component(Hazard2D)
         if hazard is None or not getattr(hazard, "enabled", True):
             return
-        # EnemyPatrol2D absorbs Hazard2D on the same entity to avoid duplicate damage/respawn
-        if target.get_component(EnemyPatrol2D) is not None:
+        # EnemyPatrol2D absorbs Hazard2D on the same entity only when enabled
+        enemy_patrol = target.get_component(EnemyPatrol2D)
+        if enemy_patrol is not None and getattr(enemy_patrol, "enabled", True):
             return
         key = ("hazard", int(player.id), int(target.id))
         if key in self._handled_contacts:

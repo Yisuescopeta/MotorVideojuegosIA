@@ -1186,6 +1186,38 @@ class Gameplay2DSemanticRuntimeTests(unittest.TestCase):
             finally:
                 api.shutdown()
 
+    def test_enemy_patrol_disabled_allows_hazard_to_fire(self) -> None:
+        disabled_patrol = EnemyPatrol2D(
+            patrol_points=[{"x": 0.0, "y": 0.0}, {"x": 60.0, "y": 0.0}],
+            speed=60.0,
+            damage=2,
+        )
+        disabled_patrol.enabled = False
+        slime = _entity_payload(
+            "Slime_Hazard",
+            {
+                "Collider": _collider_payload(is_trigger=True),
+                "EnemyPatrol2D": disabled_patrol.to_dict(),
+                "Hazard2D": Hazard2D(damage=99, respawn_on_touch=False).to_dict(),
+            },
+            x=0.0,
+            y=0.0,
+            tag="Enemy",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([slime]))
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                enemy_event = _recent_event(api, "enemy_touched")
+                hazard_event = _recent_event(api, "hazard_touched")
+                self.assertEqual(enemy_event, {})
+                self.assertEqual(hazard_event["data"]["damage"], 99)
+            finally:
+                api.shutdown()
+
 
 if __name__ == "__main__":
     unittest.main()
