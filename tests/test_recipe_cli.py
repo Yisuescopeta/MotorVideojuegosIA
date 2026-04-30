@@ -184,6 +184,32 @@ class RecipeCLITests(unittest.TestCase):
         self.assertEqual((self.outside / "sentinel.txt").read_text(encoding="utf-8"), "unchanged")
         self.assertEqual(sorted(path.name for path in self.outside.iterdir()), ["sentinel.txt"])
 
+    def test_recipe_run_platformer_basic_mutates_project_state_files(self) -> None:
+        result = _run_motor(
+            "recipe",
+            "run",
+            "platformer-basic",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            project=self.project,
+            env=self.env,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        payload = _payload(result.stdout)
+        self.assertTrue(payload["success"], payload)
+
+        self.assertTrue((self.project / "levels" / "level_1.json").exists())
+        self.assertTrue((self.project / ".motor" / "editor_state.json").exists())
+        self.assertTrue((self.project / "settings" / "project_settings.json").exists())
+
+        editor_state = json.loads((self.project / ".motor" / "editor_state.json").read_text(encoding="utf-8"))
+        project_settings = json.loads((self.project / "settings" / "project_settings.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(editor_state.get("active_scene"), "levels/level_1.json")
+        self.assertEqual(project_settings.get("startup_scene"), "levels/level_1.json")
+
     def test_recipe_run_rejects_non_allowlisted_action(self) -> None:
         fake_recipe = {
             "id": "bad",

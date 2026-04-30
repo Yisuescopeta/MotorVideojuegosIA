@@ -121,7 +121,8 @@ py -m motor ai self-test --project . --profile platformer --in-place --json
 En v1 solo existe `--profile platformer`, que ejecuta la receta
 `platformer-basic`: crea plataforma nativa, valida `platformer`, corre runtime
 headless y ejecuta `ai compliance --strict`. El modo normal no modifica el
-proyecto real; `--in-place` ejecuta el flujo contra `--project`.
+proyecto real; `--in-place` ejecuta el flujo contra `--project` y puede mutar
+escenas, `editor_state` y `startup_scene` del proyecto real.
 
 El JSON usa la envoltura estandar `{ "success": bool, "message": str, "data": object }`.
 `data` incluye:
@@ -224,6 +225,9 @@ headless con `runtime step` y `runtime events`.
 py -m motor recipe run platformer-basic --project . --json
 ```
 
+No usa shell arbitrario ni scripts temporales, pero si muta el `--project`
+objetivo porque los pasos de authoring guardan escena y estado del proyecto.
+
 El JSON devuelve `recipe`, `version`, `steps`, `first_failure`,
 `expected_capabilities` y `validation_commands`.
 
@@ -323,6 +327,9 @@ Crea o actualiza una entidad con nombre obligatorio usando `Transform`,
 path y emite eventos de movimiento sin persistir esos cambios en la escena.
 MovingPlatform2D moves the platform entity, but does not yet carry riders.
 
+Es authoring/serializacion data-only. Este comando no promete movimiento
+runtime por si mismo.
+
 ```bash
 py -m motor game platformer add-moving-platform --name Lift_A --x 320 --y 300 --width 96 --height 24 --to-x 640 --to-y 300 --speed 80 --project . --json
 ```
@@ -333,6 +340,9 @@ Crea o actualiza una entidad con nombre obligatorio usando `Transform`,
 `Collider` trigger y `EnemyPatrol2D`. Cada `--point` usa formato `x,y` en
 pixeles y puede repetirse.
 
+Es authoring/serializacion data-only. Este comando no promete IA runtime de
+enemigo por si mismo.
+
 ```bash
 py -m motor game platformer add-enemy-patrol --name Slime_A --x 500 --y 480 --point 500,480 --point 700,480 --damage 1 --speed 60 --project . --json
 ```
@@ -342,6 +352,10 @@ py -m motor game platformer add-enemy-patrol --name Slime_A --x 500 --y 480 --po
 Crea o actualiza una entidad con nombre obligatorio usando `Transform`,
 `Collider` trigger, `Checkpoint2D` y `RespawnPoint2D` con el mismo id.
 
+Checkpoint2D ya tiene runtime support semantico: puede emitir
+`checkpoint_reached` y activar respawn de sesion via `RespawnPoint2D` sin
+guardar mutaciones runtime como authoring.
+
 ```bash
 py -m motor game platformer add-checkpoint --name Checkpoint_A --x 200 --y 420 --id cp_a --project . --json
 ```
@@ -350,6 +364,10 @@ py -m motor game platformer add-checkpoint --name Checkpoint_A --x 200 --y 420 -
 
 Crea o actualiza una entidad con nombre obligatorio usando `Transform`,
 `Collider` trigger y `KillZone2D`.
+
+KillZone2D ya tiene runtime support semantico: puede emitir `killzone_touched`
+y respawnear al jugador desde el checkpoint activo o el primer
+`RespawnPoint2D` activo, sin guardar mutaciones runtime como authoring.
 
 ```bash
 py -m motor game platformer add-killzone --name Pit_A --x 640 --y 620 --width 1280 --height 64 --damage 1 --project . --json
@@ -369,6 +387,10 @@ py -m motor game platformer set-camera-follow --name MainCamera --target Player 
 
 Crea o actualiza una entidad con `LevelBounds2D`. Si se pasa `--camera`, tambien
 sincroniza `Camera2D.clamp_left/right/top/bottom` en esa camara.
+
+En runtime headless, `LevelBounds2D` emite `level_bounds_exited`, clampa
+salidas horizontales del `Player` y usa respawn para salidas por `bottom` sin
+guardar mutaciones como authoring.
 
 ```bash
 py -m motor game platformer set-bounds --name LevelBounds --left 0 --right 1600 --top 0 --bottom 720 --camera MainCamera --project . --json
@@ -466,10 +488,19 @@ Tokens soportados: `left`, `right`, `up`, `down`, `jump`, `action_1`,
 `action_2`. `jump` equivale a `action_1`; ejes opuestos se cancelan y se
 reportan en `warnings`.
 
+Los eventos semanticos observados aqui dependen de una sesion `PLAY` stateless
+por invocacion. Con implementacion actual, `hazard` y `goal` se deduplican por
+par jugador/objetivo dentro de esa sesion y no re-emiten tras contactos
+repetidos hasta el siguiente `PLAY`.
+
 El JSON incluye `frames_requested`, `frames_simulated`, `input_sequence`,
 `player_before`, `player_after`, `events`, `status_before`,
 `status_after_play`, `status_after_step`, `status_after`, `scene_path` y
-`scene`.
+`scene`. En escenas de plataformas, `events` puede incluir eventos semanticos
+2D como `checkpoint_reached`, `killzone_touched`, `killzone_respawn_missing`,
+`level_bounds_exited` y `level_bounds_respawn_missing`; los respawns activados
+por checkpoint y las correcciones runtime de bounds no se guardan como
+authoring.
 
 ### `motor runtime stop`
 
@@ -542,8 +573,14 @@ Opciones:
   mismo proceso stateless antes de leer eventos. No guarda mutaciones runtime
   como estado de authoring.
 
+Con implementacion actual, los eventos semanticos `hazard` y `goal` se
+deduplican por par jugador/objetivo dentro de esa invocacion stateless.
+
 Si no hay eventos disponibles, devuelve una lista vacia y una advertencia.
-El JSON incluye `events` y `count`.
+El JSON incluye `events` y `count`. Con `--step-frames`, los eventos
+semanticos 2D observables incluyen `checkpoint_reached`, `killzone_touched` y
+`killzone_respawn_missing` cuando hay contactos entre `Player` y esos
+componentes.
 
 ## Entidades
 

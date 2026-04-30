@@ -464,7 +464,7 @@
                 ],
                 "expected_outcome": "Creates a temporary platformer project, validates authoring/runtime/compliance, reports JSON, then removes the temporary workspace"
             },
-            "notes": "Uses the bundled platformer-basic recipe through allowlisted motor commands. Does not mutate the real project unless --in-place is provided.",
+            "notes": "Uses the bundled platformer-basic recipe through allowlisted motor commands. By default it creates a temporary project under .motor/tmp, runs validations, and removes that workspace. It does not mutate the real project unless --in-place is provided.",
             "tags": [
                 "ai",
                 "validation",
@@ -902,7 +902,7 @@
                 ],
                 "expected_outcome": "Selected scene contains Checkpoint_A with Transform, trigger Collider, Checkpoint2D and RespawnPoint2D"
             },
-            "notes": "Requires --name. Adds RespawnPoint2D with the same id for simple gameplay2d compatibility.",
+            "notes": "Requires --name. Runtime-supported by Gameplay2DSemanticSystem: touching Player emits checkpoint event and can activate a session respawn. Adds RespawnPoint2D with the same id for simple gameplay2d compatibility.",
             "tags": [
                 "game",
                 "platformer",
@@ -1106,7 +1106,7 @@
                 ],
                 "expected_outcome": "Selected scene contains Pit_A with Transform, trigger Collider and KillZone2D"
             },
-            "notes": "Requires --name. Data-only; no new runtime killzone system is introduced by this command.",
+            "notes": "Requires --name. Runtime-supported by Gameplay2DSemanticSystem: touching Player emits killzone event and can respawn at the active checkpoint or first active RespawnPoint2D.",
             "tags": [
                 "game",
                 "platformer",
@@ -1319,7 +1319,7 @@
                 ],
                 "expected_outcome": "Selected scene contains LevelBounds2D and optional Camera2D clamp values"
             },
-            "notes": "Requires --name. If --camera is provided, Camera2D clamp fields are synchronized.",
+            "notes": "Requires --name. Runtime-supported by Gameplay2DSemanticSystem: Player exits emit level_bounds_exited, horizontal exits clamp x, and bottom exits respawn or emit level_bounds_respawn_missing. If --camera is provided, Camera2D clamp fields are synchronized.",
             "tags": [
                 "game",
                 "platformer",
@@ -1680,9 +1680,9 @@
                         }
                     }
                 ],
-                "expected_outcome": "Creates and validates a minimal native platformer level through official motor commands"
+                "expected_outcome": "Mutates the target project through official authoring commands, then validates a minimal native platformer level"
             },
-            "notes": "Runs only validated argv-list recipe steps through the official motor CLI in-process; no shell, no temporary scripts and no external runtime.",
+            "notes": "Runs only validated argv-list recipe steps through the official motor CLI in-process; no shell, no temporary scripts and no external runtime. It does mutate the target --project because bundled authoring commands save scene, editor_state and startup_scene changes.",
             "tags": [
                 "recipe",
                 "ai",

@@ -317,6 +317,11 @@ Rules for AI agents:
 - Do not create an external runtime for this project.
 - Do not deliver `run_game.py` or an alternate main loop as the main game.
 - Treat `MovingPlatform2D` as runtime-supported by `Gameplay2DSemanticSystem`: it moves the platform entity along its path and emits movement events during PLAY, but does not yet carry riders or persist runtime progress.
+- Treat `EnemyPatrol2D` as serialized authoring/data-only.
+- Treat `Checkpoint2D`, `KillZone2D` and `LevelBounds2D` as runtime-supported semantic gameplay components: `Checkpoint2D` can activate session respawn compatibility via `RespawnPoint2D`, `KillZone2D` can respawn the player from the active checkpoint or first active `RespawnPoint2D`, and `LevelBounds2D` can emit `level_bounds_exited`, clamp horizontal exits and emit `level_bounds_respawn_missing` when bottom exit has no respawn.
+- Treat `motor runtime play/step/stop/events` as stateless per invocation; runtime mutations are inspection-only and are not persisted as authoring state.
+- Treat `motor recipe run` as allowlisted and shell-safe, but mutating for the target `--project`.
+- Treat `motor ai self-test` as temporary by default under `.motor/tmp`; use `--in-place` only when real project mutation is intended.
 
 ### Quick Workflow
 
@@ -388,4 +393,3 @@ This project uses the official `motor` CLI:
 - Entrypoint: `motor [command] [options]`
 - Alternative: `python -m motor [command] [options]`
 - Legacy: `python -m tools.engine_cli` (deprecated, for compatibility only)
-

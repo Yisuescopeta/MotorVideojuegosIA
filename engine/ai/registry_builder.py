@@ -344,7 +344,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Selected scene contains Checkpoint_A with Transform, trigger Collider, Checkpoint2D and RespawnPoint2D",
             ),
-            notes="Requires --name. Adds RespawnPoint2D with the same id for simple gameplay2d compatibility.",
+            notes="Requires --name. Runtime-supported by Gameplay2DSemanticSystem: touching Player emits checkpoint event and can activate a session respawn. Adds RespawnPoint2D with the same id for simple gameplay2d compatibility.",
             tags=["game", "platformer", "authoring"],
         ))
 
@@ -362,7 +362,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Selected scene contains Pit_A with Transform, trigger Collider and KillZone2D",
             ),
-            notes="Requires --name. Data-only; no new runtime killzone system is introduced by this command.",
+            notes="Requires --name. Runtime-supported by Gameplay2DSemanticSystem: touching Player emits killzone event and can respawn at the active checkpoint or first active RespawnPoint2D.",
             tags=["game", "platformer", "authoring"],
         ))
 
@@ -398,7 +398,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Selected scene contains LevelBounds2D and optional Camera2D clamp values",
             ),
-            notes="Requires --name. If --camera is provided, Camera2D clamp fields are synchronized.",
+            notes="Requires --name. Runtime-supported by Gameplay2DSemanticSystem: Player exits emit level_bounds_exited, horizontal exits clamp x, and bottom exits respawn or emit level_bounds_respawn_missing. If --camera is provided, Camera2D clamp fields are synchronized.",
             tags=["game", "platformer", "authoring", "camera"],
         ))
 
@@ -950,7 +950,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Creates a temporary platformer project, validates authoring/runtime/compliance, reports JSON, then removes the temporary workspace",
             ),
-            notes="Uses the bundled platformer-basic recipe through allowlisted motor commands. Does not mutate the real project unless --in-place is provided.",
+            notes="Uses the bundled platformer-basic recipe through allowlisted motor commands. By default it creates a temporary project under .motor/tmp, runs validations, and removes that workspace. It does not mutate the real project unless --in-place is provided.",
             tags=["ai", "validation", "self-test", "ci", "workflow"],
         ))
 
@@ -1069,9 +1069,9 @@ class CapabilityRegistryBuilder:
                 api_calls=[
                     {"method": "run_recipe", "args": {"recipe_id": "platformer-basic"}},
                 ],
-                expected_outcome="Creates and validates a minimal native platformer level through official motor commands",
+                expected_outcome="Mutates the target project through official authoring commands, then validates a minimal native platformer level",
             ),
-            notes="Runs only validated argv-list recipe steps through the official motor CLI in-process; no shell, no temporary scripts and no external runtime.",
+            notes="Runs only validated argv-list recipe steps through the official motor CLI in-process; no shell, no temporary scripts and no external runtime. It does mutate the target --project because bundled authoring commands save scene, editor_state and startup_scene changes.",
             tags=["recipe", "ai", "workflow", "tooling", "authoring"],
         ))
 
@@ -1868,6 +1868,11 @@ class MotorAIBootstrapBuilder:
             "- Do not create an external runtime for this project.",
             "- Do not deliver `run_game.py` or an alternate main loop as the main game.",
             "- Treat `MovingPlatform2D` as runtime-supported by `Gameplay2DSemanticSystem`: it moves the platform entity along its path and emits movement events during PLAY, but does not yet carry riders or persist runtime progress.",
+            "- Treat `EnemyPatrol2D` as serialized authoring/data-only.",
+            "- Treat `Checkpoint2D`, `KillZone2D` and `LevelBounds2D` as runtime-supported semantic gameplay components: `Checkpoint2D` can activate session respawn compatibility via `RespawnPoint2D`, `KillZone2D` can respawn the player from the active checkpoint or first active `RespawnPoint2D`, and `LevelBounds2D` can emit `level_bounds_exited`, clamp horizontal exits and emit `level_bounds_respawn_missing` when bottom exit has no respawn.",
+            "- Treat `motor runtime play/step/stop/events` as stateless per invocation; runtime mutations are inspection-only and are not persisted as authoring state.",
+            "- Treat `motor recipe run` as allowlisted and shell-safe, but mutating for the target `--project`.",
+            "- Treat `motor ai self-test` as temporary by default under `.motor/tmp`; use `--in-place` only when real project mutation is intended.",
             "",
             "### Quick Workflow",
             "",
@@ -1939,7 +1944,6 @@ class MotorAIBootstrapBuilder:
             "- Entrypoint: `motor [command] [options]`",
             "- Alternative: `python -m motor [command] [options]`",
             "- Legacy: `python -m tools.engine_cli` (deprecated, for compatibility only)",
-            "",
         ])
 
         return "\n".join(lines) + "\n"

@@ -102,7 +102,12 @@ def _entity_payload(
     }
 
 
-def _runtime_scene_payload(extra_entities: list[dict[str, object]]) -> dict[str, object]:
+def _runtime_scene_payload(
+    extra_entities: list[dict[str, object]],
+    *,
+    player_x: float = 0.0,
+    player_y: float = 0.0,
+) -> dict[str, object]:
     player = _entity_payload(
         "Player",
         {
@@ -114,6 +119,8 @@ def _runtime_scene_payload(extra_entities: list[dict[str, object]]) -> dict[str,
                 "air_control": 0.75,
             },
         },
+        x=player_x,
+        y=player_y,
         tag="Player",
     )
     return migrate_scene_data(
@@ -194,6 +201,16 @@ def _moving_platform_entity(
         y=y,
         tag="Platform",
     )
+
+
+def _bounds_payload(
+    *,
+    left: float = 0.0,
+    right: float = 100.0,
+    top: float = -50.0,
+    bottom: float = 100.0,
+) -> dict[str, object]:
+    return LevelBounds2D(left=left, right=right, top=top, bottom=bottom).to_dict()
 
 
 class Gameplay2DSemanticComponentTests(unittest.TestCase):
@@ -599,6 +616,264 @@ class Gameplay2DSemanticRuntimeTests(unittest.TestCase):
             finally:
                 api.shutdown()
 
+    def test_checkpoint_overlap_emits_checkpoint_reached(self) -> None:
+        checkpoint = _entity_payload(
+            "Checkpoint_A",
+            {
+                "Collider": _collider_payload(is_trigger=True),
+                "Checkpoint2D": Checkpoint2D(checkpoint_id="cp_a", set_respawn_on_touch=False).to_dict(),
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([checkpoint]))
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                event = _recent_event(api, "checkpoint_reached")
+                self.assertEqual(event["data"]["player"], "Player")
+                self.assertEqual(event["data"]["checkpoint"], "Checkpoint_A")
+                self.assertEqual(event["data"]["checkpoint_id"], "cp_a")
+            finally:
+                api.shutdown()
+
+    def test_hazard_event_does_not_reemit_for_repeated_contact_in_same_play_session(self) -> None:
+        hazard = _entity_payload(
+            "Spike",
+            {
+                "Collider": _collider_payload(is_trigger=True),
+                "Hazard2D": Hazard2D(damage=3, respawn_on_touch=False).to_dict(),
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([hazard]))
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                api.step(1)
+                hazard_events = [event for event in api.get_recent_events(50) if event["name"] == "hazard_touched"]
+                self.assertEqual(len(hazard_events), 1)
+            finally:
+                api.shutdown()
+
+    def test_checkpoint_sets_runtime_respawn_for_killzone_without_persisting_scene(self) -> None:
+        checkpoint_collider = _collider_payload(is_trigger=True)
+        checkpoint_collider["offset_x"] = -200.0
+        checkpoint_collider["offset_y"] = -60.0
+        checkpoint = _entity_payload(
+            "Checkpoint_A",
+            {
+                "Collider": checkpoint_collider,
+                "Checkpoint2D": Checkpoint2D(checkpoint_id="cp_a", set_respawn_on_touch=True).to_dict(),
+            },
+            x=200.0,
+            y=60.0,
+        )
+        killzone = _entity_payload(
+            "Pit_A",
+            {
+                "Collider": _collider_payload(is_trigger=True),
+                "KillZone2D": KillZone2D(damage=2, respawn_on_touch=True).to_dict(),
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([checkpoint, killzone]))
+            before = scene_path.read_text(encoding="utf-8")
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                checkpoint_event = _recent_event(api, "checkpoint_reached")
+                killzone_event = _recent_event(api, "killzone_touched")
+                missing_event = _recent_event(api, "killzone_respawn_missing")
+                player = api.get_entity("Player")
+                transform = player["components"]["Transform"]
+                self.assertEqual(checkpoint_event["data"]["checkpoint_id"], "cp_a")
+                self.assertEqual(killzone_event["data"]["killzone"], "Pit_A")
+                self.assertEqual(transform["x"], 200.0)
+                self.assertEqual(transform["y"], 60.0)
+                self.assertEqual(missing_event, {})
+                self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+            finally:
+                api.shutdown()
+
+    def test_checkpoint_prefers_matching_respawn_point_for_killzone(self) -> None:
+        checkpoint_collider = _collider_payload(is_trigger=True)
+        checkpoint_collider["offset_x"] = -200.0
+        checkpoint_collider["offset_y"] = -60.0
+        checkpoint = _entity_payload(
+            "Checkpoint_A",
+            {
+                "Collider": checkpoint_collider,
+                "Checkpoint2D": Checkpoint2D(checkpoint_id="cp_a", set_respawn_on_touch=True).to_dict(),
+            },
+            x=200.0,
+            y=60.0,
+        )
+        matching_respawn = _entity_payload(
+            "Respawn_cp_a",
+            {"RespawnPoint2D": RespawnPoint2D(spawn_id="cp_a", active=True).to_dict()},
+            x=120.0,
+            y=80.0,
+        )
+        killzone = _entity_payload(
+            "Pit_A",
+            {
+                "Collider": _collider_payload(is_trigger=True),
+                "KillZone2D": KillZone2D(damage=2, respawn_on_touch=True).to_dict(),
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(
+                Path(tmpdir),
+                _runtime_scene_payload([checkpoint, matching_respawn, killzone]),
+            )
+            before = scene_path.read_text(encoding="utf-8")
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                player = api.get_entity("Player")
+                transform = player["components"]["Transform"]
+                self.assertEqual(transform["x"], 120.0)
+                self.assertEqual(transform["y"], 80.0)
+                self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+            finally:
+                api.shutdown()
+
+    def test_killzone_without_respawn_emits_missing_respawn_event(self) -> None:
+        killzone = _entity_payload(
+            "Pit_A",
+            {
+                "Collider": _collider_payload(is_trigger=True),
+                "KillZone2D": KillZone2D(damage=5, respawn_on_touch=True).to_dict(),
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([killzone]))
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                event = _recent_event(api, "killzone_respawn_missing")
+                self.assertEqual(event["data"]["player"], "Player")
+                self.assertEqual(event["data"]["killzone"], "Pit_A")
+                self.assertEqual(event["data"]["damage"], 5)
+                self.assertEqual(event["data"]["reason"], "no_active_respawn_point")
+            finally:
+                api.shutdown()
+
+    def test_level_bounds_left_exit_emits_event_and_clamps_without_persisting_scene(self) -> None:
+        bounds = _entity_payload("LevelBounds", {"LevelBounds2D": _bounds_payload()})
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(
+                Path(tmpdir),
+                _runtime_scene_payload([bounds], player_x=-5.0, player_y=0.0),
+            )
+            before = scene_path.read_text(encoding="utf-8")
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                event = _recent_event(api, "level_bounds_exited")
+                player = api.get_entity("Player")
+                transform = player["components"]["Transform"]
+                self.assertEqual(event["data"]["player"], "Player")
+                self.assertEqual(event["data"]["bounds_entity"], "LevelBounds")
+                self.assertEqual(event["data"]["side"], "left")
+                self.assertEqual(event["data"]["player_x"], -5.0)
+                self.assertEqual(transform["x"], 0.0)
+                self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+            finally:
+                api.shutdown()
+
+    def test_level_bounds_right_exit_emits_event_and_clamps_without_persisting_scene(self) -> None:
+        bounds = _entity_payload("LevelBounds", {"LevelBounds2D": _bounds_payload()})
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(
+                Path(tmpdir),
+                _runtime_scene_payload([bounds], player_x=105.0, player_y=0.0),
+            )
+            before = scene_path.read_text(encoding="utf-8")
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                event = _recent_event(api, "level_bounds_exited")
+                player = api.get_entity("Player")
+                transform = player["components"]["Transform"]
+                self.assertEqual(event["data"]["player"], "Player")
+                self.assertEqual(event["data"]["bounds_entity"], "LevelBounds")
+                self.assertEqual(event["data"]["side"], "right")
+                self.assertEqual(event["data"]["player_x"], 105.0)
+                self.assertEqual(transform["x"], 100.0)
+                self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+            finally:
+                api.shutdown()
+
+    def test_level_bounds_bottom_exit_respawns_at_active_respawn_without_persisting_scene(self) -> None:
+        bounds = _entity_payload("LevelBounds", {"LevelBounds2D": _bounds_payload()})
+        respawn = _entity_payload(
+            "Respawn_default",
+            {"RespawnPoint2D": RespawnPoint2D(spawn_id="default", active=True).to_dict()},
+            x=25.0,
+            y=30.0,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(
+                Path(tmpdir),
+                _runtime_scene_payload([bounds, respawn], player_x=10.0, player_y=120.0),
+            )
+            before = scene_path.read_text(encoding="utf-8")
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                event = _recent_event(api, "level_bounds_exited")
+                missing_event = _recent_event(api, "level_bounds_respawn_missing")
+                player = api.get_entity("Player")
+                transform = player["components"]["Transform"]
+                self.assertEqual(event["data"]["side"], "bottom")
+                self.assertEqual(event["data"]["player_y"], 120.0)
+                self.assertEqual(transform["x"], 25.0)
+                self.assertEqual(transform["y"], 30.0)
+                self.assertEqual(missing_event, {})
+                self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+            finally:
+                api.shutdown()
+
+    def test_level_bounds_bottom_exit_without_respawn_emits_missing_respawn(self) -> None:
+        bounds = _entity_payload("LevelBounds", {"LevelBounds2D": _bounds_payload()})
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(
+                Path(tmpdir),
+                _runtime_scene_payload([bounds], player_x=10.0, player_y=120.0),
+            )
+            before = scene_path.read_text(encoding="utf-8")
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                exit_event = _recent_event(api, "level_bounds_exited")
+                missing_event = _recent_event(api, "level_bounds_respawn_missing")
+                self.assertEqual(exit_event["data"]["side"], "bottom")
+                self.assertEqual(missing_event["data"]["player"], "Player")
+                self.assertEqual(missing_event["data"]["bounds_entity"], "LevelBounds")
+                self.assertEqual(missing_event["data"]["reason"], "no_active_respawn_point")
+                self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+            finally:
+                api.shutdown()
+
     def test_goal_overlap_emits_goal_reached(self) -> None:
         goal = _entity_payload(
             "Goal",
@@ -618,6 +893,27 @@ class Gameplay2DSemanticRuntimeTests(unittest.TestCase):
                 self.assertEqual(event["data"]["player"], "Player")
                 self.assertEqual(event["data"]["goal"], "Goal")
                 self.assertEqual(event["data"]["next_scene"], "levels/next.json")
+            finally:
+                api.shutdown()
+
+    def test_goal_event_does_not_reemit_for_repeated_contact_in_same_play_session(self) -> None:
+        goal = _entity_payload(
+            "Goal",
+            {
+                "Collider": _collider_payload(is_trigger=True),
+                "Goal2D": Goal2D(next_scene="levels/next.json").to_dict(),
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([goal]))
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                api.step(1)
+                goal_events = [event for event in api.get_recent_events(50) if event["name"] == "goal_reached"]
+                self.assertEqual(len(goal_events), 1)
             finally:
                 api.shutdown()
 

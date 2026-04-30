@@ -3,7 +3,16 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from engine.components.gameplay2d import Collectible2D, Goal2D, Hazard2D, MovingPlatform2D, RespawnPoint2D
+from engine.components.gameplay2d import (
+    Checkpoint2D,
+    Collectible2D,
+    Goal2D,
+    Hazard2D,
+    KillZone2D,
+    LevelBounds2D,
+    MovingPlatform2D,
+    RespawnPoint2D,
+)
 from engine.components.playercontroller2d import PlayerController2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
@@ -17,10 +26,16 @@ class Gameplay2DSemanticSystem:
     def __init__(self) -> None:
         self._handled_contacts: set[tuple[str, int, int]] = set()
         self._moving_platform_state: dict[int, dict[str, Any]] = {}
+        self._bounds_exit_contacts: set[tuple[int, int, str]] = set()
+        self._active_respawn_entity_id: int | None = None
+        self._active_checkpoint_id: str | None = None
 
     def reset(self) -> None:
         self._handled_contacts.clear()
         self._moving_platform_state.clear()
+        self._bounds_exit_contacts.clear()
+        self._active_respawn_entity_id = None
+        self._active_checkpoint_id = None
 
     def update_moving_platforms(self, world: World, dt: float, event_bus: Any | None) -> None:
         step_seconds = max(0.0, float(dt))
@@ -120,8 +135,11 @@ class Gameplay2DSemanticSystem:
             if self._handle_collectible(world, event_bus, player, target):
                 destroyed_ids.add(target.id)
                 continue
+            self._handle_checkpoint(world, event_bus, player, target)
             self._handle_hazard(world, event_bus, player, target)
+            self._handle_killzone(world, event_bus, player, target)
             self._handle_goal(event_bus, player, target)
+        self._handle_level_bounds(world, event_bus)
 
     def _iter_contacts(self, contacts: Any) -> list[Any]:
         if contacts is None:
@@ -220,6 +238,62 @@ class Gameplay2DSemanticSystem:
             return
         self._move_to_respawn(world, player, respawn)
 
+    def _handle_checkpoint(self, world: World, event_bus: Any, player: Entity, target: Entity) -> None:
+        checkpoint = target.get_component(Checkpoint2D)
+        if checkpoint is None or not getattr(checkpoint, "enabled", True) or not checkpoint.active:
+            return
+        key = ("checkpoint", int(player.id), int(target.id))
+        if key in self._handled_contacts:
+            return
+        self._handled_contacts.add(key)
+        event_bus.emit(
+            checkpoint.event_name,
+            {
+                "player": player.name,
+                "checkpoint": target.name,
+                "checkpoint_id": checkpoint.checkpoint_id,
+            },
+        )
+        if not checkpoint.set_respawn_on_touch:
+            return
+        respawn = self._respawn_by_id(world, checkpoint.checkpoint_id) or self._respawn_candidate(target)
+        if respawn is None:
+            return
+        self._active_respawn_entity_id = int(respawn.id)
+        self._active_checkpoint_id = checkpoint.checkpoint_id
+
+    def _handle_killzone(self, world: World, event_bus: Any, player: Entity, target: Entity) -> None:
+        killzone = target.get_component(KillZone2D)
+        if killzone is None or not getattr(killzone, "enabled", True):
+            return
+        key = ("killzone", int(player.id), int(target.id))
+        if key in self._handled_contacts:
+            return
+        self._handled_contacts.add(key)
+        event_bus.emit(
+            killzone.event_name,
+            {
+                "player": player.name,
+                "killzone": target.name,
+                "damage": killzone.damage,
+            },
+        )
+        if not killzone.respawn_on_touch:
+            return
+        respawn = self._active_session_respawn(world) or self._first_active_respawn(world)
+        if respawn is None:
+            event_bus.emit(
+                "killzone_respawn_missing",
+                {
+                    "player": player.name,
+                    "killzone": target.name,
+                    "damage": killzone.damage,
+                    "reason": "no_active_respawn_point",
+                },
+            )
+            return
+        self._move_to_respawn(world, player, respawn)
+
     def _handle_goal(self, event_bus: Any, player: Entity, target: Entity) -> None:
         goal = target.get_component(Goal2D)
         if goal is None or not getattr(goal, "enabled", True):
@@ -296,6 +370,139 @@ class Gameplay2DSemanticSystem:
             },
         )
 
+    def _handle_level_bounds(self, world: World, event_bus: Any) -> None:
+        if not hasattr(world, "iter_all_entities"):
+            self._bounds_exit_contacts.clear()
+            return
+
+        players = self._active_players_with_transform(world)
+        if not players:
+            self._bounds_exit_contacts.clear()
+            return
+
+        active_keys: set[tuple[int, int, str]] = set()
+        for bounds_entity in self._active_level_bounds(world):
+            bounds = bounds_entity.get_component(LevelBounds2D)
+            if bounds is None:
+                continue
+            left = float(bounds.left)
+            right = float(bounds.right)
+            top = float(bounds.top)
+            bottom = float(bounds.bottom)
+            for player, transform in players:
+                player_x = float(transform.x)
+                player_y = float(transform.y)
+                sides: list[str] = []
+                if player_x < left:
+                    sides.append("left")
+                elif player_x > right:
+                    sides.append("right")
+                if player_y < top:
+                    sides.append("top")
+                elif player_y > bottom:
+                    sides.append("bottom")
+
+                for side in sides:
+                    key = (int(player.id), int(bounds_entity.id), side)
+                    active_keys.add(key)
+                    if key in self._bounds_exit_contacts:
+                        continue
+                    self._bounds_exit_contacts.add(key)
+                    self._emit_level_bounds_exit(
+                        event_bus,
+                        player,
+                        bounds_entity,
+                        side,
+                        player_x,
+                        player_y,
+                        left,
+                        right,
+                        top,
+                        bottom,
+                    )
+                    if side in {"left", "right"}:
+                        self._clamp_player_horizontal(world, player, transform, left if side == "left" else right)
+                    elif side == "bottom":
+                        self._respawn_player_from_level_bounds(world, event_bus, player, bounds_entity)
+
+        self._bounds_exit_contacts.intersection_update(active_keys)
+
+    def _active_players_with_transform(self, world: World) -> list[tuple[Entity, Transform]]:
+        players: list[tuple[Entity, Transform]] = []
+        for entity in world.iter_all_entities():
+            if not entity.active or not self._is_player(entity):
+                continue
+            transform = entity.get_component(Transform)
+            if transform is not None and getattr(transform, "enabled", True):
+                players.append((entity, transform))
+        return players
+
+    def _active_level_bounds(self, world: World) -> list[Entity]:
+        bounds_entities: list[Entity] = []
+        for entity in world.iter_all_entities():
+            if not entity.active:
+                continue
+            bounds = entity.get_component(LevelBounds2D)
+            if bounds is not None and getattr(bounds, "enabled", True):
+                bounds_entities.append(entity)
+        return bounds_entities
+
+    def _emit_level_bounds_exit(
+        self,
+        event_bus: Any,
+        player: Entity,
+        bounds_entity: Entity,
+        side: str,
+        player_x: float,
+        player_y: float,
+        left: float,
+        right: float,
+        top: float,
+        bottom: float,
+    ) -> None:
+        event_bus.emit(
+            "level_bounds_exited",
+            {
+                "player": player.name,
+                "bounds_entity": bounds_entity.name,
+                "side": side,
+                "player_x": player_x,
+                "player_y": player_y,
+                "left": left,
+                "right": right,
+                "top": top,
+                "bottom": bottom,
+            },
+        )
+
+    def _clamp_player_horizontal(self, world: World, player: Entity, transform: Transform, x: float) -> None:
+        transform.x = x
+        rigidbody = player.get_component(RigidBody)
+        if rigidbody is not None:
+            rigidbody.velocity_x = 0.0
+        world.touch_transform()
+        world.touch_physics()
+
+    def _respawn_player_from_level_bounds(
+        self,
+        world: World,
+        event_bus: Any,
+        player: Entity,
+        bounds_entity: Entity,
+    ) -> None:
+        respawn = self._active_session_respawn(world) or self._first_active_respawn(world)
+        if respawn is None:
+            event_bus.emit(
+                "level_bounds_respawn_missing",
+                {
+                    "player": player.name,
+                    "bounds_entity": bounds_entity.name,
+                    "reason": "no_active_respawn_point",
+                },
+            )
+            return
+        self._move_to_respawn(world, player, respawn)
+
     def _first_active_respawn(self, world: World) -> Entity | None:
         for entity in world.iter_all_entities():
             if not entity.active:
@@ -307,6 +514,37 @@ class Gameplay2DSemanticSystem:
             if getattr(respawn, "enabled", True) and respawn.active and getattr(transform, "enabled", True):
                 return entity
         return None
+
+    def _respawn_by_id(self, world: World, spawn_id: str) -> Entity | None:
+        wanted = str(spawn_id or "").strip()
+        if not wanted:
+            return None
+        for entity in world.iter_all_entities():
+            if not entity.active:
+                continue
+            respawn = entity.get_component(RespawnPoint2D)
+            transform = entity.get_component(Transform)
+            if respawn is None or transform is None:
+                continue
+            if not (getattr(respawn, "enabled", True) and respawn.active and getattr(transform, "enabled", True)):
+                continue
+            if respawn.spawn_id == wanted:
+                return entity
+        return None
+
+    def _respawn_candidate(self, entity: Entity) -> Entity | None:
+        transform = entity.get_component(Transform)
+        if transform is None or not getattr(transform, "enabled", True):
+            return None
+        return entity
+
+    def _active_session_respawn(self, world: World) -> Entity | None:
+        if self._active_respawn_entity_id is None:
+            return None
+        respawn = world.get_entity(self._active_respawn_entity_id)
+        if respawn is None or not respawn.active:
+            return None
+        return self._respawn_candidate(respawn)
 
     def _move_to_respawn(self, world: World, player: Entity, respawn: Entity) -> None:
         player_transform = player.get_component(Transform)
