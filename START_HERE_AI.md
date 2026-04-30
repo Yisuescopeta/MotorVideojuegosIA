@@ -161,6 +161,7 @@ The entries below are available now and are safe to use from the CLI.
 ### AI
 
 - `ai:compliance`: Validate whether a project follows the AI-native engine contract
+- `ai:self-test`: Run a controlled AI self-test workflow in a temporary project by default
 - `ai:start`: Show the compact AI entrypoint contract for this project
 
 ### Scene Management
@@ -315,6 +316,11 @@ Rules for AI agents:
 - Use MotorVideojuegosIA through `motor`, `EngineAPI` and serialized scenes/components.
 - Do not create an external runtime for this project.
 - Do not deliver `run_game.py` or an alternate main loop as the main game.
+- Treat `MovingPlatform2D`, `EnemyPatrol2D` and `LevelBounds2D` as serialized authoring/data-only components.
+- Treat `Checkpoint2D` and `KillZone2D` as runtime-supported semantic gameplay components: `Checkpoint2D` can activate session respawn compatibility via `RespawnPoint2D`, and `KillZone2D` can respawn the player from the active checkpoint or first active `RespawnPoint2D`.
+- Treat `motor runtime play/step/stop/events` as stateless per invocation; runtime mutations are inspection-only and are not persisted as authoring state.
+- Treat `motor recipe run` as allowlisted and shell-safe, but mutating for the target `--project`.
+- Treat `motor ai self-test` as temporary by default under `.motor/tmp`; use `--in-place` only when real project mutation is intended.
 
 ### Quick Workflow
 
@@ -386,4 +392,3 @@ This project uses the official `motor` CLI:
 - Entrypoint: `motor [command] [options]`
 - Alternative: `python -m motor [command] [options]`
 - Legacy: `python -m tools.engine_cli` (deprecated, for compatibility only)
-

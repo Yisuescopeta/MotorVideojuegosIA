@@ -491,6 +491,27 @@ class Gameplay2DSemanticRuntimeTests(unittest.TestCase):
             finally:
                 api.shutdown()
 
+    def test_hazard_event_does_not_reemit_for_repeated_contact_in_same_play_session(self) -> None:
+        hazard = _entity_payload(
+            "Spike",
+            {
+                "Collider": _collider_payload(is_trigger=True),
+                "Hazard2D": Hazard2D(damage=3, respawn_on_touch=False).to_dict(),
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([hazard]))
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                api.step(1)
+                hazard_events = [event for event in api.get_recent_events(50) if event["name"] == "hazard_touched"]
+                self.assertEqual(len(hazard_events), 1)
+            finally:
+                api.shutdown()
+
     def test_checkpoint_sets_runtime_respawn_for_killzone_without_persisting_scene(self) -> None:
         checkpoint_collider = _collider_payload(is_trigger=True)
         checkpoint_collider["offset_x"] = -200.0
@@ -620,6 +641,27 @@ class Gameplay2DSemanticRuntimeTests(unittest.TestCase):
                 self.assertEqual(event["data"]["player"], "Player")
                 self.assertEqual(event["data"]["goal"], "Goal")
                 self.assertEqual(event["data"]["next_scene"], "levels/next.json")
+            finally:
+                api.shutdown()
+
+    def test_goal_event_does_not_reemit_for_repeated_contact_in_same_play_session(self) -> None:
+        goal = _entity_payload(
+            "Goal",
+            {
+                "Collider": _collider_payload(is_trigger=True),
+                "Goal2D": Goal2D(next_scene="levels/next.json").to_dict(),
+            },
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(Path(tmpdir), _runtime_scene_payload([goal]))
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                api.step(1)
+                goal_events = [event for event in api.get_recent_events(50) if event["name"] == "goal_reached"]
+                self.assertEqual(len(goal_events), 1)
             finally:
                 api.shutdown()
 

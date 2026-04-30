@@ -441,6 +441,39 @@
             ]
         },
         {
+            "id": "ai:self-test",
+            "summary": "Run a controlled AI self-test workflow in a temporary project by default",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "CapabilityRegistry.cmd_ai_self_test"
+            ],
+            "cli_command": "motor ai self-test [--project <path>] [--profile platformer] [--in-place] [--json]",
+            "example": {
+                "description": "Run the platformer AI self-test without mutating the real project",
+                "api_calls": [
+                    {
+                        "method": "cmd_ai_self_test",
+                        "args": {
+                            "project_path": ".",
+                            "profile": "platformer",
+                            "in_place": false,
+                            "json_output": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Creates a temporary platformer project, validates authoring/runtime/compliance, reports JSON, then removes the temporary workspace"
+            },
+            "notes": "Uses the bundled platformer-basic recipe through allowlisted motor commands. By default it creates a temporary project under .motor/tmp, runs validations, and removes that workspace. It does not mutate the real project unless --in-place is provided.",
+            "tags": [
+                "ai",
+                "validation",
+                "self-test",
+                "ci",
+                "workflow"
+            ]
+        },
+        {
             "id": "ai:start",
             "summary": "Show the compact AI entrypoint contract for this project",
             "mode": "both",
@@ -1286,7 +1319,7 @@
                 ],
                 "expected_outcome": "Selected scene contains LevelBounds2D and optional Camera2D clamp values"
             },
-            "notes": "Requires --name. If --camera is provided, Camera2D clamp fields are synchronized.",
+            "notes": "Requires --name. Authoring/data-only capability. If --camera is provided, Camera2D clamp fields are synchronized. This command does not introduce a separate runtime bounds system.",
             "tags": [
                 "game",
                 "platformer",
@@ -1647,9 +1680,9 @@
                         }
                     }
                 ],
-                "expected_outcome": "Creates and validates a minimal native platformer level through official motor commands"
+                "expected_outcome": "Mutates the target project through official authoring commands, then validates a minimal native platformer level"
             },
-            "notes": "Runs only validated argv-list recipe steps through the official motor CLI in-process; no shell, no temporary scripts and no external runtime.",
+            "notes": "Runs only validated argv-list recipe steps through the official motor CLI in-process; no shell, no temporary scripts and no external runtime. It does mutate the target --project because bundled authoring commands save scene, editor_state and startup_scene changes.",
             "tags": [
                 "recipe",
                 "ai",
@@ -2543,9 +2576,9 @@
         }
     ],
     "capability_counts": {
-        "implemented": 66,
+        "implemented": 67,
         "planned": 19,
-        "total": 85
+        "total": 86
     },
     "project": {
         "name": "MotorVideojuegosIA",
