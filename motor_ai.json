@@ -1319,7 +1319,7 @@
                 ],
                 "expected_outcome": "Selected scene contains LevelBounds2D and optional Camera2D clamp values"
             },
-            "notes": "Requires --name. Authoring/data-only capability. If --camera is provided, Camera2D clamp fields are synchronized. This command does not introduce a separate runtime bounds system.",
+            "notes": "Requires --name. Runtime-supported by Gameplay2DSemanticSystem: Player exits emit level_bounds_exited, horizontal exits clamp x, and bottom exits respawn or emit level_bounds_respawn_missing. If --camera is provided, Camera2D clamp fields are synchronized.",
             "tags": [
                 "game",
                 "platformer",

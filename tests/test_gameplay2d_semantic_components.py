@@ -176,6 +176,16 @@ def _runtime_api(scene_path: Path, workspace: Path) -> EngineAPI:
     )
 
 
+def _bounds_payload(
+    *,
+    left: float = 0.0,
+    right: float = 100.0,
+    top: float = -50.0,
+    bottom: float = 100.0,
+) -> dict[str, object]:
+    return LevelBounds2D(left=left, right=right, top=top, bottom=bottom).to_dict()
+
+
 class Gameplay2DSemanticComponentTests(unittest.TestCase):
     def test_default_creation(self) -> None:
         collectible = Collectible2D()
@@ -619,6 +629,111 @@ class Gameplay2DSemanticRuntimeTests(unittest.TestCase):
                 self.assertEqual(event["data"]["killzone"], "Pit_A")
                 self.assertEqual(event["data"]["damage"], 5)
                 self.assertEqual(event["data"]["reason"], "no_active_respawn_point")
+            finally:
+                api.shutdown()
+
+    def test_level_bounds_left_exit_emits_event_and_clamps_without_persisting_scene(self) -> None:
+        bounds = _entity_payload("LevelBounds", {"LevelBounds2D": _bounds_payload()})
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(
+                Path(tmpdir),
+                _runtime_scene_payload([bounds], player_x=-5.0, player_y=0.0),
+            )
+            before = scene_path.read_text(encoding="utf-8")
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                event = _recent_event(api, "level_bounds_exited")
+                player = api.get_entity("Player")
+                transform = player["components"]["Transform"]
+                self.assertEqual(event["data"]["player"], "Player")
+                self.assertEqual(event["data"]["bounds_entity"], "LevelBounds")
+                self.assertEqual(event["data"]["side"], "left")
+                self.assertEqual(event["data"]["player_x"], -5.0)
+                self.assertEqual(transform["x"], 0.0)
+                self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+            finally:
+                api.shutdown()
+
+    def test_level_bounds_right_exit_emits_event_and_clamps_without_persisting_scene(self) -> None:
+        bounds = _entity_payload("LevelBounds", {"LevelBounds2D": _bounds_payload()})
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(
+                Path(tmpdir),
+                _runtime_scene_payload([bounds], player_x=105.0, player_y=0.0),
+            )
+            before = scene_path.read_text(encoding="utf-8")
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                event = _recent_event(api, "level_bounds_exited")
+                player = api.get_entity("Player")
+                transform = player["components"]["Transform"]
+                self.assertEqual(event["data"]["player"], "Player")
+                self.assertEqual(event["data"]["bounds_entity"], "LevelBounds")
+                self.assertEqual(event["data"]["side"], "right")
+                self.assertEqual(event["data"]["player_x"], 105.0)
+                self.assertEqual(transform["x"], 100.0)
+                self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+            finally:
+                api.shutdown()
+
+    def test_level_bounds_bottom_exit_respawns_at_active_respawn_without_persisting_scene(self) -> None:
+        bounds = _entity_payload("LevelBounds", {"LevelBounds2D": _bounds_payload()})
+        respawn = _entity_payload(
+            "Respawn_default",
+            {"RespawnPoint2D": RespawnPoint2D(spawn_id="default", active=True).to_dict()},
+            x=25.0,
+            y=30.0,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(
+                Path(tmpdir),
+                _runtime_scene_payload([bounds, respawn], player_x=10.0, player_y=120.0),
+            )
+            before = scene_path.read_text(encoding="utf-8")
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                event = _recent_event(api, "level_bounds_exited")
+                missing_event = _recent_event(api, "level_bounds_respawn_missing")
+                player = api.get_entity("Player")
+                transform = player["components"]["Transform"]
+                self.assertEqual(event["data"]["side"], "bottom")
+                self.assertEqual(event["data"]["player_y"], 120.0)
+                self.assertEqual(transform["x"], 25.0)
+                self.assertEqual(transform["y"], 30.0)
+                self.assertEqual(missing_event, {})
+                self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+            finally:
+                api.shutdown()
+
+    def test_level_bounds_bottom_exit_without_respawn_emits_missing_respawn(self) -> None:
+        bounds = _entity_payload("LevelBounds", {"LevelBounds2D": _bounds_payload()})
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(
+                Path(tmpdir),
+                _runtime_scene_payload([bounds], player_x=10.0, player_y=120.0),
+            )
+            before = scene_path.read_text(encoding="utf-8")
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                exit_event = _recent_event(api, "level_bounds_exited")
+                missing_event = _recent_event(api, "level_bounds_respawn_missing")
+                self.assertEqual(exit_event["data"]["side"], "bottom")
+                self.assertEqual(missing_event["data"]["player"], "Player")
+                self.assertEqual(missing_event["data"]["bounds_entity"], "LevelBounds")
+                self.assertEqual(missing_event["data"]["reason"], "no_active_respawn_point")
+                self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
             finally:
                 api.shutdown()
 
