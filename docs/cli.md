@@ -340,8 +340,10 @@ Crea o actualiza una entidad con nombre obligatorio usando `Transform`,
 `Collider` trigger y `EnemyPatrol2D`. Cada `--point` usa formato `x,y` en
 pixeles y puede repetirse.
 
-Es authoring/serializacion data-only. Este comando no promete IA runtime de
-enemigo por si mismo.
+Es authoring/serializacion con runtime basico de patrulla: durante PLAY la
+entidad se mueve entre los puntos indicados, emite `enemy_patrol_started` y
+`enemy_patrol_reached_point`, y al contactar con Player emite `enemy_touched`
+con daño y respawn. No promete IA compleja.
 
 ```bash
 py -m motor game platformer add-enemy-patrol --name Slime_A --x 500 --y 480 --point 500,480 --point 700,480 --damage 1 --speed 60 --project . --json

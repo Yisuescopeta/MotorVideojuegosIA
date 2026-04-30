@@ -68,8 +68,10 @@ sprite (`*_sprite`, `*_slice`, `image_tint`, `preserve_aspect`) sin romper el
 payload legacy basado en colores. `UIImage` serializa `sprite`, `slice_name`,
 `tint` y `preserve_aspect`.
 
-Los componentes semanticos minimos de gameplay 2D son data-only y no introducen
-logica runtime de colision/interaccion todavia:
+Los componentes semanticos minimos de gameplay 2D se serializan como datos.
+`EnemyPatrol2D` ya tiene runtime support semantico via `Gameplay2DSemanticSystem`
+(ver [TECHNICAL.md](TECHNICAL.md)). Los demas de esta lista son data-only en su
+comportamiento actual:
 
 - `Collectible2D`: `points`, `destroy_on_collect`, `event_name`
 - `Hazard2D`: `damage`, `respawn_on_touch`, `event_name`
@@ -77,8 +79,6 @@ logica runtime de colision/interaccion todavia:
 - `RespawnPoint2D`: `spawn_id`, `active`
 - `MovingPlatform2D`: `path` como lista de puntos `{x, y}`, `speed`, `loop`,
   `start_active`
-- `EnemyPatrol2D`: `patrol_points` como lista de puntos `{x, y}`, `speed`,
-  `damage`, `event_name`
 - `Checkpoint2D`: `checkpoint_id`, `active`, `set_respawn_on_touch`,
   `event_name`
 - `KillZone2D`: `damage`, `respawn_on_touch`, `event_name`

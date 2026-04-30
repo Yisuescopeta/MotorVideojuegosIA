@@ -296,6 +296,11 @@ class RuntimeController:
                 dt,
                 self._get_event_bus(),
             )
+            self._gameplay2d_semantic_system.update_enemy_patrols(
+                world,
+                dt,
+                self._get_event_bus(),
+            )
             backend.step(world, dt)
             self._gameplay2d_semantic_system.update(
                 world,

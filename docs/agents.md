@@ -143,9 +143,15 @@ guardan la escena serializada y eligen escena por esta regla: activa cargada,
 `--name`, se genera el siguiente nombre `*_###` disponible (`Goal` usa primero
 `Goal` si falta). En los comandos avanzados, `--name` es obligatorio.
 
-`MovingPlatform2D` y `EnemyPatrol2D` deben tratarse como
-authoring/serializacion data-only. `Checkpoint2D`, `KillZone2D` y
-`LevelBounds2D` tienen runtime support semantico via
+`MovingPlatform2D` debe tratarse como authoring/serializacion data-only con
+runtime support minimo: mueve la entidad por su path y emite eventos durante
+PLAY, pero no transporta riders todavia. `EnemyPatrol2D` tiene runtime support
+semantico via `Gameplay2DSemanticSystem`: patrulla ciclica entre puntos,
+emite `enemy_patrol_started`, `enemy_patrol_reached_point` y al contacto con
+Player emite `enemy_touched` con daño y respawn (o `enemy_respawn_missing` si
+no hay respawn). Si coexiste con `Hazard2D` en la misma entidad,
+`EnemyPatrol2D` absorbe la interaccion para evitar duplicados. `Checkpoint2D`,
+`KillZone2D` y `LevelBounds2D` tienen runtime support semantico via
 `Gameplay2DSemanticSystem`: `Checkpoint2D` puede activar compatibilidad de
 respawn de sesion con `RespawnPoint2D`, `KillZone2D` puede respawnear al
 jugador desde el checkpoint activo o el primer `RespawnPoint2D` activo, y

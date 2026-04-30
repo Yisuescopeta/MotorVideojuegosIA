@@ -326,7 +326,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Selected scene contains Slime_A with Transform, trigger Collider and EnemyPatrol2D",
             ),
-            notes="Requires --name. Patrol points use x,y pixel pairs. Data-only; no enemy AI runtime is introduced by this command.",
+            notes="Requires --name. Patrol points use x,y pixel pairs. Runtime-supported by Gameplay2DSemanticSystem: EnemyPatrol2D patrols cyclically through patrol_points when entity active + component enabled + 2+ points + speed > 0. Emits enemy_patrol_started and enemy_patrol_reached_point. On contact with Player emits enemy_touched, then respawns Player using session checkpoint/runtime respawn or first active RespawnPoint2D; if none exists emits enemy_respawn_missing. If EnemyPatrol2D and Hazard2D coexist on the same entity, EnemyPatrol2D (when enabled) absorbs the interaction to avoid double damage/double respawn. No health or advanced pathfinding.",
             tags=["game", "platformer", "authoring"],
         ))
 
@@ -1868,7 +1868,7 @@ class MotorAIBootstrapBuilder:
             "- Do not create an external runtime for this project.",
             "- Do not deliver `run_game.py` or an alternate main loop as the main game.",
             "- Treat `MovingPlatform2D` as runtime-supported by `Gameplay2DSemanticSystem`: it moves the platform entity along its path and emits movement events during PLAY, but does not yet carry riders or persist runtime progress.",
-            "- Treat `EnemyPatrol2D` as serialized authoring/data-only.",
+            "- Treat `EnemyPatrol2D` as runtime-supported by `Gameplay2DSemanticSystem`: it moves the entity cyclically between patrol points, emits `enemy_patrol_started` and `enemy_patrol_reached_point`, and on Player contact emits `enemy_touched` with damage and respawn (or `enemy_respawn_missing`). If coexisting with `Hazard2D` on the same entity, it absorbs the interaction to avoid duplicate events.",
             "- Treat `Checkpoint2D`, `KillZone2D` and `LevelBounds2D` as runtime-supported semantic gameplay components: `Checkpoint2D` can activate session respawn compatibility via `RespawnPoint2D`, `KillZone2D` can respawn the player from the active checkpoint or first active `RespawnPoint2D`, and `LevelBounds2D` can emit `level_bounds_exited`, clamp horizontal exits and emit `level_bounds_respawn_missing` when bottom exit has no respawn.",
             "- Treat `motor runtime play/step/stop/events` as stateless per invocation; runtime mutations are inspection-only and are not persisted as authoring state.",
             "- Treat `motor recipe run` as allowlisted and shell-safe, but mutating for the target `--project`.",

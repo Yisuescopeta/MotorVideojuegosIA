@@ -6,6 +6,7 @@ from typing import Any
 from engine.components.gameplay2d import (
     Checkpoint2D,
     Collectible2D,
+    EnemyPatrol2D,
     Goal2D,
     Hazard2D,
     KillZone2D,
@@ -26,6 +27,7 @@ class Gameplay2DSemanticSystem:
     def __init__(self) -> None:
         self._handled_contacts: set[tuple[str, int, int]] = set()
         self._moving_platform_state: dict[int, dict[str, Any]] = {}
+        self._enemy_patrol_state: dict[int, dict[str, Any]] = {}
         self._bounds_exit_contacts: set[tuple[int, int, str]] = set()
         self._active_respawn_entity_id: int | None = None
         self._active_checkpoint_id: str | None = None
@@ -33,6 +35,7 @@ class Gameplay2DSemanticSystem:
     def reset(self) -> None:
         self._handled_contacts.clear()
         self._moving_platform_state.clear()
+        self._enemy_patrol_state.clear()
         self._bounds_exit_contacts.clear()
         self._active_respawn_entity_id = None
         self._active_checkpoint_id = None
@@ -118,6 +121,85 @@ class Gameplay2DSemanticSystem:
                     event_bus,
                 )
 
+    def update_enemy_patrols(self, world: World, dt: float, event_bus: Any | None) -> None:
+        step_seconds = max(0.0, float(dt))
+        if step_seconds <= 0.0:
+            return
+        if not hasattr(world, "get_entities_with"):
+            return
+        for entity in world.get_entities_with(Transform, EnemyPatrol2D):
+            patrol = entity.get_component(EnemyPatrol2D)
+            transform = entity.get_component(Transform)
+            if patrol is None or transform is None:
+                continue
+            if not getattr(patrol, "enabled", True) or patrol.speed <= 0.0 or len(patrol.patrol_points) < 2:
+                continue
+
+            state = self._enemy_patrol_state.setdefault(
+                int(entity.id),
+                {"target_index": 1, "started": False},
+            )
+
+            target_index = int(state.get("target_index", 1))
+            if target_index < 0 or target_index >= len(patrol.patrol_points):
+                target_index = 1
+                state["target_index"] = target_index
+
+            target = patrol.patrol_points[target_index]
+            target_x = float(target.get("x", transform.x))
+            target_y = float(target.get("y", transform.y))
+            dx = target_x - float(transform.x)
+            dy = target_y - float(transform.y)
+            distance = math.hypot(dx, dy)
+            if distance <= 1e-6:
+                self._handle_enemy_patrol_arrival(
+                    entity,
+                    patrol,
+                    state,
+                    target_index,
+                    target_x,
+                    target_y,
+                    event_bus,
+                )
+                continue
+
+            max_distance = patrol.speed * step_seconds
+            if max_distance >= distance:
+                new_x = target_x
+                new_y = target_y
+            else:
+                ratio = max_distance / distance
+                new_x = float(transform.x) + dx * ratio
+                new_y = float(transform.y) + dy * ratio
+
+            if new_x == transform.x and new_y == transform.y:
+                continue
+            transform.x = new_x
+            transform.y = new_y
+            world.touch_transform()
+            world.touch_physics()
+            if not state.get("started"):
+                state["started"] = True
+                self._emit_enemy_patrol_event(
+                    event_bus,
+                    "enemy_patrol_started",
+                    entity,
+                    patrol,
+                    target_index,
+                    new_x,
+                    new_y,
+                )
+            if new_x == target_x and new_y == target_y:
+                self._handle_enemy_patrol_arrival(
+                    entity,
+                    patrol,
+                    state,
+                    target_index,
+                    target_x,
+                    target_y,
+                    event_bus,
+                )
+
     def update(self, world: World, contacts: Any, event_bus: Any | None) -> None:
         if event_bus is None:
             return
@@ -139,6 +221,7 @@ class Gameplay2DSemanticSystem:
             self._handle_hazard(world, event_bus, player, target)
             self._handle_killzone(world, event_bus, player, target)
             self._handle_goal(event_bus, player, target)
+            self._handle_enemy_patrol_contact(world, event_bus, player, target)
         self._handle_level_bounds(world, event_bus)
 
     def _iter_contacts(self, contacts: Any) -> list[Any]:
@@ -209,6 +292,10 @@ class Gameplay2DSemanticSystem:
     def _handle_hazard(self, world: World, event_bus: Any, player: Entity, target: Entity) -> None:
         hazard = target.get_component(Hazard2D)
         if hazard is None or not getattr(hazard, "enabled", True):
+            return
+        # EnemyPatrol2D absorbs Hazard2D on the same entity only when enabled
+        enemy_patrol = target.get_component(EnemyPatrol2D)
+        if enemy_patrol is not None and getattr(enemy_patrol, "enabled", True):
             return
         key = ("hazard", int(player.id), int(target.id))
         if key in self._handled_contacts:
@@ -308,6 +395,80 @@ class Gameplay2DSemanticSystem:
                 "player": player.name,
                 "goal": target.name,
                 "next_scene": goal.next_scene,
+            },
+        )
+
+    def _handle_enemy_patrol_contact(self, world: World, event_bus: Any, player: Entity, target: Entity) -> None:
+        patrol = target.get_component(EnemyPatrol2D)
+        if patrol is None or not getattr(patrol, "enabled", True):
+            return
+        key = ("enemy_patrol", int(player.id), int(target.id))
+        if key in self._handled_contacts:
+            return
+        self._handled_contacts.add(key)
+        event_bus.emit(
+            patrol.event_name,
+            {
+                "player": player.name,
+                "enemy": target.name,
+                "damage": patrol.damage,
+            },
+        )
+        respawn = self._active_session_respawn(world) or self._first_active_respawn(world)
+        if respawn is not None:
+            self._move_to_respawn(world, player, respawn)
+            return
+        event_bus.emit(
+            "enemy_respawn_missing",
+            {
+                "player": player.name,
+                "enemy": target.name,
+                "damage": patrol.damage,
+                "reason": "no_active_respawn_point",
+            },
+        )
+
+    def _handle_enemy_patrol_arrival(
+        self,
+        entity: Entity,
+        patrol: EnemyPatrol2D,
+        state: dict[str, Any],
+        point_index: int,
+        x: float,
+        y: float,
+        event_bus: Any | None,
+    ) -> None:
+        self._emit_enemy_patrol_event(
+            event_bus,
+            "enemy_patrol_reached_point",
+            entity,
+            patrol,
+            point_index,
+            x,
+            y,
+        )
+        state["target_index"] = (point_index + 1) % len(patrol.patrol_points)
+
+    def _emit_enemy_patrol_event(
+        self,
+        event_bus: Any | None,
+        event_name: str,
+        entity: Entity,
+        patrol: EnemyPatrol2D,
+        point_index: int,
+        x: float,
+        y: float,
+    ) -> None:
+        if event_bus is None:
+            return
+        event_bus.emit(
+            event_name,
+            {
+                "enemy": entity.name,
+                "point_index": int(point_index),
+                "x": float(x),
+                "y": float(y),
+                "speed": float(patrol.speed),
             },
         )
 
