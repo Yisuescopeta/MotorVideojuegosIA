@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from engine.components.gameplay2d import Collectible2D, Goal2D, Hazard2D, RespawnPoint2D
+from engine.components.gameplay2d import Checkpoint2D, Collectible2D, Goal2D, Hazard2D, KillZone2D, RespawnPoint2D
 from engine.components.playercontroller2d import PlayerController2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
@@ -15,9 +15,13 @@ class Gameplay2DSemanticSystem:
 
     def __init__(self) -> None:
         self._handled_contacts: set[tuple[str, int, int]] = set()
+        self._active_respawn_entity_id: int | None = None
+        self._active_checkpoint_id: str | None = None
 
     def reset(self) -> None:
         self._handled_contacts.clear()
+        self._active_respawn_entity_id = None
+        self._active_checkpoint_id = None
 
     def update(self, world: World, contacts: Any, event_bus: Any | None) -> None:
         if event_bus is None:
@@ -36,7 +40,9 @@ class Gameplay2DSemanticSystem:
             if self._handle_collectible(world, event_bus, player, target):
                 destroyed_ids.add(target.id)
                 continue
+            self._handle_checkpoint(world, event_bus, player, target)
             self._handle_hazard(world, event_bus, player, target)
+            self._handle_killzone(world, event_bus, player, target)
             self._handle_goal(event_bus, player, target)
 
     def _iter_contacts(self, contacts: Any) -> list[Any]:
@@ -136,6 +142,62 @@ class Gameplay2DSemanticSystem:
             return
         self._move_to_respawn(world, player, respawn)
 
+    def _handle_checkpoint(self, world: World, event_bus: Any, player: Entity, target: Entity) -> None:
+        checkpoint = target.get_component(Checkpoint2D)
+        if checkpoint is None or not getattr(checkpoint, "enabled", True) or not checkpoint.active:
+            return
+        key = ("checkpoint", int(player.id), int(target.id))
+        if key in self._handled_contacts:
+            return
+        self._handled_contacts.add(key)
+        event_bus.emit(
+            checkpoint.event_name,
+            {
+                "player": player.name,
+                "checkpoint": target.name,
+                "checkpoint_id": checkpoint.checkpoint_id,
+            },
+        )
+        if not checkpoint.set_respawn_on_touch:
+            return
+        respawn = self._respawn_by_id(world, checkpoint.checkpoint_id) or self._respawn_candidate(target)
+        if respawn is None:
+            return
+        self._active_respawn_entity_id = int(respawn.id)
+        self._active_checkpoint_id = checkpoint.checkpoint_id
+
+    def _handle_killzone(self, world: World, event_bus: Any, player: Entity, target: Entity) -> None:
+        killzone = target.get_component(KillZone2D)
+        if killzone is None or not getattr(killzone, "enabled", True):
+            return
+        key = ("killzone", int(player.id), int(target.id))
+        if key in self._handled_contacts:
+            return
+        self._handled_contacts.add(key)
+        event_bus.emit(
+            killzone.event_name,
+            {
+                "player": player.name,
+                "killzone": target.name,
+                "damage": killzone.damage,
+            },
+        )
+        if not killzone.respawn_on_touch:
+            return
+        respawn = self._active_session_respawn(world) or self._first_active_respawn(world)
+        if respawn is None:
+            event_bus.emit(
+                "killzone_respawn_missing",
+                {
+                    "player": player.name,
+                    "killzone": target.name,
+                    "damage": killzone.damage,
+                    "reason": "no_active_respawn_point",
+                },
+            )
+            return
+        self._move_to_respawn(world, player, respawn)
+
     def _handle_goal(self, event_bus: Any, player: Entity, target: Entity) -> None:
         goal = target.get_component(Goal2D)
         if goal is None or not getattr(goal, "enabled", True):
@@ -164,6 +226,37 @@ class Gameplay2DSemanticSystem:
             if getattr(respawn, "enabled", True) and respawn.active and getattr(transform, "enabled", True):
                 return entity
         return None
+
+    def _respawn_by_id(self, world: World, spawn_id: str) -> Entity | None:
+        wanted = str(spawn_id or "").strip()
+        if not wanted:
+            return None
+        for entity in world.iter_all_entities():
+            if not entity.active:
+                continue
+            respawn = entity.get_component(RespawnPoint2D)
+            transform = entity.get_component(Transform)
+            if respawn is None or transform is None:
+                continue
+            if not (getattr(respawn, "enabled", True) and respawn.active and getattr(transform, "enabled", True)):
+                continue
+            if respawn.spawn_id == wanted:
+                return entity
+        return None
+
+    def _respawn_candidate(self, entity: Entity) -> Entity | None:
+        transform = entity.get_component(Transform)
+        if transform is None or not getattr(transform, "enabled", True):
+            return None
+        return entity
+
+    def _active_session_respawn(self, world: World) -> Entity | None:
+        if self._active_respawn_entity_id is None:
+            return None
+        respawn = world.get_entity(self._active_respawn_entity_id)
+        if respawn is None or not respawn.active:
+            return None
+        return self._respawn_candidate(respawn)
 
     def _move_to_respawn(self, world: World, player: Entity, respawn: Entity) -> None:
         player_transform = player.get_component(Transform)
