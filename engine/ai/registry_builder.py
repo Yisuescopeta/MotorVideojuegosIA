@@ -308,7 +308,7 @@ class CapabilityRegistryBuilder:
                 ],
                 expected_outcome="Selected scene contains Lift_A with Transform, Collider and MovingPlatform2D",
             ),
-            notes="Requires --name for idempotent authoring. Runtime-supported by Gameplay2DSemanticSystem: moves along the serialized path and emits moving_platform_started, moving_platform_reached_point and moving_platform_completed without persisting runtime progress. MovingPlatform2D moves the platform entity, but does not yet carry riders.",
+            notes="Requires --name for idempotent authoring. Runtime-supported by Gameplay2DSemanticSystem: moves along the serialized path, emits moving_platform_started, moving_platform_reached_point and moving_platform_completed, and can carry Player when Player Collider rests on the platform Collider before frame movement. Rider support is minimal, Player-focused, Collider/AABB-based, and does not persist runtime progress. moving_platform_rider_attached, moving_platform_rider_moved and moving_platform_rider_detached are planned, not current public events.",
             tags=["game", "platformer", "authoring"],
         ))
 
@@ -1867,7 +1867,7 @@ class MotorAIBootstrapBuilder:
             "- Use MotorVideojuegosIA through `motor`, `EngineAPI` and serialized scenes/components.",
             "- Do not create an external runtime for this project.",
             "- Do not deliver `run_game.py` or an alternate main loop as the main game.",
-            "- Treat `MovingPlatform2D` as runtime-supported by `Gameplay2DSemanticSystem`: it moves the platform entity along its path and emits movement events during PLAY, but does not yet carry riders or persist runtime progress.",
+            "- Treat `MovingPlatform2D` as runtime-supported by `Gameplay2DSemanticSystem`: it moves the platform entity along its path, emits movement events during PLAY, can carry Player when Player Collider rests on the platform Collider before frame movement, and does not persist runtime progress. Rider support is minimal and Player-focused; `moving_platform_rider_attached`, `moving_platform_rider_moved` and `moving_platform_rider_detached` are planned, not current public events.",
             "- Treat `EnemyPatrol2D` as runtime-supported by `Gameplay2DSemanticSystem`: it moves the entity cyclically between patrol points, emits `enemy_patrol_started` and `enemy_patrol_reached_point`, and on Player contact emits `enemy_touched` with damage and respawn (or `enemy_respawn_missing`). If coexisting with `Hazard2D` on the same entity, it absorbs the interaction to avoid duplicate events.",
             "- Treat `Checkpoint2D`, `KillZone2D` and `LevelBounds2D` as runtime-supported semantic gameplay components: `Checkpoint2D` can activate session respawn compatibility via `RespawnPoint2D`, `KillZone2D` can respawn the player from the active checkpoint or first active `RespawnPoint2D`, and `LevelBounds2D` can emit `level_bounds_exited`, clamp horizontal exits and emit `level_bounds_respawn_missing` when bottom exit has no respawn.",
             "- Treat `motor runtime play/step/stop/events` as stateless per invocation; runtime mutations are inspection-only and are not persisted as authoring state.",

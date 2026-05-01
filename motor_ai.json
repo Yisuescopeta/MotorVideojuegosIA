@@ -1140,7 +1140,7 @@
                 ],
                 "expected_outcome": "Selected scene contains Lift_A with Transform, Collider and MovingPlatform2D"
             },
-            "notes": "Requires --name for idempotent authoring. Runtime-supported by Gameplay2DSemanticSystem: moves along the serialized path and emits moving_platform_started, moving_platform_reached_point and moving_platform_completed without persisting runtime progress. MovingPlatform2D moves the platform entity, but does not yet carry riders.",
+            "notes": "Requires --name for idempotent authoring. Runtime-supported by Gameplay2DSemanticSystem: moves along the serialized path, emits moving_platform_started, moving_platform_reached_point and moving_platform_completed, and can carry Player when Player Collider rests on the platform Collider before frame movement. Rider support is minimal, Player-focused, Collider/AABB-based, and does not persist runtime progress. moving_platform_rider_attached, moving_platform_rider_moved and moving_platform_rider_detached are planned, not current public events.",
             "tags": [
                 "game",
                 "platformer",

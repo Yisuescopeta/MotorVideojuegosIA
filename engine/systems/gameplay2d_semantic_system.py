@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from engine.components.collider import Collider
 from engine.components.gameplay2d import (
     Checkpoint2D,
     Collectible2D,
@@ -93,10 +94,18 @@ class Gameplay2DSemanticSystem:
                 new_x = float(transform.x) + dx * ratio
                 new_y = float(transform.y) + dy * ratio
 
-            if new_x == transform.x and new_y == transform.y:
+            old_x = float(transform.x)
+            old_y = float(transform.y)
+            if new_x == old_x and new_y == old_y:
                 continue
+            riders = self._moving_platform_riders(world, entity)
             transform.x = new_x
             transform.y = new_y
+            delta_x = new_x - old_x
+            delta_y = new_y - old_y
+            for _, rider_transform in riders:
+                rider_transform.x = float(rider_transform.x) + delta_x
+                rider_transform.y = float(rider_transform.y) + delta_y
             world.touch_transform()
             world.touch_physics()
             if not state.get("started"):
@@ -120,6 +129,33 @@ class Gameplay2DSemanticSystem:
                     target_y,
                     event_bus,
                 )
+
+    def _moving_platform_riders(self, world: World, platform_entity: Entity) -> list[tuple[Entity, Transform]]:
+        platform_transform = platform_entity.get_component(Transform)
+        platform_collider = platform_entity.get_component(Collider)
+        if platform_transform is None or platform_collider is None or not getattr(platform_collider, "enabled", True):
+            return []
+
+        platform_left, platform_top, platform_right, _ = platform_collider.get_bounds(
+            float(platform_transform.x),
+            float(platform_transform.y),
+        )
+        riders: list[tuple[Entity, Transform]] = []
+        for entity in world.get_entities_with(Transform, Collider):
+            if int(entity.id) == int(platform_entity.id):
+                continue
+            if not self._is_player(entity):
+                continue
+            transform = entity.get_component(Transform)
+            collider = entity.get_component(Collider)
+            if transform is None or collider is None or not getattr(collider, "enabled", True):
+                continue
+            left, _, right, bottom = collider.get_bounds(float(transform.x), float(transform.y))
+            overlaps_x = left < platform_right and right > platform_left
+            rests_on_top = abs(bottom - platform_top) <= 2.0
+            if overlaps_x and rests_on_top:
+                riders.append((entity, transform))
+        return riders
 
     def update_enemy_patrols(self, world: World, dt: float, event_bus: Any | None) -> None:
         step_seconds = max(0.0, float(dt))

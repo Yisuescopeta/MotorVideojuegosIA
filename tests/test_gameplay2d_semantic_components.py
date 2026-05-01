@@ -543,6 +543,128 @@ class Gameplay2DSemanticRuntimeTests(unittest.TestCase):
             finally:
                 api.shutdown()
 
+    def test_player_on_moving_platform_is_carried_without_persisting_scene(self) -> None:
+        lift = _moving_platform_entity(
+            y=16.0,
+            path=[{"x": 0.0, "y": 16.0}, {"x": 60.0, "y": 16.0}],
+            speed=60.0,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(
+                Path(tmpdir),
+                _runtime_scene_payload([lift], player_x=0.0, player_y=0.0),
+            )
+            before = scene_path.read_text(encoding="utf-8")
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                lift_transform = api.get_entity("Lift_A")["components"]["Transform"]
+                player_transform = api.get_entity("Player")["components"]["Transform"]
+                self.assertGreater(lift_transform["x"], 0.0)
+                self.assertEqual(lift_transform["y"], 16.0)
+                self.assertAlmostEqual(player_transform["x"], lift_transform["x"])
+                self.assertEqual(player_transform["y"], 0.0)
+                self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+            finally:
+                api.shutdown()
+
+    def test_player_beside_moving_platform_is_not_carried(self) -> None:
+        lift = _moving_platform_entity(
+            y=16.0,
+            path=[{"x": 0.0, "y": 16.0}, {"x": 60.0, "y": 16.0}],
+            speed=60.0,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(
+                Path(tmpdir),
+                _runtime_scene_payload([lift], player_x=40.0, player_y=0.0),
+            )
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                player_transform = api.get_entity("Player")["components"]["Transform"]
+                self.assertEqual(player_transform["x"], 40.0)
+                self.assertEqual(player_transform["y"], 0.0)
+            finally:
+                api.shutdown()
+
+    def test_player_on_stationary_moving_platform_is_not_carried(self) -> None:
+        lift = _moving_platform_entity(
+            y=16.0,
+            path=[{"x": 0.0, "y": 16.0}, {"x": 0.0, "y": 16.0}],
+            speed=60.0,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(
+                Path(tmpdir),
+                _runtime_scene_payload([lift], player_x=0.0, player_y=0.0),
+            )
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                player_transform = api.get_entity("Player")["components"]["Transform"]
+                self.assertEqual(player_transform["x"], 0.0)
+                self.assertEqual(player_transform["y"], 0.0)
+            finally:
+                api.shutdown()
+
+    def test_player_on_inactive_moving_platform_is_not_carried(self) -> None:
+        lift = _moving_platform_entity(
+            y=16.0,
+            path=[{"x": 0.0, "y": 16.0}, {"x": 60.0, "y": 16.0}],
+            speed=60.0,
+            start_active=False,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scene_path = _write_project_with_scene(
+                Path(tmpdir),
+                _runtime_scene_payload([lift], player_x=0.0, player_y=0.0),
+            )
+            api = _runtime_api(scene_path, Path(tmpdir))
+            try:
+                api.load_level(scene_path.as_posix())
+                api.play()
+                api.step(1)
+                player_transform = api.get_entity("Player")["components"]["Transform"]
+                self.assertEqual(player_transform["x"], 0.0)
+                self.assertEqual(player_transform["y"], 0.0)
+            finally:
+                api.shutdown()
+
+    def test_moving_platform_does_not_carry_without_player_or_platform_collider(self) -> None:
+        cases = ["player_without_collider", "platform_without_collider"]
+        for case in cases:
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as tmpdir:
+                lift = _moving_platform_entity(
+                    y=16.0,
+                    path=[{"x": 0.0, "y": 16.0}, {"x": 60.0, "y": 16.0}],
+                    speed=60.0,
+                )
+                if case == "platform_without_collider":
+                    lift["components"].pop("Collider")
+                scene = _runtime_scene_payload([lift], player_x=0.0, player_y=0.0)
+                if case == "player_without_collider":
+                    scene["entities"][0]["components"].pop("Collider")
+                scene_path = _write_project_with_scene(Path(tmpdir), scene)
+                api = _runtime_api(scene_path, Path(tmpdir))
+                try:
+                    api.load_level(scene_path.as_posix())
+                    api.play()
+                    api.step(1)
+                    lift_transform = api.get_entity("Lift_A")["components"]["Transform"]
+                    player_transform = api.get_entity("Player")["components"]["Transform"]
+                    self.assertGreater(lift_transform["x"], 0.0)
+                    self.assertEqual(player_transform["x"], 0.0)
+                    self.assertEqual(player_transform["y"], 0.0)
+                finally:
+                    api.shutdown()
+
     def test_player_collectible_overlap_emits_collect_event(self) -> None:
         coin = _entity_payload(
             "Coin",
