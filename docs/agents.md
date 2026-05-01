@@ -147,8 +147,9 @@ guardan la escena serializada y eligen escena por esta regla: activa cargada,
 
 `MovingPlatform2D` debe tratarse como authoring/serializacion data-only con
 runtime support minimo: mueve la entidad por su path y emite eventos durante
-PLAY, pero no transporta riders todavia. `EnemyPatrol2D` tiene runtime support
-semantico via `Gameplay2DSemanticSystem`: patrulla ciclica entre puntos,
+PLAY, y puede transportar al Player cuando esta apoyado encima mediante
+Collider/AABB runtime. Los eventos de rider attach/move/detach quedan planned.
+`EnemyPatrol2D` tiene runtime support semantico via `Gameplay2DSemanticSystem`: patrulla ciclica entre puntos,
 emite `enemy_patrol_started`, `enemy_patrol_reached_point` y al contacto con
 Player emite `enemy_touched` con daño y respawn (o `enemy_respawn_missing` si
 no hay respawn). Si coexiste con `Hazard2D` en la misma entidad,
@@ -195,8 +196,11 @@ eventos no re-emiten tras contactos repetidos hasta la siguiente invocacion.
 `MovingPlatform2D` tiene soporte runtime minimo: durante PLAY mueve la entidad
 por su path, emite `moving_platform_started`,
 `moving_platform_reached_point` y `moving_platform_completed`, y no persiste
-progreso runtime en la escena. MovingPlatform2D moves the platform entity, but
-does not yet carry riders.
+progreso runtime en la escena. Tambien transporta al Player cuando su
+`Collider` esta apoyado encima del `Collider` de la plataforma antes del
+movimiento del frame. Este soporte de riders es minimo, centrado en Player y
+no define todavia eventos publicos `moving_platform_rider_attached`,
+`moving_platform_rider_moved` ni `moving_platform_rider_detached`.
 
 Para UI serializable usa los helpers publicos de `EngineAPI` como
 `create_canvas`, `create_ui_text`, `create_ui_button` y `create_ui_image`.
