@@ -106,7 +106,9 @@ py -m motor ai self-test --project . --profile platformer --json
 py -m motor doctor --project . --json
 py -m motor recipe list --project . --json
 py -m motor recipe show platformer-basic --project . --json
+py -m motor recipe show platformer-advanced --project . --json
 py -m motor recipe run platformer-basic --project . --json
+py -m motor recipe run platformer-advanced --project . --json
 py -m motor runtime step --project . --frames 300 --input "right,jump" --json
 py -m motor game platformer create "Level 1" --project . --json
 py -m motor game platformer add-player --x 100 --y 300 --project . --json
@@ -159,8 +161,10 @@ jugador desde el checkpoint activo o el primer `RespawnPoint2D` activo, y
 `level_bounds_respawn_missing`.
 
 Para workflows comunes, usa recetas IA declarativas con `motor recipe`.
-`platformer-basic` empaqueta el flujo nativo de plataformas, validacion
-`platformer`, compliance estricto y checks runtime headless. `recipe list` y
+`platformer-basic` empaqueta el flujo minimo nativo de plataformas.
+`platformer-advanced` crea una vertical slice con plataforma movil,
+`EnemyPatrol2D`, `Checkpoint2D`, `KillZone2D`, `LevelBounds2D`, camara, goal,
+validacion `platformer`, compliance estricto y `runtime step`. `recipe list` y
 `recipe show` son read-only; `recipe run` ejecuta solo comandos oficiales
 allowlist, sin shell, scripts temporales ni runtime externo, pero si muta el
 `--project` objetivo porque los pasos de authoring guardan escena y estado.

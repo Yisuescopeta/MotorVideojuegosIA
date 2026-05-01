@@ -71,7 +71,7 @@ class RecipeCLITests(unittest.TestCase):
     def tearDown(self) -> None:
         self._temp_dir.cleanup()
 
-    def test_recipe_list_shows_platformer_basic(self) -> None:
+    def test_recipe_list_shows_platformer_recipes(self) -> None:
         result = _run_motor(
             "recipe",
             "list",
@@ -87,6 +87,7 @@ class RecipeCLITests(unittest.TestCase):
         self.assertTrue(payload["success"], payload)
         ids = {recipe["id"] for recipe in payload["data"]["recipes"]}
         self.assertIn("platformer-basic", ids)
+        self.assertIn("platformer-advanced", ids)
 
     def test_recipe_show_returns_steps_and_is_read_only(self) -> None:
         before = {
@@ -121,6 +122,27 @@ class RecipeCLITests(unittest.TestCase):
             if path.is_file()
         }
         self.assertEqual(after, before)
+
+    def test_recipe_show_platformer_advanced_returns_steps(self) -> None:
+        result = _run_motor(
+            "recipe",
+            "show",
+            "platformer-advanced",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            project=self.project,
+            env=self.env,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        payload = _payload(result.stdout)
+        self.assertTrue(payload["success"], payload)
+        recipe = payload["data"]["recipe"]
+        self.assertEqual(recipe["id"], "platformer-advanced")
+        self.assertTrue(recipe["steps"])
+        self.assertEqual(recipe["steps"][0]["command"], ["game", "platformer", "create", "Advanced Platformer"])
+        self.assertTrue(recipe["validation_commands"])
 
     def test_recipe_run_platformer_basic_creates_valid_scene_and_keeps_outside_files(self) -> None:
         result = _run_motor(
@@ -209,6 +231,86 @@ class RecipeCLITests(unittest.TestCase):
 
         self.assertEqual(editor_state.get("active_scene"), "levels/level_1.json")
         self.assertEqual(project_settings.get("startup_scene"), "levels/level_1.json")
+
+    def test_recipe_run_platformer_advanced_creates_native_vertical_slice(self) -> None:
+        result = _run_motor(
+            "recipe",
+            "run",
+            "platformer-advanced",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            project=self.project,
+            env=self.env,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        payload = _payload(result.stdout)
+        self.assertTrue(payload["success"], payload)
+        data = payload["data"]
+        self.assertEqual(data["recipe"], "platformer-advanced")
+        self.assertEqual(data["recipe_id"], "platformer-advanced")
+        self.assertIsNone(data["first_failure"], data)
+        self.assertEqual(len(data["steps"]), 17)
+        self.assertEqual(len(data["commands_executed"]), 17)
+        self.assertTrue(data["generated_scene"])
+        self.assertTrue(data["validations"])
+        self.assertIn("warnings", data)
+        self.assertIn("events", data)
+        self.assertTrue(all(step["success"] for step in data["steps"]))
+
+        scene_path = self.project / "levels" / "advanced_platformer.json"
+        self.assertTrue(scene_path.exists())
+        scene = json.loads(scene_path.read_text(encoding="utf-8"))
+        by_name = {entity["name"]: entity for entity in scene["entities"]}
+        self.assertIn("MovingPlatform2D", by_name["Lift_A"]["components"])
+        self.assertIn("EnemyPatrol2D", by_name["Slime_A"]["components"])
+        self.assertIn("Checkpoint2D", by_name["Checkpoint_A"]["components"])
+        self.assertIn("KillZone2D", by_name["Pit_A"]["components"])
+        self.assertIn("LevelBounds2D", by_name["LevelBounds"]["components"])
+
+        validate = _run_motor(
+            "game",
+            "platformer",
+            "validate",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            project=self.project,
+            env=self.env,
+        )
+        self.assertEqual(validate.returncode, 0, validate.stdout + validate.stderr)
+        self.assertTrue(_payload(validate.stdout)["success"])
+
+        compliance = _run_motor(
+            "ai",
+            "compliance",
+            "--strict",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            project=self.project,
+            env=self.env,
+        )
+        self.assertEqual(compliance.returncode, 0, compliance.stdout + compliance.stderr)
+        compliance_payload = _payload(compliance.stdout)
+        self.assertTrue(compliance_payload["success"], compliance_payload)
+        self.assertTrue(compliance_payload["data"]["strict_pass"], compliance_payload)
+
+        self.assertFalse((self.project / "run_game.py").exists())
+        self.assertFalse(any(path.name == "run_game.py" for path in self.workspace.rglob("*")))
+        self.assertEqual((self.outside / "sentinel.txt").read_text(encoding="utf-8"), "unchanged")
+        self.assertEqual(sorted(path.name for path in self.outside.iterdir()), ["sentinel.txt"])
+
+        for path in self.workspace.rglob("*"):
+            if not path.is_file():
+                continue
+            try:
+                path.relative_to(self.project)
+                continue
+            except ValueError:
+                pass
+            self.assertEqual(path, self.outside / "sentinel.txt")
 
     def test_recipe_run_rejects_non_allowlisted_action(self) -> None:
         fake_recipe = {

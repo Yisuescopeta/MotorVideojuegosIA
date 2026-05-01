@@ -1035,7 +1035,7 @@ class CapabilityRegistryBuilder:
                 api_calls=[
                     {"method": "list_recipes", "args": {}},
                 ],
-                expected_outcome="Returns bundled recipe metadata including platformer-basic",
+                expected_outcome="Returns bundled recipe metadata including platformer-basic and platformer-advanced",
             ),
             notes="Read-only. Recipes are bundled under engine/recipes and are not loaded from arbitrary project files.",
             tags=["recipe", "ai", "workflow", "tooling"],
@@ -1048,9 +1048,9 @@ class CapabilityRegistryBuilder:
             api_methods=["RecipeRegistry.get_recipe"],
             cli_command="motor recipe show <id> [--project <path>]",
             example=CapabilityExample(
-                description="Show the platformer-basic recipe",
+                description="Show the platformer-advanced recipe",
                 api_calls=[
-                    {"method": "get_recipe", "args": {"recipe_id": "platformer-basic"}},
+                    {"method": "get_recipe", "args": {"recipe_id": "platformer-advanced"}},
                 ],
                 expected_outcome="Returns recipe version, expected capabilities, steps and validation commands",
             ),
@@ -1065,11 +1065,11 @@ class CapabilityRegistryBuilder:
             api_methods=["RecipeRunner.run_recipe"],
             cli_command="motor recipe run <id> [--project <path>]",
             example=CapabilityExample(
-                description="Run the platformer-basic recipe",
+                description="Run the platformer-advanced recipe",
                 api_calls=[
-                    {"method": "run_recipe", "args": {"recipe_id": "platformer-basic"}},
+                    {"method": "run_recipe", "args": {"recipe_id": "platformer-advanced"}},
                 ],
-                expected_outcome="Mutates the target project through official authoring commands, then validates a minimal native platformer level",
+                expected_outcome="Mutates the target project through official authoring commands, then validates an advanced native platformer vertical slice",
             ),
             notes="Runs only validated argv-list recipe steps through the official motor CLI in-process; no shell, no temporary scripts and no external runtime. It does mutate the target --project because bundled authoring commands save scene, editor_state and startup_scene changes.",
             tags=["recipe", "ai", "workflow", "tooling", "authoring"],
@@ -1871,7 +1871,7 @@ class MotorAIBootstrapBuilder:
             "- Treat `EnemyPatrol2D` as runtime-supported by `Gameplay2DSemanticSystem`: it moves the entity cyclically between patrol points, emits `enemy_patrol_started` and `enemy_patrol_reached_point`, and on Player contact emits `enemy_touched` with damage and respawn (or `enemy_respawn_missing`). If coexisting with `Hazard2D` on the same entity, it absorbs the interaction to avoid duplicate events.",
             "- Treat `Checkpoint2D`, `KillZone2D` and `LevelBounds2D` as runtime-supported semantic gameplay components: `Checkpoint2D` can activate session respawn compatibility via `RespawnPoint2D`, `KillZone2D` can respawn the player from the active checkpoint or first active `RespawnPoint2D`, and `LevelBounds2D` can emit `level_bounds_exited`, clamp horizontal exits and emit `level_bounds_respawn_missing` when bottom exit has no respawn.",
             "- Treat `motor runtime play/step/stop/events` as stateless per invocation; runtime mutations are inspection-only and are not persisted as authoring state.",
-            "- Treat `motor recipe run` as allowlisted and shell-safe, but mutating for the target `--project`.",
+            "- Treat `motor recipe run` as allowlisted and shell-safe, but mutating for the target `--project`; bundled platformer recipes include `platformer-basic` and `platformer-advanced`.",
             "- Treat `motor ai self-test` as temporary by default under `.motor/tmp`; use `--in-place` only when real project mutation is intended.",
             "",
             "### Quick Workflow",

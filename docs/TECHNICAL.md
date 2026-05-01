@@ -231,9 +231,11 @@ runtime como estado de authoring.
 pertenecen a `experimental/tooling`, no al `core obligatorio`.
 
 `engine/recipes/` contiene recetas IA declarativas versionadas para workflows
-comunes. La primera receta, `platformer-basic`, empaqueta comandos oficiales
-`motor` allowlist para crear, validar y comprobar un nivel minimo de
-plataformas sin shell, scripts temporales ni runtime externo.
+comunes. `platformer-basic` empaqueta comandos oficiales `motor` allowlist para
+crear, validar y comprobar un nivel minimo de plataformas. `platformer-advanced`
+crea una vertical slice nativa con componentes runtime semanticos ya soportados
+(`MovingPlatform2D`, `EnemyPatrol2D`, `Checkpoint2D`, `KillZone2D` y
+`LevelBounds2D`) sin shell, scripts temporales ni runtime externo.
 
 `engine/navigation` mantiene una foundation `grid-first` experimental con
 `NavigationGrid`, `NeighborMode`, `PathRequest`, `PathResult` y una API
