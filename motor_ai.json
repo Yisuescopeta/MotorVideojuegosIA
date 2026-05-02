@@ -843,6 +843,64 @@
             ]
         },
         {
+            "id": "component:edit",
+            "summary": "Edit a property of an existing component",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.edit_component"
+            ],
+            "cli_command": "motor component edit <entity> <component> <property> <value>",
+            "example": {
+                "description": "Move player to x=200",
+                "api_calls": [
+                    {
+                        "method": "edit_component",
+                        "args": {
+                            "entity_name": "Player",
+                            "component": "Transform",
+                            "property": "x",
+                            "value": 200
+                        }
+                    }
+                ],
+                "expected_outcome": "Player's Transform.x is updated to 200"
+            },
+            "notes": "Property names are component-specific. Type conversion is automatic.",
+            "tags": [
+                "component",
+                "authoring"
+            ]
+        },
+        {
+            "id": "component:remove",
+            "summary": "Remove a component from an entity",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.remove_component"
+            ],
+            "cli_command": "motor component remove <entity> <component>",
+            "example": {
+                "description": "Remove the Collider from an entity",
+                "api_calls": [
+                    {
+                        "method": "remove_component",
+                        "args": {
+                            "entity_name": "Player",
+                            "component_name": "Collider"
+                        }
+                    }
+                ],
+                "expected_outcome": "Collider component is removed from Player"
+            },
+            "notes": "Some components (like Transform) are required and cannot be removed. Use canonical component names from the component registry.",
+            "tags": [
+                "component",
+                "authoring"
+            ]
+        },
+        {
             "id": "entity:create",
             "summary": "Create a new entity with optional components",
             "mode": "edit",
@@ -873,6 +931,62 @@
             "tags": [
                 "entity",
                 "authoring"
+            ]
+        },
+        {
+            "id": "entity:delete",
+            "summary": "Remove an entity from the active scene, reparenting children to grandparent",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.delete_entity"
+            ],
+            "cli_command": "motor entity delete <name>",
+            "example": {
+                "description": "Delete the Player entity",
+                "api_calls": [
+                    {
+                        "method": "delete_entity",
+                        "args": {
+                            "name": "Player"
+                        }
+                    }
+                ],
+                "expected_outcome": "Entity 'Player' is removed; any children are reparented to Player's parent (or unparented if Player had no parent). Children preserve their world transform."
+            },
+            "notes": "CHILDREN ARE NOT DELETED - they are reparented to the deleted entity's parent (grandparent). Their local transforms are recalculated to preserve world position. Use remove_entity_subtree for recursive deletion. Cannot be undone automatically.",
+            "tags": [
+                "entity",
+                "authoring"
+            ]
+        },
+        {
+            "id": "entity:list",
+            "summary": "List all entities in the active scene, optionally filtered",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.list_entities"
+            ],
+            "cli_command": "motor entity list [--tag <tag>] [--layer <layer>] [--active-only]",
+            "example": {
+                "description": "List all active entities with the 'Enemy' tag",
+                "api_calls": [
+                    {
+                        "method": "list_entities",
+                        "args": {
+                            "tag": "Enemy",
+                            "active": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns list of EntityData for matching entities"
+            },
+            "notes": "Filtering is optional. Returns empty list if no entities match.",
+            "tags": [
+                "entity",
+                "query",
+                "runtime"
             ]
         },
         {
@@ -1445,6 +1559,37 @@
             "tags": [
                 "introspection",
                 "diagnostics"
+            ]
+        },
+        {
+            "id": "physics:query:aabb",
+            "summary": "Query physics entities within an axis-aligned bounding box",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.query_physics_aabb"
+            ],
+            "cli_command": "motor physics query aabb <left> <top> <right> <bottom>",
+            "example": {
+                "description": "Find entities in region (100,100) to (300,300)",
+                "api_calls": [
+                    {
+                        "method": "query_physics_aabb",
+                        "args": {
+                            "left": 100,
+                            "top": 100,
+                            "right": 300,
+                            "bottom": 300
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns list of entities with colliders in the region"
+            },
+            "notes": "Uses active physics backend. Results include entity names and collision data.",
+            "tags": [
+                "physics",
+                "query",
+                "collision"
             ]
         },
         {
@@ -2133,120 +2278,6 @@
             ]
         },
         {
-            "id": "component:edit",
-            "summary": "Edit a property of an existing component",
-            "mode": "edit",
-            "status": "planned",
-            "api_methods": [
-                "AuthoringAPI.edit_component"
-            ],
-            "cli_command": "motor component edit <entity> <component> <property> <value>",
-            "example": {
-                "description": "Move player to x=200",
-                "api_calls": [
-                    {
-                        "method": "edit_component",
-                        "args": {
-                            "entity_name": "Player",
-                            "component": "Transform",
-                            "property": "x",
-                            "value": 200
-                        }
-                    }
-                ],
-                "expected_outcome": "Player's Transform.x is updated to 200"
-            },
-            "notes": "Property names are component-specific. Type conversion is automatic.",
-            "tags": [
-                "component",
-                "authoring"
-            ]
-        },
-        {
-            "id": "component:remove",
-            "summary": "Remove a component from an entity",
-            "mode": "edit",
-            "status": "planned",
-            "api_methods": [
-                "AuthoringAPI.remove_component"
-            ],
-            "cli_command": "motor component remove <entity> <component>",
-            "example": {
-                "description": "Remove the Collider from an entity",
-                "api_calls": [
-                    {
-                        "method": "remove_component",
-                        "args": {
-                            "entity_name": "Player",
-                            "component_name": "Collider"
-                        }
-                    }
-                ],
-                "expected_outcome": "Collider component is removed from Player"
-            },
-            "notes": "Some components (like Transform) are required and cannot be removed. Use canonical component names from the component registry.",
-            "tags": [
-                "component",
-                "authoring"
-            ]
-        },
-        {
-            "id": "entity:delete",
-            "summary": "Remove an entity from the active scene, reparenting children to grandparent",
-            "mode": "edit",
-            "status": "planned",
-            "api_methods": [
-                "AuthoringAPI.delete_entity"
-            ],
-            "cli_command": "motor entity delete <name>",
-            "example": {
-                "description": "Delete the Player entity",
-                "api_calls": [
-                    {
-                        "method": "delete_entity",
-                        "args": {
-                            "name": "Player"
-                        }
-                    }
-                ],
-                "expected_outcome": "Entity 'Player' is removed; any children are reparented to Player's parent (or unparented if Player had no parent). Children preserve their world transform."
-            },
-            "notes": "CHILDREN ARE NOT DELETED - they are reparented to the deleted entity's parent (grandparent). Their local transforms are recalculated to preserve world position. Use remove_entity_subtree for recursive deletion. Cannot be undone automatically.",
-            "tags": [
-                "entity",
-                "authoring"
-            ]
-        },
-        {
-            "id": "entity:list",
-            "summary": "List all entities in the active scene, optionally filtered",
-            "mode": "both",
-            "status": "planned",
-            "api_methods": [
-                "RuntimeAPI.list_entities"
-            ],
-            "cli_command": "motor entity list [--tag <tag>] [--layer <layer>] [--active-only]",
-            "example": {
-                "description": "List all active entities with the 'Enemy' tag",
-                "api_calls": [
-                    {
-                        "method": "list_entities",
-                        "args": {
-                            "tag": "Enemy",
-                            "active": true
-                        }
-                    }
-                ],
-                "expected_outcome": "Returns list of EntityData for matching entities"
-            },
-            "notes": "Filtering is optional. Returns empty list if no entities match.",
-            "tags": [
-                "entity",
-                "query",
-                "runtime"
-            ]
-        },
-        {
             "id": "entity:parent",
             "summary": "Set or change an entity's parent for hierarchical transforms",
             "mode": "edit",
@@ -2351,37 +2382,6 @@
             "tags": [
                 "physics",
                 "query"
-            ]
-        },
-        {
-            "id": "physics:query:aabb",
-            "summary": "Query physics entities within an axis-aligned bounding box",
-            "mode": "both",
-            "status": "planned",
-            "api_methods": [
-                "RuntimeAPI.query_physics_aabb"
-            ],
-            "cli_command": "motor physics query aabb <left> <top> <right> <bottom>",
-            "example": {
-                "description": "Find entities in region (100,100) to (300,300)",
-                "api_calls": [
-                    {
-                        "method": "query_physics_aabb",
-                        "args": {
-                            "left": 100,
-                            "top": 100,
-                            "right": 300,
-                            "bottom": 300
-                        }
-                    }
-                ],
-                "expected_outcome": "Returns list of entities with colliders in the region"
-            },
-            "notes": "Uses active physics backend. Results include entity names and collision data.",
-            "tags": [
-                "physics",
-                "query",
-                "collision"
             ]
         },
         {
@@ -2576,8 +2576,8 @@
         }
     ],
     "capability_counts": {
-        "implemented": 67,
-        "planned": 19,
+        "implemented": 72,
+        "planned": 14,
         "total": 86
     },
     "project": {

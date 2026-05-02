@@ -1624,15 +1624,9 @@ class CapabilityRegistryBuilder:
         "scene:flow:set_next",
         "scene:flow:load_next",
 
-        # Entity operations beyond create (no CLI commands exist)
-        "entity:delete",
+        # Entity hierarchy operation (no CLI command exists)
         "entity:parent",
-        "entity:list",
         "introspect:entity",  # motor entity inspect not in parser
-
-        # Component operations beyond add (no CLI commands exist)
-        "component:edit",
-        "component:remove",
 
         # Asset operations beyond list/slice (no CLI commands exist)
         "asset:find",
@@ -1647,8 +1641,7 @@ class CapabilityRegistryBuilder:
         "runtime:undo",
         "runtime:redo",
 
-        # Physics operations (no CLI commands exist)
-        "physics:query:aabb",
+        # Physics operations beyond AABB query (no CLI commands exist)
         "physics:query:ray",
         "physics:backend:list",
 

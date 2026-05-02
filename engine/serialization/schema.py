@@ -13,6 +13,7 @@ CURRENT_PREFAB_SCHEMA_VERSION = 2
 SUPPORTED_RULE_ACTIONS = {
     "set_animation",
     "set_position",
+    "spawn_entity",
     "destroy_entity",
     "emit_event",
     "log_message",
@@ -1494,6 +1495,13 @@ def _validate_rule_action(action: Any, *, path: str) -> list[str]:
     elif action_name == "destroy_entity":
         if not str(payload.get("entity", "")).strip():
             errors.append(f"{path}.entity: expected non-empty string")
+    elif action_name == "spawn_entity":
+        if not str(payload.get("name", "")).strip():
+            errors.append(f"{path}.name: expected non-empty string")
+        if "x" in payload and payload.get("x") is not None:
+            _expect_number(payload.get("x"), path=f"{path}.x", errors=errors)
+        if "y" in payload and payload.get("y") is not None:
+            _expect_number(payload.get("y"), path=f"{path}.y", errors=errors)
     elif action_name == "emit_event":
         if not str(payload.get("event", "")).strip():
             errors.append(f"{path}.event: expected non-empty string")

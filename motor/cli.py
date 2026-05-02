@@ -86,8 +86,13 @@ from motor.cli_core import (
     cmd_runtime_entities,
     cmd_runtime_inspect,
     cmd_runtime_events,
+    cmd_physics_query_aabb,
     cmd_entity_create,
+    cmd_entity_delete,
+    cmd_entity_list,
     cmd_component_add,
+    cmd_component_edit,
+    cmd_component_remove,
     cmd_prefab_create,
     cmd_prefab_instantiate,
     cmd_prefab_unpack,
@@ -155,8 +160,12 @@ AI-Facing Commands:
   runtime stop              Stop runtime in the current stateless process
   
   entity create <name>      Create entity in active scene
+  entity list               List entities in active scene
+  entity delete <name>      Delete entity from active scene
   
   component add <e> <c>     Add component to entity
+  component edit <e> <c> <p> <v>  Edit component property
+  component remove <e> <c>  Remove component from entity
 
   prefab create <e> <p>     Save entity subtree as prefab
   prefab instantiate <p>    Instantiate prefab in active scene
@@ -775,6 +784,33 @@ Documentation:
     )
     runtime_events_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
+    # === physics ===
+    physics_parser = subparsers.add_parser(
+        "physics",
+        help="Read-only physics queries",
+    )
+    physics_subparsers = physics_parser.add_subparsers(dest="physics_subcommand", required=True)
+
+    physics_query_parser = physics_subparsers.add_parser(
+        "query",
+        help="Query active runtime physics state",
+    )
+    physics_query_subparsers = physics_query_parser.add_subparsers(dest="physics_query_subcommand", required=True)
+
+    physics_query_aabb_parser = physics_query_subparsers.add_parser(
+        "aabb",
+        help="Query colliders overlapping an axis-aligned bounding box",
+    )
+    physics_query_aabb_parser.add_argument("left", type=float, help="AABB left")
+    physics_query_aabb_parser.add_argument("top", type=float, help="AABB top")
+    physics_query_aabb_parser.add_argument("right", type=float, help="AABB right")
+    physics_query_aabb_parser.add_argument("bottom", type=float, help="AABB bottom")
+    physics_query_aabb_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    physics_query_aabb_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
     # === entity ===
     entity_parser = subparsers.add_parser(
         "entity",
@@ -796,6 +832,30 @@ Documentation:
         help='Components JSON (e.g., "{Transform:{x:100}}")'
     )
     entity_create_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    entity_list_parser = entity_subparsers.add_parser(
+        "list",
+        help="List entities in the active scene",
+    )
+    entity_list_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    entity_list_parser.add_argument("--tag", default=None, help="Filter by tag")
+    entity_list_parser.add_argument("--layer", default=None, help="Filter by layer")
+    entity_list_parser.add_argument("--active-only", action="store_true", help="Only active entities")
+    entity_list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    entity_delete_parser = entity_subparsers.add_parser(
+        "delete",
+        help="Delete an entity from the active scene",
+    )
+    entity_delete_parser.add_argument("name", help="Entity name")
+    entity_delete_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    entity_delete_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === component ===
     component_parser = subparsers.add_parser(
@@ -819,6 +879,32 @@ Documentation:
         help='Component data JSON'
     )
     component_add_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    component_edit_parser = component_subparsers.add_parser(
+        "edit",
+        help="Edit a component property",
+    )
+    component_edit_parser.add_argument("entity", help="Entity name")
+    component_edit_parser.add_argument("component", help="Component name")
+    component_edit_parser.add_argument("property", help="Property name")
+    component_edit_parser.add_argument("value", help="JSON value or string literal")
+    component_edit_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    component_edit_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    component_remove_parser = component_subparsers.add_parser(
+        "remove",
+        help="Remove a component from an entity",
+    )
+    component_remove_parser.add_argument("entity", help="Entity name")
+    component_remove_parser.add_argument("component", help="Component name")
+    component_remove_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    component_remove_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === prefab ===
     prefab_parser = subparsers.add_parser(
@@ -1593,6 +1679,18 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 json_output=parsed.json,
             )
 
+    # === physics ===
+    elif parsed.command == "physics":
+        if parsed.physics_subcommand == "query" and parsed.physics_query_subcommand == "aabb":
+            return cmd_physics_query_aabb(
+                project_path=Path(parsed.project_root).resolve(),
+                left=parsed.left,
+                top=parsed.top,
+                right=parsed.right,
+                bottom=parsed.bottom,
+                json_output=parsed.json,
+            )
+
     # === entity ===
     elif parsed.command == "entity":
         if parsed.entity_subcommand == "create":
@@ -1603,6 +1701,20 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 project_path=Path(parsed.project_root).resolve(),
                 name=parsed.name,
                 components=components,
+                json_output=parsed.json,
+            )
+        elif parsed.entity_subcommand == "list":
+            return cmd_entity_list(
+                project_path=Path(parsed.project_root).resolve(),
+                tag=parsed.tag,
+                layer=parsed.layer,
+                active_only=parsed.active_only,
+                json_output=parsed.json,
+            )
+        elif parsed.entity_subcommand == "delete":
+            return cmd_entity_delete(
+                project_path=Path(parsed.project_root).resolve(),
+                name=parsed.name,
                 json_output=parsed.json,
             )
     
@@ -1617,6 +1729,26 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 entity_name=parsed.entity,
                 component_name=parsed.component,
                 data=data,
+                json_output=parsed.json,
+            )
+        elif parsed.component_subcommand == "edit":
+            try:
+                value = json.loads(parsed.value)
+            except json.JSONDecodeError:
+                value = parsed.value
+            return cmd_component_edit(
+                project_path=Path(parsed.project_root).resolve(),
+                entity_name=parsed.entity,
+                component_name=parsed.component,
+                property_name=parsed.property,
+                value=value,
+                json_output=parsed.json,
+            )
+        elif parsed.component_subcommand == "remove":
+            return cmd_component_remove(
+                project_path=Path(parsed.project_root).resolve(),
+                entity_name=parsed.entity,
+                component_name=parsed.component,
                 json_output=parsed.json,
             )
 

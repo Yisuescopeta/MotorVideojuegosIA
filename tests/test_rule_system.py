@@ -54,6 +54,7 @@ class RuleSystemTests(unittest.TestCase):
                     "event": "tick",
                     "do": [
                         {"action": "set_position", "entity": "Player", "x": 10, "y": 20},
+                        {"action": "spawn_entity", "name": "Enemy", "x": 4, "y": 5},
                         {"action": "destroy_entity", "entity": "Enemy"},
                     ],
                 }
@@ -71,6 +72,10 @@ class RuleSystemTests(unittest.TestCase):
         )
         self.assertIn(
             "[WARNING] RuleSystem: accion 'destroy_entity' ignorada porque no hay world enlazado",
+            printed_lines,
+        )
+        self.assertIn(
+            "[WARNING] RuleSystem: accion 'spawn_entity' ignorada porque no hay world enlazado",
             printed_lines,
         )
 
@@ -110,6 +115,57 @@ class RuleSystemTests(unittest.TestCase):
         self.assertEqual(transform.x, 10.0)
         self.assertEqual(transform.y, 20.0)
         self.assertEqual(animator.current_state, "hit")
+
+    def test_spawn_entity_creates_runtime_entity_with_transform(self) -> None:
+        world = World()
+        self.rule_system.set_world(world)
+        self.rule_system.load_rules(
+            [
+                {
+                    "event": "spawn",
+                    "do": [
+                        {"action": "spawn_entity", "name": "Enemy", "x": 100, "y": 50},
+                    ],
+                }
+            ]
+        )
+
+        self.event_bus.emit("spawn", {})
+
+        enemy = world.get_entity_by_name("Enemy")
+        self.assertIsNotNone(enemy)
+        transform = enemy.get_component(Transform) if enemy is not None else None
+        self.assertIsNotNone(transform)
+        self.assertEqual(transform.x, 100.0)
+        self.assertEqual(transform.y, 50.0)
+
+    def test_spawn_entity_duplicate_name_warns_and_does_not_replace(self) -> None:
+        world = World()
+        existing = world.create_entity("Enemy")
+        existing.add_component(Transform(x=1, y=2))
+        self.rule_system.set_world(world)
+        self.rule_system.load_rules(
+            [
+                {
+                    "event": "spawn",
+                    "do": [
+                        {"action": "spawn_entity", "name": "Enemy", "x": 100, "y": 50},
+                    ],
+                }
+            ]
+        )
+
+        with patch("builtins.print") as print_mock:
+            self.event_bus.emit("spawn", {})
+
+        enemy = world.get_entity_by_name("Enemy")
+        self.assertIs(enemy, existing)
+        transform = enemy.get_component(Transform) if enemy is not None else None
+        self.assertIsNotNone(transform)
+        self.assertEqual(transform.x, 1)
+        self.assertEqual(transform.y, 2)
+        printed_lines = [call.args[0] for call in print_mock.call_args_list if call.args]
+        self.assertIn("[WARNING] spawn_entity: entidad 'Enemy' ya existe", printed_lines)
 
     def test_bootstrap_smoke_supports_rule_system_without_world(self) -> None:
         game = Game()

@@ -75,7 +75,8 @@ El JSON usa la envoltura estandar `{ "success": bool, "message": str, "data": ob
 - `strict_pass`: `false` si strict detecta runtime externo o no hay escena nativa valida.
 - `external_runtime_detected`: `true` si encuentra senales sospechosas.
 - `problems`: fallos de contrato o strict.
-- `warnings`: bootstrap faltante/regenerable, componentes desconocidos y sospechas en modo normal.
+- `warnings`: bootstrap faltante/regenerable, componentes desconocidos, sospechas
+  en modo normal y loops propios en scripts referenciados por `ScriptBehaviour`.
 - `recommended_next_actions`: acciones concretas para volver al flujo nativo.
 
 Checks principales:
@@ -106,6 +107,8 @@ Reglas adicionales del escaneo strict:
 - al evaluar este repo del motor, proyectos anidados bajo `projects/` con su
   propio `project.json` se tratan como roots separados y no bloquean el
   compliance del repo principal.
+- strict avisa si un `ScriptBehaviour` de la escena activa referencia un script
+  con loops propios como `while True`, sin marcarlo como runtime externo.
 
 ### `motor ai self-test`
 
@@ -596,6 +599,21 @@ semanticos 2D observables incluyen `checkpoint_reached`, `killzone_touched` y
 `killzone_respawn_missing` cuando hay contactos entre `Player` y esos
 componentes.
 
+## Fisica
+
+### `motor physics query aabb <left> <top> <right> <bottom>`
+
+Ejecuta una consulta AABB read-only sobre la escena activa en un proceso
+runtime headless stateless. Internamente carga la escena por la ruta oficial,
+ejecuta `PLAY -> STEP(1) -> STOP`, llama `EngineAPI.query_physics_aabb` y no
+guarda mutaciones runtime como authoring state.
+
+```bash
+py -m motor physics query aabb 0 -20 40 20 --project . --json
+```
+
+El JSON incluye `hits`, `count`, `query` y `scene`.
+
 ## Entidades
 
 ### `motor entity create <name>`
@@ -610,6 +628,28 @@ py -m motor entity create Player --components '{"Transform":{"x":100,"y":200}}' 
 
 El comando guarda automaticamente la escena despues de crear la entidad.
 
+### `motor entity list`
+
+Lista entidades de la escena activa, con filtros opcionales.
+
+```bash
+py -m motor entity list --project . --json
+py -m motor entity list --tag Enemy --active-only --project . --json
+```
+
+El JSON incluye `entities`, `count`, `filters` y metadatos de `scene`.
+
+### `motor entity delete <name>`
+
+Elimina una entidad de la escena activa usando `EngineAPI.delete_entity` y
+guarda la escena. Los hijos siguen la semantica de jerarquia existente:
+se reasignan al padre de la entidad eliminada y conservan transformacion de
+mundo cuando hay `Transform`.
+
+```bash
+py -m motor entity delete Enemy_A --project . --json
+```
+
 ## Componentes
 
 ### `motor component add <entity> <component>`
@@ -623,6 +663,27 @@ py -m motor component add Player Animator --data '{"enabled":true,"speed":1.0}' 
 
 El nombre de componente debe estar registrado en
 `engine/levels/component_registry.py`.
+
+### `motor component edit <entity> <component> <property> <value>`
+
+Edita una propiedad de componente mediante `EngineAPI.edit_component` y guarda
+la escena. `<value>` se interpreta primero como JSON; si no es JSON valido, se
+usa como string literal.
+
+```bash
+py -m motor component edit Player Transform x 200 --project . --json
+py -m motor component edit Player Transform enabled false --project . --json
+py -m motor component edit Player Sprite asset_path assets/player.png --project . --json
+```
+
+### `motor component remove <entity> <component>`
+
+Elimina un componente de una entidad mediante `EngineAPI.remove_component` y
+guarda la escena.
+
+```bash
+py -m motor component remove Player Sprite --project . --json
+```
 
 ## Prefabs
 
@@ -913,10 +974,9 @@ tratarse como comandos CLI disponibles si `motor/cli.py` no las expone.
 
 Ejemplos actuales de capacidades planificadas sin parser publico incluyen:
 
-- `entity delete/list/parent`
-- `component edit/remove`
-- runtime `play/stop/step/undo/redo`
-- queries de fisica desde CLI
+- `entity parent`
+- runtime `undo/redo`
+- `physics query ray` y `physics backend list`
 - scene flow desde CLI
 
 Para esas operaciones, usa `EngineAPI` programaticamente solo si el metodo esta

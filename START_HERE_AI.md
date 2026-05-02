@@ -174,10 +174,14 @@ The entries below are available now and are safe to use from the CLI.
 ### Entity Operations
 
 - `entity:create`: Create a new entity with optional components
+- `entity:delete`: Remove an entity from the active scene, reparenting children to grandparent
+- `entity:list`: List all entities in the active scene, optionally filtered
 
 ### Component Operations
 
 - `component:add`: Add a component to an existing entity
+- `component:edit`: Edit a property of an existing component
+- `component:remove`: Remove a component from an entity
 
 ### Asset Management
 
@@ -259,6 +263,10 @@ The entries below are available now and are safe to use from the CLI.
 - `runtime:step`: Run PLAY -> STEP -> STOP headlessly for N frames, optionally with simulated InputMap actions
 - `runtime:stop`: Stop runtime in the current stateless headless process
 
+### Physics
+
+- `physics:query:aabb`: Query physics entities within an axis-aligned bounding box
+
 ### Introspection
 
 - `introspect:capabilities`: Query this capability registry itself
@@ -276,15 +284,10 @@ and should not be attempted until they are marked as `implemented`.
 | `asset:find` | Find assets by kind, importer, or extension |
 | `asset:metadata:get` | Get metadata for a specific asset |
 | `asset:refresh` | Refresh the asset catalog and detect changes |
-| `component:edit` | Edit a property of an existing component |
-| `component:remove` | Remove a component from an entity |
-| `entity:delete` | Remove an entity from the active scene, reparenting children to grandparent |
-| `entity:list` | List all entities in the active scene, optionally filtered |
 | `entity:parent` | Set or change an entity's parent for hierarchical transforms |
 | `introspect:entity` | Get full data for a specific entity |
 | `introspect:status` | Get engine status including FPS, entity count, time |
 | `physics:backend:list` | List available physics backends and their status |
-| `physics:query:aabb` | Query physics entities within an axis-aligned bounding box |
 | `physics:query:ray` | Cast a ray and find intersecting physics bodies |
 | `project:editor_state` | Get or set editor state including recent assets and last scene |
 | `project:open` | Open a different project and load its startup scene |
