@@ -709,17 +709,14 @@ def _compact_workflows_from_registry() -> List[Dict[str, Any]]:
 
 def cmd_ai_start(project_path: Path, json_output: bool) -> int:
     """Return the compact AI entrypoint contract for a project."""
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
 
-        project_service = ProjectService(
-            project_root=project_path,
-            auto_ensure=False,
-            read_only=True,
-        )
-        manifest = project_service.manifest.to_dict()
-        editor_state = project_service.load_editor_state()
-        scenes = project_service.list_project_scenes()
+        api = _init_engine(project_path, auto_ensure_project=False, read_only=True)
+        manifest = api.get_project_manifest()
+        editor_state = api.get_editor_state()
+        scenes = api.list_project_scenes()
 
         active_scene = str(editor_state.get("active_scene", "") or "").strip()
         last_scene = str(editor_state.get("last_scene", "") or "").strip()
@@ -789,6 +786,12 @@ def cmd_ai_start(project_path: Path, json_output: bool) -> int:
         return _output(False, exc.message, None, json_output)
     except Exception as exc:
         return _output(False, f"Failed to load AI start contract: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_ai_compliance(project_path: Path, strict: bool, json_output: bool) -> int:
@@ -2400,7 +2403,7 @@ def cmd_slices_list(project_path: Path, asset_path: str, json_output: bool) -> i
         _ensure_project(project_path)
         api = _init_engine(project_path)
 
-        slices = api.list_asset_slices(asset_path) if api.asset_service else []
+        slices = api.list_asset_slices(asset_path)
 
         data = {
             "asset_path": asset_path,
@@ -2828,23 +2831,19 @@ def cmd_animator_remove_state(
 def cmd_project_bootstrap_ai(project_path: Path, json_output: bool) -> int:
     """Generate AI bootstrap files (motor_ai.json and START_HERE_AI.md).
 
-    Delegates to ProjectService for single source of truth.
+    Delegates to EngineAPI public surface and AI registry.
     Uses portable relative paths for commit-friendly output.
     """
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
 
         from engine.ai import get_default_registry
-        from engine.project.project_service import ProjectService
 
-        # Initialize ProjectService (without auto_ensure to avoid side effects)
-        project_service = ProjectService(project_root=project_path, auto_ensure=False)
+        api = _init_engine(project_path, auto_ensure_project=False)
 
-        # Delegate to the service layer - single source of truth for bootstrap structure
-        # migrate_project_bootstrap loads the manifest and calls generate_ai_bootstrap
-        motor_ai_data = project_service.migrate_project_bootstrap(project_path)
+        motor_ai_data = api.migrate_project_bootstrap(str(project_path))
 
-        # Get registry for capability count
         registry = get_default_registry()
 
         data = {
@@ -2864,6 +2863,12 @@ def cmd_project_bootstrap_ai(project_path: Path, json_output: bool) -> int:
         return _output(False, exc.message, None, json_output)
     except Exception as exc:
         return _output(False, f"Failed to generate AI bootstrap files: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_recipe_list(project_path: Path, json_output: bool) -> int:

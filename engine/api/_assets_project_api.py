@@ -133,6 +133,21 @@ class AssetsProjectAPI(EngineAPIComponent):
         self.project_service.save_project_settings(settings)
         return self.ok("Startup scene updated", {"startup_scene": settings["startup_scene"]})
 
+    def migrate_project_bootstrap(self, project_root: Optional[str] = None) -> Dict[str, Any]:
+        """Generate AI bootstrap files (motor_ai.json and START_HERE_AI.md).
+
+        Args:
+            project_root: Optional project root path override.
+
+        Returns:
+            Dictionary with motor_ai.json data.
+        """
+        if self.project_service is None:
+            return {}
+        from pathlib import Path
+        root = Path(project_root) if project_root else None
+        return self.project_service.migrate_project_bootstrap(root)
+
     def run_ai_compliance(self, strict: bool = False) -> Dict[str, Any]:
         """Run AI compliance checks on the current project.
 
