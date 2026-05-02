@@ -159,7 +159,7 @@ class EngineAPI:
             print(f"[WARNING] Box2D backend unavailable: {exc}")
 
     @classmethod
-    def from_runtime(cls, game: Any, scene_manager: SceneManager, project_service: ProjectService) -> "EngineAPI":
+    def from_runtime(cls, game: HeadlessGame, scene_manager: SceneManager, project_service: ProjectService) -> "EngineAPI":
         """Experimental/internal tooling helper over an already running editor/runtime.
 
         Use this only from editor/tooling adapters that need the public facade over
@@ -174,7 +174,7 @@ class EngineAPI:
             project_service=project_service,
         )
 
-    def attach_runtime(self, game: Any, scene_manager: SceneManager, project_service: ProjectService) -> None:
+    def attach_runtime(self, game: HeadlessGame, scene_manager: SceneManager, project_service: ProjectService) -> None:
         from engine.assets.asset_service import AssetService
 
         self.game = game
@@ -185,7 +185,7 @@ class EngineAPI:
             self.game.set_project_service(project_service)
         self._refresh_contracts()
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__(self, name: str) -> Any:  # Delegación dinámica a sub-APIs; el tipo lo determina el delegate
         if name.startswith("_"):
             raise AttributeError(name)
         for delegate in getattr(self, "_delegates", ()):

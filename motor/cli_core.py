@@ -1365,7 +1365,7 @@ def cmd_doctor(project_path: Path, json_output: bool) -> int:
 
         # Check 7: Can list scenes
         try:
-            scenes = api.project_service.list_project_scenes() if api.project_service else []
+            scenes = api.list_project_scenes()
             checks["can_list_scenes"] = True
             checks["scene_count"] = len(scenes)
         except Exception as exc:
@@ -1374,7 +1374,7 @@ def cmd_doctor(project_path: Path, json_output: bool) -> int:
 
         # Check 8: Can list assets
         try:
-            assets = api.project_service.list_assets() if api.project_service else []
+            assets = api.list_project_assets()
             checks["can_list_assets"] = True
             checks["asset_count"] = len(assets)
         except Exception as exc:
@@ -1481,7 +1481,7 @@ def cmd_scene_list(project_path: Path, json_output: bool) -> int:
         _ensure_project(project_path)
         api = _init_engine(project_path)
 
-        scenes = api.project_service.list_project_scenes() if api.project_service else []
+        scenes = api.list_project_scenes()
 
         data = {
             "count": len(scenes),
@@ -2361,7 +2361,7 @@ def cmd_assets_list(project_path: Path, search: str, json_output: bool) -> int:
         _ensure_project(project_path)
         api = _init_engine(project_path)
 
-        assets = api.asset_service.list_assets(search=search) if api.asset_service else []
+        assets = api.list_project_assets(search=search)
 
         data = {
             "count": len(assets),

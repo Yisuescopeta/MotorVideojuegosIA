@@ -4,10 +4,13 @@ engine/components/sprite.py - Componente de renderizado de sprites.
 
 from __future__ import annotations
 
-from typing import Any, Tuple
+from typing import Optional, Tuple, Union
 
 from engine.assets.asset_reference import build_asset_reference, clone_asset_reference, normalize_asset_reference
 from engine.ecs.component import Component
+
+# Tipo que acepta normalize_asset_reference: str, dict con path/guid, o None
+_AssetRefInput = Union[str, dict[str, str], None]
 
 
 class Sprite(Component):
@@ -16,7 +19,7 @@ class Sprite(Component):
     def __init__(
         self,
         texture_path: str = "",
-        texture: Any = None,
+        texture: _AssetRefInput = None,
         width: int = 0,
         height: int = 0,
         origin_x: float = 0.5,
@@ -41,11 +44,11 @@ class Sprite(Component):
         return self._tint
 
     @tint.setter
-    def tint(self, value: Any) -> None:
+    def tint(self, value: Union[Tuple[int, ...], list[int]]) -> None:
         self._tint = self._clamp_tint(value)
 
     @staticmethod
-    def _clamp_tint(value: Any) -> Tuple[int, int, int, int]:
+    def _clamp_tint(value: Union[Tuple[int, ...], list[int], object]) -> Tuple[int, int, int, int]:
         from engine.editor.console_panel import log_warn
 
         if not isinstance(value, (tuple, list)):
@@ -67,11 +70,11 @@ class Sprite(Component):
     def get_texture_reference(self) -> dict[str, str]:
         return clone_asset_reference(self.texture)
 
-    def sync_texture_reference(self, reference: Any) -> None:
+    def sync_texture_reference(self, reference: _AssetRefInput) -> None:
         self.texture = normalize_asset_reference(reference)
         self.texture_path = self.texture.get("path", "")
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "enabled": self.enabled,
             "texture": self.get_texture_reference(),
@@ -86,7 +89,7 @@ class Sprite(Component):
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "Sprite":
+    def from_dict(cls, data: dict[str, object]) -> "Sprite":
         tint = data.get("tint", [255, 255, 255, 255])
         texture_ref = normalize_asset_reference(data.get("texture"))
         texture_path = data.get("texture_path", "")

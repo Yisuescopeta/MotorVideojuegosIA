@@ -21,8 +21,6 @@ EJEMPLO DE USO:
             return {"x": self.x, "y": self.y}
 """
 
-from typing import Any
-
 
 class Component:
     """
@@ -37,16 +35,15 @@ class Component:
     - Implementar from_dict() para deserialización
     """
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         """
         Serializa el componente a un diccionario.
 
         Returns:
             Diccionario con todos los datos del componente.
-            Las claves deben ser strings, los valores tipos básicos.
+            Las claves deben ser strings, los valores tipos básicos serializables.
         """
-        # Implementación por defecto: retorna todos los atributos públicos
-        data = {
+        data: dict[str, object] = {
             key: value
             for key, value in self.__dict__.items()
             if not key.startswith("_")
@@ -55,7 +52,7 @@ class Component:
         return data
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "Component":
+    def from_dict(cls, data: dict[str, object]) -> "Component":
         """
         Crea una instancia del componente desde un diccionario.
 

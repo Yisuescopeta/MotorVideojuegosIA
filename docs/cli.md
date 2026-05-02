@@ -472,6 +472,32 @@ Guarda la escena activa en su ruta fuente.
 py -m motor scene save --project . --json
 ```
 
+### `motor scene flow next`
+
+Carga la siguiente escena en el flujo de escenas definido por `SceneLink`.
+
+```bash
+py -m motor scene flow next --project . --json
+```
+
+### `motor scene flow menu`
+
+Carga la escena de menu definida en el flujo de escenas.
+
+```bash
+py -m motor scene flow menu --project . --json
+```
+
+### `motor scene flow set-link <source> <target>`
+
+Establece un enlace de flujo entre dos escenas. `--entity` opcional para
+vincular a una entidad con `SceneLink`.
+
+```bash
+py -m motor scene flow set-link levels/level1.json levels/level2.json --project . --json
+py -m motor scene flow set-link levels/level1.json levels/menu.json --entity Doorway --project . --json
+```
+
 ## Runtime headless
 
 Los comandos `runtime` usan la fachada publica `EngineAPI` dentro del proceso
@@ -600,6 +626,22 @@ semanticos 2D observables incluyen `checkpoint_reached`, `killzone_touched` y
 `killzone_respawn_missing` cuando hay contactos entre `Player` y esos
 componentes.
 
+### `motor runtime undo`
+
+Deshace la ultima accion de authoring. Usa `EngineAPI.undo()` internamente.
+
+```bash
+py -m motor runtime undo --project . --json
+```
+
+### `motor runtime redo`
+
+Rehace la ultima accion deshecha. Usa `EngineAPI.redo()` internamente.
+
+```bash
+py -m motor runtime redo --project . --json
+```
+
 ## Fisica
 
 ### `motor physics query aabb <left> <top> <right> <bottom>`
@@ -614,6 +656,26 @@ py -m motor physics query aabb 0 -20 40 20 --project . --json
 ```
 
 El JSON incluye `hits`, `count`, `query` y `scene`.
+
+### `motor physics query ray <origin_x> <origin_y> <direction_x> <direction_y>`
+
+Ejecuta un raycast read-only sobre la escena activa en un proceso runtime
+headless stateless. `--max-distance` controla la distancia maxima del rayo
+(por defecto: 1000).
+
+```bash
+py -m motor physics query ray 0 0 1 0 --max-distance 500 --project . --json
+```
+
+El JSON incluye `hits`, `count`, `query` y `scene`.
+
+### `motor physics backend list`
+
+Lista los backends de fisica disponibles en el motor.
+
+```bash
+py -m motor physics backend list --project . --json
+```
 
 ## Entidades
 
@@ -649,6 +711,22 @@ mundo cuando hay `Transform`.
 
 ```bash
 py -m motor entity delete Enemy_A --project . --json
+```
+
+### `motor entity set-parent <entity> <parent>`
+
+Asigna un padre a una entidad existente, estableciendo jerarquia.
+
+```bash
+py -m motor entity set-parent Sword Player --project . --json
+```
+
+### `motor entity create-child <parent>`
+
+Crea una entidad hija bajo un padre existente. `--name` es obligatorio.
+
+```bash
+py -m motor entity create-child Player --name Sword --project . --json
 ```
 
 ## Componentes
@@ -974,19 +1052,3 @@ py -m motor --help
 py -m motor doctor --project . --json
 py -m unittest tests.test_motor_cli_contract tests.test_motor_interface_coherence tests.test_motor_registry_consistency -v
 ```
-
-## 🚧 Comandos Planificados (NO IMPLEMENTADOS)
-
-⚠️ **ADVERTENCIA**: Los siguientes comandos están planificados pero **NO están implementados** en la CLI actual.
-Para usar estas funcionalidades, usa `EngineAPI` directamente vía código Python.
-Consulta `docs/api.md` para los métodos equivalentes.
-
-`motor capabilities --json` puede listar capacidades con `status = "planned"`.
-Esas capacidades documentan intención de API o roadmap interno, pero no deben
-tratarse como comandos CLI disponibles.
-
-- ⚠️ NOT IMPLEMENTED `entity parent` — Usa `EngineAPI.set_entity_parent(name, parent_name)` programáticamente.
-- ⚠️ NOT IMPLEMENTED runtime `undo/redo` — Usa `EngineAPI.undo()` y `EngineAPI.redo()` programáticamente.
-- ⚠️ NOT IMPLEMENTED `physics query ray` — Usa `EngineAPI.query_physics_ray(origin_x, origin_y, direction_x, direction_y, max_distance)` programáticamente.
-- ⚠️ NOT IMPLEMENTED `physics backend list` — Usa `EngineAPI.list_physics_backends()` programáticamente.
-- ⚠️ NOT IMPLEMENTED scene flow CLI — Usa `EngineAPI.load_scene()` para gestión programática de escenas.
