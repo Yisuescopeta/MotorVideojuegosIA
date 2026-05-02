@@ -647,6 +647,60 @@ class AssetsProjectAPI(EngineAPIComponent):
             naming_prefix=naming_prefix,
         )
 
+    def get_capability_registry(self) -> Dict[str, Any]:
+        """Get the full AI capability registry as a dictionary.
+
+        Returns:
+            Dictionary with schema_version, engine info, and capabilities list.
+        """
+        from engine.ai import get_default_registry
+
+        return get_default_registry().to_dict()
+
+    def list_recipes(self) -> list[Dict[str, Any]]:
+        """List all bundled declarative AI recipes.
+
+        Returns:
+            List of recipe summary dictionaries (id, version, description, etc.).
+        """
+        from engine.recipes import list_recipes as _list_recipes
+
+        return _list_recipes()
+
+    def get_recipe(self, recipe_id: str) -> Dict[str, Any]:
+        """Get a single bundled declarative AI recipe by id.
+
+        Args:
+            recipe_id: The recipe identifier string.
+
+        Returns:
+            Recipe payload dictionary.
+
+        Raises:
+            RecipeNotFoundError: If the recipe id is unknown.
+        """
+        from engine.recipes import get_recipe as _get_recipe
+
+        return _get_recipe(recipe_id)
+
+    def run_recipe(self, recipe_id: str) -> Dict[str, Any]:
+        """Run a bundled declarative AI recipe against the current project.
+
+        Args:
+            recipe_id: The recipe identifier string.
+
+        Returns:
+            Dictionary with execution results (steps, validations, events, etc.).
+
+        Raises:
+            RecipeNotFoundError: If the recipe id is unknown.
+            RecipeValidationError: If the recipe commands are not allowlisted.
+        """
+        from engine.recipes import run_recipe as _run_recipe
+
+        project_root = Path(self.project_service.project_root) if self.project_service else Path.cwd()
+        return _run_recipe(recipe_id, project_root)
+
     def get_sprite_image_size(self, asset_path: str) -> Dict[str, int]:
         """Get the pixel dimensions of a sprite asset.
 

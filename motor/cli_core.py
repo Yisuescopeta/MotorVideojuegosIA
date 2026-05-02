@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from engine.ai import get_default_registry
-from engine.ai.compliance import run_ai_compliance
 from engine.api import EngineAPI
 from engine.config import ENGINE_VERSION
 from engine.project.project_service import ProjectService
@@ -24,7 +23,6 @@ from engine.recipes import (
     RecipeNotFoundError,
     RecipeValidationError,
     get_recipe,
-    list_recipes,
     run_recipe,
 )
 from motor.platformer_scaffold import (
@@ -644,30 +642,26 @@ def cmd_physics_query_aabb(
 
 def cmd_capabilities(json_output: bool) -> int:
     """List all engine capabilities."""
+    api = None
     try:
-        registry = get_default_registry()
-        capabilities = [
-            {
-                "id": cap.id,
-                "summary": cap.summary,
-                "mode": cap.mode,
-                "status": cap.status,
-                "api_methods": cap.api_methods,
-                "cli_command": cap.cli_command,
-                "tags": cap.tags,
-            }
-            for cap in registry.list_all()
-        ]
-
+        api = _init_engine(Path.cwd(), read_only=True)
+        registry_dict = api.get_capability_registry()
+        capabilities = registry_dict.get("capabilities", [])
         data = {
             "count": len(capabilities),
-            "engine_version": registry.engine_version,
-            "capabilities_schema_version": registry.schema_version,
+            "engine_version": registry_dict.get("engine", {}).get("version", ""),
+            "capabilities_schema_version": registry_dict.get("schema_version", 0),
             "capabilities": capabilities,
         }
         return _output(True, f"Found {len(capabilities)} capabilities", data, json_output)
     except Exception as exc:
         return _output(False, f"Failed to load capabilities: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def _compact_workflows_from_registry() -> List[Dict[str, Any]]:
@@ -795,8 +789,10 @@ def cmd_ai_start(project_path: Path, json_output: bool) -> int:
 
 def cmd_ai_compliance(project_path: Path, strict: bool, json_output: bool) -> int:
     """Run read-only AI-native project compliance diagnostics."""
+    api = None
     try:
-        data = run_ai_compliance(project_path, strict=strict)
+        api = _init_engine(project_path, read_only=True)
+        data = api.run_ai_compliance(strict=strict)
         if strict and not data.get("strict_pass", False):
             return _output(False, "AI compliance strict check failed", data, json_output)
         return _output(bool(data.get("success", False)), "AI compliance diagnostics completed", data, json_output)
@@ -811,6 +807,12 @@ def cmd_ai_compliance(project_path: Path, strict: bool, json_output: bool) -> in
             "recommended_next_actions": ["Fix the compliance diagnostic error and rerun the command."],
         }
         return _output(False, f"AI compliance failed: {exc}", data, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 _AI_SELF_TEST_PROFILES: Dict[str, str] = {
@@ -2928,9 +2930,11 @@ def cmd_project_bootstrap_ai(project_path: Path, json_output: bool) -> int:
 
 def cmd_recipe_list(project_path: Path, json_output: bool) -> int:
     """List bundled declarative AI recipes read-only."""
+    api = None
     try:
         _ensure_project(project_path)
-        recipes = list_recipes()
+        api = _init_engine(project_path, read_only=True)
+        recipes = api.list_recipes()
         data = {
             "schema_version": 1,
             "count": len(recipes),
@@ -2943,13 +2947,21 @@ def cmd_recipe_list(project_path: Path, json_output: bool) -> int:
         return _output(False, str(exc), None, json_output)
     except Exception as exc:
         return _output(False, f"Failed to list recipes: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_recipe_show(project_path: Path, recipe_id: str, json_output: bool) -> int:
     """Show a bundled declarative AI recipe read-only."""
+    api = None
     try:
         _ensure_project(project_path)
-        recipe = get_recipe(recipe_id)
+        api = _init_engine(project_path, read_only=True)
+        recipe = api.get_recipe(recipe_id)
         data = {
             "schema_version": 1,
             "recipe": recipe,
@@ -2964,13 +2976,21 @@ def cmd_recipe_show(project_path: Path, recipe_id: str, json_output: bool) -> in
         return _output(False, str(exc), None, json_output)
     except Exception as exc:
         return _output(False, f"Failed to show recipe: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_recipe_run(project_path: Path, recipe_id: str, json_output: bool) -> int:
     """Run a bundled declarative AI recipe through allowlisted motor commands."""
+    api = None
     try:
         _ensure_project(project_path)
-        data = run_recipe(recipe_id, project_path)
+        api = _init_engine(project_path, read_only=False)
+        data = api.run_recipe(recipe_id)
         message = "Recipe run completed" if data.get("success") else "Recipe run failed"
         return _output(bool(data.get("success")), message, data, json_output)
     except ProjectNotFoundError as exc:
@@ -2981,6 +3001,12 @@ def cmd_recipe_run(project_path: Path, recipe_id: str, json_output: bool) -> int
         return _output(False, str(exc), None, json_output)
     except Exception as exc:
         return _output(False, f"Failed to run recipe: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 # ============================================================================
