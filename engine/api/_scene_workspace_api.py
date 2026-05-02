@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Union, List, Dict, Dict, Optional
 
 from engine.api._context import EngineAPIComponent
 from engine.api.errors import InvalidOperationError, LevelLoadError
@@ -13,6 +13,18 @@ class SceneWorkspaceAPI(EngineAPIComponent):
     """Scene loading, workspace, and scene-flow endpoints exposed by EngineAPI."""
 
     def load_level(self, path: str) -> None:
+        """Load a scene by file path into the runtime, from JSON or engine cache.
+
+        If the scene is already cached in the runtime, it is loaded directly.
+        Otherwise the JSON file is parsed, deserialized into a World, and
+        attached to the engine.
+
+        Args:
+            path: Absolute or relative path to a .scene file or scene identifier.
+
+        Raises:
+            LevelLoadError: If the scene cannot be loaded from the given path.
+        """
         try:
             runtime = self.runtime
             workspace = self.scene_workspace
@@ -32,24 +44,46 @@ class SceneWorkspaceAPI(EngineAPIComponent):
             raise LevelLoadError(f"Fallo al cargar {path}: {exc}")
 
     def get_feature_metadata(self) -> Dict[str, Any]:
+        """Retrieve the active scene's feature metadata dictionary.
+
+        Returns:
+            Dictionary of scene-wide settings (render_2d, physics_2d, signals,
+            etc.), or empty dict if no scene is active.
+        """
         authoring = self.scene_authoring
         if authoring is None:
             return {}
         return authoring.get_feature_metadata()
 
     def get_scene_connections(self) -> Dict[str, str]:
+        """Get the scene flow connections (next, menu, previous) for the active scene.
+
+        Returns:
+            Dictionary mapping flow keys (e.g. "next_scene", "menu_scene") to
+            target scene paths.
+        """
         workspace = self.scene_workspace
         if workspace is None:
             return {}
         return workspace.get_scene_flow()
 
-    def list_open_scenes(self) -> list[Dict[str, Any]]:
+    def list_open_scenes(self) -> list[Dict[str, Union[str, int, float, bool, list, dict, None]]]:
+        """List all scenes currently open in the workspace.
+
+        Returns:
+            List of scene summary dictionaries.
+        """
         workspace = self.scene_workspace
         if workspace is None:
             return []
         return workspace.list_open_scenes()
 
     def get_active_scene(self) -> Dict[str, Any]:
+        """Get summary information about the currently active scene.
+
+        Returns:
+            Dictionary with active scene metadata, or empty dict if none.
+        """
         workspace = self.scene_workspace
         if workspace is None:
             return {}
@@ -66,7 +100,7 @@ class SceneWorkspaceAPI(EngineAPIComponent):
             return False
         return bool(workspace.get_active_scene_summary().get("path"))
 
-    def get_active_scene_info(self) -> Dict[str, Any]:
+    def get_active_scene_info(self) -> Dict[str, Union[str, int, float, bool, list, dict, None]]:
         """Get comprehensive information about the active scene.
 
         Returns:
@@ -101,7 +135,21 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         }
 
     def load_scene_for_runtime_inspection(self, scene_ref: str = "") -> ActionResult:
-        """Load a project scene into the current headless projection without persistence."""
+        """Load a project scene into the current headless projection without persistence.
+
+        Searches for a loadable scene from explicit reference, editor state, or
+        project settings. The loaded scene is attached to the runtime for
+        read-only inspection.
+
+        Args:
+            scene_ref: Explicit scene path or reference. If empty, searches in
+                editor state (active_scene, last_scene), project settings
+                (startup_scene), and levels directory.
+
+        Returns:
+            ActionResult with the loaded scene path, source field, name, and
+            entity count.
+        """
         runtime = self.runtime
         scene_manager = self.scene_manager
         project_service = self.project_service
@@ -167,6 +215,15 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         return candidates
 
     def activate_scene(self, key_or_path: str) -> ActionResult:
+        """Activate a scene tab in the multi-scene workspace.
+
+        Args:
+            key_or_path: Scene identifier key or file path.
+
+        Returns:
+            ActionResult with the activated scene's summary, or failure if
+            activation failed.
+        """
         runtime = self.runtime
         if runtime is None:
             return self.fail("Engine not initialized")
@@ -174,6 +231,16 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         return self.ok("Scene activated", self.get_active_scene()) if success else self.fail("Scene activation failed")
 
     def close_scene(self, key_or_path: str, discard_changes: bool = False) -> ActionResult:
+        """Close a scene tab in the workspace.
+
+        Args:
+            key_or_path: Scene identifier key or file path.
+            discard_changes: If True, close even with unsaved changes. If False,
+                refuses to close a dirty scene.
+
+        Returns:
+            ActionResult confirming closure or reporting unsaved changes.
+        """
         runtime = self.runtime
         workspace = self.scene_workspace
         if runtime is None or workspace is None:
@@ -187,6 +254,16 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         return self.ok("Scene closed", {"open_scenes": self.list_open_scenes()}) if success else self.fail("Scene close failed")
 
     def save_scene(self, key_or_path: Optional[str] = None, path: Optional[str] = None) -> ActionResult:
+        """Persist a scene to a file.
+
+        Args:
+            key_or_path: Scene identifier key or file path. Defaults to active scene.
+            path: Override save destination path. Defaults to the scene's existing
+                source path.
+
+        Returns:
+            ActionResult confirming the save with the target path and scene summary.
+        """
         workspace = self.scene_workspace
         if workspace is None:
             return self.fail("SceneManager not ready")
@@ -211,6 +288,15 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         return self.ok("Scene saved", {"path": target_path, "scene": self.get_active_scene()})
 
     def copy_entity_to_scene(self, entity_name: str, target_scene: str) -> ActionResult:
+        """Copy an entity subtree from the active scene to another open scene.
+
+        Args:
+            entity_name: Name of the entity to copy (including children).
+            target_scene: Target scene key or path.
+
+        Returns:
+            ActionResult confirming the copy-paste operation.
+        """
         self.ensure_edit_mode()
         workspace = self.scene_workspace
         if workspace is None:
@@ -231,6 +317,17 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         flow_key: str = "",
         preview_label: str = "",
     ) -> ActionResult:
+        """Attach a SceneLink component to an entity for scene flow navigation.
+
+        Args:
+            entity_name: Name of the entity to attach the link to.
+            target_path: Target scene path or relative path.
+            flow_key: Scene flow key (e.g. "next_scene", "menu_scene").
+            preview_label: Display label shown in editor for the link.
+
+        Returns:
+            ActionResult confirming the SceneLink was created or updated.
+        """
         self.ensure_edit_mode()
         authoring = self.scene_authoring
         if authoring is None or self.project_service is None:
@@ -254,6 +351,15 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         return self.ok("SceneLink updated", {"entity": entity_name, "target_path": normalized_target}) if success else self.fail("SceneLink update failed")
 
     def set_scene_connection(self, key: str, path: str) -> ActionResult:
+        """Configure a named scene flow connection for the active scene.
+
+        Args:
+            key: Flow key (e.g. "next_scene", "menu_scene", "previous_scene").
+            path: Target scene path (relative to project root).
+
+        Returns:
+            ActionResult confirming the connection was set.
+        """
         self.ensure_edit_mode()
         workspace = self.scene_workspace
         if workspace is None:
@@ -265,15 +371,49 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         return self.ok("Scene connection updated", {"key": key, "path": normalized}) if success else self.fail("Scene connection update failed")
 
     def set_next_scene(self, path: str) -> ActionResult:
+        """Set the next scene in the scene flow (shortcut for set_scene_connection).
+
+        Args:
+            path: Target scene path.
+
+        Returns:
+            ActionResult confirming the connection.
+        """
         return self.set_scene_connection("next_scene", path)
 
     def set_menu_scene(self, path: str) -> ActionResult:
+        """Set the menu scene in the scene flow (shortcut for set_scene_connection).
+
+        Args:
+            path: Target scene path.
+
+        Returns:
+            ActionResult confirming the connection.
+        """
         return self.set_scene_connection("menu_scene", path)
 
     def set_previous_scene(self, path: str) -> ActionResult:
+        """Set the previous scene in the scene flow (shortcut for set_scene_connection).
+
+        Args:
+            path: Target scene path.
+
+        Returns:
+            ActionResult confirming the connection.
+        """
         return self.set_scene_connection("previous_scene", path)
 
     def load_scene(self, path: str) -> ActionResult:
+        """Load a scene from the engine's scene cache by path.
+
+        Unlike load_level, this uses the runtime's internal scene cache.
+
+        Args:
+            path: Scene file path or identifier.
+
+        Returns:
+            ActionResult with the loaded scene path.
+        """
         runtime = self.runtime
         if runtime is None:
             return self.fail("Engine not initialized")
@@ -281,6 +421,14 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         return self.ok("Scene loaded", {"path": runtime.current_scene_path}) if success else self.fail("Scene load failed")
 
     def create_scene(self, name: str) -> ActionResult:
+        """Create a new empty scene with the given name.
+
+        Args:
+            name: Name for the new scene.
+
+        Returns:
+            ActionResult with the new scene's file path.
+        """
         runtime = self.runtime
         if runtime is None:
             return self.fail("Engine not initialized")
@@ -293,9 +441,23 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         return self.ok("Scene created", {"path": path})
 
     def open_scene(self, path: str) -> ActionResult:
+        """Alias for load_scene. Opens a scene by path.
+
+        Args:
+            path: Scene file path or identifier.
+
+        Returns:
+            ActionResult with the loaded scene path.
+        """
         return self.load_scene(path)
 
     def load_next_scene(self) -> ActionResult:
+        """Load the scene configured as 'next_scene' in the scene flow.
+
+        Returns:
+            ActionResult with the loaded scene path, or failure if next_scene
+            is not configured.
+        """
         runtime = self.runtime
         if runtime is None:
             return self.fail("Engine not initialized")
@@ -303,6 +465,12 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         return self.ok("Next scene loaded", {"path": runtime.current_scene_path}) if success else self.fail("Next scene is not configured")
 
     def load_menu_scene(self) -> ActionResult:
+        """Load the scene configured as 'menu_scene' in the scene flow.
+
+        Returns:
+            ActionResult with the loaded scene path, or failure if menu_scene
+            is not configured.
+        """
         runtime = self.runtime
         if runtime is None:
             return self.fail("Engine not initialized")
@@ -310,6 +478,15 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         return self.ok("Menu scene loaded", {"path": runtime.current_scene_path}) if success else self.fail("Menu scene is not configured")
 
     def load_scene_flow_target(self, key: str) -> ActionResult:
+        """Load the scene associated with an arbitrary flow key.
+
+        Args:
+            key: Flow key name (e.g. "next_scene", "menu_scene", or custom).
+
+        Returns:
+            ActionResult with the loaded scene path and key, or failure if the
+            key is not configured.
+        """
         runtime = self.runtime
         if runtime is None:
             return self.fail("Engine not initialized")
@@ -332,8 +509,20 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         path: str,
         name: Optional[str] = None,
         parent: Optional[str] = None,
-        overrides: Optional[Dict[str, Any]] = None,
+        overrides: Optional[Dict[str, Union[str, int, float, bool, list, dict, None]]] = None,
     ) -> ActionResult:
+        """Instantiate a prefab asset into the active scene.
+
+        Args:
+            path: Path to the .prefab file.
+            name: Custom entity name for the instance. Defaults to the prefab's
+                root name.
+            parent: Optional parent entity name.
+            overrides: Optional property overrides for the instance.
+
+        Returns:
+            ActionResult confirming the prefab was instantiated.
+        """
         self.ensure_edit_mode()
         authoring = self.scene_authoring
         workspace = self.scene_workspace
@@ -371,6 +560,19 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         replace_original: bool = False,
         instance_name: Optional[str] = None,
     ) -> ActionResult:
+        """Create a prefab asset from an existing entity in the scene.
+
+        Args:
+            entity_name: Name of the entity to convert into a prefab.
+            path: Output path for the .prefab file.
+            replace_original: If True, replace the original entity with a prefab
+                instance pointing to the newly created prefab.
+            instance_name: Custom name for the replacement instance (only used
+                when replace_original=True).
+
+        Returns:
+            ActionResult confirming the prefab was created.
+        """
         self.ensure_edit_mode()
         authoring = self.scene_authoring
         workspace = self.scene_workspace
@@ -407,6 +609,14 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         return self.ok("Prefab created", data)
 
     def unpack_prefab(self, entity_name: str) -> ActionResult:
+        """Unpack a prefab instance into a regular entity hierarchy.
+
+        Args:
+            entity_name: Name of the prefab instance entity.
+
+        Returns:
+            ActionResult confirming the prefab was unpacked.
+        """
         self.ensure_edit_mode()
         authoring = self.scene_authoring
         if authoring is None:
@@ -415,6 +625,14 @@ class SceneWorkspaceAPI(EngineAPIComponent):
         return self.ok("Prefab unpacked", {"entity": entity_name}) if success else self.fail("Prefab unpack failed")
 
     def apply_prefab_overrides(self, entity_name: str) -> ActionResult:
+        """Re-apply prefab overrides from the source prefab to a modified instance.
+
+        Args:
+            entity_name: Name of the prefab instance entity.
+
+        Returns:
+            ActionResult confirming the overrides were applied.
+        """
         self.ensure_edit_mode()
         authoring = self.scene_authoring
         if authoring is None:

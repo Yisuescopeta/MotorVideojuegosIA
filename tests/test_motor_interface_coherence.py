@@ -776,7 +776,7 @@ class RegistryToCLICoherenceTests(unittest.TestCase):
                                     # Tercer nivel (ej: animator state create)
                                     if hasattr(sub_subparser, '_actions'):
                                         for sub_sub_action in sub_subparser._actions:
-                                            if hasattr(sub_sub_action, 'choices') and sub_sub_action.choices:
+                                            if hasattr(sub_sub_action, 'choices') and isinstance(sub_sub_action.choices, dict) and sub_sub_action.choices:
                                                 for sub_sub_cmd in sub_sub_action.choices.keys():
                                                     available_commands.add(f"{cmd_name} {sub_cmd} {sub_sub_cmd}")
 

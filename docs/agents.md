@@ -266,7 +266,7 @@ afectan al runtime activo.
 
 - Quiero entender el sistema: [architecture.md](architecture.md).
 - Quiero entender terminos del repo: [glossary.md](glossary.md).
-- Quiero saber que es core y que es experimental: [module_taxonomy.md](module_taxonomy.md).
+- Quiero entender la clasificación de subsistemas (qué es core y qué es experimental): [module_taxonomy.md](module_taxonomy.md).
 - Quiero cambiar escenas/prefabs: [schema_serialization.md](schema_serialization.md).
 - Quiero automatizar por Python: [api.md](api.md).
 - Quiero automatizar por CLI: [cli.md](cli.md).

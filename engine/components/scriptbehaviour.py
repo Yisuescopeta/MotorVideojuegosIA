@@ -5,7 +5,7 @@ engine/components/scriptbehaviour.py - Script adjunto serializable.
 from __future__ import annotations
 
 import copy
-from typing import Any, Dict
+from typing import Any, Dict, Union
 
 from engine.assets.asset_reference import (
     build_asset_reference,
@@ -17,20 +17,24 @@ from engine.ecs.component import Component
 
 
 class ScriptBehaviour(Component):
-    """Asocia una entidad con un modulo Python recargable y datos serializables."""
+    """Asocia una entidad con un modulo Python recargable y datos serializables.
+
+    public_data expects JSON-serializable primitives:
+    str, int, float, bool, list, dict.
+    """
 
     def __init__(
         self,
         module_path: str = "",
         script: Any = None,
         run_in_edit_mode: bool = False,
-        public_data: Dict[str, Any] | None = None,
+        public_data: Dict[str, Union[str, int, float, bool, list, dict]] | None = None,
     ) -> None:
         self.enabled: bool = True
         self.script = self._normalize_script_reference(script, module_path)
         self.module_path: str = self._normalize_module_name(module_path or self.script.get("path", ""))
         self.run_in_edit_mode: bool = run_in_edit_mode
-        self.public_data: Dict[str, Any] = copy.deepcopy(public_data or {})
+        self.public_data: Dict[str, Union[str, int, float, bool, list, dict]] = copy.deepcopy(public_data or {})
 
     def get_script_reference(self) -> dict[str, str]:
         return clone_asset_reference(self.script)

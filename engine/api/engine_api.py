@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from engine.api._agent_api import AgentAPI
 from engine.api._assets_project_api import AssetsProjectAPI
@@ -55,9 +55,26 @@ class EngineAPI:
         self._read_only = read_only
         self._context = EngineAPIContext(self)
         self._contracts: EngineAPIContracts | None = None
+        self._validate_project_root()
         self._initialize_engine()
         self._initialize_collaborators()
         self._refresh_contracts()
+
+    def _validate_project_root(self) -> None:
+        project_path = Path(self._project_root).expanduser().resolve()
+        if self._auto_ensure_project and not self._read_only:
+            return
+        if not project_path.exists():
+            raise InvalidOperationError(
+                f"Directory {self._project_root} does not exist. "
+                "Create it first or specify a valid --project-root."
+            )
+        manifest = project_path / "project.json"
+        if not manifest.exists():
+            raise InvalidOperationError(
+                f"No project.json found at {self._project_root}. "
+                "Run 'py -m motor project init' to create a project."
+            )
 
     def _initialize_engine(self) -> None:
         from cli.headless_game import HeadlessGame
@@ -186,7 +203,7 @@ class EngineAPI:
         if self.game is not None and not self.game.is_edit_mode:
             raise InvalidOperationError("Cannot edit in PLAY mode")
 
-    def _ok(self, message: str, data: Any = None) -> ActionResult:
+    def _ok(self, message: str, data: Optional[Union[Dict, List, str, int, float, bool, None]] = None) -> ActionResult:
         return {"success": True, "message": message, "data": data}
 
     def _fail(self, message: str) -> ActionResult:

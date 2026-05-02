@@ -326,10 +326,13 @@ def _check_scene_contract(
             )
         )
 
-    if strict:
-        script_behaviour_findings = _detect_script_behaviour_mini_engine_loops(root, migrated)
-        checks["script_behaviour_warnings"] = [finding.to_dict() for finding in script_behaviour_findings]
-        warnings.extend(script_behaviour_findings)
+    script_behaviour_findings = _detect_script_behaviour_mini_engine_loops(root, migrated)
+    checks["script_behaviour_warnings"] = [finding.to_dict() for finding in script_behaviour_findings]
+    if script_behaviour_findings:
+        if strict:
+            problems.extend(script_behaviour_findings)
+        else:
+            warnings.extend(script_behaviour_findings)
 
 
 def _detect_script_behaviour_mini_engine_loops(root: Path, scene_data: dict[str, Any]) -> list[ComplianceFinding]:
@@ -378,6 +381,15 @@ def _iter_script_behaviour_script_paths(scene_data: dict[str, Any]) -> list[str]
         script_path = script_path.strip().replace("\\", "/")
         if script_path.endswith(".py"):
             result.append(script_path)
+        module_path = str(script_behaviour.get("module_path", "") or "").strip()
+        if module_path:
+            module_as_path = module_path.replace(".", "/")
+            if not module_as_path.endswith(".py"):
+                module_as_path += ".py"
+            if not module_as_path.startswith("scripts/"):
+                module_as_path = "scripts/" + module_as_path
+            if module_as_path not in result:
+                result.append(module_as_path)
     return result
 
 

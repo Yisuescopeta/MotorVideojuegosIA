@@ -172,8 +172,8 @@ class ParserRegistryStrictAlignmentTests(unittest.TestCase):
 
         ray = registry.get("physics:query:ray")
         self.assertIsNotNone(ray)
-        self.assertEqual(ray.status, "planned")
-        self.assertNotIn(("physics", "query", "ray"), public_cli_commands)
+        self.assertEqual(ray.status, "implemented")
+        self.assertIn(("physics", "query", "ray"), public_cli_commands)
 
     def test_animator_state_create_signature_matches(self) -> None:
         """Verify animator state create signature matches exactly."""

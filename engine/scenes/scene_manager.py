@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
@@ -737,6 +738,16 @@ class SceneManager:
         return self.remove_entity(entity_name) if isinstance(entity_name, str) else False
 
     def sync_from_edit_world(self, force: bool = False) -> bool:
+        """Deprecated: use EngineAPI or SceneManager public methods instead.
+        
+        Legacy method that syncs pending changes from edit_world back to the serialized scene.
+        Prefer authoring through SceneManager structural authoring methods or EngineAPI delegates.
+        """
+        warnings.warn(
+            "sync_from_edit_world() is deprecated. Use EngineAPI or SceneManager public methods instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         entry = self._get_active_entry()
         if entry is None or entry.is_playing or entry.edit_world is None:
             return False

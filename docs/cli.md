@@ -107,8 +107,9 @@ Reglas adicionales del escaneo strict:
 - al evaluar este repo del motor, proyectos anidados bajo `projects/` con su
   propio `project.json` se tratan como roots separados y no bloquean el
   compliance del repo principal.
-- strict avisa si un `ScriptBehaviour` de la escena activa referencia un script
-  con loops propios como `while True`, sin marcarlo como runtime externo.
+- strict bloquea si un `ScriptBehaviour` de la escena activa referencia un script
+  con loops propios como `while True`, porque representa un mini motor paralelo
+  que esquiva el runtime oficial.
 
 ### `motor ai self-test`
 
@@ -966,22 +967,6 @@ tokens o tabla de precios.
 py -m motor agent usage agent-session-id --project . --json
 ```
 
-## Comandos del registry que aun no estan en la CLI
-
-`motor capabilities --json` puede listar capacidades con `status = "planned"`.
-Esas capacidades documentan intencion de API o roadmap interno, pero no deben
-tratarse como comandos CLI disponibles si `motor/cli.py` no las expone.
-
-Ejemplos actuales de capacidades planificadas sin parser publico incluyen:
-
-- `entity parent`
-- runtime `undo/redo`
-- `physics query ray` y `physics backend list`
-- scene flow desde CLI
-
-Para esas operaciones, usa `EngineAPI` programaticamente solo si el metodo esta
-implementado y el flujo esta cubierto por tests.
-
 ## Validacion recomendada
 
 ```bash
@@ -989,3 +974,19 @@ py -m motor --help
 py -m motor doctor --project . --json
 py -m unittest tests.test_motor_cli_contract tests.test_motor_interface_coherence tests.test_motor_registry_consistency -v
 ```
+
+## 🚧 Comandos Planificados (NO IMPLEMENTADOS)
+
+⚠️ **ADVERTENCIA**: Los siguientes comandos están planificados pero **NO están implementados** en la CLI actual.
+Para usar estas funcionalidades, usa `EngineAPI` directamente vía código Python.
+Consulta `docs/api.md` para los métodos equivalentes.
+
+`motor capabilities --json` puede listar capacidades con `status = "planned"`.
+Esas capacidades documentan intención de API o roadmap interno, pero no deben
+tratarse como comandos CLI disponibles.
+
+- ⚠️ NOT IMPLEMENTED `entity parent` — Usa `EngineAPI.set_entity_parent(name, parent_name)` programáticamente.
+- ⚠️ NOT IMPLEMENTED runtime `undo/redo` — Usa `EngineAPI.undo()` y `EngineAPI.redo()` programáticamente.
+- ⚠️ NOT IMPLEMENTED `physics query ray` — Usa `EngineAPI.query_physics_ray(origin_x, origin_y, direction_x, direction_y, max_distance)` programáticamente.
+- ⚠️ NOT IMPLEMENTED `physics backend list` — Usa `EngineAPI.list_physics_backends()` programáticamente.
+- ⚠️ NOT IMPLEMENTED scene flow CLI — Usa `EngineAPI.load_scene()` para gestión programática de escenas.

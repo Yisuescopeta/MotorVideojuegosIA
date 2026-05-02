@@ -43,6 +43,11 @@ class CapabilityRegistryBuilder:
         self._register_physics_capabilities()
         self._register_introspection_capabilities()
         self._register_agent_capabilities()
+        self._register_signal_capabilities()
+        self._register_ui_capabilities()
+        self._register_debug_capabilities()
+        self._register_service_capabilities()
+        self._register_entity_group_capabilities()
         return self._registry
 
     def _register_scene_capabilities(self) -> None:
@@ -119,7 +124,7 @@ class CapabilityRegistryBuilder:
             summary="Set the next scene connection for scene flow navigation",
             mode="edit",
             api_methods=["SceneWorkspaceAPI.set_next_scene"],
-            cli_command="motor scene flow next <path>",
+            cli_command="motor scene flow set-link <source_scene> <target_scene>",
             example=CapabilityExample(
                 description="Configure current scene to load level2 when triggered",
                 api_calls=[
@@ -134,17 +139,34 @@ class CapabilityRegistryBuilder:
         self._add(Capability(
             id="scene:flow:load_next",
             summary="Load the configured next scene in the scene flow",
-            mode="both",
+            mode="play",
             api_methods=["SceneWorkspaceAPI.load_next_scene"],
-            cli_command="motor scene flow load-next",
+            cli_command="motor scene flow next",
             example=CapabilityExample(
-                description="Transition to the next configured scene",
+                description="Load the next scene",
                 api_calls=[
                     {"method": "load_next_scene", "args": {}},
                 ],
-                expected_outcome="The next_scene from current scene metadata is loaded",
+                expected_outcome="Next scene is loaded as the active world",
             ),
             notes="Uses next_scene key from feature_metadata.scene_flow. Fails if not configured.",
+            tags=["scene", "flow", "navigation", "runtime"],
+        ))
+
+        self._add(Capability(
+            id="scene:flow:menu",
+            summary="Load the menu scene configured in the scene flow",
+            mode="play",
+            api_methods=["SceneWorkspaceAPI.load_menu_scene"],
+            cli_command="motor scene flow menu",
+            example=CapabilityExample(
+                description="Load the menu scene",
+                api_calls=[
+                    {"method": "load_menu_scene", "args": {}},
+                ],
+                expected_outcome="Menu scene is loaded as the active world",
+            ),
+            notes="Uses menu_scene key from feature_metadata.scene_flow. Fails if not configured.",
             tags=["scene", "flow", "navigation", "runtime"],
         ))
 
@@ -462,7 +484,7 @@ class CapabilityRegistryBuilder:
             summary="Set or change an entity's parent for hierarchical transforms",
             mode="edit",
             api_methods=["AuthoringAPI.set_entity_parent"],
-            cli_command="motor entity parent <child> <parent>",
+            cli_command="motor entity set-parent <entity_id> <parent_id>",
             example=CapabilityExample(
                 description="Parent a weapon to the player",
                 api_calls=[
@@ -472,6 +494,23 @@ class CapabilityRegistryBuilder:
             ),
             notes="Pass None/null as parent to unparent. Child transform is applied relative to parent.",
             tags=["entity", "hierarchy", "transform"],
+        ))
+
+        self._add(Capability(
+            id="entity:create-child",
+            summary="Create a child entity under a parent",
+            mode="edit",
+            api_methods=["AuthoringAPI.create_child_entity"],
+            cli_command="motor entity create-child <parent_id> --name <name>",
+            example=CapabilityExample(
+                description="Create a Hitbox child under Player",
+                api_calls=[
+                    {"method": "create_child_entity", "args": {"parent_name": "Player", "name": "Hitbox"}},
+                ],
+                expected_outcome="Hitbox entity created as child of Player",
+            ),
+            notes="Auto-saves scene after creation. Child inherits parent transform hierarchy.",
+            tags=["entity", "hierarchy", "authoring"],
         ))
 
         self._add(Capability(
@@ -1136,7 +1175,7 @@ class CapabilityRegistryBuilder:
             summary="Undo the last edit operation",
             mode="edit",
             api_methods=["RuntimeAPI.undo"],
-            cli_command="motor undo",
+            cli_command="motor runtime undo",
             example=CapabilityExample(
                 description="Undo last edit",
                 api_calls=[
@@ -1149,11 +1188,76 @@ class CapabilityRegistryBuilder:
         ))
 
         self._add(Capability(
+            id="runtime:audio:play",
+            summary="Play audio from an AudioSource entity",
+            mode="play",
+            api_methods=["RuntimeAPI.play_audio"],
+            cli_command="motor runtime audio play <source_id>",
+            example=CapabilityExample(
+                description="Play background music",
+                api_calls=[
+                    {"method": "play_audio", "args": {"entity_name": "BGM_Source"}},
+                ],
+                expected_outcome="Audio starts playing from the specified source",
+            ),
+            notes="Requires an entity with AudioSource component. Runtime must be in PLAY mode.",
+            tags=["runtime", "audio"],
+        ))
+        self._add(Capability(
+            id="runtime:audio:stop",
+            summary="Stop audio from an AudioSource entity",
+            mode="play",
+            api_methods=["RuntimeAPI.stop_audio"],
+            cli_command="motor runtime audio stop <source_id>",
+            example=CapabilityExample(
+                description="Stop background music",
+                api_calls=[
+                    {"method": "stop_audio", "args": {"entity_name": "BGM_Source"}},
+                ],
+                expected_outcome="Audio stops playing",
+            ),
+            notes="Requires an entity with AudioSource component.",
+            tags=["runtime", "audio"],
+        ))
+        self._add(Capability(
+            id="runtime:audio:pause",
+            summary="Pause audio from an AudioSource entity",
+            mode="play",
+            api_methods=["RuntimeAPI.pause_audio"],
+            cli_command="motor runtime audio pause <source_id>",
+            example=CapabilityExample(
+                description="Pause background music",
+                api_calls=[
+                    {"method": "pause_audio", "args": {"entity_name": "BGM_Source"}},
+                ],
+                expected_outcome="Audio is paused",
+            ),
+            notes="Can be resumed later with resume_audio.",
+            tags=["runtime", "audio"],
+        ))
+        self._add(Capability(
+            id="runtime:audio:resume",
+            summary="Resume paused audio from an AudioSource entity",
+            mode="play",
+            api_methods=["RuntimeAPI.resume_audio"],
+            cli_command="motor runtime audio resume <source_id>",
+            example=CapabilityExample(
+                description="Resume background music",
+                api_calls=[
+                    {"method": "resume_audio", "args": {"entity_name": "BGM_Source"}},
+                ],
+                expected_outcome="Audio resumes from where it was paused",
+            ),
+            notes="Only works on paused audio sources.",
+            tags=["runtime", "audio"],
+        ))
+
+        self._add(Capability(
             id="runtime:redo",
             summary="Redo a previously undone operation",
             mode="edit",
             api_methods=["RuntimeAPI.redo"],
-            cli_command="motor redo",
+            cli_command="motor runtime redo",
             example=CapabilityExample(
                 description="Redo last undone operation",
                 api_calls=[
@@ -1280,7 +1384,7 @@ class CapabilityRegistryBuilder:
             summary="List available physics backends and their status",
             mode="both",
             api_methods=["RuntimeAPI.list_physics_backends", "RuntimeAPI.get_physics_backend_selection"],
-            cli_command="motor physics backends",
+            cli_command="motor physics backend list",
             example=CapabilityExample(
                 description="List physics backends",
                 api_calls=[
@@ -1332,7 +1436,7 @@ class CapabilityRegistryBuilder:
             summary="Get full data for a specific entity",
             mode="both",
             api_methods=["RuntimeAPI.get_entity"],
-            cli_command="motor entity inspect <name>",
+            cli_command="motor runtime inspect <entity>",
             example=CapabilityExample(
                 description="Get Player entity data",
                 api_calls=[
@@ -1615,19 +1719,293 @@ class CapabilityRegistryBuilder:
             tags=["agent", "experimental", "editor", "tooling"],
         ))
 
+    def _register_signal_capabilities(self) -> None:
+        self._add(Capability(
+            id="signal:connect",
+            summary="Connect a signal between entities in the active scene",
+            mode="edit",
+            api_methods=["RuntimeAPI.connect_signal", "AuthoringAPI.add_signal_connection"],
+            cli_command="motor signal connect <signal_name> <source_entity> <target_entity>",
+            example=CapabilityExample(
+                description="Connect death signal from Player to GameOver entity",
+                api_calls=[
+                    {"method": "add_signal_connection", "args": {"connection_data": {"id": "death_conn", "signal": "on_death", "source": {"kind": "entity", "name": "Player"}, "target": {"kind": "entity", "name": "GameOver"}}}},
+                ],
+                expected_outcome="Signal connection stored in scene feature metadata",
+            ),
+            notes="Creates declarative signal connection stored in scene feature metadata.",
+            tags=["signal", "authoring"],
+        ))
+        self._add(Capability(
+            id="signal:emit",
+            summary="Emit a signal from an entity at runtime",
+            mode="play",
+            api_methods=["RuntimeAPI.emit_signal"],
+            cli_command="motor signal emit <signal_name> [--entity <entity_id>]",
+            example=CapabilityExample(
+                description="Emit on_death signal",
+                api_calls=[
+                    {"method": "emit_signal", "args": {"source_id": "Player", "signal_name": "on_death"}},
+                ],
+                expected_outcome="Returns count of connections executed",
+            ),
+            notes="Requires runtime to be active. Returns count of executed connections.",
+            tags=["signal", "runtime"],
+        ))
+        self._add(Capability(
+            id="signal:disconnect",
+            summary="Disconnect a signal between entities",
+            mode="edit",
+            api_methods=["AuthoringAPI.remove_signal_connection"],
+            cli_command="motor signal disconnect <signal_name> <source_entity> <target_entity>",
+            example=CapabilityExample(
+                description="Disconnect on_death signal",
+                api_calls=[
+                    {"method": "remove_signal_connection", "args": {"connection_id": "death_conn"}},
+                ],
+                expected_outcome="Signal connection removed from scene metadata",
+            ),
+            notes="Removes declarative signal connection from scene metadata.",
+            tags=["signal", "authoring"],
+        ))
+        self._add(Capability(
+            id="signal:list",
+            summary="List signal connections in the active scene",
+            mode="both",
+            api_methods=["AuthoringAPI.list_signal_connections_declarative"],
+            cli_command="motor signal list",
+            example=CapabilityExample(
+                description="List all signal connections",
+                api_calls=[
+                    {"method": "list_signal_connections_declarative", "args": {}},
+                ],
+                expected_outcome="Returns list of connections with source, target and signal names",
+            ),
+            notes="Lists declarative signal connections with source, target, and signal metadata.",
+            tags=["signal", "query"],
+        ))
+
+    def _register_ui_capabilities(self) -> None:
+        self._add(Capability(
+            id="ui:create_canvas",
+            summary="Create a UI canvas entity",
+            mode="edit",
+            api_methods=["UIAPI.create_canvas"],
+            cli_command="motor ui create-canvas --name <name> --width <int> --height <int>",
+            example=CapabilityExample(
+                description="Create a 800x600 UI canvas",
+                api_calls=[
+                    {"method": "create_canvas", "args": {"name": "Canvas", "reference_width": 800, "reference_height": 600}},
+                ],
+                expected_outcome="Canvas entity created with RectTransform",
+            ),
+            notes="Creates Canvas entity with RectTransform. Acts as root for UI hierarchy.",
+            tags=["ui", "authoring"],
+        ))
+        self._add(Capability(
+            id="ui:create_text",
+            summary="Create a UI text element",
+            mode="edit",
+            api_methods=["UIAPI.create_ui_text"],
+            cli_command="motor ui create-text --text <text> --parent <canvas> --font-size <int> --color <hex>",
+            example=CapabilityExample(
+                description="Create 'Hello World' text on canvas",
+                api_calls=[
+                    {"method": "create_ui_text", "args": {"name": "TitleText", "text": "Hello World", "parent": "Canvas", "font_size": 24}},
+                ],
+                expected_outcome="UIText child entity created under canvas",
+            ),
+            notes="Creates child entity under parent canvas with UIText and RectTransform components.",
+            tags=["ui", "authoring"],
+        ))
+        self._add(Capability(
+            id="ui:create_button",
+            summary="Create a UI button element",
+            mode="edit",
+            api_methods=["UIAPI.create_ui_button"],
+            cli_command="motor ui create-button --text <text> --parent <canvas>",
+            example=CapabilityExample(
+                description="Create 'Play' button on canvas",
+                api_calls=[
+                    {"method": "create_ui_button", "args": {"name": "PlayBtn", "label": "Play", "parent": "Canvas"}},
+                ],
+                expected_outcome="UIButton child entity created under canvas",
+            ),
+            notes="Creates child entity with UIButton component. Auto-generates name.",
+            tags=["ui", "authoring"],
+        ))
+        self._add(Capability(
+            id="ui:create_image",
+            summary="Create a UI image element",
+            mode="edit",
+            api_methods=["UIAPI.create_ui_image"],
+            cli_command="motor ui create-image --path <asset_path> --parent <canvas>",
+            example=CapabilityExample(
+                description="Create image from logo asset on canvas",
+                api_calls=[
+                    {"method": "create_ui_image", "args": {"name": "LogoImg", "parent": "Canvas", "sprite": "assets/logo.png"}},
+                ],
+                expected_outcome="UIImage child entity created under canvas",
+            ),
+            notes="Creates child entity with UIImage component using the specified asset.",
+            tags=["ui", "authoring"],
+        ))
+
+    def _register_debug_capabilities(self) -> None:
+        self._add(Capability(
+            id="debug:profiler:reset",
+            summary="Reset the profiler",
+            mode="both",
+            api_methods=["DebugAPI.reset_profiler"],
+            cli_command="motor debug profiler reset",
+            example=CapabilityExample(
+                description="Reset the profiler",
+                api_calls=[
+                    {"method": "reset_profiler", "args": {}},
+                ],
+                expected_outcome="Profiler data cleared",
+            ),
+            notes="Resets accumulated profiler data for a fresh measurement.",
+            tags=["debug", "profiler"],
+        ))
+        self._add(Capability(
+            id="debug:profiler:report",
+            summary="Get the current profiler report",
+            mode="both",
+            api_methods=["DebugAPI.get_profiler_report"],
+            cli_command="motor debug profiler report",
+            example=CapabilityExample(
+                description="Get the current profiler report",
+                api_calls=[
+                    {"method": "get_profiler_report", "args": {}},
+                ],
+                expected_outcome="Returns timing data for subsystems and frames",
+            ),
+            notes="Returns timing data for subsystems and frames.",
+            tags=["debug", "profiler", "query"],
+        ))
+        self._add(Capability(
+            id="debug:overlay",
+            summary="Enable or disable the debug overlay",
+            mode="play",
+            api_methods=["DebugAPI.configure_debug_overlay"],
+            cli_command="motor debug overlay <on|off>",
+            example=CapabilityExample(
+                description="Enable debug overlay with colliders and labels",
+                api_calls=[
+                    {"method": "configure_debug_overlay", "args": {"draw_colliders": True, "draw_labels": True}},
+                ],
+                expected_outcome="Debug overlay configuration updated",
+            ),
+            notes="Toggles draw_colliders and draw_labels debug rendering.",
+            tags=["debug", "rendering"],
+        ))
+
+    def _register_service_capabilities(self) -> None:
+        self._add(Capability(
+            id="service:register",
+            summary="Register a runtime service",
+            mode="play",
+            api_methods=["RuntimeAPI.register_service_runtime"],
+            cli_command="motor service register <name> <component_name>",
+            example=CapabilityExample(
+                description="Register a ScoreManager service",
+                api_calls=[
+                    {"method": "register_service_runtime", "args": {"name": "ScoreManager", "service": "ScoreManager"}},
+                ],
+                expected_outcome="Service registered for the current PLAY session",
+            ),
+            notes="Registers a service object for the current PLAY session.",
+            tags=["service", "runtime"],
+        ))
+        self._add(Capability(
+            id="service:get",
+            summary="Get a registered runtime service",
+            mode="play",
+            api_methods=["RuntimeAPI.get_service"],
+            cli_command="motor service get <name>",
+            example=CapabilityExample(
+                description="Get the ScoreManager service",
+                api_calls=[
+                    {"method": "get_service", "args": {"name": "ScoreManager"}},
+                ],
+                expected_outcome="Returns the service object if registered",
+            ),
+            notes="Returns the service object if registered.",
+            tags=["service", "runtime", "query"],
+        ))
+        self._add(Capability(
+            id="service:has",
+            summary="Check if a runtime service is registered",
+            mode="play",
+            api_methods=["RuntimeAPI.has_service"],
+            cli_command="motor service has <name>",
+            example=CapabilityExample(
+                description="Check if ScoreManager service exists",
+                api_calls=[
+                    {"method": "has_service", "args": {"name": "ScoreManager"}},
+                ],
+                expected_outcome="Returns boolean indicating service availability",
+            ),
+            notes="Returns boolean indicating service availability.",
+            tags=["service", "runtime", "query"],
+        ))
+
+    def _register_entity_group_capabilities(self) -> None:
+        self._add(Capability(
+            id="entity:group:add",
+            summary="Add an entity to a group",
+            mode="edit",
+            api_methods=["RuntimeAPI.add_entity_to_group"],
+            cli_command="motor entity group add <entity_id> <group_name>",
+            example=CapabilityExample(
+                description="Add Player to Enemies group",
+                api_calls=[
+                    {"method": "add_entity_to_group", "args": {"entity_name": "Player", "group_name": "Players"}},
+                ],
+                expected_outcome="Entity added to group, scene saved",
+            ),
+            notes="Persists group membership in scene data. Saves scene after mutation.",
+            tags=["entity", "group", "authoring"],
+        ))
+        self._add(Capability(
+            id="entity:group:remove",
+            summary="Remove an entity from a group",
+            mode="edit",
+            api_methods=["RuntimeAPI.remove_entity_from_group"],
+            cli_command="motor entity group remove <entity_id> <group_name>",
+            example=CapabilityExample(
+                description="Remove Player from Players group",
+                api_calls=[
+                    {"method": "remove_entity_from_group", "args": {"entity_name": "Player", "group_name": "Players"}},
+                ],
+                expected_outcome="Entity removed from group, scene saved",
+            ),
+            notes="Removes group membership from scene data. Saves scene after mutation.",
+            tags=["entity", "group", "authoring"],
+        ))
+        self._add(Capability(
+            id="entity:group:list",
+            summary="List entities in a group or all groups",
+            mode="both",
+            api_methods=["RuntimeAPI.get_entities_in_group"],
+            cli_command="motor entity group list [<group_name>]",
+            example=CapabilityExample(
+                description="List all entities in the Players group",
+                api_calls=[
+                    {"method": "get_entities_in_group", "args": {"group_name": "Players"}},
+                ],
+                expected_outcome="Returns list of entity names in the group",
+            ),
+            notes="Without group_name, lists all groups and their members.",
+            tags=["entity", "group", "query"],
+        ))
+
     # Capabilities that are planned but not yet implemented.
     # These do NOT have corresponding implementations in the official motor CLI parser.
     # They are API-level capabilities that may be used programmatically but are not
     # exposed through the CLI yet.
     _PLANNED_CAPABILITIES: set[str] = {
-        # Scene flow (no CLI commands exist)
-        "scene:flow:set_next",
-        "scene:flow:load_next",
-
-        # Entity hierarchy operation (no CLI command exists)
-        "entity:parent",
-        "introspect:entity",  # motor entity inspect not in parser
-
         # Asset operations beyond list/slice (no CLI commands exist)
         "asset:find",
         "asset:metadata:get",
@@ -1636,14 +2014,6 @@ class CapabilityRegistryBuilder:
         # Project operations beyond info/bootstrap-ai (no CLI commands exist)
         "project:open",
         "project:editor_state",
-
-        # Runtime operations without CLI commands
-        "runtime:undo",
-        "runtime:redo",
-
-        # Physics operations beyond AABB query (no CLI commands exist)
-        "physics:query:ray",
-        "physics:backend:list",
 
         # Introspection beyond capabilities (no CLI command exists)
         "introspect:status",

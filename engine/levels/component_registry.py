@@ -11,6 +11,10 @@ from typing import Any, Dict, Optional, Type
 from engine.ecs.component import Component
 
 
+class ComponentRegistryError(Exception):
+    """Error raised when a component type is not registered."""
+
+
 @dataclass(frozen=True)
 class ComponentDescriptor:
     """Describe un componente registrable y su origen visual."""
@@ -70,20 +74,24 @@ class ComponentRegistry:
         descriptor = self.get_descriptor(name)
         return descriptor.origin if descriptor is not None else "unknown"
 
-    def create(self, name: str, data: Dict[str, Any]) -> Optional[Component]:
+    def create(self, name: str, data: Dict[str, Any]) -> Component:
         component_class = self.get(name)
 
         if component_class is None:
-            print(f"[ERROR] ComponentRegistry: componente '{name}' no registrado")
-            return None
+            raise ComponentRegistryError(
+                f"Component '{name}' not registered. Available: {sorted(self._components.keys())}"
+            )
 
         try:
             if hasattr(component_class, "from_dict"):
                 return component_class.from_dict(data)
             return component_class(**data)
+        except ComponentRegistryError:
+            raise
         except Exception as exc:
-            print(f"[ERROR] ComponentRegistry: error creando '{name}': {exc}")
-            return None
+            raise ComponentRegistryError(
+                f"Component '{name}' creation failed: {exc}. Data: {data}"
+            ) from exc
 
     def list_registered(self) -> list[str]:
         return list(self._components.keys())
@@ -172,11 +180,41 @@ def create_default_registry() -> ComponentRegistry:
         default_payload=RespawnPoint2D().to_dict(),
         editor_tags=("platformer", "tag:Respawn", "layer:Gameplay"),
     )
-    registry.register("MovingPlatform2D", MovingPlatform2D)
-    registry.register("EnemyPatrol2D", EnemyPatrol2D)
-    registry.register("Checkpoint2D", Checkpoint2D)
-    registry.register("KillZone2D", KillZone2D)
-    registry.register("LevelBounds2D", LevelBounds2D)
+    registry.register(
+        "MovingPlatform2D",
+        MovingPlatform2D,
+        description="Platformer moving platform that follows a path of waypoints.",
+        default_payload=MovingPlatform2D().to_dict(),
+        editor_tags=("platformer", "tag:Platform", "layer:Gameplay", "moving"),
+    )
+    registry.register(
+        "EnemyPatrol2D",
+        EnemyPatrol2D,
+        description="Platformer enemy that patrols between waypoints and damages on contact.",
+        default_payload=EnemyPatrol2D().to_dict(),
+        editor_tags=("platformer", "tag:Enemy", "layer:Gameplay", "trigger"),
+    )
+    registry.register(
+        "Checkpoint2D",
+        Checkpoint2D,
+        description="Platformer checkpoint that sets the player respawn position on touch.",
+        default_payload=Checkpoint2D().to_dict(),
+        editor_tags=("platformer", "tag:Checkpoint", "layer:Gameplay", "trigger"),
+    )
+    registry.register(
+        "KillZone2D",
+        KillZone2D,
+        description="Platformer kill zone that damages and respawns the player on contact.",
+        default_payload=KillZone2D().to_dict(),
+        editor_tags=("platformer", "tag:KillZone", "layer:Gameplay", "trigger"),
+    )
+    registry.register(
+        "LevelBounds2D",
+        LevelBounds2D,
+        description="Platformer level bounds that clamp or respawn the player on exit.",
+        default_payload=LevelBounds2D().to_dict(),
+        editor_tags=("platformer", "tag:Bounds", "layer:Gameplay"),
+    )
     registry.register("CharacterController2D", CharacterController2D)
     registry.register("Joint2D", Joint2D)
     registry.register("RigidBody", RigidBody)

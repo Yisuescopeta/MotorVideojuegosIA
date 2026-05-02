@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Union, List, Dict, Callable, Dict, Optional
 
 from engine.api._context import EngineAPIComponent
 from engine.api.types import ActionResult, EngineStatus, EntityData
@@ -14,16 +14,33 @@ class RuntimeAPI(EngineAPIComponent):
     """Runtime and inspection operations exposed through EngineAPI."""
 
     def play(self) -> None:
+        """Start the engine play mode, activating all runtime systems.
+
+        Transitions the engine from EDIT or STOPPED state to PLAY state.
+        Entities are instantiated from the active scene data.
+        """
         runtime = self.runtime
         if runtime is not None:
             runtime.play()
 
     def stop(self) -> None:
+        """Stop play mode and return to edit state.
+
+        Destroys the runtime world and transitions the engine back to EDIT state.
+        """
         runtime = self.runtime
         if runtime is not None:
             runtime.stop()
 
     def set_seed(self, seed: int | None) -> ActionResult:
+        """Set the random number generator seed for deterministic gameplay.
+
+        Args:
+            seed: Integer seed value, or None to randomize.
+
+        Returns:
+            ActionResult with the effective seed value applied.
+        """
         runtime = self.runtime
         if runtime is None:
             return self.fail("Engine not initialized")
@@ -31,6 +48,12 @@ class RuntimeAPI(EngineAPIComponent):
         return self.ok("Seed updated", {"seed": runtime.random_seed})
 
     def undo(self) -> ActionResult:
+        """Undo the last authoring transaction if in edit mode.
+
+        Returns:
+            ActionResult confirming undo was applied, or failure if no undo is
+            available or engine is not initialized.
+        """
         runtime = self.runtime
         if runtime is None:
             return self.fail("Engine not initialized")
@@ -38,6 +61,12 @@ class RuntimeAPI(EngineAPIComponent):
         return self.ok("Undo applied") if success else self.fail("Undo unavailable")
 
     def redo(self) -> ActionResult:
+        """Redo the last undone authoring transaction if in edit mode.
+
+        Returns:
+            ActionResult confirming redo was applied, or failure if no redo is
+            available or engine is not initialized.
+        """
         runtime = self.runtime
         if runtime is None:
             return self.fail("Engine not initialized")
@@ -45,6 +74,11 @@ class RuntimeAPI(EngineAPIComponent):
         return self.ok("Redo applied") if success else self.fail("Redo unavailable")
 
     def step(self, frames: int = 1) -> None:
+        """Advance the simulation by a given number of frames while in play mode.
+
+        Args:
+            frames: Number of frames to simulate (default 1).
+        """
         runtime = self.runtime
         if runtime is None:
             return
@@ -56,7 +90,15 @@ class RuntimeAPI(EngineAPIComponent):
             for _ in range(frames):
                 runtime.step()
 
-    def get_recent_events(self, count: int = 50) -> list[Dict[str, Any]]:
+    def get_recent_events(self, count: int = 50) -> list[Dict[str, Union[str, int, float, bool, list, dict, None]]]:
+        """Retrieve the most recent events from the event bus.
+
+        Args:
+            count: Maximum number of events to return (default 50).
+
+        Returns:
+            List of event dictionaries with 'name' and 'data' keys.
+        """
         runtime = self.runtime
         if runtime is None or runtime.event_bus is None:
             return []
@@ -71,6 +113,15 @@ class RuntimeAPI(EngineAPIComponent):
         ]
 
     def get_status(self) -> EngineStatus:
+        """Get the current runtime status snapshot.
+
+        Returns:
+            EngineStatus dictionary with state, frame, time, fps, and
+            entity_count fields.
+
+        Raises:
+            RuntimeError: If the engine is not initialized.
+        """
         runtime = self.runtime
         if runtime is None:
             raise RuntimeError("Engine not initialized")
@@ -89,6 +140,16 @@ class RuntimeAPI(EngineAPIComponent):
         layer: Optional[str] = None,
         active: Optional[bool] = None,
     ) -> list[EntityData]:
+        """List all entities in the current runtime world with optional filters.
+
+        Args:
+            tag: Filter by entity tag (None = no filter).
+            layer: Filter by entity layer (None = no filter).
+            active: Filter by active state (None = no filter).
+
+        Returns:
+            List of EntityData dictionaries representing matching entities.
+        """
         runtime = self.runtime
         if runtime is None or runtime.world is None:
             return []
@@ -104,6 +165,15 @@ class RuntimeAPI(EngineAPIComponent):
         return entities
 
     def get_entity(self, name: str) -> EntityData:
+        """Get serialized data for a single entity by name.
+
+        Args:
+            name: Entity name.
+
+        Returns:
+            EntityData dictionary with name, active, tag, layer, parent,
+            prefab_instance, components, and component_metadata.
+        """
         entity = self.require_entity(name)
         serialized = entity.to_dict()
         return {
@@ -118,6 +188,12 @@ class RuntimeAPI(EngineAPIComponent):
         }
 
     def get_primary_camera(self) -> Optional[EntityData]:
+        """Find the entity marked as the primary camera in the scene.
+
+        Returns:
+            EntityData for the primary camera entity, or None if no camera is
+            marked as primary.
+        """
         runtime = self.runtime
         if runtime is None or runtime.world is None:
             return None
@@ -131,6 +207,14 @@ class RuntimeAPI(EngineAPIComponent):
         return None
 
     def get_input_state(self, entity_name: str) -> Dict[str, float]:
+        """Get the current raw input values for an entity's InputMap.
+
+        Args:
+            entity_name: Name of the entity with an InputMap component.
+
+        Returns:
+            Dictionary mapping action names to their current float values.
+        """
         from engine.components.inputmap import InputMap
 
         entity = self.require_entity(entity_name)
@@ -140,6 +224,17 @@ class RuntimeAPI(EngineAPIComponent):
         return dict(input_map.last_state)
 
     def inject_input_state(self, entity_name: str, state: Dict[str, float], frames: int = 1) -> ActionResult:
+        """Inject simulated input values for testing or AI-driven gameplay.
+
+        Args:
+            entity_name: Name of the entity with an InputMap component.
+            state: Mapping of action names to fake input values (e.g.
+                {"move_left": 1.0, "move_right": 0.0}).
+            frames: Number of frames the injected input persists (default 1).
+
+        Returns:
+            ActionResult confirming the injection.
+        """
         runtime = self.runtime
         if runtime is None:
             return self.fail("Engine not initialized")
@@ -160,6 +255,15 @@ class RuntimeAPI(EngineAPIComponent):
         )
 
     def get_audio_state(self, entity_name: str) -> Dict[str, Any]:
+        """Get the current runtime state of an AudioSource component.
+
+        Args:
+            entity_name: Name of the entity with an AudioSource component.
+
+        Returns:
+            Dictionary with audio source properties plus playback_position,
+            playback_duration, and is_paused.
+        """
         from engine.components.audiosource import AudioSource
 
         runtime = self.runtime
@@ -175,7 +279,15 @@ class RuntimeAPI(EngineAPIComponent):
         state["is_paused"] = audio_source.is_paused
         return state
 
-    def get_script_public_data(self, entity_name: str) -> Dict[str, Any]:
+    def get_script_public_data(self, entity_name: str) -> Dict[str, Union[str, int, float, bool, list, dict]]:
+        """Get the public_data dictionary from a ScriptBehaviour component.
+
+        Args:
+            entity_name: Name of the entity with a ScriptBehaviour component.
+
+        Returns:
+            Dictionary of public data, or empty dict if not found.
+        """
         from engine.components.scriptbehaviour import ScriptBehaviour
 
         entity = self.require_entity(entity_name)
@@ -184,7 +296,18 @@ class RuntimeAPI(EngineAPIComponent):
             return {}
         return dict(script_behaviour.public_data)
 
-    def query_physics_aabb(self, left: float, top: float, right: float, bottom: float) -> list[Dict[str, Any]]:
+    def query_physics_aabb(self, left: float, top: float, right: float, bottom: float) -> list[Dict[str, Union[str, int, float, bool, list, dict, None]]]:
+        """Query the physics world for colliders overlapping an axis-aligned bounding box.
+
+        Args:
+            left: Left edge of the query rectangle.
+            top: Top edge of the query rectangle.
+            right: Right edge of the query rectangle.
+            bottom: Bottom edge of the query rectangle.
+
+        Returns:
+            List of hit result dictionaries.
+        """
         runtime = self.runtime
         if runtime is None:
             return []
@@ -197,19 +320,43 @@ class RuntimeAPI(EngineAPIComponent):
         direction_x: float,
         direction_y: float,
         max_distance: float,
-    ) -> list[Dict[str, Any]]:
+    ) -> list[Dict[str, Union[str, int, float, bool, list, dict, None]]]:
+        """Cast a ray through the physics world and return all hits.
+
+        Args:
+            origin_x: Ray origin x coordinate.
+            origin_y: Ray origin y coordinate.
+            direction_x: Ray direction x component.
+            direction_y: Ray direction y component.
+            max_distance: Maximum ray length.
+
+        Returns:
+            List of hit result dictionaries, sorted by distance.
+        """
         runtime = self.runtime
         if runtime is None:
             return []
         return runtime.query_physics_ray(origin_x, origin_y, direction_x, direction_y, max_distance)
 
     def list_physics_backends(self) -> list[PhysicsBackendInfo]:
+        """List all available physics backends with their capabilities.
+
+        Returns:
+            List of PhysicsBackendInfo dictionaries.
+        """
         runtime = self.runtime
         if runtime is None:
             return []
         return runtime.list_physics_backends()
 
     def get_physics_backend_selection(self) -> PhysicsBackendSelection:
+        """Get the current physics backend selection and fallback information.
+
+        Returns:
+            PhysicsBackendSelection dictionary with requested_backend,
+            effective_backend, used_fallback, fallback_reason, and
+            unavailable_reason.
+        """
         runtime = self.runtime
         if runtime is None:
             return {
@@ -222,6 +369,15 @@ class RuntimeAPI(EngineAPIComponent):
         return runtime.get_physics_backend_selection()
 
     def play_audio(self, entity_name: str) -> ActionResult:
+        """Start audio playback for an AudioSource entity.
+
+        Args:
+            entity_name: Name of the entity with an AudioSource component.
+
+        Returns:
+            ActionResult confirming playback started, or failure if the audio
+            source is not found or disabled.
+        """
         runtime = self.runtime
         if runtime is None or runtime.world is None or runtime.audio_system is None:
             return self.fail("Audio system not ready")
@@ -229,6 +385,14 @@ class RuntimeAPI(EngineAPIComponent):
         return self.ok("Audio started", {"entity": entity_name}) if success else self.fail("Audio source not found or disabled")
 
     def stop_audio(self, entity_name: str) -> ActionResult:
+        """Stop audio playback for an AudioSource entity.
+
+        Args:
+            entity_name: Name of the entity with an AudioSource component.
+
+        Returns:
+            ActionResult confirming playback stopped.
+        """
         runtime = self.runtime
         if runtime is None or runtime.world is None or runtime.audio_system is None:
             return self.fail("Audio system not ready")
@@ -236,6 +400,14 @@ class RuntimeAPI(EngineAPIComponent):
         return self.ok("Audio stopped", {"entity": entity_name}) if success else self.fail("Audio source not found")
 
     def pause_audio(self, entity_name: str) -> ActionResult:
+        """Pause audio playback for an AudioSource entity.
+
+        Args:
+            entity_name: Name of the entity with an AudioSource component.
+
+        Returns:
+            ActionResult confirming audio was paused.
+        """
         runtime = self.runtime
         if runtime is None or runtime.world is None or runtime.audio_system is None:
             return self.fail("Audio system not ready")
@@ -243,6 +415,14 @@ class RuntimeAPI(EngineAPIComponent):
         return self.ok("Audio paused", {"entity": entity_name}) if success else self.fail("Audio source not found, disabled, or already paused")
 
     def resume_audio(self, entity_name: str) -> ActionResult:
+        """Resume paused audio playback for an AudioSource entity.
+
+        Args:
+            entity_name: Name of the entity with an AudioSource component.
+
+        Returns:
+            ActionResult confirming audio was resumed.
+        """
         runtime = self.runtime
         if runtime is None or runtime.world is None or runtime.audio_system is None:
             return self.fail("Audio system not ready")
@@ -250,6 +430,14 @@ class RuntimeAPI(EngineAPIComponent):
         return self.ok("Audio resumed", {"entity": entity_name}) if success else self.fail("Audio source not found, disabled, or not paused")
 
     def get_group_entities(self, group_name: str) -> list[str]:
+        """Get the names of all entities belonging to a group.
+
+        Args:
+            group_name: Name of the group.
+
+        Returns:
+            List of entity name strings.
+        """
         runtime = self.runtime
         if runtime is None or runtime.world is None:
             return []
@@ -259,6 +447,14 @@ class RuntimeAPI(EngineAPIComponent):
         return [e.name for e in ops.get_entities(group_name)]
 
     def get_first_in_group(self, group_name: str) -> str | None:
+        """Get the name of the first entity found in a group.
+
+        Args:
+            group_name: Name of the group.
+
+        Returns:
+            Entity name string or None if the group is empty or not found.
+        """
         runtime = self.runtime
         if runtime is None or runtime.world is None:
             return None
@@ -269,6 +465,15 @@ class RuntimeAPI(EngineAPIComponent):
         return ent.name if ent is not None else None
 
     def is_in_group(self, entity_name: str, group_name: str) -> bool:
+        """Check if an entity belongs to a specific group.
+
+        Args:
+            entity_name: Name of the entity.
+            group_name: Name of the group.
+
+        Returns:
+            True if the entity is in the group, False otherwise.
+        """
         runtime = self.runtime
         if runtime is None or runtime.world is None:
             return False
@@ -278,6 +483,14 @@ class RuntimeAPI(EngineAPIComponent):
         return ops.has(group_name, entity_name)
 
     def count_group(self, group_name: str) -> int:
+        """Count the number of entities in a group.
+
+        Args:
+            group_name: Name of the group.
+
+        Returns:
+            Integer count of entities in the group.
+        """
         runtime = self.runtime
         if runtime is None or runtime.world is None:
             return 0
@@ -287,6 +500,17 @@ class RuntimeAPI(EngineAPIComponent):
         return ops.count(group_name)
 
     def call_group(self, group_name: str, method_name: str, *args: Any, **kwargs: Any) -> ActionResult:
+        """Call a method on every entity in a group by name.
+
+        Args:
+            group_name: Name of the group.
+            method_name: Name of the method to invoke on each entity.
+            *args: Positional arguments passed to the method.
+            **kwargs: Keyword arguments passed to the method.
+
+        Returns:
+            ActionResult with the number of entities invoked.
+        """
         runtime = self.runtime
         if runtime is None or runtime.world is None:
             return self.fail("Engine not initialized")
@@ -300,6 +524,17 @@ class RuntimeAPI(EngineAPIComponent):
         )
 
     def emit_group(self, group_name: str, signal_name: str, *args: Any, **kwargs: Any) -> ActionResult:
+        """Emit a signal on every entity in a group.
+
+        Args:
+            group_name: Name of the group.
+            signal_name: Name of the signal to emit.
+            *args: Positional arguments passed to signal handlers.
+            **kwargs: Keyword arguments passed to signal handlers.
+
+        Returns:
+            ActionResult with the number of signal handlers executed.
+        """
         runtime = self.runtime
         if runtime is None or runtime.world is None:
             return self.fail("Engine not initialized")
@@ -372,7 +607,7 @@ class RuntimeAPI(EngineAPIComponent):
         self,
         source_id: str | None = None,
         signal_name: str | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, Union[str, int, float, bool, list, dict, None]]]:
         """Lista conexiones runtime activas, opcionalmente filtradas."""
         runtime = self.runtime
         if runtime is None:
@@ -381,7 +616,7 @@ class RuntimeAPI(EngineAPIComponent):
         if signal_runtime is None:
             return []
         connections = signal_runtime.list_connections(source_id=source_id, signal_name=signal_name)
-        result: list[dict[str, Any]] = []
+        result: list[dict[str, Union[str, int, float, bool, list, dict, None]]] = []
         for conn in connections:
             flag_names: list[str] = []
             if conn.flags & SignalConnectionFlags.DEFERRED:
@@ -591,6 +826,7 @@ class RuntimeAPI(EngineAPIComponent):
         return self.ok("Builtin service registered", {"name": name})
 
     def shutdown(self) -> None:
+        """Request a graceful engine shutdown, closing all systems and windows."""
         runtime = self.runtime
         if runtime is not None:
             runtime.request_shutdown()
