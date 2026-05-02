@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from engine.api._context import EngineAPIComponent
 from engine.api.types import ActionResult
@@ -1187,7 +1187,7 @@ class AuthoringAPI(EngineAPIComponent):
         slice_names: list[str],
         fps: Optional[float] = None,
         loop: Optional[bool] = None,
-        on_complete: Any = _UNSET,
+        on_complete: Optional[Union[str, Callable[..., object]]] = _UNSET,
         set_default: bool = False,
     ) -> ActionResult:
         """Update frame data for an existing animation state.

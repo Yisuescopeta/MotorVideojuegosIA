@@ -657,12 +657,6 @@ class AssetsProjectAPI(EngineAPIComponent):
 
         return get_default_registry().to_dict()
 
-    def _get_capability_registry_object(self):
-        """Get the raw CapabilityRegistry object (internal use for diagnostics)."""
-        from engine.ai import get_default_registry
-
-        return get_default_registry()
-
     def list_recipes(self) -> list[Dict[str, Any]]:
         """List all bundled declarative AI recipes.
 

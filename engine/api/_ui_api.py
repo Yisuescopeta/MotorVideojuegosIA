@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Union, List, Dict, Dict, Optional
+from typing import Union, List, Dict, Optional
 
 from engine.api._context import EngineAPIComponent
 from engine.api.types import ActionResult, EntityData
@@ -169,10 +169,10 @@ class UIAPI(EngineAPIComponent):
         parent: str,
         rect_transform: Optional[Dict[str, Union[str, int, float, bool, list, dict, None]]] = None,
         on_click: Optional[Dict[str, Union[str, int, float, bool, list, dict, None]]] = None,
-        normal_sprite: Any = None,
-        hover_sprite: Any = None,
-        pressed_sprite: Any = None,
-        disabled_sprite: Any = None,
+        normal_sprite: Optional[Union[str, dict]] = None,
+        hover_sprite: Optional[Union[str, dict]] = None,
+        pressed_sprite: Optional[Union[str, dict]] = None,
+        disabled_sprite: Optional[Union[str, dict]] = None,
         normal_slice: str = "",
         hover_slice: str = "",
         pressed_slice: str = "",
@@ -236,7 +236,7 @@ class UIAPI(EngineAPIComponent):
         self,
         name: str,
         parent: str,
-        sprite: Any,
+        sprite: Optional[Union[str, dict]],
         rect_transform: Optional[Dict[str, Union[str, int, float, bool, list, dict, None]]] = None,
         slice_name: str = "",
         preserve_aspect: bool = True,

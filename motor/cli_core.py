@@ -18,7 +18,7 @@ from engine.ai import get_default_registry
 from engine.api import EngineAPI
 from engine.config import ENGINE_VERSION
 from engine.project.project_service import ProjectService
-from engine.recipes import (
+from engine.api.errors import (
     RecipeError,
     RecipeNotFoundError,
     RecipeValidationError,
@@ -664,7 +664,8 @@ def cmd_capabilities(json_output: bool) -> int:
 
 def _compact_workflows_from_registry(api) -> List[Dict[str, Any]]:
     """Build compact recommended AI workflows from implemented registry entries."""
-    registry = api._get_capability_registry_object()
+    registry_dict = api.get_capability_registry()
+    caps_by_id = {c["id"]: c for c in registry_dict.get("capabilities", [])}
     selected_ids = [
         "ai:start",
         "ai:compliance",
@@ -683,16 +684,16 @@ def _compact_workflows_from_registry(api) -> List[Dict[str, Any]]:
     ]
     workflows: List[Dict[str, Any]] = []
     for capability_id in selected_ids:
-        cap = registry.get(capability_id)
-        if cap is None or cap.status != "implemented":
+        cap = caps_by_id.get(capability_id)
+        if cap is None or cap.get("status") != "implemented":
             continue
         workflows.append(
             {
-                "capability_id": cap.id,
-                "summary": cap.summary,
-                "cli_command": cap.cli_command,
-                "api_methods": cap.api_methods,
-                "tags": cap.tags,
+                "capability_id": cap["id"],
+                "summary": cap["summary"],
+                "cli_command": cap["cli_command"],
+                "api_methods": cap["api_methods"],
+                "tags": cap["tags"],
             }
         )
     return workflows
@@ -847,14 +848,15 @@ def _create_self_test_project(project_path: Path) -> None:
 
 
 def _missing_self_test_capabilities(recipe: Dict[str, Any], api) -> List[Dict[str, str]]:
-    registry = api._get_capability_registry_object()
+    registry_dict = api.get_capability_registry()
+    caps_by_id = {c["id"]: c for c in registry_dict.get("capabilities", [])}
     missing: List[Dict[str, str]] = []
     for capability_id in recipe.get("expected_capabilities", []):
-        cap = registry.get(str(capability_id))
+        cap = caps_by_id.get(str(capability_id))
         if cap is None:
             missing.append({"id": str(capability_id), "reason": "not_registered"})
-        elif cap.status != "implemented":
-            missing.append({"id": cap.id, "reason": f"status:{cap.status}"})
+        elif cap.get("status") != "implemented":
+            missing.append({"id": cap["id"], "reason": f"status:{cap['status']}"})
     return missing
 
 
@@ -1449,10 +1451,14 @@ def cmd_doctor(project_path: Path, json_output: bool) -> int:
 
         # Check 9: Capability registry consistency
         try:
-            registry = api._get_capability_registry_object() if api else get_default_registry()
+            if api:
+                registry = api.get_capability_registry()
+            else:
+                registry = get_default_registry().to_dict()
+            caps_list = registry.get("capabilities", [])
             checks["capability_registry_loaded"] = True
-            checks["capability_count"] = len(registry.list_all())
-            cap_ids = [cap.id for cap in registry.list_all()]
+            checks["capability_count"] = len(caps_list)
+            cap_ids = [c["id"] for c in caps_list]
             duplicates = set([cid for cid in cap_ids if cap_ids.count(cid) > 1])
             if duplicates:
                 issues.append(f"Duplicate capability IDs found: {duplicates}")
