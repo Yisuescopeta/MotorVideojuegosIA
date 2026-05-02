@@ -283,6 +283,10 @@ The entries below are available now and are safe to use from the CLI.
 - `physics:query:aabb`: Query physics entities within an axis-aligned bounding box
 - `physics:query:ray`: Cast a ray and find intersecting physics bodies
 
+### Physics
+
+- `physics:query:aabb`: Query physics entities within an axis-aligned bounding box
+
 ### Introspection
 
 - `introspect:capabilities`: Query this capability registry itself

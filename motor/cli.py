@@ -2259,6 +2259,18 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 json_output=parsed.json,
             )
 
+    # === physics ===
+    elif parsed.command == "physics":
+        if parsed.physics_subcommand == "query" and parsed.physics_query_subcommand == "aabb":
+            return cmd_physics_query_aabb(
+                project_path=Path(parsed.project_root).resolve(),
+                left=parsed.left,
+                top=parsed.top,
+                right=parsed.right,
+                bottom=parsed.bottom,
+                json_output=parsed.json,
+            )
+
     # === entity ===
     elif parsed.command == "entity":
         if parsed.entity_subcommand == "create":
