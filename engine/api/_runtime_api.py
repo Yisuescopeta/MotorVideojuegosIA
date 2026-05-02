@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Union, List, Dict, Callable, Dict, Optional
+from typing import Union, List, Dict, Callable, Optional
 
 from engine.api._context import EngineAPIComponent
 from engine.api.types import ActionResult, EngineStatus, EntityData
@@ -254,7 +254,7 @@ class RuntimeAPI(EngineAPIComponent):
             },
         )
 
-    def get_audio_state(self, entity_name: str) -> Dict[str, Any]:
+    def get_audio_state(self, entity_name: str) -> Dict[str, Union[str, int, float, bool]]:
         """Get the current runtime state of an AudioSource component.
 
         Args:
@@ -499,7 +499,7 @@ class RuntimeAPI(EngineAPIComponent):
             return 0
         return ops.count(group_name)
 
-    def call_group(self, group_name: str, method_name: str, *args: Any, **kwargs: Any) -> ActionResult:
+    def call_group(self, group_name: str, method_name: str, *args: object, **kwargs: object) -> ActionResult:  # type: ignore[no-any-explicit]  # Variadic args: tipo exacto depende del grupo llamado
         """Call a method on every entity in a group by name.
 
         Args:
@@ -523,7 +523,7 @@ class RuntimeAPI(EngineAPIComponent):
             {"group": group_name, "method": method_name, "invoked": invoked},
         )
 
-    def emit_group(self, group_name: str, signal_name: str, *args: Any, **kwargs: Any) -> ActionResult:
+    def emit_group(self, group_name: str, signal_name: str, *args: object, **kwargs: object) -> ActionResult:  # type: ignore[no-any-explicit]  # Variadic args: tipo exacto depende del grupo
         """Emit a signal on every entity in a group.
 
         Args:
@@ -553,10 +553,10 @@ class RuntimeAPI(EngineAPIComponent):
         self,
         source_id: str,
         signal_name: str,
-        callback: Callable[..., Any],
+        callback: Callable[..., object],  # type: ignore[no-any-explicit]  # Callback genérico: tipo exacto depende del evento
         *,
         flags: list[str] | int | None = None,
-        binds: tuple[Any, ...] | list[Any] | None = None,
+        binds: tuple[object, ...] | list[object] | None = None,
         connection_id: str | None = None,
         description: str = "",
         target_id: str | None = None,
@@ -583,7 +583,7 @@ class RuntimeAPI(EngineAPIComponent):
             target_id=target_id,
         )
 
-    def emit_signal(self, source_id: str, signal_name: str, *args: Any, **kwargs: Any) -> int:
+    def emit_signal(self, source_id: str, signal_name: str, *args: object, **kwargs: object) -> int:  # type: ignore[no-any-explicit]  # Variadic: tipo exacto depende de la señal
         """Emite una señal runtime y retorna el número de conexiones ejecutadas."""
         runtime = self.runtime
         if runtime is None:
@@ -771,7 +771,7 @@ class RuntimeAPI(EngineAPIComponent):
 
     # --- Servicios globales / autoloads ---
 
-    def get_service(self, name: str) -> Any | None:
+    def get_service(self, name: str) -> Optional[object]:
         """Obtiene un servicio global registrado en el runtime actual."""
         runtime = self.runtime
         if runtime is None:
@@ -797,7 +797,7 @@ class RuntimeAPI(EngineAPIComponent):
             return bool(tiene(name))
         return False
 
-    def register_service_runtime(self, name: str, service: Any) -> ActionResult:
+    def register_service_runtime(self, name: str, service: object) -> ActionResult:  # type: ignore[no-any-explicit]  # Servicio externo: tipo determinado en runtime
         """Registra un servicio para la sesión de PLAY actual."""
         runtime = self.runtime
         if runtime is None:
@@ -811,7 +811,7 @@ class RuntimeAPI(EngineAPIComponent):
         registrar(name, service)
         return self.ok("Runtime service registered", {"name": name})
 
-    def register_service_builtin(self, name: str, service: Any) -> ActionResult:
+    def register_service_builtin(self, name: str, service: object) -> ActionResult:  # type: ignore[no-any-explicit]  # Servicio externo: tipo determinado en runtime
         """Registra un servicio builtin persistente entre sesiones de PLAY."""
         runtime = self.runtime
         if runtime is None:

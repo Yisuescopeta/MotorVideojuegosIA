@@ -662,9 +662,9 @@ def cmd_capabilities(json_output: bool) -> int:
                 pass
 
 
-def _compact_workflows_from_registry() -> List[Dict[str, Any]]:
+def _compact_workflows_from_registry(api) -> List[Dict[str, Any]]:
     """Build compact recommended AI workflows from implemented registry entries."""
-    registry = get_default_registry()
+    registry = api._get_capability_registry_object()
     selected_ids = [
         "ai:start",
         "ai:compliance",
@@ -749,7 +749,7 @@ def cmd_ai_start(project_path: Path, json_output: bool) -> int:
                 "motor scene list --project . --json",
                 "motor project info --project . --json",
             ],
-            "recommended_workflows": _compact_workflows_from_registry(),
+            "recommended_workflows": _compact_workflows_from_registry(api),
             "rules": {
                 "no_external_runtime": (
                     "Do not create or use an external runtime for this project; "
@@ -846,8 +846,8 @@ def _create_self_test_project(project_path: Path) -> None:
         (project_path / dirname).mkdir(parents=True, exist_ok=True)
 
 
-def _missing_self_test_capabilities(recipe: Dict[str, Any]) -> List[Dict[str, str]]:
-    registry = get_default_registry()
+def _missing_self_test_capabilities(recipe: Dict[str, Any], api) -> List[Dict[str, str]]:
+    registry = api._get_capability_registry_object()
     missing: List[Dict[str, str]] = []
     for capability_id in recipe.get("expected_capabilities", []):
         cap = registry.get(str(capability_id))
@@ -976,7 +976,7 @@ def cmd_ai_self_test(project_path: Path, profile: str, in_place: bool, json_outp
             return _output(False, "AI self-test failed: unsupported profile", data, json_output)
 
         recipe = api.get_recipe(recipe_id)
-        missing_capabilities = _missing_self_test_capabilities(recipe)
+        missing_capabilities = _missing_self_test_capabilities(recipe, api)
         if missing_capabilities:
             data["missing_capabilities"] = missing_capabilities
             data["warnings"].append("Required capability missing or not implemented.")
@@ -1301,6 +1301,12 @@ def cmd_doctor(project_path: Path, json_output: bool) -> int:
     warnings: List[str] = []
     checks: Dict[str, Any] = {}
 
+    api = None
+    try:
+        api = _init_engine(project_path, auto_ensure_project=False, read_only=True)
+    except Exception:
+        pass  # Doctor puede funcionar sin engine completo
+
     # Check 1: Project manifest exists and is valid JSON
     manifest_path = project_path / "project.json"
     checks["project_manifest_exists"] = manifest_path.exists()
@@ -1443,7 +1449,7 @@ def cmd_doctor(project_path: Path, json_output: bool) -> int:
 
         # Check 9: Capability registry consistency
         try:
-            registry = get_default_registry()
+            registry = api._get_capability_registry_object() if api else get_default_registry()
             checks["capability_registry_loaded"] = True
             checks["capability_count"] = len(registry.list_all())
             cap_ids = [cap.id for cap in registry.list_all()]
