@@ -283,15 +283,37 @@ The entries below are available now and are safe to use from the CLI.
 - `physics:query:aabb`: Query physics entities within an axis-aligned bounding box
 - `physics:query:ray`: Cast a ray and find intersecting physics bodies
 
-### Physics
-
-- `physics:query:aabb`: Query physics entities within an axis-aligned bounding box
-
 ### Introspection
 
 - `introspect:capabilities`: Query this capability registry itself
 - `introspect:doctor`: Diagnose project health and detect issues
 - `introspect:entity`: Get full data for a specific entity
+
+### Debug
+
+- `debug:overlay`: Enable or disable the debug overlay
+- `debug:profiler:report`: Get the current profiler report
+- `debug:profiler:reset`: Reset the profiler
+
+### Services
+
+- `service:get`: Get a registered runtime service
+- `service:has`: Check if a runtime service is registered
+- `service:register`: Register a runtime service
+
+### Signals
+
+- `signal:connect`: Connect a signal between entities in the active scene
+- `signal:disconnect`: Disconnect a signal between entities
+- `signal:emit`: Emit a signal from an entity at runtime
+- `signal:list`: List signal connections in the active scene
+
+### UI
+
+- `ui:create_button`: Create a UI button element
+- `ui:create_canvas`: Create a UI canvas entity
+- `ui:create_image`: Create a UI image element
+- `ui:create_text`: Create a UI text element
 
 ## Coming Soon
 

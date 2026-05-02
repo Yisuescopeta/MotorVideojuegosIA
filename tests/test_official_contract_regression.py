@@ -229,19 +229,19 @@ class RegistryParserAlignmentTests(unittest.TestCase):
         # Get parser commands (extract base command without arguments)
         parser_commands = set()
         for action in parser._actions:
-            if hasattr(action, 'choices') and action.choices:
+            if hasattr(action, 'choices') and action.choices and isinstance(action.choices, dict):
                 for cmd_name, subparser in action.choices.items():
                     parser_commands.add(cmd_name)
                     if hasattr(subparser, '_actions'):
                         for sub_action in subparser._actions:
-                            if hasattr(sub_action, 'choices') and sub_action.choices:
+                            if hasattr(sub_action, 'choices') and sub_action.choices and isinstance(sub_action.choices, dict):
                                 for sub_cmd in sub_action.choices.keys():
                                     parser_commands.add(f"{cmd_name} {sub_cmd}")
                                     # Third level
                                     sub_subparser = sub_action.choices[sub_cmd]
                                     if hasattr(sub_subparser, '_actions'):
                                         for sub_sub_action in sub_subparser._actions:
-                                            if hasattr(sub_sub_action, 'choices') and sub_sub_action.choices:
+                                            if hasattr(sub_sub_action, 'choices') and sub_sub_action.choices and isinstance(sub_sub_action.choices, dict):
                                                 for sub_sub_cmd in sub_sub_action.choices.keys():
                                                     parser_commands.add(f"{cmd_name} {sub_cmd} {sub_sub_cmd}")
 
@@ -476,20 +476,20 @@ class PlannedCapabilitiesNotExecutableTests(unittest.TestCase):
         # Get all executable parser commands
         executable_commands = set()
         for action in parser._actions:
-            if hasattr(action, 'choices') and action.choices:
+            if hasattr(action, 'choices') and action.choices and isinstance(action.choices, dict):
                 for cmd_name, subparser in action.choices.items():
                     executable_commands.add(cmd_name)
                     # Second level
                     if hasattr(subparser, '_actions'):
                         for sub_action in subparser._actions:
-                            if hasattr(sub_action, 'choices') and sub_action.choices:
+                            if hasattr(sub_action, 'choices') and sub_action.choices and isinstance(sub_action.choices, dict):
                                 for sub_cmd in sub_action.choices.keys():
                                     executable_commands.add(f"{cmd_name} {sub_cmd}")
                                     # Third level
                                     sub_subparser = sub_action.choices[sub_cmd]
                                     if hasattr(sub_subparser, '_actions'):
                                         for sub_sub_action in sub_subparser._actions:
-                                            if hasattr(sub_sub_action, 'choices') and sub_sub_action.choices:
+                                            if hasattr(sub_sub_action, 'choices') and sub_sub_action.choices and isinstance(sub_sub_action.choices, dict):
                                                 for sub_sub_cmd in sub_sub_action.choices.keys():
                                                     executable_commands.add(f"{cmd_name} {sub_cmd} {sub_sub_cmd}")
 

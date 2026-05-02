@@ -2175,6 +2175,10 @@ class MotorAIBootstrapBuilder:
             "Runtime": ["runtime:"],
             "Physics": ["physics:"],
             "Introspection": ["introspect:"],
+            "Debug": ["debug:"],
+            "Services": ["service:"],
+            "Signals": ["signal:"],
+            "UI": ["ui:"],
         }
 
         for category_name, prefixes in categories.items():

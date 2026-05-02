@@ -82,13 +82,9 @@ class StartHereAICoherenceTests(unittest.TestCase):
         """Common capabilities list should not include planned capabilities."""
         # These should NOT appear as common capabilities
         planned_ids = [
-            "entity:parent",
-            "introspect:status", "introspect:entity",
+            "introspect:status",
             "asset:find", "asset:metadata:get", "asset:refresh",
             "project:open", "project:editor_state",
-            "scene:flow:set_next", "scene:flow:load_next",
-            "physics:query:ray", "physics:backend:list",
-            "runtime:undo", "runtime:redo",
         ]
 
         for cap_id in planned_ids:
