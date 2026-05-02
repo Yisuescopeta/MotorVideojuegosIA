@@ -22,8 +22,6 @@ from engine.recipes import (
     RecipeError,
     RecipeNotFoundError,
     RecipeValidationError,
-    get_recipe,
-    run_recipe,
 )
 from motor.platformer_scaffold import (
     add_platformer_checkpoint,
@@ -972,11 +970,12 @@ def cmd_ai_self_test(project_path: Path, profile: str, in_place: bool, json_outp
 
     try:
         _ensure_project(project_path)
+        api = _init_engine(project_path, auto_ensure_project=False)
         if recipe_id is None:
             data["warnings"].append(f"Unsupported self-test profile: {profile}")
             return _output(False, "AI self-test failed: unsupported profile", data, json_output)
 
-        recipe = get_recipe(recipe_id)
+        recipe = api.get_recipe(recipe_id)
         missing_capabilities = _missing_self_test_capabilities(recipe)
         if missing_capabilities:
             data["missing_capabilities"] = missing_capabilities
@@ -990,9 +989,10 @@ def cmd_ai_self_test(project_path: Path, profile: str, in_place: bool, json_outp
             temp_project = tmp_root / f"ai-self-test-{uuid.uuid4().hex[:12]}"
             _create_self_test_project(temp_project)
             workspace_path = temp_project
+            api = _init_engine(workspace_path, auto_ensure_project=False)
             cleanup_status["temp_project"] = str(temp_project)
 
-        recipe_result = run_recipe(recipe_id, workspace_path)
+        recipe_result = api.run_recipe(recipe_id)
         data["commands_executed"] = _self_test_commands(recipe_result)
         data["validations"] = _self_test_validations(recipe_result)
         data["generated_scene"] = _self_test_generated_scene(workspace_path, recipe_result)
@@ -2895,18 +2895,16 @@ def cmd_project_bootstrap_ai(project_path: Path, json_output: bool) -> int:
     try:
         _ensure_project(project_path)
 
-        from engine.ai import get_default_registry
-
         api = _init_engine(project_path, auto_ensure_project=False)
 
         motor_ai_data = api.migrate_project_bootstrap(str(project_path))
 
-        registry = get_default_registry()
+        registry_data = api.get_capability_registry()
 
         data = {
             "motor_ai_json": str(project_path / "motor_ai.json"),
             "start_here_md": str(project_path / "START_HERE_AI.md"),
-            "registry_capabilities_count": len(registry.list_all()),
+            "registry_capabilities_count": registry_data.get("count", len(registry_data.get("capabilities", []))),
         }
 
         return _output(
