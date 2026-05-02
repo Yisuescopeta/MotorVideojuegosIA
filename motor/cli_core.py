@@ -14,7 +14,6 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from engine.agent import AgentSessionService
 from engine.ai import get_default_registry
 from engine.ai.compliance import run_ai_compliance
 from engine.api import EngineAPI
@@ -1050,10 +1049,11 @@ def cmd_agent_session_create(
     json_output: bool = False,
 ) -> int:
     """Create an experimental agent session."""
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
-        service = AgentSessionService(project_root=project_path)
-        session = service.create_session(
+        api = _init_engine(project_path, auto_ensure_project=False)
+        result = api.create_agent_session(
             permission_mode=permission_mode,
             title=title,
             provider_id=provider_id,
@@ -1062,9 +1062,15 @@ def cmd_agent_session_create(
             max_tokens=max_tokens,
             stream=stream,
         )
-        return _output(True, "Agent session created", session, json_output)
+        return _output(result["success"], result["message"], result["data"], json_output)
     except Exception as exc:
         return _output(False, f"Agent session create failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_agent_session_compact(
@@ -1073,13 +1079,20 @@ def cmd_agent_session_compact(
     json_output: bool,
 ) -> int:
     """Compact an experimental agent session."""
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
-        service = AgentSessionService(project_root=project_path)
-        data = service.compact_session(session_id)
-        return _output(True, "Agent session compacted", data, json_output)
+        api = _init_engine(project_path, auto_ensure_project=False)
+        result = api.compact_agent_session(session_id)
+        return _output(result["success"], result["message"], result["data"], json_output)
     except Exception as exc:
         return _output(False, f"Agent session compact failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_agent_session_inspect(
@@ -1088,13 +1101,20 @@ def cmd_agent_session_inspect(
     json_output: bool,
 ) -> int:
     """Inspect an experimental agent session without mutating it."""
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
-        service = AgentSessionService(project_root=project_path)
-        data = service.inspect_session(session_id)
+        api = _init_engine(project_path, auto_ensure_project=False)
+        data = api.inspect_agent_session(session_id)
         return _output(True, "Agent session inspected", data, json_output)
     except Exception as exc:
         return _output(False, f"Agent session inspect failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_agent_message_send(
@@ -1108,9 +1128,8 @@ def cmd_agent_message_send(
     try:
         _ensure_project(project_path)
         api = _init_engine(project_path, auto_ensure_project=False)
-        service = AgentSessionService(api=api, project_root=project_path)
-        session = service.send_message(session_id, message)
-        return _output(True, "Agent message processed", session, json_output)
+        result = api.send_agent_message(session_id, message)
+        return _output(result["success"], result["message"], result["data"], json_output)
     except Exception as exc:
         return _output(False, f"Agent message failed: {exc}", None, json_output)
     finally:
@@ -1133,9 +1152,8 @@ def cmd_agent_action_approve(
     try:
         _ensure_project(project_path)
         api = _init_engine(project_path, auto_ensure_project=False)
-        service = AgentSessionService(api=api, project_root=project_path)
-        session = service.approve_action(session_id, action_id, approved)
-        return _output(True, "Agent action resolved", session, json_output)
+        result = api.approve_agent_action(session_id, action_id, approved)
+        return _output(result["success"], result["message"], result["data"], json_output)
     except Exception as exc:
         return _output(False, f"Agent action failed: {exc}", None, json_output)
     finally:
@@ -1151,12 +1169,20 @@ def cmd_agent_providers_list(
     json_output: bool,
 ) -> int:
     """List configured experimental agent providers."""
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
-        service = AgentSessionService(project_root=project_path)
-        return _output(True, "Agent providers listed", service.list_providers(), json_output)
+        api = _init_engine(project_path, auto_ensure_project=False)
+        data = api.list_agent_providers()
+        return _output(True, "Agent providers listed", data, json_output)
     except Exception as exc:
         return _output(False, f"Agent providers list failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_agent_providers_login(
@@ -1170,11 +1196,12 @@ def cmd_agent_providers_login(
     json_output: bool,
 ) -> int:
     """Store provider credentials or delegate managed Codex login."""
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
-        service = AgentSessionService(project_root=project_path)
+        api = _init_engine(project_path, auto_ensure_project=False)
         if codex_chatgpt or device_auth:
-            data = service.login_provider(
+            result = api.login_agent_provider(
                 provider_id,
                 api_key="",
                 base_url=base_url,
@@ -1188,10 +1215,16 @@ def cmd_agent_providers_login(
                     "Use --api-key-stdin to provide credentials without exposing them in shell history, or use --codex-chatgpt/--device-auth for managed Codex login."
                 )
             api_key = sys.stdin.read().strip()
-            data = service.login_provider(provider_id, api_key=api_key, base_url=base_url, model=model)
-        return _output(True, "Agent provider logged in", data, json_output)
+            result = api.login_agent_provider(provider_id, api_key=api_key, base_url=base_url, model=model)
+        return _output(result["success"], result["message"], result["data"], json_output)
     except Exception as exc:
         return _output(False, f"Agent provider login failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_agent_providers_logout(
@@ -1200,13 +1233,20 @@ def cmd_agent_providers_logout(
     json_output: bool,
 ) -> int:
     """Remove a user-local provider credential."""
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
-        service = AgentSessionService(project_root=project_path)
-        data = service.logout_provider(provider_id)
-        return _output(True, "Agent provider logged out", data, json_output)
+        api = _init_engine(project_path, auto_ensure_project=False)
+        result = api.logout_agent_provider(provider_id)
+        return _output(result["success"], result["message"], result["data"], json_output)
     except Exception as exc:
         return _output(False, f"Agent provider logout failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_agent_providers_status(
@@ -1215,13 +1255,20 @@ def cmd_agent_providers_status(
     json_output: bool,
 ) -> int:
     """Show provider auth status without revealing credentials."""
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
-        service = AgentSessionService(project_root=project_path)
-        data = service.get_provider_status(provider_id)
+        api = _init_engine(project_path, auto_ensure_project=False)
+        data = api.get_agent_provider_status(provider_id)
         return _output(True, "Agent provider status loaded", data, json_output)
     except Exception as exc:
         return _output(False, f"Agent provider status failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_agent_usage(
@@ -1230,12 +1277,20 @@ def cmd_agent_usage(
     json_output: bool,
 ) -> int:
     """Show token/cost usage for an experimental agent session."""
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
-        service = AgentSessionService(project_root=project_path)
-        return _output(True, "Agent usage loaded", service.get_usage(session_id), json_output)
+        api = _init_engine(project_path, auto_ensure_project=False)
+        data = api.get_agent_usage(session_id)
+        return _output(True, "Agent usage loaded", data, json_output)
     except Exception as exc:
         return _output(False, f"Agent usage failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_doctor(project_path: Path, json_output: bool) -> int:

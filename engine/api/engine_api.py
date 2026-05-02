@@ -4,6 +4,7 @@ engine/api/engine_api.py - Fachada publica del motor
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
@@ -156,7 +157,7 @@ class EngineAPI:
             self.game.set_physics_backend_unavailable("box2d", str(exc))
         except Exception as exc:
             self.game.set_physics_backend_unavailable("box2d", str(exc))
-            print(f"[WARNING] Box2D backend unavailable: {exc}")
+            logging.warning(f"Box2D backend unavailable: {exc}")
 
     @classmethod
     def from_runtime(cls, game: HeadlessGame, scene_manager: SceneManager, project_service: ProjectService) -> "EngineAPI":
@@ -185,7 +186,10 @@ class EngineAPI:
             self.game.set_project_service(project_service)
         self._refresh_contracts()
 
-    def __getattr__(self, name: str) -> Any:  # Delegación dinámica a sub-APIs; el tipo lo determina el delegate
+    # La delegación dinámica a sub-APIs (AuthoringAPI, RuntimeAPI, etc.)
+    # impide tipar estáticamente el retorno. El tipo real lo determina
+    # el delegate accedido en runtime.
+    def __getattr__(self, name: str) -> Any:
         if name.startswith("_"):
             raise AttributeError(name)
         for delegate in getattr(self, "_delegates", ()):

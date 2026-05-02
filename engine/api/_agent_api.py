@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union
+from typing import Dict, List, Union
 
 from engine.agent import AgentSessionService
 from engine.api._context import EngineAPIComponent
