@@ -1,7 +1,7 @@
 {
-    "guid": "ast_c2e1b6f13e9b4a319e4a265a8991aab6",
-    "source_path": "levels/multiagent_toy_scene.json",
-    "path": "levels/multiagent_toy_scene.json",
+    "guid": "ast_12fb11e9227f480d9354eb01a1be31aa",
+    "source_path": "levels/level_1.json",
+    "path": "levels/level_1.json",
     "asset_kind": "scene_data",
     "importer": "scene_data",
     "labels": [],

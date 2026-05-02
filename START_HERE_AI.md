@@ -167,6 +167,9 @@ The entries below are available now and are safe to use from the CLI.
 ### Scene Management
 
 - `scene:create`: Create a new scene with a unique file path
+- `scene:flow:load_next`: Load the configured next scene in the scene flow
+- `scene:flow:menu`: Load the menu scene configured in the scene flow
+- `scene:flow:set_next`: Set the next scene connection for scene flow navigation
 - `scene:list`: List all available scenes in the project
 - `scene:load`: Load a scene from a JSON file path
 - `scene:save`: Save the active scene to its source file
@@ -174,8 +177,13 @@ The entries below are available now and are safe to use from the CLI.
 ### Entity Operations
 
 - `entity:create`: Create a new entity with optional components
+- `entity:create-child`: Create a child entity under a parent
 - `entity:delete`: Remove an entity from the active scene, reparenting children to grandparent
+- `entity:group:add`: Add an entity to a group
+- `entity:group:list`: List entities in a group or all groups
+- `entity:group:remove`: Remove an entity from a group
 - `entity:list`: List all entities in the active scene, optionally filtered
+- `entity:parent`: Set or change an entity's parent for hierarchical transforms
 
 ### Component Operations
 
@@ -255,22 +263,31 @@ The entries below are available now and are safe to use from the CLI.
 
 ### Runtime
 
+- `runtime:audio:pause`: Pause audio from an AudioSource entity
+- `runtime:audio:play`: Play audio from an AudioSource entity
+- `runtime:audio:resume`: Resume paused audio from an AudioSource entity
+- `runtime:audio:stop`: Stop audio from an AudioSource entity
 - `runtime:entities`: List entities in the active scene (read-only)
 - `runtime:events`: Return recent runtime events, optionally after a headless step
 - `runtime:inspect`: Inspect a specific entity (read-only)
 - `runtime:play`: Start play mode for a stateless headless runtime check
+- `runtime:redo`: Redo a previously undone operation
 - `runtime:status`: Read-only runtime status and active scene info
 - `runtime:step`: Run PLAY -> STEP -> STOP headlessly for N frames, optionally with simulated InputMap actions
 - `runtime:stop`: Stop runtime in the current stateless headless process
+- `runtime:undo`: Undo the last edit operation
 
 ### Physics
 
+- `physics:backend:list`: List available physics backends and their status
 - `physics:query:aabb`: Query physics entities within an axis-aligned bounding box
+- `physics:query:ray`: Cast a ray and find intersecting physics bodies
 
 ### Introspection
 
 - `introspect:capabilities`: Query this capability registry itself
 - `introspect:doctor`: Diagnose project health and detect issues
+- `introspect:entity`: Get full data for a specific entity
 
 ## Coming Soon
 
@@ -284,17 +301,9 @@ and should not be attempted until they are marked as `implemented`.
 | `asset:find` | Find assets by kind, importer, or extension |
 | `asset:metadata:get` | Get metadata for a specific asset |
 | `asset:refresh` | Refresh the asset catalog and detect changes |
-| `entity:parent` | Set or change an entity's parent for hierarchical transforms |
-| `introspect:entity` | Get full data for a specific entity |
 | `introspect:status` | Get engine status including FPS, entity count, time |
-| `physics:backend:list` | List available physics backends and their status |
-| `physics:query:ray` | Cast a ray and find intersecting physics bodies |
 | `project:editor_state` | Get or set editor state including recent assets and last scene |
 | `project:open` | Open a different project and load its startup scene |
-| `runtime:redo` | Redo a previously undone operation |
-| `runtime:undo` | Undo the last edit operation |
-| `scene:flow:load_next` | Load the configured next scene in the scene flow |
-| `scene:flow:set_next` | Set the next scene connection for scene flow navigation |
 
 > **Note**: Use `motor capabilities --json` to check which are now available.
 

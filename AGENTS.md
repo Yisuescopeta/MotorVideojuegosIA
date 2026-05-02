@@ -174,3 +174,54 @@ py -m unittest tests.test_official_contract_regression tests.test_parser_registr
 py -m motor --help
 py -m motor doctor --project . --json
 
+## Sistema Queen Agent
+
+Este repositorio incluye un sistema de orquestacion multiagente llamado **Queen**.
+Es un plugin de OpenCode — **no toca internos del motor**.
+
+### Arquitectura
+
+```
+Queen (primary agent, DeepSeek Pro Max)
+├── Planner (subagent, Pro Max) — disena planes de implementacion
+├── Builder (subagent, Pro Max/Flash) — implementa codigo
+├── Code Reviewer (subagent, Flash) — revisa calidad/SOLID
+├── AI-Friendliness (subagent, Flash) — audita amigabilidad IA
+└── Context Recon (subagent, Flash) — reconocimiento read-only
+```
+
+### Archivos del sistema
+
+| Archivo | Proposito |
+|---------|-----------|
+| `.opencode/agents/queen.md` | Agente orquestador principal |
+| `.opencode/agents/planner.md` | Planificador de implementacion |
+| `.opencode/agents/builder.md` | Implementador de codigo |
+| `.opencode/agents/code-reviewer.md` | Revisor de codigo |
+| `.opencode/agents/ai-friendliness.md` | Auditor de amigabilidad IA |
+| `.opencode/commands/queen.md` | Comando `/queen` en TUI |
+| `opencode.json` | Configuracion de agentes y modelos |
+| `tools/queen_state.py` | Helper de persistencia de estado |
+| `.motor/queen_state/` | Estado persistente (planes, reports) |
+
+### Como usar
+
+```bash
+# En TUI: escribe /queen <tu tarea>
+/queen mejorar las fisicas del motor
+
+# O desde CLI:
+opencode run --agent queen "mejorar las fisicas del motor"
+
+# O cambia al agente Queen con Tab y escribe la tarea directamente
+```
+
+### Comportamiento
+
+- **Autonomia total**: la Reina descompone, asigna, ejecuta sin preguntar.
+- **Routing de modelos**: Pro Max para tareas complejas (arquitectura, fisicas, render), Flash para las simples (review, docs, tests).
+- **Paralelismo inteligente**: sub-tareas independientes se ejecutan en paralelo.
+- **Replanificacion**: si un sub-agente falla, la Reina intenta al menos 3 enfoques antes de escalar.
+- **Persistencia**: todo el estado vive en `.motor/queen_state/`.
+- **No toca engine/**: los cambios se hacen via OpenCode (builder sub-agent) usando read/edit/write/bash.
+
