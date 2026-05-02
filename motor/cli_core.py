@@ -567,6 +567,59 @@ def cmd_runtime_events(project_path: Path, count: int, step_frames: int, json_ou
                 pass
 
 
+def cmd_physics_query_aabb(
+    project_path: Path,
+    left: float,
+    top: float,
+    right: float,
+    bottom: float,
+    json_output: bool,
+) -> int:
+    """Query physics AABB hits in a stateless headless runtime process."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        data = _runtime_response_base("physics query aabb", True, warnings)
+        data.update({
+            "scene": scene,
+            "query": {
+                "left": float(left),
+                "top": float(top),
+                "right": float(right),
+                "bottom": float(bottom),
+            },
+            "hits": [],
+            "count": 0,
+            "status_after": _runtime_status(api),
+        })
+        if not scene_ready:
+            return _output(False, "Physics AABB query failed: no active scene", data, json_output)
+
+        api.play()
+        api.step(1)
+        hits = api.query_physics_aabb(float(left), float(top), float(right), float(bottom))
+        api.stop()
+        data["hits"] = hits
+        data["count"] = len(hits)
+        data["status_after"] = _runtime_status(api)
+        data["warnings"] = list(warnings)
+        return _output(True, f"Physics AABB query returned {len(hits)} hits", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Physics AABB query failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.stop()
+                api.shutdown()
+            except Exception:
+                pass
+
+
 # ============================================================================
 # Core Command Handlers
 # ============================================================================
@@ -1914,6 +1967,87 @@ def cmd_entity_create(
                 pass
 
 
+def cmd_entity_list(
+    project_path: Path,
+    tag: Optional[str],
+    layer: Optional[str],
+    active_only: bool,
+    json_output: bool,
+) -> int:
+    """List entities in the active authoring scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+
+        active = True if active_only else None
+        entities = api.list_entities(tag=tag, layer=layer, active=active)
+        filters = {
+            "tag": tag,
+            "layer": layer,
+            "active": active,
+        }
+        data = {
+            "entities": entities,
+            "count": len(entities),
+            "filters": filters,
+            "scene": api.get_active_scene_info(),
+        }
+        return _output(True, f"Listed {len(entities)} entities", data, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to list entities: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_entity_delete(
+    project_path: Path,
+    name: str,
+    json_output: bool,
+) -> int:
+    """Delete an entity from the active scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+
+        result = api.delete_entity(name)
+        if result.get("success"):
+            save_result = api.save_scene()
+            if not save_result.get("success"):
+                return _output(False, save_result.get("message", "Scene save failed"), None, json_output)
+            data = dict(result.get("data") or {})
+            data["scene"] = save_result.get("data", {}).get("path", "")
+            return _output(True, result.get("message", "Entity removed"), data, json_output)
+        return _output(False, result.get("message", "Failed to delete entity"), None, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to delete entity: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
 def cmd_component_add(
     project_path: Path,
     entity_name: str,
@@ -1945,6 +2079,89 @@ def cmd_component_add(
         return _output(False, exc.message, None, json_output)
     except Exception as exc:
         return _output(False, f"Failed to add component: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_component_edit(
+    project_path: Path,
+    entity_name: str,
+    component_name: str,
+    property_name: str,
+    value: Any,
+    json_output: bool,
+) -> int:
+    """Edit a component property on an entity."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+
+        result = api.edit_component(entity_name, component_name, property_name, value)
+        if result.get("success"):
+            save_result = api.save_scene()
+            if not save_result.get("success"):
+                return _output(False, save_result.get("message", "Scene save failed"), None, json_output)
+            data = {
+                "entity": entity_name,
+                "component": component_name,
+                "property": property_name,
+                "value": value,
+                "scene": save_result.get("data", {}).get("path", ""),
+            }
+            return _output(True, result.get("message", "Edit applied"), data, json_output)
+        return _output(False, result.get("message", "Failed to edit component"), None, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to edit component: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_component_remove(
+    project_path: Path,
+    entity_name: str,
+    component_name: str,
+    json_output: bool,
+) -> int:
+    """Remove a component from an entity."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+
+        result = api.remove_component(entity_name, component_name)
+        if result.get("success"):
+            save_result = api.save_scene()
+            if not save_result.get("success"):
+                return _output(False, save_result.get("message", "Scene save failed"), None, json_output)
+            data = dict(result.get("data") or {})
+            data["scene"] = save_result.get("data", {}).get("path", "")
+            return _output(True, result.get("message", "Component removed"), data, json_output)
+        return _output(False, result.get("message", "Failed to remove component"), None, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to remove component: {exc}", None, json_output)
     finally:
         if api is not None:
             try:

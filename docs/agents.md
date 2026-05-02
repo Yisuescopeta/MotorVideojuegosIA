@@ -127,7 +127,11 @@ py -m motor game platformer set-bounds --name LevelBounds --left 0 --right 1600 
 py -m motor game platformer validate --project . --json
 py -m motor scene create "Level 1" --project . --json
 py -m motor entity create Player --project . --json
+py -m motor entity list --project . --json
+py -m motor entity delete Enemy_A --project . --json
 py -m motor component add Player Transform --data '{"x":0,"y":0}' --project . --json
+py -m motor component edit Player Transform x 200 --project . --json
+py -m motor component remove Player Sprite --project . --json
 ```
 
 Para construir plataformas sin tocar JSON, usa `motor game platformer create`
@@ -200,6 +204,29 @@ does not yet carry riders.
 
 Para UI serializable usa los helpers publicos de `EngineAPI` como
 `create_canvas`, `create_ui_text`, `create_ui_button` y `create_ui_image`.
+
+## Recetas manuales seguras por genero
+
+Cuando el genero pedido no tenga comando dedicado, compone con superficies ya
+implementadas. No promociones estos flujos como recetas `motor recipe` nuevas:
+son pasos manuales seguros para agentes.
+
+- Top-down: crea escena con `motor scene create`, entidades con
+  `motor entity create`, componentes con `motor component add` y ajustes con
+  `motor component edit`. Verifica con `motor runtime play`,
+  `motor runtime step` y `motor ai compliance`.
+- Puzzle: modela piezas, puertas, interruptores y objetivos como entidades con
+  componentes serializables. Usa `rules` y `RuleSystem` solo con acciones
+  soportadas como `emit_event`, `set_position` y `spawn_entity`; no asumas
+  solver, grid engine ni sistema de inventario si no existen en codigo.
+- Main menu: usa `EngineAPI.create_canvas`, `EngineAPI.create_ui_text` y
+  `EngineAPI.create_ui_button`. No existe CLI dedicada de menu principal; si
+  necesitas authoring desde CLI, usa entidades/componentes basicos.
+
+Anti-alucinacion: no uses `motor game topdown`, `motor game puzzle`,
+`motor game shmup` ni `motor recipe run topdown`; esos comandos no son
+contrato actual. No crees `run_game.py`. Si falta un helper especifico,
+compone con `EngineAPI` o la CLI basica oficial.
 
 Para gameplay runtime usa la fachada publica de `EngineAPI` en lugar de tocar
 `Game`, `RuntimeController` o utilidades internas:

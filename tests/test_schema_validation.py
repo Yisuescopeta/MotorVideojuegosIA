@@ -946,6 +946,48 @@ class SchemaValidationTests(unittest.TestCase):
         errors = validate_scene_data(payload)
         self.assertIn("$.rules[0].do[0]: expected x or y", errors)
 
+    def test_scene_validation_accepts_spawn_entity_action(self) -> None:
+        payload = migrate_scene_data(
+            {
+                "name": "SpawnRules",
+                "entities": [],
+                "rules": [{"event": "spawn", "do": [{"action": "spawn_entity", "name": "Enemy", "x": 10, "y": 20}]}],
+                "feature_metadata": {},
+            }
+        )
+
+        errors = validate_scene_data(payload)
+
+        self.assertEqual(errors, [])
+
+    def test_scene_validation_rejects_spawn_entity_without_name(self) -> None:
+        payload = migrate_scene_data(
+            {
+                "name": "BrokenRules",
+                "entities": [],
+                "rules": [{"event": "spawn", "do": [{"action": "spawn_entity", "x": 10}]}],
+                "feature_metadata": {},
+            }
+        )
+
+        errors = validate_scene_data(payload)
+
+        self.assertIn("$.rules[0].do[0].name: expected non-empty string", errors)
+
+    def test_scene_validation_rejects_spawn_entity_invalid_coordinates(self) -> None:
+        payload = migrate_scene_data(
+            {
+                "name": "BrokenRules",
+                "entities": [],
+                "rules": [{"event": "spawn", "do": [{"action": "spawn_entity", "name": "Enemy", "x": "left"}]}],
+                "feature_metadata": {},
+            }
+        )
+
+        errors = validate_scene_data(payload)
+
+        self.assertIn("$.rules[0].do[0].x: expected number", errors)
+
     def test_scene_transition_action_roundtrip_save_load(self) -> None:
         manager = SceneManager(create_default_registry())
         source_payload = _scene_payload(

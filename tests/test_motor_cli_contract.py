@@ -160,7 +160,7 @@ class RegistryToCLIExecutableContractTests(unittest.TestCase):
         }
 
         # Comandos que pueden no estar implementados aún pero están documentados
-        future_scopes = {"physics", "introspect"}
+        future_scopes = {"introspect"}
 
         violations = []
         for cap in self.registry.list_all():
@@ -206,6 +206,7 @@ class RegistryToCLIExecutableContractTests(unittest.TestCase):
             ("runtime", ["entities"]),
             ("runtime", ["inspect"]),
             ("runtime", ["events"]),
+            ("physics", ["query", "aabb"]),
             ("entity", ["create"]),
             ("component", ["add"]),
             ("prefab", ["create"]),
@@ -348,6 +349,85 @@ class RuntimeCLIContractTests(unittest.TestCase):
         )
         return scene_path
 
+    def _write_physics_scene(self, relative_path: str = "levels/physics_scene.json") -> Path:
+        scene_path = self.project / relative_path
+        scene_path.parent.mkdir(parents=True, exist_ok=True)
+        scene_path.write_text(
+            json.dumps(
+                {
+                    "name": "Physics Runtime Scene",
+                    "schema_version": 2,
+                    "entities": [
+                        {
+                            "id": "entity_mover",
+                            "name": "Mover",
+                            "active": True,
+                            "tag": "",
+                            "layer": "Gameplay",
+                            "components": {
+                                "Transform": {
+                                    "enabled": True,
+                                    "x": 12.0,
+                                    "y": 0.0,
+                                    "rotation": 0.0,
+                                    "scale_x": 1.0,
+                                    "scale_y": 1.0,
+                                },
+                                "RigidBody": {
+                                    "enabled": True,
+                                    "body_type": "dynamic",
+                                    "gravity_scale": 0.0,
+                                    "velocity_x": 0.0,
+                                    "velocity_y": 0.0,
+                                    "is_grounded": True,
+                                },
+                                "Collider": {
+                                    "enabled": True,
+                                    "shape_type": "box",
+                                    "width": 10.0,
+                                    "height": 10.0,
+                                    "offset_x": 0.0,
+                                    "offset_y": 0.0,
+                                    "is_trigger": False,
+                                },
+                            },
+                        },
+                        {
+                            "id": "entity_wall",
+                            "name": "Wall",
+                            "active": True,
+                            "tag": "",
+                            "layer": "Gameplay",
+                            "components": {
+                                "Transform": {
+                                    "enabled": True,
+                                    "x": 18.0,
+                                    "y": 0.0,
+                                    "rotation": 0.0,
+                                    "scale_x": 1.0,
+                                    "scale_y": 1.0,
+                                },
+                                "Collider": {
+                                    "enabled": True,
+                                    "shape_type": "box",
+                                    "width": 10.0,
+                                    "height": 40.0,
+                                    "offset_x": 0.0,
+                                    "offset_y": 0.0,
+                                    "is_trigger": False,
+                                },
+                            },
+                        },
+                    ],
+                    "rules": [],
+                    "feature_metadata": {"physics_2d": {"backend": "legacy_aabb"}},
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        return scene_path
+
     def _payload(self, stdout: str) -> dict:
         return json.loads(stdout[stdout.index("{"):])
 
@@ -403,6 +483,38 @@ class RuntimeCLIContractTests(unittest.TestCase):
         self.assertIn("PLAY", data["status_after_step"]["state"])
         self.assertIn("EDIT", data["status_after"]["state"])
         self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+
+    def test_motor_physics_query_aabb_returns_hits_without_saving_scene(self) -> None:
+        scene_path = self._write_physics_scene()
+        before = scene_path.read_text(encoding="utf-8")
+        before_mtime = scene_path.stat().st_mtime_ns
+
+        returncode, stdout, stderr = _run_motor(
+            "physics",
+            "query",
+            "aabb",
+            "10",
+            "-20",
+            "30",
+            "20",
+            "--project",
+            self.project.as_posix(),
+            "--json",
+            env=self.env,
+        )
+
+        self.assertEqual(returncode, 0, stderr + stdout)
+        payload = self._payload(stdout)
+        self.assertTrue(payload["success"], payload)
+        data = payload["data"]
+        self.assertEqual(data["command"], "physics query aabb")
+        self.assertTrue(data["headless"])
+        self.assertTrue(data["stateless"])
+        self.assertEqual(data["query"], {"left": 10.0, "top": -20.0, "right": 30.0, "bottom": 20.0})
+        self.assertGreaterEqual(data["count"], 1)
+        self.assertIn("Wall", {hit["entity"] for hit in data["hits"]})
+        self.assertEqual(scene_path.read_text(encoding="utf-8"), before)
+        self.assertEqual(scene_path.stat().st_mtime_ns, before_mtime)
 
 
 class GamePlatformerCLIContractTests(unittest.TestCase):

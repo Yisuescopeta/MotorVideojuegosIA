@@ -62,6 +62,11 @@ duplicados para persistir membresias declarativas por entidad.
 Los componentes publicos deben estar registrados en
 `engine/levels/component_registry.py`.
 
+`rules` contiene reglas declarativas validadas por schema. Las acciones actuales
+incluyen `set_animation`, `set_position`, `spawn_entity`, `destroy_entity`,
+`emit_event` y `log_message`; `spawn_entity` crea entidades runtime y no cambia
+la escena persistente.
+
 En UI serializable, el contrato vigente incluye `Canvas`, `RectTransform`,
 `UIText`, `UIButton` y `UIImage`. `UIButton` admite visuales opcionales por
 sprite (`*_sprite`, `*_slice`, `image_tint`, `preserve_aspect`) sin romper el

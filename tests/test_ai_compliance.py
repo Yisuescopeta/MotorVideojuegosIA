@@ -338,6 +338,93 @@ class AIComplianceTests(unittest.TestCase):
             }
             self.assertEqual(external_codes, set())
 
+    def test_script_behaviour_own_loop_warns_without_blocking_strict(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = _create_project(Path(tmpdir))
+            script_path = project / "scripts" / "enemy_brain.py"
+            script_path.write_text(
+                "def on_play(context):\n"
+                "    while True:\n"
+                "        context.public_data['ticks'] = context.public_data.get('ticks', 0) + 1\n",
+                encoding="utf-8",
+            )
+            _write_scene(
+                project,
+                {
+                    "Transform": _transform(),
+                    "ScriptBehaviour": {
+                        "enabled": True,
+                        "script": {"path": "scripts/enemy_brain.py", "guid": ""},
+                        "run_in_edit_mode": False,
+                        "public_data": {},
+                    },
+                },
+            )
+
+            report = run_ai_compliance(project, strict=True)
+
+            self.assertTrue(report["success"], report)
+            self.assertTrue(report["strict_pass"], report)
+            self.assertFalse(report["external_runtime_detected"], report)
+            warning_codes = {item["code"] for item in report["warnings"]}
+            self.assertIn("script_behaviour_mini_engine_loop", warning_codes)
+            self.assertEqual(
+                report["checks"]["script_behaviour_warnings"],
+                [
+                    {
+                        "code": "script_behaviour_mini_engine_loop",
+                        "message": "ScriptBehaviour script contains a suspicious own loop; use engine runtime hooks instead",
+                        "path": "scripts/enemy_brain.py",
+                    }
+                ],
+            )
+
+    def test_unreferenced_script_own_loop_does_not_warn_as_script_behaviour(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = _create_project(Path(tmpdir))
+            (project / "scripts" / "scratch.py").write_text(
+                "def helper():\n"
+                "    while 1:\n"
+                "        break\n",
+                encoding="utf-8",
+            )
+            _write_scene(project)
+
+            report = run_ai_compliance(project, strict=True)
+
+            warning_codes = {item["code"] for item in report["warnings"]}
+            self.assertNotIn("script_behaviour_mini_engine_loop", warning_codes)
+            self.assertEqual(report["checks"]["script_behaviour_warnings"], [])
+
+    def test_script_behaviour_runtime_hook_without_loop_does_not_warn(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = _create_project(Path(tmpdir))
+            (project / "scripts" / "enemy_brain.py").write_text(
+                "def on_update(context, dt):\n"
+                "    context.public_data['dt'] = dt\n",
+                encoding="utf-8",
+            )
+            _write_scene(
+                project,
+                {
+                    "Transform": _transform(),
+                    "ScriptBehaviour": {
+                        "enabled": True,
+                        "script": {"path": "scripts/enemy_brain.py", "guid": ""},
+                        "run_in_edit_mode": False,
+                        "public_data": {},
+                    },
+                },
+            )
+
+            report = run_ai_compliance(project, strict=True)
+
+            self.assertTrue(report["success"], report)
+            self.assertTrue(report["strict_pass"], report)
+            warning_codes = {item["code"] for item in report["warnings"]}
+            self.assertNotIn("script_behaviour_mini_engine_loop", warning_codes)
+            self.assertEqual(report["checks"]["script_behaviour_warnings"], [])
+
     def test_sitecustomize_style_stub_does_not_false_positive_in_engine_repo(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             project = _create_engine_repo_like_project(Path(tmpdir))
