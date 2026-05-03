@@ -60,3 +60,15 @@ exclude = [
     "^build/",
     "^dist/",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = [
+    "godot",
+    ".git",
+    ".motor",
+    ".pytest_cache",
+    "artifacts",
+    "build",
+    "dist",
+]
