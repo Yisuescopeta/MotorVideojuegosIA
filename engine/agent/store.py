@@ -15,11 +15,10 @@ class AgentSessionStore:
         self.sessions_dir = self.state_dir / "sessions"
         self.events_dir = self.state_dir / "events"
         self.audit_path = self.state_dir / "audit.jsonl"
-        self.sessions_dir.mkdir(parents=True, exist_ok=True)
-        self.events_dir.mkdir(parents=True, exist_ok=True)
         self.migrator = AgentSessionMigrator()
 
     def save_session(self, session: AgentSession) -> None:
+        self.sessions_dir.mkdir(parents=True, exist_ok=True)
         session_path = resolve_agent_session_path(self.sessions_dir, session.session_id, ".json")
         session_path.write_text(json.dumps(session.to_dict(), indent=2, ensure_ascii=True), encoding="utf-8")
 

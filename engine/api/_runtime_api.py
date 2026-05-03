@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Union, List, Dict, Callable, Optional
+from typing import Callable, Dict, Optional, Union
 
 from engine.api._context import EngineAPIComponent
 from engine.api.types import ActionResult, EngineStatus, EntityData

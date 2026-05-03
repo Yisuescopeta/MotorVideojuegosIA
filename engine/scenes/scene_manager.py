@@ -739,7 +739,7 @@ class SceneManager:
 
     def sync_from_edit_world(self, force: bool = False) -> bool:
         """Deprecated: use EngineAPI or SceneManager public methods instead.
-        
+
         Legacy method that syncs pending changes from edit_world back to the serialized scene.
         Prefer authoring through SceneManager structural authoring methods or EngineAPI delegates.
         """

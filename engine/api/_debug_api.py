@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, Optional, Union
 
 from engine.api._context import EngineAPIComponent
-from engine.api.types import ActionResult, ProfilerReport
+from engine.api.types import ActionResult
 
 
 class DebugAPI(EngineAPIComponent):

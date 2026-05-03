@@ -43,10 +43,8 @@ class AgentMemoryStore:
         self.project_root = Path(project_root).expanduser().resolve()
         self.memory_dir = self.project_root / ".motor" / "agent_state" / "memory"
         self.usage_dir = self.project_root / ".motor" / "agent_state" / "usage"
-        self.memory_dir.mkdir(parents=True, exist_ok=True)
-        self.usage_dir.mkdir(parents=True, exist_ok=True)
-
     def save_session_summary(self, session_id: str, summary: str) -> AgentMemorySnapshot:
+        self.memory_dir.mkdir(parents=True, exist_ok=True)
         valid_id = validate_agent_session_id(session_id)
         snapshot = AgentMemorySnapshot(session_id=valid_id, session_summary=self._sanitize(summary))
         path = resolve_agent_session_path(self.memory_dir, valid_id, ".json")
@@ -75,6 +73,7 @@ class AgentMemoryStore:
         )
 
     def append_usage(self, session_id: str, record: AgentUsageRecord) -> None:
+        self.usage_dir.mkdir(parents=True, exist_ok=True)
         path = resolve_agent_session_path(self.usage_dir, session_id, ".jsonl")
         with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record.to_dict(), ensure_ascii=True) + "\n")

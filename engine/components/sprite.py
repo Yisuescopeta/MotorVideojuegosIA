@@ -4,7 +4,7 @@ engine/components/sprite.py - Componente de renderizado de sprites.
 
 from __future__ import annotations
 
-from typing import Optional, Tuple, Union
+from typing import Tuple, Union
 
 from engine.assets.asset_reference import build_asset_reference, clone_asset_reference, normalize_asset_reference
 from engine.ecs.component import Component

@@ -325,9 +325,10 @@ class AssetDatabase:
             "generated_at_utc": datetime.now(timezone.utc).isoformat(),
             "assets": sorted(entries, key=lambda item: item["path"]),
         }
-        self._write_json(self.get_catalog_path(), payload)
+        catalog_path = self.get_catalog_path()
+        if catalog_path.parent.exists():
+            self._write_json(catalog_path, payload)
         self._set_catalog_cache(payload)
-        self._prune_metadata_cache({entry["path"] for entry in entries})
         return payload
 
     def load_metadata(self, asset_path: str) -> Dict[str, Any]:

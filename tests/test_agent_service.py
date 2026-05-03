@@ -797,6 +797,7 @@ class AgentSessionServiceTests(unittest.TestCase):
         service = AgentSessionService(project_root=self.project)
         session = service.create_session(permission_mode=AgentPermissionMode.FULL_ACCESS.value)
         memory_path = self.project / ".motor" / "agent_state" / "memory" / f"{session['session_id']}.json"
+        memory_path.parent.mkdir(parents=True, exist_ok=True)
         memory_path.write_text("{not-json", encoding="utf-8")
 
         updated = service.send_message(session["session_id"], "/memory")
@@ -836,6 +837,7 @@ class AgentSessionServiceTests(unittest.TestCase):
 
     def test_legacy_session_migrates_to_v2_with_backup_and_event_log(self) -> None:
         store = AgentSessionStore(self.project)
+        store.sessions_dir.mkdir(parents=True, exist_ok=True)
         legacy_id = "agent-session-aaaaaaaaaaaa"
         legacy_path = store.sessions_dir / f"{legacy_id}.json"
         legacy_path.write_text(
@@ -862,6 +864,7 @@ class AgentSessionServiceTests(unittest.TestCase):
 
     def test_legacy_pending_action_migrates_to_suspended_turn(self) -> None:
         store = AgentSessionStore(self.project)
+        store.sessions_dir.mkdir(parents=True, exist_ok=True)
         legacy_id = "agent-session-bbbbbbbbbbbb"
         legacy_path = store.sessions_dir / f"{legacy_id}.json"
         legacy_path.write_text(
@@ -900,6 +903,7 @@ class AgentSessionServiceTests(unittest.TestCase):
 
     def test_corrupt_legacy_session_is_not_overwritten(self) -> None:
         store = AgentSessionStore(self.project)
+        store.sessions_dir.mkdir(parents=True, exist_ok=True)
         legacy_id = "agent-session-cccccccccccc"
         legacy_path = store.sessions_dir / f"{legacy_id}.json"
         raw = "{not-json"

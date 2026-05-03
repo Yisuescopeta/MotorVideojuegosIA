@@ -4,7 +4,6 @@ engine/api/engine_api.py - Fachada publica del motor
 
 from __future__ import annotations
 
-import logging
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
@@ -157,7 +156,7 @@ class EngineAPI:
             self.game.set_physics_backend_unavailable("box2d", str(exc))
         except Exception as exc:
             self.game.set_physics_backend_unavailable("box2d", str(exc))
-            logging.warning(f"Box2D backend unavailable: {exc}")
+            print(f"[WARNING] Box2D backend unavailable: {exc}")
 
     @classmethod
     def from_runtime(cls, game: HeadlessGame, scene_manager: SceneManager, project_service: ProjectService) -> "EngineAPI":

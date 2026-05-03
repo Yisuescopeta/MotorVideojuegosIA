@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 from engine.ai import get_default_registry
 from engine.api import EngineAPI
 from engine.config import ENGINE_VERSION
-from engine.project.project_service import ProjectService
+from engine.project.project_service import ProjectService, ProjectManifest
 from engine.api.errors import (
     RecipeError,
     RecipeNotFoundError,
@@ -640,10 +640,8 @@ def cmd_physics_query_aabb(
 
 def cmd_capabilities(json_output: bool) -> int:
     """List all engine capabilities."""
-    api = None
     try:
-        api = _init_engine(Path.cwd(), read_only=True)
-        registry_dict = api.get_capability_registry()
+        registry_dict = get_default_registry().to_dict()
         capabilities = registry_dict.get("capabilities", [])
         data = {
             "count": len(capabilities),
@@ -654,12 +652,6 @@ def cmd_capabilities(json_output: bool) -> int:
         return _output(True, f"Found {len(capabilities)} capabilities", data, json_output)
     except Exception as exc:
         return _output(False, f"Failed to load capabilities: {exc}", None, json_output)
-    finally:
-        if api is not None:
-            try:
-                api.shutdown()
-            except Exception:
-                pass
 
 
 def _compact_workflows_from_registry(api) -> List[Dict[str, Any]]:
@@ -2909,7 +2901,10 @@ def cmd_project_bootstrap_ai(project_path: Path, json_output: bool) -> int:
 
         api = _init_engine(project_path, auto_ensure_project=False)
 
-        motor_ai_data = api.migrate_project_bootstrap(str(project_path))
+        manifest_path = project_path / "project.json"
+        manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = ProjectManifest.from_dict(manifest_data)
+        motor_ai_data = api.project_service.generate_ai_bootstrap(project_path, manifest)
 
         registry_data = api.get_capability_registry()
 
