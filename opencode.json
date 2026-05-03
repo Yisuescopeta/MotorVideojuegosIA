@@ -2,14 +2,15 @@
   "$schema": "https://opencode.ai/config.json",
   "agent": {
     "queen": {
-      "description": "Queen orchestrator — decomposes complex tasks, assigns sub-agents, executes autonomously",
+      "description": "Reina orquestadora — orgullosa, perfeccionista. Solo delega, nunca escribe código.",
       "mode": "primary",
       "model": "opencode-go/deepseek-v4-pro",
       "temperature": 0.2,
       "permission": {
         "read": "allow",
-        "edit": "allow",
-        "bash": "allow",
+        "edit": "deny",
+        "bash": "deny",
+        "write": "deny",
         "glob": "allow",
         "grep": "allow",
         "webfetch": "allow",
@@ -96,12 +97,96 @@
         "todowrite": "deny",
         "websearch": "deny"
       }
+    },
+    "godot-source-analyzer": {
+      "description": "Godot source analyzer. Navigates Godot C++/GDScript source code and extracts feature contracts. Read-only.",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4-pro",
+      "temperature": 0.2,
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "webfetch": "allow",
+        "edit": "deny",
+        "write": "deny",
+        "bash": {
+          "ls *": "allow",
+          "wc *": "allow",
+          "find *": "allow",
+          "stat *": "allow"
+        }
+      }
+    },
+    "godot-gap-analyzer": {
+      "description": "Godot gap analyzer. Compares Godot features with motor, produces prioritized gap matrix. Read-only.",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4-flash",
+      "temperature": 0.1,
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "edit": "deny",
+        "write": "deny",
+        "bash": {
+          "py -m motor capabilities": "allow",
+          "py -m motor doctor *": "allow",
+          "py -m motor --help": "allow"
+        },
+        "webfetch": "deny",
+        "websearch": "deny"
+      }
+    },
+    "godot-adapter": {
+      "description": "Godot feature adapter. Implements Godot features adapted to motor architecture. Read+Write.",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4-pro",
+      "temperature": 0.3,
+      "permission": {
+        "read": "allow",
+        "edit": "allow",
+        "bash": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "webfetch": "allow",
+        "websearch": "deny"
+      }
+    },
+    "committer": {
+      "description": "Git committer. Crea commits en español con mensajes descriptivos y convencionales.",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4-flash",
+      "temperature": 0.1,
+      "permission": {
+        "read": "allow",
+        "bash": {
+          "git add *": "allow",
+          "git commit *": "allow",
+          "git diff *": "allow",
+          "git log *": "allow",
+          "git status *": "allow",
+          "git stash *": "allow"
+        },
+        "glob": "allow",
+        "grep": "allow",
+        "edit": "deny",
+        "write": "deny",
+        "task": "deny",
+        "question": "deny"
+      }
     }
   },
   "command": {
     "queen": {
       "description": "Queen orchestrator: decompose complex task, assign sub-agents, execute autonomously",
       "template": "I want you to act as the QUEEN orchestrator agent. Decompose this task into sub-tasks, assign the optimal agent and model to each, execute in parallel where possible, and report results.\n\nUser task: $ARGUMENTS\n\nFollow the queen system prompt in .opencode/agents/queen.md.",
+      "agent": "queen",
+      "model": "opencode-go/deepseek-v4-pro"
+    },
+    "godot": {
+      "description": "Godot analysis & adaptation: analiza codigo Godot, compara con el motor, implementa features adaptadas",
+      "template": "I want you to act as the QUEEN orchestrator agent. This task requires Godot source code analysis and feature adaptation to MotorVideojuegosIA. Use the godot-source-analyzer, godot-gap-analyzer, and godot-adapter sub-agents as needed. Load the godot-feature-adapter skill for Godot-to-Motor mappings.\n\nUser task: $ARGUMENTS\n\nReference docs:\n- .opencode/agents/godot-source-analyzer.md\n- .opencode/agents/godot-gap-analyzer.md\n- .opencode/agents/godot-adapter.md\n- .agents/skills/godot-feature-adapter/SKILL.md",
       "agent": "queen",
       "model": "opencode-go/deepseek-v4-pro"
     }
