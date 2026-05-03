@@ -301,7 +301,7 @@ class UIAPI(EngineAPIComponent):
                 nodes.append(self.api.get_entity(entity.name))
         return nodes
 
-    def get_ui_layout(self, entity_name: str) -> Dict[str, Union[str, int, float, bool, list, dict, None]]:
+    def get_ui_layout(self, entity_name: str) -> dict[str, float]:
         """Get the computed screen-space rectangle for a UI entity.
 
         Args:

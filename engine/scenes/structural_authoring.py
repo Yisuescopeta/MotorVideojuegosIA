@@ -170,9 +170,9 @@ class SceneHierarchyAuthoring:
             payload.pop("id", None)
             payload["name"] = mapping[entity.name]
             if payload.get("parent") in mapping:
-                payload["parent"] = mapping[payload["parent"]]
+                payload["parent"] = mapping[str(payload["parent"])]
             if payload.get("prefab_root_name") in mapping:
-                payload["prefab_root_name"] = mapping[payload["prefab_root_name"]]
+                payload["prefab_root_name"] = mapping[str(payload["prefab_root_name"])]
             entry.scene.add_entity(payload)
         self.context.sync_scene_links_from_feature_metadata(entry)
         self.context.rebuild_edit_world(entry)
@@ -409,7 +409,7 @@ class ScenePrefabAuthoring:
         root = entry.edit_world.get_entity_by_name(entity_name)
         if root is None or root.prefab_instance is None:
             return False
-        prefab_path = root.prefab_instance.get("prefab_path", "")
+        prefab_path = str(root.prefab_instance.get("prefab_path", ""))
         resolved_path = (
             (Path(entry.scene.source_path).resolve().parent / prefab_path).resolve().as_posix()
             if entry.scene.source_path

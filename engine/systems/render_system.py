@@ -5,10 +5,11 @@ engine/systems/render_system.py - Sistema de renderizado 2D con render graph min
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, NamedTuple, Optional, Union, cast
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional, Union, cast
 
 import pyray as rl
 from engine.assets.asset_reference import clone_asset_reference, normalize_asset_reference
+from engine.assets.asset_resolver import AssetResolver
 from engine.assets.asset_service import AssetService
 from engine.components.animator import Animator
 from engine.components.camera2d import Camera2D
@@ -84,8 +85,8 @@ class RenderCommand:
     batch_key: RenderBatchKey = field(default_factory=RenderBatchKey)
     debug_kind: str = ""
     chunk_id: str = ""
-    chunk_data: dict[str, object] = field(default_factory=dict)
-    geometry: dict[str, object] = field(default_factory=dict)
+    chunk_data: dict[str, Any] = field(default_factory=dict)
+    geometry: dict[str, Any] = field(default_factory=dict)
     cache_key: object = None
     render_target_name: str = ""
     render_target_dirty: bool = True
@@ -99,7 +100,7 @@ class RenderCommand:
     def __setitem__(self, key: str, value: Any) -> None:  # Protocolo contenedor; tipo dinámico por diseño
         setattr(self, key, value)
 
-    def to_payload(self) -> dict[str, object]:
+    def to_payload(self) -> dict[str, Any]:
         return {
             "kind": self.kind,
             "entity": self.entity,
@@ -128,7 +129,7 @@ class RenderBatch:
     def __getitem__(self, key: str) -> Any:  # Protocolo contenedor; tipo dinámico por diseño
         return getattr(self, key)
 
-    def to_payload(self) -> dict[str, object]:
+    def to_payload(self) -> dict[str, Any]:
         return {
             "key": self.key.to_dict(),
             "commands": [command.to_payload() for command in self.commands],
@@ -140,7 +141,7 @@ class RenderPass:
     name: str
     commands: list[RenderCommand] = field(default_factory=list)
     batches: list[RenderBatch] = field(default_factory=list)
-    stats: dict[str, object] = field(default_factory=dict)
+    stats: dict[str, Any] = field(default_factory=dict)
 
     def get(self, key: str, default: Any = None) -> Any:  # Acceso genérico tipo dict; el tipo depende del campo accedido
         return getattr(self, key, default)
@@ -148,7 +149,7 @@ class RenderPass:
     def __getitem__(self, key: str) -> Any:  # Protocolo contenedor; tipo dinámico por diseño
         return getattr(self, key)
 
-    def to_payload(self) -> dict[str, object]:
+    def to_payload(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "commands": [command.to_payload() for command in self.commands],
@@ -172,7 +173,7 @@ class RenderSystem:
         self._texture_manager: TextureManager = TextureManager()
         self._project_service: ProjectService | None = None
         self._asset_service: AssetService | None = None
-        self._asset_resolver: object | None = None  # Resuelto dinámicamente desde AssetService
+        self._asset_resolver: AssetResolver | None = None  # Resuelto dinámicamente desde AssetService
         self._render_targets: RenderTargetPool = RenderTargetPool()
         self._tilemap_chunk_renderer: TilemapChunkRenderer = TilemapChunkRenderer(self._render_targets, lambda reference, fallback_path: self._load_texture(reference, fallback_path))
         self._pipeline_planner: RenderPipelinePlanner2D = RenderPipelinePlanner2D(self)
@@ -182,14 +183,11 @@ class RenderSystem:
         self.debug_draw_tile_chunks: bool = False
         self.debug_draw_camera: bool = False
         self.spatial_culling_enabled: bool = True
-        self._debug_primitives: list[dict[str, object]] = []
-        self._render_spatial_index: RenderSpatialIndex = RenderSpatialIndex()
-        self._sorted_entities_cache_key: tuple[int, int, int, int, tuple[str, ...]] | None = None
-        self._sorted_entities_cache: list[Entity] = []
-        self._render_graph_cache_key: tuple[object, ...] | None = None
-        self._render_graph_cache: dict[str, object] = {"passes": [], "totals": {}}
-        self._tilemap_chunk_cache: dict[tuple[int, str, int, int], dict[str, object]] = {}
-        self._last_render_stats: dict[str, object] = {
+        self._debug_primitives: list[dict[str, Any]] = []
+
+        self._render_graph_cache: dict[str, Any] = {"passes": [], "totals": {}}
+        self._tilemap_chunk_cache: dict[tuple[int, str, int, int], dict[str, Any]] = {}
+        self._last_render_stats: dict[str, Any] = {
             "render_entities": 0,
             "render_commands": 0,
             "draw_calls": 0,
@@ -211,6 +209,10 @@ class RenderSystem:
         }
         self._sort_cache_hits: int = 0
         self._sort_cache_misses: int = 0
+        self._sorted_entities_cache_key: tuple[object, ...] | None = None
+        self._sorted_entities_cache: list[Entity] = []
+        self._render_graph_cache_key: tuple[object, ...] | None = None
+        self._render_spatial_index: RenderSpatialIndex = RenderSpatialIndex()
 
     @property
     def texture_manager(self) -> TextureManager:
@@ -246,13 +248,13 @@ class RenderSystem:
         if draw_camera is not None:
             self.debug_draw_camera = bool(draw_camera)
 
-    def set_debug_primitives(self, primitives: list[dict[str, object]]) -> None:
+    def set_debug_primitives(self, primitives: list[dict[str, Any]]) -> None:
         self._debug_primitives = [self._normalize_debug_primitive(item) for item in primitives]
 
     def clear_debug_primitives(self) -> None:
         self._debug_primitives = []
 
-    def get_debug_state(self) -> dict[str, object]:
+    def get_debug_state(self) -> dict[str, Any]:
         return {
             "draw_colliders": bool(self.debug_draw_colliders),
             "draw_labels": bool(self.debug_draw_labels),
@@ -261,16 +263,16 @@ class RenderSystem:
             "primitive_count": len(self._debug_primitives),
         }
 
-    def get_last_render_stats(self) -> dict[str, object]:
+    def get_last_render_stats(self) -> dict[str, Any]:
         return self._copy_stats(self._last_render_stats)
 
-    def get_last_render_graph(self) -> dict[str, object]:
+    def get_last_render_graph(self) -> dict[str, Any]:
         return self._public_graph(self._render_graph_cache)
 
-    def get_debug_geometry_dump(self, world: World, viewport_size: Optional[tuple[float, float]] = None) -> dict[str, object]:
+    def get_debug_geometry_dump(self, world: World, viewport_size: Optional[tuple[float, float]] = None) -> dict[str, Any]:
         graph = self._public_graph(self._build_render_graph(world, viewport_size=viewport_size))
         debug_pass = cast(
-            dict[str, object],
+            dict[str, Any],
             next((entry for entry in graph.get("passes", []) if entry.get("name") == "Debug"), {"commands": [], "stats": {}}),
         )
         return {
@@ -283,7 +285,7 @@ class RenderSystem:
             "stats": dict(debug_pass.get("stats", {})),
         }
 
-    def profile_world(self, world: World, viewport_size: Optional[tuple[float, float]] = None) -> dict[str, object]:
+    def profile_world(self, world: World, viewport_size: Optional[tuple[float, float]] = None) -> dict[str, Any]:
         frame_plan = self._build_frame_plan(world, viewport_size=viewport_size)
         return self._copy_stats(frame_plan["totals"])
 
@@ -373,7 +375,7 @@ class RenderSystem:
         self._sorted_entities_cache_key = cache_key
         return self._sorted_entities_cache
 
-    def _build_render_graph(self, world: World, viewport_size: Optional[tuple[float, float]] = None) -> dict[str, object]:
+    def _build_render_graph(self, world: World, viewport_size: Optional[tuple[float, float]] = None) -> dict[str, Any]:
         sorting_layers = self._get_sorting_layers(world)
         normalized_viewport = self._normalize_viewport_size(viewport_size)
         camera_bounds = self._resolve_spatial_camera_bounds(world, viewport_size, normalized_viewport)
@@ -614,7 +616,7 @@ class RenderSystem:
         self,
         sorted_entities: list[Entity],
         camera_bounds: AABB | None,
-    ) -> tuple[list[Entity], dict[str, object]]:
+    ) -> tuple[list[Entity], dict[str, Any]]:
         stats = {
             "spatial_culling_enabled": False,
             "spatial_total_entities": len(sorted_entities),
@@ -639,11 +641,11 @@ class RenderSystem:
         world: World,
         *,
         viewport_size: Optional[tuple[float, float]],
-    ) -> dict[str, object]:
+    ) -> dict[str, Any]:
         graph = self._build_render_graph(world, viewport_size=viewport_size)
         minimap_config = self._get_minimap_config(world)
         debug_commands: list[RenderCommand] = next((entry["commands"] for entry in graph["passes"] if entry["name"] == "Debug"), [])
-        target_jobs: list[dict[str, object]] = []
+        target_jobs: list[dict[str, Any]] = []
         if debug_commands:
             width, height = self._normalize_viewport_size(viewport_size)
             target_jobs.append(
@@ -697,7 +699,7 @@ class RenderSystem:
 
         return batches
 
-    def _render_pass(self, graph: dict[str, object] | FramePlan2D, pass_name: str) -> None:
+    def _render_pass(self, graph: dict[str, Any] | FramePlan2D, pass_name: str) -> None:
         if isinstance(graph, FramePlan2D):
             self._pipeline_executor.render_pass(graph, pass_name)
             return
@@ -733,7 +735,7 @@ class RenderSystem:
 
     def _render_debug_overlay(
         self,
-        frame_plan: dict[str, object] | FramePlan2D,
+        frame_plan: dict[str, Any] | FramePlan2D,
         *,
         camera: Optional[rl.Camera2D],
         viewport_size: Optional[tuple[float, float]],
@@ -779,7 +781,7 @@ class RenderSystem:
     def _render_minimap(
         self,
         world: World,
-        frame_plan: dict[str, object] | FramePlan2D,
+        frame_plan: dict[str, Any] | FramePlan2D,
         *,
         viewport_size: Optional[tuple[float, float]],
     ) -> None:
@@ -946,8 +948,8 @@ class RenderSystem:
         safe_layer = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in str(layer_name or "Layer"))
         return f"tilemap_chunk_{int(entity_id)}_{safe_layer}_{int(chunk_x)}_{int(chunk_y)}"
 
-    def _runtime_chunk_tiles(self, runtime_chunk: dict[str, object]) -> list[dict[str, object]]:
-        tiles: list[dict[str, object]] = []
+    def _runtime_chunk_tiles(self, runtime_chunk: dict[str, Any]) -> list[dict[str, Any]]:
+        tiles: list[dict[str, Any]] = []
         raw_tiles = runtime_chunk.get("tiles", {})
         if not isinstance(raw_tiles, dict):
             return tiles
@@ -974,8 +976,8 @@ class RenderSystem:
             )
         return tiles
 
-    def _partition_tilemap_layer(self, tilemap: Tilemap, layer: dict[str, object]) -> dict[tuple[int, int], list[dict[str, object]]]:
-        chunks: dict[tuple[int, int], list[dict[str, object]]] = {}
+    def _partition_tilemap_layer(self, tilemap: Tilemap, layer: dict[str, Any]) -> dict[tuple[int, int], list[dict[str, Any]]]:
+        chunks: dict[tuple[int, int], list[dict[str, Any]]] = {}
         for key, tile in layer.get("tiles", {}).items():
             if isinstance(key, tuple) and len(key) == 2:
                 tile_x = int(key[0])
@@ -998,7 +1000,7 @@ class RenderSystem:
             )
         return chunks
 
-    def _tilemap_chunk_signature(self, tilemap: Tilemap, layer: dict[str, object], chunk_tiles: list[dict[str, object]]) -> tuple[object, ...]:
+    def _tilemap_chunk_signature(self, tilemap: Tilemap, layer: dict[str, Any], chunk_tiles: list[dict[str, Any]]) -> tuple[object, ...]:
         tileset_ref = tilemap.get_tileset_reference()
         layer_source = normalize_asset_reference(layer.get("tilemap_source"))
         return (
@@ -1037,11 +1039,11 @@ class RenderSystem:
     def _build_tilemap_chunk_data(
         self,
         tilemap: Tilemap,
-        layer: dict[str, object],
+        layer: dict[str, Any],
         chunk_x: int,
         chunk_y: int,
-        chunk_tiles: list[dict[str, object]],
-    ) -> dict[str, object]:
+        chunk_tiles: list[dict[str, Any]],
+    ) -> dict[str, Any]:
         opacity = max(0.0, min(1.0, float(layer.get("opacity", 1.0))))
         layer_offset_x = float(layer.get("offset_x", 0.0))
         layer_offset_y = float(layer.get("offset_y", 0.0))
@@ -1108,7 +1110,7 @@ class RenderSystem:
         alpha = int(255 * opacity)
         return (red, green, blue, alpha)
 
-    def _resolve_material_payload(self, style: RenderStyle2D) -> dict[str, object]:
+    def _resolve_material_payload(self, style: RenderStyle2D) -> dict[str, Any]:
         material_ref = style.get_material_reference()
         if self._asset_service is None or not (material_ref.get("guid") or material_ref.get("path")):
             return {}
@@ -1121,14 +1123,14 @@ class RenderSystem:
             "parameters": dict(material.parameters),
         }
 
-    def _begin_batch_state(self, batch_key: dict[str, object]) -> None:
+    def _begin_batch_state(self, batch_key: dict[str, Any]) -> None:
         blend_mode = str(batch_key.get("blend_mode", "alpha")).lower()
         if blend_mode == "additive":
             rl.begin_blend_mode(rl.BLEND_ADDITIVE)
         elif blend_mode == "multiplied" and hasattr(rl, "BLEND_MULTIPLIED"):
             rl.begin_blend_mode(rl.BLEND_MULTIPLIED)
 
-    def _end_batch_state(self, batch_key: dict[str, object]) -> None:
+    def _end_batch_state(self, batch_key: dict[str, Any]) -> None:
         blend_mode = str(batch_key.get("blend_mode", "alpha")).lower()
         if blend_mode in {"additive", "multiplied"}:
             rl.end_blend_mode()
@@ -1149,7 +1151,7 @@ class RenderSystem:
             atlas_id = str(import_settings.get("atlas_id") or metadata.get("atlas_id") or "")
         return atlas_id or str(entry.get("guid") or entry.get("path") or "")
 
-    def _get_minimap_config(self, world: World) -> dict[str, object]:
+    def _get_minimap_config(self, world: World) -> dict[str, Any]:
         render_2d = dict(world.feature_metadata.get("render_2d", {}))
         minimap = dict(render_2d.get("minimap", {}))
         return {
@@ -1239,8 +1241,8 @@ class RenderSystem:
             return 0
         return int(render_order.order_in_layer)
 
-    def _public_graph(self, graph: dict[str, object]) -> dict[str, object]:
-        public_passes: list[dict[str, object]] = []
+    def _public_graph(self, graph: dict[str, Any]) -> dict[str, Any]:
+        public_passes: list[dict[str, Any]] = []
         for pass_data in graph.get("passes", []):
             public_passes.append(
                 {
@@ -1277,7 +1279,7 @@ class RenderSystem:
     def _batch_key_to_dict(self, batch_key: object) -> dict[str, str]:
         return RenderBatchKey.from_payload(batch_key).to_dict()
 
-    def _copy_stats(self, payload: dict[str, object]) -> dict[str, object]:
+    def _copy_stats(self, payload: dict[str, Any]) -> dict[str, Any]:
         return {
             "render_entities": int(payload.get("render_entities", 0)),
             "render_commands": int(payload.get("render_commands", payload.get("draw_calls", 0))),
@@ -1312,7 +1314,7 @@ class RenderSystem:
             },
         }
 
-    def _copy_stats_with_tilemap_fallback_draws(self, payload: dict[str, object], graph: dict[str, object]) -> dict[str, object]:
+    def _copy_stats_with_tilemap_fallback_draws(self, payload: dict[str, Any], graph: dict[str, Any]) -> dict[str, Any]:
         stats = self._copy_stats(payload)
         total_draw_calls = 0
         pass_stats: dict[str, dict[str, int]] = {}
@@ -1532,7 +1534,7 @@ class RenderSystem:
             color,
         )
 
-    def _draw_debug_primitive(self, geometry: dict[str, object]) -> None:
+    def _draw_debug_primitive(self, geometry: dict[str, Any]) -> None:
         kind = geometry.get("kind", "")
         color = self._color_from_payload(geometry.get("color", [255, 255, 255, 255]))
         if kind == "line":
@@ -1566,7 +1568,7 @@ class RenderSystem:
                 color,
             )
 
-    def _append_debug_command(self, commands: list[RenderCommand], command: dict[str, object]) -> None:
+    def _append_debug_command(self, commands: list[RenderCommand], command: dict[str, Any]) -> None:
         commands.append(
             RenderCommand(
                 kind=str(command.get("kind", "debug")),
@@ -1590,7 +1592,7 @@ class RenderSystem:
             )
         )
 
-    def _build_collider_geometry(self, transform: Transform, collider: Collider) -> dict[str, object]:
+    def _build_collider_geometry(self, transform: Transform, collider: Collider) -> dict[str, Any]:
         left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
         is_trigger = bool(getattr(collider, "is_trigger", False))
         return {
@@ -1604,7 +1606,7 @@ class RenderSystem:
             "is_trigger": is_trigger,
         }
 
-    def _build_tile_chunk_geometry(self, entity: Entity, command: RenderCommand) -> dict[str, object] | None:
+    def _build_tile_chunk_geometry(self, entity: Entity, command: RenderCommand) -> dict[str, Any] | None:
         transform = entity.get_component(Transform)
         if transform is None:
             return None
@@ -1619,7 +1621,7 @@ class RenderSystem:
             "color": [255, 128, 0, 255],
         }
 
-    def _build_joint_geometry(self, entity: Entity) -> dict[str, object] | None:
+    def _build_joint_geometry(self, entity: Entity) -> dict[str, Any] | None:
         transform = entity.get_component(Transform)
         joint = entity.get_component(Joint2D)
         if transform is None or joint is None or not joint.enabled or not joint.connected_entity:
@@ -1644,7 +1646,7 @@ class RenderSystem:
             "color": color,
         }
 
-    def _build_selection_geometry(self, entity: Entity) -> dict[str, object] | None:
+    def _build_selection_geometry(self, entity: Entity) -> dict[str, Any] | None:
         bounds = self._selection_bounds(entity)
         if bounds is None:
             return None
@@ -1696,7 +1698,7 @@ class RenderSystem:
         top = transform.y - (height * offset_y)
         return {"left": float(left), "top": float(top), "width": float(width), "height": float(height)}
 
-    def _build_camera_geometry(self, world: World, viewport_size: tuple[float, float]) -> dict[str, object] | None:
+    def _build_camera_geometry(self, world: World, viewport_size: tuple[float, float]) -> dict[str, Any] | None:
         camera = self._build_camera_from_world(world, viewport_size=viewport_size)
         if camera is None:
             return None
@@ -1715,7 +1717,7 @@ class RenderSystem:
             "color": [64, 224, 208, 255],
         }
 
-    def _normalize_debug_primitive(self, primitive: dict[str, object]) -> dict[str, object]:
+    def _normalize_debug_primitive(self, primitive: dict[str, Any]) -> dict[str, Any]:
         payload = dict(primitive)
         payload["kind"] = str(payload.get("kind", "")).lower()
         payload["color"] = list(payload.get("color", [255, 255, 255, 255]))
@@ -1766,13 +1768,13 @@ class RenderSystem:
             values.append(255)
         return rl.Color(int(values[0]), int(values[1]), int(values[2]), int(values[3]))
 
-    def _prepare_tilemap_chunk_targets(self, graph: dict[str, object] | FramePlan2D) -> None:
+    def _prepare_tilemap_chunk_targets(self, graph: dict[str, Any] | FramePlan2D) -> None:
         if isinstance(graph, FramePlan2D):
             self._pipeline_executor.prepare_tilemap_chunk_targets(graph)
             return
         self._tilemap_chunk_renderer.prepare_targets(graph, self._tilemap_chunk_cache)
 
-    def _draw_tilemap_chunk(self, command: dict[str, object]) -> None:
+    def _draw_tilemap_chunk(self, command: dict[str, Any]) -> None:
         self._tilemap_chunk_renderer.draw_chunk(command)
 
     def _draw_joint(self, entity: Entity) -> None:
@@ -1798,7 +1800,7 @@ class RenderSystem:
         rl.draw_circle(int(start_x), int(start_y), 3.0, color)
         rl.draw_circle(int(end_x), int(end_y), 3.0, color)
 
-    def _load_texture(self, reference: Union[str, dict[str, str]], fallback_path: str, sync_callback: object = None) -> rl.Texture:
+    def _load_texture(self, reference: Union[str, dict[str, str]], fallback_path: str, sync_callback: Callable[..., Any] | None = None) -> rl.Texture:
         entry = self._asset_resolver.resolve_entry(reference) if self._asset_resolver is not None else None
         if entry is not None:
             if sync_callback is not None:
@@ -1813,7 +1815,7 @@ class RenderSystem:
             return path
         return self._project_service.resolve_path(path).as_posix()
 
-    def _tilemap_chunk_atlas_id(self, chunk_data: dict[str, object], fallback_atlas_id: str) -> str:
+    def _tilemap_chunk_atlas_id(self, chunk_data: dict[str, Any], fallback_atlas_id: str) -> str:
         atlas_ids = {
             str(tile.get("texture", {}).get("guid") or tile.get("texture_path") or "")
             for tile in chunk_data.get("tiles", [])
@@ -1826,7 +1828,7 @@ class RenderSystem:
             return "__tilemap_mixed__"
         return fallback_atlas_id or "__tilemap__"
 
-    def _resolve_tile_asset_reference(self, tilemap: Tilemap, layer: dict[str, object], tile: dict[str, object]) -> dict[str, str]:
+    def _resolve_tile_asset_reference(self, tilemap: Tilemap, layer: dict[str, Any], tile: dict[str, Any]) -> dict[str, str]:
         for candidate in (
             normalize_asset_reference(tile.get("source")),
             normalize_asset_reference(layer.get("tilemap_source")),
@@ -1840,7 +1842,7 @@ class RenderSystem:
         self,
         tilemap: Tilemap,
         asset_ref: dict[str, str],
-        tile: dict[str, object],
+        tile: dict[str, Any],
     ) -> tuple[dict[str, int] | None, str]:
         tile_id = str(tile.get("tile_id", "")).strip()
         slice_rect = self._resolve_tile_slice_rect(asset_ref, tile_id)

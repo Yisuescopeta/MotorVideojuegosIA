@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from typing import Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 from engine.api._context import EngineAPIComponent
 from engine.api.types import ActionResult
@@ -9,7 +9,7 @@ from engine.authoring.changes import Change
 from engine.components.rigidbody import RigidBody
 from engine.components.tilemap import Tilemap
 
-_UNSET = object()
+_UNSET: Any = object()
 
 
 class AuthoringAPI(EngineAPIComponent):
@@ -30,7 +30,7 @@ class AuthoringAPI(EngineAPIComponent):
         success = self.scene_authoring.begin_transaction(label=label)
         return self.ok("Transaction started", {"label": label}) if success else self.fail("Transaction start failed")
 
-    def apply_change(self, change: Dict[str, Union[str, int, float, bool, list, dict, None]]) -> ActionResult:
+    def apply_change(self, change: dict[str, Any]) -> ActionResult:
         """Apply a single low-level authoring change to the active scene.
 
         Args:
@@ -66,7 +66,7 @@ class AuthoringAPI(EngineAPIComponent):
         success = self.scene_authoring.rollback_transaction()
         return self.ok("Transaction rolled back") if success else self.fail("Transaction rollback failed")
 
-    def create_entity(self, name: str, components: Optional[Dict[str, Dict[str, Union[str, int, float, bool, list, dict, None]]]] = None) -> ActionResult:
+    def create_entity(self, name: str, components: Optional[Dict[str, dict[str, Any]]] = None) -> ActionResult:
         """Create a new entity in the active scene with optional component payloads.
 
         Args:
@@ -163,7 +163,7 @@ class AuthoringAPI(EngineAPIComponent):
         self,
         parent_name: str,
         name: str,
-        components: Optional[Dict[str, Dict[str, Union[str, int, float, bool, list, dict, None]]]] = None,
+        components: Optional[Dict[str, dict[str, Any]]] = None,
     ) -> ActionResult:
         """Create a new entity as a child of an existing parent entity.
 
@@ -181,7 +181,7 @@ class AuthoringAPI(EngineAPIComponent):
         success = self.scene_authoring.create_child_entity(parent_name, name, components=components)
         return self.ok("Child entity created", {"entity": name, "parent": parent_name}) if success else self.fail("Child entity creation failed")
 
-    def add_component(self, entity_name: str, component_name: str, data: Optional[Dict[str, Union[str, int, float, bool, list, dict, None]]] = None) -> ActionResult:
+    def add_component(self, entity_name: str, component_name: str, data: Optional[dict[str, Any]] = None) -> ActionResult:
         """Attach a new component to an existing entity.
 
         Args:
@@ -199,7 +199,7 @@ class AuthoringAPI(EngineAPIComponent):
         success = self.scene_authoring.add_component_to_entity(entity_name, component_name, component_data=data)
         return self.ok("Component added", {"entity": entity_name, "component": component_name}) if success else self.fail("Component add failed")
 
-    def replace_component_data(self, entity_name: str, component_name: str, data: Dict[str, Union[str, int, float, bool, list, dict, None]]) -> ActionResult:
+    def replace_component_data(self, entity_name: str, component_name: str, data: dict[str, Any]) -> ActionResult:
         """Fully replace the data payload of an existing component.
 
         Args:
@@ -266,8 +266,8 @@ class AuthoringAPI(EngineAPIComponent):
     def create_camera2d(
         self,
         name: str,
-        transform: Optional[Dict[str, Union[str, int, float, bool, list, dict, None]]] = None,
-        camera: Optional[Dict[str, Union[str, int, float, bool, list, dict, None]]] = None,
+        transform: Optional[dict[str, Any]] = None,
+        camera: Optional[dict[str, Any]] = None,
     ) -> ActionResult:
         """Create an entity with Camera2D + Transform components preconfigured.
 
@@ -283,7 +283,7 @@ class AuthoringAPI(EngineAPIComponent):
             ActionResult confirming camera entity creation.
         """
         self.ensure_edit_mode()
-        components: Dict[str, Dict[str, Union[str, int, float, bool, list, dict, None]]] = {
+        components: Dict[str, dict[str, Any]] = {
             "Transform": {
                 "enabled": True,
                 "x": 0.0,
@@ -316,7 +316,7 @@ class AuthoringAPI(EngineAPIComponent):
             components["Camera2D"].update(camera)
         return self.create_entity(name, components=components)
 
-    def update_camera2d(self, entity_name: str, properties: Dict[str, Union[str, int, float, bool, list, dict, None]]) -> ActionResult:
+    def update_camera2d(self, entity_name: str, properties: dict[str, Any]) -> ActionResult:
         """Update multiple Camera2D properties on an entity at once.
 
         Args:
@@ -334,7 +334,7 @@ class AuthoringAPI(EngineAPIComponent):
                 return result
         return self.ok("Camera2D updated", {"entity": entity_name})
 
-    def set_camera_framing(self, entity_name: str, framing: Dict[str, Union[str, int, float, bool, list, dict, None]]) -> ActionResult:
+    def set_camera_framing(self, entity_name: str, framing: dict[str, Any]) -> ActionResult:
         """Set camera framing properties (alias for update_camera2d).
 
         Args:
@@ -346,7 +346,7 @@ class AuthoringAPI(EngineAPIComponent):
         """
         return self.update_camera2d(entity_name, framing)
 
-    def create_input_map(self, name: str, bindings: Optional[Dict[str, Union[str, int, float, bool, list, dict, None]]] = None) -> ActionResult:
+    def create_input_map(self, name: str, bindings: Optional[dict[str, Any]] = None) -> ActionResult:
         """Create an entity with InputMap component for keyboard/gamepad bindings.
 
         Args:
@@ -359,7 +359,7 @@ class AuthoringAPI(EngineAPIComponent):
             ActionResult confirming InputMap entity creation.
         """
         self.ensure_edit_mode()
-        components: Dict[str, Dict[str, Union[str, int, float, bool, list, dict, None]]] = {
+        components: Dict[str, dict[str, Any]] = {
             "Transform": {
                 "enabled": True,
                 "x": 0.0,
@@ -382,7 +382,7 @@ class AuthoringAPI(EngineAPIComponent):
             components["InputMap"].update(bindings)
         return self.create_entity(name, components=components)
 
-    def update_input_map(self, entity_name: str, bindings: Dict[str, Union[str, int, float, bool, list, dict, None]]) -> ActionResult:
+    def update_input_map(self, entity_name: str, bindings: dict[str, Any]) -> ActionResult:
         """Update multiple InputMap key-action bindings at once.
 
         Args:
@@ -404,8 +404,8 @@ class AuthoringAPI(EngineAPIComponent):
     def create_audio_source(
         self,
         name: str,
-        transform: Optional[Dict[str, Union[str, int, float, bool, list, dict, None]]] = None,
-        audio: Optional[Dict[str, Union[str, int, float, bool, list, dict, None]]] = None,
+        transform: Optional[dict[str, Any]] = None,
+        audio: Optional[dict[str, Any]] = None,
     ) -> ActionResult:
         """Create an entity with AudioSource + Transform components.
 
@@ -419,7 +419,7 @@ class AuthoringAPI(EngineAPIComponent):
             ActionResult confirming AudioSource entity creation.
         """
         self.ensure_edit_mode()
-        components: Dict[str, Dict[str, Union[str, int, float, bool, list, dict, None]]] = {
+        components: Dict[str, dict[str, Any]] = {
             "Transform": {
                 "enabled": True,
                 "x": 0.0,
@@ -445,7 +445,7 @@ class AuthoringAPI(EngineAPIComponent):
             components["AudioSource"].update(audio)
         return self.create_entity(name, components=components)
 
-    def update_audio_source(self, entity_name: str, properties: Dict[str, Union[str, int, float, bool, list, dict, None]]) -> ActionResult:
+    def update_audio_source(self, entity_name: str, properties: dict[str, Any]) -> ActionResult:
         """Update multiple AudioSource properties on an entity.
 
         Args:
@@ -467,7 +467,7 @@ class AuthoringAPI(EngineAPIComponent):
         self,
         entity_name: str,
         module_path: str,
-        public_data: Optional[Dict[str, Union[str, int, float, bool, list, dict, None]]] = None,
+        public_data: Optional[dict[str, Any]] = None,
         run_in_edit_mode: bool = False,
         enabled: bool = True,
     ) -> ActionResult:
@@ -497,7 +497,7 @@ class AuthoringAPI(EngineAPIComponent):
             },
         )
 
-    def update_script_behaviour(self, entity_name: str, properties: Dict[str, Union[str, int, float, bool, list, dict, None]]) -> ActionResult:
+    def update_script_behaviour(self, entity_name: str, properties: dict[str, Any]) -> ActionResult:
         """Update multiple ScriptBehaviour properties at once.
 
         Args:
@@ -515,7 +515,7 @@ class AuthoringAPI(EngineAPIComponent):
                 return result
         return self.ok("ScriptBehaviour updated", {"entity": entity_name})
 
-    def set_script_public_data(self, entity_name: str, public_data: Dict[str, Union[str, int, float, bool, list, dict, None]]) -> ActionResult:
+    def set_script_public_data(self, entity_name: str, public_data: dict[str, Any]) -> ActionResult:
         """Set the public_data dictionary on a ScriptBehaviour component.
 
         Args:
@@ -680,7 +680,7 @@ class AuthoringAPI(EngineAPIComponent):
         cell_height: int = 16,
         orientation: str = "orthogonal",
         tileset: str = "",
-        layers: Optional[list[Dict[str, Union[str, int, float, bool, list, dict, None]]]] = None,
+        layers: Optional[list[dict[str, Any]]] = None,
     ) -> ActionResult:
         """Create or replace a Tilemap component on an entity.
 
@@ -729,7 +729,7 @@ class AuthoringAPI(EngineAPIComponent):
         source: str = "",
         flags: Optional[list[str]] = None,
         tags: Optional[list[str]] = None,
-        custom: Optional[Dict[str, Union[str, int, float, bool, list, dict, None]]] = None,
+        custom: Optional[dict[str, Any]] = None,
     ) -> ActionResult:
         """Place a tile at grid coordinates on a tilemap layer.
 
@@ -791,7 +791,7 @@ class AuthoringAPI(EngineAPIComponent):
         success = self.scene_authoring.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
         return self.ok("Tilemap tile cleared", {"entity": entity_name, "layer": layer_name, "x": x, "y": y}) if success else self.fail("Tilemap tile clear failed")
 
-    def get_tilemap(self, entity_name: str) -> Dict[str, Union[str, int, float, bool, list, dict, None]]:
+    def get_tilemap(self, entity_name: str) -> dict[str, Any]:
         """Retrieve the full Tilemap component data for an entity.
 
         Args:
@@ -803,7 +803,7 @@ class AuthoringAPI(EngineAPIComponent):
         payload = self._load_tilemap_payload(entity_name)
         return payload or {}
 
-    def get_tilemap_layer(self, entity_name: str, layer_name: str) -> Dict[str, Union[str, int, float, bool, list, dict, None]]:
+    def get_tilemap_layer(self, entity_name: str, layer_name: str) -> dict[str, Any]:
         """Retrieve a single tilemap layer's data.
 
         Args:
@@ -832,7 +832,7 @@ class AuthoringAPI(EngineAPIComponent):
         offset_y: float = 0.0,
         collision_layer: int = 0,
         tilemap_source: str = "",
-        metadata: Dict[str, Union[str, int, float, bool, list, dict, None]] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> ActionResult:
         """Add a new layer to an existing tilemap.
 
@@ -885,7 +885,7 @@ class AuthoringAPI(EngineAPIComponent):
         offset_y: float | None = None,
         collision_layer: int | None = None,
         tilemap_source: str | None = None,
-        metadata: Dict[str, Union[str, int, float, bool, list, dict, None]] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> ActionResult:
         """Update properties of an existing tilemap layer.
 
@@ -966,7 +966,7 @@ class AuthoringAPI(EngineAPIComponent):
         source: str = "",
         flags: list[str] | None = None,
         tags: list[str] | None = None,
-        custom: Dict[str, Union[str, int, float, bool, list, dict, None]] | None = None,
+        custom: dict[str, Any] | None = None,
         animated: bool = False,
         animation_id: str = "",
         terrain_type: str = "",
@@ -1018,7 +1018,7 @@ class AuthoringAPI(EngineAPIComponent):
         self,
         entity_name: str,
         layer_name: str,
-        tiles: list[Dict[str, Union[str, int, float, bool, list, dict, None]]],
+        tiles: list[dict[str, Any]],
     ) -> ActionResult:
         """Place multiple tiles at once on a tilemap layer.
 
@@ -1095,7 +1095,7 @@ class AuthoringAPI(EngineAPIComponent):
         success = self.scene_authoring.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
         return self.ok("Tilemap resized", {"entity": entity_name, "cell_width": cell_width, "cell_height": cell_height}) if success else self.fail("Tilemap resize failed")
 
-    def list_animator_states(self, entity_name: str) -> list[Dict[str, Union[str, int, float, bool, list, dict, None]]]:
+    def list_animator_states(self, entity_name: str) -> list[dict[str, Any]]:
         """List all animation states defined on an entity's Animator component.
 
         Args:
@@ -1112,7 +1112,7 @@ class AuthoringAPI(EngineAPIComponent):
         animator = entity.get_component(Animator)
         if animator is None:
             return []
-        result: list[Dict[str, Union[str, int, float, bool, list, dict, None]]] = []
+        result: list[dict[str, Any]] = []
         for state_name, state_data in animator.to_dict().get("animations", {}).items():
             payload = dict(state_data)
             payload["state_name"] = state_name
@@ -1386,7 +1386,7 @@ class AuthoringAPI(EngineAPIComponent):
         success = self.scene_authoring.replace_component_data(entity_name, "Animator", animator_data)
         return self.ok("Animator speed updated", {"entity": entity_name, "speed": animator_data["speed"]}) if success else self.fail("Animator speed update failed")
 
-    def get_animator_info(self, entity_name: str) -> Dict[str, Union[str, int, float, bool, list, dict, None]]:
+    def get_animator_info(self, entity_name: str) -> dict[str, Any]:
         """Get comprehensive information about an Animator component.
 
         Args:
@@ -1543,8 +1543,8 @@ class AuthoringAPI(EngineAPIComponent):
             target["id"] = entity_id.strip()
         return payload
 
-    def _load_animator_payload(self, entity_name: str) -> Optional[Dict[str, Union[str, int, float, bool, list, dict, None]]]:
+    def _load_animator_payload(self, entity_name: str) -> Optional[dict[str, Any]]:
         return self.load_component_payload(entity_name, "Animator")
 
-    def _load_tilemap_payload(self, entity_name: str) -> Optional[Dict[str, Union[str, int, float, bool, list, dict, None]]]:
+    def _load_tilemap_payload(self, entity_name: str) -> Optional[dict[str, Any]]:
         return self.load_component_payload(entity_name, "Tilemap")

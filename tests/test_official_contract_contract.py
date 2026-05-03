@@ -401,7 +401,7 @@ class PlannedNotExecutableContractTests(unittest.TestCase):
                                     parser_commands.add(f"{cmd_name} {sub_cmd}")
                                     if hasattr(sub_sp, '_actions'):
                                         for ssa in sub_sp._actions:
-                                            if hasattr(ssa, 'choices') and ssa.choices:
+                                            if hasattr(ssa, 'choices') and ssa.choices and isinstance(ssa.choices, dict):
                                                 for ss_cmd in ssa.choices.keys():
                                                     parser_commands.add(f"{cmd_name} {sub_cmd} {ss_cmd}")
 
@@ -462,7 +462,7 @@ class ImplementedHaveParserContractTests(unittest.TestCase):
                                     parser_commands.add(f"{cmd_name} {sub_cmd}")
                                     if hasattr(sub_sp, '_actions'):
                                         for ssa in sub_sp._actions:
-                                            if hasattr(ssa, 'choices') and ssa.choices:
+                                            if hasattr(ssa, 'choices') and ssa.choices and isinstance(ssa.choices, dict):
                                                 for ss_cmd in ssa.choices.keys():
                                                     parser_commands.add(f"{cmd_name} {sub_cmd} {ss_cmd}")
 

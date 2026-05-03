@@ -43,10 +43,12 @@ def normalize_entity_groups(value: object) -> tuple[str, ...]:
     if value is None:
         return ()
     if isinstance(value, (str, bytes)):
-        raw_groups = [value]
+        raw_groups: list[object] = [str(value)]
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        raw_groups = list(value)
     else:
         try:
-            raw_groups = list(value)
+            raw_groups = list(value)  # type: ignore[arg-type,call-overload]
         except TypeError:
             raw_groups = [value]
     normalized: list[str] = []
