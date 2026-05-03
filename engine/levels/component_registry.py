@@ -148,8 +148,6 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.uiimage import UIImage
     from engine.components.uitext import UIText
     from engine.components.parallax_layer import ParallaxLayer
-    from engine.components.particle_emitter2d import ParticleEmitter2D
-    from engine.components.path_follower_2d import PathFollower2D
     from engine.components.visible_on_screen_notifier_2d import (
         VisibleOnScreenEnabler2D,
         VisibleOnScreenNotifier2D,
@@ -279,12 +277,5 @@ def create_default_registry() -> ComponentRegistry:
         description="Emisor de particulas 2D calculadas en CPU (equivalente Godot CPUParticles2D).",
         default_payload=ParticleEmitter2D().to_dict(),
         editor_tags=("particles", "render", "layer:Visual", "fx"),
-    )
-    registry.register(
-        "PathFollower2D",
-        PathFollower2D,
-        description="Sigue una curva 2D definida por puntos con handles Bezier, con velocidad, loop, offsets y rotacion.",
-        default_payload=PathFollower2D().to_dict(),
-        editor_tags=("path", "tag:PathFollower", "layer:Gameplay", "curve"),
     )
     return registry
