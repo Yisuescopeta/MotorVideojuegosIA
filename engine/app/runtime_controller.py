@@ -14,6 +14,7 @@ from engine.physics.backend import PhysicsBackendSelection
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
 from engine.services.registro_servicios import RegistroServicios
 from engine.systems.gameplay2d_semantic_system import Gameplay2DSemanticSystem
+from engine.systems.path_follow_system import PathFollowSystem
 from engine.tilemap.collision_builder import bake_tilemap_colliders
 from engine.utils.viewport import resolve_world_viewport_rect
 
@@ -51,7 +52,9 @@ class RuntimeController:
         self._get_timer_system = context.get_timer_system
         self._get_tween_system = context.get_tween_system
         self._get_visible_on_screen_system = context.get_visible_on_screen_system
+        self._get_parallax_system = context.get_parallax_system
         self._get_resource_preloader_system = context.get_resource_preloader_system
+        self._get_particle_system = context.get_particle_system
         self._get_scene_transition_controller = context.get_scene_transition_controller
         self._get_physics_backend_registry = context.get_physics_backend_registry
         self._reset_profiler = context.reset_profiler
@@ -64,6 +67,7 @@ class RuntimeController:
         self._signal_runtime = SignalRuntime(self._deferred_queue)
         self._servicios = RegistroServicios()
         self._gameplay2d_semantic_system = Gameplay2DSemanticSystem()
+        self._path_follow_system = PathFollowSystem()
         self._entity_destroyed_listener_registered = False
         self._callable_resolver = CallableResolver(
             CallableResolverContext(
@@ -117,6 +121,7 @@ class RuntimeController:
         self._signal_runtime.clear()
         self._servicios.limpiar_runtime()
         self._gameplay2d_semantic_system.reset()
+        self._path_follow_system.reset()
         self._entity_destroyed_listener_registered = False
 
     def end_runtime_session(self) -> None:
@@ -125,6 +130,7 @@ class RuntimeController:
         self._signal_runtime.clear()
         self._servicios.limpiar_runtime()
         self._gameplay2d_semantic_system.reset()
+        self._path_follow_system.reset()
         self._entity_destroyed_listener_registered = False
 
     def build_tick_plan(self, dt: float, *, should_render_like: bool = True) -> RuntimeTickPlan:
@@ -194,6 +200,10 @@ class RuntimeController:
             if script_behaviour_system is not None:
                 script_behaviour_system.on_play(runtime_world)
 
+            parallax_system = self._get_parallax_system()
+            if parallax_system is not None:
+                parallax_system.on_play(runtime_world)
+
         self._set_state(EngineState.PLAY)
 
         event_bus = self._get_event_bus()
@@ -239,6 +249,10 @@ class RuntimeController:
         script_behaviour_system = self._get_script_behaviour_system()
         if script_behaviour_system is not None and runtime_world is not None:
             script_behaviour_system.on_stop(runtime_world)
+
+        parallax_system = self._get_parallax_system()
+        if parallax_system is not None and runtime_world is not None:
+            parallax_system.on_stop(runtime_world)
 
         scene_runtime = self._get_scene_runtime()
         if scene_runtime is not None:
@@ -301,6 +315,11 @@ class RuntimeController:
                 dt,
                 self._get_event_bus(),
             )
+            self._path_follow_system.update(
+                world,
+                dt,
+                self._get_event_bus(),
+            )
             backend.step(world, dt)
             self._gameplay2d_semantic_system.update(
                 world,
@@ -320,11 +339,19 @@ class RuntimeController:
         if tween_system is not None:
             tween_system.update(world, dt)
 
+        particle_system = self._get_particle_system()
+        if particle_system is not None:
+            particle_system.update(world, dt)
+
         visible_on_screen_system = self._get_visible_on_screen_system()
         if visible_on_screen_system is not None:
             # Obtener viewport rect en coordenadas de mundo desde la camara
             viewport_rect = resolve_world_viewport_rect(world)
             visible_on_screen_system.update(world, viewport_rect)
+
+        parallax_system = self._get_parallax_system()
+        if parallax_system is not None:
+            parallax_system.update(world, dt)
 
         scene_transition_controller = self._get_scene_transition_controller()
         if scene_transition_controller is not None:

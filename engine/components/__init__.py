@@ -33,6 +33,7 @@ from engine.components.inputmap import InputMap
 from engine.components.joint2d import Joint2D
 from engine.components.marker2d import Marker2D
 from engine.components.playercontroller2d import PlayerController2D
+from engine.components.polygon2d import Polygon2D
 from engine.components.renderorder2d import RenderOrder2D
 from engine.components.renderstyle2d import RenderStyle2D
 from engine.components.resource_preloader import ResourcePreloader
@@ -76,6 +77,7 @@ __all__ = [
     "AudioSource",
     "InputMap",
     "PlayerController2D",
+    "Polygon2D",
     "RenderOrder2D",
     "RenderStyle2D",
     "SceneEntryPoint",

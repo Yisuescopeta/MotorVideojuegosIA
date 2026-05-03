@@ -40,6 +40,7 @@ orquestacion. Pueden ser valiosos, pero no son contrato duro del motor.
 | assets | `modulos oficiales opcionales` | Integrados y soportados, pero no requisito del nucleo minimo. |
 | prefabs | `modulos oficiales opcionales` | Integrados en authoring/serializacion, pero no condicion minima. |
 | tilemap | `modulos oficiales opcionales` | Capacidad oficial basada en datos, fuera del nucleo minimo. |
+| parallax | `modulos oficiales opcionales` | Capa de parallax serializable, fuera del nucleo minimo. |
 | audio | `modulos oficiales opcionales` | Capacidad soportada, no requisito de simulacion base. |
 | UI serializable | `modulos oficiales opcionales` | Capa oficial basada en datos, no core minimo. |
 | backend `box2d` | `modulos oficiales opcionales` | Mejora oficial opcional; `legacy_aabb` mantiene el core. |

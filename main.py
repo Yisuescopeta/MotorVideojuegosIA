@@ -36,6 +36,7 @@ from engine.systems.input_system import InputSystem
 from engine.systems.physics_system import PhysicsSystem
 from engine.systems.player_controller_system import PlayerControllerSystem
 from engine.systems.render_system import RenderSystem
+from engine.systems.parallax_system import ParallaxSystem
 from engine.systems.resource_preloader_system import ResourcePreloaderSystem
 from engine.systems.script_behaviour_system import ScriptBehaviourSystem
 from engine.systems.selection_system import SelectionSystem
@@ -44,6 +45,8 @@ from engine.systems.tween_system import TweenSystem
 from engine.systems.ui_render_system import UIRenderSystem
 from engine.systems.ui_system import UISystem
 from engine.systems.visible_on_screen_system import VisibleOnScreenSystem
+from engine.systems.light2d_system import Light2DSystem
+from engine.systems.particle_system import ParticleSystem
 
 
 def parse_args() -> argparse.Namespace:
@@ -138,11 +141,14 @@ def main() -> None:
     timer_system = TimerSystem()
     tween_system = TweenSystem()
     visible_on_screen_system = VisibleOnScreenSystem()
+    parallax_system = ParallaxSystem()
     resource_preloader_system = ResourcePreloaderSystem()
     inspector_system = InspectorSystem()
     selection_system = SelectionSystem()
     ui_system = UISystem()
     ui_render_system = UIRenderSystem()
+    light2d_system = Light2DSystem()
+    particle_system = ParticleSystem(event_bus)
 
     # Configurar juego
     game = Game(
@@ -166,6 +172,7 @@ def main() -> None:
     game.set_timer_system(timer_system)
     game.set_tween_system(tween_system)
     game.set_visible_on_screen_system(visible_on_screen_system)
+    game.set_parallax_system(parallax_system)
     game.set_resource_preloader_system(resource_preloader_system)
     game.set_inspector_system(inspector_system)
     game.set_event_bus(event_bus)
@@ -173,6 +180,8 @@ def main() -> None:
     game.set_selection_system(selection_system)
     game.set_ui_system(ui_system)
     game.set_ui_render_system(ui_render_system)
+    game.set_light2d_system(light2d_system)
+    game.set_particle_system(particle_system)
     _register_optional_box2d_backend(game, gravity=physics_system.gravity, event_bus=event_bus)
 
     # Configurar ScriptExecutor si se solicito (Visual Automation)

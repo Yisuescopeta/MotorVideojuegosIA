@@ -92,6 +92,8 @@ class EngineAPI:
         from engine.systems.selection_system import SelectionSystem
         from engine.systems.ui_render_system import UIRenderSystem
         from engine.systems.ui_system import UISystem
+        from engine.systems.light2d_system import Light2DSystem
+        from engine.systems.particle_system import ParticleSystem
 
         self.game = HeadlessGame()
         self.scene_manager = SceneManager(self._registry)
@@ -120,6 +122,8 @@ class EngineAPI:
         self.game.set_audio_system(AudioSystem())
         self.game.set_ui_system(UISystem())
         self.game.set_ui_render_system(UIRenderSystem())
+        self.game.set_light2d_system(Light2DSystem())
+        self.game.set_particle_system(ParticleSystem(event_bus))
         self._register_optional_box2d_backend()
 
     def _initialize_collaborators(self) -> None:

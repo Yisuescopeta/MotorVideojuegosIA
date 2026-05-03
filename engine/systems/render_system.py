@@ -15,6 +15,7 @@ from engine.components.animator import Animator
 from engine.components.camera2d import Camera2D
 from engine.components.collider import Collider
 from engine.components.joint2d import Joint2D
+from engine.components.polygon2d import Polygon2D
 from engine.components.renderorder2d import RenderOrder2D
 from engine.components.renderstyle2d import RenderStyle2D
 from engine.components.sprite import Sprite
@@ -807,7 +808,13 @@ class RenderSystem:
                     continue
                 point = self._project_to_minimap(transform.x, transform.y, bounds, width, height)
                 sprite = entity.get_component(Sprite)
-                color = rl.LIGHTGRAY if sprite is None else rl.Color(*sprite.tint)
+                polygon = entity.get_component(Polygon2D)
+                if polygon is not None and polygon.enabled:
+                    color = rl.Color(*polygon.color)
+                elif sprite is None:
+                    color = rl.LIGHTGRAY
+                else:
+                    color = rl.Color(*sprite.tint)
                 rl.draw_circle(int(point[0]), int(point[1]), 2.0, color)
             rl.draw_rectangle_lines(0, 0, width, height, rl.Color(100, 140, 180, 255))
         finally:
@@ -838,6 +845,11 @@ class RenderSystem:
             locator = animator.get_sprite_sheet_reference()
         elif sprite is not None and sprite.enabled and sprite.texture_path:
             locator = sprite.get_texture_reference()
+
+        if not locator:
+            polygon = entity.get_component(Polygon2D)
+            if polygon is not None and polygon.enabled and polygon.texture_path:
+                locator = polygon.get_texture_reference()
 
         resolved_atlas_id = atlas_id or self._resolve_atlas_id(locator)
         if not resolved_atlas_id:
@@ -1461,6 +1473,10 @@ class RenderSystem:
         elif sprite is not None and sprite.enabled and sprite.texture_path:
             self._draw_sprite(transform, sprite)
         else:
+            polygon = entity.get_component(Polygon2D)
+            if polygon is not None and polygon.enabled and len(polygon.points) >= 3:
+                self._draw_polygon(transform, polygon)
+                return
             self._draw_placeholder(entity.name, transform)
 
     def _draw_animated_sprite(self, transform: Transform, animator: Animator) -> None:
@@ -1523,18 +1539,59 @@ class RenderSystem:
         if self.debug_draw_labels:
             rl.draw_text(name, rect_x, rect_y - 15, 10, rl.WHITE)
 
-    def _draw_collider(self, transform: Transform, collider: Collider) -> None:
-        left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
-        is_trigger = bool(getattr(collider, "is_trigger", False))
-        color = rl.Color(0, 180, 255, 255) if is_trigger else rl.GREEN
-        thickness = 2 if is_trigger else 1
-        rl.draw_rectangle_lines_ex(
-            rl.Rectangle(float(left), float(top), float(right - left), float(bottom - top)),
-            thickness,
-            color,
-        )
+    def _draw_polygon(self, transform: Transform, polygon: Polygon2D) -> None:
+        if len(polygon.points) < 3:
+            return
 
-    def _draw_debug_primitive(self, geometry: dict[str, Any]) -> None:
+        import math
+
+        cos_r = math.cos(transform.rotation)
+        sin_r = math.sin(transform.rotation)
+        sx = transform.scale_x
+        sy = transform.scale_y
+
+        world_points: list[tuple[float, float]] = []
+        for pt in polygon.points:
+            wx = pt[0] * sx
+            wy = pt[1] * sy
+            rx = wx * cos_r - wy * sin_r
+            ry = wx * sin_r + wy * cos_r
+            world_points.append((transform.x + rx + polygon.offset_x, transform.y + ry + polygon.offset_y))
+
+        if polygon.texture_path:
+            texture = self._load_texture(polygon.get_texture_reference(), polygon.texture_path, sync_callback=polygon.sync_texture_reference)
+            if texture.id != 0:
+                rl.rl_set_texture(texture.id)
+                rl.rl_begin(rl.RL_TRIANGLES)
+                rl.rl_color4ub(*polygon.color)
+                # Fan triangulation: (0, 1, 2), (0, 2, 3), ...
+                for i in range(1, len(world_points) - 1):
+                    p0 = world_points[0]
+                    p1 = world_points[i]
+                    p2 = world_points[i + 1]
+                    # UV: simple normalized mapping
+                    rl.rl_tex_coord2f(0.5, 0.5)
+                    rl.rl_vertex2f(p0[0], p0[1])
+                    rl.rl_tex_coord2f(float(i) / len(world_points), 0.0)
+                    rl.rl_vertex2f(p1[0], p1[1])
+                    rl.rl_tex_coord2f(float(i + 1) / len(world_points), 1.0)
+                    rl.rl_vertex2f(p2[0], p2[1])
+                rl.rl_end()
+                rl.rl_set_texture(0)
+                return
+
+        # No texture: solid color using triangle fan
+        from pyray import Vector2
+        color = rl.Color(*polygon.color)
+        for i in range(1, len(world_points) - 1):
+            rl.draw_triangle(
+                Vector2(world_points[0][0], world_points[0][1]),
+                Vector2(world_points[i][0], world_points[i][1]),
+                Vector2(world_points[i + 1][0], world_points[i + 1][1]),
+                color,
+            )
+
+    def _draw_collider(self, transform: Transform, collider: Collider) -> None:
         kind = geometry.get("kind", "")
         color = self._color_from_payload(geometry.get("color", [255, 255, 255, 255]))
         if kind == "line":
@@ -1691,6 +1748,33 @@ class RenderSystem:
                     width = animator.frame_width
                 if animator.frame_height > 0:
                     height = animator.frame_height
+
+        polygon = entity.get_component(Polygon2D)
+        if polygon is not None and polygon.enabled and len(polygon.points) >= 3:
+            min_x = float("inf")
+            min_y = float("inf")
+            max_x = float("-inf")
+            max_y = float("-inf")
+            sx = transform.scale_x
+            sy = transform.scale_y
+            for pt in polygon.points:
+                wx = pt[0] * sx + polygon.offset_x
+                wy = pt[1] * sy + polygon.offset_y
+                if wx < min_x:
+                    min_x = wx
+                if wy < min_y:
+                    min_y = wy
+                if wx > max_x:
+                    max_x = wx
+                if wy > max_y:
+                    max_y = wy
+            width = max_x - min_x
+            height = max_y - min_y
+            left = transform.x + min_x
+            top = transform.y + min_y
+            offset_x = -min_x / width if width > 0 else 0.0
+            offset_y = -min_y / height if height > 0 else 0.0
+            return {"left": float(left), "top": float(top), "width": float(width), "height": float(height)}
 
         width *= transform.scale_x
         height *= transform.scale_y

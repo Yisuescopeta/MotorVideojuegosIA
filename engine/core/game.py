@@ -85,6 +85,9 @@ if TYPE_CHECKING:
     from engine.systems.ui_render_system import UIRenderSystem
     from engine.systems.ui_system import UISystem
     from engine.systems.visible_on_screen_system import VisibleOnScreenSystem
+    from engine.systems.parallax_system import ParallaxSystem
+    from engine.systems.light2d_system import Light2DSystem
+    from engine.systems.particle_system import ParticleSystem
 
 
 class Game:
@@ -125,6 +128,7 @@ class Game:
         self._timer_system: Optional["TimerSystem"] = None
         self._tween_system: Optional["TweenSystem"] = None
         self._visible_on_screen_system: Optional["VisibleOnScreenSystem"] = None
+        self._parallax_system: Optional["ParallaxSystem"] = None
         self._resource_preloader_system: Optional["ResourcePreloaderSystem"] = None
         self._level_loader: Optional["LevelLoader"] = None
         self._event_bus: Optional["EventBus"] = None
@@ -132,6 +136,8 @@ class Game:
         self._selection_system: Optional["SelectionSystem"] = None
         self._ui_system: Optional["UISystem"] = None
         self._ui_render_system: Optional["UIRenderSystem"] = None
+        self._light2d_system: Optional["Light2DSystem"] = None
+        self._particle_system: Optional["ParticleSystem"] = None
 
         self.script_executor: Optional["ScriptExecutor"] = None
 
@@ -239,7 +245,9 @@ class Game:
                 get_timer_system=lambda: self._timer_system,
                 get_tween_system=lambda: self._tween_system,
                 get_visible_on_screen_system=lambda: self._visible_on_screen_system,
+                get_parallax_system=lambda: self._parallax_system,
                 get_resource_preloader_system=lambda: self._resource_preloader_system,
+                get_particle_system=lambda: self._particle_system,
                 get_scene_transition_controller=lambda: self._scene_transition_controller,
                 get_physics_backend_registry=lambda: self._physics_backend_registry,
                 reset_profiler=self.reset_profiler,
@@ -532,6 +540,9 @@ class Game:
         if self._runtime_controller is not None:
             self._visible_on_screen_system.set_signal_runtime(self._runtime_controller.signal_runtime)
 
+    def set_parallax_system(self, system: "ParallaxSystem") -> None:
+        self._parallax_system = system
+
     def set_resource_preloader_system(self, system: "ResourcePreloaderSystem") -> None:
         self._resource_preloader_system = system
         if self._render_system is not None:
@@ -695,6 +706,12 @@ class Game:
         self._ui_render_system = system
         if self._project_service is not None and hasattr(self._ui_render_system, "set_project_service"):
             self._ui_render_system.set_project_service(self._project_service)
+
+    def set_light2d_system(self, system: "Light2DSystem") -> None:
+        self._light2d_system = system
+
+    def set_particle_system(self, system: "ParticleSystem") -> None:
+        self._particle_system = system
 
     def set_script_executor(self, executor: "ScriptExecutor") -> None:
         """Asigna un ejecutor de scripts para automatización visual."""
@@ -1330,6 +1347,12 @@ class Game:
                     self.gizmo_system.render(active_world, active_tool, transform_space, pivot_mode)
                     self.editor_layout.end_scene_camera_pass()
 
+                if self._light2d_system is not None and active_world is not None:
+                    self._light2d_system.render(active_world)
+
+                if self._particle_system is not None and active_world is not None:
+                    self._particle_system.render(active_world)
+
                 self.editor_layout.end_scene_render()
                 should_render_scene_ui = bool(
                     self._ui_system is not None
@@ -1358,6 +1381,12 @@ class Game:
                     self._render_system.render(target_world, viewport_size=viewport_size)
                 else:
                     rl.draw_text("Press PLAY to start", 10, 10, 20, rl.GRAY)
+
+                if self._light2d_system is not None and target_world is not None:
+                    self._light2d_system.render(target_world)
+
+                if self._particle_system is not None and target_world is not None:
+                    self._particle_system.render(target_world)
 
                 self.editor_layout.end_game_render()
                 if target_world is not None and self.editor_layout.game_texture is not None:
