@@ -75,7 +75,8 @@ El JSON usa la envoltura estandar `{ "success": bool, "message": str, "data": ob
 - `strict_pass`: `false` si strict detecta runtime externo o no hay escena nativa valida.
 - `external_runtime_detected`: `true` si encuentra senales sospechosas.
 - `problems`: fallos de contrato o strict.
-- `warnings`: bootstrap faltante/regenerable, componentes desconocidos y sospechas en modo normal.
+- `warnings`: bootstrap faltante/regenerable, componentes desconocidos, sospechas
+  en modo normal y loops propios en scripts referenciados por `ScriptBehaviour`.
 - `recommended_next_actions`: acciones concretas para volver al flujo nativo.
 
 Checks principales:
@@ -106,6 +107,9 @@ Reglas adicionales del escaneo strict:
 - al evaluar este repo del motor, proyectos anidados bajo `projects/` con su
   propio `project.json` se tratan como roots separados y no bloquean el
   compliance del repo principal.
+- strict bloquea si un `ScriptBehaviour` de la escena activa referencia un script
+  con loops propios como `while True`, porque representa un mini motor paralelo
+  que esquiva el runtime oficial.
 
 ### `motor ai self-test`
 
@@ -468,6 +472,32 @@ Guarda la escena activa en su ruta fuente.
 py -m motor scene save --project . --json
 ```
 
+### `motor scene flow next`
+
+Carga la siguiente escena en el flujo de escenas definido por `SceneLink`.
+
+```bash
+py -m motor scene flow next --project . --json
+```
+
+### `motor scene flow menu`
+
+Carga la escena de menu definida en el flujo de escenas.
+
+```bash
+py -m motor scene flow menu --project . --json
+```
+
+### `motor scene flow set-link <source> <target>`
+
+Establece un enlace de flujo entre dos escenas. `--entity` opcional para
+vincular a una entidad con `SceneLink`.
+
+```bash
+py -m motor scene flow set-link levels/level1.json levels/level2.json --project . --json
+py -m motor scene flow set-link levels/level1.json levels/menu.json --entity Doorway --project . --json
+```
+
 ## Runtime headless
 
 Los comandos `runtime` usan la fachada publica `EngineAPI` dentro del proceso
@@ -596,6 +626,22 @@ semanticos 2D observables incluyen `checkpoint_reached`, `killzone_touched` y
 `killzone_respawn_missing` cuando hay contactos entre `Player` y esos
 componentes.
 
+### `motor runtime undo`
+
+Deshace la ultima accion de authoring. Usa `EngineAPI.undo()` internamente.
+
+```bash
+py -m motor runtime undo --project . --json
+```
+
+### `motor runtime redo`
+
+Rehace la ultima accion deshecha. Usa `EngineAPI.redo()` internamente.
+
+```bash
+py -m motor runtime redo --project . --json
+```
+
 ## Entidades
 
 ### `motor entity create <name>`
@@ -610,317 +656,43 @@ py -m motor entity create Player --components '{"Transform":{"x":100,"y":200}}' 
 
 El comando guarda automaticamente la escena despues de crear la entidad.
 
-## Componentes
+### `motor entity list`
 
-### `motor component add <entity> <component>`
-
-Agrega un componente registrado a una entidad existente.
+Lista entidades de la escena activa, con filtros opcionales.
 
 ```bash
-py -m motor component add Player Transform --data '{"x":100,"y":200}' --project . --json
-py -m motor component add Player Animator --data '{"enabled":true,"speed":1.0}' --project . --json
+py -m motor entity list --project . --json
+py -m motor entity list --tag Enemy --active-only --project . --json
 ```
 
-El nombre de componente debe estar registrado en
-`engine/levels/component_registry.py`.
+El JSON incluye `entities`, `count`, `filters` y metadatos de `scene`.
 
-## Prefabs
+### `motor entity delete <name>`
 
-### `motor prefab create <entity> <path>`
-
-Guarda una entidad raiz y su subarbol como prefab. Con `--replace-original`
-sustituye el subarbol original por una instancia enlazada al prefab nuevo.
+Elimina una entidad de la escena activa usando `EngineAPI.delete_entity` y
+guarda la escena. Los hijos siguen la semantica de jerarquia existente:
+se reasignan al padre de la entidad eliminada y conservan transformacion de
+mundo cuando hay `Transform`.
 
 ```bash
-py -m motor prefab create EnemyTemplate prefabs/enemy.prefab --project . --json
-py -m motor prefab create EnemyTemplate prefabs/enemy.prefab --replace-original --instance-name EnemyA --project . --json
+py -m motor entity delete Enemy_A --project . --json
 ```
 
-### `motor prefab instantiate <path>`
+### `motor entity set-parent <entity> <parent>`
 
-Crea una instancia enlazada desde un prefab existente.
+Asigna un padre a una entidad existente, estableciendo jerarquia.
 
 ```bash
-py -m motor prefab instantiate prefabs/enemy.prefab --name EnemyA --project . --json
-py -m motor prefab instantiate prefabs/enemy.prefab --name EnemyA --parent Spawner --project . --json
+py -m motor entity set-parent Sword Player --project . --json
 ```
 
-### `motor prefab unpack <entity>`
+### `motor entity create-child <parent>`
 
-Convierte una instancia de prefab en entidades explicitas editables.
+Crea una entidad hija bajo un padre existente. `--name` es obligatorio.
 
 ```bash
-py -m motor prefab unpack EnemyA --project . --json
+py -m motor entity create-child Player --name Sword --project . --json
 ```
-
-### `motor prefab apply <entity>`
-
-Aplica los overrides acumulados de una instancia al archivo prefab origen.
-
-```bash
-py -m motor prefab apply EnemyA --project . --json
-```
-
-### `motor prefab list`
-
-Lista los prefabs detectados en el proyecto.
-
-```bash
-py -m motor prefab list --project . --json
-```
-
-## Animator
-
-### `motor animator info <entity>`
-
-Muestra configuracion de `Animator` para una entidad.
-
-```bash
-py -m motor animator info Player --project . --json
-```
-
-### `motor animator ensure <entity>`
-
-Crea `Animator` si falta o actualiza su sprite sheet si se pasa `--sheet`.
-
-```bash
-py -m motor animator ensure Player --sheet assets/player.png --project . --json
-```
-
-### `motor animator set-sheet <entity> <asset>`
-
-Actualiza el sprite sheet del `Animator`.
-
-```bash
-py -m motor animator set-sheet Player assets/player.png --project . --json
-```
-
-### `motor animator state create <entity> <state>`
-
-Crea o actualiza un estado de animacion.
-
-```bash
-py -m motor animator state create Player idle --slices idle_0,idle_1,idle_2 --fps 8 --loop --set-default --project . --json
-py -m motor animator state create Player attack --slices atk_0,atk_1 --fps 12 --no-loop --project . --json
-```
-
-Opciones:
-
-- `--slices` es obligatorio.
-- `--fps` por defecto vale `8.0`.
-- `--loop` y `--no-loop` controlan repeticion; si no se indica, el comando usa loop.
-- `--set-default` marca el estado como default.
-- `--auto-create` crea `Animator` si falta.
-
-### `motor animator state remove <entity> <state>`
-
-Elimina un estado de animacion.
-
-```bash
-py -m motor animator state remove Player idle --project . --json
-```
-
-Existen aliases legacy ocultos para compatibilidad temporal, pero no forman
-parte de la interfaz oficial ni se documentan como comandos disponibles. Usa
-siempre la gramatica `animator state create/remove`.
-
-## Assets
-
-### `motor asset list`
-
-Lista assets del proyecto, con filtro opcional.
-
-```bash
-py -m motor asset list --project . --json
-py -m motor asset list --search player --project . --json
-```
-
-### `motor asset slice list <asset>`
-
-Lista slices definidos para un asset.
-
-```bash
-py -m motor asset slice list assets/player.png --project . --json
-```
-
-### `motor asset slice grid <asset>`
-
-Genera slices por grilla.
-
-```bash
-py -m motor asset slice grid assets/tiles.png --cell-width 32 --cell-height 32 --project . --json
-```
-
-Opciones adicionales:
-
-- `--margin`
-- `--spacing`
-- `--pivot-x`
-- `--pivot-y`
-- `--naming-prefix`
-
-### `motor asset slice auto <asset>`
-
-Detecta slices por alpha. Con `--preview` no guarda cambios.
-
-```bash
-py -m motor asset slice auto assets/player.png --alpha-threshold 1 --preview --project . --json
-py -m motor asset slice auto assets/player.png --project . --json
-```
-
-### `motor asset slice manual <asset>`
-
-Guarda slices definidos manualmente como JSON inline o ruta a archivo JSON.
-
-```bash
-py -m motor asset slice manual assets/player.png --slices '[{"name":"idle_0","x":0,"y":0,"width":32,"height":32}]' --project . --json
-```
-
-## Agente experimental
-
-Estos comandos exponen el agente clean-room nativo del motor como herramienta
-experimental. Las sesiones se guardan en estado local del proyecto bajo
-`.motor/agent_state/`.
-
-### `motor agent providers list`
-
-Lista providers configurados y su metadata.
-
-```bash
-py -m motor agent providers list --project . --json
-```
-
-`fake` y `replay` son providers offline de prueba. `openai` es online, requiere
-una credencial usable y no se usa como fallback silencioso. Esa credencial puede
-venir de `OPENAI_API_KEY`, del secreto local del agente o de login gestionado
-por Codex/OpenAI cuando el bridge expone una API key reutilizable.
-
-### `motor agent providers login <provider>`
-
-Configura credenciales de provider.
-
-```bash
-py -m motor agent providers login opencode-go --api-key-stdin --project .
-py -m motor agent providers login openai --codex-chatgpt --project .
-py -m motor agent providers login openai --device-auth --project .
-```
-
-Modos soportados:
-
-- `--api-key-stdin`: guarda un secreto local del agente sin dejarlo en el historial.
-- `--codex-chatgpt`: delega el login real al CLI oficial `codex login`.
-- `--device-auth`: usa el flujo oficial device-code de Codex para entornos sin navegador local.
-
-### `motor agent providers logout <provider>`
-
-Elimina credenciales locales de provider sin revelar secretos.
-
-```bash
-py -m motor agent providers logout openai --project . --json
-```
-
-No elimina variables de entorno ni sesiones externas gestionadas por otras
-herramientas.
-
-### `motor agent providers status [provider]`
-
-Inspecciona estado de auth sin revelar secretos.
-
-```bash
-py -m motor agent providers status openai --project . --json
-```
-
-Campos relevantes:
-
-- `credential_source`: `env`, `user_local`, `codex_chatgpt`, `codex_api_key`, `codex_keyring` o `none`.
-- `auth_method`: metodo observable (`api_key` o `chatgpt`) cuando el origen lo permite.
-- `runtime_ready`: indica si el runtime actual puede reutilizar la credencial detectada.
-
-### `motor agent session create`
-
-Crea una sesion de agente. Por defecto usa proveedor fake determinista.
-
-```bash
-py -m motor agent session create --project . --permission-mode confirm_actions --json
-py -m motor agent session create --project . --permission-mode full_access --title "Sesion local" --json
-py -m motor agent session create --project . --provider-id openai --model gpt-5 --stream --json
-```
-
-Modos de permisos:
-
-- `confirm_actions` permite lecturas seguras y deja ediciones, shell y Git como acciones pendientes.
-- `full_access` autoejecuta acciones permitidas, manteniendo limites de ruta, auditoria y bloqueo de secretos evidentes.
-
-Opciones de provider:
-
-- `--provider-id`: `fake` por defecto; `openai` requiere una credencial usable (`OPENAI_API_KEY`, secreto local o bridge gestionado por Codex/OpenAI).
-- `--model`: modelo del provider.
-- `--temperature`, `--max-tokens`: limites opcionales del provider.
-- `--stream`: activa streaming si el provider lo soporta.
-
-### `motor agent session compact <session_id>`
-
-Compacta el transcript en memoria local sanitizada.
-
-```bash
-py -m motor agent session compact agent-session-id --project . --json
-```
-
-No compacta acciones pendientes sin conservar referencia; excluye rutas
-protegidas y secretos evidentes.
-
-### `motor agent session inspect <session_id>`
-
-Inspecciona una sesion sin mutarla.
-
-```bash
-py -m motor agent session inspect agent-session-id --project . --json
-```
-
-### `motor agent message send <session_id> <message>`
-
-Envia texto a una sesion. El proveedor fake puede ejecutar herramientas simples
-como `read README.md`, `list .`, `search pattern in path`, `write path :: text`,
-`edit path :: old => new`, `run <command>`, `git status` y `git diff`.
-
-```bash
-py -m motor agent message send agent-session-id "read README.md" --project . --json
-```
-
-### `motor agent action approve <session_id> <action_id>`
-
-Aprueba o rechaza una accion pendiente generada en modo `confirm_actions`.
-
-```bash
-py -m motor agent action approve agent-session-id agent-action-id --project . --json
-py -m motor agent action approve agent-session-id agent-action-id --reject --project . --json
-```
-
-### `motor agent usage <session_id>`
-
-Muestra usage registrado por providers. El coste queda `unknown` si faltan
-tokens o tabla de precios.
-
-```bash
-py -m motor agent usage agent-session-id --project . --json
-```
-
-## Comandos del registry que aun no estan en la CLI
-
-`motor capabilities --json` puede listar capacidades con `status = "planned"`.
-Esas capacidades documentan intencion de API o roadmap interno, pero no deben
-tratarse como comandos CLI disponibles si `motor/cli.py` no las expone.
-
-Ejemplos actuales de capacidades planificadas sin parser publico incluyen:
-
-- `entity delete/list/parent`
-- `component edit/remove`
-- runtime `play/stop/step/undo/redo`
-- queries de fisica desde CLI
-- scene flow desde CLI
-
-Para esas operaciones, usa `EngineAPI` programaticamente solo si el metodo esta
-implementado y el flujo esta cubierto por tests.
 
 ## Validacion recomendada
 

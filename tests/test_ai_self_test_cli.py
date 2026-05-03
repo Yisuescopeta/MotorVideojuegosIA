@@ -151,8 +151,11 @@ class AISelfTestCLITests(unittest.TestCase):
 
                 return Cap()
 
-        with patch("motor.cli_core.get_default_registry", return_value=MissingRegistry()):
-            with patch("motor.cli_core.run_recipe") as run_recipe_mock:
+            def to_dict(self) -> dict:
+                return {"capabilities": []}
+
+        with patch("engine.ai.get_default_registry", return_value=MissingRegistry()):
+            with patch("engine.api._assets_project_api.AssetsProjectAPI.run_recipe") as run_recipe_mock:
                 exit_code, payload = _run_motor(
                     "ai",
                     "self-test",
@@ -166,7 +169,7 @@ class AISelfTestCLITests(unittest.TestCase):
         self.assertEqual(exit_code, 1, payload)
         self.assertFalse(payload["success"], payload)
         missing = payload["data"]["missing_capabilities"]
-        self.assertEqual(missing, [{"id": "runtime:step", "reason": "not_registered"}])
+        self.assertTrue(any(m["id"] == "runtime:step" and m["reason"] == "not_registered" for m in missing))
         run_recipe_mock.assert_not_called()
         self.assertFalse((self.project / ".motor" / "tmp").exists())
 

@@ -1,0 +1,23 @@
+﻿python : RAYLIB STATIC 5.5.0.4 LOADED
+En línea: 1 Carácter: 1
++ python -m unittest discover -s tests 2>&1 | Out-File -Encoding utf8 t ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (RAYLIB STATIC 5.5.0.4 LOADED:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+INFO: FILEIO: [C:/Users/Jesus/AppData/Local/Temp/tmpgqqiyjau/external/test_opaque_background.png] File saved successfully
+INFO: FILEIO: [C:/Users/Jesus/AppData/Local/Temp/tmpgqqiyjau/external/test_opaque_background.png] Image exported successfully
+INFO: FILEIO: [C:/Users/Jesus/AppData/Local/Temp/tmpgqqiyjau/project/assets/test_opaque_background.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (10x4 | R8G8B8A8 | 1 mipmaps)
+INFO: FILEIO: [C:/Users/Jesus/AppData/Local/Temp/tmpgdghbfux/external/test_unity_like_source.png] File saved successfully
+INFO: FILEIO: [C:/Users/Jesus/AppData/Local/Temp/tmpgdghbfux/external/test_unity_like_source.png] Image exported successfully
+INFO: FILEIO: [C:/Users/Jesus/AppData/Local/Temp/tmpgdghbfux/project/assets/test_unity_like_source.png] File loaded successfully
+INFO: IMAGE: Data loaded successfully (6x3 | R8G8B8A8 | 1 mipmaps)
+INFO: FILEIO: [C:/Users/Jesus/AppData/Local/Temp/tmp1k10bjsa/TestProject/assets/spritesheet.png] File loaded successfully
+WARNING: IMAGE: Failed to load image data
+.......................................................................................................................
+.....................................E.................................................................................
+.......................................................................................................................
+.................................................F..sssssss............................................................
+.............................F...................................................................................WARNIN
+G:root:Box2D backend unavailable: box2d init failed

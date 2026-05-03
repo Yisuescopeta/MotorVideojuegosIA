@@ -36,6 +36,7 @@ htmlcov/
 *.tmp
 *.temp
 .motor/agent_state/
+.motor/queen_state/
 .motor/meta/asset_catalog.json
 .motor/build/
 .motor/tmp/

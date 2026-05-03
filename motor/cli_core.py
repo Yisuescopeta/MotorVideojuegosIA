@@ -14,19 +14,14 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from engine.agent import AgentSessionService
 from engine.ai import get_default_registry
-from engine.ai.compliance import run_ai_compliance
 from engine.api import EngineAPI
 from engine.config import ENGINE_VERSION
-from engine.project.project_service import ProjectService
-from engine.recipes import (
+from engine.project.project_service import ProjectService, ProjectManifest
+from engine.api.errors import (
     RecipeError,
     RecipeNotFoundError,
     RecipeValidationError,
-    get_recipe,
-    list_recipes,
-    run_recipe,
 )
 from motor.platformer_scaffold import (
     add_platformer_checkpoint,
@@ -93,10 +88,29 @@ def _output(success: bool, message: str, data: Any, as_json: bool) -> int:
 
 
 def _ensure_project(project_path: Path) -> None:
-    """Verify project exists and is valid."""
+    """Verify project exists and has a valid manifest."""
     manifest_path = project_path / "project.json"
     if not manifest_path.exists():
         raise ProjectNotFoundError(str(project_path))
+    try:
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ProjectNotFoundError(
+            f"Invalid project.json in {project_path}: not valid JSON — {exc}"
+        )
+    if not isinstance(data, dict):
+        raise ProjectNotFoundError(
+            f"Invalid project.json in {project_path}: root must be a JSON object"
+        )
+    missing = []
+    if "name" not in data:
+        missing.append("name")
+    if "version" not in data:
+        missing.append("version")
+    if missing:
+        raise ProjectNotFoundError(
+            f"Invalid project.json in {project_path}: missing required field(s) {', '.join(missing)}"
+        )
 
 
 def _init_engine(project_path: Path, auto_ensure_project: bool = True, read_only: bool = False) -> EngineAPI:
@@ -567,6 +581,59 @@ def cmd_runtime_events(project_path: Path, count: int, step_frames: int, json_ou
                 pass
 
 
+def cmd_physics_query_aabb(
+    project_path: Path,
+    left: float,
+    top: float,
+    right: float,
+    bottom: float,
+    json_output: bool,
+) -> int:
+    """Query physics AABB hits in a stateless headless runtime process."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        data = _runtime_response_base("physics query aabb", True, warnings)
+        data.update({
+            "scene": scene,
+            "query": {
+                "left": float(left),
+                "top": float(top),
+                "right": float(right),
+                "bottom": float(bottom),
+            },
+            "hits": [],
+            "count": 0,
+            "status_after": _runtime_status(api),
+        })
+        if not scene_ready:
+            return _output(False, "Physics AABB query failed: no active scene", data, json_output)
+
+        api.play()
+        api.step(1)
+        hits = api.query_physics_aabb(float(left), float(top), float(right), float(bottom))
+        api.stop()
+        data["hits"] = hits
+        data["count"] = len(hits)
+        data["status_after"] = _runtime_status(api)
+        data["warnings"] = list(warnings)
+        return _output(True, f"Physics AABB query returned {len(hits)} hits", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Physics AABB query failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.stop()
+                api.shutdown()
+            except Exception:
+                pass
+
+
 # ============================================================================
 # Core Command Handlers
 # ============================================================================
@@ -574,24 +641,12 @@ def cmd_runtime_events(project_path: Path, count: int, step_frames: int, json_ou
 def cmd_capabilities(json_output: bool) -> int:
     """List all engine capabilities."""
     try:
-        registry = get_default_registry()
-        capabilities = [
-            {
-                "id": cap.id,
-                "summary": cap.summary,
-                "mode": cap.mode,
-                "status": cap.status,
-                "api_methods": cap.api_methods,
-                "cli_command": cap.cli_command,
-                "tags": cap.tags,
-            }
-            for cap in registry.list_all()
-        ]
-
+        registry_dict = get_default_registry().to_dict()
+        capabilities = registry_dict.get("capabilities", [])
         data = {
             "count": len(capabilities),
-            "engine_version": registry.engine_version,
-            "capabilities_schema_version": registry.schema_version,
+            "engine_version": registry_dict.get("engine", {}).get("version", ""),
+            "capabilities_schema_version": registry_dict.get("schema_version", 0),
             "capabilities": capabilities,
         }
         return _output(True, f"Found {len(capabilities)} capabilities", data, json_output)
@@ -599,9 +654,10 @@ def cmd_capabilities(json_output: bool) -> int:
         return _output(False, f"Failed to load capabilities: {exc}", None, json_output)
 
 
-def _compact_workflows_from_registry() -> List[Dict[str, Any]]:
+def _compact_workflows_from_registry(api) -> List[Dict[str, Any]]:
     """Build compact recommended AI workflows from implemented registry entries."""
-    registry = get_default_registry()
+    registry_dict = api.get_capability_registry()
+    caps_by_id = {c["id"]: c for c in registry_dict.get("capabilities", [])}
     selected_ids = [
         "ai:start",
         "ai:compliance",
@@ -620,16 +676,16 @@ def _compact_workflows_from_registry() -> List[Dict[str, Any]]:
     ]
     workflows: List[Dict[str, Any]] = []
     for capability_id in selected_ids:
-        cap = registry.get(capability_id)
-        if cap is None or cap.status != "implemented":
+        cap = caps_by_id.get(capability_id)
+        if cap is None or cap.get("status") != "implemented":
             continue
         workflows.append(
             {
-                "capability_id": cap.id,
-                "summary": cap.summary,
-                "cli_command": cap.cli_command,
-                "api_methods": cap.api_methods,
-                "tags": cap.tags,
+                "capability_id": cap["id"],
+                "summary": cap["summary"],
+                "cli_command": cap["cli_command"],
+                "api_methods": cap["api_methods"],
+                "tags": cap["tags"],
             }
         )
     return workflows
@@ -637,17 +693,14 @@ def _compact_workflows_from_registry() -> List[Dict[str, Any]]:
 
 def cmd_ai_start(project_path: Path, json_output: bool) -> int:
     """Return the compact AI entrypoint contract for a project."""
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
 
-        project_service = ProjectService(
-            project_root=project_path,
-            auto_ensure=False,
-            read_only=True,
-        )
-        manifest = project_service.manifest.to_dict()
-        editor_state = project_service.load_editor_state()
-        scenes = project_service.list_project_scenes()
+        api = _init_engine(project_path, auto_ensure_project=False, read_only=True)
+        manifest = api.get_project_manifest()
+        editor_state = api.get_editor_state()
+        scenes = api.list_project_scenes()
 
         active_scene = str(editor_state.get("active_scene", "") or "").strip()
         last_scene = str(editor_state.get("last_scene", "") or "").strip()
@@ -689,7 +742,7 @@ def cmd_ai_start(project_path: Path, json_output: bool) -> int:
                 "motor scene list --project . --json",
                 "motor project info --project . --json",
             ],
-            "recommended_workflows": _compact_workflows_from_registry(),
+            "recommended_workflows": _compact_workflows_from_registry(api),
             "rules": {
                 "no_external_runtime": (
                     "Do not create or use an external runtime for this project; "
@@ -717,12 +770,20 @@ def cmd_ai_start(project_path: Path, json_output: bool) -> int:
         return _output(False, exc.message, None, json_output)
     except Exception as exc:
         return _output(False, f"Failed to load AI start contract: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_ai_compliance(project_path: Path, strict: bool, json_output: bool) -> int:
     """Run read-only AI-native project compliance diagnostics."""
+    api = None
     try:
-        data = run_ai_compliance(project_path, strict=strict)
+        api = _init_engine(project_path, read_only=True)
+        data = api.run_ai_compliance(strict=strict)
         if strict and not data.get("strict_pass", False):
             return _output(False, "AI compliance strict check failed", data, json_output)
         return _output(bool(data.get("success", False)), "AI compliance diagnostics completed", data, json_output)
@@ -737,6 +798,12 @@ def cmd_ai_compliance(project_path: Path, strict: bool, json_output: bool) -> in
             "recommended_next_actions": ["Fix the compliance diagnostic error and rerun the command."],
         }
         return _output(False, f"AI compliance failed: {exc}", data, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 _AI_SELF_TEST_PROFILES: Dict[str, str] = {
@@ -772,15 +839,16 @@ def _create_self_test_project(project_path: Path) -> None:
         (project_path / dirname).mkdir(parents=True, exist_ok=True)
 
 
-def _missing_self_test_capabilities(recipe: Dict[str, Any]) -> List[Dict[str, str]]:
-    registry = get_default_registry()
+def _missing_self_test_capabilities(recipe: Dict[str, Any], api) -> List[Dict[str, str]]:
+    registry_dict = api.get_capability_registry()
+    caps_by_id = {c["id"]: c for c in registry_dict.get("capabilities", [])}
     missing: List[Dict[str, str]] = []
     for capability_id in recipe.get("expected_capabilities", []):
-        cap = registry.get(str(capability_id))
+        cap = caps_by_id.get(str(capability_id))
         if cap is None:
             missing.append({"id": str(capability_id), "reason": "not_registered"})
-        elif cap.status != "implemented":
-            missing.append({"id": cap.id, "reason": f"status:{cap.status}"})
+        elif cap.get("status") != "implemented":
+            missing.append({"id": cap["id"], "reason": f"status:{cap['status']}"})
     return missing
 
 
@@ -896,12 +964,13 @@ def cmd_ai_self_test(project_path: Path, profile: str, in_place: bool, json_outp
 
     try:
         _ensure_project(project_path)
+        api = _init_engine(project_path, auto_ensure_project=False)
         if recipe_id is None:
             data["warnings"].append(f"Unsupported self-test profile: {profile}")
             return _output(False, "AI self-test failed: unsupported profile", data, json_output)
 
-        recipe = get_recipe(recipe_id)
-        missing_capabilities = _missing_self_test_capabilities(recipe)
+        recipe = api.get_recipe(recipe_id)
+        missing_capabilities = _missing_self_test_capabilities(recipe, api)
         if missing_capabilities:
             data["missing_capabilities"] = missing_capabilities
             data["warnings"].append("Required capability missing or not implemented.")
@@ -914,9 +983,10 @@ def cmd_ai_self_test(project_path: Path, profile: str, in_place: bool, json_outp
             temp_project = tmp_root / f"ai-self-test-{uuid.uuid4().hex[:12]}"
             _create_self_test_project(temp_project)
             workspace_path = temp_project
+            api = _init_engine(workspace_path, auto_ensure_project=False)
             cleanup_status["temp_project"] = str(temp_project)
 
-        recipe_result = run_recipe(recipe_id, workspace_path)
+        recipe_result = api.run_recipe(recipe_id)
         data["commands_executed"] = _self_test_commands(recipe_result)
         data["validations"] = _self_test_validations(recipe_result)
         data["generated_scene"] = _self_test_generated_scene(workspace_path, recipe_result)
@@ -975,10 +1045,11 @@ def cmd_agent_session_create(
     json_output: bool = False,
 ) -> int:
     """Create an experimental agent session."""
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
-        service = AgentSessionService(project_root=project_path)
-        session = service.create_session(
+        api = _init_engine(project_path, auto_ensure_project=False)
+        result = api.create_agent_session(
             permission_mode=permission_mode,
             title=title,
             provider_id=provider_id,
@@ -987,9 +1058,15 @@ def cmd_agent_session_create(
             max_tokens=max_tokens,
             stream=stream,
         )
-        return _output(True, "Agent session created", session, json_output)
+        return _output(result["success"], result["message"], result["data"], json_output)
     except Exception as exc:
         return _output(False, f"Agent session create failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_agent_session_compact(
@@ -998,13 +1075,20 @@ def cmd_agent_session_compact(
     json_output: bool,
 ) -> int:
     """Compact an experimental agent session."""
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
-        service = AgentSessionService(project_root=project_path)
-        data = service.compact_session(session_id)
-        return _output(True, "Agent session compacted", data, json_output)
+        api = _init_engine(project_path, auto_ensure_project=False)
+        result = api.compact_agent_session(session_id)
+        return _output(result["success"], result["message"], result["data"], json_output)
     except Exception as exc:
         return _output(False, f"Agent session compact failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_agent_session_inspect(
@@ -1013,13 +1097,20 @@ def cmd_agent_session_inspect(
     json_output: bool,
 ) -> int:
     """Inspect an experimental agent session without mutating it."""
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
-        service = AgentSessionService(project_root=project_path)
-        data = service.inspect_session(session_id)
+        api = _init_engine(project_path, auto_ensure_project=False)
+        data = api.inspect_agent_session(session_id)
         return _output(True, "Agent session inspected", data, json_output)
     except Exception as exc:
         return _output(False, f"Agent session inspect failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_agent_message_send(
@@ -1033,9 +1124,8 @@ def cmd_agent_message_send(
     try:
         _ensure_project(project_path)
         api = _init_engine(project_path, auto_ensure_project=False)
-        service = AgentSessionService(api=api, project_root=project_path)
-        session = service.send_message(session_id, message)
-        return _output(True, "Agent message processed", session, json_output)
+        result = api.send_agent_message(session_id, message)
+        return _output(result["success"], result["message"], result["data"], json_output)
     except Exception as exc:
         return _output(False, f"Agent message failed: {exc}", None, json_output)
     finally:
@@ -1058,9 +1148,8 @@ def cmd_agent_action_approve(
     try:
         _ensure_project(project_path)
         api = _init_engine(project_path, auto_ensure_project=False)
-        service = AgentSessionService(api=api, project_root=project_path)
-        session = service.approve_action(session_id, action_id, approved)
-        return _output(True, "Agent action resolved", session, json_output)
+        result = api.approve_agent_action(session_id, action_id, approved)
+        return _output(result["success"], result["message"], result["data"], json_output)
     except Exception as exc:
         return _output(False, f"Agent action failed: {exc}", None, json_output)
     finally:
@@ -1076,12 +1165,20 @@ def cmd_agent_providers_list(
     json_output: bool,
 ) -> int:
     """List configured experimental agent providers."""
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
-        service = AgentSessionService(project_root=project_path)
-        return _output(True, "Agent providers listed", service.list_providers(), json_output)
+        api = _init_engine(project_path, auto_ensure_project=False)
+        data = api.list_agent_providers()
+        return _output(True, "Agent providers listed", data, json_output)
     except Exception as exc:
         return _output(False, f"Agent providers list failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_agent_providers_login(
@@ -1095,11 +1192,12 @@ def cmd_agent_providers_login(
     json_output: bool,
 ) -> int:
     """Store provider credentials or delegate managed Codex login."""
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
-        service = AgentSessionService(project_root=project_path)
+        api = _init_engine(project_path, auto_ensure_project=False)
         if codex_chatgpt or device_auth:
-            data = service.login_provider(
+            result = api.login_agent_provider(
                 provider_id,
                 api_key="",
                 base_url=base_url,
@@ -1113,10 +1211,16 @@ def cmd_agent_providers_login(
                     "Use --api-key-stdin to provide credentials without exposing them in shell history, or use --codex-chatgpt/--device-auth for managed Codex login."
                 )
             api_key = sys.stdin.read().strip()
-            data = service.login_provider(provider_id, api_key=api_key, base_url=base_url, model=model)
-        return _output(True, "Agent provider logged in", data, json_output)
+            result = api.login_agent_provider(provider_id, api_key=api_key, base_url=base_url, model=model)
+        return _output(result["success"], result["message"], result["data"], json_output)
     except Exception as exc:
         return _output(False, f"Agent provider login failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_agent_providers_logout(
@@ -1125,13 +1229,20 @@ def cmd_agent_providers_logout(
     json_output: bool,
 ) -> int:
     """Remove a user-local provider credential."""
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
-        service = AgentSessionService(project_root=project_path)
-        data = service.logout_provider(provider_id)
-        return _output(True, "Agent provider logged out", data, json_output)
+        api = _init_engine(project_path, auto_ensure_project=False)
+        result = api.logout_agent_provider(provider_id)
+        return _output(result["success"], result["message"], result["data"], json_output)
     except Exception as exc:
         return _output(False, f"Agent provider logout failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_agent_providers_status(
@@ -1140,13 +1251,20 @@ def cmd_agent_providers_status(
     json_output: bool,
 ) -> int:
     """Show provider auth status without revealing credentials."""
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
-        service = AgentSessionService(project_root=project_path)
-        data = service.get_provider_status(provider_id)
+        api = _init_engine(project_path, auto_ensure_project=False)
+        data = api.get_agent_provider_status(provider_id)
         return _output(True, "Agent provider status loaded", data, json_output)
     except Exception as exc:
         return _output(False, f"Agent provider status failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_agent_usage(
@@ -1155,12 +1273,20 @@ def cmd_agent_usage(
     json_output: bool,
 ) -> int:
     """Show token/cost usage for an experimental agent session."""
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
-        service = AgentSessionService(project_root=project_path)
-        return _output(True, "Agent usage loaded", service.get_usage(session_id), json_output)
+        api = _init_engine(project_path, auto_ensure_project=False)
+        data = api.get_agent_usage(session_id)
+        return _output(True, "Agent usage loaded", data, json_output)
     except Exception as exc:
         return _output(False, f"Agent usage failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_doctor(project_path: Path, json_output: bool) -> int:
@@ -1168,6 +1294,12 @@ def cmd_doctor(project_path: Path, json_output: bool) -> int:
     issues: List[str] = []
     warnings: List[str] = []
     checks: Dict[str, Any] = {}
+
+    api = None
+    try:
+        api = _init_engine(project_path, auto_ensure_project=False, read_only=True)
+    except Exception:
+        pass  # Doctor puede funcionar sin engine completo
 
     # Check 1: Project manifest exists and is valid JSON
     manifest_path = project_path / "project.json"
@@ -1293,7 +1425,7 @@ def cmd_doctor(project_path: Path, json_output: bool) -> int:
 
         # Check 7: Can list scenes
         try:
-            scenes = api.project_service.list_project_scenes() if api.project_service else []
+            scenes = api.list_project_scenes()
             checks["can_list_scenes"] = True
             checks["scene_count"] = len(scenes)
         except Exception as exc:
@@ -1302,7 +1434,7 @@ def cmd_doctor(project_path: Path, json_output: bool) -> int:
 
         # Check 8: Can list assets
         try:
-            assets = api.project_service.list_assets() if api.project_service else []
+            assets = api.list_project_assets()
             checks["can_list_assets"] = True
             checks["asset_count"] = len(assets)
         except Exception as exc:
@@ -1311,10 +1443,14 @@ def cmd_doctor(project_path: Path, json_output: bool) -> int:
 
         # Check 9: Capability registry consistency
         try:
-            registry = get_default_registry()
+            if api:
+                registry = api.get_capability_registry()
+            else:
+                registry = get_default_registry().to_dict()
+            caps_list = registry.get("capabilities", [])
             checks["capability_registry_loaded"] = True
-            checks["capability_count"] = len(registry.list_all())
-            cap_ids = [cap.id for cap in registry.list_all()]
+            checks["capability_count"] = len(caps_list)
+            cap_ids = [c["id"] for c in caps_list]
             duplicates = set([cid for cid in cap_ids if cap_ids.count(cid) > 1])
             if duplicates:
                 issues.append(f"Duplicate capability IDs found: {duplicates}")
@@ -1409,7 +1545,7 @@ def cmd_scene_list(project_path: Path, json_output: bool) -> int:
         _ensure_project(project_path)
         api = _init_engine(project_path)
 
-        scenes = api.project_service.list_project_scenes() if api.project_service else []
+        scenes = api.list_project_scenes()
 
         data = {
             "count": len(scenes),
@@ -1914,6 +2050,87 @@ def cmd_entity_create(
                 pass
 
 
+def cmd_entity_list(
+    project_path: Path,
+    tag: Optional[str],
+    layer: Optional[str],
+    active_only: bool,
+    json_output: bool,
+) -> int:
+    """List entities in the active authoring scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+
+        active = True if active_only else None
+        entities = api.list_entities(tag=tag, layer=layer, active=active)
+        filters = {
+            "tag": tag,
+            "layer": layer,
+            "active": active,
+        }
+        data = {
+            "entities": entities,
+            "count": len(entities),
+            "filters": filters,
+            "scene": api.get_active_scene_info(),
+        }
+        return _output(True, f"Listed {len(entities)} entities", data, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to list entities: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_entity_delete(
+    project_path: Path,
+    name: str,
+    json_output: bool,
+) -> int:
+    """Delete an entity from the active scene."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+
+        result = api.delete_entity(name)
+        if result.get("success"):
+            save_result = api.save_scene()
+            if not save_result.get("success"):
+                return _output(False, save_result.get("message", "Scene save failed"), None, json_output)
+            data = dict(result.get("data") or {})
+            data["scene"] = save_result.get("data", {}).get("path", "")
+            return _output(True, result.get("message", "Entity removed"), data, json_output)
+        return _output(False, result.get("message", "Failed to delete entity"), None, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to delete entity: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
 def cmd_component_add(
     project_path: Path,
     entity_name: str,
@@ -1945,6 +2162,89 @@ def cmd_component_add(
         return _output(False, exc.message, None, json_output)
     except Exception as exc:
         return _output(False, f"Failed to add component: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_component_edit(
+    project_path: Path,
+    entity_name: str,
+    component_name: str,
+    property_name: str,
+    value: Any,
+    json_output: bool,
+) -> int:
+    """Edit a component property on an entity."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+
+        result = api.edit_component(entity_name, component_name, property_name, value)
+        if result.get("success"):
+            save_result = api.save_scene()
+            if not save_result.get("success"):
+                return _output(False, save_result.get("message", "Scene save failed"), None, json_output)
+            data = {
+                "entity": entity_name,
+                "component": component_name,
+                "property": property_name,
+                "value": value,
+                "scene": save_result.get("data", {}).get("path", ""),
+            }
+            return _output(True, result.get("message", "Edit applied"), data, json_output)
+        return _output(False, result.get("message", "Failed to edit component"), None, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to edit component: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_component_remove(
+    project_path: Path,
+    entity_name: str,
+    component_name: str,
+    json_output: bool,
+) -> int:
+    """Remove a component from an entity."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+
+        result = api.remove_component(entity_name, component_name)
+        if result.get("success"):
+            save_result = api.save_scene()
+            if not save_result.get("success"):
+                return _output(False, save_result.get("message", "Scene save failed"), None, json_output)
+            data = dict(result.get("data") or {})
+            data["scene"] = save_result.get("data", {}).get("path", "")
+            return _output(True, result.get("message", "Component removed"), data, json_output)
+        return _output(False, result.get("message", "Failed to remove component"), None, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to remove component: {exc}", None, json_output)
     finally:
         if api is not None:
             try:
@@ -2125,7 +2425,7 @@ def cmd_assets_list(project_path: Path, search: str, json_output: bool) -> int:
         _ensure_project(project_path)
         api = _init_engine(project_path)
 
-        assets = api.asset_service.list_assets(search=search) if api.asset_service else []
+        assets = api.list_project_assets(search=search)
 
         data = {
             "count": len(assets),
@@ -2164,7 +2464,7 @@ def cmd_slices_list(project_path: Path, asset_path: str, json_output: bool) -> i
         _ensure_project(project_path)
         api = _init_engine(project_path)
 
-        slices = api.list_asset_slices(asset_path) if api.asset_service else []
+        slices = api.list_asset_slices(asset_path)
 
         data = {
             "asset_path": asset_path,
@@ -2592,29 +2892,26 @@ def cmd_animator_remove_state(
 def cmd_project_bootstrap_ai(project_path: Path, json_output: bool) -> int:
     """Generate AI bootstrap files (motor_ai.json and START_HERE_AI.md).
 
-    Delegates to ProjectService for single source of truth.
+    Delegates to EngineAPI public surface and AI registry.
     Uses portable relative paths for commit-friendly output.
     """
+    api: Optional[EngineAPI] = None
     try:
         _ensure_project(project_path)
 
-        from engine.ai import get_default_registry
-        from engine.project.project_service import ProjectService
+        api = _init_engine(project_path, auto_ensure_project=False)
 
-        # Initialize ProjectService (without auto_ensure to avoid side effects)
-        project_service = ProjectService(project_root=project_path, auto_ensure=False)
+        manifest_path = project_path / "project.json"
+        manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = ProjectManifest.from_dict(manifest_data)
+        motor_ai_data = api.project_service.generate_ai_bootstrap(project_path, manifest)
 
-        # Delegate to the service layer - single source of truth for bootstrap structure
-        # migrate_project_bootstrap loads the manifest and calls generate_ai_bootstrap
-        motor_ai_data = project_service.migrate_project_bootstrap(project_path)
-
-        # Get registry for capability count
-        registry = get_default_registry()
+        registry_data = api.get_capability_registry()
 
         data = {
             "motor_ai_json": str(project_path / "motor_ai.json"),
             "start_here_md": str(project_path / "START_HERE_AI.md"),
-            "registry_capabilities_count": len(registry.list_all()),
+            "registry_capabilities_count": registry_data.get("count", len(registry_data.get("capabilities", []))),
         }
 
         return _output(
@@ -2628,13 +2925,21 @@ def cmd_project_bootstrap_ai(project_path: Path, json_output: bool) -> int:
         return _output(False, exc.message, None, json_output)
     except Exception as exc:
         return _output(False, f"Failed to generate AI bootstrap files: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_recipe_list(project_path: Path, json_output: bool) -> int:
     """List bundled declarative AI recipes read-only."""
+    api = None
     try:
         _ensure_project(project_path)
-        recipes = list_recipes()
+        api = _init_engine(project_path, read_only=True)
+        recipes = api.list_recipes()
         data = {
             "schema_version": 1,
             "count": len(recipes),
@@ -2647,13 +2952,21 @@ def cmd_recipe_list(project_path: Path, json_output: bool) -> int:
         return _output(False, str(exc), None, json_output)
     except Exception as exc:
         return _output(False, f"Failed to list recipes: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_recipe_show(project_path: Path, recipe_id: str, json_output: bool) -> int:
     """Show a bundled declarative AI recipe read-only."""
+    api = None
     try:
         _ensure_project(project_path)
-        recipe = get_recipe(recipe_id)
+        api = _init_engine(project_path, read_only=True)
+        recipe = api.get_recipe(recipe_id)
         data = {
             "schema_version": 1,
             "recipe": recipe,
@@ -2668,13 +2981,21 @@ def cmd_recipe_show(project_path: Path, recipe_id: str, json_output: bool) -> in
         return _output(False, str(exc), None, json_output)
     except Exception as exc:
         return _output(False, f"Failed to show recipe: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
 
 
 def cmd_recipe_run(project_path: Path, recipe_id: str, json_output: bool) -> int:
     """Run a bundled declarative AI recipe through allowlisted motor commands."""
+    api = None
     try:
         _ensure_project(project_path)
-        data = run_recipe(recipe_id, project_path)
+        api = _init_engine(project_path, read_only=False)
+        data = api.run_recipe(recipe_id)
         message = "Recipe run completed" if data.get("success") else "Recipe run failed"
         return _output(bool(data.get("success")), message, data, json_output)
     except ProjectNotFoundError as exc:
@@ -2685,3 +3006,1091 @@ def cmd_recipe_run(project_path: Path, recipe_id: str, json_output: bool) -> int
         return _output(False, str(exc), None, json_output)
     except Exception as exc:
         return _output(False, f"Failed to run recipe: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+# ============================================================================
+# Physics Ray Query
+# ============================================================================
+
+def cmd_physics_query_ray(
+    project_path: Path,
+    origin_x: float,
+    origin_y: float,
+    direction_x: float,
+    direction_y: float,
+    max_distance: float,
+    json_output: bool,
+) -> int:
+    """Query physics raycast in a stateless headless runtime process."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        data = _runtime_response_base("physics query ray", True, warnings)
+        data.update({
+            "scene": scene,
+            "query": {
+                "origin_x": float(origin_x),
+                "origin_y": float(origin_y),
+                "direction_x": float(direction_x),
+                "direction_y": float(direction_y),
+                "max_distance": float(max_distance),
+            },
+            "hits": [],
+            "count": 0,
+            "status_after": _runtime_status(api),
+        })
+        if not scene_ready:
+            return _output(False, "Physics ray query failed: no active scene", data, json_output)
+
+        api.play()
+        api.step(1)
+        hits = api.query_physics_ray(
+            float(origin_x), float(origin_y),
+            float(direction_x), float(direction_y),
+            float(max_distance),
+        )
+        api.stop()
+        data["hits"] = hits
+        data["count"] = len(hits)
+        data["status_after"] = _runtime_status(api)
+        data["warnings"] = list(warnings)
+        if not hits:
+            return _output(True, "No hit found", data, json_output)
+        return _output(True, f"Physics ray query returned {len(hits)} hits", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Physics ray query failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.stop()
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_physics_backend_list(project_path: Path, json_output: bool) -> int:
+    """List physics backends in a stateless headless runtime process."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        backends = api.list_physics_backends()
+        selection = api.get_physics_backend_selection()
+        data = _runtime_response_base("physics backend list", True, warnings)
+        data.update({
+            "scene": scene,
+            "backends": backends,
+            "count": len(backends),
+            "active_backend": selection.get("effective_backend"),
+            "selection": selection,
+        })
+        return _output(True, f"Listed {len(backends)} physics backends", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Physics backend list failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.stop()
+                api.shutdown()
+            except Exception:
+                pass
+
+
+# ============================================================================
+# Signal Commands
+# ============================================================================
+
+def cmd_signal_connect(
+    project_path: Path,
+    signal_name: str,
+    source_entity: str,
+    target_entity: str,
+    json_output: bool,
+) -> int:
+    """Connect a signal declaratively between entities."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+
+        import hashlib
+        raw_id = f"{source_entity}:{signal_name}->{target_entity}"
+        connection_id = hashlib.md5(raw_id.encode()).hexdigest()[:12]
+
+        connection_data = {
+            "id": connection_id,
+            "signal": signal_name,
+            "source": {"kind": "entity", "name": source_entity},
+            "target": {"kind": "entity", "name": target_entity},
+        }
+        result = api.add_signal_connection(connection_data)
+        if result.get("success"):
+            api.save_scene()
+            return _output(True, f"Signal connected: {signal_name}", result.get("data"), json_output)
+        return _output(False, result.get("message", "Signal connect failed"), None, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Signal connect failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_signal_emit(
+    project_path: Path,
+    signal_name: str,
+    entity_id: Optional[str],
+    json_output: bool,
+) -> int:
+    """Emit a signal from an entity at runtime."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    source = entity_id or "engine"
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        if not scene_ready:
+            data = _runtime_response_base("signal emit", True, warnings)
+            data["scene"] = scene
+            return _output(False, "Signal emit failed: no active scene", data, json_output)
+        api.play()
+        count = api.emit_signal(source, signal_name)
+        api.stop()
+        data = _runtime_response_base("signal emit", True, warnings)
+        data.update({
+            "scene": scene,
+            "signal_name": signal_name,
+            "source_entity": source,
+            "connections_executed": count,
+        })
+        return _output(True, f"Signal '{signal_name}' emitted to {count} connections", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Signal emit failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.stop()
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_signal_disconnect(
+    project_path: Path,
+    signal_name: str,
+    source_entity: str,
+    target_entity: str,
+    json_output: bool,
+) -> int:
+    """Disconnect a signal by matching name, source, and target."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+        connections = api.list_signal_connections_declarative()
+        found_id: Optional[str] = None
+        for conn in connections:
+            src = conn.get("source", {})
+            tgt = conn.get("target", {}) if conn.get("target") else {}
+            src_name = src.get("name", "") if isinstance(src, dict) else ""
+            tgt_name = tgt.get("name", "") if isinstance(tgt, dict) else ""
+            if conn.get("signal") == signal_name and src_name == source_entity and tgt_name == target_entity:
+                found_id = conn.get("id")
+                break
+        if not found_id:
+            return _output(False, f"No signal connection found for {signal_name}: {source_entity} -> {target_entity}", None, json_output)
+        result = api.remove_signal_connection(found_id)
+        if result.get("success"):
+            api.save_scene()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Signal disconnect failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Signal disconnect failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_signal_list(project_path: Path, json_output: bool) -> int:
+    """List signal connections."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+        declarative = api.list_signal_connections_declarative()
+        data = {
+            "connections": declarative,
+            "count": len(declarative),
+        }
+        return _output(True, f"Listed {len(declarative)} signal connections", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Signal list failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+# ============================================================================
+# Entity Group Commands
+# ============================================================================
+
+def cmd_entity_group_add(
+    project_path: Path,
+    entity_name: str,
+    group_name: str,
+    json_output: bool,
+) -> int:
+    """Add entity to a group."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+        result = api.add_entity_to_group(entity_name, group_name)
+        if result.get("success"):
+            api.save_scene()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Group operation failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Entity group add failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_entity_group_remove(
+    project_path: Path,
+    entity_name: str,
+    group_name: str,
+    json_output: bool,
+) -> int:
+    """Remove entity from a group."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+        result = api.remove_entity_from_group(entity_name, group_name)
+        if result.get("success"):
+            api.save_scene()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Group operation failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Entity group remove failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_entity_group_list(
+    project_path: Path,
+    group_name: Optional[str],
+    json_output: bool,
+) -> int:
+    """List entities in a group, or list all groups."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+        if group_name:
+            entities = api.get_entities_in_group(group_name)
+            data = {
+                "group_name": group_name,
+                "entities": entities,
+                "count": len(entities),
+            }
+            return _output(True, f"Group '{group_name}' has {len(entities)} entities", data, json_output)
+        else:
+            entities = api.list_entities()
+            groups: dict[str, list[str]] = {}
+            for e in entities:
+                for g in e.get("groups", ()):
+                    if isinstance(g, str):
+                        groups.setdefault(g, []).append(e.get("name", ""))
+            data = {
+                "groups": groups,
+                "group_count": len(groups),
+            }
+            return _output(True, f"Found {len(groups)} groups", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Entity group list failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+# ============================================================================
+# UI Commands
+# ============================================================================
+
+def cmd_ui_create_canvas(
+    project_path: Path,
+    name: str,
+    width: int,
+    height: int,
+    json_output: bool,
+) -> int:
+    """Create a UI canvas entity."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+        result = api.create_canvas(name=name, reference_width=width, reference_height=height)
+        if result.get("success"):
+            api.save_scene()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Canvas creation failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"UI canvas creation failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_ui_create_text(
+    project_path: Path,
+    text: str,
+    parent: str,
+    font_size: int,
+    color: str,
+    json_output: bool,
+) -> int:
+    """Create a UI text element."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+        name = f"UIText_{uuid.uuid4().hex[:8]}"
+        result = api.create_ui_text(
+            name=name,
+            text=text,
+            parent=parent,
+            font_size=font_size,
+            alignment="center",
+        )
+        if result.get("success") and color:
+            r, g, b = _parse_hex_color(color)
+            api.edit_component(name, "UIText", "color", [r, g, b, 255])
+        if result.get("success"):
+            api.save_scene()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "UIText creation failed"),
+            result.get("data", {"entity": name}),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"UIText creation failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def _parse_hex_color(hex_str: str) -> tuple[int, int, int]:
+    """Parse hex color string to (r, g, b)."""
+    h = hex_str.lstrip("#")
+    if len(h) == 3:
+        h = "".join(c * 2 for c in h)
+    if len(h) >= 6:
+        return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return 255, 255, 255
+
+
+def cmd_ui_create_button(
+    project_path: Path,
+    text: str,
+    parent: str,
+    json_output: bool,
+) -> int:
+    """Create a UI button element."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+        name = f"UIButton_{uuid.uuid4().hex[:8]}"
+        result = api.create_ui_button(name=name, label=text, parent=parent)
+        if result.get("success"):
+            api.save_scene()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "UIButton creation failed"),
+            result.get("data", {"entity": name}),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"UIButton creation failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_ui_create_image(
+    project_path: Path,
+    asset_path: str,
+    parent: str,
+    json_output: bool,
+) -> int:
+    """Create a UI image element."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+        name = f"UIImage_{uuid.uuid4().hex[:8]}"
+        result = api.create_ui_image(name=name, parent=parent, sprite=asset_path)
+        if result.get("success"):
+            api.save_scene()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "UIImage creation failed"),
+            result.get("data", {"entity": name}),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"UIImage creation failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+# ============================================================================
+# Scene Flow Commands
+# ============================================================================
+
+def cmd_scene_flow_next(project_path: Path, json_output: bool) -> int:
+    """Load the next scene in the flow."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = api.load_next_scene()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Scene flow next failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Scene flow next failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_scene_flow_menu(project_path: Path, json_output: bool) -> int:
+    """Load the menu scene in the flow."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = api.load_menu_scene()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Scene flow menu failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Scene flow menu failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_scene_flow_set_link(
+    project_path: Path,
+    source_scene: str,
+    target_scene: str,
+    entity_id: Optional[str],
+    json_output: bool,
+) -> int:
+    """Set a scene link from source to target."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+        if entity_id:
+            result = api.set_scene_link(entity_id, target_scene, flow_key=source_scene)
+        else:
+            result = api.set_scene_connection(source_scene, target_scene)
+        if result.get("success"):
+            api.save_scene()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Scene link set"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Scene flow set-link failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+# ============================================================================
+# Runtime Undo/Redo
+# ============================================================================
+
+def cmd_runtime_undo(project_path: Path, json_output: bool) -> int:
+    """Undo last action."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = api.undo()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Undo failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Undo failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_runtime_redo(project_path: Path, json_output: bool) -> int:
+    """Redo last undone action."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = api.redo()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Redo failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Redo failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+# ============================================================================
+# Entity Parent/Child
+# ============================================================================
+
+def cmd_entity_set_parent(
+    project_path: Path,
+    entity_name: str,
+    parent_name: str,
+    json_output: bool,
+) -> int:
+    """Set parent for an entity."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+        result = api.set_entity_parent(entity_name, parent_name)
+        if result.get("success"):
+            api.save_scene()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Set parent failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Set parent failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_entity_create_child(
+    project_path: Path,
+    parent_name: str,
+    name: str,
+    json_output: bool,
+) -> int:
+    """Create a child entity under a parent."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        success, message = _auto_load_scene(api)
+        if not success:
+            return _output(False, message, None, json_output)
+        result = api.create_child_entity(parent_name, name)
+        if result.get("success"):
+            api.save_scene()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Child entity creation failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Child entity creation failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+# ============================================================================
+# Debug Commands
+# ============================================================================
+
+def cmd_debug_profiler_reset(project_path: Path, json_output: bool) -> int:
+    """Reset the profiler."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = api.reset_profiler()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Profiler reset failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Profiler reset failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_debug_profiler_report(project_path: Path, json_output: bool) -> int:
+    """Get the profiler report."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        report = api.get_profiler_report()
+        return _output(True, "Profiler report retrieved", report, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Profiler report failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_debug_overlay(
+    project_path: Path,
+    enabled: bool,
+    json_output: bool,
+) -> int:
+    """Enable or disable the debug overlay."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = api.configure_debug_overlay(draw_colliders=enabled, draw_labels=enabled)
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Debug overlay config failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Debug overlay failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+# ============================================================================
+# Service Commands
+# ============================================================================
+
+def cmd_service_register(
+    project_path: Path,
+    name: str,
+    component_name: str,
+    json_output: bool,
+) -> int:
+    """Register a runtime service."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = api.register_service_runtime(name, component_name)
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Service registration failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Service registration failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_service_get(
+    project_path: Path,
+    name: str,
+    json_output: bool,
+) -> int:
+    """Get a registered runtime service."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        service = api.get_service(name)
+        if service is not None:
+            data = {"name": name, "available": True, "type": type(service).__name__}
+            return _output(True, f"Service '{name}' found", data, json_output)
+        return _output(False, f"Service '{name}' not found", {"name": name, "available": False}, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Service get failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_service_has(
+    project_path: Path,
+    name: str,
+    json_output: bool,
+) -> int:
+    """Check if a runtime service is registered."""
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        available = api.has_service(name)
+        data = {"name": name, "available": available}
+        return _output(True, f"Service '{name}': {'available' if available else 'unavailable'}", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Service has failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+# ============================================================================
+# Runtime Audio Commands
+# ============================================================================
+
+def cmd_runtime_audio_play(
+    project_path: Path,
+    source_id: str,
+    json_output: bool,
+) -> int:
+    """Play audio from a source entity."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        if not scene_ready:
+            return _output(False, "Audio play failed: no active scene", None, json_output)
+        api.play()
+        result = api.play_audio(source_id)
+        api.stop()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Audio play failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Audio play failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.stop()
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_runtime_audio_stop(
+    project_path: Path,
+    source_id: str,
+    json_output: bool,
+) -> int:
+    """Stop audio from a source entity."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        if not scene_ready:
+            return _output(False, "Audio stop failed: no active scene", None, json_output)
+        api.play()
+        result = api.stop_audio(source_id)
+        api.stop()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Audio stop failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Audio stop failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.stop()
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_runtime_audio_pause(
+    project_path: Path,
+    source_id: str,
+    json_output: bool,
+) -> int:
+    """Pause audio from a source entity."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        if not scene_ready:
+            return _output(False, "Audio pause failed: no active scene", None, json_output)
+        api.play()
+        result = api.pause_audio(source_id)
+        api.stop()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Audio pause failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Audio pause failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.stop()
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_runtime_audio_resume(
+    project_path: Path,
+    source_id: str,
+    json_output: bool,
+) -> int:
+    """Resume audio from a source entity."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        if not scene_ready:
+            return _output(False, "Audio resume failed: no active scene", None, json_output)
+        api.play()
+        result = api.resume_audio(source_id)
+        api.stop()
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Audio resume failed"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Audio resume failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.stop()
+                api.shutdown()
+            except Exception:
+                pass

@@ -5,7 +5,7 @@ engine/components/animator.py - Componente de animaciones por sprite sheet.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from engine.assets.asset_reference import build_asset_reference, clone_asset_reference, normalize_asset_reference
 from engine.ecs.component import Component
@@ -113,7 +113,7 @@ class AnimationCondition:
 
     parameter: str = ""
     operator: str = "=="
-    value: Any = True
+    value: Union[bool, int, float, str] = True
 
     def __post_init__(self) -> None:
         self.operator = _coerce_operator(self.operator)
@@ -240,7 +240,7 @@ class Animator(Component):
     def __init__(
         self,
         sprite_sheet: str = "",
-        sprite_sheet_ref: Any = None,
+        sprite_sheet_ref: Optional[Union[str, dict]] = None,
         frame_width: int = 32,
         frame_height: int = 32,
         animations: Optional[Dict[str, AnimationData]] = None,
@@ -297,7 +297,7 @@ class Animator(Component):
     def get_parameter_definition(self, name: str) -> Optional[AnimationParameterDefinition]:
         return self.parameters.get(name)
 
-    def set_parameter(self, name: str, value: Any) -> bool:
+    def set_parameter(self, name: str, value: Union[bool, int, float, str]) -> bool:
         definition = self.get_parameter_definition(name)
         if definition is None:
             return False

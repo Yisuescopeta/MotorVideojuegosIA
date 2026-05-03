@@ -843,6 +843,143 @@
             ]
         },
         {
+            "id": "component:edit",
+            "summary": "Edit a property of an existing component",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.edit_component"
+            ],
+            "cli_command": "motor component edit <entity> <component> <property> <value>",
+            "example": {
+                "description": "Move player to x=200",
+                "api_calls": [
+                    {
+                        "method": "edit_component",
+                        "args": {
+                            "entity_name": "Player",
+                            "component": "Transform",
+                            "property": "x",
+                            "value": 200
+                        }
+                    }
+                ],
+                "expected_outcome": "Player's Transform.x is updated to 200"
+            },
+            "notes": "Property names are component-specific. Type conversion is automatic.",
+            "tags": [
+                "component",
+                "authoring"
+            ]
+        },
+        {
+            "id": "component:remove",
+            "summary": "Remove a component from an entity",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.remove_component"
+            ],
+            "cli_command": "motor component remove <entity> <component>",
+            "example": {
+                "description": "Remove the Collider from an entity",
+                "api_calls": [
+                    {
+                        "method": "remove_component",
+                        "args": {
+                            "entity_name": "Player",
+                            "component_name": "Collider"
+                        }
+                    }
+                ],
+                "expected_outcome": "Collider component is removed from Player"
+            },
+            "notes": "Some components (like Transform) are required and cannot be removed. Use canonical component names from the component registry.",
+            "tags": [
+                "component",
+                "authoring"
+            ]
+        },
+        {
+            "id": "debug:overlay",
+            "summary": "Enable or disable the debug overlay",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "DebugAPI.configure_debug_overlay"
+            ],
+            "cli_command": "motor debug overlay <on|off>",
+            "example": {
+                "description": "Enable debug overlay with colliders and labels",
+                "api_calls": [
+                    {
+                        "method": "configure_debug_overlay",
+                        "args": {
+                            "draw_colliders": true,
+                            "draw_labels": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Debug overlay configuration updated"
+            },
+            "notes": "Toggles draw_colliders and draw_labels debug rendering.",
+            "tags": [
+                "debug",
+                "rendering"
+            ]
+        },
+        {
+            "id": "debug:profiler:report",
+            "summary": "Get the current profiler report",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "DebugAPI.get_profiler_report"
+            ],
+            "cli_command": "motor debug profiler report",
+            "example": {
+                "description": "Get the current profiler report",
+                "api_calls": [
+                    {
+                        "method": "get_profiler_report",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns timing data for subsystems and frames"
+            },
+            "notes": "Returns timing data for subsystems and frames.",
+            "tags": [
+                "debug",
+                "profiler",
+                "query"
+            ]
+        },
+        {
+            "id": "debug:profiler:reset",
+            "summary": "Reset the profiler",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "DebugAPI.reset_profiler"
+            ],
+            "cli_command": "motor debug profiler reset",
+            "example": {
+                "description": "Reset the profiler",
+                "api_calls": [
+                    {
+                        "method": "reset_profiler",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Profiler data cleared"
+            },
+            "notes": "Resets accumulated profiler data for a fresh measurement.",
+            "tags": [
+                "debug",
+                "profiler"
+            ]
+        },
+        {
             "id": "entity:create",
             "summary": "Create a new entity with optional components",
             "mode": "edit",
@@ -873,6 +1010,206 @@
             "tags": [
                 "entity",
                 "authoring"
+            ]
+        },
+        {
+            "id": "entity:create-child",
+            "summary": "Create a child entity under a parent",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_child_entity"
+            ],
+            "cli_command": "motor entity create-child <parent_id> --name <name>",
+            "example": {
+                "description": "Create a Hitbox child under Player",
+                "api_calls": [
+                    {
+                        "method": "create_child_entity",
+                        "args": {
+                            "parent_name": "Player",
+                            "name": "Hitbox"
+                        }
+                    }
+                ],
+                "expected_outcome": "Hitbox entity created as child of Player"
+            },
+            "notes": "Auto-saves scene after creation. Child inherits parent transform hierarchy.",
+            "tags": [
+                "entity",
+                "hierarchy",
+                "authoring"
+            ]
+        },
+        {
+            "id": "entity:delete",
+            "summary": "Remove an entity from the active scene, reparenting children to grandparent",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.delete_entity"
+            ],
+            "cli_command": "motor entity delete <name>",
+            "example": {
+                "description": "Delete the Player entity",
+                "api_calls": [
+                    {
+                        "method": "delete_entity",
+                        "args": {
+                            "name": "Player"
+                        }
+                    }
+                ],
+                "expected_outcome": "Entity 'Player' is removed; any children are reparented to Player's parent (or unparented if Player had no parent). Children preserve their world transform."
+            },
+            "notes": "CHILDREN ARE NOT DELETED - they are reparented to the deleted entity's parent (grandparent). Their local transforms are recalculated to preserve world position. Use remove_entity_subtree for recursive deletion. Cannot be undone automatically.",
+            "tags": [
+                "entity",
+                "authoring"
+            ]
+        },
+        {
+            "id": "entity:group:add",
+            "summary": "Add an entity to a group",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.add_entity_to_group"
+            ],
+            "cli_command": "motor entity group add <entity_id> <group_name>",
+            "example": {
+                "description": "Add Player to Enemies group",
+                "api_calls": [
+                    {
+                        "method": "add_entity_to_group",
+                        "args": {
+                            "entity_name": "Player",
+                            "group_name": "Players"
+                        }
+                    }
+                ],
+                "expected_outcome": "Entity added to group, scene saved"
+            },
+            "notes": "Persists group membership in scene data. Saves scene after mutation.",
+            "tags": [
+                "entity",
+                "group",
+                "authoring"
+            ]
+        },
+        {
+            "id": "entity:group:list",
+            "summary": "List entities in a group or all groups",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.get_entities_in_group"
+            ],
+            "cli_command": "motor entity group list [<group_name>]",
+            "example": {
+                "description": "List all entities in the Players group",
+                "api_calls": [
+                    {
+                        "method": "get_entities_in_group",
+                        "args": {
+                            "group_name": "Players"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns list of entity names in the group"
+            },
+            "notes": "Without group_name, lists all groups and their members.",
+            "tags": [
+                "entity",
+                "group",
+                "query"
+            ]
+        },
+        {
+            "id": "entity:group:remove",
+            "summary": "Remove an entity from a group",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.remove_entity_from_group"
+            ],
+            "cli_command": "motor entity group remove <entity_id> <group_name>",
+            "example": {
+                "description": "Remove Player from Players group",
+                "api_calls": [
+                    {
+                        "method": "remove_entity_from_group",
+                        "args": {
+                            "entity_name": "Player",
+                            "group_name": "Players"
+                        }
+                    }
+                ],
+                "expected_outcome": "Entity removed from group, scene saved"
+            },
+            "notes": "Removes group membership from scene data. Saves scene after mutation.",
+            "tags": [
+                "entity",
+                "group",
+                "authoring"
+            ]
+        },
+        {
+            "id": "entity:list",
+            "summary": "List all entities in the active scene, optionally filtered",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.list_entities"
+            ],
+            "cli_command": "motor entity list [--tag <tag>] [--layer <layer>] [--active-only]",
+            "example": {
+                "description": "List all active entities with the 'Enemy' tag",
+                "api_calls": [
+                    {
+                        "method": "list_entities",
+                        "args": {
+                            "tag": "Enemy",
+                            "active": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns list of EntityData for matching entities"
+            },
+            "notes": "Filtering is optional. Returns empty list if no entities match.",
+            "tags": [
+                "entity",
+                "query",
+                "runtime"
+            ]
+        },
+        {
+            "id": "entity:parent",
+            "summary": "Set or change an entity's parent for hierarchical transforms",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.set_entity_parent"
+            ],
+            "cli_command": "motor entity set-parent <entity_id> <parent_id>",
+            "example": {
+                "description": "Parent a weapon to the player",
+                "api_calls": [
+                    {
+                        "method": "set_entity_parent",
+                        "args": {
+                            "name": "Sword",
+                            "parent_name": "Player"
+                        }
+                    }
+                ],
+                "expected_outcome": "Sword becomes a child of Player and inherits its transform"
+            },
+            "notes": "Pass None/null as parent to unparent. Child transform is applied relative to parent.",
+            "tags": [
+                "entity",
+                "hierarchy",
+                "transform"
             ]
         },
         {
@@ -1448,6 +1785,122 @@
             ]
         },
         {
+            "id": "introspect:entity",
+            "summary": "Get full data for a specific entity",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.get_entity"
+            ],
+            "cli_command": "motor runtime inspect <entity>",
+            "example": {
+                "description": "Get Player entity data",
+                "api_calls": [
+                    {
+                        "method": "get_entity",
+                        "args": {
+                            "name": "Player"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns EntityData with all components and values"
+            },
+            "notes": "Throws EntityNotFoundError if entity doesn't exist.",
+            "tags": [
+                "introspection",
+                "entity"
+            ]
+        },
+        {
+            "id": "physics:backend:list",
+            "summary": "List available physics backends and their status",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.list_physics_backends",
+                "RuntimeAPI.get_physics_backend_selection"
+            ],
+            "cli_command": "motor physics backend list",
+            "example": {
+                "description": "List physics backends",
+                "api_calls": [
+                    {
+                        "method": "list_physics_backends",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns list of backends with availability status"
+            },
+            "notes": "Backends include 'legacy_aabb' (always available) and optional 'box2d'.",
+            "tags": [
+                "physics",
+                "query"
+            ]
+        },
+        {
+            "id": "physics:query:aabb",
+            "summary": "Query physics entities within an axis-aligned bounding box",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.query_physics_aabb"
+            ],
+            "cli_command": "motor physics query aabb <left> <top> <right> <bottom>",
+            "example": {
+                "description": "Find entities in region (100,100) to (300,300)",
+                "api_calls": [
+                    {
+                        "method": "query_physics_aabb",
+                        "args": {
+                            "left": 100,
+                            "top": 100,
+                            "right": 300,
+                            "bottom": 300
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns list of entities with colliders in the region"
+            },
+            "notes": "Uses active physics backend. Results include entity names and collision data.",
+            "tags": [
+                "physics",
+                "query",
+                "collision"
+            ]
+        },
+        {
+            "id": "physics:query:ray",
+            "summary": "Cast a ray and find intersecting physics bodies",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.query_physics_ray"
+            ],
+            "cli_command": "motor physics query ray <ox> <oy> <dx> <dy> <max_dist>",
+            "example": {
+                "description": "Cast ray from player position looking right",
+                "api_calls": [
+                    {
+                        "method": "query_physics_ray",
+                        "args": {
+                            "origin_x": 100,
+                            "origin_y": 200,
+                            "direction_x": 1,
+                            "direction_y": 0,
+                            "max_distance": 500
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns hit information sorted by distance"
+            },
+            "notes": "Direction is normalized. Returns empty list if no hits.",
+            "tags": [
+                "physics",
+                "query",
+                "collision"
+            ]
+        },
+        {
             "id": "prefab:apply",
             "summary": "Apply instance overrides back to the source prefab",
             "mode": "edit",
@@ -1722,6 +2175,114 @@
             ]
         },
         {
+            "id": "runtime:audio:pause",
+            "summary": "Pause audio from an AudioSource entity",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.pause_audio"
+            ],
+            "cli_command": "motor runtime audio pause <source_id>",
+            "example": {
+                "description": "Pause background music",
+                "api_calls": [
+                    {
+                        "method": "pause_audio",
+                        "args": {
+                            "entity_name": "BGM_Source"
+                        }
+                    }
+                ],
+                "expected_outcome": "Audio is paused"
+            },
+            "notes": "Can be resumed later with resume_audio.",
+            "tags": [
+                "runtime",
+                "audio"
+            ]
+        },
+        {
+            "id": "runtime:audio:play",
+            "summary": "Play audio from an AudioSource entity",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.play_audio"
+            ],
+            "cli_command": "motor runtime audio play <source_id>",
+            "example": {
+                "description": "Play background music",
+                "api_calls": [
+                    {
+                        "method": "play_audio",
+                        "args": {
+                            "entity_name": "BGM_Source"
+                        }
+                    }
+                ],
+                "expected_outcome": "Audio starts playing from the specified source"
+            },
+            "notes": "Requires an entity with AudioSource component. Runtime must be in PLAY mode.",
+            "tags": [
+                "runtime",
+                "audio"
+            ]
+        },
+        {
+            "id": "runtime:audio:resume",
+            "summary": "Resume paused audio from an AudioSource entity",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.resume_audio"
+            ],
+            "cli_command": "motor runtime audio resume <source_id>",
+            "example": {
+                "description": "Resume background music",
+                "api_calls": [
+                    {
+                        "method": "resume_audio",
+                        "args": {
+                            "entity_name": "BGM_Source"
+                        }
+                    }
+                ],
+                "expected_outcome": "Audio resumes from where it was paused"
+            },
+            "notes": "Only works on paused audio sources.",
+            "tags": [
+                "runtime",
+                "audio"
+            ]
+        },
+        {
+            "id": "runtime:audio:stop",
+            "summary": "Stop audio from an AudioSource entity",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.stop_audio"
+            ],
+            "cli_command": "motor runtime audio stop <source_id>",
+            "example": {
+                "description": "Stop background music",
+                "api_calls": [
+                    {
+                        "method": "stop_audio",
+                        "args": {
+                            "entity_name": "BGM_Source"
+                        }
+                    }
+                ],
+                "expected_outcome": "Audio stops playing"
+            },
+            "notes": "Requires an entity with AudioSource component.",
+            "tags": [
+                "runtime",
+                "audio"
+            ]
+        },
+        {
             "id": "runtime:entities",
             "summary": "List entities in the active scene (read-only)",
             "mode": "both",
@@ -1828,6 +2389,31 @@
             "tags": [
                 "runtime",
                 "play"
+            ]
+        },
+        {
+            "id": "runtime:redo",
+            "summary": "Redo a previously undone operation",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.redo"
+            ],
+            "cli_command": "motor runtime redo",
+            "example": {
+                "description": "Redo last undone operation",
+                "api_calls": [
+                    {
+                        "method": "redo",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Previously undone change is reapplied"
+            },
+            "notes": "Only available if undo was called. Cleared on new edits.",
+            "tags": [
+                "runtime",
+                "edit"
             ]
         },
         {
@@ -1944,6 +2530,31 @@
             ]
         },
         {
+            "id": "runtime:undo",
+            "summary": "Undo the last edit operation",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.undo"
+            ],
+            "cli_command": "motor runtime undo",
+            "example": {
+                "description": "Undo last edit",
+                "api_calls": [
+                    {
+                        "method": "undo",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Last change is reverted"
+            },
+            "notes": "Uses scene manager's change tracking. Not all operations are undoable.",
+            "tags": [
+                "runtime",
+                "edit"
+            ]
+        },
+        {
             "id": "scene:create",
             "summary": "Create a new scene with a unique file path",
             "mode": "both",
@@ -1969,6 +2580,88 @@
                 "scene",
                 "authoring",
                 "workspace"
+            ]
+        },
+        {
+            "id": "scene:flow:load_next",
+            "summary": "Load the configured next scene in the scene flow",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.load_next_scene"
+            ],
+            "cli_command": "motor scene flow next",
+            "example": {
+                "description": "Load the next scene",
+                "api_calls": [
+                    {
+                        "method": "load_next_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Next scene is loaded as the active world"
+            },
+            "notes": "Uses next_scene key from feature_metadata.scene_flow. Fails if not configured.",
+            "tags": [
+                "scene",
+                "flow",
+                "navigation",
+                "runtime"
+            ]
+        },
+        {
+            "id": "scene:flow:menu",
+            "summary": "Load the menu scene configured in the scene flow",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.load_menu_scene"
+            ],
+            "cli_command": "motor scene flow menu",
+            "example": {
+                "description": "Load the menu scene",
+                "api_calls": [
+                    {
+                        "method": "load_menu_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Menu scene is loaded as the active world"
+            },
+            "notes": "Uses menu_scene key from feature_metadata.scene_flow. Fails if not configured.",
+            "tags": [
+                "scene",
+                "flow",
+                "navigation",
+                "runtime"
+            ]
+        },
+        {
+            "id": "scene:flow:set_next",
+            "summary": "Set the next scene connection for scene flow navigation",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.set_next_scene"
+            ],
+            "cli_command": "motor scene flow set-link <source_scene> <target_scene>",
+            "example": {
+                "description": "Configure current scene to load level2 when triggered",
+                "api_calls": [
+                    {
+                        "method": "set_next_scene",
+                        "args": {
+                            "path": "levels/level2.json"
+                        }
+                    }
+                ],
+                "expected_outcome": "Scene metadata updated with next_scene reference"
+            },
+            "notes": "Stores relative path in scene metadata. Used by load_next_scene at runtime.",
+            "tags": [
+                "scene",
+                "flow",
+                "navigation"
             ]
         },
         {
@@ -2049,6 +2742,326 @@
             "tags": [
                 "scene",
                 "persistence"
+            ]
+        },
+        {
+            "id": "service:get",
+            "summary": "Get a registered runtime service",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.get_service"
+            ],
+            "cli_command": "motor service get <name>",
+            "example": {
+                "description": "Get the ScoreManager service",
+                "api_calls": [
+                    {
+                        "method": "get_service",
+                        "args": {
+                            "name": "ScoreManager"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns the service object if registered"
+            },
+            "notes": "Returns the service object if registered.",
+            "tags": [
+                "service",
+                "runtime",
+                "query"
+            ]
+        },
+        {
+            "id": "service:has",
+            "summary": "Check if a runtime service is registered",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.has_service"
+            ],
+            "cli_command": "motor service has <name>",
+            "example": {
+                "description": "Check if ScoreManager service exists",
+                "api_calls": [
+                    {
+                        "method": "has_service",
+                        "args": {
+                            "name": "ScoreManager"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns boolean indicating service availability"
+            },
+            "notes": "Returns boolean indicating service availability.",
+            "tags": [
+                "service",
+                "runtime",
+                "query"
+            ]
+        },
+        {
+            "id": "service:register",
+            "summary": "Register a runtime service",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.register_service_runtime"
+            ],
+            "cli_command": "motor service register <name> <component_name>",
+            "example": {
+                "description": "Register a ScoreManager service",
+                "api_calls": [
+                    {
+                        "method": "register_service_runtime",
+                        "args": {
+                            "name": "ScoreManager",
+                            "service": "ScoreManager"
+                        }
+                    }
+                ],
+                "expected_outcome": "Service registered for the current PLAY session"
+            },
+            "notes": "Registers a service object for the current PLAY session.",
+            "tags": [
+                "service",
+                "runtime"
+            ]
+        },
+        {
+            "id": "signal:connect",
+            "summary": "Connect a signal between entities in the active scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.connect_signal",
+                "AuthoringAPI.add_signal_connection"
+            ],
+            "cli_command": "motor signal connect <signal_name> <source_entity> <target_entity>",
+            "example": {
+                "description": "Connect death signal from Player to GameOver entity",
+                "api_calls": [
+                    {
+                        "method": "add_signal_connection",
+                        "args": {
+                            "connection_data": {
+                                "id": "death_conn",
+                                "signal": "on_death",
+                                "source": {
+                                    "kind": "entity",
+                                    "name": "Player"
+                                },
+                                "target": {
+                                    "kind": "entity",
+                                    "name": "GameOver"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "expected_outcome": "Signal connection stored in scene feature metadata"
+            },
+            "notes": "Creates declarative signal connection stored in scene feature metadata.",
+            "tags": [
+                "signal",
+                "authoring"
+            ]
+        },
+        {
+            "id": "signal:disconnect",
+            "summary": "Disconnect a signal between entities",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.remove_signal_connection"
+            ],
+            "cli_command": "motor signal disconnect <signal_name> <source_entity> <target_entity>",
+            "example": {
+                "description": "Disconnect on_death signal",
+                "api_calls": [
+                    {
+                        "method": "remove_signal_connection",
+                        "args": {
+                            "connection_id": "death_conn"
+                        }
+                    }
+                ],
+                "expected_outcome": "Signal connection removed from scene metadata"
+            },
+            "notes": "Removes declarative signal connection from scene metadata.",
+            "tags": [
+                "signal",
+                "authoring"
+            ]
+        },
+        {
+            "id": "signal:emit",
+            "summary": "Emit a signal from an entity at runtime",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.emit_signal"
+            ],
+            "cli_command": "motor signal emit <signal_name> [--entity <entity_id>]",
+            "example": {
+                "description": "Emit on_death signal",
+                "api_calls": [
+                    {
+                        "method": "emit_signal",
+                        "args": {
+                            "source_id": "Player",
+                            "signal_name": "on_death"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns count of connections executed"
+            },
+            "notes": "Requires runtime to be active. Returns count of executed connections.",
+            "tags": [
+                "signal",
+                "runtime"
+            ]
+        },
+        {
+            "id": "signal:list",
+            "summary": "List signal connections in the active scene",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.list_signal_connections_declarative"
+            ],
+            "cli_command": "motor signal list",
+            "example": {
+                "description": "List all signal connections",
+                "api_calls": [
+                    {
+                        "method": "list_signal_connections_declarative",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns list of connections with source, target and signal names"
+            },
+            "notes": "Lists declarative signal connections with source, target, and signal metadata.",
+            "tags": [
+                "signal",
+                "query"
+            ]
+        },
+        {
+            "id": "ui:create_button",
+            "summary": "Create a UI button element",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "UIAPI.create_ui_button"
+            ],
+            "cli_command": "motor ui create-button --text <text> --parent <canvas>",
+            "example": {
+                "description": "Create 'Play' button on canvas",
+                "api_calls": [
+                    {
+                        "method": "create_ui_button",
+                        "args": {
+                            "name": "PlayBtn",
+                            "label": "Play",
+                            "parent": "Canvas"
+                        }
+                    }
+                ],
+                "expected_outcome": "UIButton child entity created under canvas"
+            },
+            "notes": "Creates child entity with UIButton component. Auto-generates name.",
+            "tags": [
+                "ui",
+                "authoring"
+            ]
+        },
+        {
+            "id": "ui:create_canvas",
+            "summary": "Create a UI canvas entity",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "UIAPI.create_canvas"
+            ],
+            "cli_command": "motor ui create-canvas --name <name> --width <int> --height <int>",
+            "example": {
+                "description": "Create a 800x600 UI canvas",
+                "api_calls": [
+                    {
+                        "method": "create_canvas",
+                        "args": {
+                            "name": "Canvas",
+                            "reference_width": 800,
+                            "reference_height": 600
+                        }
+                    }
+                ],
+                "expected_outcome": "Canvas entity created with RectTransform"
+            },
+            "notes": "Creates Canvas entity with RectTransform. Acts as root for UI hierarchy.",
+            "tags": [
+                "ui",
+                "authoring"
+            ]
+        },
+        {
+            "id": "ui:create_image",
+            "summary": "Create a UI image element",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "UIAPI.create_ui_image"
+            ],
+            "cli_command": "motor ui create-image --path <asset_path> --parent <canvas>",
+            "example": {
+                "description": "Create image from logo asset on canvas",
+                "api_calls": [
+                    {
+                        "method": "create_ui_image",
+                        "args": {
+                            "name": "LogoImg",
+                            "parent": "Canvas",
+                            "sprite": "assets/logo.png"
+                        }
+                    }
+                ],
+                "expected_outcome": "UIImage child entity created under canvas"
+            },
+            "notes": "Creates child entity with UIImage component using the specified asset.",
+            "tags": [
+                "ui",
+                "authoring"
+            ]
+        },
+        {
+            "id": "ui:create_text",
+            "summary": "Create a UI text element",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "UIAPI.create_ui_text"
+            ],
+            "cli_command": "motor ui create-text --text <text> --parent <canvas> --font-size <int> --color <hex>",
+            "example": {
+                "description": "Create 'Hello World' text on canvas",
+                "api_calls": [
+                    {
+                        "method": "create_ui_text",
+                        "args": {
+                            "name": "TitleText",
+                            "text": "Hello World",
+                            "parent": "Canvas",
+                            "font_size": 24
+                        }
+                    }
+                ],
+                "expected_outcome": "UIText child entity created under canvas"
+            },
+            "notes": "Creates child entity under parent canvas with UIText and RectTransform components.",
+            "tags": [
+                "ui",
+                "authoring"
             ]
         }
     ],
@@ -2133,176 +3146,6 @@
             ]
         },
         {
-            "id": "component:edit",
-            "summary": "Edit a property of an existing component",
-            "mode": "edit",
-            "status": "planned",
-            "api_methods": [
-                "AuthoringAPI.edit_component"
-            ],
-            "cli_command": "motor component edit <entity> <component> <property> <value>",
-            "example": {
-                "description": "Move player to x=200",
-                "api_calls": [
-                    {
-                        "method": "edit_component",
-                        "args": {
-                            "entity_name": "Player",
-                            "component": "Transform",
-                            "property": "x",
-                            "value": 200
-                        }
-                    }
-                ],
-                "expected_outcome": "Player's Transform.x is updated to 200"
-            },
-            "notes": "Property names are component-specific. Type conversion is automatic.",
-            "tags": [
-                "component",
-                "authoring"
-            ]
-        },
-        {
-            "id": "component:remove",
-            "summary": "Remove a component from an entity",
-            "mode": "edit",
-            "status": "planned",
-            "api_methods": [
-                "AuthoringAPI.remove_component"
-            ],
-            "cli_command": "motor component remove <entity> <component>",
-            "example": {
-                "description": "Remove the Collider from an entity",
-                "api_calls": [
-                    {
-                        "method": "remove_component",
-                        "args": {
-                            "entity_name": "Player",
-                            "component_name": "Collider"
-                        }
-                    }
-                ],
-                "expected_outcome": "Collider component is removed from Player"
-            },
-            "notes": "Some components (like Transform) are required and cannot be removed. Use canonical component names from the component registry.",
-            "tags": [
-                "component",
-                "authoring"
-            ]
-        },
-        {
-            "id": "entity:delete",
-            "summary": "Remove an entity from the active scene, reparenting children to grandparent",
-            "mode": "edit",
-            "status": "planned",
-            "api_methods": [
-                "AuthoringAPI.delete_entity"
-            ],
-            "cli_command": "motor entity delete <name>",
-            "example": {
-                "description": "Delete the Player entity",
-                "api_calls": [
-                    {
-                        "method": "delete_entity",
-                        "args": {
-                            "name": "Player"
-                        }
-                    }
-                ],
-                "expected_outcome": "Entity 'Player' is removed; any children are reparented to Player's parent (or unparented if Player had no parent). Children preserve their world transform."
-            },
-            "notes": "CHILDREN ARE NOT DELETED - they are reparented to the deleted entity's parent (grandparent). Their local transforms are recalculated to preserve world position. Use remove_entity_subtree for recursive deletion. Cannot be undone automatically.",
-            "tags": [
-                "entity",
-                "authoring"
-            ]
-        },
-        {
-            "id": "entity:list",
-            "summary": "List all entities in the active scene, optionally filtered",
-            "mode": "both",
-            "status": "planned",
-            "api_methods": [
-                "RuntimeAPI.list_entities"
-            ],
-            "cli_command": "motor entity list [--tag <tag>] [--layer <layer>] [--active-only]",
-            "example": {
-                "description": "List all active entities with the 'Enemy' tag",
-                "api_calls": [
-                    {
-                        "method": "list_entities",
-                        "args": {
-                            "tag": "Enemy",
-                            "active": true
-                        }
-                    }
-                ],
-                "expected_outcome": "Returns list of EntityData for matching entities"
-            },
-            "notes": "Filtering is optional. Returns empty list if no entities match.",
-            "tags": [
-                "entity",
-                "query",
-                "runtime"
-            ]
-        },
-        {
-            "id": "entity:parent",
-            "summary": "Set or change an entity's parent for hierarchical transforms",
-            "mode": "edit",
-            "status": "planned",
-            "api_methods": [
-                "AuthoringAPI.set_entity_parent"
-            ],
-            "cli_command": "motor entity parent <child> <parent>",
-            "example": {
-                "description": "Parent a weapon to the player",
-                "api_calls": [
-                    {
-                        "method": "set_entity_parent",
-                        "args": {
-                            "name": "Sword",
-                            "parent_name": "Player"
-                        }
-                    }
-                ],
-                "expected_outcome": "Sword becomes a child of Player and inherits its transform"
-            },
-            "notes": "Pass None/null as parent to unparent. Child transform is applied relative to parent.",
-            "tags": [
-                "entity",
-                "hierarchy",
-                "transform"
-            ]
-        },
-        {
-            "id": "introspect:entity",
-            "summary": "Get full data for a specific entity",
-            "mode": "both",
-            "status": "planned",
-            "api_methods": [
-                "RuntimeAPI.get_entity"
-            ],
-            "cli_command": "motor entity inspect <name>",
-            "example": {
-                "description": "Get Player entity data",
-                "api_calls": [
-                    {
-                        "method": "get_entity",
-                        "args": {
-                            "name": "Player"
-                        }
-                    }
-                ],
-                "expected_outcome": "Returns EntityData with all components and values"
-            },
-            "notes": "Throws EntityNotFoundError if entity doesn't exist.",
-            "tags": [
-                "introspection",
-                "entity"
-            ]
-        },
-        {
             "id": "introspect:status",
             "summary": "Get engine status including FPS, entity count, time",
             "mode": "both",
@@ -2325,95 +3168,6 @@
             "tags": [
                 "introspection",
                 "runtime"
-            ]
-        },
-        {
-            "id": "physics:backend:list",
-            "summary": "List available physics backends and their status",
-            "mode": "both",
-            "status": "planned",
-            "api_methods": [
-                "RuntimeAPI.list_physics_backends",
-                "RuntimeAPI.get_physics_backend_selection"
-            ],
-            "cli_command": "motor physics backends",
-            "example": {
-                "description": "List physics backends",
-                "api_calls": [
-                    {
-                        "method": "list_physics_backends",
-                        "args": {}
-                    }
-                ],
-                "expected_outcome": "Returns list of backends with availability status"
-            },
-            "notes": "Backends include 'legacy_aabb' (always available) and optional 'box2d'.",
-            "tags": [
-                "physics",
-                "query"
-            ]
-        },
-        {
-            "id": "physics:query:aabb",
-            "summary": "Query physics entities within an axis-aligned bounding box",
-            "mode": "both",
-            "status": "planned",
-            "api_methods": [
-                "RuntimeAPI.query_physics_aabb"
-            ],
-            "cli_command": "motor physics query aabb <left> <top> <right> <bottom>",
-            "example": {
-                "description": "Find entities in region (100,100) to (300,300)",
-                "api_calls": [
-                    {
-                        "method": "query_physics_aabb",
-                        "args": {
-                            "left": 100,
-                            "top": 100,
-                            "right": 300,
-                            "bottom": 300
-                        }
-                    }
-                ],
-                "expected_outcome": "Returns list of entities with colliders in the region"
-            },
-            "notes": "Uses active physics backend. Results include entity names and collision data.",
-            "tags": [
-                "physics",
-                "query",
-                "collision"
-            ]
-        },
-        {
-            "id": "physics:query:ray",
-            "summary": "Cast a ray and find intersecting physics bodies",
-            "mode": "both",
-            "status": "planned",
-            "api_methods": [
-                "RuntimeAPI.query_physics_ray"
-            ],
-            "cli_command": "motor physics query ray <ox> <oy> <dx> <dy> <max_dist>",
-            "example": {
-                "description": "Cast ray from player position looking right",
-                "api_calls": [
-                    {
-                        "method": "query_physics_ray",
-                        "args": {
-                            "origin_x": 100,
-                            "origin_y": 200,
-                            "direction_x": 1,
-                            "direction_y": 0,
-                            "max_distance": 500
-                        }
-                    }
-                ],
-                "expected_outcome": "Returns hit information sorted by distance"
-            },
-            "notes": "Direction is normalized. Returns empty list if no hits.",
-            "tags": [
-                "physics",
-                "query",
-                "collision"
             ]
         },
         {
@@ -2468,117 +3222,12 @@
                 "project",
                 "workspace"
             ]
-        },
-        {
-            "id": "runtime:redo",
-            "summary": "Redo a previously undone operation",
-            "mode": "edit",
-            "status": "planned",
-            "api_methods": [
-                "RuntimeAPI.redo"
-            ],
-            "cli_command": "motor redo",
-            "example": {
-                "description": "Redo last undone operation",
-                "api_calls": [
-                    {
-                        "method": "redo",
-                        "args": {}
-                    }
-                ],
-                "expected_outcome": "Previously undone change is reapplied"
-            },
-            "notes": "Only available if undo was called. Cleared on new edits.",
-            "tags": [
-                "runtime",
-                "edit"
-            ]
-        },
-        {
-            "id": "runtime:undo",
-            "summary": "Undo the last edit operation",
-            "mode": "edit",
-            "status": "planned",
-            "api_methods": [
-                "RuntimeAPI.undo"
-            ],
-            "cli_command": "motor undo",
-            "example": {
-                "description": "Undo last edit",
-                "api_calls": [
-                    {
-                        "method": "undo",
-                        "args": {}
-                    }
-                ],
-                "expected_outcome": "Last change is reverted"
-            },
-            "notes": "Uses scene manager's change tracking. Not all operations are undoable.",
-            "tags": [
-                "runtime",
-                "edit"
-            ]
-        },
-        {
-            "id": "scene:flow:load_next",
-            "summary": "Load the configured next scene in the scene flow",
-            "mode": "both",
-            "status": "planned",
-            "api_methods": [
-                "SceneWorkspaceAPI.load_next_scene"
-            ],
-            "cli_command": "motor scene flow load-next",
-            "example": {
-                "description": "Transition to the next configured scene",
-                "api_calls": [
-                    {
-                        "method": "load_next_scene",
-                        "args": {}
-                    }
-                ],
-                "expected_outcome": "The next_scene from current scene metadata is loaded"
-            },
-            "notes": "Uses next_scene key from feature_metadata.scene_flow. Fails if not configured.",
-            "tags": [
-                "scene",
-                "flow",
-                "navigation",
-                "runtime"
-            ]
-        },
-        {
-            "id": "scene:flow:set_next",
-            "summary": "Set the next scene connection for scene flow navigation",
-            "mode": "edit",
-            "status": "planned",
-            "api_methods": [
-                "SceneWorkspaceAPI.set_next_scene"
-            ],
-            "cli_command": "motor scene flow next <path>",
-            "example": {
-                "description": "Configure current scene to load level2 when triggered",
-                "api_calls": [
-                    {
-                        "method": "set_next_scene",
-                        "args": {
-                            "path": "levels/level2.json"
-                        }
-                    }
-                ],
-                "expected_outcome": "Scene metadata updated with next_scene reference"
-            },
-            "notes": "Stores relative path in scene metadata. Used by load_next_scene at runtime.",
-            "tags": [
-                "scene",
-                "flow",
-                "navigation"
-            ]
         }
     ],
     "capability_counts": {
-        "implemented": 67,
-        "planned": 19,
-        "total": 86
+        "implemented": 103,
+        "planned": 6,
+        "total": 109
     },
     "project": {
         "name": "MotorVideojuegosIA",

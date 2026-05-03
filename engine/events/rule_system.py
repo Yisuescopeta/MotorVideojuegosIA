@@ -21,6 +21,7 @@ FORMATO DE REGLA:
 ACCIONES SOPORTADAS:
     - set_animation: Cambia el estado de animaciÃ³n de una entidad
     - set_position: Mueve una entidad a una posiciÃ³n
+    - spawn_entity: Crea una entidad runtime con Transform
     - destroy_entity: Elimina una entidad del mundo
     - emit_event: Emite otro evento
     - log_message: Imprime un mensaje en consola
@@ -177,6 +178,9 @@ class RuleSystem:
         elif action_type == "destroy_entity":
             self._action_destroy_entity(params)
 
+        elif action_type == "spawn_entity":
+            self._action_spawn_entity(params)
+
         elif action_type == "emit_event":
             self._action_emit_event(params)
 
@@ -245,6 +249,29 @@ class RuleSystem:
         entity = world.get_entity_by_name(entity_name)
         if entity is not None:
             world.destroy_entity(entity.id)
+
+    def _action_spawn_entity(self, params: Dict[str, Any]) -> None:
+        """Crea una entidad runtime con Transform."""
+        entity_name = str(params.get("name", "") or "").strip()
+        if not entity_name:
+            print("[WARNING] spawn_entity: falta name")
+            return
+
+        world = self._get_world_for_action("spawn_entity")
+        if world is None:
+            return
+
+        if world.get_entity_by_name(entity_name) is not None:
+            print(f"[WARNING] spawn_entity: entidad '{entity_name}' ya existe")
+            return
+
+        entity = world.create_entity(entity_name)
+        entity.add_component(
+            Transform(
+                x=float(params.get("x", 0.0)),
+                y=float(params.get("y", 0.0)),
+            )
+        )
 
     def _action_emit_event(self, params: Dict[str, Any]) -> None:
         """Emite otro evento."""

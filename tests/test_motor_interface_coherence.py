@@ -88,7 +88,6 @@ class MotorRegistryAlignmentTests(unittest.TestCase):
             "motor runtime pause",
             "motor runtime stop",
             "motor prefab edit",
-            "motor physics query aabb",
             "motor physics query ray",
             "motor physics backends",
             "motor scene flow load-next",
@@ -514,6 +513,42 @@ class MotorCLIContractExecutableTests(unittest.TestCase):
         cmd = [sys.executable, "-m", "motor"] + list(args)
         return subprocess.run(cmd, capture_output=True, text=True, env=self.env, cwd=str(self.project))
 
+    def _payload(self, stdout: str) -> dict:
+        decoder = json.JSONDecoder()
+        return decoder.raw_decode(stdout[stdout.index("{"):])[0]
+
+    def _write_authoring_scene(self, name: str, entities: list[dict]) -> Path:
+        scene_path = self.project / "levels" / f"{name}.json"
+        scene_path.write_text(
+            json.dumps(
+                {
+                    "name": name,
+                    "schema_version": 2,
+                    "entities": entities,
+                    "rules": [],
+                    "feature_metadata": {},
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        editor_state = self.project / ".motor" / "editor_state.json"
+        editor_state.parent.mkdir(parents=True, exist_ok=True)
+        editor_state.write_text(
+            json.dumps(
+                {
+                    "recent_assets": {},
+                    "last_scene": f"levels/{name}.json",
+                    "open_scenes": [],
+                    "active_scene": "",
+                    "scene_view_states": {},
+                    "preferences": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+        return scene_path
+
     def test_motor_entity_create_works_end_to_end(self) -> None:
         """motor entity create must return valid JSON response (verifies CLI integration)."""
         # Clean scenes and set up a known last_scene so auto-load works
@@ -577,6 +612,135 @@ class MotorCLIContractExecutableTests(unittest.TestCase):
         data = json.loads(output)
         self.assertTrue(data.get("success"), f"component add returned failure: {data}")
 
+    def test_motor_entity_list_supports_filters(self) -> None:
+        """motor entity list returns active-scene entities with filters."""
+        self._write_authoring_scene(
+            "EntityListTest",
+            [
+                {
+                    "id": "entity_active_enemy",
+                    "name": "ActiveEnemy",
+                    "active": True,
+                    "tag": "Enemy",
+                    "layer": "Gameplay",
+                    "components": {},
+                },
+                {
+                    "id": "entity_inactive_enemy",
+                    "name": "InactiveEnemy",
+                    "active": False,
+                    "tag": "Enemy",
+                    "layer": "Gameplay",
+                    "components": {},
+                },
+                {
+                    "id": "entity_player",
+                    "name": "Player",
+                    "active": True,
+                    "tag": "Player",
+                    "layer": "Gameplay",
+                    "components": {},
+                },
+            ],
+        )
+
+        result = self._run_motor("entity", "list", "--tag", "Enemy", "--active-only", "--json")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        payload = self._payload(result.stdout)
+        self.assertTrue(payload["success"], payload)
+        names = [entity["name"] for entity in payload["data"]["entities"]]
+        self.assertEqual(names, ["ActiveEnemy"])
+        self.assertEqual(payload["data"]["count"], 1)
+
+    def test_motor_entity_delete_reparents_children_and_saves(self) -> None:
+        """motor entity delete uses SceneManager semantics and persists."""
+        scene_path = self._write_authoring_scene(
+            "EntityDeleteTest",
+            [
+                {
+                    "id": "entity_parent",
+                    "name": "Parent",
+                    "active": True,
+                    "tag": "Untagged",
+                    "layer": "Default",
+                    "components": {"Transform": {"x": 10, "y": 0, "rotation": 0, "scale_x": 1, "scale_y": 1}},
+                },
+                {
+                    "id": "entity_child",
+                    "name": "Child",
+                    "active": True,
+                    "tag": "Untagged",
+                    "layer": "Default",
+                    "parent": "Parent",
+                    "components": {"Transform": {"x": 2, "y": 0, "rotation": 0, "scale_x": 1, "scale_y": 1}},
+                },
+            ],
+        )
+
+        result = self._run_motor("entity", "delete", "Parent", "--json")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        payload = self._payload(result.stdout)
+        self.assertTrue(payload["success"], payload)
+        scene = json.loads(scene_path.read_text(encoding="utf-8"))
+        entities = {entity["name"]: entity for entity in scene["entities"]}
+        self.assertNotIn("Parent", entities)
+        self.assertIn("Child", entities)
+        self.assertIsNone(entities["Child"].get("parent"))
+        self.assertEqual(entities["Child"]["components"]["Transform"]["x"], 12)
+
+    def test_motor_component_edit_parses_json_values_and_string_fallback(self) -> None:
+        """motor component edit persists number, bool and string values."""
+        self._run_motor("scene", "create", "ComponentEditTest", "--json")
+        self._run_motor("entity", "create", "Editable", "--json")
+        self._run_motor("component", "add", "Editable", "Transform", "--data", '{"x": 0, "enabled": true}', "--json")
+        self._run_motor("component", "add", "Editable", "Sprite", "--data", "{}", "--json")
+
+        number_result = self._run_motor("component", "edit", "Editable", "Transform", "x", "42", "--json")
+        bool_result = self._run_motor("component", "edit", "Editable", "Transform", "enabled", "false", "--json")
+        string_result = self._run_motor(
+            "component", "edit", "Editable", "Sprite", "asset_path", "assets/hero.png", "--json"
+        )
+
+        self.assertEqual(number_result.returncode, 0, number_result.stdout + number_result.stderr)
+        self.assertEqual(bool_result.returncode, 0, bool_result.stdout + bool_result.stderr)
+        self.assertEqual(string_result.returncode, 0, string_result.stdout + string_result.stderr)
+        scene_path = next((self.project / "levels").glob("ComponentEditTest*.json"))
+        entity = json.loads(scene_path.read_text(encoding="utf-8"))["entities"][0]
+        self.assertEqual(entity["components"]["Transform"]["x"], 42)
+        self.assertIs(entity["components"]["Transform"]["enabled"], False)
+        self.assertEqual(entity["components"]["Sprite"]["asset_path"], "assets/hero.png")
+
+    def test_motor_component_remove_persists_and_removes_metadata(self) -> None:
+        """motor component remove deletes component and metadata."""
+        scene_path = self._write_authoring_scene(
+            "ComponentRemoveTest",
+            [
+                {
+                    "id": "entity_actor",
+                    "name": "Actor",
+                    "active": True,
+                    "tag": "Untagged",
+                    "layer": "Default",
+                    "components": {
+                        "Transform": {"x": 0, "y": 0, "rotation": 0, "scale_x": 1, "scale_y": 1},
+                        "Sprite": {"asset_path": "assets/hero.png"},
+                    },
+                    "component_metadata": {"Sprite": {"origin": "native"}},
+                }
+            ],
+        )
+
+        result = self._run_motor("component", "remove", "Actor", "Sprite", "--json")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        payload = self._payload(result.stdout)
+        self.assertTrue(payload["success"], payload)
+        entity = json.loads(scene_path.read_text(encoding="utf-8"))["entities"][0]
+        self.assertNotIn("Sprite", entity["components"])
+        self.assertNotIn("component_metadata", entity)
+
     def test_motor_animator_commands_work_end_to_end(self) -> None:
         """motor animator commands must work."""
         self._cleanup_scenes()
@@ -612,7 +776,7 @@ class RegistryToCLICoherenceTests(unittest.TestCase):
                                     # Tercer nivel (ej: animator state create)
                                     if hasattr(sub_subparser, '_actions'):
                                         for sub_sub_action in sub_subparser._actions:
-                                            if hasattr(sub_sub_action, 'choices') and sub_sub_action.choices:
+                                            if hasattr(sub_sub_action, 'choices') and isinstance(sub_sub_action.choices, dict) and sub_sub_action.choices:
                                                 for sub_sub_cmd in sub_sub_action.choices.keys():
                                                     available_commands.add(f"{cmd_name} {sub_cmd} {sub_sub_cmd}")
 

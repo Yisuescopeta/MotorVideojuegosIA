@@ -142,6 +142,39 @@ class ParserRegistryStrictAlignmentTests(unittest.TestCase):
         self.assertNotIn("--component]", entity_create.cli_command,
                          "entity:create must not suggest --component without 's'")
 
+    def test_basic_authoring_cli_capabilities_are_implemented(self) -> None:
+        """Phase 1 authoring commands must be implemented and exposed as parser leaves."""
+        registry = get_default_registry()
+        public_cli_commands = _public_leaf_commands(create_motor_parser())
+        expected = {
+            "entity:list": ("entity", "list"),
+            "entity:delete": ("entity", "delete"),
+            "component:edit": ("component", "edit"),
+            "component:remove": ("component", "remove"),
+        }
+
+        for capability_id, command in expected.items():
+            with self.subTest(capability=capability_id):
+                cap = registry.get(capability_id)
+                self.assertIsNotNone(cap)
+                self.assertEqual(cap.status, "implemented")
+                self.assertIn(command, public_cli_commands)
+
+    def test_physics_aabb_cli_is_implemented_without_ray_parser(self) -> None:
+        """Only physics AABB query is public in this phase; ray stays planned."""
+        registry = get_default_registry()
+        public_cli_commands = _public_leaf_commands(create_motor_parser())
+
+        aabb = registry.get("physics:query:aabb")
+        self.assertIsNotNone(aabb)
+        self.assertEqual(aabb.status, "implemented")
+        self.assertIn(("physics", "query", "aabb"), public_cli_commands)
+
+        ray = registry.get("physics:query:ray")
+        self.assertIsNotNone(ray)
+        self.assertEqual(ray.status, "implemented")
+        self.assertIn(("physics", "query", "ray"), public_cli_commands)
+
     def test_animator_state_create_signature_matches(self) -> None:
         """Verify animator state create signature matches exactly."""
         state_create = next((cap for cap in self.implemented_caps

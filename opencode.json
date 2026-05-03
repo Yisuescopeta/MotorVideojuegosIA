@@ -1,0 +1,109 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "queen": {
+      "description": "Queen orchestrator — decomposes complex tasks, assigns sub-agents, executes autonomously",
+      "mode": "primary",
+      "model": "opencode-go/deepseek-v4-pro",
+      "temperature": 0.2,
+      "permission": {
+        "read": "allow",
+        "edit": "allow",
+        "bash": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "webfetch": "allow",
+        "task": {
+          "*": "allow"
+        },
+        "skill": "allow",
+        "todowrite": "allow",
+        "websearch": "allow",
+        "question": "deny"
+      }
+    },
+    "planner": {
+      "description": "Implementation plan designer. Read-only. Produces structured JSON plans.",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4-pro",
+      "temperature": 0.1,
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "webfetch": "allow",
+        "edit": "deny",
+        "bash": "deny"
+      }
+    },
+    "builder": {
+      "description": "Code implementer. Writes changes, runs tests, reports results.",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4-pro",
+      "temperature": 0.3,
+      "permission": {
+        "read": "allow",
+        "edit": "allow",
+        "bash": "allow",
+        "glob": "allow",
+        "grep": "allow"
+      }
+    },
+    "code-reviewer": {
+      "description": "Code quality review. Checks SOLID, security, conventions, engine rules. Read-only.",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4-flash",
+      "temperature": 0.1,
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "bash": {
+          "py -m pytest *": "allow",
+          "py -m motor *": "allow",
+          "git diff *": "allow",
+          "git log *": "allow"
+        },
+        "edit": "deny"
+      }
+    },
+    "ai-friendliness": {
+      "description": "AI-friendliness auditor. Scores 0-100 across serialization, API, docs, compliance.",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4-flash",
+      "temperature": 0.1,
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "bash": {
+          "py -m motor *": "allow",
+          "py -m pytest tests/test_repository_governance*": "allow"
+        },
+        "edit": "deny"
+      }
+    },
+    "context-recon": {
+      "description": "Read-only codebase reconnaissance. Maps architecture, conventions, risks, entry points.",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4-flash",
+      "temperature": 0.1,
+      "permission": {
+        "bash": "deny",
+        "edit": "deny",
+        "webfetch": "deny",
+        "task": "deny",
+        "todowrite": "deny",
+        "websearch": "deny"
+      }
+    }
+  },
+  "command": {
+    "queen": {
+      "description": "Queen orchestrator: decompose complex task, assign sub-agents, execute autonomously",
+      "template": "I want you to act as the QUEEN orchestrator agent. Decompose this task into sub-tasks, assign the optimal agent and model to each, execute in parallel where possible, and report results.\n\nUser task: $ARGUMENTS\n\nFollow the queen system prompt in .opencode/agents/queen.md.",
+      "agent": "queen",
+      "model": "opencode-go/deepseek-v4-pro"
+    }
+  }
+}

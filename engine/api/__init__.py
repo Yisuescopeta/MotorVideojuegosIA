@@ -17,7 +17,16 @@ from engine.api.errors import (
     InvalidOperationError,
     LevelLoadError,
 )
-from engine.api.types import ActionResult, ComponentData, EngineStatus, EntityData, Vector2D
+from engine.api.types import (
+    ActionResult,
+    ComponentData,
+    EngineStatus,
+    EntityData,
+    PhysicsAABBResult,
+    PhysicsRayResult,
+    ProfilerReport,
+    Vector2D,
+)
 from engine.physics.backend import PhysicsBackendInfo, PhysicsBackendSelection
 
 _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
@@ -35,6 +44,9 @@ __all__ = [
     "ComponentData",
     "ActionResult",
     "Vector2D",
+    "PhysicsRayResult",
+    "PhysicsAABBResult",
+    "ProfilerReport",
     "PhysicsBackendInfo",
     "PhysicsBackendSelection",
     "EngineAPI",

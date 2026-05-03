@@ -117,6 +117,7 @@ Acciones de reglas soportadas por contrato:
 
 - `set_animation`
 - `set_position`
+- `spawn_entity`
 - `destroy_entity`
 - `emit_event`
 - `log_message`

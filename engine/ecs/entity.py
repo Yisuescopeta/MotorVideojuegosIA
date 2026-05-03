@@ -22,7 +22,7 @@ EJEMPLO DE USO:
 
 import copy
 import itertools
-from typing import Any, Iterable, TypeVar
+from typing import Iterable, TypeVar
 
 from engine.ecs.component import Component
 
@@ -38,15 +38,17 @@ def _generate_entity_id() -> int:
     return next(_ENTITY_ID_COUNTER)
 
 
-def normalize_entity_groups(value: Any) -> tuple[str, ...]:
+def normalize_entity_groups(value: object) -> tuple[str, ...]:
     """Normaliza grupos de entidad a una tupla ordenada y sin duplicados."""
     if value is None:
         return ()
     if isinstance(value, (str, bytes)):
-        raw_groups = [value]
+        raw_groups: list[object] = [str(value)]
+    elif isinstance(value, (list, tuple, set, frozenset)):
+        raw_groups = list(value)
     else:
         try:
-            raw_groups = list(value)
+            raw_groups = list(value)  # type: ignore[arg-type,call-overload]
         except TypeError:
             raw_groups = [value]
     normalized: list[str] = []
@@ -98,15 +100,15 @@ class Entity:
         self.layer: str = "Default"
         self.groups: tuple[str, ...] = ()
         self.parent_name: str | None = None
-        self.prefab_instance: dict[str, Any] | None = None
+        self.prefab_instance: dict[str, object] | None = None
         self.prefab_source_path: str | None = None
         self.prefab_root_name: str | None = None
         self._components: dict[type, Component] = {}
         self._component_types_by_name: dict[str, type] = {}
-        self._component_metadata: dict[type, dict[str, Any]] = {}
+        self._component_metadata: dict[type, dict[str, object]] = {}
         object.__setattr__(self, "_notifications_suspended", False)
 
-    def __setattr__(self, name: str, value: Any) -> None:
+    def __setattr__(self, name: str, value: object) -> None:
         if name == "groups":
             value = normalize_entity_groups(value)
         notifications_suspended = bool(getattr(self, "_notifications_suspended", True))
@@ -121,15 +123,15 @@ class Entity:
                 current=value,
             )
 
-    def _set_owner_world(self, world: Any | None) -> None:
+    def _set_owner_world(self, world: object | None) -> None:
         object.__setattr__(self, "_owner_world", world)
 
-    def _notify_owner_world(self, event: str, **payload: Any) -> None:
+    def _notify_owner_world(self, event: str, **payload: object) -> None:
         owner_world = getattr(self, "_owner_world", None)
         if owner_world is not None and hasattr(owner_world, "_on_entity_changed"):
             owner_world._on_entity_changed(self, event, **payload)
 
-    def add_component(self, component: Component, metadata: dict[str, Any] | None = None) -> None:
+    def add_component(self, component: Component, metadata: dict[str, object] | None = None) -> None:
         """
         Añade un componente a la entidad.
 
@@ -235,10 +237,10 @@ class Entity:
         """Itera todos los componentes sin crear una lista temporal."""
         return self._components.values()
 
-    def get_component_metadata(self, component_type: type[T]) -> dict[str, Any]:
+    def get_component_metadata(self, component_type: type[T]) -> dict[str, object]:
         return copy.deepcopy(self._component_metadata.get(component_type, {}))
 
-    def set_component_metadata(self, component_type: type[T], metadata: dict[str, Any] | None) -> None:
+    def set_component_metadata(self, component_type: type[T], metadata: dict[str, object] | None) -> None:
         if component_type not in self._components:
             return
         self._component_metadata[component_type] = copy.deepcopy(metadata or {})
@@ -247,13 +249,13 @@ class Entity:
             component_type=component_type,
         )
 
-    def get_component_metadata_by_name(self, component_name: str) -> dict[str, Any]:
+    def get_component_metadata_by_name(self, component_name: str) -> dict[str, object]:
         component_type = self._component_types_by_name.get(component_name)
         if component_type is not None:
             return self.get_component_metadata(component_type)
         return {}
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         """
         Serializa la entidad a un diccionario.
 

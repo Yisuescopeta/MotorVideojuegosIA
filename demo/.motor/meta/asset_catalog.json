@@ -1,0 +1,28 @@
+{
+    "version": 1,
+    "generated_at_utc": "2026-05-02T23:35:04.243500+00:00",
+    "assets": [
+        {
+            "guid": "ast_9bf44dd602864815a2cbf345ea5b75a3",
+            "guid_short": "ast_9bf4",
+            "name": "main_scene.json",
+            "path": "levels/main_scene.json",
+            "absolute_path": "C:/Users/Jesus/Documents/GitHub/MotorVideojuegosIA/demo/levels/main_scene.json",
+            "folder": "levels",
+            "asset_kind": "scene_data",
+            "importer": "scene_data",
+            "labels": [],
+            "dependencies": [],
+            "has_meta": true,
+            "import_status": "ready",
+            "last_seen_mtime": 1777764904.1620412,
+            "source_hash": "117d1104907863a68cba3da60046aba946135e24c649e5c055c15ba294d704d1",
+            "import_settings_hash": "8d592cd34b6c1e41900c33f38f737f426fdbfa6b6a8255333dfed5828d58471a",
+            "reference": {
+                "guid": "ast_9bf44dd602864815a2cbf345ea5b75a3",
+                "path": "levels/main_scene.json"
+            },
+            "referenced_by": []
+        }
+    ]
+}

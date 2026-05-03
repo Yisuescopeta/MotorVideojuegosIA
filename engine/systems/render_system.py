@@ -5,10 +5,11 @@ engine/systems/render_system.py - Sistema de renderizado 2D con render graph min
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, NamedTuple, Optional, cast
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional, Union, cast
 
 import pyray as rl
 from engine.assets.asset_reference import clone_asset_reference, normalize_asset_reference
+from engine.assets.asset_resolver import AssetResolver
 from engine.assets.asset_service import AssetService
 from engine.components.animator import Animator
 from engine.components.camera2d import Camera2D
@@ -29,6 +30,9 @@ from engine.rendering.render_targets import RenderTargetPool
 from engine.rendering.tilemap_chunk_renderer import TilemapChunkRenderer
 from engine.resources.texture_manager import TextureManager
 
+if TYPE_CHECKING:
+    from engine.project.project_service import ProjectService
+
 
 class RenderBatchKey(NamedTuple):
     atlas_id: str = ""
@@ -39,7 +43,7 @@ class RenderBatchKey(NamedTuple):
     chunk: str = ""
 
     @classmethod
-    def from_payload(cls, payload: Any) -> "RenderBatchKey":
+    def from_payload(cls, payload: Any) -> "RenderBatchKey":  # payload acepta dict, tuple, o el propio RenderBatchKey
         if isinstance(payload, cls):
             return payload
         if isinstance(payload, dict):
@@ -55,7 +59,7 @@ class RenderBatchKey(NamedTuple):
         padded = values + ("", "", "", "alpha", "", "")
         return cls(*(str(value) for value in padded[:6]))
 
-    def get(self, key: str, default: Any = None) -> Any:
+    def get(self, key: str, default: Any = None) -> Any:  # Acceso genérico tipo dict; el tipo depende del campo accedido
         return self.to_dict().get(key, default)
 
     def to_dict(self) -> dict[str, str]:
@@ -83,17 +87,17 @@ class RenderCommand:
     chunk_id: str = ""
     chunk_data: dict[str, Any] = field(default_factory=dict)
     geometry: dict[str, Any] = field(default_factory=dict)
-    cache_key: Any = None
+    cache_key: object = None
     render_target_name: str = ""
     render_target_dirty: bool = True
 
-    def get(self, key: str, default: Any = None) -> Any:
+    def get(self, key: str, default: Any = None) -> Any:  # Acceso genérico tipo dict; el tipo depende del campo accedido
         return getattr(self, key, default)
 
-    def __getitem__(self, key: str) -> Any:
+    def __getitem__(self, key: str) -> Any:  # Protocolo contenedor; tipo dinámico por diseño
         return getattr(self, key)
 
-    def __setitem__(self, key: str, value: Any) -> None:
+    def __setitem__(self, key: str, value: Any) -> None:  # Protocolo contenedor; tipo dinámico por diseño
         setattr(self, key, value)
 
     def to_payload(self) -> dict[str, Any]:
@@ -119,10 +123,10 @@ class RenderBatch:
     key: RenderBatchKey
     commands: list[RenderCommand] = field(default_factory=list)
 
-    def get(self, key: str, default: Any = None) -> Any:
+    def get(self, key: str, default: Any = None) -> Any:  # Acceso genérico tipo dict; el tipo depende del campo accedido
         return getattr(self, key, default)
 
-    def __getitem__(self, key: str) -> Any:
+    def __getitem__(self, key: str) -> Any:  # Protocolo contenedor; tipo dinámico por diseño
         return getattr(self, key)
 
     def to_payload(self) -> dict[str, Any]:
@@ -139,10 +143,10 @@ class RenderPass:
     batches: list[RenderBatch] = field(default_factory=list)
     stats: dict[str, Any] = field(default_factory=dict)
 
-    def get(self, key: str, default: Any = None) -> Any:
+    def get(self, key: str, default: Any = None) -> Any:  # Acceso genérico tipo dict; el tipo depende del campo accedido
         return getattr(self, key, default)
 
-    def __getitem__(self, key: str) -> Any:
+    def __getitem__(self, key: str) -> Any:  # Protocolo contenedor; tipo dinámico por diseño
         return getattr(self, key)
 
     def to_payload(self) -> dict[str, Any]:
@@ -167,9 +171,9 @@ class RenderSystem:
 
     def __init__(self) -> None:
         self._texture_manager: TextureManager = TextureManager()
-        self._project_service: Any = None
+        self._project_service: ProjectService | None = None
         self._asset_service: AssetService | None = None
-        self._asset_resolver: Any = None
+        self._asset_resolver: AssetResolver | None = None  # Resuelto dinámicamente desde AssetService
         self._render_targets: RenderTargetPool = RenderTargetPool()
         self._tilemap_chunk_renderer: TilemapChunkRenderer = TilemapChunkRenderer(self._render_targets, lambda reference, fallback_path: self._load_texture(reference, fallback_path))
         self._pipeline_planner: RenderPipelinePlanner2D = RenderPipelinePlanner2D(self)
@@ -180,10 +184,7 @@ class RenderSystem:
         self.debug_draw_camera: bool = False
         self.spatial_culling_enabled: bool = True
         self._debug_primitives: list[dict[str, Any]] = []
-        self._render_spatial_index: RenderSpatialIndex = RenderSpatialIndex()
-        self._sorted_entities_cache_key: tuple[int, int, int, int, tuple[str, ...]] | None = None
-        self._sorted_entities_cache: list[Entity] = []
-        self._render_graph_cache_key: tuple[Any, ...] | None = None
+
         self._render_graph_cache: dict[str, Any] = {"passes": [], "totals": {}}
         self._tilemap_chunk_cache: dict[tuple[int, str, int, int], dict[str, Any]] = {}
         self._last_render_stats: dict[str, Any] = {
@@ -208,13 +209,17 @@ class RenderSystem:
         }
         self._sort_cache_hits: int = 0
         self._sort_cache_misses: int = 0
+        self._sorted_entities_cache_key: tuple[object, ...] | None = None
+        self._sorted_entities_cache: list[Entity] = []
+        self._render_graph_cache_key: tuple[object, ...] | None = None
+        self._render_spatial_index: RenderSpatialIndex = RenderSpatialIndex()
 
     @property
     def texture_manager(self) -> TextureManager:
         """Acceso publico al cache de texturas para sistemas externos (p. ej. precarga)."""
         return self._texture_manager
 
-    def set_project_service(self, project_service: Any) -> None:
+    def set_project_service(self, project_service: ProjectService) -> None:
         self._project_service = project_service
         self._asset_service = AssetService(project_service) if project_service is not None else None
         self._asset_resolver = self._asset_service.get_asset_resolver() if self._asset_service is not None else None
@@ -828,7 +833,7 @@ class RenderSystem:
             blend_mode = str(material_payload.get("blend_mode") or style.blend_mode or blend_mode)
             atlas_id = str(style.atlas_id or "")
 
-        locator: Any = ""
+        locator: Union[str, dict[str, str]] = ""
         if animator is not None and animator.enabled and animator.sprite_sheet:
             locator = animator.get_sprite_sheet_reference()
         elif sprite is not None and sprite.enabled and sprite.texture_path:
@@ -995,7 +1000,7 @@ class RenderSystem:
             )
         return chunks
 
-    def _tilemap_chunk_signature(self, tilemap: Tilemap, layer: dict[str, Any], chunk_tiles: list[dict[str, Any]]) -> tuple[Any, ...]:
+    def _tilemap_chunk_signature(self, tilemap: Tilemap, layer: dict[str, Any], chunk_tiles: list[dict[str, Any]]) -> tuple[object, ...]:
         tileset_ref = tilemap.get_tileset_reference()
         layer_source = normalize_asset_reference(layer.get("tilemap_source"))
         return (
@@ -1130,7 +1135,7 @@ class RenderSystem:
         if blend_mode in {"additive", "multiplied"}:
             rl.end_blend_mode()
 
-    def _resolve_atlas_id(self, locator: Any) -> str:
+    def _resolve_atlas_id(self, locator: object) -> str:
         if not locator:
             return ""
         entry = self._asset_resolver.resolve_entry(locator) if self._asset_resolver is not None else None
@@ -1271,7 +1276,7 @@ class RenderSystem:
             "totals": self._copy_stats(graph.get("totals", {})),
         }
 
-    def _batch_key_to_dict(self, batch_key: Any) -> dict[str, str]:
+    def _batch_key_to_dict(self, batch_key: object) -> dict[str, str]:
         return RenderBatchKey.from_payload(batch_key).to_dict()
 
     def _copy_stats(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -1737,8 +1742,8 @@ class RenderSystem:
             payload["radius"] = float(payload.get("radius", 0.0))
         return payload
 
-    def _debug_overlay_signature(self) -> tuple[Any, ...]:
-        signature: list[Any] = []
+    def _debug_overlay_signature(self) -> tuple[object, ...]:
+        signature: list[object] = []
         for primitive in self._debug_primitives:
             item = self._normalize_debug_primitive(primitive)
             signature.append(
@@ -1750,14 +1755,14 @@ class RenderSystem:
             )
         return tuple(signature)
 
-    def _clone_geometry(self, geometry: Any) -> Any:
+    def _clone_geometry(self, geometry: object) -> object:
         if isinstance(geometry, dict):
             return {key: self._clone_geometry(value) for key, value in geometry.items()}
         if isinstance(geometry, list):
             return [self._clone_geometry(value) for value in geometry]
         return geometry
 
-    def _color_from_payload(self, color: Any) -> rl.Color:
+    def _color_from_payload(self, color: object) -> rl.Color:
         values = list(color) if isinstance(color, (list, tuple)) else [255, 255, 255, 255]
         while len(values) < 4:
             values.append(255)
@@ -1795,7 +1800,7 @@ class RenderSystem:
         rl.draw_circle(int(start_x), int(start_y), 3.0, color)
         rl.draw_circle(int(end_x), int(end_y), 3.0, color)
 
-    def _load_texture(self, reference: Any, fallback_path: str, sync_callback: Any = None) -> rl.Texture:
+    def _load_texture(self, reference: Union[str, dict[str, str]], fallback_path: str, sync_callback: Callable[..., Any] | None = None) -> rl.Texture:
         entry = self._asset_resolver.resolve_entry(reference) if self._asset_resolver is not None else None
         if entry is not None:
             if sync_callback is not None:

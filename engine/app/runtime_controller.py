@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from engine.core.engine_state import EngineState
 from engine.core.runtime_contracts import RuntimeControllerContext
@@ -29,7 +29,7 @@ class RuntimeController:
         self,
         context: RuntimeControllerContext,
         *,
-        update_ui_overlay: Optional[Callable[[Any, tuple[float, float], Optional[str]], None]] = None,
+        update_ui_overlay: Optional[Callable[[World, tuple[float, float], Optional[str]], None]] = None,
         phase_observer: Optional[Callable[[RuntimePhase, RuntimeTickPlan], None]] = None,
     ) -> None:
         self._context = context

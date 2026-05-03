@@ -62,6 +62,11 @@ _RENDER_LOOP_PATTERNS = [
     re.compile(r"\b(init_window|begin_drawing|end_drawing|InitWindow|BeginDrawing|EndDrawing)\s*\(", re.IGNORECASE),
 ]
 
+_SCRIPT_BEHAVIOUR_LOOP_PATTERNS = [
+    re.compile(r"\bwhile\s+(?:True|1)\s*:", re.IGNORECASE),
+    re.compile(r"\bfor\s+.+?\s+in\s+itertools\.count\s*\(", re.IGNORECASE),
+]
+
 
 def run_ai_compliance(project_root: str | Path, *, strict: bool = False) -> dict[str, Any]:
     """Return read-only compliance diagnostics for an AI-authored project."""
@@ -72,6 +77,7 @@ def run_ai_compliance(project_root: str | Path, *, strict: bool = False) -> dict
     checks: dict[str, Any] = {
         "project_path": root.as_posix(),
         "strict": strict,
+        "script_behaviour_warnings": [],
     }
     scan_context = _build_scan_context(display_root)
     checks["project_scan_context"] = scan_context["kind"]
@@ -82,7 +88,7 @@ def run_ai_compliance(project_root: str | Path, *, strict: bool = False) -> dict
         _check_bootstrap_files(root, warnings, checks)
         scenes = _discover_scenes(project_service, warnings, checks)
         selected_scene = _select_scene(project_service, scenes, warnings, checks)
-        _check_scene_contract(root, selected_scene, problems, warnings, checks)
+        _check_scene_contract(root, selected_scene, problems, warnings, checks, strict=strict)
     else:
         scenes = []
 
@@ -250,6 +256,8 @@ def _check_scene_contract(
     problems: list[ComplianceFinding],
     warnings: list[ComplianceFinding],
     checks: dict[str, Any],
+    *,
+    strict: bool,
 ) -> None:
     if selected_scene is None:
         checks["selected_scene_valid"] = False
@@ -317,6 +325,83 @@ def _check_scene_contract(
                 rel_path,
             )
         )
+
+    script_behaviour_findings = _detect_script_behaviour_mini_engine_loops(root, migrated)
+    checks["script_behaviour_warnings"] = [finding.to_dict() for finding in script_behaviour_findings]
+    if script_behaviour_findings:
+        if strict:
+            problems.extend(script_behaviour_findings)
+        else:
+            warnings.extend(script_behaviour_findings)
+
+
+def _detect_script_behaviour_mini_engine_loops(root: Path, scene_data: dict[str, Any]) -> list[ComplianceFinding]:
+    findings: list[ComplianceFinding] = []
+    seen_paths: set[str] = set()
+    for script_path in _iter_script_behaviour_script_paths(scene_data):
+        resolved = _resolve_project_script_path(root, script_path)
+        if resolved is None:
+            continue
+        rel_path = _relative_path(root, resolved)
+        if rel_path in seen_paths:
+            continue
+        seen_paths.add(rel_path)
+        content = _read_text(resolved)
+        if any(pattern.search(content) for pattern in _SCRIPT_BEHAVIOUR_LOOP_PATTERNS):
+            findings.append(
+                ComplianceFinding(
+                    "script_behaviour_mini_engine_loop",
+                    "ScriptBehaviour script contains a suspicious own loop; use engine runtime hooks instead",
+                    rel_path,
+                )
+            )
+    return findings
+
+
+def _iter_script_behaviour_script_paths(scene_data: dict[str, Any]) -> list[str]:
+    result: list[str] = []
+    entities = scene_data.get("entities", [])
+    if not isinstance(entities, list):
+        return result
+    for entity in entities:
+        if not isinstance(entity, dict):
+            continue
+        components = entity.get("components", {})
+        if not isinstance(components, dict):
+            continue
+        script_behaviour = components.get("ScriptBehaviour")
+        if not isinstance(script_behaviour, dict):
+            continue
+        script_value = script_behaviour.get("script")
+        script_path = ""
+        if isinstance(script_value, dict):
+            script_path = str(script_value.get("path", "") or "")
+        elif isinstance(script_value, str):
+            script_path = script_value
+        script_path = script_path.strip().replace("\\", "/")
+        if script_path.endswith(".py"):
+            result.append(script_path)
+        module_path = str(script_behaviour.get("module_path", "") or "").strip()
+        if module_path:
+            module_as_path = module_path.replace(".", "/")
+            if not module_as_path.endswith(".py"):
+                module_as_path += ".py"
+            if not module_as_path.startswith("scripts/"):
+                module_as_path = "scripts/" + module_as_path
+            if module_as_path not in result:
+                result.append(module_as_path)
+    return result
+
+
+def _resolve_project_script_path(root: Path, script_path: str) -> Path | None:
+    try:
+        candidate = (root / script_path).resolve()
+        candidate.relative_to(root.resolve())
+    except (OSError, ValueError):
+        return None
+    if not candidate.is_file() or candidate.suffix.lower() != ".py":
+        return None
+    return candidate
 
 
 def _is_demo_or_legacy_path(rel_path: str) -> bool:

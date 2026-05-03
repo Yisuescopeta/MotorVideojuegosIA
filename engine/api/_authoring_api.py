@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Union
 
 from engine.api._context import EngineAPIComponent
 from engine.api.types import ActionResult
@@ -9,37 +9,80 @@ from engine.authoring.changes import Change
 from engine.components.rigidbody import RigidBody
 from engine.components.tilemap import Tilemap
 
-_UNSET = object()
+_UNSET: Any = object()
 
 
 class AuthoringAPI(EngineAPIComponent):
     """Authoring-oriented entity, component, prefab, and serialized data endpoints."""
 
     def begin_transaction(self, label: str = "transaction") -> ActionResult:
+        """Start an undoable authoring transaction for the active scene.
+
+        Args:
+            label: Human-readable label for the undo history entry.
+
+        Returns:
+            ActionResult with transaction started confirmation, or failure if
+            SceneManager is not ready.
+        """
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         success = self.scene_authoring.begin_transaction(label=label)
         return self.ok("Transaction started", {"label": label}) if success else self.fail("Transaction start failed")
 
-    def apply_change(self, change: Dict[str, Any]) -> ActionResult:
+    def apply_change(self, change: dict[str, Any]) -> ActionResult:
+        """Apply a single low-level authoring change to the active scene.
+
+        Args:
+            change: Dictionary representation of a Change object.
+
+        Returns:
+            ActionResult confirming the change was applied, or failure otherwise.
+        """
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         success = self.scene_authoring.apply_change(Change.from_dict(change))
         return self.ok("Change applied", {"change": change}) if success else self.fail("Change apply failed")
 
     def commit_transaction(self) -> ActionResult:
+        """Commit and close the current open transaction.
+
+        Returns:
+            ActionResult with transaction result data, or failure if commit fails.
+        """
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         result = self.scene_authoring.commit_transaction()
         return self.ok("Transaction committed", result) if result is not None else self.fail("Transaction commit failed")
 
     def rollback_transaction(self) -> ActionResult:
+        """Roll back the current open transaction, discarding all intermediate changes.
+
+        Returns:
+            ActionResult indicating rollback success or failure.
+        """
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         success = self.scene_authoring.rollback_transaction()
         return self.ok("Transaction rolled back") if success else self.fail("Transaction rollback failed")
 
-    def create_entity(self, name: str, components: Optional[Dict[str, Dict[str, Any]]] = None) -> ActionResult:
+    def create_entity(self, name: str, components: Optional[Dict[str, dict[str, Any]]] = None) -> ActionResult:
+        """Create a new entity in the active scene with optional component payloads.
+
+        Args:
+            name: Unique entity name within the scene.
+            components: Mapping of component type names to their data dictionaries.
+                Keys should match registered component names (e.g. "Transform",
+                "RigidBody"). Defaults to None (no components).
+
+        Returns:
+            ActionResult confirming entity creation or reporting that the name
+            already exists.
+
+        Example:
+            >>> api.authoring.create_entity("Player", {"Transform": {"x": 0, "y": 0}})
+            {'success': True, 'message': 'Entity created', 'data': {'entity': 'Player'}}
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -47,6 +90,14 @@ class AuthoringAPI(EngineAPIComponent):
         return self.ok("Entity created", {"entity": name}) if success else self.fail("Entity already exists")
 
     def delete_entity(self, name: str) -> ActionResult:
+        """Delete an entity and its children from the active scene.
+
+        Args:
+            name: Name of the entity to remove.
+
+        Returns:
+            ActionResult confirming removal or reporting that the entity was not found.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -54,18 +105,54 @@ class AuthoringAPI(EngineAPIComponent):
         return self.ok("Entity removed", {"entity": name}) if success else self.fail("Entity not found")
 
     def set_entity_active(self, name: str, active: bool) -> ActionResult:
+        """Enable or disable an entity in the active scene.
+
+        Args:
+            name: Name of the entity.
+            active: True to activate, False to deactivate.
+
+        Returns:
+            ActionResult confirming the active state update.
+        """
         self.ensure_edit_mode()
         return self._apply_entity_property(name, "active", active, "Entity active updated")
 
     def set_entity_tag(self, name: str, tag: str) -> ActionResult:
+        """Assign a tag string to an entity for grouping and queries.
+
+        Args:
+            name: Name of the entity.
+            tag: Tag value (e.g. "Player", "Enemy", "Collectible").
+
+        Returns:
+            ActionResult confirming the tag update.
+        """
         self.ensure_edit_mode()
         return self._apply_entity_property(name, "tag", tag, "Entity tag updated")
 
     def set_entity_layer(self, name: str, layer: str) -> ActionResult:
+        """Assign a rendering/physics layer to an entity.
+
+        Args:
+            name: Name of the entity.
+            layer: Layer name (e.g. "Default", "UI", "Background").
+
+        Returns:
+            ActionResult confirming the layer update.
+        """
         self.ensure_edit_mode()
         return self._apply_entity_property(name, "layer", layer, "Entity layer updated")
 
     def set_entity_parent(self, name: str, parent_name: Optional[str]) -> ActionResult:
+        """Set or clear the parent transform of an entity.
+
+        Args:
+            name: Name of the child entity.
+            parent_name: Name of the parent entity, or None to unparent.
+
+        Returns:
+            ActionResult confirming the parent update or failure.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -76,22 +163,53 @@ class AuthoringAPI(EngineAPIComponent):
         self,
         parent_name: str,
         name: str,
-        components: Optional[Dict[str, Dict[str, Any]]] = None,
+        components: Optional[Dict[str, dict[str, Any]]] = None,
     ) -> ActionResult:
+        """Create a new entity as a child of an existing parent entity.
+
+        Args:
+            parent_name: Name of the parent entity.
+            name: Unique name for the new child entity.
+            components: Optional component data mapping, same format as create_entity.
+
+        Returns:
+            ActionResult confirming creation or reporting failure.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         success = self.scene_authoring.create_child_entity(parent_name, name, components=components)
         return self.ok("Child entity created", {"entity": name, "parent": parent_name}) if success else self.fail("Child entity creation failed")
 
-    def add_component(self, entity_name: str, component_name: str, data: Optional[Dict[str, Any]] = None) -> ActionResult:
+    def add_component(self, entity_name: str, component_name: str, data: Optional[dict[str, Any]] = None) -> ActionResult:
+        """Attach a new component to an existing entity.
+
+        Args:
+            entity_name: Name of the target entity.
+            component_name: Registered component type name (e.g. "RigidBody",
+                "Animator", "ScriptBehaviour").
+            data: Component property payload. Defaults to None (component defaults).
+
+        Returns:
+            ActionResult confirming the component was added or reporting failure.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         success = self.scene_authoring.add_component_to_entity(entity_name, component_name, component_data=data)
         return self.ok("Component added", {"entity": entity_name, "component": component_name}) if success else self.fail("Component add failed")
 
-    def replace_component_data(self, entity_name: str, component_name: str, data: Dict[str, Any]) -> ActionResult:
+    def replace_component_data(self, entity_name: str, component_name: str, data: dict[str, Any]) -> ActionResult:
+        """Fully replace the data payload of an existing component.
+
+        Args:
+            entity_name: Name of the target entity.
+            component_name: Component type name to replace.
+            data: Complete new component data dictionary.
+
+        Returns:
+            ActionResult confirming replacement or failure.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -99,13 +217,33 @@ class AuthoringAPI(EngineAPIComponent):
         return self.ok("Component replaced", {"entity": entity_name, "component": component_name}) if success else self.fail("Component replace failed")
 
     def remove_component(self, entity_name: str, component_name: str) -> ActionResult:
+        """Remove a component from an entity.
+
+        Args:
+            entity_name: Name of the target entity.
+            component_name: Component type name to remove.
+
+        Returns:
+            ActionResult confirming removal or failure.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         success = self.scene_authoring.remove_component_from_entity(entity_name, component_name)
         return self.ok("Component removed", {"entity": entity_name, "component": component_name}) if success else self.fail("Component remove failed")
 
-    def edit_component(self, entity_name: str, component: str, property: str, value: Any) -> ActionResult:
+    def edit_component(self, entity_name: str, component: str, property: str, value: Union[str, int, float, bool, list, dict, None]) -> ActionResult:
+        """Set a single property on a component of an entity.
+
+        Args:
+            entity_name: Name of the target entity.
+            component: Component type name (e.g. "Transform", "RigidBody").
+            property: Property name to modify (e.g. "x", "speed", "enabled").
+            value: New value for the property.
+
+        Returns:
+            ActionResult confirming the edit or failure (check names/property).
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -113,16 +251,39 @@ class AuthoringAPI(EngineAPIComponent):
         return self.ok("Edit applied") if success else self.fail("Edit failed (check names/property)")
 
     def set_component_enabled(self, entity_name: str, component_name: str, enabled: bool) -> ActionResult:
+        """Enable or disable a component on an entity via its 'enabled' property.
+
+        Args:
+            entity_name: Name of the target entity.
+            component_name: Component type name.
+            enabled: True to enable, False to disable.
+
+        Returns:
+            ActionResult confirming the toggle.
+        """
         return self.edit_component(entity_name, component_name, "enabled", enabled)
 
     def create_camera2d(
         self,
         name: str,
-        transform: Optional[Dict[str, Any]] = None,
-        camera: Optional[Dict[str, Any]] = None,
+        transform: Optional[dict[str, Any]] = None,
+        camera: Optional[dict[str, Any]] = None,
     ) -> ActionResult:
+        """Create an entity with Camera2D + Transform components preconfigured.
+
+        Args:
+            name: Entity name.
+            transform: Optional overrides for the Transform component (x, y,
+                rotation, scale_x, scale_y).
+            camera: Optional overrides for the Camera2D component (offset_x,
+                offset_y, zoom, rotation, is_primary, follow_entity, framing_mode,
+                dead_zone_width, dead_zone_height, clamp_*, recenter_on_play).
+
+        Returns:
+            ActionResult confirming camera entity creation.
+        """
         self.ensure_edit_mode()
-        components: Dict[str, Dict[str, Any]] = {
+        components: Dict[str, dict[str, Any]] = {
             "Transform": {
                 "enabled": True,
                 "x": 0.0,
@@ -155,7 +316,17 @@ class AuthoringAPI(EngineAPIComponent):
             components["Camera2D"].update(camera)
         return self.create_entity(name, components=components)
 
-    def update_camera2d(self, entity_name: str, properties: Dict[str, Any]) -> ActionResult:
+    def update_camera2d(self, entity_name: str, properties: dict[str, Any]) -> ActionResult:
+        """Update multiple Camera2D properties on an entity at once.
+
+        Args:
+            entity_name: Name of the camera entity.
+            properties: Mapping of Camera2D property names to new values.
+
+        Returns:
+            ActionResult confirming all properties were updated, or failure
+            on the first property that fails.
+        """
         self.ensure_edit_mode()
         for property_name, value in properties.items():
             result = self.edit_component(entity_name, "Camera2D", property_name, value)
@@ -163,12 +334,32 @@ class AuthoringAPI(EngineAPIComponent):
                 return result
         return self.ok("Camera2D updated", {"entity": entity_name})
 
-    def set_camera_framing(self, entity_name: str, framing: Dict[str, Any]) -> ActionResult:
+    def set_camera_framing(self, entity_name: str, framing: dict[str, Any]) -> ActionResult:
+        """Set camera framing properties (alias for update_camera2d).
+
+        Args:
+            entity_name: Name of the camera entity.
+            framing: Dictionary of Camera2D framing-related properties.
+
+        Returns:
+            ActionResult confirming the framing update.
+        """
         return self.update_camera2d(entity_name, framing)
 
-    def create_input_map(self, name: str, bindings: Optional[Dict[str, Any]] = None) -> ActionResult:
+    def create_input_map(self, name: str, bindings: Optional[dict[str, Any]] = None) -> ActionResult:
+        """Create an entity with InputMap component for keyboard/gamepad bindings.
+
+        Args:
+            name: Entity name.
+            bindings: Optional overrides for InputMap key-action bindings. Default
+                bindings include WASD + arrow keys for movement and SPACE/ENTER
+                for actions.
+
+        Returns:
+            ActionResult confirming InputMap entity creation.
+        """
         self.ensure_edit_mode()
-        components: Dict[str, Dict[str, Any]] = {
+        components: Dict[str, dict[str, Any]] = {
             "Transform": {
                 "enabled": True,
                 "x": 0.0,
@@ -191,7 +382,18 @@ class AuthoringAPI(EngineAPIComponent):
             components["InputMap"].update(bindings)
         return self.create_entity(name, components=components)
 
-    def update_input_map(self, entity_name: str, bindings: Dict[str, Any]) -> ActionResult:
+    def update_input_map(self, entity_name: str, bindings: dict[str, Any]) -> ActionResult:
+        """Update multiple InputMap key-action bindings at once.
+
+        Args:
+            entity_name: Name of the entity with InputMap component.
+            bindings: Mapping of action names to key identifiers (e.g.
+                {"move_left": "A,LEFT"}).
+
+        Returns:
+            ActionResult confirming all bindings were updated, or failure
+            on the first property that fails.
+        """
         self.ensure_edit_mode()
         for property_name, value in bindings.items():
             result = self.edit_component(entity_name, "InputMap", property_name, value)
@@ -202,11 +404,22 @@ class AuthoringAPI(EngineAPIComponent):
     def create_audio_source(
         self,
         name: str,
-        transform: Optional[Dict[str, Any]] = None,
-        audio: Optional[Dict[str, Any]] = None,
+        transform: Optional[dict[str, Any]] = None,
+        audio: Optional[dict[str, Any]] = None,
     ) -> ActionResult:
+        """Create an entity with AudioSource + Transform components.
+
+        Args:
+            name: Entity name.
+            transform: Optional Transform overrides.
+            audio: Optional AudioSource property overrides (asset, asset_path,
+                volume, pitch, loop, play_on_awake, spatial_blend).
+
+        Returns:
+            ActionResult confirming AudioSource entity creation.
+        """
         self.ensure_edit_mode()
-        components: Dict[str, Dict[str, Any]] = {
+        components: Dict[str, dict[str, Any]] = {
             "Transform": {
                 "enabled": True,
                 "x": 0.0,
@@ -232,7 +445,17 @@ class AuthoringAPI(EngineAPIComponent):
             components["AudioSource"].update(audio)
         return self.create_entity(name, components=components)
 
-    def update_audio_source(self, entity_name: str, properties: Dict[str, Any]) -> ActionResult:
+    def update_audio_source(self, entity_name: str, properties: dict[str, Any]) -> ActionResult:
+        """Update multiple AudioSource properties on an entity.
+
+        Args:
+            entity_name: Name of the entity with AudioSource component.
+            properties: Mapping of AudioSource property names to new values.
+
+        Returns:
+            ActionResult confirming all properties were updated, or failure
+            on the first property that fails.
+        """
         self.ensure_edit_mode()
         for property_name, value in properties.items():
             result = self.edit_component(entity_name, "AudioSource", property_name, value)
@@ -244,10 +467,23 @@ class AuthoringAPI(EngineAPIComponent):
         self,
         entity_name: str,
         module_path: str,
-        public_data: Optional[Dict[str, Any]] = None,
+        public_data: Optional[dict[str, Any]] = None,
         run_in_edit_mode: bool = False,
         enabled: bool = True,
     ) -> ActionResult:
+        """Attach a ScriptBehaviour component pointing to a Python script module.
+
+        Args:
+            entity_name: Name of the target entity.
+            module_path: Python import path to the script module (e.g.
+                "scripts.player_controller").
+            public_data: Dictionary of public data exposed to the script.
+            run_in_edit_mode: Whether the script runs outside Play mode.
+            enabled: Whether the component starts enabled.
+
+        Returns:
+            ActionResult confirming ScriptBehaviour attachment.
+        """
         self.ensure_edit_mode()
         return self.add_component(
             entity_name,
@@ -261,7 +497,17 @@ class AuthoringAPI(EngineAPIComponent):
             },
         )
 
-    def update_script_behaviour(self, entity_name: str, properties: Dict[str, Any]) -> ActionResult:
+    def update_script_behaviour(self, entity_name: str, properties: dict[str, Any]) -> ActionResult:
+        """Update multiple ScriptBehaviour properties at once.
+
+        Args:
+            entity_name: Name of the entity with ScriptBehaviour component.
+            properties: Mapping of ScriptBehaviour property names to new values.
+
+        Returns:
+            ActionResult confirming all properties were updated, or failure
+            on the first property that fails.
+        """
         self.ensure_edit_mode()
         for property_name, value in properties.items():
             result = self.edit_component(entity_name, "ScriptBehaviour", property_name, value)
@@ -269,11 +515,32 @@ class AuthoringAPI(EngineAPIComponent):
                 return result
         return self.ok("ScriptBehaviour updated", {"entity": entity_name})
 
-    def set_script_public_data(self, entity_name: str, public_data: Dict[str, Any]) -> ActionResult:
+    def set_script_public_data(self, entity_name: str, public_data: dict[str, Any]) -> ActionResult:
+        """Set the public_data dictionary on a ScriptBehaviour component.
+
+        Args:
+            entity_name: Name of the entity with ScriptBehaviour component.
+            public_data: Full dictionary to store as public data.
+
+        Returns:
+            ActionResult confirming the update.
+        """
         self.ensure_edit_mode()
         return self.edit_component(entity_name, "ScriptBehaviour", "public_data", public_data)
 
-    def set_feature_metadata(self, key: str, value: Any) -> ActionResult:
+    def set_feature_metadata(self, key: str, value: Union[str, int, float, bool, list, dict, None]) -> ActionResult:
+        """Persist a key-value pair in the scene's feature metadata.
+
+        Feature metadata is the central place for scene-wide configuration like
+        physics layer matrix, render sorting layers, and signal declarations.
+
+        Args:
+            key: Metadata key (e.g. "render_2d", "physics_2d", "signals").
+            value: Arbitrary JSON-serializable value to store.
+
+        Returns:
+            ActionResult confirming the metadata was persisted.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("No scene loaded")
@@ -282,6 +549,14 @@ class AuthoringAPI(EngineAPIComponent):
         return self.ok("Feature metadata updated", {"key": key})
 
     def set_sorting_layers(self, order: list[str]) -> ActionResult:
+        """Define the render sorting layer order for the scene.
+
+        Args:
+            order: List of layer names in draw order (first = back, last = front).
+
+        Returns:
+            ActionResult confirming the sorting layer configuration was saved.
+        """
         self.ensure_edit_mode()
         metadata = self.api.get_feature_metadata()
         render_2d = dict(metadata.get("render_2d", {}))
@@ -289,6 +564,20 @@ class AuthoringAPI(EngineAPIComponent):
         return self.set_feature_metadata("render_2d", render_2d)
 
     def set_render_order(self, entity_name: str, sorting_layer: str, order_in_layer: int) -> ActionResult:
+        """Set the sorting layer and draw order for a 2D renderable entity.
+
+        If the entity does not have a RenderOrder2D component, one is created
+        automatically.
+
+        Args:
+            entity_name: Name of the target entity.
+            sorting_layer: Layer name that must exist in the configured sorting
+                layers. Defaults to "Default" if empty.
+            order_in_layer: Integer draw priority within the layer (higher = on top).
+
+        Returns:
+            ActionResult confirming the render order was set.
+        """
         self.ensure_edit_mode()
         self.require_entity(entity_name)
         layer_name = sorting_layer.strip() or "Default"
@@ -311,6 +600,16 @@ class AuthoringAPI(EngineAPIComponent):
         return self.edit_component(entity_name, "RenderOrder2D", "order_in_layer", clamped_order)
 
     def set_physics_layer_collision(self, layer_a: str, layer_b: str, enabled: bool) -> ActionResult:
+        """Enable or disable physics collisions between two named layers.
+
+        Args:
+            layer_a: First layer name.
+            layer_b: Second layer name.
+            enabled: True to allow collisions, False to ignore.
+
+        Returns:
+            ActionResult confirming the collision matrix was updated.
+        """
         self.ensure_edit_mode()
         metadata = self.api.get_feature_metadata()
         physics_2d = dict(metadata.get("physics_2d", {}))
@@ -321,6 +620,16 @@ class AuthoringAPI(EngineAPIComponent):
         return self.set_feature_metadata("physics_2d", physics_2d)
 
     def set_physics_backend(self, backend_name: str) -> ActionResult:
+        """Select the active physics backend for the scene.
+
+        Args:
+            backend_name: Backend identifier (e.g. "legacy_aabb", "pymunk",
+                "box2d"). Falls back to "legacy_aabb" if empty.
+
+        Returns:
+            ActionResult confirming the backend was changed, or failure if the
+            backend is not supported.
+        """
         self.ensure_edit_mode()
         normalized = str(backend_name or "").strip() or "legacy_aabb"
         runtime = self.runtime
@@ -335,6 +644,16 @@ class AuthoringAPI(EngineAPIComponent):
         return result
 
     def set_rigidbody_constraints(self, entity_name: str, constraints: list[str]) -> ActionResult:
+        """Configure RigidBody freeze constraints (FreezePositionX, FreezePositionY).
+
+        Args:
+            entity_name: Name of the entity with RigidBody component.
+            constraints: List of constraint names (e.g. ["FreezePositionX",
+                "FreezePositionY"] or ["None"]).
+
+        Returns:
+            ActionResult confirming the constraints were applied.
+        """
         self.ensure_edit_mode()
         normalized = RigidBody.normalize_constraints(constraints)
         invalid = [value for value in constraints if str(value).strip() not in RigidBody.VALID_CONSTRAINTS]
@@ -361,8 +680,24 @@ class AuthoringAPI(EngineAPIComponent):
         cell_height: int = 16,
         orientation: str = "orthogonal",
         tileset: str = "",
-        layers: Optional[list[Dict[str, Any]]] = None,
+        layers: Optional[list[dict[str, Any]]] = None,
     ) -> ActionResult:
+        """Create or replace a Tilemap component on an entity.
+
+        If the entity already has a Tilemap component, its data is replaced.
+        Otherwise, a new Tilemap component is created.
+
+        Args:
+            entity_name: Name of the target entity.
+            cell_width: Width of each tile cell in pixels.
+            cell_height: Height of each tile cell in pixels.
+            orientation: Tilemap orientation (e.g. "orthogonal").
+            tileset: Path or GUID for the tileset asset.
+            layers: List of layer definition dictionaries.
+
+        Returns:
+            ActionResult confirming the tilemap was created or updated.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -394,8 +729,24 @@ class AuthoringAPI(EngineAPIComponent):
         source: str = "",
         flags: Optional[list[str]] = None,
         tags: Optional[list[str]] = None,
-        custom: Optional[Dict[str, Any]] = None,
+        custom: Optional[dict[str, Any]] = None,
     ) -> ActionResult:
+        """Place a tile at grid coordinates on a tilemap layer.
+
+        Args:
+            entity_name: Name of the tilemap entity.
+            layer_name: Name of the target layer within the tilemap.
+            x: Column index.
+            y: Row index.
+            tile_id: Tile identifier string.
+            source: Asset path or GUID for the tile sprite.
+            flags: Optional list of flag strings (e.g. ["flip_horizontal"]).
+            tags: Optional list of tag strings for categorization.
+            custom: Optional custom data dictionary for the tile.
+
+        Returns:
+            ActionResult confirming the tile was placed.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -418,6 +769,17 @@ class AuthoringAPI(EngineAPIComponent):
         return self.ok("Tilemap tile updated", {"entity": entity_name, "layer": layer_name, "x": x, "y": y}) if success else self.fail("Tilemap tile update failed")
 
     def clear_tilemap_tile(self, entity_name: str, layer_name: str, x: int, y: int) -> ActionResult:
+        """Remove a tile from a tilemap layer at grid coordinates.
+
+        Args:
+            entity_name: Name of the tilemap entity.
+            layer_name: Name of the target layer.
+            x: Column index.
+            y: Row index.
+
+        Returns:
+            ActionResult confirming the tile was cleared.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -429,11 +791,28 @@ class AuthoringAPI(EngineAPIComponent):
         success = self.scene_authoring.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
         return self.ok("Tilemap tile cleared", {"entity": entity_name, "layer": layer_name, "x": x, "y": y}) if success else self.fail("Tilemap tile clear failed")
 
-    def get_tilemap(self, entity_name: str) -> Dict[str, Any]:
+    def get_tilemap(self, entity_name: str) -> dict[str, Any]:
+        """Retrieve the full Tilemap component data for an entity.
+
+        Args:
+            entity_name: Name of the tilemap entity.
+
+        Returns:
+            Dictionary with the tilemap payload, or empty dict if not found.
+        """
         payload = self._load_tilemap_payload(entity_name)
         return payload or {}
 
-    def get_tilemap_layer(self, entity_name: str, layer_name: str) -> Dict[str, Any]:
+    def get_tilemap_layer(self, entity_name: str, layer_name: str) -> dict[str, Any]:
+        """Retrieve a single tilemap layer's data.
+
+        Args:
+            entity_name: Name of the tilemap entity.
+            layer_name: Name of the layer to retrieve.
+
+        Returns:
+            Dictionary with the layer data, or empty dict if not found.
+        """
         payload = self._load_tilemap_payload(entity_name)
         if payload is None:
             return {}
@@ -453,8 +832,25 @@ class AuthoringAPI(EngineAPIComponent):
         offset_y: float = 0.0,
         collision_layer: int = 0,
         tilemap_source: str = "",
-        metadata: Dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> ActionResult:
+        """Add a new layer to an existing tilemap.
+
+        Args:
+            entity_name: Name of the tilemap entity.
+            layer_name: Unique name for the new layer.
+            visible: Whether the layer is visible.
+            opacity: Layer opacity (0.0 to 1.0).
+            locked: Whether the layer is locked for editing.
+            offset_x: Horizontal offset in pixels.
+            offset_y: Vertical offset in pixels.
+            collision_layer: Collision layer mask for tiles on this layer.
+            tilemap_source: Asset reference for the layer's tileset.
+            metadata: Optional layer-level metadata dictionary.
+
+        Returns:
+            ActionResult confirming the layer was created.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -489,8 +885,28 @@ class AuthoringAPI(EngineAPIComponent):
         offset_y: float | None = None,
         collision_layer: int | None = None,
         tilemap_source: str | None = None,
-        metadata: Dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> ActionResult:
+        """Update properties of an existing tilemap layer.
+
+        Only properties provided (not None) are changed; others are left as-is.
+
+        Args:
+            entity_name: Name of the tilemap entity.
+            layer_name: Name of the layer to update.
+            visible: New visibility state (None = unchanged).
+            opacity: New opacity (None = unchanged).
+            locked: New locked state (None = unchanged).
+            offset_x: New horizontal offset (None = unchanged).
+            offset_y: New vertical offset (None = unchanged).
+            collision_layer: New collision layer mask (None = unchanged).
+            tilemap_source: New tileset reference (None = unchanged).
+            metadata: New metadata dict (None = unchanged).
+
+        Returns:
+            ActionResult confirming the layer was updated, or failure if the
+            layer was not found.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -516,6 +932,16 @@ class AuthoringAPI(EngineAPIComponent):
         return self.ok("Tilemap layer updated", {"entity": entity_name, "layer": layer_name}) if success else self.fail("Tilemap layer update failed")
 
     def delete_tilemap_layer(self, entity_name: str, layer_name: str) -> ActionResult:
+        """Remove a layer from a tilemap.
+
+        Args:
+            entity_name: Name of the tilemap entity.
+            layer_name: Name of the layer to delete.
+
+        Returns:
+            ActionResult confirming deletion, or failure if the layer was
+            not found.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -540,11 +966,30 @@ class AuthoringAPI(EngineAPIComponent):
         source: str = "",
         flags: list[str] | None = None,
         tags: list[str] | None = None,
-        custom: Dict[str, Any] | None = None,
+        custom: dict[str, Any] | None = None,
         animated: bool = False,
         animation_id: str = "",
         terrain_type: str = "",
     ) -> ActionResult:
+        """Place a tile with all extended properties at grid coordinates.
+
+        Args:
+            entity_name: Name of the tilemap entity.
+            layer_name: Target layer name.
+            x: Column index.
+            y: Row index.
+            tile_id: Tile identifier string.
+            source: Asset path or GUID for the tile sprite.
+            flags: Optional list of flags.
+            tags: Optional list of tags.
+            custom: Optional custom data.
+            animated: Whether the tile is animated.
+            animation_id: Animation identifier for animated tiles.
+            terrain_type: Terrain classification for the tile.
+
+        Returns:
+            ActionResult confirming the tile was placed with full data.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -573,8 +1018,20 @@ class AuthoringAPI(EngineAPIComponent):
         self,
         entity_name: str,
         layer_name: str,
-        tiles: list[Dict[str, Any]],
+        tiles: list[dict[str, Any]],
     ) -> ActionResult:
+        """Place multiple tiles at once on a tilemap layer.
+
+        Args:
+            entity_name: Name of the tilemap entity.
+            layer_name: Target layer name.
+            tiles: List of tile specification dictionaries. Each dict may contain
+                x, y, tile_id, source, flags, tags, custom, animated, animation_id,
+                and terrain_type keys.
+
+        Returns:
+            ActionResult confirming the bulk operation with count of tiles set.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -615,6 +1072,18 @@ class AuthoringAPI(EngineAPIComponent):
         offset_x: int = 0,
         offset_y: int = 0,
     ) -> ActionResult:
+        """Change the grid dimensions of a tilemap.
+
+        Args:
+            entity_name: Name of the tilemap entity.
+            cell_width: New cell width in pixels.
+            cell_height: New cell height in pixels.
+            offset_x: Grid origin offset x.
+            offset_y: Grid origin offset y.
+
+        Returns:
+            ActionResult confirming the resize operation.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -626,14 +1095,24 @@ class AuthoringAPI(EngineAPIComponent):
         success = self.scene_authoring.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
         return self.ok("Tilemap resized", {"entity": entity_name, "cell_width": cell_width, "cell_height": cell_height}) if success else self.fail("Tilemap resize failed")
 
-    def list_animator_states(self, entity_name: str) -> list[Dict[str, Any]]:
+    def list_animator_states(self, entity_name: str) -> list[dict[str, Any]]:
+        """List all animation states defined on an entity's Animator component.
+
+        Args:
+            entity_name: Name of the entity with an Animator component.
+
+        Returns:
+            List of dictionaries, each representing an animation state with its
+            name, frame data, fps, loop flag, on_complete target, and whether
+            it is the default state.
+        """
         entity = self.require_entity(entity_name)
         from engine.components.animator import Animator
 
         animator = entity.get_component(Animator)
         if animator is None:
             return []
-        result: list[Dict[str, Any]] = []
+        result: list[dict[str, Any]] = []
         for state_name, state_data in animator.to_dict().get("animations", {}).items():
             payload = dict(state_data)
             payload["state_name"] = state_name
@@ -642,6 +1121,15 @@ class AuthoringAPI(EngineAPIComponent):
         return result
 
     def set_animator_sprite_sheet(self, entity_name: str, asset_path: str) -> ActionResult:
+        """Set the sprite sheet path for an Animator component.
+
+        Args:
+            entity_name: Name of the entity with an Animator component.
+            asset_path: Path or asset reference to the sprite sheet image.
+
+        Returns:
+            ActionResult confirming the sprite sheet was updated.
+        """
         self.ensure_edit_mode()
         return self.edit_component(entity_name, "Animator", "sprite_sheet", asset_path)
 
@@ -655,6 +1143,21 @@ class AuthoringAPI(EngineAPIComponent):
         on_complete: Optional[str],
         set_default: bool = False,
     ) -> ActionResult:
+        """Create or update an animation state on an Animator component.
+
+        Args:
+            entity_name: Name of the entity with an Animator component.
+            state_name: Unique name for the animation state.
+            slice_names: List of sprite slice names composing the animation frames.
+            fps: Frames per second for the animation playback.
+            loop: Whether the animation loops.
+            on_complete: Name of the state to transition to when animation completes,
+                or None.
+            set_default: If True, make this the default state.
+
+        Returns:
+            ActionResult confirming the animation state was upserted.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -684,9 +1187,25 @@ class AuthoringAPI(EngineAPIComponent):
         slice_names: list[str],
         fps: Optional[float] = None,
         loop: Optional[bool] = None,
-        on_complete: Any = _UNSET,
+        on_complete: Optional[Union[str, Callable[..., object]]] = _UNSET,
         set_default: bool = False,
     ) -> ActionResult:
+        """Update frame data for an existing animation state.
+
+        Only provided properties are changed; None values keep the current setting.
+
+        Args:
+            entity_name: Name of the entity with an Animator component.
+            state_name: Name of the existing animation state to update.
+            slice_names: New list of sprite slice names.
+            fps: New frames per second (None = unchanged).
+            loop: New loop flag (None = unchanged).
+            on_complete: New on_complete target state (None = unchanged).
+            set_default: If True, make this the default state.
+
+        Returns:
+            ActionResult confirming the frame data was updated.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -713,6 +1232,18 @@ class AuthoringAPI(EngineAPIComponent):
         return self.ok("Animator frames updated", {"entity": entity_name, "state": state_name}) if success else self.fail("Animator frames update failed")
 
     def remove_animator_state(self, entity_name: str, state_name: str) -> ActionResult:
+        """Remove an animation state from an Animator component.
+
+        If the removed state was the default or current state, the next available
+        state is promoted automatically.
+
+        Args:
+            entity_name: Name of the entity with an Animator component.
+            state_name: Name of the state to remove.
+
+        Returns:
+            ActionResult confirming the state was removed.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -724,9 +1255,8 @@ class AuthoringAPI(EngineAPIComponent):
             return self.fail("Animator state not found")
         del animations[state_name]
         next_default = next(iter(animations.keys()), "")
-        # Keep a valid default state (non-empty string required by schema)
         if not next_default:
-            next_default = state_name  # Keep the removed state name as placeholder
+            next_default = state_name
         if payload.get("default_state") == state_name:
             payload["default_state"] = next_default
         if payload.get("current_state") == state_name:
@@ -738,6 +1268,17 @@ class AuthoringAPI(EngineAPIComponent):
         return self.ok("Animator state removed", {"entity": entity_name, "state": state_name}) if success else self.fail("Animator state remove failed")
 
     def duplicate_animator_state(self, entity_name: str, source_state: str, new_state_name: Optional[str] = None) -> ActionResult:
+        """Clone an existing animation state with a new name.
+
+        Args:
+            entity_name: Name of the entity with an Animator component.
+            source_state: Name of the state to duplicate.
+            new_state_name: Name for the cloned state. If None, generates
+                "{source_state}_copy" with auto-incrementing suffix.
+
+        Returns:
+            ActionResult confirming the state was duplicated with the final name.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -762,6 +1303,17 @@ class AuthoringAPI(EngineAPIComponent):
         return self.ok("Animator state duplicated", {"entity": entity_name, "state": final_name}) if success else self.fail("Animator state duplicate failed")
 
     def rename_animator_state(self, entity_name: str, old_name: str, new_name: str) -> ActionResult:
+        """Rename an existing animation state and update all references to it.
+
+        Args:
+            entity_name: Name of the entity with an Animator component.
+            old_name: Current state name.
+            new_name: New state name (must not already exist).
+
+        Returns:
+            ActionResult confirming the rename, or failure if names conflict or
+            don't exist.
+        """
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
@@ -791,6 +1343,16 @@ class AuthoringAPI(EngineAPIComponent):
         return self.ok("Animator state renamed", {"entity": entity_name, "state": new_name}) if success else self.fail("Animator state rename failed")
 
     def set_animator_flip(self, entity_name: str, flip_x: Optional[bool] = None, flip_y: Optional[bool] = None) -> ActionResult:
+        """Set horizontal or vertical flip for an Animator component.
+
+        Args:
+            entity_name: Name of the entity with an Animator component.
+            flip_x: If not None, new horizontal flip state.
+            flip_y: If not None, new vertical flip state.
+
+        Returns:
+            ActionResult confirming the flip was updated.
+        """
         self.ensure_edit_mode()
         animator_data = self._load_animator_payload(entity_name)
         if animator_data is None:
@@ -805,6 +1367,15 @@ class AuthoringAPI(EngineAPIComponent):
         return self.ok("Animator flip updated", {"entity": entity_name}) if success else self.fail("Animator flip update failed")
 
     def set_animator_speed(self, entity_name: str, speed: float) -> ActionResult:
+        """Set the global playback speed multiplier for an Animator component.
+
+        Args:
+            entity_name: Name of the entity with an Animator component.
+            speed: Speed multiplier (clamped to minimum 0.01).
+
+        Returns:
+            ActionResult confirming the speed was updated with the applied value.
+        """
         self.ensure_edit_mode()
         animator_data = self._load_animator_payload(entity_name)
         if animator_data is None:
@@ -815,7 +1386,17 @@ class AuthoringAPI(EngineAPIComponent):
         success = self.scene_authoring.replace_component_data(entity_name, "Animator", animator_data)
         return self.ok("Animator speed updated", {"entity": entity_name, "speed": animator_data["speed"]}) if success else self.fail("Animator speed update failed")
 
-    def get_animator_info(self, entity_name: str) -> Dict[str, Any]:
+    def get_animator_info(self, entity_name: str) -> dict[str, Any]:
+        """Get comprehensive information about an Animator component.
+
+        Args:
+            entity_name: Name of the entity with an Animator component.
+
+        Returns:
+            Dictionary with keys: exists, sprite_sheet, frame_width, frame_height,
+            flip_x, flip_y, speed, default_state, current_state, and states list.
+            If no Animator exists, returns {"exists": False}.
+        """
         animator_data = self._load_animator_payload(entity_name)
         if animator_data is None:
             return {"exists": False}
@@ -857,6 +1438,21 @@ class AuthoringAPI(EngineAPIComponent):
         loop: bool = True,
         on_complete: Optional[str] = None,
     ) -> ActionResult:
+        """Create a new animation state without making it the default.
+
+        Convenience wrapper around upsert_animator_state with set_default=False.
+
+        Args:
+            entity_name: Name of the entity with an Animator component.
+            state_name: Unique name for the new state.
+            slice_names: List of sprite slice names (defaults to empty list).
+            fps: Frames per second (default 8.0).
+            loop: Whether the animation loops (default True).
+            on_complete: Transition target state name or None.
+
+        Returns:
+            ActionResult confirming the animation state was created.
+        """
         return self.upsert_animator_state(
             entity_name,
             state_name,
@@ -869,7 +1465,7 @@ class AuthoringAPI(EngineAPIComponent):
 
     # --- Señales declarativas persistentes (feature_metadata["signals"]) ---
 
-    def list_signal_connections_declarative(self) -> list[dict[str, Any]]:
+    def list_signal_connections_declarative(self) -> list[dict[str, Union[str, int, float, bool, list, dict, None]]]:
         """Devuelve la lista de conexiones de señales declarativas persistentes en la escena activa."""
         metadata = self.api.get_feature_metadata()
         signals = metadata.get("signals", {})
@@ -878,13 +1474,13 @@ class AuthoringAPI(EngineAPIComponent):
         connections = signals.get("connections", [])
         return copy.deepcopy(connections) if isinstance(connections, list) else []
 
-    def get_signal_metadata(self) -> dict[str, Any]:
+    def get_signal_metadata(self) -> dict[str, Union[str, int, float, bool, list, dict, None]]:
         """Devuelve el bloque completo de metadata de señales de la escena activa."""
         metadata = self.api.get_feature_metadata()
         signals = metadata.get("signals", {})
         return copy.deepcopy(signals) if isinstance(signals, dict) else {}
 
-    def add_signal_connection(self, connection_data: dict[str, Any]) -> ActionResult:
+    def add_signal_connection(self, connection_data: dict[str, Union[str, int, float, bool, list, dict, None]]) -> ActionResult:
         """Añade una conexión de señal declarativa a la escena activa."""
         self.ensure_edit_mode()
         if not isinstance(connection_data, dict):
@@ -919,13 +1515,13 @@ class AuthoringAPI(EngineAPIComponent):
         signals["connections"] = new_connections
         return self.set_feature_metadata("signals", signals)
 
-    def _apply_entity_property(self, name: str, property_name: str, value: Any, message: str) -> ActionResult:
+    def _apply_entity_property(self, name: str, property_name: str, value: Union[str, int, float, bool, list, dict, None], message: str) -> ActionResult:
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         success = self.scene_authoring.update_entity_property(name, property_name, value)
         return self.ok(message, {"entity": name}) if success else self.fail("Entity property update failed")
 
-    def _with_entity_signal_target_id(self, connection_data: dict[str, Any]) -> dict[str, Any]:
+    def _with_entity_signal_target_id(self, connection_data: dict[str, Union[str, int, float, bool, list, dict, None]]) -> dict[str, Union[str, int, float, bool, list, dict, None]]:
         payload = copy.deepcopy(connection_data)
         if self.scene_authoring is None:
             return payload
@@ -947,8 +1543,8 @@ class AuthoringAPI(EngineAPIComponent):
             target["id"] = entity_id.strip()
         return payload
 
-    def _load_animator_payload(self, entity_name: str) -> Optional[Dict[str, Any]]:
+    def _load_animator_payload(self, entity_name: str) -> Optional[dict[str, Any]]:
         return self.load_component_payload(entity_name, "Animator")
 
-    def _load_tilemap_payload(self, entity_name: str) -> Optional[Dict[str, Any]]:
+    def _load_tilemap_payload(self, entity_name: str) -> Optional[dict[str, Any]]:
         return self.load_component_payload(entity_name, "Tilemap")

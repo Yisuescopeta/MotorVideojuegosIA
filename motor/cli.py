@@ -86,8 +86,43 @@ from motor.cli_core import (
     cmd_runtime_entities,
     cmd_runtime_inspect,
     cmd_runtime_events,
+    cmd_physics_query_aabb,
+    cmd_physics_query_ray,
+    cmd_physics_backend_list,
+    cmd_signal_connect,
+    cmd_signal_emit,
+    cmd_signal_disconnect,
+    cmd_signal_list,
+    cmd_entity_group_add,
+    cmd_entity_group_remove,
+    cmd_entity_group_list,
+    cmd_ui_create_canvas,
+    cmd_ui_create_text,
+    cmd_ui_create_button,
+    cmd_ui_create_image,
+    cmd_scene_flow_next,
+    cmd_scene_flow_menu,
+    cmd_scene_flow_set_link,
+    cmd_runtime_undo,
+    cmd_runtime_redo,
+    cmd_entity_set_parent,
+    cmd_entity_create_child,
+    cmd_debug_profiler_reset,
+    cmd_debug_profiler_report,
+    cmd_debug_overlay,
+    cmd_service_register,
+    cmd_service_get,
+    cmd_service_has,
+    cmd_runtime_audio_play,
+    cmd_runtime_audio_stop,
+    cmd_runtime_audio_pause,
+    cmd_runtime_audio_resume,
     cmd_entity_create,
+    cmd_entity_delete,
+    cmd_entity_list,
     cmd_component_add,
+    cmd_component_edit,
+    cmd_component_remove,
     cmd_prefab_create,
     cmd_prefab_instantiate,
     cmd_prefab_unpack,
@@ -155,8 +190,12 @@ AI-Facing Commands:
   runtime stop              Stop runtime in the current stateless process
   
   entity create <name>      Create entity in active scene
+  entity list               List entities in active scene
+  entity delete <name>      Delete entity from active scene
   
   component add <e> <c>     Add component to entity
+  component edit <e> <c> <p> <v>  Edit component property
+  component remove <e> <c>  Remove component from entity
 
   prefab create <e> <p>     Save entity subtree as prefab
   prefab instantiate <p>    Instantiate prefab in active scene
@@ -668,6 +707,51 @@ Documentation:
     )
     scene_save_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
+    # scene flow subcommands
+    scene_flow_parser = scene_subparsers.add_parser(
+        "flow",
+        help="Scene flow operations",
+    )
+    scene_flow_subparsers = scene_flow_parser.add_subparsers(
+        dest="scene_flow_subcommand", required=True,
+    )
+
+    scene_flow_next_parser = scene_flow_subparsers.add_parser(
+        "next",
+        help="Load the next scene in the flow",
+    )
+    scene_flow_next_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    scene_flow_next_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    scene_flow_menu_parser = scene_flow_subparsers.add_parser(
+        "menu",
+        help="Load the menu scene",
+    )
+    scene_flow_menu_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    scene_flow_menu_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    scene_flow_set_link_parser = scene_flow_subparsers.add_parser(
+        "set-link",
+        help="Set a scene flow link",
+    )
+    scene_flow_set_link_parser.add_argument("source_scene", help="Source scene key or path")
+    scene_flow_set_link_parser.add_argument("target_scene", help="Target scene path")
+    scene_flow_set_link_parser.add_argument(
+        "--entity", dest="entity_id", default=None,
+        help="Entity with SceneLink component"
+    )
+    scene_flow_set_link_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    scene_flow_set_link_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
     # === runtime ===
     runtime_parser = subparsers.add_parser(
         "runtime",
@@ -775,6 +859,198 @@ Documentation:
     )
     runtime_events_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
+    runtime_undo_parser = runtime_subparsers.add_parser(
+        "undo",
+        help="Undo last action",
+    )
+    runtime_undo_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_undo_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    runtime_redo_parser = runtime_subparsers.add_parser(
+        "redo",
+        help="Redo last undone action",
+    )
+    runtime_redo_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_redo_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    runtime_audio_parser = runtime_subparsers.add_parser(
+        "audio",
+        help="Runtime audio controls",
+    )
+    runtime_audio_subparsers = runtime_audio_parser.add_subparsers(
+        dest="runtime_audio_subcommand", required=True,
+    )
+
+    runtime_audio_play_parser = runtime_audio_subparsers.add_parser(
+        "play",
+        help="Play audio from source",
+    )
+    runtime_audio_play_parser.add_argument("source_id", help="Entity with AudioSource component")
+    runtime_audio_play_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_audio_play_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    runtime_audio_stop_parser = runtime_audio_subparsers.add_parser(
+        "stop",
+        help="Stop audio from source",
+    )
+    runtime_audio_stop_parser.add_argument("source_id", help="Entity with AudioSource component")
+    runtime_audio_stop_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_audio_stop_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    runtime_audio_pause_parser = runtime_audio_subparsers.add_parser(
+        "pause",
+        help="Pause audio from source",
+    )
+    runtime_audio_pause_parser.add_argument("source_id", help="Entity with AudioSource component")
+    runtime_audio_pause_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_audio_pause_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    runtime_audio_resume_parser = runtime_audio_subparsers.add_parser(
+        "resume",
+        help="Resume audio from source",
+    )
+    runtime_audio_resume_parser.add_argument("source_id", help="Entity with AudioSource component")
+    runtime_audio_resume_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    runtime_audio_resume_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    # === physics ===
+    physics_parser = subparsers.add_parser(
+        "physics",
+        help="Read-only physics queries",
+    )
+    physics_subparsers = physics_parser.add_subparsers(dest="physics_subcommand", required=True)
+
+    physics_query_parser = physics_subparsers.add_parser(
+        "query",
+        help="Query active runtime physics state",
+    )
+    physics_query_subparsers = physics_query_parser.add_subparsers(dest="physics_query_subcommand", required=True)
+
+    physics_query_aabb_parser = physics_query_subparsers.add_parser(
+        "aabb",
+        help="Query colliders overlapping an axis-aligned bounding box",
+    )
+    physics_query_aabb_parser.add_argument("left", type=float, help="AABB left")
+    physics_query_aabb_parser.add_argument("top", type=float, help="AABB top")
+    physics_query_aabb_parser.add_argument("right", type=float, help="AABB right")
+    physics_query_aabb_parser.add_argument("bottom", type=float, help="AABB bottom")
+    physics_query_aabb_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    physics_query_aabb_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    physics_query_ray_parser = physics_query_subparsers.add_parser(
+        "ray",
+        help="Query physics raycast",
+    )
+    physics_query_ray_parser.add_argument("origin_x", type=float, help="Ray origin X")
+    physics_query_ray_parser.add_argument("origin_y", type=float, help="Ray origin Y")
+    physics_query_ray_parser.add_argument("direction_x", type=float, help="Ray direction X")
+    physics_query_ray_parser.add_argument("direction_y", type=float, help="Ray direction Y")
+    physics_query_ray_parser.add_argument(
+        "--max-distance", type=float, default=1000.0,
+        help="Maximum ray distance (default: 1000)"
+    )
+    physics_query_ray_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    physics_query_ray_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    physics_backend_list_parser = physics_subparsers.add_parser(
+        "backend",
+        help="Physics backend operations",
+    )
+    physics_backend_subparsers = physics_backend_list_parser.add_subparsers(
+        dest="physics_backend_subcommand", required=True,
+    )
+    physics_backend_ls_parser = physics_backend_subparsers.add_parser(
+        "list",
+        help="List available physics backends",
+    )
+    physics_backend_ls_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    physics_backend_ls_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    # === signal ===
+    signal_parser = subparsers.add_parser(
+        "signal",
+        help="Signal operations",
+    )
+    signal_subparsers = signal_parser.add_subparsers(dest="signal_subcommand", required=True)
+
+    signal_connect_parser = signal_subparsers.add_parser(
+        "connect",
+        help="Connect a signal between entities",
+    )
+    signal_connect_parser.add_argument("signal_name", help="Signal name")
+    signal_connect_parser.add_argument("source_entity", help="Source entity name")
+    signal_connect_parser.add_argument("target_entity", help="Target entity name")
+    signal_connect_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    signal_connect_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    signal_emit_parser = signal_subparsers.add_parser(
+        "emit",
+        help="Emit a signal from an entity",
+    )
+    signal_emit_parser.add_argument("signal_name", help="Signal name")
+    signal_emit_parser.add_argument(
+        "--entity", dest="entity_id", default=None,
+        help="Source entity name"
+    )
+    signal_emit_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    signal_emit_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    signal_disconnect_parser = signal_subparsers.add_parser(
+        "disconnect",
+        help="Disconnect a signal between entities",
+    )
+    signal_disconnect_parser.add_argument("signal_name", help="Signal name")
+    signal_disconnect_parser.add_argument("source_entity", help="Source entity name")
+    signal_disconnect_parser.add_argument("target_entity", help="Target entity name")
+    signal_disconnect_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    signal_disconnect_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    signal_list_parser = signal_subparsers.add_parser(
+        "list",
+        help="List signal connections",
+    )
+    signal_list_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    signal_list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
     # === entity ===
     entity_parser = subparsers.add_parser(
         "entity",
@@ -796,6 +1072,104 @@ Documentation:
         help='Components JSON (e.g., "{Transform:{x:100}}")'
     )
     entity_create_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    entity_list_parser = entity_subparsers.add_parser(
+        "list",
+        help="List entities in the active scene",
+    )
+    entity_list_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    entity_list_parser.add_argument("--tag", default=None, help="Filter by tag")
+    entity_list_parser.add_argument("--layer", default=None, help="Filter by layer")
+    entity_list_parser.add_argument("--active-only", action="store_true", help="Only active entities")
+    entity_list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    entity_delete_parser = entity_subparsers.add_parser(
+        "delete",
+        help="Delete an entity from the active scene",
+    )
+    entity_delete_parser.add_argument("name", help="Entity name")
+    entity_delete_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    entity_delete_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    # entity group subcommands
+    entity_group_parser = entity_subparsers.add_parser(
+        "group",
+        help="Entity group operations",
+    )
+    entity_group_subparsers = entity_group_parser.add_subparsers(
+        dest="entity_group_subcommand", required=True,
+    )
+
+    entity_group_add_parser = entity_group_subparsers.add_parser(
+        "add",
+        help="Add entity to a group",
+    )
+    entity_group_add_parser.add_argument("entity_id", help="Entity name")
+    entity_group_add_parser.add_argument("group_name", help="Group name")
+    entity_group_add_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    entity_group_add_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    entity_group_remove_parser = entity_group_subparsers.add_parser(
+        "remove",
+        help="Remove entity from a group",
+    )
+    entity_group_remove_parser.add_argument("entity_id", help="Entity name")
+    entity_group_remove_parser.add_argument("group_name", help="Group name")
+    entity_group_remove_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    entity_group_remove_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    entity_group_list_parser = entity_group_subparsers.add_parser(
+        "list",
+        help="List entities in a group",
+    )
+    entity_group_list_parser.add_argument(
+        "group_name", nargs="?", default=None,
+        help="Group name (omit to list all groups)"
+    )
+    entity_group_list_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    entity_group_list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    entity_set_parent_parser = entity_subparsers.add_parser(
+        "set-parent",
+        help="Set parent for an entity",
+    )
+    entity_set_parent_parser.add_argument("entity_id", help="Entity name")
+    entity_set_parent_parser.add_argument("parent_id", help="Parent entity name")
+    entity_set_parent_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    entity_set_parent_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    entity_create_child_parser = entity_subparsers.add_parser(
+        "create-child",
+        help="Create a child entity",
+    )
+    entity_create_child_parser.add_argument("parent_id", help="Parent entity name")
+    entity_create_child_parser.add_argument(
+        "--name", required=True,
+        help="Child entity name"
+    )
+    entity_create_child_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    entity_create_child_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === component ===
     component_parser = subparsers.add_parser(
@@ -819,6 +1193,36 @@ Documentation:
         help='Component data JSON'
     )
     component_add_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    component_edit_parser = component_subparsers.add_parser(
+        "edit",
+        help="Edit a component property",
+    )
+    component_edit_parser.add_argument("entity", help="Entity name")
+    component_edit_parser.add_argument("component", help="Component name")
+    component_edit_parser.add_argument("property", help="Property name")
+    component_edit_parser.add_argument("value", help="JSON value or string literal")
+    component_edit_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    component_edit_parser.add_argument(
+        "--raw", action="store_true",
+        help="Force raw string interpretation of value (skip JSON parsing)"
+    )
+    component_edit_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    component_remove_parser = component_subparsers.add_parser(
+        "remove",
+        help="Remove a component from an entity",
+    )
+    component_remove_parser.add_argument("entity", help="Entity name")
+    component_remove_parser.add_argument("component", help="Component name")
+    component_remove_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    component_remove_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === prefab ===
     prefab_parser = subparsers.add_parser(
@@ -1163,6 +1567,187 @@ Documentation:
         help="Naming prefix for slices"
     )
     slice_manual_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    # === ui ===
+    ui_parser = subparsers.add_parser(
+        "ui",
+        help="UI operations",
+    )
+    ui_subparsers = ui_parser.add_subparsers(dest="ui_subcommand", required=True)
+
+    ui_create_canvas_parser = ui_subparsers.add_parser(
+        "create-canvas",
+        help="Create a UI canvas",
+    )
+    ui_create_canvas_parser.add_argument(
+        "--name", default="Canvas",
+        help="Canvas entity name (default: Canvas)"
+    )
+    ui_create_canvas_parser.add_argument(
+        "--width", type=int, default=800,
+        help="Reference width (default: 800)"
+    )
+    ui_create_canvas_parser.add_argument(
+        "--height", type=int, default=600,
+        help="Reference height (default: 600)"
+    )
+    ui_create_canvas_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    ui_create_canvas_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    ui_create_text_parser = ui_subparsers.add_parser(
+        "create-text",
+        help="Create a UI text element",
+    )
+    ui_create_text_parser.add_argument(
+        "--text", required=True,
+        help="Text content"
+    )
+    ui_create_text_parser.add_argument(
+        "--parent", required=True,
+        help="Parent canvas entity name"
+    )
+    ui_create_text_parser.add_argument(
+        "--font-size", type=int, default=24,
+        help="Font size (default: 24)"
+    )
+    ui_create_text_parser.add_argument(
+        "--color", default="#FFFFFF",
+        help="Hex color (default: #FFFFFF)"
+    )
+    ui_create_text_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    ui_create_text_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    ui_create_button_parser = ui_subparsers.add_parser(
+        "create-button",
+        help="Create a UI button element",
+    )
+    ui_create_button_parser.add_argument(
+        "--text", default="Button",
+        help="Button label (default: Button)"
+    )
+    ui_create_button_parser.add_argument(
+        "--parent", required=True,
+        help="Parent canvas entity name"
+    )
+    ui_create_button_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    ui_create_button_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    ui_create_image_parser = ui_subparsers.add_parser(
+        "create-image",
+        help="Create a UI image element",
+    )
+    ui_create_image_parser.add_argument(
+        "--path", dest="asset_path", required=True,
+        help="Asset path for the image"
+    )
+    ui_create_image_parser.add_argument(
+        "--parent", required=True,
+        help="Parent canvas entity name"
+    )
+    ui_create_image_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    ui_create_image_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    # === debug ===
+    debug_parser = subparsers.add_parser(
+        "debug",
+        help="Debug operations",
+    )
+    debug_subparsers = debug_parser.add_subparsers(dest="debug_subcommand", required=True)
+
+    debug_profiler_parser = debug_subparsers.add_parser(
+        "profiler",
+        help="Profiler operations",
+    )
+    debug_profiler_subparsers = debug_profiler_parser.add_subparsers(
+        dest="debug_profiler_subcommand", required=True,
+    )
+
+    debug_profiler_reset_parser = debug_profiler_subparsers.add_parser(
+        "reset",
+        help="Reset the profiler",
+    )
+    debug_profiler_reset_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    debug_profiler_reset_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    debug_profiler_report_parser = debug_profiler_subparsers.add_parser(
+        "report",
+        help="Get profiler report",
+    )
+    debug_profiler_report_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    debug_profiler_report_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    debug_overlay_parser = debug_subparsers.add_parser(
+        "overlay",
+        help="Debug overlay control",
+    )
+    debug_overlay_parser.add_argument(
+        "state", choices=["on", "off"],
+        help="Enable/disable debug overlay"
+    )
+    debug_overlay_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    debug_overlay_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    # === service ===
+    service_parser = subparsers.add_parser(
+        "service",
+        help="Runtime service operations",
+    )
+    service_subparsers = service_parser.add_subparsers(dest="service_subcommand", required=True)
+
+    service_register_parser = service_subparsers.add_parser(
+        "register",
+        help="Register a runtime service",
+    )
+    service_register_parser.add_argument("name", help="Service name")
+    service_register_parser.add_argument("component_name", help="Component class name (string reference)")
+    service_register_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    service_register_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    service_get_parser = service_subparsers.add_parser(
+        "get",
+        help="Get a registered runtime service",
+    )
+    service_get_parser.add_argument("name", help="Service name")
+    service_get_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    service_get_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    service_has_parser = service_subparsers.add_parser(
+        "has",
+        help="Check if a runtime service is registered",
+    )
+    service_has_parser.add_argument("name", help="Service name")
+    service_has_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    service_has_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === agent ===
     agent_parser = subparsers.add_parser(
@@ -1545,6 +2130,25 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 project_path=Path(parsed.project_root).resolve(),
                 json_output=parsed.json,
             )
+        elif parsed.scene_subcommand == "flow":
+            if parsed.scene_flow_subcommand == "next":
+                return cmd_scene_flow_next(
+                    project_path=Path(parsed.project_root).resolve(),
+                    json_output=parsed.json,
+                )
+            elif parsed.scene_flow_subcommand == "menu":
+                return cmd_scene_flow_menu(
+                    project_path=Path(parsed.project_root).resolve(),
+                    json_output=parsed.json,
+                )
+            elif parsed.scene_flow_subcommand == "set-link":
+                return cmd_scene_flow_set_link(
+                    project_path=Path(parsed.project_root).resolve(),
+                    source_scene=parsed.source_scene,
+                    target_scene=parsed.target_scene,
+                    entity_id=parsed.entity_id,
+                    json_output=parsed.json,
+                )
 
     # === runtime ===
     elif parsed.command == "runtime":
@@ -1592,6 +2196,80 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 step_frames=parsed.step_frames,
                 json_output=parsed.json,
             )
+        elif parsed.runtime_subcommand == "undo":
+            return cmd_runtime_undo(
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
+        elif parsed.runtime_subcommand == "redo":
+            return cmd_runtime_redo(
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
+        elif parsed.runtime_subcommand == "audio":
+            if parsed.runtime_audio_subcommand == "play":
+                return cmd_runtime_audio_play(
+                    project_path=Path(parsed.project_root).resolve(),
+                    source_id=parsed.source_id,
+                    json_output=parsed.json,
+                )
+            elif parsed.runtime_audio_subcommand == "stop":
+                return cmd_runtime_audio_stop(
+                    project_path=Path(parsed.project_root).resolve(),
+                    source_id=parsed.source_id,
+                    json_output=parsed.json,
+                )
+            elif parsed.runtime_audio_subcommand == "pause":
+                return cmd_runtime_audio_pause(
+                    project_path=Path(parsed.project_root).resolve(),
+                    source_id=parsed.source_id,
+                    json_output=parsed.json,
+                )
+            elif parsed.runtime_audio_subcommand == "resume":
+                return cmd_runtime_audio_resume(
+                    project_path=Path(parsed.project_root).resolve(),
+                    source_id=parsed.source_id,
+                    json_output=parsed.json,
+                )
+
+    # === physics ===
+    elif parsed.command == "physics":
+        if parsed.physics_subcommand == "query" and parsed.physics_query_subcommand == "aabb":
+            return cmd_physics_query_aabb(
+                project_path=Path(parsed.project_root).resolve(),
+                left=parsed.left,
+                top=parsed.top,
+                right=parsed.right,
+                bottom=parsed.bottom,
+                json_output=parsed.json,
+            )
+        elif parsed.physics_subcommand == "query" and parsed.physics_query_subcommand == "ray":
+            return cmd_physics_query_ray(
+                project_path=Path(parsed.project_root).resolve(),
+                origin_x=parsed.origin_x,
+                origin_y=parsed.origin_y,
+                direction_x=parsed.direction_x,
+                direction_y=parsed.direction_y,
+                max_distance=parsed.max_distance,
+                json_output=parsed.json,
+            )
+        elif parsed.physics_subcommand == "backend" and parsed.physics_backend_subcommand == "list":
+            return cmd_physics_backend_list(
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
+
+    # === physics ===
+    elif parsed.command == "physics":
+        if parsed.physics_subcommand == "query" and parsed.physics_query_subcommand == "aabb":
+            return cmd_physics_query_aabb(
+                project_path=Path(parsed.project_root).resolve(),
+                left=parsed.left,
+                top=parsed.top,
+                right=parsed.right,
+                bottom=parsed.bottom,
+                json_output=parsed.json,
+            )
 
     # === entity ===
     elif parsed.command == "entity":
@@ -1603,6 +2281,55 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 project_path=Path(parsed.project_root).resolve(),
                 name=parsed.name,
                 components=components,
+                json_output=parsed.json,
+            )
+        elif parsed.entity_subcommand == "list":
+            return cmd_entity_list(
+                project_path=Path(parsed.project_root).resolve(),
+                tag=parsed.tag,
+                layer=parsed.layer,
+                active_only=parsed.active_only,
+                json_output=parsed.json,
+            )
+        elif parsed.entity_subcommand == "delete":
+            return cmd_entity_delete(
+                project_path=Path(parsed.project_root).resolve(),
+                name=parsed.name,
+                json_output=parsed.json,
+            )
+        elif parsed.entity_subcommand == "group":
+            if parsed.entity_group_subcommand == "add":
+                return cmd_entity_group_add(
+                    project_path=Path(parsed.project_root).resolve(),
+                    entity_name=parsed.entity_id,
+                    group_name=parsed.group_name,
+                    json_output=parsed.json,
+                )
+            elif parsed.entity_group_subcommand == "remove":
+                return cmd_entity_group_remove(
+                    project_path=Path(parsed.project_root).resolve(),
+                    entity_name=parsed.entity_id,
+                    group_name=parsed.group_name,
+                    json_output=parsed.json,
+                )
+            elif parsed.entity_group_subcommand == "list":
+                return cmd_entity_group_list(
+                    project_path=Path(parsed.project_root).resolve(),
+                    group_name=parsed.group_name,
+                    json_output=parsed.json,
+                )
+        elif parsed.entity_subcommand == "set-parent":
+            return cmd_entity_set_parent(
+                project_path=Path(parsed.project_root).resolve(),
+                entity_name=parsed.entity_id,
+                parent_name=parsed.parent_id,
+                json_output=parsed.json,
+            )
+        elif parsed.entity_subcommand == "create-child":
+            return cmd_entity_create_child(
+                project_path=Path(parsed.project_root).resolve(),
+                parent_name=parsed.parent_id,
+                name=parsed.name,
                 json_output=parsed.json,
             )
     
@@ -1617,6 +2344,29 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 entity_name=parsed.entity,
                 component_name=parsed.component,
                 data=data,
+                json_output=parsed.json,
+            )
+        elif parsed.component_subcommand == "edit":
+            if parsed.raw:
+                value = parsed.value
+            else:
+                try:
+                    value = json.loads(parsed.value)
+                except json.JSONDecodeError:
+                    value = parsed.value
+            return cmd_component_edit(
+                project_path=Path(parsed.project_root).resolve(),
+                entity_name=parsed.entity,
+                component_name=parsed.component,
+                property_name=parsed.property,
+                value=value,
+                json_output=parsed.json,
+            )
+        elif parsed.component_subcommand == "remove":
+            return cmd_component_remove(
+                project_path=Path(parsed.project_root).resolve(),
+                entity_name=parsed.entity,
+                component_name=parsed.component,
                 json_output=parsed.json,
             )
 
@@ -1802,6 +2552,113 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                     naming_prefix=parsed.naming_prefix,
                     json_output=parsed.json,
                 )
+
+    # === signal ===
+    elif parsed.command == "signal":
+        if parsed.signal_subcommand == "connect":
+            return cmd_signal_connect(
+                project_path=Path(parsed.project_root).resolve(),
+                signal_name=parsed.signal_name,
+                source_entity=parsed.source_entity,
+                target_entity=parsed.target_entity,
+                json_output=parsed.json,
+            )
+        elif parsed.signal_subcommand == "emit":
+            return cmd_signal_emit(
+                project_path=Path(parsed.project_root).resolve(),
+                signal_name=parsed.signal_name,
+                entity_id=parsed.entity_id,
+                json_output=parsed.json,
+            )
+        elif parsed.signal_subcommand == "disconnect":
+            return cmd_signal_disconnect(
+                project_path=Path(parsed.project_root).resolve(),
+                signal_name=parsed.signal_name,
+                source_entity=parsed.source_entity,
+                target_entity=parsed.target_entity,
+                json_output=parsed.json,
+            )
+        elif parsed.signal_subcommand == "list":
+            return cmd_signal_list(
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
+
+    # === ui ===
+    elif parsed.command == "ui":
+        if parsed.ui_subcommand == "create-canvas":
+            return cmd_ui_create_canvas(
+                project_path=Path(parsed.project_root).resolve(),
+                name=parsed.name,
+                width=parsed.width,
+                height=parsed.height,
+                json_output=parsed.json,
+            )
+        elif parsed.ui_subcommand == "create-text":
+            return cmd_ui_create_text(
+                project_path=Path(parsed.project_root).resolve(),
+                text=parsed.text,
+                parent=parsed.parent,
+                font_size=parsed.font_size,
+                color=parsed.color,
+                json_output=parsed.json,
+            )
+        elif parsed.ui_subcommand == "create-button":
+            return cmd_ui_create_button(
+                project_path=Path(parsed.project_root).resolve(),
+                text=parsed.text,
+                parent=parsed.parent,
+                json_output=parsed.json,
+            )
+        elif parsed.ui_subcommand == "create-image":
+            return cmd_ui_create_image(
+                project_path=Path(parsed.project_root).resolve(),
+                asset_path=parsed.asset_path,
+                parent=parsed.parent,
+                json_output=parsed.json,
+            )
+
+    # === debug ===
+    elif parsed.command == "debug":
+        if parsed.debug_subcommand == "profiler":
+            if parsed.debug_profiler_subcommand == "reset":
+                return cmd_debug_profiler_reset(
+                    project_path=Path(parsed.project_root).resolve(),
+                    json_output=parsed.json,
+                )
+            elif parsed.debug_profiler_subcommand == "report":
+                return cmd_debug_profiler_report(
+                    project_path=Path(parsed.project_root).resolve(),
+                    json_output=parsed.json,
+                )
+        elif parsed.debug_subcommand == "overlay":
+            return cmd_debug_overlay(
+                project_path=Path(parsed.project_root).resolve(),
+                enabled=(parsed.state == "on"),
+                json_output=parsed.json,
+            )
+
+    # === service ===
+    elif parsed.command == "service":
+        if parsed.service_subcommand == "register":
+            return cmd_service_register(
+                project_path=Path(parsed.project_root).resolve(),
+                name=parsed.name,
+                component_name=parsed.component_name,
+                json_output=parsed.json,
+            )
+        elif parsed.service_subcommand == "get":
+            return cmd_service_get(
+                project_path=Path(parsed.project_root).resolve(),
+                name=parsed.name,
+                json_output=parsed.json,
+            )
+        elif parsed.service_subcommand == "has":
+            return cmd_service_has(
+                project_path=Path(parsed.project_root).resolve(),
+                name=parsed.name,
+                json_output=parsed.json,
+            )
 
     # === agent ===
     elif parsed.command == "agent":
