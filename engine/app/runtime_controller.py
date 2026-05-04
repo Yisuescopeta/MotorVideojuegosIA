@@ -301,6 +301,11 @@ class RuntimeController:
 
         character_controller_system = self._get_character_controller_system()
         if character_controller_system is not None:
+            backend_registry = self._get_physics_backend_registry()
+            if backend_registry is not None:
+                resolved = backend_registry.resolve(world)
+                if resolved.backend is not None:
+                    character_controller_system.set_physics_backend(resolved.backend)
             character_controller_system.update(world, dt)
 
         player_controller_system = self._get_player_controller_system()

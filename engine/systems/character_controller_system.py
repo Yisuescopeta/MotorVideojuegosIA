@@ -18,9 +18,14 @@ class CharacterControllerSystem:
     def __init__(self, event_bus: Optional[Any] = None) -> None:
         self._event_bus = event_bus
         self._emitted_contacts: set[tuple[int, int]] = set()
+        self._physics_backend: Optional[Any] = None
 
     def set_event_bus(self, event_bus: Optional[Any]) -> None:
         self._event_bus = event_bus
+
+    def set_physics_backend(self, backend: Any) -> None:
+        """Inyecta el backend de física resuelto para move_and_slide."""
+        self._physics_backend = backend
 
     def update(self, world: World, delta_time: float) -> None:
         self._emitted_contacts = set()
@@ -68,6 +73,11 @@ class CharacterControllerSystem:
         solids: list[Entity],
         delta_time: float,
     ) -> None:
+        # Si hay backend, usar move_and_slide nativo
+        if self._physics_backend is not None:
+            self._move_with_backend(world, entity, transform, collider, controller, delta_time)
+            return
+
         controller._was_on_floor = controller.on_floor
         controller.on_wall = False
         controller.on_ceiling = False
@@ -98,6 +108,83 @@ class CharacterControllerSystem:
                 self._sweep_vertical(world, entity, transform, collider, controller, solids, verify_delta)
 
         controller.slide_collisions.clear()
+
+    def _move_with_backend(
+        self,
+        world: World,
+        entity: Entity,
+        transform: Transform,
+        collider: Collider,
+        controller: CharacterController2D,
+        delta_time: float,
+    ) -> None:
+        """Usa PhysicsBackend.move_and_slide() en lugar de sweeps manuales."""
+        was_on_floor = controller.on_floor
+
+        # Aplicar platform velocity antes del movimiento
+        transform.x += controller.platform_velocity_x
+        transform.y += controller.platform_velocity_y
+        controller.platform_velocity_x = 0.0
+        controller.platform_velocity_y = 0.0
+
+        # Calcular velocidad (gravedad + input — igual que antes)
+        if not controller.on_floor:
+            controller.velocity_y = min(
+                controller.max_fall_speed,
+                controller.velocity_y + controller.gravity * delta_time,
+            )
+
+        # Llamar al backend
+        result = self._physics_backend.move_and_slide(
+            entity=entity,
+            velocity=(controller.velocity_x, controller.velocity_y),
+            delta_time=delta_time,
+            floor_max_angle=controller.floor_max_angle,
+            floor_snap_distance=controller.floor_snap_distance,
+            up_direction=(controller.up_direction_x, controller.up_direction_y),
+            wall_min_slide_angle=controller.wall_min_slide_angle,
+        )
+
+        # Aplicar resultado al Transform
+        transform.x = result.position_x
+        transform.y = result.position_y
+
+        # Copiar estado a CharacterController2D
+        controller.velocity_x = result.velocity_x
+        controller.velocity_y = result.velocity_y
+        controller.on_floor = result.on_floor
+        controller.on_wall = result.on_wall
+        controller.on_ceiling = result.on_ceiling
+        controller.collision_normal_x = result.collision_normal_x
+        controller.collision_normal_y = result.collision_normal_y
+        controller._was_on_floor = was_on_floor
+
+        # Emitir eventos de contacto
+        for contact in result.contacts:
+            other_name = contact.entity_b if contact.entity_a == entity.name else contact.entity_a
+            other_id = contact.entity_b_id if contact.entity_a_id == int(entity.id) else contact.entity_a_id
+            controller.last_hit_entity = other_name
+            self._emit_collision_manual(entity, other_name, int(entity.id), int(other_id))
+
+        controller.slide_collisions.clear()
+
+    def _emit_collision_manual(self, entity: Entity, other_name: str, entity_id: int, other_id: int) -> None:
+        if self._event_bus is None:
+            return
+        pair = (min(entity_id, other_id), max(entity_id, other_id))
+        if pair in self._emitted_contacts:
+            return
+        self._emitted_contacts.add(pair)
+        self._event_bus.emit(
+            "on_collision",
+            {
+                "entity_a": entity.name,
+                "entity_b": other_name,
+                "entity_a_id": entity_id,
+                "entity_b_id": other_id,
+                "is_trigger": False,
+            },
+        )
 
     def _sweep_horizontal(
         self,

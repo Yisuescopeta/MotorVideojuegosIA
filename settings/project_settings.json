@@ -1,28 +1,6 @@
 {
     "startup_scene": "levels/level_1.json",
     "template": "empty",
-    "autoloads": {
-        "GlobalState": {
-            "scene_path": "prefabs/global_state.json",
-            "singleton": true
-        }
-    },
-    "import_options": {
-        "textures": {
-            "filter_mode": "linear",
-            "generate_mipmaps": false,
-            "compress": false
-        },
-        "audio": {
-            "sample_rate": 44100,
-            "channels": 2,
-            "stream": false
-        },
-        "fonts": {
-            "size": 16,
-            "chars": ""
-        }
-    },
     "terminal": {
         "execution_policy": "inherit"
     },
