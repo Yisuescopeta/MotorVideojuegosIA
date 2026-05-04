@@ -24,7 +24,11 @@ class CharacterControllerSystem:
         self._event_bus = event_bus
 
     def set_physics_backend(self, backend: Any) -> None:
-        """Inyecta el backend de física resuelto para move_and_slide."""
+        """Inyecta el backend de física resuelto (PhysicsBackend).
+        
+        Llamado por RuntimeController cada frame antes del update.
+        Si es None, el sistema usa el código legacy de sweeps AABB.
+        """
         self._physics_backend = backend
 
     def update(self, world: World, delta_time: float) -> None:
@@ -118,7 +122,7 @@ class CharacterControllerSystem:
         controller: CharacterController2D,
         delta_time: float,
     ) -> None:
-        """Usa PhysicsBackend.move_and_slide() en lugar de sweeps manuales."""
+        """Usa PhysicsBackend según move_mode (move_and_slide o move_and_collide)."""
         was_on_floor = controller.on_floor
 
         # Aplicar platform velocity antes del movimiento
@@ -134,16 +138,23 @@ class CharacterControllerSystem:
                 controller.velocity_y + controller.gravity * delta_time,
             )
 
-        # Llamar al backend
-        result = self._physics_backend.move_and_slide(
-            entity=entity,
-            velocity=(controller.velocity_x, controller.velocity_y),
-            delta_time=delta_time,
-            floor_max_angle=controller.floor_max_angle,
-            floor_snap_distance=controller.floor_snap_distance,
-            up_direction=(controller.up_direction_x, controller.up_direction_y),
-            wall_min_slide_angle=controller.wall_min_slide_angle,
-        )
+        # Llamar al backend según move_mode
+        if controller.move_mode == "move_and_collide":
+            result = self._physics_backend.move_and_collide(
+                entity=entity,
+                velocity=(controller.velocity_x, controller.velocity_y),
+                delta_time=delta_time,
+            )
+        else:
+            result = self._physics_backend.move_and_slide(
+                entity=entity,
+                velocity=(controller.velocity_x, controller.velocity_y),
+                delta_time=delta_time,
+                floor_max_angle=controller.floor_max_angle,
+                floor_snap_distance=controller.floor_snap_distance,
+                up_direction=(controller.up_direction_x, controller.up_direction_y),
+                wall_min_slide_angle=controller.wall_min_slide_angle,
+            )
 
         # Aplicar resultado al Transform
         transform.x = result.position_x

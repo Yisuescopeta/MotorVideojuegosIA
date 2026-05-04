@@ -284,6 +284,17 @@ api.save_scene()
 api.shutdown()
 ```
 
+### Inyección automática de backend en CharacterControllerSystem
+
+El `CharacterControllerSystem` recibe automáticamente el `PhysicsBackend` resuelto
+cada frame desde `RuntimeController`. No es necesario que el agente configure nada:
+
+- Con backend: usa `PhysicsBackend.move_and_slide()` (Box2D o legacy)
+- Sin backend: fallback a código legacy AABB interno
+
+El componente `CharacterController2D` determina el modo (`move_and_slide` vs
+`move_and_collide`) y el backend lo respeta.
+
 ## Que evitar
 
 - No editar `SceneManager.edit_world` directamente para flujos publicos nuevos.

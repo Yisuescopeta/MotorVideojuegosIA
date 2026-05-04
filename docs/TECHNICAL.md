@@ -116,6 +116,25 @@ con `_floor_snap()`, filtrado por `CollisionFilter2D` y matriz de capas desde
 `feature_metadata.physics_2d.layer_matrix`. La clasificacion de colisiones
 (suelo/pared/techo) se realiza por angulo respecto a `up_direction`.
 
+### Integracion runtime del backend en CharacterControllerSystem
+
+`CharacterControllerSystem` admite inyeccion del backend resuelto via
+`set_physics_backend(backend)`. Cuando hay backend, `_move_entity()` delega en
+`_move_with_backend()` que llama a `PhysicsBackend.move_and_slide()` con los
+parametros de `CharacterController2D` (velocidad, gravedad, `up_direction`,
+`floor_max_angle`, `floor_snap_distance`, `wall_min_slide_angle`) y copia el
+`MoveResult2D` resultante al Transform y al componente (velocidad, flags
+`on_floor`/`on_wall`/`on_ceiling`, normales de colision). Los contactos del
+resultado se emiten como eventos `on_collision` en el EventBus, con la misma
+deduplicacion por par que el codigo legacy.
+
+`RuntimeController.update_gameplay()` es quien inyecta el backend cada frame:
+resuelve `PhysicsBackendRegistry.resolve(world)` y, si hay backend disponible,
+lo pasa a `CharacterControllerSystem.set_physics_backend()` antes de llamar a
+`update()`. Esto mantiene el `legacy_aabb` como fallback: si el registry
+devuelve `None`, el sistema sigue usando sus barridos AABB manuales
+(`_sweep_horizontal`/`_sweep_vertical`/`_floor_snap`) sin cambios.
+
 `AudioSystem` sigue siendo la superficie ECS/runtime compatible y delega en la
 foundation interna de `engine/audio/`. El backend real de audio, buses/mixer,
 spatial audio completo y la integracion con el `EventBus` global quedan
