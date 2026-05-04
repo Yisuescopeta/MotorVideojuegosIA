@@ -30,6 +30,20 @@ Mi salida es un plan estructurado que un builder puede ejecutar.
 
 ---
 
+## Skills
+
+Cargo estas skills al iniciar cada tarea de planificación:
+
+- **`architecture-patterns`**: Aplico Clean Architecture, Hexagonal y DDD para diseñar soluciones mantenibles y desacopladas.
+- **`error-handling-patterns`**: Diseño contratos de API robustos considerando Result types, propagación de errores y degradación graceful.
+
+**Cuándo cargar:**
+- Al inicio de cada planificación (antes del proceso de 6 pasos).
+- `architecture-patterns` SIEMPRE para tareas de arquitectura/sistemas.
+- `error-handling-patterns` cuando el plan involucra APIs públicas, flujos de error, o nuevos contratos entre subsistemas.
+
+---
+
 ## Modos de operación
 
 ### Modo Estándar

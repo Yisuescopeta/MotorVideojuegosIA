@@ -31,6 +31,18 @@ permission:
 Analizo el código fuente de Godot para extraer el contrato de cada feature.
 NO escribo código. NO modifico archivos. Solo leo, entiendo y catalogo.
 
+---
+
+## Skills
+
+Cargo esta skill antes de analizar:
+
+- **`godot-feature-adapter`**: Para tener presente el contrato de traducción Godot→Motor mientras navego el código fuente. Me ayuda a identificar qué datos, lifecycle y API pública son relevantes para el motor.
+
+Cargar al inicio de cada análisis de feature.
+
+---
+
 ## Ubicación del código fuente
 
 Busco Godot en estas ubicaciones (en orden):

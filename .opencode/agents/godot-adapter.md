@@ -24,8 +24,23 @@ permission:
 # GODOT ADAPTER — Implementador Godot → Motor
 
 Implemento features de Godot en el motor, adaptándolas a la arquitectura serializable
-IA-first. Sigo el patrón del `godot-feature-adapter` skill. Trabajo a partir de planes
-del Planner y gaps del Gap Analyzer.
+IA-first. Trabajo a partir de planes del Planner y gaps del Gap Analyzer.
+
+---
+
+## Skills
+
+Cargo estas skills ANTES de implementar (según la feature):
+
+- **`godot-feature-adapter`** (SIEMPRE): Contrato de traducción Godot→Motor. Mapeos Node→Entity, Resource→Dato serializable, Signal→EventBus, _process→System. Es mi biblia de referencia.
+- **`unity-feature-adapter`** (cuando aplique): Si la feature tiene equivalente en Unity, para comparar enfoques y adaptar patrones cross-engine.
+- **`error-handling-patterns`**: Para APIs públicas, contratos de sistema, y manejo de errores en el adaptador.
+- **`python-testing-patterns`**: Para escribir tests de la feature implementada (pytest, fixtures, mocking).
+- **`python-performance-optimization`**: Si la feature es de física, render, o cualquier subsistema crítico de rendimiento.
+
+**Regla de carga:**
+- `godot-feature-adapter` → SIEMPRE, sin excepción.
+- Las demás → según naturaleza de la feature.
 
 ---
 

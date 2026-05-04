@@ -29,6 +29,18 @@ permission:
 Comparo features de Godot con lo que YA tiene el motor y produzco una matriz
 de gaps priorizados. NO escribo código. NO modifico archivos. Solo leo y comparo.
 
+---
+
+## Skills
+
+Cargo esta skill antes de analizar gaps:
+
+- **`godot-feature-adapter`**: Para usar los mappings Godot→Motor como referencia durante la comparación. Me ayuda a sugerir mappings concretos (componentes, sistemas, recursos) para cada gap encontrado.
+
+Cargar al inicio de cada análisis de gaps.
+
+---
+
 ## Contexto de entrada
 
 Recibo de la Reina:

@@ -187,7 +187,12 @@ Queen (primary agent, DeepSeek Pro Max)
 ├── Builder (subagent, Pro Max/Flash) — implementa codigo
 ├── Code Reviewer (subagent, Flash) — revisa calidad/SOLID
 ├── AI-Friendliness (subagent, Flash) — audita amigabilidad IA
-└── Context Recon (subagent, Flash) — reconocimiento read-only
+├── Documenter (subagent, Flash) — actualiza docs canónicas
+├── Committer (subagent, Flash) — commits en español
+├── Context Recon (subagent, Flash) — reconocimiento read-only
+├── Godot Source Analyzer (subagent, Pro Max) — analiza codigo fuente Godot
+├── Godot Gap Analyzer (subagent, Flash) — gap matrix Godot vs Motor
+└── Godot Adapter (subagent, Pro Max/Flash) — implementa features Godot→Motor
 ```
 
 ### Archivos del sistema
@@ -199,10 +204,34 @@ Queen (primary agent, DeepSeek Pro Max)
 | `.opencode/agents/builder.md` | Implementador de codigo |
 | `.opencode/agents/code-reviewer.md` | Revisor de codigo |
 | `.opencode/agents/ai-friendliness.md` | Auditor de amigabilidad IA |
+| `.opencode/agents/documenter.md` | Cronista — actualiza docs canónicas |
+| `.opencode/agents/committer.md` | Escriba — commits en español |
+| `.opencode/agents/godot-source-analyzer.md` | Analista de codigo fuente Godot |
+| `.opencode/agents/godot-gap-analyzer.md` | Comparador Godot vs Motor |
+| `.opencode/agents/godot-adapter.md` | Implementador de features Godot |
 | `.opencode/commands/queen.md` | Comando `/queen` en TUI |
 | `opencode.json` | Configuracion de agentes y modelos |
 | `tools/queen_state.py` | Helper de persistencia de estado |
 | `.motor/queen_state/` | Estado persistente (planes, reports) |
+
+### Skills asignadas a sub-agentes
+
+Cada sub-agente carga skills especificas al inicio de su tarea para maximizar
+calidad y eficiencia:
+
+| Agente | Skills | Cuando carga |
+|--------|--------|-------------|
+| Queen | `caveman` | Siempre (eficiencia de tokens) |
+| Planner | `architecture-patterns`, `error-handling-patterns` | Siempre / cuando disena APIs |
+| Builder | `systematic-debugging`, `python-testing-patterns`, `error-handling-patterns`, `python-performance-optimization` | Segun tipo de tarea |
+| Code Reviewer | `code-review-expert` | Siempre |
+| AI-Friendliness | _(ninguna)_ | — |
+| Documenter | `doc-coauthoring`, `docx` | Siempre / solo si pide .docx |
+| Committer | _(ninguna)_ | — |
+| Godot Source Analyzer | `godot-feature-adapter` | Siempre |
+| Godot Gap Analyzer | `godot-feature-adapter` | Siempre |
+| Godot Adapter | `godot-feature-adapter`, `unity-feature-adapter`, `error-handling-patterns`, `python-testing-patterns` | godot-feature-adapter siempre, resto segun feature |
+| Context Recon | _(ninguna)_ | — |
 
 ### Como usar
 

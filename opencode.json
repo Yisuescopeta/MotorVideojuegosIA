@@ -47,7 +47,8 @@
         "edit": "allow",
         "bash": "allow",
         "glob": "allow",
-        "grep": "allow"
+        "grep": "allow",
+        "skill": "allow"
       }
     },
     "code-reviewer": {
@@ -59,6 +60,7 @@
         "read": "allow",
         "glob": "allow",
         "grep": "allow",
+        "skill": "allow",
         "bash": {
           "py -m pytest *": "allow",
           "py -m motor *": "allow",
@@ -172,6 +174,29 @@
         "grep": "allow",
         "edit": "deny",
         "write": "deny",
+        "task": "deny",
+        "question": "deny"
+      }
+    },
+    "documenter": {
+      "description": "Documentation writer. Reads git diff, maps changes to canonical docs per documentation_governance.md, writes docs. Never edits code.",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4-flash",
+      "temperature": 0.1,
+      "permission": {
+        "read": "allow",
+        "edit": "allow",
+        "write": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "skill": "allow",
+        "bash": {
+          "git diff *": "allow",
+          "git log *": "allow",
+          "git status *": "allow",
+          "py -m motor --help": "allow",
+          "py -m motor doctor *": "allow"
+        },
         "task": "deny",
         "question": "deny"
       }

@@ -25,6 +25,17 @@ permission:
 You implement code changes. You follow plans from the `@planner` agent or direct instructions.
 You always verify your work by running relevant tests.
 
+## Skills
+
+Carga la skill correspondiente según el tipo de tarea ANTES de empezar a implementar:
+
+- **`systematic-debugging`**: Si la tarea es un bug fix — seguir el proceso de 4 fases (investigación, patrones, hipótesis, implementación). No corregir sin causa raíz.
+- **`python-testing-patterns`**: SIEMPRE — para escribir tests con pytest, fixtures, mocking y TDD. Cargar antes de escribir cualquier test.
+- **`error-handling-patterns`**: Cuando el plan involucra APIs, flujos de error, o contratos entre subsistemas.
+- **`python-performance-optimization`**: Cuando el plan incluye optimización, profiling o sistemas críticos de rendimiento.
+
+**Regla:** Si no estás seguro de qué skill cargar, carga al menos `python-testing-patterns` (siempre hay que testear).
+
 ## Your Process
 
 1. **Read the plan or instructions** — understand exactly what needs to change.
