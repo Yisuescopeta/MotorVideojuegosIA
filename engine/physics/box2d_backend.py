@@ -210,7 +210,15 @@ class Box2DPhysicsBackend(PhysicsBackend):
         wall_min_slide_angle: float = 0.261799,
         max_slides: int = 4,
     ) -> MoveResult2D:
-        """Box2D move_and_slide via contact detection after mini-step."""
+        """Box2D move_and_slide — kinematic character movement via velocity.
+
+        Sets body.linearVelocity for the main physics step() to process.
+        Contacts are read from the PREVIOUS step (not this frame's movement).
+        The actual position update happens in step(), not here.
+
+        Note: floor_snap_distance and max_slides are reserved for future implementation.
+        Currently only single-slide with basic floor detection is supported.
+        """
         body = self._bodies.get(int(entity.id))
         if body is None:
             transform = entity.get_component(Transform) if hasattr(entity, "get_component") else None
@@ -222,20 +230,16 @@ class Box2DPhysicsBackend(PhysicsBackend):
             )
 
         vx, vy = float(velocity[0]), float(velocity[1])
-        dt = float(delta_time)
         ux, uy = float(up_direction[0]), float(up_direction[1])
 
-        orig_x = float(body.position[0])
-        orig_y = float(body.position[1])
+        # NO llamar Step(). Solo setear velocidad para que step() principal la procese.
+        body.linearVelocity = (vx, vy)
 
-        desired_x = orig_x + vx * dt
-        desired_y = orig_y + vy * dt
-        body.position = (desired_x, desired_y)
+        # Leer posición actual (será actualizada por step() principal en el mismo frame)
+        pos_x = float(body.position[0])
+        pos_y = float(body.position[1])
 
-        # Mini-step para que Box2D detecte solapamientos y ajuste posición
-        if dt > 1e-8:
-            self._world.Step(dt, 6, 2)
-
+        # Leer contactos actuales del body (del step anterior)
         on_floor = False
         on_wall = False
         on_ceiling = False
@@ -279,17 +283,17 @@ class Box2DPhysicsBackend(PhysicsBackend):
                 is_trigger=False,
             ))
 
-        final_x = float(body.position[0])
-        final_y = float(body.position[1])
+        # Floor snap: aproximado en Box2D — los contactos del step anterior
+        # ya detectan el suelo si el body está cerca. Snap completo requiere raycast.
+        _ = floor_snap_distance  # reservado para futura implementación
 
-        final_vx = (final_x - orig_x) / dt if dt > 0 else vx
-        final_vy = (final_y - orig_y) / dt if dt > 0 else vy
+        _ = max_slides  # reservado para futura implementación
 
         return MoveResult2D(
-            position_x=final_x,
-            position_y=final_y,
-            velocity_x=final_vx,
-            velocity_y=final_vy,
+            position_x=pos_x,
+            position_y=pos_y,
+            velocity_x=vx,
+            velocity_y=vy,
             on_floor=on_floor,
             on_wall=on_wall,
             on_ceiling=on_ceiling,
