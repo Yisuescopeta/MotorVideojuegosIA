@@ -53,6 +53,7 @@ class RuntimeController:
         self._get_parallax_system = context.get_parallax_system
         self._get_resource_preloader_system = context.get_resource_preloader_system
         self._get_particle_system = context.get_particle_system
+        self._get_area2d_system = context.get_area2d_system
         self._get_path_follow_system = context.get_path_follow_system
         self._get_gameplay2d_semantic_system = context.get_gameplay2d_semantic_system
         self._get_navigation_agent_system = context.get_navigation_agent_system
@@ -346,6 +347,10 @@ class RuntimeController:
         particle_system = self._get_particle_system()
         if particle_system is not None:
             particle_system.update(world, dt)
+
+        area2d_system = self._get_area2d_system()
+        if area2d_system is not None:
+            area2d_system.update(world)
 
         visible_on_screen_system = self._get_visible_on_screen_system()
         if visible_on_screen_system is not None:

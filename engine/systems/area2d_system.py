@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Optional
 
 from engine.components.area2d import Area2D
 from engine.components.collider import Collider
+from engine.components.collision_filter_2d import CollisionFilter2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
@@ -84,6 +85,8 @@ class Area2DSystem:
             current_bodies: set[int] = set()
             current_areas: set[int] = set()
 
+            area_filter = area_entity.get_component(CollisionFilter2D)
+
             for other_id in query_result:
                 if other_id == area_entity_id:
                     continue
@@ -92,7 +95,9 @@ class Area2DSystem:
                 if other_id in self._body_entries:
                     other_entity, other_collider, other_aabb = self._body_entries[other_id]
                     if self._aabbs_overlap(area_aabb, other_aabb):
-                        current_bodies.add(other_id)
+                        other_filter = other_entity.get_component(CollisionFilter2D)
+                        if CollisionFilter2D.should_collide(area_filter, other_filter):
+                            current_bodies.add(other_id)
 
                 # Check area overlap
                 if other_id in self._area_entries:
@@ -100,7 +105,9 @@ class Area2DSystem:
                     other_area2d = other_entity.get_component(Area2D)
                     if other_area2d is not None and other_area2d.monitorable:
                         if self._aabbs_overlap(area_aabb, other_aabb):
-                            current_areas.add(other_id)
+                            other_filter = other_entity.get_component(CollisionFilter2D)
+                            if CollisionFilter2D.should_collide(area_filter, other_filter):
+                                current_areas.add(other_id)
 
             prev_bodies = area2d._tracked_bodies
             prev_areas = area2d._tracked_areas

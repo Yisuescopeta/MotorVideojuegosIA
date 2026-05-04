@@ -70,6 +70,7 @@ if TYPE_CHECKING:
     from engine.scenes.scene import Scene
     from engine.scenes.scene_manager import SceneManager
     from engine.systems.animation_system import AnimationSystem
+    from engine.systems.area2d_system import Area2DSystem
     from engine.systems.audio_system import AudioSystem
     from engine.systems.character_controller_system import CharacterControllerSystem
     from engine.systems.collision_system import CollisionSystem
@@ -142,6 +143,7 @@ class Game:
         self._ui_render_system: Optional["UIRenderSystem"] = None
         self._light2d_system: Optional["Light2DSystem"] = None
         self._line2d_render_system: Optional["Line2DRenderSystem"] = None
+        self._area2d_system: Optional["Area2DSystem"] = None
         self._particle_system: Optional["ParticleSystem"] = None
         self._path_follow_system: Optional["PathFollowSystem"] = None
         self._gameplay2d_semantic_system: Optional["Gameplay2DSemanticSystem"] = None
@@ -256,6 +258,7 @@ class Game:
                 get_parallax_system=lambda: self._parallax_system,
                 get_resource_preloader_system=lambda: self._resource_preloader_system,
                 get_particle_system=lambda: self._particle_system,
+                get_area2d_system=lambda: self._area2d_system,
                 get_path_follow_system=lambda: self._path_follow_system,
                 get_gameplay2d_semantic_system=lambda: self._gameplay2d_semantic_system,
                 get_navigation_agent_system=lambda: self._navigation_agent_system,
@@ -726,6 +729,9 @@ class Game:
 
     def set_particle_system(self, system: "ParticleSystem") -> None:
         self._particle_system = system
+
+    def set_area2d_system(self, system: "Area2DSystem") -> None:
+        self._area2d_system = system
 
     def set_path_follow_system(self, system: "PathFollowSystem") -> None:
         self._path_follow_system = system

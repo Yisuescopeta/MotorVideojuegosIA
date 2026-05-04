@@ -120,7 +120,7 @@ class RigidBody(Component):
 
     def to_dict(self) -> dict[str, Any]:
         """Serializa el RigidBody a diccionario."""
-        self.constraints = self.constraints_from_freeze(self.freeze_x, self.freeze_y)
+        constraints = self.constraints_from_freeze(self.freeze_x, self.freeze_y)
         return {
             "enabled": self.enabled,
             "velocity_x": self.velocity_x,
@@ -131,7 +131,7 @@ class RigidBody(Component):
             "simulated": self.simulated,
             "freeze_x": self.freeze_x,
             "freeze_y": self.freeze_y,
-            "constraints": list(self.constraints),
+            "constraints": list(constraints),
             "use_full_kinematic_contacts": self.use_full_kinematic_contacts,
             "collision_detection_mode": self.collision_detection_mode,
             "mass": self.mass,

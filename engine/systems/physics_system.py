@@ -125,8 +125,8 @@ class PhysicsSystem:
                             rigidbody.angular_velocity = 0.0
                         rigidbody.angular_velocity += angular_accel * delta_time
 
-                # Limpiar buffers al final del frame
-                rigidbody._clear_force_buffers()
+            # Limpiar buffers al final del frame (siempre, incluso para static/kinematic)
+            rigidbody._clear_force_buffers()
 
             delta_x = 0.0 if rigidbody.freeze_x else rigidbody.velocity_x * delta_time
             delta_y = 0.0 if rigidbody.freeze_y else rigidbody.velocity_y * delta_time
@@ -222,18 +222,10 @@ class PhysicsSystem:
         return True
 
     def _filter_allows_collision(self, entity_a: Entity, entity_b: Entity) -> bool:
-        filter_a = entity_a.get_component(CollisionFilter2D)
-        filter_b = entity_b.get_component(CollisionFilter2D)
-
-        if filter_a is None and filter_b is None:
-            return True
-
-        layer_a = filter_a.layer if filter_a is not None else 0xFFFFFFFF
-        mask_a = filter_a.mask if filter_a is not None else 0xFFFFFFFF
-        layer_b = filter_b.layer if filter_b is not None else 0xFFFFFFFF
-        mask_b = filter_b.mask if filter_b is not None else 0xFFFFFFFF
-
-        return (mask_a & layer_b) != 0 and (mask_b & layer_a) != 0
+        return CollisionFilter2D.should_collide(
+            entity_a.get_component(CollisionFilter2D),
+            entity_b.get_component(CollisionFilter2D),
+        )
 
     def _collect_candidate_solids(
         self,

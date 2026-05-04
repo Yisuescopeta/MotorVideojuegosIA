@@ -81,6 +81,7 @@ class EngineAPI:
         from engine.assets.asset_service import AssetService
         from engine.inspector.inspector_system import InspectorSystem
         from engine.systems.animation_system import AnimationSystem
+        from engine.systems.area2d_system import Area2DSystem
         from engine.systems.audio_system import AudioSystem
         from engine.systems.character_controller_system import CharacterControllerSystem
         from engine.systems.collision_system import CollisionSystem
@@ -135,6 +136,7 @@ class EngineAPI:
         self.game.set_light2d_system(Light2DSystem())
         self.game.set_line2d_render_system(Line2DRenderSystem())
         self.game.set_particle_system(ParticleSystem(event_bus))
+        self.game.set_area2d_system(Area2DSystem(event_bus=event_bus))
         self.game.set_parallax_system(ParallaxSystem())
         self.game.set_timer_system(TimerSystem())
         self.game.set_tween_system(TweenSystem())

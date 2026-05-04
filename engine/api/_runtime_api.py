@@ -403,38 +403,32 @@ class RuntimeAPI(EngineAPIComponent):
             }
         return runtime.get_physics_backend_selection()
 
-    def apply_force(self, entity_name: str, force_x: float, force_y: float) -> bool:
+    def apply_force(self, entity_name: str, force_x: float, force_y: float) -> ActionResult:
         """Aplica fuerza continua a una entidad con RigidBody."""
         entity = self.require_entity(entity_name)
-        if entity is None:
-            return False
         rb = entity.get_component(RigidBody)
         if rb is None:
-            return False
+            return ActionResult(success=False, error=f"Entity '{entity_name}' has no RigidBody")
         rb.apply_force(force_x, force_y)
-        return True
+        return ActionResult(success=True)
 
-    def apply_impulse(self, entity_name: str, impulse_x: float, impulse_y: float) -> bool:
+    def apply_impulse(self, entity_name: str, impulse_x: float, impulse_y: float) -> ActionResult:
         """Aplica impulso instantáneo a una entidad con RigidBody."""
         entity = self.require_entity(entity_name)
-        if entity is None:
-            return False
         rb = entity.get_component(RigidBody)
         if rb is None:
-            return False
+            return ActionResult(success=False, error=f"Entity '{entity_name}' has no RigidBody")
         rb.apply_impulse(impulse_x, impulse_y)
-        return True
+        return ActionResult(success=True)
 
-    def apply_torque(self, entity_name: str, torque: float) -> bool:
+    def apply_torque(self, entity_name: str, torque: float) -> ActionResult:
         """Aplica torque a una entidad con RigidBody."""
         entity = self.require_entity(entity_name)
-        if entity is None:
-            return False
         rb = entity.get_component(RigidBody)
         if rb is None:
-            return False
+            return ActionResult(success=False, error=f"Entity '{entity_name}' has no RigidBody")
         rb.apply_torque(torque)
-        return True
+        return ActionResult(success=True)
 
     def play_audio(self, entity_name: str) -> ActionResult:
         """Start audio playback for an AudioSource entity.

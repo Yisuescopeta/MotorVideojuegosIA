@@ -255,18 +255,10 @@ class CollisionSystem:
         return bool(matrix.get(f"{layer_a}|{layer_b}", True))
 
     def _filter_allows_collision(self, entity_a: Entity, entity_b: Entity) -> bool:
-        filter_a = entity_a.get_component(CollisionFilter2D)
-        filter_b = entity_b.get_component(CollisionFilter2D)
-
-        if filter_a is None and filter_b is None:
-            return True
-
-        layer_a = filter_a.layer if filter_a is not None else 0xFFFFFFFF
-        mask_a = filter_a.mask if filter_a is not None else 0xFFFFFFFF
-        layer_b = filter_b.layer if filter_b is not None else 0xFFFFFFFF
-        mask_b = filter_b.mask if filter_b is not None else 0xFFFFFFFF
-
-        return (mask_a & layer_b) != 0 and (mask_b & layer_a) != 0
+        return CollisionFilter2D.should_collide(
+            entity_a.get_component(CollisionFilter2D),
+            entity_b.get_component(CollisionFilter2D),
+        )
 
     def _is_simulated(self, rigidbody: Optional[RigidBody]) -> bool:
         if rigidbody is None:
