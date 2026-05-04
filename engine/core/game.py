@@ -93,6 +93,7 @@ if TYPE_CHECKING:
     from engine.systems.path_follow_system import PathFollowSystem
     from engine.systems.gameplay2d_semantic_system import Gameplay2DSemanticSystem
     from engine.systems.navigation_agent_system import NavigationAgentSystem
+    from engine.systems.ui_focus_system import UIFocusSystem
 
 
 class Game:
@@ -148,6 +149,7 @@ class Game:
         self._path_follow_system: Optional["PathFollowSystem"] = None
         self._gameplay2d_semantic_system: Optional["Gameplay2DSemanticSystem"] = None
         self._navigation_agent_system: Optional["NavigationAgentSystem"] = None
+        self._ui_focus_system: Optional["UIFocusSystem"] = None
 
         self.script_executor: Optional["ScriptExecutor"] = None
 
@@ -741,6 +743,28 @@ class Game:
 
     def set_navigation_agent_system(self, system: "NavigationAgentSystem") -> None:
         self._navigation_agent_system = system
+
+    def set_ui_focus_system(self, system: "UIFocusSystem") -> None:
+        self._ui_focus_system = system
+        if self._event_bus is not None:
+            self._ui_focus_system._event_bus = self._event_bus
+
+    @property
+    def ui_focus_system(self) -> Optional["UIFocusSystem"]:
+        return self._ui_focus_system
+
+    def set_ui_focus(self, entity_id: int) -> None:
+        if self._ui_focus_system is not None:
+            self._ui_focus_system.set_focus(entity_id)
+
+    def get_ui_focus(self) -> int | None:
+        if self._ui_focus_system is not None:
+            return self._ui_focus_system.get_focused_entity()
+        return None
+
+    def clear_ui_focus(self) -> None:
+        if self._ui_focus_system is not None:
+            self._ui_focus_system.clear_focus()
 
     def set_script_executor(self, executor: "ScriptExecutor") -> None:
         """Asigna un ejecutor de scripts para automatización visual."""

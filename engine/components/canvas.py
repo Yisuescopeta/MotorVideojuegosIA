@@ -20,6 +20,7 @@ class Canvas(Component):
         reference_height: int = 600,
         match_mode: str = "stretch",
         sort_order: int = 0,
+        theme_resource_path: str = "",
     ) -> None:
         self.enabled = enabled
         self.render_mode = str(render_mode or "screen_space_overlay")
@@ -27,6 +28,7 @@ class Canvas(Component):
         self.reference_height = max(1, int(reference_height))
         self.match_mode = str(match_mode or "stretch")
         self.sort_order = int(sort_order)
+        self.theme_resource_path = str(theme_resource_path or "")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -36,6 +38,7 @@ class Canvas(Component):
             "reference_height": self.reference_height,
             "match_mode": self.match_mode,
             "sort_order": self.sort_order,
+            "theme_resource_path": self.theme_resource_path,
         }
 
     @classmethod
@@ -47,4 +50,5 @@ class Canvas(Component):
             reference_height=data.get("reference_height", 600),
             match_mode=data.get("match_mode", "stretch"),
             sort_order=data.get("sort_order", 0),
+            theme_resource_path=data.get("theme_resource_path", ""),
         )

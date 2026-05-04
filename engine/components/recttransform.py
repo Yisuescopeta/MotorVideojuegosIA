@@ -55,6 +55,9 @@ class RectTransform(Component):
         padding_right: float = 0.0,
         padding_bottom: float = 0.0,
         spacing: float = 0.0,
+        focus_mode: str = "none",
+        mouse_filter: str = "pass",
+        focusable: bool = False,
     ) -> None:
         self.enabled = enabled
         self.anchor_min_x = float(anchor_min_x)
@@ -81,6 +84,9 @@ class RectTransform(Component):
         self.padding_right = float(padding_right)
         self.padding_bottom = float(padding_bottom)
         self.spacing = float(spacing)
+        self.focus_mode = _normalize_choice(focus_mode, default="none", allowed={"none", "click", "all"})
+        self.mouse_filter = _normalize_choice(mouse_filter, default="pass", allowed={"pass", "stop", "ignore"})
+        self.focusable = bool(focusable)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -109,6 +115,9 @@ class RectTransform(Component):
             "padding_right": self.padding_right,
             "padding_bottom": self.padding_bottom,
             "spacing": self.spacing,
+            "focus_mode": self.focus_mode,
+            "mouse_filter": self.mouse_filter,
+            "focusable": self.focusable,
         }
 
     @classmethod
@@ -139,4 +148,7 @@ class RectTransform(Component):
             padding_right=data.get("padding_right", 0.0),
             padding_bottom=data.get("padding_bottom", 0.0),
             spacing=data.get("spacing", 0.0),
+            focus_mode=data.get("focus_mode", "none"),
+            mouse_filter=data.get("mouse_filter", "pass"),
+            focusable=data.get("focusable", False),
         )

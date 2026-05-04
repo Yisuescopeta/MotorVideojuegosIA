@@ -104,6 +104,7 @@ class EngineAPI:
         from engine.systems.path_follow_system import PathFollowSystem
         from engine.systems.gameplay2d_semantic_system import Gameplay2DSemanticSystem
         from engine.systems.navigation_agent_system import NavigationAgentSystem
+        from engine.systems.ui_focus_system import UIFocusSystem
         from engine.navigation.service import NavigationService
 
         self.game = HeadlessGame()
@@ -145,6 +146,7 @@ class EngineAPI:
         self.game.set_path_follow_system(PathFollowSystem())
         self.game.set_gameplay2d_semantic_system(Gameplay2DSemanticSystem())
         self.game.set_navigation_agent_system(NavigationAgentSystem(NavigationService()))
+        self.game.set_ui_focus_system(UIFocusSystem(event_bus))
         self._register_optional_box2d_backend()
 
     def _initialize_collaborators(self) -> None:

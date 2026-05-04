@@ -154,7 +154,11 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.tween import Tween
     from engine.components.uibutton import UIButton
     from engine.components.uiimage import UIImage
+    from engine.components.uipanel import UIPanel
+    from engine.components.uiscrollcontainer import UIScrollContainer
     from engine.components.uitext import UIText
+    from engine.components.ui_ninepatch import UINinePatchRect
+    from engine.components.ui_texture_button import UITextureButton
     from engine.components.parallax_layer import ParallaxLayer
     from engine.components.visible_on_screen_notifier_2d import (
         VisibleOnScreenEnabler2D,
@@ -303,6 +307,34 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("UIText", UIText)
     registry.register("UIButton", UIButton)
     registry.register("UIImage", UIImage)
+    registry.register(
+        "UIPanel",
+        UIPanel,
+        description="Panel UI con fondo de color o textura (adaptado de Godot Panel).",
+        default_payload=UIPanel().to_dict(),
+        editor_tags=("ui", "layer:UI", "container"),
+    )
+    registry.register(
+        "UIScrollContainer",
+        UIScrollContainer,
+        description="Contenedor con scroll vertical/horizontal (adaptado de Godot ScrollContainer).",
+        default_payload=UIScrollContainer().to_dict(),
+        editor_tags=("ui", "layer:UI", "container", "scroll"),
+    )
+    registry.register(
+        "UINinePatchRect",
+        UINinePatchRect,
+        description="Rectangulo 9-slice escalable que divide una textura en 9 regiones (adaptado Godot NinePatchRect).",
+        default_payload=UINinePatchRect().to_dict(),
+        editor_tags=("ui", "layer:UI", "9patch", "texture"),
+    )
+    registry.register(
+        "UITextureButton",
+        UITextureButton,
+        description="Boton basado en texturas con estados normal/hover/pressed/disabled (adaptado Godot TextureButton).",
+        default_payload=UITextureButton().to_dict(),
+        editor_tags=("ui", "layer:UI", "button", "texture"),
+    )
     registry.register("Timer", Timer)
     registry.register("Marker2D", Marker2D)
     registry.register("Tween", Tween)
