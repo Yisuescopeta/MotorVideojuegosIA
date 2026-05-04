@@ -887,6 +887,83 @@ class RuntimeAPI(EngineAPIComponent):
         registrar(name, service)
         return self.ok("Builtin service registered", {"name": name})
 
+    # --- CanvasItem2D drawing API ---
+
+    def draw_rect(
+        self,
+        entity_name: str,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        color: list[int] | None = None,
+        filled: bool = True,
+    ) -> ActionResult:
+        """Añade un rectángulo a los draw commands de CanvasItem2D."""
+        from engine.components.canvas_item_2d import CanvasItem2D
+
+        entity = self.require_entity(entity_name)
+        canvas = self._get_or_add_canvas_item(entity)
+        color = color or [255, 255, 255, 255]
+        canvas.add_rect(x, y, w, h, tuple(color), filled)
+        return self.ok("Rect added")
+
+    def draw_circle(
+        self,
+        entity_name: str,
+        cx: float,
+        cy: float,
+        radius: float,
+        color: list[int] | None = None,
+        filled: bool = True,
+    ) -> ActionResult:
+        """Añade un círculo a los draw commands de CanvasItem2D."""
+        from engine.components.canvas_item_2d import CanvasItem2D
+
+        entity = self.require_entity(entity_name)
+        canvas = self._get_or_add_canvas_item(entity)
+        color = color or [255, 255, 255, 255]
+        canvas.add_circle(cx, cy, radius, tuple(color), filled)
+        return self.ok("Circle added")
+
+    def draw_line(
+        self,
+        entity_name: str,
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        color: list[int] | None = None,
+        thickness: float = 1.0,
+    ) -> ActionResult:
+        """Añade una línea a los draw commands de CanvasItem2D."""
+        from engine.components.canvas_item_2d import CanvasItem2D
+
+        entity = self.require_entity(entity_name)
+        canvas = self._get_or_add_canvas_item(entity)
+        color = color or [255, 255, 255, 255]
+        canvas.add_line(x1, y1, x2, y2, tuple(color), thickness)
+        return self.ok("Line added")
+
+    def clear_canvas_item(self, entity_name: str) -> ActionResult:
+        """Limpia todos los draw commands de CanvasItem2D de una entidad."""
+        from engine.components.canvas_item_2d import CanvasItem2D
+
+        entity = self.require_entity(entity_name)
+        canvas = entity.get_component(CanvasItem2D)
+        if canvas is not None:
+            canvas.clear_commands()
+        return self.ok("Canvas cleared")
+
+    def _get_or_add_canvas_item(self, entity: "Entity") -> "CanvasItem2D":
+        from engine.components.canvas_item_2d import CanvasItem2D
+
+        canvas = entity.get_component(CanvasItem2D)
+        if canvas is None:
+            canvas = CanvasItem2D()
+            entity.add_component(canvas)
+        return canvas
+
     def shutdown(self) -> None:
         """Request a graceful engine shutdown, closing all systems and windows."""
         runtime = self.runtime

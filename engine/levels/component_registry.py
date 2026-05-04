@@ -108,6 +108,7 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.audiosource import AudioSource
     from engine.components.camera2d import Camera2D
     from engine.components.canvas import Canvas
+    from engine.components.canvas_item_2d import CanvasItem2D
     from engine.components.particle_emitter2d import ParticleEmitter2D
     from engine.components.charactercontroller2d import CharacterController2D
     from engine.components.collider import Collider
@@ -128,6 +129,7 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.inputmap import InputMap
     from engine.components.joint2d import Joint2D
     from engine.components.light2d import Light2D
+    from engine.components.light_occluder_2d import LightOccluder2D
     from engine.components.line2d import Line2D
     from engine.components.marker2d import Marker2D
     from engine.components.playercontroller2d import PlayerController2D
@@ -243,6 +245,13 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("Joint2D", Joint2D)
     registry.register("Light2D", Light2D)
     registry.register(
+        "LightOccluder2D",
+        LightOccluder2D,
+        description="Bloquea luz 2D creando sombras (adaptado de Godot LightOccluder2D).",
+        default_payload=LightOccluder2D().to_dict(),
+        editor_tags=("render", "lighting", "occluder", "layer:Visual"),
+    )
+    registry.register(
         "Line2D",
         Line2D,
         description="2D line with width, color, joint mode, and closed option.",
@@ -275,6 +284,13 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("ResourcePreloader", ResourcePreloader)
     registry.register("Tilemap", Tilemap)
     registry.register("Canvas", Canvas)
+    registry.register(
+        "CanvasItem2D",
+        CanvasItem2D,
+        description="Componente de primitivas de dibujo 2D: rect, circle, line. Adaptado de Godot CanvasItem.",
+        default_payload=CanvasItem2D().to_dict(),
+        editor_tags=("render", "layer:Visual", "draw"),
+    )
     registry.register("RectTransform", RectTransform)
     registry.register("UIText", UIText)
     registry.register("UIButton", UIButton)

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import pyray as rl
 from engine.components.camera2d import Camera2D
 from engine.components.light2d import Light2D
+from engine.components.light_occluder_2d import LightOccluder2D
 from engine.components.transform import Transform
 
 if TYPE_CHECKING:
@@ -39,10 +40,23 @@ class Light2DSystem:
 
         lights.sort(key=lambda item: item[0])
 
-        for _, (entity, light, transform) in lights:
-            self._render_light(light, transform, camera)
+        occluders: list[tuple[LightOccluder2D, Transform]] = []
+        for entity in world.get_entities_with(Transform, LightOccluder2D):
+            occluder = entity.get_component(LightOccluder2D)
+            obj_transform = entity.get_component(Transform)
+            if occluder and occluder.enabled and obj_transform:
+                occluders.append((occluder, obj_transform))
 
-    def _render_light(self, light: Light2D, transform: Transform, camera: rl.Camera2D) -> None:
+        for _, (entity, light, transform) in lights:
+            self._render_light(light, transform, camera, occluders)
+
+    def _render_light(
+        self,
+        light: Light2D,
+        transform: Transform,
+        camera: rl.Camera2D,
+        occluders: list[tuple[LightOccluder2D, Transform]],
+    ) -> None:
         if camera is not None:
             rl.begin_mode_2d(camera)
 
@@ -55,6 +69,14 @@ class Light2DSystem:
         r_val = light.color_r
         g_val = light.color_g
         b_val = light.color_b
+
+        light_x = int(transform.x)
+        light_y = int(transform.y)
+        if self._is_point_occluded(float(light_x), float(light_y), occluders):
+            rl.end_blend_mode()
+            if camera is not None:
+                rl.end_mode_2d()
+            return
 
         for step in range(self.CIRCLE_STEPS, 0, -1):
             ratio = step / self.CIRCLE_STEPS
@@ -70,8 +92,8 @@ class Light2DSystem:
             alpha = max(1, int(base_alpha * alpha_ratio))
             color = rl.Color(r_val, g_val, b_val, alpha)
             rl.draw_circle(
-                int(transform.x),
-                int(transform.y),
+                light_x,
+                light_y,
                 step_radius,
                 color,
             )
@@ -79,6 +101,18 @@ class Light2DSystem:
         rl.end_blend_mode()
         if camera is not None:
             rl.end_mode_2d()
+
+    @staticmethod
+    def _is_point_occluded(
+        px: float,
+        py: float,
+        occluders: list[tuple[LightOccluder2D, Transform]],
+    ) -> bool:
+        for occluder, obj_transform in occluders:
+            bounds = occluder.get_bounds(obj_transform.x, obj_transform.y)
+            if bounds[0] <= px <= bounds[2] and bounds[1] <= py <= bounds[3]:
+                return True
+        return False
 
     @staticmethod
     def _build_camera_from_world(world: World) -> rl.Camera2D | None:
