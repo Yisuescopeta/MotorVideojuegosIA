@@ -8,10 +8,12 @@ import math
 from dataclasses import dataclass
 from typing import Optional
 
+from engine.components.animatable_body_2d import AnimatableBody2D
 from engine.components.collider import Collider
 from engine.components.collision_filter_2d import CollisionFilter2D
 from engine.components.joint2d import Joint2D
 from engine.components.rigidbody import RigidBody
+from engine.components.static_body_2d import StaticBody2D
 from engine.components.transform import Transform
 from engine.config import GRAVITY_DEFAULT, GROUND_Y_TEMP
 from engine.ecs.entity import Entity
@@ -62,8 +64,8 @@ class PhysicsSystem:
             if not self._is_solid_body(entity):
                 continue
             candidate = _SolidCandidate(entity=entity, collider=collider)
-            rigidbody = entity.get_component(RigidBody)
-            if rigidbody is None or rigidbody.body_type == "static":
+            effective_type = self._get_effective_body_type(entity)
+            if effective_type == "static":
                 static_like_candidates[int(entity.id)] = candidate
                 grid.insert(entity.id, collider.get_bounds(transform.x, transform.y))
             else:
@@ -84,13 +86,15 @@ class PhysicsSystem:
                 rigidbody.velocity_y,
                 rigidbody.is_grounded,
             )
-            if rigidbody.body_type == "static":
-                rigidbody.velocity_x = 0.0
-                rigidbody.velocity_y = 0.0
+            effective_type = self._get_effective_body_type(entity)
+            if effective_type == "static":
+                if rigidbody is not None:
+                    rigidbody.velocity_x = 0.0
+                    rigidbody.velocity_y = 0.0
                 physics_changed = physics_changed or before_rigidbody_state != (
-                    rigidbody.velocity_x,
-                    rigidbody.velocity_y,
-                    rigidbody.is_grounded,
+                    rigidbody.velocity_x if rigidbody else 0.0,
+                    rigidbody.velocity_y if rigidbody else 0.0,
+                    rigidbody.is_grounded if rigidbody else False,
                 )
                 continue
 
@@ -274,6 +278,18 @@ class PhysicsSystem:
         if rigidbody is None:
             return True
         return rigidbody.simulated and rigidbody.body_type in ("dynamic", "kinematic", "static")
+
+    @staticmethod
+    def _get_effective_body_type(entity: Entity) -> str:
+        """Returns the effective body type considering StaticBody2D/AnimatableBody2D."""
+        rigidbody = entity.get_component(RigidBody)
+        has_static = entity.has_component(StaticBody2D)
+        has_animatable = entity.has_component(AnimatableBody2D)
+        if has_static or has_animatable:
+            return "static"
+        if rigidbody is None:
+            return "static"
+        return rigidbody.body_type
 
     def _layers_can_collide(self, world: World, entity: Entity, other: Entity) -> bool:
         matrix = world.feature_metadata.get("physics_2d", {}).get("layer_matrix", {})

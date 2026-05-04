@@ -34,3 +34,23 @@ class JSONResourceSaver(ResourceFormatSaver):
             return True
         except (IOError, TypeError):
             return False
+
+
+class BinaryResourceSaver(ResourceFormatSaver):
+    """Saves resources as binary pickle format (.res)."""
+
+    def get_recognized_extensions(self, resource: Any) -> list:
+        return ["res"]
+
+    def save(self, resource: Any, path: str) -> bool:
+        try:
+            import pickle
+
+            with open(path, "wb") as f:
+                pickle.dump(
+                    resource if isinstance(resource, dict) else resource.to_dict(),
+                    f,
+                )
+            return True
+        except (IOError, TypeError):
+            return False

@@ -104,6 +104,7 @@ def create_default_registry() -> ComponentRegistry:
     """Crea un registro con los componentes predeterminados del motor."""
     from engine.components.animation_player_2d import AnimationPlayer2D
     from engine.components.animation_tree import AnimationTree
+    from engine.components.animatable_body_2d import AnimatableBody2D
     from engine.components.animator import Animator
     from engine.components.area2d import Area2D
     from engine.components.audio_listener_2d import AudioListener2D
@@ -116,6 +117,8 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.charactercontroller2d import CharacterController2D
     from engine.components.collider import Collider
     from engine.components.collision_filter_2d import CollisionFilter2D
+    from engine.components.collision_polygon_2d import CollisionPolygon2D
+    from engine.components.collision_shape_2d import CollisionShape2D
     from engine.components.gameplay2d import (
         Checkpoint2D,
         Collectible2D,
@@ -145,6 +148,7 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.resource_preloader import ResourcePreloader
     from engine.components.rigidbody import RigidBody
     from engine.components.scene_entry_point import SceneEntryPoint
+    from engine.components.static_body_2d import StaticBody2D
     from engine.components.scene_link import SceneLink
     from engine.components.scene_transition_action import SceneTransitionAction
     from engine.components.scene_transition_on_contact import SceneTransitionOnContact
@@ -173,10 +177,16 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.backbuffer_copy import BackBufferCopy
     from engine.components.colorrect import ColorRect
     from engine.components.directional_light_2d import DirectionalLight2D
+    from engine.components.parallax_background import ParallaxBackground
     from engine.components.parallax_layer import ParallaxLayer
+    from engine.components.path_2d import Path2D
+    from engine.components.point_light_2d import PointLight2D
     from engine.components.remote_transform_2d import RemoteTransform2D
     from engine.components.touch_screen_button import TouchScreenButton
     from engine.components.gpu_particles_2d import GPUParticles2D
+    from engine.components.animated_sprite_2d import AnimatedSprite2D
+    from engine.components.canvas_modulate import CanvasModulate
+    from engine.components.raycast_2d import RayCast2D
     from engine.components.visible_on_screen_notifier_2d import (
         VisibleOnScreenEnabler2D,
         VisibleOnScreenNotifier2D,
@@ -193,6 +203,20 @@ def create_default_registry() -> ComponentRegistry:
         editor_tags=("render", "tag:Polygon", "layer:Visual"),
     )
     registry.register("Collider", Collider)
+    registry.register(
+        "CollisionShape2D",
+        CollisionShape2D,
+        description="Dedicated collision shape (Godot CollisionShape2D). Takes precedence over Collider when both present.",
+        default_payload=CollisionShape2D().to_dict(),
+        editor_tags=("physics", "layer:Physics", "collision", "shape"),
+    )
+    registry.register(
+        "CollisionPolygon2D",
+        CollisionPolygon2D,
+        description="Polygon collision shape from vertex data (Godot CollisionPolygon2D).",
+        default_payload=CollisionPolygon2D().to_dict(),
+        editor_tags=("physics", "layer:Physics", "collision", "polygon"),
+    )
     registry.register(
         "CollisionFilter2D",
         CollisionFilter2D,
@@ -281,6 +305,20 @@ def create_default_registry() -> ComponentRegistry:
         editor_tags=("render", "tag:Line", "layer:Visual"),
     )
     registry.register("RigidBody", RigidBody)
+    registry.register(
+        "StaticBody2D",
+        StaticBody2D,
+        description="Immovable physics body (Godot StaticBody2D). No velocity integration, no gravity, infinite mass.",
+        default_payload=StaticBody2D().to_dict(),
+        editor_tags=("physics", "layer:Physics", "static"),
+    )
+    registry.register(
+        "AnimatableBody2D",
+        AnimatableBody2D,
+        description="Static body movable by AnimationPlayer (Godot AnimatableBody2D). Syncs collider from Transform when enabled.",
+        default_payload=AnimatableBody2D().to_dict(),
+        editor_tags=("physics", "layer:Physics", "animation", "static"),
+    )
     registry.register(
         "Area2D",
         Area2D,
@@ -449,11 +487,32 @@ def create_default_registry() -> ComponentRegistry:
         editor_tags=("path", "tag:PathFollower", "layer:Gameplay", "moving"),
     )
     registry.register(
+        "ParallaxBackground",
+        ParallaxBackground,
+        description="Contenedor que agrupa ParallaxLayers con offset/escala/limite compartidos (Godot ParallaxBackground).",
+        default_payload=ParallaxBackground().to_dict(),
+        editor_tags=("parallax", "layer:Camera", "background", "container"),
+    )
+    registry.register(
         "ParallaxLayer",
         ParallaxLayer,
         description="Define una capa de parallax que se desplaza relativo al movimiento de camara.",
         default_payload=ParallaxLayer().to_dict(),
         editor_tags=("parallax", "layer:Camera", "background"),
+    )
+    registry.register(
+        "Path2D",
+        Path2D,
+        description="Define un path Curve2D para PathFollow2D (Godot Path2D).",
+        default_payload=Path2D().to_dict(),
+        editor_tags=("path", "tag:Path", "layer:Gameplay", "curve"),
+    )
+    registry.register(
+        "PointLight2D",
+        PointLight2D,
+        description="Luz puntual radial 2D con sombras y textura (Godot PointLight2D).",
+        default_payload=PointLight2D().to_dict(),
+        editor_tags=("render", "lighting", "layer:Visual", "point"),
     )
     registry.register(
         "ParticleEmitter2D",
@@ -503,5 +562,26 @@ def create_default_registry() -> ComponentRegistry:
         description="Copia una region de pantalla en un buffer para efectos de post-procesado.",
         default_payload=BackBufferCopy().to_dict(),
         editor_tags=("render", "postfx", "layer:Visual"),
+    )
+    registry.register(
+        "AnimatedSprite2D",
+        AnimatedSprite2D,
+        description="Sprite animado con soporte de SpriteFrames, modos loop/none/pingpong (Godot AnimatedSprite2D).",
+        default_payload=AnimatedSprite2D().to_dict(),
+        editor_tags=("animation", "sprite", "layer:Visual", "render"),
+    )
+    registry.register(
+        "RayCast2D",
+        RayCast2D,
+        description="Rayo 2D que detecta colisiones en linea recta (Godot RayCast2D).",
+        default_payload=RayCast2D().to_dict(),
+        editor_tags=("physics", "raycast", "layer:Physics", "detection"),
+    )
+    registry.register(
+        "CanvasModulate",
+        CanvasModulate,
+        description="Aplica un multiply de color sobre todo el canvas (Godot CanvasModulate).",
+        default_payload=CanvasModulate().to_dict(),
+        editor_tags=("render", "postfx", "layer:Visual", "canvas"),
     )
     return registry

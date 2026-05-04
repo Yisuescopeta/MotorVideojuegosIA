@@ -13,6 +13,7 @@ from engine.assets.asset_resolver import AssetResolver
 from engine.assets.asset_service import AssetService
 from engine.components.animator import Animator
 from engine.components.camera2d import Camera2D
+from engine.components.canvas_modulate import CanvasModulate
 from engine.components.collider import Collider
 from engine.components.colorrect import ColorRect
 from engine.components.directional_light_2d import DirectionalLight2D
@@ -340,6 +341,7 @@ class RenderSystem:
 
         self._render_debug_overlay(frame_plan, camera=camera, viewport_size=viewport_size)
         self._render_minimap(world, frame_plan, viewport_size=viewport_size)
+        self._render_canvas_modulate(world, viewport_size=viewport_size)
         target_metrics = self._render_targets.get_frame_metrics()
         totals = self._copy_stats(frame_plan["totals"])
         totals["render_target_passes"] = target_metrics.get("passes", 0)
@@ -825,6 +827,21 @@ class RenderSystem:
         viewport_width, _ = self._normalize_viewport_size(viewport_size)
         destination = rl.Rectangle(float(viewport_width - width - margin), float(margin), float(width), float(height))
         self._render_targets.compose("minimap", destination, rl.WHITE)
+
+    def _render_canvas_modulate(
+        self,
+        world: World,
+        *,
+        viewport_size: Optional[tuple[float, float]] = None,
+    ) -> None:
+        """Applies CanvasModulate color overlay if any entity has the component."""
+        for entity in world.get_entities_with(CanvasModulate):
+            modulate = entity.get_component(CanvasModulate)
+            if modulate is None or not modulate.enabled:
+                continue
+            width, height = self._normalize_viewport_size(viewport_size)
+            rl.draw_rectangle(0, 0, int(width), int(height), rl.Color(*modulate.color))
+            break  # Only first CanvasModulate applies
 
     def _build_batch_key(self, entity: Entity, sorting_layer: str) -> RenderBatchKey:
         style = entity.get_component(RenderStyle2D)

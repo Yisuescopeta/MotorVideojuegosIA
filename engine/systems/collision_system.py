@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Optional
 
 from engine.components.collider import Collider
 from engine.components.collision_filter_2d import CollisionFilter2D
+from engine.components.collision_polygon_2d import CollisionPolygon2D
+from engine.components.collision_shape_2d import CollisionShape2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
@@ -33,7 +35,7 @@ class CollisionInfo:
 @dataclass(frozen=True)
 class _CollisionEntry:
     entity: Entity
-    collider: Collider
+    collider: Optional[Collider]
     rigidbody: Optional[RigidBody]
     aabb: AABB
 
@@ -72,13 +74,38 @@ class CollisionSystem:
             collider = entity.get_component(Collider)
             if transform is None or collider is None or not collider.enabled:
                 continue
+            bounds = self._compute_shape_bounds(entity, transform)
+            if bounds is None:
+                bounds = collider.get_bounds(transform.x, transform.y)
             entry = _CollisionEntry(
                 entity=entity,
                 collider=collider,
                 rigidbody=entity.get_component(RigidBody),
-                aabb=collider.get_bounds(transform.x, transform.y),
+                aabb=bounds,
             )
             entries_by_id[int(entity.id)] = entry
+            grid.insert(entity.id, entry.aabb)
+
+        # Also gather entities with dedicated shape components but no Collider
+        for entity in world.get_entities_with(Transform):
+            entity_id = int(entity.id)
+            if entity_id in entries_by_id:
+                continue
+            transform = entity.get_component(Transform)
+            if transform is None:
+                continue
+            if not self._entity_has_collision_shape(entity):
+                continue
+            bounds = self._compute_shape_bounds(entity, transform)
+            if bounds is None:
+                continue
+            entry = _CollisionEntry(
+                entity=entity,
+                collider=None,
+                rigidbody=entity.get_component(RigidBody),
+                aabb=bounds,
+            )
+            entries_by_id[entity_id] = entry
             grid.insert(entity.id, entry.aabb)
 
         checked_pairs = self._checked_pairs
@@ -109,14 +136,17 @@ class CollisionSystem:
                 if not self._aabbs_overlap(entry_a.aabb, entry_b.aabb):
                     continue
 
-                if entry_a.collider.shape_type == "capsule" or entry_b.collider.shape_type == "capsule":
+                if (entry_a.collider is not None and entry_a.collider.shape_type == "capsule") or \
+                   (entry_b.collider is not None and entry_b.collider.shape_type == "capsule"):
                     if not self._narrow_phase_capsule(entry_a, entry_b):
                         continue
 
+                is_trigger_a = entry_a.collider.is_trigger if entry_a.collider is not None else False
+                is_trigger_b = entry_b.collider.is_trigger if entry_b.collider is not None else False
                 collision = CollisionInfo(
                     entity_a=entry_a.entity,
                     entity_b=entry_b.entity,
-                    is_trigger=bool(entry_a.collider.is_trigger or entry_b.collider.is_trigger),
+                    is_trigger=bool(is_trigger_a or is_trigger_b),
                 )
                 self._collisions.append(collision)
                 self._step_metrics["actual_collisions"] += 1
@@ -243,6 +273,35 @@ class CollisionSystem:
             return False
         return self._allows_contact(entry_a.rigidbody, entry_b.rigidbody)
 
+    @staticmethod
+    def _compute_shape_bounds(entity: Entity, transform: Transform) -> AABB | None:
+        """Compute AABB bounds from CollisionShape2D, CollisionPolygon2D, or Collider.
+        
+        Precedence: CollisionShape2D > CollisionPolygon2D > Collider.
+        Returns None if no valid shape component exists.
+        """
+        shape = entity.get_component(CollisionShape2D)
+        if shape is not None and not shape.disabled:
+            return shape.get_bounds(transform.x, transform.y)
+        poly = entity.get_component(CollisionPolygon2D)
+        if poly is not None and not poly.disabled:
+            return poly.get_bounds(transform.x, transform.y)
+        collider = entity.get_component(Collider)
+        if collider is not None and collider.enabled:
+            return collider.get_bounds(transform.x, transform.y)
+        return None
+
+    @staticmethod
+    def _entity_has_collision_shape(entity: Entity) -> bool:
+        """Check if entity has any collision shape component."""
+        shape = entity.get_component(CollisionShape2D)
+        if shape is not None and not shape.disabled:
+            return True
+        poly = entity.get_component(CollisionPolygon2D)
+        if poly is not None and not poly.disabled:
+            return True
+        return False
+
     def _aabbs_overlap(self, aabb_a: AABB, aabb_b: AABB) -> bool:
         left_a, top_a, right_a, bottom_a = aabb_a
         left_b, top_b, right_b, bottom_b = aabb_b
@@ -284,8 +343,8 @@ class CollisionSystem:
 
     def _narrow_phase_capsule(self, entry_a: _CollisionEntry, entry_b: _CollisionEntry) -> bool:
         """Narrow-phase check when at least one collider is a capsule."""
-        shape_a = entry_a.collider.shape_type
-        shape_b = entry_b.collider.shape_type
+        shape_a = entry_a.collider.shape_type if entry_a.collider is not None else ""
+        shape_b = entry_b.collider.shape_type if entry_b.collider is not None else ""
 
         if shape_a == "capsule" and shape_b == "capsule":
             return self._capsule_vs_capsule(entry_a, entry_b)
@@ -298,7 +357,8 @@ class CollisionSystem:
     def _capsule_vs_aabb(self, capsule_entry: _CollisionEntry, aabb_entry: _CollisionEntry) -> bool:
         """Capsule vs AABB collision. Capsule = vertical segment + radius."""
         c = capsule_entry.collider
-        a = aabb_entry.collider
+        if c is None:
+            return True
         # Capsule world position
         cx = capsule_entry.aabb[0] + c.radius  # left + radius = center x
         cy = (capsule_entry.aabb[1] + capsule_entry.aabb[3]) / 2  # center y
@@ -322,6 +382,8 @@ class CollisionSystem:
         """Capsule vs capsule collision. Checks minimum distance between segments."""
         ca = entry_a.collider
         cb = entry_b.collider
+        if ca is None or cb is None:
+            return True
 
         ax = entry_a.aabb[0] + ca.radius
         ay = (entry_a.aabb[1] + entry_a.aabb[3]) / 2

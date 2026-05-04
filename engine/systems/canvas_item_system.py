@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import pyray as rl
 
+from engine.components.camera2d import Camera2D
 from engine.components.canvas_item_2d import CanvasItem2D
 from engine.components.transform import Transform
 
@@ -18,9 +19,18 @@ if TYPE_CHECKING:
 class CanvasItemSystem:
     """Renderiza los draw_commands de CanvasItem2D usando pyray."""
 
+    def _get_camera_visibility_mask(self, world: "World") -> int:
+        for entity in world.get_entities_with(Transform, Camera2D):
+            camera = entity.get_component(Camera2D)
+            if camera is not None and camera.enabled and camera.is_primary:
+                return camera.camera_visibility_mask
+        return 0xFFFFFFFF
+
     def render(self, world: "World") -> None:
         if not hasattr(rl, "is_window_ready") or not rl.is_window_ready():
             return
+
+        camera_visibility_mask = self._get_camera_visibility_mask(world)
 
         entities = world.get_entities_with(CanvasItem2D, Transform)
         items: list[tuple[int, CanvasItem2D, Transform]] = []
@@ -28,6 +38,8 @@ class CanvasItemSystem:
             canvas = entity.get_component(CanvasItem2D)
             transform = entity.get_component(Transform)
             if canvas is None or transform is None or not canvas.enabled:
+                continue
+            if (canvas.visibility_layer & camera_visibility_mask) == 0:
                 continue
             items.append((canvas.z_index, canvas, transform))
 

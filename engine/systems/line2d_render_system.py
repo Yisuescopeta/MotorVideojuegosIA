@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 import pyray as rl
 
 from engine.components.line2d import Line2D
+from engine.components.path_2d import Path2D
 from engine.components.transform import Transform
 
 if TYPE_CHECKING:
@@ -21,6 +22,8 @@ if TYPE_CHECKING:
 
 class Line2DRenderSystem:
     """Renderiza entidades con componente Line2D."""
+
+    PATH2D_DEBUG_COLOR = rl.Color(64, 224, 208, 200)
 
     def render(self, world: "World") -> None:
         for entity in world.get_entities_with(Transform, Line2D):
@@ -32,6 +35,16 @@ class Line2DRenderSystem:
                 continue
 
             self._draw_line2d(transform, line)
+
+        for entity in world.get_entities_with(Transform, Path2D):
+            transform = entity.get_component(Transform)
+            path = entity.get_component(Path2D)
+            if transform is None or path is None:
+                continue
+            if len(path.curve_points) < 2:
+                continue
+
+            self._draw_path2d(transform, path)
 
     def _draw_line2d(self, transform: Transform, line: Line2D) -> None:
         color = rl.Color(*line.color)
@@ -194,3 +207,25 @@ class Line2DRenderSystem:
                 rl.Vector2(corner4[0], corner4[1]),
                 color,
             )
+
+    def _draw_path2d(self, transform: Transform, path: Path2D) -> None:
+        cos_r = math.cos(transform.rotation)
+        sin_r = math.sin(transform.rotation)
+        sx = transform.scale_x
+        sy = transform.scale_y
+
+        world_points: list[tuple[float, float]] = []
+        for pt in path.curve_points:
+            wx = pt[0] * sx
+            wy = pt[1] * sy
+            rx = wx * cos_r - wy * sin_r
+            ry = wx * sin_r + wy * cos_r
+            world_points.append((transform.x + rx, transform.y + ry))
+
+        for i in range(len(world_points) - 1):
+            p0, p1 = world_points[i], world_points[i + 1]
+            rl.draw_line(int(p0[0]), int(p0[1]), int(p1[0]), int(p1[1]), self.PATH2D_DEBUG_COLOR)
+
+        if path.closed and len(world_points) >= 2:
+            p0, p1 = world_points[-1], world_points[0]
+            rl.draw_line(int(p0[0]), int(p0[1]), int(p1[0]), int(p1[1]), self.PATH2D_DEBUG_COLOR)

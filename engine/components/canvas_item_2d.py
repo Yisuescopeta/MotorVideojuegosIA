@@ -23,9 +23,11 @@ class CanvasItem2D(Component):
         draw_commands: list[dict[str, Any]] | None = None,
         z_index: int = 0,
         enabled: bool = True,
+        visibility_layer: int = 1,
     ) -> None:
         self.enabled: bool = enabled
         self.z_index: int = z_index
+        self.visibility_layer: int = int(visibility_layer)
         self.draw_commands: list[dict[str, Any]] = list(draw_commands) if draw_commands else []
 
     def add_rect(
@@ -90,6 +92,7 @@ class CanvasItem2D(Component):
         return {
             "enabled": self.enabled,
             "z_index": self.z_index,
+            "visibility_layer": self.visibility_layer,
             "draw_commands": self.draw_commands,
         }
 
@@ -98,6 +101,7 @@ class CanvasItem2D(Component):
         component = cls(
             draw_commands=data.get("draw_commands", []),
             z_index=data.get("z_index", 0),
+            visibility_layer=data.get("visibility_layer", 1),
         )
         component.enabled = bool(data.get("enabled", True))
         return component
