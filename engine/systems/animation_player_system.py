@@ -45,12 +45,23 @@ class AnimationPlayerSystem:
             # Cargar recurso (con cache)
             if player._resource_cache is None and player.animation_resource_path:
                 try:
-                    with open(player.animation_resource_path, "r", encoding="utf-8") as f:
+                    path = os.path.normpath(player.animation_resource_path)
+                    if not path.endswith(('.anim', '.json')):
+                        continue
+                    if '..' in path.split(os.sep):
+                        continue
+                    if not os.path.isfile(path):
+                        continue
+
+                    with open(path, "r", encoding="utf-8") as f:
                         data = json.load(f)
                     from engine.resources.animation_resource import AnimationResource
 
                     player._resource_cache = AnimationResource.from_dict(data)
-                except Exception:
+                except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
+                    import logging
+                    _logger = logging.getLogger(__name__)
+                    _logger.warning("AnimationPlayerSystem: error loading %s: %s", path, exc)
                     continue
 
             resource = player._resource_cache
