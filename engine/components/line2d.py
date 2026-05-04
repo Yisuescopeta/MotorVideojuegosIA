@@ -47,9 +47,6 @@ class Line2D(Component):
         joint_mode: str = "sharp",
         closed: bool = False,
         cap_mode: str = "none",
-        use_gradient: bool = False,
-        gradient_colors: list[tuple[int, int, int, int]] | None = None,
-        gradient_offsets: list[float] | None = None,
     ) -> None:
         self.enabled: bool = True
         self.points: list[list[float]] = [list(p) for p in (points or [])]
@@ -59,11 +56,6 @@ class Line2D(Component):
         self.cap_mode: str = cap_mode if cap_mode in self.VALID_CAP_MODES else "none"
         self._color: tuple[int, int, int, int] = (255, 255, 255, 255)
         self.color = color
-        self.use_gradient: bool = bool(use_gradient)
-        self.gradient_colors: list[tuple[int, int, int, int]] = (
-            [tuple(int(v) for v in c) for c in (gradient_colors or [])]
-        )
-        self.gradient_offsets: list[float] = [float(o) for o in (gradient_offsets or [])]
 
     @property
     def color(self) -> tuple[int, int, int, int]:
@@ -119,9 +111,6 @@ class Line2D(Component):
             "joint_mode": self.joint_mode,
             "closed": self.closed,
             "cap_mode": self.cap_mode,
-            "use_gradient": self.use_gradient,
-            "gradient_colors": [list(c) for c in self.gradient_colors],
-            "gradient_offsets": list(self.gradient_offsets),
         }
 
     @classmethod
@@ -135,21 +124,6 @@ class Line2D(Component):
         joint_mode = str(data.get("joint_mode", "sharp"))
         cap_mode = str(data.get("cap_mode", "none"))
 
-        raw_gradient_colors = data.get("gradient_colors", [])
-        gradient_colors: list[tuple[int, int, int, int]] = []
-        if isinstance(raw_gradient_colors, list):
-            for c in raw_gradient_colors:
-                if isinstance(c, (tuple, list)):
-                    vals = [int(v) for v in c]
-                    while len(vals) < 4:
-                        vals.append(255)
-                    vals = vals[:4]
-                    gradient_colors.append(tuple(vals))
-                else:
-                    gradient_colors.append((255, 255, 255, 255))
-
-        raw_gradient_offsets = data.get("gradient_offsets", [])
-
         component = cls(
             points=points,
             width=float(data.get("width", 2.0)),
@@ -157,9 +131,6 @@ class Line2D(Component):
             joint_mode=joint_mode,
             closed=bool(data.get("closed", False)),
             cap_mode=cap_mode,
-            use_gradient=bool(data.get("use_gradient", False)),
-            gradient_colors=gradient_colors,
-            gradient_offsets=raw_gradient_offsets if isinstance(raw_gradient_offsets, list) else [],
         )
         component.enabled = bool(data.get("enabled", True))
         return component

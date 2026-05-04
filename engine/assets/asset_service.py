@@ -392,53 +392,7 @@ class AssetService:
         self.reimport_asset(imported_path)
         return imported_path
 
-    def detect_asset_type(self, path: str) -> str:
-        """Detecta el tipo de asset por su extension."""
-        ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
-        mapping = {
-            "png": "textures", "jpg": "textures", "jpeg": "textures",
-            "bmp": "textures", "gif": "textures",
-            "wav": "audio", "mp3": "audio", "ogg": "audio", "flac": "audio",
-            "ttf": "fonts", "otf": "fonts",
-            "json": "scene_data",
-            "tileset": "tileset",
-            "anim": "animation",
-            "sframes": "sprite_frames",
-            "shader2d": "shader2d",
-            "theme": "theme",
-        }
-        return mapping.get(ext, "unknown")
-
-    def get_import_options(self, asset_type: str = "textures") -> dict:
-        """Lee opciones de importacion desde project_settings.json."""
-        settings_path = self._project_service.project_root / "settings" / "project_settings.json"
-        try:
-            with open(settings_path, "r") as f:
-                settings = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {}
-
-        import_options = settings.get("import_options", {})
-        return import_options.get(asset_type, {})
-
-    def _import_with_options(
-        self, source_path: str, target_folder: str, overwrite: bool, options: dict
-    ) -> str:
-        """Import asset and save import options to metadata."""
-        imported_path = self.import_sprite_asset(
-            source_path, target_folder=target_folder, overwrite=overwrite
-        )
-        if options:
-            metadata = self.load_metadata(imported_path)
-            metadata["import_options"] = dict(options)
-            self.save_metadata(imported_path, metadata, record_history=False)
-        return imported_path
-
     def import_asset(self, source_path: str, target_folder: str = "", overwrite: bool = False) -> str:
-        asset_type = self.detect_asset_type(source_path)
-        if asset_type in ("textures", "audio", "fonts"):
-            options = self.get_import_options(asset_type)
-            return self._import_with_options(source_path, target_folder, overwrite, options)
         return self.import_sprite_asset(source_path, target_folder=target_folder, overwrite=overwrite)
 
     def list_sprite_slices(self, locator: Any) -> List[Dict[str, Any]]:

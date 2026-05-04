@@ -123,9 +123,9 @@ class Game:
         self._physics_system: Optional["PhysicsSystem"] = None
         self._collision_system: Optional["CollisionSystem"] = None
         self._physics_backend_registry: PhysicsBackendRegistry = PhysicsBackendRegistry(
-            default_backend_name="box2d"
+            default_backend_name="legacy_aabb"
         )
-        self._physics_backend_name: str = "box2d"
+        self._physics_backend_name: str = "legacy_aabb"
         self._animation_system: Optional["AnimationSystem"] = None
         self._audio_system: Optional["AudioSystem"] = None
         self._input_system: Optional["InputSystem"] = None
@@ -1369,10 +1369,6 @@ class Game:
 
     def _refresh_default_physics_backend(self) -> None:
         self._runtime_controller.refresh_default_physics_backend()
-        info = self.get_physics_backend_info()
-        if info.get("warning"):
-            import logging
-            logging.warning(info["warning"])
 
     def step(self) -> None:
         self._runtime_controller.step()

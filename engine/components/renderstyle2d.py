@@ -20,7 +20,6 @@ class RenderStyle2D(Component):
         blend_mode: str = DEFAULT_BLEND_MODE,
         atlas_id: str = "",
         material: Any = None,
-        shader_resource_path: str = "",
     ) -> None:
         self.enabled: bool = True
         self.material = normalize_asset_reference(material)
@@ -29,7 +28,6 @@ class RenderStyle2D(Component):
         self.shader_id: str = str(shader_id or self.DEFAULT_SHADER_ID)
         self.blend_mode: str = str(blend_mode or self.DEFAULT_BLEND_MODE)
         self.atlas_id: str = str(atlas_id or "")
-        self.shader_resource_path: str = str(shader_resource_path or "")
 
     def get_material_reference(self) -> dict[str, str]:
         return clone_asset_reference(self.material)
@@ -45,7 +43,6 @@ class RenderStyle2D(Component):
             "material_path": self.material_path,
             "material_id": self.material_id,
             "shader_id": self.shader_id,
-            "shader_resource_path": self.shader_resource_path,
             "blend_mode": self.blend_mode,
             "atlas_id": self.atlas_id,
         }
@@ -62,7 +59,6 @@ class RenderStyle2D(Component):
             shader_id=data.get("shader_id", cls.DEFAULT_SHADER_ID),
             blend_mode=data.get("blend_mode", cls.DEFAULT_BLEND_MODE),
             atlas_id=data.get("atlas_id", ""),
-            shader_resource_path=str(data.get("shader_resource_path", "")),
         )
         component.enabled = data.get("enabled", True)
         return component

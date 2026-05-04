@@ -37,10 +37,10 @@ def _simulate(
 ) -> MoveResult2D:
     result: MoveResult2D | None = None
     for _ in range(max_frames):
-        result = backend.move_and_slide(entity, velocity, delta_time, **kwargs)
+        result = backend.move_and_slide(world, entity, velocity, delta_time, **kwargs)
         if result.on_floor or result.on_wall or result.on_ceiling:
             break
-    return result if result is not None else backend.move_and_slide(entity, velocity, delta_time)
+    return result if result is not None else backend.move_and_slide(world, entity, velocity, delta_time)
 
 
 class MoveAndSlideTests(unittest.TestCase):
@@ -60,7 +60,6 @@ class MoveAndSlideTests(unittest.TestCase):
     def test_move_and_slide_box_vs_floor(self) -> None:
         player = _make_entity(self.world, "Player", 100.0, 100.0, w=32.0, h=32.0)
         _make_entity(self.world, "Floor", 320.0, 350.0, w=640.0, h=32.0)
-        self.backend._last_world = self.world
 
         result = _simulate(
             self.backend, self.world, player,
@@ -81,7 +80,6 @@ class MoveAndSlideTests(unittest.TestCase):
     def test_move_and_slide_box_vs_wall_right(self) -> None:
         player = _make_entity(self.world, "Player", 100.0, 100.0, w=32.0, h=32.0)
         _make_entity(self.world, "Wall", 200.0, 100.0, w=32.0, h=128.0)
-        self.backend._last_world = self.world
 
         result = _simulate(
             self.backend, self.world, player,
@@ -102,7 +100,6 @@ class MoveAndSlideTests(unittest.TestCase):
     def test_move_and_slide_box_vs_wall_left(self) -> None:
         player = _make_entity(self.world, "Player", 200.0, 100.0, w=32.0, h=32.0)
         _make_entity(self.world, "Wall", 100.0, 100.0, w=32.0, h=128.0)
-        self.backend._last_world = self.world
 
         result = _simulate(
             self.backend, self.world, player,
@@ -123,7 +120,6 @@ class MoveAndSlideTests(unittest.TestCase):
     def test_move_and_slide_box_vs_ceiling(self) -> None:
         player = _make_entity(self.world, "Player", 100.0, 100.0, w=32.0, h=32.0)
         _make_entity(self.world, "Ceiling", 100.0, 0.0, w=640.0, h=32.0)
-        self.backend._last_world = self.world
 
         result = _simulate(
             self.backend, self.world, player,
@@ -143,11 +139,10 @@ class MoveAndSlideTests(unittest.TestCase):
 
     def test_move_and_slide_no_collision(self) -> None:
         player = _make_entity(self.world, "Player", 100.0, 100.0, w=32.0, h=32.0)
-        self.backend._last_world = self.world
 
         dt = 0.016
         result = self.backend.move_and_slide(
-            player, velocity=(100.0, 50.0), delta_time=dt,
+            self.world, player, velocity=(100.0, 50.0), delta_time=dt,
         )
 
         self.assertAlmostEqual(result.position_x, 100.0 + 100.0 * dt, places=4)
@@ -163,11 +158,10 @@ class MoveAndSlideTests(unittest.TestCase):
     def test_move_and_slide_trigger_ignored(self) -> None:
         player = _make_entity(self.world, "Player", 100.0, 100.0, w=32.0, h=32.0)
         _make_entity(self.world, "Trigger", 200.0, 100.0, w=32.0, h=128.0, is_trigger=True)
-        self.backend._last_world = self.world
 
         dt = 0.016
         result = self.backend.move_and_slide(
-            player, velocity=(200.0, 0.0), delta_time=dt,
+            self.world, player, velocity=(200.0, 0.0), delta_time=dt,
         )
 
         # trigger should not block — player moves freely
@@ -183,11 +177,10 @@ class MoveAndSlideTests(unittest.TestCase):
     def test_move_and_slide_floor_snap(self) -> None:
         player = _make_entity(self.world, "Player", 100.0, 318.0, w=32.0, h=32.0)
         _make_entity(self.world, "Floor", 320.0, 350.0, w=640.0, h=32.0)
-        self.backend._last_world = self.world
 
         # 1. land on floor to set was_on_floor flag
         result1 = self.backend.move_and_slide(
-            player, velocity=(0.0, 200.0), delta_time=0.016,
+            self.world, player, velocity=(0.0, 200.0), delta_time=0.016,
             floor_snap_distance=4.0,
         )
         self.assertTrue(result1.on_floor)
@@ -198,7 +191,7 @@ class MoveAndSlideTests(unittest.TestCase):
 
         # 3. next frame with zero velocity — floor snap should pull player back
         result2 = self.backend.move_and_slide(
-            player, velocity=(0.0, 0.0), delta_time=0.016,
+            self.world, player, velocity=(0.0, 0.0), delta_time=0.016,
             floor_snap_distance=4.0,
         )
 
@@ -215,7 +208,6 @@ class MoveAndSlideTests(unittest.TestCase):
     def test_move_and_collide_stops_at_first_hit(self) -> None:
         player = _make_entity(self.world, "Player", 100.0, 100.0, w=32.0, h=32.0)
         _make_entity(self.world, "Wall", 200.0, 100.0, w=32.0, h=128.0)
-        self.backend._last_world = self.world
 
         result = _simulate(
             self.backend, self.world, player,
@@ -232,6 +224,8 @@ class MoveAndSlideTests(unittest.TestCase):
 # ──────────────────────────────────────────────────────────────
 # Box2D tests — solo ejecutan si Box2D instalado
 # ──────────────────────────────────────────────────────────────
+from unittest import mock
+
 import pytest
 
 try:
@@ -244,19 +238,17 @@ except Exception:
     BOX2D_AVAILABLE = False
 
 
-@pytest.mark.skipif(not BOX2D_AVAILABLE, reason="Box2D not installed")
-class TestBox2DMoveAndSlide:
-    """Tests de move_and_slide con Box2D — requiere Box2D instalado."""
+class KinematicFallbackTests(unittest.TestCase):
+    """Punto 2: servicio kinematic redirige a legacy cuando backend no soporta."""
 
-    def test_box2d_move_and_slide_box_vs_floor(self) -> None:
-        """Box player cae sobre suelo con Box2D."""
+    def test_kinematic_service_falls_back_to_legacy_when_backend_unsupported(self) -> None:
+        """PhysicsKinematicMoveService usa legacy cuando backend no soporta."""
+        from engine.physics.kinematic_move_service import PhysicsKinematicMoveService
+
         world = World()
-
         player = Entity(name="Player")
-        player.add_component(Transform(x=160, y=0))
-        player.add_component(
-            Collider(width=32, height=32, friction=0.2, restitution=0.0)
-        )
+        player.add_component(Transform(x=160, y=50))
+        player.add_component(Collider(width=32, height=32))
         world.add_entity(player)
 
         ground = Entity(name="Ground")
@@ -264,92 +256,54 @@ class TestBox2DMoveAndSlide:
         ground.add_component(Collider(width=640, height=32))
         world.add_entity(ground)
 
-        backend = Box2DPhysicsBackend(gravity=600)
-        backend.sync_world(world)
-
-        result = backend.move_and_slide(
-            entity=player,
-            velocity=(0, 300),
-            delta_time=1 / 60,
-            floor_max_angle=0.785398,
-        )
-
-        player_bottom = result.position_y + 16
-        ground_top = 200 - 16
-        assert (
-            player_bottom <= ground_top + 2.0
-        ), f"Player atravesó suelo: {player_bottom} > {ground_top}"
-
-    def test_box2d_move_and_slide_circle_vs_floor(self) -> None:
-        """Circle player cae sobre suelo con Box2D."""
-        world = World()
-
-        player = Entity(name="Player")
-        player.add_component(Transform(x=160, y=0))
-        player.add_component(
-            Collider(shape_type="circle", radius=16, width=32, height=32)
-        )
-        world.add_entity(player)
-
-        ground = Entity(name="Ground")
-        ground.add_component(Transform(x=160, y=200))
-        ground.add_component(Collider(width=640, height=32))
-        world.add_entity(ground)
-
-        backend = Box2DPhysicsBackend(gravity=600)
-        backend.sync_world(world)
-
-        result = backend.move_and_slide(
-            entity=player,
-            velocity=(0, 300),
-            delta_time=1 / 60,
-        )
-
-        player_bottom = result.position_y + 16
-        ground_top = 200 - 16
-        assert player_bottom <= ground_top + 2.0
-
-    def test_box2d_move_and_slide_polygon_vs_wall(self) -> None:
-        """Polygon player choca con pared con Box2D."""
-        world = World()
-
-        player = Entity(name="Player")
-        player.add_component(Transform(x=100, y=100))
-        player.add_component(
-            Collider(
-                shape_type="polygon",
-                points=[[-16, -16], [16, -16], [0, 16]],
-                width=32,
-                height=32,
+        backend = LegacyAABBPhysicsBackend(physics_system=None, collision_system=None)
+        with mock.patch.object(
+            backend, "supports_kinematic_move", return_value=False,
+        ):
+            service = PhysicsKinematicMoveService()
+            result = service.move_and_slide(
+                backend=backend, world=world, entity=player,
+                velocity=(0, 300), delta_time=1 / 60,
             )
-        )
-        world.add_entity(player)
+            self.assertLess(
+                result.position_y, 200,
+                f"Fallback debería funcionar, y={result.position_y}",
+            )
 
-        wall = Entity(name="Wall")
-        wall.add_component(Transform(x=200, y=100))
-        wall.add_component(Collider(width=32, height=128))
-        world.add_entity(wall)
 
-        backend = Box2DPhysicsBackend(gravity=0)
-        backend.sync_world(world)
+@pytest.mark.skipif(not BOX2D_AVAILABLE, reason="Box2D not installed")
+class TestBox2DKinematicMove:
+    """Verifica que Box2D NO soporta kinematic move y que el servicio redirige a legacy."""
 
-        result = backend.move_and_slide(
-            entity=player,
-            velocity=(300, 0),
-            delta_time=1 / 60,
-        )
+    def test_box2d_does_not_support_kinematic_move(self) -> None:
+        """Box2D backend debe devolver False en supports_kinematic_move."""
+        backend = Box2DPhysicsBackend(gravity=600)
+        assert not backend.supports_kinematic_move(), \
+            "Box2D no debe soportar kinematic move directamente"
 
-        player_right = result.position_x + 16
-        wall_left = 200 - 16
-        assert (
-            player_right <= wall_left + 2.0
-        ), f"Player atravesó pared: {player_right} > {wall_left}"
-
-    def test_box2d_move_and_collide_delegates(self) -> None:
-        """move_and_collide delega correctamente a move_and_slide."""
+    def test_box2d_move_and_slide_raises_not_implemented(self) -> None:
+        """Llamar move_and_slide directamente en Box2D debe lanzar NotImplementedError."""
         world = World()
         player = Entity(name="Player")
         player.add_component(Transform(x=160, y=0))
+        player.add_component(Collider(width=32, height=32))
+        world.add_entity(player)
+
+        backend = Box2DPhysicsBackend(gravity=600)
+        backend.sync_world(world)
+
+        with pytest.raises(NotImplementedError):
+            backend.move_and_slide(
+                world, player, velocity=(0, 300), delta_time=1 / 60,
+            )
+
+    def test_kinematic_service_falls_back_to_legacy_for_box2d(self) -> None:
+        """El servicio usa legacy solver cuando el backend no soporta kinematic move."""
+        from engine.physics.kinematic_move_service import PhysicsKinematicMoveService
+
+        world = World()
+        player = Entity(name="Player")
+        player.add_component(Transform(x=160, y=100))
         player.add_component(Collider(width=32, height=32))
         world.add_entity(player)
 
@@ -361,13 +315,21 @@ class TestBox2DMoveAndSlide:
         backend = Box2DPhysicsBackend(gravity=600)
         backend.sync_world(world)
 
-        result = backend.move_and_collide(
+        service = PhysicsKinematicMoveService()
+
+        # Debe usar legacy porque Box2D no soporta kinematic move
+        result = service.move_and_slide(
+            backend=backend,
+            world=world,
             entity=player,
             velocity=(0, 300),
             delta_time=1 / 60,
         )
 
-        assert result.on_floor or result.position_y < 200
+        player_bottom = result.position_y + 16
+        ground_top = 200 - 16
+        assert player_bottom <= ground_top + 2.0, \
+            f"Player atravesó suelo: {player_bottom} > {ground_top}"
 
 
 if __name__ == "__main__":

@@ -154,6 +154,7 @@ class PhysicsBackend(ABC):
 
     def move_and_slide(
         self,
+        world: Any,
         entity: Any,
         velocity: tuple[float, float],
         delta_time: float,
@@ -170,6 +171,7 @@ class PhysicsBackend(ABC):
 
     def move_and_collide(
         self,
+        world: Any,
         entity: Any,
         velocity: tuple[float, float],
         delta_time: float,
@@ -179,3 +181,8 @@ class PhysicsBackend(ABC):
         raise NotImplementedError(
             f"move_and_collide not implemented by {self.backend_name}"
         )
+
+    def supports_kinematic_move(self) -> bool:
+        """True si el backend implementa move_and_slide con física real.
+        Si es False, el motor debe usar el fallback legacy solver."""
+        return False

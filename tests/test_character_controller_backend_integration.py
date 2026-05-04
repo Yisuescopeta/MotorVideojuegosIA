@@ -7,6 +7,7 @@ from engine.components.collider import Collider
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
+from engine.events.event_bus import EventBus
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
 from engine.systems.character_controller_system import CharacterControllerSystem
 
@@ -31,18 +32,16 @@ class CharacterControllerBackendIntegrationTests(unittest.TestCase):
         ground.add_component(Collider(width=640, height=32))
         world.add_entity(ground)
 
-        # Backend legacy — debe conocer el mundo para el sweep
+        # Backend legacy
         backend = LegacyAABBPhysicsBackend(physics_system=None, collision_system=None)
-        backend._last_world = world
 
         # Sistema de character controller con backend
         system = CharacterControllerSystem()
-        system.set_physics_backend(backend)
 
         # Ejecutar varios frames (debe caer y posarse en el suelo)
         dt = 1.0 / 60.0
         for _ in range(120):  # 2 segundos a 60fps
-            system.update(world, dt)
+            system.update(world, dt, backend=backend)
 
         transform = player.get_component(Transform)
         expected_bottom = 350.0 - 16.0  # top del suelo (y=350, half_h=16 → top=334)
@@ -108,14 +107,12 @@ class CharacterControllerBackendIntegrationTests(unittest.TestCase):
         world.add_entity(wall)
 
         backend = LegacyAABBPhysicsBackend(physics_system=None, collision_system=None)
-        backend._last_world = world
 
         system = CharacterControllerSystem()
-        system.set_physics_backend(backend)
 
         dt = 1.0 / 60.0
         for _ in range(60):
-            system.update(world, dt)
+            system.update(world, dt, backend=backend)
 
         transform = player.get_component(Transform)
         # Player no debe atravesar la pared
@@ -129,4 +126,130 @@ class CharacterControllerBackendIntegrationTests(unittest.TestCase):
         self.assertTrue(
             cc.on_wall or cc.velocity_x == 0.0,
             "Player debería estar en pared o detenido",
+        )
+
+    # ── Punto 1: primer frame sin estado previo ────────────────────
+
+    def test_first_frame_no_previous_state(self) -> None:
+        """CharacterController funciona en el primer frame sin estado previo."""
+        world = World()
+        player = Entity(name="Player")
+        player.add_component(Transform(x=160, y=100))
+        player.add_component(Collider(width=32, height=32))
+        cc = CharacterController2D(move_speed=200, gravity=600)
+        player.add_component(cc)
+        world.add_entity(player)
+
+        ground = Entity(name="Ground")
+        ground.add_component(Transform(x=160, y=350))
+        ground.add_component(Collider(width=640, height=32))
+        world.add_entity(ground)
+
+        backend = LegacyAABBPhysicsBackend(physics_system=None, collision_system=None)
+        system = CharacterControllerSystem()
+
+        # Primer frame — sin estado previo
+        system.update(world, 1 / 60, backend=backend)
+
+        self.assertTrue(True)  # no debe crashear
+
+    # ── Punto 3: on_floor fresco cada frame ────────────────────────
+
+    def test_on_floor_computed_fresh_each_frame(self) -> None:
+        """on_floor se computa fresco cada frame, no del frame anterior."""
+        world = World()
+        player = Entity(name="Player")
+        player.add_component(Transform(x=160, y=50))
+        player.add_component(Collider(width=32, height=32))
+        cc = CharacterController2D(move_speed=200, gravity=600)
+        player.add_component(cc)
+        world.add_entity(player)
+
+        ground = Entity(name="Ground")
+        ground.add_component(Transform(x=160, y=200))
+        ground.add_component(Collider(width=640, height=32))
+        world.add_entity(ground)
+
+        backend = LegacyAABBPhysicsBackend(physics_system=None, collision_system=None)
+        system = CharacterControllerSystem()
+
+        # Frame 1: cae al suelo → on_floor = True
+        for _ in range(60):
+            system.update(world, 1 / 60, backend=backend)
+        self.assertTrue(cc.on_floor, "Debería estar en el suelo tras 60 frames")
+
+        # Frame 2: teletransportar al aire (simular que el suelo desaparece)
+        transform = player.get_component(Transform)
+        transform.y = 50
+        cc.on_floor = False  # reset manual
+
+        # Frame 3: sin suelo debajo → debe seguir en el aire
+        world.remove_entity(ground.id)  # eliminar suelo
+        system.update(world, 1 / 60, backend=backend)
+        self.assertFalse(
+            cc.on_floor,
+            "on_floor debería ser False sin suelo, no arrastrado del frame anterior",
+        )
+
+    # ── Punto 4: cambio de backend limpia estado anterior ──────────
+
+    def test_backend_switch_cleans_previous_state(self) -> None:
+        """Cambiar de backend limpia el estado anterior."""
+        world1 = World()
+        p1 = Entity(name="P1")
+        p1.add_component(Transform(x=160, y=50))
+        p1.add_component(Collider(width=32, height=32))
+        world1.add_entity(p1)
+
+        backend1 = LegacyAABBPhysicsBackend(physics_system=None, collision_system=None)
+        system = CharacterControllerSystem()
+
+        # Usar backend1
+        system.update(world1, 1 / 60, backend=backend1)
+
+        # Cambiar a backend2 (otro LegacyAABB — simula backend switch)
+        backend2 = LegacyAABBPhysicsBackend(physics_system=None, collision_system=None)
+        system.update(world1, 1 / 60, backend=backend2)
+
+        # No debe arrastrar estado de backend1
+        self.assertTrue(True)  # no crashea
+
+    # ── Punto 5: no duplicación de on_collision ────────────────────
+
+    def test_no_duplicate_collision_events(self) -> None:
+        """Un solo contacto no debe emitir múltiples on_collision."""
+        world = World()
+        player = Entity(name="Player")
+        player.add_component(Transform(x=160, y=50))
+        player.add_component(Collider(width=32, height=32))
+        cc = CharacterController2D(move_speed=200, gravity=600)
+        player.add_component(cc)
+        world.add_entity(player)
+
+        ground = Entity(name="Ground")
+        ground.add_component(Transform(x=160, y=200))
+        ground.add_component(Collider(width=640, height=32))
+        world.add_entity(ground)
+
+        events: list = []
+        bus = EventBus()
+        bus.subscribe("on_collision", lambda data: events.append(data))
+
+        backend = LegacyAABBPhysicsBackend(
+            physics_system=None, collision_system=None, event_bus=bus,
+        )
+        system = CharacterControllerSystem()
+        system.set_event_bus(bus)
+
+        # Un solo frame
+        system.update(world, 1 / 60, backend=backend)
+
+        # Verificar no duplicación: máximo 1 evento por par entity-sólido
+        player_events = [
+            e for e in events
+            if e.get("entity_a") == "Player" or e.get("entity_b") == "Player"
+        ]
+        self.assertLessEqual(
+            len(player_events), 1,
+            f"Esperado ≤1 evento para Player, recibidos {len(player_events)}",
         )

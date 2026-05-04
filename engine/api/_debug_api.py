@@ -84,21 +84,6 @@ class DebugAPI(EngineAPIComponent):
         runtime.render_system.clear_debug_primitives()
         return self.ok("Debug primitives cleared")
 
-    def get_performance_report(self) -> dict:
-        """Get Godot-style performance monitoring report.
-
-        Returns:
-            Dictionary with fps, frame_time_ms, physics_time_ms,
-            render_time_ms, process_time_ms, entities, draw_calls.
-        """
-        runtime = self.runtime
-        if runtime is None:
-            return {}
-        pm = getattr(runtime, "performance_monitor", None)
-        if pm is not None:
-            return pm.get_report()
-        return {}
-
     def get_debug_geometry_dump(
         self,
         viewport_width: int = 800,

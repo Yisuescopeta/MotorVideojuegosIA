@@ -102,18 +102,13 @@ class ComponentRegistry:
 
 def create_default_registry() -> ComponentRegistry:
     """Crea un registro con los componentes predeterminados del motor."""
-    from engine.components.animation_player_2d import AnimationPlayer2D
-    from engine.components.animation_tree import AnimationTree
     from engine.components.animatable_body_2d import AnimatableBody2D
     from engine.components.animator import Animator
     from engine.components.area2d import Area2D
     from engine.components.audio_listener_2d import AudioListener2D
-    from engine.components.audio_stream_player_2d import AudioStreamPlayer2D
     from engine.components.audiosource import AudioSource
     from engine.components.camera2d import Camera2D
     from engine.components.canvas import Canvas
-    from engine.components.canvas_item_2d import CanvasItem2D
-    from engine.components.canvas_layer import CanvasLayer
     from engine.components.particle_emitter2d import ParticleEmitter2D
     from engine.components.charactercontroller2d import CharacterController2D
     from engine.components.collider import Collider
@@ -132,24 +127,21 @@ def create_default_registry() -> ComponentRegistry:
         RespawnPoint2D,
     )
     from engine.components.navigation_agent_2d import NavigationAgent2D
-    from engine.components.navigation_obstacle_2d import NavigationObstacle2D
-    from engine.components.navigation_region_2d import NavigationRegion2D
     from engine.components.path_follower_2d import PathFollower2D
     from engine.components.inputmap import InputMap
     from engine.components.joint2d import Joint2D
     from engine.components.light2d import Light2D
-    from engine.components.light_occluder_2d import LightOccluder2D
     from engine.components.line2d import Line2D
     from engine.components.marker2d import Marker2D
     from engine.components.playercontroller2d import PlayerController2D
     from engine.components.polygon2d import Polygon2D
+    from engine.components.raycast_2d import RayCast2D
     from engine.components.recttransform import RectTransform
     from engine.components.renderorder2d import RenderOrder2D
     from engine.components.renderstyle2d import RenderStyle2D
     from engine.components.resource_preloader import ResourcePreloader
     from engine.components.rigidbody import RigidBody
     from engine.components.scene_entry_point import SceneEntryPoint
-    from engine.components.static_body_2d import StaticBody2D
     from engine.components.scene_link import SceneLink
     from engine.components.scene_transition_action import SceneTransitionAction
     from engine.components.scene_transition_on_contact import SceneTransitionOnContact
@@ -157,44 +149,15 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.scene_transition_on_player_death import SceneTransitionOnPlayerDeath
     from engine.components.scriptbehaviour import ScriptBehaviour
     from engine.components.sprite import Sprite
+    from engine.components.static_body_2d import StaticBody2D
     from engine.components.tilemap import Tilemap
-    from engine.components.sub_viewport import SubViewport, ViewportTexture
-    from engine.components.post_process_effect import PostProcessEffectComp
     from engine.components.timer import Timer
     from engine.components.transform import Transform
     from engine.components.tween import Tween
     from engine.components.uibutton import UIButton
     from engine.components.uiimage import UIImage
-    from engine.components.uipanel import UIPanel
-    from engine.components.ui_popup import UIPopup, UIPopupMenu, UIWindow
-    from engine.components.uiscrollcontainer import UIScrollContainer
-    from engine.components.ui_splitcontainer import UISplitContainer
-    from engine.components.ui_tabbar import UITabBar, UITabContainer
     from engine.components.uitext import UIText
-    from engine.components.ui_ninepatch import UINinePatchRect
-    from engine.components.ui_texture_button import UITextureButton
-    from engine.components.ui_tree import UITree
-    from engine.components.uicheckbox import CheckBox
-    from engine.components.uilabel import Label
-    from engine.components.uilineedit import LineEdit
-    from engine.components.uiprogressbar import ProgressBar
-    from engine.components.uislider import Slider
-    from engine.components.uispinbox import SpinBox
-    from engine.components.uitextedit import TextEdit
-    from engine.components.backbuffer_copy import BackBufferCopy
-    from engine.components.colorrect import ColorRect
-    from engine.components.rich_text_label import RichTextLabel
-    from engine.components.directional_light_2d import DirectionalLight2D
-    from engine.components.parallax_background import ParallaxBackground
     from engine.components.parallax_layer import ParallaxLayer
-    from engine.components.path_2d import Path2D
-    from engine.components.point_light_2d import PointLight2D
-    from engine.components.remote_transform_2d import RemoteTransform2D
-    from engine.components.touch_screen_button import TouchScreenButton
-    from engine.components.gpu_particles_2d import GPUParticles2D
-    from engine.components.animated_sprite_2d import AnimatedSprite2D
-    from engine.components.canvas_modulate import CanvasModulate
-    from engine.components.raycast_2d import RayCast2D
     from engine.components.visible_on_screen_notifier_2d import (
         VisibleOnScreenEnabler2D,
         VisibleOnScreenNotifier2D,
@@ -228,7 +191,7 @@ def create_default_registry() -> ComponentRegistry:
     registry.register(
         "CollisionFilter2D",
         CollisionFilter2D,
-        description="Define capas de colisión y máscara para filtrado entre entidades.",
+        description="Define capas de colision y mascara para filtrado entre entidades.",
         default_payload=CollisionFilter2D().to_dict(),
         editor_tags=("physics", "layer:Physics", "collision"),
     )
@@ -299,13 +262,6 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("Joint2D", Joint2D)
     registry.register("Light2D", Light2D)
     registry.register(
-        "LightOccluder2D",
-        LightOccluder2D,
-        description="Bloquea luz 2D creando sombras (adaptado de Godot LightOccluder2D).",
-        default_payload=LightOccluder2D().to_dict(),
-        editor_tags=("render", "lighting", "occluder", "layer:Visual"),
-    )
-    registry.register(
         "Line2D",
         Line2D,
         description="2D line with width, color, joint mode, and closed option.",
@@ -335,30 +291,16 @@ def create_default_registry() -> ComponentRegistry:
         editor_tags=("physics", "trigger", "layer:Physics", "area"),
     )
     registry.register(
-        "AnimationPlayer2D",
-        AnimationPlayer2D,
-        description="Reproduce AnimationResources en una entidad aplicando tracks de propiedades a sus componentes (adaptado de Godot AnimationPlayer).",
-        default_payload=AnimationPlayer2D().to_dict(),
-        editor_tags=("animation", "tag:AnimationPlayer", "layer:Gameplay"),
-    )
-    registry.register(
-        "AnimationTree",
-        AnimationTree,
-        description="Arbol de animacion con blend spaces, state machine y blending (adaptado de Godot AnimationTree).",
-        default_payload=AnimationTree().to_dict(),
-        editor_tags=("animation", "tag:AnimationTree", "layer:Gameplay", "blend"),
+        "RayCast2D",
+        RayCast2D,
+        description="Rayo 2D que detecta colisiones en linea recta (Godot RayCast2D).",
+        default_payload=RayCast2D().to_dict(),
+        editor_tags=("physics", "raycast", "layer:Physics", "detection"),
     )
     registry.register("Animator", Animator)
     registry.register("Camera2D", Camera2D)
     registry.register("AudioSource", AudioSource)
     registry.register("AudioListener2D", AudioListener2D)
-    registry.register(
-        "AudioStreamPlayer2D",
-        AudioStreamPlayer2D,
-        description="Reproduce un AudioStreamResource (adaptado de Godot AudioStreamPlayer2D).",
-        default_payload=AudioStreamPlayer2D().to_dict(),
-        editor_tags=("audio", "tag:AudioStreamPlayer", "layer:Audio"),
-    )
     registry.register("InputMap", InputMap)
     registry.register("PlayerController2D", PlayerController2D)
     registry.register("RenderOrder2D", RenderOrder2D)
@@ -373,150 +315,10 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("ResourcePreloader", ResourcePreloader)
     registry.register("Tilemap", Tilemap)
     registry.register("Canvas", Canvas)
-    registry.register(
-        "CanvasLayer",
-        CanvasLayer,
-        description="Capa de renderizado independiente con su propio transform (adaptado de Godot CanvasLayer).",
-        default_payload=CanvasLayer().to_dict(),
-        editor_tags=("render", "layer:Visual", "capa"),
-    )
-    registry.register(
-        "CanvasItem2D",
-        CanvasItem2D,
-        description="Componente de primitivas de dibujo 2D: rect, circle, line. Adaptado de Godot CanvasItem.",
-        default_payload=CanvasItem2D().to_dict(),
-        editor_tags=("render", "layer:Visual", "draw"),
-    )
     registry.register("RectTransform", RectTransform)
     registry.register("UIText", UIText)
     registry.register("UIButton", UIButton)
     registry.register("UIImage", UIImage)
-    registry.register(
-        "UIPanel",
-        UIPanel,
-        description="Panel UI con fondo de color o textura (adaptado de Godot Panel).",
-        default_payload=UIPanel().to_dict(),
-        editor_tags=("ui", "layer:UI", "container"),
-    )
-    registry.register(
-        "UIScrollContainer",
-        UIScrollContainer,
-        description="Contenedor con scroll vertical/horizontal (adaptado de Godot ScrollContainer).",
-        default_payload=UIScrollContainer().to_dict(),
-        editor_tags=("ui", "layer:UI", "container", "scroll"),
-    )
-    registry.register(
-        "UINinePatchRect",
-        UINinePatchRect,
-        description="Rectangulo 9-slice escalable que divide una textura en 9 regiones (adaptado Godot NinePatchRect).",
-        default_payload=UINinePatchRect().to_dict(),
-        editor_tags=("ui", "layer:UI", "9patch", "texture"),
-    )
-    registry.register(
-        "UITextureButton",
-        UITextureButton,
-        description="Boton basado en texturas con estados normal/hover/pressed/disabled (adaptado Godot TextureButton).",
-        default_payload=UITextureButton().to_dict(),
-        editor_tags=("ui", "layer:UI", "button", "texture"),
-    )
-    registry.register(
-        "LineEdit",
-        LineEdit,
-        description="Control de entrada de texto de una sola linea (adaptado Godot LineEdit).",
-        default_payload=LineEdit().to_dict(),
-        editor_tags=("ui", "layer:UI", "input", "text"),
-    )
-    registry.register(
-        "Slider",
-        Slider,
-        description="Barra deslizante para seleccion de valor numerico (adaptado Godot Slider).",
-        default_payload=Slider().to_dict(),
-        editor_tags=("ui", "layer:UI", "input", "slider"),
-    )
-    registry.register(
-        "ProgressBar",
-        ProgressBar,
-        description="Barra de progreso visual (adaptado Godot ProgressBar).",
-        default_payload=ProgressBar().to_dict(),
-        editor_tags=("ui", "layer:UI", "display", "progress"),
-    )
-    registry.register(
-        "CheckBox",
-        CheckBox,
-        description="Casilla de verificacion con etiqueta (adaptado Godot CheckBox).",
-        default_payload=CheckBox().to_dict(),
-        editor_tags=("ui", "layer:UI", "input", "toggle"),
-    )
-    registry.register(
-        "SpinBox",
-        SpinBox,
-        description="Control de entrada numerica con flechas de incremento/decremento (adaptado Godot SpinBox).",
-        default_payload=SpinBox().to_dict(),
-        editor_tags=("ui", "layer:UI", "input", "numeric"),
-    )
-    registry.register(
-        "Label",
-        Label,
-        description="Etiqueta de texto con soporte rich text (adaptado Godot Label).",
-        default_payload=Label().to_dict(),
-        editor_tags=("ui", "layer:UI", "display", "text"),
-    )
-    registry.register(
-        "RichTextLabel",
-        RichTextLabel,
-        description="Etiqueta de texto con BBCode styling, word-wrap, scroll y reveal effect (adaptado Godot RichTextLabel).",
-        default_payload=RichTextLabel().to_dict(),
-        editor_tags=("ui", "layer:UI", "display", "text", "rich"),
-    )
-    registry.register(
-        "UIPopup",
-        UIPopup,
-        description="Popup modal que aparece sobre el UI con fondo oscuro opcional (adaptado Godot Popup).",
-        default_payload=UIPopup().to_dict(),
-        editor_tags=("ui", "layer:UI", "modal", "popup"),
-    )
-    registry.register(
-        "UIPopupMenu",
-        UIPopupMenu,
-        description="Menu popup con items seleccionables y separadores (adaptado Godot PopupMenu).",
-        default_payload=UIPopupMenu().to_dict(),
-        editor_tags=("ui", "layer:UI", "modal", "menu"),
-    )
-    registry.register(
-        "UIWindow",
-        UIWindow,
-        description="Ventana arrastrable con barra de titulo y boton de cierre (adaptado Godot Window).",
-        default_payload=UIWindow().to_dict(),
-        editor_tags=("ui", "layer:UI", "modal", "window"),
-    )
-    registry.register(
-        "TextEdit",
-        TextEdit,
-        description="Editor de texto multilinea (adaptado Godot TextEdit).",
-        default_payload=TextEdit().to_dict(),
-        editor_tags=("ui", "layer:UI", "input", "text", "multiline"),
-    )
-    registry.register(
-        "UITabBar",
-        UITabBar,
-        description="Barra de pestañas con tabs clickeables (adaptado Godot TabBar).",
-        default_payload=UITabBar().to_dict(),
-        editor_tags=("ui", "layer:UI", "container", "tabs"),
-    )
-    registry.register(
-        "UITabContainer",
-        UITabContainer,
-        description="Contenedor de pestañas que muestra un hijo por tab (adaptado Godot TabContainer).",
-        default_payload=UITabContainer().to_dict(),
-        editor_tags=("ui", "layer:UI", "container", "tabs"),
-    )
-    registry.register(
-        "UISplitContainer",
-        UISplitContainer,
-        description="Contenedor dividido redimensionable entre dos hijos (adaptado Godot SplitContainer).",
-        default_payload=UISplitContainer().to_dict(),
-        editor_tags=("ui", "layer:UI", "container", "split"),
-    )
     registry.register("Timer", Timer)
     registry.register("Marker2D", Marker2D)
     registry.register("Tween", Tween)
@@ -530,32 +332,11 @@ def create_default_registry() -> ComponentRegistry:
         editor_tags=("navigation", "tag:NavigationAgent", "layer:Gameplay", "moving"),
     )
     registry.register(
-        "NavigationObstacle2D",
-        NavigationObstacle2D,
-        description="Dynamic obstacle that blocks navigation paths and affects avoidance when active.",
-        default_payload=NavigationObstacle2D().to_dict(),
-        editor_tags=("navigation", "tag:NavigationObstacle", "layer:Gameplay", "obstacle"),
-    )
-    registry.register(
-        "NavigationRegion2D",
-        NavigationRegion2D,
-        description="Defines navigable region with cost modifiers and references a NavigationPolygon resource.",
-        default_payload=NavigationRegion2D().to_dict(),
-        editor_tags=("navigation", "tag:NavigationRegion", "layer:Gameplay", "region"),
-    )
-    registry.register(
         "PathFollower2D",
         PathFollower2D,
         description="Makes an entity follow a Curve2D path with speed, loop and rotation support.",
         default_payload=PathFollower2D().to_dict(),
         editor_tags=("path", "tag:PathFollower", "layer:Gameplay", "moving"),
-    )
-    registry.register(
-        "ParallaxBackground",
-        ParallaxBackground,
-        description="Contenedor que agrupa ParallaxLayers con offset/escala/limite compartidos (Godot ParallaxBackground).",
-        default_payload=ParallaxBackground().to_dict(),
-        editor_tags=("parallax", "layer:Camera", "background", "container"),
     )
     registry.register(
         "ParallaxLayer",
@@ -565,115 +346,10 @@ def create_default_registry() -> ComponentRegistry:
         editor_tags=("parallax", "layer:Camera", "background"),
     )
     registry.register(
-        "Path2D",
-        Path2D,
-        description="Define un path Curve2D para PathFollow2D (Godot Path2D).",
-        default_payload=Path2D().to_dict(),
-        editor_tags=("path", "tag:Path", "layer:Gameplay", "curve"),
-    )
-    registry.register(
-        "PointLight2D",
-        PointLight2D,
-        description="Luz puntual radial 2D con sombras y textura (Godot PointLight2D).",
-        default_payload=PointLight2D().to_dict(),
-        editor_tags=("render", "lighting", "layer:Visual", "point"),
-    )
-    registry.register(
         "ParticleEmitter2D",
         ParticleEmitter2D,
         description="Emisor de particulas 2D calculadas en CPU (equivalente Godot CPUParticles2D).",
         default_payload=ParticleEmitter2D().to_dict(),
         editor_tags=("particles", "render", "layer:Visual", "fx"),
-    )
-    registry.register(
-        "RemoteTransform2D",
-        RemoteTransform2D,
-        description="Pushes transform (position, rotation, scale) to another entity (Godot RemoteTransform2D).",
-        default_payload=RemoteTransform2D().to_dict(),
-        editor_tags=("transform", "layer:Gameplay", "remote"),
-    )
-    registry.register(
-        "TouchScreenButton",
-        TouchScreenButton,
-        description="Button designed for touch screen interaction (Godot TouchScreenButton).",
-        default_payload=TouchScreenButton().to_dict(),
-        editor_tags=("ui", "touch", "layer:UI", "button"),
-    )
-    registry.register(
-        "GPUParticles2D",
-        GPUParticles2D,
-        description="GPU-based particles 2D (MVP wrapper, Godot GPUParticles2D).",
-        default_payload=GPUParticles2D().to_dict(),
-        editor_tags=("particles", "render", "layer:Visual", "fx", "gpu"),
-    )
-    registry.register(
-        "DirectionalLight2D",
-        DirectionalLight2D,
-        description="Luz direccional 2D que proyecta en una direccion con distancia configurable.",
-        default_payload=DirectionalLight2D().to_dict(),
-        editor_tags=("render", "lighting", "layer:Visual"),
-    )
-    registry.register(
-        "ColorRect",
-        ColorRect,
-        description="Rectangulo de color solido para fondos UI o debug.",
-        default_payload=ColorRect().to_dict(),
-        editor_tags=("ui", "render", "layer:UI", "debug"),
-    )
-    registry.register(
-        "BackBufferCopy",
-        BackBufferCopy,
-        description="Copia una region de pantalla en un buffer para efectos de post-procesado.",
-        default_payload=BackBufferCopy().to_dict(),
-        editor_tags=("render", "postfx", "layer:Visual"),
-    )
-    registry.register(
-        "AnimatedSprite2D",
-        AnimatedSprite2D,
-        description="Sprite animado con soporte de SpriteFrames, modos loop/none/pingpong (Godot AnimatedSprite2D).",
-        default_payload=AnimatedSprite2D().to_dict(),
-        editor_tags=("animation", "sprite", "layer:Visual", "render"),
-    )
-    registry.register(
-        "RayCast2D",
-        RayCast2D,
-        description="Rayo 2D que detecta colisiones en linea recta (Godot RayCast2D).",
-        default_payload=RayCast2D().to_dict(),
-        editor_tags=("physics", "raycast", "layer:Physics", "detection"),
-    )
-    registry.register(
-        "CanvasModulate",
-        CanvasModulate,
-        description="Aplica un multiply de color sobre todo el canvas (Godot CanvasModulate).",
-        default_payload=CanvasModulate().to_dict(),
-        editor_tags=("render", "postfx", "layer:Visual", "canvas"),
-    )
-    registry.register(
-        "UITree",
-        UITree,
-        description="Arbol jerarquico de items con seleccion, checkboxes y columnas (Godot Tree).",
-        default_payload=UITree().to_dict(),
-        editor_tags=("ui", "layer:UI", "tree", "data"),
-    )
-    registry.register(
-        "SubViewport",
-        SubViewport,
-        description="Renders a subtree to a texture (Godot SubViewport).",
-        default_payload=SubViewport().to_dict(),
-        editor_tags=("render", "viewport", "layer:Visual"),
-    )
-    registry.register(
-        "ViewportTexture",
-        ViewportTexture,
-        description="Texture dynamically updated from a SubViewport (apply to Sprite).",
-        default_payload=ViewportTexture().to_dict(),
-        editor_tags=("render", "viewport", "layer:Visual", "texture"),
-    )
-    registry.register(
-        "PostProcessEffectComp",
-        PostProcessEffectComp,
-        description="List of post-processing effects to apply after rendering.",
-        default_payload=PostProcessEffectComp().to_dict(),
-        editor_tags=("render", "postfx", "layer:Visual"),
     )
     return registry

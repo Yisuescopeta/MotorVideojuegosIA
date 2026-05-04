@@ -26,7 +26,6 @@ class Camera2D(Component):
         clamp_top: float | None = None,
         clamp_bottom: float | None = None,
         recenter_on_play: bool = True,
-        camera_visibility_mask: int = 0xFFFFFFFF,
     ) -> None:
         self.enabled: bool = True
         self.offset_x: float = offset_x
@@ -43,7 +42,6 @@ class Camera2D(Component):
         self.clamp_top: float | None = clamp_top
         self.clamp_bottom: float | None = clamp_bottom
         self.recenter_on_play: bool = recenter_on_play
-        self.camera_visibility_mask: int = int(camera_visibility_mask)
 
         # Estado de runtime no serializable para seguimiento suave.
         self._runtime_target_x: float = 0.0
@@ -67,7 +65,6 @@ class Camera2D(Component):
             "clamp_top": self.clamp_top,
             "clamp_bottom": self.clamp_bottom,
             "recenter_on_play": self.recenter_on_play,
-            "camera_visibility_mask": self.camera_visibility_mask,
         }
 
     @classmethod
@@ -87,7 +84,6 @@ class Camera2D(Component):
             clamp_top=data.get("clamp_top"),
             clamp_bottom=data.get("clamp_bottom"),
             recenter_on_play=data.get("recenter_on_play", True),
-            camera_visibility_mask=data.get("camera_visibility_mask", 0xFFFFFFFF),
         )
         component.enabled = data.get("enabled", True)
         return component

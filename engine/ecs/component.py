@@ -21,15 +21,6 @@ EJEMPLO DE USO:
             return {"x": self.x, "y": self.y}
 """
 
-from enum import Enum
-
-
-class ProcessMode(Enum):
-    INHERIT = "inherit"
-    ALWAYS = "always"
-    WHEN_PAUSED = "when_paused"
-    DISABLED = "disabled"
-
 
 class Component:
     """
@@ -43,10 +34,6 @@ class Component:
     - Implementar to_dict() para serialización
     - Implementar from_dict() para deserialización
     """
-
-    def __init__(self) -> None:
-        self.process_mode: str = "inherit"
-        self.process_priority: int = 0
 
     def to_dict(self) -> dict[str, object]:
         """
@@ -62,8 +49,6 @@ class Component:
             if not key.startswith("_")
         }
         data.setdefault("enabled", getattr(self, "enabled", True))
-        data.setdefault("process_mode", getattr(self, "process_mode", "inherit"))
-        data.setdefault("process_priority", getattr(self, "process_priority", 0))
         return data
 
     @classmethod
@@ -80,10 +65,6 @@ class Component:
         instance = cls()
         if not hasattr(instance, "enabled"):
             setattr(instance, "enabled", True)
-        if "process_mode" in data:
-            instance.process_mode = str(data["process_mode"])
-        if "process_priority" in data:
-            instance.process_priority = int(data["process_priority"])
         for key, value in data.items():
             if hasattr(instance, key):
                 setattr(instance, key, value)

@@ -1,6 +1,6 @@
 import unittest
 
-from engine.tilemap.model import TileCoord, TileData, TilemapData
+from engine.tilemap.model import TileCoord, TilemapData
 
 
 class TilemapFoundationTests(unittest.TestCase):
@@ -80,60 +80,6 @@ class TilemapFoundationTests(unittest.TestCase):
         self.assertEqual(model.tileset["guid"], "abc")
         self.assertEqual(model.tileset["path"], "assets/new.png")
         self.assertEqual(model.tileset_path, "assets/new.png")
-
-
-    def test_tile_custom_data_layers(self) -> None:
-        tile = TileData(
-            tile_id="water",
-            physics_layer=1,
-            navigation_layer=2,
-            custom_data={"flow_speed": 5, "depth": 3},
-        )
-        self.assertEqual(tile.physics_layer, 1)
-        self.assertEqual(tile.navigation_layer, 2)
-        self.assertEqual(tile.custom_data, {"flow_speed": 5, "depth": 3})
-
-    def test_tile_custom_data_roundtrip(self) -> None:
-        payload = {
-            "tile_id": "lava",
-            "physics_layer": 3,
-            "navigation_layer": 0,
-            "custom_data": {"damage": 10, "heat": 100},
-        }
-        tile = TileData.from_payload(payload)
-        self.assertEqual(tile.physics_layer, 3)
-        self.assertEqual(tile.navigation_layer, 0)
-        self.assertEqual(tile.custom_data, {"damage": 10, "heat": 100})
-
-        runtime = tile.to_runtime_dict()
-        self.assertEqual(runtime["physics_layer"], 3)
-        self.assertEqual(runtime["navigation_layer"], 0)
-        self.assertEqual(runtime["custom_data"], {"damage": 10, "heat": 100})
-
-        roundtrip = TileData.from_payload(runtime)
-        self.assertEqual(roundtrip.physics_layer, 3)
-        self.assertEqual(roundtrip.navigation_layer, 0)
-        self.assertEqual(roundtrip.custom_data, {"damage": 10, "heat": 100})
-
-    def test_tilemap_set_tile_with_custom_data_layers(self) -> None:
-        model = TilemapData.from_payload(
-            {
-                "cell_width": 16,
-                "cell_height": 16,
-                "layers": [{"name": "Ground", "tiles": []}],
-            }
-        )
-        model.set_tile(
-            "Ground", 0, 0, "ice",
-            physics_layer=2,
-            navigation_layer=1,
-            custom_data={"slipperiness": 0.8},
-        )
-        tile = model.layers[0].get_tile(TileCoord(0, 0))
-        self.assertIsNotNone(tile)
-        self.assertEqual(tile.physics_layer, 2)
-        self.assertEqual(tile.navigation_layer, 1)
-        self.assertEqual(tile.custom_data, {"slipperiness": 0.8})
 
 
 if __name__ == "__main__":

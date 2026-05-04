@@ -48,8 +48,6 @@ class Polygon2D(Component):
         texture_path: str = "",
         offset_x: float = 0.0,
         offset_y: float = 0.0,
-        uvs: list[tuple[float, float]] | None = None,
-        internal_vertices: int = 0,
     ) -> None:
         self.enabled: bool = True
         self.points: list[list[float]] = [list(p) for p in (points or [])]
@@ -57,8 +55,6 @@ class Polygon2D(Component):
         self.texture_path: str = self.texture.get("path", "")
         self.offset_x: float = offset_x
         self.offset_y: float = offset_y
-        self.uvs: list[tuple[float, float]] = [tuple(uv) for uv in (uvs or [])]
-        self.internal_vertices: int = int(internal_vertices)
         self._color: Tuple[int, int, int, int] = (255, 255, 255, 255)
         self.color = color
 
@@ -106,8 +102,6 @@ class Polygon2D(Component):
             "texture_path": self.texture_path,
             "offset_x": self.offset_x,
             "offset_y": self.offset_y,
-            "uvs": [list(uv) for uv in self.uvs],
-            "internal_vertices": self.internal_vertices,
         }
 
     @classmethod
@@ -123,11 +117,6 @@ class Polygon2D(Component):
         if texture_path and texture_ref.get("path") != texture_path:
             texture_ref = build_asset_reference(texture_path, texture_ref.get("guid", ""))
 
-        raw_uvs = data.get("uvs", [])
-        uvs: list[tuple[float, float]] = []
-        if isinstance(raw_uvs, list):
-            uvs = [tuple(float(v) for v in uv) for uv in raw_uvs if isinstance(uv, (list, tuple)) and len(uv) >= 2]
-
         component = cls(
             points=points,
             color=tuple(color) if isinstance(color, (tuple, list)) else (255, 255, 255, 255),  # type: ignore[arg-type]
@@ -135,8 +124,6 @@ class Polygon2D(Component):
             texture_path=texture_path,
             offset_x=cast(float, data.get("offset_x", 0.0)),
             offset_y=cast(float, data.get("offset_y", 0.0)),
-            uvs=uvs,
-            internal_vertices=cast(int, data.get("internal_vertices", 0)),
         )
         component.enabled = cast(bool, data.get("enabled", True))
         return component

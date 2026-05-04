@@ -6,12 +6,9 @@ PROPÓSITO:
 """
 
 from engine.scenes.scene import Scene
-from engine.scenes.scene_inheritance import SceneInheritanceData, resolve_inherited_scene
 from engine.scenes.scene_manager import SceneManager
 
 __all__ = [
     "Scene",
-    "SceneInheritanceData",
     "SceneManager",
-    "resolve_inherited_scene",
 ]

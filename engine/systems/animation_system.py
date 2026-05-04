@@ -55,7 +55,6 @@ class AnimationSystem:
     def _update_animator(self, entity: Entity, animator: Animator, delta_time: float) -> None:
         """Actualiza un animator individual."""
         self._try_apply_transition(entity, animator, allow_exit_time=False)
-        self._update_blend(animator, delta_time)
 
         anim = animator.get_current_animation()
         if anim is None or anim.get_frame_count() <= 0:
@@ -100,18 +99,6 @@ class AnimationSystem:
             animator.play(anim.on_complete)
             if previous_state != animator.current_state:
                 self._emit_state_changed(entity, previous_state, animator.current_state)
-
-    def _update_blend(self, animator: Animator, delta_time: float) -> None:
-        """Avanza el progreso del blend/crossfade si esta activo."""
-        if animator._blend_progress >= 1.0:
-            return
-        current_anim = animator.get_current_animation()
-        if current_anim is None or current_anim.blend_duration <= 0:
-            animator._blend_progress = 1.0
-            return
-        animator._blend_progress += delta_time / current_anim.blend_duration
-        if animator._blend_progress >= 1.0:
-            animator._blend_progress = 1.0
 
     def _try_apply_transition(self, entity: Entity, animator: Animator, *, allow_exit_time: bool) -> bool:
         for transition in animator.get_state_transitions():

@@ -54,7 +54,7 @@ class TestLegacyBackendContract:
         world, player, ground = _make_world_with_floor()
         backend = LegacyAABBPhysicsBackend(physics_system=None, collision_system=None)
         backend.step(world, 0.0)
-        result = backend.move_and_slide(player, (0, 300), 1 / 60)
+        result = backend.move_and_slide(world, player, (0, 300), 1 / 60)
         ground_top = 200 - 16
         assert result.position_y + 16 <= ground_top + 2.0, "Player debería estar sobre el suelo"
 
@@ -62,7 +62,7 @@ class TestLegacyBackendContract:
         world, player, ground = _make_world_with_floor()
         backend = LegacyAABBPhysicsBackend(physics_system=None, collision_system=None)
         backend.step(world, 0.0)
-        result = backend.move_and_slide(player, (0, 0), 1 / 60)
+        result = backend.move_and_slide(world, player, (0, 0), 1 / 60)
         assert isinstance(result, MoveResult2D)
         assert hasattr(result, "on_floor")
         assert hasattr(result, "on_wall")
@@ -82,7 +82,7 @@ class TestLegacyBackendContract:
         world.add_entity(trigger)
         backend = LegacyAABBPhysicsBackend(physics_system=None, collision_system=None)
         backend.step(world, 0.0)
-        result = backend.move_and_slide(player, (200, 0), 1 / 60)
+        result = backend.move_and_slide(world, player, (200, 0), 1 / 60)
         # Con dt=1/60 y vx=200, delta ~3.33. Si el trigger bloqueara, x ≈ 118.
         # Como is_trigger=True, el player avanza libremente.
         assert result.position_x > 100, f"Player debería atravesar trigger, x={result.position_x}"

@@ -79,7 +79,6 @@ class EngineAPI:
     def _initialize_engine(self) -> None:
         from cli.headless_game import HeadlessGame
         from engine.assets.asset_service import AssetService
-        from engine.inspector.inspector_system import InspectorSystem
         from engine.systems.animation_system import AnimationSystem
         from engine.systems.area2d_system import Area2DSystem
         from engine.systems.audio_system import AudioSystem
@@ -90,23 +89,7 @@ class EngineAPI:
         from engine.systems.player_controller_system import PlayerControllerSystem
         from engine.systems.render_system import RenderSystem
         from engine.systems.script_behaviour_system import ScriptBehaviourSystem
-        from engine.systems.selection_system import SelectionSystem
-        from engine.systems.ui_render_system import UIRenderSystem
-        from engine.systems.ui_system import UISystem
-        from engine.systems.light2d_system import Light2DSystem
-        from engine.systems.line2d_render_system import Line2DRenderSystem
-        from engine.systems.parallax_system import ParallaxSystem
-        from engine.systems.gpu_particles_system import GPUParticlesSystem
-        from engine.systems.particle_system import ParticleSystem
-        from engine.systems.timer_system import TimerSystem
-        from engine.systems.tween_system import TweenSystem
-        from engine.systems.visible_on_screen_system import VisibleOnScreenSystem
-        from engine.systems.resource_preloader_system import ResourcePreloaderSystem
-        from engine.systems.path_follow_system import PathFollowSystem
         from engine.systems.gameplay2d_semantic_system import Gameplay2DSemanticSystem
-        from engine.systems.navigation_agent_system import NavigationAgentSystem
-        from engine.systems.ui_focus_system import UIFocusSystem
-        from engine.navigation.service import NavigationService
 
         self.game = HeadlessGame()
         self.scene_manager = SceneManager(self._registry)
@@ -125,31 +108,14 @@ class EngineAPI:
         self.game.set_physics_system(PhysicsSystem(gravity=600))
         self.game.set_collision_system(CollisionSystem(event_bus))
         self.game.set_animation_system(AnimationSystem(event_bus))
-        self.game.set_inspector_system(InspectorSystem())
-        self.game.set_selection_system(SelectionSystem())
         self.game.set_event_bus(event_bus)
         self.game.set_input_system(InputSystem())
         self.game.set_character_controller_system(CharacterControllerSystem())
         self.game.set_player_controller_system(PlayerControllerSystem())
         self.game.set_script_behaviour_system(ScriptBehaviourSystem())
-        from engine.audio.pyray_backend import PyrayAudioBackend
-        self.game.set_audio_system(AudioSystem(backend=PyrayAudioBackend()))
-        self.game.set_ui_system(UISystem())
-        self.game.set_ui_render_system(UIRenderSystem())
-        self.game.set_light2d_system(Light2DSystem())
-        self.game.set_line2d_render_system(Line2DRenderSystem())
-        self.game.set_particle_system(ParticleSystem(event_bus))
-        self.game.set_gpu_particles_system(GPUParticlesSystem())
+        self.game.set_audio_system(AudioSystem())
         self.game.set_area2d_system(Area2DSystem(event_bus=event_bus))
-        self.game.set_parallax_system(ParallaxSystem())
-        self.game.set_timer_system(TimerSystem())
-        self.game.set_tween_system(TweenSystem())
-        self.game.set_visible_on_screen_system(VisibleOnScreenSystem())
-        self.game.set_resource_preloader_system(ResourcePreloaderSystem())
-        self.game.set_path_follow_system(PathFollowSystem())
         self.game.set_gameplay2d_semantic_system(Gameplay2DSemanticSystem())
-        self.game.set_navigation_agent_system(NavigationAgentSystem(NavigationService()))
-        self.game.set_ui_focus_system(UIFocusSystem(event_bus))
         self._register_optional_box2d_backend()
 
     def _initialize_collaborators(self) -> None:

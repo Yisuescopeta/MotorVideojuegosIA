@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 import pyray as rl
 
 from engine.components.line2d import Line2D
-from engine.components.path_2d import Path2D
 from engine.components.transform import Transform
 
 if TYPE_CHECKING:
@@ -22,8 +21,6 @@ if TYPE_CHECKING:
 
 class Line2DRenderSystem:
     """Renderiza entidades con componente Line2D."""
-
-    PATH2D_DEBUG_COLOR = rl.Color(64, 224, 208, 200)
 
     def render(self, world: "World") -> None:
         for entity in world.get_entities_with(Transform, Line2D):
@@ -36,31 +33,19 @@ class Line2DRenderSystem:
 
             self._draw_line2d(transform, line)
 
-        for entity in world.get_entities_with(Transform, Path2D):
-            transform = entity.get_component(Transform)
-            path = entity.get_component(Path2D)
-            if transform is None or path is None:
-                continue
-            if len(path.curve_points) < 2:
-                continue
-
-            self._draw_path2d(transform, path)
-
     def _draw_line2d(self, transform: Transform, line: Line2D) -> None:
+        color = rl.Color(*line.color)
         world_points = self._transform_points(line.points, transform)
 
         if line.point_count < 2:
             return
 
-        if line.use_gradient and line.gradient_colors and line.gradient_offsets:
-            self._draw_line2d_gradient(world_points, line)
+        pairs = self._build_pairs(world_points, line.closed)
+
+        if line.width <= 1.0:
+            self._draw_thin_line(world_points, color, line.closed)
         else:
-            color = rl.Color(*line.color)
-            pairs = self._build_pairs(world_points, line.closed)
-            if line.width <= 1.0:
-                self._draw_thin_line(world_points, color, line.closed)
-            else:
-                self._draw_thick_line(pairs, world_points, line.width, color, line.joint_mode, line.closed, line.cap_mode)
+            self._draw_thick_line(pairs, world_points, line.width, color, line.joint_mode, line.closed, line.cap_mode)
 
     @staticmethod
     def _transform_points(
@@ -209,89 +194,3 @@ class Line2DRenderSystem:
                 rl.Vector2(corner4[0], corner4[1]),
                 color,
             )
-
-    def _draw_line2d_gradient(self, world_points: list[tuple[float, float]], line: Line2D) -> None:
-        colors_rl = [rl.Color(*c) for c in line.gradient_colors]
-        offsets = line.gradient_offsets
-
-        def _interpolate_color(t: float) -> rl.Color:
-            t = max(0.0, min(1.0, t))
-            if len(colors_rl) <= 1 or len(offsets) <= 1:
-                return colors_rl[0] if colors_rl else rl.WHITE
-            for i in range(len(offsets) - 1):
-                if offsets[i] <= t <= offsets[i + 1]:
-                    local = (t - offsets[i]) / max(0.0001, offsets[i + 1] - offsets[i])
-                    a = colors_rl[i]
-                    b = colors_rl[i + 1]
-                    return rl.Color(
-                        int(a.r + (b.r - a.r) * local),
-                        int(a.g + (b.g - a.g) * local),
-                        int(a.b + (b.b - a.b) * local),
-                        int(a.a + (b.a - a.a) * local),
-                    )
-            return colors_rl[-1] if colors_rl else rl.WHITE
-
-        # Compute total line length and cumulative lengths per point
-        cumulative: list[float] = [0.0]
-        for i in range(1, len(world_points)):
-            dx = world_points[i][0] - world_points[i - 1][0]
-            dy = world_points[i][1] - world_points[i - 1][1]
-            cumulative.append(cumulative[-1] + math.sqrt(dx * dx + dy * dy))
-        total_len = cumulative[-1] if cumulative else 0.0
-
-        if total_len < 0.001:
-            if line.width <= 1.0 and len(world_points) >= 2:
-                rl.draw_line(
-                    int(world_points[0][0]), int(world_points[0][1]),
-                    int(world_points[-1][0]), int(world_points[-1][1]),
-                    colors_rl[0] if colors_rl else rl.WHITE,
-                )
-            return
-
-        pairs = self._build_pairs(world_points, line.closed)
-        if line.closed and len(world_points) >= 2:
-            dx = world_points[0][0] - world_points[-1][0]
-            dy = world_points[0][1] - world_points[-1][1]
-            closing = math.sqrt(dx * dx + dy * dy)
-            total_len += closing
-
-        for i, (a, b) in enumerate(pairs):
-            t_a = cumulative[i] / total_len
-            t_b = cumulative[i + 1] / total_len
-
-            if line.closed and i == len(pairs) - 1:
-                t_a = (total_len - (math.sqrt(
-                    (world_points[0][0] - world_points[-1][0]) ** 2 +
-                    (world_points[0][1] - world_points[-1][1]) ** 2
-                ))) / total_len
-                t_b = 1.0
-
-            color_a = _interpolate_color(t_a)
-            color_b = _interpolate_color(t_b)
-
-            if line.width <= 1.0:
-                rl.draw_line(int(a[0]), int(a[1]), int(b[0]), int(b[1]), color_a)
-            else:
-                self._draw_thick_segment(a, b, line.width * 0.5, color_a)
-
-    def _draw_path2d(self, transform: Transform, path: Path2D) -> None:
-        cos_r = math.cos(transform.rotation)
-        sin_r = math.sin(transform.rotation)
-        sx = transform.scale_x
-        sy = transform.scale_y
-
-        world_points: list[tuple[float, float]] = []
-        for pt in path.curve_points:
-            wx = pt[0] * sx
-            wy = pt[1] * sy
-            rx = wx * cos_r - wy * sin_r
-            ry = wx * sin_r + wy * cos_r
-            world_points.append((transform.x + rx, transform.y + ry))
-
-        for i in range(len(world_points) - 1):
-            p0, p1 = world_points[i], world_points[i + 1]
-            rl.draw_line(int(p0[0]), int(p0[1]), int(p1[0]), int(p1[1]), self.PATH2D_DEBUG_COLOR)
-
-        if path.closed and len(world_points) >= 2:
-            p0, p1 = world_points[-1], world_points[0]
-            rl.draw_line(int(p0[0]), int(p0[1]), int(p1[0]), int(p1[1]), self.PATH2D_DEBUG_COLOR)

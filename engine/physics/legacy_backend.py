@@ -25,7 +25,6 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         self._latest_contacts: list[PhysicsContact] = []
         self._synced_world_id: int | None = None
         self._synced_structure_version: int | None = None
-        self._last_world: Any = None
 
     def set_event_bus(self, event_bus: Optional[Any]) -> None:
         self._event_bus = event_bus
@@ -73,7 +72,6 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
 
     def step(self, world: Any, dt: float) -> None:
         self.sync_world(world)
-        self._last_world = world
         self._latest_contacts = []
         if self._physics_system is not None:
             self._physics_system.update(world, dt)
@@ -238,6 +236,7 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
 
     def move_and_slide(
         self,
+        world: Any,
         entity: Any,
         velocity: tuple[float, float],
         delta_time: float,
@@ -254,6 +253,7 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         (floor/wall/ceiling) usando dot product contra up_direction.
 
         Args:
+            world: World actual con las entidades y sólidos.
             entity: Entity con Transform + Collider.
             velocity: (vx, vy) en unidades/s. Ya incluye gravedad aplicada.
             delta_time: Delta time del frame en segundos.
@@ -282,7 +282,6 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         was_on_floor = getattr(entity, "_move_slide_was_on_floor", False)
 
         # --- collect solids ---
-        world = self._last_world
         if world is None:
             transform.x += vx * delta_time
             transform.y += vy * delta_time
@@ -390,13 +389,17 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
 
     def move_and_collide(
         self,
+        world: Any,
         entity: Any,
         velocity: tuple[float, float],
         delta_time: float,
         max_collisions: int = 1,
     ) -> MoveResult2D:
         del max_collisions
-        return self.move_and_slide(entity, velocity, delta_time, max_slides=1)
+        return self.move_and_slide(world, entity, velocity, delta_time, max_slides=1)
+
+    def supports_kinematic_move(self) -> bool:
+        return True
 
     # ------------------------------------------------------------------
     # Sweep helpers

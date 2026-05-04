@@ -18,20 +18,13 @@ class CharacterControllerSystem:
     def __init__(self, event_bus: Optional[Any] = None) -> None:
         self._event_bus = event_bus
         self._emitted_contacts: set[tuple[int, int]] = set()
-        self._physics_backend: Optional[Any] = None
+        from engine.physics.kinematic_move_service import PhysicsKinematicMoveService
+        self._move_service = PhysicsKinematicMoveService()
 
     def set_event_bus(self, event_bus: Optional[Any]) -> None:
         self._event_bus = event_bus
 
-    def set_physics_backend(self, backend: Any) -> None:
-        """Inyecta el backend de física resuelto (PhysicsBackend).
-        
-        Llamado por RuntimeController cada frame antes del update.
-        Si es None, el sistema usa el código legacy de sweeps AABB.
-        """
-        self._physics_backend = backend
-
-    def update(self, world: World, delta_time: float) -> None:
+    def update(self, world: World, delta_time: float, backend: Any = None) -> None:
         self._emitted_contacts = set()
         solids: list[Entity] = []
         for entity in world.get_entities_with(Transform, Collider):
@@ -48,7 +41,10 @@ class CharacterControllerSystem:
             if not entity.active or not collider.enabled or not controller.enabled:
                 continue
             self._apply_inputs(controller, input_map)
-            self._move_entity(world, entity, transform, collider, controller, solids, float(delta_time))
+            if backend is not None:
+                self._move_with_service(backend, world, entity, transform, collider, controller, float(delta_time))
+            else:
+                self._move_entity_legacy(world, entity, transform, collider, controller, solids, float(delta_time))
 
     def _apply_inputs(self, controller: CharacterController2D, input_map: InputMap | None) -> None:
         controller.collision_normal_x = 0.0
@@ -67,7 +63,7 @@ class CharacterControllerSystem:
             controller.on_floor = False
         controller._jump_was_pressed = jump_pressed
 
-    def _move_entity(
+    def _move_entity_legacy(
         self,
         world: World,
         entity: Entity,
@@ -77,11 +73,6 @@ class CharacterControllerSystem:
         solids: list[Entity],
         delta_time: float,
     ) -> None:
-        # Si hay backend, usar move_and_slide nativo
-        if self._physics_backend is not None:
-            self._move_with_backend(world, entity, transform, collider, controller, delta_time)
-            return
-
         controller._was_on_floor = controller.on_floor
         controller.on_wall = False
         controller.on_ceiling = False
@@ -113,8 +104,9 @@ class CharacterControllerSystem:
 
         controller.slide_collisions.clear()
 
-    def _move_with_backend(
+    def _move_with_service(
         self,
+        backend: Any,
         world: World,
         entity: Entity,
         transform: Transform,
@@ -122,7 +114,7 @@ class CharacterControllerSystem:
         controller: CharacterController2D,
         delta_time: float,
     ) -> None:
-        """Usa PhysicsBackend según move_mode (move_and_slide o move_and_collide)."""
+        """Usa PhysicsKinematicMoveService como fachada entre CharacterController y backend."""
         was_on_floor = controller.on_floor
 
         # Aplicar platform velocity antes del movimiento
@@ -131,22 +123,26 @@ class CharacterControllerSystem:
         controller.platform_velocity_x = 0.0
         controller.platform_velocity_y = 0.0
 
-        # Calcular velocidad (gravedad + input — igual que antes)
+        # Calcular velocidad (gravedad + input)
         if not controller.on_floor:
             controller.velocity_y = min(
                 controller.max_fall_speed,
                 controller.velocity_y + controller.gravity * delta_time,
             )
 
-        # Llamar al backend según move_mode
+        # Llamar al servicio según move_mode
         if controller.move_mode == "move_and_collide":
-            result = self._physics_backend.move_and_collide(
+            result = self._move_service.move_and_collide(
+                backend=backend,
+                world=world,
                 entity=entity,
                 velocity=(controller.velocity_x, controller.velocity_y),
                 delta_time=delta_time,
             )
         else:
-            result = self._physics_backend.move_and_slide(
+            result = self._move_service.move_and_slide(
+                backend=backend,
+                world=world,
                 entity=entity,
                 velocity=(controller.velocity_x, controller.velocity_y),
                 delta_time=delta_time,

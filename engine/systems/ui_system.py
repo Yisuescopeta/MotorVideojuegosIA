@@ -11,13 +11,6 @@ import pyray as rl
 from engine.components.canvas import Canvas
 from engine.components.recttransform import RectTransform
 from engine.components.uibutton import UIButton
-from engine.components.uicheckbox import CheckBox
-from engine.components.uilineedit import LineEdit
-from engine.components.uislider import Slider
-from engine.components.uispinbox import SpinBox
-from engine.components.ui_splitcontainer import UISplitContainer
-from engine.components.ui_tabbar import UITabBar, UITabContainer
-from engine.components.uitextedit import TextEdit
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.editor.cursor_manager import CursorVisualState
@@ -43,18 +36,6 @@ class UISystem:
         self._layout_world_id: int = -1
         self._layout_world_version: int = -1
         self._layout_viewport_size: tuple[float, float] = (0.0, 0.0)
-        # Interactive controls
-        self._visible_slider_entities: list[Entity] = []
-        self._visible_checkbox_entities: list[Entity] = []
-        self._visible_spinbox_entities: list[Entity] = []
-        self._visible_lineedit_entities: list[Entity] = []
-        self._visible_textedit_entities: list[Entity] = []
-        self._visible_tabbar_entities: list[Entity] = []
-        self._visible_tabcontainer_entities: list[Entity] = []
-        self._visible_splitcontainer_entities: list[Entity] = []
-        self._focused_entity_id: int | None = None
-        self._slider_drag_state: dict[int, bool] = {}
-        self._split_drag_state: dict[int, bool] = {}
 
     def set_event_bus(self, event_bus: Optional[EventBus]) -> None:
         self._event_bus = event_bus
@@ -195,7 +176,7 @@ class UISystem:
         }
 
         if not visible_buttons:
-            pass  # still process other controls below
+            return
 
         interaction_enabled = self._resolve_interaction_enabled(allow_interaction)
         if not interaction_enabled:
@@ -207,12 +188,10 @@ class UISystem:
                 state = self._button_runtime.setdefault(entity.id, {"hovered": False, "pressed": False})
                 state["hovered"] = False
                 state["pressed"] = False
-            self._clear_interactive_state()
             return
 
         pointer = self._resolve_pointer_state()
 
-        # Buttons
         for entity in self._visible_button_entities:
             button = entity.get_component(UIButton)
             layout = self._layout_cache.get(entity.name)
@@ -234,227 +213,6 @@ class UISystem:
                 if should_fire:
                     self._execute_button_action(entity, button)
 
-        # Checkboxes
-        for entity in self._visible_checkbox_entities:
-            checkbox = entity.get_component(CheckBox)
-            layout = self._layout_cache.get(entity.name)
-            if checkbox is None or layout is None:
-                continue
-            if pointer["pressed"] and self._point_in_rect(pointer["x"], pointer["y"], layout):
-                checkbox.toggle()
-
-        # SpinBoxes
-        for entity in self._visible_spinbox_entities:
-            spinbox = entity.get_component(SpinBox)
-            layout = self._layout_cache.get(entity.name)
-            if spinbox is None or layout is None or not spinbox.editable:
-                continue
-            if pointer["pressed"] and self._point_in_rect(pointer["x"], pointer["y"], layout):
-                # Check arrow regions
-                x = float(layout["x"])
-                w = float(layout["width"])
-                h = float(layout["height"])
-                arrow_w = min(24.0, w * 0.3)
-                if pointer["x"] >= x + w - arrow_w:
-                    if pointer["y"] < float(layout["y"]) + h * 0.5:
-                        spinbox.increment()
-                    else:
-                        spinbox.decrement()
-
-        # Sliders
-        for entity in self._visible_slider_entities:
-            slider = entity.get_component(Slider)
-            layout = self._layout_cache.get(entity.name)
-            if slider is None or layout is None or not slider.editable:
-                continue
-            hovered = self._point_in_rect(pointer["x"], pointer["y"], layout)
-            if pointer["pressed"] and hovered:
-                self._slider_drag_state[entity.id] = True
-            if pointer["down"] and self._slider_drag_state.get(entity.id):
-                self._update_slider_from_pointer(slider, layout, pointer)
-            if pointer["released"]:
-                self._slider_drag_state.pop(entity.id, None)
-
-        # LineEdit and TextEdit — click to focus
-        if pointer["pressed"]:
-            self._focused_entity_id = None
-            for entity in self._visible_lineedit_entities:
-                layout = self._layout_cache.get(entity.name)
-                if layout and self._point_in_rect(pointer["x"], pointer["y"], layout):
-                    line_edit = entity.get_component(LineEdit)
-                    if line_edit and line_edit.editable:
-                        line_edit.focused = True
-                        self._focused_entity_id = entity.id
-                    else:
-                        line_edit.focused = False  # type: ignore[union-attr]
-                else:
-                    le = entity.get_component(LineEdit)
-                    if le:
-                        le.focused = False
-            for entity in self._visible_textedit_entities:
-                layout = self._layout_cache.get(entity.name)
-                if layout and self._point_in_rect(pointer["x"], pointer["y"], layout):
-                    te = entity.get_component(TextEdit)
-                    if te and te.editable:
-                        te.focused = True
-                        self._focused_entity_id = entity.id
-                    else:
-                        te.focused = False  # type: ignore[union-attr]
-                else:
-                    te = entity.get_component(TextEdit)
-                    if te:
-                        te.focused = False
-
-        # Keyboard input for focused controls
-        if self._focused_entity_id is not None:
-            self._handle_keyboard_input(world)
-
-        # TabBar interaction — click to switch tabs
-        if pointer["pressed"]:
-            for entity in self._visible_tabbar_entities:
-                tabbar = entity.get_component(UITabBar)
-                layout = self._layout_cache.get(entity.name)
-                if tabbar is None or layout is None:
-                    continue
-                self._handle_tabbar_click(entity, tabbar, layout, pointer)
-
-        # TabContainer interaction — click tab header to switch
-        if pointer["pressed"]:
-            for entity in self._visible_tabcontainer_entities:
-                container = entity.get_component(UITabContainer)
-                layout = self._layout_cache.get(entity.name)
-                if container is None or layout is None:
-                    continue
-                self._handle_tabcontainer_click(entity, container, layout, pointer)
-
-        # SplitContainer interaction — drag to resize
-        for entity in self._visible_splitcontainer_entities:
-            container = entity.get_component(UISplitContainer)
-            layout = self._layout_cache.get(entity.name)
-            if container is None or layout is None:
-                continue
-            self._handle_splitcontainer_interaction(entity, container, layout, pointer)
-
-    def _clear_interactive_state(self) -> None:
-        for entity in self._visible_slider_entities:
-            self._slider_drag_state.pop(entity.id, None)
-        for entity in self._visible_splitcontainer_entities:
-            self._split_drag_state.pop(entity.id, None)
-        self._focused_entity_id = None
-        for entity in self._visible_lineedit_entities:
-            le = entity.get_component(LineEdit)
-            if le:
-                le.focused = False
-        for entity in self._visible_textedit_entities:
-            te = entity.get_component(TextEdit)
-            if te:
-                te.focused = False
-
-    def _update_slider_from_pointer(self, slider: Slider, layout: dict[str, Any], pointer: dict[str, Any]) -> None:
-        x = float(layout["x"])
-        w = float(layout["width"])
-        if slider.horizontal:
-            ratio = max(0.0, min(1.0, (pointer["x"] - x) / max(1.0, w)))
-        else:
-            y = float(layout["y"])
-            h = float(layout["height"])
-            ratio = 1.0 - max(0.0, min(1.0, (pointer["y"] - y) / max(1.0, h)))
-        slider.set_value(slider.min_value + ratio * (slider.max_value - slider.min_value))
-
-    def _handle_keyboard_input(self, world: World) -> None:
-        import pyray as rl
-
-        has_char = False
-        char_code = 0
-        try:
-            char_code = rl.get_char_pressed()
-            has_char = char_code > 0
-        except Exception:
-            pass
-
-        special_keys = self._read_special_keys(rl)
-
-        for entity in self._visible_lineedit_entities:
-            if entity.id != self._focused_entity_id:
-                continue
-            le = entity.get_component(LineEdit)
-            if le is None or not le.editable or not le.focused:
-                continue
-            if has_char and 32 <= char_code <= 126:
-                if le.max_length <= 0 or len(le.text) < le.max_length:
-                    pos = le.cursor_position
-                    le.text = le.text[:pos] + chr(char_code) + le.text[pos:]
-                    le.cursor_position = pos + 1
-                    le.selection_start = le.cursor_position
-                    le.selection_end = le.cursor_position
-            if special_keys.get("backspace") and le.cursor_position > 0:
-                pos = le.cursor_position
-                le.text = le.text[:pos - 1] + le.text[pos:]
-                le.cursor_position = pos - 1
-            if special_keys.get("left"):
-                le.cursor_position = le.cursor_position - 1
-            if special_keys.get("right"):
-                le.cursor_position = le.cursor_position + 1
-            if special_keys.get("home"):
-                le.cursor_position = 0
-            if special_keys.get("end"):
-                le.cursor_position = len(le.text)
-
-        for entity in self._visible_textedit_entities:
-            if entity.id != self._focused_entity_id:
-                continue
-            te = entity.get_component(TextEdit)
-            if te is None or not te.editable or not te.focused:
-                continue
-            lines = te.text.split("\n")
-            if has_char and 32 <= char_code <= 126:
-                if te.cursor_line < len(lines):
-                    line = lines[te.cursor_line]
-                    col = min(te.cursor_column, len(line))
-                    lines[te.cursor_line] = line[:col] + chr(char_code) + line[col:]
-                    te.text = "\n".join(lines)
-                    te.cursor_column = col + 1
-            if special_keys.get("enter"):
-                if te.max_lines <= 0 or len(lines) < te.max_lines:
-                    line = lines[te.cursor_line] if te.cursor_line < len(lines) else ""
-                    col = min(te.cursor_column, len(line))
-                    lines.insert(te.cursor_line + 1, line[col:])
-                    lines[te.cursor_line] = line[:col]
-                    te.text = "\n".join(lines)
-                    te.cursor_line += 1
-                    te.cursor_column = 0
-            if special_keys.get("backspace") and te.cursor_column > 0:
-                if te.cursor_line < len(lines):
-                    line = lines[te.cursor_line]
-                    lines[te.cursor_line] = line[:te.cursor_column - 1] + line[te.cursor_column:]
-                    te.text = "\n".join(lines)
-                    te.cursor_column -= 1
-            if special_keys.get("left"):
-                te.cursor_column = max(0, te.cursor_column - 1)
-            if special_keys.get("right"):
-                if te.cursor_line < len(lines):
-                    te.cursor_column = min(len(lines[te.cursor_line]), te.cursor_column + 1)
-            if special_keys.get("up"):
-                te.cursor_line = max(0, te.cursor_line - 1)
-            if special_keys.get("down"):
-                te.cursor_line = min(len(lines) - 1, te.cursor_line + 1)
-
-    def _read_special_keys(self, rl_module: Any) -> dict[str, bool]:
-        try:
-            return {
-                "backspace": bool(rl_module.is_key_pressed(rl_module.KEY_BACKSPACE)),
-                "enter": bool(rl_module.is_key_pressed(rl_module.KEY_ENTER)),
-                "left": bool(rl_module.is_key_pressed(rl_module.KEY_LEFT)),
-                "right": bool(rl_module.is_key_pressed(rl_module.KEY_RIGHT)),
-                "up": bool(rl_module.is_key_pressed(rl_module.KEY_UP)),
-                "down": bool(rl_module.is_key_pressed(rl_module.KEY_DOWN)),
-                "home": bool(rl_module.is_key_pressed(rl_module.KEY_HOME)),
-                "end": bool(rl_module.is_key_pressed(rl_module.KEY_END)),
-                "delete": bool(rl_module.is_key_pressed(rl_module.KEY_DELETE)),
-            }
-        except Exception:
-            return {}
-
     def _ensure_layout_cache(self, world: World, viewport_size: tuple[float, float]) -> None:
         world_id = id(world)
         world_version = self._resolve_layout_version(world)
@@ -470,14 +228,6 @@ class UISystem:
         self._canvas_order = []
         self._draw_order = []
         self._visible_button_entities = []
-        self._visible_slider_entities = []
-        self._visible_checkbox_entities = []
-        self._visible_spinbox_entities = []
-        self._visible_lineedit_entities = []
-        self._visible_textedit_entities = []
-        self._visible_tabbar_entities = []
-        self._visible_tabcontainer_entities = []
-        self._visible_splitcontainer_entities = []
 
         canvas_entities = []
         for entity in world.get_entities_with(Canvas):
@@ -510,46 +260,6 @@ class UISystem:
             entity
             for entity in world.get_entities_with(UIButton)
             if entity.name in self._layout_cache and entity.get_component(UIButton) is not None
-        ]
-        self._visible_slider_entities = [
-            entity
-            for entity in world.get_entities_with(Slider)
-            if entity.name in self._layout_cache and entity.get_component(Slider) is not None
-        ]
-        self._visible_checkbox_entities = [
-            entity
-            for entity in world.get_entities_with(CheckBox)
-            if entity.name in self._layout_cache and entity.get_component(CheckBox) is not None
-        ]
-        self._visible_spinbox_entities = [
-            entity
-            for entity in world.get_entities_with(SpinBox)
-            if entity.name in self._layout_cache and entity.get_component(SpinBox) is not None
-        ]
-        self._visible_lineedit_entities = [
-            entity
-            for entity in world.get_entities_with(LineEdit)
-            if entity.name in self._layout_cache and entity.get_component(LineEdit) is not None
-        ]
-        self._visible_textedit_entities = [
-            entity
-            for entity in world.get_entities_with(TextEdit)
-            if entity.name in self._layout_cache and entity.get_component(TextEdit) is not None
-        ]
-        self._visible_tabbar_entities = [
-            entity
-            for entity in world.get_entities_with(UITabBar)
-            if entity.name in self._layout_cache and entity.get_component(UITabBar) is not None
-        ]
-        self._visible_tabcontainer_entities = [
-            entity
-            for entity in world.get_entities_with(UITabContainer)
-            if entity.name in self._layout_cache and entity.get_component(UITabContainer) is not None
-        ]
-        self._visible_splitcontainer_entities = [
-            entity
-            for entity in world.get_entities_with(UISplitContainer)
-            if entity.name in self._layout_cache and entity.get_component(UISplitContainer) is not None
         ]
         self._layout_world_id = world_id
         self._layout_world_version = world_version
@@ -596,34 +306,11 @@ class UISystem:
         parent_rect_transform = parent_entity.get_component(RectTransform) if parent_entity is not None else None
         layout_mode = self._resolve_layout_mode(parent_rect_transform)
 
-        # Check for special container components on parent
-        if parent_entity is not None:
-            if parent_entity.get_component(UITabBar) is not None:
-                child_rects = self._layout_tabbar(parent_entity, children, parent_rect)
-            elif parent_entity.get_component(UITabContainer) is not None:
-                child_rects = self._layout_tabcontainer(world, parent_entity, children, parent_rect)
-            elif parent_entity.get_component(UISplitContainer) is not None:
-                child_rects = self._layout_splitcontainer(parent_entity, children, parent_rect)
-            else:
-                child_rects = None  # fall through to normal dispatch
-        else:
-            child_rects = None
-
-        if child_rects is not None:
-            pass  # already resolved by container component
-        elif layout_mode == "free":
+        if layout_mode == "free":
             child_rects = {
                 child.name: self._resolve_legacy_child_rect(child, parent_rect)
                 for child in children
             }
-        elif layout_mode == "grid":
-            child_rects = self._layout_grid(parent_rect_transform, children, parent_rect)
-        elif layout_mode == "flow":
-            child_rects = self._layout_flow(parent_rect_transform, children, parent_rect)
-        elif layout_mode == "aspect_ratio":
-            child_rects = self._layout_aspect_ratio(parent_rect_transform, children, parent_rect)
-        elif layout_mode == "center":
-            child_rects = self._layout_center(parent_rect_transform, children, parent_rect)
         else:
             child_rects = self._resolve_stack_child_rects(
                 children,
@@ -633,9 +320,7 @@ class UISystem:
             )
 
         for child in children:
-            child_rect = child_rects.get(child.name)
-            if child_rect is None:
-                continue
+            child_rect = child_rects.get(child.name, dict(parent_rect))
             child_rect["canvas"] = parent_rect["canvas"]
             self._layout_cache[child.name] = child_rect
             self._draw_order.append(child.name)
@@ -796,7 +481,7 @@ class UISystem:
         if rect_transform is None or not rect_transform.enabled:
             return "free"
         layout_mode = str(getattr(rect_transform, "layout_mode", "free") or "free").strip().lower()
-        if layout_mode in {"vertical_stack", "horizontal_stack", "grid", "flow", "aspect_ratio", "center"}:
+        if layout_mode in {"vertical_stack", "horizontal_stack"}:
             return layout_mode
         return "free"
 
@@ -896,474 +581,6 @@ class UISystem:
             and y >= float(rect["y"])
             and y <= float(rect["y"]) + float(rect["height"])
         )
-
-    def _get_child_preferred_size(self, child: Entity) -> tuple[float, float]:
-        rt = child.get_component(RectTransform)
-        if rt is None or not rt.enabled:
-            return 32.0, 32.0
-        return max(1.0, float(rt.width)), max(1.0, float(rt.height))
-
-    def _layout_grid(
-        self,
-        container: RectTransform,
-        children: list[Entity],
-        parent_rect: dict[str, Any],
-    ) -> dict[str, dict[str, Any]]:
-        resolved: dict[str, dict[str, Any]] = {}
-        columns = max(1, int(getattr(container, "grid_columns", 2)))
-        rows = max(1, int(getattr(container, "grid_rows", 1)))
-        h_spacing = float(getattr(container, "spacing", 4.0))
-        v_spacing = float(getattr(container, "spacing", 4.0))
-        scale_x = float(parent_rect.get("scale_x", 1.0))
-        scale_y = float(parent_rect.get("scale_y", 1.0))
-        pad_l = max(0.0, float(container.padding_left) * scale_x)
-        pad_t = max(0.0, float(container.padding_top) * scale_y)
-        pad_r = max(0.0, float(container.padding_right) * scale_x)
-        pad_b = max(0.0, float(container.padding_bottom) * scale_y)
-
-        cw = float(parent_rect["width"])
-        ch = float(parent_rect["height"])
-        cell_w = max(1.0, (cw - pad_l - pad_r - h_spacing * (columns - 1)) / float(columns))
-        cell_h = max(1.0, (ch - pad_t - pad_b - v_spacing * (rows - 1)) / float(rows))
-
-        for i, child in enumerate(children):
-            col = i % columns
-            row_idx = i // columns
-            if row_idx >= rows:
-                break
-            x = float(parent_rect["x"]) + pad_l + col * (cell_w + h_spacing)
-            y = float(parent_rect["y"]) + pad_t + row_idx * (cell_h + v_spacing)
-            resolved[child.name] = {
-                "x": x,
-                "y": y,
-                "width": cell_w,
-                "height": cell_h,
-                "rotation": 0.0,
-                "scale_x": scale_x,
-                "scale_y": scale_y,
-            }
-        return resolved
-
-    def _layout_flow(
-        self,
-        container: RectTransform,
-        children: list[Entity],
-        parent_rect: dict[str, Any],
-    ) -> dict[str, dict[str, Any]]:
-        resolved: dict[str, dict[str, Any]] = {}
-        direction = str(getattr(container, "flow_direction", "horizontal") or "horizontal").strip().lower()
-        spacing = float(getattr(container, "spacing", 4.0))
-        scale_x = float(parent_rect.get("scale_x", 1.0))
-        scale_y = float(parent_rect.get("scale_y", 1.0))
-        pad_l = max(0.0, float(container.padding_left) * scale_x)
-        pad_t = max(0.0, float(container.padding_top) * scale_y)
-        pad_r = max(0.0, float(container.padding_right) * scale_x)
-        pad_b = max(0.0, float(container.padding_bottom) * scale_y)
-
-        if direction == "horizontal":
-            x = float(parent_rect["x"]) + pad_l
-            y = float(parent_rect["y"]) + pad_t
-            max_row_h = 0.0
-            row_start_x = x
-            max_x = float(parent_rect["x"]) + float(parent_rect["width"]) - pad_r
-
-            for child in children:
-                child_w, child_h = self._get_child_preferred_size(child)
-                if x + child_w > max_x and x != row_start_x:
-                    x = row_start_x
-                    y += max_row_h + spacing
-                    max_row_h = 0.0
-                resolved[child.name] = {
-                    "x": x,
-                    "y": y,
-                    "width": child_w,
-                    "height": child_h,
-                    "rotation": 0.0,
-                    "scale_x": scale_x,
-                    "scale_y": scale_y,
-                }
-                x += child_w + spacing
-                max_row_h = max(max_row_h, child_h)
-        else:
-            x = float(parent_rect["x"]) + pad_l
-            y = float(parent_rect["y"]) + pad_t
-            max_col_w = 0.0
-            col_start_y = y
-            max_y = float(parent_rect["y"]) + float(parent_rect["height"]) - pad_b
-
-            for child in children:
-                child_w, child_h = self._get_child_preferred_size(child)
-                if y + child_h > max_y and y != col_start_y:
-                    x += max_col_w + spacing
-                    y = col_start_y
-                    max_col_w = 0.0
-                resolved[child.name] = {
-                    "x": x,
-                    "y": y,
-                    "width": child_w,
-                    "height": child_h,
-                    "rotation": 0.0,
-                    "scale_x": scale_x,
-                    "scale_y": scale_y,
-                }
-                y += child_h + spacing
-                max_col_w = max(max_col_w, child_h)
-        return resolved
-
-    def _layout_aspect_ratio(
-        self,
-        container: RectTransform,
-        children: list[Entity],
-        parent_rect: dict[str, Any],
-    ) -> dict[str, dict[str, Any]]:
-        resolved: dict[str, dict[str, Any]] = {}
-        ratio = max(0.1, float(getattr(container, "aspect_ratio", 1.0)))
-        stretch_mode = str(getattr(container, "aspect_stretch_mode", "fit") or "fit").strip().lower()
-
-        cw = float(parent_rect["width"])
-        ch = float(parent_rect["height"])
-        scale_x = float(parent_rect.get("scale_x", 1.0))
-        scale_y = float(parent_rect.get("scale_y", 1.0))
-
-        for child in children:
-            if stretch_mode == "fill":
-                target_w = cw
-                target_h = cw / ratio
-                if target_h < ch:
-                    target_h = ch
-                    target_w = target_h * ratio
-            elif stretch_mode == "width_control_height":
-                target_w = cw
-                target_h = cw / ratio
-            else:
-                target_w = min(cw, ch * ratio)
-                target_h = target_w / ratio
-                if target_h > ch:
-                    target_h = ch
-                    target_w = target_h * ratio
-
-            cx = float(parent_rect["x"]) + (cw - target_w) * 0.5
-            cy = float(parent_rect["y"]) + (ch - target_h) * 0.5
-            resolved[child.name] = {
-                "x": cx,
-                "y": cy,
-                "width": max(1.0, target_w),
-                "height": max(1.0, target_h),
-                "rotation": 0.0,
-                "scale_x": scale_x,
-                "scale_y": scale_y,
-            }
-        return resolved
-
-    def _layout_center(
-        self,
-        container: RectTransform,
-        children: list[Entity],
-        parent_rect: dict[str, Any],
-    ) -> dict[str, dict[str, Any]]:
-        resolved: dict[str, dict[str, Any]] = {}
-        cw = float(parent_rect["width"])
-        ch = float(parent_rect["height"])
-        scale_x = float(parent_rect.get("scale_x", 1.0))
-        scale_y = float(parent_rect.get("scale_y", 1.0))
-
-        for child in children:
-            child_w, child_h = self._get_child_preferred_size(child)
-            cx = float(parent_rect["x"]) + (cw - child_w) * 0.5
-            cy = float(parent_rect["y"]) + (ch - child_h) * 0.5
-            resolved[child.name] = {
-                "x": cx,
-                "y": cy,
-                "width": child_w,
-                "height": child_h,
-                "rotation": 0.0,
-                "scale_x": scale_x,
-                "scale_y": scale_y,
-            }
-        return resolved
-
-    def _layout_tabbar(
-        self,
-        parent_entity: Entity,
-        children: list[Entity],
-        parent_rect: dict[str, Any],
-    ) -> dict[str, dict[str, Any]]:
-        tabbar = parent_entity.get_component(UITabBar)
-        resolved: dict[str, dict[str, Any]] = {}
-        if tabbar is None:
-            return resolved
-
-        cw = float(parent_rect["width"])
-        ch = float(parent_rect["height"])
-        scale_x = float(parent_rect.get("scale_x", 1.0))
-        scale_y = float(parent_rect.get("scale_y", 1.0))
-        tabs = tabbar.tabs
-        num_tabs = max(1, len(tabs))
-        tab_height = ch
-        tab_width = cw / num_tabs if num_tabs > 0 else cw
-
-        alignment = tabbar.tab_alignment
-        if alignment == "center":
-            total_w = tab_width * num_tabs
-            start_x = float(parent_rect["x"]) + (cw - total_w) * 0.5
-        elif alignment == "right":
-            total_w = tab_width * num_tabs
-            start_x = float(parent_rect["x"]) + cw - total_w
-        else:
-            start_x = float(parent_rect["x"])
-
-        for i, child in enumerate(children):
-            if i >= num_tabs:
-                break
-            x = start_x + i * tab_width
-            resolved[child.name] = {
-                "x": x,
-                "y": float(parent_rect["y"]),
-                "width": tab_width,
-                "height": tab_height,
-                "rotation": 0.0,
-                "scale_x": scale_x,
-                "scale_y": scale_y,
-            }
-        return resolved
-
-    def _layout_tabcontainer(
-        self,
-        world: World,
-        parent_entity: Entity,
-        children: list[Entity],
-        parent_rect: dict[str, Any],
-    ) -> dict[str, dict[str, Any]]:
-        container = parent_entity.get_component(UITabContainer)
-        resolved: dict[str, dict[str, Any]] = {}
-        if container is None:
-            return resolved
-
-        cw = float(parent_rect["width"])
-        ch = float(parent_rect["height"])
-        scale_x = float(parent_rect.get("scale_x", 1.0))
-        scale_y = float(parent_rect.get("scale_y", 1.0))
-        tab_bar_height = 32.0 * scale_y
-        content_y = float(parent_rect["y"]) + tab_bar_height
-        content_h = max(1.0, ch - tab_bar_height)
-
-        # Layout tab bar children (first row)
-        num_tabs = len(container.tab_titles) if container.tab_titles else 1
-        current = max(0, min(container.current_tab, num_tabs - 1))
-        tab_width = cw / num_tabs if num_tabs > 0 else cw
-
-        for i, child in enumerate(children):
-            is_content_child = i >= num_tabs
-            if i < num_tabs:
-                # Tab header button
-                resolved[child.name] = {
-                    "x": float(parent_rect["x"]) + i * tab_width,
-                    "y": float(parent_rect["y"]),
-                    "width": tab_width,
-                    "height": tab_bar_height,
-                    "rotation": 0.0,
-                    "scale_x": scale_x,
-                    "scale_y": scale_y,
-                }
-            else:
-                # Content children — only the current tab is visible at full size
-                content_index = i - num_tabs
-                if content_index == current:
-                    resolved[child.name] = {
-                        "x": float(parent_rect["x"]),
-                        "y": content_y,
-                        "width": cw,
-                        "height": content_h,
-                        "rotation": 0.0,
-                        "scale_x": scale_x,
-                        "scale_y": scale_y,
-                    }
-                else:
-                    # Hidden tab — zero-size rect (off-screen)
-                    resolved[child.name] = {
-                        "x": -10000.0,
-                        "y": -10000.0,
-                        "width": 0.0,
-                        "height": 0.0,
-                        "rotation": 0.0,
-                        "scale_x": scale_x,
-                        "scale_y": scale_y,
-                    }
-        return resolved
-
-    def _layout_splitcontainer(
-        self,
-        parent_entity: Entity,
-        children: list[Entity],
-        parent_rect: dict[str, Any],
-    ) -> dict[str, dict[str, Any]]:
-        container = parent_entity.get_component(UISplitContainer)
-        resolved: dict[str, dict[str, Any]] = {}
-        if container is None:
-            return resolved
-
-        cw = float(parent_rect["width"])
-        ch = float(parent_rect["height"])
-        px = float(parent_rect["x"])
-        py = float(parent_rect["y"])
-        scale_x = float(parent_rect.get("scale_x", 1.0))
-        scale_y = float(parent_rect.get("scale_y", 1.0))
-        dragger_size = 8.0 if container.dragger_visibility == "visible" else 0.0
-
-        offset = container.split_offset
-        if container.collapsed:
-            offset = 0.0
-
-        offset = max(0.0, min(1.0, offset))
-
-        if container.vertical:
-            # Vertical split: top child + bottom child
-            top_h = max(1.0, (ch - dragger_size) * offset)
-            bottom_h = max(1.0, ch - top_h - dragger_size)
-            for i, child in enumerate(children):
-                if i == 0:
-                    resolved[child.name] = {
-                        "x": px,
-                        "y": py,
-                        "width": cw,
-                        "height": top_h if not container.collapsed else ch,
-                        "rotation": 0.0,
-                        "scale_x": scale_x,
-                        "scale_y": scale_y,
-                    }
-                elif i == 1 and not container.collapsed:
-                    resolved[child.name] = {
-                        "x": px,
-                        "y": py + top_h + dragger_size,
-                        "width": cw,
-                        "height": bottom_h,
-                        "rotation": 0.0,
-                        "scale_x": scale_x,
-                        "scale_y": scale_y,
-                    }
-        else:
-            # Horizontal split: left child + right child
-            left_w = max(1.0, (cw - dragger_size) * offset)
-            right_w = max(1.0, cw - left_w - dragger_size)
-            for i, child in enumerate(children):
-                if i == 0:
-                    resolved[child.name] = {
-                        "x": px,
-                        "y": py,
-                        "width": left_w if not container.collapsed else cw,
-                        "height": ch,
-                        "rotation": 0.0,
-                        "scale_x": scale_x,
-                        "scale_y": scale_y,
-                    }
-                elif i == 1 and not container.collapsed:
-                    resolved[child.name] = {
-                        "x": px + left_w + dragger_size,
-                        "y": py,
-                        "width": right_w,
-                        "height": ch,
-                        "rotation": 0.0,
-                        "scale_x": scale_x,
-                        "scale_y": scale_y,
-                    }
-        return resolved
-
-    def _handle_tabbar_click(
-        self,
-        entity: Entity,
-        tabbar: UITabBar,
-        layout: dict[str, Any],
-        pointer: dict[str, Any],
-    ) -> None:
-        if not self._point_in_rect(pointer["x"], pointer["y"], layout):
-            return
-        num_tabs = max(1, len(tabbar.tabs))
-        tab_width = float(layout["width"]) / num_tabs
-        local_x = pointer["x"] - float(layout["x"])
-
-        alignment = tabbar.tab_alignment
-        total_w = tab_width * num_tabs
-        if alignment == "center":
-            offset_x = (float(layout["width"]) - total_w) * 0.5
-        elif alignment == "right":
-            offset_x = float(layout["width"]) - total_w
-        else:
-            offset_x = 0.0
-
-        clicked_tab = int((local_x - offset_x) / tab_width)
-        if 0 <= clicked_tab < num_tabs:
-            tabbar.current_tab = clicked_tab
-
-    def _handle_tabcontainer_click(
-        self,
-        entity: Entity,
-        container: UITabContainer,
-        layout: dict[str, Any],
-        pointer: dict[str, Any],
-    ) -> None:
-        if not self._point_in_rect(pointer["x"], pointer["y"], layout):
-            return
-        num_tabs = len(container.tab_titles) if container.tab_titles else 1
-        tab_bar_height = 32.0 * float(layout.get("scale_y", 1.0))
-        local_y = pointer["y"] - float(layout["y"])
-        # Only clicks in the tab bar area count
-        if local_y < 0 or local_y > tab_bar_height:
-            return
-        tab_width = float(layout["width"]) / num_tabs
-        local_x = pointer["x"] - float(layout["x"])
-        clicked_tab = int(local_x / tab_width)
-        if 0 <= clicked_tab < num_tabs:
-            container.current_tab = clicked_tab
-
-    def _handle_splitcontainer_interaction(
-        self,
-        entity: Entity,
-        container: UISplitContainer,
-        layout: dict[str, Any],
-        pointer: dict[str, Any],
-    ) -> None:
-        if container.collapsed:
-            self._split_drag_state.pop(entity.id, None)
-            return
-
-        dragger_size = 8.0 if container.dragger_visibility == "visible" else 0.0
-        if dragger_size <= 0:
-            return
-
-        cw = float(layout["width"])
-        ch = float(layout["height"])
-        px = float(layout["x"])
-        py = float(layout["y"])
-        offset = container.split_offset
-
-        if container.vertical:
-            top_h = (ch - dragger_size) * offset
-            dragger_y = py + top_h
-            dragger_rect = {"x": px, "y": dragger_y, "width": cw, "height": dragger_size}
-        else:
-            left_w = (cw - dragger_size) * offset
-            dragger_x = px + left_w
-            dragger_rect = {"x": dragger_x, "y": py, "width": dragger_size, "height": ch}
-
-        in_dragger = self._point_in_rect(pointer["x"], pointer["y"], dragger_rect)
-
-        if pointer["pressed"] and in_dragger:
-            self._split_drag_state[entity.id] = True
-        if pointer["down"] and self._split_drag_state.get(entity.id):
-            step = container.drag_step
-            if container.vertical:
-                new_offset = (pointer["y"] - py - dragger_size * 0.5) / max(1.0, ch - dragger_size)
-            else:
-                new_offset = (pointer["x"] - px - dragger_size * 0.5) / max(1.0, cw - dragger_size)
-            if step > 1.0:
-                if container.vertical:
-                    total = max(1.0, ch - dragger_size)
-                else:
-                    total = max(1.0, cw - dragger_size)
-                new_offset = round(new_offset * total / step) * step / total
-            container.split_offset = max(0.0, min(1.0, new_offset))
-        if pointer["released"]:
-            self._split_drag_state.pop(entity.id, None)
 
     def _resolve_interaction_enabled(self, allow_interaction: Optional[bool]) -> bool:
         if allow_interaction is not None:

@@ -12,19 +12,13 @@ from engine.assets.asset_reference import clone_asset_reference, normalize_asset
 from engine.assets.asset_resolver import AssetResolver
 from engine.assets.asset_service import AssetService
 from engine.components.animator import Animator
-from engine.components.backbuffer_copy import BackBufferCopy
 from engine.components.camera2d import Camera2D
-from engine.components.canvas_layer import CanvasLayer
-from engine.components.canvas_modulate import CanvasModulate
 from engine.components.collider import Collider
-from engine.components.colorrect import ColorRect
-from engine.components.directional_light_2d import DirectionalLight2D
 from engine.components.joint2d import Joint2D
 from engine.components.polygon2d import Polygon2D
 from engine.components.renderorder2d import RenderOrder2D
 from engine.components.renderstyle2d import RenderStyle2D
 from engine.components.sprite import Sprite
-from engine.components.sub_viewport import SubViewport, ViewportTexture
 from engine.components.tilemap import Tilemap
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
@@ -32,11 +26,9 @@ from engine.ecs.world import World
 from engine.rendering.pipeline_executor import RenderPipelineExecutor2D
 from engine.rendering.pipeline_planner import RenderPipelinePlanner2D
 from engine.rendering.pipeline_types import FramePlan2D
-from engine.rendering.post_process import PostProcessPipeline
 from engine.rendering.render_spatial_index import AABB, RenderSpatialIndex
 from engine.rendering.render_targets import RenderTargetPool
 from engine.rendering.tilemap_chunk_renderer import TilemapChunkRenderer
-from engine.rendering.viewport_renderer import ViewportRenderer
 from engine.resources.texture_manager import TextureManager
 
 if TYPE_CHECKING:
@@ -99,7 +91,6 @@ class RenderCommand:
     cache_key: object = None
     render_target_name: str = ""
     render_target_dirty: bool = True
-    canvas_layer_entity: str = ""
 
     def get(self, key: str, default: Any = None) -> Any:  # Acceso genérico tipo dict; el tipo depende del campo accedido
         return getattr(self, key, default)
@@ -125,7 +116,6 @@ class RenderCommand:
             "cache_key": self.cache_key,
             "render_target_name": self.render_target_name,
             "render_target_dirty": self.render_target_dirty,
-            "canvas_layer_entity": self.canvas_layer_entity,
         }
 
 
@@ -193,7 +183,6 @@ class RenderSystem:
         self.debug_draw_labels: bool = False
         self.debug_draw_tile_chunks: bool = False
         self.debug_draw_camera: bool = False
-        self.debug_draw_navigation: bool = False
         self.spatial_culling_enabled: bool = True
         self._debug_primitives: list[dict[str, Any]] = []
 
@@ -225,8 +214,6 @@ class RenderSystem:
         self._sorted_entities_cache: list[Entity] = []
         self._render_graph_cache_key: tuple[object, ...] | None = None
         self._render_spatial_index: RenderSpatialIndex = RenderSpatialIndex()
-        self._viewport_renderer: ViewportRenderer = ViewportRenderer()
-        self._post_process_pipeline: PostProcessPipeline = PostProcessPipeline()
 
     @property
     def texture_manager(self) -> TextureManager:
@@ -252,7 +239,6 @@ class RenderSystem:
         draw_labels: bool | None = None,
         draw_tile_chunks: bool | None = None,
         draw_camera: bool | None = None,
-        draw_navigation: bool | None = None,
     ) -> None:
         if draw_colliders is not None:
             self.debug_draw_colliders = bool(draw_colliders)
@@ -262,8 +248,6 @@ class RenderSystem:
             self.debug_draw_tile_chunks = bool(draw_tile_chunks)
         if draw_camera is not None:
             self.debug_draw_camera = bool(draw_camera)
-        if draw_navigation is not None:
-            self.debug_draw_navigation = bool(draw_navigation)
 
     def set_debug_primitives(self, primitives: list[dict[str, Any]]) -> None:
         self._debug_primitives = [self._normalize_debug_primitive(item) for item in primitives]
@@ -277,7 +261,6 @@ class RenderSystem:
             "draw_labels": bool(self.debug_draw_labels),
             "draw_tile_chunks": bool(self.debug_draw_tile_chunks),
             "draw_camera": bool(self.debug_draw_camera),
-            "draw_navigation": bool(self.debug_draw_navigation),
             "primitive_count": len(self._debug_primitives),
         }
 
@@ -334,14 +317,6 @@ class RenderSystem:
             self._render_targets.begin_frame()
             self._prepare_tilemap_chunk_targets(graph)
 
-        # --- SubViewport rendering (before main scene) ---
-        if allow_render_targets:
-            self._render_sub_viewports(world, viewport_size=viewport_size)
-
-        # --- BackBufferCopy capture (before main scene) ---
-        if allow_render_targets:
-            self._capture_backbuffer(world, viewport_size=viewport_size)
-
         if camera is not None:
             rl.begin_mode_2d(camera)
 
@@ -363,12 +338,6 @@ class RenderSystem:
 
         self._render_debug_overlay(frame_plan, camera=camera, viewport_size=viewport_size)
         self._render_minimap(world, frame_plan, viewport_size=viewport_size)
-        self._render_canvas_modulate(world, viewport_size=viewport_size)
-
-        # --- Post-processing pipeline ---
-        if allow_render_targets:
-            self._apply_post_processing(world, viewport_size=viewport_size)
-
         target_metrics = self._render_targets.get_frame_metrics()
         totals = self._copy_stats(frame_plan["totals"])
         totals["render_target_passes"] = target_metrics.get("passes", 0)
@@ -424,7 +393,6 @@ class RenderSystem:
             bool(self.debug_draw_labels),
             bool(self.debug_draw_tile_chunks),
             bool(self.debug_draw_camera),
-            bool(self.debug_draw_navigation),
             self._debug_overlay_signature(),
         )
         if self._render_graph_cache_key == cache_key:
@@ -491,7 +459,6 @@ class RenderSystem:
                     sorting_layer=sorting_layer,
                     order_in_layer=order_in_layer,
                     batch_key=self._build_batch_key(entity, sorting_layer),
-                    canvas_layer_entity=getattr(render_order, "canvas_layer_entity", "") if render_order is not None else "",
                 )
             )
 
@@ -733,32 +700,18 @@ class RenderSystem:
 
         return batches
 
-    def _render_pass(self, graph: dict[str, Any] | FramePlan2D, pass_name: str, camera: rl.Camera2D | None = None) -> None:
+    def _render_pass(self, graph: dict[str, Any] | FramePlan2D, pass_name: str) -> None:
         if isinstance(graph, FramePlan2D):
             self._pipeline_executor.render_pass(graph, pass_name)
             return
         pass_data = next((entry for entry in graph["passes"] if entry["name"] == pass_name), None)
         if pass_data is None:
             return
-
-        canvas_layer_map: dict[str, Any] = getattr(self, "_canvas_layer_map", {})
-
         for batch in pass_data["batches"]:
             self._begin_batch_state(batch["key"])
             try:
-                current_canvas_layer: str = ""
                 for command in batch["commands"]:
                     if command["kind"] == "entity":
-                        command_cl_entity = str(command.get("canvas_layer_entity", ""))
-                        if command_cl_entity != current_canvas_layer:
-                            if current_canvas_layer:
-                                self._pop_canvas_layer_transform(canvas_layer_map.get(current_canvas_layer))
-                            current_canvas_layer = command_cl_entity
-                            if current_canvas_layer:
-                                self._push_canvas_layer_transform(
-                                    canvas_layer_map.get(current_canvas_layer),
-                                    camera=camera,
-                                )
                         entity = command["entity"]
                         transform = entity.get_component(Transform)
                         if transform is None:
@@ -776,17 +729,8 @@ class RenderSystem:
                         self._draw_joint(command["entity"])
                     elif command["debug_kind"] == "selection":
                         self._draw_selection_highlight(command["entity"])
-                    elif command["debug_kind"] == "tile_chunk":
-                        entity = command["entity"]
-                        if entity is not None:
-                            geometry = command.get("geometry", {})
-                            self._draw_debug_primitive(geometry)
-                    elif command.get("debug_kind", "") in ("navigation_polygon", "navigation_path", "navigation_radius"):
-                        self._draw_debug_primitive(command.get("geometry", {}))
                     else:
                         self._draw_debug_primitive(command.get("geometry", {}))
-                if current_canvas_layer:
-                    self._pop_canvas_layer_transform(canvas_layer_map.get(current_canvas_layer))
             finally:
                 self._end_batch_state(batch["key"])
 
@@ -825,8 +769,6 @@ class RenderSystem:
                     self._draw_joint(command["entity"])
                 elif command["debug_kind"] == "selection":
                     self._draw_selection_highlight(command["entity"])
-                elif command.get("debug_kind", "") in ("navigation_polygon", "navigation_path", "navigation_radius", "tile_chunk"):
-                    self._draw_debug_primitive(command.get("geometry", {}))
                 else:
                     self._draw_debug_primitive(command.get("geometry", {}))
             if camera is not None:
@@ -881,21 +823,6 @@ class RenderSystem:
         viewport_width, _ = self._normalize_viewport_size(viewport_size)
         destination = rl.Rectangle(float(viewport_width - width - margin), float(margin), float(width), float(height))
         self._render_targets.compose("minimap", destination, rl.WHITE)
-
-    def _render_canvas_modulate(
-        self,
-        world: World,
-        *,
-        viewport_size: Optional[tuple[float, float]] = None,
-    ) -> None:
-        """Applies CanvasModulate color overlay if any entity has the component."""
-        for entity in world.get_entities_with(CanvasModulate):
-            modulate = entity.get_component(CanvasModulate)
-            if modulate is None or not modulate.enabled:
-                continue
-            width, height = self._normalize_viewport_size(viewport_size)
-            rl.draw_rectangle(0, 0, int(width), int(height), rl.Color(*modulate.color))
-            break  # Only first CanvasModulate applies
 
     def _build_batch_key(self, entity: Entity, sorting_layer: str) -> RenderBatchKey:
         style = entity.get_component(RenderStyle2D)
@@ -1088,31 +1015,17 @@ class RenderSystem:
     def _tilemap_chunk_signature(self, tilemap: Tilemap, layer: dict[str, Any], chunk_tiles: list[dict[str, Any]]) -> tuple[object, ...]:
         tileset_ref = tilemap.get_tileset_reference()
         layer_source = normalize_asset_reference(layer.get("tilemap_source"))
-        geo = tilemap.resolve_tile_geometry() if hasattr(tilemap, 'resolve_tile_geometry') else None
-        if geo:
-            tw = int(geo.get("tile_width", 16))
-            th = int(geo.get("tile_height", 16))
-            cols = int(geo.get("columns", 0))
-            spc = int(geo.get("spacing", 0))
-            mg = int(geo.get("margin", 0))
-        else:
-            tw = int(tilemap.tileset_tile_width)
-            th = int(tilemap.tileset_tile_height)
-            cols = int(tilemap.tileset_columns)
-            spc = int(tilemap.tileset_spacing)
-            mg = int(tilemap.tileset_margin)
         return (
             int(tilemap.cell_width),
             int(tilemap.cell_height),
             str(tilemap.orientation),
             str(tileset_ref.get("guid", "")),
             str(tileset_ref.get("path", "")),
-            str(getattr(tilemap, 'tileset_resource_path', '')),
-            tw,
-            th,
-            cols,
-            spc,
-            mg,
+            int(tilemap.tileset_tile_width),
+            int(tilemap.tileset_tile_height),
+            int(tilemap.tileset_columns),
+            int(tilemap.tileset_spacing),
+            int(tilemap.tileset_margin),
             str(layer.get("name", "")),
             bool(layer.get("visible", True)),
             float(layer.get("opacity", 1.0)),
@@ -1434,67 +1347,6 @@ class RenderSystem:
         stats["passes"] = pass_stats
         return stats
 
-    def _build_canvas_layer_map(self, world: World) -> dict[str, dict[str, Any]]:
-        """Build a map of canvas_layer_entity_name -> CanvasLayer data dict."""
-        result: dict[str, dict[str, Any]] = {}
-        for entity in world.get_entities_with(CanvasLayer):
-            canvas_layer = entity.get_component(CanvasLayer)
-            if canvas_layer is not None and canvas_layer.visible:
-                result[entity.name] = {
-                    "layer": canvas_layer.layer,
-                    "offset_x": canvas_layer.offset_x,
-                    "offset_y": canvas_layer.offset_y,
-                    "rotation": canvas_layer.rotation,
-                    "scale_x": canvas_layer.scale_x,
-                    "scale_y": canvas_layer.scale_y,
-                    "follow_viewport": canvas_layer.follow_viewport,
-                    "follow_viewport_scale": canvas_layer.follow_viewport_scale,
-                    "transform": entity.get_component(Transform),
-                }
-        return result
-
-    def _push_canvas_layer_transform(
-        self,
-        layer_data: dict[str, Any] | None,
-        camera: rl.Camera2D | None = None,
-    ) -> None:
-        if layer_data is None:
-            return
-        if layer_data.get("follow_viewport") and camera is not None:
-            zoom = max(float(camera.zoom), 0.0001)
-            rl.rlPushMatrix()
-            rl.rlTranslatef(camera.target.x, camera.target.y, 0.0)
-            rl.rlRotatef(camera.rotation, 0.0, 0.0, 1.0)
-            rl.rlScalef(1.0 / zoom, 1.0 / zoom, 1.0)
-            fx = float(layer_data["follow_viewport_scale"])
-            rl.rlScalef(fx, fx, 1.0)
-            ox = float(layer_data.get("offset_x", 0.0))
-            oy = float(layer_data.get("offset_y", 0.0))
-            rl.rlTranslatef(ox, oy, 0.0)
-            rot = float(layer_data.get("rotation", 0.0))
-            if rot != 0.0:
-                rl.rlRotatef(rot, 0.0, 0.0, 1.0)
-            sx = float(layer_data.get("scale_x", 1.0))
-            sy = float(layer_data.get("scale_y", 1.0))
-            if sx != 1.0 or sy != 1.0:
-                rl.rlScalef(sx, sy, 1.0)
-        else:
-            rl.rlPushMatrix()
-            ox = float(layer_data.get("offset_x", 0.0))
-            oy = float(layer_data.get("offset_y", 0.0))
-            rl.rlTranslatef(ox, oy, 0.0)
-            rot = float(layer_data.get("rotation", 0.0))
-            if rot != 0.0:
-                rl.rlRotatef(rot, 0.0, 0.0, 1.0)
-            sx = float(layer_data.get("scale_x", 1.0))
-            sy = float(layer_data.get("scale_y", 1.0))
-            if sx != 1.0 or sy != 1.0:
-                rl.rlScalef(sx, sy, 1.0)
-
-    def _pop_canvas_layer_transform(self, layer_data: dict[str, Any] | None) -> None:
-        if layer_data is not None:
-            rl.rlPopMatrix()
-
     def _build_camera_from_world(
         self,
         world: World,
@@ -1616,10 +1468,7 @@ class RenderSystem:
             return
         animator = entity.get_component(Animator)
         sprite = entity.get_component(Sprite)
-        viewport_tex = entity.get_component(ViewportTexture)
-        if viewport_tex is not None and viewport_tex.enabled and viewport_tex.viewport_entity:
-            self._draw_viewport_texture_sprite(transform, entity)
-        elif animator is not None and animator.enabled and animator.sprite_sheet:
+        if animator is not None and animator.enabled and animator.sprite_sheet:
             self._draw_animated_sprite(transform, animator)
         elif sprite is not None and sprite.enabled and sprite.texture_path:
             self._draw_sprite(transform, sprite)
@@ -1627,14 +1476,6 @@ class RenderSystem:
             polygon = entity.get_component(Polygon2D)
             if polygon is not None and polygon.enabled and len(polygon.points) >= 3:
                 self._draw_polygon(transform, polygon)
-                return
-            color_rect = entity.get_component(ColorRect)
-            if color_rect is not None and color_rect.enabled:
-                self._draw_color_rect(transform, color_rect)
-                return
-            dir_light = entity.get_component(DirectionalLight2D)
-            if dir_light is not None and dir_light.enabled:
-                self._draw_directional_light(transform, dir_light)
                 return
             self._draw_placeholder(entity.name, transform)
 
@@ -1698,26 +1539,6 @@ class RenderSystem:
         if self.debug_draw_labels:
             rl.draw_text(name, rect_x, rect_y - 15, 10, rl.WHITE)
 
-    def _draw_color_rect(self, transform: Transform, color_rect: ColorRect) -> None:
-        width = int(color_rect.width * transform.scale_x)
-        height = int(color_rect.height * transform.scale_y)
-        rect_x = int(transform.x - width / 2)
-        rect_y = int(transform.y - height / 2)
-        rl.draw_rectangle(rect_x, rect_y, width, height, rl.Color(*color_rect.color))
-        if self.debug_draw_labels:
-            rl.draw_text("ColorRect", rect_x, rect_y - 15, 10, rl.WHITE)
-
-    def _draw_directional_light(self, transform: Transform, dir_light: DirectionalLight2D) -> None:
-        start_x = int(transform.x)
-        start_y = int(transform.y)
-        end_x = int(transform.x + dir_light.direction_x * dir_light.max_distance)
-        end_y = int(transform.y + dir_light.direction_y * dir_light.max_distance)
-        color = rl.Color(dir_light.color_r, dir_light.color_g, dir_light.color_b, min(255, int(dir_light.energy * 100)))
-        rl.draw_line(start_x, start_y, end_x, end_y, color)
-        rl.draw_circle(start_x, start_y, 6.0, rl.Color(dir_light.color_r, dir_light.color_g, dir_light.color_b, 255))
-        if self.debug_draw_labels:
-            rl.draw_text("DirLight", start_x + 8, start_y - 12, 10, rl.YELLOW)
-
     def _draw_polygon(self, transform: Transform, polygon: Polygon2D) -> None:
         if len(polygon.points) < 3:
             return
@@ -1737,35 +1558,24 @@ class RenderSystem:
             ry = wx * sin_r + wy * cos_r
             world_points.append((transform.x + rx + polygon.offset_x, transform.y + ry + polygon.offset_y))
 
-        use_uvs = len(polygon.uvs) >= len(polygon.points)
-
         if polygon.texture_path:
             texture = self._load_texture(polygon.get_texture_reference(), polygon.texture_path, sync_callback=polygon.sync_texture_reference)
             if texture.id != 0:
                 rl.rl_set_texture(texture.id)
                 rl.rl_begin(rl.RL_TRIANGLES)
                 rl.rl_color4ub(*polygon.color)
+                # Fan triangulation: (0, 1, 2), (0, 2, 3), ...
                 for i in range(1, len(world_points) - 1):
                     p0 = world_points[0]
                     p1 = world_points[i]
                     p2 = world_points[i + 1]
-                    if use_uvs:
-                        uv0 = polygon.uvs[0]
-                        uv1 = polygon.uvs[i]
-                        uv2 = polygon.uvs[i + 1]
-                        rl.rl_tex_coord2f(uv0[0], uv0[1])
-                        rl.rl_vertex2f(p0[0], p0[1])
-                        rl.rl_tex_coord2f(uv1[0], uv1[1])
-                        rl.rl_vertex2f(p1[0], p1[1])
-                        rl.rl_tex_coord2f(uv2[0], uv2[1])
-                        rl.rl_vertex2f(p2[0], p2[1])
-                    else:
-                        rl.rl_tex_coord2f(0.5, 0.5)
-                        rl.rl_vertex2f(p0[0], p0[1])
-                        rl.rl_tex_coord2f(float(i) / len(world_points), 0.0)
-                        rl.rl_vertex2f(p1[0], p1[1])
-                        rl.rl_tex_coord2f(float(i + 1) / len(world_points), 1.0)
-                        rl.rl_vertex2f(p2[0], p2[1])
+                    # UV: simple normalized mapping
+                    rl.rl_tex_coord2f(0.5, 0.5)
+                    rl.rl_vertex2f(p0[0], p0[1])
+                    rl.rl_tex_coord2f(float(i) / len(world_points), 0.0)
+                    rl.rl_vertex2f(p1[0], p1[1])
+                    rl.rl_tex_coord2f(float(i + 1) / len(world_points), 1.0)
+                    rl.rl_vertex2f(p2[0], p2[1])
                 rl.rl_end()
                 rl.rl_set_texture(0)
                 return
@@ -1838,72 +1648,6 @@ class RenderSystem:
                 ),
             )
         )
-
-    def _draw_debug_primitive(self, geometry: dict[str, Any]) -> None:
-        kind = str(geometry.get("kind", "")).lower()
-        color = self._color_from_payload(geometry.get("color", [255, 255, 255, 255]))
-        if kind == "line":
-            start = geometry.get("start", {})
-            end = geometry.get("end", {})
-            rl.draw_line(
-                int(start.get("x", 0.0)),
-                int(start.get("y", 0.0)),
-                int(end.get("x", 0.0)),
-                int(end.get("y", 0.0)),
-                color,
-            )
-        elif kind == "rect":
-            rl.draw_rectangle_lines_ex(
-                rl.Rectangle(
-                    float(geometry.get("x", 0.0)),
-                    float(geometry.get("y", 0.0)),
-                    float(geometry.get("width", 0.0)),
-                    float(geometry.get("height", 0.0)),
-                ),
-                int(geometry.get("thickness", 1)),
-                color,
-            )
-        elif kind == "circle":
-            rl.draw_circle_lines(
-                int(geometry.get("x", 0.0)),
-                int(geometry.get("y", 0.0)),
-                float(geometry.get("radius", 0.0)),
-                color,
-            )
-        elif kind == "navigation_polygon":
-            points = geometry.get("points", [])
-            for i in range(len(points)):
-                p0 = points[i]
-                p1 = points[(i + 1) % len(points)]
-                rl.draw_line(int(p0[0]), int(p0[1]), int(p1[0]), int(p1[1]), color)
-        elif kind == "navigation_path":
-            points = geometry.get("points", [])
-            for i in range(len(points) - 1):
-                p0 = points[i]
-                p1 = points[i + 1]
-                rl.draw_line(int(p0[0]), int(p0[1]), int(p1[0]), int(p1[1]), color)
-                rl.draw_circle(int(p0[0]), int(p0[1]), 3.0, color)
-            if points:
-                last = points[-1]
-                rl.draw_circle(int(last[0]), int(last[1]), 3.0, color)
-        elif kind == "navigation_radius":
-            rl.draw_circle_lines(
-                int(geometry.get("x", 0.0)),
-                int(geometry.get("y", 0.0)),
-                float(geometry.get("radius", 0.0)),
-                color,
-            )
-        elif kind == "tile_chunk":
-            rl.draw_rectangle_lines_ex(
-                rl.Rectangle(
-                    float(geometry.get("x", 0.0)),
-                    float(geometry.get("y", 0.0)),
-                    float(geometry.get("width", 0.0)),
-                    float(geometry.get("height", 0.0)),
-                ),
-                int(geometry.get("thickness", 1)),
-                color,
-            )
 
     def _build_collider_geometry(self, transform: Transform, collider: Collider) -> dict[str, Any]:
         left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
@@ -2080,19 +1824,6 @@ class RenderSystem:
             payload["x"] = float(payload.get("x", 0.0))
             payload["y"] = float(payload.get("y", 0.0))
             payload["radius"] = float(payload.get("radius", 0.0))
-        elif payload["kind"] in ("navigation_polygon", "navigation_path"):
-            raw_points = payload.get("points", [])
-            payload["points"] = [[float(pt[0]), float(pt[1])] for pt in raw_points if isinstance(pt, (list, tuple)) and len(pt) >= 2]
-        elif payload["kind"] == "navigation_radius":
-            payload["x"] = float(payload.get("x", 0.0))
-            payload["y"] = float(payload.get("y", 0.0))
-            payload["radius"] = float(payload.get("radius", 0.0))
-        elif payload["kind"] == "tile_chunk":
-            payload["x"] = float(payload.get("x", 0.0))
-            payload["y"] = float(payload.get("y", 0.0))
-            payload["width"] = float(payload.get("width", 0.0))
-            payload["height"] = float(payload.get("height", 0.0))
-            payload["thickness"] = int(payload.get("thickness", 1))
         return payload
 
     def _debug_overlay_signature(self) -> tuple[object, ...]:
@@ -2220,19 +1951,11 @@ class RenderSystem:
         }
 
     def _resolve_tile_grid_rect(self, tilemap: Tilemap, tile_id: str) -> dict[str, int] | None:
-        geo = tilemap.resolve_tile_geometry() if hasattr(tilemap, 'resolve_tile_geometry') else None
-        if geo:
-            tile_width = max(1, int(geo.get("tile_width", 0) or tilemap.cell_width))
-            tile_height = max(1, int(geo.get("tile_height", 0) or tilemap.cell_height))
-            columns = max(1, int(geo.get("columns", 0) or 0))
-            spacing = max(0, int(geo.get("spacing", 0)))
-            margin = max(0, int(geo.get("margin", 0)))
-        else:
-            tile_width = max(1, int(tilemap.tileset_tile_width or tilemap.cell_width))
-            tile_height = max(1, int(tilemap.tileset_tile_height or tilemap.cell_height))
-            columns = max(1, int(tilemap.tileset_columns or 0))
-            spacing = max(0, int(tilemap.tileset_spacing))
-            margin = max(0, int(tilemap.tileset_margin))
+        tile_width = max(1, int(tilemap.tileset_tile_width or tilemap.cell_width))
+        tile_height = max(1, int(tilemap.tileset_tile_height or tilemap.cell_height))
+        columns = max(1, int(tilemap.tileset_columns or 0))
+        spacing = max(0, int(tilemap.tileset_spacing))
+        margin = max(0, int(tilemap.tileset_margin))
         tile_index = self._parse_tile_index(tile_id)
         if tile_index is None:
             if columns != 1:
@@ -2253,198 +1976,6 @@ class RenderSystem:
         except (TypeError, ValueError):
             return None
 
-    # ------------------------------------------------------------------
-    # SubViewport rendering
-    # ------------------------------------------------------------------
-
-    def _render_sub_viewports(
-        self,
-        world: World,
-        *,
-        viewport_size: Optional[tuple[float, float]] = None,
-    ) -> None:
-        for entity in world.get_entities_with(SubViewport):
-            viewport = entity.get_component(SubViewport)
-            if viewport is None or not viewport.enabled:
-                continue
-            if viewport.render_target_update_mode == "once" and not viewport.needs_update:
-                continue
-            self._render_single_sub_viewport(world, entity, viewport, viewport_size=viewport_size)
-            viewport.needs_update = False
-
-    def _render_single_sub_viewport(
-        self,
-        world: World,
-        entity: Entity,
-        viewport: SubViewport,
-        *,
-        viewport_size: Optional[tuple[float, float]] = None,
-    ) -> None:
-        del viewport_size
-        vp_name = entity.name or f"__subviewport_{entity.id}"
-        w = viewport.size_x
-        h = viewport.size_y
-        transparent = viewport.transparent_bg
-
-        self._viewport_renderer.get_or_create_texture(vp_name, w, h)
-        self._viewport_renderer.begin_render(vp_name, transparent)
-
-        try:
-            children = world.get_children(entity.name) if hasattr(world, "get_children") else []
-            for child_name in children:
-                child = world.get_entity_by_name(child_name)
-                if child is None or not child.active:
-                    continue
-                transform = child.get_component(Transform)
-                if transform is None:
-                    continue
-                self._render_entity(child, transform)
-        finally:
-            self._viewport_renderer.end_render(vp_name)
-
-        self._viewport_renderer.mark_dirty(vp_name)
-
-    # ------------------------------------------------------------------
-    # ViewportTexture rendering (Sprite with viewport texture)
-    # ------------------------------------------------------------------
-
-    def _draw_viewport_texture_sprite(self, transform: Transform, entity: Entity) -> None:
-        viewport_tex = entity.get_component(ViewportTexture)
-        if viewport_tex is None or not viewport_tex.enabled:
-            return
-        vp_name = viewport_tex.viewport_entity
-        if not vp_name:
-            return
-
-        tex = self._viewport_renderer.get_texture(vp_name)
-        if tex is None:
-            return
-
-        vp_dims = self._viewport_renderer.get_dimensions(vp_name)
-        if vp_dims is None:
-            return
-        vp_w, vp_h = vp_dims
-
-        width = int(vp_w * transform.scale_x)
-        height = int(vp_h * transform.scale_y)
-        dest_x = transform.x - (width * 0.5)
-        dest_y = transform.y - (height * 0.5)
-        source_rect = rl.Rectangle(0, 0, float(vp_w), -float(vp_h))
-        dest_rect = rl.Rectangle(dest_x, dest_y, float(width), float(height))
-        rl.draw_texture_pro(tex, source_rect, dest_rect, rl.Vector2(0, 0), transform.rotation, rl.WHITE)
-
-    # ------------------------------------------------------------------
-    # BackBufferCopy
-    # ------------------------------------------------------------------
-
-    def _capture_backbuffer(
-        self,
-        world: World,
-        *,
-        viewport_size: Optional[tuple[float, float]] = None,
-    ) -> None:
-        """Capture screen region to a RenderTexture for BackBufferCopy entities."""
-        bb_entities = [
-            (entity, entity.get_component(BackBufferCopy))
-            for entity in world.get_entities_with(BackBufferCopy)
-        ]
-        bb_entities = [(e, bb) for e, bb in bb_entities if bb is not None and bb.enabled]
-        if not bb_entities:
-            return
-
-        screen_w, screen_h = self._normalize_viewport_size(viewport_size)
-
-        for entity, bb in bb_entities:
-            name = f"__bbcopy_{entity.name or entity.id}"
-            if bb.copy_mode == BackBufferCopy.COPY_MODE_VIEWPORT:
-                rw, rh = screen_w, screen_h
-                rx, ry = 0.0, 0.0
-            else:
-                rw = max(1, int(bb.rect_w))
-                rh = max(1, int(bb.rect_h))
-                rx, ry = bb.rect_x, bb.rect_y
-
-            self._viewport_renderer.get_or_create_texture(name, rw, rh)
-            self._viewport_renderer.begin_render(name, True)
-
-            try:
-                tex = self._viewport_renderer.get_render_texture(name)
-                if tex is not None and hasattr(tex, "texture"):
-                    dst = rl.Rectangle(rx, ry, float(rw), float(rh))
-                    rl.draw_texture_rec(tex.texture, dst, rl.Vector2(0, 0), rl.WHITE)
-            finally:
-                self._viewport_renderer.end_render(name)
-
-    # ------------------------------------------------------------------
-    # Post-processing pipeline
-    # ------------------------------------------------------------------
-
-    def _apply_post_processing(
-        self,
-        world: World,
-        *,
-        viewport_size: Optional[tuple[float, float]] = None,
-    ) -> None:
-        """Capture current screen, apply post-processing effects, draw result."""
-        from engine.components.post_process_effect import PostProcessEffectComp
-        from engine.rendering.post_process import BlurEffect, ColorCorrectEffect
-
-        pp_entities = [
-            (entity, entity.get_component(PostProcessEffectComp))
-            for entity in world.get_entities_with(PostProcessEffectComp)
-        ]
-        pp_entities = [(e, pp) for e, pp in pp_entities if pp is not None and pp.enabled]
-        if not pp_entities:
-            return
-
-        screen_w, screen_h = self._normalize_viewport_size(viewport_size)
-        self._post_process_pipeline.clear_effects()
-
-        for _entity, pp_comp in pp_entities:
-            for effect_data in pp_comp.effects:
-                if not effect_data.get("enabled", True):
-                    continue
-                effect_type = str(effect_data.get("type", ""))
-                if effect_type == "BlurEffect":
-                    self._post_process_pipeline.add_effect(
-                        BlurEffect(
-                            radius=float(effect_data.get("radius", 4.0)),
-                            name=str(effect_data.get("name", "")),
-                            enabled=bool(effect_data.get("enabled", True)),
-                        )
-                    )
-                elif effect_type == "ColorCorrectEffect":
-                    self._post_process_pipeline.add_effect(
-                        ColorCorrectEffect(
-                            brightness=float(effect_data.get("brightness", 1.0)),
-                            contrast=float(effect_data.get("contrast", 1.0)),
-                            saturation=float(effect_data.get("saturation", 1.0)),
-                            name=str(effect_data.get("name", "")),
-                            enabled=bool(effect_data.get("enabled", True)),
-                        )
-                    )
-
-        if not self._post_process_pipeline.effects:
-            return
-
-        self._render_targets.ensure("__post_process_src", screen_w, screen_h)
-        self._render_targets.ensure("__post_process_dst", screen_w, screen_h)
-
-        pp_src = self._render_targets.get("__post_process_src")
-        if pp_src is None or pp_src.render_texture is None:
-            return
-
-        result = self._post_process_pipeline.process(pp_src.render_texture, screen_w, screen_h)
-        result_tex = result.texture if hasattr(result, "texture") else result
-        if result_tex is None:
-            return
-
-        source_rect = rl.Rectangle(0, 0, float(result_tex.width), -float(result_tex.height))
-        dest_rect = rl.Rectangle(0, 0, float(screen_w), float(screen_h))
-        rl.draw_texture_pro(result_tex, source_rect, dest_rect, rl.Vector2(0, 0), 0.0, rl.WHITE)
-
     def cleanup(self) -> None:
         self._texture_manager.unload_all()
         self._render_targets.unload_all()
-        self._viewport_renderer.cleanup()
-        self._post_process_pipeline.cleanup()

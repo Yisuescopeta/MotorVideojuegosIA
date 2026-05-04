@@ -105,10 +105,10 @@ class ShapeFactoryTests(unittest.TestCase):
     ):
         result = None
         for _ in range(max_frames):
-            result = backend.move_and_slide(entity, velocity, delta_time)
+            result = backend.move_and_slide(world, entity, velocity, delta_time)
             if result.on_floor or result.on_wall or result.on_ceiling:
                 break
-        return result if result is not None else backend.move_and_slide(entity, velocity, delta_time)
+        return result if result is not None else backend.move_and_slide(world, entity, velocity, delta_time)
 
     # ── move_and_slide: circle player ────────────────────────────
 
@@ -118,7 +118,6 @@ class ShapeFactoryTests(unittest.TestCase):
 
         player = self._make_entity(world, "Player", 100, 100, shape_type="circle", radius=16)
         self._make_entity(world, "Floor", 100, 300, width=640, height=32)
-        backend._last_world = world
 
         result = self._simulate(backend, world, player, velocity=(0, 200), delta_time=0.016)
 
@@ -139,7 +138,6 @@ class ShapeFactoryTests(unittest.TestCase):
             shape_type="capsule", radius=10, capsule_height=20,
         )
         self._make_entity(world, "Floor", 100, 300, width=640, height=32)
-        backend._last_world = world
 
         result = self._simulate(backend, world, player, velocity=(0, 200), delta_time=0.016)
 
@@ -186,6 +184,35 @@ class ShapeFactoryTests(unittest.TestCase):
         shape = ShapeFactory.build(collider, 100, 100)
         self.assertIsInstance(shape, PolygonShape)
         self.assertEqual(len(shape.vertices), 3)
+
+    # ── collide_shape retorna normal y depth ─────────────────────
+
+    def test_collide_shape_returns_manifold_with_normal_and_depth(self) -> None:
+        """collide_shape() devuelve ContactManifold2D con normal y depth."""
+        a = AABBShape(10, 10, 16, 16)
+        b = AABBShape(30, 10, 16, 16)
+        manifold = a.collide_shape(b)
+        self.assertIsNotNone(manifold, "Deberían colisionar")
+        self.assertGreater(
+            manifold.depth, 0, f"Depth debería ser > 0, es {manifold.depth}",
+        )
+        self.assertTrue(
+            abs(manifold.normal_x) > 0 or abs(manifold.normal_y) > 0,
+            f"Normal no debería ser (0,0), es ({manifold.normal_x}, {manifold.normal_y})",
+        )
+
+    def test_circle_collide_aabb_returns_correct_normal(self) -> None:
+        """Círculo colisionando con AABB devuelve normal correcta."""
+        circle = CircleShape(50, 50, 20)
+        aabb = AABBShape(100, 50, 30, 30)
+        manifold = circle.collide_shape(aabb)
+        self.assertIsNotNone(manifold)
+        # La normal debe apuntar del círculo hacia fuera (hacia la izquierda aquí)
+        self.assertTrue(
+            manifold.normal_x < 0 or manifold.normal_y != 0,
+            f"Normal debería apuntar fuera del círculo: "
+            f"({manifold.normal_x}, {manifold.normal_y})",
+        )
 
     # ── Capsule vs Capsule ────────────────────────────────────────
 

@@ -445,6 +445,30 @@ class RuntimeAPI(EngineAPIComponent):
         rb.apply_torque(torque)
         return ActionResult(success=True, message=f"Torque applied to {entity_name}")
 
+    def set_collision_filter(self, entity_name: str, layer: int = 1, mask: int = 0xFFFFFFFF) -> ActionResult:
+        """Set CollisionFilter2D on entity (layer and mask bitfields)."""
+        from engine.components.collision_filter_2d import CollisionFilter2D
+
+        # Update runtime entity
+        entity = self.require_entity(entity_name)
+        existing = entity.get_component(CollisionFilter2D)
+        if existing is not None:
+            existing.layer = int(layer)
+            existing.mask = int(mask)
+        else:
+            cf = CollisionFilter2D(layer=int(layer), mask=int(mask))
+            entity.add_component(cf)
+
+        # Also persist to authoring state so the change survives world reloads
+        authoring = self.scene_authoring
+        if authoring is not None:
+            authoring.add_component_to_entity(
+                entity_name, "CollisionFilter2D",
+                {"enabled": True, "layer": int(layer), "mask": int(mask)},
+            )
+
+        return ActionResult(success=True, message=f"CollisionFilter set on {entity_name}", data={"entity": entity_name})
+
     def set_rigidbody_constant_force(self, entity_name: str, fx: float, fy: float) -> ActionResult:
         """Set constant force on RigidBody (applied every frame)."""
         entity = self.require_entity(entity_name)

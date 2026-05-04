@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import time
 
-from engine.audio.audio_bus import AudioBusLayout
 from engine.audio.backend import AudioBackend, NullAudioBackend
 from engine.audio.contracts import AudioPlaybackRequest, AudioRuntimeEvent, AudioVoiceState
 
@@ -14,7 +13,6 @@ class AudioRuntime:
         self._backend: AudioBackend = backend or NullAudioBackend()
         self._voices: dict[str, AudioVoiceState] = {}
         self._events: list[AudioRuntimeEvent] = []
-        self.bus_layout: AudioBusLayout = AudioBusLayout()
 
     def get_voice(self, entity_name: str) -> AudioVoiceState | None:
         return self._voices.get(entity_name)
@@ -22,13 +20,12 @@ class AudioRuntime:
     def play(self, request: AudioPlaybackRequest, *, game_time: float | None = None) -> AudioVoiceState:
         current_time = self._resolve_time(game_time)
         self._emit("audio_play_requested", request)
-        bus_volume = self.bus_layout.get_linear_volume(request.bus_id)
         voice = AudioVoiceState(
             entity_name=request.entity_name,
             asset_path=request.asset_path,
             resolved_asset_path=request.resolved_asset_path,
             bus_id=request.bus_id,
-            volume=request.volume * bus_volume,
+            volume=request.volume,
             pitch=request.pitch,
             loop=request.loop,
             spatial_blend=request.spatial_blend,

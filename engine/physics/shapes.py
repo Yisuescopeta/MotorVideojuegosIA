@@ -18,6 +18,9 @@ Fábrica:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Optional
+
+from engine.physics.contact_data import ContactManifold2D, ContactPoint2D
 
 AABB = tuple[float, float, float, float]
 
@@ -31,9 +34,13 @@ class ShapeInstance(ABC):
         ...
 
     @abstractmethod
-    def intersects_shape(self, other: ShapeInstance) -> bool:
-        """True si esta shape intersecta con other."""
+    def collide_shape(self, other: ShapeInstance) -> Optional[ContactManifold2D]:
+        """Calcula manifold de contacto. None si no hay colisión."""
         ...
+
+    def intersects_shape(self, other: ShapeInstance) -> bool:
+        """True si esta shape intersecta con other. Wrapper de collide_shape."""
+        return self.collide_shape(other) is not None
 
 
 class AABBShape(ShapeInstance):
@@ -53,15 +60,43 @@ class AABBShape(ShapeInstance):
             self.cy + self.half_h,
         )
 
-    def intersects_shape(self, other: ShapeInstance) -> bool:
+    def collide_shape(self, other: ShapeInstance) -> Optional[ContactManifold2D]:
         if isinstance(other, AABBShape):
-            return self._intersects_aabb(other)
-        return other.intersects_shape(self)
+            return self._collide_aabb(other)
+        return other.collide_shape(self)
 
-    def _intersects_aabb(self, other: AABBShape) -> bool:
-        return (
-            abs(self.cx - other.cx) < self.half_w + other.half_w
-            and abs(self.cy - other.cy) < self.half_h + other.half_h
+    def _collide_aabb(self, other: AABBShape) -> Optional[ContactManifold2D]:
+        overlap_left = (self.cx + self.half_w) - (other.cx - other.half_w)
+        overlap_right = (other.cx + other.half_w) - (self.cx - self.half_w)
+        overlap_top = (self.cy + self.half_h) - (other.cy - other.half_h)
+        overlap_bottom = (other.cy + other.half_h) - (self.cy - self.half_h)
+
+        if overlap_left <= 0 or overlap_right <= 0 or overlap_top <= 0 or overlap_bottom <= 0:
+            return None
+
+        overlap_x = min(overlap_left, overlap_right)
+        overlap_y = min(overlap_top, overlap_bottom)
+
+        if overlap_x < overlap_y:
+            nx = -1.0 if self.cx < other.cx else 1.0
+            ny = 0.0
+            depth = overlap_x
+        else:
+            nx = 0.0
+            ny = -1.0 if self.cy < other.cy else 1.0
+            depth = overlap_y
+
+        contact_x = (max(self.cx - self.half_w, other.cx - other.half_w)
+                     + min(self.cx + self.half_w, other.cx + other.half_w)) / 2
+        contact_y = (max(self.cy - self.half_h, other.cy - other.half_h)
+                     + min(self.cy + self.half_h, other.cy + other.half_h)) / 2
+
+        cp = ContactPoint2D(point_x=contact_x, point_y=contact_y, normal_x=nx, normal_y=ny, depth=depth)
+        return ContactManifold2D(
+            entity_a_id=0, entity_b_id=0, entity_a_name="", entity_b_name="",
+            normal_x=nx, normal_y=ny, depth=depth,
+            relative_velocity_x=0.0, relative_velocity_y=0.0,
+            contact_count=1, contacts=[cp], is_trigger=False,
         )
 
 
@@ -81,51 +116,113 @@ class CircleShape(ShapeInstance):
             self.cy + self.radius,
         )
 
-    def intersects_shape(self, other: ShapeInstance) -> bool:
+    def collide_shape(self, other: ShapeInstance) -> Optional[ContactManifold2D]:
         if isinstance(other, CircleShape):
-            return self._intersects_circle(other)
+            return self._collide_circle(other)
         if isinstance(other, AABBShape):
-            return self._intersects_aabb(other)
+            return self._collide_aabb(other)
         if isinstance(other, PolygonShape):
-            return self._intersects_polygon(other)
+            return self._collide_polygon(other)
         if isinstance(other, CapsuleShape):
-            return other.intersects_shape(self)
-        return other.intersects_shape(self)
+            return other.collide_shape(self)
+        return other.collide_shape(self)
 
-    def _intersects_circle(self, other: CircleShape) -> bool:
-        dx = self.cx - other.cx
-        dy = self.cy - other.cy
-        r = self.radius + other.radius
-        return dx * dx + dy * dy <= r * r
+    def _collide_circle(self, other: CircleShape) -> Optional[ContactManifold2D]:
+        dx = other.cx - self.cx
+        dy = other.cy - self.cy
+        dist_sq = dx * dx + dy * dy
+        min_dist = self.radius + other.radius
+        if dist_sq > min_dist * min_dist:
+            return None
+        dist = dist_sq ** 0.5
+        depth = min_dist - dist
+        if dist < 0.0001:
+            nx, ny = 0.0, -1.0
+        else:
+            nx, ny = dx / dist, dy / dist
+        contact_x = self.cx + nx * (self.radius - depth / 2)
+        contact_y = self.cy + ny * (self.radius - depth / 2)
+        cp = ContactPoint2D(point_x=contact_x, point_y=contact_y, normal_x=nx, normal_y=ny, depth=depth)
+        return ContactManifold2D(
+            entity_a_id=0, entity_b_id=0, entity_a_name="", entity_b_name="",
+            normal_x=nx, normal_y=ny, depth=depth,
+            relative_velocity_x=0.0, relative_velocity_y=0.0,
+            contact_count=1, contacts=[cp], is_trigger=False,
+        )
 
-    def _intersects_aabb(self, aabb: AABBShape) -> bool:
+    def _collide_aabb(self, aabb: AABBShape) -> Optional[ContactManifold2D]:
         closest_x = max(aabb.cx - aabb.half_w, min(self.cx, aabb.cx + aabb.half_w))
         closest_y = max(aabb.cy - aabb.half_h, min(self.cy, aabb.cy + aabb.half_h))
         dx = self.cx - closest_x
         dy = self.cy - closest_y
-        return dx * dx + dy * dy <= self.radius * self.radius
+        dist_sq = dx * dx + dy * dy
+        if dist_sq > self.radius * self.radius:
+            return None
+        dist = dist_sq ** 0.5
+        depth = self.radius - dist
+        if dist < 0.0001:
+            nx, ny = 0.0, -1.0
+        else:
+            nx, ny = dx / dist, dy / dist
+        contact_x = self.cx - nx * (self.radius - depth / 2)
+        contact_y = self.cy - ny * (self.radius - depth / 2)
+        cp = ContactPoint2D(point_x=contact_x, point_y=contact_y, normal_x=nx, normal_y=ny, depth=depth)
+        return ContactManifold2D(
+            entity_a_id=0, entity_b_id=0, entity_a_name="", entity_b_name="",
+            normal_x=nx, normal_y=ny, depth=depth,
+            relative_velocity_x=0.0, relative_velocity_y=0.0,
+            contact_count=1, contacts=[cp], is_trigger=False,
+        )
 
-    def _intersects_polygon(self, poly: PolygonShape) -> bool:
-        """Circle vs Polygon: distancia mínima a cada arista."""
+    def _collide_polygon(self, poly: PolygonShape) -> Optional[ContactManifold2D]:
+        """Circle vs Polygon: punto más cercano en polígono al centro del círculo."""
+        if poly._point_inside(self.cx, self.cy):
+            cp = ContactPoint2D(point_x=self.cx, point_y=self.cy, normal_x=0.0, normal_y=-1.0, depth=self.radius)
+            return ContactManifold2D(
+                entity_a_id=0, entity_b_id=0, entity_a_name="", entity_b_name="",
+                normal_x=0.0, normal_y=-1.0, depth=self.radius,
+                relative_velocity_x=0.0, relative_velocity_y=0.0,
+                contact_count=1, contacts=[cp], is_trigger=False,
+            )
+        # Punto más cercano en aristas del polígono
         closest_dist_sq = float("inf")
+        closest_px = 0.0
+        closest_py = 0.0
         n = len(poly.vertices)
         for i in range(n):
             v1 = poly.vertices[i]
             v2 = poly.vertices[(i + 1) % n]
-            dx = v2[0] - v1[0]
-            dy = v2[1] - v1[1]
-            if abs(dx) < 1e-6 and abs(dy) < 1e-6:
+            ex = v2[0] - v1[0]
+            ey = v2[1] - v1[1]
+            if abs(ex) < 1e-6 and abs(ey) < 1e-6:
                 d_sq = (self.cx - v1[0]) ** 2 + (self.cy - v1[1]) ** 2
+                px, py = v1[0], v1[1]
             else:
-                t = ((self.cx - v1[0]) * dx + (self.cy - v1[1]) * dy) / (dx * dx + dy * dy)
+                t = ((self.cx - v1[0]) * ex + (self.cy - v1[1]) * ey) / (ex * ex + ey * ey)
                 t = max(0.0, min(1.0, t))
-                px = v1[0] + t * dx
-                py = v1[1] + t * dy
+                px = v1[0] + t * ex
+                py = v1[1] + t * ey
                 d_sq = (self.cx - px) ** 2 + (self.cy - py) ** 2
-            closest_dist_sq = min(closest_dist_sq, d_sq)
-        if poly._point_inside(self.cx, self.cy):
-            return True
-        return closest_dist_sq <= self.radius * self.radius
+            if d_sq < closest_dist_sq:
+                closest_dist_sq = d_sq
+                closest_px = px
+                closest_py = py
+        if closest_dist_sq > self.radius * self.radius:
+            return None
+        dist = closest_dist_sq ** 0.5
+        depth = self.radius - dist
+        if dist < 0.0001:
+            nx, ny = 0.0, -1.0
+        else:
+            nx = (self.cx - closest_px) / dist
+            ny = (self.cy - closest_py) / dist
+        cp = ContactPoint2D(point_x=closest_px, point_y=closest_py, normal_x=nx, normal_y=ny, depth=depth)
+        return ContactManifold2D(
+            entity_a_id=0, entity_b_id=0, entity_a_name="", entity_b_name="",
+            normal_x=nx, normal_y=ny, depth=depth,
+            relative_velocity_x=0.0, relative_velocity_y=0.0,
+            contact_count=1, contacts=[cp], is_trigger=False,
+        )
 
 
 class CapsuleShape(ShapeInstance):
@@ -145,6 +242,18 @@ class CapsuleShape(ShapeInstance):
             self.cx + self.radius,
             self.cy + half_total,
         )
+
+    def collide_shape(self, other: ShapeInstance) -> Optional[ContactManifold2D]:
+        # TODO: implementar manifold real para capsule
+        if self.intersects_shape(other):
+            cp = ContactPoint2D(point_x=self.cx, point_y=self.cy, normal_x=0.0, normal_y=-1.0, depth=self.radius)
+            return ContactManifold2D(
+                entity_a_id=0, entity_b_id=0, entity_a_name="", entity_b_name="",
+                normal_x=0.0, normal_y=-1.0, depth=self.radius,
+                relative_velocity_x=0.0, relative_velocity_y=0.0,
+                contact_count=1, contacts=[cp], is_trigger=False,
+            )
+        return None
 
     def intersects_shape(self, other: ShapeInstance) -> bool:
         if isinstance(other, AABBShape):
@@ -231,6 +340,43 @@ class PolygonShape(ShapeInstance):
         ys = [v[1] for v in self.vertices]
         return (min(xs), min(ys), max(xs), max(ys))
 
+    def collide_shape(self, other: ShapeInstance) -> Optional[ContactManifold2D]:
+        # TODO: implementar manifold real para polygon
+        if isinstance(other, AABBShape):
+            if self._sat_intersects_aabb(other):
+                cp = ContactPoint2D(point_x=self._centroid_x(), point_y=self._centroid_y(), normal_x=0.0, normal_y=-1.0, depth=1.0)
+                return ContactManifold2D(
+                    entity_a_id=0, entity_b_id=0, entity_a_name="", entity_b_name="",
+                    normal_x=0.0, normal_y=-1.0, depth=1.0,
+                    relative_velocity_x=0.0, relative_velocity_y=0.0,
+                    contact_count=1, contacts=[cp], is_trigger=False,
+                )
+            return None
+        if isinstance(other, CircleShape):
+            return other.collide_shape(self)
+        if isinstance(other, PolygonShape):
+            if self._sat_intersects_polygon(other):
+                cp = ContactPoint2D(point_x=self._centroid_x(), point_y=self._centroid_y(), normal_x=0.0, normal_y=-1.0, depth=1.0)
+                return ContactManifold2D(
+                    entity_a_id=0, entity_b_id=0, entity_a_name="", entity_b_name="",
+                    normal_x=0.0, normal_y=-1.0, depth=1.0,
+                    relative_velocity_x=0.0, relative_velocity_y=0.0,
+                    contact_count=1, contacts=[cp], is_trigger=False,
+                )
+            return None
+        if isinstance(other, CapsuleShape):
+            return other.collide_shape(self)
+        # Fallback: AABB overlap test
+        if self._aabb_overlap_fallback(self.get_aabb(), other.get_aabb()):
+            cp = ContactPoint2D(point_x=self._centroid_x(), point_y=self._centroid_y(), normal_x=0.0, normal_y=-1.0, depth=1.0)
+            return ContactManifold2D(
+                entity_a_id=0, entity_b_id=0, entity_a_name="", entity_b_name="",
+                normal_x=0.0, normal_y=-1.0, depth=1.0,
+                relative_velocity_x=0.0, relative_velocity_y=0.0,
+                contact_count=1, contacts=[cp], is_trigger=False,
+            )
+        return None
+
     def intersects_shape(self, other: ShapeInstance) -> bool:
         if isinstance(other, AABBShape):
             return self._sat_intersects_aabb(other)
@@ -241,6 +387,16 @@ class PolygonShape(ShapeInstance):
         if isinstance(other, CapsuleShape):
             return other.intersects_shape(self)
         return self._aabb_overlap_fallback(self.get_aabb(), other.get_aabb())
+
+    def _centroid_x(self) -> float:
+        if not self.vertices:
+            return 0.0
+        return sum(v[0] for v in self.vertices) / len(self.vertices)
+
+    def _centroid_y(self) -> float:
+        if not self.vertices:
+            return 0.0
+        return sum(v[1] for v in self.vertices) / len(self.vertices)
 
     def _sat_intersects_aabb(self, aabb: AABBShape) -> bool:
         """Separating Axis Theorem entre polígono y AABB."""
