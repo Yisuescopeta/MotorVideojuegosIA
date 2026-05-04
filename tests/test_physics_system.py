@@ -238,7 +238,7 @@ class PhysicsSystemTests(unittest.TestCase):
         world = World()
         entity = world.create_entity("Faller")
         entity.add_component(Transform(x=0.0, y=0.0))
-        entity.add_component(RigidBody(velocity_x=0.0, velocity_y=0.0, gravity_scale=1.0, is_grounded=False))
+        entity.add_component(RigidBody(velocity_x=0.0, velocity_y=0.0, gravity_scale=1.0, is_grounded=False, can_sleep=False))
         physics_before = world.physics_version
         structure_before = world.structure_version
 

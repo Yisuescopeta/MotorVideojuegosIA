@@ -4,7 +4,9 @@ engine/systems/physics_system.py - Sistema de fisica
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+from typing import Optional
 
 from engine.components.collider import Collider
 from engine.components.collision_filter_2d import CollisionFilter2D
@@ -37,6 +39,10 @@ class PhysicsSystem:
         self._swept_contacts: list[tuple[int, int]] = []
         self._swept_contact_set: set[tuple[int, int]] = set()
         self._spatial_hash_cell_size: float = 128.0
+        self._event_bus: Optional[object] = None
+
+    def set_event_bus(self, event_bus: Optional[object]) -> None:
+        self._event_bus = event_bus
 
     def update(self, world: World, delta_time: float) -> None:
         self._step_metrics = {"ccd_bodies": 0, "swept_checks": 0, "candidate_solids": 0}
@@ -88,6 +94,21 @@ class PhysicsSystem:
                 continue
 
             collider = entity.get_component(Collider)
+
+            # --- Sleeping check (before processing forces) ---
+            self._check_sleeping(rigidbody, delta_time)
+
+            # Skip sleeping bodies for motion integration
+            if rigidbody.sleeping:
+                rigidbody._clear_force_buffers()
+                transform_changed = transform_changed or before_transform_state != (transform.x, transform.y)
+                physics_changed = physics_changed or before_rigidbody_state != (
+                    rigidbody.velocity_x,
+                    rigidbody.velocity_y,
+                    rigidbody.is_grounded,
+                )
+                continue
+
             if rigidbody.body_type == "dynamic" and not rigidbody.is_grounded:
                 rigidbody.velocity_y += self.gravity * rigidbody.gravity_scale * delta_time
 
@@ -104,34 +125,59 @@ class PhysicsSystem:
             if rigidbody.body_type == "dynamic":
                 # Aplicar impulsos instantáneos (cambian velocidad directamente)
                 if rigidbody._impulse_buffer_x != 0.0 or rigidbody._impulse_buffer_y != 0.0:
-                    mass = getattr(rigidbody, 'mass', 1.0)
+                    mass = rigidbody.mass
                     if mass > 0.0:
                         rigidbody.velocity_x += rigidbody._impulse_buffer_x / mass
                         rigidbody.velocity_y += rigidbody._impulse_buffer_y / mass
 
                 # Aplicar fuerzas acumuladas (F=ma → a=F/m, v+=a*dt)
                 if rigidbody._force_buffer_x != 0.0 or rigidbody._force_buffer_y != 0.0:
-                    mass = getattr(rigidbody, 'mass', 1.0)
+                    mass = rigidbody.mass
                     if mass > 0.0:
                         rigidbody.velocity_x += (rigidbody._force_buffer_x / mass) * delta_time
                         rigidbody.velocity_y += (rigidbody._force_buffer_y / mass) * delta_time
 
                 # Aplicar torque acumulado
                 if rigidbody._torque_buffer != 0.0:
-                    inertia = getattr(rigidbody, 'inertia', 1.0)
+                    inertia = rigidbody.inertia
                     if inertia > 0.0:
                         angular_accel = rigidbody._torque_buffer / inertia
-                        if not hasattr(rigidbody, 'angular_velocity'):
-                            rigidbody.angular_velocity = 0.0
                         rigidbody.angular_velocity += angular_accel * delta_time
+
+                # --- Constant forces (applied every frame, not consumed) ---
+                if rigidbody.constant_force_x != 0.0 or rigidbody.constant_force_y != 0.0:
+                    mass = rigidbody.mass
+                    if mass > 0.0:
+                        rigidbody.velocity_x += (rigidbody.constant_force_x / mass) * delta_time
+                        rigidbody.velocity_y += (rigidbody.constant_force_y / mass) * delta_time
+
+                if rigidbody.constant_torque != 0.0:
+                    inertia = rigidbody.inertia
+                    if inertia > 0.0:
+                        rigidbody.angular_velocity += (rigidbody.constant_torque / inertia) * delta_time
+
+                # --- Custom integrator callback ---
+                if rigidbody.custom_integrator and self._event_bus is not None:
+                    self._event_bus.emit("rigidbody_integrate_forces", {
+                        "entity_id": int(entity.id),
+                        "entity_name": entity.name,
+                        "velocity_x": rigidbody.velocity_x,
+                        "velocity_y": rigidbody.velocity_y,
+                        "angular_velocity": rigidbody.angular_velocity,
+                        "mass": rigidbody.mass,
+                        "inertia": rigidbody.inertia,
+                        "delta_time": delta_time,
+                    })
 
             # Limpiar buffers al final del frame (siempre, incluso para static/kinematic)
             rigidbody._clear_force_buffers()
 
             delta_x = 0.0 if rigidbody.freeze_x else rigidbody.velocity_x * delta_time
             delta_y = 0.0 if rigidbody.freeze_y else rigidbody.velocity_y * delta_time
+            ccd_active = rigidbody.ccd_mode != "disabled"
             continuous_mode = bool(
-                collider is not None and collider.enabled and rigidbody.collision_detection_mode == "continuous"
+                collider is not None and collider.enabled
+                and (rigidbody.collision_detection_mode == "continuous" or ccd_active)
             )
             nearby_solids = self._collect_candidate_solids(
                 world,
@@ -146,7 +192,9 @@ class PhysicsSystem:
                 delta_y,
             )
             self._step_metrics["candidate_solids"] += len(nearby_solids)
-            if continuous_mode:
+            if ccd_active:
+                self._step_metrics["ccd_bodies"] += 1
+            elif rigidbody.collision_detection_mode == "continuous":
                 self._step_metrics["ccd_bodies"] += 1
 
             if rigidbody.freeze_x:
@@ -169,6 +217,10 @@ class PhysicsSystem:
                     self._resolve_vertical(transform, rigidbody, collider, nearby_solids)
                     if not rigidbody.is_grounded:
                         rigidbody.is_grounded = self._has_ground_support(entity, transform, collider, nearby_solids)
+
+            # --- Lock rotation ---
+            if rigidbody.lock_rotation:
+                rigidbody.angular_velocity = 0.0
 
             if rigidbody.body_type == "dynamic" and not rigidbody.is_grounded and transform.y > GROUND_Y_TEMP:
                 transform.y = GROUND_Y_TEMP
@@ -195,6 +247,24 @@ class PhysicsSystem:
         self._swept_contacts = []
         self._swept_contact_set = set()
         return contacts
+
+    def _check_sleeping(self, body: RigidBody, dt: float) -> None:
+        """Energy-based sleeping — body goes to sleep after time_to_sleep seconds
+        of velocity below thresholds."""
+        if not body.can_sleep or body.body_type != "dynamic":
+            return
+        vel = math.sqrt(body.velocity_x ** 2 + body.velocity_y ** 2)
+        ang = abs(body.angular_velocity)
+        if vel < body.sleep_linear_threshold and ang < body.sleep_angular_threshold:
+            body._sleep_timer += dt
+            if body._sleep_timer >= body.time_to_sleep:
+                body.sleeping = True
+                body.velocity_x = 0.0
+                body.velocity_y = 0.0
+                body.angular_velocity = 0.0
+        else:
+            body._sleep_timer = 0.0
+            body.sleeping = False
 
     def _is_solid_body(self, entity: Entity) -> bool:
         rigidbody = entity.get_component(RigidBody)

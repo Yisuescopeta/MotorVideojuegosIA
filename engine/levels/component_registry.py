@@ -103,6 +103,7 @@ class ComponentRegistry:
 def create_default_registry() -> ComponentRegistry:
     """Crea un registro con los componentes predeterminados del motor."""
     from engine.components.animation_player_2d import AnimationPlayer2D
+    from engine.components.animation_tree import AnimationTree
     from engine.components.animator import Animator
     from engine.components.area2d import Area2D
     from engine.components.audio_listener_2d import AudioListener2D
@@ -160,6 +161,13 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.uitext import UIText
     from engine.components.ui_ninepatch import UINinePatchRect
     from engine.components.ui_texture_button import UITextureButton
+    from engine.components.uicheckbox import CheckBox
+    from engine.components.uilabel import Label
+    from engine.components.uilineedit import LineEdit
+    from engine.components.uiprogressbar import ProgressBar
+    from engine.components.uislider import Slider
+    from engine.components.uispinbox import SpinBox
+    from engine.components.uitextedit import TextEdit
     from engine.components.parallax_layer import ParallaxLayer
     from engine.components.visible_on_screen_notifier_2d import (
         VisibleOnScreenEnabler2D,
@@ -279,6 +287,13 @@ def create_default_registry() -> ComponentRegistry:
         default_payload=AnimationPlayer2D().to_dict(),
         editor_tags=("animation", "tag:AnimationPlayer", "layer:Gameplay"),
     )
+    registry.register(
+        "AnimationTree",
+        AnimationTree,
+        description="Arbol de animacion con blend spaces, state machine y blending (adaptado de Godot AnimationTree).",
+        default_payload=AnimationTree().to_dict(),
+        editor_tags=("animation", "tag:AnimationTree", "layer:Gameplay", "blend"),
+    )
     registry.register("Animator", Animator)
     registry.register("Camera2D", Camera2D)
     registry.register("AudioSource", AudioSource)
@@ -342,6 +357,55 @@ def create_default_registry() -> ComponentRegistry:
         description="Boton basado en texturas con estados normal/hover/pressed/disabled (adaptado Godot TextureButton).",
         default_payload=UITextureButton().to_dict(),
         editor_tags=("ui", "layer:UI", "button", "texture"),
+    )
+    registry.register(
+        "LineEdit",
+        LineEdit,
+        description="Control de entrada de texto de una sola linea (adaptado Godot LineEdit).",
+        default_payload=LineEdit().to_dict(),
+        editor_tags=("ui", "layer:UI", "input", "text"),
+    )
+    registry.register(
+        "Slider",
+        Slider,
+        description="Barra deslizante para seleccion de valor numerico (adaptado Godot Slider).",
+        default_payload=Slider().to_dict(),
+        editor_tags=("ui", "layer:UI", "input", "slider"),
+    )
+    registry.register(
+        "ProgressBar",
+        ProgressBar,
+        description="Barra de progreso visual (adaptado Godot ProgressBar).",
+        default_payload=ProgressBar().to_dict(),
+        editor_tags=("ui", "layer:UI", "display", "progress"),
+    )
+    registry.register(
+        "CheckBox",
+        CheckBox,
+        description="Casilla de verificacion con etiqueta (adaptado Godot CheckBox).",
+        default_payload=CheckBox().to_dict(),
+        editor_tags=("ui", "layer:UI", "input", "toggle"),
+    )
+    registry.register(
+        "SpinBox",
+        SpinBox,
+        description="Control de entrada numerica con flechas de incremento/decremento (adaptado Godot SpinBox).",
+        default_payload=SpinBox().to_dict(),
+        editor_tags=("ui", "layer:UI", "input", "numeric"),
+    )
+    registry.register(
+        "Label",
+        Label,
+        description="Etiqueta de texto con soporte rich text (adaptado Godot Label).",
+        default_payload=Label().to_dict(),
+        editor_tags=("ui", "layer:UI", "display", "text"),
+    )
+    registry.register(
+        "TextEdit",
+        TextEdit,
+        description="Editor de texto multilinea (adaptado Godot TextEdit).",
+        default_payload=TextEdit().to_dict(),
+        editor_tags=("ui", "layer:UI", "input", "text", "multiline"),
     )
     registry.register("Timer", Timer)
     registry.register("Marker2D", Marker2D)

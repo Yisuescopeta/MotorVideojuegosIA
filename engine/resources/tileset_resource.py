@@ -1,7 +1,8 @@
 """engine/resources/tileset_resource.py — TileSet resource adaptado de Godot TileSet.
 
 TileSetResource es un recurso serializable independiente del Tilemap.
-Define fuentes atlas, tiles alternativos, animaciones y capas de datos.
+Define fuentes atlas, tiles alternativos, animaciones, capas de datos,
+fisica por tile, navegacion, oclusion y terrain auto-tiling.
 """
 
 from __future__ import annotations
@@ -9,10 +10,172 @@ from __future__ import annotations
 import logging
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 _logger = logging.getLogger(__name__)
 
+
+# ── Per-tile physics, navigation, occlusion ───────────────────────────
+
+@dataclass
+class TilePhysicsShape:
+    """Collision shape for a specific tile."""
+    shape_type: str = "box"
+    points: list = field(default_factory=list)
+    one_way: bool = False
+    one_way_direction: tuple = (0, -1)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "shape_type": self.shape_type,
+            "points": [list(p) if isinstance(p, (tuple, list)) else p for p in self.points],
+            "one_way": self.one_way,
+            "one_way_direction": list(self.one_way_direction),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TilePhysicsShape":
+        return cls(
+            shape_type=str(data.get("shape_type", "box")),
+            points=[list(p) if isinstance(p, (tuple, list)) else p for p in data.get("points", [])],
+            one_way=bool(data.get("one_way", False)),
+            one_way_direction=tuple(data.get("one_way_direction", (0, -1))),
+        )
+
+
+@dataclass
+class TileNavigationPolygon:
+    """Navigation polygon for a tile."""
+    points: list = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "points": [list(p) if isinstance(p, (tuple, list)) else p for p in self.points],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TileNavigationPolygon":
+        return cls(
+            points=[list(p) if isinstance(p, (tuple, list)) else p for p in data.get("points", [])],
+        )
+
+
+@dataclass
+class TileOcclusionPolygon:
+    """Light occlusion polygon for a tile."""
+    points: list = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "points": [list(p) if isinstance(p, (tuple, list)) else p for p in self.points],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TileOcclusionPolygon":
+        return cls(
+            points=[list(p) if isinstance(p, (tuple, list)) else p for p in data.get("points", [])],
+        )
+
+
+# ── Per-tile animation data ───────────────────────────────────────────
+
+@dataclass
+class TileAnimation:
+    """Animation data for a tile."""
+    frames: list = field(default_factory=list)
+    speed: float = 1.0
+    mode: str = "forward"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "frames": self.frames,
+            "speed": self.speed,
+            "mode": self.mode,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TileAnimation":
+        return cls(
+            frames=list(data.get("frames", [])),
+            speed=float(data.get("speed", 1.0)),
+            mode=str(data.get("mode", "forward")),
+        )
+
+
+# ── Per-tile metadata (physics, nav, occlusion, animation, terrain, etc.) ──
+
+@dataclass
+class TileMetaData:
+    """Per-tile metadata stored on TileSetAtlasSource."""
+    tile_id: str = ""
+    physics_layers: list[TilePhysicsShape] = field(default_factory=list)
+    navigation_polygon: Optional[TileNavigationPolygon] = None
+    occlusion_polygon: Optional[TileOcclusionPolygon] = None
+    animation: Optional[TileAnimation] = None
+    terrain_set: int = -1
+    terrain: int = -1
+    terrain_peering_bits: int = 0
+    custom_data: dict = field(default_factory=dict)
+    probability: float = 1.0
+    z_index: int = 0
+    modulate: tuple = (255, 255, 255, 255)
+    y_sort_origin: int = 0
+
+    @property
+    def is_solid(self) -> bool:
+        """True if tile has any physics shapes defined."""
+        return len(self.physics_layers) > 0
+
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "tile_id": self.tile_id,
+            "physics_layers": [ps.to_dict() for ps in self.physics_layers],
+            "terrain_set": self.terrain_set,
+            "terrain": self.terrain,
+            "terrain_peering_bits": self.terrain_peering_bits,
+            "custom_data": deepcopy(self.custom_data),
+            "probability": self.probability,
+            "z_index": self.z_index,
+            "modulate": list(self.modulate),
+            "y_sort_origin": self.y_sort_origin,
+        }
+        if self.navigation_polygon is not None:
+            result["navigation_polygon"] = self.navigation_polygon.to_dict()
+        if self.occlusion_polygon is not None:
+            result["occlusion_polygon"] = self.occlusion_polygon.to_dict()
+        if self.animation is not None:
+            result["animation"] = self.animation.to_dict()
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TileMetaData":
+        nav_poly = None
+        if "navigation_polygon" in data:
+            nav_poly = TileNavigationPolygon.from_dict(data["navigation_polygon"])
+        occ_poly = None
+        if "occlusion_polygon" in data:
+            occ_poly = TileOcclusionPolygon.from_dict(data["occlusion_polygon"])
+        anim = None
+        if "animation" in data:
+            anim = TileAnimation.from_dict(data["animation"])
+        return cls(
+            tile_id=str(data.get("tile_id", "")),
+            physics_layers=[TilePhysicsShape.from_dict(ps) for ps in data.get("physics_layers", [])],
+            navigation_polygon=nav_poly,
+            occlusion_polygon=occ_poly,
+            animation=anim,
+            terrain_set=int(data.get("terrain_set", -1)),
+            terrain=int(data.get("terrain", -1)),
+            terrain_peering_bits=int(data.get("terrain_peering_bits", 0)),
+            custom_data=deepcopy(data.get("custom_data", {})),
+            probability=float(data.get("probability", 1.0)),
+            z_index=int(data.get("z_index", 0)),
+            modulate=tuple(data.get("modulate", (255, 255, 255, 255))),
+            y_sort_origin=int(data.get("y_sort_origin", 0)),
+        )
+
+
+# ── Animation frame (existing) ────────────────────────────────────────
 
 @dataclass
 class TileAnimationFrame:
@@ -90,6 +253,7 @@ class TileSetAtlasSource:
     margin: int = 0
     spacing: int = 0
     alternative_tiles: dict[str, list[str]] = field(default_factory=dict)
+    tile_metadata: dict[str, TileMetaData] = field(default_factory=dict)
 
     @property
     def tile_count(self) -> int:
@@ -148,6 +312,18 @@ class TileSetAtlasSource:
             if not self.alternative_tiles[key]:
                 del self.alternative_tiles[key]
 
+    def set_tile_metadata(self, tile_id: str, metadata: TileMetaData) -> None:
+        """Asigna metadata por tile a este source."""
+        self.tile_metadata[tile_id] = metadata
+
+    def get_tile_metadata(self, tile_id: str) -> Optional[TileMetaData]:
+        """Obtiene metadata por tile de este source."""
+        return self.tile_metadata.get(tile_id)
+
+    def get_tile_metadata_at(self, col: int, row: int) -> Optional[TileMetaData]:
+        """Obtiene metadata por coordenada de grilla."""
+        return self.tile_metadata.get(self.tile_id_at(col, row))
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "source_id": self.source_id,
@@ -161,6 +337,7 @@ class TileSetAtlasSource:
             "margin": self.margin,
             "spacing": self.spacing,
             "alternative_tiles": deepcopy(self.alternative_tiles),
+            "tile_metadata": {tid: tm.to_dict() for tid, tm in self.tile_metadata.items()},
         }
 
     @classmethod
@@ -170,6 +347,12 @@ class TileSetAtlasSource:
         if isinstance(raw_alts, dict):
             for key, val in raw_alts.items():
                 alts[str(key)] = [str(v) for v in val] if isinstance(val, list) else []
+        tile_meta: dict[str, TileMetaData] = {}
+        raw_meta = data.get("tile_metadata", {}) or {}
+        if isinstance(raw_meta, dict):
+            for tid, meta_data in raw_meta.items():
+                if isinstance(meta_data, dict):
+                    tile_meta[str(tid)] = TileMetaData.from_dict(meta_data)
         return cls(
             source_id=str(data.get("source_id", "")),
             texture_region_x=int(data.get("texture_region_x", 0)),
@@ -182,6 +365,7 @@ class TileSetAtlasSource:
             margin=int(data.get("margin", 0)),
             spacing=int(data.get("spacing", 0)),
             alternative_tiles=alts,
+            tile_metadata=tile_meta,
         )
 
     def __repr__(self) -> str:
@@ -212,6 +396,10 @@ class TileSetResource:
     sources: list[TileSetAtlasSource] = field(default_factory=list)
     tile_animations: dict[str, list[TileAnimationFrame]] = field(default_factory=dict)
     custom_data_layers: list[CustomDataLayerDef] = field(default_factory=list)
+    terrain_sets: list[dict] = field(default_factory=list)
+    physics_layers: list[dict] = field(default_factory=list)
+    navigation_layers: list[dict] = field(default_factory=list)
+    occlusion_layers: list[dict] = field(default_factory=list)
 
     # ── helpers ────────────────────────────────────────────────────────
 
@@ -277,6 +465,101 @@ class TileSetResource:
                 return layer
         return None
 
+    # ── terrain auto-tiling ────────────────────────────────────────────
+
+    def get_tile_metadata(self, source_id: str, tile_id: str) -> Optional[TileMetaData]:
+        """Get per-tile metadata from a source by tile_id."""
+        source = self.get_source(source_id)
+        if source is None:
+            return None
+        return source.get_tile_metadata(tile_id)
+
+    def get_terrain_peering_bits(self, source_id: str, cells: dict, x: int, y: int, terrain_set: int, terrain: int) -> int:
+        """Calculate terrain peering bits (8-bit mask) for a cell.
+
+        Bits: N=1, NE=2, E=4, SE=8, S=16, SW=32, W=64, NW=128
+        Bit set if neighbor has same terrain_set and terrain.
+        """
+        source = self.get_source(source_id)
+        if source is None:
+            return 0
+        bits = 0
+        neighbors = [
+            (0, -1, 1),     # N
+            (1, -1, 2),     # NE
+            (1, 0, 4),      # E
+            (1, 1, 8),      # SE
+            (0, 1, 16),     # S
+            (-1, 1, 32),    # SW
+            (-1, 0, 64),    # W
+            (-1, -1, 128),  # NW
+        ]
+        for dx, dy, bit in neighbors:
+            nx, ny = x + dx, y + dy
+            neighbor_key = (nx, ny)
+            neighbor_tile_id = None
+            if isinstance(cells, dict):
+                neighbor_tile = cells.get(neighbor_key)
+            else:
+                neighbor_tile = None
+            if isinstance(neighbor_tile, dict):
+                neighbor_tile_id = neighbor_tile.get("tile_id", "")
+            if neighbor_tile_id:
+                meta = source.get_tile_metadata(neighbor_tile_id)
+                if meta is not None and meta.terrain_set == terrain_set and meta.terrain == terrain:
+                    bits |= bit
+        return bits
+
+    def get_auto_tile_id(self, source_id: str, terrain_set: int, peering_bits: int) -> Optional[str]:
+        """Find matching tile ID for terrain peering bits pattern.
+        
+        Returns tile_id of tile whose terrain_peering_bits matches exactly,
+        or None if no match found.
+        """
+        source = self.get_source(source_id)
+        if source is None:
+            return None
+        for tid, meta in source.tile_metadata.items():
+            if meta.terrain_set == terrain_set and meta.terrain_peering_bits == peering_bits:
+                return tid
+        return None
+
+    def set_cells_terrain_connect(
+        self, source_id: str, cells: dict, terrain_set: int, terrain: int
+    ) -> dict:
+        """Auto-place tiles based on terrain connectivity.
+        
+        For each cell in `cells`, computes terrain peering bits and
+        replaces tile_id with matching terrain tile. Returns dict
+        of changed cell coords -> new tile_id.
+        """
+        source = self.get_source(source_id)
+        if source is None:
+            return {}
+        changes = {}
+        for coord, tile in list(cells.items()):
+            if not isinstance(tile, dict):
+                continue
+            x, y = coord if isinstance(coord, tuple) else (0, 0)
+            bits = self.get_terrain_peering_bits(source_id, cells, x, y, terrain_set, terrain)
+            matching_id = self.get_auto_tile_id(source_id, terrain_set, bits)
+            if matching_id and matching_id != tile.get("tile_id"):
+                tile["tile_id"] = matching_id
+                changes[coord] = matching_id
+        return changes
+
+    def _compute_terrain_bits(
+        self, source_id: str, cells: dict, x: int, y: int, terrain_set: int, terrain: int
+    ) -> int:
+        """Compute 8-bit peering mask for auto-tiling."""
+        return self.get_terrain_peering_bits(source_id, cells, x, y, terrain_set, terrain)
+
+    def get_matching_terrain_tile(
+        self, source_id: str, terrain_set: int, bits: int
+    ) -> Optional[str]:
+        """Find tile matching the terrain bitmask pattern."""
+        return self.get_auto_tile_id(source_id, terrain_set, bits)
+
     # ── serialization ──────────────────────────────────────────────────
 
     def to_dict(self) -> dict[str, Any]:
@@ -295,6 +578,10 @@ class TileSetResource:
                 for tid, frames in self.tile_animations.items()
             },
             "custom_data_layers": [layer.to_dict() for layer in self.custom_data_layers],
+            "terrain_sets": deepcopy(self.terrain_sets),
+            "physics_layers": deepcopy(self.physics_layers),
+            "navigation_layers": deepcopy(self.navigation_layers),
+            "occlusion_layers": deepcopy(self.occlusion_layers),
         }
 
     @classmethod
@@ -333,6 +620,18 @@ class TileSetResource:
                     _logger.warning("TileSetResource.from_dict: skipping non-dict custom_data_layer: %s", type(layer_data))
         else:
             _logger.warning("TileSetResource.from_dict: custom_data_layers is not a list: %s", type(raw_layers))
+        raw_terrain = data.get("terrain_sets", None)
+        if isinstance(raw_terrain, list):
+            tileset.terrain_sets = deepcopy(raw_terrain)
+        raw_physics = data.get("physics_layers", None)
+        if isinstance(raw_physics, list):
+            tileset.physics_layers = deepcopy(raw_physics)
+        raw_nav = data.get("navigation_layers", None)
+        if isinstance(raw_nav, list):
+            tileset.navigation_layers = deepcopy(raw_nav)
+        raw_occlusion = data.get("occlusion_layers", None)
+        if isinstance(raw_occlusion, list):
+            tileset.occlusion_layers = deepcopy(raw_occlusion)
         return tileset
 
     def __repr__(self) -> str:

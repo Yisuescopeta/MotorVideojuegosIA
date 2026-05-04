@@ -11,6 +11,11 @@ import pyray as rl
 from engine.components.canvas import Canvas
 from engine.components.recttransform import RectTransform
 from engine.components.uibutton import UIButton
+from engine.components.uicheckbox import CheckBox
+from engine.components.uilineedit import LineEdit
+from engine.components.uislider import Slider
+from engine.components.uispinbox import SpinBox
+from engine.components.uitextedit import TextEdit
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.editor.cursor_manager import CursorVisualState
@@ -36,6 +41,14 @@ class UISystem:
         self._layout_world_id: int = -1
         self._layout_world_version: int = -1
         self._layout_viewport_size: tuple[float, float] = (0.0, 0.0)
+        # Interactive controls
+        self._visible_slider_entities: list[Entity] = []
+        self._visible_checkbox_entities: list[Entity] = []
+        self._visible_spinbox_entities: list[Entity] = []
+        self._visible_lineedit_entities: list[Entity] = []
+        self._visible_textedit_entities: list[Entity] = []
+        self._focused_entity_id: int | None = None
+        self._slider_drag_state: dict[int, bool] = {}
 
     def set_event_bus(self, event_bus: Optional[EventBus]) -> None:
         self._event_bus = event_bus
@@ -176,7 +189,7 @@ class UISystem:
         }
 
         if not visible_buttons:
-            return
+            pass  # still process other controls below
 
         interaction_enabled = self._resolve_interaction_enabled(allow_interaction)
         if not interaction_enabled:
@@ -188,10 +201,12 @@ class UISystem:
                 state = self._button_runtime.setdefault(entity.id, {"hovered": False, "pressed": False})
                 state["hovered"] = False
                 state["pressed"] = False
+            self._clear_interactive_state()
             return
 
         pointer = self._resolve_pointer_state()
 
+        # Buttons
         for entity in self._visible_button_entities:
             button = entity.get_component(UIButton)
             layout = self._layout_cache.get(entity.name)
@@ -213,6 +228,199 @@ class UISystem:
                 if should_fire:
                     self._execute_button_action(entity, button)
 
+        # Checkboxes
+        for entity in self._visible_checkbox_entities:
+            checkbox = entity.get_component(CheckBox)
+            layout = self._layout_cache.get(entity.name)
+            if checkbox is None or layout is None:
+                continue
+            if pointer["pressed"] and self._point_in_rect(pointer["x"], pointer["y"], layout):
+                checkbox.toggle()
+
+        # SpinBoxes
+        for entity in self._visible_spinbox_entities:
+            spinbox = entity.get_component(SpinBox)
+            layout = self._layout_cache.get(entity.name)
+            if spinbox is None or layout is None or not spinbox.editable:
+                continue
+            if pointer["pressed"] and self._point_in_rect(pointer["x"], pointer["y"], layout):
+                # Check arrow regions
+                x = float(layout["x"])
+                w = float(layout["width"])
+                h = float(layout["height"])
+                arrow_w = min(24.0, w * 0.3)
+                if pointer["x"] >= x + w - arrow_w:
+                    if pointer["y"] < float(layout["y"]) + h * 0.5:
+                        spinbox.increment()
+                    else:
+                        spinbox.decrement()
+
+        # Sliders
+        for entity in self._visible_slider_entities:
+            slider = entity.get_component(Slider)
+            layout = self._layout_cache.get(entity.name)
+            if slider is None or layout is None or not slider.editable:
+                continue
+            hovered = self._point_in_rect(pointer["x"], pointer["y"], layout)
+            if pointer["pressed"] and hovered:
+                self._slider_drag_state[entity.id] = True
+            if pointer["down"] and self._slider_drag_state.get(entity.id):
+                self._update_slider_from_pointer(slider, layout, pointer)
+            if pointer["released"]:
+                self._slider_drag_state.pop(entity.id, None)
+
+        # LineEdit and TextEdit — click to focus
+        if pointer["pressed"]:
+            self._focused_entity_id = None
+            for entity in self._visible_lineedit_entities:
+                layout = self._layout_cache.get(entity.name)
+                if layout and self._point_in_rect(pointer["x"], pointer["y"], layout):
+                    line_edit = entity.get_component(LineEdit)
+                    if line_edit and line_edit.editable:
+                        line_edit.focused = True
+                        self._focused_entity_id = entity.id
+                    else:
+                        line_edit.focused = False  # type: ignore[union-attr]
+                else:
+                    le = entity.get_component(LineEdit)
+                    if le:
+                        le.focused = False
+            for entity in self._visible_textedit_entities:
+                layout = self._layout_cache.get(entity.name)
+                if layout and self._point_in_rect(pointer["x"], pointer["y"], layout):
+                    te = entity.get_component(TextEdit)
+                    if te and te.editable:
+                        te.focused = True
+                        self._focused_entity_id = entity.id
+                    else:
+                        te.focused = False  # type: ignore[union-attr]
+                else:
+                    te = entity.get_component(TextEdit)
+                    if te:
+                        te.focused = False
+
+        # Keyboard input for focused controls
+        if self._focused_entity_id is not None:
+            self._handle_keyboard_input(world)
+
+    def _clear_interactive_state(self) -> None:
+        for entity in self._visible_slider_entities:
+            self._slider_drag_state.pop(entity.id, None)
+        self._focused_entity_id = None
+        for entity in self._visible_lineedit_entities:
+            le = entity.get_component(LineEdit)
+            if le:
+                le.focused = False
+        for entity in self._visible_textedit_entities:
+            te = entity.get_component(TextEdit)
+            if te:
+                te.focused = False
+
+    def _update_slider_from_pointer(self, slider: Slider, layout: dict[str, Any], pointer: dict[str, Any]) -> None:
+        x = float(layout["x"])
+        w = float(layout["width"])
+        if slider.horizontal:
+            ratio = max(0.0, min(1.0, (pointer["x"] - x) / max(1.0, w)))
+        else:
+            y = float(layout["y"])
+            h = float(layout["height"])
+            ratio = 1.0 - max(0.0, min(1.0, (pointer["y"] - y) / max(1.0, h)))
+        slider.set_value(slider.min_value + ratio * (slider.max_value - slider.min_value))
+
+    def _handle_keyboard_input(self, world: World) -> None:
+        import pyray as rl
+
+        has_char = False
+        char_code = 0
+        try:
+            char_code = rl.get_char_pressed()
+            has_char = char_code > 0
+        except Exception:
+            pass
+
+        special_keys = self._read_special_keys(rl)
+
+        for entity in self._visible_lineedit_entities:
+            if entity.id != self._focused_entity_id:
+                continue
+            le = entity.get_component(LineEdit)
+            if le is None or not le.editable or not le.focused:
+                continue
+            if has_char and 32 <= char_code <= 126:
+                if le.max_length <= 0 or len(le.text) < le.max_length:
+                    pos = le.cursor_position
+                    le.text = le.text[:pos] + chr(char_code) + le.text[pos:]
+                    le.cursor_position = pos + 1
+                    le.selection_start = le.cursor_position
+                    le.selection_end = le.cursor_position
+            if special_keys.get("backspace") and le.cursor_position > 0:
+                pos = le.cursor_position
+                le.text = le.text[:pos - 1] + le.text[pos:]
+                le.cursor_position = pos - 1
+            if special_keys.get("left"):
+                le.cursor_position = le.cursor_position - 1
+            if special_keys.get("right"):
+                le.cursor_position = le.cursor_position + 1
+            if special_keys.get("home"):
+                le.cursor_position = 0
+            if special_keys.get("end"):
+                le.cursor_position = len(le.text)
+
+        for entity in self._visible_textedit_entities:
+            if entity.id != self._focused_entity_id:
+                continue
+            te = entity.get_component(TextEdit)
+            if te is None or not te.editable or not te.focused:
+                continue
+            lines = te.text.split("\n")
+            if has_char and 32 <= char_code <= 126:
+                if te.cursor_line < len(lines):
+                    line = lines[te.cursor_line]
+                    col = min(te.cursor_column, len(line))
+                    lines[te.cursor_line] = line[:col] + chr(char_code) + line[col:]
+                    te.text = "\n".join(lines)
+                    te.cursor_column = col + 1
+            if special_keys.get("enter"):
+                if te.max_lines <= 0 or len(lines) < te.max_lines:
+                    line = lines[te.cursor_line] if te.cursor_line < len(lines) else ""
+                    col = min(te.cursor_column, len(line))
+                    lines.insert(te.cursor_line + 1, line[col:])
+                    lines[te.cursor_line] = line[:col]
+                    te.text = "\n".join(lines)
+                    te.cursor_line += 1
+                    te.cursor_column = 0
+            if special_keys.get("backspace") and te.cursor_column > 0:
+                if te.cursor_line < len(lines):
+                    line = lines[te.cursor_line]
+                    lines[te.cursor_line] = line[:te.cursor_column - 1] + line[te.cursor_column:]
+                    te.text = "\n".join(lines)
+                    te.cursor_column -= 1
+            if special_keys.get("left"):
+                te.cursor_column = max(0, te.cursor_column - 1)
+            if special_keys.get("right"):
+                if te.cursor_line < len(lines):
+                    te.cursor_column = min(len(lines[te.cursor_line]), te.cursor_column + 1)
+            if special_keys.get("up"):
+                te.cursor_line = max(0, te.cursor_line - 1)
+            if special_keys.get("down"):
+                te.cursor_line = min(len(lines) - 1, te.cursor_line + 1)
+
+    def _read_special_keys(self, rl_module: Any) -> dict[str, bool]:
+        try:
+            return {
+                "backspace": bool(rl_module.is_key_pressed(rl_module.KEY_BACKSPACE)),
+                "enter": bool(rl_module.is_key_pressed(rl_module.KEY_ENTER)),
+                "left": bool(rl_module.is_key_pressed(rl_module.KEY_LEFT)),
+                "right": bool(rl_module.is_key_pressed(rl_module.KEY_RIGHT)),
+                "up": bool(rl_module.is_key_pressed(rl_module.KEY_UP)),
+                "down": bool(rl_module.is_key_pressed(rl_module.KEY_DOWN)),
+                "home": bool(rl_module.is_key_pressed(rl_module.KEY_HOME)),
+                "end": bool(rl_module.is_key_pressed(rl_module.KEY_END)),
+                "delete": bool(rl_module.is_key_pressed(rl_module.KEY_DELETE)),
+            }
+        except Exception:
+            return {}
+
     def _ensure_layout_cache(self, world: World, viewport_size: tuple[float, float]) -> None:
         world_id = id(world)
         world_version = self._resolve_layout_version(world)
@@ -228,6 +436,11 @@ class UISystem:
         self._canvas_order = []
         self._draw_order = []
         self._visible_button_entities = []
+        self._visible_slider_entities = []
+        self._visible_checkbox_entities = []
+        self._visible_spinbox_entities = []
+        self._visible_lineedit_entities = []
+        self._visible_textedit_entities = []
 
         canvas_entities = []
         for entity in world.get_entities_with(Canvas):
@@ -260,6 +473,31 @@ class UISystem:
             entity
             for entity in world.get_entities_with(UIButton)
             if entity.name in self._layout_cache and entity.get_component(UIButton) is not None
+        ]
+        self._visible_slider_entities = [
+            entity
+            for entity in world.get_entities_with(Slider)
+            if entity.name in self._layout_cache and entity.get_component(Slider) is not None
+        ]
+        self._visible_checkbox_entities = [
+            entity
+            for entity in world.get_entities_with(CheckBox)
+            if entity.name in self._layout_cache and entity.get_component(CheckBox) is not None
+        ]
+        self._visible_spinbox_entities = [
+            entity
+            for entity in world.get_entities_with(SpinBox)
+            if entity.name in self._layout_cache and entity.get_component(SpinBox) is not None
+        ]
+        self._visible_lineedit_entities = [
+            entity
+            for entity in world.get_entities_with(LineEdit)
+            if entity.name in self._layout_cache and entity.get_component(LineEdit) is not None
+        ]
+        self._visible_textedit_entities = [
+            entity
+            for entity in world.get_entities_with(TextEdit)
+            if entity.name in self._layout_cache and entity.get_component(TextEdit) is not None
         ]
         self._layout_world_id = world_id
         self._layout_world_version = world_version

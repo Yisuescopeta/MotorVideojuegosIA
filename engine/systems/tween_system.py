@@ -2,17 +2,18 @@
 engine/systems/tween_system.py - Sistema de actualizacion de Tweens.
 
 Actualiza propiedades numericas de componentes mediante interpolacion.
-Soporta paths simples del tipo "Componente.propiedad" o "Componente.propiedad_indice".
+Soporta 11 transiciones, 4 modos ease, encadenamiento, paralelismo y loops.
 """
 
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING, Any, Optional
 
 from engine.components.camera2d import Camera2D
 from engine.components.sprite import Sprite
 from engine.components.transform import Transform
-from engine.components.tween import Tween
+from engine.components.tween import Tween, TweenStep
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.utils.easing import get_easing
@@ -49,56 +50,148 @@ class TweenSystem:
             tween = entity.get_component(Tween)
             if tween is None or not tween.enabled:
                 continue
-            self._update_tween(entity, tween, dt)
+            self._update_tween(entity, tween, world, dt)
 
-    def _update_tween(self, entity: Entity, tween: Tween, dt: float) -> None:
+    def _update_tween(self, entity: Entity, tween: Tween, world: World, dt: float) -> None:
         # Autostart en primer frame
         if tween.autostart and not tween._has_autostarted:
             tween._has_autostarted = True
             tween.start()
 
-        if not tween.is_running:
+        if not tween.running or tween.paused:
             return
 
-        tween._elapsed += dt
-        progress = tween.progress
+        dt_scaled = dt * tween.speed_scale
 
-        easing_func = get_easing(tween.transition)
-        eased_t = easing_func(progress)
-        current_value = tween.from_value + (tween.to_value - tween.from_value) * eased_t
+        # Cargar steps al inicio si no hay runtime steps
+        if not tween._runtime_steps and tween.steps:
+            self._load_next_batch(tween, world)
 
-        self._apply_value(entity, tween.property_path, current_value)
+        if not tween._runtime_steps:
+            # No hay steps que procesar
+            return
 
-        if progress >= 1.0:
-            self._emit(entity, "finished")
-            if tween.one_shot:
-                tween.stop()
-                tween._is_finished = True
+        # Procesar steps activos
+        all_done = True
+        for step in tween._runtime_steps:
+            if step.completed:
+                continue
+
+            step.elapsed += dt_scaled
+            if step.elapsed < step.delay:
+                all_done = False
+                continue
+
+            anim_elapsed = step.elapsed - step.delay
+            duration = step.duration
+            progress = min(1.0, anim_elapsed / duration) if duration > 0 else 1.0
+
+            easing_func = get_easing(step.transition.value, step.ease.value)
+            eased_t = easing_func(progress)
+            value = step.from_value + (step.to_value - step.from_value) * eased_t
+            self._apply_property(world, step, entity, value)
+
+            if progress >= 1.0:
+                step.completed = True
             else:
-                excess = tween._elapsed - tween.duration
-                tween._elapsed = max(0.0, excess)
-                # Reaplicar valor con el progreso reiniciado
-                new_progress = tween.progress
-                new_eased_t = get_easing(tween.transition)(new_progress)
-                new_value = tween.from_value + (tween.to_value - tween.from_value) * new_eased_t
-                self._apply_value(entity, tween.property_path, new_value)
+                all_done = False
 
-    def _apply_value(self, entity: Entity, property_path: str, value: float) -> bool:
-        if not property_path:
+        # Si todos los steps activos terminaron, cargar siguiente batch
+        if all_done:
+            tween._runtime_steps.clear()
+            if tween._next_step_batch < len(tween.steps):
+                self._load_next_batch(tween, world)
+            else:
+                # Todos los steps terminaron
+                self._emit(entity, "finished")
+                # Marcar el primer step como completado para backward compat
+                if tween.steps:
+                    tween.steps[0].completed = True
+                tween.loop_count += 1
+                if tween.loops > 0 and tween.loop_count < tween.loops:
+                    # Aun quedan loops por hacer
+                    for s in tween.steps:
+                        s.completed = False
+                    tween._next_step_batch = 0
+                elif tween.loops == -1:
+                    # Loop infinito
+                    for s in tween.steps:
+                        s.completed = False
+                    tween._next_step_batch = 0
+                else:
+                    # loops == 0: una sola ejecucion, detener
+                    tween.running = False
+
+    def _load_next_batch(self, tween: Tween, world: World) -> None:
+        """Carga el siguiente batch de steps (secuencial o paralelo)."""
+        start_idx = tween._next_step_batch
+        if start_idx >= len(tween.steps):
+            return
+
+        # Primer step del batch
+        first_step = tween.steps[start_idx]
+        tween._runtime_steps.append(
+            dataclasses.replace(first_step, elapsed=0.0, started=False, completed=False)
+        )
+        tween._next_step_batch = start_idx + 1
+
+        if tween.parallel:
+            # En modo paralelo, cargar steps consecutivos mientras duren lo mismo
+            while tween._next_step_batch < len(tween.steps) and tween.parallel:
+                next_step = tween.steps[tween._next_step_batch]
+                tween._runtime_steps.append(
+                    dataclasses.replace(next_step, elapsed=0.0, started=False, completed=False)
+                )
+                tween._next_step_batch += 1
+
+    def _apply_property(
+        self,
+        world: World,
+        step: TweenStep,
+        fallback_entity: Entity,
+        value: float,
+    ) -> bool:
+        """Aplica valor a propiedad de componente de entidad."""
+        target_name = step.target_entity
+        entity = fallback_entity if not target_name else world.get_entity_by_name(target_name)
+        if entity is None:
             return False
 
-        parts = property_path.split(".")
+        prop_path = step.property_path
+        if not prop_path:
+            return False
+
+        parts = prop_path.split(".")
         if len(parts) < 2:
             return False
 
-        component_name = parts[0]
-        field_name = parts[1]
+        component_name = step.target_component if step.target_component else parts[0]
+        if not component_name:
+            component_name = parts[0]
 
         component = self._resolve_component(entity, component_name)
         if component is None:
             return False
 
-        # Soporte para indices de lista/tupla (ej: "Sprite.tint_3")
+        # Si el path tiene mas de 2 partes, navegar hasta la propiedad anidada
+        # Si solo tiene 2: "Component.field"
+        # Si tiene 3+: "Component.sub.field"
+        if len(parts) == 2:
+            field_name = parts[1]
+            return self._set_component_field(component, field_name, value)
+
+        # Navegar anidacion
+        target = component
+        for part in parts[1:-1]:
+            target = getattr(target, part, None)
+            if target is None:
+                return False
+        field_name = parts[-1]
+        return self._set_component_field(target, field_name, value)
+
+    def _set_component_field(self, obj: Any, field_name: str, value: float) -> bool:
+        """Establece un campo de componente, con soporte para indices de lista/tupla."""
+        # Soporte para indices de lista/tupla (ej: "tint_3")
         if "_" in field_name:
             base_name, index_str = field_name.rsplit("_", 1)
             try:
@@ -110,26 +203,25 @@ class TweenSystem:
             base_name = field_name
             index = None
 
-        if not hasattr(component, base_name):
+        if not hasattr(obj, base_name):
             return False
 
         try:
             if index is not None:
-                seq = getattr(component, base_name)
+                seq = getattr(obj, base_name)
                 if isinstance(seq, (list, tuple)):
                     if isinstance(seq, tuple):
-                        # Reconstruir tupla inmutable
                         lst = list(seq)
                         if 0 <= index < len(lst):
                             lst[index] = value
-                            setattr(component, base_name, tuple(lst))
+                            setattr(obj, base_name, tuple(lst))
                             return True
                     else:
                         if 0 <= index < len(seq):
                             seq[index] = value
                             return True
             else:
-                setattr(component, base_name, value)
+                setattr(obj, base_name, value)
                 return True
         except (TypeError, ValueError, IndexError):
             pass

@@ -445,6 +445,37 @@ class RuntimeAPI(EngineAPIComponent):
         rb.apply_torque(torque)
         return ActionResult(success=True, message=f"Torque applied to {entity_name}")
 
+    def set_rigidbody_constant_force(self, entity_name: str, fx: float, fy: float) -> ActionResult:
+        """Set constant force on RigidBody (applied every frame)."""
+        entity = self.require_entity(entity_name)
+        rb = entity.get_component(RigidBody)
+        if rb is None:
+            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody")
+        rb.constant_force_x = float(fx)
+        rb.constant_force_y = float(fy)
+        return ActionResult(success=True, message=f"Constant force set on {entity_name}", data={"fx": fx, "fy": fy})
+
+    def set_rigidbody_ccd_mode(self, entity_name: str, mode: str) -> ActionResult:
+        """Set CCD mode: disabled, cast_ray, cast_shape."""
+        entity = self.require_entity(entity_name)
+        rb = entity.get_component(RigidBody)
+        if rb is None:
+            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody")
+        valid = RigidBody.VALID_CCD_MODES
+        if mode not in valid:
+            return ActionResult(success=False, message=f"Invalid CCD mode '{mode}'. Valid: {sorted(valid)}")
+        rb.ccd_mode = mode
+        return ActionResult(success=True, message=f"CCD mode set to '{mode}' on {entity_name}")
+
+    def set_rigidbody_can_sleep(self, entity_name: str, can_sleep: bool) -> ActionResult:
+        """Enable/disable sleeping for a RigidBody entity."""
+        entity = self.require_entity(entity_name)
+        rb = entity.get_component(RigidBody)
+        if rb is None:
+            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody")
+        rb.can_sleep = bool(can_sleep)
+        return ActionResult(success=True, message=f"can_sleep={rb.can_sleep} on {entity_name}")
+
     def play_audio(self, entity_name: str) -> ActionResult:
         """Start audio playback for an AudioSource entity.
 

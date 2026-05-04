@@ -11,8 +11,16 @@ import pyray as rl
 from engine.assets.asset_reference import normalize_asset_reference, reference_has_identity
 from engine.assets.asset_service import AssetService
 from engine.components.uibutton import UIButton
+from engine.components.uicheckbox import CheckBox
 from engine.components.uiimage import UIImage
+from engine.components.uilabel import Label
+from engine.components.uilineedit import LineEdit
+from engine.components.uipanel import UIPanel
+from engine.components.uiprogressbar import ProgressBar
+from engine.components.uislider import Slider
+from engine.components.uispinbox import SpinBox
 from engine.components.uitext import UIText
+from engine.components.uitextedit import TextEdit
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.resources.texture_manager import TextureManager
@@ -100,6 +108,38 @@ class UIRenderSystem:
                 text.alignment,
                 text.wrap,
             )
+
+        panel = entity.get_component(UIPanel)
+        if panel is not None and panel.enabled:
+            self._render_ui_panel(layout, panel)
+
+        line_edit = entity.get_component(LineEdit)
+        if line_edit is not None and line_edit.enabled:
+            self._render_line_edit(layout, line_edit)
+
+        slider = entity.get_component(Slider)
+        if slider is not None and slider.enabled:
+            self._render_slider(layout, slider)
+
+        progress = entity.get_component(ProgressBar)
+        if progress is not None and progress.enabled:
+            self._render_progress_bar(layout, progress)
+
+        checkbox = entity.get_component(CheckBox)
+        if checkbox is not None and checkbox.enabled:
+            self._render_checkbox(layout, checkbox)
+
+        spinbox = entity.get_component(SpinBox)
+        if spinbox is not None and spinbox.enabled:
+            self._render_spinbox(layout, spinbox)
+
+        label = entity.get_component(Label)
+        if label is not None and label.enabled:
+            self._render_label(layout, label)
+
+        text_edit = entity.get_component(TextEdit)
+        if text_edit is not None and text_edit.enabled:
+            self._render_text_edit(layout, text_edit)
 
     def _render_ui_image(self, layout: dict[str, Any], image: UIImage) -> None:
         if not image.has_sprite():
@@ -262,3 +302,167 @@ class UIRenderSystem:
             max(0, min(255, int(tint[2] * 0.7))),
             max(0, min(255, int(tint[3] * 0.86))),
         )
+
+    # ── new UI controls ──
+
+    def _render_ui_panel(self, layout: dict[str, Any], panel: UIPanel) -> None:
+        rect = rl.Rectangle(float(layout["x"]), float(layout["y"]), float(layout["width"]), float(layout["height"]))
+        if panel.corner_radius > 0:
+            rl.draw_rectangle_rounded(rect, max(0.0, min(1.0, panel.corner_radius / min(rect.width, rect.height))), 8, rl.Color(*panel.color))
+            if panel.border_width > 0:
+                rl.draw_rectangle_rounded_lines(rect, max(0.0, min(1.0, panel.corner_radius / min(rect.width, rect.height))), 8, float(panel.border_width), rl.Color(*panel.border_color))
+        else:
+            rl.draw_rectangle_rec(rect, rl.Color(*panel.color))
+            if panel.border_width > 0:
+                rl.draw_rectangle_lines_ex(rect, float(panel.border_width), rl.Color(*panel.border_color))
+
+    def _render_line_edit(self, layout: dict[str, Any], line_edit: LineEdit) -> None:
+        x = float(layout["x"])
+        y = float(layout["y"])
+        w = float(layout["width"])
+        h = float(layout["height"])
+        # Background
+        bg = rl.Color(30, 30, 30, 255) if line_edit.focused else rl.Color(20, 20, 20, 255)
+        rl.draw_rectangle_rec(rl.Rectangle(x, y, w, h), bg)
+        rl.draw_rectangle_lines_ex(rl.Rectangle(x, y, w, h), 2.0, rl.Color(80, 200, 255, 255) if line_edit.focused else rl.Color(60, 60, 60, 255))
+        # Text or placeholder
+        display = line_edit.text
+        color = rl.Color(*line_edit.color)
+        if not display and line_edit.placeholder:
+            display = line_edit.placeholder
+            color = rl.Color(*line_edit.placeholder_color)
+        if line_edit.secret and line_edit.text:
+            display = "*" * len(line_edit.text)
+        text_x = x + 6
+        text_y = y + max(0.0, (h - line_edit.font_size) * 0.5)
+        rl.draw_text(display, int(text_x), int(text_y), line_edit.font_size, color)
+        # Cursor
+        if line_edit.focused:
+            cursor_x = text_x + rl.measure_text(display[:line_edit.cursor_position], line_edit.font_size)
+            rl.draw_rectangle_rec(rl.Rectangle(cursor_x, text_y, 2.0, float(line_edit.font_size)), rl.Color(*line_edit.color))
+
+    def _render_slider(self, layout: dict[str, Any], slider: Slider) -> None:
+        x = float(layout["x"])
+        y = float(layout["y"])
+        w = float(layout["width"])
+        h = float(layout["height"])
+        is_h = slider.horizontal
+        # Track
+        track = rl.Rectangle(x, y + h * 0.4, w, h * 0.2) if is_h else rl.Rectangle(x + w * 0.4, y, w * 0.2, h)
+        rl.draw_rectangle_rec(track, rl.Color(70, 70, 70, 255))
+        # Thumb
+        ratio = slider.ratio
+        thumb_size = min(w, h) * 0.8
+        if is_h:
+            thumb = rl.Rectangle(x + (w - thumb_size) * ratio, y + (h - thumb_size) * 0.5, thumb_size, thumb_size)
+        else:
+            thumb = rl.Rectangle(x + (w - thumb_size) * 0.5, y + (h - thumb_size) * (1.0 - ratio), thumb_size, thumb_size)
+        rl.draw_rectangle_rec(thumb, rl.Color(90, 170, 255, 255))
+        rl.draw_rectangle_lines_ex(thumb, 1.0, rl.Color(40, 120, 220, 255))
+
+    def _render_progress_bar(self, layout: dict[str, Any], progress: ProgressBar) -> None:
+        x = float(layout["x"])
+        y = float(layout["y"])
+        w = float(layout["width"])
+        h = float(layout["height"])
+        is_h = progress.horizontal
+        # Background
+        rl.draw_rectangle_rec(rl.Rectangle(x, y, w, h), rl.Color(*progress.bg_color))
+        # Fill
+        ratio = progress.ratio
+        fill_rect = rl.Rectangle(x, y, w * ratio, h) if is_h else rl.Rectangle(x, y + h * (1.0 - ratio), w, h * ratio)
+        rl.draw_rectangle_rec(fill_rect, rl.Color(*progress.fill_color))
+        # Border
+        rl.draw_rectangle_lines_ex(rl.Rectangle(x, y, w, h), 1.0, rl.Color(100, 100, 100, 255))
+        # Percent text
+        if progress.percent_visible:
+            pct_text = f"{int(progress.percent)}%"
+            text_w = rl.measure_text(pct_text, 16)
+            rl.draw_text(pct_text, int(x + (w - text_w) * 0.5), int(y + (h - 16) * 0.5), 16, rl.WHITE)
+
+    def _render_checkbox(self, layout: dict[str, Any], checkbox: CheckBox) -> None:
+        x = float(layout["x"])
+        y = float(layout["y"])
+        h = float(layout["height"])
+        box_size = min(h, 20.0)
+        box = rl.Rectangle(x, y + (h - box_size) * 0.5, box_size, box_size)
+        # Box background
+        rl.draw_rectangle_rec(box, rl.Color(50, 50, 50, 255))
+        rl.draw_rectangle_lines_ex(box, 2.0, rl.Color(150, 150, 150, 255))
+        # Checkmark
+        if checkbox.checked:
+            pad = 3
+            cx = box.x + pad
+            cy = box.y + pad
+            cw = box.width - pad * 2
+            ch = box.height - pad * 2
+            rl.draw_line(int(cx), int(cy + ch * 0.5), int(cx + cw * 0.4), int(cy + ch), rl.Color(0, 200, 0, 255))
+            rl.draw_line(int(cx + cw * 0.4), int(cy + ch), int(cx + cw), int(cy), rl.Color(0, 200, 0, 255))
+        # Label
+        if checkbox.text:
+            label_x = x + box_size + 6
+            label_y = y + max(0.0, (h - 16) * 0.5)
+            rl.draw_text(checkbox.text, int(label_x), int(label_y), 16, rl.WHITE)
+
+    def _render_spinbox(self, layout: dict[str, Any], spinbox: SpinBox) -> None:
+        x = float(layout["x"])
+        y = float(layout["y"])
+        w = float(layout["width"])
+        h = float(layout["height"])
+        arrow_w = min(24.0, w * 0.3)
+        # Background
+        rl.draw_rectangle_rec(rl.Rectangle(x, y, w, h), rl.Color(30, 30, 30, 255))
+        rl.draw_rectangle_lines_ex(rl.Rectangle(x, y, w, h), 1.0, rl.Color(80, 80, 80, 255))
+        # Value
+        val_text = spinbox.display_text
+        text_w = rl.measure_text(val_text, 16)
+        rl.draw_text(val_text, int(x + (w - text_w) * 0.5), int(y + (h - 16) * 0.5), 16, rl.WHITE)
+        # Up arrow
+        up_rect = rl.Rectangle(x + w - arrow_w, y, arrow_w, h * 0.5)
+        rl.draw_rectangle_rec(up_rect, rl.Color(60, 60, 60, 255))
+        rl.draw_rectangle_lines_ex(up_rect, 1.0, rl.Color(100, 100, 100, 255))
+        rl.draw_text("+", int(up_rect.x + up_rect.width * 0.3), int(up_rect.y), 14, rl.WHITE)
+        # Down arrow
+        down_rect = rl.Rectangle(x + w - arrow_w, y + h * 0.5, arrow_w, h * 0.5)
+        rl.draw_rectangle_rec(down_rect, rl.Color(60, 60, 60, 255))
+        rl.draw_rectangle_lines_ex(down_rect, 1.0, rl.Color(100, 100, 100, 255))
+        rl.draw_text("-", int(down_rect.x + down_rect.width * 0.3), int(down_rect.y), 14, rl.WHITE)
+
+    def _render_label(self, layout: dict[str, Any], label: Label) -> None:
+        self._draw_label(
+            label.text,
+            rl.Rectangle(float(layout["x"]), float(layout["y"]), float(layout["width"]), float(layout["height"])),
+            label.font_size,
+            rl.Color(*label.color),
+            label.alignment,
+            label.autowrap,
+        )
+
+    def _render_text_edit(self, layout: dict[str, Any], text_edit: TextEdit) -> None:
+        x = float(layout["x"])
+        y = float(layout["y"])
+        w = float(layout["width"])
+        h = float(layout["height"])
+        # Background
+        rl.draw_rectangle_rec(rl.Rectangle(x, y, w, h), rl.Color(20, 20, 20, 255))
+        rl.draw_rectangle_lines_ex(rl.Rectangle(x, y, w, h), 1.0, rl.Color(80, 80, 80, 255))
+        # Start scissor to clip text
+        rl.begin_scissor_mode(int(x), int(y), int(w), int(h))
+        # Draw text lines
+        lines = text_edit.text.split("\n")
+        line_h = text_edit.font_size + 4
+        offset = text_edit.scroll_y
+        for i, line in enumerate(lines):
+            ly = y + 4 + i * line_h - offset
+            if ly + line_h < y or ly > y + h:
+                continue
+            rl.draw_text(line, int(x + 4), int(ly), text_edit.font_size, rl.Color(220, 220, 220, 255))
+        # Cursor if focused
+        if text_edit.focused:
+            cy = y + 4 + text_edit.cursor_line * line_h - offset
+            cursor_text = ""
+            if text_edit.cursor_line < len(lines):
+                cursor_text = lines[text_edit.cursor_line][:text_edit.cursor_column]
+            cx = x + 4 + rl.measure_text(cursor_text, text_edit.font_size)
+            rl.draw_rectangle_rec(rl.Rectangle(cx, cy, 2.0, float(text_edit.font_size)), rl.Color(255, 255, 255, 255))
+        rl.end_scissor_mode()

@@ -1683,3 +1683,191 @@ class AuthoringAPI(EngineAPIComponent):
 
     def _load_tilemap_payload(self, entity_name: str) -> Optional[dict[str, Any]]:
         return self.load_component_payload(entity_name, "Tilemap")
+
+    # --- Tween API (Godot-style) ---
+
+    def create_tween(self, entity_name: str) -> ActionResult:
+        """Agrega un componente Tween a una entidad.
+
+        Args:
+            entity_name: Nombre de la entidad objetivo.
+
+        Returns:
+            ActionResult confirmando la creacion del Tween.
+        """
+        self.ensure_edit_mode()
+        return self.add_component(
+            entity_name,
+            "Tween",
+            {
+                "enabled": True,
+                "steps": [],
+                "loops": 0,
+                "parallel": False,
+                "running": False,
+                "paused": False,
+                "speed_scale": 1.0,
+                "default_transition": "linear",
+                "default_ease": "ease_in_out",
+                "autostart": False,
+                "one_shot": True,
+            },
+        )
+
+    def tween_property(
+        self,
+        tween_entity: str,
+        target_entity: str,
+        component: str,
+        prop: str,
+        to_value: float,
+        duration: float,
+        transition: str = "linear",
+        ease: str = "ease_in_out",
+        from_value: float | None = None,
+        delay: float = 0.0,
+    ) -> ActionResult:
+        """Agrega un step de interpolacion de propiedad a un Tween existente.
+
+        Args:
+            tween_entity: Nombre de la entidad que tiene el Tween.
+            target_entity: Nombre de la entidad cuya propiedad se anima.
+            component: Nombre del componente (ej. "Transform").
+            prop: Ruta de la propiedad (ej. "x", "color.r").
+            to_value: Valor final de la interpolacion.
+            duration: Duracion en segundos.
+            transition: Tipo de transicion (linear, sine, quad, cubic, quart,
+                         quint, expo, circ, back, elastic, bounce, spring).
+            ease: Modo de ease (ease_in, ease_out, ease_in_out, ease_out_in).
+            from_value: Valor inicial (si None, se usa el valor actual).
+            delay: Delay en segundos antes de iniciar.
+
+        Returns:
+            ActionResult confirmando que el step fue agregado.
+        """
+        self.ensure_edit_mode()
+        if self.scene_authoring is None:
+            return self.fail("SceneManager not ready")
+
+        # Validar transicion y ease
+        from engine.components.tween import TweenTransition, TweenEase
+        try:
+            TweenTransition(str(transition).strip().lower())
+        except ValueError:
+            return self.fail(f"Invalid transition: {transition}")
+
+        try:
+            TweenEase(str(ease).strip().lower())
+        except ValueError:
+            return self.fail(f"Invalid ease: {ease}")
+
+        payload = self.load_component_payload(tween_entity, "Tween")
+        if payload is None:
+            return self.fail("Tween component not found on entity")
+
+        step_data: dict[str, Any] = {
+            "target_entity": target_entity,
+            "target_component": component,
+            "property_path": f"{component}.{prop}",
+            "from_value": float(from_value) if from_value is not None else 0.0,
+            "to_value": float(to_value),
+            "duration": float(duration),
+            "delay": float(delay),
+            "transition": str(transition).strip().lower(),
+            "ease": str(ease).strip().lower(),
+        }
+        steps = list(payload.get("steps", []))
+        steps.append(step_data)
+        payload["steps"] = steps
+
+        success = self.scene_authoring.replace_component_data(tween_entity, "Tween", payload)
+        return self.ok("Tween property step added", {"tween_entity": tween_entity}) if success else self.fail("Tween step add failed")
+
+    def play_tween(self, entity_name: str) -> ActionResult:
+        """Inicia la reproduccion del Tween.
+
+        Args:
+            entity_name: Nombre de la entidad con Tween.
+
+        Returns:
+            ActionResult confirmando el inicio.
+        """
+        self.ensure_edit_mode()
+        return self.edit_component(entity_name, "Tween", "running", True)
+
+    def stop_tween(self, entity_name: str) -> ActionResult:
+        """Detiene la reproduccion del Tween.
+
+        Args:
+            entity_name: Nombre de la entidad con Tween.
+
+        Returns:
+            ActionResult confirmando la detencion.
+        """
+        self.ensure_edit_mode()
+        result_running = self.edit_component(entity_name, "Tween", "running", False)
+        result_paused = self.edit_component(entity_name, "Tween", "paused", False)
+        return result_running if result_running["success"] else result_paused
+
+    def pause_tween(self, entity_name: str) -> ActionResult:
+        """Pausa el Tween.
+
+        Args:
+            entity_name: Nombre de la entidad con Tween.
+
+        Returns:
+            ActionResult confirmando la pausa.
+        """
+        self.ensure_edit_mode()
+        return self.edit_component(entity_name, "Tween", "paused", True)
+
+    def resume_tween(self, entity_name: str) -> ActionResult:
+        """Reanuda el Tween pausado.
+
+        Args:
+            entity_name: Nombre de la entidad con Tween.
+
+        Returns:
+            ActionResult confirmando la reanudacion.
+        """
+        self.ensure_edit_mode()
+        return self.edit_component(entity_name, "Tween", "paused", False)
+
+    def set_tween_speed_scale(self, entity_name: str, speed_scale: float) -> ActionResult:
+        """Establece la escala de velocidad del Tween.
+
+        Args:
+            entity_name: Nombre de la entidad con Tween.
+            speed_scale: Multiplicador de velocidad (1.0 = normal).
+
+        Returns:
+            ActionResult confirmando el cambio.
+        """
+        self.ensure_edit_mode()
+        return self.edit_component(entity_name, "Tween", "speed_scale", float(speed_scale))
+
+    def set_tween_loops(self, entity_name: str, loops: int) -> ActionResult:
+        """Establece el numero de repeticiones del Tween.
+
+        Args:
+            entity_name: Nombre de la entidad con Tween.
+            loops: Numero de loops (0 = una vez, -1 = infinito).
+
+        Returns:
+            ActionResult confirmando el cambio.
+        """
+        self.ensure_edit_mode()
+        return self.edit_component(entity_name, "Tween", "loops", int(loops))
+
+    def set_tween_parallel(self, entity_name: str, parallel: bool) -> ActionResult:
+        """Establece si los siguientes steps corren en paralelo.
+
+        Args:
+            entity_name: Nombre de la entidad con Tween.
+            parallel: True para paralelo, False para secuencial.
+
+        Returns:
+            ActionResult confirmando el cambio.
+        """
+        self.ensure_edit_mode()
+        return self.edit_component(entity_name, "Tween", "parallel", bool(parallel))

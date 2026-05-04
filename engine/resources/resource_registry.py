@@ -42,6 +42,7 @@ class ResourceRegistry:
         self._type_loaders["sprite_frames"] = self._load_sprite_frames
         self._type_loaders["shader2d"] = self._load_shader
         self._type_loaders["theme"] = self._load_theme
+        self._type_loaders["animation_tree"] = self._load_animation_tree
 
     def load(self, path: str, resource_type: str = "auto") -> Any:
         """Carga un recurso por path. Usa caché si ya está cargado.
@@ -109,6 +110,7 @@ class ResourceRegistry:
             "sframes": "sprite_frames",
             "shader2d": "shader2d",
             "theme": "theme",
+            "animtree": "animation_tree",
             "json": "auto",  # Intentar inferir del contenido
         }
         return mapping.get(ext, "auto")
@@ -146,3 +148,9 @@ class ResourceRegistry:
 
         with open(path, "r") as f:
             return ThemeResource.from_dict(json.load(f))
+
+    def _load_animation_tree(self, path: str) -> Any:
+        from engine.resources.animation_tree import AnimationTreeResource
+
+        with open(path, "r") as f:
+            return AnimationTreeResource.from_dict(json.load(f))

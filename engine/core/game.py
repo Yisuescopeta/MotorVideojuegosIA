@@ -599,6 +599,8 @@ class Game:
         self._event_bus = event_bus
         for backend in self._physics_backend_registry.iter_available_backends():
             backend.set_event_bus(event_bus)
+        if self._physics_system is not None and hasattr(self._physics_system, "set_event_bus"):
+            self._physics_system.set_event_bus(event_bus)
         if self._character_controller_system is not None and hasattr(
             self._character_controller_system, "set_event_bus"
         ):

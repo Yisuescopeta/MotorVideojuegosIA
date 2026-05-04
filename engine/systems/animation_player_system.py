@@ -177,7 +177,49 @@ class AnimationPlayerSystem:
             return self._process_method_track(entity, track, time)
         elif track.track_type == "event":
             return self._process_event_track(entity, track, time)
+        elif track.track_type == "audio":
+            return self._process_audio_track(entity, track, time)
+        elif track.track_type == "animation":
+            return self._process_animation_track(entity, track, time)
         return False
+
+    def _process_audio_track(self, entity: Entity, track: Any, time: float) -> bool:
+        """Dispara audio en los keyframes."""
+        keyframes = sorted(track.keyframes, key=lambda k: k.get("time", 0))
+        for kf in keyframes:
+            kf_time = kf.get("time", 0)
+            if abs(time - kf_time) < 0.05:
+                kf_id = id(kf)
+                if kf_id not in self._triggered_keyframes:
+                    self._triggered_keyframes.add(kf_id)
+                    audio_path = kf.get("audio_stream", getattr(track, "audio_stream", ""))
+                    volume = kf.get("volume", getattr(track, "volume", 1.0))
+                    if audio_path and self._event_bus:
+                        self._event_bus.emit("play_audio", {
+                            "entity_id": entity.id,
+                            "audio_stream": audio_path,
+                            "volume": volume,
+                        })
+        return True
+
+    def _process_animation_track(self, entity: Entity, track: Any, time: float) -> bool:
+        """Dispara sub-animación en los keyframes."""
+        keyframes = sorted(track.keyframes, key=lambda k: k.get("time", 0))
+        for kf in keyframes:
+            kf_time = kf.get("time", 0)
+            if abs(time - kf_time) < 0.05:
+                kf_id = id(kf)
+                if kf_id not in self._triggered_keyframes:
+                    self._triggered_keyframes.add(kf_id)
+                    target_anim = kf.get("animation", getattr(track, "target_animation", ""))
+                    target_entity = kf.get("target", getattr(track, "target_entity", ""))
+                    if target_anim and self._event_bus:
+                        self._event_bus.emit("play_sub_animation", {
+                            "entity_id": entity.id,
+                            "animation": target_anim,
+                            "target": target_entity,
+                        })
+        return True
 
     def _process_method_track(self, entity: Entity, track: Any, time: float) -> bool:
         """Invoca method_name en la entidad en los keyframes."""

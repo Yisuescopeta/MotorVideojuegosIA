@@ -4102,3 +4102,99 @@ def cmd_runtime_audio_resume(
                 api.shutdown()
             except Exception:
                 pass
+
+
+def cmd_tilemap_terrain_auto(
+    project_path: Path,
+    entity_name: str,
+    layer_name: str,
+    source_id: str,
+    terrain_set: int,
+    terrain: int,
+    json_output: bool,
+) -> int:
+    """Auto-place tiles on a tilemap layer based on terrain connectivity.
+    
+    Loads the TileSet resource referenced by the tilemap, computes terrain
+    peering bits for each tile in the layer, and replaces tile IDs with
+    matching terrain-aware tiles from the atlas source.
+    """
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path, read_only=False)
+        scene_loaded, _scene_msg = _auto_load_scene(api)
+        if not scene_loaded:
+            return _output(False, "No scene loaded — cannot auto-tile", None, json_output)
+
+        tilemap_payload = api.authoring.get_tilemap(entity_name)
+        if not tilemap_payload:
+            return _output(False, f"Tilemap entity '{entity_name}' not found", None, json_output)
+
+        layer_payload = api.authoring.get_tilemap_layer(entity_name, layer_name)
+        if not layer_payload:
+            return _output(False, f"Layer '{layer_name}' not found on tilemap '{entity_name}'", None, json_output)
+
+        tileset_resource_path = str(tilemap_payload.get("tileset_resource_path", "") or "")
+        if not tileset_resource_path:
+            return _output(False, "Tilemap has no tileset_resource_path set", None, json_output)
+
+        from engine.resources.tileset_resource import TileSetResource
+        import os, json
+        if not os.path.isfile(tileset_resource_path):
+            return _output(False, f"TileSet resource file not found: {tileset_resource_path}", None, json_output)
+
+        with open(tileset_resource_path, 'r', encoding='utf-8') as f:
+            tileset = TileSetResource.from_dict(json.load(f))
+
+        tiles_raw = layer_payload.get("tiles", {})
+        if isinstance(tiles_raw, list):
+            cells: dict = {}
+            for t in tiles_raw:
+                if isinstance(t, dict):
+                    cells[(int(t.get("x", 0)), int(t.get("y", 0)))] = t
+        elif isinstance(tiles_raw, dict):
+            cells = {}
+            for k, v in tiles_raw.items():
+                try:
+                    x_str, y_str = str(k).split(",", 1)
+                    cells[(int(x_str), int(y_str))] = v
+                except (ValueError, TypeError):
+                    pass
+        else:
+            cells = {}
+
+        if not cells:
+            return _output(False, f"Layer '{layer_name}' has no tiles", None, json_output)
+
+        changes = tileset.set_cells_terrain_connect(source_id, cells, terrain_set, terrain)
+        if not changes:
+            return _output(True, "No terrain changes needed", {"changed": 0}, json_output)
+
+        # Build bulk tile updates
+        tile_specs = []
+        for coord, new_tile_id in changes.items():
+            spec = {"x": int(coord[0]), "y": int(coord[1]), "tile_id": new_tile_id}
+            tile_specs.append(spec)
+
+        result = api.authoring.bulk_set_tilemap_tiles(entity_name, layer_name, tile_specs)
+        if result.get("success"):
+            api.authoring.save_scene()
+            return _output(
+                True,
+                f"Terrain auto-tiled {len(changes)} cells",
+                {"changed": len(changes), "tiles": [f"{s['x']},{s['y']} -> {s['tile_id']}" for s in tile_specs[:20]]},
+                json_output,
+            )
+        return _output(False, result.get("message", "Bulk tile update failed"), None, json_output)
+
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Terrain auto-tile failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
