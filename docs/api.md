@@ -246,6 +246,68 @@ Fisica:
 - `list_physics_backends()`
 - `get_physics_backend_selection()`
 
+#### Ejemplo: aplicar fuerzas a un RigidBody
+
+```python
+# Crear entidad con RigidBody
+api.create_entity("player", components=["RigidBody", "Collider", "Transform"])
+api.set_rigidbody_property("player", "body_type", "dynamic")
+api.set_rigidbody_property("player", "mass", 2.0)
+
+# Aplicar fuerza continua (acelera cada frame)
+api.apply_force("player", 500.0, 0.0)
+
+# Aplicar impulso instantáneo (cambio de velocidad inmediato)
+api.apply_impulse("player", 0.0, -300.0)
+
+# Aplicar torque (rotación)
+api.apply_torque("player", 50.0)
+```
+
+### Area2D — Monitoreo de overlaps
+
+Area2D monitorea cuerpos (RigidBody) y otras áreas que entran/salen de su zona.
+Requiere un Collider para definir la forma del área.
+
+**Eventos emitidos vía EventBus:**
+- `body_entered` / `body_exited`: cuando un RigidBody entra/sale del área
+- `area_entered` / `area_exited`: cuando otra Area2D entra/sale del área
+
+**Payload de eventos:** `{entity_id, other_entity_id, entity_name, other_entity_name}`
+
+```python
+# Crear área de daño
+api.create_entity("damage_zone", components=["Area2D", "Collider", "Transform"])
+api.set_collider_rect("damage_zone", 100, 100)
+api.set_collider_trigger("damage_zone", True)
+
+# Suscribirse a eventos
+api.connect_signal("damage_zone", "body_entered", on_body_entered)
+```
+
+### CollisionFilter2D — Filtrado por capas
+
+Controla qué entidades colisionan entre sí usando máscaras de bits (uint32).
+Adaptado del sistema collision_layer/collision_mask de Godot.
+
+- **layer**: bitmask que define en qué capas está la entidad (default: 1 = capa 1)
+- **mask**: bitmask que define con qué capas colisiona (default: 0xFFFFFFFF = todas)
+
+**Regla de colisión:** `(A.mask & B.layer) != 0 AND (B.mask & A.layer) != 0`
+
+```python
+# Entidad en capa 1 (bit 0), colisiona solo con capa 1
+api.set_collision_filter("player", layer=1, mask=1)
+
+# Entidad en capa 2 (bit 1), colisiona solo con capa 2
+api.set_collision_filter("enemy", layer=2, mask=2)
+
+# player (layer=1, mask=1) vs enemy (layer=2, mask=2):
+# player.mask & enemy.layer = 1 & 2 = 0     ❌
+# enemy.mask & player.layer = 2 & 1 = 0     ❌
+# Resultado: NO colisionan
+```
+
 La CLI oficial expone verificacion headless stateless sobre estos metodos:
 
 ```bash

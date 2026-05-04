@@ -244,6 +244,46 @@ Cuando el motor esta en `EDIT`, los cambios persistentes de grupos deben entrar
 por la ruta de authoring expuesta por `EngineAPI`; en `PLAY`, esos cambios solo
 afectan al runtime activo.
 
+## Física avanzada (P0)
+
+La API de física expone fuerzas, impulsos, torque, capas de colisión y
+monitoreo de overlaps vía Area2D. Todos los métodos usan la fachada pública
+`EngineAPI`.
+
+- `apply_force(entity, fx, fy)`: Aplica fuerza continua. Acelera el RigidBody cada frame.
+- `apply_impulse(entity, ix, iy)`: Aplica impulso instantáneo. Cambio de velocidad inmediato.
+- `apply_torque(entity, torque)`: Aplica torque angular al RigidBody.
+- `set_collision_filter(entity, layer, mask)`: Configura capas de colisión con máscaras de bits (uint32). La regla de colisión es `(A.mask & B.layer) != 0 AND (B.mask & A.layer) != 0`.
+- **Area2D**: monitorea overlaps con eventos `body_entered`/`body_exited`/`area_entered`/`area_exited`. Requiere un Collider. El payload de eventos incluye `entity_id`, `other_entity_id`, `entity_name` y `other_entity_name`.
+- `CollisionFilter2D.should_collide(entity_a, entity_b)`: Verifica si dos entidades colisionan según sus filtros de capa/máscara.
+
+### Ejemplo mínimo de física
+
+```python
+from engine.api import EngineAPI
+
+api = EngineAPI(project_root=".")
+api.load_scene("levels/main_scene.json")
+
+# RigidBody dinámico con fuerzas
+api.create_entity("player", components=["RigidBody", "Collider", "Transform"])
+api.set_rigidbody_property("player", "body_type", "dynamic")
+api.set_rigidbody_property("player", "mass", 2.0)
+api.apply_force("player", 500.0, 0.0)
+api.apply_impulse("player", 0.0, -300.0)
+
+# Capas de colisión
+api.set_collision_filter("player", layer=1, mask=1)
+
+# Area2D para monitoreo
+api.create_entity("damage_zone", components=["Area2D", "Collider", "Transform"])
+api.set_collider_rect("damage_zone", 100, 100)
+api.set_collider_trigger("damage_zone", True)
+
+api.save_scene()
+api.shutdown()
+```
+
 ## Que evitar
 
 - No editar `SceneManager.edit_world` directamente para flujos publicos nuevos.
