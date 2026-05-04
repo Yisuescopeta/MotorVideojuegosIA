@@ -40,7 +40,7 @@ class TileAnimationSystem:
     def _advance_tile_animation(self, tile: dict[str, Any], dt: float) -> None:
         """Avanza animacion de un tile individual."""
         # Frames se almacenan en custom._anim_frames (inline fallback)
-        custom: dict[str, Any] = tile.setdefault("custom", {})
+        custom = tile.get("custom")
         if not isinstance(custom, dict):
             custom = {}
             tile["custom"] = custom

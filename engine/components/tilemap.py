@@ -52,6 +52,8 @@ class Tilemap(Component):
         self.tileset_spacing: int = max(0, int(tileset_spacing))
         self.tileset_margin: int = max(0, int(tileset_margin))
         self.default_layer_name: str = str(default_layer_name or "Layer").strip() or "Layer"
+        self._tileset_cache: Any = None
+        self._tileset_cache_path: str = ""
 
     def get_tileset_reference(self) -> dict[str, str]:
         return clone_asset_reference(self.tileset)
@@ -383,17 +385,29 @@ class Tilemap(Component):
         """Carga el TileSet resource si existe. None si no hay referencia."""
         if not self.tileset_resource_path:
             return None
+        import os
+        path = os.path.normpath(self.tileset_resource_path)
+        if not path.endswith(('.tileset', '.json')):
+            return None
+        if not os.path.isfile(path):
+            return None
+        if '..' in path.split(os.sep):
+            return None
         try:
             from engine.resources.tileset_resource import TileSetResource
-            with open(self.tileset_resource_path, 'r') as f:
+            with open(path, 'r') as f:
                 data = json.load(f)
             return TileSetResource.from_dict(data)
-        except Exception:
+        except (FileNotFoundError, json.JSONDecodeError):
             return None
 
     def resolve_tile_geometry(self) -> dict:
         """Resuelve geometría de tiles: primero del recurso, luego inline."""
-        resource = self.get_tileset_resource()
+        if self._tileset_cache_path != self.tileset_resource_path:
+            self._tileset_cache = self.get_tileset_resource()
+            self._tileset_cache_path = self.tileset_resource_path
+
+        resource = self._tileset_cache
         if resource:
             return {
                 "tile_width": resource.tile_width,

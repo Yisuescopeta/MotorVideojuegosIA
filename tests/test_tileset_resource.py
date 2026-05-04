@@ -285,6 +285,48 @@ class TestTileSetResource(unittest.TestCase):
         self.assertEqual(restored.custom_data_layers[0].name, "z_index")
         self.assertEqual(restored.custom_data_layers[1].name, "terrain_type")
 
+    # ── 9. test_remove_source ──────────────────────────────────────────
+
+    def test_remove_source(self) -> None:
+        """Verifica añadir source, eliminarlo, verificar len=0."""
+        tileset = TileSetResource()
+        source = TileSetAtlasSource(
+            source_id="src_to_remove",
+            texture_region_w=32,
+            texture_region_h=32,
+            tile_width=16,
+            tile_height=16,
+        )
+        tileset.add_source(source)
+        self.assertEqual(len(tileset.sources), 1)
+        self.assertTrue(tileset.remove_source("src_to_remove"))
+        self.assertEqual(len(tileset.sources), 0)
+        self.assertFalse(tileset.remove_source("non_existent"))
+
+    # ── 10. test_clear_animation ───────────────────────────────────────
+
+    def test_clear_animation(self) -> None:
+        """Verifica setear animación, limpiarla, verificar has_animation=False."""
+        tileset = TileSetResource()
+        frame = TileAnimationFrame(tile_id="tile_01", duration=0.3)
+        tileset.set_tile_animation("tile_01", [frame])
+        self.assertTrue(tileset.has_animation("tile_01"))
+        tileset.clear_animation("tile_01")
+        self.assertFalse(tileset.has_animation("tile_01"))
+        self.assertEqual(len(tileset.get_tile_animation("tile_01")), 0)
+
+    # ── 11. test_remove_custom_data_layer ──────────────────────────────
+
+    def test_remove_custom_data_layer(self) -> None:
+        """Verifica añadir capa, eliminarla, verificar len=0."""
+        tileset = TileSetResource()
+        layer = CustomDataLayerDef(name="test_layer", layer_type="float", default_value=0.0)
+        tileset.add_custom_data_layer(layer)
+        self.assertEqual(len(tileset.custom_data_layers), 1)
+        self.assertTrue(tileset.remove_custom_data_layer("test_layer"))
+        self.assertEqual(len(tileset.custom_data_layers), 0)
+        self.assertFalse(tileset.remove_custom_data_layer("non_existent"))
+
 
 if __name__ == "__main__":
     unittest.main()

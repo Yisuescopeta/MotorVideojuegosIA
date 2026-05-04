@@ -1146,13 +1146,21 @@ class AuthoringAPI(EngineAPIComponent):
         self.ensure_edit_mode()
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
+        import os
+        if not resource_path:
+            return self.fail("Resource path is required")
+        path = os.path.normpath(resource_path)
+        if not path.endswith(('.tileset', '.json')):
+            return self.fail("Resource path must end with .tileset or .json")
+        if not os.path.isfile(path):
+            return self.fail(f"Resource file not found: {path}")
         payload = self._load_tilemap_payload(entity_name)
         if payload is None:
             return self.fail("Tilemap not found")
         tilemap = Tilemap.from_dict(payload)
-        tilemap.tileset_resource_path = resource_path
+        tilemap.tileset_resource_path = path
         success = self.scene_authoring.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
-        return self.ok("TileSet resource assigned", {"entity": entity_name, "resource_path": resource_path}) if success else self.fail("TileSet resource assignment failed")
+        return self.ok("TileSet resource assigned", {"entity": entity_name, "resource_path": path}) if success else self.fail("TileSet resource assignment failed")
 
     def list_animator_states(self, entity_name: str) -> list[dict[str, Any]]:
         """List all animation states defined on an entity's Animator component.

@@ -6,9 +6,12 @@ Define fuentes atlas, tiles alternativos, animaciones y capas de datos.
 
 from __future__ import annotations
 
+import logging
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -309,6 +312,8 @@ class TileSetResource:
         for src_data in data.get("sources", []) or []:
             if isinstance(src_data, dict):
                 tileset.sources.append(TileSetAtlasSource.from_dict(src_data))
+            else:
+                _logger.warning("TileSetResource.from_dict: skipping non-dict source: %s", type(src_data))
         raw_anim = data.get("tile_animations", {}) or {}
         if isinstance(raw_anim, dict):
             for tid, frames in raw_anim.items():
@@ -317,11 +322,17 @@ class TileSetResource:
                         TileAnimationFrame.from_dict(f) if isinstance(f, dict) else TileAnimationFrame()
                         for f in frames
                     ]
+        else:
+            _logger.warning("TileSetResource.from_dict: skipping non-dict tile_animations: %s", type(raw_anim))
         raw_layers = data.get("custom_data_layers", []) or []
         if isinstance(raw_layers, list):
             for layer_data in raw_layers:
                 if isinstance(layer_data, dict):
                     tileset.custom_data_layers.append(CustomDataLayerDef.from_dict(layer_data))
+                else:
+                    _logger.warning("TileSetResource.from_dict: skipping non-dict custom_data_layer: %s", type(layer_data))
+        else:
+            _logger.warning("TileSetResource.from_dict: custom_data_layers is not a list: %s", type(raw_layers))
         return tileset
 
     def __repr__(self) -> str:
