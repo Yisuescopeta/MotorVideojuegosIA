@@ -8,6 +8,7 @@ from engine.components.collision_filter_2d import CollisionFilter2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
 from engine.physics.backend import MoveResult2D, PhysicsAABBHit, PhysicsBackend, PhysicsContact, PhysicsRayHit, PhysicsShapeCastHit
+from engine.physics.shapes import ShapeFactory, ShapeInstance
 
 
 class LegacyAABBPhysicsBackend(PhysicsBackend):
@@ -445,11 +446,26 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             if delta > 0:
                 gap = (o_left - right) if axis == "x" else (o_top - bottom)
                 if 0.0 <= gap <= safe_delta:
+                    # Narrow-phase: verificar intersección real en el punto de colisión
+                    if collider.shape_type != "box" or other_collider.shape_type != "box":
+                        new_x = transform.x + (gap if axis == "x" else 0.0)
+                        new_y = transform.y + (gap if axis == "y" else 0.0)
+                        self_shape = ShapeFactory.build(collider, new_x, new_y)
+                        other_shape = ShapeFactory.build(other_collider, other_transform.x, other_transform.y)
+                        if not self_shape.intersects_shape(other_shape):
+                            continue
                     safe_delta = max(0.0, gap)
                     hit_entity = other_solid
             else:
                 gap = (o_right - left) if axis == "x" else (o_bottom - top)
                 if safe_delta <= gap <= 0.0:
+                    if collider.shape_type != "box" or other_collider.shape_type != "box":
+                        new_x = transform.x + (gap if axis == "x" else 0.0)
+                        new_y = transform.y + (gap if axis == "y" else 0.0)
+                        self_shape = ShapeFactory.build(collider, new_x, new_y)
+                        other_shape = ShapeFactory.build(other_collider, other_transform.x, other_transform.y)
+                        if not self_shape.intersects_shape(other_shape):
+                            continue
                     safe_delta = min(0.0, gap)
                     hit_entity = other_solid
         if hit_entity is not None:

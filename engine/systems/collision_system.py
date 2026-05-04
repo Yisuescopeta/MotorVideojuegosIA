@@ -4,7 +4,6 @@ engine/systems/collision_system.py - Sistema de deteccion de colisiones
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
@@ -17,6 +16,7 @@ from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.physics.contact_data import ContactManifold2D, ContactPoint2D
+from engine.physics.shapes import AABBShape, ShapeFactory, ShapeInstance
 from engine.physics.spatial_hash import SpatialHash2D
 
 if TYPE_CHECKING:
@@ -136,10 +136,9 @@ class CollisionSystem:
                 if not self._aabbs_overlap(entry_a.aabb, entry_b.aabb):
                     continue
 
-                if (entry_a.collider is not None and entry_a.collider.shape_type == "capsule") or \
-                   (entry_b.collider is not None and entry_b.collider.shape_type == "capsule"):
-                    if not self._narrow_phase_capsule(entry_a, entry_b):
-                        continue
+                # Narrow-phase: usar ShapeFactory si alguna shape no es AABB pura
+                if not self._narrow_phase_check(entry_a, entry_b):
+                    continue
 
                 is_trigger_a = entry_a.collider.is_trigger if entry_a.collider is not None else False
                 is_trigger_b = entry_b.collider.is_trigger if entry_b.collider is not None else False
@@ -307,6 +306,35 @@ class CollisionSystem:
         left_b, top_b, right_b, bottom_b = aabb_b
         return left_a < right_b and right_a > left_b and top_a < bottom_b and bottom_a > top_b
 
+    def _narrow_phase_check(self, entry_a: _CollisionEntry, entry_b: _CollisionEntry) -> bool:
+        """Narrow-phase check usando ShapeFactory para shapes no-AABB."""
+        shape_a_type = entry_a.collider.shape_type if entry_a.collider else "box"
+        shape_b_type = entry_b.collider.shape_type if entry_b.collider else "box"
+
+        if shape_a_type == "box" and shape_b_type == "box":
+            return True
+
+        transform_a = entry_a.entity.get_component(Transform)
+        transform_b = entry_b.entity.get_component(Transform)
+        if transform_a is None or transform_b is None:
+            return True
+
+        if entry_a.collider:
+            shape_a = ShapeFactory.build(entry_a.collider, transform_a.x, transform_a.y)
+        else:
+            aabb = entry_a.aabb
+            shape_a = AABBShape((aabb[0] + aabb[2]) / 2, (aabb[1] + aabb[3]) / 2,
+                                (aabb[2] - aabb[0]) / 2, (aabb[3] - aabb[1]) / 2)
+
+        if entry_b.collider:
+            shape_b = ShapeFactory.build(entry_b.collider, transform_b.x, transform_b.y)
+        else:
+            aabb = entry_b.aabb
+            shape_b = AABBShape((aabb[0] + aabb[2]) / 2, (aabb[1] + aabb[3]) / 2,
+                                (aabb[2] - aabb[0]) / 2, (aabb[3] - aabb[1]) / 2)
+
+        return shape_a.intersects_shape(shape_b)
+
     def _layers_can_collide(self, world: World, layer_a: str, layer_b: str) -> bool:
         matrix = world.feature_metadata.get("physics_2d", {}).get("layer_matrix", {})
         if not matrix:
@@ -341,70 +369,71 @@ class CollisionSystem:
             return rigidbody_b.use_full_kinematic_contacts
         return True
 
-    def _narrow_phase_capsule(self, entry_a: _CollisionEntry, entry_b: _CollisionEntry) -> bool:
-        """Narrow-phase check when at least one collider is a capsule."""
-        shape_a = entry_a.collider.shape_type if entry_a.collider is not None else ""
-        shape_b = entry_b.collider.shape_type if entry_b.collider is not None else ""
-
-        if shape_a == "capsule" and shape_b == "capsule":
-            return self._capsule_vs_capsule(entry_a, entry_b)
-        if shape_a == "capsule":
-            return self._capsule_vs_aabb(entry_a, entry_b)
-        if shape_b == "capsule":
-            return self._capsule_vs_aabb(entry_b, entry_a)
-        return True
-
-    def _capsule_vs_aabb(self, capsule_entry: _CollisionEntry, aabb_entry: _CollisionEntry) -> bool:
-        """Capsule vs AABB collision. Capsule = vertical segment + radius."""
-        c = capsule_entry.collider
-        if c is None:
-            return True
-        # Capsule world position
-        cx = capsule_entry.aabb[0] + c.radius  # left + radius = center x
-        cy = (capsule_entry.aabb[1] + capsule_entry.aabb[3]) / 2  # center y
-        cap_half = c.capsule_height / 2
-        seg_top = cy - cap_half
-        seg_bot = cy + cap_half
-
-        # AABB world bounds
-        aabb_left = aabb_entry.aabb[0]
-        aabb_top = aabb_entry.aabb[1]
-        aabb_right = aabb_entry.aabb[2]
-        aabb_bottom = aabb_entry.aabb[3]
-
-        # Distance from segment to AABB
-        dx = max(aabb_left - cx, cx - aabb_right, 0.0)
-        dy = max(aabb_top - seg_bot, seg_top - aabb_bottom, 0.0)
-
-        return (dx * dx + dy * dy) < (c.radius * c.radius)
-
-    def _capsule_vs_capsule(self, entry_a: _CollisionEntry, entry_b: _CollisionEntry) -> bool:
-        """Capsule vs capsule collision. Checks minimum distance between segments."""
-        ca = entry_a.collider
-        cb = entry_b.collider
-        if ca is None or cb is None:
-            return True
-
-        ax = entry_a.aabb[0] + ca.radius
-        ay = (entry_a.aabb[1] + entry_a.aabb[3]) / 2
-        ah = ca.capsule_height / 2
-
-        bx = entry_b.aabb[0] + cb.radius
-        by = (entry_b.aabb[1] + entry_b.aabb[3]) / 2
-        bh = cb.capsule_height / 2
-
-        # Vertical segments: (ax, ay-ah)->(ax, ay+ah) and (bx, by-bh)->(bx, by+bh)
-        seg_a_top = ay - ah
-        seg_a_bot = ay + ah
-        seg_b_top = by - bh
-        seg_b_bot = by + bh
-
-        dx = abs(ax - bx)
-        dy = max(seg_a_top - seg_b_bot, seg_b_top - seg_a_bot, 0.0)
-        distance = math.hypot(dx, dy)
-
-        return distance < (ca.radius + cb.radius)
-
+    # --- Legacy capsule narrow-phase methods (fallback, kept commented) ---
+    # def _narrow_phase_capsule(self, entry_a: _CollisionEntry, entry_b: _CollisionEntry) -> bool:
+    #     """Narrow-phase check when at least one collider is a capsule."""
+    #     shape_a = entry_a.collider.shape_type if entry_a.collider is not None else ""
+    #     shape_b = entry_b.collider.shape_type if entry_b.collider is not None else ""
+    #
+    #     if shape_a == "capsule" and shape_b == "capsule":
+    #         return self._capsule_vs_capsule(entry_a, entry_b)
+    #     if shape_a == "capsule":
+    #         return self._capsule_vs_aabb(entry_a, entry_b)
+    #     if shape_b == "capsule":
+    #         return self._capsule_vs_aabb(entry_b, entry_a)
+    #     return True
+    #
+    # def _capsule_vs_aabb(self, capsule_entry: _CollisionEntry, aabb_entry: _CollisionEntry) -> bool:
+    #     """Capsule vs AABB collision. Capsule = vertical segment + radius."""
+    #     c = capsule_entry.collider
+    #     if c is None:
+    #         return True
+    #     # Capsule world position
+    #     cx = capsule_entry.aabb[0] + c.radius  # left + radius = center x
+    #     cy = (capsule_entry.aabb[1] + capsule_entry.aabb[3]) / 2  # center y
+    #     cap_half = c.capsule_height / 2
+    #     seg_top = cy - cap_half
+    #     seg_bot = cy + cap_half
+    #
+    #     # AABB world bounds
+    #     aabb_left = aabb_entry.aabb[0]
+    #     aabb_top = aabb_entry.aabb[1]
+    #     aabb_right = aabb_entry.aabb[2]
+    #     aabb_bottom = aabb_entry.aabb[3]
+    #
+    #     # Distance from segment to AABB
+    #     dx = max(aabb_left - cx, cx - aabb_right, 0.0)
+    #     dy = max(aabb_top - seg_bot, seg_top - aabb_bottom, 0.0)
+    #
+    #     return (dx * dx + dy * dy) < (c.radius * c.radius)
+    #
+    # def _capsule_vs_capsule(self, entry_a: _CollisionEntry, entry_b: _CollisionEntry) -> bool:
+    #     """Capsule vs capsule collision. Checks minimum distance between segments."""
+    #     ca = entry_a.collider
+    #     cb = entry_b.collider
+    #     if ca is None or cb is None:
+    #         return True
+    #
+    #     ax = entry_a.aabb[0] + ca.radius
+    #     ay = (entry_a.aabb[1] + entry_a.aabb[3]) / 2
+    #     ah = ca.capsule_height / 2
+    #
+    #     bx = entry_b.aabb[0] + cb.radius
+    #     by = (entry_b.aabb[1] + entry_b.aabb[3]) / 2
+    #     bh = cb.capsule_height / 2
+    #
+    #     # Vertical segments: (ax, ay-ah)->(ax, ay+ah) and (bx, by-bh)->(bx, by+bh)
+    #     seg_a_top = ay - ah
+    #     seg_a_bot = ay + ah
+    #     seg_b_top = by - bh
+    #     seg_b_bot = by + bh
+    #
+    #     dx = abs(ax - bx)
+    #     dy = max(seg_a_top - seg_b_bot, seg_b_top - seg_a_bot, 0.0)
+    #     distance = math.hypot(dx, dy)
+    #
+    #     return distance < (ca.radius + cb.radius)
+    #
     @staticmethod
     def _closest_point_on_segment(px: float, py: float, ax: float, ay: float, bx: float, by: float) -> tuple[float, float]:
         """Closest point on segment AB to point P."""
