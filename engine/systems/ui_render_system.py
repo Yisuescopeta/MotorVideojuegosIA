@@ -11,21 +11,25 @@ import pyray as rl
 from engine.assets.asset_reference import normalize_asset_reference, reference_has_identity
 from engine.assets.asset_service import AssetService
 from engine.components.colorrect import ColorRect
+from engine.components.rich_text_label import RichTextLabel
 from engine.components.uibutton import UIButton
 from engine.components.uicheckbox import CheckBox
 from engine.components.uiimage import UIImage
 from engine.components.uilabel import Label
 from engine.components.uilineedit import LineEdit
 from engine.components.uipanel import UIPanel
+from engine.components.ui_popup import UIPopup, UIPopupMenu, UIWindow
 from engine.components.uiprogressbar import ProgressBar
 from engine.components.uislider import Slider
 from engine.components.uispinbox import SpinBox
 from engine.components.uitext import UIText
 from engine.components.uitextedit import TextEdit
+from engine.components.ui_tree import UITree
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.resources.texture_manager import TextureManager
 from engine.systems.ui_system import UISystem
+from engine.systems.ui_popup_system import UIPopupSystem
 
 
 class UIRenderSystem:
@@ -145,6 +149,26 @@ class UIRenderSystem:
         text_edit = entity.get_component(TextEdit)
         if text_edit is not None and text_edit.enabled:
             self._render_text_edit(layout, text_edit)
+
+        rich_label = entity.get_component(RichTextLabel)
+        if rich_label is not None and rich_label.enabled:
+            self._render_rich_text_label(layout, rich_label)
+
+        popup = entity.get_component(UIPopup)
+        if popup is not None and popup.visible:
+            self._render_popup(layout, popup)
+
+        popup_menu = entity.get_component(UIPopupMenu)
+        if popup_menu is not None and popup_menu.visible:
+            self._render_popup_menu(layout, popup_menu)
+
+        window = entity.get_component(UIWindow)
+        if window is not None and window.visible:
+            self._render_window(layout, window)
+
+        tree = entity.get_component(UITree)
+        if tree is not None and tree.enabled:
+            self._render_ui_tree(layout, tree)
 
     def _render_ui_image(self, layout: dict[str, Any], image: UIImage) -> None:
         if not image.has_sprite():
@@ -475,3 +499,379 @@ class UIRenderSystem:
             cx = x + 4 + rl.measure_text(cursor_text, text_edit.font_size)
             rl.draw_rectangle_rec(rl.Rectangle(cx, cy, 2.0, float(text_edit.font_size)), rl.Color(255, 255, 255, 255))
         rl.end_scissor_mode()
+
+    # ── UI Tree ──
+
+    def _render_ui_tree(self, layout: dict[str, Any], tree: UITree) -> None:
+        x = float(layout["x"])
+        y = float(layout["y"])
+        w = float(layout["width"])
+        h = float(layout["height"])
+        rl.draw_rectangle_rec(rl.Rectangle(x, y, w, h), rl.Color(28, 28, 28, 255))
+        rl.draw_rectangle_lines_ex(rl.Rectangle(x, y, w, h), 1.0, rl.Color(60, 60, 60, 255))
+
+        row_h = 24
+        indent_w = 20
+        col_widths = [max(100, (w - tree.columns * 10) / tree.columns) for _ in range(max(1, tree.columns))]
+
+        def _flatten(item: UITreeItem, depth: int = 0) -> list[tuple[UITreeItem, int]]:
+            result: list[tuple[UITreeItem, int]] = [(item, depth)]
+            if item.expanded and item.expandable:
+                for child in item.children:
+                    result.extend(_flatten(child, depth + 1))
+            return result
+
+        items: list[tuple[UITreeItem, int]] = []
+        if tree.hide_root:
+            for child in tree.root.children:
+                items.extend(_flatten(child, 0))
+        else:
+            items = _flatten(tree.root, 0)
+
+        # Clipping
+        rl.begin_scissor_mode(int(x), int(y), int(w), int(h))
+
+        visible_start = int(tree._scroll_y / row_h)
+        visible_count = int(h / row_h) + 2
+        visible_items = items[max(0, visible_start):max(0, visible_start) + visible_count]
+
+        for vi, (item, depth) in enumerate(visible_items):
+            ry = y + vi * row_h - (tree._scroll_y % row_h)
+            indent = depth * indent_w
+
+            # Selection highlight
+            if item.selected:
+                rl.draw_rectangle_rec(
+                    rl.Rectangle(x + indent, ry, w - indent, row_h),
+                    rl.Color(50, 90, 180, 220),
+                )
+
+            # Expand arrow
+            arrow_x = int(x + indent + 2)
+            arrow_y = int(ry + row_h * 0.5)
+            if item.expandable:
+                arrow_text = "v" if item.expanded else ">"
+                rl.draw_text(arrow_text, arrow_x, int(ry + 4), 14, rl.Color(180, 180, 180, 255))
+
+            cell_x = int(x + indent + (16 if item.expandable else 4))
+
+            # Checkbox
+            if item.checkable:
+                box_x = float(cell_x)
+                box_y = ry + (row_h - 14) * 0.5
+                box_size = 14.0
+                rl.draw_rectangle_rec(rl.Rectangle(box_x, box_y, box_size, box_size), rl.Color(50, 50, 50, 255))
+                rl.draw_rectangle_lines_ex(rl.Rectangle(box_x, box_y, box_size, box_size), 1.5, rl.Color(140, 140, 140, 255))
+                if item.checked:
+                    pad = 2
+                    rl.draw_line(
+                        int(box_x + pad), int(box_y + box_size * 0.5),
+                        int(box_x + box_size * 0.4), int(box_y + box_size - pad),
+                        rl.Color(0, 200, 0, 255),
+                    )
+                    rl.draw_line(
+                        int(box_x + box_size * 0.4), int(box_y + box_size - pad),
+                        int(box_x + box_size - pad), int(box_y + pad),
+                        rl.Color(0, 200, 0, 255),
+                    )
+                cell_x += 18
+
+            # Column text
+            for col in range(tree.columns):
+                col_x = float(x + col * col_widths[col]) if col > 0 else float(cell_x)
+                col_text = item.text if col == 0 else str(item.metadata.get(f"col_{col}", ""))
+                col_color = rl.Color(160, 160, 160, 255) if item.disabled else rl.Color(220, 220, 220, 255)
+                rl.draw_text(col_text, int(col_x), int(ry + 4), 14, col_color)
+
+        rl.end_scissor_mode()
+
+        # Column headers
+        if tree.column_titles:
+            header_h = 22
+            rl.draw_rectangle_rec(rl.Rectangle(x, y - header_h, w, header_h), rl.Color(40, 40, 40, 255))
+            for ci, title in enumerate(tree.column_titles):
+                rl.draw_text(title, int(x + ci * col_widths[ci] + 4), int(y - header_h + 4), 12, rl.Color(180, 180, 180, 255))
+
+    # ── RichTextLabel ──
+
+    def _render_rich_text_label(self, layout: dict[str, Any], rtl: RichTextLabel) -> None:
+        import re
+        from dataclasses import dataclass
+
+        @dataclass
+        class _StyledSpan:
+            text: str
+            bold: bool = False
+            italic: bool = False
+            color: tuple[int, int, int, int] | None = None
+            font_size: int = 0
+
+        x = float(layout["x"])
+        y = float(layout["y"])
+        w = float(layout["width"])
+        h = float(layout["height"])
+
+        original_text = rtl.text
+        default_size = rtl.font_size
+        default_color = rtl.default_color
+
+        # Parse BBCode tags — match [b], [/b], [i], [/i], [color=#RRGGBB]...[/color], [font size=N]...[/font]
+        raw_spans: list[_StyledSpan] = []
+        bold_active = False
+        italic_active = False
+        pos = 0
+
+        # Simple sequential parser
+        i = 0
+        text_len = len(original_text)
+        current_plain = ""
+
+        def _flush_plain() -> None:
+            nonlocal current_plain
+            if current_plain:
+                raw_spans.append(_StyledSpan(
+                    text=current_plain,
+                    bold=bold_active,
+                    italic=italic_active,
+                    color=default_color,
+                    font_size=default_size,
+                ))
+                current_plain = ""
+
+        while i < text_len:
+            c = original_text[i]
+            if c == "[":
+                # Check for tags
+                if original_text[i:i + 3] == "[b]":
+                    _flush_plain()
+                    bold_active = True
+                    i += 3
+                    continue
+                if original_text[i:i + 4] == "[/b]":
+                    _flush_plain()
+                    bold_active = False
+                    i += 4
+                    continue
+                if original_text[i:i + 3] == "[i]":
+                    _flush_plain()
+                    italic_active = True
+                    i += 3
+                    continue
+                if original_text[i:i + 4] == "[/i]":
+                    _flush_plain()
+                    italic_active = False
+                    i += 4
+                    continue
+
+                # [color=#RRGGBB]...[/color]
+                color_match = re.match(r"\[color=#([0-9a-fA-F]{6})\](.*?)\[/color\]", original_text[i:], re.DOTALL)
+                if color_match:
+                    _flush_plain()
+                    hex_str = color_match.group(1)
+                    inner_text = color_match.group(2)
+                    rv = int(hex_str[0:2], 16)
+                    gv = int(hex_str[2:4], 16)
+                    bv = int(hex_str[4:6], 16)
+                    raw_spans.append(_StyledSpan(
+                        text=inner_text,
+                        bold=bold_active,
+                        italic=italic_active,
+                        color=(rv, gv, bv, 255),
+                        font_size=default_size,
+                    ))
+                    i += len(color_match.group(0))
+                    continue
+
+                # [font size=N]...[/font]
+                size_match = re.match(r"\[font size=(\d+)\](.*?)\[/font\]", original_text[i:], re.DOTALL)
+                if size_match:
+                    _flush_plain()
+                    fs = max(8, int(size_match.group(1)))
+                    inner_text = size_match.group(2)
+                    raw_spans.append(_StyledSpan(
+                        text=inner_text,
+                        bold=bold_active,
+                        italic=italic_active,
+                        color=default_color,
+                        font_size=fs,
+                    ))
+                    i += len(size_match.group(0))
+                    continue
+
+                current_plain += c
+                i += 1
+            else:
+                current_plain += c
+                i += 1
+
+        _flush_plain()
+
+        if not raw_spans and original_text:
+            raw_spans = [_StyledSpan(text=original_text, color=default_color, font_size=default_size)]
+
+        # Visible characters reveal effect
+        total_chars = sum(len(s.text) for s in raw_spans)
+        visible_count = total_chars
+        if rtl.visible_characters > 0:
+            visible_count = min(total_chars, rtl.visible_characters)
+        elif rtl.percent_visible < 1.0:
+            visible_count = int(total_chars * rtl.percent_visible)
+
+        # Word-wrap into lines of styled spans
+        wrapped_lines: list[list[_StyledSpan]] = []
+        current_line: list[_StyledSpan] = []
+        line_width = 0.0
+        inner_pad = max(10.0, w - 8.0)
+        char_consumed = 0
+
+        for span in raw_spans:
+            fs = span.font_size or default_size
+            for char in span.text:
+                if char_consumed >= visible_count:
+                    break
+                char_width = float(rl.measure_text(char, fs))
+
+                if line_width + char_width > inner_pad and current_line:
+                    wrapped_lines.append(current_line)
+                    current_line = []
+                    line_width = 0.0
+
+                if current_line and (
+                    current_line[-1].bold == span.bold
+                    and current_line[-1].italic == span.italic
+                    and current_line[-1].color == span.color
+                    and current_line[-1].font_size == fs
+                ):
+                    current_line[-1].text += char
+                else:
+                    current_line.append(_StyledSpan(
+                        text=char,
+                        bold=span.bold,
+                        italic=span.italic,
+                        color=span.color,
+                        font_size=fs,
+                    ))
+                line_width += char_width
+                char_consumed += 1
+            if char_consumed >= visible_count:
+                break
+
+        if current_line:
+            wrapped_lines.append(current_line)
+
+        # Max line height
+        max_line_h = float(default_size + 4)
+        for line in wrapped_lines:
+            for span in line:
+                max_line_h = max(max_line_h, float((span.font_size or default_size) + 4))
+
+        total_height = max_line_h * len(wrapped_lines)
+        rtl._max_scroll = max(0.0, total_height - h) if rtl.scroll_active else 0.0
+        if rtl._scroll_offset > rtl._max_scroll:
+            rtl._scroll_offset = rtl._max_scroll
+
+        rl.begin_scissor_mode(int(x), int(y), int(w), int(h))
+
+        draw_y = y + 4 - rtl._scroll_offset
+        for line in wrapped_lines:
+            draw_x = x + 4
+            for span in line:
+                if not span.text:
+                    continue
+                fs = span.font_size or default_size
+                rv, gv, bv, av = span.color or default_color
+                color = rl.Color(rv, gv, bv, av)
+                rl.draw_text(span.text, int(draw_x), int(draw_y), fs, color)
+                draw_x += float(rl.measure_text(span.text, fs))
+            draw_y += max_line_h
+
+        rl.end_scissor_mode()
+
+    # ── Popup / PopupMenu / Window ──
+
+    def _render_popup(self, layout: dict[str, Any], popup: UIPopup) -> None:
+        x = float(layout["x"])
+        y = float(layout["y"])
+        w = float(layout["width"])
+        h = float(layout["height"])
+        if not popup.transparent_background:
+            rl.draw_rectangle_rec(
+                rl.Rectangle(x, y, w, h),
+                rl.Color(*popup._overlay_color),
+            )
+        # Content area
+        pad = 4.0
+        rl.draw_rectangle_rec(
+            rl.Rectangle(x + pad, y + pad, w - pad * 2, h - pad * 2),
+            rl.Color(35, 35, 38, 255),
+        )
+        rl.draw_rectangle_lines_ex(
+            rl.Rectangle(x + pad, y + pad, w - pad * 2, h - pad * 2),
+            1.0,
+            rl.Color(70, 70, 74, 255),
+        )
+
+    def _render_popup_menu(self, layout: dict[str, Any], popup_menu: UIPopupMenu) -> None:
+        x = float(layout["x"]) + popup_menu.popup_position_x
+        y = float(layout["y"]) + popup_menu.popup_position_y
+        w = float(layout["width"])
+
+        total_h = 0.0
+        for item in popup_menu.items:
+            total_h += 4.0 if item.get("separator") else popup_menu._item_height
+
+        if total_h <= 0.0:
+            total_h = popup_menu._item_height
+
+        # Background
+        rl.draw_rectangle_rec(rl.Rectangle(x, y, w, total_h), rl.Color(40, 40, 44, 255))
+        rl.draw_rectangle_lines_ex(rl.Rectangle(x, y, w, total_h), 1.0, rl.Color(80, 80, 84, 255))
+
+        item_y = y
+        for i, item in enumerate(popup_menu.items):
+            if item.get("separator"):
+                sep_y = item_y + 1.0
+                rl.draw_line(int(x + 6), int(sep_y), int(x + w - 6), int(sep_y), rl.Color(100, 100, 104, 255))
+                item_y += 4.0
+                continue
+
+            bg_color = rl.Color(55, 55, 60, 255)
+            if i == popup_menu._hovered_index:
+                bg_color = rl.Color(70, 120, 215, 255)
+            rl.draw_rectangle_rec(rl.Rectangle(x, item_y, w, popup_menu._item_height), bg_color)
+
+            item_text = item.get("text", "")
+            text_x = int(x + 8)
+            text_y = int(item_y + max(0.0, (popup_menu._item_height - 14) * 0.5))
+            rl.draw_text(item_text, text_x, text_y, 14, rl.WHITE)
+            item_y += popup_menu._item_height
+
+    def _render_window(self, layout: dict[str, Any], window: UIWindow) -> None:
+        x = float(layout["x"])
+        y = float(layout["y"])
+        w = float(layout["width"])
+        h = float(layout["height"])
+        tb_h = window._title_bar_height
+
+        # Background
+        rl.draw_rectangle_rec(rl.Rectangle(x, y, w, h), rl.Color(45, 45, 50, 250))
+        rl.draw_rectangle_lines_ex(rl.Rectangle(x, y, w, h), 1.5, rl.Color(100, 100, 105, 255))
+
+        # Title bar
+        rl.draw_rectangle_rec(rl.Rectangle(x, y, w, tb_h), rl.Color(60, 60, 65, 255))
+        title_text = window.title
+        rl.draw_text(title_text, int(x + 6), int(y + max(0.0, (tb_h - 16) * 0.5)), 16, rl.Color(220, 220, 220, 255))
+
+        # Close button
+        cb_w = window._close_button_width
+        cb_x = x + w - cb_w
+        rl.draw_rectangle_rec(rl.Rectangle(cb_x, y, cb_w, tb_h), rl.Color(180, 45, 45, 255))
+        close_text = "X"
+        cw = rl.measure_text(close_text, 14)
+        rl.draw_text(close_text, int(cb_x + (cb_w - cw) * 0.5), int(y + max(0.0, (tb_h - 14) * 0.5)), 14, rl.WHITE)
+
+        # Content area border
+        content_y = y + tb_h
+        rl.draw_rectangle_lines_ex(
+            rl.Rectangle(x, content_y, w, h - tb_h), 0.5, rl.Color(80, 80, 85, 255)
+        )

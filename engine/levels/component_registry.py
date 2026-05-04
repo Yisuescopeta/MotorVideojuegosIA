@@ -163,10 +163,14 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.uibutton import UIButton
     from engine.components.uiimage import UIImage
     from engine.components.uipanel import UIPanel
+    from engine.components.ui_popup import UIPopup, UIPopupMenu, UIWindow
     from engine.components.uiscrollcontainer import UIScrollContainer
+    from engine.components.ui_splitcontainer import UISplitContainer
+    from engine.components.ui_tabbar import UITabBar, UITabContainer
     from engine.components.uitext import UIText
     from engine.components.ui_ninepatch import UINinePatchRect
     from engine.components.ui_texture_button import UITextureButton
+    from engine.components.ui_tree import UITree
     from engine.components.uicheckbox import CheckBox
     from engine.components.uilabel import Label
     from engine.components.uilineedit import LineEdit
@@ -176,6 +180,7 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.uitextedit import TextEdit
     from engine.components.backbuffer_copy import BackBufferCopy
     from engine.components.colorrect import ColorRect
+    from engine.components.rich_text_label import RichTextLabel
     from engine.components.directional_light_2d import DirectionalLight2D
     from engine.components.parallax_background import ParallaxBackground
     from engine.components.parallax_layer import ParallaxLayer
@@ -447,11 +452,60 @@ def create_default_registry() -> ComponentRegistry:
         editor_tags=("ui", "layer:UI", "display", "text"),
     )
     registry.register(
+        "RichTextLabel",
+        RichTextLabel,
+        description="Etiqueta de texto con BBCode styling, word-wrap, scroll y reveal effect (adaptado Godot RichTextLabel).",
+        default_payload=RichTextLabel().to_dict(),
+        editor_tags=("ui", "layer:UI", "display", "text", "rich"),
+    )
+    registry.register(
+        "UIPopup",
+        UIPopup,
+        description="Popup modal que aparece sobre el UI con fondo oscuro opcional (adaptado Godot Popup).",
+        default_payload=UIPopup().to_dict(),
+        editor_tags=("ui", "layer:UI", "modal", "popup"),
+    )
+    registry.register(
+        "UIPopupMenu",
+        UIPopupMenu,
+        description="Menu popup con items seleccionables y separadores (adaptado Godot PopupMenu).",
+        default_payload=UIPopupMenu().to_dict(),
+        editor_tags=("ui", "layer:UI", "modal", "menu"),
+    )
+    registry.register(
+        "UIWindow",
+        UIWindow,
+        description="Ventana arrastrable con barra de titulo y boton de cierre (adaptado Godot Window).",
+        default_payload=UIWindow().to_dict(),
+        editor_tags=("ui", "layer:UI", "modal", "window"),
+    )
+    registry.register(
         "TextEdit",
         TextEdit,
         description="Editor de texto multilinea (adaptado Godot TextEdit).",
         default_payload=TextEdit().to_dict(),
         editor_tags=("ui", "layer:UI", "input", "text", "multiline"),
+    )
+    registry.register(
+        "UITabBar",
+        UITabBar,
+        description="Barra de pestañas con tabs clickeables (adaptado Godot TabBar).",
+        default_payload=UITabBar().to_dict(),
+        editor_tags=("ui", "layer:UI", "container", "tabs"),
+    )
+    registry.register(
+        "UITabContainer",
+        UITabContainer,
+        description="Contenedor de pestañas que muestra un hijo por tab (adaptado Godot TabContainer).",
+        default_payload=UITabContainer().to_dict(),
+        editor_tags=("ui", "layer:UI", "container", "tabs"),
+    )
+    registry.register(
+        "UISplitContainer",
+        UISplitContainer,
+        description="Contenedor dividido redimensionable entre dos hijos (adaptado Godot SplitContainer).",
+        default_payload=UISplitContainer().to_dict(),
+        editor_tags=("ui", "layer:UI", "container", "split"),
     )
     registry.register("Timer", Timer)
     registry.register("Marker2D", Marker2D)
@@ -583,5 +637,12 @@ def create_default_registry() -> ComponentRegistry:
         description="Aplica un multiply de color sobre todo el canvas (Godot CanvasModulate).",
         default_payload=CanvasModulate().to_dict(),
         editor_tags=("render", "postfx", "layer:Visual", "canvas"),
+    )
+    registry.register(
+        "UITree",
+        UITree,
+        description="Arbol jerarquico de items con seleccion, checkboxes y columnas (Godot Tree).",
+        default_payload=UITree().to_dict(),
+        editor_tags=("ui", "layer:UI", "tree", "data"),
     )
     return registry
