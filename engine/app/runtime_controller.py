@@ -427,6 +427,40 @@ class RuntimeController:
         effective_backend = selection.get("effective_backend")
         return str(effective_backend or selection["requested_backend"])
 
+    @staticmethod
+    def filter_by_process_mode(
+        entities: list["Entity"],
+        state: "EngineState",
+    ) -> list["Entity"]:
+        """Filter and sort entities by process_mode and process_priority."""
+        filtered: list["Entity"] = []
+        for entity in entities:
+            mode = "inherit"
+            priority = 0
+            for comp in entity._components.values():
+                pm = getattr(comp, "process_mode", "inherit")
+                pr = getattr(comp, "process_priority", 0)
+                if pm != "inherit":
+                    mode = pm
+                    priority = pr
+                    break
+                priority = max(priority, pr)
+
+            if mode == "disabled":
+                continue
+            if mode == "when_paused" and state not in (
+                EngineState.PAUSED,
+                EngineState.STEPPING,
+            ):
+                continue
+            # "always" and "inherit" always pass
+            filtered.append(entity)
+        filtered.sort(key=lambda e: max(
+            (getattr(c, "process_priority", 0) for c in e._components.values()),
+            default=0,
+        ))
+        return filtered
+
     def refresh_default_physics_backend(self) -> None:
         physics_system = self._get_physics_system()
         collision_system = self._get_collision_system()

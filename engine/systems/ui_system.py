@@ -549,6 +549,14 @@ class UISystem:
                 child.name: self._resolve_legacy_child_rect(child, parent_rect)
                 for child in children
             }
+        elif layout_mode == "grid":
+            child_rects = self._layout_grid(parent_rect_transform, children, parent_rect)
+        elif layout_mode == "flow":
+            child_rects = self._layout_flow(parent_rect_transform, children, parent_rect)
+        elif layout_mode == "aspect_ratio":
+            child_rects = self._layout_aspect_ratio(parent_rect_transform, children, parent_rect)
+        elif layout_mode == "center":
+            child_rects = self._layout_center(parent_rect_transform, children, parent_rect)
         else:
             child_rects = self._resolve_stack_child_rects(
                 children,
@@ -558,7 +566,9 @@ class UISystem:
             )
 
         for child in children:
-            child_rect = child_rects.get(child.name, dict(parent_rect))
+            child_rect = child_rects.get(child.name)
+            if child_rect is None:
+                continue
             child_rect["canvas"] = parent_rect["canvas"]
             self._layout_cache[child.name] = child_rect
             self._draw_order.append(child.name)
@@ -719,7 +729,7 @@ class UISystem:
         if rect_transform is None or not rect_transform.enabled:
             return "free"
         layout_mode = str(getattr(rect_transform, "layout_mode", "free") or "free").strip().lower()
-        if layout_mode in {"vertical_stack", "horizontal_stack"}:
+        if layout_mode in {"vertical_stack", "horizontal_stack", "grid", "flow", "aspect_ratio", "center"}:
             return layout_mode
         return "free"
 
@@ -819,6 +829,191 @@ class UISystem:
             and y >= float(rect["y"])
             and y <= float(rect["y"]) + float(rect["height"])
         )
+
+    def _get_child_preferred_size(self, child: Entity) -> tuple[float, float]:
+        rt = child.get_component(RectTransform)
+        if rt is None or not rt.enabled:
+            return 32.0, 32.0
+        return max(1.0, float(rt.width)), max(1.0, float(rt.height))
+
+    def _layout_grid(
+        self,
+        container: RectTransform,
+        children: list[Entity],
+        parent_rect: dict[str, Any],
+    ) -> dict[str, dict[str, Any]]:
+        resolved: dict[str, dict[str, Any]] = {}
+        columns = max(1, int(getattr(container, "grid_columns", 2)))
+        rows = max(1, int(getattr(container, "grid_rows", 1)))
+        h_spacing = float(getattr(container, "spacing", 4.0))
+        v_spacing = float(getattr(container, "spacing", 4.0))
+        scale_x = float(parent_rect.get("scale_x", 1.0))
+        scale_y = float(parent_rect.get("scale_y", 1.0))
+        pad_l = max(0.0, float(container.padding_left) * scale_x)
+        pad_t = max(0.0, float(container.padding_top) * scale_y)
+        pad_r = max(0.0, float(container.padding_right) * scale_x)
+        pad_b = max(0.0, float(container.padding_bottom) * scale_y)
+
+        cw = float(parent_rect["width"])
+        ch = float(parent_rect["height"])
+        cell_w = max(1.0, (cw - pad_l - pad_r - h_spacing * (columns - 1)) / float(columns))
+        cell_h = max(1.0, (ch - pad_t - pad_b - v_spacing * (rows - 1)) / float(rows))
+
+        for i, child in enumerate(children):
+            col = i % columns
+            row_idx = i // columns
+            if row_idx >= rows:
+                break
+            x = float(parent_rect["x"]) + pad_l + col * (cell_w + h_spacing)
+            y = float(parent_rect["y"]) + pad_t + row_idx * (cell_h + v_spacing)
+            resolved[child.name] = {
+                "x": x,
+                "y": y,
+                "width": cell_w,
+                "height": cell_h,
+                "rotation": 0.0,
+                "scale_x": scale_x,
+                "scale_y": scale_y,
+            }
+        return resolved
+
+    def _layout_flow(
+        self,
+        container: RectTransform,
+        children: list[Entity],
+        parent_rect: dict[str, Any],
+    ) -> dict[str, dict[str, Any]]:
+        resolved: dict[str, dict[str, Any]] = {}
+        direction = str(getattr(container, "flow_direction", "horizontal") or "horizontal").strip().lower()
+        spacing = float(getattr(container, "spacing", 4.0))
+        scale_x = float(parent_rect.get("scale_x", 1.0))
+        scale_y = float(parent_rect.get("scale_y", 1.0))
+        pad_l = max(0.0, float(container.padding_left) * scale_x)
+        pad_t = max(0.0, float(container.padding_top) * scale_y)
+        pad_r = max(0.0, float(container.padding_right) * scale_x)
+        pad_b = max(0.0, float(container.padding_bottom) * scale_y)
+
+        if direction == "horizontal":
+            x = float(parent_rect["x"]) + pad_l
+            y = float(parent_rect["y"]) + pad_t
+            max_row_h = 0.0
+            row_start_x = x
+            max_x = float(parent_rect["x"]) + float(parent_rect["width"]) - pad_r
+
+            for child in children:
+                child_w, child_h = self._get_child_preferred_size(child)
+                if x + child_w > max_x and x != row_start_x:
+                    x = row_start_x
+                    y += max_row_h + spacing
+                    max_row_h = 0.0
+                resolved[child.name] = {
+                    "x": x,
+                    "y": y,
+                    "width": child_w,
+                    "height": child_h,
+                    "rotation": 0.0,
+                    "scale_x": scale_x,
+                    "scale_y": scale_y,
+                }
+                x += child_w + spacing
+                max_row_h = max(max_row_h, child_h)
+        else:
+            x = float(parent_rect["x"]) + pad_l
+            y = float(parent_rect["y"]) + pad_t
+            max_col_w = 0.0
+            col_start_y = y
+            max_y = float(parent_rect["y"]) + float(parent_rect["height"]) - pad_b
+
+            for child in children:
+                child_w, child_h = self._get_child_preferred_size(child)
+                if y + child_h > max_y and y != col_start_y:
+                    x += max_col_w + spacing
+                    y = col_start_y
+                    max_col_w = 0.0
+                resolved[child.name] = {
+                    "x": x,
+                    "y": y,
+                    "width": child_w,
+                    "height": child_h,
+                    "rotation": 0.0,
+                    "scale_x": scale_x,
+                    "scale_y": scale_y,
+                }
+                y += child_h + spacing
+                max_col_w = max(max_col_w, child_h)
+        return resolved
+
+    def _layout_aspect_ratio(
+        self,
+        container: RectTransform,
+        children: list[Entity],
+        parent_rect: dict[str, Any],
+    ) -> dict[str, dict[str, Any]]:
+        resolved: dict[str, dict[str, Any]] = {}
+        ratio = max(0.1, float(getattr(container, "aspect_ratio", 1.0)))
+        stretch_mode = str(getattr(container, "aspect_stretch_mode", "fit") or "fit").strip().lower()
+
+        cw = float(parent_rect["width"])
+        ch = float(parent_rect["height"])
+        scale_x = float(parent_rect.get("scale_x", 1.0))
+        scale_y = float(parent_rect.get("scale_y", 1.0))
+
+        for child in children:
+            if stretch_mode == "fill":
+                target_w = cw
+                target_h = cw / ratio
+                if target_h < ch:
+                    target_h = ch
+                    target_w = target_h * ratio
+            elif stretch_mode == "width_control_height":
+                target_w = cw
+                target_h = cw / ratio
+            else:
+                target_w = min(cw, ch * ratio)
+                target_h = target_w / ratio
+                if target_h > ch:
+                    target_h = ch
+                    target_w = target_h * ratio
+
+            cx = float(parent_rect["x"]) + (cw - target_w) * 0.5
+            cy = float(parent_rect["y"]) + (ch - target_h) * 0.5
+            resolved[child.name] = {
+                "x": cx,
+                "y": cy,
+                "width": max(1.0, target_w),
+                "height": max(1.0, target_h),
+                "rotation": 0.0,
+                "scale_x": scale_x,
+                "scale_y": scale_y,
+            }
+        return resolved
+
+    def _layout_center(
+        self,
+        container: RectTransform,
+        children: list[Entity],
+        parent_rect: dict[str, Any],
+    ) -> dict[str, dict[str, Any]]:
+        resolved: dict[str, dict[str, Any]] = {}
+        cw = float(parent_rect["width"])
+        ch = float(parent_rect["height"])
+        scale_x = float(parent_rect.get("scale_x", 1.0))
+        scale_y = float(parent_rect.get("scale_y", 1.0))
+
+        for child in children:
+            child_w, child_h = self._get_child_preferred_size(child)
+            cx = float(parent_rect["x"]) + (cw - child_w) * 0.5
+            cy = float(parent_rect["y"]) + (ch - child_h) * 0.5
+            resolved[child.name] = {
+                "x": cx,
+                "y": cy,
+                "width": child_w,
+                "height": child_h,
+                "rotation": 0.0,
+                "scale_x": scale_x,
+                "scale_y": scale_y,
+            }
+        return resolved
 
     def _resolve_interaction_enabled(self, allow_interaction: Optional[bool]) -> bool:
         if allow_interaction is not None:

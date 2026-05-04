@@ -18,7 +18,12 @@ from engine.resources.animation_resource import AnimationResource, AnimationTrac
 from engine.resources.audio_stream_resource import AudioStreamResource
 from engine.resources.curve_2d import Curve2D
 from engine.resources.physics_material import PhysicsMaterial
-from engine.resources.sprite_frames_resource import SpriteFramesResource
+from engine.resources.sprite_frames_resource import (
+    SpriteFrame,
+    SpriteAnimation,
+    SpriteFrames,
+    SpriteFramesResource,
+)
 from engine.resources.stylebox_resource import StyleBoxResource
 from engine.resources.texture_manager import TextureManager
 from engine.resources.theme_resource import ThemeResource
@@ -29,6 +34,9 @@ __all__ = [
     "AudioStreamResource",
     "Curve2D",
     "PhysicsMaterial",
+    "SpriteFrame",
+    "SpriteAnimation",
+    "SpriteFrames",
     "SpriteFramesResource",
     "StyleBoxResource",
     "TextureManager",

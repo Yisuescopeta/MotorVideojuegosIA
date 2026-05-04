@@ -1,6 +1,7 @@
 """
 engine/systems/input_system.py - Lectura declarativa de InputMap con soporte
-para teclado, ratón y gamepad + detección de bordes just_pressed/just_released.
+para teclado, ratón y gamepad + detección de bordes just_pressed/just_released
++ accumulated input buffering.
 """
 
 from typing import Dict, List, Optional, Tuple
@@ -8,6 +9,7 @@ from typing import Dict, List, Optional, Tuple
 import pyray as rl
 from engine.components.inputmap import InputMap
 from engine.ecs.world import World
+from engine.events.input_events import InputEventAction
 
 KEY_LOOKUP: Dict[str, int] = {
     "A": rl.KEY_A,
@@ -82,9 +84,18 @@ class InputSystem:
     """Actualiza estados de acciones a partir de un InputMap serializable,
     con soporte para teclado, ratón y gamepad."""
 
+    use_accumulated_input: bool = True
+
     def __init__(self) -> None:
         self._overrides: Dict[str, Tuple[Dict[str, float], int]] = {}
         self._prev_states: Dict[str, Dict[str, float]] = {}
+        self._buffered_events: list[InputEventAction] = []
+
+    def flush_buffered_events(self) -> list[InputEventAction]:
+        """Flush accumulated InputEventAction buffer and return events."""
+        events = list(self._buffered_events)
+        self._buffered_events.clear()
+        return events
 
     def inject_state(self, entity_name: str, state: Dict[str, float], frames: int = 1) -> None:
         """Inyecta input para automatización visual o pruebas."""
@@ -211,6 +222,15 @@ class InputSystem:
                 'gamepad_a_just_pressed': self._gamepad_button_just_pressed(['BUTTON_A']),
                 'gamepad_x_just_pressed': self._gamepad_button_just_pressed(['BUTTON_X']),
             }
+
+            # Emit InputEventAction events for accumulated input
+            if self.use_accumulated_input:
+                event = InputEventAction(
+                    action=entity_name,
+                    strength=max(action_1, action_2),
+                    pressed=action_1 > 0.5 or action_2 > 0.5,
+                )
+                self._buffered_events.append(event)
 
             # Store prev states for next frame edge detection
             self._prev_states[entity_name] = {

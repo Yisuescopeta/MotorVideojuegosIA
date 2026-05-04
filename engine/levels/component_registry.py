@@ -170,7 +170,13 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.uislider import Slider
     from engine.components.uispinbox import SpinBox
     from engine.components.uitextedit import TextEdit
+    from engine.components.backbuffer_copy import BackBufferCopy
+    from engine.components.colorrect import ColorRect
+    from engine.components.directional_light_2d import DirectionalLight2D
     from engine.components.parallax_layer import ParallaxLayer
+    from engine.components.remote_transform_2d import RemoteTransform2D
+    from engine.components.touch_screen_button import TouchScreenButton
+    from engine.components.gpu_particles_2d import GPUParticles2D
     from engine.components.visible_on_screen_notifier_2d import (
         VisibleOnScreenEnabler2D,
         VisibleOnScreenNotifier2D,
@@ -455,5 +461,47 @@ def create_default_registry() -> ComponentRegistry:
         description="Emisor de particulas 2D calculadas en CPU (equivalente Godot CPUParticles2D).",
         default_payload=ParticleEmitter2D().to_dict(),
         editor_tags=("particles", "render", "layer:Visual", "fx"),
+    )
+    registry.register(
+        "RemoteTransform2D",
+        RemoteTransform2D,
+        description="Pushes transform (position, rotation, scale) to another entity (Godot RemoteTransform2D).",
+        default_payload=RemoteTransform2D().to_dict(),
+        editor_tags=("transform", "layer:Gameplay", "remote"),
+    )
+    registry.register(
+        "TouchScreenButton",
+        TouchScreenButton,
+        description="Button designed for touch screen interaction (Godot TouchScreenButton).",
+        default_payload=TouchScreenButton().to_dict(),
+        editor_tags=("ui", "touch", "layer:UI", "button"),
+    )
+    registry.register(
+        "GPUParticles2D",
+        GPUParticles2D,
+        description="GPU-based particles 2D (MVP wrapper, Godot GPUParticles2D).",
+        default_payload=GPUParticles2D().to_dict(),
+        editor_tags=("particles", "render", "layer:Visual", "fx", "gpu"),
+    )
+    registry.register(
+        "DirectionalLight2D",
+        DirectionalLight2D,
+        description="Luz direccional 2D que proyecta en una direccion con distancia configurable.",
+        default_payload=DirectionalLight2D().to_dict(),
+        editor_tags=("render", "lighting", "layer:Visual"),
+    )
+    registry.register(
+        "ColorRect",
+        ColorRect,
+        description="Rectangulo de color solido para fondos UI o debug.",
+        default_payload=ColorRect().to_dict(),
+        editor_tags=("ui", "render", "layer:UI", "debug"),
+    )
+    registry.register(
+        "BackBufferCopy",
+        BackBufferCopy,
+        description="Copia una region de pantalla en un buffer para efectos de post-procesado.",
+        default_payload=BackBufferCopy().to_dict(),
+        editor_tags=("render", "postfx", "layer:Visual"),
     )
     return registry

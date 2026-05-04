@@ -14,6 +14,8 @@ from engine.assets.asset_service import AssetService
 from engine.components.animator import Animator
 from engine.components.camera2d import Camera2D
 from engine.components.collider import Collider
+from engine.components.colorrect import ColorRect
+from engine.components.directional_light_2d import DirectionalLight2D
 from engine.components.joint2d import Joint2D
 from engine.components.polygon2d import Polygon2D
 from engine.components.renderorder2d import RenderOrder2D
@@ -1491,6 +1493,14 @@ class RenderSystem:
             if polygon is not None and polygon.enabled and len(polygon.points) >= 3:
                 self._draw_polygon(transform, polygon)
                 return
+            color_rect = entity.get_component(ColorRect)
+            if color_rect is not None and color_rect.enabled:
+                self._draw_color_rect(transform, color_rect)
+                return
+            dir_light = entity.get_component(DirectionalLight2D)
+            if dir_light is not None and dir_light.enabled:
+                self._draw_directional_light(transform, dir_light)
+                return
             self._draw_placeholder(entity.name, transform)
 
     def _draw_animated_sprite(self, transform: Transform, animator: Animator) -> None:
@@ -1552,6 +1562,26 @@ class RenderSystem:
         rl.draw_rectangle(rect_x, rect_y, width, height, self.PLACEHOLDER_COLOR)
         if self.debug_draw_labels:
             rl.draw_text(name, rect_x, rect_y - 15, 10, rl.WHITE)
+
+    def _draw_color_rect(self, transform: Transform, color_rect: ColorRect) -> None:
+        width = int(color_rect.width * transform.scale_x)
+        height = int(color_rect.height * transform.scale_y)
+        rect_x = int(transform.x - width / 2)
+        rect_y = int(transform.y - height / 2)
+        rl.draw_rectangle(rect_x, rect_y, width, height, rl.Color(*color_rect.color))
+        if self.debug_draw_labels:
+            rl.draw_text("ColorRect", rect_x, rect_y - 15, 10, rl.WHITE)
+
+    def _draw_directional_light(self, transform: Transform, dir_light: DirectionalLight2D) -> None:
+        start_x = int(transform.x)
+        start_y = int(transform.y)
+        end_x = int(transform.x + dir_light.direction_x * dir_light.max_distance)
+        end_y = int(transform.y + dir_light.direction_y * dir_light.max_distance)
+        color = rl.Color(dir_light.color_r, dir_light.color_g, dir_light.color_b, min(255, int(dir_light.energy * 100)))
+        rl.draw_line(start_x, start_y, end_x, end_y, color)
+        rl.draw_circle(start_x, start_y, 6.0, rl.Color(dir_light.color_r, dir_light.color_g, dir_light.color_b, 255))
+        if self.debug_draw_labels:
+            rl.draw_text("DirLight", start_x + 8, start_y - 12, 10, rl.YELLOW)
 
     def _draw_polygon(self, transform: Transform, polygon: Polygon2D) -> None:
         if len(polygon.points) < 3:

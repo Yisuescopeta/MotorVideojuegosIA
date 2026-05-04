@@ -10,6 +10,7 @@ from typing import Any
 import pyray as rl
 from engine.assets.asset_reference import normalize_asset_reference, reference_has_identity
 from engine.assets.asset_service import AssetService
+from engine.components.colorrect import ColorRect
 from engine.components.uibutton import UIButton
 from engine.components.uicheckbox import CheckBox
 from engine.components.uiimage import UIImage
@@ -112,6 +113,10 @@ class UIRenderSystem:
         panel = entity.get_component(UIPanel)
         if panel is not None and panel.enabled:
             self._render_ui_panel(layout, panel)
+
+        color_rect = entity.get_component(ColorRect)
+        if color_rect is not None and color_rect.enabled:
+            self._render_color_rect(layout, color_rect)
 
         line_edit = entity.get_component(LineEdit)
         if line_edit is not None and line_edit.enabled:
@@ -315,6 +320,10 @@ class UIRenderSystem:
             rl.draw_rectangle_rec(rect, rl.Color(*panel.color))
             if panel.border_width > 0:
                 rl.draw_rectangle_lines_ex(rect, float(panel.border_width), rl.Color(*panel.border_color))
+
+    def _render_color_rect(self, layout: dict[str, Any], color_rect: ColorRect) -> None:
+        rect = rl.Rectangle(float(layout["x"]), float(layout["y"]), float(layout["width"]), float(layout["height"]))
+        rl.draw_rectangle_rec(rect, rl.Color(*color_rect.color))
 
     def _render_line_edit(self, layout: dict[str, Any], line_edit: LineEdit) -> None:
         x = float(layout["x"])

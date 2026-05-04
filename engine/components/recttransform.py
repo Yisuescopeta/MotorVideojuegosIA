@@ -8,7 +8,7 @@ from typing import Any
 
 from engine.ecs.component import Component
 
-LAYOUT_MODES = {"free", "vertical_stack", "horizontal_stack"}
+LAYOUT_MODES = {"free", "vertical_stack", "horizontal_stack", "grid", "flow", "aspect_ratio", "center"}
 SIZE_MODES = {"fixed", "stretch"}
 LAYOUT_ALIGNS = {"start", "center", "end", "stretch"}
 
@@ -58,6 +58,14 @@ class RectTransform(Component):
         focus_mode: str = "none",
         mouse_filter: str = "pass",
         focusable: bool = False,
+        # Grid layout
+        grid_columns: int = 2,
+        grid_rows: int = 1,
+        # Flow layout
+        flow_direction: str = "horizontal",
+        # Aspect ratio layout
+        aspect_ratio: float = 1.0,
+        aspect_stretch_mode: str = "fit",
     ) -> None:
         self.enabled = enabled
         self.anchor_min_x = float(anchor_min_x)
@@ -87,6 +95,11 @@ class RectTransform(Component):
         self.focus_mode = _normalize_choice(focus_mode, default="none", allowed={"none", "click", "all"})
         self.mouse_filter = _normalize_choice(mouse_filter, default="pass", allowed={"pass", "stop", "ignore"})
         self.focusable = bool(focusable)
+        self.grid_columns = _coerce_int(grid_columns, default=2)
+        self.grid_rows = _coerce_int(grid_rows, default=1)
+        self.flow_direction = _normalize_choice(flow_direction, default="horizontal", allowed={"horizontal", "vertical"})
+        self.aspect_ratio = max(0.1, float(aspect_ratio))
+        self.aspect_stretch_mode = _normalize_choice(aspect_stretch_mode, default="fit", allowed={"fit", "fill", "width_control_height"})
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -118,6 +131,11 @@ class RectTransform(Component):
             "focus_mode": self.focus_mode,
             "mouse_filter": self.mouse_filter,
             "focusable": self.focusable,
+            "grid_columns": self.grid_columns,
+            "grid_rows": self.grid_rows,
+            "flow_direction": self.flow_direction,
+            "aspect_ratio": self.aspect_ratio,
+            "aspect_stretch_mode": self.aspect_stretch_mode,
         }
 
     @classmethod
@@ -151,4 +169,9 @@ class RectTransform(Component):
             focus_mode=data.get("focus_mode", "none"),
             mouse_filter=data.get("mouse_filter", "pass"),
             focusable=data.get("focusable", False),
+            grid_columns=data.get("grid_columns", 2),
+            grid_rows=data.get("grid_rows", 1),
+            flow_direction=data.get("flow_direction", "horizontal"),
+            aspect_ratio=data.get("aspect_ratio", 1.0),
+            aspect_stretch_mode=data.get("aspect_stretch_mode", "fit"),
         )

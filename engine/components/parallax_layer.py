@@ -24,6 +24,9 @@ class ParallaxLayer(Component):
         follow_viewport: bool = True,
         autoscroll_x: float = 0.0,
         autoscroll_y: float = 0.0,
+        repeat_size_x: float = 0.0,
+        repeat_size_y: float = 0.0,
+        repeat_times: int = 1,
     ) -> None:
         self.enabled: bool = True
         self.motion_scale_x: float = float(motion_scale_x)
@@ -35,6 +38,9 @@ class ParallaxLayer(Component):
         self.follow_viewport: bool = bool(follow_viewport)
         self.autoscroll_x: float = float(autoscroll_x)
         self.autoscroll_y: float = float(autoscroll_y)
+        self.repeat_size_x: float = max(0.0, float(repeat_size_x))
+        self.repeat_size_y: float = max(0.0, float(repeat_size_y))
+        self.repeat_times: int = max(0, int(repeat_times))
 
         # Estado de runtime (no serializable)
         self._rest_x: float = 0.0
@@ -55,6 +61,9 @@ class ParallaxLayer(Component):
             "follow_viewport": self.follow_viewport,
             "autoscroll_x": self.autoscroll_x,
             "autoscroll_y": self.autoscroll_y,
+            "repeat_size_x": self.repeat_size_x,
+            "repeat_size_y": self.repeat_size_y,
+            "repeat_times": self.repeat_times,
         }
 
     @classmethod
@@ -69,6 +78,9 @@ class ParallaxLayer(Component):
             follow_viewport=data.get("follow_viewport", True),
             autoscroll_x=data.get("autoscroll_x", 0.0),
             autoscroll_y=data.get("autoscroll_y", 0.0),
+            repeat_size_x=data.get("repeat_size_x", 0.0),
+            repeat_size_y=data.get("repeat_size_y", 0.0),
+            repeat_times=data.get("repeat_times", 1),
         )
         component.enabled = data.get("enabled", True)
         return component
