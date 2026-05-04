@@ -15,7 +15,7 @@ class LightOccluder2D(Component):
     MVP: solo soporta forma "box" (rectangulo axis-aligned).
     """
 
-    VALID_SHAPES: tuple[str, ...] = ("box", "circle", "polygon")
+    VALID_SHAPES: set[str] = {"box"}
 
     def __init__(
         self,

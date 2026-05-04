@@ -24,14 +24,14 @@ class TestLightOccluder2DComponent(unittest.TestCase):
 
     def test_create_occluder_custom(self):
         occluder = LightOccluder2D(
-            shape="circle",
+            shape="box",
             enabled=False,
             width=64.0,
             height=48.0,
             points=[(0.0, 0.0), (10.0, 10.0)],
         )
         self.assertFalse(occluder.enabled)
-        self.assertEqual(occluder.shape, "circle")
+        self.assertEqual(occluder.shape, "box")
         self.assertEqual(occluder.width, 64.0)
         self.assertEqual(occluder.height, 48.0)
         self.assertEqual(occluder.points, [(0.0, 0.0), (10.0, 10.0)])
@@ -45,10 +45,12 @@ class TestLightOccluder2DComponent(unittest.TestCase):
         bounds = occluder.get_bounds(10.0, 20.0)
         self.assertEqual(bounds, (10.0, 20.0, 74.0, 68.0))
 
-    def test_occluder_bounds_non_box(self):
+    def test_occluder_bounds_non_box_falls_back_to_box(self):
+        """Shapes no válidas ('circle', 'polygon') caen a 'box' y usan dimensiones reales del occluder."""
         occluder = LightOccluder2D(shape="circle", width=100.0, height=200.0)
+        self.assertEqual(occluder.shape, "box")
         bounds = occluder.get_bounds(5.0, 15.0)
-        self.assertEqual(bounds, (5.0, 15.0, 37.0, 47.0))
+        self.assertEqual(bounds, (5.0, 15.0, 105.0, 215.0))
 
     def test_occluder_serialization_roundtrip(self):
         original = LightOccluder2D(

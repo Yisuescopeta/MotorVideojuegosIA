@@ -1,7 +1,7 @@
 """engine/rendering/shader_runtime.py — Motor de shader 2D en Python (MVP, sin GPU).
 
 Aplica operaciones predefinidas sobre colores de píxel/textura:
-modulate, tint, alpha threshold, UV scroll, tint_replace.
+modulate, tint, alpha.
 """
 
 from __future__ import annotations
@@ -17,15 +17,15 @@ class ShaderRuntime:
 
     Soporta operaciones predefinidas:
     - modulate: multiplica el color de textura por un color uniform
-    - alpha_threshold: descarta píxeles por debajo de umbral
-    - uv_scroll: desplaza coordenadas UV
-    - tint_replace: reemplaza color por completo
+    - tint: reemplaza color por completo
+    - alpha: multiplica canal alpha por factor uniform
     """
 
     @staticmethod
     def apply(shader: "Shader2DResource", color: tuple, alpha: float = 1.0) -> tuple:
         """Aplica el shader a un color de textura/píxel.
 
+        Operaciones implementadas: modulate, tint, alpha.
         Retorna (r, g, b, a) modificado.
         """
         r, g, b, a = color
