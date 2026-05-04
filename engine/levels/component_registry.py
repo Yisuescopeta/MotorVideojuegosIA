@@ -103,6 +103,7 @@ class ComponentRegistry:
 def create_default_registry() -> ComponentRegistry:
     """Crea un registro con los componentes predeterminados del motor."""
     from engine.components.animator import Animator
+    from engine.components.area2d import Area2D
     from engine.components.audio_listener_2d import AudioListener2D
     from engine.components.audiosource import AudioSource
     from engine.components.camera2d import Camera2D
@@ -110,6 +111,7 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.particle_emitter2d import ParticleEmitter2D
     from engine.components.charactercontroller2d import CharacterController2D
     from engine.components.collider import Collider
+    from engine.components.collision_filter_2d import CollisionFilter2D
     from engine.components.gameplay2d import (
         Checkpoint2D,
         Collectible2D,
@@ -167,6 +169,13 @@ def create_default_registry() -> ComponentRegistry:
         editor_tags=("render", "tag:Polygon", "layer:Visual"),
     )
     registry.register("Collider", Collider)
+    registry.register(
+        "CollisionFilter2D",
+        CollisionFilter2D,
+        description="Define capas de colisión y máscara para filtrado entre entidades.",
+        default_payload=CollisionFilter2D().to_dict(),
+        editor_tags=("physics", "layer:Physics", "collision"),
+    )
     registry.register(
         "Collectible2D",
         Collectible2D,
@@ -241,6 +250,13 @@ def create_default_registry() -> ComponentRegistry:
         editor_tags=("render", "tag:Line", "layer:Visual"),
     )
     registry.register("RigidBody", RigidBody)
+    registry.register(
+        "Area2D",
+        Area2D,
+        description="Area de monitoreo 2D que detecta cuerpos y areas entrando/saliendo. Adaptado de Godot Area2D.",
+        default_payload=Area2D().to_dict(),
+        editor_tags=("physics", "trigger", "layer:Physics", "area"),
+    )
     registry.register("Animator", Animator)
     registry.register("Camera2D", Camera2D)
     registry.register("AudioSource", AudioSource)

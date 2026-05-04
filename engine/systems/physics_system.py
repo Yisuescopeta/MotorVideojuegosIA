@@ -7,6 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from engine.components.collider import Collider
+from engine.components.collision_filter_2d import CollisionFilter2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
 from engine.config import GRAVITY_DEFAULT, GROUND_Y_TEMP
@@ -89,6 +90,43 @@ class PhysicsSystem:
             collider = entity.get_component(Collider)
             if rigidbody.body_type == "dynamic" and not rigidbody.is_grounded:
                 rigidbody.velocity_y += self.gravity * rigidbody.gravity_scale * delta_time
+
+            if rigidbody.body_type == "dynamic":
+                damping_factor = max(0.0, 1.0 - rigidbody.linear_damping * delta_time)
+                rigidbody.velocity_x *= damping_factor
+                rigidbody.velocity_y *= damping_factor
+
+            if rigidbody.body_type == "dynamic" and rigidbody.angular_velocity != 0.0:
+                transform.rotation += rigidbody.angular_velocity * delta_time
+                angular_damping_factor = max(0.0, 1.0 - rigidbody.angular_damping * delta_time)
+                rigidbody.angular_velocity *= angular_damping_factor
+
+            if rigidbody.body_type == "dynamic":
+                # Aplicar impulsos instantáneos (cambian velocidad directamente)
+                if rigidbody._impulse_buffer_x != 0.0 or rigidbody._impulse_buffer_y != 0.0:
+                    mass = getattr(rigidbody, 'mass', 1.0)
+                    if mass > 0.0:
+                        rigidbody.velocity_x += rigidbody._impulse_buffer_x / mass
+                        rigidbody.velocity_y += rigidbody._impulse_buffer_y / mass
+
+                # Aplicar fuerzas acumuladas (F=ma → a=F/m, v+=a*dt)
+                if rigidbody._force_buffer_x != 0.0 or rigidbody._force_buffer_y != 0.0:
+                    mass = getattr(rigidbody, 'mass', 1.0)
+                    if mass > 0.0:
+                        rigidbody.velocity_x += (rigidbody._force_buffer_x / mass) * delta_time
+                        rigidbody.velocity_y += (rigidbody._force_buffer_y / mass) * delta_time
+
+                # Aplicar torque acumulado
+                if rigidbody._torque_buffer != 0.0:
+                    inertia = getattr(rigidbody, 'inertia', 1.0)
+                    if inertia > 0.0:
+                        angular_accel = rigidbody._torque_buffer / inertia
+                        if not hasattr(rigidbody, 'angular_velocity'):
+                            rigidbody.angular_velocity = 0.0
+                        rigidbody.angular_velocity += angular_accel * delta_time
+
+                # Limpiar buffers al final del frame
+                rigidbody._clear_force_buffers()
 
             delta_x = 0.0 if rigidbody.freeze_x else rigidbody.velocity_x * delta_time
             delta_y = 0.0 if rigidbody.freeze_y else rigidbody.velocity_y * delta_time
@@ -173,6 +211,8 @@ class PhysicsSystem:
     def _should_resolve(self, world: World, entity: Entity, rigidbody: RigidBody, other: Entity) -> bool:
         if not self._layers_can_collide(world, entity, other):
             return False
+        if not self._filter_allows_collision(entity, other):
+            return False
         other_rigidbody = other.get_component(RigidBody)
         if rigidbody.body_type == "kinematic":
             if other_rigidbody is None:
@@ -180,6 +220,20 @@ class PhysicsSystem:
             if other_rigidbody.body_type == "static":
                 return rigidbody.use_full_kinematic_contacts
         return True
+
+    def _filter_allows_collision(self, entity_a: Entity, entity_b: Entity) -> bool:
+        filter_a = entity_a.get_component(CollisionFilter2D)
+        filter_b = entity_b.get_component(CollisionFilter2D)
+
+        if filter_a is None and filter_b is None:
+            return True
+
+        layer_a = filter_a.layer if filter_a is not None else 0xFFFFFFFF
+        mask_a = filter_a.mask if filter_a is not None else 0xFFFFFFFF
+        layer_b = filter_b.layer if filter_b is not None else 0xFFFFFFFF
+        mask_b = filter_b.mask if filter_b is not None else 0xFFFFFFFF
+
+        return (mask_a & layer_b) != 0 and (mask_b & layer_a) != 0
 
     def _collect_candidate_solids(
         self,

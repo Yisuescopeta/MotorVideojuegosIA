@@ -170,6 +170,7 @@ class CollisionSystemTests(unittest.TestCase):
                 ]
             )
             for event in event_bus.get_recent_events()
+            if "entity_a" in event.data
         }
 
 

@@ -9,10 +9,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 from engine.components.collider import Collider
+from engine.components.collision_filter_2d import CollisionFilter2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
+from engine.physics.contact_data import ContactManifold2D, ContactPoint2D
 from engine.physics.spatial_hash import SpatialHash2D
 
 if TYPE_CHECKING:
@@ -146,19 +148,96 @@ class CollisionSystem:
         if self._event_bus is None:
             return
         event_name = "on_trigger_enter" if collision.is_trigger else "on_collision"
-        self._event_bus.emit(
-            event_name,
-            {
-                "entity_a": collision.entity_a.name,
-                "entity_b": collision.entity_b.name,
-                "entity_a_id": collision.entity_a.id,
-                "entity_b_id": collision.entity_b.id,
-                "is_trigger": collision.is_trigger,
-            },
+        event_data = {
+            "entity_a": collision.entity_a.name,
+            "entity_b": collision.entity_b.name,
+            "entity_a_id": collision.entity_a.id,
+            "entity_b_id": collision.entity_b.id,
+            "is_trigger": collision.is_trigger,
+        }
+        self._event_bus.emit(event_name, event_data)
+
+        manifold = self._build_contact_manifold(collision)
+        if manifold is not None:
+            self._event_bus.emit("collision_contact", manifold.to_dict())
+
+    def _build_contact_manifold(self, collision: CollisionInfo) -> ContactManifold2D | None:
+        entry_a = self._entries_by_id.get(int(collision.entity_a.id))
+        entry_b = self._entries_by_id.get(int(collision.entity_b.id))
+        if entry_a is None or entry_b is None:
+            return None
+
+        aabb_a = entry_a.aabb  # (left, top, right, bottom)
+        aabb_b = entry_b.aabb
+
+        left_a, top_a, right_a, bottom_a = aabb_a
+        left_b, top_b, right_b, bottom_b = aabb_b
+
+        center_x_a = (left_a + right_a) / 2.0
+        center_y_a = (top_a + bottom_a) / 2.0
+        center_x_b = (left_b + right_b) / 2.0
+        center_y_b = (top_b + bottom_b) / 2.0
+
+        overlap_left = right_a - left_b
+        overlap_right = right_b - left_a
+        overlap_top = bottom_a - top_b
+        overlap_bottom = bottom_b - top_a
+
+        overlap_x = min(overlap_left, overlap_right)
+        overlap_y = min(overlap_top, overlap_bottom)
+
+        normal_x: float = 0.0
+        normal_y: float = 0.0
+
+        if overlap_x < overlap_y:
+            if center_x_a < center_x_b:
+                normal_x = -1.0
+            else:
+                normal_x = 1.0
+        else:
+            if center_y_a < center_y_b:
+                normal_y = -1.0
+            else:
+                normal_y = 1.0
+
+        depth = min(overlap_x, overlap_y)
+
+        contact_point_x = (max(left_a, left_b) + min(right_a, right_b)) / 2.0
+        contact_point_y = (max(top_a, top_b) + min(bottom_a, bottom_b)) / 2.0
+
+        rel_vel_x: float = 0.0
+        rel_vel_y: float = 0.0
+        if entry_a.rigidbody is not None and entry_b.rigidbody is not None:
+            rel_vel_x = entry_a.rigidbody.velocity_x - entry_b.rigidbody.velocity_x
+            rel_vel_y = entry_a.rigidbody.velocity_y - entry_b.rigidbody.velocity_y
+
+        contact_point = ContactPoint2D(
+            point_x=contact_point_x,
+            point_y=contact_point_y,
+            normal_x=normal_x,
+            normal_y=normal_y,
+            depth=depth,
+        )
+
+        return ContactManifold2D(
+            entity_a_id=int(collision.entity_a.id),
+            entity_b_id=int(collision.entity_b.id),
+            entity_a_name=collision.entity_a.name,
+            entity_b_name=collision.entity_b.name,
+            normal_x=normal_x,
+            normal_y=normal_y,
+            depth=depth,
+            relative_velocity_x=rel_vel_x,
+            relative_velocity_y=rel_vel_y,
+            contact_count=1,
+            contacts=[contact_point],
+            is_trigger=collision.is_trigger,
         )
 
     def _can_check_pair(self, world: World, entry_a: _CollisionEntry, entry_b: _CollisionEntry) -> bool:
         if not self._layers_can_collide(world, entry_a.entity.layer, entry_b.entity.layer):
+            return False
+        if not self._filter_allows_collision(entry_a.entity, entry_b.entity):
             return False
         if not self._is_simulated(entry_a.rigidbody) and not self._is_simulated(entry_b.rigidbody):
             return False
@@ -174,6 +253,20 @@ class CollisionSystem:
         if not matrix:
             return True
         return bool(matrix.get(f"{layer_a}|{layer_b}", True))
+
+    def _filter_allows_collision(self, entity_a: Entity, entity_b: Entity) -> bool:
+        filter_a = entity_a.get_component(CollisionFilter2D)
+        filter_b = entity_b.get_component(CollisionFilter2D)
+
+        if filter_a is None and filter_b is None:
+            return True
+
+        layer_a = filter_a.layer if filter_a is not None else 0xFFFFFFFF
+        mask_a = filter_a.mask if filter_a is not None else 0xFFFFFFFF
+        layer_b = filter_b.layer if filter_b is not None else 0xFFFFFFFF
+        mask_b = filter_b.mask if filter_b is not None else 0xFFFFFFFF
+
+        return (mask_a & layer_b) != 0 and (mask_b & layer_a) != 0
 
     def _is_simulated(self, rigidbody: Optional[RigidBody]) -> bool:
         if rigidbody is None:

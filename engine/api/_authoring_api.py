@@ -672,6 +672,43 @@ class AuthoringAPI(EngineAPIComponent):
             return result
         return self.edit_component(entity_name, "RigidBody", "constraints", normalized)
 
+    def set_collision_filter(
+        self,
+        entity_name: str,
+        layer: int = 1,
+        mask: int = 4294967295,
+    ) -> ActionResult:
+        """Set or update the CollisionFilter2D component on an entity.
+
+        If the entity does not have a CollisionFilter2D component, one is created
+        automatically. Otherwise, its layer and mask values are replaced.
+
+        Args:
+            entity_name: Name of the target entity.
+            layer: Bitmask defining which layers this entity belongs to
+                (default 1, layer 1).
+            mask: Bitmask defining which layers this entity collides with
+                (default 0xFFFFFFFF, collides with everything).
+
+        Returns:
+            ActionResult confirming the collision filter was set.
+        """
+        self.ensure_edit_mode()
+        if self.scene_authoring is None:
+            return self.fail("SceneManager not ready")
+        payload: dict[str, Any] = {
+            "enabled": True,
+            "layer": int(layer),
+            "mask": int(mask),
+        }
+        has_filter = self.load_component_payload(entity_name, "CollisionFilter2D") is not None
+        success = (
+            self.scene_authoring.replace_component_data(entity_name, "CollisionFilter2D", payload)
+            if has_filter
+            else self.scene_authoring.add_component_to_entity(entity_name, "CollisionFilter2D", payload)
+        )
+        return self.ok("CollisionFilter2D set", {"entity": entity_name}) if success else self.fail("CollisionFilter2D set failed")
+
     def create_tilemap(
         self,
         entity_name: str,

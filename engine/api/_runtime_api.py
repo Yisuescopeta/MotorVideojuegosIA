@@ -5,6 +5,7 @@ from typing import Callable, Dict, Optional, Union
 
 from engine.api._context import EngineAPIComponent
 from engine.api.types import ActionResult, EngineStatus, EntityData, ShapeCastResult
+from engine.components.rigidbody import RigidBody
 from engine.ecs.entity import normalize_entity_groups
 from engine.events.signals import SignalConnectionFlags
 from engine.physics.backend import PhysicsBackendInfo, PhysicsBackendSelection
@@ -401,6 +402,39 @@ class RuntimeAPI(EngineAPIComponent):
                 "unavailable_reason": "Engine not initialized",
             }
         return runtime.get_physics_backend_selection()
+
+    def apply_force(self, entity_name: str, force_x: float, force_y: float) -> bool:
+        """Aplica fuerza continua a una entidad con RigidBody."""
+        entity = self.require_entity(entity_name)
+        if entity is None:
+            return False
+        rb = entity.get_component(RigidBody)
+        if rb is None:
+            return False
+        rb.apply_force(force_x, force_y)
+        return True
+
+    def apply_impulse(self, entity_name: str, impulse_x: float, impulse_y: float) -> bool:
+        """Aplica impulso instantáneo a una entidad con RigidBody."""
+        entity = self.require_entity(entity_name)
+        if entity is None:
+            return False
+        rb = entity.get_component(RigidBody)
+        if rb is None:
+            return False
+        rb.apply_impulse(impulse_x, impulse_y)
+        return True
+
+    def apply_torque(self, entity_name: str, torque: float) -> bool:
+        """Aplica torque a una entidad con RigidBody."""
+        entity = self.require_entity(entity_name)
+        if entity is None:
+            return False
+        rb = entity.get_component(RigidBody)
+        if rb is None:
+            return False
+        rb.apply_torque(torque)
+        return True
 
     def play_audio(self, entity_name: str) -> ActionResult:
         """Start audio playback for an AudioSource entity.
