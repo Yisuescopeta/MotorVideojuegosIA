@@ -49,6 +49,9 @@ class TileData:
     animated: bool = False
     animation_id: str = ""
     terrain_type: str = ""
+    physics_layer: int = 0
+    navigation_layer: int = 0
+    custom_data: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> "TileData":
@@ -61,6 +64,9 @@ class TileData:
             animated=bool(payload.get("animated", False)),
             animation_id=str(payload.get("animation_id", "")).strip(),
             terrain_type=str(payload.get("terrain_type", "")).strip(),
+            physics_layer=max(0, int(payload.get("physics_layer", 0))),
+            navigation_layer=max(0, int(payload.get("navigation_layer", 0))),
+            custom_data=_clone_metadata(payload.get("custom_data", {})),
         )
 
     def to_runtime_dict(self) -> dict[str, Any]:
@@ -73,6 +79,9 @@ class TileData:
             "animated": bool(self.animated),
             "animation_id": self.animation_id,
             "terrain_type": self.terrain_type,
+            "physics_layer": self.physics_layer,
+            "navigation_layer": self.navigation_layer,
+            "custom_data": copy.deepcopy(self.custom_data),
         }
 
     def to_serialized_payload(self, coord: TileCoord) -> dict[str, Any]:
@@ -178,6 +187,7 @@ class TilemapData:
     orientation: str = "orthogonal"
     tileset: dict[str, str] = field(default_factory=dict)
     tileset_path: str = ""
+    tileset_resource_path: str = ""
     layers: list[TileLayerData] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     tileset_tile_width: int = 16
@@ -209,6 +219,7 @@ class TilemapData:
             orientation=normalized_orientation,
             tileset=tileset_ref,
             tileset_path=tileset_ref.get("path", ""),
+            tileset_resource_path=str(payload.get("tileset_resource_path", "")),
             layers=layers,
             metadata=_clone_metadata(payload.get("metadata", {})),
             tileset_tile_width=max(1, int(payload.get("tileset_tile_width", 16))),
@@ -329,6 +340,9 @@ class TilemapData:
         animated: bool = False,
         animation_id: str = "",
         terrain_type: str = "",
+        physics_layer: int = 0,
+        navigation_layer: int = 0,
+        custom_data: dict[str, Any] | None = None,
         create_layer: bool = True,
     ) -> None:
         layer = self.ensure_layer(layer_name) if create_layer else self.find_layer(layer_name)
@@ -345,6 +359,9 @@ class TilemapData:
                 animated=bool(animated),
                 animation_id=str(animation_id or "").strip(),
                 terrain_type=str(terrain_type or "").strip(),
+                physics_layer=max(0, int(physics_layer)),
+                navigation_layer=max(0, int(navigation_layer)),
+                custom_data=_clone_metadata(custom_data or {}),
             ),
         )
 
@@ -364,6 +381,9 @@ class TilemapData:
         animated: bool = False,
         animation_id: str = "",
         terrain_type: str = "",
+        physics_layer: int = 0,
+        navigation_layer: int = 0,
+        custom_data: dict[str, Any] | None = None,
         create_layer: bool = True,
     ) -> int:
         count = 0
@@ -381,6 +401,9 @@ class TilemapData:
                     animated=animated,
                     animation_id=animation_id,
                     terrain_type=terrain_type,
+                    physics_layer=physics_layer,
+                    navigation_layer=navigation_layer,
+                    custom_data=custom_data,
                     create_layer=create_layer,
                 )
                 count += 1
@@ -421,6 +444,7 @@ class TilemapData:
             "orientation": self.orientation,
             "tileset": self.get_tileset_reference(),
             "tileset_path": self.tileset_path,
+            "tileset_resource_path": self.tileset_resource_path,
             "layers": [layer.to_serialized_payload() for layer in self.layers],
             "metadata": copy.deepcopy(self.metadata),
             "tileset_tile_width": self.tileset_tile_width,

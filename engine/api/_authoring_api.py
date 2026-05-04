@@ -1132,6 +1132,28 @@ class AuthoringAPI(EngineAPIComponent):
         success = self.scene_authoring.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
         return self.ok("Tilemap resized", {"entity": entity_name, "cell_width": cell_width, "cell_height": cell_height}) if success else self.fail("Tilemap resize failed")
 
+    def set_tilemap_tileset_resource(self, entity_name: str, resource_path: str) -> ActionResult:
+        """Asigna un recurso TileSet externo a un Tilemap.
+
+        Args:
+            entity_name: Name of the tilemap entity.
+            resource_path: Path to the TileSet resource JSON file.
+
+        Returns:
+            ActionResult confirming the resource was assigned, or failure if the
+            entity or Tilemap component was not found.
+        """
+        self.ensure_edit_mode()
+        if self.scene_authoring is None:
+            return self.fail("SceneManager not ready")
+        payload = self._load_tilemap_payload(entity_name)
+        if payload is None:
+            return self.fail("Tilemap not found")
+        tilemap = Tilemap.from_dict(payload)
+        tilemap.tileset_resource_path = resource_path
+        success = self.scene_authoring.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
+        return self.ok("TileSet resource assigned", {"entity": entity_name, "resource_path": resource_path}) if success else self.fail("TileSet resource assignment failed")
+
     def list_animator_states(self, entity_name: str) -> list[dict[str, Any]]:
         """List all animation states defined on an entity's Animator component.
 

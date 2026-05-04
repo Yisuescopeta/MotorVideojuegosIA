@@ -790,6 +790,8 @@ class AssetDatabase:
         existing.setdefault("slices", list(metadata.get("slices", [])))
         return existing
 
+    TILESET_EXTENSIONS = {".tileset"}
+
     def _infer_asset_kind(self, asset_path: str) -> str:
         suffix = Path(asset_path).suffix.lower()
         parts = Path(asset_path).parts
@@ -802,6 +804,8 @@ class AssetDatabase:
             return "prefab"
         if "levels" in parts:
             return "scene_data"
+        if "tilesets" in parts or suffix in self.TILESET_EXTENSIONS:
+            return "tileset"
         if suffix in self.IMAGE_EXTENSIONS:
             return "texture"
         if suffix in self.AUDIO_EXTENSIONS:

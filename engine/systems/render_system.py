@@ -1015,17 +1015,31 @@ class RenderSystem:
     def _tilemap_chunk_signature(self, tilemap: Tilemap, layer: dict[str, Any], chunk_tiles: list[dict[str, Any]]) -> tuple[object, ...]:
         tileset_ref = tilemap.get_tileset_reference()
         layer_source = normalize_asset_reference(layer.get("tilemap_source"))
+        geo = tilemap.resolve_tile_geometry() if hasattr(tilemap, 'resolve_tile_geometry') else None
+        if geo:
+            tw = int(geo.get("tile_width", 16))
+            th = int(geo.get("tile_height", 16))
+            cols = int(geo.get("columns", 0))
+            spc = int(geo.get("spacing", 0))
+            mg = int(geo.get("margin", 0))
+        else:
+            tw = int(tilemap.tileset_tile_width)
+            th = int(tilemap.tileset_tile_height)
+            cols = int(tilemap.tileset_columns)
+            spc = int(tilemap.tileset_spacing)
+            mg = int(tilemap.tileset_margin)
         return (
             int(tilemap.cell_width),
             int(tilemap.cell_height),
             str(tilemap.orientation),
             str(tileset_ref.get("guid", "")),
             str(tileset_ref.get("path", "")),
-            int(tilemap.tileset_tile_width),
-            int(tilemap.tileset_tile_height),
-            int(tilemap.tileset_columns),
-            int(tilemap.tileset_spacing),
-            int(tilemap.tileset_margin),
+            str(getattr(tilemap, 'tileset_resource_path', '')),
+            tw,
+            th,
+            cols,
+            spc,
+            mg,
             str(layer.get("name", "")),
             bool(layer.get("visible", True)),
             float(layer.get("opacity", 1.0)),
@@ -1951,11 +1965,19 @@ class RenderSystem:
         }
 
     def _resolve_tile_grid_rect(self, tilemap: Tilemap, tile_id: str) -> dict[str, int] | None:
-        tile_width = max(1, int(tilemap.tileset_tile_width or tilemap.cell_width))
-        tile_height = max(1, int(tilemap.tileset_tile_height or tilemap.cell_height))
-        columns = max(1, int(tilemap.tileset_columns or 0))
-        spacing = max(0, int(tilemap.tileset_spacing))
-        margin = max(0, int(tilemap.tileset_margin))
+        geo = tilemap.resolve_tile_geometry() if hasattr(tilemap, 'resolve_tile_geometry') else None
+        if geo:
+            tile_width = max(1, int(geo.get("tile_width", 0) or tilemap.cell_width))
+            tile_height = max(1, int(geo.get("tile_height", 0) or tilemap.cell_height))
+            columns = max(1, int(geo.get("columns", 0) or 0))
+            spacing = max(0, int(geo.get("spacing", 0)))
+            margin = max(0, int(geo.get("margin", 0)))
+        else:
+            tile_width = max(1, int(tilemap.tileset_tile_width or tilemap.cell_width))
+            tile_height = max(1, int(tilemap.tileset_tile_height or tilemap.cell_height))
+            columns = max(1, int(tilemap.tileset_columns or 0))
+            spacing = max(0, int(tilemap.tileset_spacing))
+            margin = max(0, int(tilemap.tileset_margin))
         tile_index = self._parse_tile_index(tile_id)
         if tile_index is None:
             if columns != 1:

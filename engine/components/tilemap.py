@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import copy
+import json
 import math
-from typing import Any
+from typing import Any, Optional, TYPE_CHECKING
 
 from engine.assets.asset_reference import clone_asset_reference, normalize_asset_reference
 from engine.ecs.component import Component
 from engine.tilemap.model import TileData, TileLayerData, TilemapData
+
+if TYPE_CHECKING:
+    from engine.resources.tileset_resource import TileSetResource
 
 
 class Tilemap(Component):
@@ -30,6 +34,7 @@ class Tilemap(Component):
         tileset_spacing: int = 0,
         tileset_margin: int = 0,
         default_layer_name: str = "Layer",
+        tileset_resource_path: str = "",
     ) -> None:
         self.enabled: bool = True
         self.cell_width: int = max(1, int(cell_width))
@@ -38,6 +43,7 @@ class Tilemap(Component):
         self.orientation: str = normalized_orientation if normalized_orientation in self.VALID_ORIENTATIONS else "orthogonal"
         self.tileset = normalize_asset_reference(tileset if tileset is not None else tileset_path)
         self.tileset_path: str = self.tileset.get("path", "")
+        self.tileset_resource_path: str = str(tileset_resource_path or "")
         self.layers: list[dict[str, Any]] = self._normalize_layers(layers or [])
         self.metadata: dict[str, Any] = copy.deepcopy(metadata or {})
         self.tileset_tile_width: int = max(1, int(tileset_tile_width))
@@ -68,6 +74,9 @@ class Tilemap(Component):
         animated: bool = False,
         animation_id: str = "",
         terrain_type: str = "",
+        physics_layer: int = 0,
+        navigation_layer: int = 0,
+        custom_data: dict[str, Any] | None = None,
         create_layer: bool = True,
     ) -> None:
         layer = self._ensure_layer(layer_name) if create_layer else self._find_layer(layer_name)
@@ -83,6 +92,9 @@ class Tilemap(Component):
             animated=animated,
             animation_id=animation_id,
             terrain_type=terrain_type,
+            physics_layer=physics_layer,
+            navigation_layer=navigation_layer,
+            custom_data=custom_data,
         )
         self._set_chunk_tile(layer, coord)
 
@@ -100,6 +112,9 @@ class Tilemap(Component):
         animated: bool = False,
         animation_id: str = "",
         terrain_type: str = "",
+        physics_layer: int = 0,
+        navigation_layer: int = 0,
+        custom_data: dict[str, Any] | None = None,
         create_layer: bool = True,
     ) -> None:
         self.set_tile(
@@ -114,6 +129,9 @@ class Tilemap(Component):
             animated=animated,
             animation_id=animation_id,
             terrain_type=terrain_type,
+            physics_layer=physics_layer,
+            navigation_layer=navigation_layer,
+            custom_data=custom_data,
             create_layer=create_layer,
         )
 
@@ -133,6 +151,9 @@ class Tilemap(Component):
         animated: bool = False,
         animation_id: str = "",
         terrain_type: str = "",
+        physics_layer: int = 0,
+        navigation_layer: int = 0,
+        custom_data: dict[str, Any] | None = None,
         create_layer: bool = True,
     ) -> int:
         layer = self._ensure_layer(layer_name) if create_layer else self._find_layer(layer_name)
@@ -148,6 +169,9 @@ class Tilemap(Component):
             animated=animated,
             animation_id=animation_id,
             terrain_type=terrain_type,
+            physics_layer=physics_layer,
+            navigation_layer=navigation_layer,
+            custom_data=custom_data,
         )
         count = 0
         for y_value in range(int(y_start), int(y_end) + 1):
@@ -342,6 +366,7 @@ class Tilemap(Component):
             orientation=model.orientation,
             tileset=model.get_tileset_reference(),
             tileset_path=model.tileset_path,
+            tileset_resource_path=model.tileset_resource_path,
             layers=model.to_runtime_layers(),
             metadata=model.metadata,
             tileset_tile_width=model.tileset_tile_width,
@@ -353,6 +378,37 @@ class Tilemap(Component):
         )
         component.enabled = data.get("enabled", True)
         return component
+
+    def get_tileset_resource(self) -> Optional["TileSetResource"]:
+        """Carga el TileSet resource si existe. None si no hay referencia."""
+        if not self.tileset_resource_path:
+            return None
+        try:
+            from engine.resources.tileset_resource import TileSetResource
+            with open(self.tileset_resource_path, 'r') as f:
+                data = json.load(f)
+            return TileSetResource.from_dict(data)
+        except Exception:
+            return None
+
+    def resolve_tile_geometry(self) -> dict:
+        """Resuelve geometría de tiles: primero del recurso, luego inline."""
+        resource = self.get_tileset_resource()
+        if resource:
+            return {
+                "tile_width": resource.tile_width,
+                "tile_height": resource.tile_height,
+                "columns": resource.columns,
+                "margin": resource.margin,
+                "spacing": resource.spacing,
+            }
+        return {
+            "tile_width": self.tileset_tile_width,
+            "tile_height": self.tileset_tile_height,
+            "columns": self.tileset_columns,
+            "margin": self.tileset_margin,
+            "spacing": self.tileset_spacing,
+        }
 
     def _find_layer(self, layer_name: str) -> dict[str, Any] | None:
         normalized_name = str(layer_name or "").strip()
@@ -379,6 +435,7 @@ class Tilemap(Component):
                 "orientation": self.orientation,
                 "tileset": self.tileset,
                 "tileset_path": self.tileset_path,
+                "tileset_resource_path": self.tileset_resource_path,
                 "layers": self._serialized_layers_payload(),
                 "metadata": self.metadata,
                 "tileset_tile_width": self.tileset_tile_width,
@@ -629,6 +686,9 @@ class Tilemap(Component):
         animated: bool = False,
         animation_id: str = "",
         terrain_type: str = "",
+        physics_layer: int = 0,
+        navigation_layer: int = 0,
+        custom_data: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return TileData(
             tile_id=str(tile_id),
@@ -639,4 +699,7 @@ class Tilemap(Component):
             animated=bool(animated),
             animation_id=str(animation_id or "").strip(),
             terrain_type=str(terrain_type or "").strip(),
+            physics_layer=max(0, int(physics_layer)),
+            navigation_layer=max(0, int(navigation_layer)),
+            custom_data=copy.deepcopy(custom_data or {}) if isinstance(custom_data or {}, dict) else {},
         ).to_runtime_dict()
