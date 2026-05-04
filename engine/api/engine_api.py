@@ -131,7 +131,8 @@ class EngineAPI:
         self.game.set_character_controller_system(CharacterControllerSystem())
         self.game.set_player_controller_system(PlayerControllerSystem())
         self.game.set_script_behaviour_system(ScriptBehaviourSystem())
-        self.game.set_audio_system(AudioSystem())
+        from engine.audio.pyray_backend import PyrayAudioBackend
+        self.game.set_audio_system(AudioSystem(backend=PyrayAudioBackend()))
         self.game.set_ui_system(UISystem())
         self.game.set_ui_render_system(UIRenderSystem())
         self.game.set_light2d_system(Light2DSystem())

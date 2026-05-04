@@ -210,6 +210,10 @@ _SIMULATED_INPUT_TOKENS = {
     "jump",
     "action_1",
     "action_2",
+    "mouse_left",
+    "mouse_right",
+    "gamepad_a",
+    "gamepad_x",
 }
 
 
@@ -245,6 +249,10 @@ def _parse_runtime_input(input_spec: Optional[str], warnings: List[str]) -> tupl
         "vertical": vertical,
         "action_1": 1.0 if "jump" in token_set or "action_1" in token_set else 0.0,
         "action_2": 1.0 if "action_2" in token_set else 0.0,
+        "mouse_left": 1.0 if "mouse_left" in token_set else 0.0,
+        "mouse_right": 1.0 if "mouse_right" in token_set else 0.0,
+        "gamepad_a": 1.0 if "gamepad_a" in token_set else 0.0,
+        "gamepad_x": 1.0 if "gamepad_x" in token_set else 0.0,
     }, tokens, []
 
 

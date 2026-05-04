@@ -26,6 +26,16 @@ class CharacterController2D(Component):
         collision_normal_x: float = 0.0,
         collision_normal_y: float = 0.0,
         last_hit_entity: str = "",
+        up_direction_x: float = 0.0,
+        up_direction_y: float = -1.0,
+        floor_max_angle: float = 0.785398,
+        wall_min_slide_angle: float = 0.261799,
+        on_wall: bool = False,
+        on_ceiling: bool = False,
+        floor_stop_on_slope: bool = False,
+        floor_block_on_wall: bool = True,
+        platform_velocity_x: float = 0.0,
+        platform_velocity_y: float = 0.0,
     ) -> None:
         self.enabled: bool = True
         self.move_mode: str = str(move_mode or "move_and_slide")
@@ -45,6 +55,18 @@ class CharacterController2D(Component):
         self.collision_normal_y: float = float(collision_normal_y)
         self.last_hit_entity: str = str(last_hit_entity or "")
         self._jump_was_pressed: bool = False
+        self.up_direction_x: float = float(up_direction_x)
+        self.up_direction_y: float = float(up_direction_y)
+        self.floor_max_angle: float = float(floor_max_angle)
+        self.wall_min_slide_angle: float = float(wall_min_slide_angle)
+        self.on_wall: bool = bool(on_wall)
+        self.on_ceiling: bool = bool(on_ceiling)
+        self.floor_stop_on_slope: bool = bool(floor_stop_on_slope)
+        self.floor_block_on_wall: bool = bool(floor_block_on_wall)
+        self.platform_velocity_x: float = float(platform_velocity_x)
+        self.platform_velocity_y: float = float(platform_velocity_y)
+        self.slide_collisions: list[dict] = []
+        self._was_on_floor: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -63,6 +85,16 @@ class CharacterController2D(Component):
             "collision_normal_x": self.collision_normal_x,
             "collision_normal_y": self.collision_normal_y,
             "last_hit_entity": self.last_hit_entity,
+            "up_direction_x": self.up_direction_x,
+            "up_direction_y": self.up_direction_y,
+            "floor_max_angle": self.floor_max_angle,
+            "wall_min_slide_angle": self.wall_min_slide_angle,
+            "on_wall": self.on_wall,
+            "on_ceiling": self.on_ceiling,
+            "floor_stop_on_slope": self.floor_stop_on_slope,
+            "floor_block_on_wall": self.floor_block_on_wall,
+            "platform_velocity_x": self.platform_velocity_x,
+            "platform_velocity_y": self.platform_velocity_y,
         }
 
     @classmethod
@@ -82,6 +114,16 @@ class CharacterController2D(Component):
             collision_normal_x=data.get("collision_normal_x", 0.0),
             collision_normal_y=data.get("collision_normal_y", 0.0),
             last_hit_entity=data.get("last_hit_entity", ""),
+            up_direction_x=data.get("up_direction_x", 0.0),
+            up_direction_y=data.get("up_direction_y", -1.0),
+            floor_max_angle=data.get("floor_max_angle", 0.785398),
+            wall_min_slide_angle=data.get("wall_min_slide_angle", 0.261799),
+            on_wall=data.get("on_wall", False),
+            on_ceiling=data.get("on_ceiling", False),
+            floor_stop_on_slope=data.get("floor_stop_on_slope", False),
+            floor_block_on_wall=data.get("floor_block_on_wall", True),
+            platform_velocity_x=data.get("platform_velocity_x", 0.0),
+            platform_velocity_y=data.get("platform_velocity_y", 0.0),
         )
         component.enabled = data.get("enabled", True)
         return component

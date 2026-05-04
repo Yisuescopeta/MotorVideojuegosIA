@@ -984,6 +984,10 @@ class Game:
         "Inicia el game loop."
         rl.init_window(self.width, self.height, f"{self.title}  —  v{ENGINE_VERSION}")
         rl.set_target_fps(self.target_fps)
+        try:
+            rl.InitAudioDevice()
+        except Exception:
+            pass
 
         # Comprobación de actualizaciones (no bloquea el arranque)
         from engine.update_checker import start_update_check
@@ -1609,6 +1613,15 @@ class Game:
             self.animator_panel.cleanup()
         if self.sprite_editor_modal is not None:
             self.sprite_editor_modal.cleanup()
+        if self._audio_system is not None:
+            try:
+                self._audio_system.shutdown()
+            except Exception:
+                pass
+        try:
+            rl.CloseAudioDevice()
+        except Exception:
+            pass
         rl.close_window()
 
     def _open_sprite_editor(self, asset_path: str) -> None:

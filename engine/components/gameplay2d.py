@@ -212,6 +212,9 @@ class MovingPlatform2D(Component):
         self.speed: float = _coerce_non_negative_float(speed, 80.0)
         self.loop: bool = _coerce_bool(loop, True)
         self.start_active: bool = _coerce_bool(start_active, True)
+        # Runtime fields (not serialized)
+        self.platform_velocity_x: float = 0.0
+        self.platform_velocity_y: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return {

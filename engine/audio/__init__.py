@@ -2,6 +2,7 @@
 
 from engine.audio.backend import AudioBackend, NullAudioBackend
 from engine.audio.contracts import AudioPlaybackRequest, AudioRuntimeEvent, AudioVoiceState
+from engine.audio.pyray_backend import PyrayAudioBackend
 from engine.audio.runtime import AudioRuntime
 
 __all__ = [
@@ -11,4 +12,5 @@ __all__ = [
     "AudioRuntimeEvent",
     "AudioVoiceState",
     "NullAudioBackend",
+    "PyrayAudioBackend",
 ]

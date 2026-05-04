@@ -210,11 +210,23 @@ class RuntimeAPI(EngineAPIComponent):
     def get_input_state(self, entity_name: str) -> Dict[str, float]:
         """Get the current raw input values for an entity's InputMap.
 
+        Returns a dictionary with action states, mouse position, gamepad axes,
+        and edge-detection flags (just_pressed/just_released).
+
         Args:
             entity_name: Name of the entity with an InputMap component.
 
         Returns:
             Dictionary mapping action names to their current float values.
+            Includes: horizontal, vertical, action_1, action_2,
+            action_1_just_pressed, action_1_just_released,
+            action_2_just_pressed, action_2_just_released,
+            jump_just_pressed, jump_just_released,
+            mouse_x, mouse_y, mouse_wheel,
+            mouse_left_just_pressed, mouse_right_just_pressed,
+            mouse_left_held, mouse_right_held,
+            gamepad_left_x, gamepad_left_y, gamepad_right_x, gamepad_right_y,
+            gamepad_a_just_pressed, gamepad_x_just_pressed.
         """
         from engine.components.inputmap import InputMap
 
@@ -227,10 +239,13 @@ class RuntimeAPI(EngineAPIComponent):
     def inject_input_state(self, entity_name: str, state: Dict[str, float], frames: int = 1) -> ActionResult:
         """Inject simulated input values for testing or AI-driven gameplay.
 
+        Supported state keys: horizontal, vertical, action_1, action_2,
+        mouse_left, mouse_right, gamepad_a, gamepad_x.
+
         Args:
             entity_name: Name of the entity with an InputMap component.
             state: Mapping of action names to fake input values (e.g.
-                {"move_left": 1.0, "move_right": 0.0}).
+                {"horizontal": 1.0, "action_1": 1.0}).
             frames: Number of frames the injected input persists (default 1).
 
         Returns:

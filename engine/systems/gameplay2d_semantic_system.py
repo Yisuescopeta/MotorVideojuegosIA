@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from engine.components.charactercontroller2d import CharacterController2D
 from engine.components.collider import Collider
 from engine.components.gameplay2d import (
     Checkpoint2D,
@@ -103,9 +104,19 @@ class Gameplay2DSemanticSystem:
             transform.y = new_y
             delta_x = new_x - old_x
             delta_y = new_y - old_y
-            for _, rider_transform in riders:
-                rider_transform.x = float(rider_transform.x) + delta_x
-                rider_transform.y = float(rider_transform.y) + delta_y
+            # Store platform's own velocity
+            platform_comp = entity.get_component(MovingPlatform2D)
+            if platform_comp:
+                platform_comp.platform_velocity_x = delta_x
+                platform_comp.platform_velocity_y = delta_y
+            for rider_entity, rider_transform in riders:
+                rider_controller = rider_entity.get_component(CharacterController2D)
+                if rider_controller is not None:
+                    rider_controller.platform_velocity_x = delta_x
+                    rider_controller.platform_velocity_y = delta_y
+                else:
+                    rider_transform.x = float(rider_transform.x) + delta_x
+                    rider_transform.y = float(rider_transform.y) + delta_y
             world.touch_transform()
             world.touch_physics()
             if not state.get("started"):

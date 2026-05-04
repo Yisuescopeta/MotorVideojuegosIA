@@ -20,7 +20,6 @@ class PlayerController2D(Component):
         self.move_speed: float = move_speed
         self.jump_velocity: float = jump_velocity
         self.air_control: float = air_control
-        self._jump_was_pressed: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {

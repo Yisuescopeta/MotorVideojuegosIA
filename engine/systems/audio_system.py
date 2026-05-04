@@ -8,7 +8,7 @@ from collections.abc import Callable
 from typing import Any
 
 from engine.assets.asset_service import AssetService
-from engine.audio import AudioPlaybackRequest, AudioRuntime, AudioRuntimeEvent
+from engine.audio import AudioPlaybackRequest, AudioRuntime, AudioRuntimeEvent, NullAudioBackend
 from engine.components.audio_listener_2d import AudioListener2D
 from engine.components.audiosource import AudioSource
 from engine.components.transform import Transform
@@ -18,10 +18,10 @@ from engine.ecs.world import World
 class AudioSystem:
     """Adaptador fino entre ECS y el runtime interno de audio."""
 
-    def __init__(self) -> None:
+    def __init__(self, backend=None) -> None:
         self._asset_service: AssetService | None = None
         self._asset_resolver: Any = None
-        self._runtime = AudioRuntime()
+        self._runtime = AudioRuntime(backend=backend if backend is not None else NullAudioBackend())
         self._event_sink: Callable[[AudioRuntimeEvent], None] | None = None
         self._active_listener_transform: Transform | None = None
 
@@ -41,14 +41,20 @@ class AudioSystem:
             return entry["absolute_path"]
         return self._asset_resolver.resolve_path(audio_source.get_asset_reference() or audio_source.asset_path)
 
-    def _get_asset_duration(self, audio_source: AudioSource) -> float:
-        """Return audio asset duration in seconds.
-
-        Currently a stub: returns 0.0 because runtime audio does not require
-        actual audio playback. The playback_duration is intentionally left as
-        a user-settable/runtime-computed value that can be populated via
-        play() when the real audio backend is integrated.
-        """
+    def _get_asset_duration(self, audio_source) -> float:
+        """Intenta leer duración de archivo WAV. Retorna 0.0 si falla."""
+        path = audio_source.asset_path or ""
+        resolved = getattr(audio_source, 'resolved_asset_path', '') or path
+        if resolved.lower().endswith('.wav'):
+            try:
+                import wave
+                with wave.open(resolved, 'rb') as wf:
+                    frames = wf.getnframes()
+                    rate = wf.getframerate()
+                    if rate > 0:
+                        return frames / rate
+            except Exception:
+                pass
         return 0.0
 
     def _get_active_listener(self, world: World) -> tuple[Transform | None, AudioListener2D | None]:
@@ -360,3 +366,11 @@ class AudioSystem:
                             self._sync_component_from_voice(audio_source, voice, effective_time=effective_time)
             if self._event_sink is not None:
                 self._event_sink(event)
+
+    def shutdown(self) -> None:
+        """Limpia recursos del backend de audio."""
+        if hasattr(self._runtime, '_backend') and hasattr(self._runtime._backend, 'shutdown'):
+            try:
+                self._runtime._backend.shutdown()
+            except Exception:
+                pass

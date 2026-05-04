@@ -111,6 +111,15 @@ def _install_pyray_stub(*, force: bool = False) -> None:
     def _zero(*args: Any, **kwargs: Any) -> int:
         return 0
 
+    def _zero_float(*args: Any, **kwargs: Any) -> float:
+        return 0.0
+
+    is_gamepad_available = _false
+    get_gamepad_axis_movement = _zero_float
+    is_gamepad_button_pressed = _false
+    is_gamepad_button_released = _false
+    is_key_released = _false
+
     def _vector2(*args: Any, **kwargs: Any) -> Vector2:
         return Vector2()
 
@@ -651,6 +660,24 @@ def _install_pyray_stub(*, force: bool = False) -> None:
         "MOUSE_BUTTON_LEFT": 0,
         "MOUSE_BUTTON_RIGHT": 1,
         "MOUSE_BUTTON_MIDDLE": 2,
+        "GAMEPAD_AXIS_LEFT_X": 0,
+        "GAMEPAD_AXIS_LEFT_Y": 1,
+        "GAMEPAD_AXIS_RIGHT_X": 2,
+        "GAMEPAD_AXIS_RIGHT_Y": 3,
+        "GAMEPAD_AXIS_LEFT_TRIGGER": 4,
+        "GAMEPAD_AXIS_RIGHT_TRIGGER": 5,
+        "GAMEPAD_BUTTON_RIGHT_FACE_DOWN": 0,
+        "GAMEPAD_BUTTON_RIGHT_FACE_RIGHT": 1,
+        "GAMEPAD_BUTTON_RIGHT_FACE_LEFT": 2,
+        "GAMEPAD_BUTTON_RIGHT_FACE_UP": 3,
+        "GAMEPAD_BUTTON_LEFT_TRIGGER_1": 4,
+        "GAMEPAD_BUTTON_RIGHT_TRIGGER_1": 5,
+        "GAMEPAD_BUTTON_A": 0,
+        "GAMEPAD_BUTTON_B": 1,
+        "GAMEPAD_BUTTON_X": 2,
+        "GAMEPAD_BUTTON_Y": 3,
+        "GAMEPAD_BUTTON_LEFT_SHOULDER": 4,
+        "GAMEPAD_BUTTON_RIGHT_SHOULDER": 5,
     }.items():
         setattr(module, name, value)
 
