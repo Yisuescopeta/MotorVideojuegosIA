@@ -1871,3 +1871,21 @@ class AuthoringAPI(EngineAPIComponent):
         """
         self.ensure_edit_mode()
         return self.edit_component(entity_name, "Tween", "parallel", bool(parallel))
+
+    def set_joint_properties(self, entity_name: str, properties: dict[str, Any]) -> ActionResult:
+        """Batch update joint properties on a Joint2D component.
+
+        Args:
+            entity_name: Name of the entity with a Joint2D component.
+            properties: Mapping of Joint2D property names to new values.
+
+        Returns:
+            ActionResult confirming all properties were updated, or failure
+            on the first property that fails.
+        """
+        self.ensure_edit_mode()
+        for property_name, value in properties.items():
+            result = self.edit_component(entity_name, "Joint2D", property_name, value)
+            if not result["success"]:
+                return result
+        return self.ok("Joint2D updated", {"entity": entity_name})

@@ -128,6 +128,8 @@ def create_default_registry() -> ComponentRegistry:
         RespawnPoint2D,
     )
     from engine.components.navigation_agent_2d import NavigationAgent2D
+    from engine.components.navigation_obstacle_2d import NavigationObstacle2D
+    from engine.components.navigation_region_2d import NavigationRegion2D
     from engine.components.path_follower_2d import PathFollower2D
     from engine.components.inputmap import InputMap
     from engine.components.joint2d import Joint2D
@@ -418,6 +420,20 @@ def create_default_registry() -> ComponentRegistry:
         description="Navigates an entity toward a target using A* pathfinding on a navigation grid.",
         default_payload=NavigationAgent2D().to_dict(),
         editor_tags=("navigation", "tag:NavigationAgent", "layer:Gameplay", "moving"),
+    )
+    registry.register(
+        "NavigationObstacle2D",
+        NavigationObstacle2D,
+        description="Dynamic obstacle that blocks navigation paths and affects avoidance when active.",
+        default_payload=NavigationObstacle2D().to_dict(),
+        editor_tags=("navigation", "tag:NavigationObstacle", "layer:Gameplay", "obstacle"),
+    )
+    registry.register(
+        "NavigationRegion2D",
+        NavigationRegion2D,
+        description="Defines navigable region with cost modifiers and references a NavigationPolygon resource.",
+        default_payload=NavigationRegion2D().to_dict(),
+        editor_tags=("navigation", "tag:NavigationRegion", "layer:Gameplay", "region"),
     )
     registry.register(
         "PathFollower2D",

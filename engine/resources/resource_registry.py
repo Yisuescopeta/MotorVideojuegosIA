@@ -9,7 +9,14 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Any
+from enum import Enum
+from typing import Any, Optional
+
+
+class CacheMode(Enum):
+    IGNORE = "ignore"   # Always reload
+    REUSE = "reuse"     # Use cached if available (default)
+    REPLACE = "replace" # Replace existing cached resource
 
 
 @dataclass
@@ -43,6 +50,8 @@ class ResourceRegistry:
         self._type_loaders["shader2d"] = self._load_shader
         self._type_loaders["theme"] = self._load_theme
         self._type_loaders["animation_tree"] = self._load_animation_tree
+        self._type_loaders["navigation_polygon"] = self._load_navigation_polygon
+        self._type_loaders["physics_material"] = self._load_physics_material
 
     def load(self, path: str, resource_type: str = "auto") -> Any:
         """Carga un recurso por path. Usa caché si ya está cargado.
@@ -102,6 +111,58 @@ class ResourceRegistry:
     def clear(self) -> None:
         self._entries.clear()
 
+    def load_resource(
+        self,
+        path: str,
+        type_hint: str = "",
+        cache_mode: CacheMode = CacheMode.REUSE,
+    ) -> Optional[Any]:
+        """Load a resource with caching mode.
+
+        Args:
+            path: File path or uid:// reference to the resource.
+            type_hint: Resource type hint (e.g. "tileset", "animation").
+            cache_mode: How to handle cached resources.
+                IGNORE  — Always reload, never cache.
+                REUSE   — Return cached if available (default).
+                REPLACE — Force reload, replacing any cached entry.
+
+        Returns:
+            Loaded resource or None if load fails.
+        """
+        from engine.resources.resource_uid import ResourceUIDCache
+
+        # Resolve UID if needed
+        if path.startswith("uid://"):
+            resolver = ResourceUIDCache()
+            real_path = resolver.resolve_uid(path)
+            if not real_path:
+                return None
+            path = real_path
+
+        # Cache modes
+        if cache_mode == CacheMode.REUSE and path in self._entries:
+            entry = self._entries[path]
+            entry.ref_count += 1
+            return entry.resource
+
+        if cache_mode == CacheMode.REPLACE and path in self._entries:
+            del self._entries[path]
+
+        # Load
+        resource = self.load(path, resource_type=type_hint)
+
+        if resource and cache_mode != CacheMode.IGNORE:
+            if path not in self._entries:
+                self._entries[path] = ResourceEntry(
+                    resource=resource,
+                    resource_type=type_hint or self._detect_type(path),
+                    path=path,
+                    ref_count=1,
+                )
+
+        return resource
+
     def _detect_type(self, path: str) -> str:
         ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
         mapping = {
@@ -111,6 +172,7 @@ class ResourceRegistry:
             "shader2d": "shader2d",
             "theme": "theme",
             "animtree": "animation_tree",
+            "navpoly": "navigation_polygon",
             "json": "auto",  # Intentar inferir del contenido
         }
         return mapping.get(ext, "auto")
@@ -154,3 +216,15 @@ class ResourceRegistry:
 
         with open(path, "r") as f:
             return AnimationTreeResource.from_dict(json.load(f))
+
+    def _load_navigation_polygon(self, path: str) -> Any:
+        from engine.resources.navigation_polygon import NavigationPolygon
+
+        with open(path, "r") as f:
+            return NavigationPolygon.from_dict(json.load(f))
+
+    def _load_physics_material(self, path: str) -> Any:
+        from engine.resources.physics_material import PhysicsMaterial
+
+        with open(path, "r") as f:
+            return PhysicsMaterial.from_dict(json.load(f))

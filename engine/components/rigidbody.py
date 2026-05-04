@@ -86,6 +86,7 @@ class RigidBody(Component):
         linear_damp_mode: str = "combine",
         angular_damp_mode: str = "combine",
         lock_rotation: bool = False,
+        physics_material_override_path: str = "",
     ) -> None:
         """
         Inicializa el RigidBody.
@@ -170,6 +171,9 @@ class RigidBody(Component):
         # Lock rotation
         self.lock_rotation: bool = lock_rotation
 
+        # Physics material override (path to a .physmat resource)
+        self.physics_material_override_path: str = str(physics_material_override_path)
+
         # Buffers de fuerzas runtime (NO se serializan — se limpian cada frame)
         self._force_buffer_x: float = 0.0
         self._force_buffer_y: float = 0.0
@@ -214,6 +218,7 @@ class RigidBody(Component):
             "linear_damp_mode": self.linear_damp_mode,
             "angular_damp_mode": self.angular_damp_mode,
             "lock_rotation": self.lock_rotation,
+            "physics_material_override_path": self.physics_material_override_path,
         }
 
     @classmethod
@@ -253,6 +258,7 @@ class RigidBody(Component):
             linear_damp_mode=data.get("linear_damp_mode", "combine"),
             angular_damp_mode=data.get("angular_damp_mode", "combine"),
             lock_rotation=data.get("lock_rotation", False),
+            physics_material_override_path=data.get("physics_material_override_path", ""),
         )
         component.enabled = data.get("enabled", True)
         return component

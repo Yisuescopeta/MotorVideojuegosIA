@@ -29,6 +29,83 @@ class NavigationAgentSystem:
     def reset(self) -> None:
         pass
 
+    def _collect_obstacles(self, world: "World") -> list:
+        """Collect entities with NavigationObstacle2D for avoidance."""
+        from engine.components.navigation_obstacle_2d import NavigationObstacle2D
+
+        obstacles: list = []
+        if not hasattr(world, "get_entities_with"):
+            return obstacles
+        for entity in world.get_entities_with(Transform, NavigationObstacle2D):
+            obstacle = entity.get_component(NavigationObstacle2D)
+            transform = entity.get_component(Transform)
+            if obstacle is not None and transform is not None:
+                obstacles.append((entity, obstacle, transform))
+        return obstacles
+
+    def _apply_avoidance(
+        self,
+        agent_entity,
+        agent_comp: NavigationAgent2D,
+        transform: Transform,
+        world: "World",
+        obstacles: list,
+        dt: float,
+    ) -> None:
+        """Apply local avoidance to prevent agents from colliding with each other."""
+        if agent_comp.avoidance_radius <= 0.0:
+            return
+
+        avoidance_force_x = 0.0
+        avoidance_force_y = 0.0
+
+        # Avoidance between navigation agents
+        for other_entity in world.get_entities_with(Transform, NavigationAgent2D):
+            if other_entity is agent_entity:
+                continue
+            other_agent = other_entity.get_component(NavigationAgent2D)
+            other_transform = other_entity.get_component(Transform)
+            if other_agent is None or other_transform is None:
+                continue
+            if other_agent.avoidance_radius <= 0.0:
+                continue
+
+            dx = transform.x - other_transform.x
+            dy = transform.y - other_transform.y
+            dist = math.sqrt(dx * dx + dy * dy)
+
+            avoidance_dist = agent_comp.avoidance_radius + other_agent.avoidance_radius
+            if dist < avoidance_dist and dist > 0.01:
+                overlap = avoidance_dist - dist
+                force = overlap / avoidance_dist * agent_comp.speed * 2.0
+                nx = dx / dist
+                ny = dy / dist
+                avoidance_force_x += nx * force
+                avoidance_force_y += ny * force
+
+        # Avoidance against dynamic obstacles
+        for _entity, obstacle, obs_transform in obstacles:
+            if not obstacle.affect_avoidance:
+                continue
+            dx = transform.x - obs_transform.x
+            dy = transform.y - obs_transform.y
+            dist = math.sqrt(dx * dx + dy * dy)
+
+            avoidance_dist = agent_comp.avoidance_radius + obstacle.radius
+            if dist < avoidance_dist and dist > 0.01:
+                overlap = avoidance_dist - dist
+                force = overlap / avoidance_dist * agent_comp.speed * 1.5
+                nx = dx / dist
+                ny = dy / dist
+                avoidance_force_x += nx * force
+                avoidance_force_y += ny * force
+
+        # Blend avoidance with path following velocity
+        if abs(avoidance_force_x) > 0.01 or abs(avoidance_force_y) > 0.01:
+            blend = 0.5
+            agent_comp.velocity_x = agent_comp.velocity_x * blend + avoidance_force_x * (1.0 - blend)
+            agent_comp.velocity_y = agent_comp.velocity_y * blend + avoidance_force_y * (1.0 - blend)
+
     def update(self, world: "World", dt: float) -> None:
         dt = max(0.0, float(dt))
         if dt <= 0.0:
@@ -41,6 +118,8 @@ class NavigationAgentSystem:
 
         if not hasattr(world, "get_entities_with"):
             return
+
+        obstacles = self._collect_obstacles(world)
 
         for entity in world.get_entities_with(Transform, NavigationAgent2D):
             agent = entity.get_component(NavigationAgent2D)
@@ -77,6 +156,7 @@ class NavigationAgentSystem:
                 continue
 
             self._move_along_path(agent, transform, dt)
+            self._apply_avoidance(entity, agent, transform, world, obstacles, dt)
 
             world.touch_transform()
 

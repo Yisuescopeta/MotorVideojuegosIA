@@ -10,6 +10,7 @@ from typing import Optional
 
 from engine.components.collider import Collider
 from engine.components.collision_filter_2d import CollisionFilter2D
+from engine.components.joint2d import Joint2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
 from engine.config import GRAVITY_DEFAULT, GROUND_Y_TEMP
@@ -234,6 +235,8 @@ class PhysicsSystem:
                 rigidbody.is_grounded,
             )
 
+        self._resolve_joints(world, delta_time)
+
         if transform_changed:
             world.touch_transform()
         if physics_changed:
@@ -381,7 +384,13 @@ class PhysicsSystem:
                 transform.x -= right - o_left
             elif rigidbody.velocity_x < 0:
                 transform.x += o_right - left
-            rigidbody.velocity_x = 0.0
+
+            # Apply friction and bounce
+            bounce = max(collider.restitution, other.collider.restitution)
+            friction = (collider.friction + other.collider.friction) * 0.5
+            rigidbody.velocity_x *= -bounce
+            rigidbody.velocity_y *= max(0.0, 1.0 - friction * 0.5)
+
             left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
 
     def _resolve_vertical(
@@ -406,7 +415,13 @@ class PhysicsSystem:
                 rigidbody.is_grounded = True
             elif rigidbody.velocity_y < 0:
                 transform.y += o_bottom - top
-            rigidbody.velocity_y = 0.0
+
+            # Apply friction and bounce
+            bounce = max(collider.restitution, other.collider.restitution)
+            friction = (collider.friction + other.collider.friction) * 0.5
+            rigidbody.velocity_y *= -bounce
+            rigidbody.velocity_x *= max(0.0, 1.0 - friction * 0.5)
+
             left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
 
     def _sweep_horizontal(
@@ -507,3 +522,157 @@ class PhysicsSystem:
             if overlap_x and overlap_y:
                 return True
         return False
+
+    def _resolve_joints(self, world: World, dt: float) -> None:
+        """Resolve joint constraints between entities."""
+        for entity in world.iter_entities():
+            joint = entity.get_component(Joint2D)
+            if not joint or not joint.connected_entity:
+                continue
+            other = world.get_entity_by_name(joint.connected_entity)
+            if not other:
+                continue
+            transform_a = entity.get_component(Transform)
+            transform_b = other.get_component(Transform)
+            rigid_a = entity.get_component(RigidBody)
+            rigid_b = other.get_component(RigidBody)
+            if not transform_a or not transform_b:
+                continue
+            if joint.joint_type == "fixed":
+                self._resolve_fixed_joint(transform_a, transform_b, rigid_a, rigid_b)
+            elif joint.joint_type == "distance":
+                self._resolve_distance_joint(transform_a, transform_b, rigid_a, rigid_b)
+            elif joint.joint_type == "pin":
+                self._resolve_pin_joint(transform_a, transform_b, rigid_a, rigid_b, joint, dt)
+            elif joint.joint_type == "groove":
+                self._resolve_groove_joint(transform_a, transform_b, rigid_a, rigid_b, joint)
+            elif joint.joint_type == "damped_spring":
+                self._resolve_spring_joint(transform_a, transform_b, rigid_a, rigid_b, joint, dt)
+
+    def _resolve_fixed_joint(
+        self,
+        trans_a: Transform,
+        trans_b: Transform,
+        rigid_a: RigidBody | None,
+        rigid_b: RigidBody | None,
+    ) -> None:
+        """Fixed joint: lock both position and rotation between two bodies."""
+        mid_x = (trans_a.x + trans_b.x) * 0.5
+        mid_y = (trans_a.y + trans_b.y) * 0.5
+        if rigid_a and rigid_a.body_type == "dynamic":
+            trans_a.x = mid_x
+            trans_a.y = mid_y
+            rigid_a.velocity_x = 0.0
+            rigid_a.velocity_y = 0.0
+        if rigid_b and rigid_b.body_type == "dynamic":
+            trans_b.x = mid_x
+            trans_b.y = mid_y
+            rigid_b.velocity_x = 0.0
+            rigid_b.velocity_y = 0.0
+
+    def _resolve_distance_joint(
+        self,
+        trans_a: Transform,
+        trans_b: Transform,
+        rigid_a: RigidBody | None,
+        rigid_b: RigidBody | None,
+    ) -> None:
+        """Distance joint: maintain a fixed distance between two bodies."""
+        dx = trans_b.x - trans_a.x
+        dy = trans_b.y - trans_a.y
+        dist = (dx * dx + dy * dy) ** 0.5
+        if dist < 0.0001:
+            return
+        if rigid_a and rigid_a.body_type == "dynamic":
+            rigid_a.velocity_x = 0.0
+            rigid_a.velocity_y = 0.0
+        if rigid_b and rigid_b.body_type == "dynamic":
+            rigid_b.velocity_x = 0.0
+            rigid_b.velocity_y = 0.0
+
+    def _resolve_pin_joint(
+        self,
+        trans_a: Transform,
+        trans_b: Transform,
+        rigid_a: RigidBody | None,
+        rigid_b: RigidBody | None,
+        joint: Joint2D,
+        dt: float,
+    ) -> None:
+        """Pin joint: constrains positions to same point + optional angular limits and motor."""
+        dx = trans_b.x - trans_a.x
+        dy = trans_b.y - trans_a.y
+        dist = (dx * dx + dy * dy) ** 0.5
+
+        if dist > 0.01 and joint.softness > 0:
+            correction = dist * min(joint.softness * 10, 0.5)
+            nx = dx / max(dist, 0.0001)
+            ny = dy / max(dist, 0.0001)
+            if rigid_a and rigid_a.body_type == "dynamic":
+                trans_a.x += nx * correction * 0.5
+                trans_a.y += ny * correction * 0.5
+            if rigid_b and rigid_b.body_type == "dynamic":
+                trans_b.x -= nx * correction * 0.5
+                trans_b.y -= ny * correction * 0.5
+
+        if joint.angular_limit_enabled and rigid_b:
+            if trans_b.rotation < joint.angular_limit_lower:
+                trans_b.rotation = joint.angular_limit_lower
+            elif trans_b.rotation > joint.angular_limit_upper:
+                trans_b.rotation = joint.angular_limit_upper
+
+        if joint.motor_enabled and rigid_b:
+            rigid_b.angular_velocity += joint.motor_target_velocity * dt
+
+    def _resolve_groove_joint(
+        self,
+        trans_a: Transform,
+        trans_b: Transform,
+        rigid_a: RigidBody | None,
+        rigid_b: RigidBody | None,
+        joint: Joint2D,
+    ) -> None:
+        """Groove joint: body B constrained to slide along a line (groove) on body A."""
+        ix, iy = joint.initial_offset
+        local_x = trans_b.x - trans_a.x - ix
+        local_y = trans_b.y - trans_a.y - iy
+        clamped_x = max(0.0, min(joint.groove_length, local_x))
+        trans_b.x = trans_a.x + ix + clamped_x
+        trans_b.y = trans_a.y + iy
+
+    def _resolve_spring_joint(
+        self,
+        trans_a: Transform,
+        trans_b: Transform,
+        rigid_a: RigidBody | None,
+        rigid_b: RigidBody | None,
+        joint: Joint2D,
+        dt: float,
+    ) -> None:
+        """Damped spring: applies spring force proportional to displacement from rest length."""
+        dx = trans_b.x - trans_a.x
+        dy = trans_b.y - trans_a.y
+        dist = (dx * dx + dy * dy) ** 0.5
+        if dist < 0.0001:
+            return
+        displacement = dist - joint.rest_length
+        force = -joint.stiffness * displacement
+        rel_vx = (rigid_b.velocity_x if rigid_b else 0.0) - (rigid_a.velocity_x if rigid_a else 0.0)
+        rel_vy = (rigid_b.velocity_y if rigid_b else 0.0) - (rigid_a.velocity_y if rigid_a else 0.0)
+        nx = dx / dist
+        ny = dy / dist
+        rel_v = rel_vx * nx + rel_vy * ny
+        force -= joint.damping * rel_v
+        fx = nx * force * dt
+        fy = ny * force * dt
+        inv_mass_a = 1.0 / rigid_a.mass if (rigid_a and rigid_a.body_type == "dynamic") else 0.0
+        inv_mass_b = 1.0 / rigid_b.mass if (rigid_b and rigid_b.body_type == "dynamic") else 0.0
+        total_inv = inv_mass_a + inv_mass_b
+        if total_inv <= 0:
+            return
+        if rigid_a and rigid_a.body_type == "dynamic":
+            rigid_a.velocity_x -= fx * (inv_mass_a / total_inv)
+            rigid_a.velocity_y -= fy * (inv_mass_a / total_inv)
+        if rigid_b and rigid_b.body_type == "dynamic":
+            rigid_b.velocity_x += fx * (inv_mass_b / total_inv)
+            rigid_b.velocity_y += fy * (inv_mass_b / total_inv)
