@@ -34,6 +34,8 @@ class RuntimeControllerContext:
     get_parallax_system: Callable[[], Any]
     get_resource_preloader_system: Callable[[], Any]
     get_particle_system: Callable[[], Any]
+    get_path_follow_system: Callable[[], Any]
+    get_gameplay2d_semantic_system: Callable[[], Any]
     get_scene_transition_controller: Callable[[], Any]
     get_physics_backend_registry: Callable[[], PhysicsBackendRegistry]
     reset_profiler: Callable[..., None]

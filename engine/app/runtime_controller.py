@@ -13,8 +13,6 @@ from engine.events.signals import SignalRuntime
 from engine.physics.backend import PhysicsBackendSelection
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
 from engine.services.registro_servicios import RegistroServicios
-from engine.systems.gameplay2d_semantic_system import Gameplay2DSemanticSystem
-from engine.systems.path_follow_system import PathFollowSystem
 from engine.tilemap.collision_builder import bake_tilemap_colliders
 from engine.utils.viewport import resolve_world_viewport_rect
 
@@ -55,6 +53,8 @@ class RuntimeController:
         self._get_parallax_system = context.get_parallax_system
         self._get_resource_preloader_system = context.get_resource_preloader_system
         self._get_particle_system = context.get_particle_system
+        self._get_path_follow_system = context.get_path_follow_system
+        self._get_gameplay2d_semantic_system = context.get_gameplay2d_semantic_system
         self._get_scene_transition_controller = context.get_scene_transition_controller
         self._get_physics_backend_registry = context.get_physics_backend_registry
         self._reset_profiler = context.reset_profiler
@@ -66,8 +66,6 @@ class RuntimeController:
         self._deferred_queue = DeferredCallQueue()
         self._signal_runtime = SignalRuntime(self._deferred_queue)
         self._servicios = RegistroServicios()
-        self._gameplay2d_semantic_system = Gameplay2DSemanticSystem()
-        self._path_follow_system = PathFollowSystem()
         self._entity_destroyed_listener_registered = False
         self._callable_resolver = CallableResolver(
             CallableResolverContext(
@@ -120,8 +118,12 @@ class RuntimeController:
         self._deferred_queue.clear()
         self._signal_runtime.clear()
         self._servicios.limpiar_runtime()
-        self._gameplay2d_semantic_system.reset()
-        self._path_follow_system.reset()
+        g2d = self._get_gameplay2d_semantic_system()
+        if g2d is not None:
+            g2d.reset()
+        pf = self._get_path_follow_system()
+        if pf is not None:
+            pf.reset()
         self._entity_destroyed_listener_registered = False
 
     def end_runtime_session(self) -> None:
@@ -129,8 +131,12 @@ class RuntimeController:
         self._deferred_queue.clear()
         self._signal_runtime.clear()
         self._servicios.limpiar_runtime()
-        self._gameplay2d_semantic_system.reset()
-        self._path_follow_system.reset()
+        g2d = self._get_gameplay2d_semantic_system()
+        if g2d is not None:
+            g2d.reset()
+        pf = self._get_path_follow_system()
+        if pf is not None:
+            pf.reset()
         self._entity_destroyed_listener_registered = False
 
     def build_tick_plan(self, dt: float, *, should_render_like: bool = True) -> RuntimeTickPlan:
@@ -305,27 +311,21 @@ class RuntimeController:
         state = self._get_state()
         backend = self._get_physics_backend_registry().resolve(world).backend
         if backend is not None and state.allows_physics():
-            self._gameplay2d_semantic_system.update_moving_platforms(
-                world,
-                dt,
-                self._get_event_bus(),
-            )
-            self._gameplay2d_semantic_system.update_enemy_patrols(
-                world,
-                dt,
-                self._get_event_bus(),
-            )
-            self._path_follow_system.update(
-                world,
-                dt,
-                self._get_event_bus(),
-            )
+            g2d = self._get_gameplay2d_semantic_system()
+            pf = self._get_path_follow_system()
+            event_bus = self._get_event_bus()
+            if g2d is not None:
+                g2d.update_moving_platforms(world, dt, event_bus)
+                g2d.update_enemy_patrols(world, dt, event_bus)
+            if pf is not None:
+                pf.update(world, dt, event_bus)
             backend.step(world, dt)
-            self._gameplay2d_semantic_system.update(
-                world,
-                backend.collect_contacts(world),
-                self._get_event_bus(),
-            )
+            if g2d is not None:
+                g2d.update(
+                    world,
+                    backend.collect_contacts(world),
+                    event_bus,
+                )
 
         audio_system = self._get_audio_system()
         if audio_system is not None:

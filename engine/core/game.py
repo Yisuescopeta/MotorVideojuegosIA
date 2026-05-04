@@ -88,6 +88,8 @@ if TYPE_CHECKING:
     from engine.systems.parallax_system import ParallaxSystem
     from engine.systems.light2d_system import Light2DSystem
     from engine.systems.particle_system import ParticleSystem
+    from engine.systems.path_follow_system import PathFollowSystem
+    from engine.systems.gameplay2d_semantic_system import Gameplay2DSemanticSystem
 
 
 class Game:
@@ -138,6 +140,8 @@ class Game:
         self._ui_render_system: Optional["UIRenderSystem"] = None
         self._light2d_system: Optional["Light2DSystem"] = None
         self._particle_system: Optional["ParticleSystem"] = None
+        self._path_follow_system: Optional["PathFollowSystem"] = None
+        self._gameplay2d_semantic_system: Optional["Gameplay2DSemanticSystem"] = None
 
         self.script_executor: Optional["ScriptExecutor"] = None
 
@@ -248,6 +252,8 @@ class Game:
                 get_parallax_system=lambda: self._parallax_system,
                 get_resource_preloader_system=lambda: self._resource_preloader_system,
                 get_particle_system=lambda: self._particle_system,
+                get_path_follow_system=lambda: self._path_follow_system,
+                get_gameplay2d_semantic_system=lambda: self._gameplay2d_semantic_system,
                 get_scene_transition_controller=lambda: self._scene_transition_controller,
                 get_physics_backend_registry=lambda: self._physics_backend_registry,
                 reset_profiler=self.reset_profiler,
@@ -712,6 +718,12 @@ class Game:
 
     def set_particle_system(self, system: "ParticleSystem") -> None:
         self._particle_system = system
+
+    def set_path_follow_system(self, system: "PathFollowSystem") -> None:
+        self._path_follow_system = system
+
+    def set_gameplay2d_semantic_system(self, system: "Gameplay2DSemanticSystem") -> None:
+        self._gameplay2d_semantic_system = system
 
     def set_script_executor(self, executor: "ScriptExecutor") -> None:
         """Asigna un ejecutor de scripts para automatización visual."""

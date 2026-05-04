@@ -92,9 +92,15 @@ class EngineAPI:
         from engine.systems.selection_system import SelectionSystem
         from engine.systems.ui_render_system import UIRenderSystem
         from engine.systems.ui_system import UISystem
-from engine.systems.light2d_system import Light2DSystem
-from engine.systems.parallax_system import ParallaxSystem
-from engine.systems.particle_system import ParticleSystem
+        from engine.systems.light2d_system import Light2DSystem
+        from engine.systems.parallax_system import ParallaxSystem
+        from engine.systems.particle_system import ParticleSystem
+        from engine.systems.timer_system import TimerSystem
+        from engine.systems.tween_system import TweenSystem
+        from engine.systems.visible_on_screen_system import VisibleOnScreenSystem
+        from engine.systems.resource_preloader_system import ResourcePreloaderSystem
+        from engine.systems.path_follow_system import PathFollowSystem
+        from engine.systems.gameplay2d_semantic_system import Gameplay2DSemanticSystem
 
         self.game = HeadlessGame()
         self.scene_manager = SceneManager(self._registry)
@@ -126,6 +132,12 @@ from engine.systems.particle_system import ParticleSystem
         self.game.set_light2d_system(Light2DSystem())
         self.game.set_particle_system(ParticleSystem(event_bus))
         self.game.set_parallax_system(ParallaxSystem())
+        self.game.set_timer_system(TimerSystem())
+        self.game.set_tween_system(TweenSystem())
+        self.game.set_visible_on_screen_system(VisibleOnScreenSystem())
+        self.game.set_resource_preloader_system(ResourcePreloaderSystem())
+        self.game.set_path_follow_system(PathFollowSystem())
+        self.game.set_gameplay2d_semantic_system(Gameplay2DSemanticSystem())
         self._register_optional_box2d_backend()
 
     def _initialize_collaborators(self) -> None:
