@@ -102,6 +102,7 @@ class ComponentRegistry:
 
 def create_default_registry() -> ComponentRegistry:
     """Crea un registro con los componentes predeterminados del motor."""
+    from engine.components.animation_player_2d import AnimationPlayer2D
     from engine.components.animator import Animator
     from engine.components.area2d import Area2D
     from engine.components.audio_listener_2d import AudioListener2D
@@ -265,6 +266,13 @@ def create_default_registry() -> ComponentRegistry:
         description="Area de monitoreo 2D que detecta cuerpos y areas entrando/saliendo. Adaptado de Godot Area2D.",
         default_payload=Area2D().to_dict(),
         editor_tags=("physics", "trigger", "layer:Physics", "area"),
+    )
+    registry.register(
+        "AnimationPlayer2D",
+        AnimationPlayer2D,
+        description="Reproduce AnimationResources en una entidad aplicando tracks de propiedades a sus componentes (adaptado de Godot AnimationPlayer).",
+        default_payload=AnimationPlayer2D().to_dict(),
+        editor_tags=("animation", "tag:AnimationPlayer", "layer:Gameplay"),
     )
     registry.register("Animator", Animator)
     registry.register("Camera2D", Camera2D)

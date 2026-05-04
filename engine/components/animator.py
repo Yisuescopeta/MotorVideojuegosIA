@@ -52,6 +52,7 @@ class AnimationData:
     fps: float = 8.0
     loop: bool = True
     on_complete: Optional[str] = None
+    blend_duration: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -59,6 +60,7 @@ class AnimationData:
             "slice_names": self.slice_names,
             "fps": self.fps,
             "loop": self.loop,
+            "blend_duration": self.blend_duration,
         }
         if self.on_complete is not None:
             result["on_complete"] = self.on_complete
@@ -72,6 +74,7 @@ class AnimationData:
             fps=data.get("fps", 8.0),
             loop=data.get("loop", True),
             on_complete=data.get("on_complete"),
+            blend_duration=data.get("blend_duration", 0.0),
         )
 
     def get_frame_count(self) -> int:
@@ -250,6 +253,7 @@ class Animator(Component):
         speed: float = 1.0,
         parameters: Optional[Dict[str, AnimationParameterDefinition]] = None,
         state_machine: Optional[AnimationStateMachine] = None,
+        sprite_frames_resource_path: str = "",
     ) -> None:
         self.enabled: bool = True
         self.sprite_sheet_ref = normalize_asset_reference(sprite_sheet_ref if sprite_sheet_ref is not None else sprite_sheet)
@@ -263,12 +267,16 @@ class Animator(Component):
         self.speed: float = max(0.01, float(speed))
         self.parameters: Dict[str, AnimationParameterDefinition] = parameters or {}
         self.state_machine: Optional[AnimationStateMachine] = state_machine
+        self.sprite_frames_resource_path: str = sprite_frames_resource_path
         self._parameter_values: Dict[str, bool | int | float] = self._build_runtime_parameter_store()
 
         self.current_state: str = default_state
         self.current_frame: int = 0
         self.elapsed_time: float = 0.0
         self.is_finished: bool = False
+        self._blend_progress: float = 0.0
+        self._blend_from_frame: int = 0
+        self._blend_from_sprite_name: str = ""
 
         if self.current_state not in self.animations:
             self.current_state = self.resolve_entry_state()
@@ -378,6 +386,11 @@ class Animator(Component):
         previous_state = self.current_state
         if state == self.current_state and not force_restart:
             return previous_state
+        new_anim = self.animations.get(state)
+        if new_anim and new_anim.blend_duration > 0:
+            self._blend_progress = 0.0
+            self._blend_from_frame = self.current_frame
+            self._blend_from_sprite_name = self.current_sprite_name
         self.current_state = state
         self.current_frame = 0
         self.elapsed_time = 0.0
@@ -425,6 +438,13 @@ class Animator(Component):
         frame_index = min(self.current_frame, len(anim.slice_names) - 1)
         return anim.slice_names[frame_index]
 
+    @property
+    def current_sprite_name(self) -> str:
+        slice_name = self.get_current_slice_name()
+        if slice_name is not None:
+            return slice_name
+        return str(self.get_current_sprite_frame())
+
     def get_source_rect(self, sheet_columns: int) -> tuple[int, int, int, int]:
         frame_index = self.get_current_sprite_frame()
         col = frame_index % sheet_columns
@@ -459,6 +479,8 @@ class Animator(Component):
             }
         if self.state_machine is not None:
             result["state_machine"] = self.state_machine.to_dict()
+        if self.sprite_frames_resource_path:
+            result["sprite_frames_resource_path"] = self.sprite_frames_resource_path
         return result
 
     @classmethod
@@ -494,6 +516,7 @@ class Animator(Component):
             speed=data.get("speed", 1.0),
             parameters=parameters,
             state_machine=state_machine,
+            sprite_frames_resource_path=data.get("sprite_frames_resource_path", ""),
         )
         animator.enabled = data.get("enabled", True)
         requested_state = data.get("current_state", animator.default_state)
