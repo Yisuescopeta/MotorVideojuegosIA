@@ -113,6 +113,7 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.camera2d import Camera2D
     from engine.components.canvas import Canvas
     from engine.components.canvas_item_2d import CanvasItem2D
+    from engine.components.canvas_layer import CanvasLayer
     from engine.components.particle_emitter2d import ParticleEmitter2D
     from engine.components.charactercontroller2d import CharacterController2D
     from engine.components.collider import Collider
@@ -157,6 +158,8 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.scriptbehaviour import ScriptBehaviour
     from engine.components.sprite import Sprite
     from engine.components.tilemap import Tilemap
+    from engine.components.sub_viewport import SubViewport, ViewportTexture
+    from engine.components.post_process_effect import PostProcessEffectComp
     from engine.components.timer import Timer
     from engine.components.transform import Transform
     from engine.components.tween import Tween
@@ -370,6 +373,13 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("ResourcePreloader", ResourcePreloader)
     registry.register("Tilemap", Tilemap)
     registry.register("Canvas", Canvas)
+    registry.register(
+        "CanvasLayer",
+        CanvasLayer,
+        description="Capa de renderizado independiente con su propio transform (adaptado de Godot CanvasLayer).",
+        default_payload=CanvasLayer().to_dict(),
+        editor_tags=("render", "layer:Visual", "capa"),
+    )
     registry.register(
         "CanvasItem2D",
         CanvasItem2D,
@@ -644,5 +654,26 @@ def create_default_registry() -> ComponentRegistry:
         description="Arbol jerarquico de items con seleccion, checkboxes y columnas (Godot Tree).",
         default_payload=UITree().to_dict(),
         editor_tags=("ui", "layer:UI", "tree", "data"),
+    )
+    registry.register(
+        "SubViewport",
+        SubViewport,
+        description="Renders a subtree to a texture (Godot SubViewport).",
+        default_payload=SubViewport().to_dict(),
+        editor_tags=("render", "viewport", "layer:Visual"),
+    )
+    registry.register(
+        "ViewportTexture",
+        ViewportTexture,
+        description="Texture dynamically updated from a SubViewport (apply to Sprite).",
+        default_payload=ViewportTexture().to_dict(),
+        editor_tags=("render", "viewport", "layer:Visual", "texture"),
+    )
+    registry.register(
+        "PostProcessEffectComp",
+        PostProcessEffectComp,
+        description="List of post-processing effects to apply after rendering.",
+        default_payload=PostProcessEffectComp().to_dict(),
+        editor_tags=("render", "postfx", "layer:Visual"),
     )
     return registry

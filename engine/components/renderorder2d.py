@@ -13,11 +13,12 @@ class RenderOrder2D(Component):
     DEFAULT_RENDER_PASS: str = "World"
     ALLOWED_RENDER_PASSES: tuple[str, ...] = ("World", "Overlay", "Debug")
 
-    def __init__(self, sorting_layer: str = "Default", order_in_layer: int = 0, render_pass: str = DEFAULT_RENDER_PASS) -> None:
+    def __init__(self, sorting_layer: str = "Default", order_in_layer: int = 0, render_pass: str = DEFAULT_RENDER_PASS, canvas_layer_entity: str = "") -> None:
         self.enabled: bool = True
         self.sorting_layer: str = sorting_layer
         self.order_in_layer: int = self._clamp_order(order_in_layer)
         self.render_pass: str = self._normalize_render_pass(render_pass)
+        self.canvas_layer_entity: str = str(canvas_layer_entity or "")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -25,6 +26,7 @@ class RenderOrder2D(Component):
             "sorting_layer": self.sorting_layer,
             "order_in_layer": self.order_in_layer,
             "render_pass": self.render_pass,
+            "canvas_layer_entity": self.canvas_layer_entity,
         }
 
     @classmethod
@@ -33,6 +35,7 @@ class RenderOrder2D(Component):
             sorting_layer=data.get("sorting_layer", "Default"),
             order_in_layer=cls._clamp_order(int(data.get("order_in_layer", 0))),
             render_pass=data.get("render_pass", cls.DEFAULT_RENDER_PASS),
+            canvas_layer_entity=data.get("canvas_layer_entity", ""),
         )
         component.enabled = data.get("enabled", True)
         return component

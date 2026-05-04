@@ -96,6 +96,7 @@ class EngineAPI:
         from engine.systems.light2d_system import Light2DSystem
         from engine.systems.line2d_render_system import Line2DRenderSystem
         from engine.systems.parallax_system import ParallaxSystem
+        from engine.systems.gpu_particles_system import GPUParticlesSystem
         from engine.systems.particle_system import ParticleSystem
         from engine.systems.timer_system import TimerSystem
         from engine.systems.tween_system import TweenSystem
@@ -138,6 +139,7 @@ class EngineAPI:
         self.game.set_light2d_system(Light2DSystem())
         self.game.set_line2d_render_system(Line2DRenderSystem())
         self.game.set_particle_system(ParticleSystem(event_bus))
+        self.game.set_gpu_particles_system(GPUParticlesSystem())
         self.game.set_area2d_system(Area2DSystem(event_bus=event_bus))
         self.game.set_parallax_system(ParallaxSystem())
         self.game.set_timer_system(TimerSystem())

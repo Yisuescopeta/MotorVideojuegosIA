@@ -38,6 +38,7 @@ from engine.core.hot_reload import HotReloadManager
 from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.core.runtime_loop import RuntimeTickPlan
 from engine.core.time_manager import TimeManager
+from engine.debug.performance_monitor import PerformanceMonitor
 from engine.debug.profiler import EngineProfiler
 from engine.debug.timeline import Timeline
 from engine.editor.agent_panel import AgentPanel
@@ -87,6 +88,7 @@ if TYPE_CHECKING:
     from engine.systems.ui_system import UISystem
     from engine.systems.visible_on_screen_system import VisibleOnScreenSystem
     from engine.systems.parallax_system import ParallaxSystem
+    from engine.systems.gpu_particles_system import GPUParticlesSystem
     from engine.systems.light2d_system import Light2DSystem
     from engine.systems.line2d_render_system import Line2DRenderSystem
     from engine.systems.particle_system import ParticleSystem
@@ -146,6 +148,7 @@ class Game:
         self._line2d_render_system: Optional["Line2DRenderSystem"] = None
         self._area2d_system: Optional["Area2DSystem"] = None
         self._particle_system: Optional["ParticleSystem"] = None
+        self._gpu_particles_system: Optional["GPUParticlesSystem"] = None
         self._path_follow_system: Optional["PathFollowSystem"] = None
         self._gameplay2d_semantic_system: Optional["Gameplay2DSemanticSystem"] = None
         self._navigation_agent_system: Optional["NavigationAgentSystem"] = None
@@ -218,6 +221,7 @@ class Game:
             "scripts": 0,
         }
         self._profiler: EngineProfiler = EngineProfiler()
+        self.performance_monitor: PerformanceMonitor = PerformanceMonitor()
         self.debug_draw_colliders: bool = False
         self.debug_draw_labels: bool = False
         self.random_seed: int | None = None
@@ -260,6 +264,7 @@ class Game:
                 get_parallax_system=lambda: self._parallax_system,
                 get_resource_preloader_system=lambda: self._resource_preloader_system,
                 get_particle_system=lambda: self._particle_system,
+                get_gpu_particles_system=lambda: self._gpu_particles_system,
                 get_area2d_system=lambda: self._area2d_system,
                 get_path_follow_system=lambda: self._path_follow_system,
                 get_gameplay2d_semantic_system=lambda: self._gameplay2d_semantic_system,
@@ -733,6 +738,9 @@ class Game:
 
     def set_particle_system(self, system: "ParticleSystem") -> None:
         self._particle_system = system
+
+    def set_gpu_particles_system(self, system: "GPUParticlesSystem") -> None:
+        self._gpu_particles_system = system
 
     def set_area2d_system(self, system: "Area2DSystem") -> None:
         self._area2d_system = system
@@ -1237,6 +1245,16 @@ class Game:
         self._perf_stats["animation"] = animation_elapsed
         self._perf_stats["scripts"] = scripts_elapsed
         self._perf_stats["ui"] = ui_elapsed
+
+        # Record performance monitor
+        physics_ms = gameplay_elapsed
+        render_ms = self._perf_stats.get("render", 0.0)
+        entity_count = active_world.entity_count() if active_world else 0
+        draw_calls = self._perf_counters.get("draw_calls", 0)
+        self.performance_monitor.record_frame(
+            dt, physics_ms, render_ms, entity_count, draw_calls
+        )
+
         return plan
 
     def _update_animation(self, world: Optional["World"], dt: float) -> None:
@@ -1441,6 +1459,8 @@ class Game:
                 if self._line2d_render_system is not None and active_world is not None:
                     self._line2d_render_system.render(active_world)
 
+                if self._gpu_particles_system is not None and active_world is not None:
+                    self._gpu_particles_system.render(active_world)
                 if self._particle_system is not None and active_world is not None:
                     self._particle_system.render(active_world)
 
@@ -1479,6 +1499,8 @@ class Game:
                 if self._line2d_render_system is not None and target_world is not None:
                     self._line2d_render_system.render(target_world)
 
+                if self._gpu_particles_system is not None and target_world is not None:
+                    self._gpu_particles_system.render(target_world)
                 if self._particle_system is not None and target_world is not None:
                     self._particle_system.render(target_world)
 

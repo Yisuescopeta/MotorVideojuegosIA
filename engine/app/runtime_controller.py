@@ -53,6 +53,7 @@ class RuntimeController:
         self._get_parallax_system = context.get_parallax_system
         self._get_resource_preloader_system = context.get_resource_preloader_system
         self._get_particle_system = context.get_particle_system
+        self._get_gpu_particles_system = context.get_gpu_particles_system
         self._get_area2d_system = context.get_area2d_system
         self._get_path_follow_system = context.get_path_follow_system
         self._get_gameplay2d_semantic_system = context.get_gameplay2d_semantic_system
@@ -347,6 +348,10 @@ class RuntimeController:
         particle_system = self._get_particle_system()
         if particle_system is not None:
             particle_system.update(world, dt)
+
+        gpu_particles_system = self._get_gpu_particles_system()
+        if gpu_particles_system is not None:
+            gpu_particles_system.update(world, dt)
 
         area2d_system = self._get_area2d_system()
         if area2d_system is not None:

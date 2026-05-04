@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from engine.components.navigation_agent_2d import NavigationAgent2D
 from engine.components.transform import Transform
@@ -235,3 +235,81 @@ class NavigationAgentSystem:
         agent.velocity_y = dir_y * agent.speed
         transform.x += dir_x * move
         transform.y += dir_y * move
+
+    def get_debug_primitives(self, world: "World") -> list[dict[str, Any]]:
+        """Build debug primitives for navigation visualization.
+
+        Returns list of debug primitives compatible with RenderSystem.set_debug_primitives().
+        Colors: navigation_polygon=blue, agent_path=green, agent_radius=yellow, obstacle=red.
+        """
+        primitives: list[dict[str, Any]] = []
+        NAV_BLUE = [50, 100, 255, 150]
+        NAV_GREEN = [50, 255, 50, 150]
+        NAV_YELLOW = [255, 255, 50, 150]
+        NAV_RED = [255, 50, 50, 150]
+
+        # Draw navigation grid bounds if available
+        if self._nav_service is not None and self._nav_service.grid is not None:
+            grid = self._nav_service.grid
+            gw = float(grid.width * grid.cell_size)
+            gh = float(grid.height * grid.cell_size)
+            primitives.append({
+                "kind": "navigation_polygon",
+                "color": NAV_BLUE,
+                "points": [
+                    [0.0, 0.0],
+                    [gw, 0.0],
+                    [gw, gh],
+                    [0.0, gh],
+                ],
+                "entity_name": "__nav_grid__",
+            })
+
+        if not hasattr(world, "get_entities_with"):
+            return primitives
+
+        # Collect agent paths and avoidance radii
+        for entity in world.get_entities_with(Transform, NavigationAgent2D):
+            agent = entity.get_component(NavigationAgent2D)
+            transform = entity.get_component(Transform)
+            if agent is None or transform is None or not agent.enabled:
+                continue
+
+            # Agent path
+            if agent.path:
+                path_points: list[list[float]] = []
+                path_points.append([transform.x, transform.y])
+                for wp in agent.path:
+                    path_points.append([float(wp[0]), float(wp[1])])
+                primitives.append({
+                    "kind": "navigation_path",
+                    "color": NAV_GREEN,
+                    "points": path_points,
+                    "entity_name": entity.name,
+                })
+
+            # Agent avoidance radius
+            if agent.avoidance_radius > 0.0:
+                primitives.append({
+                    "kind": "navigation_radius",
+                    "color": NAV_YELLOW,
+                    "x": transform.x,
+                    "y": transform.y,
+                    "radius": agent.avoidance_radius,
+                    "entity_name": entity.name,
+                })
+
+        # Obstacle radii
+        obstacles = self._collect_obstacles(world)
+        for obs_entity, obstacle, obs_transform in obstacles:
+            if obstacle.radius > 0.0:
+                primitives.append({
+                    "kind": "navigation_radius",
+                    "color": NAV_RED,
+                    "x": obs_transform.x,
+                    "y": obs_transform.y,
+                    "radius": obstacle.radius,
+                    "entity_name": obs_entity.name,
+                })
+
+        return primitives
