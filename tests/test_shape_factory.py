@@ -228,6 +228,95 @@ class ShapeFactoryTests(unittest.TestCase):
         b = CapsuleShape(200, 100, 10, 32)
         self.assertFalse(a.intersects_shape(b))
 
+    # ── AABB manifold normal directions ───────────────────────────
+
+    def test_aabb_manifold_normal_left(self) -> None:
+        """AABB colisionando por la izquierda → normal no nula."""
+        a = AABBShape(10, 10, 16, 16)
+        b = AABBShape(30, 10, 16, 16)
+        m = a.collide_shape(b)
+        assert m is not None
+        assert m.depth > 0
+        assert abs(m.normal_x) > 0 or abs(m.normal_y) > 0, (
+            f"Normal no nula: ({m.normal_x}, {m.normal_y})"
+        )
+
+    def test_aabb_manifold_normal_right(self) -> None:
+        """AABB colisionando por la derecha."""
+        a = AABBShape(50, 10, 16, 16)
+        b = AABBShape(30, 10, 16, 16)
+        m = a.collide_shape(b)
+        assert m is not None
+        assert m.depth > 0
+
+    def test_aabb_manifold_normal_top(self) -> None:
+        """AABB colisionando por arriba."""
+        a = AABBShape(10, 10, 16, 16)
+        b = AABBShape(10, 30, 16, 16)
+        m = a.collide_shape(b)
+        assert m is not None
+        assert m.depth > 0
+
+    def test_aabb_manifold_normal_bottom(self) -> None:
+        """AABB colisionando por abajo."""
+        a = AABBShape(10, 50, 16, 16)
+        b = AABBShape(10, 30, 16, 16)
+        m = a.collide_shape(b)
+        assert m is not None
+        assert m.depth > 0
+
+    # ── Circle manifold depth ─────────────────────────────────────
+
+    def test_circle_collide_circle_positive_depth(self) -> None:
+        """Dos círculos solapados → depth > 0."""
+        a = CircleShape(10, 10, 20)
+        b = CircleShape(30, 10, 20)
+        m = a.collide_shape(b)
+        assert m is not None
+        assert m.depth > 0
+        assert m.contact_count >= 1
+
+    # ── Capsule approximate manifold ──────────────────────────────
+
+    def test_capsule_manifold_is_approximate(self) -> None:
+        """Cápsula vs AABB: manifold existe pero es aproximado."""
+        a = CapsuleShape(10, 10, 8, 32)
+        b = AABBShape(30, 10, 16, 16)
+        m = a.collide_shape(b)
+        assert m is not None, "Cápsula debería detectar colisión con AABB"
+        assert m.contact_count >= 1
+
+    # ── Polygon SAT manifold ──────────────────────────────────────
+
+    def test_polygon_sat_manifold_exists(self) -> None:
+        """Polígono vs AABB vía SAT → manifold existe con depth > 0."""
+        poly = PolygonShape([(5, 0), (15, 20), (0, 10)])
+        aabb = AABBShape(10, 5, 20, 15)
+        m = poly.collide_shape(aabb)
+        assert m is not None, "SAT debería detectar colisión"
+        assert m.depth > 0, f"Depth debería ser > 0, es {m.depth}"
+
+    # ── No collision → None ───────────────────────────────────────
+
+    def test_no_collision_returns_none(self) -> None:
+        """Shapes separadas → collide_shape retorna None."""
+        a = AABBShape(0, 0, 10, 10)
+        b = AABBShape(100, 100, 10, 10)
+        assert a.collide_shape(b) is None
+        c = CircleShape(0, 0, 5)
+        d = CircleShape(100, 0, 5)
+        assert c.collide_shape(d) is None
+
+    # ── intersects_shape wrapper ──────────────────────────────────
+
+    def test_intersects_shape_still_works(self) -> None:
+        """intersects_shape() sigue siendo wrapper válido de collide_shape()."""
+        a = AABBShape(10, 10, 16, 16)
+        b = AABBShape(30, 10, 16, 16)
+        assert a.intersects_shape(b)
+        c = AABBShape(100, 100, 10, 10)
+        assert not a.intersects_shape(c)
+
 
 if __name__ == "__main__":
     unittest.main()

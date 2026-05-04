@@ -17,7 +17,7 @@ class PhysicsKinematicMoveService:
 
     def move_and_slide(
         self,
-        backend: PhysicsBackend,
+        backend: Optional[PhysicsBackend],
         world: Any,
         entity: Any,
         velocity: tuple[float, float],
@@ -32,8 +32,9 @@ class PhysicsKinematicMoveService:
 
         Si el backend soporta kinematic move, lo usa directamente.
         Si no, usa el legacy AABB solver como fallback.
+        Soporta backend=None (usa legacy solver).
         """
-        if backend.supports_kinematic_move():
+        if backend is not None and backend.supports_kinematic_move():
             return backend.move_and_slide(
                 world=world, entity=entity, velocity=velocity,
                 delta_time=delta_time, floor_max_angle=floor_max_angle,
@@ -59,15 +60,17 @@ class PhysicsKinematicMoveService:
 
     def move_and_collide(
         self,
-        backend: PhysicsBackend,
+        backend: Optional[PhysicsBackend],
         world: Any,
         entity: Any,
         velocity: tuple[float, float],
         delta_time: float,
         max_collisions: int = 1,
     ) -> MoveResult2D:
-        """Ejecuta move_and_collide usando el mejor solver disponible."""
-        if backend.supports_kinematic_move():
+        """Ejecuta move_and_collide usando el mejor solver disponible.
+        Soporta backend=None (usa legacy solver).
+        """
+        if backend is not None and backend.supports_kinematic_move():
             return backend.move_and_collide(
                 world=world, entity=entity, velocity=velocity,
                 delta_time=delta_time, max_collisions=max_collisions,

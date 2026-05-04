@@ -295,6 +295,16 @@ cada frame desde `RuntimeController`. No es necesario que el agente configure na
 El componente `CharacterController2D` determina el modo (`move_and_slide` vs
 `move_and_collide`) y el backend lo respeta.
 
+### Limitaciones de física para agentes IA
+
+- `box2d` es backend opt-in. No usar a menos que esté explicitamente configurado.
+- `supports_kinematic_move()` indica si el backend implementa movimiento kinematic real.
+- `PhysicsKinematicMoveService` maneja el fallback automatico: si el backend no
+  soporta kinematic move, usa el solver AABB legacy.
+- Las shapes no-AABB (circle, capsule, polygon) tienen narrow-phase pero con
+  precision variable en el manifold de contacto. Para fisica precisa, usar
+  `box2d` como backend (requiere Box2D instalado).
+
 ## Que evitar
 
 - No editar `SceneManager.edit_world` directamente para flujos publicos nuevos.

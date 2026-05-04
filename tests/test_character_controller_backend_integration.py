@@ -9,6 +9,7 @@ from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.events.event_bus import EventBus
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
+from engine.physics.registry import PhysicsBackendRegistry
 from engine.systems.character_controller_system import CharacterControllerSystem
 from engine.systems.collision_system import CollisionSystem
 from engine.systems.physics_system import PhysicsSystem
@@ -360,6 +361,62 @@ class CharacterControllerBackendIntegrationTests(unittest.TestCase):
         new_events = len(events) - events_before
         # Puede emitir 0 o 1 (si floor snap encuentra contacto), pero NO más de 1
         self.assertLessEqual(new_events, 1, f"Frame extra duplicó: {new_events} eventos")
+
+
+    # ── Backend switch ────────────────────────────────────────────
+
+    def test_backend_switch_does_not_leave_stale_state(self) -> None:
+        """Cambiar de backend no deja estado obsoleto en CharacterControllerSystem."""
+        world = World()
+        player = Entity(name="Player")
+        player.add_component(Transform(x=160, y=50))
+        player.add_component(Collider(width=32, height=32))
+        cc = CharacterController2D(move_speed=200, gravity=600)
+        player.add_component(cc)
+        world.add_entity(player)
+
+        ground = Entity(name="Ground")
+        ground.add_component(Transform(x=160, y=200))
+        ground.add_component(Collider(width=640, height=32))
+        world.add_entity(ground)
+
+        backend1 = LegacyAABBPhysicsBackend(physics_system=None, collision_system=None)
+        system = CharacterControllerSystem()
+
+        for _ in range(30):
+            system.update(world, 1 / 60, backend=backend1)
+
+        y_after_b1 = player.get_component(Transform).y
+
+        backend2 = LegacyAABBPhysicsBackend(physics_system=None, collision_system=None)
+        system.update(world, 1 / 60, backend=backend2)
+
+        y_after_b2 = player.get_component(Transform).y
+        # Un frame más de física con backend distinto: delta <= 1 frame de caída libre
+        self.assertLessEqual(
+            abs(y_after_b2 - y_after_b1), 10.0,
+            f"Cambio de backend no debería causar salto: {y_after_b1} → {y_after_b2}",
+        )
+
+    def test_backend_resolver_with_metadata(self) -> None:
+        """El backend se resuelve según feature_metadata del world."""
+        world = World()
+        world.feature_metadata["physics_2d"] = {"backend": "box2d"}
+
+        registry = PhysicsBackendRegistry(default_backend_name="legacy_aabb")
+
+        legacy = LegacyAABBPhysicsBackend(physics_system=None, collision_system=None)
+        registry.register_backend(legacy, backend_name="legacy_aabb")
+
+        resolved = registry.resolve(world)
+        self.assertEqual(
+            resolved.effective_backend, "legacy_aabb",
+            f"Esperado fallback a legacy, efectivo={resolved.effective_backend}",
+        )
+        self.assertTrue(
+            resolved.selection["used_fallback"],
+            "Debería usar fallback porque box2d no está registrado",
+        )
 
 
 if __name__ == "__main__":

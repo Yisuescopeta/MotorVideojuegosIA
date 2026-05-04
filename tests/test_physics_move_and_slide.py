@@ -239,7 +239,34 @@ except Exception:
 
 
 class KinematicFallbackTests(unittest.TestCase):
-    """Punto 2: servicio kinematic redirige a legacy cuando backend no soporta."""
+    """Punto 2: servicio kinematic redirige a legacy cuando backend no soporta o es None."""
+
+    def test_kinematic_service_handles_none_backend(self) -> None:
+        """PhysicsKinematicMoveService no crashea con backend=None."""
+        from engine.physics.kinematic_move_service import PhysicsKinematicMoveService
+
+        world = World()
+        player = Entity(name="Player")
+        player.add_component(Transform(x=160, y=50))
+        player.add_component(Collider(width=32, height=32))
+        world.add_entity(player)
+
+        ground = Entity(name="Ground")
+        ground.add_component(Transform(x=160, y=200))
+        ground.add_component(Collider(width=640, height=32))
+        world.add_entity(ground)
+
+        service = PhysicsKinematicMoveService()
+        result = service.move_and_slide(
+            backend=None, world=world, entity=player,
+            velocity=(0, 300), delta_time=1 / 60,
+        )
+        self.assertIsNotNone(result)
+        self.assertIsInstance(result, MoveResult2D)
+        self.assertLess(
+            result.position_y, 200,
+            f"Fallback legacy debería funcionar con backend=None, y={result.position_y}",
+        )
 
     def test_kinematic_service_falls_back_to_legacy_when_backend_unsupported(self) -> None:
         """PhysicsKinematicMoveService usa legacy cuando backend no soporta."""

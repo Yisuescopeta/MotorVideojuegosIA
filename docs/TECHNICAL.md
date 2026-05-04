@@ -195,6 +195,46 @@ AABB‑AABB, Circle‑Circle, Circle‑AABB, Circle‑Capsule, Capsule‑AABB,
 Capsule‑Capsule, Polygon‑AABB, la factoria desde Collider, y la integracion en
 `_sweep_axis` del backend legacy.
 
+### Limitaciones actuales
+
+- **`legacy_aabb` es el backend default estable.** `box2d` es opt-in via
+  `feature_metadata.physics_2d.backend`.
+- **Box2D NO soporta `move_and_slide` ni `move_and_collide`.** Su
+  `supports_kinematic_move()` retorna `False`. El `PhysicsKinematicMoveService`
+  usa el fallback legacy AABB solver automaticamente.
+- **`CapsuleShape.collide_shape()` tiene manifold aproximado.** El punto de
+  contacto y la normal son estimados; no hay resolucion SAT completa para
+  capsulas.
+- **`PolygonShape` asume poligonos convexos.** No hay deteccion de concavidad.
+  El SAT implementado es correcto para convexos pero no tiene manifold completo
+  (depth/normal aproximados desde AABB de los vertices).
+- **`query_shape_cast` legacy usa barrido por pasos discretos** (20 steps).
+  No es un cast continuo real. Adecuado para depuracion y queries gruesas.
+- **`ShapeFactory.collide_shape()` devuelve `ContactManifold2D` con normal y
+  depth**, pero no todos los pares de shapes tienen precision fisica completa
+  (ver tabla abajo).
+
+| Par de shapes | Manifold | Precision |
+|--------------|----------|-----------|
+| AABB x AABB | Completo | Normal y depth exactas |
+| Circle x Circle | Completo | Normal y depth exactas |
+| Circle x AABB | Completo | Normal y depth exactas |
+| Capsule x AABB | Aproximado | Punto de contacto estimado |
+| Capsule x Circle | Aproximado | Punto de contacto estimado |
+| Capsule x Capsule | Aproximado | Solo deteccion booleana |
+| Polygon x AABB | Aproximado | SAT implementado, manifold basico |
+| Polygon x Polygon | Aproximado | SAT implementado, manifold basico |
+| Polygon x Circle | Aproximado | Distancia a aristas, normal estimada |
+
+### Trabajo futuro
+
+- Box2D `move_and_slide` real con shape casts nativos
+- Manifold completo para CapsuleShape (capsula vs todos)
+- Manifold completo para PolygonShape (SAT con depth y normal real)
+- Unificacion de contactos por frame (evitar duplicacion entre CharacterController y CollisionSystem)
+- CI matrix con Box2D instalado y sin Box2D
+- `query_shape_cast` continuo (no discreto) en backends
+
 `AudioSystem` sigue siendo la superficie ECS/runtime compatible y delega en la
 foundation interna de `engine/audio/`. El backend real de audio, buses/mixer,
 spatial audio completo y la integracion con el `EventBus` global quedan
