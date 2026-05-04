@@ -889,6 +889,21 @@ class Game:
             default_backend_name=self._physics_backend_name,
         ).selection
 
+    def get_physics_backend_info(self) -> dict:
+        """Devuelve la selección de backend + warning si se usó fallback."""
+        selection = self.get_physics_backend_selection()
+        warning = None
+        if selection.get("used_fallback"):
+            warning = (
+                f"Physics backend '{selection.get('requested_backend')}' "
+                f"not available. Using '{selection.get('effective_backend')}' "
+                f"as fallback. Reason: {selection.get('fallback_reason', 'unknown')}"
+            )
+        return {
+            **selection,
+            "warning": warning,
+        }
+
     def refresh_runtime_physics_backend(self) -> None:
         self._refresh_default_physics_backend()
 

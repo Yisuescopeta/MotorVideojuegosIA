@@ -4,9 +4,10 @@ import math
 from typing import Any, Optional
 
 from engine.components.collider import Collider
+from engine.components.collision_filter_2d import CollisionFilter2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
-from engine.physics.backend import PhysicsAABBHit, PhysicsBackend, PhysicsContact, PhysicsRayHit, PhysicsShapeCastHit
+from engine.physics.backend import MoveResult2D, PhysicsAABBHit, PhysicsBackend, PhysicsContact, PhysicsRayHit, PhysicsShapeCastHit
 
 
 class LegacyAABBPhysicsBackend(PhysicsBackend):
@@ -23,6 +24,7 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         self._latest_contacts: list[PhysicsContact] = []
         self._synced_world_id: int | None = None
         self._synced_structure_version: int | None = None
+        self._last_world: Any = None
 
     def set_event_bus(self, event_bus: Optional[Any]) -> None:
         self._event_bus = event_bus
@@ -70,6 +72,7 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
 
     def step(self, world: Any, dt: float) -> None:
         self.sync_world(world)
+        self._last_world = world
         self._latest_contacts = []
         if self._physics_system is not None:
             self._physics_system.update(world, dt)
@@ -227,6 +230,293 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         if self._physics_system is not None and hasattr(self._physics_system, "get_step_metrics"):
             return dict(self._physics_system.get_step_metrics())
         return {"ccd_bodies": 0, "swept_checks": 0}
+
+    # ------------------------------------------------------------------
+    # move_and_slide / move_and_collide
+    # ------------------------------------------------------------------
+
+    def move_and_slide(
+        self,
+        entity: Any,
+        velocity: tuple[float, float],
+        delta_time: float,
+        floor_max_angle: float = 0.785398,
+        floor_snap_distance: float = 2.0,
+        up_direction: tuple[float, float] = (0.0, -1.0),
+        wall_min_slide_angle: float = 0.261799,
+        max_slides: int = 4,
+    ) -> MoveResult2D:
+        transform = entity.get_component(Transform) if hasattr(entity, "get_component") else None
+        collider: Collider | None = entity.get_component(Collider) if hasattr(entity, "get_component") else None
+        if transform is None or collider is None:
+            vx, vy = float(velocity[0]), float(velocity[1])
+            return MoveResult2D(
+                position_x=transform.x if transform else 0.0,
+                position_y=transform.y if transform else 0.0,
+                velocity_x=vx,
+                velocity_y=vy,
+            )
+
+        up_x, up_y = float(up_direction[0]), float(up_direction[1])
+        vx, vy = float(velocity[0]), float(velocity[1])
+        was_on_floor = getattr(entity, "_move_slide_was_on_floor", False)
+
+        # --- collect solids ---
+        world = self._last_world
+        if world is None:
+            transform.x += vx * delta_time
+            transform.y += vy * delta_time
+            return MoveResult2D(
+                position_x=transform.x,
+                position_y=transform.y,
+                velocity_x=vx,
+                velocity_y=vy,
+            )
+        solids: list[Any] = []
+        for other in world.get_entities_with(Transform, Collider):
+            other_collider = other.get_component(Collider)
+            if other_collider is None or not other_collider.enabled or other_collider.is_trigger:
+                continue
+            solids.append(other)
+
+        on_floor = False
+        on_wall = False
+        on_ceiling = False
+        collision_nx = 0.0
+        collision_ny = 0.0
+        contacts: list[PhysicsContact] = []
+
+        # --- sweep horizontal ---
+        delta_x = vx * delta_time
+        safe_delta_x = self._sweep_axis(
+            world=world,
+            entity=entity,
+            transform=transform,
+            collider=collider,
+            solids=solids,
+            delta=delta_x,
+            axis="x",
+            contacts=contacts,
+        )
+        transform.x += safe_delta_x
+        if abs(safe_delta_x - delta_x) > 1e-6:
+            vx = 0.0
+            collision_nx = -1.0 if delta_x > 0 else 1.0
+            collision_type = self._classify_collision_static(
+                collision_nx, 0.0, up_x, up_y, floor_max_angle, wall_min_slide_angle
+            )
+            if collision_type == "wall":
+                on_wall = True
+
+        # --- sweep vertical ---
+        delta_y = vy * delta_time
+        safe_delta_y = self._sweep_axis(
+            world=world,
+            entity=entity,
+            transform=transform,
+            collider=collider,
+            solids=solids,
+            delta=delta_y,
+            axis="y",
+            contacts=contacts,
+        )
+        transform.y += safe_delta_y
+        if abs(safe_delta_y - delta_y) > 1e-6:
+            vy = 0.0
+            collision_ny = -1.0 if delta_y > 0 else 1.0
+            if delta_y > 0:
+                on_floor = True
+            collision_type = self._classify_collision_static(
+                collision_nx, collision_ny, up_x, up_y, floor_max_angle, wall_min_slide_angle
+            )
+            if collision_type == "ceiling":
+                on_ceiling = True
+            elif collision_type == "wall":
+                on_wall = True
+
+        # --- floor snap ---
+        if was_on_floor and not on_floor and floor_snap_distance > 0.0:
+            snap = self._floor_snap(
+                world=world,
+                entity=entity,
+                transform=transform,
+                collider=collider,
+                solids=solids,
+                snap_distance=floor_snap_distance,
+                contacts=contacts,
+            )
+            if snap is not None:
+                transform.y += snap
+                on_floor = True
+
+        # persist floor state
+        if hasattr(entity, "__dict__"):
+            entity._move_slide_was_on_floor = on_floor  # type: ignore[attr-defined]
+
+        return MoveResult2D(
+            position_x=transform.x,
+            position_y=transform.y,
+            velocity_x=vx,
+            velocity_y=vy,
+            on_floor=on_floor,
+            on_wall=on_wall,
+            on_ceiling=on_ceiling,
+            collision_normal_x=collision_nx,
+            collision_normal_y=collision_ny,
+            contacts=contacts,
+            slide_count=1,
+            floor_angle=0.0,
+        )
+
+    def move_and_collide(
+        self,
+        entity: Any,
+        velocity: tuple[float, float],
+        delta_time: float,
+        max_collisions: int = 1,
+    ) -> MoveResult2D:
+        del max_collisions
+        return self.move_and_slide(entity, velocity, delta_time, max_slides=1)
+
+    # ------------------------------------------------------------------
+    # Sweep helpers
+    # ------------------------------------------------------------------
+
+    def _sweep_axis(
+        self,
+        world: Any,
+        entity: Any,
+        transform: Transform,
+        collider: Collider,
+        solids: list[Any],
+        delta: float,
+        axis: str,
+        contacts: list[PhysicsContact],
+    ) -> float:
+        if abs(delta) <= 1e-6:
+            return 0.0
+        left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
+        safe_delta = delta
+        hit_entity: Any = None
+        for other_solid in solids:
+            if other_solid is entity:
+                continue
+            if not self._can_collide(world, entity, other_solid):
+                continue
+            other_transform = other_solid.get_component(Transform)
+            other_collider = other_solid.get_component(Collider)
+            if other_transform is None or other_collider is None or not other_collider.enabled:
+                continue
+            if axis == "x" and other_collider.one_way_collision:
+                continue
+            o_left, o_top, o_right, o_bottom = other_collider.get_bounds(
+                other_transform.x, other_transform.y
+            )
+            if axis == "x":
+                if not (top < o_bottom and bottom > o_top):
+                    continue
+            else:
+                if not (left < o_right and right > o_left):
+                    continue
+                if other_collider.one_way_collision:
+                    if delta < 0:
+                        direction_check = other_collider.one_way_collision_direction_y
+                        if direction_check < 0:
+                            continue
+            if delta > 0:
+                gap = (o_left - right) if axis == "x" else (o_top - bottom)
+                if 0.0 <= gap <= safe_delta:
+                    safe_delta = max(0.0, gap)
+                    hit_entity = other_solid
+            else:
+                gap = (o_right - left) if axis == "x" else (o_bottom - top)
+                if safe_delta <= gap <= 0.0:
+                    safe_delta = min(0.0, gap)
+                    hit_entity = other_solid
+        if hit_entity is not None:
+            self._add_contact(contacts, entity, hit_entity)
+        return safe_delta
+
+    def _floor_snap(
+        self,
+        world: Any,
+        entity: Any,
+        transform: Transform,
+        collider: Collider,
+        solids: list[Any],
+        snap_distance: float,
+        contacts: list[PhysicsContact],
+    ) -> float | None:
+        left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
+        snap_limit = max(0.0, snap_distance)
+        best_snap: float | None = None
+        best_other: Any = None
+        for other_solid in solids:
+            if other_solid is entity:
+                continue
+            if not self._can_collide(world, entity, other_solid):
+                continue
+            other_transform = other_solid.get_component(Transform)
+            other_collider = other_solid.get_component(Collider)
+            if other_transform is None or other_collider is None or not other_collider.enabled:
+                continue
+            o_left, o_top, o_right, o_bottom = other_collider.get_bounds(
+                other_transform.x, other_transform.y
+            )
+            if not (left < o_right and right > o_left):
+                continue
+            gap = o_top - bottom
+            if 0.0 <= gap <= snap_limit and (best_snap is None or gap < best_snap):
+                best_snap = gap
+                best_other = other_solid
+        if best_other is not None:
+            self._add_contact(contacts, entity, best_other)
+        return best_snap
+
+    def _can_collide(self, world: Any, entity: Any, other_entity: Any) -> bool:
+        cc_filter = entity.get_component(CollisionFilter2D) if hasattr(entity, "get_component") else None
+        other_filter = other_entity.get_component(CollisionFilter2D) if hasattr(other_entity, "get_component") else None
+        if cc_filter is not None or other_filter is not None:
+            if not CollisionFilter2D.should_collide(cc_filter, other_filter):
+                return False
+        matrix = getattr(world, "feature_metadata", {}).get("physics_2d", {}).get("layer_matrix", {})
+        if not matrix:
+            return True
+        entity_layer = getattr(entity, "layer", "Default")
+        other_layer = getattr(other_entity, "layer", "Default")
+        return bool(matrix.get(f"{entity_layer}|{other_layer}", True))
+
+    @staticmethod
+    def _classify_collision_static(
+        nx: float, ny: float, up_x: float, up_y: float,
+        floor_max_angle: float, wall_min_slide_angle: float,
+    ) -> str:
+        dot = nx * up_x + ny * up_y
+        angle = math.acos(max(-1.0, min(1.0, abs(dot))))
+        if angle <= floor_max_angle:
+            return "floor" if dot >= 0 else "ceiling"
+        elif angle >= (math.pi / 2 - wall_min_slide_angle):
+            return "wall"
+        else:
+            return "ceiling" if dot > 0 else "wall"
+
+    def _add_contact(
+        self, contacts: list[PhysicsContact], entity: Any, other: Any,
+    ) -> None:
+        entity_id = int(getattr(entity, "id", 0))
+        other_id = int(getattr(other, "id", 0))
+        for c in contacts:
+            if {c.entity_a_id, c.entity_b_id} == {entity_id, other_id}:
+                return
+        contacts.append(
+            PhysicsContact(
+                entity_a=getattr(entity, "name", str(entity_id)),
+                entity_b=getattr(other, "name", str(other_id)),
+                entity_a_id=entity_id,
+                entity_b_id=other_id,
+                is_trigger=False,
+            )
+        )
 
     def _get_structure_version(self, world: Any) -> int | None:
         try:
