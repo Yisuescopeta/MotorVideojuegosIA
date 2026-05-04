@@ -25,6 +25,15 @@ class PhysicsAABBHit(TypedDict):
     is_trigger: bool
 
 
+class PhysicsShapeCastHit(TypedDict, total=False):
+    entity: str
+    entity_id: int
+    position: PhysicsPoint
+    normal: PhysicsPoint
+    fraction: float
+    is_trigger: bool
+
+
 class PhysicsBackendInfo(TypedDict):
     name: str
     available: bool
@@ -95,6 +104,18 @@ class PhysicsBackend(ABC):
     @abstractmethod
     def query_aabb(self, world: Any, bounds: tuple[float, float, float, float]) -> list[PhysicsAABBHit]:
         raise NotImplementedError
+
+    def query_shape_cast(
+        self,
+        world: Any,
+        shape_type: str,
+        shape_size: tuple[float, float],
+        origin: tuple[float, float],
+        direction: tuple[float, float],
+        max_distance: float,
+    ) -> list[PhysicsShapeCastHit]:
+        del world, shape_type, shape_size, origin, direction, max_distance
+        return []
 
     def query_shape(self, world: Any, shape: dict[str, Any]) -> list[dict[str, Any]]:
         del world, shape

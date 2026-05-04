@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import math
 import time
 from collections.abc import Callable
 from typing import Any
 
 from engine.assets.asset_service import AssetService
 from engine.audio import AudioPlaybackRequest, AudioRuntime, AudioRuntimeEvent
+from engine.components.audio_listener_2d import AudioListener2D
 from engine.components.audiosource import AudioSource
 from engine.components.transform import Transform
 from engine.ecs.world import World
@@ -21,6 +23,7 @@ class AudioSystem:
         self._asset_resolver: Any = None
         self._runtime = AudioRuntime()
         self._event_sink: Callable[[AudioRuntimeEvent], None] | None = None
+        self._active_listener_transform: Transform | None = None
 
     def set_project_service(self, project_service: Any) -> None:
         self._asset_service = AssetService(project_service) if project_service is not None else None
@@ -48,6 +51,111 @@ class AudioSystem:
         """
         return 0.0
 
+    def _get_active_listener(self, world: World) -> tuple[Transform | None, AudioListener2D | None]:
+        """Find the active AudioListener2D and its Transform in the world.
+
+        Only one listener with is_active=True and enabled=True is used.
+        Returns (transform, listener) or (None, None) if no active listener found.
+        """
+        for entity in world.get_entities_with(AudioListener2D):
+            listener = entity.get_component(AudioListener2D)
+            if listener is not None and listener.enabled and listener.is_active:
+                transform = entity.get_component(Transform)
+                return transform, listener
+        return None, None
+
+    @staticmethod
+    def _spatial_attenuation(
+        distance: float,
+        max_distance: float,
+        mode: str,
+    ) -> float:
+        """Compute attenuation factor for spatial audio at given distance."""
+        if mode == "linear":
+            return max(0.0, 1.0 - distance / max(max_distance, 1.0))
+        elif mode == "exponential":
+            return math.exp(-distance * 0.005)
+        else:  # 'inverse' (default)
+            return 1.0 / (1.0 + distance * 0.01)
+
+    @staticmethod
+    def _spatial_pan(
+        source_x: float,
+        source_y: float,
+        listener_x: float,
+        listener_y: float,
+        pan_strength: float,
+    ) -> float:
+        """Compute stereo pan from -1 to 1 based on source angle relative to listener."""
+        angle = math.atan2(source_y - listener_y, source_x - listener_x)
+        return math.sin(angle) * pan_strength
+
+    @staticmethod
+    def _compute_spatial_volume(
+        base_volume: float,
+        spatial_blend: float,
+        distance: float,
+        max_distance: float,
+        attenuation_mode: str,
+    ) -> float:
+        """Compute effective volume with spatial attenuation blended in."""
+        if spatial_blend <= 0.0:
+            return base_volume
+        attenuation = AudioSystem._spatial_attenuation(distance, max_distance, attenuation_mode)
+        return base_volume * (1.0 + (attenuation - 1.0) * spatial_blend)
+
+    def _apply_spatial_audio(self, world: World) -> None:
+        """Apply spatial volume and pan to all active voices based on listener position.
+
+        Called each frame to update voice volume/pan for AudioSources with spatial_blend > 0.
+        """
+        listener_transform, listener = self._get_active_listener(world)
+        self._active_listener_transform = listener_transform
+
+        if listener_transform is None or listener is None:
+            return
+
+        listener_x = float(listener_transform.x)
+        listener_y = float(listener_transform.y)
+
+        for entity in world.get_entities_with(AudioSource):
+            audio_source = entity.get_component(AudioSource)
+            if audio_source is None or not audio_source.enabled:
+                continue
+            if audio_source.spatial_blend <= 0.0:
+                continue
+
+            voice = self._runtime.get_voice(entity.name)
+            if voice is None:
+                continue
+
+            transform = entity.get_component(Transform)
+            if transform is None:
+                continue
+
+            source_x = float(transform.x)
+            source_y = float(transform.y)
+            dx = source_x - listener_x
+            dy = source_y - listener_y
+            distance = math.sqrt(dx * dx + dy * dy)
+
+            effective_volume = self._compute_spatial_volume(
+                float(audio_source.volume),
+                float(audio_source.spatial_blend),
+                distance,
+                float(listener.max_distance),
+                str(listener.attenuation_mode),
+            )
+
+            pan = self._spatial_pan(
+                source_x, source_y,
+                listener_x, listener_y,
+                float(listener.pan_strength),
+            )
+
+            voice.volume = effective_volume
+            voice.position = (source_x, source_y)
+
     def update(self, world: World, game_time: float | None = None) -> None:
         """Update all AudioSource components in the world.
 
@@ -59,6 +167,8 @@ class AudioSystem:
         """
         wall_time = time.time()
         effective_time = float(game_time) if game_time is not None else wall_time
+        listener_transform, listener = self._get_active_listener(world)
+        self._active_listener_transform = listener_transform
         for entity in world.get_entities_with(AudioSource):
             audio_source = entity.get_component(AudioSource)
             if audio_source is None or not audio_source.enabled:
@@ -67,8 +177,12 @@ class AudioSystem:
             if audio_source.is_playing:
                 self._restore_runtime_voice_from_component(entity.name, audio_source, entity.get_component(Transform))
             if audio_source.play_on_awake and not audio_source.is_playing and self._runtime.get_voice(entity.name) is None:
-                request = self._build_playback_request(entity.name, audio_source, entity.get_component(Transform))
+                request = self._build_playback_request(
+                    entity.name, audio_source, entity.get_component(Transform),
+                    listener_transform=listener_transform, listener=listener,
+                )
                 self._runtime.play(request, game_time=effective_time)
+        self._apply_spatial_audio(world)
         self._runtime.update(game_time=effective_time)
         self._sync_active_components(world, effective_time=effective_time)
         self._flush_runtime_events(world, effective_time=effective_time)
@@ -79,7 +193,11 @@ class AudioSystem:
             return False
         if not audio_source.asset_path and not audio_source.get_asset_reference().get("guid"):
             return False
-        request = self._build_playback_request(entity.name, audio_source, entity.get_component(Transform))
+        listener_transform, listener = self._get_active_listener(world)
+        request = self._build_playback_request(
+            entity.name, audio_source, entity.get_component(Transform),
+            listener_transform=listener_transform, listener=listener,
+        )
         voice = self._runtime.play(request, game_time=game_time)
         self._sync_component_from_voice(audio_source, voice, effective_time=game_time, clear_effective_time=game_time is None)
         self._flush_runtime_events(world, effective_time=game_time)
@@ -123,17 +241,37 @@ class AudioSystem:
         entity_name: str,
         audio_source: AudioSource,
         transform: Transform | None = None,
+        *,
+        listener_transform: Transform | None = None,
+        listener: AudioListener2D | None = None,
     ) -> AudioPlaybackRequest:
         resolved_asset_path = self.resolve_asset_path(audio_source)
         playback_duration = audio_source.playback_duration
         if playback_duration <= 0:
             playback_duration = self._get_asset_duration(audio_source)
         position = (float(transform.x), float(transform.y)) if transform is not None else None
+        volume = float(audio_source.volume)
+        if (
+            listener_transform is not None
+            and listener is not None
+            and transform is not None
+            and audio_source.spatial_blend > 0.0
+        ):
+            dx = float(transform.x) - float(listener_transform.x)
+            dy = float(transform.y) - float(listener_transform.y)
+            distance = math.sqrt(dx * dx + dy * dy)
+            volume = self._compute_spatial_volume(
+                volume,
+                float(audio_source.spatial_blend),
+                distance,
+                float(listener.max_distance),
+                str(listener.attenuation_mode),
+            )
         return AudioPlaybackRequest(
             entity_name=entity_name,
             asset_path=audio_source.asset_path,
             resolved_asset_path=resolved_asset_path,
-            volume=float(audio_source.volume),
+            volume=volume,
             pitch=float(audio_source.pitch),
             loop=bool(audio_source.loop),
             spatial_blend=float(audio_source.spatial_blend),

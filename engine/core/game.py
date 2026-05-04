@@ -56,7 +56,7 @@ from engine.editor.sprite_editor_modal import SpriteEditorModal
 from engine.editor.terminal_panel import TerminalPanel
 from engine.editor.undo_redo import UndoRedoManager
 from engine.events.signals import SignalConnectionFlags
-from engine.physics.backend import PhysicsAABBHit, PhysicsBackendInfo, PhysicsBackendSelection, PhysicsRayHit
+from engine.physics.backend import PhysicsAABBHit, PhysicsBackendInfo, PhysicsBackendSelection, PhysicsRayHit, PhysicsShapeCastHit
 from engine.physics.registry import PhysicsBackendRegistry
 from engine.project.project_service import ProjectService
 
@@ -87,9 +87,11 @@ if TYPE_CHECKING:
     from engine.systems.visible_on_screen_system import VisibleOnScreenSystem
     from engine.systems.parallax_system import ParallaxSystem
     from engine.systems.light2d_system import Light2DSystem
+    from engine.systems.line2d_render_system import Line2DRenderSystem
     from engine.systems.particle_system import ParticleSystem
     from engine.systems.path_follow_system import PathFollowSystem
     from engine.systems.gameplay2d_semantic_system import Gameplay2DSemanticSystem
+    from engine.systems.navigation_agent_system import NavigationAgentSystem
 
 
 class Game:
@@ -139,9 +141,11 @@ class Game:
         self._ui_system: Optional["UISystem"] = None
         self._ui_render_system: Optional["UIRenderSystem"] = None
         self._light2d_system: Optional["Light2DSystem"] = None
+        self._line2d_render_system: Optional["Line2DRenderSystem"] = None
         self._particle_system: Optional["ParticleSystem"] = None
         self._path_follow_system: Optional["PathFollowSystem"] = None
         self._gameplay2d_semantic_system: Optional["Gameplay2DSemanticSystem"] = None
+        self._navigation_agent_system: Optional["NavigationAgentSystem"] = None
 
         self.script_executor: Optional["ScriptExecutor"] = None
 
@@ -254,6 +258,7 @@ class Game:
                 get_particle_system=lambda: self._particle_system,
                 get_path_follow_system=lambda: self._path_follow_system,
                 get_gameplay2d_semantic_system=lambda: self._gameplay2d_semantic_system,
+                get_navigation_agent_system=lambda: self._navigation_agent_system,
                 get_scene_transition_controller=lambda: self._scene_transition_controller,
                 get_physics_backend_registry=lambda: self._physics_backend_registry,
                 reset_profiler=self.reset_profiler,
@@ -716,6 +721,9 @@ class Game:
     def set_light2d_system(self, system: "Light2DSystem") -> None:
         self._light2d_system = system
 
+    def set_line2d_render_system(self, system: "Line2DRenderSystem") -> None:
+        self._line2d_render_system = system
+
     def set_particle_system(self, system: "ParticleSystem") -> None:
         self._particle_system = system
 
@@ -724,6 +732,9 @@ class Game:
 
     def set_gameplay2d_semantic_system(self, system: "Gameplay2DSemanticSystem") -> None:
         self._gameplay2d_semantic_system = system
+
+    def set_navigation_agent_system(self, system: "NavigationAgentSystem") -> None:
+        self._navigation_agent_system = system
 
     def set_script_executor(self, executor: "ScriptExecutor") -> None:
         """Asigna un ejecutor de scripts para automatización visual."""
@@ -872,6 +883,35 @@ class Game:
             return []
         return resolved_backend.backend.query_ray(
             active_world,
+            (origin_x, origin_y),
+            (direction_x, direction_y),
+            max_distance,
+        )
+
+    def query_physics_shape_cast(
+        self,
+        shape_type: str,
+        shape_width: float,
+        shape_height: float,
+        origin_x: float,
+        origin_y: float,
+        direction_x: float,
+        direction_y: float,
+        max_distance: float,
+    ) -> list[PhysicsShapeCastHit]:
+        active_world = self.world
+        if active_world is None:
+            return []
+        resolved_backend = self._physics_backend_registry.resolve(
+            active_world,
+            default_backend_name=self._physics_backend_name,
+        )
+        if resolved_backend.backend is None:
+            return []
+        return resolved_backend.backend.query_shape_cast(
+            active_world,
+            shape_type,
+            (shape_width, shape_height),
             (origin_x, origin_y),
             (direction_x, direction_y),
             max_distance,
@@ -1362,6 +1402,9 @@ class Game:
                 if self._light2d_system is not None and active_world is not None:
                     self._light2d_system.render(active_world)
 
+                if self._line2d_render_system is not None and active_world is not None:
+                    self._line2d_render_system.render(active_world)
+
                 if self._particle_system is not None and active_world is not None:
                     self._particle_system.render(active_world)
 
@@ -1396,6 +1439,9 @@ class Game:
 
                 if self._light2d_system is not None and target_world is not None:
                     self._light2d_system.render(target_world)
+
+                if self._line2d_render_system is not None and target_world is not None:
+                    self._line2d_render_system.render(target_world)
 
                 if self._particle_system is not None and target_world is not None:
                     self._particle_system.render(target_world)

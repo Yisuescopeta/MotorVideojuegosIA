@@ -2,27 +2,36 @@
 engine/components/collider.py - Componente de colisión AABB
 
 PROPÓSITO:
-    Define un área de colisión rectangular (Axis-Aligned Bounding Box).
-    Usado para detectar colisiones entre entidades.
-
+    Define un área de colisión. Soporta múltiples tipos de forma:
+    - box: rectángulo alineado a ejes (AABB)
+    - circle: círculo
+    - polygon: polígono convexo
+    - capsule: cápsula vertical (rectángulo con extremos semicirculares)
+ 
 PROPIEDADES:
     - width (float): Ancho del área de colisión
     - height (float): Alto del área de colisión
     - offset_x (float): Desplazamiento horizontal desde el Transform
     - offset_y (float): Desplazamiento vertical desde el Transform
     - is_trigger (bool): Si es True, detecta pero no bloquea físicamente
-
+    - shape_type (str): "box", "circle", "polygon", "capsule"
+    - radius (float): Radio para circle/capsule
+    - capsule_height (float): Altura de la sección rectangular de la cápsula
+ 
 EJEMPLO DE USO:
     collider = Collider(width=32, height=48)
     entity.add_component(collider)
-
+ 
 SERIALIZACIÓN JSON:
     {
         "width": 32,
         "height": 48,
         "offset_x": 0,
         "offset_y": 0,
-        "is_trigger": false
+        "is_trigger": false,
+        "shape_type": "box",
+        "radius": 16.0,
+        "capsule_height": 0.0
     }
 """
 
@@ -33,7 +42,7 @@ from engine.ecs.component import Component
 
 class Collider(Component):
     """
-    Componente de colisión AABB (caja alineada a ejes).
+    Componente de colisión. Soporta box, circle, polygon y capsule.
 
     Atributos:
         width: Ancho del área de colisión
@@ -56,6 +65,7 @@ class Collider(Component):
         friction: float = 0.2,
         restitution: float = 0.0,
         density: float = 1.0,
+        capsule_height: float = 0.0,
     ) -> None:
         """
         Inicializa el Collider.
@@ -66,6 +76,7 @@ class Collider(Component):
             offset_x: Offset horizontal desde la posición
             offset_y: Offset vertical desde la posición
             is_trigger: Si solo detecta sin bloquear
+            capsule_height: Altura de la sección rectangular de la cápsula
         """
         self.enabled: bool = True
         self.width: float = width
@@ -79,24 +90,27 @@ class Collider(Component):
         self.friction: float = friction
         self.restitution: float = restitution
         self.density: float = density
+        self.capsule_height: float = capsule_height
 
     def get_bounds(self, x: float, y: float) -> tuple[float, float, float, float]:
         """
-        Calcula los límites del collider en coordenadas mundo.
-
-        Args:
-            x: Posición X del Transform
-            y: Posición Y del Transform
-
-        Returns:
-            Tupla (left, top, right, bottom)
+        Calcula los límites AABB del collider en coordenadas mundo.
+        Para cápsulas: el AABB cubre la cápsula completa (radio + altura).
         """
-        # El collider está centrado en la posición
-        half_w = self.width / 2
-        half_h = self.height / 2
-
         cx = x + self.offset_x
         cy = y + self.offset_y
+
+        if self.shape_type == "capsule":
+            half_h = self.radius + self.capsule_height / 2
+            return (
+                cx - self.radius,  # left
+                cy - half_h,       # top
+                cx + self.radius,  # right
+                cy + half_h        # bottom
+            )
+
+        half_w = self.width / 2
+        half_h = self.height / 2
 
         return (
             cx - half_w,  # left
@@ -120,6 +134,7 @@ class Collider(Component):
             "friction": self.friction,
             "restitution": self.restitution,
             "density": self.density,
+            "capsule_height": self.capsule_height,
         }
 
     @classmethod
@@ -137,6 +152,7 @@ class Collider(Component):
             friction=data.get("friction", 0.2),
             restitution=data.get("restitution", 0.0),
             density=data.get("density", 1.0),
+            capsule_height=data.get("capsule_height", 0.0),
         )
         component.enabled = data.get("enabled", True)
         return component

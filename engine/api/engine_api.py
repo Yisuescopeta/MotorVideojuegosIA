@@ -93,6 +93,7 @@ class EngineAPI:
         from engine.systems.ui_render_system import UIRenderSystem
         from engine.systems.ui_system import UISystem
         from engine.systems.light2d_system import Light2DSystem
+        from engine.systems.line2d_render_system import Line2DRenderSystem
         from engine.systems.parallax_system import ParallaxSystem
         from engine.systems.particle_system import ParticleSystem
         from engine.systems.timer_system import TimerSystem
@@ -101,6 +102,8 @@ class EngineAPI:
         from engine.systems.resource_preloader_system import ResourcePreloaderSystem
         from engine.systems.path_follow_system import PathFollowSystem
         from engine.systems.gameplay2d_semantic_system import Gameplay2DSemanticSystem
+        from engine.systems.navigation_agent_system import NavigationAgentSystem
+        from engine.navigation.service import NavigationService
 
         self.game = HeadlessGame()
         self.scene_manager = SceneManager(self._registry)
@@ -130,6 +133,7 @@ class EngineAPI:
         self.game.set_ui_system(UISystem())
         self.game.set_ui_render_system(UIRenderSystem())
         self.game.set_light2d_system(Light2DSystem())
+        self.game.set_line2d_render_system(Line2DRenderSystem())
         self.game.set_particle_system(ParticleSystem(event_bus))
         self.game.set_parallax_system(ParallaxSystem())
         self.game.set_timer_system(TimerSystem())
@@ -138,6 +142,7 @@ class EngineAPI:
         self.game.set_resource_preloader_system(ResourcePreloaderSystem())
         self.game.set_path_follow_system(PathFollowSystem())
         self.game.set_gameplay2d_semantic_system(Gameplay2DSemanticSystem())
+        self.game.set_navigation_agent_system(NavigationAgentSystem(NavigationService()))
         self._register_optional_box2d_backend()
 
     def _initialize_collaborators(self) -> None:

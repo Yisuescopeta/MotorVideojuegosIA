@@ -64,6 +64,17 @@ class PhysicsAABBResult(TypedDict, total=False):
     entities: List[Dict[str, object]]
 
 
+class ShapeCastResult(TypedDict, total=False):
+    """Resultado de query_physics_shape_cast."""
+
+    hit: bool
+    entity_id: int
+    entity: str
+    position: Dict[str, float]
+    normal: Dict[str, float]
+    fraction: float
+
+
 class ProfilerReport(TypedDict, total=False):
     """Reporte del profiler."""
 

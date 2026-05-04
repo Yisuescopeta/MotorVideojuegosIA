@@ -4,7 +4,7 @@ import json
 from typing import Callable, Dict, Optional, Union
 
 from engine.api._context import EngineAPIComponent
-from engine.api.types import ActionResult, EngineStatus, EntityData
+from engine.api.types import ActionResult, EngineStatus, EntityData, ShapeCastResult
 from engine.ecs.entity import normalize_entity_groups
 from engine.events.signals import SignalConnectionFlags
 from engine.physics.backend import PhysicsBackendInfo, PhysicsBackendSelection
@@ -337,6 +337,40 @@ class RuntimeAPI(EngineAPIComponent):
         if runtime is None:
             return []
         return runtime.query_physics_ray(origin_x, origin_y, direction_x, direction_y, max_distance)
+
+    def query_physics_shape_cast(
+        self,
+        shape_type: str,
+        shape_width: float,
+        shape_height: float,
+        origin_x: float,
+        origin_y: float,
+        direction_x: float,
+        direction_y: float,
+        max_distance: float,
+    ) -> list[ShapeCastResult]:
+        """Cast a shape through the physics world and return the first hit.
+
+        Args:
+            shape_type: 'box' or 'circle'.
+            shape_width: Width of the shape (diameter for circle).
+            shape_height: Height of the shape (diameter for circle).
+            origin_x: Starting position x.
+            origin_y: Starting position y.
+            direction_x: Direction x component.
+            direction_y: Direction y component.
+            max_distance: Maximum cast distance.
+
+        Returns:
+            List with at most one ShapeCastResult hit, or empty list if no hit.
+        """
+        runtime = self.runtime
+        if runtime is None:
+            return []
+        return runtime.query_physics_shape_cast(
+            shape_type, shape_width, shape_height,
+            origin_x, origin_y, direction_x, direction_y, max_distance,
+        )
 
     def list_physics_backends(self) -> list[PhysicsBackendInfo]:
         """List all available physics backends with their capabilities.

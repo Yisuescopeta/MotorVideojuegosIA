@@ -103,6 +103,7 @@ class ComponentRegistry:
 def create_default_registry() -> ComponentRegistry:
     """Crea un registro con los componentes predeterminados del motor."""
     from engine.components.animator import Animator
+    from engine.components.audio_listener_2d import AudioListener2D
     from engine.components.audiosource import AudioSource
     from engine.components.camera2d import Camera2D
     from engine.components.canvas import Canvas
@@ -120,10 +121,12 @@ def create_default_registry() -> ComponentRegistry:
         MovingPlatform2D,
         RespawnPoint2D,
     )
+    from engine.components.navigation_agent_2d import NavigationAgent2D
     from engine.components.path_follower_2d import PathFollower2D
     from engine.components.inputmap import InputMap
     from engine.components.joint2d import Joint2D
     from engine.components.light2d import Light2D
+    from engine.components.line2d import Line2D
     from engine.components.marker2d import Marker2D
     from engine.components.playercontroller2d import PlayerController2D
     from engine.components.polygon2d import Polygon2D
@@ -230,10 +233,18 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("CharacterController2D", CharacterController2D)
     registry.register("Joint2D", Joint2D)
     registry.register("Light2D", Light2D)
+    registry.register(
+        "Line2D",
+        Line2D,
+        description="2D line with width, color, joint mode, and closed option.",
+        default_payload=Line2D().to_dict(),
+        editor_tags=("render", "tag:Line", "layer:Visual"),
+    )
     registry.register("RigidBody", RigidBody)
     registry.register("Animator", Animator)
     registry.register("Camera2D", Camera2D)
     registry.register("AudioSource", AudioSource)
+    registry.register("AudioListener2D", AudioListener2D)
     registry.register("InputMap", InputMap)
     registry.register("PlayerController2D", PlayerController2D)
     registry.register("RenderOrder2D", RenderOrder2D)
@@ -257,6 +268,13 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("Tween", Tween)
     registry.register("VisibleOnScreenNotifier2D", VisibleOnScreenNotifier2D)
     registry.register("VisibleOnScreenEnabler2D", VisibleOnScreenEnabler2D)
+    registry.register(
+        "NavigationAgent2D",
+        NavigationAgent2D,
+        description="Navigates an entity toward a target using A* pathfinding on a navigation grid.",
+        default_payload=NavigationAgent2D().to_dict(),
+        editor_tags=("navigation", "tag:NavigationAgent", "layer:Gameplay", "moving"),
+    )
     registry.register(
         "PathFollower2D",
         PathFollower2D,

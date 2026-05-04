@@ -6,7 +6,7 @@ from typing import Any, Optional
 from engine.components.collider import Collider
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
-from engine.physics.backend import PhysicsAABBHit, PhysicsBackend, PhysicsContact, PhysicsRayHit
+from engine.physics.backend import PhysicsAABBHit, PhysicsBackend, PhysicsContact, PhysicsRayHit, PhysicsShapeCastHit
 
 
 class LegacyAABBPhysicsBackend(PhysicsBackend):
@@ -98,8 +98,11 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             collider = entity.get_component(Collider)
             if transform is None or collider is None or not collider.enabled:
                 continue
-            left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
-            distance = self._ray_aabb_distance(ox, oy, dx, dy, left, top, right, bottom, max_distance)
+            if collider.shape_type == "capsule":
+                distance = self._ray_capsule_distance(ox, oy, dx, dy, collider, transform.x, transform.y, max_distance)
+            else:
+                left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
+                distance = self._ray_aabb_distance(ox, oy, dx, dy, left, top, right, bottom, max_distance)
             if distance is None:
                 continue
             hits.append(
@@ -131,6 +134,90 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
                     }
                 )
         return hits
+
+    def query_shape_cast(
+        self,
+        world: Any,
+        shape_type: str,
+        shape_size: tuple[float, float],
+        origin: tuple[float, float],
+        direction: tuple[float, float],
+        max_distance: float,
+    ) -> list[PhysicsShapeCastHit]:
+        steps = 20
+        ox, oy = float(origin[0]), float(origin[1])
+        dx, dy = float(direction[0]), float(direction[1])
+        length = math.hypot(dx, dy)
+        if length <= 1e-6:
+            return []
+        dx /= length
+        dy /= length
+        sw, sh = float(shape_size[0]), float(shape_size[1])
+        half_w = sw / 2.0
+        half_h = sh / 2.0
+
+        best_hit: PhysicsShapeCastHit | None = None
+        best_distance = float("inf")
+
+        for i in range(steps + 1):
+            t = max_distance * (i / float(steps))
+            px = ox + dx * t
+            py = oy + dy * t
+
+            if shape_type == "circle":
+                radius = sw / 2.0
+                shape_left = px - radius
+                shape_top = py - radius
+                shape_right = px + radius
+                shape_bottom = py + radius
+            else:
+                shape_left = px - half_w
+                shape_top = py - half_h
+                shape_right = px + half_w
+                shape_bottom = py + half_h
+
+            for entity in world.get_entities_with(Transform, Collider):
+                transform = entity.get_component(Transform)
+                collider = entity.get_component(Collider)
+                if transform is None or collider is None or not collider.enabled:
+                    continue
+                collider_left, collider_top, collider_right, collider_bottom = collider.get_bounds(
+                    transform.x, transform.y
+                )
+
+                overlap_left = max(shape_left, collider_left)
+                overlap_top = max(shape_top, collider_top)
+                overlap_right = min(shape_right, collider_right)
+                overlap_bottom = min(shape_bottom, collider_bottom)
+
+                if overlap_left < overlap_right and overlap_top < overlap_bottom:
+                    dist = t
+                    if dist < best_distance:
+                        best_distance = dist
+                        fraction = dist / max_distance if max_distance > 0.0 else 0.0
+                        # Compute approximate normal from AABB overlap
+                        n_ox = overlap_right - overlap_left
+                        n_oy = overlap_bottom - overlap_top
+                        nx = 0.0
+                        ny = 0.0
+                        if n_ox <= n_oy:
+                            nx = 1.0 if px > (collider_left + collider_right) / 2.0 else -1.0
+                        else:
+                            ny = 1.0 if py > (collider_top + collider_bottom) / 2.0 else -1.0
+                        best_hit = {
+                            "entity": entity.name,
+                            "entity_id": int(entity.id),
+                            "position": {"x": px, "y": py},
+                            "normal": {"x": nx, "y": ny},
+                            "fraction": fraction,
+                            "is_trigger": bool(collider.is_trigger),
+                        }
+                        break  # first entity that overlaps at this step
+
+            if best_hit is not None and i > 0:
+                break  # return earliest hit
+
+        return [best_hit] if best_hit is not None else []
 
     def collect_contacts(self, world: Any) -> list[PhysicsContact]:
         del world
@@ -213,6 +300,86 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         for entity in world.get_all_entities():
             if int(entity.id) == normalized_id:
                 return entity
+        return None
+
+    def _ray_capsule_distance(
+        self,
+        ox: float,
+        oy: float,
+        dx: float,
+        dy: float,
+        collider: Collider,
+        pos_x: float,
+        pos_y: float,
+        max_distance: float,
+    ) -> float | None:
+        """Ray-capsule intersection: ray vs vertical segment + radius."""
+        cx = pos_x + collider.offset_x
+        cy = pos_y + collider.offset_y
+        r = collider.radius
+        half_h = collider.capsule_height / 2
+        y_top = cy - half_h
+        y_bot = cy + half_h
+
+        def _ray_circle(ccx: float, ccy: float, cr: float) -> float | None:
+            """Ray vs circle: solve |O + t*D - C|^2 = r^2."""
+            ocx = ox - ccx
+            ocy = oy - ccy
+            a = dx * dx + dy * dy
+            b = 2.0 * (ocx * dx + ocy * dy)
+            c_val = ocx * ocx + ocy * ocy - cr * cr
+            disc = b * b - 4.0 * a * c_val
+            if disc < 0.0:
+                return None
+            sqrt_disc = math.sqrt(disc)
+            t1 = (-b - sqrt_disc) / (2.0 * a)
+            t2 = (-b + sqrt_disc) / (2.0 * a)
+            if t1 > t2:
+                t1, t2 = t2, t1
+            if 0.0 <= t1 <= max_distance:
+                return t1
+            if 0.0 <= t2 <= max_distance:
+                return t2
+            return None
+
+        def _ray_slab(t_min: float, t_max: float, origin: float, direction: float, low: float, high: float) -> tuple[float, float] | None:
+            """Slab intersection for one axis."""
+            if abs(direction) <= 1e-8:
+                if origin < low or origin > high:
+                    return None
+                return (t_min, t_max)
+            inv = 1.0 / direction
+            t1 = (low - origin) * inv
+            t2 = (high - origin) * inv
+            near = min(t1, t2)
+            far = max(t1, t2)
+            return (max(t_min, near), min(t_max, far))
+
+        best = float("inf")
+
+        # Top cap: circle at (cx, y_top)
+        t_top = _ray_circle(cx, y_top, r)
+        if t_top is not None:
+            best = min(best, t_top)
+
+        # Bottom cap: circle at (cx, y_bot)
+        t_bot = _ray_circle(cx, y_bot, r)
+        if t_bot is not None:
+            best = min(best, t_bot)
+
+        # Rectangular body: [cx - r, cx + r] x [y_top, y_bot]
+        result = _ray_slab(0.0, max_distance, ox, dx, cx - r, cx + r)
+        if result is not None:
+            t_min, t_max = result
+            if t_min <= t_max:
+                result_y = _ray_slab(t_min, t_max, oy, dy, y_top, y_bot)
+                if result_y is not None:
+                    ty_min, ty_max = result_y
+                    if ty_min <= ty_max and ty_min >= 0.0:
+                        best = min(best, ty_min)
+
+        if math.isfinite(best):
+            return best
         return None
 
     def _ray_aabb_distance(
