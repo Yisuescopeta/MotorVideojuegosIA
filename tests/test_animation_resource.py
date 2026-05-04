@@ -1,6 +1,6 @@
 import unittest
 
-from engine.resources.animation_resource import AnimationResource, AnimationTrack
+from engine.resources.animation_resource import AnimationResource, AnimationTrack, AnimationTrackType
 
 
 class AnimationResourceTests(unittest.TestCase):
@@ -90,6 +90,70 @@ class AnimationResourceTests(unittest.TestCase):
     def test_animation_resource_from_dict_non_dict(self) -> None:
         resource = AnimationResource.from_dict(None)  # type: ignore[arg-type]
         self.assertEqual(resource.resource_name, "New Animation")
+
+    def test_track_type_property_default(self) -> None:
+        track = AnimationTrack()
+        self.assertEqual(track.track_type, AnimationTrackType.PROPERTY)
+
+    def test_method_track_serialization(self) -> None:
+        track = AnimationTrack(
+            track_type=AnimationTrackType.METHOD,
+            method_name="play_sound",
+            keyframes=[
+                {"time": 0.5, "args": ["jump"], "kwargs": {"volume": 1.0}},
+            ],
+        )
+        data = track.to_dict()
+        restored = AnimationTrack.from_dict(data)
+        self.assertEqual(restored.track_type, "method")
+        self.assertEqual(restored.method_name, "play_sound")
+        self.assertEqual(restored.keyframes[0]["time"], 0.5)
+        self.assertEqual(restored.keyframes[0]["args"], ["jump"])
+        self.assertEqual(restored.keyframes[0]["kwargs"], {"volume": 1.0})
+
+    def test_event_track_serialization(self) -> None:
+        track = AnimationTrack(
+            track_type=AnimationTrackType.EVENT,
+            event_name="hit",
+            keyframes=[{"time": 0.3}],
+        )
+        data = track.to_dict()
+        restored = AnimationTrack.from_dict(data)
+        self.assertEqual(restored.track_type, "event")
+        self.assertEqual(restored.event_name, "hit")
+        self.assertEqual(restored.keyframes[0]["time"], 0.3)
+
+    def test_track_type_roundtrip_all_three(self) -> None:
+        resource = AnimationResource(length=2.0, loop=False)
+        # property track
+        pt = resource.add_track("Transform.x", "linear")
+        pt.keyframes.append({"time": 0.0, "value": 0.0})
+        pt.keyframes.append({"time": 2.0, "value": 100.0})
+        # method track
+        mt = AnimationTrack(
+            track_type=AnimationTrackType.METHOD,
+            method_name="flash",
+            keyframes=[{"time": 1.0, "args": [], "kwargs": {}}],
+        )
+        resource.tracks.append(mt)
+        # event track
+        et = AnimationTrack(
+            track_type=AnimationTrackType.EVENT,
+            event_name="finished",
+            keyframes=[{"time": 2.0}],
+        )
+        resource.tracks.append(et)
+
+        data = resource.to_dict()
+        restored = AnimationResource.from_dict(data)
+
+        self.assertEqual(len(restored.tracks), 3)
+        self.assertEqual(restored.tracks[0].track_type, "property")
+        self.assertEqual(restored.tracks[0].property_path, "Transform.x")
+        self.assertEqual(restored.tracks[1].track_type, "method")
+        self.assertEqual(restored.tracks[1].method_name, "flash")
+        self.assertEqual(restored.tracks[2].track_type, "event")
+        self.assertEqual(restored.tracks[2].event_name, "finished")
 
 
 if __name__ == "__main__":

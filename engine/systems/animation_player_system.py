@@ -19,17 +19,19 @@ from engine.ecs.world import World
 
 
 class AnimationPlayerSystem:
-    """Evalua AnimationResources y aplica tracks de propiedades a entidades."""
+    """Evalua AnimationResources y aplica tracks de propiedades, métodos y eventos."""
 
     DEFAULT_COMPONENT_MAP: dict[str, type] = {
         "Transform": Transform,
         "Sprite": Sprite,
     }
 
-    def __init__(self, component_map: dict[str, type] | None = None) -> None:
+    def __init__(self, component_map: dict[str, type] | None = None, event_bus: Any = None) -> None:
         self._component_map: dict[str, type] = (
             dict(component_map) if component_map is not None else dict(self.DEFAULT_COMPONENT_MAP)
         )
+        self._event_bus = event_bus
+        self._triggered_keyframes: set[int] = set()
 
     def register_component(self, name: str, comp_class: type) -> None:
         """Registra un nuevo tipo de componente para animacion."""
@@ -37,6 +39,7 @@ class AnimationPlayerSystem:
 
     def update(self, world: World, dt: float) -> None:
         """Actualiza todas las animaciones activas."""
+        self._triggered_keyframes.clear()
         for entity in world.get_entities_with(AnimationPlayer2D):
             player = entity.get_component(AnimationPlayer2D)
             if player is None or not player.enabled or not player._is_playing:
@@ -80,9 +83,7 @@ class AnimationPlayerSystem:
             # Aplicar tracks
             t = player._playback_time
             for track in resource.tracks:
-                value = self._evaluate_track(track, t)
-                if value is not None:
-                    self._apply_property(entity, track.property_path, value)
+                self._process_track(entity, track, t)
 
     def _evaluate_track(self, track: Any, time: float) -> Any:
         """Interpola keyframes para obtener el valor en el tiempo dado."""
@@ -164,3 +165,52 @@ class AnimationPlayerSystem:
                         new_val = list(parent_val)
                         new_val[idx] = value
                         setattr(component, parent, tuple(new_val))
+
+    def _process_track(self, entity: Entity, track: Any, time: float) -> bool:
+        """Routea el track al procesador según su tipo."""
+        if track.track_type == "property":
+            value = self._evaluate_track(track, time)
+            if value is not None:
+                self._apply_property(entity, track.property_path, value)
+            return True
+        elif track.track_type == "method":
+            return self._process_method_track(entity, track, time)
+        elif track.track_type == "event":
+            return self._process_event_track(entity, track, time)
+        return False
+
+    def _process_method_track(self, entity: Entity, track: Any, time: float) -> bool:
+        """Invoca method_name en la entidad en los keyframes."""
+        keyframes = sorted(track.keyframes, key=lambda k: k.get("time", 0))
+        for kf in keyframes:
+            kf_time = kf.get("time", 0)
+            if abs(time - kf_time) < 0.05:
+                kf_id = id(kf)
+                if kf_id not in self._triggered_keyframes:
+                    self._triggered_keyframes.add(kf_id)
+                    method_name = track.method_name
+                    if hasattr(entity, method_name):
+                        method = getattr(entity, method_name)
+                        if callable(method):
+                            args = kf.get("args", [])
+                            kwargs = kf.get("kwargs", {})
+                            method(*args, **kwargs)
+        return True
+
+    def _process_event_track(self, entity: Entity, track: Any, time: float) -> bool:
+        """Emite un evento en los keyframes."""
+        keyframes = sorted(track.keyframes, key=lambda k: k.get("time", 0))
+        for kf in keyframes:
+            kf_time = kf.get("time", 0)
+            if abs(time - kf_time) < 0.05:
+                kf_id = id(kf)
+                if kf_id not in self._triggered_keyframes:
+                    self._triggered_keyframes.add(kf_id)
+                    event_name = track.event_name or kf.get("event", "")
+                    if event_name and self._event_bus:
+                        self._event_bus.emit(event_name, {
+                            "entity_id": entity.id,
+                            "time": time,
+                            "event": event_name,
+                        })
+        return True

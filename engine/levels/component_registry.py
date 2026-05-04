@@ -106,6 +106,7 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.animator import Animator
     from engine.components.area2d import Area2D
     from engine.components.audio_listener_2d import AudioListener2D
+    from engine.components.audio_stream_player_2d import AudioStreamPlayer2D
     from engine.components.audiosource import AudioSource
     from engine.components.camera2d import Camera2D
     from engine.components.canvas import Canvas
@@ -282,6 +283,13 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("Camera2D", Camera2D)
     registry.register("AudioSource", AudioSource)
     registry.register("AudioListener2D", AudioListener2D)
+    registry.register(
+        "AudioStreamPlayer2D",
+        AudioStreamPlayer2D,
+        description="Reproduce un AudioStreamResource (adaptado de Godot AudioStreamPlayer2D).",
+        default_payload=AudioStreamPlayer2D().to_dict(),
+        editor_tags=("audio", "tag:AudioStreamPlayer", "layer:Audio"),
+    )
     registry.register("InputMap", InputMap)
     registry.register("PlayerController2D", PlayerController2D)
     registry.register("RenderOrder2D", RenderOrder2D)

@@ -15,6 +15,7 @@ MÓDULOS:
 """
 
 from engine.resources.animation_resource import AnimationResource, AnimationTrack
+from engine.resources.audio_stream_resource import AudioStreamResource
 from engine.resources.curve_2d import Curve2D
 from engine.resources.sprite_frames_resource import SpriteFramesResource
 from engine.resources.stylebox_resource import StyleBoxResource
@@ -24,6 +25,7 @@ from engine.resources.theme_resource import ThemeResource
 __all__ = [
     "AnimationResource",
     "AnimationTrack",
+    "AudioStreamResource",
     "Curve2D",
     "SpriteFramesResource",
     "StyleBoxResource",

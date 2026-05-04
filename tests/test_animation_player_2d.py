@@ -13,7 +13,7 @@ from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.levels.component_registry import create_default_registry
-from engine.resources.animation_resource import AnimationResource, AnimationTrack
+from engine.resources.animation_resource import AnimationResource, AnimationTrack, AnimationTrackType
 from engine.systems.animation_player_system import AnimationPlayerSystem
 
 
@@ -266,6 +266,132 @@ class AnimationPlayerSystemTests(unittest.TestCase):
         self.assertAlmostEqual(sprite.tint[1], 127, delta=1)
         self.assertAlmostEqual(sprite.tint[2], 127, delta=1)
         self.assertAlmostEqual(sprite.tint[3], 127, delta=1)
+
+    def test_method_track_invokes_method(self) -> None:
+        """Track type=method llama método en keyframe."""
+        called_args: list = []
+
+        class MethodEntity(Entity):
+            def on_hit(self, damage: int, knockback: float = 0.0) -> None:
+                called_args.append((damage, knockback))
+
+        entity = MethodEntity("MethodEntity")
+        entity.add_component(Transform(x=0.0, y=0.0))
+        player = AnimationPlayer2D()
+        entity.add_component(player)
+        self.world.add_entity(entity)
+
+        resource = AnimationResource(length=1.0, loop=False)
+        mt = AnimationTrack(
+            track_type=AnimationTrackType.METHOD,
+            method_name="on_hit",
+            keyframes=[{"time": 0.5, "args": [25], "kwargs": {"knockback": 2.0}}],
+        )
+        resource.tracks.append(mt)
+
+        player._resource_cache = resource
+        player.play()
+
+        self.system.update(self.world, 0.5)
+        self.assertEqual(len(called_args), 1)
+        self.assertEqual(called_args[0], (25, 2.0))
+
+    def test_method_track_no_duplicate(self) -> None:
+        """Method track no dispara mismo keyframe dos veces."""
+        called_count = [0]
+
+        class TestEntity(Entity):
+            def ping(self) -> None:
+                called_count[0] += 1
+
+        entity = TestEntity("TestEntity")
+        entity.add_component(Transform(x=0.0, y=0.0))
+        player = AnimationPlayer2D()
+        entity.add_component(player)
+        self.world.add_entity(entity)
+
+        resource = AnimationResource(length=1.0, loop=False)
+        mt = AnimationTrack(
+            track_type=AnimationTrackType.METHOD,
+            method_name="ping",
+            keyframes=[{"time": 0.5, "args": [], "kwargs": {}}],
+        )
+        resource.tracks.append(mt)
+
+        player._resource_cache = resource
+        player.play()
+
+        self.system.update(self.world, 0.30)
+        self.assertEqual(called_count[0], 0)
+        self.system.update(self.world, 0.22)  # ~0.52 — cruza threshold, dispara
+        self.assertEqual(called_count[0], 1)
+        self.system.update(self.world, 0.10)  # ~0.62 — ya disparado, no repite
+        self.assertEqual(called_count[0], 1)
+
+    def test_event_track_emits_event(self) -> None:
+        """Track type=event emite evento vía event_bus."""
+        events: list[dict] = []
+
+        class FakeEventBus:
+            def emit(self, name: str, data: dict) -> None:
+                events.append({"name": name, "data": data})
+
+        bus = FakeEventBus()
+        self.system._event_bus = bus
+
+        entity = Entity("EventEntity")
+        entity.add_component(Transform(x=0.0, y=0.0))
+        player = AnimationPlayer2D()
+        entity.add_component(player)
+        self.world.add_entity(entity)
+
+        resource = AnimationResource(length=1.0, loop=False)
+        et = AnimationTrack(
+            track_type=AnimationTrackType.EVENT,
+            event_name="explosion",
+            keyframes=[{"time": 0.7}],
+        )
+        resource.tracks.append(et)
+
+        player._resource_cache = resource
+        player.play()
+
+        self.system.update(self.world, 0.7)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["name"], "explosion")
+        self.assertEqual(events[0]["data"]["event"], "explosion")
+        self.assertIsInstance(events[0]["data"]["entity_id"], int)
+
+    def test_track_type_serialization(self) -> None:
+        """Roundtrip con los 3 tipos de track."""
+        resource = AnimationResource(length=2.0, loop=False)
+        pt = resource.add_track("Transform.x", "linear")
+        pt.keyframes.append({"time": 0.0, "value": 0.0})
+        pt.keyframes.append({"time": 2.0, "value": 100.0})
+
+        mt = AnimationTrack(
+            track_type=AnimationTrackType.METHOD,
+            method_name="jump",
+            keyframes=[{"time": 1.0, "args": [], "kwargs": {}}],
+        )
+        resource.tracks.append(mt)
+
+        et = AnimationTrack(
+            track_type=AnimationTrackType.EVENT,
+            event_name="jumped",
+            keyframes=[{"time": 1.0}],
+        )
+        resource.tracks.append(et)
+
+        data = resource.to_dict()
+        restored = AnimationResource.from_dict(data)
+
+        self.assertEqual(len(restored.tracks), 3)
+        self.assertEqual(restored.tracks[0].track_type, "property")
+        self.assertEqual(restored.tracks[1].track_type, "method")
+        self.assertEqual(restored.tracks[2].track_type, "event")
+        self.assertEqual(restored.tracks[1].method_name, "jump")
+        self.assertEqual(restored.tracks[2].event_name, "jumped")
 
 
 if __name__ == "__main__":
