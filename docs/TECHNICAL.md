@@ -120,13 +120,19 @@ con `_floor_snap()`, filtrado por `CollisionFilter2D` y matriz de capas desde
 
 `CharacterControllerSystem` admite inyeccion del backend resuelto via
 `set_physics_backend(backend)`. Cuando hay backend, `_move_entity()` delega en
-`_move_with_backend()` que llama a `PhysicsBackend.move_and_slide()` con los
-parametros de `CharacterController2D` (velocidad, gravedad, `up_direction`,
-`floor_max_angle`, `floor_snap_distance`, `wall_min_slide_angle`) y copia el
-`MoveResult2D` resultante al Transform y al componente (velocidad, flags
-`on_floor`/`on_wall`/`on_ceiling`, normales de colision). Los contactos del
-resultado se emiten como eventos `on_collision` en el EventBus, con la misma
-deduplicacion por par que el codigo legacy.
+`_move_with_backend()` que consulta `controller.move_mode` para elegir el
+metodo del backend:
+
+- `move_and_slide`: llama a `PhysicsBackend.move_and_slide()` con parametros
+  completos (velocidad, gravedad, `up_direction`, `floor_max_angle`,
+  `floor_snap_distance`, `wall_min_slide_angle`).
+- `move_and_collide`: llama a `PhysicsBackend.move_and_collide()` con solo
+  velocidad y delta, deteniendose en la primera colision.
+
+En ambos modos copia el `MoveResult2D` resultante al Transform y al componente
+(velocidad, flags `on_floor`/`on_wall`/`on_ceiling`, normales de colision). Los
+contactos del resultado se emiten como eventos `on_collision` en el EventBus,
+con la misma deduplicacion por par que el codigo legacy.
 
 `RuntimeController.update_gameplay()` es quien inyecta el backend cada frame:
 resuelve `PhysicsBackendRegistry.resolve(world)` y, si hay backend disponible,
@@ -134,6 +140,60 @@ lo pasa a `CharacterControllerSystem.set_physics_backend()` antes de llamar a
 `update()`. Esto mantiene el `legacy_aabb` como fallback: si el registry
 devuelve `None`, el sistema sigue usando sus barridos AABB manuales
 (`_sweep_horizontal`/`_sweep_vertical`/`_floor_snap`) sin cambios.
+
+### ShapeFactory y narrow-phase multi-shape
+
+`engine/physics/shapes.py` introduce `ShapeFactory` y `ShapeInstance` para
+unificar la logica de interseccion en narrow-phase. Reemplaza las funciones
+dispersas de interseccion (capsule-vs-AABB, capsule-vs-capsule) por un modelo
+polimorfico: cada `ShapeInstance` conoce su propia interseccion contra las
+demas mediante `intersects_shape(other)`.
+
+**Shapes concretas:**
+
+| Shape | Constructor | Intersecciones implementadas |
+|---|---|---|
+| `AABBShape(cx, cy, half_w, half_h)` | centro + semi-dimensiones | AABB‑AABB |
+| `CircleShape(cx, cy, radius)` | centro + radio | Circle‑Circle, Circle‑AABB, Circle‑Capsule |
+| `CapsuleShape(cx, cy, radius, height)` | centro + radio + altura total del segmento | Capsule‑AABB, Capsule‑Circle, Capsule‑Capsule |
+| `PolygonShape(vertices)` | vertices en world space (SAT) | Polygon‑AABB (SAT), Polygon‑Circle (delega en Circle), resto por AABB overlap |
+
+**Factory:**
+
+```python
+ShapeFactory.build(collider, x, y) -> ShapeInstance
+```
+
+Lee `collider.shape_type` y construye la shape correspondiente:
+
+- `"circle"` → `CircleShape` con `collider.radius`
+- `"capsule"` → `CapsuleShape` con `collider.radius` y `collider.capsule_height`
+- `"polygon"` → `PolygonShape` con `collider.points` transformados a world space
+- `"box"` o cualquier otro → `AABBShape` con `collider.width` y `collider.height`
+
+**Integracion en CollisionSystem:**
+
+`CollisionSystem._narrow_phase_check(entry_a, entry_b)` reemplaza a la antigua
+`_narrow_phase_capsule()` y sus helpers `_capsule_vs_aabb()` /
+`_capsule_vs_capsule()`. Si ambas shapes son `"box"`, la interseccion ya fue
+validada por el broad-phase AABB y retorna `True` sin construir shapes. En caso
+contrario construye ambas shapes via `ShapeFactory.build()` (o crea una
+`AABBShape` desde los bounds si no hay Collider) y llama a
+`shape_a.intersects_shape(shape_b)`. El codigo legacy de capsule queda
+comentado como referencia.
+
+**Integracion en LegacyAABBPhysicsBackend:**
+
+En `_sweep_axis()`, cuando el collider entrante o el otro collider tienen
+`shape_type != "box"`, se construyen ambas shapes en el punto de colision
+candidato y se verifica `intersects_shape()` antes de aceptar la colision.
+Esto evita falsos positivos del barrido AABB para circulos, capsulas y
+poligonos.
+
+**Tests:** 12 tests en `tests/test_shape_factory.py` que cubren intersecciones
+AABB‑AABB, Circle‑Circle, Circle‑AABB, Circle‑Capsule, Capsule‑AABB,
+Capsule‑Capsule, Polygon‑AABB, la factoria desde Collider, y la integracion en
+`_sweep_axis` del backend legacy.
 
 `AudioSystem` sigue siendo la superficie ECS/runtime compatible y delega en la
 foundation interna de `engine/audio/`. El backend real de audio, buses/mixer,

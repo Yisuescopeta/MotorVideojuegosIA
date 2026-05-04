@@ -7,7 +7,7 @@ from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
-from engine.physics.shapes import AABBShape, CapsuleShape, CircleShape, ShapeFactory
+from engine.physics.shapes import AABBShape, CapsuleShape, CircleShape, PolygonShape, ShapeFactory
 
 
 class ShapeFactoryTests(unittest.TestCase):
@@ -149,6 +149,57 @@ class ShapeFactoryTests(unittest.TestCase):
         self.assertTrue(result.on_floor)
         self.assertFalse(result.on_wall)
         self.assertFalse(result.on_ceiling)
+
+    # ── Polygon vs AABB ───────────────────────────────────────────
+
+    def test_polygon_vs_aabb_intersect(self) -> None:
+        """Triángulo que intersecta un AABB."""
+        poly = PolygonShape([(5, 0), (15, 20), (0, 10)])
+        aabb = AABBShape(10, 5, 20, 15)
+        self.assertTrue(poly.intersects_shape(aabb))
+
+    def test_polygon_vs_aabb_no_intersect(self) -> None:
+        """Triángulo lejos de un AABB."""
+        poly = PolygonShape([(5, 0), (15, 20), (0, 10)])
+        aabb = AABBShape(100, 100, 10, 10)
+        self.assertFalse(poly.intersects_shape(aabb))
+
+    # ── Polygon vs Circle ─────────────────────────────────────────
+
+    def test_polygon_vs_circle_intersect(self) -> None:
+        """Círculo dentro de un polígono."""
+        poly = PolygonShape([(0, 0), (20, 0), (20, 20), (0, 20)])
+        circle = CircleShape(10, 10, 5)
+        self.assertTrue(circle.intersects_shape(poly))
+
+    def test_polygon_vs_circle_no_intersect(self) -> None:
+        """Círculo fuera del polígono."""
+        poly = PolygonShape([(0, 0), (20, 0), (20, 20), (0, 20)])
+        circle = CircleShape(50, 50, 5)
+        self.assertFalse(circle.intersects_shape(poly))
+
+    # ── ShapeFactory polygon ──────────────────────────────────────
+
+    def test_shape_factory_builds_polygon(self) -> None:
+        """ShapeFactory.build con shape_type='polygon'."""
+        collider = Collider(shape_type="polygon", points=[[0, 0], [32, 0], [16, 32]])
+        shape = ShapeFactory.build(collider, 100, 100)
+        self.assertIsInstance(shape, PolygonShape)
+        self.assertEqual(len(shape.vertices), 3)
+
+    # ── Capsule vs Capsule ────────────────────────────────────────
+
+    def test_capsule_vs_capsule_intersect_aligned(self) -> None:
+        """Dos cápsulas verticales alineadas que se tocan."""
+        a = CapsuleShape(100, 100, 10, 32)
+        b = CapsuleShape(100, 115, 10, 32)
+        self.assertTrue(a.intersects_shape(b))
+
+    def test_capsule_vs_capsule_no_intersect(self) -> None:
+        """Dos cápsulas separadas horizontalmente."""
+        a = CapsuleShape(100, 100, 10, 32)
+        b = CapsuleShape(200, 100, 10, 32)
+        self.assertFalse(a.intersects_shape(b))
 
 
 if __name__ == "__main__":

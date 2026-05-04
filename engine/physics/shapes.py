@@ -86,6 +86,8 @@ class CircleShape(ShapeInstance):
             return self._intersects_circle(other)
         if isinstance(other, AABBShape):
             return self._intersects_aabb(other)
+        if isinstance(other, PolygonShape):
+            return self._intersects_polygon(other)
         if isinstance(other, CapsuleShape):
             return other.intersects_shape(self)
         return other.intersects_shape(self)
@@ -102,6 +104,28 @@ class CircleShape(ShapeInstance):
         dx = self.cx - closest_x
         dy = self.cy - closest_y
         return dx * dx + dy * dy <= self.radius * self.radius
+
+    def _intersects_polygon(self, poly: PolygonShape) -> bool:
+        """Circle vs Polygon: distancia mínima a cada arista."""
+        closest_dist_sq = float("inf")
+        n = len(poly.vertices)
+        for i in range(n):
+            v1 = poly.vertices[i]
+            v2 = poly.vertices[(i + 1) % n]
+            dx = v2[0] - v1[0]
+            dy = v2[1] - v1[1]
+            if abs(dx) < 1e-6 and abs(dy) < 1e-6:
+                d_sq = (self.cx - v1[0]) ** 2 + (self.cy - v1[1]) ** 2
+            else:
+                t = ((self.cx - v1[0]) * dx + (self.cy - v1[1]) * dy) / (dx * dx + dy * dy)
+                t = max(0.0, min(1.0, t))
+                px = v1[0] + t * dx
+                py = v1[1] + t * dy
+                d_sq = (self.cx - px) ** 2 + (self.cy - py) ** 2
+            closest_dist_sq = min(closest_dist_sq, d_sq)
+        if poly._point_inside(self.cx, self.cy):
+            return True
+        return closest_dist_sq <= self.radius * self.radius
 
 
 class CapsuleShape(ShapeInstance):
@@ -129,6 +153,8 @@ class CapsuleShape(ShapeInstance):
             return self._intersects_circle(other)
         if isinstance(other, CapsuleShape):
             return self._intersects_capsule(other)
+        if isinstance(other, PolygonShape):
+            return self._intersects_polygon(other)
         return other.intersects_shape(self)
 
     def _segment_ends(self) -> tuple[float, float]:
@@ -172,6 +198,25 @@ class CapsuleShape(ShapeInstance):
         d2_sq = dx * dx + (a_bot - b_top) * (a_bot - b_top)
         return min(d1_sq, d2_sq) <= r * r
 
+    def _intersects_polygon(self, poly: PolygonShape) -> bool:
+        """Capsule vs Polygon: extremos como círculos + muestreo del segmento."""
+        from engine.physics.shapes import CircleShape  # noqa: PLC0415
+
+        top_y, bottom_y = self._segment_ends()
+        top_circle = CircleShape(self.cx, top_y, self.radius)
+        if top_circle._intersects_polygon(poly):
+            return True
+        bot_circle = CircleShape(self.cx, bottom_y, self.radius)
+        if bot_circle._intersects_polygon(poly):
+            return True
+        steps = 4
+        for i in range(steps + 1):
+            t = i / steps
+            py = top_y + t * (bottom_y - top_y)
+            if poly._point_inside(self.cx, py):
+                return True
+        return False
+
 
 class PolygonShape(ShapeInstance):
     """Polígono convexo."""
@@ -188,15 +233,16 @@ class PolygonShape(ShapeInstance):
 
     def intersects_shape(self, other: ShapeInstance) -> bool:
         if isinstance(other, AABBShape):
-            return self._intersects_aabb(other)
+            return self._sat_intersects_aabb(other)
         if isinstance(other, CircleShape):
             return other.intersects_shape(self)
-        return self._aabb_overlap(self.get_aabb(), other.get_aabb())
+        if isinstance(other, PolygonShape):
+            return self._sat_intersects_polygon(other)
+        if isinstance(other, CapsuleShape):
+            return other.intersects_shape(self)
+        return self._aabb_overlap_fallback(self.get_aabb(), other.get_aabb())
 
-    def _intersects_aabb(self, aabb: AABBShape) -> bool:
-        return self._sat_intersects(aabb)
-
-    def _sat_intersects(self, aabb: AABBShape) -> bool:
+    def _sat_intersects_aabb(self, aabb: AABBShape) -> bool:
         """Separating Axis Theorem entre polígono y AABB."""
         aabb_verts = [
             (aabb.cx - aabb.half_w, aabb.cy - aabb.half_h),
@@ -239,8 +285,71 @@ class PolygonShape(ShapeInstance):
 
         return True
 
+    def _sat_intersects_polygon(self, other: PolygonShape) -> bool:
+        """SAT entre dos polígonos convexos."""
+        return self._sat_test(self.vertices, other.vertices)
+
+    @staticmethod
+    def _sat_test(verts_a: list, verts_b: list) -> bool:
+        """Separating Axis Theorem generalizado."""
+        n = len(verts_a)
+        m = len(verts_b)
+        axes: list[tuple[float, float]] = []
+        for i in range(n):
+            v1 = verts_a[i]
+            v2 = verts_a[(i + 1) % n]
+            edge = (v2[0] - v1[0], v2[1] - v1[1])
+            normal = (-edge[1], edge[0])
+            length = (normal[0] ** 2 + normal[1] ** 2) ** 0.5
+            if length > 1e-6:
+                axes.append((normal[0] / length, normal[1] / length))
+        for i in range(m):
+            v1 = verts_b[i]
+            v2 = verts_b[(i + 1) % m]
+            edge = (v2[0] - v1[0], v2[1] - v1[1])
+            normal = (-edge[1], edge[0])
+            length = (normal[0] ** 2 + normal[1] ** 2) ** 0.5
+            if length > 1e-6:
+                axes.append((normal[0] / length, normal[1] / length))
+
+        for ax, ay in axes:
+            min_a = float("inf")
+            max_a = float("-inf")
+            for v in verts_a:
+                proj = v[0] * ax + v[1] * ay
+                min_a = min(min_a, proj)
+                max_a = max(max_a, proj)
+            min_b = float("inf")
+            max_b = float("-inf")
+            for v in verts_b:
+                proj = v[0] * ax + v[1] * ay
+                min_b = min(min_b, proj)
+                max_b = max(max_b, proj)
+            if max_a < min_b or max_b < min_a:
+                return False
+        return True
+
+    def _point_inside(self, px: float, py: float) -> bool:
+        """Ray casting: punto dentro de polígono."""
+        n = len(self.vertices)
+        inside = False
+        j = n - 1
+        for i in range(n):
+            vi = self.vertices[i]
+            vj = self.vertices[j]
+            if ((vi[1] > py) != (vj[1] > py)) and (
+                px < (vj[0] - vi[0]) * (py - vi[1]) / (vj[1] - vi[1]) + vi[0]
+            ):
+                inside = not inside
+            j = i
+        return inside
+
     @staticmethod
     def _aabb_overlap(a: AABB, b: AABB) -> bool:
+        return a[0] < b[2] and a[2] > b[0] and a[1] < b[3] and a[3] > b[1]
+
+    @staticmethod
+    def _aabb_overlap_fallback(a: AABB, b: AABB) -> bool:
         return a[0] < b[2] and a[2] > b[0] and a[1] < b[3] and a[3] > b[1]
 
 
