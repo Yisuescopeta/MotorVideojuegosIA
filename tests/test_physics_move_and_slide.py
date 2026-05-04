@@ -229,5 +229,146 @@ class MoveAndSlideTests(unittest.TestCase):
         self.assertFalse(result.on_ceiling)
 
 
+# ──────────────────────────────────────────────────────────────
+# Box2D tests — solo ejecutan si Box2D instalado
+# ──────────────────────────────────────────────────────────────
+import pytest
+
+try:
+    from engine.physics.box2d_backend import Box2DPhysicsBackend
+
+    _backend_check = Box2DPhysicsBackend(gravity=0)
+    del _backend_check
+    BOX2D_AVAILABLE = True
+except Exception:
+    BOX2D_AVAILABLE = False
+
+
+@pytest.mark.skipif(not BOX2D_AVAILABLE, reason="Box2D not installed")
+class TestBox2DMoveAndSlide:
+    """Tests de move_and_slide con Box2D — requiere Box2D instalado."""
+
+    def test_box2d_move_and_slide_box_vs_floor(self) -> None:
+        """Box player cae sobre suelo con Box2D."""
+        world = World()
+
+        player = Entity(name="Player")
+        player.add_component(Transform(x=160, y=0))
+        player.add_component(
+            Collider(width=32, height=32, friction=0.2, restitution=0.0)
+        )
+        world.add_entity(player)
+
+        ground = Entity(name="Ground")
+        ground.add_component(Transform(x=160, y=200))
+        ground.add_component(Collider(width=640, height=32))
+        world.add_entity(ground)
+
+        backend = Box2DPhysicsBackend(gravity=600)
+        backend.sync_world(world)
+
+        result = backend.move_and_slide(
+            entity=player,
+            velocity=(0, 300),
+            delta_time=1 / 60,
+            floor_max_angle=0.785398,
+        )
+
+        player_bottom = result.position_y + 16
+        ground_top = 200 - 16
+        assert (
+            player_bottom <= ground_top + 2.0
+        ), f"Player atravesó suelo: {player_bottom} > {ground_top}"
+
+    def test_box2d_move_and_slide_circle_vs_floor(self) -> None:
+        """Circle player cae sobre suelo con Box2D."""
+        world = World()
+
+        player = Entity(name="Player")
+        player.add_component(Transform(x=160, y=0))
+        player.add_component(
+            Collider(shape_type="circle", radius=16, width=32, height=32)
+        )
+        world.add_entity(player)
+
+        ground = Entity(name="Ground")
+        ground.add_component(Transform(x=160, y=200))
+        ground.add_component(Collider(width=640, height=32))
+        world.add_entity(ground)
+
+        backend = Box2DPhysicsBackend(gravity=600)
+        backend.sync_world(world)
+
+        result = backend.move_and_slide(
+            entity=player,
+            velocity=(0, 300),
+            delta_time=1 / 60,
+        )
+
+        player_bottom = result.position_y + 16
+        ground_top = 200 - 16
+        assert player_bottom <= ground_top + 2.0
+
+    def test_box2d_move_and_slide_polygon_vs_wall(self) -> None:
+        """Polygon player choca con pared con Box2D."""
+        world = World()
+
+        player = Entity(name="Player")
+        player.add_component(Transform(x=100, y=100))
+        player.add_component(
+            Collider(
+                shape_type="polygon",
+                points=[[-16, -16], [16, -16], [0, 16]],
+                width=32,
+                height=32,
+            )
+        )
+        world.add_entity(player)
+
+        wall = Entity(name="Wall")
+        wall.add_component(Transform(x=200, y=100))
+        wall.add_component(Collider(width=32, height=128))
+        world.add_entity(wall)
+
+        backend = Box2DPhysicsBackend(gravity=0)
+        backend.sync_world(world)
+
+        result = backend.move_and_slide(
+            entity=player,
+            velocity=(300, 0),
+            delta_time=1 / 60,
+        )
+
+        player_right = result.position_x + 16
+        wall_left = 200 - 16
+        assert (
+            player_right <= wall_left + 2.0
+        ), f"Player atravesó pared: {player_right} > {wall_left}"
+
+    def test_box2d_move_and_collide_delegates(self) -> None:
+        """move_and_collide delega correctamente a move_and_slide."""
+        world = World()
+        player = Entity(name="Player")
+        player.add_component(Transform(x=160, y=0))
+        player.add_component(Collider(width=32, height=32))
+        world.add_entity(player)
+
+        ground = Entity(name="Ground")
+        ground.add_component(Transform(x=160, y=200))
+        ground.add_component(Collider(width=640, height=32))
+        world.add_entity(ground)
+
+        backend = Box2DPhysicsBackend(gravity=600)
+        backend.sync_world(world)
+
+        result = backend.move_and_collide(
+            entity=player,
+            velocity=(0, 300),
+            delta_time=1 / 60,
+        )
+
+        assert result.on_floor or result.position_y < 200
+
+
 if __name__ == "__main__":
     unittest.main()

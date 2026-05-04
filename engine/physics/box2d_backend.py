@@ -7,7 +7,7 @@ from engine.components.collider import Collider
 from engine.components.joint2d import Joint2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
-from engine.physics.backend import PhysicsAABBHit, PhysicsBackend, PhysicsContact, PhysicsRayHit
+from engine.physics.backend import MoveResult2D, PhysicsAABBHit, PhysicsBackend, PhysicsContact, PhysicsRayHit
 
 
 class Box2DDependencyUnavailable(RuntimeError):
@@ -194,6 +194,127 @@ class Box2DPhysicsBackend(PhysicsBackend):
 
     def get_step_metrics(self) -> dict[str, float]:
         return dict(self._step_metrics)
+
+    # ------------------------------------------------------------------
+    # move_and_slide / move_and_collide
+    # ------------------------------------------------------------------
+
+    def move_and_slide(
+        self,
+        entity: Any,
+        velocity: tuple[float, float],
+        delta_time: float,
+        floor_max_angle: float = 0.785398,
+        floor_snap_distance: float = 2.0,
+        up_direction: tuple[float, float] = (0.0, -1.0),
+        wall_min_slide_angle: float = 0.261799,
+        max_slides: int = 4,
+    ) -> MoveResult2D:
+        """Box2D move_and_slide via contact detection after mini-step."""
+        body = self._bodies.get(int(entity.id))
+        if body is None:
+            transform = entity.get_component(Transform) if hasattr(entity, "get_component") else None
+            tx = float(transform.x) if transform else 0.0
+            ty = float(transform.y) if transform else 0.0
+            return MoveResult2D(
+                position_x=tx, position_y=ty,
+                velocity_x=float(velocity[0]), velocity_y=float(velocity[1]),
+            )
+
+        vx, vy = float(velocity[0]), float(velocity[1])
+        dt = float(delta_time)
+        ux, uy = float(up_direction[0]), float(up_direction[1])
+
+        orig_x = float(body.position[0])
+        orig_y = float(body.position[1])
+
+        desired_x = orig_x + vx * dt
+        desired_y = orig_y + vy * dt
+        body.position = (desired_x, desired_y)
+
+        # Mini-step para que Box2D detecte solapamientos y ajuste posición
+        if dt > 1e-8:
+            self._world.Step(dt, 6, 2)
+
+        on_floor = False
+        on_wall = False
+        on_ceiling = False
+        cnx, cny = 0.0, 0.0
+        contacts_list: list[PhysicsContact] = []
+
+        for ce in body.contacts:
+            contact = ce.contact
+            if not contact.touching:
+                continue
+            wm = contact.worldManifold
+            nx = float(wm.normal[0])
+            ny = float(wm.normal[1])
+
+            # Orientar normal hacia nuestro body
+            if body == contact.fixtureA.body:
+                nx = -nx
+                ny = -ny
+
+            cnx, cny = nx, ny
+
+            # Clasificar floor / wall / ceiling
+            dot = nx * ux + ny * uy
+            angle = math.acos(max(-1.0, min(1.0, abs(dot))))
+
+            if angle <= floor_max_angle:
+                if dot >= 0:
+                    on_floor = True
+                else:
+                    on_ceiling = True
+            elif angle >= (math.pi / 2 - wall_min_slide_angle):
+                on_wall = True
+
+            other_body = ce.other
+            other_data: dict[str, Any] = other_body.userData if other_body.userData else {}
+            contacts_list.append(PhysicsContact(
+                entity_a=getattr(entity, "name", str(entity.id)),
+                entity_b=str(other_data.get("entity_name", "unknown")),
+                entity_a_id=int(entity.id),
+                entity_b_id=int(other_data.get("entity_id", 0)),
+                is_trigger=False,
+            ))
+
+        final_x = float(body.position[0])
+        final_y = float(body.position[1])
+
+        final_vx = (final_x - orig_x) / dt if dt > 0 else vx
+        final_vy = (final_y - orig_y) / dt if dt > 0 else vy
+
+        return MoveResult2D(
+            position_x=final_x,
+            position_y=final_y,
+            velocity_x=final_vx,
+            velocity_y=final_vy,
+            on_floor=on_floor,
+            on_wall=on_wall,
+            on_ceiling=on_ceiling,
+            collision_normal_x=cnx,
+            collision_normal_y=cny,
+            contacts=contacts_list,
+            slide_count=1 if (on_floor or on_wall or on_ceiling) else 0,
+            floor_angle=0.0,
+        )
+
+    def move_and_collide(
+        self,
+        entity: Any,
+        velocity: tuple[float, float],
+        delta_time: float,
+        max_collisions: int = 1,
+    ) -> MoveResult2D:
+        """Box2D move_and_collide — delega en move_and_slide con max_slides=1."""
+        del max_collisions
+        return self.move_and_slide(
+            entity=entity,
+            velocity=velocity,
+            delta_time=delta_time,
+            max_slides=1,
+        )
 
     def _create_body_for_entity(self, entity: Any, transform: Transform, collider: Collider, rigidbody: Optional[RigidBody]) -> Any:
         body_type = "static"
