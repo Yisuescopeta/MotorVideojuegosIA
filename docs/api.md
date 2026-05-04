@@ -264,6 +264,29 @@ api.apply_impulse("player", 0.0, -300.0)
 api.apply_torque("player", 50.0)
 ```
 
+#### MoveResult2D — Resultado de movimiento de personaje
+
+Estructura de datos devuelta por `PhysicsBackend.move_and_slide()` y
+`move_and_collide()`. Contiene la posición y velocidad final tras resolver
+colisiones, más flags de estado.
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `position_x`, `position_y` | float | Posición final tras colisiones |
+| `velocity_x`, `velocity_y` | float | Velocidad ajustada tras colisiones |
+| `on_floor` | bool | True si el cuerpo está sobre una superficie |
+| `on_wall` | bool | True si el cuerpo colisiona con una pared |
+| `on_ceiling` | bool | True si el cuerpo colisiona con un techo |
+| `collision_normal_x/y` | float | Normal de la última colisión |
+| `contacts` | list[PhysicsContact] | Contactos generados durante el movimiento |
+| `slide_count` | int | Número de deslizamientos realizados |
+| `floor_angle` | float | Ángulo del suelo detectado (rad) |
+
+> **Nota:** `move_and_slide` y `move_and_collide` son contratos internos de
+> `PhysicsBackend`. El acceso público para agentes IA es a través de
+> `EngineAPI.step()` y el componente `CharacterController2D`, que internamente
+> usan el backend configurado.
+
 ### Area2D — Monitoreo de overlaps
 
 Area2D monitorea cuerpos (RigidBody) y otras áreas que entran/salen de su zona.

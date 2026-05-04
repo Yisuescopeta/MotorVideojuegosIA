@@ -76,6 +76,46 @@ layout e interaccion y ahora soporta dos modos de foundation sobre
 El sistema fisico conserva `legacy_aabb` como fallback obligatorio y registra
 `box2d` como backend opcional cuando la dependencia esta disponible.
 
+`PhysicsBackend` (ABC en `engine/physics/backend.py`) define el contrato estable
+para backends de fisica 2D. Desde el ciclo 1 de refactorizacion, expone dos nuevos
+metodos de movimiento cinematico:
+
+- `move_and_slide(entity, velocity, delta_time, ...)` -> `MoveResult2D`: mueve la
+  entidad con deteccion de colisiones y deslizamiento por superficies. Soporta
+  configuracion de `floor_max_angle`, `floor_snap_distance`, `up_direction`,
+  `wall_min_slide_angle` y `max_slides`. Implementado en
+  `LegacyAABBPhysicsBackend` con barrido separado por eje (horizontal/vertical),
+  snap al suelo y clasificacion de colisiones (suelo/pared/techo).
+- `move_and_collide(entity, velocity, delta_time, max_collisions=1)` -> `MoveResult2D`:
+  variante que se detiene en la primera colision (delega en `move_and_slide` con
+  `max_slides=1`).
+
+`MoveResult2D` es el dataclass canonico de resultado:
+
+```
+@dataclass
+class MoveResult2D:
+    position_x: float = 0.0
+    position_y: float = 0.0
+    velocity_x: float = 0.0
+    velocity_y: float = 0.0
+    on_floor: bool = False
+    on_wall: bool = False
+    on_ceiling: bool = False
+    collision_normal_x: float = 0.0
+    collision_normal_y: float = 0.0
+    contacts: list = field(default_factory=list)  # list[PhysicsContact]
+    slide_count: int = 0
+    floor_angle: float = 0.0
+```
+
+Actualmente estos metodos son contratos del backend (nivel `PhysicsBackend`) y
+no estan expuestos directamente en `EngineAPI`. La implementacion en
+`LegacyAABBPhysicsBackend` usa barrido AABB con `_sweep_axis()`, snap al suelo
+con `_floor_snap()`, filtrado por `CollisionFilter2D` y matriz de capas desde
+`feature_metadata.physics_2d.layer_matrix`. La clasificacion de colisiones
+(suelo/pared/techo) se realiza por angulo respecto a `up_direction`.
+
 `AudioSystem` sigue siendo la superficie ECS/runtime compatible y delega en la
 foundation interna de `engine/audio/`. El backend real de audio, buses/mixer,
 spatial audio completo y la integracion con el `EventBus` global quedan

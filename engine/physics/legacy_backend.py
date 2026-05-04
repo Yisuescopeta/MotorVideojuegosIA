@@ -246,6 +246,25 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         wall_min_slide_angle: float = 0.261799,
         max_slides: int = 4,
     ) -> MoveResult2D:
+        """Movimiento de personaje con detección AABB y deslizamiento por ejes.
+
+        Migrado de CharacterControllerSystem._move_entity(). Realiza barrido
+        horizontal + vertical, floor snap y clasificación de colisiones
+        (floor/wall/ceiling) usando dot product contra up_direction.
+
+        Args:
+            entity: Entity con Transform + Collider.
+            velocity: (vx, vy) en unidades/s. Ya incluye gravedad aplicada.
+            delta_time: Delta time del frame en segundos.
+            floor_max_angle: Ángulo máximo (rad) para considerar suelo.
+            floor_snap_distance: Distancia de snap al suelo al perder contacto.
+            up_direction: Vector up para clasificación de colisiones.
+            wall_min_slide_angle: Ángulo mínimo para considerar pared.
+            max_slides: Reservado para futuro bucle de deslizamiento (actualmente 1).
+
+        Returns:
+            MoveResult2D con posición final, velocidad ajustada y flags de estado.
+        """
         transform = entity.get_component(Transform) if hasattr(entity, "get_component") else None
         collider: Collider | None = entity.get_component(Collider) if hasattr(entity, "get_component") else None
         if transform is None or collider is None:

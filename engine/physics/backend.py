@@ -69,7 +69,7 @@ class MoveResult2D:
     on_ceiling: bool = False
     collision_normal_x: float = 0.0
     collision_normal_y: float = 0.0
-    contacts: list = dc_field(default_factory=list)
+    contacts: list[PhysicsContact] = dc_field(default_factory=list)
     slide_count: int = 0
     floor_angle: float = 0.0
 
