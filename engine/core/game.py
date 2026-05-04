@@ -38,7 +38,6 @@ from engine.core.hot_reload import HotReloadManager
 from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.core.runtime_loop import RuntimeTickPlan
 from engine.core.time_manager import TimeManager
-from engine.debug.performance_monitor import PerformanceMonitor
 from engine.debug.profiler import EngineProfiler
 from engine.debug.timeline import Timeline
 from engine.editor.agent_panel import AgentPanel
@@ -221,7 +220,6 @@ class Game:
             "scripts": 0,
         }
         self._profiler: EngineProfiler = EngineProfiler()
-        self.performance_monitor: PerformanceMonitor = PerformanceMonitor()
         self.debug_draw_colliders: bool = False
         self.debug_draw_labels: bool = False
         self.random_seed: int | None = None
@@ -1260,16 +1258,6 @@ class Game:
         self._perf_stats["animation"] = animation_elapsed
         self._perf_stats["scripts"] = scripts_elapsed
         self._perf_stats["ui"] = ui_elapsed
-
-        # Record performance monitor
-        physics_ms = gameplay_elapsed
-        render_ms = self._perf_stats.get("render", 0.0)
-        entity_count = active_world.entity_count() if active_world else 0
-        draw_calls = self._perf_counters.get("draw_calls", 0)
-        self.performance_monitor.record_frame(
-            dt, physics_ms, render_ms, entity_count, draw_calls
-        )
-
         return plan
 
     def _update_animation(self, world: Optional["World"], dt: float) -> None:

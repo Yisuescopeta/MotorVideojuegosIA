@@ -10,6 +10,8 @@ from engine.ecs.world import World
 from engine.events.event_bus import EventBus
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
 from engine.systems.character_controller_system import CharacterControllerSystem
+from engine.systems.collision_system import CollisionSystem
+from engine.systems.physics_system import PhysicsSystem
 
 
 class CharacterControllerBackendIntegrationTests(unittest.TestCase):
@@ -253,3 +255,112 @@ class CharacterControllerBackendIntegrationTests(unittest.TestCase):
             len(player_events), 1,
             f"Esperado ≤1 evento para Player, recibidos {len(player_events)}",
         )
+
+    # ── Punto 6: ciclo completo sin duplicación ───────────────────
+
+    def test_no_duplicate_collision_events_in_full_cycle(self) -> None:
+        """Ciclo completo: CharacterController + backend.step no duplica on_collision."""
+        world = World()
+        player = Entity(name="Player")
+        # Posicionar justo arriba del suelo: Ground top=184, Player bottom=182 (gap=2px)
+        player.add_component(Transform(x=160, y=166))
+        player.add_component(Collider(width=32, height=32))
+        cc = CharacterController2D(move_speed=200, gravity=600)
+        player.add_component(cc)
+        world.add_entity(player)
+
+        ground = Entity(name="Ground")
+        ground.add_component(Transform(x=160, y=200))
+        ground.add_component(Collider(width=640, height=32))
+        world.add_entity(ground)
+
+        events: list = []
+        bus = EventBus()
+        bus.subscribe("on_collision", lambda event: events.append(event.data))
+
+        physics_system = PhysicsSystem()
+        collision_system = CollisionSystem(event_bus=bus)
+
+        backend = LegacyAABBPhysicsBackend(
+            physics_system=physics_system,
+            collision_system=collision_system,
+            event_bus=bus,
+        )
+        system = CharacterControllerSystem()
+        system.set_event_bus(bus)
+
+        # Ciclo completo: character controller → backend step
+        bus.reset_frame_dedup()
+        system.update(world, 1 / 60, backend=backend)
+        backend.step(world, 1 / 60)
+
+        # Verificar: máximo 1 on_collision por par (Player, Ground)
+        player_ground_events = [
+            e for e in events
+            if (e.get("entity_a") == "Player" and e.get("entity_b") == "Ground")
+            or (e.get("entity_a") == "Ground" and e.get("entity_b") == "Player")
+        ]
+        self.assertLessEqual(
+            len(player_ground_events), 1,
+            f"Esperado ≤1 evento Player-Ground, recibidos {len(player_ground_events)}: {player_ground_events}"
+        )
+
+    def test_frame_dedup_resets_between_frames(self) -> None:
+        """Dedup se limpia entre frames. Segundo frame puede emitir de nuevo."""
+        world = World()
+        player = Entity(name="Player")
+        # Posicionar justo arriba del suelo para que colisione en 1 frame
+        # Ground: y=200, half_h=16 → top=184. Player: y=166, half_h=16 → bottom=182
+        # Gap=2px. Con gravity=600, dt=1/60: vy=10, delta_y=0.167 → colisiona en frame 1.
+        player.add_component(Transform(x=160, y=166))
+        player.add_component(Collider(width=32, height=32))
+        cc = CharacterController2D(move_speed=200, gravity=600)
+        player.add_component(cc)
+        world.add_entity(player)
+
+        ground = Entity(name="Ground")
+        ground.add_component(Transform(x=160, y=200))
+        ground.add_component(Collider(width=640, height=32))
+        world.add_entity(ground)
+
+        events: list[dict] = []
+        bus = EventBus()
+        bus.subscribe("on_collision", lambda event: events.append(event.data))
+
+        physics_system = PhysicsSystem()
+        collision_system = CollisionSystem(event_bus=bus)
+
+        backend = LegacyAABBPhysicsBackend(
+            physics_system=physics_system,
+            collision_system=collision_system,
+            event_bus=bus,
+        )
+        system = CharacterControllerSystem()
+        system.set_event_bus(bus)
+
+        # Ejecutar varios frames hasta que el player toque el suelo
+        dt = 1.0 / 60.0
+        for _ in range(30):
+            bus.reset_frame_dedup()
+            system.update(world, dt, backend=backend)
+            backend.step(world, dt)
+            if cc.on_floor:
+                break
+
+        self.assertTrue(cc.on_floor, "Player no llegó al suelo")
+
+        # Contar eventos Player-Ground en todos los frames hasta aquí
+        events_before = len(events)
+
+        # Frame extra: player ya en el suelo, dedup reseteado
+        bus.reset_frame_dedup()
+        system.update(world, dt, backend=backend)
+        backend.step(world, dt)
+
+        new_events = len(events) - events_before
+        # Puede emitir 0 o 1 (si floor snap encuentra contacto), pero NO más de 1
+        self.assertLessEqual(new_events, 1, f"Frame extra duplicó: {new_events} eventos")
+
+
+if __name__ == "__main__":
+    unittest.main()

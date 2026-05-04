@@ -295,6 +295,10 @@ class RuntimeController:
             animation_system.update(world, dt * self._edit_animation_speed)
 
     def update_gameplay(self, world: "World", dt: float) -> None:
+        event_bus = self._get_event_bus()
+        if event_bus is not None:
+            event_bus.reset_frame_dedup()
+
         input_system = self._get_input_system()
         if input_system is not None:
             input_system.update(world)
