@@ -748,3 +748,65 @@ class AssetsProjectAPI(EngineAPIComponent):
             return self.ok("Sprite asset imported", {"path": imported_path})
         except Exception as exc:
             return self.fail(f"Sprite import failed: {exc}")
+
+    def import_asset(self, source_path: str, target_folder: str = "", overwrite: bool = False) -> ActionResult:
+        """Import an external asset file into the project with type-aware options.
+
+        Args:
+            source_path: Path to the source file.
+            target_folder: Destination folder within the project assets directory.
+            overwrite: If True, overwrite existing files.
+
+        Returns:
+            ActionResult with the imported asset path.
+        """
+        if self.asset_service is None:
+            return self.fail("Asset service not ready")
+        try:
+            imported_path = self.asset_service.import_asset(
+                source_path,
+                target_folder=target_folder,
+                overwrite=overwrite,
+            )
+            return self.ok("Asset imported", {"path": imported_path})
+        except Exception as exc:
+            return self.fail(f"Asset import failed: {exc}")
+
+    def get_import_options(self, asset_type: str = "textures") -> dict:
+        """Retorna las opciones de importacion para un tipo de asset.
+
+        Args:
+            asset_type: "textures", "audio", or "fonts".
+
+        Returns:
+            Dict with import options for that asset type.
+        """
+        if self.asset_service is None:
+            return {}
+        return self.asset_service.get_import_options(asset_type)
+
+    def set_import_options(self, asset_type: str, options: dict) -> ActionResult:
+        """Actualiza las opciones de importacion en project_settings.json.
+
+        Args:
+            asset_type: "textures", "audio", or "fonts".
+            options: Dict with import options to set.
+
+        Returns:
+            ActionResult with the updated options.
+        """
+        if self.project_service is None:
+            return self.fail("Project service not ready")
+        import json
+        settings_path = self.project_service.project_root / "settings" / "project_settings.json"
+        try:
+            with open(settings_path, "r") as f:
+                settings = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            settings = {}
+        if "import_options" not in settings:
+            settings["import_options"] = {}
+        settings["import_options"][asset_type] = dict(options)
+        with open(settings_path, "w") as f:
+            json.dump(settings, f, indent=4)
+        return self.ok("Import options updated", {"asset_type": asset_type, "options": dict(options)})

@@ -1613,5 +1613,73 @@ class AuthoringAPI(EngineAPIComponent):
     def _load_animator_payload(self, entity_name: str) -> Optional[dict[str, Any]]:
         return self.load_component_payload(entity_name, "Animator")
 
+    def register_autoload(self, name: str, scene_path: str, singleton: bool = True) -> ActionResult:
+        """Registra un autoload singleton en project_settings.json.
+
+        Args:
+            name: Nombre del autoload (e.g. "GlobalState").
+            scene_path: Ruta al archivo de escena/prefab JSON.
+            singleton: Si es True, se carga como singleton al iniciar.
+
+        Returns:
+            ActionResult confirmando el registro o reportando fallo.
+        """
+        import json
+        import os
+
+        if not name.strip():
+            return self.fail("Autoload name is required")
+        if not scene_path.strip():
+            return self.fail("Scene path is required")
+
+        project_root = self._context.project_root
+        settings_path = os.path.join(project_root, "settings", "project_settings.json")
+        if not os.path.isfile(settings_path):
+            return self.fail("project_settings.json not found")
+
+        try:
+            with open(settings_path, "r", encoding="utf-8") as f:
+                settings = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as exc:
+            return self.fail(f"Failed to read project_settings.json: {exc}")
+
+        if "autoloads" not in settings:
+            settings["autoloads"] = {}
+        settings["autoloads"][name] = {
+            "scene_path": scene_path.strip(),
+            "singleton": bool(singleton),
+        }
+
+        try:
+            with open(settings_path, "w", encoding="utf-8") as f:
+                json.dump(settings, f, indent=4, ensure_ascii=False)
+                f.write("\n")
+        except OSError as exc:
+            return self.fail(f"Failed to write project_settings.json: {exc}")
+
+        return self.ok("Autoload registered", {"name": name, "scene_path": scene_path})
+
+    def list_autoloads(self) -> dict[str, Any]:
+        """Lista los autoloads registrados en project_settings.json.
+
+        Returns:
+            Diccionario con los autoloads registrados (key = nombre, value = config).
+        """
+        import json
+        import os
+
+        project_root = self._context.project_root
+        settings_path = os.path.join(project_root, "settings", "project_settings.json")
+        if not os.path.isfile(settings_path):
+            return {}
+
+        try:
+            with open(settings_path, "r", encoding="utf-8") as f:
+                settings = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+
+        return dict(settings.get("autoloads", {}))
+
     def _load_tilemap_payload(self, entity_name: str) -> Optional[dict[str, Any]]:
         return self.load_component_payload(entity_name, "Tilemap")
