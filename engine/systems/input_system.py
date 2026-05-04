@@ -10,6 +10,7 @@ import pyray as rl
 from engine.components.inputmap import InputMap
 from engine.ecs.world import World
 from engine.events.input_events import InputEventAction
+from engine.input.midi_input import MIDIInput
 
 KEY_LOOKUP: Dict[str, int] = {
     "A": rl.KEY_A,
@@ -90,6 +91,7 @@ class InputSystem:
         self._overrides: Dict[str, Tuple[Dict[str, float], int]] = {}
         self._prev_states: Dict[str, Dict[str, float]] = {}
         self._buffered_events: list[InputEventAction] = []
+        self.midi_input: Optional[MIDIInput] = None
 
     def flush_buffered_events(self) -> list[InputEventAction]:
         """Flush accumulated InputEventAction buffer and return events."""
@@ -136,6 +138,21 @@ class InputSystem:
                     self._overrides[entity_name] = (state, frames - 1)
                 continue
 
+            # MIDI input: poll and inject action strengths
+            midi_action_1 = 0.0
+            midi_action_2 = 0.0
+            if input_map.midi_enabled and self.midi_input is not None:
+                midi_events = self.midi_input.poll_events()
+                midi_map = input_map.midi_action_map
+                for event in midi_events:
+                    if event.message_type == "note_on" and event.note in midi_map:
+                        action_name = midi_map[event.note]
+                        strength = event.velocity / 127.0
+                        if action_name == "action_1":
+                            midi_action_1 = max(midi_action_1, strength)
+                        elif action_name == "action_2":
+                            midi_action_2 = max(midi_action_2, strength)
+
             deadzone = getattr(input_map, 'deadzone', 0.2)
             bindings = input_map.get_bindings()
 
@@ -156,8 +173,8 @@ class InputSystem:
             gp1 = bindings.get('gamepad_action_1', [])
             gp2 = bindings.get('gamepad_action_2', [])
 
-            action_1 = self._action_strength(act1_keys, mouse1, gp1)
-            action_2 = self._action_strength(act2_keys, mouse2, gp2)
+            action_1 = max(self._action_strength(act1_keys, mouse1, gp1), midi_action_1)
+            action_2 = max(self._action_strength(act2_keys, mouse2, gp2), midi_action_2)
 
             # Edge detection
             current_held = {

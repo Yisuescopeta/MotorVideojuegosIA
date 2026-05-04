@@ -52,6 +52,7 @@ class ResourceRegistry:
         self._type_loaders["animation_tree"] = self._load_animation_tree
         self._type_loaders["navigation_polygon"] = self._load_navigation_polygon
         self._type_loaders["physics_material"] = self._load_physics_material
+        self._type_loaders["audio_bus_layout"] = self._load_audio_bus_layout
 
     def load(self, path: str, resource_type: str = "auto") -> Any:
         """Carga un recurso por path. Usa caché si ya está cargado.
@@ -173,6 +174,7 @@ class ResourceRegistry:
             "theme": "theme",
             "animtree": "animation_tree",
             "navpoly": "navigation_polygon",
+            "buslayout": "audio_bus_layout",
             "json": "auto",  # Intentar inferir del contenido
         }
         return mapping.get(ext, "auto")
@@ -228,3 +230,9 @@ class ResourceRegistry:
 
         with open(path, "r") as f:
             return PhysicsMaterial.from_dict(json.load(f))
+
+    def _load_audio_bus_layout(self, path: str) -> Any:
+        from engine.audio.audio_bus import AudioBusLayout
+
+        with open(path, "r") as f:
+            return AudioBusLayout.from_dict(json.load(f))

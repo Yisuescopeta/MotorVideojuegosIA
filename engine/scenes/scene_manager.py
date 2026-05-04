@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+import json
+import os
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,6 +22,7 @@ from engine.scenes.contracts import (
     SceneWorkspacePort,
 )
 from engine.scenes.scene import Scene
+from engine.scenes.scene_inheritance import resolve_inherited_scene
 from engine.scenes.storage import JsonSceneStorage, SceneStorage
 from engine.scenes.structural_authoring import SceneStructuralAuthoring, SceneStructuralAuthoringContext
 from engine.scenes.workspace_lifecycle import SceneWorkspace, SceneWorkspaceEntry
@@ -366,6 +369,7 @@ class SceneManager:
         self._structural_authoring.reset_state()
 
     def load_scene(self, data: Dict[str, Any], source_path: Optional[str] = None, activate: bool = True) -> "World":
+        data = self._resolve_scene_inheritance(data, source_path=source_path)
         return self._workspace.load_scene(data, source_path=source_path, activate=activate)
 
     def load_scene_from_file(
@@ -374,7 +378,19 @@ class SceneManager:
         activate: bool = True,
         storage: Optional[SceneStorage] = None,
     ) -> Optional["World"]:
-        return self._workspace.load_scene_from_file(path, activate=activate, storage=storage)
+        resolved_path = Path(path).resolve().as_posix()
+        existing = self._resolve_entry(resolved_path)
+        if existing is not None:
+            if activate:
+                self.activate_scene(resolved_path)
+            return existing.edit_world
+        try:
+            data = (storage or JsonSceneStorage()).load(resolved_path)
+        except Exception as exc:
+            log_err(f"SceneManager: Error cargando {resolved_path}: {exc}")
+            return None
+        data = self._resolve_scene_inheritance(data, source_path=resolved_path)
+        return self.load_scene(data, source_path=resolved_path, activate=activate)
 
     def get_edit_world(self) -> Optional["World"]:
         entry = self._get_active_entry()
@@ -382,6 +398,78 @@ class SceneManager:
 
     def create_new_scene(self, name: str = "New Scene", activate: bool = True) -> "World":
         return self._workspace.create_new_scene(name, activate=activate)
+
+    def create_inherited_scene(self, base_scene_path: str, child_name: str) -> Optional[str]:
+        """Create a new scene that inherits from base_scene_path.
+
+        The child scene will load all entities from the base and allow overrides.
+        Returns the absolute path to the created child scene file, or None on failure.
+        """
+        from engine.scenes.scene_inheritance import create_child_scene_payload
+
+        child_data = create_child_scene_payload(child_name, base_scene_path)
+        if not os.path.isabs(base_scene_path):
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            levels_dir = os.path.join(project_root, "levels")
+        else:
+            levels_dir = os.path.dirname(base_scene_path)
+        os.makedirs(levels_dir, exist_ok=True)
+        child_path = os.path.join(levels_dir, f"{child_name}.json")
+        try:
+            with open(child_path, "w", encoding="utf-8") as f:
+                json.dump(child_data, f, indent=2)
+            return os.path.abspath(child_path)
+        except OSError as exc:
+            log_err(f"SceneManager: error creating inherited scene '{child_name}': {exc}")
+            return None
+
+    def get_base_scene(self, scene_ref: Optional[str] = None) -> Optional[str]:
+        """Return the 'inherits_from' path of the given scene, or the active scene if None."""
+        entry = self.ensure_scene_open(scene_ref, activate=False) if scene_ref else self._get_active_entry()
+        if entry is None:
+            return None
+        inherits_from = entry.scene.data.get("inherits_from", "")
+        return str(inherits_from).strip() or None
+
+    def unpack_scene(self, scene_ref: Optional[str] = None) -> bool:
+        """Remove inheritance from a scene, making it standalone.
+
+        Resolves all inherited entities into the scene's own entities list
+        and removes the inherits_from field.
+        """
+        entry = self.ensure_scene_open(scene_ref, activate=False) if scene_ref else self._get_active_entry()
+        if entry is None or entry.is_playing:
+            return False
+        inherits_from = str(entry.scene.data.get("inherits_from", "") or "").strip()
+        if not inherits_from:
+            return False
+        try:
+            resolved = resolve_inherited_scene(
+                entry.scene.source_path or "",
+                entry.scene.data,
+            )
+        except (ValueError, OSError) as exc:
+            log_err(f"SceneManager: error unpacking scene: {exc}")
+            return False
+        resolved.pop("inherits_from", None)
+        self._install_scene_payload(entry, resolved)
+        entry.dirty = True
+        return True
+
+    def _resolve_scene_inheritance(
+        self,
+        data: Dict[str, Any],
+        *,
+        source_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        inherits_from: str = str(data.get("inherits_from", "") or "").strip()
+        if not inherits_from:
+            return data
+        try:
+            return resolve_inherited_scene(source_path or "", data)
+        except (ValueError, OSError) as exc:
+            log_err(f"SceneManager: failed to resolve scene inheritance: {exc}")
+            raise ValueError(f"Scene inheritance resolution failed: {exc}") from exc
 
     def enter_play(self) -> Optional["World"]:
         runtime_world = self._workspace.enter_play()

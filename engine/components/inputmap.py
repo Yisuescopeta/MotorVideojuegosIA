@@ -42,6 +42,8 @@ class InputMap(Component):
         self.gamepad_action_1: str = gamepad_action_1
         self.gamepad_action_2: str = gamepad_action_2
         self.deadzone: float = deadzone
+        self.midi_enabled: bool = False
+        self.midi_action_map: dict = {}  # note_number -> action_name
         self.last_state: Dict[str, float] = {
             "horizontal": 0.0,
             "vertical": 0.0,
@@ -85,6 +87,8 @@ class InputMap(Component):
             "gamepad_action_1": self.gamepad_action_1,
             "gamepad_action_2": self.gamepad_action_2,
             "deadzone": self.deadzone,
+            "midi_enabled": self.midi_enabled,
+            "midi_action_map": dict(self.midi_action_map),
         }
 
     @classmethod
@@ -106,6 +110,8 @@ class InputMap(Component):
             deadzone=data.get("deadzone", 0.2),
         )
         component.enabled = data.get("enabled", True)
+        component.midi_enabled = data.get("midi_enabled", False)
+        component.midi_action_map = dict(data.get("midi_action_map", {}))
         return component
 
     def get_bindings(self) -> Dict[str, List[str]]:
