@@ -408,27 +408,27 @@ class RuntimeAPI(EngineAPIComponent):
         entity = self.require_entity(entity_name)
         rb = entity.get_component(RigidBody)
         if rb is None:
-            return ActionResult(success=False, error=f"Entity '{entity_name}' has no RigidBody")
+            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody")
         rb.apply_force(force_x, force_y)
-        return ActionResult(success=True)
+        return ActionResult(success=True, message=f"Force applied to {entity_name}")
 
     def apply_impulse(self, entity_name: str, impulse_x: float, impulse_y: float) -> ActionResult:
         """Aplica impulso instantáneo a una entidad con RigidBody."""
         entity = self.require_entity(entity_name)
         rb = entity.get_component(RigidBody)
         if rb is None:
-            return ActionResult(success=False, error=f"Entity '{entity_name}' has no RigidBody")
+            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody")
         rb.apply_impulse(impulse_x, impulse_y)
-        return ActionResult(success=True)
+        return ActionResult(success=True, message=f"Impulse applied to {entity_name}")
 
     def apply_torque(self, entity_name: str, torque: float) -> ActionResult:
         """Aplica torque a una entidad con RigidBody."""
         entity = self.require_entity(entity_name)
         rb = entity.get_component(RigidBody)
         if rb is None:
-            return ActionResult(success=False, error=f"Entity '{entity_name}' has no RigidBody")
+            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody")
         rb.apply_torque(torque)
-        return ActionResult(success=True)
+        return ActionResult(success=True, message=f"Torque applied to {entity_name}")
 
     def play_audio(self, entity_name: str) -> ActionResult:
         """Start audio playback for an AudioSource entity.
