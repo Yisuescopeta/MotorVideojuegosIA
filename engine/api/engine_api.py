@@ -91,6 +91,7 @@ class EngineAPI:
         from engine.systems.player_controller_system import PlayerControllerSystem
         from engine.systems.render_system import RenderSystem
         from engine.systems.script_behaviour_system import ScriptBehaviourSystem
+        from engine.systems.raycast_2d_system import RayCast2DSystem
         from engine.systems.ui_render_system import UIRenderSystem
         from engine.systems.ui_system import UISystem
 
@@ -118,6 +119,7 @@ class EngineAPI:
         self.game.set_script_behaviour_system(ScriptBehaviourSystem())
         self.game.set_audio_system(AudioSystem())
         self.game.set_area2d_system(Area2DSystem(event_bus=event_bus))
+        self.game.set_raycast_2d_system(RayCast2DSystem())
         self.game.set_gameplay2d_semantic_system(Gameplay2DSemanticSystem())
         self.game.set_inspector_system(InspectorSystem())
         self.game.set_ui_system(UISystem())

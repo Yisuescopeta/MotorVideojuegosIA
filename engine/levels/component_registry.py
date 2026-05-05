@@ -131,6 +131,7 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.line2d import Line2D
     from engine.components.marker2d import Marker2D
     from engine.components.navigation_agent_2d import NavigationAgent2D
+    from engine.components.navigation_obstacle_2d import NavigationObstacle2D
     from engine.components.parallax_layer import ParallaxLayer
     from engine.components.particle_emitter2d import ParticleEmitter2D
     from engine.components.path_follower_2d import PathFollower2D
@@ -330,6 +331,13 @@ def create_default_registry() -> ComponentRegistry:
         description="Navigates an entity toward a target using A* pathfinding on a navigation grid.",
         default_payload=NavigationAgent2D().to_dict(),
         editor_tags=("navigation", "tag:NavigationAgent", "layer:Gameplay", "moving"),
+    )
+    registry.register(
+        "NavigationObstacle2D",
+        NavigationObstacle2D,
+        description="Static obstacle that blocks navigation agents during pathfinding and avoidance.",
+        default_payload=NavigationObstacle2D().to_dict(),
+        editor_tags=("navigation", "tag:NavigationObstacle", "layer:Gameplay"),
     )
     registry.register(
         "PathFollower2D",

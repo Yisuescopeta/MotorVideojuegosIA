@@ -39,6 +39,7 @@ class RuntimeControllerContext:
     get_path_follow_system: Callable[[], Any]
     get_gameplay2d_semantic_system: Callable[[], Any]
     get_navigation_agent_system: Callable[[], Any]
+    get_raycast_2d_system: Callable[[], Any]
     get_scene_transition_controller: Callable[[], Any]
     get_physics_backend_registry: Callable[[], PhysicsBackendRegistry]
     reset_profiler: Callable[..., None]

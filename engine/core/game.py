@@ -89,6 +89,7 @@ if TYPE_CHECKING:
     from engine.systems.parallax_system import ParallaxSystem
     from engine.systems.particle_system import ParticleSystem
     from engine.systems.path_follow_system import PathFollowSystem
+    from engine.systems.raycast_2d_system import RayCast2DSystem
     from engine.systems.physics_system import PhysicsSystem
     from engine.systems.player_controller_system import PlayerControllerSystem
     from engine.systems.render_system import RenderSystem
@@ -157,6 +158,7 @@ class Game:
         self._path_follow_system: Optional["PathFollowSystem"] = None
         self._gameplay2d_semantic_system: Optional["Gameplay2DSemanticSystem"] = None
         self._navigation_agent_system: Optional["NavigationAgentSystem"] = None
+        self._raycast_2d_system: Optional["RayCast2DSystem"] = None
         self._ui_focus_system: Optional["UIFocusSystem"] = None
 
         self.script_executor: Optional["ScriptExecutor"] = None
@@ -273,6 +275,7 @@ class Game:
                 get_path_follow_system=lambda: self._path_follow_system,
                 get_gameplay2d_semantic_system=lambda: self._gameplay2d_semantic_system,
                 get_navigation_agent_system=lambda: self._navigation_agent_system,
+                get_raycast_2d_system=lambda: self._raycast_2d_system,
                 get_scene_transition_controller=lambda: self._scene_transition_controller,
                 get_physics_backend_registry=lambda: self._physics_backend_registry,
                 reset_profiler=self.reset_profiler,
@@ -757,6 +760,12 @@ class Game:
 
     def set_navigation_agent_system(self, system: "NavigationAgentSystem") -> None:
         self._navigation_agent_system = system
+
+    def set_raycast_2d_system(self, system: "RayCast2DSystem") -> None:
+        self._raycast_2d_system = system
+        system.set_ray_cast_query(
+            lambda ox, oy, dx, dy, md: self.query_physics_ray(ox, oy, dx, dy, md)
+        )
 
     def set_ui_focus_system(self, system: "UIFocusSystem") -> None:
         self._ui_focus_system = system

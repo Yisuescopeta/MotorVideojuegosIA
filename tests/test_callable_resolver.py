@@ -173,6 +173,7 @@ class RuntimeControllerCallableResolverIntegrationTests(unittest.TestCase):
                 get_path_follow_system=lambda: None,
                 get_gameplay2d_semantic_system=lambda: None,
                 get_navigation_agent_system=lambda: None,
+                get_raycast_2d_system=lambda: None,
                 get_scene_transition_controller=lambda: None,
                 get_physics_backend_registry=lambda: PhysicsBackendRegistry(),
                 reset_profiler=lambda **_kwargs: None,
