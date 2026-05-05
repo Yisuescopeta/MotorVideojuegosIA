@@ -193,6 +193,32 @@ class CollisionSystemTests(unittest.TestCase):
         collisions = cs.get_collisions()
         assert len(collisions) >= 1, f"Expected >=1 collision, got {len(collisions)}"
 
+    def test_polygon_narrow_phase_produces_contact_event(self) -> None:
+        """Narrow-phase polygon produce evento collision_contact con manifold real."""
+        world = World()
+        world.feature_metadata = {"physics_2d": {"layer_matrix": {"Gameplay|Gameplay": True}}}
+        event_bus = EventBus()
+        cs = CollisionSystem(event_bus=event_bus)
+
+        e1 = world.create_entity("Tri")
+        e1.layer = "Gameplay"
+        e1.add_component(Transform(x=10, y=10))
+        e1.add_component(CollisionPolygon2D(polygon=[(-10, -10), (10, -10), (0, 10)]))
+
+        e2 = world.create_entity("Box")
+        e2.layer = "Gameplay"
+        e2.add_component(Transform(x=10, y=10))
+        e2.add_component(Collider(width=32, height=32))
+
+        cs.update(world)
+
+        contact_events = [e for e in event_bus.get_recent_events() if e.name == "collision_contact"]
+        self.assertGreater(len(contact_events), 0, "Debería emitir collision_contact para polygon")
+        if contact_events:
+            data = contact_events[0].data
+            self.assertGreater(data["depth"], 0)
+            self.assertGreater(data["contact_count"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

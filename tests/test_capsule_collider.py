@@ -201,6 +201,35 @@ class CapsuleColliderTests(unittest.TestCase):
         self.assertAlmostEqual(cp[0], 5.0)
         self.assertAlmostEqual(cp[1], 5.0)
 
+    # ── CollisionSystem emits real manifold for capsule ──────
+
+    def test_collision_system_emits_capsule_manifold(self) -> None:
+        """CollisionSystem con capsule produce manifold real en event data."""
+        world = World()
+        world.feature_metadata = {"physics_2d": {"layer_matrix": {"Gameplay|Gameplay": True}}}
+        event_bus = EventBus()
+        cs = CollisionSystem(event_bus=event_bus)
+
+        a = world.create_entity("Cap")
+        a.layer = "Gameplay"
+        a.add_component(Transform(x=0.0, y=0.0))
+        a.add_component(Collider(shape_type="capsule", radius=8.0, capsule_height=30.0))
+
+        b = world.create_entity("Wall")
+        b.layer = "Gameplay"
+        b.add_component(Transform(x=14.0, y=0.0))
+        b.add_component(Collider(shape_type="box", width=20.0, height=60.0))
+
+        cs.update(world)
+
+        contact_events = [e for e in event_bus.get_recent_events() if e.name == "collision_contact"]
+        self.assertEqual(len(contact_events), 1)
+        data = contact_events[0].data
+        self.assertGreater(data["depth"], 0)
+        self.assertTrue(abs(data["normal_x"]) > 0 or abs(data["normal_y"]) > 0,
+                        f"Normal no nula: ({data['normal_x']}, {data['normal_y']})")
+        self.assertGreater(data["contact_count"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

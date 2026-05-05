@@ -6,6 +6,7 @@ from engine.components.transform import Transform
 from engine.ecs.world import World
 from engine.events.event_bus import EventBus
 from engine.physics.contact_data import ContactManifold2D, ContactPoint2D
+from engine.physics.shapes import AABBShape, CapsuleShape, CircleShape, PolygonShape
 from engine.systems.collision_system import CollisionSystem
 
 
@@ -229,6 +230,44 @@ class ContactDataTests(unittest.TestCase):
         self.assertGreater(data["contact_count"], 0)
         self.assertEqual(len(data["contacts"]), data["contact_count"])
         self.assertFalse(data["is_trigger"])
+
+    def test_capsule_manifold_to_dict(self) -> None:
+        """CapsuleShape manifold to_dict tiene campos completos."""
+        cap = CapsuleShape(0, 0, 8, 32)
+        box = AABBShape(14, 0, 10, 10)
+        m = cap.collide_shape(box)
+        assert m is not None
+        d = m.to_dict()
+        assert d["depth"] > 0
+        assert abs(d["normal_x"]) > 0 or abs(d["normal_y"]) > 0
+        assert d["contact_count"] >= 1
+        assert len(d["contacts"]) == d["contact_count"]
+        cp = d["contacts"][0]
+        assert "point_x" in cp
+        assert "point_y" in cp
+        assert "depth" in cp
+
+    def test_polygon_manifold_to_dict(self) -> None:
+        """PolygonShape manifold to_dict tiene campos completos."""
+        a = PolygonShape([(0, 0), (20, 0), (20, 20), (0, 20)])
+        b = PolygonShape([(10, 10), (30, 10), (30, 30), (10, 30)])
+        m = a.collide_shape(b)
+        assert m is not None
+        d = m.to_dict()
+        assert d["depth"] > 0
+        assert abs(d["normal_x"]) > 0 or abs(d["normal_y"]) > 0
+        assert d["contact_count"] >= 1
+        assert len(d["contacts"]) == d["contact_count"]
+
+    def test_capsule_manifold_roundtrip(self) -> None:
+        """Capsule manifold a dict y reconstrucción mantiene depth."""
+        cap = CapsuleShape(0, 0, 5, 20)
+        circle = CircleShape(8, 0, 5)
+        m = cap.collide_shape(circle)
+        assert m is not None
+        d = m.to_dict()
+        assert "depth" in d
+        assert d["depth"] > 0
 
     def test_trigger_emits_collision_contact(self) -> None:
         """Trigger collisions also emit collision_contact with is_trigger=True."""
