@@ -117,7 +117,7 @@ payload de escena. El contrato serializable incluye:
 |-------|------|---------|-------------|
 | `resource_id` | str | `""` | Identificador único del material |
 | `resource_name` | str | `"default"` | Nombre legible |
-| `friction` | float | `0.0` | Coeficiente de fricción (0 = deslizante, 1 = normal) |
+| `friction` | float | `1.0` | Coeficiente de fricción (0 = deslizante, 1 = normal) |
 | `bounce` | float | `0.0` | Coeficiente de restitución (0 = sin rebote, 1 = rebote perfecto) |
 | `rough` | bool | `False` | Fricción efectiva infinita (sobrescribe `friction`) |
 | `absorbent` | bool | `False` | Bounce efectivo 0 (sobrescribe `bounce`) |
