@@ -108,6 +108,44 @@ Estos campos son serializables y roundtripean correctamente. Los contactos
 runtime (`_contact_bodies`) y los métodos `get_colliding_bodies()` /
 `get_contact_count()` no se serializan.
 
+### PhysicsMaterial — Recurso serializable independiente
+
+`PhysicsMaterial` se serializa como archivo `.json` independiente, no como parte del
+payload de escena. El contrato serializable incluye:
+
+| Campo | Tipo | Default | Descripción |
+|-------|------|---------|-------------|
+| `resource_id` | str | `""` | Identificador único del material |
+| `resource_name` | str | `"default"` | Nombre legible |
+| `friction` | float | `0.0` | Coeficiente de fricción (0 = deslizante, 1 = normal) |
+| `bounce` | float | `0.0` | Coeficiente de restitución (0 = sin rebote, 1 = rebote perfecto) |
+| `rough` | bool | `False` | Fricción efectiva infinita (sobrescribe `friction`) |
+| `absorbent` | bool | `False` | Bounce efectivo 0 (sobrescribe `bounce`) |
+| `schema_version` | int | `1` | Versión del formato de serialización |
+
+Ejemplo de archivo `materials/ice.json`:
+```json
+{
+  "resource_id": "ice_platform",
+  "resource_name": "Ice Platform",
+  "friction": 0.1,
+  "bounce": 0.0,
+  "rough": false,
+  "absorbent": false,
+  "schema_version": 1
+}
+```
+
+**Compatibilidad legacy:**
+- Payloads sin `schema_version` se cargan con default `1` (no hay cambios de schema entre v1 actual).
+- Payloads sin `resource_id` o `resource_name` se cargan con defaults vacíos.
+- El campo `rough=True` fuerza fricción efectiva infinita, ignorando `friction`.
+- El campo `absorbent=True` fuerza bounce efectivo 0, ignorando `bounce`.
+
+**Uso desde escena:**
+`RigidBody` y `StaticBody2D` referencian un PhysicsMaterial mediante el campo
+`physics_material_override_path` (ruta relativa al proyecto).
+
 En `Animator`, el payload vigente sigue usando `animations`, `default_state`,
 `current_state`, `sprite_sheet` y `sprite_sheet_path`. Como foundation opcional
 de Fase 6 puede incluir tambien:

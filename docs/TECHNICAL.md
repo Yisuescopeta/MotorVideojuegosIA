@@ -202,10 +202,13 @@ y se carga en runtime mediante `load_physics_material(path)`.
 
 ```json
 {
-  "friction": 0.5,
-  "bounce": 0.3,
+  "resource_id": "ice_platform",
+  "resource_name": "Ice Platform",
+  "friction": 0.1,
+  "bounce": 0.0,
   "rough": false,
-  "absorbent": false
+  "absorbent": false,
+  "schema_version": 1
 }
 ```
 
@@ -229,10 +232,14 @@ cuerpos; la fricción usa promedio. Si el material no se puede cargar, se usa el
 fallback del `Collider` (`restitution` / `friction`).
 
 Campos serializables del recurso:
+- `resource_id`: str, identificador único del material.
+- `resource_name`: str, nombre legible (default: `"default"`).
 - `friction`: float (0–1), coeficiente de fricción (0 = deslizamiento sin pérdida).
 - `bounce`: float (0–1), coeficiente de restitución / rebote.
-- `rough`: bool, si la superficie es rugosa.
-- `absorbent`: bool, si la superficie absorbe impacto.
+- `rough`: bool, si la superficie es rugosa (fricción efectiva infinita).
+- `absorbent`: bool, si la superficie absorbe impacto (bounce efectivo 0).
+- `schema_version`: int, versión del formato de serialización (1 = actual).
+  Desde `from_dict()`, legacy payloads sin este campo se cargan con default 1.
 
 ### RigidBody contact_monitor — Monitoreo de contactos runtime
 
