@@ -81,11 +81,17 @@ para backends de fisica 2D. Desde el ciclo 1 de refactorizacion, expone dos nuev
 metodos de movimiento cinematico:
 
 - `move_and_slide(entity, velocity, delta_time, ...)` -> `MoveResult2D`: mueve la
-  entidad con deteccion de colisiones y deslizamiento por superficies. Soporta
-  configuracion de `floor_max_angle`, `floor_snap_distance`, `up_direction`,
-  `wall_min_slide_angle` y `max_slides`. Implementado en
+  entidad con deteccion de colisiones y deslizamiento multi-iteracion por
+  superficies. El bucle interno repite barrido horizontal + vertical por
+  iteracion, recalculando el remainder entre pasos hasta consumir todo el
+  movimiento o alcanzar `max_slides` iteraciones. Soporta configuracion de
+  `floor_max_angle`, `floor_snap_distance`, `up_direction`,
+  `wall_min_slide_angle` y `max_slides` (default 4). Implementado en
   `LegacyAABBPhysicsBackend` con barrido separado por eje (horizontal/vertical),
   snap al suelo y clasificacion de colisiones (suelo/pared/techo).
+  `slide_count` refleja el numero real de iteraciones de deslizamiento
+  (0 si no hubo colision, 1 en colision simple, >1 en esquinas o paredes
+  secuenciales).
 - `move_and_collide(entity, velocity, delta_time, max_collisions=1)` -> `MoveResult2D`:
   variante que se detiene en la primera colision (delega en `move_and_slide` con
   `max_slides=1`).

@@ -280,7 +280,7 @@ colisiones, más flags de estado.
 | `on_ceiling` | bool | True si el cuerpo colisiona con un techo |
 | `collision_normal_x/y` | float | Normal de la última colisión |
 | `contacts` | list[PhysicsContact] | Contactos generados durante el movimiento |
-| `slide_count` | int | Número de deslizamientos realizados |
+| `slide_count` | int | Iteraciones de deslizamiento reales (0 si no hubo colisión, 1 en colisión simple, >1 en esquinas/paredes secuenciales) |
 | `floor_angle` | float | Ángulo del suelo detectado (rad) |
 
 > **Nota:** `move_and_slide` y `move_and_collide` son contratos internos de

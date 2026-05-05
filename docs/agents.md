@@ -293,7 +293,18 @@ cada frame desde `RuntimeController`. No es necesario que el agente configure na
 - Sin backend: fallback a código legacy AABB interno
 
 El componente `CharacterController2D` determina el modo (`move_and_slide` vs
-`move_and_collide`) y el backend lo respeta.
+`move_and_collide`) y el backend lo respeta. `CharacterController2D` expone
+`max_slides` (default 4) como campo serializable que controla el maximo de
+iteraciones de deslizamiento en `move_and_slide`. A mayor valor, mejor
+resolucion de esquinas y paredes secuenciales; `max_slides=1` equivale a
+detenerse en la primera colision (comportamiento previo al cambio).
+
+```python
+api.add_component("player", "CharacterController2D", {
+    "move_mode": "move_and_slide",
+    "max_slides": 6,
+})
+```
 
 ### RayCast2D — Raycast por componente
 
