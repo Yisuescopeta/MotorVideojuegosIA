@@ -149,6 +149,20 @@ para cada entidad con `RayCast2D` y `Transform`, lanza un rayo mediante
 los campos de resultado (`is_colliding`, `collision_point_*`,
 `collision_normal_*`, `collider_entity`).
 
+**Filtrado de resultados:** El sistema aplica `_filter_hits()` sobre los hits
+crudos de `query_physics_ray` antes de poblar el componente:
+
+1. `exclude_parent`: si `true`, descarta hits cuya entidad coincida con la
+   entidad origen o su `parent_name`.
+2. `collide_with_areas`: si `false`, descarta hits con `is_trigger=True`.
+3. `collide_with_bodies`: si `false`, descarta hits con `is_trigger=False`.
+4. `collision_mask`: descarta hits cuya entidad golpeada tenga un
+   `CollisionFilter2D.layer` que no esté en la máscara. Si la entidad no
+   tiene `CollisionFilter2D`, se asume capa `1`.
+
+El primer hit filtrado (más cercano al origen) se usa como resultado final.
+Si no hay hits tras filtrar, todos los campos runtime quedan en cero/vacío.
+
 El componente `RayCast2D` se registra en `engine/levels/component_registry.py`
 y sus campos serializables son `enabled`, `cast_to_x`, `cast_to_y`,
 `collision_mask`, `collide_with_areas`, `collide_with_bodies`,
@@ -157,6 +171,11 @@ y sus campos serializables son `enabled`, `cast_to_x`, `cast_to_y`,
 El wiring ocurre en `Game.set_raycast_2d_system()`, que inyecta
 `query_physics_ray` como función de consulta. `RuntimeController` obtiene el
 sistema desde el contexto y lo actualiza tras `backend.step()`.
+
+Desde `RuntimeAPI`, el método `get_raycast_result(entity_name)` permite leer
+los campos runtime de un `RayCast2D` como dict plano sin acceder al componente
+directamente. Retorna `{}` si la entidad no existe, no tiene `RayCast2D` o el
+runtime no está activo.
 
 ### GPUParticlesSystem — Placeholder no-op
 

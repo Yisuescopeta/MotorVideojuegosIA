@@ -310,6 +310,20 @@ api.add_component("player", "RayCast2D", {"cast_to_y": 100})
 Campos runtime actualizados cada frame: `is_colliding`, `collision_point_*`,
 `collision_normal_*`, `collider_entity`.
 
+Filtros activos en el sistema (orden de aplicación):
+1. `exclude_parent`: excluye la entidad padre y sus hijos
+2. `collide_with_areas`: colisiona con áreas (`is_trigger`)
+3. `collide_with_bodies`: colisiona con cuerpos (no trigger)
+4. `collision_mask`: máscara de bits contra `CollisionFilter2D.layer`
+
+Lectura runtime desde agente:
+```python
+result = api.get_raycast_result("player")
+if result.get("is_colliding"):
+    print(f"Chocó contra: {result['collider_entity']}")
+```
+Retorna `{}` si la entidad no existe, no tiene `RayCast2D` o el runtime no está activo.
+
 ### NavigationObstacle2D — Obstáculo estático para avoidance
 
 Componente data-only que marca una entidad como obstáculo para

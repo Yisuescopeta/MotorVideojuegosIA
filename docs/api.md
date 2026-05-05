@@ -234,6 +234,7 @@ Input, audio y scripts:
 - `pause_audio(entity_name)`
 - `resume_audio(entity_name)`
 - `get_script_public_data(entity_name)`
+- `get_raycast_result(entity_name)`: obtiene el resultado runtime de un RayCast2D como dict
 
 Fisica:
 
@@ -336,6 +337,38 @@ api.add_component("player", "RayCast2D", {
     "collision_mask": 1
 })
 # El sistema actualiza is_colliding, collision_point_*, etc. cada frame
+```
+
+El sistema `RayCast2DSystem` aplica los filtros configurados en cada frame, en
+este orden:
+
+1. `exclude_parent`: descarta hits contra la propia entidad y sus hijos
+   (por `parent_name`)
+2. `collide_with_areas`: si es `false`, descarta hits con `is_trigger=True`
+3. `collide_with_bodies`: si es `false`, descarta hits con `is_trigger=False`
+4. `collision_mask`: descarta entidades cuya capa (`CollisionFilter2D.layer`)
+   no esté incluida en la máscara de bits. Si la entidad golpeada no tiene
+   `CollisionFilter2D`, se asume capa `1`.
+
+#### Consultar resultados runtime con `get_raycast_result`
+
+`get_raycast_result(entity_name)` expone los campos runtime del RayCast2D
+como un diccionario plano:
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `is_colliding` | bool | `true` si hay colisión este frame |
+| `collision_point_x`, `collision_point_y` | float | Punto de impacto |
+| `collision_normal_x`, `collision_normal_y` | float | Normal de la superficie |
+| `collider_entity` | str | Nombre de la entidad golpeada |
+
+Si la entidad no existe, no tiene `RayCast2D` o el runtime no está activo,
+retorna `{}`.
+
+```python
+result = api.get_raycast_result("player")
+if result.get("is_colliding"):
+    print(f"Colisión con: {result['collider_entity']}")
 ```
 
 ### NavigationObstacle2D — Obstáculo estático para navegación
