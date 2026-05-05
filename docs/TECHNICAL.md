@@ -177,17 +177,88 @@ los campos runtime de un `RayCast2D` como dict plano sin acceder al componente
 directamente. Retorna `{}` si la entidad no existe, no tiene `RayCast2D` o el
 runtime no está activo.
 
-### GPUParticlesSystem — Placeholder no-op
+### GPUParticlesSystem — Adaptador CPU-backed
 
-`GPUParticlesSystem` (en `engine/systems/gpu_particles_system.py`) es un
-**marcador de posición (placeholder) que no realiza cómputo real de partículas
-en GPU**. Expone `update(world, dt)`, `render(world)` y `reset()` como no-ops exclusivamente
-para satisfacer el contrato de `RuntimeControllerContext` y `Renderer` sin romper el wiring
-existente.
+`GPUParticlesSystem` (en `engine/systems/gpu_particles_system.py`) ya no es un
+placeholder no-op. Actualmente es un **adaptador que delega toda la lógica en
+`ParticleSystem` (CPU)**. Expone `update(world, dt)`, `render(world)`,
+`reset()`, `active_particle_count` y `total_particle_count` delegando en la
+implementación CPU de `ParticleSystem`.
 
-**No es una feature implementada.** Cuando se desarrolle un sistema real de
-partículas GPU en el futuro, este placeholder será reemplazado por la
-implementación completa.
+**Limitaciones (anti-humo):**
+- No hay aceleración GPU real. El cómputo es puramente CPU fallback.
+- El nombre `GPUParticlesSystem` se conserva por compatibilidad con el wiring
+  existente en `RuntimeControllerContext` y `Renderer`.
+- GPU real no está soportada todavía. Un sistema de partículas GPU real
+  reemplazaría este adaptador en el futuro.
+- Clasificación: `experimental/tooling` — no es parte del core obligatorio.
+
+### PhysicsMaterial — Recurso de material físico serializable
+
+`PhysicsMaterial` (en `engine/resources/physics_material.py`) es un recurso
+data-class que define propiedades de superficie: `friction` (0–1), `bounce`
+(0–1), `rough`, `absorbent`. Se serializa como archivo `.json` independiente
+y se carga en runtime mediante `load_physics_material(path)`.
+
+```json
+{
+  "friction": 0.5,
+  "bounce": 0.3,
+  "rough": false,
+  "absorbent": false
+}
+```
+
+**API pública del módulo:**
+- `load_physics_material(path: str) -> PhysicsMaterial | None`: Carga desde
+  archivo JSON relativo o absoluto. Retorna `None` si el archivo no existe,
+  el JSON es inválido o el path está vacío. Los resultados se cachean por
+  ruta resuelta.
+- `clear_physics_material_cache()`: Limpia el caché de materiales (útil en
+  tests).
+- `PhysicsMaterial.from_dict(data)`: Construye desde dict.
+- `PhysicsMaterial.get_effective_bounce()` / `get_effective_friction()`:
+  Retorna los valores efectivos de rebote y fricción.
+
+**Integración en PhysicsSystem:**
+`PhysicsSystem` lee `physics_material_override_path` de `RigidBody` y
+`StaticBody2D` durante la resolución de colisiones. Si el path es válido y el
+material se carga correctamente, el `bounce` y `friction` del material
+reemplazan los valores del `Collider`. El rebote final usa `max()` entre ambos
+cuerpos; la fricción usa promedio. Si el material no se puede cargar, se usa el
+fallback del `Collider` (`restitution` / `friction`).
+
+Campos serializables del recurso:
+- `friction`: float (0–1), coeficiente de fricción (0 = deslizamiento sin pérdida).
+- `bounce`: float (0–1), coeficiente de restitución / rebote.
+- `rough`: bool, si la superficie es rugosa.
+- `absorbent`: bool, si la superficie absorbe impacto.
+
+### RigidBody contact_monitor — Monitoreo de contactos runtime
+
+`RigidBody` ahora incluye monitoreo de contactos estilo Godot, activado
+mediante dos nuevos campos serializables:
+
+| Campo | Tipo | Default | Descripción |
+|-------|------|---------|-------------|
+| `contact_monitor` | bool | `false` | Activa el tracking de contactos este frame |
+| `max_contacts_reported` | int | `0` | Máx. contactos a reportar. `0` = deshabilitado |
+
+**Métodos públicos runtime (no serializables):**
+- `get_colliding_bodies() -> list[int]`: IDs de entidades en contacto este frame.
+- `get_contact_count() -> int`: Número de contactos activos.
+
+**Comportamiento:**
+- `contact_monitor=false` o `max_contacts_reported=0`: sin tracking.
+- `contact_monitor=true` y `max_contacts_reported>0`: registra hasta N
+  colisiones reales (no triggers) por frame.
+- `CollisionSystem` limpia los contactos al inicio de cada paso y registra
+  nuevas colisiones durante la resolución.
+- Los contactos solo se registran para colisiones no-trigger (consistente con
+  Godot `body_entered`). Triggers no producen contactos en este sistema.
+- `get_colliding_bodies()` retorna IDs de entidad (enteros), no nombres.
+- Los contactos son estado runtime volátil: se borran cada frame y no se
+  serializan.
 
 ### ShapeFactory y narrow-phase multi-shape
 

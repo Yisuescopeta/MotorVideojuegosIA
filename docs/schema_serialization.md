@@ -95,6 +95,19 @@ comportamiento actual:
 runtime de colisión (`is_colliding`, `collision_point_*`, `collision_normal_*`,
 `collider_entity`) no se serializan.
 
+`RigidBody` serializa los nuevos campos de monitoreo de contactos (Godot-like):
+
+- `contact_monitor`: bool (default: `false`). Activa tracking runtime de
+  contactos por frame.
+- `max_contacts_reported`: int (default: `0`). Máximo de contactos a reportar.
+  `0` = deshabilitado (no reporta ninguno).
+- `physics_material_override_path`: str (default: `""`). Ruta a un archivo
+  `.json` de `PhysicsMaterial` que sobreescribe fricción/rebote del `Collider`.
+
+Estos campos son serializables y roundtripean correctamente. Los contactos
+runtime (`_contact_bodies`) y los métodos `get_colliding_bodies()` /
+`get_contact_count()` no se serializan.
+
 En `Animator`, el payload vigente sigue usando `animations`, `default_state`,
 `current_state`, `sprite_sheet` y `sprite_sheet_path`. Como foundation opcional
 de Fase 6 puede incluir tambien:

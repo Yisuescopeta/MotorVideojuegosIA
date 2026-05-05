@@ -390,6 +390,42 @@ api.add_component("enemy", "NavigationObstacle2D", {
 })
 ```
 
+### RigidBody contact_monitor — Monitoreo de contactos runtime
+
+`RigidBody` expone monitoreo de contactos estilo Godot, activado por campos
+serializables y consultable mediante métodos runtime.
+
+**Campos serializables (via `add_component` o `set_rigidbody_property`):**
+
+| Campo | Tipo | Default | Descripción |
+|-------|------|---------|-------------|
+| `contact_monitor` | bool | `false` | Activa el tracking por frame |
+| `max_contacts_reported` | int | `0` | Máx. contactos a reportar (`0` = deshabilitado) |
+| `physics_material_override_path` | str | `""` | Ruta a PhysicsMaterial `.json` para sobreescribir fricción/rebote |
+
+**Métodos públicos runtime (solo durante PLAY):**
+- `get_colliding_bodies() -> list[int]`: IDs de entidades en contacto este frame.
+- `get_contact_count() -> int`: Número de contactos activos.
+
+```python
+api.create_entity("player", components=["RigidBody", "Collider", "Transform"])
+api.edit_component("player", "RigidBody", "body_type", "dynamic")
+api.edit_component("player", "RigidBody", "contact_monitor", True)
+api.edit_component("player", "RigidBody", "max_contacts_reported", 10)
+
+# En PLAY, tras colisionar:
+# rb = entity.get_component(RigidBody)
+# bodies = rb.get_colliding_bodies()
+# count = rb.get_contact_count()
+```
+
+**Comportamiento (anti-humo):**
+- `contact_monitor=false` o `max_contacts_reported=0`: sin tracking.
+- Solo colisiones reales (no triggers) registran contactos.
+- Los contactos se limpian cada frame — no persisten entre frames.
+- No hay una API `EngineAPI.get_colliding_bodies("entity")` directa.
+  Se accede mediante el componente `RigidBody` de la entidad.
+
 ### CollisionFilter2D — Filtrado por capas
 
 Controla qué entidades colisionan entre sí usando máscaras de bits (uint32).
