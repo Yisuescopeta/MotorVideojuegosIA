@@ -504,6 +504,46 @@ class RuntimeAPI(EngineAPIComponent):
         rb.can_sleep = bool(can_sleep)
         return ActionResult(success=True, message=f"can_sleep={rb.can_sleep} on {entity_name}", data=None)
 
+    def get_colliding_bodies(self, entity_name: str) -> list[int]:
+        """Get entity IDs currently colliding with this RigidBody entity.
+
+        Requires contact_monitor=True and max_contacts_reported > 0 on the
+        RigidBody component. Returns the list of entity IDs detected during
+        the current frame's collision step.
+
+        Args:
+            entity_name: Name of the entity with a RigidBody component.
+
+        Returns:
+            List of colliding entity IDs. Empty list if no RigidBody or no
+            contacts detected this frame.
+        """
+        entity = self.require_entity(entity_name)
+        rb = entity.get_component(RigidBody)
+        if rb is None:
+            return []
+        return rb.get_colliding_bodies()
+
+    def get_contact_count(self, entity_name: str) -> int:
+        """Get number of entities colliding with this RigidBody entity.
+
+        Requires contact_monitor=True and max_contacts_reported > 0 on the
+        RigidBody component. Returns the count of contacts detected during
+        the current frame's collision step.
+
+        Args:
+            entity_name: Name of the entity with a RigidBody component.
+
+        Returns:
+            Number of colliding entities. 0 if no RigidBody or no contacts
+            detected this frame.
+        """
+        entity = self.require_entity(entity_name)
+        rb = entity.get_component(RigidBody)
+        if rb is None:
+            return 0
+        return rb.get_contact_count()
+
     def play_audio(self, entity_name: str) -> ActionResult:
         """Start audio playback for an AudioSource entity.
 

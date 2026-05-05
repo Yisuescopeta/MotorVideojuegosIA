@@ -267,8 +267,8 @@ api.load_scene("levels/main_scene.json")
 
 # RigidBody dinámico con fuerzas
 api.create_entity("player", components=["RigidBody", "Collider", "Transform"])
-api.set_rigidbody_property("player", "body_type", "dynamic")
-api.set_rigidbody_property("player", "mass", 2.0)
+api.edit_component("player", "RigidBody", "body_type", "dynamic")
+api.edit_component("player", "RigidBody", "mass", 2.0)
 api.apply_force("player", 500.0, 0.0)
 api.apply_impulse("player", 0.0, -300.0)
 

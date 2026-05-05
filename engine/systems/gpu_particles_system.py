@@ -27,14 +27,30 @@ class GPUParticlesSystem:
         self._particle_system: ParticleSystem = ParticleSystem(event_bus=event_bus)
 
     def update(self, world: "World", dt: float) -> None:
+        """Advance particle simulation by dt seconds.
+
+        Delegates to CPU ParticleSystem.update — no real GPU involved.
+        Safe no-op when world is None (no particles to update).
+        """
         if world is not None:
             self._particle_system.update(world, dt)
 
     def render(self, world: "World") -> None:
+        """Trigger particle rendering via CPU fallback.
+
+        Delegates to CPU ParticleSystem.render — no GPU pipeline used.
+        Safe no-op when world is None (produces no draw calls).
+        """
         if world is not None:
             self._particle_system.render(world)
 
     def reset(self) -> None:
+        """Clear all active and pooled particles.
+
+        Calls ParticleSystem.clear() — removes every particle instance.
+        State resets to zero active/total particle count.
+        Safe to call at any time, no-op when already empty.
+        """
         self._particle_system.clear()
 
     @property

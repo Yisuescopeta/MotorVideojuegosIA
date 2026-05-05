@@ -252,8 +252,8 @@ Fisica:
 ```python
 # Crear entidad con RigidBody
 api.create_entity("player", components=["RigidBody", "Collider", "Transform"])
-api.set_rigidbody_property("player", "body_type", "dynamic")
-api.set_rigidbody_property("player", "mass", 2.0)
+api.edit_component("player", "RigidBody", "body_type", "dynamic")
+api.edit_component("player", "RigidBody", "mass", 2.0)
 
 # Aplicar fuerza continua (acelera cada frame)
 api.apply_force("player", 500.0, 0.0)
@@ -404,8 +404,12 @@ serializables y consultable mediante métodos runtime.
 | `physics_material_override_path` | str | `""` | Ruta a PhysicsMaterial `.json` para sobreescribir fricción/rebote |
 
 **Métodos públicos runtime (solo durante PLAY):**
-- `get_colliding_bodies() -> list[int]`: IDs de entidades en contacto este frame.
-- `get_contact_count() -> int`: Número de contactos activos.
+- `get_colliding_bodies(entity_name) -> list[int]`: IDs de entidades en contacto este frame.
+- `get_contact_count(entity_name) -> int`: Número de contactos activos.
+
+Ambos wrappers delegan en `RigidBody.get_colliding_bodies()` / `get_contact_count()`
+de la entidad indicada. Retornan `[]` y `0` respectivamente si la entidad no existe,
+no tiene `RigidBody`, o `contact_monitor` está desactivado.
 
 ```python
 api.create_entity("player", components=["RigidBody", "Collider", "Transform"])
@@ -414,17 +418,14 @@ api.edit_component("player", "RigidBody", "contact_monitor", True)
 api.edit_component("player", "RigidBody", "max_contacts_reported", 10)
 
 # En PLAY, tras colisionar:
-# rb = entity.get_component(RigidBody)
-# bodies = rb.get_colliding_bodies()
-# count = rb.get_contact_count()
+bodies = api.get_colliding_bodies("player")
+count = api.get_contact_count("player")
 ```
 
 **Comportamiento (anti-humo):**
 - `contact_monitor=false` o `max_contacts_reported=0`: sin tracking.
 - Solo colisiones reales (no triggers) registran contactos.
 - Los contactos se limpian cada frame — no persisten entre frames.
-- No hay una API `EngineAPI.get_colliding_bodies("entity")` directa.
-  Se accede mediante el componente `RigidBody` de la entidad.
 
 ### CollisionFilter2D — Filtrado por capas
 

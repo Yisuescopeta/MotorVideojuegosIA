@@ -10,9 +10,25 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TypedDict
 
 _physics_material_cache: dict[str, PhysicsMaterial | None] = {}
+
+
+class PhysicsMaterialData(TypedDict, total=False):
+    """Typed representation of a PhysicsMaterial serialized payload.
+    
+    Keys are optional to support legacy payloads missing fields.
+    schema_version may be absent in pre-v1 payloads.
+    """
+
+    resource_id: str
+    resource_name: str
+    friction: float
+    bounce: float
+    rough: bool
+    absorbent: bool
+    schema_version: int
 
 
 @dataclass
@@ -26,6 +42,7 @@ class PhysicsMaterial:
         bounce: Restitution coefficient (0 = no bounce, 1 = perfect bounce).
         rough: If True, friction becomes infinite (never slide).
         absorbent: If True, bounce is always 0 regardless of bounce value.
+        schema_version: Serialization format version (1 = current).
     """
 
     resource_id: str = ""
@@ -35,6 +52,7 @@ class PhysicsMaterial:
     bounce: float = 0.0
     rough: bool = False
     absorbent: bool = False
+    schema_version: int = 1
 
     def get_effective_friction(self) -> float:
         """Return effective friction: infinite if rough, else friction value."""
@@ -48,7 +66,7 @@ class PhysicsMaterial:
             return 0.0
         return self.bounce
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> PhysicsMaterialData:
         return {
             "resource_id": self.resource_id,
             "resource_name": self.resource_name,
@@ -56,10 +74,11 @@ class PhysicsMaterial:
             "bounce": self.bounce,
             "rough": self.rough,
             "absorbent": self.absorbent,
+            "schema_version": self.schema_version,
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> PhysicsMaterial:
+    def from_dict(cls, data: PhysicsMaterialData) -> PhysicsMaterial:
         return cls(
             resource_id=str(data.get("resource_id", "")),
             resource_name=str(data.get("resource_name", "default")),
@@ -67,6 +86,7 @@ class PhysicsMaterial:
             bounce=float(data.get("bounce", 0.0)),
             rough=bool(data.get("rough", False)),
             absorbent=bool(data.get("absorbent", False)),
+            schema_version=int(data.get("schema_version", 1)),
         )
 
 

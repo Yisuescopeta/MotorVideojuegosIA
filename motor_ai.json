@@ -3063,6 +3063,110 @@
                 "ui",
                 "authoring"
             ]
+        },
+        {
+            "id": "physics:particles:cpu_fallback",
+            "summary": "GPUParticlesSystem CPU-backed adapter (no real GPU, delegates to ParticleSystem CPU fallback)",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "GPUParticlesSystem.update",
+                "GPUParticlesSystem.render",
+                "GPUParticlesSystem.reset"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "GPUParticlesSystem wired via RuntimeController and Game, no direct EngineAPI endpoint",
+                "api_calls": [],
+                "expected_outcome": "Particle rendering delegates to CPU ParticleSystem; no GPU acceleration"
+            },
+            "notes": "Wired internally in RuntimeController and Game. Exposes update(world, dt), render(world), reset(), active_particle_count y total_particle_count. No usa GPU real — delega en ParticleSystem de CPU. Componentes ParticleEmitter son consumidos automáticamente durante PLAY.",
+            "tags": [
+                "physics",
+                "particles",
+                "render",
+                "cpu-fallback"
+            ]
+        },
+        {
+            "id": "physics:resource:material",
+            "summary": "PhysicsMaterial resource (friction/bounce/rough/absorbent, schema_version 1, path override en RigidBody/StaticBody2D)",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "PhysicsMaterial.from_dict",
+                "PhysicsMaterial.to_dict",
+                "load_physics_material",
+                "clear_physics_material_cache"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "Configurar PhysicsMaterial para RigidBody via physics_material_override_path",
+                "api_calls": [
+                    {
+                        "method": "edit_component",
+                        "args": {
+                            "entity_name": "player",
+                            "component": "RigidBody",
+                            "property": "physics_material_override_path",
+                            "value": "materials/ice.json"
+                        }
+                    }
+                ],
+                "expected_outcome": "RigidBody usa PhysicsMaterial del archivo .json para fricción/rebote durante colisiones"
+            },
+            "notes": "PhysicsMaterial define friction (0=ice, 1=normal), bounce (0=sin rebote, 1=rebote perfecto), rough (fricción infinita) y absorbent (bounce=0 siempre). Se carga desde .json con load_physics_material(). Campos rough y absorbent aplican override sobre friction/bounce respectivamente. Cache de carga compartido; usar clear_physics_material_cache() para tests. Compatible con StaticBody2D.",
+            "tags": [
+                "physics",
+                "resource",
+                "material",
+                "collision"
+            ]
+        },
+        {
+            "id": "physics:rigidbody:contact_monitor",
+            "summary": "RigidBody contact_monitor con EngineAPI wrappers get_colliding_bodies y get_contact_count",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.get_colliding_bodies",
+                "RuntimeAPI.get_contact_count",
+                "RigidBody.get_colliding_bodies",
+                "RigidBody.get_contact_count"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "Monitorear contactos de un RigidBody durante PLAY",
+                "api_calls": [
+                    {
+                        "method": "edit_component",
+                        "args": {
+                            "entity_name": "player",
+                            "component": "RigidBody",
+                            "property": "contact_monitor",
+                            "value": true
+                        }
+                    },
+                    {
+                        "method": "edit_component",
+                        "args": {
+                            "entity_name": "player",
+                            "component": "RigidBody",
+                            "property": "max_contacts_reported",
+                            "value": 10
+                        }
+                    }
+                ],
+                "expected_outcome": "Tras step() en PLAY, get_colliding_bodies('player') retorna IDs de entidades en contacto; get_contact_count('player') retorna el número de contactos activos"
+            },
+            "notes": "contact_monitor (bool) y max_contacts_reported (int, 0=deshabilitado) se configuran via edit_component. Los wrappers EngineAPI get_colliding_bodies(entity_name) y get_contact_count(entity_name) delegan en RigidBody.get_colliding_bodies()/get_contact_count(). Retornan [] y 0 si la entidad no existe, no tiene RigidBody o contact_monitor está desactivado. Solo colisiones reales (no triggers) registran contactos. Los contactos se limpian cada frame.",
+            "tags": [
+                "physics",
+                "rigidbody",
+                "contact",
+                "collision",
+                "runtime"
+            ]
         }
     ],
     "planned_capabilities": [
@@ -3225,9 +3329,9 @@
         }
     ],
     "capability_counts": {
-        "implemented": 103,
+        "implemented": 106,
         "planned": 6,
-        "total": 109
+        "total": 112
     },
     "project": {
         "name": "MotorVideojuegosIA",

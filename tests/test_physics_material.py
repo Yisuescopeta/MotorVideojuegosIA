@@ -90,6 +90,49 @@ class PhysicsMaterialTests(unittest.TestCase):
         mat2 = PhysicsMaterial(friction=2.0)
         self.assertEqual(mat2.get_effective_friction(), 2.0)
 
+    def test_to_dict_includes_schema_version(self) -> None:
+        """Serialized dict must include schema_version=1."""
+        mat = PhysicsMaterial(resource_id="test")
+        data = mat.to_dict()
+        self.assertIn("schema_version", data)
+        self.assertEqual(data["schema_version"], 1)
+
+    def test_from_dict_accepts_legacy_no_schema_version(self) -> None:
+        """Legacy payload without schema_version loads with default 1."""
+        legacy = {
+            "resource_id": "old_mat",
+            "resource_name": "Old",
+            "friction": 0.5,
+            "bounce": 0.3,
+            "rough": False,
+            "absorbent": False,
+        }
+        mat = PhysicsMaterial.from_dict(legacy)  # type: ignore[arg-type]
+        self.assertEqual(mat.resource_id, "old_mat")
+        self.assertEqual(mat.friction, 0.5)
+        self.assertEqual(mat.schema_version, 1)
+
+    def test_roundtrip_preserves_schema_version(self) -> None:
+        """Serialization roundtrip keeps schema_version intact."""
+        mat = PhysicsMaterial(resource_id="round", schema_version=1)
+        data = mat.to_dict()
+        restored = PhysicsMaterial.from_dict(data)
+        self.assertEqual(restored.schema_version, mat.schema_version)
+        self.assertEqual(restored.resource_id, "round")
+
+    def test_empty_dict_gets_default_schema_version(self) -> None:
+        """Empty dict produces schema_version=1 (default)."""
+        mat = PhysicsMaterial.from_dict({})  # type: ignore[arg-type]
+        self.assertEqual(mat.schema_version, 1)
+
+    def test_from_dict_explicit_schema_version(self) -> None:
+        """Explicit schema_version in payload is preserved."""
+        mat = PhysicsMaterial.from_dict({
+            "resource_id": "v2_marker",
+            "schema_version": 99,
+        })  # type: ignore[arg-type]
+        self.assertEqual(mat.schema_version, 99)
+
 
 class PhysicsMaterialLoaderTests(unittest.TestCase):
     def setUp(self) -> None:

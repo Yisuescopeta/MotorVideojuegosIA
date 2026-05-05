@@ -101,6 +101,27 @@ class TestGPUParticlesSystemReal(unittest.TestCase):
         self.assertTrue(hasattr(type(self.system), "active_particle_count"))
         self.assertTrue(hasattr(type(self.system), "total_particle_count"))
 
+    def test_update_docstring_not_empty(self) -> None:
+        """Docstring de update explica CPU fallback y safe no-op."""
+        doc = GPUParticlesSystem.update.__doc__
+        self.assertIsNotNone(doc, "update must have a docstring")
+        assert doc is not None
+        self.assertGreater(len(doc.strip()), 0, "update docstring must not be empty")
+
+    def test_render_docstring_not_empty(self) -> None:
+        """Docstring de render explica CPU fallback y safe no-op."""
+        doc = GPUParticlesSystem.render.__doc__
+        self.assertIsNotNone(doc, "render must have a docstring")
+        assert doc is not None
+        self.assertGreater(len(doc.strip()), 0, "render docstring must not be empty")
+
+    def test_reset_docstring_not_empty(self) -> None:
+        """Docstring de reset explica clear and no-op behavior."""
+        doc = GPUParticlesSystem.reset.__doc__
+        self.assertIsNotNone(doc, "reset must have a docstring")
+        assert doc is not None
+        self.assertGreater(len(doc.strip()), 0, "reset docstring must not be empty")
+
 
 if __name__ == "__main__":
     unittest.main()
