@@ -10,6 +10,7 @@ import pyray as rl
 from engine.components.camera2d import Camera2D
 from engine.components.light2d import Light2D
 from engine.components.transform import Transform
+from engine.ecs.entity import Entity
 
 if TYPE_CHECKING:
     from engine.ecs.world import World
@@ -29,20 +30,20 @@ class Light2DSystem:
             camera = self._build_camera_from_world(world)
 
         entities = world.get_entities_with(Transform, Light2D)
-        lights: list[tuple[int, object]] = []
+        lights: list[tuple[int, Entity, Light2D, Transform]] = []
         for entity in entities:
             light = entity.get_component(Light2D)
             transform = entity.get_component(Transform)
             if light is None or transform is None or not light.enabled or not transform.enabled:
                 continue
-            lights.append((light.z_index, (entity, light, transform)))
+            lights.append((light.z_index, entity, light, transform))
 
         lights.sort(key=lambda item: item[0])
 
-        for _, (entity, light, transform) in lights:
+        for _, _entity, light, transform in lights:
             self._render_light(light, transform, camera)
 
-    def _render_light(self, light: Light2D, transform: Transform, camera: rl.Camera2D) -> None:
+    def _render_light(self, light: Light2D, transform: Transform, camera: rl.Camera2D | None) -> None:
         if camera is not None:
             rl.begin_mode_2d(camera)
 

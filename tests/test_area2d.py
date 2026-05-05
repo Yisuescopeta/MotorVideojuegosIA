@@ -10,7 +10,7 @@ from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
 from engine.ecs.world import World
 from engine.events.event_bus import EventBus
-from engine.levels.component_registry import ComponentRegistry, create_default_registry
+from engine.levels.component_registry import create_default_registry
 from engine.systems.area2d_system import Area2DSystem
 
 
@@ -239,10 +239,10 @@ class Area2DSystemTests(unittest.TestCase):
         event_bus = EventBus()
         system = Area2DSystem(event_bus=event_bus)
 
-        area = self._make_area_entity(
+        _area = self._make_area_entity(
             world, "InactiveZone", x=0.0, y=0.0, width=64.0, height=64.0, monitoring=False
         )
-        body = self._make_body_entity(world, "Player", x=10.0, y=10.0)
+        _body = self._make_body_entity(world, "Player", x=10.0, y=10.0)
 
         system.update(world)
 
@@ -276,7 +276,7 @@ class Area2DSystemTests(unittest.TestCase):
         event_bus = EventBus()
         system = Area2DSystem(event_bus=event_bus)
 
-        area = self._make_area_entity(world, "TriggerZone", x=0.0, y=0.0, width=64.0, height=64.0)
+        _area = self._make_area_entity(world, "TriggerZone", x=0.0, y=0.0, width=64.0, height=64.0)
         body = world.create_entity("Ghost")
         body.add_component(Transform(x=10.0, y=10.0))
         body.add_component(RigidBody())

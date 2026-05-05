@@ -6,7 +6,6 @@ from pathlib import Path
 from engine.api import EngineAPI
 from engine.components.charactercontroller2d import CharacterController2D
 from engine.components.collider import Collider
-from engine.components.collision_filter_2d import CollisionFilter2D
 
 
 class CharacterControllerTests(unittest.TestCase):

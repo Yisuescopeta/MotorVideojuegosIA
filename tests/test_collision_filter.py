@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from engine.api import EngineAPI
-from engine.components.collision_filter_2d import CollisionFilter2D, MASK_ALL
+from engine.components.collision_filter_2d import MASK_ALL, CollisionFilter2D
 from engine.levels.component_registry import create_default_registry
 
 
@@ -295,8 +295,8 @@ class CollisionFilter2DIntegrationTests(unittest.TestCase):
         world = self.World()
         world.feature_metadata = {"physics_2d": {"layer_matrix": {"Gameplay|Gameplay": True}}}
 
-        a = self._create_entity_with_collision(world, "A", x=0.0)
-        b = self._create_entity_with_collision(world, "B", x=5.0)
+        _a = self._create_entity_with_collision(world, "A", x=0.0)
+        _b = self._create_entity_with_collision(world, "B", x=5.0)
 
         cs = self.CollisionSystem()
         cs.update(world)
@@ -312,8 +312,8 @@ class CollisionFilter2DIntegrationTests(unittest.TestCase):
         cf_a = CollisionFilter2D(layer=1, mask=2)
         cf_b = CollisionFilter2D(layer=2, mask=4)
 
-        a = self._create_entity_with_collision(world, "A", x=0.0, collision_filter=cf_a)
-        b = self._create_entity_with_collision(world, "B", x=5.0, collision_filter=cf_b)
+        _a = self._create_entity_with_collision(world, "A", x=0.0, collision_filter=cf_a)
+        _b = self._create_entity_with_collision(world, "B", x=5.0, collision_filter=cf_b)
 
         cs = self.CollisionSystem()
         cs.update(world)
@@ -329,8 +329,8 @@ class CollisionFilter2DIntegrationTests(unittest.TestCase):
         cf_a = CollisionFilter2D(layer=1, mask=2)
         cf_b = CollisionFilter2D(layer=2, mask=1)
 
-        a = self._create_entity_with_collision(world, "A", x=0.0, collision_filter=cf_a)
-        b = self._create_entity_with_collision(world, "B", x=5.0, collision_filter=cf_b)
+        _a = self._create_entity_with_collision(world, "A", x=0.0, collision_filter=cf_a)
+        _b = self._create_entity_with_collision(world, "B", x=5.0, collision_filter=cf_b)
 
         cs = self.CollisionSystem()
         cs.update(world)
@@ -345,8 +345,8 @@ class CollisionFilter2DIntegrationTests(unittest.TestCase):
 
         cf_a = CollisionFilter2D(layer=1, mask=0xFFFFFFFF)
 
-        a = self._create_entity_with_collision(world, "A", x=0.0, collision_filter=cf_a)
-        b = self._create_entity_with_collision(world, "B", x=5.0, collision_filter=None)
+        _a = self._create_entity_with_collision(world, "A", x=0.0, collision_filter=cf_a)
+        _b = self._create_entity_with_collision(world, "B", x=5.0, collision_filter=None)
 
         cs = self.CollisionSystem()
         cs.update(world)
@@ -367,7 +367,7 @@ class CollisionFilter2DIntegrationTests(unittest.TestCase):
 
         # A es dynamic cayendo sobre B que es static
         a = self._create_entity_with_collision(world, "A", x=0.0, y=0.0, body_type="dynamic", collision_filter=cf_a)
-        b = self._create_entity_with_collision(world, "B", x=0.0, y=20.0, body_type="static", collision_filter=cf_b)
+        _b = self._create_entity_with_collision(world, "B", x=0.0, y=20.0, body_type="static", collision_filter=cf_b)
 
         ps = PhysicsSystem(gravity=98.0)
         ps.update(world, 1.0 / 60.0)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 from engine.components.collider import Collider
 from engine.components.transform import Transform
@@ -224,10 +225,6 @@ class MoveAndSlideTests(unittest.TestCase):
 # ──────────────────────────────────────────────────────────────
 # Box2D tests — solo ejecutan si Box2D instalado
 # ──────────────────────────────────────────────────────────────
-from unittest import mock
-
-import pytest
-
 try:
     from engine.physics.box2d_backend import Box2DPhysicsBackend
 
@@ -298,8 +295,8 @@ class KinematicFallbackTests(unittest.TestCase):
             )
 
 
-@pytest.mark.skipif(not BOX2D_AVAILABLE, reason="Box2D not installed")
-class TestBox2DKinematicMove:
+@unittest.skipUnless(BOX2D_AVAILABLE, "Box2D not installed")
+class TestBox2DKinematicMove(unittest.TestCase):
     """Verifica que Box2D NO soporta kinematic move y que el servicio redirige a legacy."""
 
     def test_box2d_does_not_support_kinematic_move(self) -> None:
@@ -319,7 +316,7 @@ class TestBox2DKinematicMove:
         backend = Box2DPhysicsBackend(gravity=600)
         backend.sync_world(world)
 
-        with pytest.raises(NotImplementedError):
+        with self.assertRaises(NotImplementedError):
             backend.move_and_slide(
                 world, player, velocity=(0, 300), delta_time=1 / 60,
             )

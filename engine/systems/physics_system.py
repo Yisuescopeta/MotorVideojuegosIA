@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from engine.components.animatable_body_2d import AnimatableBody2D
 from engine.components.collider import Collider
@@ -42,9 +42,9 @@ class PhysicsSystem:
         self._swept_contacts: list[tuple[int, int]] = []
         self._swept_contact_set: set[tuple[int, int]] = set()
         self._spatial_hash_cell_size: float = 128.0
-        self._event_bus: Optional[object] = None
+        self._event_bus: Optional[Any] = None  # type: ignore[no-any-explicit]  # EventBus: tipo externo determinado en runtime
 
-    def set_event_bus(self, event_bus: Optional[object]) -> None:
+    def set_event_bus(self, event_bus: Optional[Any]) -> None:  # type: ignore[no-any-explicit]  # EventBus: tipo externo determinado en runtime
         self._event_bus = event_bus
 
     def update(self, world: World, delta_time: float) -> None:
@@ -89,6 +89,7 @@ class PhysicsSystem:
             effective_type = self._get_effective_body_type(entity)
             if effective_type == "static":
                 if rigidbody is not None:
+                    rigidbody._clear_force_buffers()
                     rigidbody.velocity_x = 0.0
                     rigidbody.velocity_y = 0.0
                 physics_changed = physics_changed or before_rigidbody_state != (
@@ -651,7 +652,7 @@ class PhysicsSystem:
         """Groove joint: body B constrained to slide along a line (groove) on body A."""
         ix, iy = joint.initial_offset
         local_x = trans_b.x - trans_a.x - ix
-        local_y = trans_b.y - trans_a.y - iy
+        _ = trans_b.y - trans_a.y - iy
         clamped_x = max(0.0, min(joint.groove_length, local_x))
         trans_b.x = trans_a.x + ix + clamped_x
         trans_b.y = trans_a.y + iy

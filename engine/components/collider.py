@@ -7,7 +7,7 @@ PROPÓSITO:
     - circle: círculo
     - polygon: polígono convexo
     - capsule: cápsula vertical (rectángulo con extremos semicirculares)
- 
+
 PROPIEDADES:
     - width (float): Ancho del área de colisión
     - height (float): Alto del área de colisión
@@ -17,11 +17,11 @@ PROPIEDADES:
     - shape_type (str): "box", "circle", "polygon", "capsule"
     - radius (float): Radio para circle/capsule
     - capsule_height (float): Altura de la sección rectangular de la cápsula
- 
+
 EJEMPLO DE USO:
     collider = Collider(width=32, height=48)
     entity.add_component(collider)
- 
+
 SERIALIZACIÓN JSON:
     {
         "width": 32,

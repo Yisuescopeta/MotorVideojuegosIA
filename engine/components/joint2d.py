@@ -30,6 +30,16 @@ class Joint2D(Component):
         self.groove_length: float = 100.0
         self.initial_offset: tuple[float, float] = (0.0, 0.0)
 
+        # Anchors (world-space offsets relative to each body)
+        self.anchor_x: float = 0.0
+        self.anchor_y: float = 0.0
+        self.connected_anchor_x: float = 0.0
+        self.connected_anchor_y: float = 0.0
+
+        # Frequency/damping for distance joints
+        self.frequency_hz: float = 0.0
+        self.damping_ratio: float = 0.0
+
         # Damped spring
         self.rest_length: float = 50.0
         self.stiffness: float = 20.0
@@ -47,6 +57,12 @@ class Joint2D(Component):
             "angular_limit_enabled": self.angular_limit_enabled,
             "motor_enabled": self.motor_enabled,
             "motor_target_velocity": self.motor_target_velocity,
+            "anchor_x": self.anchor_x,
+            "anchor_y": self.anchor_y,
+            "connected_anchor_x": self.connected_anchor_x,
+            "connected_anchor_y": self.connected_anchor_y,
+            "frequency_hz": self.frequency_hz,
+            "damping_ratio": self.damping_ratio,
             "groove_length": self.groove_length,
             "initial_offset": list(self.initial_offset),
             "rest_length": self.rest_length,
@@ -69,6 +85,12 @@ class Joint2D(Component):
         j.angular_limit_enabled = data.get("angular_limit_enabled", False)
         j.motor_enabled = data.get("motor_enabled", False)
         j.motor_target_velocity = data.get("motor_target_velocity", 0.0)
+        j.anchor_x = data.get("anchor_x", 0.0)
+        j.anchor_y = data.get("anchor_y", 0.0)
+        j.connected_anchor_x = data.get("connected_anchor_x", 0.0)
+        j.connected_anchor_y = data.get("connected_anchor_y", 0.0)
+        j.frequency_hz = data.get("frequency_hz", 0.0)
+        j.damping_ratio = data.get("damping_ratio", 0.0)
         j.groove_length = data.get("groove_length", 100.0)
         io = data.get("initial_offset", [0.0, 0.0])
         j.initial_offset = tuple(io) if isinstance(io, list) else (0.0, 0.0)

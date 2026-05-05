@@ -150,6 +150,10 @@ class CircleShape(ShapeInstance):
             contact_count=1, contacts=[cp], is_trigger=False,
         )
 
+    def _intersects_polygon(self, poly: PolygonShape) -> bool:
+        """Quick boolean intersection test: Circle vs Polygon."""
+        return self._collide_polygon(poly) is not None
+
     def _collide_aabb(self, aabb: AABBShape) -> Optional[ContactManifold2D]:
         closest_x = max(aabb.cx - aabb.half_w, min(self.cx, aabb.cx + aabb.half_w))
         closest_y = max(aabb.cy - aabb.half_h, min(self.cy, aabb.cy + aabb.half_h))
@@ -308,16 +312,17 @@ class CapsuleShape(ShapeInstance):
         return min(d1_sq, d2_sq) <= r * r
 
     def _intersects_polygon(self, poly: PolygonShape) -> bool:
-        """Capsule vs Polygon: extremos como círculos + muestreo del segmento."""
-        from engine.physics.shapes import CircleShape  # noqa: PLC0415
-
+        """Capsule vs Polygon: test extremos como círculos + muestreo del segmento."""
         top_y, bottom_y = self._segment_ends()
+
         top_circle = CircleShape(self.cx, top_y, self.radius)
-        if top_circle._intersects_polygon(poly):
+        if top_circle.collide_shape(poly) is not None:
             return True
+
         bot_circle = CircleShape(self.cx, bottom_y, self.radius)
-        if bot_circle._intersects_polygon(poly):
+        if bot_circle.collide_shape(poly) is not None:
             return True
+
         steps = 4
         for i in range(steps + 1):
             t = i / steps
@@ -515,7 +520,6 @@ class ShapeFactory:
     @staticmethod
     def build(collider, x: float, y: float) -> ShapeInstance:
         """Construye una ShapeInstance desde un Collider en (x, y)."""
-        from engine.components.collider import Collider  # noqa: PLC0415
 
         cx = x + collider.offset_x
         cy = y + collider.offset_y

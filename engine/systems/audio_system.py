@@ -147,7 +147,7 @@ class AudioSystem:
                 str(listener.attenuation_mode),
             )
 
-            pan = self._spatial_pan(
+            _ = self._spatial_pan(
                 source_x, source_y,
                 listener_x, listener_y,
                 float(listener.pan_strength),
@@ -235,6 +235,10 @@ class AudioSystem:
         self._sync_component_stopped(audio_source)
         self._flush_runtime_events(world)
         return True
+
+    def shutdown(self) -> None:
+        """Release all audio runtime resources."""
+        self._runtime.shutdown()
 
     def _build_playback_request(
         self,

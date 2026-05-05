@@ -116,7 +116,7 @@ def _resolve_per_tile_physics(
     tileset_resource: Any,
 ) -> list[dict[str, float]]:
     """Resolve per-tile physics shapes from TileSet resource metadata.
-    
+
     Returns list of {center_x, center_y, width, height} in local tile coords.
     Empty list means no custom physics — use default grid collision.
     """
@@ -184,7 +184,7 @@ def build_tile_collision_shapes(
     tileset_resource: Any = None,
 ) -> list[dict[str, float]]:
     """Build collision shapes from tile metadata.
-    
+
     Returns list of AABB rects in world coords.
     """
     cell_w = float(tilemap.cell_width)

@@ -1,6 +1,6 @@
 import unittest
 
-from engine.components.joint2d import Joint2D, VALID_JOINT_TYPES
+from engine.components.joint2d import VALID_JOINT_TYPES, Joint2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
@@ -184,7 +184,7 @@ class Joint2DPhysicsTests(unittest.TestCase):
 
         t_a = a.get_component(Transform)
         t_b = b.get_component(Transform)
-        dist = ((t_b.x - t_a.x) ** 2 + (t_b.y - t_a.y) ** 2) ** 0.5
+        _dist = ((t_b.x - t_a.x) ** 2 + (t_b.y - t_a.y) ** 2) ** 0.5
         # Bodies are static-only, spring force applied to velocities
         self.assertFalse(rb_a.velocity_x == 0.0 and rb_a.velocity_y == 0.0)
 

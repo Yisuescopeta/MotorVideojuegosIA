@@ -8,7 +8,6 @@ import unittest
 from engine.components.collider import Collider
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
-from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.systems.physics_system import PhysicsSystem
 
@@ -272,7 +271,7 @@ class RigidBodySleepingTests(unittest.TestCase):
 
     def test_wake_on_force(self) -> None:
         """Applying force wakes a sleeping body."""
-        physics = PhysicsSystem()
+        _physics = PhysicsSystem()
         world = World()
         entity = world.create_entity("Waker")
         transform = Transform(x=0, y=0)

@@ -5,7 +5,9 @@ CharacterControllerSystem no guarda backend como estado permanente.
 """
 
 from __future__ import annotations
+
 from typing import Any, Optional
+
 from engine.physics.backend import MoveResult2D, PhysicsBackend
 
 

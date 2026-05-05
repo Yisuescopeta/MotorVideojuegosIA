@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from engine.components.path_follower_2d import PathFollower2D
 from engine.components.transform import Transform

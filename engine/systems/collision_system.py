@@ -16,7 +16,7 @@ from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.physics.contact_data import ContactManifold2D, ContactPoint2D
-from engine.physics.shapes import AABBShape, ShapeFactory, ShapeInstance
+from engine.physics.shapes import AABBShape, CapsuleShape, CircleShape, PolygonShape, ShapeFactory
 from engine.physics.spatial_hash import SpatialHash2D
 
 if TYPE_CHECKING:
@@ -275,7 +275,7 @@ class CollisionSystem:
     @staticmethod
     def _compute_shape_bounds(entity: Entity, transform: Transform) -> AABB | None:
         """Compute AABB bounds from CollisionShape2D, CollisionPolygon2D, or Collider.
-        
+
         Precedence: CollisionShape2D > CollisionPolygon2D > Collider.
         Returns None if no valid shape component exists.
         """
@@ -308,32 +308,60 @@ class CollisionSystem:
 
     def _narrow_phase_check(self, entry_a: _CollisionEntry, entry_b: _CollisionEntry) -> bool:
         """Narrow-phase check usando ShapeFactory para shapes no-AABB."""
-        shape_a_type = entry_a.collider.shape_type if entry_a.collider else "box"
-        shape_b_type = entry_b.collider.shape_type if entry_b.collider else "box"
+        shape_a = self._build_shape_from_entry(entry_a)
+        shape_b = self._build_shape_from_entry(entry_b)
 
-        if shape_a_type == "box" and shape_b_type == "box":
+        if shape_a is None or shape_b is None:
             return True
 
-        transform_a = entry_a.entity.get_component(Transform)
-        transform_b = entry_b.entity.get_component(Transform)
-        if transform_a is None or transform_b is None:
+        if isinstance(shape_a, AABBShape) and isinstance(shape_b, AABBShape):
             return True
-
-        if entry_a.collider:
-            shape_a = ShapeFactory.build(entry_a.collider, transform_a.x, transform_a.y)
-        else:
-            aabb = entry_a.aabb
-            shape_a = AABBShape((aabb[0] + aabb[2]) / 2, (aabb[1] + aabb[3]) / 2,
-                                (aabb[2] - aabb[0]) / 2, (aabb[3] - aabb[1]) / 2)
-
-        if entry_b.collider:
-            shape_b = ShapeFactory.build(entry_b.collider, transform_b.x, transform_b.y)
-        else:
-            aabb = entry_b.aabb
-            shape_b = AABBShape((aabb[0] + aabb[2]) / 2, (aabb[1] + aabb[3]) / 2,
-                                (aabb[2] - aabb[0]) / 2, (aabb[3] - aabb[1]) / 2)
 
         return shape_a.intersects_shape(shape_b)
+
+    def _build_shape_from_entry(self, entry: _CollisionEntry):
+        """Construye ShapeInstance desde Collider, CollisionShape2D, CollisionPolygon2D o bounds."""
+        entity = entry.entity
+        transform = entity.get_component(Transform)
+        if transform is None:
+            return None
+
+        # 1. Collider
+        collider = entry.collider
+        if collider is not None and collider.enabled:
+            return ShapeFactory.build(collider, transform.x, transform.y)
+
+        # 2. CollisionShape2D
+        shape2d = entity.get_component(CollisionShape2D)
+        if shape2d is not None and not shape2d.disabled:
+            cx = transform.x
+            cy = transform.y
+            st = shape2d.shape_type
+            if st == "circle":
+                return CircleShape(cx, cy, shape2d.radius)
+            if st == "capsule":
+                return CapsuleShape(cx, cy, shape2d.radius, shape2d.height)
+            if st == "polygon" and shape2d.points:
+                world_verts = [(cx + p[0], cy + p[1]) for p in shape2d.points]
+                return PolygonShape(world_verts)
+            hw = shape2d.width / 2
+            hh = shape2d.height / 2
+            return AABBShape(cx, cy, hw, hh)
+
+        # 3. CollisionPolygon2D
+        poly = entity.get_component(CollisionPolygon2D)
+        if poly is not None and not poly.disabled and poly.polygon:
+            world_verts = [(transform.x + v[0], transform.y + v[1]) for v in poly.polygon]
+            return PolygonShape(world_verts)
+
+        # 4. Fallback: AABB desde bounds calculados
+        aabb = entry.aabb
+        return AABBShape(
+            (aabb[0] + aabb[2]) / 2,
+            (aabb[1] + aabb[3]) / 2,
+            (aabb[2] - aabb[0]) / 2,
+            (aabb[3] - aabb[1]) / 2,
+        )
 
     def _layers_can_collide(self, world: World, layer_a: str, layer_b: str) -> bool:
         matrix = world.feature_metadata.get("physics_2d", {}).get("layer_matrix", {})

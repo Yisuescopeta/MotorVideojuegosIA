@@ -227,9 +227,9 @@ class TestLine2DRenderSystem(unittest.TestCase):
         system.render(world)  # no crash
 
     def test_system_render_with_line_no_crash(self):
+        from engine.components.transform import Transform
         from engine.ecs.entity import Entity
         from engine.ecs.world import World
-        from engine.components.transform import Transform
         from engine.systems.line2d_render_system import Line2DRenderSystem
 
         world = World()
@@ -278,8 +278,8 @@ class TestLine2DRenderSystem(unittest.TestCase):
         self.assertAlmostEqual(world_pts[1][1], 90.0)    # 50 + 40
 
     def test_draw_thick_segment_no_crash(self):
-        from engine.systems.line2d_render_system import Line2DRenderSystem
         import pyray as rl
+        from engine.systems.line2d_render_system import Line2DRenderSystem
         system = Line2DRenderSystem()
         system._draw_thick_segment((0.0, 0.0), (100.0, 100.0), 5.0, rl.Color(255, 0, 0, 255))
         # Zero length segment

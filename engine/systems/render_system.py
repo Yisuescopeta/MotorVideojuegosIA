@@ -1592,9 +1592,47 @@ class RenderSystem:
             )
 
     def _draw_collider(self, transform: Transform, collider: Collider) -> None:
-        kind = geometry.get("kind", "")
-        color = self._color_from_payload(geometry.get("color", [255, 255, 255, 255]))
-        if kind == "line":
+        color = (0, 255, 0, 128)
+        cx = transform.x + collider.offset_x
+        cy = transform.y + collider.offset_y
+        shape_type = collider.shape_type or "box"
+        if shape_type in ("box", "capsule"):
+            rl.draw_rectangle_lines_ex(
+                rl.Rectangle(
+                    cx - collider.width / 2.0,
+                    cy - collider.height / 2.0,
+                    collider.width,
+                    collider.height,
+                ),
+                1,
+                rl.Color(*color),
+            )
+            return
+        if shape_type == "circle":
+            rl.draw_circle_lines(
+                int(cx),
+                int(cy),
+                collider.radius,
+                rl.Color(*color),
+            )
+
+    def _draw_debug_primitive(self, geometry: dict[str, Any]) -> None:
+        """Draw a raw debug geometry primitive from its dict descriptor."""
+        kind = geometry.get("kind", "rect")
+        color_tuple = tuple(geometry.get("color", [255, 255, 255, 255]))
+        color = rl.Color(*color_tuple)
+        if kind == "rect":
+            rl.draw_rectangle_lines_ex(
+                rl.Rectangle(
+                    float(geometry.get("x", 0.0)),
+                    float(geometry.get("y", 0.0)),
+                    float(geometry.get("width", 0.0)),
+                    float(geometry.get("height", 0.0)),
+                ),
+                float(geometry.get("thickness", 1.0)),
+                color,
+            )
+        elif kind == "line":
             start = geometry.get("start", {})
             end = geometry.get("end", {})
             rl.draw_line(
@@ -1604,24 +1642,17 @@ class RenderSystem:
                 int(end.get("y", 0.0)),
                 color,
             )
-            return
-        if kind == "rect":
-            rl.draw_rectangle_lines_ex(
-                rl.Rectangle(
-                    float(geometry.get("x", 0.0)),
-                    float(geometry.get("y", 0.0)),
-                    float(geometry.get("width", 0.0)),
-                    float(geometry.get("height", 0.0)),
-                ),
-                int(geometry.get("thickness", 1)),
-                color,
-            )
-            return
-        if kind == "circle":
+        elif kind == "circle":
             rl.draw_circle_lines(
                 int(geometry.get("x", 0.0)),
                 int(geometry.get("y", 0.0)),
                 float(geometry.get("radius", 0.0)),
+                color,
+            )
+        elif kind == "point":
+            rl.draw_pixel(
+                int(geometry.get("x", 0.0)),
+                int(geometry.get("y", 0.0)),
                 color,
             )
 

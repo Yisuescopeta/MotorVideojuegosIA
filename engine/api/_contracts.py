@@ -142,6 +142,19 @@ class EngineRuntimePort(Protocol):
     ) -> list[dict[str, Any]]:
         ...
 
+    def query_physics_shape_cast(
+        self,
+        shape_type: str,
+        shape_width: float,
+        shape_height: float,
+        origin_x: float,
+        origin_y: float,
+        direction_x: float,
+        direction_y: float,
+        max_distance: float,
+    ) -> list[dict[str, Any]]:
+        ...
+
     def list_physics_backends(self) -> list[PhysicsBackendInfo]:
         ...
 

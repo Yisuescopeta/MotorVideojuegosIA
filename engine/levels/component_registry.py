@@ -109,7 +109,6 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.audiosource import AudioSource
     from engine.components.camera2d import Camera2D
     from engine.components.canvas import Canvas
-    from engine.components.particle_emitter2d import ParticleEmitter2D
     from engine.components.charactercontroller2d import CharacterController2D
     from engine.components.collider import Collider
     from engine.components.collision_filter_2d import CollisionFilter2D
@@ -126,13 +125,15 @@ def create_default_registry() -> ComponentRegistry:
         MovingPlatform2D,
         RespawnPoint2D,
     )
-    from engine.components.navigation_agent_2d import NavigationAgent2D
-    from engine.components.path_follower_2d import PathFollower2D
     from engine.components.inputmap import InputMap
     from engine.components.joint2d import Joint2D
     from engine.components.light2d import Light2D
     from engine.components.line2d import Line2D
     from engine.components.marker2d import Marker2D
+    from engine.components.navigation_agent_2d import NavigationAgent2D
+    from engine.components.parallax_layer import ParallaxLayer
+    from engine.components.particle_emitter2d import ParticleEmitter2D
+    from engine.components.path_follower_2d import PathFollower2D
     from engine.components.playercontroller2d import PlayerController2D
     from engine.components.polygon2d import Polygon2D
     from engine.components.raycast_2d import RayCast2D
@@ -157,7 +158,6 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.uibutton import UIButton
     from engine.components.uiimage import UIImage
     from engine.components.uitext import UIText
-    from engine.components.parallax_layer import ParallaxLayer
     from engine.components.visible_on_screen_notifier_2d import (
         VisibleOnScreenEnabler2D,
         VisibleOnScreenNotifier2D,

@@ -8,9 +8,8 @@ import unittest
 from engine.components.navigation_agent_2d import NavigationAgent2D
 from engine.components.transform import Transform
 from engine.ecs.world import World
-from engine.navigation.grid import NavigationGrid, Vec2
+from engine.navigation.grid import NavigationGrid
 from engine.navigation.service import NavigationService
-from engine.navigation.types import PathResult
 from engine.systems.navigation_agent_system import NavigationAgentSystem
 
 

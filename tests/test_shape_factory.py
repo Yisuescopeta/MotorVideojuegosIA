@@ -317,6 +317,33 @@ class ShapeFactoryTests(unittest.TestCase):
         c = AABBShape(100, 100, 10, 10)
         assert not a.intersects_shape(c)
 
+    # ── Capsule vs Polygon ─────────────────────────────────────────
+
+    def test_capsule_vs_polygon_no_attribute_error(self) -> None:
+        """Cápsula vs Polygon no lanza AttributeError."""
+        capsule = CapsuleShape(100, 100, 10, 32)
+        poly = PolygonShape([(50, 50), (150, 50), (150, 150), (50, 150)])
+        result = capsule.intersects_shape(poly)
+        self.assertIsInstance(result, bool)
+
+    def test_capsule_vs_polygon_detects_collision(self) -> None:
+        """Cápsula dentro de polígono → colisión detectada."""
+        capsule = CapsuleShape(100, 100, 10, 32)
+        poly = PolygonShape([(50, 50), (150, 50), (150, 150), (50, 150)])
+        self.assertTrue(
+            capsule.intersects_shape(poly),
+            "Cápsula dentro del polígono debería colisionar",
+        )
+
+    def test_capsule_vs_polygon_no_collision_when_far(self) -> None:
+        """Cápsula lejos de polígono → sin colisión."""
+        capsule = CapsuleShape(300, 300, 10, 32)
+        poly = PolygonShape([(50, 50), (150, 50), (150, 150), (50, 150)])
+        self.assertFalse(
+            capsule.intersects_shape(poly),
+            "Cápsula lejos no debería colisionar",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

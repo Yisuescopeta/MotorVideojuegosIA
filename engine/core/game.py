@@ -56,7 +56,13 @@ from engine.editor.sprite_editor_modal import SpriteEditorModal
 from engine.editor.terminal_panel import TerminalPanel
 from engine.editor.undo_redo import UndoRedoManager
 from engine.events.signals import SignalConnectionFlags
-from engine.physics.backend import PhysicsAABBHit, PhysicsBackendInfo, PhysicsBackendSelection, PhysicsRayHit, PhysicsShapeCastHit
+from engine.physics.backend import (
+    PhysicsAABBHit,
+    PhysicsBackendInfo,
+    PhysicsBackendSelection,
+    PhysicsRayHit,
+    PhysicsShapeCastHit,
+)
 from engine.physics.registry import PhysicsBackendRegistry
 from engine.project.project_service import ProjectService
 
@@ -74,7 +80,15 @@ if TYPE_CHECKING:
     from engine.systems.audio_system import AudioSystem
     from engine.systems.character_controller_system import CharacterControllerSystem
     from engine.systems.collision_system import CollisionSystem
+    from engine.systems.gameplay2d_semantic_system import Gameplay2DSemanticSystem
+    from engine.systems.gpu_particles_system import GPUParticlesSystem
     from engine.systems.input_system import InputSystem
+    from engine.systems.light2d_system import Light2DSystem
+    from engine.systems.line2d_render_system import Line2DRenderSystem
+    from engine.systems.navigation_agent_system import NavigationAgentSystem
+    from engine.systems.parallax_system import ParallaxSystem
+    from engine.systems.particle_system import ParticleSystem
+    from engine.systems.path_follow_system import PathFollowSystem
     from engine.systems.physics_system import PhysicsSystem
     from engine.systems.player_controller_system import PlayerControllerSystem
     from engine.systems.render_system import RenderSystem
@@ -83,18 +97,10 @@ if TYPE_CHECKING:
     from engine.systems.selection_system import SelectionSystem
     from engine.systems.timer_system import TimerSystem
     from engine.systems.tween_system import TweenSystem
+    from engine.systems.ui_focus_system import UIFocusSystem
     from engine.systems.ui_render_system import UIRenderSystem
     from engine.systems.ui_system import UISystem
     from engine.systems.visible_on_screen_system import VisibleOnScreenSystem
-    from engine.systems.parallax_system import ParallaxSystem
-    from engine.systems.gpu_particles_system import GPUParticlesSystem
-    from engine.systems.light2d_system import Light2DSystem
-    from engine.systems.line2d_render_system import Line2DRenderSystem
-    from engine.systems.particle_system import ParticleSystem
-    from engine.systems.path_follow_system import PathFollowSystem
-    from engine.systems.gameplay2d_semantic_system import Gameplay2DSemanticSystem
-    from engine.systems.navigation_agent_system import NavigationAgentSystem
-    from engine.systems.ui_focus_system import UIFocusSystem
 
 
 class Game:

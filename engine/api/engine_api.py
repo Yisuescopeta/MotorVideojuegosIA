@@ -84,12 +84,12 @@ class EngineAPI:
         from engine.systems.audio_system import AudioSystem
         from engine.systems.character_controller_system import CharacterControllerSystem
         from engine.systems.collision_system import CollisionSystem
+        from engine.systems.gameplay2d_semantic_system import Gameplay2DSemanticSystem
         from engine.systems.input_system import InputSystem
         from engine.systems.physics_system import PhysicsSystem
         from engine.systems.player_controller_system import PlayerControllerSystem
         from engine.systems.render_system import RenderSystem
         from engine.systems.script_behaviour_system import ScriptBehaviourSystem
-        from engine.systems.gameplay2d_semantic_system import Gameplay2DSemanticSystem
 
         self.game = HeadlessGame()
         self.scene_manager = SceneManager(self._registry)

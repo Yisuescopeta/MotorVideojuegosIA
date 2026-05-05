@@ -74,7 +74,7 @@ class Line2D(Component):
             seq.append(255)
         seq = seq[:4]
         try:
-            return tuple(max(0, min(255, int(v))) for v in seq)
+            return (max(0, min(255, int(seq[0]))), max(0, min(255, int(seq[1]))), max(0, min(255, int(seq[2]))), max(0, min(255, int(seq[3]))))
         except (ValueError, TypeError):
             return (255, 255, 255, 255)
 

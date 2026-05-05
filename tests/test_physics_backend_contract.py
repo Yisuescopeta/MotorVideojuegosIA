@@ -1,7 +1,7 @@
 """Tests de contrato cross-backend: legacy_aabb vs box2d."""
 from __future__ import annotations
 
-import pytest
+import unittest
 
 from engine.components.collider import Collider
 from engine.components.transform import Transform
@@ -36,7 +36,7 @@ def _make_world_with_floor() -> tuple[World, Entity, Entity]:
     return world, player, ground
 
 
-class TestLegacyBackendContract:
+class TestLegacyBackendContract(unittest.TestCase):
     """Contrato base del backend legacy (siempre disponible)."""
 
     def test_legacy_supports_kinematic_move_returns_true(self) -> None:
@@ -93,8 +93,8 @@ class TestLegacyBackendContract:
         assert result.position_x > 100, f"Player debería atravesar trigger, x={result.position_x}"
 
 
-@pytest.mark.skipif(not BOX2D_AVAILABLE, reason="Box2D not installed")
-class TestCrossBackendContract:
+@unittest.skipUnless(BOX2D_AVAILABLE, "Box2D not installed")
+class TestCrossBackendContract(unittest.TestCase):
     """Comparación directa entre legacy y box2d."""
 
     def test_both_backends_prevent_falling_through_floor(self) -> None:

@@ -1,4 +1,3 @@
-import math
 import unittest
 
 from engine.components.collider import Collider
@@ -27,7 +26,7 @@ class CapsuleColliderTests(unittest.TestCase):
         """Capsule bounds cover the full height including caps."""
         c = Collider(shape_type="capsule", radius=10.0, capsule_height=20.0, offset_x=5.0, offset_y=-3.0)
         left, top, right, bottom = c.get_bounds(100.0, 200.0)
-        half_h = 10.0 + 20.0 / 2  # 20.0
+        _half_h = 10.0 + 20.0 / 2  # 20.0
         self.assertEqual(left, 105.0 - 10.0)   # 95.0
         self.assertEqual(right, 105.0 + 10.0)  # 115.0
         self.assertEqual(top, 197.0 - 20.0)    # 177.0
@@ -145,7 +144,7 @@ class CapsuleColliderTests(unittest.TestCase):
         backend = LegacyAABBPhysicsBackend(None, None, None)
         # Ray that would hit the AABB corner at (108, 8) but capsule is a circle of radius 8
         # Distance from center (100, 0) to that corner is > 8
-        hits = backend.query_ray(world, (0.0, 8.0), (1.0, 0.0), 200.0)
+        _hits = backend.query_ray(world, (0.0, 8.0), (1.0, 0.0), 200.0)
         # With a circle of radius 8 centered at (100, 0), ray at y=8 would just graze it.
         # Distance: |oy - cy| + |ox+v*dx - cx|? Actually it's sqrt((cx-ox-v*dx)^2 + (cy-oy)^2) = r
         # The line y=8 is at distance 8 from center, so the ray ALMOST touches. Let's check margin.

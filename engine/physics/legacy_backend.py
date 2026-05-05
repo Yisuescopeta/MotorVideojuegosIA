@@ -7,8 +7,15 @@ from engine.components.collider import Collider
 from engine.components.collision_filter_2d import CollisionFilter2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
-from engine.physics.backend import MoveResult2D, PhysicsAABBHit, PhysicsBackend, PhysicsContact, PhysicsRayHit, PhysicsShapeCastHit
-from engine.physics.shapes import ShapeFactory, ShapeInstance
+from engine.physics.backend import (
+    MoveResult2D,
+    PhysicsAABBHit,
+    PhysicsBackend,
+    PhysicsContact,
+    PhysicsRayHit,
+    PhysicsShapeCastHit,
+)
+from engine.physics.shapes import ShapeFactory
 
 
 class LegacyAABBPhysicsBackend(PhysicsBackend):

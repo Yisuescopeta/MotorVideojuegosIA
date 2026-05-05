@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Union
 
 from engine.api._context import EngineAPIComponent
 from engine.api.types import ActionResult, EngineStatus, EntityData, ShapeCastResult
@@ -9,6 +9,10 @@ from engine.components.rigidbody import RigidBody
 from engine.ecs.entity import normalize_entity_groups
 from engine.events.signals import SignalConnectionFlags
 from engine.physics.backend import PhysicsBackendInfo, PhysicsBackendSelection
+
+if TYPE_CHECKING:
+    from engine.components.canvas_item_2d import CanvasItem2D
+    from engine.ecs.entity import Entity
 
 
 class RuntimeAPI(EngineAPIComponent):
@@ -383,7 +387,7 @@ class RuntimeAPI(EngineAPIComponent):
         runtime = self.runtime
         if runtime is None:
             return []
-        return runtime.query_physics_shape_cast(
+        return runtime.query_physics_shape_cast(  # type: ignore[return-value]  # list[dict[str, Any]] vs list[ShapeCastResult]
             shape_type, shape_width, shape_height,
             origin_x, origin_y, direction_x, direction_y, max_distance,
         )
@@ -423,27 +427,27 @@ class RuntimeAPI(EngineAPIComponent):
         entity = self.require_entity(entity_name)
         rb = entity.get_component(RigidBody)
         if rb is None:
-            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody")
+            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody", data=None)
         rb.apply_force(force_x, force_y)
-        return ActionResult(success=True, message=f"Force applied to {entity_name}")
+        return ActionResult(success=True, message=f"Force applied to {entity_name}", data=None)
 
     def apply_impulse(self, entity_name: str, impulse_x: float, impulse_y: float) -> ActionResult:
         """Aplica impulso instantáneo a una entidad con RigidBody."""
         entity = self.require_entity(entity_name)
         rb = entity.get_component(RigidBody)
         if rb is None:
-            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody")
+            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody", data=None)
         rb.apply_impulse(impulse_x, impulse_y)
-        return ActionResult(success=True, message=f"Impulse applied to {entity_name}")
+        return ActionResult(success=True, message=f"Impulse applied to {entity_name}", data=None)
 
     def apply_torque(self, entity_name: str, torque: float) -> ActionResult:
         """Aplica torque a una entidad con RigidBody."""
         entity = self.require_entity(entity_name)
         rb = entity.get_component(RigidBody)
         if rb is None:
-            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody")
+            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody", data=None)
         rb.apply_torque(torque)
-        return ActionResult(success=True, message=f"Torque applied to {entity_name}")
+        return ActionResult(success=True, message=f"Torque applied to {entity_name}", data=None)
 
     def set_collision_filter(self, entity_name: str, layer: int = 1, mask: int = 0xFFFFFFFF) -> ActionResult:
         """Set CollisionFilter2D on entity (layer and mask bitfields)."""
@@ -474,7 +478,7 @@ class RuntimeAPI(EngineAPIComponent):
         entity = self.require_entity(entity_name)
         rb = entity.get_component(RigidBody)
         if rb is None:
-            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody")
+            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody", data=None)
         rb.constant_force_x = float(fx)
         rb.constant_force_y = float(fy)
         return ActionResult(success=True, message=f"Constant force set on {entity_name}", data={"fx": fx, "fy": fy})
@@ -484,21 +488,21 @@ class RuntimeAPI(EngineAPIComponent):
         entity = self.require_entity(entity_name)
         rb = entity.get_component(RigidBody)
         if rb is None:
-            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody")
+            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody", data=None)
         valid = RigidBody.VALID_CCD_MODES
         if mode not in valid:
-            return ActionResult(success=False, message=f"Invalid CCD mode '{mode}'. Valid: {sorted(valid)}")
+            return ActionResult(success=False, message=f"Invalid CCD mode '{mode}'. Valid: {sorted(valid)}", data=None)
         rb.ccd_mode = mode
-        return ActionResult(success=True, message=f"CCD mode set to '{mode}' on {entity_name}")
+        return ActionResult(success=True, message=f"CCD mode set to '{mode}' on {entity_name}", data=None)
 
     def set_rigidbody_can_sleep(self, entity_name: str, can_sleep: bool) -> ActionResult:
         """Enable/disable sleeping for a RigidBody entity."""
         entity = self.require_entity(entity_name)
         rb = entity.get_component(RigidBody)
         if rb is None:
-            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody")
+            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody", data=None)
         rb.can_sleep = bool(can_sleep)
-        return ActionResult(success=True, message=f"can_sleep={rb.can_sleep} on {entity_name}")
+        return ActionResult(success=True, message=f"can_sleep={rb.can_sleep} on {entity_name}", data=None)
 
     def play_audio(self, entity_name: str) -> ActionResult:
         """Start audio playback for an AudioSource entity.
@@ -970,7 +974,6 @@ class RuntimeAPI(EngineAPIComponent):
         filled: bool = True,
     ) -> ActionResult:
         """Añade un rectángulo a los draw commands de CanvasItem2D."""
-        from engine.components.canvas_item_2d import CanvasItem2D
 
         entity = self.require_entity(entity_name)
         canvas = self._get_or_add_canvas_item(entity)
@@ -988,7 +991,6 @@ class RuntimeAPI(EngineAPIComponent):
         filled: bool = True,
     ) -> ActionResult:
         """Añade un círculo a los draw commands de CanvasItem2D."""
-        from engine.components.canvas_item_2d import CanvasItem2D
 
         entity = self.require_entity(entity_name)
         canvas = self._get_or_add_canvas_item(entity)
@@ -1007,7 +1009,6 @@ class RuntimeAPI(EngineAPIComponent):
         thickness: float = 1.0,
     ) -> ActionResult:
         """Añade una línea a los draw commands de CanvasItem2D."""
-        from engine.components.canvas_item_2d import CanvasItem2D
 
         entity = self.require_entity(entity_name)
         canvas = self._get_or_add_canvas_item(entity)
