@@ -91,8 +91,8 @@ class EngineAPI:
         from engine.systems.player_controller_system import PlayerControllerSystem
         from engine.systems.render_system import RenderSystem
         from engine.systems.script_behaviour_system import ScriptBehaviourSystem
-        from engine.systems.ui_system import UISystem
         from engine.systems.ui_render_system import UIRenderSystem
+        from engine.systems.ui_system import UISystem
 
         self.game = HeadlessGame()
         self.scene_manager = SceneManager(self._registry)
