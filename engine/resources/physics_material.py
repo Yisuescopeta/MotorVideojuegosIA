@@ -7,8 +7,12 @@ absorción (absorbent).
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+_physics_material_cache: dict[str, PhysicsMaterial | None] = {}
 
 
 @dataclass
@@ -64,3 +68,43 @@ class PhysicsMaterial:
             rough=bool(data.get("rough", False)),
             absorbent=bool(data.get("absorbent", False)),
         )
+
+
+def load_physics_material(path_str: str) -> PhysicsMaterial | None:
+    """Load a PhysicsMaterial from a JSON file path.
+
+    Supports absolute and relative paths. Uses pathlib + json.loads only —
+    no shell, no eval. Returns None if path is empty, file doesn't exist,
+    JSON is invalid, or data doesn't match PhysicsMaterial schema.
+
+    Results are cached: repeated loads for the same resolved path return
+    the cached instance (or cached None for failed loads).
+    """
+    if not path_str or not path_str.strip():
+        return None
+
+    resolved = Path(path_str)
+    if not resolved.is_absolute():
+        resolved = resolved.resolve()
+
+    cache_key = str(resolved)
+    if cache_key in _physics_material_cache:
+        return _physics_material_cache[cache_key]
+
+    try:
+        raw = resolved.read_text(encoding="utf-8")
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            _physics_material_cache[cache_key] = None
+            return None
+        mat = PhysicsMaterial.from_dict(data)
+        _physics_material_cache[cache_key] = mat
+        return mat
+    except (OSError, ValueError, TypeError):
+        _physics_material_cache[cache_key] = None
+        return None
+
+
+def clear_physics_material_cache() -> None:
+    """Clear the material cache (useful for tests)."""
+    _physics_material_cache.clear()

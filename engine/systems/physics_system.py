@@ -19,6 +19,7 @@ from engine.config import GRAVITY_DEFAULT, GROUND_Y_TEMP
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.physics.spatial_hash import SpatialHash2D
+from engine.resources.physics_material import load_physics_material
 
 AABB = tuple[float, float, float, float]
 
@@ -292,6 +293,26 @@ class PhysicsSystem:
             return "static"
         return rigidbody.body_type
 
+    @staticmethod
+    def _get_material_path_from_entity(entity: Entity) -> str:
+        """Extract physics_material_override_path from RigidBody or StaticBody2D."""
+        rb = entity.get_component(RigidBody)
+        if rb and rb.physics_material_override_path:
+            return rb.physics_material_override_path
+        sb = entity.get_component(StaticBody2D)
+        if sb and sb.physics_material_override_path:
+            return sb.physics_material_override_path
+        return ""
+
+    @staticmethod
+    def _resolve_material_props(path: str, collider: Collider) -> tuple[float, float]:
+        """Return (bounce, friction) from physics material if path valid, else collider fallback."""
+        if path:
+            mat = load_physics_material(path)
+            if mat is not None:
+                return mat.get_effective_bounce(), mat.get_effective_friction()
+        return collider.restitution, collider.friction
+
     def _layers_can_collide(self, world: World, entity: Entity, other: Entity) -> bool:
         matrix = world.feature_metadata.get("physics_2d", {}).get("layer_matrix", {})
         if not matrix:
@@ -402,9 +423,19 @@ class PhysicsSystem:
             elif rigidbody.velocity_x < 0:
                 transform.x += o_right - left
 
-            # Apply friction and bounce
-            bounce = max(collider.restitution, other.collider.restitution)
-            friction = (collider.friction + other.collider.friction) * 0.5
+            # Apply friction and bounce — physics material override with collider fallback
+            my_bounce, my_friction = self._resolve_material_props(
+                rigidbody.physics_material_override_path, collider,
+            )
+            other_bounce, other_friction = self._resolve_material_props(
+                self._get_material_path_from_entity(other.entity), other.collider,
+            )
+            bounce = max(my_bounce, other_bounce)
+            friction = (my_friction + other_friction) * 0.5
+            if not math.isfinite(bounce):
+                bounce = 1.0
+            if math.isnan(friction):
+                friction = 1.0
             rigidbody.velocity_x *= -bounce
             rigidbody.velocity_y *= max(0.0, 1.0 - friction * 0.5)
 
@@ -433,9 +464,19 @@ class PhysicsSystem:
             elif rigidbody.velocity_y < 0:
                 transform.y += o_bottom - top
 
-            # Apply friction and bounce
-            bounce = max(collider.restitution, other.collider.restitution)
-            friction = (collider.friction + other.collider.friction) * 0.5
+            # Apply friction and bounce — physics material override with collider fallback
+            my_bounce, my_friction = self._resolve_material_props(
+                rigidbody.physics_material_override_path, collider,
+            )
+            other_bounce, other_friction = self._resolve_material_props(
+                self._get_material_path_from_entity(other.entity), other.collider,
+            )
+            bounce = max(my_bounce, other_bounce)
+            friction = (my_friction + other_friction) * 0.5
+            if not math.isfinite(bounce):
+                bounce = 1.0
+            if math.isnan(friction):
+                friction = 1.0
             rigidbody.velocity_y *= -bounce
             rigidbody.velocity_x *= max(0.0, 1.0 - friction * 0.5)
 

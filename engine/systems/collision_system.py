@@ -65,6 +65,10 @@ class CollisionSystem:
         self._collisions.clear()
         self._reset_step_metrics()
         self._query_buffer.clear()
+
+        # Limpiar contactos runtime para RigidBodies con contact_monitor activo
+        self._clear_contact_tracking(world)
+
         grid = self._prepare_grid()
         entries_by_id = self._entries_by_id
         entries_by_id.clear()
@@ -151,10 +155,27 @@ class CollisionSystem:
                 self._step_metrics["actual_collisions"] += 1
                 self._emit_collision_event(collision)
 
+                # Registrar contactos en RigidBodies con contact_monitor activo
+                # Solo colisiones reales (no triggers), consistente con Godot body_entered
+                if not collision.is_trigger:
+                    a_id = int(collision.entity_a.id)
+                    b_id = int(collision.entity_b.id)
+                    if entry_a.rigidbody is not None:
+                        entry_a.rigidbody._register_contact(b_id)
+                    if entry_b.rigidbody is not None:
+                        entry_b.rigidbody._register_contact(a_id)
+
     def _reset_step_metrics(self) -> None:
         self._step_metrics["candidate_pairs"] = 0
         self._step_metrics["narrow_phase_pairs"] = 0
         self._step_metrics["actual_collisions"] = 0
+
+    def _clear_contact_tracking(self, world: World) -> None:
+        """Limpia el tracking de contactos para RigidBodies con contact_monitor activo."""
+        for entity in world.get_entities_with(Transform):
+            rb = entity.get_component(RigidBody)
+            if rb is not None and rb.contact_monitor:
+                rb._clear_contacts()
 
     def _prepare_grid(self) -> SpatialHash2D:
         if self._grid.cell_size != max(float(self._spatial_hash_cell_size), 1.0):
