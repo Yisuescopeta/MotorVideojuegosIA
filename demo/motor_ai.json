@@ -1,0 +1,3360 @@
+{
+    "schema_version": 3,
+    "engine": {
+        "name": "MotorVideojuegosIA",
+        "version": "2026.03",
+        "api_version": "1",
+        "capabilities_schema_version": 1
+    },
+    "implemented_capabilities": [
+        {
+            "id": "agent:action:approve",
+            "summary": "Approve or reject a pending agent action",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.approve_agent_action"
+            ],
+            "cli_command": "motor agent action approve <session> <action>",
+            "example": {
+                "description": "Approve a pending file write",
+                "api_calls": [
+                    {
+                        "method": "approve_agent_action",
+                        "args": {
+                            "session_id": "agent-session-id",
+                            "action_id": "agent-action-id",
+                            "approved": true
+                        }
+                    }
+                ],
+                "expected_outcome": "The pending action is executed and audited"
+            },
+            "notes": "Experimental/tooling API. Hard guards still block unsafe paths and obvious secrets.",
+            "tags": [
+                "agent",
+                "experimental",
+                "permissions"
+            ]
+        },
+        {
+            "id": "agent:editor_panel",
+            "summary": "Use the Agent panel next to Terminal with a live engine port",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.get_agent_session",
+                "AgentAPI.send_agent_message"
+            ],
+            "cli_command": "motor agent message send <session> /status",
+            "example": {
+                "description": "Inspect agent status from the same session model used by the editor panel",
+                "api_calls": [
+                    {
+                        "method": "send_agent_message",
+                        "args": {
+                            "session_id": "agent-session-id",
+                            "message": "/status"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns session mode, pending actions and provider state"
+            },
+            "notes": "UI capability documented for AI discovery; runtime-bound EngineAPI construction is internal editor tooling, not a core API.",
+            "tags": [
+                "agent",
+                "experimental",
+                "editor",
+                "tooling"
+            ]
+        },
+        {
+            "id": "agent:message:send",
+            "summary": "Send a message to an engine-native agent session",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.send_agent_message"
+            ],
+            "cli_command": "motor agent message send <session> <message>",
+            "example": {
+                "description": "Ask the fake provider to read a project file",
+                "api_calls": [
+                    {
+                        "method": "send_agent_message",
+                        "args": {
+                            "session_id": "agent-session-id",
+                            "message": "read README.md"
+                        }
+                    }
+                ],
+                "expected_outcome": "The session records the user message, assistant response and tool result or pending action"
+            },
+            "notes": "Experimental/tooling API. Mutating tool calls require approval unless the session is full_access.",
+            "tags": [
+                "agent",
+                "experimental",
+                "tooling"
+            ]
+        },
+        {
+            "id": "agent:permissions",
+            "summary": "Suspend mutating agent tools for approval and resume the same logical turn",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.approve_agent_action"
+            ],
+            "cli_command": "motor agent action approve <session> <action>",
+            "example": {
+                "description": "Approve a pending write and continue the agent turn",
+                "api_calls": [
+                    {
+                        "method": "approve_agent_action",
+                        "args": {
+                            "session_id": "agent-session-id",
+                            "action_id": "agent-action-id",
+                            "approved": true
+                        }
+                    }
+                ],
+                "expected_outcome": "The action emits a tool_result and the provider receives the result for continuation"
+            },
+            "notes": "Modes are confirm_actions and full_access. Hard guards still apply in both modes.",
+            "tags": [
+                "agent",
+                "experimental",
+                "permissions"
+            ]
+        },
+        {
+            "id": "agent:providers:list",
+            "summary": "List configured agent providers and metadata",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.list_agent_providers"
+            ],
+            "cli_command": "motor agent providers list",
+            "example": {
+                "description": "List offline and online agent provider adapters",
+                "api_calls": [
+                    {
+                        "method": "list_agent_providers",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns provider ids, kind, credential requirements, streaming and usage support"
+            },
+            "notes": "OpenAI is listed as online and requires OPENAI_API_KEY; fake/replay are test-only.",
+            "tags": [
+                "agent",
+                "experimental",
+                "providers"
+            ]
+        },
+        {
+            "id": "agent:providers:login",
+            "summary": "Store provider credentials or delegate managed Codex/OpenAI login",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.login_agent_provider"
+            ],
+            "cli_command": "motor agent providers login <provider> [--api-key-stdin] [--codex-chatgpt] [--device-auth] [--base-url <url>] [--model <model>]",
+            "example": {
+                "description": "Configure an agent provider credential without exposing the key in shell history",
+                "api_calls": [
+                    {
+                        "method": "login_agent_provider",
+                        "args": {
+                            "provider_id": "openai",
+                            "credential_source": "user_local"
+                        }
+                    }
+                ],
+                "expected_outcome": "Stores local provider auth metadata or delegates to managed Codex/OpenAI auth"
+            },
+            "notes": "Experimental/tooling. CLI requires --api-key-stdin for raw keys, or --codex-chatgpt/--device-auth for managed login.",
+            "tags": [
+                "agent",
+                "experimental",
+                "providers",
+                "auth"
+            ]
+        },
+        {
+            "id": "agent:providers:logout",
+            "summary": "Remove user-local provider credentials",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.logout_agent_provider"
+            ],
+            "cli_command": "motor agent providers logout <provider>",
+            "example": {
+                "description": "Remove a stored provider credential",
+                "api_calls": [
+                    {
+                        "method": "logout_agent_provider",
+                        "args": {
+                            "provider_id": "openai"
+                        }
+                    }
+                ],
+                "expected_outcome": "Provider credential metadata is removed without revealing secrets"
+            },
+            "notes": "Experimental/tooling. Does not remove environment variables or external managed auth state.",
+            "tags": [
+                "agent",
+                "experimental",
+                "providers",
+                "auth"
+            ]
+        },
+        {
+            "id": "agent:providers:status",
+            "summary": "Show provider authentication status without revealing secrets",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.get_agent_provider_status"
+            ],
+            "cli_command": "motor agent providers status [provider]",
+            "example": {
+                "description": "Inspect whether OpenAI provider auth is available",
+                "api_calls": [
+                    {
+                        "method": "get_agent_provider_status",
+                        "args": {
+                            "provider_id": "openai"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns credential source, auth method and runtime readiness without secret values"
+            },
+            "notes": "Experimental/tooling. Omitting provider returns default/provider-wide status.",
+            "tags": [
+                "agent",
+                "experimental",
+                "providers",
+                "auth",
+                "diagnostics"
+            ]
+        },
+        {
+            "id": "agent:runtime",
+            "summary": "Run the v3 clean-room agent turn loop with provider/tool-result continuation",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.send_agent_message",
+                "AgentAPI.approve_agent_action"
+            ],
+            "cli_command": "motor agent message send <session> <message>",
+            "example": {
+                "description": "Send a message that may trigger tools and continue after tool results",
+                "api_calls": [
+                    {
+                        "method": "send_agent_message",
+                        "args": {
+                            "session_id": "agent-session-id",
+                            "message": "read README.md"
+                        }
+                    }
+                ],
+                "expected_outcome": "The session records provider events, tool results and a final assistant response"
+            },
+            "notes": "Experimental/tooling. Fake/replay remain offline test providers; OpenAI is available as opt-in online provider requiring environment credentials.",
+            "tags": [
+                "agent",
+                "experimental",
+                "runtime"
+            ]
+        },
+        {
+            "id": "agent:session:compact",
+            "summary": "Compact an agent session transcript into local memory",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.compact_agent_session"
+            ],
+            "cli_command": "motor agent session compact <session>",
+            "example": {
+                "description": "Compact an agent session",
+                "api_calls": [
+                    {
+                        "method": "compact_agent_session",
+                        "args": {
+                            "session_id": "agent-session-id"
+                        }
+                    }
+                ],
+                "expected_outcome": "Stores a sanitized session summary and keeps recent messages"
+            },
+            "notes": "Experimental/tooling. Protected paths and obvious secrets are excluded from memory summaries.",
+            "tags": [
+                "agent",
+                "experimental",
+                "memory"
+            ]
+        },
+        {
+            "id": "agent:session:create",
+            "summary": "Create an experimental clean-room agent session inside the engine",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.create_agent_session"
+            ],
+            "cli_command": "motor agent session create",
+            "example": {
+                "description": "Create a confirm-actions agent session",
+                "api_calls": [
+                    {
+                        "method": "create_agent_session",
+                        "args": {
+                            "permission_mode": "confirm_actions"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns a session id and empty session state"
+            },
+            "notes": "Experimental/tooling API and CLI. Uses an offline deterministic test provider by default.",
+            "tags": [
+                "agent",
+                "experimental",
+                "tooling"
+            ]
+        },
+        {
+            "id": "agent:session:inspect",
+            "summary": "Inspect an agent session without mutating it",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.inspect_agent_session"
+            ],
+            "cli_command": "motor agent session inspect <session>",
+            "example": {
+                "description": "Inspect session state and runtime config",
+                "api_calls": [
+                    {
+                        "method": "inspect_agent_session",
+                        "args": {
+                            "session_id": "agent-session-id"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns schema, provider, pending actions, runtime config and usage counts"
+            },
+            "notes": "Read-only diagnostic command for migrated or manually edited sessions.",
+            "tags": [
+                "agent",
+                "experimental",
+                "diagnostics"
+            ]
+        },
+        {
+            "id": "agent:tools",
+            "summary": "List and execute safe engine-native agent tools through the v2 tool pipeline",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.list_agent_tools",
+                "AgentAPI.send_agent_message"
+            ],
+            "cli_command": "motor agent message send <session> /tools",
+            "example": {
+                "description": "Ask the session to list available tools",
+                "api_calls": [
+                    {
+                        "method": "list_agent_tools",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns tool specs with permission and preview metadata"
+            },
+            "notes": "Tools validate input, build previews, resolve permissions, execute and map tool_result records.",
+            "tags": [
+                "agent",
+                "experimental",
+                "tools"
+            ]
+        },
+        {
+            "id": "agent:usage",
+            "summary": "Show token and cost usage recorded for an agent session",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AgentAPI.get_agent_usage"
+            ],
+            "cli_command": "motor agent usage <session>",
+            "example": {
+                "description": "Inspect session token usage",
+                "api_calls": [
+                    {
+                        "method": "get_agent_usage",
+                        "args": {
+                            "session_id": "agent-session-id"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns usage records and totals; cost is unknown unless pricing is configured"
+            },
+            "notes": "Cost is never invented. It remains unknown when provider usage or prices are unavailable.",
+            "tags": [
+                "agent",
+                "experimental",
+                "usage"
+            ]
+        },
+        {
+            "id": "ai:compliance",
+            "summary": "Validate whether a project follows the AI-native engine contract",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AssetsProjectAPI.run_ai_compliance"
+            ],
+            "cli_command": "motor ai compliance [--project <path>] [--strict] [--json]",
+            "example": {
+                "description": "Run strict AI compliance checks after a change",
+                "api_calls": [
+                    {
+                        "method": "run_ai_compliance",
+                        "args": {
+                            "strict": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns native score, strict status, runtime warnings and next actions"
+            },
+            "notes": "Read-only. Strict mode fails on suspicious external runtimes or missing native loadable scenes.",
+            "tags": [
+                "ai",
+                "introspection",
+                "validation",
+                "compliance"
+            ]
+        },
+        {
+            "id": "ai:self-test",
+            "summary": "Run a controlled AI self-test workflow in a temporary project by default",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "CapabilityRegistry.cmd_ai_self_test"
+            ],
+            "cli_command": "motor ai self-test [--project <path>] [--profile platformer] [--in-place] [--json]",
+            "example": {
+                "description": "Run the platformer AI self-test without mutating the real project",
+                "api_calls": [
+                    {
+                        "method": "cmd_ai_self_test",
+                        "args": {
+                            "project_path": ".",
+                            "profile": "platformer",
+                            "in_place": false,
+                            "json_output": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Creates a temporary platformer project, validates authoring/runtime/compliance, reports JSON, then removes the temporary workspace"
+            },
+            "notes": "Uses the bundled platformer-basic recipe through allowlisted motor commands. By default it creates a temporary project under .motor/tmp, runs validations, and removes that workspace. It does not mutate the real project unless --in-place is provided.",
+            "tags": [
+                "ai",
+                "validation",
+                "self-test",
+                "ci",
+                "workflow"
+            ]
+        },
+        {
+            "id": "ai:start",
+            "summary": "Show the compact AI entrypoint contract for this project",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "CapabilityRegistry.cmd_ai_start"
+            ],
+            "cli_command": "motor ai start [--project <path>] [--json]",
+            "example": {
+                "description": "Load the project contract an AI assistant should follow first",
+                "api_calls": [
+                    {
+                        "method": "cmd_ai_start",
+                        "args": {
+                            "project_path": ".",
+                            "json_output": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns engine identity, official CLI/API, scene context, initial commands, workflows and anti-runtime rules"
+            },
+            "notes": "Read-only. This is the recommended first command for AI assistants working on a project.",
+            "tags": [
+                "ai",
+                "introspection",
+                "bootstrap",
+                "contract"
+            ]
+        },
+        {
+            "id": "animator:ensure",
+            "summary": "Ensure Animator exists on entity with optional sheet (creates or updates)",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.add_component",
+                "AuthoringAPI.set_animator_sprite_sheet"
+            ],
+            "cli_command": "motor animator ensure <entity> [--sheet <asset>]",
+            "example": {
+                "description": "Ensure Player has Animator with sprite sheet",
+                "api_calls": [
+                    {
+                        "method": "add_component",
+                        "args": {
+                            "entity_name": "Player",
+                            "component_name": "Animator",
+                            "data": {
+                                "enabled": true,
+                                "speed": 1.0,
+                                "sprite_sheet": "assets/player.png"
+                            }
+                        }
+                    }
+                ],
+                "expected_outcome": "Animator exists on Player with sprite_sheet set to assets/player.png (created if missing, sheet updated if different)"
+            },
+            "notes": "Idempotent operation. If Animator does NOT exist: creates it with the provided sheet. If Animator ALREADY exists and no sheet provided: succeeds without changes. If Animator ALREADY exists and sheet provided: updates the sheet. This provides a single-command 'ensure exists with this configuration' workflow ideal for headless automation.",
+            "tags": [
+                "animator",
+                "setup",
+                "idempotent"
+            ]
+        },
+        {
+            "id": "animator:info",
+            "summary": "Get detailed information about an entity's Animator",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.get_animator_info"
+            ],
+            "cli_command": "motor animator info <entity>",
+            "example": {
+                "description": "Get animator details for Player",
+                "api_calls": [
+                    {
+                        "method": "get_animator_info",
+                        "args": {
+                            "entity_name": "Player"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns sprite_sheet, frame size, states list with durations"
+            },
+            "notes": "Useful for debugging animation states and verifying configuration.",
+            "tags": [
+                "animator",
+                "query"
+            ]
+        },
+        {
+            "id": "animator:set_sheet",
+            "summary": "Set the sprite sheet asset for an Animator",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.set_animator_sprite_sheet"
+            ],
+            "cli_command": "motor animator set-sheet <entity> <asset>",
+            "example": {
+                "description": "Set player sprite sheet",
+                "api_calls": [
+                    {
+                        "method": "set_animator_sprite_sheet",
+                        "args": {
+                            "entity_name": "Player",
+                            "asset_path": "assets/player.png"
+                        }
+                    }
+                ],
+                "expected_outcome": "Player's Animator now references the specified sprite sheet"
+            },
+            "notes": "The asset must have slices defined. Used before creating animation states. Requires Animator to already exist; use 'animator ensure' if you need to create and set sheet in one operation.",
+            "tags": [
+                "animator",
+                "setup"
+            ]
+        },
+        {
+            "id": "animator:state:create",
+            "summary": "Create or update an animation state",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.upsert_animator_state"
+            ],
+            "cli_command": "motor animator state create <entity> <state> --slices <slices...> [--fps <n>] [--loop|--no-loop] [--set-default] [--auto-create]",
+            "example": {
+                "description": "Create idle animation state using slice_0 through slice_3",
+                "api_calls": [
+                    {
+                        "method": "upsert_animator_state",
+                        "args": {
+                            "entity_name": "Player",
+                            "state_name": "idle",
+                            "slice_names": [
+                                "slice_0",
+                                "slice_1",
+                                "slice_2",
+                                "slice_3"
+                            ],
+                            "fps": 8,
+                            "loop": true
+                        }
+                    }
+                ],
+                "expected_outcome": "'idle' state created on Player's Animator (upserts if exists)"
+            },
+            "notes": "Upserts: creates if not exists, updates if exists. Use --auto-create to create Animator component if missing. First state becomes default. --loop enables looping (default), --no-loop disables it.",
+            "tags": [
+                "animator",
+                "animation",
+                "state"
+            ]
+        },
+        {
+            "id": "animator:state:remove",
+            "summary": "Remove an animation state from an Animator",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.remove_animator_state"
+            ],
+            "cli_command": "motor animator state remove <entity> <state>",
+            "example": {
+                "description": "Remove the unused 'hurt' state",
+                "api_calls": [
+                    {
+                        "method": "remove_animator_state",
+                        "args": {
+                            "entity_name": "Player",
+                            "state_name": "hurt"
+                        }
+                    }
+                ],
+                "expected_outcome": "'hurt' state removed. Default and current state updated if they referenced 'hurt'. Any on_complete references to 'hurt' are cleared (set to null)."
+            },
+            "notes": "CAN remove the last state (schema allows empty animations object). When the last state is removed, default_state is set to the removed state's name as a placeholder (schema requires non-empty string). When removing a state, on_complete references pointing to it from other states are automatically cleared.",
+            "tags": [
+                "animator",
+                "animation",
+                "state"
+            ]
+        },
+        {
+            "id": "asset:list",
+            "summary": "List all assets in the project catalog",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AssetsProjectAPI.list_project_assets"
+            ],
+            "cli_command": "motor asset list [--search <query>]",
+            "example": {
+                "description": "List all sprite assets",
+                "api_calls": [
+                    {
+                        "method": "list_project_assets",
+                        "args": {
+                            "search": "sprite"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns filtered list of asset records with paths and guids"
+            },
+            "notes": "Search matches against asset paths. Results include guid, path, asset_kind, importer.",
+            "tags": [
+                "asset",
+                "query"
+            ]
+        },
+        {
+            "id": "asset:slice:auto",
+            "summary": "Auto-detect slices from a sprite sheet asset",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AssetsProjectAPI.preview_auto_slices",
+                "AssetsProjectAPI.create_auto_slices"
+            ],
+            "cli_command": "motor asset slice auto <asset> [--preview]",
+            "example": {
+                "description": "Auto-detect slices for player sprite",
+                "api_calls": [
+                    {
+                        "method": "create_auto_slices",
+                        "args": {
+                            "asset_path": "assets/player.png"
+                        }
+                    }
+                ],
+                "expected_outcome": "Slices auto-detected and saved to asset metadata"
+            },
+            "notes": "Uses alpha channel to detect sprite boundaries. Preview mode shows detections without saving.",
+            "tags": [
+                "asset",
+                "slicing",
+                "sprite"
+            ]
+        },
+        {
+            "id": "asset:slice:grid",
+            "summary": "Create grid-based slices from a sprite sheet asset",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AssetsProjectAPI.create_grid_slices"
+            ],
+            "cli_command": "motor asset slice grid <asset> --cell-width <w> --cell-height <h>",
+            "example": {
+                "description": "Slice a 256x256 sprite sheet into 32x32 tiles",
+                "api_calls": [
+                    {
+                        "method": "create_grid_slices",
+                        "args": {
+                            "asset_path": "assets/tiles.png",
+                            "cell_width": 32,
+                            "cell_height": 32,
+                            "margin": 0,
+                            "spacing": 0
+                        }
+                    }
+                ],
+                "expected_outcome": "Asset metadata updated with grid-based slice definitions"
+            },
+            "notes": "Creates uniform slices based on cell size. Non-uniform regions require manual slicing.",
+            "tags": [
+                "asset",
+                "slicing",
+                "sprite"
+            ]
+        },
+        {
+            "id": "asset:slice:list",
+            "summary": "List all slices defined for an asset",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AssetsProjectAPI.list_asset_slices"
+            ],
+            "cli_command": "motor asset slice list <asset>",
+            "example": {
+                "description": "List slices for player sprite sheet",
+                "api_calls": [
+                    {
+                        "method": "list_asset_slices",
+                        "args": {
+                            "asset_path": "assets/player.png"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns list of slice definitions with names and rectangles"
+            },
+            "notes": "Slices are stored in asset metadata and referenced by name in Animator.",
+            "tags": [
+                "asset",
+                "slicing"
+            ]
+        },
+        {
+            "id": "asset:slice:manual",
+            "summary": "Save manually defined slices for an asset",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AssetsProjectAPI.save_manual_slices"
+            ],
+            "cli_command": "motor asset slice manual <asset> --slices <json>",
+            "example": {
+                "description": "Save manual slice definitions",
+                "api_calls": [
+                    {
+                        "method": "save_manual_slices",
+                        "args": {
+                            "asset_path": "assets/player.png",
+                            "slices": [
+                                {
+                                    "name": "idle_0",
+                                    "x": 0,
+                                    "y": 0,
+                                    "width": 32,
+                                    "height": 32
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "expected_outcome": "Manual slices saved to asset metadata"
+            },
+            "notes": "Use for non-uniform sprites that don't fit grid or auto-detection.",
+            "tags": [
+                "asset",
+                "slicing",
+                "sprite"
+            ]
+        },
+        {
+            "id": "component:add",
+            "summary": "Add a component to an existing entity",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.add_component"
+            ],
+            "cli_command": "motor component add <entity> <component> [--data <json>]",
+            "example": {
+                "description": "Add a Sprite to the Player",
+                "api_calls": [
+                    {
+                        "method": "add_component",
+                        "args": {
+                            "entity_name": "Player",
+                            "component_name": "Sprite",
+                            "data": {
+                                "asset_path": "assets/player.png"
+                            }
+                        }
+                    }
+                ],
+                "expected_outcome": "Player entity now has a Sprite component"
+            },
+            "notes": "Component data is optional; defaults are used if not provided. Fails if component already exists. Use canonical component names from the component registry.",
+            "tags": [
+                "component",
+                "authoring"
+            ]
+        },
+        {
+            "id": "component:edit",
+            "summary": "Edit a property of an existing component",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.edit_component"
+            ],
+            "cli_command": "motor component edit <entity> <component> <property> <value>",
+            "example": {
+                "description": "Move player to x=200",
+                "api_calls": [
+                    {
+                        "method": "edit_component",
+                        "args": {
+                            "entity_name": "Player",
+                            "component": "Transform",
+                            "property": "x",
+                            "value": 200
+                        }
+                    }
+                ],
+                "expected_outcome": "Player's Transform.x is updated to 200"
+            },
+            "notes": "Property names are component-specific. Type conversion is automatic.",
+            "tags": [
+                "component",
+                "authoring"
+            ]
+        },
+        {
+            "id": "component:remove",
+            "summary": "Remove a component from an entity",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.remove_component"
+            ],
+            "cli_command": "motor component remove <entity> <component>",
+            "example": {
+                "description": "Remove the Collider from an entity",
+                "api_calls": [
+                    {
+                        "method": "remove_component",
+                        "args": {
+                            "entity_name": "Player",
+                            "component_name": "Collider"
+                        }
+                    }
+                ],
+                "expected_outcome": "Collider component is removed from Player"
+            },
+            "notes": "Some components (like Transform) are required and cannot be removed. Use canonical component names from the component registry.",
+            "tags": [
+                "component",
+                "authoring"
+            ]
+        },
+        {
+            "id": "debug:overlay",
+            "summary": "Enable or disable the debug overlay",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "DebugAPI.configure_debug_overlay"
+            ],
+            "cli_command": "motor debug overlay <on|off>",
+            "example": {
+                "description": "Enable debug overlay with colliders and labels",
+                "api_calls": [
+                    {
+                        "method": "configure_debug_overlay",
+                        "args": {
+                            "draw_colliders": true,
+                            "draw_labels": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Debug overlay configuration updated"
+            },
+            "notes": "Toggles draw_colliders and draw_labels debug rendering.",
+            "tags": [
+                "debug",
+                "rendering"
+            ]
+        },
+        {
+            "id": "debug:profiler:report",
+            "summary": "Get the current profiler report",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "DebugAPI.get_profiler_report"
+            ],
+            "cli_command": "motor debug profiler report",
+            "example": {
+                "description": "Get the current profiler report",
+                "api_calls": [
+                    {
+                        "method": "get_profiler_report",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns timing data for subsystems and frames"
+            },
+            "notes": "Returns timing data for subsystems and frames.",
+            "tags": [
+                "debug",
+                "profiler",
+                "query"
+            ]
+        },
+        {
+            "id": "debug:profiler:reset",
+            "summary": "Reset the profiler",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "DebugAPI.reset_profiler"
+            ],
+            "cli_command": "motor debug profiler reset",
+            "example": {
+                "description": "Reset the profiler",
+                "api_calls": [
+                    {
+                        "method": "reset_profiler",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Profiler data cleared"
+            },
+            "notes": "Resets accumulated profiler data for a fresh measurement.",
+            "tags": [
+                "debug",
+                "profiler"
+            ]
+        },
+        {
+            "id": "entity:create",
+            "summary": "Create a new entity with optional components",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity"
+            ],
+            "cli_command": "motor entity create <name> [--components <json>]",
+            "example": {
+                "description": "Create a player entity with Transform",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Player",
+                            "components": {
+                                "Transform": {
+                                    "x": 100,
+                                    "y": 200
+                                }
+                            }
+                        }
+                    }
+                ],
+                "expected_outcome": "Entity 'Player' exists in active scene with Transform component"
+            },
+            "notes": "Entity names must be unique in the scene. Components are optional at creation. Use --components '{\"Transform\":{\"x\":100}}' to add components.",
+            "tags": [
+                "entity",
+                "authoring"
+            ]
+        },
+        {
+            "id": "entity:create-child",
+            "summary": "Create a child entity under a parent",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_child_entity"
+            ],
+            "cli_command": "motor entity create-child <parent_id> --name <name>",
+            "example": {
+                "description": "Create a Hitbox child under Player",
+                "api_calls": [
+                    {
+                        "method": "create_child_entity",
+                        "args": {
+                            "parent_name": "Player",
+                            "name": "Hitbox"
+                        }
+                    }
+                ],
+                "expected_outcome": "Hitbox entity created as child of Player"
+            },
+            "notes": "Auto-saves scene after creation. Child inherits parent transform hierarchy.",
+            "tags": [
+                "entity",
+                "hierarchy",
+                "authoring"
+            ]
+        },
+        {
+            "id": "entity:delete",
+            "summary": "Remove an entity from the active scene, reparenting children to grandparent",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.delete_entity"
+            ],
+            "cli_command": "motor entity delete <name>",
+            "example": {
+                "description": "Delete the Player entity",
+                "api_calls": [
+                    {
+                        "method": "delete_entity",
+                        "args": {
+                            "name": "Player"
+                        }
+                    }
+                ],
+                "expected_outcome": "Entity 'Player' is removed; any children are reparented to Player's parent (or unparented if Player had no parent). Children preserve their world transform."
+            },
+            "notes": "CHILDREN ARE NOT DELETED - they are reparented to the deleted entity's parent (grandparent). Their local transforms are recalculated to preserve world position. Use remove_entity_subtree for recursive deletion. Cannot be undone automatically.",
+            "tags": [
+                "entity",
+                "authoring"
+            ]
+        },
+        {
+            "id": "entity:group:add",
+            "summary": "Add an entity to a group",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.add_entity_to_group"
+            ],
+            "cli_command": "motor entity group add <entity_id> <group_name>",
+            "example": {
+                "description": "Add Player to Enemies group",
+                "api_calls": [
+                    {
+                        "method": "add_entity_to_group",
+                        "args": {
+                            "entity_name": "Player",
+                            "group_name": "Players"
+                        }
+                    }
+                ],
+                "expected_outcome": "Entity added to group, scene saved"
+            },
+            "notes": "Persists group membership in scene data. Saves scene after mutation.",
+            "tags": [
+                "entity",
+                "group",
+                "authoring"
+            ]
+        },
+        {
+            "id": "entity:group:list",
+            "summary": "List entities in a group or all groups",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.get_entities_in_group"
+            ],
+            "cli_command": "motor entity group list [<group_name>]",
+            "example": {
+                "description": "List all entities in the Players group",
+                "api_calls": [
+                    {
+                        "method": "get_entities_in_group",
+                        "args": {
+                            "group_name": "Players"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns list of entity names in the group"
+            },
+            "notes": "Without group_name, lists all groups and their members.",
+            "tags": [
+                "entity",
+                "group",
+                "query"
+            ]
+        },
+        {
+            "id": "entity:group:remove",
+            "summary": "Remove an entity from a group",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.remove_entity_from_group"
+            ],
+            "cli_command": "motor entity group remove <entity_id> <group_name>",
+            "example": {
+                "description": "Remove Player from Players group",
+                "api_calls": [
+                    {
+                        "method": "remove_entity_from_group",
+                        "args": {
+                            "entity_name": "Player",
+                            "group_name": "Players"
+                        }
+                    }
+                ],
+                "expected_outcome": "Entity removed from group, scene saved"
+            },
+            "notes": "Removes group membership from scene data. Saves scene after mutation.",
+            "tags": [
+                "entity",
+                "group",
+                "authoring"
+            ]
+        },
+        {
+            "id": "entity:list",
+            "summary": "List all entities in the active scene, optionally filtered",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.list_entities"
+            ],
+            "cli_command": "motor entity list [--tag <tag>] [--layer <layer>] [--active-only]",
+            "example": {
+                "description": "List all active entities with the 'Enemy' tag",
+                "api_calls": [
+                    {
+                        "method": "list_entities",
+                        "args": {
+                            "tag": "Enemy",
+                            "active": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns list of EntityData for matching entities"
+            },
+            "notes": "Filtering is optional. Returns empty list if no entities match.",
+            "tags": [
+                "entity",
+                "query",
+                "runtime"
+            ]
+        },
+        {
+            "id": "entity:parent",
+            "summary": "Set or change an entity's parent for hierarchical transforms",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.set_entity_parent"
+            ],
+            "cli_command": "motor entity set-parent <entity_id> <parent_id>",
+            "example": {
+                "description": "Parent a weapon to the player",
+                "api_calls": [
+                    {
+                        "method": "set_entity_parent",
+                        "args": {
+                            "name": "Sword",
+                            "parent_name": "Player"
+                        }
+                    }
+                ],
+                "expected_outcome": "Sword becomes a child of Player and inherits its transform"
+            },
+            "notes": "Pass None/null as parent to unparent. Child transform is applied relative to parent.",
+            "tags": [
+                "entity",
+                "hierarchy",
+                "transform"
+            ]
+        },
+        {
+            "id": "game:platformer:add-checkpoint",
+            "summary": "Create or update a named native checkpoint in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-checkpoint --name <entity> --x <px> --y <px> --id <id> [--project <path>]",
+            "example": {
+                "description": "Ensure Checkpoint_A uses checkpoint id cp_a",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Checkpoint_A"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Checkpoint_A with Transform, trigger Collider, Checkpoint2D and RespawnPoint2D"
+            },
+            "notes": "Requires --name. Runtime-supported by Gameplay2DSemanticSystem: touching Player emits checkpoint event and can activate a session respawn. Adds RespawnPoint2D with the same id for simple gameplay2d compatibility.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-coin",
+            "summary": "Create or update native platformer Coin in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-coin [--x <px>] [--y <px>] [--points <int>] [--name <entity>] [--project <path>]",
+            "example": {
+                "description": "Ensure Coin at pixel position (320, 200)",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Coin"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Coin with Transform, trigger Collider and Collectible2D"
+            },
+            "notes": "Uses semantic Collectible2D data; no external scripts. Without --name, creates the next Coin_###. With --name, updates that entity if it exists.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-enemy-patrol",
+            "summary": "Create or update a named native enemy patrol in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-enemy-patrol --name <entity> --x <px> --y <px> --point <x,y> [--point <x,y> ...] --damage <int> --speed <px_per_sec> [--project <path>]",
+            "example": {
+                "description": "Ensure Slime_A has two patrol points",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Slime_A"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Slime_A with Transform, trigger Collider and EnemyPatrol2D"
+            },
+            "notes": "Requires --name. Patrol points use x,y pixel pairs. Runtime-supported by Gameplay2DSemanticSystem: EnemyPatrol2D patrols cyclically through patrol_points when entity active + component enabled + 2+ points + speed > 0. Emits enemy_patrol_started and enemy_patrol_reached_point. On contact with Player emits enemy_touched, then respawns Player using session checkpoint/runtime respawn or first active RespawnPoint2D; if none exists emits enemy_respawn_missing. If EnemyPatrol2D and Hazard2D coexist on the same entity, EnemyPatrol2D (when enabled) absorbs the interaction to avoid double damage/double respawn. No health or advanced pathfinding.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-goal",
+            "summary": "Create or update native platformer Goal in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-goal [--x <px>] [--y <px>] [--name <entity>] [--project <path>]",
+            "example": {
+                "description": "Ensure Goal at pixel position (1100, 200)",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Goal"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Goal with Transform, trigger Collider and Goal2D"
+            },
+            "notes": "Uses no concrete asset references. Without --name, creates Goal when missing, otherwise the next Goal_###. With --name, updates that entity if it exists.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-ground",
+            "summary": "Create or update native platformer Ground in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-ground [--from-x <cell>] [--to-x <cell>] [--y <cell>] [--name <entity>] [--project <path>]",
+            "example": {
+                "description": "Ensure ground from grid cell 0 to 20 at row 8",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Ground"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Ground with Transform and non-trigger Collider"
+            },
+            "notes": "Grid units use 64 pixels. from-x/to-x form a half-open range [from-x,to-x). Without --name, creates the next Ground_###. With --name, updates that entity if it exists.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-hazard",
+            "summary": "Create or update native platformer Hazard in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-hazard [--x <px>] [--y <px>] [--damage <int>] [--name <entity>] [--project <path>]",
+            "example": {
+                "description": "Ensure Hazard at pixel position (640, 300)",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Hazard"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Hazard with Transform, trigger Collider and Hazard2D"
+            },
+            "notes": "Uses semantic Hazard2D data; no external scripts. Without --name, creates the next Hazard_###. With --name, updates that entity if it exists.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-killzone",
+            "summary": "Create or update a named native killzone in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-killzone --name <entity> --x <px> --y <px> --width <px> --height <px> --damage <int> [--project <path>]",
+            "example": {
+                "description": "Ensure Pit_A is a killzone trigger",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Pit_A"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Pit_A with Transform, trigger Collider and KillZone2D"
+            },
+            "notes": "Requires --name. Runtime-supported by Gameplay2DSemanticSystem: touching Player emits killzone event and can respawn at the active checkpoint or first active RespawnPoint2D.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-moving-platform",
+            "summary": "Create or update a named native moving platform in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-moving-platform --name <entity> --x <px> --y <px> --width <px> --height <px> --to-x <px> --to-y <px> --speed <px_per_sec> [--project <path>]",
+            "example": {
+                "description": "Ensure Lift_A moves between two pixel positions",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Lift_A"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Lift_A with Transform, Collider and MovingPlatform2D"
+            },
+            "notes": "Requires --name for idempotent authoring. Runtime-supported by Gameplay2DSemanticSystem: moves along the serialized path, emits moving_platform_started, moving_platform_reached_point and moving_platform_completed, and can carry Player when Player Collider rests on the platform Collider before frame movement. Rider support is minimal, Player-focused, Collider/AABB-based, and does not persist runtime progress. moving_platform_rider_attached, moving_platform_rider_moved and moving_platform_rider_detached are planned, not current public events.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-platform",
+            "summary": "Create or update native platformer Platform in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-platform [--x <cell>] [--y <cell>] [--width <cells>] [--name <entity>] [--project <path>]",
+            "example": {
+                "description": "Ensure a platform at grid cell x=5 y=6 width=3",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Platform"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Platform with Transform and non-trigger Collider"
+            },
+            "notes": "Grid units use 64 pixels. x is the left grid cell and width is measured in grid cells. Without --name, creates the next Platform_###. With --name, updates that entity if it exists.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-player",
+            "summary": "Create or update the native platformer Player in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-player [--x <px>] [--y <px>] [--project <path>]",
+            "example": {
+                "description": "Ensure Player at pixel position (100, 300)",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Player"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Player with Transform, Collider, RigidBody, InputMap and PlayerController2D"
+            },
+            "notes": "Selects active scene, editor_state.active_scene, startup_scene or first loadable levels scene. Does not use last_scene.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:add-respawn",
+            "summary": "Create or update native platformer RespawnPoint in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer add-respawn [--x <px>] [--y <px>] [--id <id>] [--project <path>]",
+            "example": {
+                "description": "Ensure default respawn point at pixel position (100, 300)",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Respawn_default"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains Respawn_default with Transform and RespawnPoint2D"
+            },
+            "notes": "Entity name is Respawn_<id> using a safe id suffix. Uses no external scripts.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring"
+            ]
+        },
+        {
+            "id": "game:platformer:create",
+            "summary": "Create a minimal native 2D platformer scene scaffold",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.create_scene",
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.create_camera2d"
+            ],
+            "cli_command": "motor game platformer create <name> [--project <path>]",
+            "example": {
+                "description": "Create a minimal platformer scene called 'Level 1'",
+                "api_calls": [
+                    {
+                        "method": "create_scene",
+                        "args": {
+                            "name": "Level 1"
+                        }
+                    },
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "Player"
+                        }
+                    },
+                    {
+                        "method": "create_camera2d",
+                        "args": {
+                            "name": "MainCamera"
+                        }
+                    }
+                ],
+                "expected_outcome": "Creates levels/level_1.json with Player, Ground, Goal and MainCamera, then updates startup_scene"
+            },
+            "notes": "Uses only public EngineAPI authoring surfaces. Creates Player with Transform, Collider, RigidBody, InputMap and PlayerController2D. Uses entity-based Ground and Goal instead of Tilemap or scripts.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring",
+                "scaffold"
+            ]
+        },
+        {
+            "id": "game:platformer:set-bounds",
+            "summary": "Create or update native platformer level bounds in the selected scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer set-bounds --name <entity> --left <px> --right <px> --top <px> --bottom <px> [--camera <camera>] [--project <path>]",
+            "example": {
+                "description": "Set level bounds and clamp MainCamera",
+                "api_calls": [
+                    {
+                        "method": "create_entity",
+                        "args": {
+                            "name": "LevelBounds"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene contains LevelBounds2D and optional Camera2D clamp values"
+            },
+            "notes": "Requires --name. Runtime-supported by Gameplay2DSemanticSystem: Player exits emit level_bounds_exited, horizontal exits clamp x, and bottom exits respawn or emit level_bounds_respawn_missing. If --camera is provided, Camera2D clamp fields are synchronized.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring",
+                "camera"
+            ]
+        },
+        {
+            "id": "game:platformer:set-camera-follow",
+            "summary": "Create or update Camera2D follow settings in the selected platformer scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.create_entity",
+                "AuthoringAPI.replace_component_data",
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor game platformer set-camera-follow --name <camera> --target <entity> [--offset-x <px>] [--offset-y <px>] [--dead-zone-width <px>] [--dead-zone-height <px>] [--zoom <float>] [--project <path>]",
+            "example": {
+                "description": "Make MainCamera follow Player",
+                "api_calls": [
+                    {
+                        "method": "replace_component_data",
+                        "args": {
+                            "entity_name": "MainCamera",
+                            "component_name": "Camera2D"
+                        }
+                    },
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Selected scene has MainCamera Camera2D.follow_entity set to Player"
+            },
+            "notes": "Uses existing Camera2D fields instead of adding a CameraFollowTarget2D component.",
+            "tags": [
+                "game",
+                "platformer",
+                "authoring",
+                "camera"
+            ]
+        },
+        {
+            "id": "game:platformer:validate",
+            "summary": "Validate selected native platformer scene contract",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.load_scene_for_runtime_inspection",
+                "RuntimeAPI.list_entities",
+                "AssetsProjectAPI.run_ai_compliance"
+            ],
+            "cli_command": "motor game platformer validate [--project <path>]",
+            "example": {
+                "description": "Validate the selected platformer scene",
+                "api_calls": [
+                    {
+                        "method": "list_entities",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Reports scene, Player, terrain, Goal, loadability and strict compliance checks"
+            },
+            "notes": "Read-only. Uses same scene target rule as incremental platformer authoring commands.",
+            "tags": [
+                "game",
+                "platformer",
+                "validation",
+                "read-only"
+            ]
+        },
+        {
+            "id": "introspect:capabilities",
+            "summary": "Query this capability registry itself",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "CapabilityRegistry.cmd_capabilities"
+            ],
+            "cli_command": "motor capabilities [--json]",
+            "example": {
+                "description": "List all capabilities in JSON format",
+                "api_calls": [
+                    {
+                        "method": "cmd_capabilities",
+                        "args": {
+                            "json_output": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns full capability registry as JSON"
+            },
+            "notes": "The registry is accessible via 'motor capabilities' CLI command. Use for discovering available operations.",
+            "tags": [
+                "introspection",
+                "meta"
+            ]
+        },
+        {
+            "id": "introspect:doctor",
+            "summary": "Diagnose project health and detect issues",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "CapabilityRegistry.cmd_doctor"
+            ],
+            "cli_command": "motor doctor [--project <path>]",
+            "example": {
+                "description": "Check project health",
+                "api_calls": [
+                    {
+                        "method": "cmd_doctor",
+                        "args": {
+                            "project_path": ".",
+                            "json_output": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns diagnostic report with checks, warnings, and recommendations"
+            },
+            "notes": "Read-only operation. Validates project.json, motor_ai.json, START_HERE_AI.md, and directory structure.",
+            "tags": [
+                "introspection",
+                "diagnostics"
+            ]
+        },
+        {
+            "id": "introspect:entity",
+            "summary": "Get full data for a specific entity",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.get_entity"
+            ],
+            "cli_command": "motor runtime inspect <entity>",
+            "example": {
+                "description": "Get Player entity data",
+                "api_calls": [
+                    {
+                        "method": "get_entity",
+                        "args": {
+                            "name": "Player"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns EntityData with all components and values"
+            },
+            "notes": "Throws EntityNotFoundError if entity doesn't exist.",
+            "tags": [
+                "introspection",
+                "entity"
+            ]
+        },
+        {
+            "id": "physics:backend:list",
+            "summary": "List available physics backends and their status",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.list_physics_backends",
+                "RuntimeAPI.get_physics_backend_selection"
+            ],
+            "cli_command": "motor physics backend list",
+            "example": {
+                "description": "List physics backends",
+                "api_calls": [
+                    {
+                        "method": "list_physics_backends",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns list of backends with availability status"
+            },
+            "notes": "Backends include 'legacy_aabb' (always available) and optional 'box2d'.",
+            "tags": [
+                "physics",
+                "query"
+            ]
+        },
+        {
+            "id": "physics:query:aabb",
+            "summary": "Query physics entities within an axis-aligned bounding box",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.query_physics_aabb"
+            ],
+            "cli_command": "motor physics query aabb <left> <top> <right> <bottom>",
+            "example": {
+                "description": "Find entities in region (100,100) to (300,300)",
+                "api_calls": [
+                    {
+                        "method": "query_physics_aabb",
+                        "args": {
+                            "left": 100,
+                            "top": 100,
+                            "right": 300,
+                            "bottom": 300
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns list of entities with colliders in the region"
+            },
+            "notes": "Uses active physics backend. Results include entity names and collision data.",
+            "tags": [
+                "physics",
+                "query",
+                "collision"
+            ]
+        },
+        {
+            "id": "physics:query:ray",
+            "summary": "Cast a ray and find intersecting physics bodies",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.query_physics_ray"
+            ],
+            "cli_command": "motor physics query ray <ox> <oy> <dx> <dy> <max_dist>",
+            "example": {
+                "description": "Cast ray from player position looking right",
+                "api_calls": [
+                    {
+                        "method": "query_physics_ray",
+                        "args": {
+                            "origin_x": 100,
+                            "origin_y": 200,
+                            "direction_x": 1,
+                            "direction_y": 0,
+                            "max_distance": 500
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns hit information sorted by distance"
+            },
+            "notes": "Direction is normalized. Returns empty list if no hits.",
+            "tags": [
+                "physics",
+                "query",
+                "collision"
+            ]
+        },
+        {
+            "id": "prefab:apply",
+            "summary": "Apply instance overrides back to the source prefab",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.apply_prefab_overrides"
+            ],
+            "cli_command": "motor prefab apply <entity> [--project <path>]",
+            "example": {
+                "description": "Apply Enemy_01 changes to the prefab",
+                "api_calls": [
+                    {
+                        "method": "apply_prefab_overrides",
+                        "args": {
+                            "entity_name": "Enemy_01"
+                        }
+                    }
+                ],
+                "expected_outcome": "Prefab file is updated with the instance's overrides"
+            },
+            "notes": "Only works on prefab instances. Updates the source .prefab file.",
+            "tags": [
+                "prefab",
+                "authoring"
+            ]
+        },
+        {
+            "id": "prefab:create",
+            "summary": "Create a prefab asset from an existing entity subtree",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.create_prefab"
+            ],
+            "cli_command": "motor prefab create <entity> <path> [--replace-original] [--instance-name <name>] [--project <path>]",
+            "example": {
+                "description": "Create an enemy prefab from an existing entity",
+                "api_calls": [
+                    {
+                        "method": "create_prefab",
+                        "args": {
+                            "entity_name": "EnemyTemplate",
+                            "path": "prefabs/enemy.prefab",
+                            "replace_original": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Writes prefabs/enemy.prefab and optionally replaces the original subtree with a linked instance"
+            },
+            "notes": "Creates a prefab asset through the public authoring route. With --replace-original it swaps the subtree for a linked prefab instance.",
+            "tags": [
+                "prefab",
+                "authoring"
+            ]
+        },
+        {
+            "id": "prefab:instantiate",
+            "summary": "Create an entity instance from a prefab file",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.instantiate_prefab"
+            ],
+            "cli_command": "motor prefab instantiate <path> [--name <name>] [--parent <parent>] [--project <path>]",
+            "example": {
+                "description": "Instantiate an enemy prefab",
+                "api_calls": [
+                    {
+                        "method": "instantiate_prefab",
+                        "args": {
+                            "path": "prefabs/enemy.prefab",
+                            "name": "Enemy_01"
+                        }
+                    }
+                ],
+                "expected_outcome": "Entity 'Enemy_01' created with all prefab components"
+            },
+            "notes": "Creates a linked instance. Changes to prefab can be propagated to instances.",
+            "tags": [
+                "prefab",
+                "authoring"
+            ]
+        },
+        {
+            "id": "prefab:list",
+            "summary": "List all prefabs available in the project",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AssetsProjectAPI.list_project_prefabs"
+            ],
+            "cli_command": "motor prefab list [--project <path>]",
+            "example": {
+                "description": "List all prefabs",
+                "api_calls": [
+                    {
+                        "method": "list_project_prefabs",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns list of prefab paths"
+            },
+            "notes": "Searches prefabs/ directory and lists .prefab and .json files.",
+            "tags": [
+                "prefab",
+                "query"
+            ]
+        },
+        {
+            "id": "prefab:unpack",
+            "summary": "Convert a prefab instance to a regular entity",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.unpack_prefab"
+            ],
+            "cli_command": "motor prefab unpack <entity> [--project <path>]",
+            "example": {
+                "description": "Unpack Enemy_01 to modify it independently",
+                "api_calls": [
+                    {
+                        "method": "unpack_prefab",
+                        "args": {
+                            "entity_name": "Enemy_01"
+                        }
+                    }
+                ],
+                "expected_outcome": "Entity is no longer linked to prefab, becomes editable"
+            },
+            "notes": "Breaks the prefab link. Entity keeps its components but won't receive prefab updates.",
+            "tags": [
+                "prefab",
+                "authoring"
+            ]
+        },
+        {
+            "id": "project:bootstrap-ai",
+            "summary": "Generate AI bootstrap files (motor_ai.json and START_HERE_AI.md)",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "ProjectService.generate_ai_bootstrap"
+            ],
+            "cli_command": "motor project bootstrap-ai",
+            "example": {
+                "description": "Generate AI bootstrap files for the project",
+                "api_calls": [
+                    {
+                        "method": "generate_ai_bootstrap",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "motor_ai.json and START_HERE_AI.md are created in project root"
+            },
+            "notes": "Regenerates the AI-facing documentation files. Safe to run multiple times (idempotent).",
+            "tags": [
+                "project",
+                "bootstrap",
+                "ai"
+            ]
+        },
+        {
+            "id": "project:manifest",
+            "summary": "Get the current project's manifest summary",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AssetsProjectAPI.get_project_manifest"
+            ],
+            "cli_command": "motor project info",
+            "example": {
+                "description": "Get project manifest",
+                "api_calls": [
+                    {
+                        "method": "get_project_manifest",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns project name, root, paths, engine_version"
+            },
+            "notes": "Read-only. Use for discovering project structure programmatically.",
+            "tags": [
+                "project",
+                "query"
+            ]
+        },
+        {
+            "id": "recipe:list",
+            "summary": "List bundled declarative AI recipes",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RecipeRegistry.list_recipes"
+            ],
+            "cli_command": "motor recipe list [--project <path>]",
+            "example": {
+                "description": "List available bundled recipes",
+                "api_calls": [
+                    {
+                        "method": "list_recipes",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns bundled recipe metadata including platformer-basic and platformer-advanced"
+            },
+            "notes": "Read-only. Recipes are bundled under engine/recipes and are not loaded from arbitrary project files.",
+            "tags": [
+                "recipe",
+                "ai",
+                "workflow",
+                "tooling"
+            ]
+        },
+        {
+            "id": "recipe:run",
+            "summary": "Run a bundled declarative AI recipe through allowlisted motor commands",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "RecipeRunner.run_recipe"
+            ],
+            "cli_command": "motor recipe run <id> [--project <path>]",
+            "example": {
+                "description": "Run the platformer-advanced recipe",
+                "api_calls": [
+                    {
+                        "method": "run_recipe",
+                        "args": {
+                            "recipe_id": "platformer-advanced"
+                        }
+                    }
+                ],
+                "expected_outcome": "Mutates the target project through official authoring commands, then validates an advanced native platformer vertical slice"
+            },
+            "notes": "Runs only validated argv-list recipe steps through the official motor CLI in-process; no shell, no temporary scripts and no external runtime. It does mutate the target --project because bundled authoring commands save scene, editor_state and startup_scene changes.",
+            "tags": [
+                "recipe",
+                "ai",
+                "workflow",
+                "tooling",
+                "authoring"
+            ]
+        },
+        {
+            "id": "recipe:show",
+            "summary": "Show a bundled declarative AI recipe",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RecipeRegistry.get_recipe"
+            ],
+            "cli_command": "motor recipe show <id> [--project <path>]",
+            "example": {
+                "description": "Show the platformer-advanced recipe",
+                "api_calls": [
+                    {
+                        "method": "get_recipe",
+                        "args": {
+                            "recipe_id": "platformer-advanced"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns recipe version, expected capabilities, steps and validation commands"
+            },
+            "notes": "Read-only. Does not mutate project files.",
+            "tags": [
+                "recipe",
+                "ai",
+                "workflow",
+                "tooling",
+                "query"
+            ]
+        },
+        {
+            "id": "runtime:audio:pause",
+            "summary": "Pause audio from an AudioSource entity",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.pause_audio"
+            ],
+            "cli_command": "motor runtime audio pause <source_id>",
+            "example": {
+                "description": "Pause background music",
+                "api_calls": [
+                    {
+                        "method": "pause_audio",
+                        "args": {
+                            "entity_name": "BGM_Source"
+                        }
+                    }
+                ],
+                "expected_outcome": "Audio is paused"
+            },
+            "notes": "Can be resumed later with resume_audio.",
+            "tags": [
+                "runtime",
+                "audio"
+            ]
+        },
+        {
+            "id": "runtime:audio:play",
+            "summary": "Play audio from an AudioSource entity",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.play_audio"
+            ],
+            "cli_command": "motor runtime audio play <source_id>",
+            "example": {
+                "description": "Play background music",
+                "api_calls": [
+                    {
+                        "method": "play_audio",
+                        "args": {
+                            "entity_name": "BGM_Source"
+                        }
+                    }
+                ],
+                "expected_outcome": "Audio starts playing from the specified source"
+            },
+            "notes": "Requires an entity with AudioSource component. Runtime must be in PLAY mode.",
+            "tags": [
+                "runtime",
+                "audio"
+            ]
+        },
+        {
+            "id": "runtime:audio:resume",
+            "summary": "Resume paused audio from an AudioSource entity",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.resume_audio"
+            ],
+            "cli_command": "motor runtime audio resume <source_id>",
+            "example": {
+                "description": "Resume background music",
+                "api_calls": [
+                    {
+                        "method": "resume_audio",
+                        "args": {
+                            "entity_name": "BGM_Source"
+                        }
+                    }
+                ],
+                "expected_outcome": "Audio resumes from where it was paused"
+            },
+            "notes": "Only works on paused audio sources.",
+            "tags": [
+                "runtime",
+                "audio"
+            ]
+        },
+        {
+            "id": "runtime:audio:stop",
+            "summary": "Stop audio from an AudioSource entity",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.stop_audio"
+            ],
+            "cli_command": "motor runtime audio stop <source_id>",
+            "example": {
+                "description": "Stop background music",
+                "api_calls": [
+                    {
+                        "method": "stop_audio",
+                        "args": {
+                            "entity_name": "BGM_Source"
+                        }
+                    }
+                ],
+                "expected_outcome": "Audio stops playing"
+            },
+            "notes": "Requires an entity with AudioSource component.",
+            "tags": [
+                "runtime",
+                "audio"
+            ]
+        },
+        {
+            "id": "runtime:entities",
+            "summary": "List entities in the active scene (read-only)",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.list_entities"
+            ],
+            "cli_command": "motor runtime entities [--project <path>] [--tag <tag>] [--layer <layer>] [--active-only]",
+            "example": {
+                "description": "List all active entities",
+                "api_calls": [
+                    {
+                        "method": "list_entities",
+                        "args": {
+                            "active": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns list of EntityData for matching entities"
+            },
+            "notes": "Read-only. Supports optional filtering by tag, layer and active state.",
+            "tags": [
+                "runtime",
+                "introspection",
+                "entity"
+            ]
+        },
+        {
+            "id": "runtime:events",
+            "summary": "Return recent runtime events, optionally after a headless step",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.get_recent_events"
+            ],
+            "cli_command": "motor runtime events [--project <path>] [--count <n>] [--step-frames <n>]",
+            "example": {
+                "description": "Get last 50 runtime events",
+                "api_calls": [
+                    {
+                        "method": "get_recent_events",
+                        "args": {
+                            "count": 50
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns list of recent events with name and data"
+            },
+            "notes": "Read-only by default. With --step-frames, runs PLAY -> STEP in the same stateless process before reading events and does not persist runtime mutations.",
+            "tags": [
+                "runtime",
+                "introspection",
+                "events"
+            ]
+        },
+        {
+            "id": "runtime:inspect",
+            "summary": "Inspect a specific entity (read-only)",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.get_entity"
+            ],
+            "cli_command": "motor runtime inspect <entity> [--project <path>]",
+            "example": {
+                "description": "Get full data for the Player entity",
+                "api_calls": [
+                    {
+                        "method": "get_entity",
+                        "args": {
+                            "name": "Player"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns EntityData with all components and values"
+            },
+            "notes": "Read-only. Throws if entity does not exist. Loads a fallback scene for inspection if none is active.",
+            "tags": [
+                "runtime",
+                "introspection",
+                "entity"
+            ]
+        },
+        {
+            "id": "runtime:play",
+            "summary": "Start play mode for a stateless headless runtime check",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.play"
+            ],
+            "cli_command": "motor runtime play [--project <path>] [--headless]",
+            "example": {
+                "description": "Start play mode headlessly",
+                "api_calls": [
+                    {
+                        "method": "play",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Engine enters PLAY mode in the current CLI process and then cleans up before exit"
+            },
+            "notes": "The official CLI command is stateless: it initializes EngineAPI, loads a scene for headless verification, calls play(), reports status, then stops before process exit without saving authoring state.",
+            "tags": [
+                "runtime",
+                "play"
+            ]
+        },
+        {
+            "id": "runtime:redo",
+            "summary": "Redo a previously undone operation",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.redo"
+            ],
+            "cli_command": "motor runtime redo",
+            "example": {
+                "description": "Redo last undone operation",
+                "api_calls": [
+                    {
+                        "method": "redo",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Previously undone change is reapplied"
+            },
+            "notes": "Only available if undo was called. Cleared on new edits.",
+            "tags": [
+                "runtime",
+                "edit"
+            ]
+        },
+        {
+            "id": "runtime:status",
+            "summary": "Read-only runtime status and active scene info",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.get_status",
+                "SceneWorkspaceAPI.get_active_scene_info"
+            ],
+            "cli_command": "motor runtime status [--project <path>]",
+            "example": {
+                "description": "Get runtime status and scene info",
+                "api_calls": [
+                    {
+                        "method": "get_status",
+                        "args": {}
+                    },
+                    {
+                        "method": "get_active_scene_info",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns engine state, frame, fps, entity count and active scene metadata"
+            },
+            "notes": "Read-only. Loads a fallback scene for inspection if none is active, without persisting state.",
+            "tags": [
+                "runtime",
+                "introspection"
+            ]
+        },
+        {
+            "id": "runtime:step",
+            "summary": "Run PLAY -> STEP -> STOP headlessly for N frames, optionally with simulated InputMap actions",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.step",
+                "RuntimeAPI.inject_input_state",
+                "RuntimeAPI.get_recent_events"
+            ],
+            "cli_command": "motor runtime step [--project <path>] [--frames <n>] [--input <actions>]",
+            "example": {
+                "description": "Advance simulation by 300 frames while holding right and jump",
+                "api_calls": [
+                    {
+                        "method": "play",
+                        "args": {}
+                    },
+                    {
+                        "method": "inject_input_state",
+                        "args": {
+                            "entity_name": "Player",
+                            "state": {
+                                "horizontal": 1.0,
+                                "vertical": 0.0,
+                                "action_1": 1.0,
+                                "action_2": 0.0
+                            },
+                            "frames": 300
+                        }
+                    },
+                    {
+                        "method": "step",
+                        "args": {
+                            "frames": 300
+                        }
+                    },
+                    {
+                        "method": "get_recent_events",
+                        "args": {
+                            "count": 50
+                        }
+                    },
+                    {
+                        "method": "stop",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "World updates with synthetic InputMap state, exposes runtime events, and returns to EDIT without saving runtime mutations"
+            },
+            "notes": "The official CLI command runs the whole validation sequence in one stateless headless process: load scene, play, optional input injection, step, read events, stop. Supported --input tokens are left, right, up, down, jump, action_1 and action_2. Runtime mutations are not persisted as authoring state.",
+            "tags": [
+                "runtime",
+                "play",
+                "input",
+                "events"
+            ]
+        },
+        {
+            "id": "runtime:stop",
+            "summary": "Stop runtime in the current stateless headless process",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.stop"
+            ],
+            "cli_command": "motor runtime stop [--project <path>]",
+            "example": {
+                "description": "Stop runtime in the current process",
+                "api_calls": [
+                    {
+                        "method": "stop",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Current process runtime returns to EDIT mode; previous CLI invocations are not affected"
+            },
+            "notes": "The official CLI command is stateless and idempotent. It cannot stop a PLAY session from a previous process and reports that as a warning.",
+            "tags": [
+                "runtime",
+                "play"
+            ]
+        },
+        {
+            "id": "runtime:undo",
+            "summary": "Undo the last edit operation",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.undo"
+            ],
+            "cli_command": "motor runtime undo",
+            "example": {
+                "description": "Undo last edit",
+                "api_calls": [
+                    {
+                        "method": "undo",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Last change is reverted"
+            },
+            "notes": "Uses scene manager's change tracking. Not all operations are undoable.",
+            "tags": [
+                "runtime",
+                "edit"
+            ]
+        },
+        {
+            "id": "scene:create",
+            "summary": "Create a new scene with a unique file path",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.create_scene"
+            ],
+            "cli_command": "motor scene create <name>",
+            "example": {
+                "description": "Create a new scene called 'Level 1'",
+                "api_calls": [
+                    {
+                        "method": "create_scene",
+                        "args": {
+                            "name": "Level 1"
+                        }
+                    }
+                ],
+                "expected_outcome": "A new scene file is created at levels/level_1.json and becomes the active scene"
+            },
+            "notes": "Scene name is sanitized to snake_case for the filename. Avoids collisions automatically.",
+            "tags": [
+                "scene",
+                "authoring",
+                "workspace"
+            ]
+        },
+        {
+            "id": "scene:flow:load_next",
+            "summary": "Load the configured next scene in the scene flow",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.load_next_scene"
+            ],
+            "cli_command": "motor scene flow next",
+            "example": {
+                "description": "Load the next scene",
+                "api_calls": [
+                    {
+                        "method": "load_next_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Next scene is loaded as the active world"
+            },
+            "notes": "Uses next_scene key from feature_metadata.scene_flow. Fails if not configured.",
+            "tags": [
+                "scene",
+                "flow",
+                "navigation",
+                "runtime"
+            ]
+        },
+        {
+            "id": "scene:flow:menu",
+            "summary": "Load the menu scene configured in the scene flow",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.load_menu_scene"
+            ],
+            "cli_command": "motor scene flow menu",
+            "example": {
+                "description": "Load the menu scene",
+                "api_calls": [
+                    {
+                        "method": "load_menu_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Menu scene is loaded as the active world"
+            },
+            "notes": "Uses menu_scene key from feature_metadata.scene_flow. Fails if not configured.",
+            "tags": [
+                "scene",
+                "flow",
+                "navigation",
+                "runtime"
+            ]
+        },
+        {
+            "id": "scene:flow:set_next",
+            "summary": "Set the next scene connection for scene flow navigation",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.set_next_scene"
+            ],
+            "cli_command": "motor scene flow set-link <source_scene> <target_scene>",
+            "example": {
+                "description": "Configure current scene to load level2 when triggered",
+                "api_calls": [
+                    {
+                        "method": "set_next_scene",
+                        "args": {
+                            "path": "levels/level2.json"
+                        }
+                    }
+                ],
+                "expected_outcome": "Scene metadata updated with next_scene reference"
+            },
+            "notes": "Stores relative path in scene metadata. Used by load_next_scene at runtime.",
+            "tags": [
+                "scene",
+                "flow",
+                "navigation"
+            ]
+        },
+        {
+            "id": "scene:list",
+            "summary": "List all available scenes in the project",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.list_project_scenes"
+            ],
+            "cli_command": "motor scene list",
+            "example": {
+                "description": "List all scenes in the project",
+                "api_calls": [
+                    {
+                        "method": "list_project_scenes",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns list of scene paths and names"
+            },
+            "notes": "Searches levels/ directory for .json scene files.",
+            "tags": [
+                "scene",
+                "query",
+                "workspace"
+            ]
+        },
+        {
+            "id": "scene:load",
+            "summary": "Load a scene from a JSON file path",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.load_level",
+                "SceneWorkspaceAPI.load_scene"
+            ],
+            "cli_command": "motor scene load <path>",
+            "example": {
+                "description": "Load the intro scene",
+                "api_calls": [
+                    {
+                        "method": "load_level",
+                        "args": {
+                            "path": "levels/intro.json"
+                        }
+                    }
+                ],
+                "expected_outcome": "The scene is loaded and becomes the active world"
+            },
+            "notes": "Supports relative paths from project root. Creates world from serialized scene data.",
+            "tags": [
+                "scene",
+                "workspace",
+                "runtime"
+            ]
+        },
+        {
+            "id": "scene:save",
+            "summary": "Save the active scene to its source file",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "SceneWorkspaceAPI.save_scene"
+            ],
+            "cli_command": "motor scene save [--project <path>]",
+            "example": {
+                "description": "Save the current scene",
+                "api_calls": [
+                    {
+                        "method": "save_scene",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "The active scene is serialized and written to its source_path"
+            },
+            "notes": "Saves the currently active scene. Requires a scene to be loaded first.",
+            "tags": [
+                "scene",
+                "persistence"
+            ]
+        },
+        {
+            "id": "service:get",
+            "summary": "Get a registered runtime service",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.get_service"
+            ],
+            "cli_command": "motor service get <name>",
+            "example": {
+                "description": "Get the ScoreManager service",
+                "api_calls": [
+                    {
+                        "method": "get_service",
+                        "args": {
+                            "name": "ScoreManager"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns the service object if registered"
+            },
+            "notes": "Returns the service object if registered.",
+            "tags": [
+                "service",
+                "runtime",
+                "query"
+            ]
+        },
+        {
+            "id": "service:has",
+            "summary": "Check if a runtime service is registered",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.has_service"
+            ],
+            "cli_command": "motor service has <name>",
+            "example": {
+                "description": "Check if ScoreManager service exists",
+                "api_calls": [
+                    {
+                        "method": "has_service",
+                        "args": {
+                            "name": "ScoreManager"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns boolean indicating service availability"
+            },
+            "notes": "Returns boolean indicating service availability.",
+            "tags": [
+                "service",
+                "runtime",
+                "query"
+            ]
+        },
+        {
+            "id": "service:register",
+            "summary": "Register a runtime service",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.register_service_runtime"
+            ],
+            "cli_command": "motor service register <name> <component_name>",
+            "example": {
+                "description": "Register a ScoreManager service",
+                "api_calls": [
+                    {
+                        "method": "register_service_runtime",
+                        "args": {
+                            "name": "ScoreManager",
+                            "service": "ScoreManager"
+                        }
+                    }
+                ],
+                "expected_outcome": "Service registered for the current PLAY session"
+            },
+            "notes": "Registers a service object for the current PLAY session.",
+            "tags": [
+                "service",
+                "runtime"
+            ]
+        },
+        {
+            "id": "signal:connect",
+            "summary": "Connect a signal between entities in the active scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.connect_signal",
+                "AuthoringAPI.add_signal_connection"
+            ],
+            "cli_command": "motor signal connect <signal_name> <source_entity> <target_entity>",
+            "example": {
+                "description": "Connect death signal from Player to GameOver entity",
+                "api_calls": [
+                    {
+                        "method": "add_signal_connection",
+                        "args": {
+                            "connection_data": {
+                                "id": "death_conn",
+                                "signal": "on_death",
+                                "source": {
+                                    "kind": "entity",
+                                    "name": "Player"
+                                },
+                                "target": {
+                                    "kind": "entity",
+                                    "name": "GameOver"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "expected_outcome": "Signal connection stored in scene feature metadata"
+            },
+            "notes": "Creates declarative signal connection stored in scene feature metadata.",
+            "tags": [
+                "signal",
+                "authoring"
+            ]
+        },
+        {
+            "id": "signal:disconnect",
+            "summary": "Disconnect a signal between entities",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.remove_signal_connection"
+            ],
+            "cli_command": "motor signal disconnect <signal_name> <source_entity> <target_entity>",
+            "example": {
+                "description": "Disconnect on_death signal",
+                "api_calls": [
+                    {
+                        "method": "remove_signal_connection",
+                        "args": {
+                            "connection_id": "death_conn"
+                        }
+                    }
+                ],
+                "expected_outcome": "Signal connection removed from scene metadata"
+            },
+            "notes": "Removes declarative signal connection from scene metadata.",
+            "tags": [
+                "signal",
+                "authoring"
+            ]
+        },
+        {
+            "id": "signal:emit",
+            "summary": "Emit a signal from an entity at runtime",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.emit_signal"
+            ],
+            "cli_command": "motor signal emit <signal_name> [--entity <entity_id>]",
+            "example": {
+                "description": "Emit on_death signal",
+                "api_calls": [
+                    {
+                        "method": "emit_signal",
+                        "args": {
+                            "source_id": "Player",
+                            "signal_name": "on_death"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns count of connections executed"
+            },
+            "notes": "Requires runtime to be active. Returns count of executed connections.",
+            "tags": [
+                "signal",
+                "runtime"
+            ]
+        },
+        {
+            "id": "signal:list",
+            "summary": "List signal connections in the active scene",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.list_signal_connections_declarative"
+            ],
+            "cli_command": "motor signal list",
+            "example": {
+                "description": "List all signal connections",
+                "api_calls": [
+                    {
+                        "method": "list_signal_connections_declarative",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns list of connections with source, target and signal names"
+            },
+            "notes": "Lists declarative signal connections with source, target, and signal metadata.",
+            "tags": [
+                "signal",
+                "query"
+            ]
+        },
+        {
+            "id": "ui:create_button",
+            "summary": "Create a UI button element",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "UIAPI.create_ui_button"
+            ],
+            "cli_command": "motor ui create-button --text <text> --parent <canvas>",
+            "example": {
+                "description": "Create 'Play' button on canvas",
+                "api_calls": [
+                    {
+                        "method": "create_ui_button",
+                        "args": {
+                            "name": "PlayBtn",
+                            "label": "Play",
+                            "parent": "Canvas"
+                        }
+                    }
+                ],
+                "expected_outcome": "UIButton child entity created under canvas"
+            },
+            "notes": "Creates child entity with UIButton component. Auto-generates name.",
+            "tags": [
+                "ui",
+                "authoring"
+            ]
+        },
+        {
+            "id": "ui:create_canvas",
+            "summary": "Create a UI canvas entity",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "UIAPI.create_canvas"
+            ],
+            "cli_command": "motor ui create-canvas --name <name> --width <int> --height <int>",
+            "example": {
+                "description": "Create a 800x600 UI canvas",
+                "api_calls": [
+                    {
+                        "method": "create_canvas",
+                        "args": {
+                            "name": "Canvas",
+                            "reference_width": 800,
+                            "reference_height": 600
+                        }
+                    }
+                ],
+                "expected_outcome": "Canvas entity created with RectTransform"
+            },
+            "notes": "Creates Canvas entity with RectTransform. Acts as root for UI hierarchy.",
+            "tags": [
+                "ui",
+                "authoring"
+            ]
+        },
+        {
+            "id": "ui:create_image",
+            "summary": "Create a UI image element",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "UIAPI.create_ui_image"
+            ],
+            "cli_command": "motor ui create-image --path <asset_path> --parent <canvas>",
+            "example": {
+                "description": "Create image from logo asset on canvas",
+                "api_calls": [
+                    {
+                        "method": "create_ui_image",
+                        "args": {
+                            "name": "LogoImg",
+                            "parent": "Canvas",
+                            "sprite": "assets/logo.png"
+                        }
+                    }
+                ],
+                "expected_outcome": "UIImage child entity created under canvas"
+            },
+            "notes": "Creates child entity with UIImage component using the specified asset.",
+            "tags": [
+                "ui",
+                "authoring"
+            ]
+        },
+        {
+            "id": "ui:create_text",
+            "summary": "Create a UI text element",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "UIAPI.create_ui_text"
+            ],
+            "cli_command": "motor ui create-text --text <text> --parent <canvas> --font-size <int> --color <hex>",
+            "example": {
+                "description": "Create 'Hello World' text on canvas",
+                "api_calls": [
+                    {
+                        "method": "create_ui_text",
+                        "args": {
+                            "name": "TitleText",
+                            "text": "Hello World",
+                            "parent": "Canvas",
+                            "font_size": 24
+                        }
+                    }
+                ],
+                "expected_outcome": "UIText child entity created under canvas"
+            },
+            "notes": "Creates child entity under parent canvas with UIText and RectTransform components.",
+            "tags": [
+                "ui",
+                "authoring"
+            ]
+        },
+        {
+            "id": "physics:particles:cpu_fallback",
+            "summary": "GPUParticlesSystem CPU-backed adapter (no real GPU, delegates to ParticleSystem CPU fallback)",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "GPUParticlesSystem.update",
+                "GPUParticlesSystem.render",
+                "GPUParticlesSystem.reset"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "GPUParticlesSystem wired via RuntimeController and Game, no direct EngineAPI endpoint",
+                "api_calls": [],
+                "expected_outcome": "Particle rendering delegates to CPU ParticleSystem; no GPU acceleration"
+            },
+            "notes": "Wired internally in RuntimeController and Game. Exposes update(world, dt), render(world), reset(), active_particle_count y total_particle_count. No usa GPU real — delega en ParticleSystem de CPU. Componentes ParticleEmitter son consumidos automáticamente durante PLAY.",
+            "tags": [
+                "physics",
+                "particles",
+                "render",
+                "cpu-fallback"
+            ]
+        },
+        {
+            "id": "physics:resource:material",
+            "summary": "PhysicsMaterial resource (friction/bounce/rough/absorbent, schema_version 1, path override en RigidBody/StaticBody2D)",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "PhysicsMaterial.from_dict",
+                "PhysicsMaterial.to_dict",
+                "load_physics_material",
+                "clear_physics_material_cache"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "Configurar PhysicsMaterial para RigidBody via physics_material_override_path",
+                "api_calls": [
+                    {
+                        "method": "edit_component",
+                        "args": {
+                            "entity_name": "player",
+                            "component": "RigidBody",
+                            "property": "physics_material_override_path",
+                            "value": "materials/ice.json"
+                        }
+                    }
+                ],
+                "expected_outcome": "RigidBody usa PhysicsMaterial del archivo .json para fricción/rebote durante colisiones"
+            },
+            "notes": "PhysicsMaterial define friction (0=ice, 1=normal), bounce (0=sin rebote, 1=rebote perfecto), rough (fricción infinita) y absorbent (bounce=0 siempre). Se carga desde .json con load_physics_material(). Campos rough y absorbent aplican override sobre friction/bounce respectivamente. Cache de carga compartido; usar clear_physics_material_cache() para tests. Compatible con StaticBody2D.",
+            "tags": [
+                "physics",
+                "resource",
+                "material",
+                "collision"
+            ]
+        },
+        {
+            "id": "physics:rigidbody:contact_monitor",
+            "summary": "RigidBody contact_monitor con EngineAPI wrappers get_colliding_bodies y get_contact_count",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.get_colliding_bodies",
+                "RuntimeAPI.get_contact_count",
+                "RigidBody.get_colliding_bodies",
+                "RigidBody.get_contact_count"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "Monitorear contactos de un RigidBody durante PLAY",
+                "api_calls": [
+                    {
+                        "method": "edit_component",
+                        "args": {
+                            "entity_name": "player",
+                            "component": "RigidBody",
+                            "property": "contact_monitor",
+                            "value": true
+                        }
+                    },
+                    {
+                        "method": "edit_component",
+                        "args": {
+                            "entity_name": "player",
+                            "component": "RigidBody",
+                            "property": "max_contacts_reported",
+                            "value": 10
+                        }
+                    }
+                ],
+                "expected_outcome": "Tras step() en PLAY, get_colliding_bodies('player') retorna IDs de entidades en contacto; get_contact_count('player') retorna el número de contactos activos"
+            },
+            "notes": "contact_monitor (bool) y max_contacts_reported (int, 0=deshabilitado) se configuran via edit_component. Los wrappers EngineAPI get_colliding_bodies(entity_name) y get_contact_count(entity_name) delegan en RigidBody.get_colliding_bodies()/get_contact_count(). Retornan [] y 0 si la entidad no existe, no tiene RigidBody o contact_monitor está desactivado. Solo colisiones reales (no triggers) registran contactos. Los contactos se limpian cada frame.",
+            "tags": [
+                "physics",
+                "rigidbody",
+                "contact",
+                "collision",
+                "runtime"
+            ]
+        }
+    ],
+    "planned_capabilities": [
+        {
+            "id": "asset:find",
+            "summary": "Find assets by kind, importer, or extension",
+            "mode": "both",
+            "status": "planned",
+            "api_methods": [
+                "AssetsProjectAPI.find_assets"
+            ],
+            "cli_command": "motor asset find [--kind <kind>] [--importer <importer>] [--ext <ext>]",
+            "example": {
+                "description": "Find all texture assets",
+                "api_calls": [
+                    {
+                        "method": "find_assets",
+                        "args": {
+                            "asset_kind": "texture"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns list of texture assets with metadata"
+            },
+            "notes": "Multiple filters can be combined. Empty result means no matches.",
+            "tags": [
+                "asset",
+                "query"
+            ]
+        },
+        {
+            "id": "asset:metadata:get",
+            "summary": "Get metadata for a specific asset",
+            "mode": "both",
+            "status": "planned",
+            "api_methods": [
+                "AssetsProjectAPI.get_asset_metadata"
+            ],
+            "cli_command": "motor asset metadata <path>",
+            "example": {
+                "description": "Get metadata for player.png",
+                "api_calls": [
+                    {
+                        "method": "get_asset_metadata",
+                        "args": {
+                            "asset_path": "assets/player.png"
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns asset metadata including guid, importer settings, dependencies"
+            },
+            "notes": "Metadata includes slices if the asset has been sliced.",
+            "tags": [
+                "asset",
+                "metadata"
+            ]
+        },
+        {
+            "id": "asset:refresh",
+            "summary": "Refresh the asset catalog and detect changes",
+            "mode": "both",
+            "status": "planned",
+            "api_methods": [
+                "AssetsProjectAPI.refresh_asset_catalog"
+            ],
+            "cli_command": "motor asset refresh",
+            "example": {
+                "description": "Refresh asset catalog",
+                "api_calls": [
+                    {
+                        "method": "refresh_asset_catalog",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Asset catalog is updated with any new or modified assets"
+            },
+            "notes": "Run this after adding new files to assets/ folder.",
+            "tags": [
+                "asset",
+                "catalog"
+            ]
+        },
+        {
+            "id": "introspect:status",
+            "summary": "Get engine status including FPS, entity count, time",
+            "mode": "both",
+            "status": "planned",
+            "api_methods": [
+                "RuntimeAPI.get_status"
+            ],
+            "cli_command": "motor status",
+            "example": {
+                "description": "Get engine status",
+                "api_calls": [
+                    {
+                        "method": "get_status",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns state, frame, time, fps, entity_count"
+            },
+            "notes": "Lightweight status check. Safe to call frequently.",
+            "tags": [
+                "introspection",
+                "runtime"
+            ]
+        },
+        {
+            "id": "project:editor_state",
+            "summary": "Get or set editor state including recent assets and last scene",
+            "mode": "edit",
+            "status": "planned",
+            "api_methods": [
+                "AssetsProjectAPI.get_editor_state",
+                "AssetsProjectAPI.save_editor_state"
+            ],
+            "cli_command": "motor project state [get|set] [data...]",
+            "example": {
+                "description": "Get current editor state",
+                "api_calls": [
+                    {
+                        "method": "get_editor_state",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns recent_assets, last_scene, open_scenes, preferences"
+            },
+            "notes": "Editor state is persisted in .motor/editor_state.json",
+            "tags": [
+                "project",
+                "state"
+            ]
+        },
+        {
+            "id": "project:open",
+            "summary": "Open a different project and load its startup scene",
+            "mode": "both",
+            "status": "planned",
+            "api_methods": [
+                "AssetsProjectAPI.open_project"
+            ],
+            "cli_command": "motor project open <path>",
+            "example": {
+                "description": "Open the platformer project",
+                "api_calls": [
+                    {
+                        "method": "open_project",
+                        "args": {
+                            "path": "projects/platformer"
+                        }
+                    }
+                ],
+                "expected_outcome": "Project is opened and last scene (or first available) is loaded"
+            },
+            "notes": "Switches the active project context. Unsaved changes in current project may be lost.",
+            "tags": [
+                "project",
+                "workspace"
+            ]
+        }
+    ],
+    "capability_counts": {
+        "implemented": 103,
+        "planned": 6,
+        "total": 109
+    },
+    "project": {
+        "name": "demo",
+        "root": ".",
+        "engine_version": "2026.03",
+        "template": "empty",
+        "paths": {
+            "assets": "assets",
+            "levels": "levels",
+            "prefabs": "prefabs",
+            "scripts": "scripts",
+            "settings": "settings",
+            "meta": ".motor/meta",
+            "build": ".motor/build"
+        }
+    },
+    "entrypoints": {
+        "manifest": "project.json",
+        "settings": "settings/project_settings.json",
+        "startup_scene": "levels/main_scene.json",
+        "scripts_dir": "scripts",
+        "assets_dir": "assets",
+        "levels_dir": "levels",
+        "prefabs_dir": "prefabs"
+    }
+}
