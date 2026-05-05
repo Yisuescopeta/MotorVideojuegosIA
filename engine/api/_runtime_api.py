@@ -1032,6 +1032,30 @@ class RuntimeAPI(EngineAPIComponent):
             "collider_entity": raycast.collider_entity,
         }
 
+    # --- CharacterController2D ---
+
+    def set_character_max_slides(self, entity_name: str, max_slides: int) -> ActionResult:
+        """Set max_slides on a CharacterController2D entity.
+
+        Args:
+            entity_name: Name of the entity with a CharacterController2D component.
+            max_slides: Maximum slide iterations (default 4, range 1-8).
+
+        Returns:
+            ActionResult confirming the change.
+        """
+        from engine.components.charactercontroller2d import CharacterController2D
+
+        entity = self.require_entity(entity_name)
+        controller = entity.get_component(CharacterController2D)
+        if controller is None:
+            return self.fail(f"Entity '{entity_name}' has no CharacterController2D")
+        controller.max_slides = max(1, min(8, int(max_slides)))
+        return self.ok(
+            f"max_slides set to {controller.max_slides} on {entity_name}",
+            {"entity": entity_name, "max_slides": controller.max_slides},
+        )
+
     # --- CanvasItem2D drawing API ---
 
     def draw_rect(

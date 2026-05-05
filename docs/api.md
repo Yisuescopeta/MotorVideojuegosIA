@@ -235,6 +235,7 @@ Input, audio y scripts:
 - `resume_audio(entity_name)`
 - `get_script_public_data(entity_name)`
 - `get_raycast_result(entity_name)`: obtiene el resultado runtime de un RayCast2D como dict
+- `set_character_max_slides(entity_name, max_slides)`: setea max_slides en CharacterController2D (default 4, rango 1-8, controla iteraciones de deslizamiento en move_and_slide)
 
 Fisica:
 

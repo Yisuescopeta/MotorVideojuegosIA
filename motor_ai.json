@@ -3167,6 +3167,36 @@
                 "collision",
                 "runtime"
             ]
+        },
+        {
+            "id": "physics:character:max_slides",
+            "summary": "Set max_slides on CharacterController2D (controls slide iteration cap during move_and_slide)",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.set_character_max_slides"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "Set Player max_slides to 6 for smoother wall sliding",
+                "api_calls": [
+                    {
+                        "method": "set_character_max_slides",
+                        "args": {
+                            "entity_name": "Player",
+                            "max_slides": 6
+                        }
+                    }
+                ],
+                "expected_outcome": "Player CharacterController2D.max_slides updated to 6. Default is 4. Valid range 1-8."
+            },
+            "notes": "Runtime-only. Clamps to 1-8. Entity must have CharacterController2D component. max_slides=1 disables sliding (move_and_collide behavior).",
+            "tags": [
+                "physics",
+                "character",
+                "move_and_slide",
+                "runtime"
+            ]
         }
     ],
     "planned_capabilities": [
@@ -3329,9 +3359,9 @@
         }
     ],
     "capability_counts": {
-        "implemented": 106,
+        "implemented": 107,
         "planned": 6,
-        "total": 112
+        "total": 113
     },
     "project": {
         "name": "MotorVideojuegosIA",

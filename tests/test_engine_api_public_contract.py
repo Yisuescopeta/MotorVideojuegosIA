@@ -237,7 +237,60 @@ class EngineAPIPublicContractTests(unittest.TestCase):
             result = api.get_contact_count("Player")
             self.assertEqual(result, 2)
 
-    def test_create_prefab_saves_entity_subtree_inside_project(self) -> None:
+    # --- set_character_max_slides ---
+
+    def test_set_character_max_slides_exists_and_callable(self) -> None:
+        api = self._make_api()
+        self.assertTrue(hasattr(api, "set_character_max_slides"))
+        self.assertTrue(callable(api.set_character_max_slides))
+
+    def test_set_character_max_slides_no_charactercontroller_fails(self) -> None:
+        api = self._make_api()
+        api.load_level(self.scene_path.as_posix())
+        result = api.set_character_max_slides("Ground", 6)
+        self.assertFalse(result["success"])
+        self.assertIn("no CharacterController2D", result["message"])
+
+    def test_set_character_max_slides_sets_value(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from engine.components.charactercontroller2d import CharacterController2D
+
+        api = self._make_api()
+        api.load_level(self.scene_path.as_posix())
+
+        mock_entity = MagicMock()
+        controller = CharacterController2D(max_slides=4)
+        mock_entity.get_component.return_value = controller
+
+        with patch.object(api.game.world, "get_entity_by_name", return_value=mock_entity):
+            result = api.set_character_max_slides("Player", 6)
+            self.assertTrue(result["success"])
+            self.assertEqual(result["data"]["max_slides"], 6)
+            self.assertEqual(controller.max_slides, 6)
+
+    def test_set_character_max_slides_clamps_range(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from engine.components.charactercontroller2d import CharacterController2D
+
+        api = self._make_api()
+        api.load_level(self.scene_path.as_posix())
+
+        mock_entity = MagicMock()
+        controller = CharacterController2D(max_slides=4)
+        mock_entity.get_component.return_value = controller
+
+        with patch.object(api.game.world, "get_entity_by_name", return_value=mock_entity):
+            result = api.set_character_max_slides("Player", 0)
+            self.assertTrue(result["success"])
+            self.assertEqual(controller.max_slides, 1)
+
+            result = api.set_character_max_slides("Player", 99)
+            self.assertTrue(result["success"])
+            self.assertEqual(controller.max_slides, 8)
+
+    # --- CharacterController2D end ---
         api = self._make_api()
         api.load_level(self.scene_path.as_posix())
         self.assertTrue(api.create_entity("PrefabRoot")["success"])
