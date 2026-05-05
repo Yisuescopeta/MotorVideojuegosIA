@@ -335,52 +335,43 @@ if result.get("is_colliding"):
 ```
 Retorna `{}` si la entidad no existe, no tiene `RayCast2D` o el runtime no está activo.
 
-### ShapeCast2D — Barrido de formas
+### ShapeCast — Barrido de formas (API)
 
-`ShapeCast2D` es un componente que barre una forma (box, circle, capsule,
-polygon) desde la entidad usando internamente `query_physics_shape_cast`.
-El sistema `ShapeCast2DSystem` está wired en `EngineAPI` y `RuntimeController`,
-y se ejecuta automáticamente durante `PLAY`.
+`query_physics_shape_cast()` está disponible en `RuntimeAPI` y `EngineAPI`.
+No existe componente `ShapeCast2D` ni sistema `ShapeCast2DSystem`: se usa como
+API directa desde código runtime o scripts.
 
-Uso desde authoring:
+Shape types soportados: `"box"`, `"circle"`, `"capsule"`, `"polygon"`.
+
+Signature:
 ```python
-api.add_component("player", "ShapeCast2D", {
-    "shape_type": "box",
-    "shape_width": 16.0,
-    "shape_height": 16.0,
-    "cast_to_y": 100.0,
-})
+hits: list[ShapeCastResult] = api.query_physics_shape_cast(
+    shape_type="box",
+    shape_width=16.0,
+    shape_height=16.0,
+    origin_x=0.0, origin_y=0.0,
+    direction_x=1.0, direction_y=0.0,
+    max_distance=200.0,
+    shape_params=None,  # opcional, e.g. {"vertices": [[-8,-8],[8,-8],[8,8],[-8,8]]}
+)
 ```
 
-Campos runtime actualizados cada frame: `is_colliding`, `collision_point_*`,
-`collision_normal_*`, `collider_entity`, `fraction`.
+Cada `ShapeCastResult` es un dict con campos: `hit`, `entity_id`, `entity`,
+`position` (dict `x`/`y`), `normal` (dict `x`/`y`), `fraction`.
 
-Para polígonos, usar `shape_params` con `vertices`:
 ```python
-api.add_component("sensor", "ShapeCast2D", {
-    "shape_type": "polygon",
-    "shape_width": 32.0,
-    "shape_height": 32.0,
-    "cast_to_x": 200.0,
-    "shape_params": {"vertices": [[-8, -8], [8, -8], [8, 8], [-8, 8]]},
-})
+hits = api.query_physics_shape_cast("circle", 10.0, 10.0, 0.0, 0.0, 0.0, 1.0, 100.0)
+if hits:
+    h = hits[0]
+    print(f"Impacto en {h['entity']} a fracción {h['fraction']:.2f}")
 ```
 
-Lectura runtime desde agente:
-```python
-result = api.get_shapecast_result("player")
-if result.get("is_colliding"):
-    print(f"Chocó contra: {result['collider_entity']} a {result['fraction']}")
-```
+`shape_params` puede sobrescribir `shape_width`/`shape_height` con valores
+explícitos (`width`, `height`, `radius`, `vertices`).
 
-El `ShapeCast2DSystem` aplica los mismos filtros que `RayCast2DSystem`:
-`exclude_parent`, `collide_with_areas`, `collide_with_bodies`, `collision_mask`.
-Retorna `{}` si la entidad no existe, no tiene `ShapeCast2D` o el runtime no
-está activo.
-
-El barrido usa `swept_shape_toi` para detección precisa de tiempo de impacto
-(TOI) con búsqueda binaria, y detecta overlaps en el origen incluso con
-dirección cero.
+El backend físico delega en `swept_shape_toi` para detección precisa de TOI
+y en `swept_collision` para narrow-phase. Con dirección cero reporta overlaps
+en el origen. Retorna lista vacía si no hay hit o no hay backend activo.
 
 ### NavigationObstacle2D — Obstáculo estático para avoidance
 
