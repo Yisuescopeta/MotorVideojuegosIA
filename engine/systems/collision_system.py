@@ -11,6 +11,7 @@ from engine.components.collider import Collider
 from engine.components.collision_filter_2d import CollisionFilter2D
 from engine.components.collision_polygon_2d import CollisionPolygon2D
 from engine.components.collision_shape_2d import CollisionShape2D
+from engine.components.collision_shape_set_2d import CollisionShape2DDef, CollisionShapeSet2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
@@ -38,6 +39,8 @@ class _CollisionEntry:
     collider: Optional[Collider]
     rigidbody: Optional[RigidBody]
     aabb: AABB
+    shape_defs: tuple = ()
+    use_shape_set: bool = False
 
 
 class CollisionSystem:
@@ -78,14 +81,23 @@ class CollisionSystem:
             collider = entity.get_component(Collider)
             if transform is None or collider is None or not collider.enabled:
                 continue
-            bounds = self._compute_shape_bounds(entity, transform)
-            if bounds is None:
-                bounds = collider.get_bounds(transform.x, transform.y)
+            shape_set = entity.get_component(CollisionShapeSet2D)
+            if shape_set is not None:
+                # Use composite bounds from shape set, flat shape defs
+                bounds = shape_set.get_composite_bounds(transform.x, transform.y)
+                shape_defs = tuple(shape_set.shapes)
+            else:
+                bounds = self._compute_shape_bounds(entity, transform)
+                if bounds is None:
+                    bounds = collider.get_bounds(transform.x, transform.y)
+                shape_defs = (self._collider_to_shape_def(collider),)
             entry = _CollisionEntry(
                 entity=entity,
                 collider=collider,
                 rigidbody=entity.get_component(RigidBody),
                 aabb=bounds,
+                shape_defs=shape_defs,
+                use_shape_set=(shape_set is not None),
             )
             entries_by_id[int(entity.id)] = entry
             grid.insert(entity.id, entry.aabb)
@@ -97,6 +109,21 @@ class CollisionSystem:
                 continue
             transform = entity.get_component(Transform)
             if transform is None:
+                continue
+            shape_set = entity.get_component(CollisionShapeSet2D)
+            if shape_set is not None:
+                bounds = shape_set.get_composite_bounds(transform.x, transform.y)
+                shape_defs = tuple(shape_set.shapes)
+                entry = _CollisionEntry(
+                    entity=entity,
+                    collider=None,
+                    rigidbody=entity.get_component(RigidBody),
+                    aabb=bounds,
+                    shape_defs=shape_defs,
+                    use_shape_set=True,
+                )
+                entries_by_id[entity_id] = entry
+                grid.insert(entity.id, entry.aabb)
                 continue
             if not self._entity_has_collision_shape(entity):
                 continue
@@ -140,23 +167,22 @@ class CollisionSystem:
                 if not self._aabbs_overlap(entry_a.aabb, entry_b.aabb):
                     continue
 
-                # Narrow-phase: usar ShapeFactory si alguna shape no es AABB pura
+                # Narrow-phase: check shape pairs
                 if not self._narrow_phase_check(entry_a, entry_b):
                     continue
 
-                is_trigger_a = entry_a.collider.is_trigger if entry_a.collider is not None else False
-                is_trigger_b = entry_b.collider.is_trigger if entry_b.collider is not None else False
+                # is_trigger: True if any shape in the pair is trigger
+                is_trigger = self._any_shape_is_trigger(entry_a, entry_b)
                 collision = CollisionInfo(
                     entity_a=entry_a.entity,
                     entity_b=entry_b.entity,
-                    is_trigger=bool(is_trigger_a or is_trigger_b),
+                    is_trigger=is_trigger,
                 )
                 self._collisions.append(collision)
                 self._step_metrics["actual_collisions"] += 1
                 self._emit_collision_event(collision)
 
                 # Registrar contactos en RigidBodies con contact_monitor activo
-                # Solo colisiones reales (no triggers), consistente con Godot body_entered
                 if not collision.is_trigger:
                     a_id = int(collision.entity_a.id)
                     b_id = int(collision.entity_b.id)
@@ -217,26 +243,41 @@ class CollisionSystem:
         if entry_a is None or entry_b is None:
             return None
 
-        # Intento narrow-phase con shapes reales
-        shape_a = self._build_shape_from_entry(entry_a)
-        shape_b = self._build_shape_from_entry(entry_b)
-        if shape_a is not None and shape_b is not None:
-            manifold = shape_a.collide_shape(shape_b)
-            if manifold is not None:
-                # Populate entity IDs/names desde el collision original
-                manifold.entity_a_id = int(collision.entity_a.id)
-                manifold.entity_b_id = int(collision.entity_b.id)
-                manifold.entity_a_name = collision.entity_a.name
-                manifold.entity_b_name = collision.entity_b.name
-                manifold.is_trigger = collision.is_trigger
-                # relative velocity
-                if entry_a.rigidbody is not None and entry_b.rigidbody is not None:
-                    manifold.relative_velocity_x = entry_a.rigidbody.velocity_x - entry_b.rigidbody.velocity_x
-                    manifold.relative_velocity_y = entry_a.rigidbody.velocity_y - entry_b.rigidbody.velocity_y
-                return manifold
+        transform_a = entry_a.entity.get_component(Transform)
+        transform_b = entry_b.entity.get_component(Transform)
+        if transform_a is None or transform_b is None:
+            return None
+
+        defs_a = entry_a.shape_defs if entry_a.shape_defs else (None,)
+        defs_b = entry_b.shape_defs if entry_b.shape_defs else (None,)
+
+        best_manifold: ContactManifold2D | None = None
+        for def_a in defs_a:
+            shape_a = self._build_shape_from_def_or_entry(def_a, entry_a, transform_a)
+            if shape_a is None:
+                continue
+            for def_b in defs_b:
+                shape_b = self._build_shape_from_def_or_entry(def_b, entry_b, transform_b)
+                if shape_b is None:
+                    continue
+                manifold = shape_a.collide_shape(shape_b)
+                if manifold is not None:
+                    if best_manifold is None or manifold.depth > best_manifold.depth:
+                        best_manifold = manifold
+
+        if best_manifold is not None:
+            best_manifold.entity_a_id = int(collision.entity_a.id)
+            best_manifold.entity_b_id = int(collision.entity_b.id)
+            best_manifold.entity_a_name = collision.entity_a.name
+            best_manifold.entity_b_name = collision.entity_b.name
+            best_manifold.is_trigger = collision.is_trigger
+            if entry_a.rigidbody is not None and entry_b.rigidbody is not None:
+                best_manifold.relative_velocity_x = entry_a.rigidbody.velocity_x - entry_b.rigidbody.velocity_x
+                best_manifold.relative_velocity_y = entry_a.rigidbody.velocity_y - entry_b.rigidbody.velocity_y
+            return best_manifold
 
         # Fallback AABB
-        aabb_a = entry_a.aabb  # (left, top, right, bottom)
+        aabb_a = entry_a.aabb
         aabb_b = entry_b.aabb
 
         left_a, top_a, right_a, bottom_a = aabb_a
@@ -346,18 +387,69 @@ class CollisionSystem:
         left_b, top_b, right_b, bottom_b = aabb_b
         return left_a < right_b and right_a > left_b and top_a < bottom_b and bottom_a > top_b
 
+    @staticmethod
+    def _collider_to_shape_def(collider: Collider) -> CollisionShape2DDef:
+        """Convert a legacy Collider into a synthetic CollisionShape2DDef."""
+        return CollisionShape2DDef(
+            shape_type=collider.shape_type,
+            offset_x=collider.offset_x,
+            offset_y=collider.offset_y,
+            disabled=not collider.enabled,
+            is_trigger=collider.is_trigger,
+            one_way_collision=collider.one_way_collision,
+            one_way_collision_direction_y=collider.one_way_collision_direction_y,
+            friction=collider.friction,
+            restitution=collider.restitution,
+            width=collider.width,
+            height=collider.height,
+            radius=collider.radius,
+            points=collider.points,
+            capsule_height=collider.capsule_height,
+        )
+
+    @staticmethod
+    def _any_shape_is_trigger(entry_a: _CollisionEntry, entry_b: _CollisionEntry) -> bool:
+        """True if any shape in either entry is a trigger."""
+        for shape in entry_a.shape_defs:
+            if shape.is_trigger:
+                return True
+        for shape in entry_b.shape_defs:
+            if shape.is_trigger:
+                return True
+        if entry_a.collider is not None and entry_a.collider.is_trigger:
+            return True
+        if entry_b.collider is not None and entry_b.collider.is_trigger:
+            return True
+        return False
+
     def _narrow_phase_check(self, entry_a: _CollisionEntry, entry_b: _CollisionEntry) -> bool:
-        """Narrow-phase check usando ShapeFactory para shapes no-AABB."""
-        shape_a = self._build_shape_from_entry(entry_a)
-        shape_b = self._build_shape_from_entry(entry_b)
-
-        if shape_a is None or shape_b is None:
+        """Narrow-phase: iterate shape pairs. Early exit on first hit."""
+        defs_a = entry_a.shape_defs if entry_a.shape_defs else (None,)
+        defs_b = entry_b.shape_defs if entry_b.shape_defs else (None,)
+        transform_a = entry_a.entity.get_component(Transform)
+        transform_b = entry_b.entity.get_component(Transform)
+        if transform_a is None or transform_b is None:
             return True
 
-        if isinstance(shape_a, AABBShape) and isinstance(shape_b, AABBShape):
-            return True
+        for def_a in defs_a:
+            shape_a = self._build_shape_from_def_or_entry(def_a, entry_a, transform_a)
+            if shape_a is None:
+                continue
+            for def_b in defs_b:
+                shape_b = self._build_shape_from_def_or_entry(def_b, entry_b, transform_b)
+                if shape_b is None:
+                    continue
+                if isinstance(shape_a, AABBShape) and isinstance(shape_b, AABBShape):
+                    return True
+                if shape_a.intersects_shape(shape_b):
+                    return True
+        return False
 
-        return shape_a.intersects_shape(shape_b)
+    def _build_shape_from_def_or_entry(self, def_: CollisionShape2DDef | None, entry: _CollisionEntry, transform: Transform):
+        """Build ShapeInstance from a CollisionShape2DDef, or fallback to entry."""
+        if def_ is not None:
+            return ShapeFactory.build_from_def(def_, transform.x, transform.y)
+        return self._build_shape_from_entry(entry)
 
     def _build_shape_from_entry(self, entry: _CollisionEntry):
         """Construye ShapeInstance desde Collider, CollisionShape2D, CollisionPolygon2D o bounds."""

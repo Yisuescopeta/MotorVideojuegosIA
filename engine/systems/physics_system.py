@@ -11,6 +11,7 @@ from typing import Any, Optional
 from engine.components.animatable_body_2d import AnimatableBody2D
 from engine.components.collider import Collider
 from engine.components.collision_filter_2d import CollisionFilter2D
+from engine.components.collision_shape_set_2d import CollisionShape2DDef, CollisionShapeSet2D
 from engine.components.joint2d import Joint2D
 from engine.components.rigidbody import RigidBody
 from engine.components.static_body_2d import StaticBody2D
@@ -66,9 +67,10 @@ class PhysicsSystem:
                 continue
             candidate = _SolidCandidate(entity=entity, collider=collider)
             effective_type = self._get_effective_body_type(entity)
+            solid_aabb = self._get_solid_composite_aabb(entity, transform, collider)
             if effective_type == "static":
                 static_like_candidates[int(entity.id)] = candidate
-                grid.insert(entity.id, collider.get_bounds(transform.x, transform.y))
+                grid.insert(entity.id, solid_aabb)
             else:
                 moving_candidates.append(candidate)
 
@@ -294,6 +296,29 @@ class PhysicsSystem:
         return rigidbody.body_type
 
     @staticmethod
+    def _get_entity_shape_aabbs(entity: Entity, transform: Transform) -> list[tuple[AABB, CollisionShape2DDef | None]]:
+        """Return (AABB, shape_def|None) for each enabled non-trigger shape on entity."""
+        shape_set = entity.get_component(CollisionShapeSet2D)
+        if shape_set is not None:
+            enabled = shape_set.get_enabled_non_trigger_shapes()
+            if enabled:
+                return [(s.get_bounds(transform.x, transform.y), s) for s in enabled]
+        collider = entity.get_component(Collider)
+        if collider is not None and collider.enabled and not collider.is_trigger:
+            return [(collider.get_bounds(transform.x, transform.y), None)]
+        return []
+
+    @staticmethod
+    def _get_solid_composite_aabb(entity: Entity, transform: Transform, collider: Collider) -> AABB:
+        """Return composite bounds for spatial hash. Uses shape set if present."""
+        shape_set = entity.get_component(CollisionShapeSet2D)
+        if shape_set is not None:
+            enabled = shape_set.get_enabled_non_trigger_shapes()
+            if enabled:
+                return shape_set.get_composite_bounds(transform.x, transform.y)
+        return collider.get_bounds(transform.x, transform.y)
+
+    @staticmethod
     def _get_material_path_from_entity(entity: Entity) -> str:
         """Extract physics_material_override_path from RigidBody or StaticBody2D."""
         rb = entity.get_component(RigidBody)
@@ -376,7 +401,9 @@ class PhysicsSystem:
             other_transform = candidate.entity.get_component(Transform)
             if other_transform is None or not candidate.collider.enabled:
                 continue
-            candidate_aabb = candidate.collider.get_bounds(other_transform.x, other_transform.y)
+            candidate_aabb = self._get_solid_composite_aabb(
+                candidate.entity, other_transform, candidate.collider,
+            )
             if not self._aabb_overlaps(swept_aabb, candidate_aabb):
                 continue
             seen_ids.add(candidate_id)
@@ -413,33 +440,38 @@ class PhysicsSystem:
             other_transform = other.entity.get_component(Transform)
             if other_transform is None or not other.collider.enabled:
                 continue
-            o_left, o_top, o_right, o_bottom = other.collider.get_bounds(other_transform.x, other_transform.y)
-            overlap_y = top < o_bottom and bottom > o_top
-            overlap_x = left < o_right and right > o_left
-            if not overlap_x or not overlap_y:
-                continue
-            if rigidbody.velocity_x > 0:
-                transform.x -= right - o_left
-            elif rigidbody.velocity_x < 0:
-                transform.x += o_right - left
+            for o_aabb, shape_def in self._get_entity_shape_aabbs(other.entity, other_transform):
+                o_left, o_top, o_right, o_bottom = o_aabb
+                overlap_y = top < o_bottom and bottom > o_top
+                overlap_x = left < o_right and right > o_left
+                if not overlap_x or not overlap_y:
+                    continue
+                if rigidbody.velocity_x > 0:
+                    transform.x -= right - o_left
+                elif rigidbody.velocity_x < 0:
+                    transform.x += o_right - left
 
-            # Apply friction and bounce — physics material override with collider fallback
-            my_bounce, my_friction = self._resolve_material_props(
-                rigidbody.physics_material_override_path, collider,
-            )
-            other_bounce, other_friction = self._resolve_material_props(
-                self._get_material_path_from_entity(other.entity), other.collider,
-            )
-            bounce = max(my_bounce, other_bounce)
-            friction = (my_friction + other_friction) * 0.5
-            if not math.isfinite(bounce):
-                bounce = 1.0
-            if math.isnan(friction):
-                friction = 1.0
-            rigidbody.velocity_x *= -bounce
-            rigidbody.velocity_y *= max(0.0, 1.0 - friction * 0.5)
+                # Apply friction and bounce
+                my_bounce, my_friction = self._resolve_material_props(
+                    rigidbody.physics_material_override_path, collider,
+                )
+                if shape_def is not None:
+                    other_bounce = shape_def.restitution
+                    other_friction = shape_def.friction
+                else:
+                    other_bounce, other_friction = self._resolve_material_props(
+                        self._get_material_path_from_entity(other.entity), other.collider,
+                    )
+                bounce = max(my_bounce, other_bounce)
+                friction = (my_friction + other_friction) * 0.5
+                if not math.isfinite(bounce):
+                    bounce = 1.0
+                if math.isnan(friction):
+                    friction = 1.0
+                rigidbody.velocity_x *= -bounce
+                rigidbody.velocity_y *= max(0.0, 1.0 - friction * 0.5)
 
-            left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
+                left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
 
     def _resolve_vertical(
         self,
@@ -453,34 +485,39 @@ class PhysicsSystem:
             other_transform = other.entity.get_component(Transform)
             if other_transform is None or not other.collider.enabled:
                 continue
-            o_left, o_top, o_right, o_bottom = other.collider.get_bounds(other_transform.x, other_transform.y)
-            overlap_y = top < o_bottom and bottom > o_top
-            overlap_x = left < o_right and right > o_left
-            if not overlap_x or not overlap_y:
-                continue
-            if rigidbody.velocity_y > 0:
-                transform.y -= bottom - o_top
-                rigidbody.is_grounded = True
-            elif rigidbody.velocity_y < 0:
-                transform.y += o_bottom - top
+            for o_aabb, shape_def in self._get_entity_shape_aabbs(other.entity, other_transform):
+                o_left, o_top, o_right, o_bottom = o_aabb
+                overlap_y = top < o_bottom and bottom > o_top
+                overlap_x = left < o_right and right > o_left
+                if not overlap_x or not overlap_y:
+                    continue
+                if rigidbody.velocity_y > 0:
+                    transform.y -= bottom - o_top
+                    rigidbody.is_grounded = True
+                elif rigidbody.velocity_y < 0:
+                    transform.y += o_bottom - top
 
-            # Apply friction and bounce — physics material override with collider fallback
-            my_bounce, my_friction = self._resolve_material_props(
-                rigidbody.physics_material_override_path, collider,
-            )
-            other_bounce, other_friction = self._resolve_material_props(
-                self._get_material_path_from_entity(other.entity), other.collider,
-            )
-            bounce = max(my_bounce, other_bounce)
-            friction = (my_friction + other_friction) * 0.5
-            if not math.isfinite(bounce):
-                bounce = 1.0
-            if math.isnan(friction):
-                friction = 1.0
-            rigidbody.velocity_y *= -bounce
-            rigidbody.velocity_x *= max(0.0, 1.0 - friction * 0.5)
+                # Apply friction and bounce
+                my_bounce, my_friction = self._resolve_material_props(
+                    rigidbody.physics_material_override_path, collider,
+                )
+                if shape_def is not None:
+                    other_bounce = shape_def.restitution
+                    other_friction = shape_def.friction
+                else:
+                    other_bounce, other_friction = self._resolve_material_props(
+                        self._get_material_path_from_entity(other.entity), other.collider,
+                    )
+                bounce = max(my_bounce, other_bounce)
+                friction = (my_friction + other_friction) * 0.5
+                if not math.isfinite(bounce):
+                    bounce = 1.0
+                if math.isnan(friction):
+                    friction = 1.0
+                rigidbody.velocity_y *= -bounce
+                rigidbody.velocity_x *= max(0.0, 1.0 - friction * 0.5)
 
-            left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
+                left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
 
     def _sweep_horizontal(
         self,
@@ -499,21 +536,22 @@ class PhysicsSystem:
             other_transform = other.entity.get_component(Transform)
             if other_transform is None or not other.collider.enabled:
                 continue
-            self._step_metrics["swept_checks"] += 1
-            o_left, o_top, o_right, o_bottom = other.collider.get_bounds(other_transform.x, other_transform.y)
-            overlap_y = top < o_bottom and bottom > o_top
-            if not overlap_y:
-                continue
-            if delta_x > 0:
-                gap = o_left - right
-                if 0.0 <= gap <= safe_delta:
-                    safe_delta = min(safe_delta, max(0.0, gap))
-                    self._record_swept_contact(entity, other.entity)
-            else:
-                gap = o_right - left
-                if safe_delta <= gap <= 0.0:
-                    safe_delta = max(safe_delta, min(0.0, gap))
-                    self._record_swept_contact(entity, other.entity)
+            for o_aabb, _shape_def in self._get_entity_shape_aabbs(other.entity, other_transform):
+                self._step_metrics["swept_checks"] += 1
+                o_left, o_top, o_right, o_bottom = o_aabb
+                overlap_y = top < o_bottom and bottom > o_top
+                if not overlap_y:
+                    continue
+                if delta_x > 0:
+                    gap = o_left - right
+                    if 0.0 <= gap <= safe_delta:
+                        safe_delta = min(safe_delta, max(0.0, gap))
+                        self._record_swept_contact(entity, other.entity)
+                else:
+                    gap = o_right - left
+                    if safe_delta <= gap <= 0.0:
+                        safe_delta = max(safe_delta, min(0.0, gap))
+                        self._record_swept_contact(entity, other.entity)
         return safe_delta
 
     def _sweep_vertical(
@@ -533,21 +571,22 @@ class PhysicsSystem:
             other_transform = other.entity.get_component(Transform)
             if other_transform is None or not other.collider.enabled:
                 continue
-            self._step_metrics["swept_checks"] += 1
-            o_left, o_top, o_right, o_bottom = other.collider.get_bounds(other_transform.x, other_transform.y)
-            overlap_x = left < o_right and right > o_left
-            if not overlap_x:
-                continue
-            if delta_y > 0:
-                gap = o_top - bottom
-                if 0.0 <= gap <= safe_delta:
-                    safe_delta = min(safe_delta, max(0.0, gap))
-                    self._record_swept_contact(entity, other.entity)
-            else:
-                gap = o_bottom - top
-                if safe_delta <= gap <= 0.0:
-                    safe_delta = max(safe_delta, min(0.0, gap))
-                    self._record_swept_contact(entity, other.entity)
+            for o_aabb, _shape_def in self._get_entity_shape_aabbs(other.entity, other_transform):
+                self._step_metrics["swept_checks"] += 1
+                o_left, o_top, o_right, o_bottom = o_aabb
+                overlap_x = left < o_right and right > o_left
+                if not overlap_x:
+                    continue
+                if delta_y > 0:
+                    gap = o_top - bottom
+                    if 0.0 <= gap <= safe_delta:
+                        safe_delta = min(safe_delta, max(0.0, gap))
+                        self._record_swept_contact(entity, other.entity)
+                else:
+                    gap = o_bottom - top
+                    if safe_delta <= gap <= 0.0:
+                        safe_delta = max(safe_delta, min(0.0, gap))
+                        self._record_swept_contact(entity, other.entity)
         return safe_delta
 
     def _record_swept_contact(self, entity: Entity, other: Entity) -> None:
@@ -574,11 +613,12 @@ class PhysicsSystem:
             other_transform = other.entity.get_component(Transform)
             if other_transform is None or not other.collider.enabled:
                 continue
-            o_left, o_top, o_right, o_bottom = other.collider.get_bounds(other_transform.x, other_transform.y)
-            overlap_x = left < o_right and right > o_left
-            overlap_y = probe_top <= o_bottom and probe_bottom >= o_top
-            if overlap_x and overlap_y:
-                return True
+            for o_aabb, _shape_def in self._get_entity_shape_aabbs(other.entity, other_transform):
+                o_left, o_top, o_right, o_bottom = o_aabb
+                overlap_x = left < o_right and right > o_left
+                overlap_y = probe_top <= o_bottom and probe_bottom >= o_top
+                if overlap_x and overlap_y:
+                    return True
         return False
 
     def _resolve_joints(self, world: World, dt: float) -> None:

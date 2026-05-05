@@ -114,6 +114,7 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.collision_filter_2d import CollisionFilter2D
     from engine.components.collision_polygon_2d import CollisionPolygon2D
     from engine.components.collision_shape_2d import CollisionShape2D
+    from engine.components.collision_shape_set_2d import CollisionShapeSet2D
     from engine.components.gameplay2d import (
         Checkpoint2D,
         Collectible2D,
@@ -181,6 +182,13 @@ def create_default_registry() -> ComponentRegistry:
         description="Dedicated collision shape (Godot CollisionShape2D). Takes precedence over Collider when both present.",
         default_payload=CollisionShape2D().to_dict(),
         editor_tags=("physics", "layer:Physics", "collision", "shape"),
+    )
+    registry.register(
+        "CollisionShapeSet2D",
+        CollisionShapeSet2D,
+        description="Multiple collision shapes for a single entity. Each shape can have its own type, offset, trigger flag, and physical properties.",
+        default_payload=CollisionShapeSet2D().to_dict(),
+        editor_tags=("physics", "layer:Physics", "collision", "shape", "composite"),
     )
     registry.register(
         "CollisionPolygon2D",

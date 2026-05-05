@@ -18,9 +18,12 @@ Fábrica:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from engine.physics.contact_data import ContactManifold2D, ContactPoint2D
+
+if TYPE_CHECKING:
+    from engine.components.collision_shape_set_2d import CollisionShape2DDef
 
 AABB = tuple[float, float, float, float]
 
@@ -842,6 +845,21 @@ class ShapeFactory:
             world_verts = [(cx + p[0], cy + p[1]) for p in collider.points]
             return PolygonShape(world_verts)
         return AABBShape(cx, cy, collider.width / 2, collider.height / 2)
+
+    @staticmethod
+    def build_from_def(def_: CollisionShape2DDef, cx: float, cy: float) -> ShapeInstance:
+        """Build ShapeInstance from a CollisionShape2DDef at (cx, cy)."""
+        cx_off = cx + def_.offset_x
+        cy_off = cy + def_.offset_y
+        st = str(def_.shape_type or "box")
+        if st == "circle":
+            return CircleShape(cx_off, cy_off, def_.radius)
+        if st == "capsule":
+            return CapsuleShape(cx_off, cy_off, def_.radius, def_.capsule_height)
+        if st == "polygon" and def_.points:
+            world_verts = [(cx_off + p[0], cy_off + p[1]) for p in def_.points]
+            return PolygonShape(world_verts)
+        return AABBShape(cx_off, cy_off, def_.width / 2, def_.height / 2)
 
     @staticmethod
     def build_from_params(
