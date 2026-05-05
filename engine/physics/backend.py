@@ -131,8 +131,9 @@ class PhysicsBackend(ABC):
         origin: tuple[float, float],
         direction: tuple[float, float],
         max_distance: float,
+        shape_params: Optional[dict] = None,
     ) -> list[PhysicsShapeCastHit]:
-        del world, shape_type, shape_size, origin, direction, max_distance
+        del world, shape_type, shape_size, origin, direction, max_distance, shape_params
         return []
 
     def query_shape(self, world: Any, shape: dict[str, Any]) -> list[dict[str, Any]]:

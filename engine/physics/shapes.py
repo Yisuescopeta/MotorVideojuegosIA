@@ -515,7 +515,7 @@ class PolygonShape(ShapeInstance):
 
 
 class ShapeFactory:
-    """Crea ShapeInstance a partir de un Collider."""
+    """Crea ShapeInstance a partir de un Collider o de parámetros directos."""
 
     @staticmethod
     def build(collider, x: float, y: float) -> ShapeInstance:
@@ -534,3 +534,44 @@ class ShapeFactory:
             world_verts = [(cx + p[0], cy + p[1]) for p in collider.points]
             return PolygonShape(world_verts)
         return AABBShape(cx, cy, collider.width / 2, collider.height / 2)
+
+    @staticmethod
+    def build_from_params(
+        shape_type: str,
+        cx: float,
+        cy: float,
+        **params: float,
+    ) -> ShapeInstance:
+        """Crea ShapeInstance desde parámetros explícitos en (cx, cy).
+
+        Soporta:
+            box:   width, height
+            circle: radius
+            capsule: radius, height
+            polygon: vertices (list of (x, y) tuples locales)
+        """
+        st = str(shape_type or "box").lower()
+
+        if st == "box":
+            width = float(params.get("width", 32.0))
+            height = float(params.get("height", 32.0))
+            return AABBShape(cx, cy, width / 2.0, height / 2.0)
+
+        if st == "circle":
+            radius = float(params.get("radius", 16.0))
+            return CircleShape(cx, cy, radius)
+
+        if st == "capsule":
+            radius = float(params.get("radius", 16.0))
+            height = float(params.get("height", 32.0))
+            return CapsuleShape(cx, cy, radius, height)
+
+        if st == "polygon":
+            vertices_raw = params.get("vertices", [])
+            world_verts = [(cx + v[0], cy + v[1]) for v in vertices_raw]
+            return PolygonShape(world_verts)
+
+        # fallback: box
+        width = float(params.get("width", 32.0))
+        height = float(params.get("height", 32.0))
+        return AABBShape(cx, cy, width / 2.0, height / 2.0)

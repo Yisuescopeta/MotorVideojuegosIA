@@ -368,18 +368,22 @@ class RuntimeAPI(EngineAPIComponent):
         direction_x: float,
         direction_y: float,
         max_distance: float,
+        shape_params: Optional[dict] = None,
     ) -> list[ShapeCastResult]:
         """Cast a shape through the physics world and return the first hit.
 
         Args:
-            shape_type: 'box' or 'circle'.
-            shape_width: Width of the shape (diameter for circle).
-            shape_height: Height of the shape (diameter for circle).
+            shape_type: 'box', 'circle', 'capsule', or 'polygon'.
+            shape_width: Width of the shape (diameter for circle/capsule).
+            shape_height: Height of the shape (diameter for circle, height for capsule).
             origin_x: Starting position x.
             origin_y: Starting position y.
             direction_x: Direction x component.
             direction_y: Direction y component.
             max_distance: Maximum cast distance.
+            shape_params: Optional dict with explicit shape params
+                (width, height, radius, vertices). Overrides shape_width/height
+                when provided. Default None maintains compat.
 
         Returns:
             List with at most one ShapeCastResult hit, or empty list if no hit.
@@ -390,6 +394,7 @@ class RuntimeAPI(EngineAPIComponent):
         return runtime.query_physics_shape_cast(  # type: ignore[return-value]  # list[dict[str, Any]] vs list[ShapeCastResult]
             shape_type, shape_width, shape_height,
             origin_x, origin_y, direction_x, direction_y, max_distance,
+            shape_params=shape_params,
         )
 
     def list_physics_backends(self) -> list[PhysicsBackendInfo]:

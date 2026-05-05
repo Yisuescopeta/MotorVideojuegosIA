@@ -966,6 +966,7 @@ class Game:
         direction_x: float,
         direction_y: float,
         max_distance: float,
+        shape_params: Optional[dict] = None,
     ) -> list[PhysicsShapeCastHit]:
         active_world = self.world
         if active_world is None:
@@ -983,6 +984,7 @@ class Game:
             (origin_x, origin_y),
             (direction_x, direction_y),
             max_distance,
+            shape_params=shape_params,
         )
 
     def refresh_ui_layout(self, viewport_size: Optional[tuple[float, float]] = None) -> bool:

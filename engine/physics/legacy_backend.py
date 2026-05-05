@@ -152,81 +152,115 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         origin: tuple[float, float],
         direction: tuple[float, float],
         max_distance: float,
+        shape_params: Optional[dict] = None,
     ) -> list[PhysicsShapeCastHit]:
-        steps = 20
         ox, oy = float(origin[0]), float(origin[1])
         dx, dy = float(direction[0]), float(direction[1])
         length = math.hypot(dx, dy)
         if length <= 1e-6:
             return []
-        dx /= length
-        dy /= length
-        sw, sh = float(shape_size[0]), float(shape_size[1])
-        half_w = sw / 2.0
-        half_h = sh / 2.0
 
-        best_hit: PhysicsShapeCastHit | None = None
-        best_distance = float("inf")
-
-        for i in range(steps + 1):
-            t = max_distance * (i / float(steps))
-            px = ox + dx * t
-            py = oy + dy * t
-
-            if shape_type == "circle":
-                radius = sw / 2.0
-                shape_left = px - radius
-                shape_top = py - radius
-                shape_right = px + radius
-                shape_bottom = py + radius
+        # Build sweep shape params from shape_size or explicit shape_params
+        if shape_params is not None:
+            params = dict(shape_params)
+        else:
+            sw, sh = float(shape_size[0]), float(shape_size[1])
+            if shape_type in ("circle",):
+                params = {"radius": sw / 2.0}
+            elif shape_type in ("capsule",):
+                params = {"radius": sw / 2.0, "height": sh}
+            elif shape_type in ("polygon",):
+                params = {"vertices": []}
             else:
-                shape_left = px - half_w
-                shape_top = py - half_h
-                shape_right = px + half_w
-                shape_bottom = py + half_h
+                params = {"width": sw, "height": sh}
 
-            for entity in world.get_entities_with(Transform, Collider):
-                transform = entity.get_component(Transform)
-                collider = entity.get_component(Collider)
-                if transform is None or collider is None or not collider.enabled:
-                    continue
-                collider_left, collider_top, collider_right, collider_bottom = collider.get_bounds(
-                    transform.x, transform.y
-                )
+        best_hit: Optional[dict] = None
+        best_fraction = float("inf")
 
-                overlap_left = max(shape_left, collider_left)
-                overlap_top = max(shape_top, collider_top)
-                overlap_right = min(shape_right, collider_right)
-                overlap_bottom = min(shape_bottom, collider_bottom)
+        # Broad-phase: union AABB of sweep at t=0 and t=max
+        sweep_origin = ShapeFactory.build_from_params(shape_type, ox, oy, **params)
+        sweep_end = ShapeFactory.build_from_params(
+            shape_type, ox + dx * max_distance, oy + dy * max_distance, **params
+        )
+        so_aabb = sweep_origin.get_aabb()
+        se_aabb = sweep_end.get_aabb()
+        sweep_left = min(so_aabb[0], se_aabb[0])
+        sweep_top = min(so_aabb[1], se_aabb[1])
+        sweep_right = max(so_aabb[2], se_aabb[2])
+        sweep_bottom = max(so_aabb[3], se_aabb[3])
 
-                if overlap_left < overlap_right and overlap_top < overlap_bottom:
-                    dist = t
-                    if dist < best_distance:
-                        best_distance = dist
-                        fraction = dist / max_distance if max_distance > 0.0 else 0.0
-                        # Compute approximate normal from AABB overlap
-                        n_ox = overlap_right - overlap_left
-                        n_oy = overlap_bottom - overlap_top
-                        nx = 0.0
-                        ny = 0.0
-                        if n_ox <= n_oy:
-                            nx = 1.0 if px > (collider_left + collider_right) / 2.0 else -1.0
-                        else:
-                            ny = 1.0 if py > (collider_top + collider_bottom) / 2.0 else -1.0
-                        best_hit = {
-                            "entity": entity.name,
-                            "entity_id": int(entity.id),
-                            "position": {"x": px, "y": py},
-                            "normal": {"x": nx, "y": ny},
-                            "fraction": fraction,
-                            "is_trigger": bool(collider.is_trigger),
-                        }
-                        break  # first entity that overlaps at this step
+        for entity in world.get_entities_with(Transform, Collider):
+            transform = entity.get_component(Transform)
+            collider = entity.get_component(Collider)
+            if transform is None or collider is None or not collider.enabled:
+                continue
 
-            if best_hit is not None and i > 0:
-                break  # return earliest hit
+            # Broad-phase AABB test
+            c_left, c_top, c_right, c_bottom = collider.get_bounds(transform.x, transform.y)
+            if not (
+                sweep_left < c_right
+                and sweep_right > c_left
+                and sweep_top < c_bottom
+                and sweep_bottom > c_top
+            ):
+                continue
+
+            # Build target shape for narrow-phase
+            target_shape = ShapeFactory.build(collider, transform.x, transform.y)
+
+            target_info = {
+                "entity": entity.name,
+                "entity_id": int(entity.id),
+                "is_trigger": bool(collider.is_trigger),
+            }
+
+            result = self._swept_toi(
+                shape_type=shape_type,
+                shape_params=params,
+                origin=(ox, oy),
+                direction=(dx, dy),
+                max_distance=max_distance,
+                target_shape=target_shape,
+                target_info=target_info,
+            )
+
+            if result is not None and result["fraction"] < best_fraction:
+                best_fraction = result["fraction"]
+                best_hit = {
+                    "entity": str(result["entity"]),
+                    "entity_id": int(result["entity_id"]),
+                    "position": {"x": float(result["position"]["x"]), "y": float(result["position"]["y"])},
+                    "normal": {"x": float(result["normal"]["x"]), "y": float(result["normal"]["y"])},
+                    "fraction": float(result["fraction"]),
+                    "is_trigger": bool(result.get("is_trigger", False)),
+                }
 
         return [best_hit] if best_hit is not None else []
+
+    def _swept_toi(
+        self,
+        shape_type: str,
+        shape_params: dict[str, float],
+        origin: tuple[float, float],
+        direction: tuple[float, float],
+        max_distance: float,
+        target_shape: Any,
+        target_info: dict,
+    ) -> Optional[dict]:
+        """Binary-search TOI for a single target shape. Delegates to swept_collision."""
+        from engine.physics.swept_collision import swept_shape_toi
+
+        return swept_shape_toi(
+            shape_type=shape_type,
+            shape_params=shape_params,
+            origin=origin,
+            direction=direction,
+            max_distance=max_distance,
+            target_shape=target_shape,
+            target_info=target_info,
+            epsilon=0.001,
+            max_iter=64,
+        )
 
     def collect_contacts(self, world: Any) -> list[PhysicsContact]:
         del world
