@@ -79,6 +79,7 @@ class EngineAPI:
     def _initialize_engine(self) -> None:
         from cli.headless_game import HeadlessGame
         from engine.assets.asset_service import AssetService
+        from engine.inspector.inspector_system import InspectorSystem
         from engine.systems.animation_system import AnimationSystem
         from engine.systems.area2d_system import Area2DSystem
         from engine.systems.audio_system import AudioSystem
@@ -90,6 +91,8 @@ class EngineAPI:
         from engine.systems.player_controller_system import PlayerControllerSystem
         from engine.systems.render_system import RenderSystem
         from engine.systems.script_behaviour_system import ScriptBehaviourSystem
+        from engine.systems.ui_system import UISystem
+        from engine.systems.ui_render_system import UIRenderSystem
 
         self.game = HeadlessGame()
         self.scene_manager = SceneManager(self._registry)
@@ -116,6 +119,9 @@ class EngineAPI:
         self.game.set_audio_system(AudioSystem())
         self.game.set_area2d_system(Area2DSystem(event_bus=event_bus))
         self.game.set_gameplay2d_semantic_system(Gameplay2DSemanticSystem())
+        self.game.set_inspector_system(InspectorSystem())
+        self.game.set_ui_system(UISystem())
+        self.game.set_ui_render_system(UIRenderSystem())
         self._register_optional_box2d_backend()
 
     def _initialize_collaborators(self) -> None:
