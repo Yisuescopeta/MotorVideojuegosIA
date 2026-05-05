@@ -23,7 +23,7 @@ La fuente de verdad para componentes publicos registrados es
 Familias principales:
 
 - Espacial/render: `Transform`, `RectTransform`, `Sprite`, `Animator`, `Camera2D`, `RenderOrder2D`, `RenderStyle2D`.
-- Gameplay/fisica: `Collider`, `RigidBody`, `CharacterController2D`, `PlayerController2D`, `Joint2D`, `InputMap`, `AudioSource`, `ScriptBehaviour`, `RayCast2D`, `NavigationObstacle2D`.
+- Gameplay/fisica: `Collider`, `CollisionShapeSet2D`, `RigidBody`, `CharacterController2D`, `PlayerController2D`, `Joint2D`, `InputMap`, `AudioSource`, `ScriptBehaviour`, `RayCast2D`, `NavigationObstacle2D`.
 - Gameplay semantico 2D: `Collectible2D`, `Hazard2D`, `Goal2D`, `RespawnPoint2D`, `MovingPlatform2D`, `EnemyPatrol2D`, `Checkpoint2D`, `KillZone2D`, `LevelBounds2D`. Son componentes serializables. En runtime, `Gameplay2DSemanticSystem` consume contactos fisicos existentes para emitir eventos de coleccionable, hazard, goal, checkpoint y killzone, aplicar respawn runtime y no modificar la escena serializada. Tambien evalua `LevelBounds2D` por frame: emite `level_bounds_exited`, clampa salidas horizontales y respawnea salidas por `bottom` con el respawn de sesion o el primer `RespawnPoint2D` activo. `Checkpoint2D` puede activar un respawn de sesion usando un `RespawnPoint2D` con el mismo id o su propio `Transform`; `KillZone2D` puede devolver al Player a ese respawn o al primer `RespawnPoint2D` activo. `MovingPlatform2D` mueve la entidad por su path, emite eventos de plataforma sin modificar la escena serializada y transporta al Player cuando su `Collider` esta apoyado encima del `Collider` de la plataforma antes del movimiento del frame. Este soporte de riders es minimo, centrado en Player; los eventos `moving_platform_rider_attached`, `moving_platform_rider_moved` y `moving_platform_rider_detached` quedan planned. `EnemyPatrol2D` mueve la entidad entre sus puntos de patrulla en runtime de forma ciclica, emite `enemy_patrol_started` y `enemy_patrol_reached_point`, y al contactar con Player emite `enemy_touched` (o el evento configurado) con daño y respawn usando el respawn de sesion o el primer `RespawnPoint2D` activo; si no hay respawn emite `enemy_respawn_missing`. Si `EnemyPatrol2D` y `Hazard2D` coexisten en la misma entidad, `EnemyPatrol2D` absorbe la interaccion para evitar eventos duplicados. No persiste progreso runtime en la escena.
 - Escena, tilemap y UI: `Tilemap`, `SceneLink`, `SceneEntryPoint`, `SceneTransition*`, `Canvas`, `UIText`, `UIButton`, `UIImage`.
 
@@ -318,7 +318,47 @@ Construye una shape desde parametros explicitos sin requerir un `Collider`. Sopo
 
 Usado internamente por `swept_collision` para construir la shape de barrido en cada punto de la busqueda binaria.
 
+**Factory from CollisionShape2DDef:**
+
+```python
+ShapeFactory.build_from_def(def_: CollisionShape2DDef, cx: float, cy: float) -> ShapeInstance
+```
+
+Construye una `ShapeInstance` desde un `CollisionShape2DDef`, aplicando `offset_x`
+y `offset_y` al centro `(cx, cy)`. Soporta los mismos tipos que `build()`:
+`"box"`, `"circle"`, `"capsule"`, `"polygon"`. Usado internamente por
+`CollisionSystem` y `PhysicsSystem` para construir shapes desde las definiciones
+de `CollisionShapeSet2D`.
+
 **Integracion en CollisionSystem:**
+
+`CollisionSystem` soporta dos modos de entrada de shapes: legacy (`Collider`,
+`CollisionShape2D`, `CollisionPolygon2D`) y el nuevo `CollisionShapeSet2D`.
+Cuando una entidad tiene `CollisionShapeSet2D`, se usa su lista de
+`CollisionShape2DDef` tanto para bounds compuestos (broad-phase) como para
+intersección por pares (narrow-phase).
+
+El broad-phase construye el AABB compuesto desde
+`CollisionShapeSet2D.get_composite_bounds()` que encierra todas las shapes
+habilitadas no-trigger.
+
+La narrow-phase itera sobre todos los pares de shapes entre dos entidades,
+construyendo cada `ShapeInstance` via `ShapeFactory.build_from_def()` y
+verificando `intersects_shape()`. Se usa el manifold de mayor profundidad
+como resultado de contacto. Si ambas shapes son `"box"`, la intersección ya fue
+validada por el broad-phase y retorna `True` sin construir shapes.
+
+Cuando una entidad usa `Collider` legacy (sin `CollisionShapeSet2D`), el sistema
+convierte el `Collider` a un `CollisionShape2DDef` sintético mediante
+`_collider_to_shape_def()` para unificar el flujo de narrow-phase.
+
+La detección de trigger (`_any_shape_is_trigger()`) verifica si alguna shape
+de cualquiera de las dos entidades tiene `is_trigger=True`, reemplazando la
+antigua verificación por collider único.
+
+`CollisionSystem.resolve_contacts()` también itera por pares de shapes,
+seleccionando el manifold con mayor profundidad entre todas las combinaciones
+de shapes de ambas entidades.
 
 `CollisionSystem._narrow_phase_check(entry_a, entry_b)` reemplaza a la antigua
 `_narrow_phase_capsule()` y sus helpers `_capsule_vs_aabb()` /
@@ -337,10 +377,28 @@ candidato y se verifica `intersects_shape()` antes de aceptar la colision.
 Esto evita falsos positivos del barrido AABB para circulos, capsulas y
 poligonos.
 
+**Integracion en PhysicsSystem con CollisionShapeSet2D:**
+
+`PhysicsSystem` soporta `CollisionShapeSet2D` en todas las rutas de colisión:
+
+- `_get_entity_shape_aabbs()` retorna una lista de pares `(AABB, CollisionShape2DDef | None)` para cada shape habilitada no-trigger de la entidad. Si la entidad usa `CollisionShapeSet2D`, itera sobre sus shapes; si no, retorna el AABB del `Collider` legacy.
+- `_get_solid_composite_aabb()` retorna el AABB compuesto para inserción en el spatial hash. Usa `get_composite_bounds()` si hay `CollisionShapeSet2D`.
+- `_resolve_horizontal()` y `_resolve_vertical()` iteran sobre los AABBs de todas las shapes de la entidad contraria, resolviendo colisión y aplicando materiales por shape (`restitution`/`friction` desde `CollisionShape2DDef` cuando está disponible).
+- `_sweep_horizontal()`, `_sweep_vertical()` y `_has_proximity()` iteran sobre shapes para detección de barrido y proximidad respectivamente.
+
+La resolución de materiales prioriza `physics_material_override_path` del
+`RigidBody` antes que `CollisionShape2DDef.friction`/`restitution`, y estos a
+su vez antes que los valores del `Collider` legacy.
+
 **Tests:** 12 tests en `tests/test_shape_factory.py` que cubren intersecciones
 AABB‑AABB, Circle‑Circle, Circle‑AABB, Circle‑Capsule, Capsule‑AABB,
 Capsule‑Capsule, Polygon‑AABB, la factoria desde Collider, y la integracion en
 `_sweep_axis` del backend legacy.
+
+Tests adicionales en `tests/test_collision_shape_set_2d.py` cubren
+`CollisionShape2DDef` (bounds con/sin offset, circle, capsule, to_dict roundtrip,
+flags) y `CollisionShapeSet2D` (shape por defecto, composite bounds, exclusión de
+disabled/trigger, to_dict roundtrip, empty shapes default).
 
 ### Swept collision (barrido continuo)
 

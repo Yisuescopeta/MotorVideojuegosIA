@@ -83,6 +83,12 @@ class CollisionShape2DDef:
             return (x - self.radius, y - half_h, x + self.radius, y + half_h)
         if st == "circle":
             return (x - self.radius, y - self.radius, x + self.radius, y + self.radius)
+        if st == "polygon" and self.points:
+            min_x = min(p[0] for p in self.points)
+            min_y = min(p[1] for p in self.points)
+            max_x = max(p[0] for p in self.points)
+            max_y = max(p[1] for p in self.points)
+            return (x + min_x, y + min_y, x + max_x, y + max_y)
         half_w = self.width / 2
         half_h = self.height / 2
         return (x - half_w, y - half_h, x + half_w, y + half_h)

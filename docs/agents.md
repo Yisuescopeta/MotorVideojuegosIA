@@ -442,6 +442,36 @@ Los campos disponibles en cada evento `collision_contact`:
 - `is_trigger`: True si es colisión de trigger
 - `schema_version`: versión del schema (≥1)
 
+### CollisionShapeSet2D — Múltiples formas de colisión por entidad
+
+`CollisionShapeSet2D` permite definir varias formas de colisión (box, circle, capsule,
+polygon) en una sola entidad. Cada `CollisionShape2DDef` tiene su propio offset,
+flags de trigger/disabled, friction, restitution y geometría. Útil para entidades
+con formas compuestas (por ejemplo, un personaje con cuerpo box + cabeza circle).
+
+Uso desde authoring:
+```python
+from engine.components.collision_shape_set_2d import (
+    CollisionShape2DDef,
+    CollisionShapeSet2D,
+)
+
+api.add_component("boss", "CollisionShapeSet2D", {
+    "shapes": [
+        {"shape_type": "box", "width": 64.0, "height": 48.0, "offset_y": -24.0},
+        {"shape_type": "circle", "radius": 20.0, "offset_y": -48.0, "is_trigger": True},
+    ],
+})
+```
+
+Métodos clave:
+- `get_composite_bounds(x, y)`: AABB que envuelve todas las shapes habilitadas no-trigger.
+- `get_enabled_non_trigger_shapes()`: lista filtrada de shapes activas no-trigger.
+- `CollisionShape2DDef.get_bounds(cx, cy)`: AABB de una shape individual en espacio mundo.
+
+Serialización: las shapes se guardan como lista de dicts en el campo `"shapes"`, cada una
+con tipo, offset, flags y geometría.
+
 ### Limitaciones de física para agentes IA
 
 - `box2d` es backend opt-in. No usar a menos que esté explicitamente configurado.

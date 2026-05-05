@@ -146,6 +146,65 @@ Ejemplo de archivo `materials/ice.json`:
 `RigidBody` y `StaticBody2D` referencian un PhysicsMaterial mediante el campo
 `physics_material_override_path` (ruta relativa al proyecto).
 
+### CollisionShapeSet2D — Multiple collision shapes por entidad
+
+`CollisionShapeSet2D` es un componente registrado que permite definir múltiples
+shapes de colisión sobre una misma entidad. Cada shape se define como un
+`CollisionShape2DDef` (data-only, no es un Component) con su propio tipo,
+offset, trigger flag y propiedades físicas.
+
+Payload JSON serializado en escena:
+
+```json
+{
+  "shapes": [
+    {
+      "shape_type": "box",
+      "offset_x": 0.0,
+      "offset_y": 0.0,
+      "disabled": false,
+      "is_trigger": false,
+      "one_way_collision": false,
+      "one_way_collision_direction_y": -1.0,
+      "friction": 0.2,
+      "restitution": 0.0,
+      "width": 32.0,
+      "height": 32.0,
+      "radius": 16.0,
+      "points": [],
+      "capsule_height": 0.0
+    }
+  ]
+}
+```
+
+Campos de `CollisionShape2DDef`:
+
+| Campo | Tipo | Default | Descripción |
+|-------|------|---------|-------------|
+| `shape_type` | string | `"box"` | Tipo de shape: `"box"`, `"circle"`, `"capsule"`, `"polygon"` |
+| `offset_x` | float | `0.0` | Offset local X desde el transform de la entidad |
+| `offset_y` | float | `0.0` | Offset local Y desde el transform de la entidad |
+| `disabled` | bool | `false` | Si es `true`, esta shape se ignora en colisiones |
+| `is_trigger` | bool | `false` | Si es `true`, solo evento trigger sin bloqueo físico |
+| `one_way_collision` | bool | `false` | Colisión unilateral (solo desde arriba) |
+| `one_way_collision_direction_y` | float | `-1.0` | Dirección de la colisión unilateral |
+| `friction` | float | `0.2` | Coeficiente de fricción de esta shape |
+| `restitution` | float | `0.0` | Coeficiente de restitución (rebote) de esta shape |
+| `width` | float | `32.0` | Ancho (para shapes `"box"`) |
+| `height` | float | `32.0` | Alto (para shapes `"box"`) |
+| `radius` | float | `16.0` | Radio (para shapes `"circle"` y `"capsule"`) |
+| `points` | list[list[float]] | `[]` | Vértices locales (para shapes `"polygon"`) |
+| `capsule_height` | float | `0.0` | Altura del segmento central (para shapes `"capsule"`) |
+
+**Compatibilidad legacy:** Si una entidad no tiene `CollisionShapeSet2D`, el
+sistema usa el `Collider` legacy como única shape envuelta en un
+`CollisionShape2DDef` sintético, manteniendo compatibilidad total con escenas
+existentes.
+
+**Default:** Si el payload tiene `shapes: []` (lista vacía), se crea una shape
+por defecto tipo `"box"` con valores predeterminados.
+
 En `Animator`, el payload vigente sigue usando `animations`, `default_state`,
 `current_state`, `sprite_sheet` y `sprite_sheet_path`. Como foundation opcional
 de Fase 6 puede incluir tambien:

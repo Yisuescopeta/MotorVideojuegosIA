@@ -1901,6 +1901,52 @@
             ]
         },
         {
+            "id": "physics:collision:shape_set",
+            "summary": "Define multiple collision shapes per entity with individual offsets and properties",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.add_component",
+                "AuthoringAPI.edit_component"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "Add CollisionShapeSet2D with box body and circle head trigger",
+                "api_calls": [
+                    {
+                        "method": "add_component",
+                        "args": {
+                            "entity_name": "boss",
+                            "component_name": "CollisionShapeSet2D",
+                            "data": {
+                                "shapes": [
+                                    {
+                                        "shape_type": "box",
+                                        "width": 64.0,
+                                        "height": 48.0,
+                                        "offset_y": -24.0
+                                    },
+                                    {
+                                        "shape_type": "circle",
+                                        "radius": 20.0,
+                                        "offset_y": -48.0,
+                                        "is_trigger": true
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                ],
+                "expected_outcome": "Entity 'boss' has a compound collision shape with body and head trigger"
+            },
+            "notes": "Each shape supports box, circle, capsule or polygon with per-shape offset, disabled, is_trigger, friction, restitution. Use get_composite_bounds() for the enclosing AABB.",
+            "tags": [
+                "physics",
+                "collision",
+                "authoring"
+            ]
+        },
+        {
             "id": "prefab:apply",
             "summary": "Apply instance overrides back to the source prefab",
             "mode": "edit",
