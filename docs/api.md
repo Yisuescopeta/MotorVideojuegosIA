@@ -178,7 +178,7 @@ Helpers de componentes oficiales:
 - input: `create_input_map`, `update_input_map`
 - audio: `create_audio_source`, `update_audio_source`
 - scripts: `add_script_behaviour`, `update_script_behaviour`, `set_script_public_data`
-- render/fisica: `set_sorting_layers`, `set_render_order`, `set_physics_layer_collision`, `set_physics_backend`, `set_rigidbody_constraints`
+- render/fisica: `set_sorting_layers`, `set_render_order`, `set_physics_layer_collision`, `set_physics_backend`, `set_rigidbody_constraints`, `set_collision_filter`
 - tilemap: `create_tilemap`, `set_tilemap_tile`, `clear_tilemap_tile`, `get_tilemap`, `get_tilemap_layer`, `create_tilemap_layer`, `update_tilemap_layer`, `delete_tilemap_layer`, `set_tilemap_tile_full`, `bulk_set_tilemap_tiles`, `resize_tilemap`
 - animator: `list_animator_states`, `set_animator_sprite_sheet`, `upsert_animator_state`, `set_animator_state_frames`, `remove_animator_state`, `duplicate_animator_state`, `rename_animator_state`, `set_animator_flip`, `set_animator_speed`, `get_animator_info`, `create_animator_state`
 
@@ -239,8 +239,97 @@ Fisica:
 
 - `query_physics_aabb(left, top, right, bottom)`
 - `query_physics_ray(origin_x, origin_y, direction_x, direction_y, max_distance)`
+- `query_physics_shape_cast(shape_type, shape_params, origin_x, origin_y, direction_x, direction_y, max_distance)`
+- `apply_force(entity_name, force_x, force_y)`
+- `apply_impulse(entity_name, impulse_x, impulse_y)`
+- `apply_torque(entity_name, torque)`
 - `list_physics_backends()`
 - `get_physics_backend_selection()`
+
+#### Ejemplo: aplicar fuerzas a un RigidBody
+
+```python
+# Crear entidad con RigidBody
+api.create_entity("player", components=["RigidBody", "Collider", "Transform"])
+api.set_rigidbody_property("player", "body_type", "dynamic")
+api.set_rigidbody_property("player", "mass", 2.0)
+
+# Aplicar fuerza continua (acelera cada frame)
+api.apply_force("player", 500.0, 0.0)
+
+# Aplicar impulso instantáneo (cambio de velocidad inmediato)
+api.apply_impulse("player", 0.0, -300.0)
+
+# Aplicar torque (rotación)
+api.apply_torque("player", 50.0)
+```
+
+#### MoveResult2D — Resultado de movimiento de personaje
+
+Estructura de datos devuelta por `PhysicsBackend.move_and_slide()` y
+`move_and_collide()`. Contiene la posición y velocidad final tras resolver
+colisiones, más flags de estado.
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `position_x`, `position_y` | float | Posición final tras colisiones |
+| `velocity_x`, `velocity_y` | float | Velocidad ajustada tras colisiones |
+| `on_floor` | bool | True si el cuerpo está sobre una superficie |
+| `on_wall` | bool | True si el cuerpo colisiona con una pared |
+| `on_ceiling` | bool | True si el cuerpo colisiona con un techo |
+| `collision_normal_x/y` | float | Normal de la última colisión |
+| `contacts` | list[PhysicsContact] | Contactos generados durante el movimiento |
+| `slide_count` | int | Número de deslizamientos realizados |
+| `floor_angle` | float | Ángulo del suelo detectado (rad) |
+
+> **Nota:** `move_and_slide` y `move_and_collide` son contratos internos de
+> `PhysicsBackend`. El acceso público para agentes IA es a través de
+> `EngineAPI.step()` y el componente `CharacterController2D`, que internamente
+> usan el backend configurado.
+
+### Area2D — Monitoreo de overlaps
+
+Area2D monitorea cuerpos (RigidBody) y otras áreas que entran/salen de su zona.
+Requiere un Collider para definir la forma del área.
+
+**Eventos emitidos vía EventBus:**
+- `body_entered` / `body_exited`: cuando un RigidBody entra/sale del área
+- `area_entered` / `area_exited`: cuando otra Area2D entra/sale del área
+
+**Payload de eventos:** `{entity_id, other_entity_id, entity_name, other_entity_name}`
+
+```python
+# Crear área de daño
+api.create_entity("damage_zone", components=["Area2D", "Collider", "Transform"])
+api.set_collider_rect("damage_zone", 100, 100)
+api.set_collider_trigger("damage_zone", True)
+
+# Suscribirse a eventos
+api.connect_signal("damage_zone", "body_entered", on_body_entered)
+```
+
+### CollisionFilter2D — Filtrado por capas
+
+Controla qué entidades colisionan entre sí usando máscaras de bits (uint32).
+Adaptado del sistema collision_layer/collision_mask de Godot.
+
+- **layer**: bitmask que define en qué capas está la entidad (default: 1 = capa 1)
+- **mask**: bitmask que define con qué capas colisiona (default: 0xFFFFFFFF = todas)
+
+**Regla de colisión:** `(A.mask & B.layer) != 0 AND (B.mask & A.layer) != 0`
+
+```python
+# Entidad en capa 1 (bit 0), colisiona solo con capa 1
+api.set_collision_filter("player", layer=1, mask=1)
+
+# Entidad en capa 2 (bit 1), colisiona solo con capa 2
+api.set_collision_filter("enemy", layer=2, mask=2)
+
+# player (layer=1, mask=1) vs enemy (layer=2, mask=2):
+# player.mask & enemy.layer = 1 & 2 = 0     ❌
+# enemy.mask & player.layer = 2 & 1 = 0     ❌
+# Resultado: NO colisionan
+```
 
 La CLI oficial expone verificacion headless stateless sobre estos metodos:
 

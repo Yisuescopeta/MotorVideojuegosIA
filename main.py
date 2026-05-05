@@ -33,10 +33,12 @@ from engine.systems.audio_system import AudioSystem
 from engine.systems.character_controller_system import CharacterControllerSystem
 from engine.systems.collision_system import CollisionSystem
 from engine.systems.input_system import InputSystem
+from engine.systems.light2d_system import Light2DSystem
+from engine.systems.parallax_system import ParallaxSystem
+from engine.systems.particle_system import ParticleSystem
 from engine.systems.physics_system import PhysicsSystem
 from engine.systems.player_controller_system import PlayerControllerSystem
 from engine.systems.render_system import RenderSystem
-from engine.systems.parallax_system import ParallaxSystem
 from engine.systems.resource_preloader_system import ResourcePreloaderSystem
 from engine.systems.script_behaviour_system import ScriptBehaviourSystem
 from engine.systems.selection_system import SelectionSystem
@@ -45,8 +47,6 @@ from engine.systems.tween_system import TweenSystem
 from engine.systems.ui_render_system import UIRenderSystem
 from engine.systems.ui_system import UISystem
 from engine.systems.visible_on_screen_system import VisibleOnScreenSystem
-from engine.systems.light2d_system import Light2DSystem
-from engine.systems.particle_system import ParticleSystem
 
 
 def parse_args() -> argparse.Namespace:

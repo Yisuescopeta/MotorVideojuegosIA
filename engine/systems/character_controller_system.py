@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Optional
 
 from engine.components.charactercontroller2d import CharacterController2D
 from engine.components.collider import Collider
+from engine.components.collision_filter_2d import CollisionFilter2D
 from engine.components.inputmap import InputMap
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
@@ -16,11 +18,13 @@ class CharacterControllerSystem:
     def __init__(self, event_bus: Optional[Any] = None) -> None:
         self._event_bus = event_bus
         self._emitted_contacts: set[tuple[int, int]] = set()
+        from engine.physics.kinematic_move_service import PhysicsKinematicMoveService
+        self._move_service = PhysicsKinematicMoveService()
 
     def set_event_bus(self, event_bus: Optional[Any]) -> None:
         self._event_bus = event_bus
 
-    def update(self, world: World, delta_time: float) -> None:
+    def update(self, world: World, delta_time: float, backend: Any = None) -> None:
         self._emitted_contacts = set()
         solids: list[Entity] = []
         for entity in world.get_entities_with(Transform, Collider):
@@ -37,7 +41,10 @@ class CharacterControllerSystem:
             if not entity.active or not collider.enabled or not controller.enabled:
                 continue
             self._apply_inputs(controller, input_map)
-            self._move_entity(world, entity, transform, collider, controller, solids, float(delta_time))
+            if backend is not None:
+                self._move_with_service(backend, world, entity, transform, collider, controller, float(delta_time))
+            else:
+                self._move_entity_legacy(world, entity, transform, collider, controller, solids, float(delta_time))
 
     def _apply_inputs(self, controller: CharacterController2D, input_map: InputMap | None) -> None:
         controller.collision_normal_x = 0.0
@@ -56,7 +63,7 @@ class CharacterControllerSystem:
             controller.on_floor = False
         controller._jump_was_pressed = jump_pressed
 
-    def _move_entity(
+    def _move_entity_legacy(
         self,
         world: World,
         entity: Entity,
@@ -66,6 +73,16 @@ class CharacterControllerSystem:
         solids: list[Entity],
         delta_time: float,
     ) -> None:
+        controller._was_on_floor = controller.on_floor
+        controller.on_wall = False
+        controller.on_ceiling = False
+
+        # Apply platform velocity before sweeps
+        transform.x += controller.platform_velocity_x
+        transform.y += controller.platform_velocity_y
+        controller.platform_velocity_x = 0.0
+        controller.platform_velocity_y = 0.0
+
         if not controller.on_floor:
             controller.velocity_y = min(controller.max_fall_speed, controller.velocity_y + controller.gravity * delta_time)
 
@@ -76,11 +93,105 @@ class CharacterControllerSystem:
         delta_y = controller.velocity_y * delta_time
         transform.y += self._sweep_vertical(world, entity, transform, collider, controller, solids, delta_y)
 
-        if not controller.on_floor and abs(controller.velocity_y) <= 1e-5 and controller.floor_snap_distance > 0.0:
+        if controller._was_on_floor and not controller.on_floor and controller.floor_snap_distance > 0.0:
             snap_distance = self._floor_snap(world, entity, transform, collider, controller, solids)
             if snap_distance is not None:
                 transform.y += snap_distance
                 controller.on_floor = True
+                # Verify snap with vertical sweep
+                verify_delta = min(0.0, snap_distance + 0.01)
+                self._sweep_vertical(world, entity, transform, collider, controller, solids, verify_delta)
+
+        controller.slide_collisions.clear()
+
+    def _move_with_service(
+        self,
+        backend: Any,
+        world: World,
+        entity: Entity,
+        transform: Transform,
+        collider: Collider,
+        controller: CharacterController2D,
+        delta_time: float,
+    ) -> None:
+        """Usa PhysicsKinematicMoveService como fachada entre CharacterController y backend."""
+        was_on_floor = controller.on_floor
+
+        # Aplicar platform velocity antes del movimiento
+        transform.x += controller.platform_velocity_x
+        transform.y += controller.platform_velocity_y
+        controller.platform_velocity_x = 0.0
+        controller.platform_velocity_y = 0.0
+
+        # Calcular velocidad (gravedad + input)
+        if not controller.on_floor:
+            controller.velocity_y = min(
+                controller.max_fall_speed,
+                controller.velocity_y + controller.gravity * delta_time,
+            )
+
+        # Llamar al servicio según move_mode
+        if controller.move_mode == "move_and_collide":
+            result = self._move_service.move_and_collide(
+                backend=backend,
+                world=world,
+                entity=entity,
+                velocity=(controller.velocity_x, controller.velocity_y),
+                delta_time=delta_time,
+            )
+        else:
+            result = self._move_service.move_and_slide(
+                backend=backend,
+                world=world,
+                entity=entity,
+                velocity=(controller.velocity_x, controller.velocity_y),
+                delta_time=delta_time,
+                floor_max_angle=controller.floor_max_angle,
+                floor_snap_distance=controller.floor_snap_distance,
+                up_direction=(controller.up_direction_x, controller.up_direction_y),
+                wall_min_slide_angle=controller.wall_min_slide_angle,
+            )
+
+        # Aplicar resultado al Transform
+        transform.x = result.position_x
+        transform.y = result.position_y
+
+        # Copiar estado a CharacterController2D
+        controller.velocity_x = result.velocity_x
+        controller.velocity_y = result.velocity_y
+        controller.on_floor = result.on_floor
+        controller.on_wall = result.on_wall
+        controller.on_ceiling = result.on_ceiling
+        controller.collision_normal_x = result.collision_normal_x
+        controller.collision_normal_y = result.collision_normal_y
+        controller._was_on_floor = was_on_floor
+
+        # Emitir eventos de contacto
+        for contact in result.contacts:
+            other_name = contact.entity_b if contact.entity_a == entity.name else contact.entity_a
+            other_id = contact.entity_b_id if contact.entity_a_id == int(entity.id) else contact.entity_a_id
+            controller.last_hit_entity = other_name
+            self._emit_collision_manual(entity, other_name, int(entity.id), int(other_id))
+
+        controller.slide_collisions.clear()
+
+    def _emit_collision_manual(self, entity: Entity, other_name: str, entity_id: int, other_id: int) -> None:
+        if self._event_bus is None:
+            return
+        pair = (min(entity_id, other_id), max(entity_id, other_id))
+        if pair in self._emitted_contacts:
+            return
+        self._emitted_contacts.add(pair)
+        self._event_bus.emit(
+            "on_collision",
+            {
+                "entity_a": entity.name,
+                "entity_b": other_name,
+                "entity_a_id": entity_id,
+                "entity_b_id": other_id,
+                "is_trigger": False,
+            },
+        )
 
     def _sweep_horizontal(
         self,
@@ -100,11 +211,14 @@ class CharacterControllerSystem:
         for other in solids:
             if other.id == entity.id:
                 continue
-            if not self._layers_can_collide(world, entity, other):
+            if not self._can_collide(world, entity, other):
                 continue
             other_transform = other.get_component(Transform)
             other_collider = other.get_component(Collider)
             if other_transform is None or other_collider is None or not other_collider.enabled:
+                continue
+            # Skip one-way platforms horizontally
+            if other_collider.one_way_collision:
                 continue
             o_left, o_top, o_right, o_bottom = other_collider.get_bounds(other_transform.x, other_transform.y)
             if not (top < o_bottom and bottom > o_top):
@@ -122,6 +236,14 @@ class CharacterControllerSystem:
                     hit_entity = other
                     controller.collision_normal_x = 1.0
         if hit_entity is not None:
+            nx = controller.collision_normal_x
+            ny = 0.0
+            collision_type = self._classify_collision(
+                nx, ny, controller.up_direction_x, controller.up_direction_y,
+                controller.floor_max_angle, controller.wall_min_slide_angle
+            )
+            if collision_type == "wall":
+                controller.on_wall = True
             controller.last_hit_entity = hit_entity.name
             controller.velocity_x = 0.0
             if controller.move_mode == "move_and_collide":
@@ -147,12 +269,18 @@ class CharacterControllerSystem:
         for other in solids:
             if other.id == entity.id:
                 continue
-            if not self._layers_can_collide(world, entity, other):
+            if not self._can_collide(world, entity, other):
                 continue
             other_transform = other.get_component(Transform)
             other_collider = other.get_component(Collider)
             if other_transform is None or other_collider is None or not other_collider.enabled:
                 continue
+            # One-way platform check
+            if other_collider.one_way_collision:
+                if delta_y < 0:
+                    direction_check = other_collider.one_way_collision_direction_y
+                    if direction_check < 0:
+                        continue
             o_left, o_top, o_right, o_bottom = other_collider.get_bounds(other_transform.x, other_transform.y)
             if not (left < o_right and right > o_left):
                 continue
@@ -170,6 +298,16 @@ class CharacterControllerSystem:
                     hit_entity = other
                     controller.collision_normal_y = 1.0
         if hit_entity is not None:
+            nx = controller.collision_normal_x
+            ny = controller.collision_normal_y
+            collision_type = self._classify_collision(
+                nx, ny, controller.up_direction_x, controller.up_direction_y,
+                controller.floor_max_angle, controller.wall_min_slide_angle
+            )
+            if collision_type == "ceiling":
+                controller.on_ceiling = True
+            elif collision_type == "wall":
+                controller.on_wall = True
             controller.last_hit_entity = hit_entity.name
             controller.velocity_y = 0.0
             if controller.move_mode == "move_and_collide":
@@ -192,7 +330,7 @@ class CharacterControllerSystem:
         for other in solids:
             if other.id == entity.id:
                 continue
-            if not self._layers_can_collide(world, entity, other):
+            if not self._can_collide(world, entity, other):
                 continue
             other_transform = other.get_component(Transform)
             other_collider = other.get_component(Collider)
@@ -209,11 +347,27 @@ class CharacterControllerSystem:
                 self._emit_collision(entity, other)
         return best_snap
 
-    def _layers_can_collide(self, world: World, entity: Entity, other: Entity) -> bool:
+    def _can_collide(self, world: World, entity: Entity, other: Entity) -> bool:
+        cc_filter = entity.get_component(CollisionFilter2D)
+        other_filter = other.get_component(CollisionFilter2D)
+        if cc_filter is not None or other_filter is not None:
+            if not CollisionFilter2D.should_collide(cc_filter, other_filter):
+                return False
         matrix = world.feature_metadata.get("physics_2d", {}).get("layer_matrix", {})
         if not matrix:
             return True
         return bool(matrix.get(f"{entity.layer}|{other.layer}", True))
+
+    @staticmethod
+    def _classify_collision(nx: float, ny: float, up_x: float, up_y: float, floor_max_angle: float, wall_min_slide_angle: float) -> str:
+        dot = nx * up_x + ny * up_y
+        angle = math.acos(max(-1.0, min(1.0, abs(dot))))
+        if angle <= floor_max_angle:
+            return "floor" if dot >= 0 else "ceiling"
+        elif angle >= (math.pi / 2 - wall_min_slide_angle):
+            return "wall"
+        else:
+            return "ceiling" if dot > 0 else "wall"
 
     def _emit_collision(self, entity: Entity, other: Entity) -> None:
         if self._event_bus is None:

@@ -102,14 +102,18 @@ class ComponentRegistry:
 
 def create_default_registry() -> ComponentRegistry:
     """Crea un registro con los componentes predeterminados del motor."""
+    from engine.components.animatable_body_2d import AnimatableBody2D
     from engine.components.animator import Animator
+    from engine.components.area2d import Area2D
     from engine.components.audio_listener_2d import AudioListener2D
     from engine.components.audiosource import AudioSource
     from engine.components.camera2d import Camera2D
     from engine.components.canvas import Canvas
-    from engine.components.particle_emitter2d import ParticleEmitter2D
     from engine.components.charactercontroller2d import CharacterController2D
     from engine.components.collider import Collider
+    from engine.components.collision_filter_2d import CollisionFilter2D
+    from engine.components.collision_polygon_2d import CollisionPolygon2D
+    from engine.components.collision_shape_2d import CollisionShape2D
     from engine.components.gameplay2d import (
         Checkpoint2D,
         Collectible2D,
@@ -121,15 +125,18 @@ def create_default_registry() -> ComponentRegistry:
         MovingPlatform2D,
         RespawnPoint2D,
     )
-    from engine.components.navigation_agent_2d import NavigationAgent2D
-    from engine.components.path_follower_2d import PathFollower2D
     from engine.components.inputmap import InputMap
     from engine.components.joint2d import Joint2D
     from engine.components.light2d import Light2D
     from engine.components.line2d import Line2D
     from engine.components.marker2d import Marker2D
+    from engine.components.navigation_agent_2d import NavigationAgent2D
+    from engine.components.parallax_layer import ParallaxLayer
+    from engine.components.particle_emitter2d import ParticleEmitter2D
+    from engine.components.path_follower_2d import PathFollower2D
     from engine.components.playercontroller2d import PlayerController2D
     from engine.components.polygon2d import Polygon2D
+    from engine.components.raycast_2d import RayCast2D
     from engine.components.recttransform import RectTransform
     from engine.components.renderorder2d import RenderOrder2D
     from engine.components.renderstyle2d import RenderStyle2D
@@ -143,6 +150,7 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.scene_transition_on_player_death import SceneTransitionOnPlayerDeath
     from engine.components.scriptbehaviour import ScriptBehaviour
     from engine.components.sprite import Sprite
+    from engine.components.static_body_2d import StaticBody2D
     from engine.components.tilemap import Tilemap
     from engine.components.timer import Timer
     from engine.components.transform import Transform
@@ -150,7 +158,6 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.uibutton import UIButton
     from engine.components.uiimage import UIImage
     from engine.components.uitext import UIText
-    from engine.components.parallax_layer import ParallaxLayer
     from engine.components.visible_on_screen_notifier_2d import (
         VisibleOnScreenEnabler2D,
         VisibleOnScreenNotifier2D,
@@ -167,6 +174,27 @@ def create_default_registry() -> ComponentRegistry:
         editor_tags=("render", "tag:Polygon", "layer:Visual"),
     )
     registry.register("Collider", Collider)
+    registry.register(
+        "CollisionShape2D",
+        CollisionShape2D,
+        description="Dedicated collision shape (Godot CollisionShape2D). Takes precedence over Collider when both present.",
+        default_payload=CollisionShape2D().to_dict(),
+        editor_tags=("physics", "layer:Physics", "collision", "shape"),
+    )
+    registry.register(
+        "CollisionPolygon2D",
+        CollisionPolygon2D,
+        description="Polygon collision shape from vertex data (Godot CollisionPolygon2D).",
+        default_payload=CollisionPolygon2D().to_dict(),
+        editor_tags=("physics", "layer:Physics", "collision", "polygon"),
+    )
+    registry.register(
+        "CollisionFilter2D",
+        CollisionFilter2D,
+        description="Define capas de colision y mascara para filtrado entre entidades.",
+        default_payload=CollisionFilter2D().to_dict(),
+        editor_tags=("physics", "layer:Physics", "collision"),
+    )
     registry.register(
         "Collectible2D",
         Collectible2D,
@@ -241,6 +269,34 @@ def create_default_registry() -> ComponentRegistry:
         editor_tags=("render", "tag:Line", "layer:Visual"),
     )
     registry.register("RigidBody", RigidBody)
+    registry.register(
+        "StaticBody2D",
+        StaticBody2D,
+        description="Immovable physics body (Godot StaticBody2D). No velocity integration, no gravity, infinite mass.",
+        default_payload=StaticBody2D().to_dict(),
+        editor_tags=("physics", "layer:Physics", "static"),
+    )
+    registry.register(
+        "AnimatableBody2D",
+        AnimatableBody2D,
+        description="Static body movable by AnimationPlayer (Godot AnimatableBody2D). Syncs collider from Transform when enabled.",
+        default_payload=AnimatableBody2D().to_dict(),
+        editor_tags=("physics", "layer:Physics", "animation", "static"),
+    )
+    registry.register(
+        "Area2D",
+        Area2D,
+        description="Area de monitoreo 2D que detecta cuerpos y areas entrando/saliendo. Adaptado de Godot Area2D.",
+        default_payload=Area2D().to_dict(),
+        editor_tags=("physics", "trigger", "layer:Physics", "area"),
+    )
+    registry.register(
+        "RayCast2D",
+        RayCast2D,
+        description="Rayo 2D que detecta colisiones en linea recta (Godot RayCast2D).",
+        default_payload=RayCast2D().to_dict(),
+        editor_tags=("physics", "raycast", "layer:Physics", "detection"),
+    )
     registry.register("Animator", Animator)
     registry.register("Camera2D", Camera2D)
     registry.register("AudioSource", AudioSource)

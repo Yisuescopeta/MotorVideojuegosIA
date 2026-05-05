@@ -75,7 +75,7 @@ class ParallaxSystem:
             return
 
         camera_x, camera_y = self._get_primary_camera_position(world)
-        if camera_x is None:
+        if camera_x is None or camera_y is None:
             return
 
         camera_delta_x = camera_x - self._camera_origin_x

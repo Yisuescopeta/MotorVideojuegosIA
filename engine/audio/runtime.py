@@ -105,6 +105,14 @@ class AudioRuntime:
         self._emit(event_name, voice)
         return voice
 
+    def shutdown(self) -> None:
+        """Release all backend resources and clear internal state."""
+        for entity_name in list(self._voices.keys()):
+            self.stop(entity_name, event_name="audio_shutdown")
+        self._backend.shutdown() if hasattr(self._backend, "shutdown") else None
+        self._voices.clear()
+        self._events.clear()
+
     def update(self, *, game_time: float | None = None) -> None:
         current_time = self._resolve_time(game_time)
         self._backend.update(self._voices.values(), game_time=current_time)

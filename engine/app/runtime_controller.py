@@ -53,6 +53,8 @@ class RuntimeController:
         self._get_parallax_system = context.get_parallax_system
         self._get_resource_preloader_system = context.get_resource_preloader_system
         self._get_particle_system = context.get_particle_system
+        self._get_gpu_particles_system = context.get_gpu_particles_system
+        self._get_area2d_system = context.get_area2d_system
         self._get_path_follow_system = context.get_path_follow_system
         self._get_gameplay2d_semantic_system = context.get_gameplay2d_semantic_system
         self._get_navigation_agent_system = context.get_navigation_agent_system
@@ -293,13 +295,22 @@ class RuntimeController:
             animation_system.update(world, dt * self._edit_animation_speed)
 
     def update_gameplay(self, world: "World", dt: float) -> None:
+        event_bus = self._get_event_bus()
+        if event_bus is not None:
+            event_bus.reset_frame_dedup()
+
         input_system = self._get_input_system()
         if input_system is not None:
             input_system.update(world)
 
         character_controller_system = self._get_character_controller_system()
         if character_controller_system is not None:
-            character_controller_system.update(world, dt)
+            backend_registry = self._get_physics_backend_registry()
+            resolved_backend = None
+            if backend_registry is not None:
+                resolved = backend_registry.resolve(world)
+                resolved_backend = resolved.backend
+            character_controller_system.update(world, dt, backend=resolved_backend)
 
         player_controller_system = self._get_player_controller_system()
         if player_controller_system is not None:
@@ -346,6 +357,14 @@ class RuntimeController:
         particle_system = self._get_particle_system()
         if particle_system is not None:
             particle_system.update(world, dt)
+
+        gpu_particles_system = self._get_gpu_particles_system()
+        if gpu_particles_system is not None:
+            gpu_particles_system.update(world, dt)
+
+        area2d_system = self._get_area2d_system()
+        if area2d_system is not None:
+            area2d_system.update(world)
 
         visible_on_screen_system = self._get_visible_on_screen_system()
         if visible_on_screen_system is not None:
@@ -421,6 +440,40 @@ class RuntimeController:
         selection = self.get_physics_backend_selection(world)
         effective_backend = selection.get("effective_backend")
         return str(effective_backend or selection["requested_backend"])
+
+    @staticmethod
+    def filter_by_process_mode(
+        entities: list["Entity"],
+        state: "EngineState",
+    ) -> list["Entity"]:
+        """Filter and sort entities by process_mode and process_priority."""
+        filtered: list["Entity"] = []
+        for entity in entities:
+            mode = "inherit"
+            priority = 0
+            for comp in entity._components.values():
+                pm = getattr(comp, "process_mode", "inherit")
+                pr = getattr(comp, "process_priority", 0)
+                if pm != "inherit":
+                    mode = pm
+                    priority = pr
+                    break
+                priority = max(priority, pr)
+
+            if mode == "disabled":
+                continue
+            if mode == "when_paused" and state not in (
+                EngineState.PAUSED,
+                EngineState.STEPPING,
+            ):
+                continue
+            # "always" and "inherit" always pass
+            filtered.append(entity)
+        filtered.sort(key=lambda e: max(
+            (getattr(c, "process_priority", 0) for c in e._components.values()),
+            default=0,
+        ))
+        return filtered
 
     def refresh_default_physics_backend(self) -> None:
         physics_system = self._get_physics_system()

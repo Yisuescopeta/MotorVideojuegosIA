@@ -11,7 +11,6 @@ import math
 from typing import TYPE_CHECKING
 
 import pyray as rl
-
 from engine.components.line2d import Line2D
 from engine.components.transform import Transform
 

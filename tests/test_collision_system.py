@@ -1,6 +1,7 @@
 import unittest
 
 from engine.components.collider import Collider
+from engine.components.collision_polygon_2d import CollisionPolygon2D
 from engine.components.transform import Transform
 from engine.ecs.world import World
 from engine.events.event_bus import EventBus
@@ -170,7 +171,27 @@ class CollisionSystemTests(unittest.TestCase):
                 ]
             )
             for event in event_bus.get_recent_events()
+            if "entity_a" in event.data
         }
+
+
+    def test_polygon_shape_without_collider_still_gets_narrow_phase(self):
+        """CollisionPolygon2D sin Collider — narrow-phase activa."""
+        world = World()
+
+        e1 = world.create_entity("E1")
+        e1.add_component(Transform(x=100, y=100))
+        e1.add_component(CollisionPolygon2D(polygon=[(-16, -16), (16, -16), (0, 16)]))
+
+        e2 = world.create_entity("E2")
+        e2.add_component(Transform(x=100, y=100))
+        e2.add_component(Collider(width=32, height=32))
+
+        cs = CollisionSystem()
+        cs.update(world)
+
+        collisions = cs.get_collisions()
+        assert len(collisions) >= 1, f"Expected >=1 collision, got {len(collisions)}"
 
 
 if __name__ == "__main__":

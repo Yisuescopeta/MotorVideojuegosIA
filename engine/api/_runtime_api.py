@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import json
-from typing import Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Union
 
 from engine.api._context import EngineAPIComponent
 from engine.api.types import ActionResult, EngineStatus, EntityData, ShapeCastResult
+from engine.components.rigidbody import RigidBody
 from engine.ecs.entity import normalize_entity_groups
 from engine.events.signals import SignalConnectionFlags
 from engine.physics.backend import PhysicsBackendInfo, PhysicsBackendSelection
+
+if TYPE_CHECKING:
+    from engine.components.canvas_item_2d import CanvasItem2D
+    from engine.ecs.entity import Entity
 
 
 class RuntimeAPI(EngineAPIComponent):
@@ -209,11 +214,23 @@ class RuntimeAPI(EngineAPIComponent):
     def get_input_state(self, entity_name: str) -> Dict[str, float]:
         """Get the current raw input values for an entity's InputMap.
 
+        Returns a dictionary with action states, mouse position, gamepad axes,
+        and edge-detection flags (just_pressed/just_released).
+
         Args:
             entity_name: Name of the entity with an InputMap component.
 
         Returns:
             Dictionary mapping action names to their current float values.
+            Includes: horizontal, vertical, action_1, action_2,
+            action_1_just_pressed, action_1_just_released,
+            action_2_just_pressed, action_2_just_released,
+            jump_just_pressed, jump_just_released,
+            mouse_x, mouse_y, mouse_wheel,
+            mouse_left_just_pressed, mouse_right_just_pressed,
+            mouse_left_held, mouse_right_held,
+            gamepad_left_x, gamepad_left_y, gamepad_right_x, gamepad_right_y,
+            gamepad_a_just_pressed, gamepad_x_just_pressed.
         """
         from engine.components.inputmap import InputMap
 
@@ -226,10 +243,13 @@ class RuntimeAPI(EngineAPIComponent):
     def inject_input_state(self, entity_name: str, state: Dict[str, float], frames: int = 1) -> ActionResult:
         """Inject simulated input values for testing or AI-driven gameplay.
 
+        Supported state keys: horizontal, vertical, action_1, action_2,
+        mouse_left, mouse_right, gamepad_a, gamepad_x.
+
         Args:
             entity_name: Name of the entity with an InputMap component.
             state: Mapping of action names to fake input values (e.g.
-                {"move_left": 1.0, "move_right": 0.0}).
+                {"horizontal": 1.0, "action_1": 1.0}).
             frames: Number of frames the injected input persists (default 1).
 
         Returns:
@@ -367,7 +387,7 @@ class RuntimeAPI(EngineAPIComponent):
         runtime = self.runtime
         if runtime is None:
             return []
-        return runtime.query_physics_shape_cast(
+        return runtime.query_physics_shape_cast(  # type: ignore[return-value]  # list[dict[str, Any]] vs list[ShapeCastResult]
             shape_type, shape_width, shape_height,
             origin_x, origin_y, direction_x, direction_y, max_distance,
         )
@@ -401,6 +421,88 @@ class RuntimeAPI(EngineAPIComponent):
                 "unavailable_reason": "Engine not initialized",
             }
         return runtime.get_physics_backend_selection()
+
+    def apply_force(self, entity_name: str, force_x: float, force_y: float) -> ActionResult:
+        """Aplica fuerza continua a una entidad con RigidBody."""
+        entity = self.require_entity(entity_name)
+        rb = entity.get_component(RigidBody)
+        if rb is None:
+            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody", data=None)
+        rb.apply_force(force_x, force_y)
+        return ActionResult(success=True, message=f"Force applied to {entity_name}", data=None)
+
+    def apply_impulse(self, entity_name: str, impulse_x: float, impulse_y: float) -> ActionResult:
+        """Aplica impulso instantáneo a una entidad con RigidBody."""
+        entity = self.require_entity(entity_name)
+        rb = entity.get_component(RigidBody)
+        if rb is None:
+            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody", data=None)
+        rb.apply_impulse(impulse_x, impulse_y)
+        return ActionResult(success=True, message=f"Impulse applied to {entity_name}", data=None)
+
+    def apply_torque(self, entity_name: str, torque: float) -> ActionResult:
+        """Aplica torque a una entidad con RigidBody."""
+        entity = self.require_entity(entity_name)
+        rb = entity.get_component(RigidBody)
+        if rb is None:
+            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody", data=None)
+        rb.apply_torque(torque)
+        return ActionResult(success=True, message=f"Torque applied to {entity_name}", data=None)
+
+    def set_collision_filter(self, entity_name: str, layer: int = 1, mask: int = 0xFFFFFFFF) -> ActionResult:
+        """Set CollisionFilter2D on entity (layer and mask bitfields)."""
+        from engine.components.collision_filter_2d import CollisionFilter2D
+
+        # Update runtime entity
+        entity = self.require_entity(entity_name)
+        existing = entity.get_component(CollisionFilter2D)
+        if existing is not None:
+            existing.layer = int(layer)
+            existing.mask = int(mask)
+        else:
+            cf = CollisionFilter2D(layer=int(layer), mask=int(mask))
+            entity.add_component(cf)
+
+        # Also persist to authoring state so the change survives world reloads
+        authoring = self.scene_authoring
+        if authoring is not None:
+            authoring.add_component_to_entity(
+                entity_name, "CollisionFilter2D",
+                {"enabled": True, "layer": int(layer), "mask": int(mask)},
+            )
+
+        return ActionResult(success=True, message=f"CollisionFilter set on {entity_name}", data={"entity": entity_name})
+
+    def set_rigidbody_constant_force(self, entity_name: str, fx: float, fy: float) -> ActionResult:
+        """Set constant force on RigidBody (applied every frame)."""
+        entity = self.require_entity(entity_name)
+        rb = entity.get_component(RigidBody)
+        if rb is None:
+            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody", data=None)
+        rb.constant_force_x = float(fx)
+        rb.constant_force_y = float(fy)
+        return ActionResult(success=True, message=f"Constant force set on {entity_name}", data={"fx": fx, "fy": fy})
+
+    def set_rigidbody_ccd_mode(self, entity_name: str, mode: str) -> ActionResult:
+        """Set CCD mode: disabled, cast_ray, cast_shape."""
+        entity = self.require_entity(entity_name)
+        rb = entity.get_component(RigidBody)
+        if rb is None:
+            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody", data=None)
+        valid = RigidBody.VALID_CCD_MODES
+        if mode not in valid:
+            return ActionResult(success=False, message=f"Invalid CCD mode '{mode}'. Valid: {sorted(valid)}", data=None)
+        rb.ccd_mode = mode
+        return ActionResult(success=True, message=f"CCD mode set to '{mode}' on {entity_name}", data=None)
+
+    def set_rigidbody_can_sleep(self, entity_name: str, can_sleep: bool) -> ActionResult:
+        """Enable/disable sleeping for a RigidBody entity."""
+        entity = self.require_entity(entity_name)
+        rb = entity.get_component(RigidBody)
+        if rb is None:
+            return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody", data=None)
+        rb.can_sleep = bool(can_sleep)
+        return ActionResult(success=True, message=f"can_sleep={rb.can_sleep} on {entity_name}", data=None)
 
     def play_audio(self, entity_name: str) -> ActionResult:
         """Start audio playback for an AudioSource entity.
@@ -858,6 +960,80 @@ class RuntimeAPI(EngineAPIComponent):
             return self.fail("Service registry does not support builtin registration")
         registrar(name, service)
         return self.ok("Builtin service registered", {"name": name})
+
+    # --- CanvasItem2D drawing API ---
+
+    def draw_rect(
+        self,
+        entity_name: str,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        color: list[int] | None = None,
+        filled: bool = True,
+    ) -> ActionResult:
+        """Añade un rectángulo a los draw commands de CanvasItem2D."""
+
+        entity = self.require_entity(entity_name)
+        canvas = self._get_or_add_canvas_item(entity)
+        color = color or [255, 255, 255, 255]
+        canvas.add_rect(x, y, w, h, tuple(color), filled)
+        return self.ok("Rect added")
+
+    def draw_circle(
+        self,
+        entity_name: str,
+        cx: float,
+        cy: float,
+        radius: float,
+        color: list[int] | None = None,
+        filled: bool = True,
+    ) -> ActionResult:
+        """Añade un círculo a los draw commands de CanvasItem2D."""
+
+        entity = self.require_entity(entity_name)
+        canvas = self._get_or_add_canvas_item(entity)
+        color = color or [255, 255, 255, 255]
+        canvas.add_circle(cx, cy, radius, tuple(color), filled)
+        return self.ok("Circle added")
+
+    def draw_line(
+        self,
+        entity_name: str,
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        color: list[int] | None = None,
+        thickness: float = 1.0,
+    ) -> ActionResult:
+        """Añade una línea a los draw commands de CanvasItem2D."""
+
+        entity = self.require_entity(entity_name)
+        canvas = self._get_or_add_canvas_item(entity)
+        color = color or [255, 255, 255, 255]
+        canvas.add_line(x1, y1, x2, y2, tuple(color), thickness)
+        return self.ok("Line added")
+
+    def clear_canvas_item(self, entity_name: str) -> ActionResult:
+        """Limpia todos los draw commands de CanvasItem2D de una entidad."""
+        from engine.components.canvas_item_2d import CanvasItem2D
+
+        entity = self.require_entity(entity_name)
+        canvas = entity.get_component(CanvasItem2D)
+        if canvas is not None:
+            canvas.clear_commands()
+        return self.ok("Canvas cleared")
+
+    def _get_or_add_canvas_item(self, entity: "Entity") -> "CanvasItem2D":
+        from engine.components.canvas_item_2d import CanvasItem2D
+
+        canvas = entity.get_component(CanvasItem2D)
+        if canvas is None:
+            canvas = CanvasItem2D()
+            entity.add_component(canvas)
+        return canvas
 
     def shutdown(self) -> None:
         """Request a graceful engine shutdown, closing all systems and windows."""

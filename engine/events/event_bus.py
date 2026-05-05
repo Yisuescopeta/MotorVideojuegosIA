@@ -60,6 +60,7 @@ class EventBus:
         self._subscribers: Dict[str, List[EventCallback]] = {}
         self._event_history: List[Event] = []
         self._history_limit: int = 50
+        self._frame_dedup_pairs: set[tuple[int, int]] = set()
 
     def subscribe(self, event_name: str, callback: EventCallback) -> None:
         """
@@ -96,7 +97,21 @@ class EventBus:
             event_name: Nombre del evento
             data: Datos del evento (opcional)
         """
-        event = Event(name=event_name, data=data or {})
+        data = data or {}
+
+        # Deduplicar on_collision por par de entidades dentro del mismo frame
+        if event_name == "on_collision":
+            entity_a_id = data.get("entity_a_id", 0)
+            entity_b_id = data.get("entity_b_id", 0)
+            pair = (
+                min(int(entity_a_id), int(entity_b_id)),
+                max(int(entity_a_id), int(entity_b_id)),
+            )
+            if pair in self._frame_dedup_pairs:
+                return
+            self._frame_dedup_pairs.add(pair)
+
+        event = Event(name=event_name, data=data)
 
         # Guardar en historial
         self._event_history.append(event)
@@ -122,6 +137,15 @@ class EventBus:
             Lista de eventos recientes
         """
         return self._event_history[-count:]
+
+    def reset_frame_dedup(self) -> None:
+        """Reinicia el tracking de pares deduplicados por frame.
+
+        Debe llamarse al inicio de cada frame de gameplay para que
+        on_collision pueda emitirse de nuevo para pares que ya colisionaron
+        en frames anteriores.
+        """
+        self._frame_dedup_pairs.clear()
 
     def clear_history(self) -> None:
         """Limpia el historial de eventos."""

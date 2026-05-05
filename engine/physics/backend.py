@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from dataclasses import field as dc_field
 from typing import Any, Optional, TypedDict
 
 
@@ -55,6 +56,23 @@ class PhysicsContact:
     entity_a_id: int
     entity_b_id: int
     is_trigger: bool
+
+
+@dataclass
+class MoveResult2D:
+    """Resultado canónico de move_and_slide / move_and_collide."""
+    position_x: float = 0.0
+    position_y: float = 0.0
+    velocity_x: float = 0.0
+    velocity_y: float = 0.0
+    on_floor: bool = False
+    on_wall: bool = False
+    on_ceiling: bool = False
+    collision_normal_x: float = 0.0
+    collision_normal_y: float = 0.0
+    contacts: list[PhysicsContact] = dc_field(default_factory=list)
+    slide_count: int = 0
+    floor_angle: float = 0.0
 
 
 class PhysicsBackend(ABC):
@@ -134,3 +152,38 @@ class PhysicsBackend(ABC):
 
     def get_step_metrics(self) -> dict[str, float]:
         return {}
+
+    def move_and_slide(
+        self,
+        world: Any,
+        entity: Any,
+        velocity: tuple[float, float],
+        delta_time: float,
+        floor_max_angle: float = 0.785398,
+        floor_snap_distance: float = 2.0,
+        up_direction: tuple[float, float] = (0.0, -1.0),
+        wall_min_slide_angle: float = 0.261799,
+        max_slides: int = 4,
+    ) -> MoveResult2D:
+        """Movimiento de personaje con detección de colisiones y deslizamiento."""
+        raise NotImplementedError(
+            f"move_and_slide not implemented by {self.backend_name}"
+        )
+
+    def move_and_collide(
+        self,
+        world: Any,
+        entity: Any,
+        velocity: tuple[float, float],
+        delta_time: float,
+        max_collisions: int = 1,
+    ) -> MoveResult2D:
+        """Movimiento de personaje que se detiene en la primera colisión."""
+        raise NotImplementedError(
+            f"move_and_collide not implemented by {self.backend_name}"
+        )
+
+    def supports_kinematic_move(self) -> bool:
+        """True si el backend implementa move_and_slide con física real.
+        Si es False, el motor debe usar el fallback legacy solver."""
+        return False

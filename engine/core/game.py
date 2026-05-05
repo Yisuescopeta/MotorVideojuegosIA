@@ -56,7 +56,13 @@ from engine.editor.sprite_editor_modal import SpriteEditorModal
 from engine.editor.terminal_panel import TerminalPanel
 from engine.editor.undo_redo import UndoRedoManager
 from engine.events.signals import SignalConnectionFlags
-from engine.physics.backend import PhysicsAABBHit, PhysicsBackendInfo, PhysicsBackendSelection, PhysicsRayHit, PhysicsShapeCastHit
+from engine.physics.backend import (
+    PhysicsAABBHit,
+    PhysicsBackendInfo,
+    PhysicsBackendSelection,
+    PhysicsRayHit,
+    PhysicsShapeCastHit,
+)
 from engine.physics.registry import PhysicsBackendRegistry
 from engine.project.project_service import ProjectService
 
@@ -70,10 +76,19 @@ if TYPE_CHECKING:
     from engine.scenes.scene import Scene
     from engine.scenes.scene_manager import SceneManager
     from engine.systems.animation_system import AnimationSystem
+    from engine.systems.area2d_system import Area2DSystem
     from engine.systems.audio_system import AudioSystem
     from engine.systems.character_controller_system import CharacterControllerSystem
     from engine.systems.collision_system import CollisionSystem
+    from engine.systems.gameplay2d_semantic_system import Gameplay2DSemanticSystem
+    from engine.systems.gpu_particles_system import GPUParticlesSystem
     from engine.systems.input_system import InputSystem
+    from engine.systems.light2d_system import Light2DSystem
+    from engine.systems.line2d_render_system import Line2DRenderSystem
+    from engine.systems.navigation_agent_system import NavigationAgentSystem
+    from engine.systems.parallax_system import ParallaxSystem
+    from engine.systems.particle_system import ParticleSystem
+    from engine.systems.path_follow_system import PathFollowSystem
     from engine.systems.physics_system import PhysicsSystem
     from engine.systems.player_controller_system import PlayerControllerSystem
     from engine.systems.render_system import RenderSystem
@@ -82,16 +97,10 @@ if TYPE_CHECKING:
     from engine.systems.selection_system import SelectionSystem
     from engine.systems.timer_system import TimerSystem
     from engine.systems.tween_system import TweenSystem
+    from engine.systems.ui_focus_system import UIFocusSystem
     from engine.systems.ui_render_system import UIRenderSystem
     from engine.systems.ui_system import UISystem
     from engine.systems.visible_on_screen_system import VisibleOnScreenSystem
-    from engine.systems.parallax_system import ParallaxSystem
-    from engine.systems.light2d_system import Light2DSystem
-    from engine.systems.line2d_render_system import Line2DRenderSystem
-    from engine.systems.particle_system import ParticleSystem
-    from engine.systems.path_follow_system import PathFollowSystem
-    from engine.systems.gameplay2d_semantic_system import Gameplay2DSemanticSystem
-    from engine.systems.navigation_agent_system import NavigationAgentSystem
 
 
 class Game:
@@ -142,10 +151,13 @@ class Game:
         self._ui_render_system: Optional["UIRenderSystem"] = None
         self._light2d_system: Optional["Light2DSystem"] = None
         self._line2d_render_system: Optional["Line2DRenderSystem"] = None
+        self._area2d_system: Optional["Area2DSystem"] = None
         self._particle_system: Optional["ParticleSystem"] = None
+        self._gpu_particles_system: Optional["GPUParticlesSystem"] = None
         self._path_follow_system: Optional["PathFollowSystem"] = None
         self._gameplay2d_semantic_system: Optional["Gameplay2DSemanticSystem"] = None
         self._navigation_agent_system: Optional["NavigationAgentSystem"] = None
+        self._ui_focus_system: Optional["UIFocusSystem"] = None
 
         self.script_executor: Optional["ScriptExecutor"] = None
 
@@ -256,6 +268,8 @@ class Game:
                 get_parallax_system=lambda: self._parallax_system,
                 get_resource_preloader_system=lambda: self._resource_preloader_system,
                 get_particle_system=lambda: self._particle_system,
+                get_gpu_particles_system=lambda: self._gpu_particles_system,
+                get_area2d_system=lambda: self._area2d_system,
                 get_path_follow_system=lambda: self._path_follow_system,
                 get_gameplay2d_semantic_system=lambda: self._gameplay2d_semantic_system,
                 get_navigation_agent_system=lambda: self._navigation_agent_system,
@@ -594,6 +608,8 @@ class Game:
         self._event_bus = event_bus
         for backend in self._physics_backend_registry.iter_available_backends():
             backend.set_event_bus(event_bus)
+        if self._physics_system is not None and hasattr(self._physics_system, "set_event_bus"):
+            self._physics_system.set_event_bus(event_bus)
         if self._character_controller_system is not None and hasattr(
             self._character_controller_system, "set_event_bus"
         ):
@@ -727,6 +743,12 @@ class Game:
     def set_particle_system(self, system: "ParticleSystem") -> None:
         self._particle_system = system
 
+    def set_gpu_particles_system(self, system: "GPUParticlesSystem") -> None:
+        self._gpu_particles_system = system
+
+    def set_area2d_system(self, system: "Area2DSystem") -> None:
+        self._area2d_system = system
+
     def set_path_follow_system(self, system: "PathFollowSystem") -> None:
         self._path_follow_system = system
 
@@ -735,6 +757,28 @@ class Game:
 
     def set_navigation_agent_system(self, system: "NavigationAgentSystem") -> None:
         self._navigation_agent_system = system
+
+    def set_ui_focus_system(self, system: "UIFocusSystem") -> None:
+        self._ui_focus_system = system
+        if self._event_bus is not None:
+            self._ui_focus_system._event_bus = self._event_bus
+
+    @property
+    def ui_focus_system(self) -> Optional["UIFocusSystem"]:
+        return self._ui_focus_system
+
+    def set_ui_focus(self, entity_id: int) -> None:
+        if self._ui_focus_system is not None:
+            self._ui_focus_system.set_focus(entity_id)
+
+    def get_ui_focus(self) -> int | None:
+        if self._ui_focus_system is not None:
+            return self._ui_focus_system.get_focused_entity()
+        return None
+
+    def clear_ui_focus(self) -> None:
+        if self._ui_focus_system is not None:
+            self._ui_focus_system.clear_focus()
 
     def set_script_executor(self, executor: "ScriptExecutor") -> None:
         """Asigna un ejecutor de scripts para automatización visual."""
@@ -849,6 +893,21 @@ class Game:
             default_backend_name=self._physics_backend_name,
         ).selection
 
+    def get_physics_backend_info(self) -> dict:
+        """Devuelve la selección de backend + warning si se usó fallback."""
+        selection = self.get_physics_backend_selection()
+        warning = None
+        if selection.get("used_fallback"):
+            warning = (
+                f"Physics backend '{selection.get('requested_backend')}' "
+                f"not available. Using '{selection.get('effective_backend')}' "
+                f"as fallback. Reason: {selection.get('fallback_reason', 'unknown')}"
+            )
+        return {
+            **selection,
+            "warning": warning,
+        }
+
     def refresh_runtime_physics_backend(self) -> None:
         self._refresh_default_physics_backend()
 
@@ -954,6 +1013,10 @@ class Game:
         "Inicia el game loop."
         rl.init_window(self.width, self.height, f"{self.title}  —  v{ENGINE_VERSION}")
         rl.set_target_fps(self.target_fps)
+        try:
+            rl.InitAudioDevice()
+        except Exception:
+            pass
 
         # Comprobación de actualizaciones (no bloquea el arranque)
         from engine.update_checker import start_update_check
@@ -1405,6 +1468,8 @@ class Game:
                 if self._line2d_render_system is not None and active_world is not None:
                     self._line2d_render_system.render(active_world)
 
+                if self._gpu_particles_system is not None and active_world is not None:
+                    self._gpu_particles_system.render(active_world)
                 if self._particle_system is not None and active_world is not None:
                     self._particle_system.render(active_world)
 
@@ -1443,6 +1508,8 @@ class Game:
                 if self._line2d_render_system is not None and target_world is not None:
                     self._line2d_render_system.render(target_world)
 
+                if self._gpu_particles_system is not None and target_world is not None:
+                    self._gpu_particles_system.render(target_world)
                 if self._particle_system is not None and target_world is not None:
                     self._particle_system.render(target_world)
 
@@ -1579,6 +1646,15 @@ class Game:
             self.animator_panel.cleanup()
         if self.sprite_editor_modal is not None:
             self.sprite_editor_modal.cleanup()
+        if self._audio_system is not None:
+            try:
+                self._audio_system.shutdown()
+            except Exception:
+                pass
+        try:
+            rl.CloseAudioDevice()
+        except Exception:
+            pass
         rl.close_window()
 
     def _open_sprite_editor(self, asset_path: str) -> None:

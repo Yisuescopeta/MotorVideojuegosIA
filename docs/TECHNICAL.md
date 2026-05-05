@@ -76,6 +76,165 @@ layout e interaccion y ahora soporta dos modos de foundation sobre
 El sistema fisico conserva `legacy_aabb` como fallback obligatorio y registra
 `box2d` como backend opcional cuando la dependencia esta disponible.
 
+`PhysicsBackend` (ABC en `engine/physics/backend.py`) define el contrato estable
+para backends de fisica 2D. Desde el ciclo 1 de refactorizacion, expone dos nuevos
+metodos de movimiento cinematico:
+
+- `move_and_slide(entity, velocity, delta_time, ...)` -> `MoveResult2D`: mueve la
+  entidad con deteccion de colisiones y deslizamiento por superficies. Soporta
+  configuracion de `floor_max_angle`, `floor_snap_distance`, `up_direction`,
+  `wall_min_slide_angle` y `max_slides`. Implementado en
+  `LegacyAABBPhysicsBackend` con barrido separado por eje (horizontal/vertical),
+  snap al suelo y clasificacion de colisiones (suelo/pared/techo).
+- `move_and_collide(entity, velocity, delta_time, max_collisions=1)` -> `MoveResult2D`:
+  variante que se detiene en la primera colision (delega en `move_and_slide` con
+  `max_slides=1`).
+
+`MoveResult2D` es el dataclass canonico de resultado:
+
+```
+@dataclass
+class MoveResult2D:
+    position_x: float = 0.0
+    position_y: float = 0.0
+    velocity_x: float = 0.0
+    velocity_y: float = 0.0
+    on_floor: bool = False
+    on_wall: bool = False
+    on_ceiling: bool = False
+    collision_normal_x: float = 0.0
+    collision_normal_y: float = 0.0
+    contacts: list = field(default_factory=list)  # list[PhysicsContact]
+    slide_count: int = 0
+    floor_angle: float = 0.0
+```
+
+Actualmente estos metodos son contratos del backend (nivel `PhysicsBackend`) y
+no estan expuestos directamente en `EngineAPI`. La implementacion en
+`LegacyAABBPhysicsBackend` usa barrido AABB con `_sweep_axis()`, snap al suelo
+con `_floor_snap()`, filtrado por `CollisionFilter2D` y matriz de capas desde
+`feature_metadata.physics_2d.layer_matrix`. La clasificacion de colisiones
+(suelo/pared/techo) se realiza por angulo respecto a `up_direction`.
+
+### Integracion runtime del backend en CharacterControllerSystem
+
+`CharacterControllerSystem` admite inyeccion del backend resuelto via
+`set_physics_backend(backend)`. Cuando hay backend, `_move_entity()` delega en
+`_move_with_backend()` que consulta `controller.move_mode` para elegir el
+metodo del backend:
+
+- `move_and_slide`: llama a `PhysicsBackend.move_and_slide()` con parametros
+  completos (velocidad, gravedad, `up_direction`, `floor_max_angle`,
+  `floor_snap_distance`, `wall_min_slide_angle`).
+- `move_and_collide`: llama a `PhysicsBackend.move_and_collide()` con solo
+  velocidad y delta, deteniendose en la primera colision.
+
+En ambos modos copia el `MoveResult2D` resultante al Transform y al componente
+(velocidad, flags `on_floor`/`on_wall`/`on_ceiling`, normales de colision). Los
+contactos del resultado se emiten como eventos `on_collision` en el EventBus,
+con la misma deduplicacion por par que el codigo legacy.
+
+`RuntimeController.update_gameplay()` es quien inyecta el backend cada frame:
+resuelve `PhysicsBackendRegistry.resolve(world)` y, si hay backend disponible,
+lo pasa a `CharacterControllerSystem.set_physics_backend()` antes de llamar a
+`update()`. Esto mantiene el `legacy_aabb` como fallback: si el registry
+devuelve `None`, el sistema sigue usando sus barridos AABB manuales
+(`_sweep_horizontal`/`_sweep_vertical`/`_floor_snap`) sin cambios.
+
+### ShapeFactory y narrow-phase multi-shape
+
+`engine/physics/shapes.py` introduce `ShapeFactory` y `ShapeInstance` para
+unificar la logica de interseccion en narrow-phase. Reemplaza las funciones
+dispersas de interseccion (capsule-vs-AABB, capsule-vs-capsule) por un modelo
+polimorfico: cada `ShapeInstance` conoce su propia interseccion contra las
+demas mediante `intersects_shape(other)`.
+
+**Shapes concretas:**
+
+| Shape | Constructor | Intersecciones implementadas |
+|---|---|---|
+| `AABBShape(cx, cy, half_w, half_h)` | centro + semi-dimensiones | AABB‑AABB |
+| `CircleShape(cx, cy, radius)` | centro + radio | Circle‑Circle, Circle‑AABB, Circle‑Capsule |
+| `CapsuleShape(cx, cy, radius, height)` | centro + radio + altura total del segmento | Capsule‑AABB, Capsule‑Circle, Capsule‑Capsule |
+| `PolygonShape(vertices)` | vertices en world space (SAT) | Polygon‑AABB (SAT), Polygon‑Circle (delega en Circle), resto por AABB overlap |
+
+**Factory:**
+
+```python
+ShapeFactory.build(collider, x, y) -> ShapeInstance
+```
+
+Lee `collider.shape_type` y construye la shape correspondiente:
+
+- `"circle"` → `CircleShape` con `collider.radius`
+- `"capsule"` → `CapsuleShape` con `collider.radius` y `collider.capsule_height`
+- `"polygon"` → `PolygonShape` con `collider.points` transformados a world space
+- `"box"` o cualquier otro → `AABBShape` con `collider.width` y `collider.height`
+
+**Integracion en CollisionSystem:**
+
+`CollisionSystem._narrow_phase_check(entry_a, entry_b)` reemplaza a la antigua
+`_narrow_phase_capsule()` y sus helpers `_capsule_vs_aabb()` /
+`_capsule_vs_capsule()`. Si ambas shapes son `"box"`, la interseccion ya fue
+validada por el broad-phase AABB y retorna `True` sin construir shapes. En caso
+contrario construye ambas shapes via `ShapeFactory.build()` (o crea una
+`AABBShape` desde los bounds si no hay Collider) y llama a
+`shape_a.intersects_shape(shape_b)`. El codigo legacy de capsule queda
+comentado como referencia.
+
+**Integracion en LegacyAABBPhysicsBackend:**
+
+En `_sweep_axis()`, cuando el collider entrante o el otro collider tienen
+`shape_type != "box"`, se construyen ambas shapes en el punto de colision
+candidato y se verifica `intersects_shape()` antes de aceptar la colision.
+Esto evita falsos positivos del barrido AABB para circulos, capsulas y
+poligonos.
+
+**Tests:** 12 tests en `tests/test_shape_factory.py` que cubren intersecciones
+AABB‑AABB, Circle‑Circle, Circle‑AABB, Circle‑Capsule, Capsule‑AABB,
+Capsule‑Capsule, Polygon‑AABB, la factoria desde Collider, y la integracion en
+`_sweep_axis` del backend legacy.
+
+### Limitaciones actuales
+
+- **`legacy_aabb` es el backend default estable.** `box2d` es opt-in via
+  `feature_metadata.physics_2d.backend`.
+- **Box2D NO soporta `move_and_slide` ni `move_and_collide`.** Su
+  `supports_kinematic_move()` retorna `False`. El `PhysicsKinematicMoveService`
+  usa el fallback legacy AABB solver automaticamente.
+- **`CapsuleShape.collide_shape()` tiene manifold aproximado.** El punto de
+  contacto y la normal son estimados; no hay resolucion SAT completa para
+  capsulas.
+- **`PolygonShape` asume poligonos convexos.** No hay deteccion de concavidad.
+  El SAT implementado es correcto para convexos pero no tiene manifold completo
+  (depth/normal aproximados desde AABB de los vertices).
+- **`query_shape_cast` legacy usa barrido por pasos discretos** (20 steps).
+  No es un cast continuo real. Adecuado para depuracion y queries gruesas.
+- **`ShapeFactory.collide_shape()` devuelve `ContactManifold2D` con normal y
+  depth**, pero no todos los pares de shapes tienen precision fisica completa
+  (ver tabla abajo).
+
+| Par de shapes | Manifold | Precision |
+|--------------|----------|-----------|
+| AABB x AABB | Completo | Normal y depth exactas |
+| Circle x Circle | Completo | Normal y depth exactas |
+| Circle x AABB | Completo | Normal y depth exactas |
+| Capsule x AABB | Aproximado | Punto de contacto estimado |
+| Capsule x Circle | Aproximado | Punto de contacto estimado |
+| Capsule x Capsule | Aproximado | Solo deteccion booleana |
+| Polygon x AABB | Aproximado | SAT implementado, manifold basico |
+| Polygon x Polygon | Aproximado | SAT implementado, manifold basico |
+| Polygon x Circle | Aproximado | Distancia a aristas, normal estimada |
+
+### Trabajo futuro
+
+- Box2D `move_and_slide` real con shape casts nativos
+- Manifold completo para CapsuleShape (capsula vs todos)
+- Manifold completo para PolygonShape (SAT con depth y normal real)
+- Unificacion de contactos por frame (evitar duplicacion entre CharacterController y CollisionSystem)
+- CI matrix con Box2D instalado y sin Box2D
+- `query_shape_cast` continuo (no discreto) en backends
+
 `AudioSystem` sigue siendo la superficie ECS/runtime compatible y delega en la
 foundation interna de `engine/audio/`. El backend real de audio, buses/mixer,
 spatial audio completo y la integracion con el `EventBus` global quedan

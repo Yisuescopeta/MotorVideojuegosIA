@@ -238,7 +238,7 @@ class PhysicsSystemTests(unittest.TestCase):
         world = World()
         entity = world.create_entity("Faller")
         entity.add_component(Transform(x=0.0, y=0.0))
-        entity.add_component(RigidBody(velocity_x=0.0, velocity_y=0.0, gravity_scale=1.0, is_grounded=False))
+        entity.add_component(RigidBody(velocity_x=0.0, velocity_y=0.0, gravity_scale=1.0, is_grounded=False, can_sleep=False))
         physics_before = world.physics_version
         structure_before = world.structure_version
 
@@ -271,6 +271,26 @@ class PhysicsSystemTests(unittest.TestCase):
                 world.version,
             ),
         )
+
+    def test_static_body_clears_force_buffers(self) -> None:
+        world = World()
+        entity = world.create_entity("Test")
+        entity.add_component(Transform(x=0.0, y=0.0))
+        rb = RigidBody(body_type="static", simulated=True)
+        entity.add_component(rb)
+        entity.add_component(Collider(width=32, height=32))
+
+        rb._force_buffer_x = 100.0
+        rb._force_buffer_y = 50.0
+        rb._impulse_buffer_x = 20.0
+        rb._torque_buffer = 10.0
+
+        PhysicsSystem().update(world, 1 / 60)
+
+        self.assertEqual(rb._force_buffer_x, 0.0, f"Force buffer X not cleared: {rb._force_buffer_x}")
+        self.assertEqual(rb._force_buffer_y, 0.0, f"Force buffer Y not cleared: {rb._force_buffer_y}")
+        self.assertEqual(rb._impulse_buffer_x, 0.0, f"Impulse buffer X not cleared: {rb._impulse_buffer_x}")
+        self.assertEqual(rb._torque_buffer, 0.0, f"Torque buffer not cleared: {rb._torque_buffer}")
 
 
 if __name__ == "__main__":

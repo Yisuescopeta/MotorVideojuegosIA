@@ -4,15 +4,19 @@ engine/systems/collision_system.py - Sistema de deteccion de colisiones
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 from engine.components.collider import Collider
+from engine.components.collision_filter_2d import CollisionFilter2D
+from engine.components.collision_polygon_2d import CollisionPolygon2D
+from engine.components.collision_shape_2d import CollisionShape2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
+from engine.physics.contact_data import ContactManifold2D, ContactPoint2D
+from engine.physics.shapes import AABBShape, CapsuleShape, CircleShape, PolygonShape, ShapeFactory
 from engine.physics.spatial_hash import SpatialHash2D
 
 if TYPE_CHECKING:
@@ -31,7 +35,7 @@ class CollisionInfo:
 @dataclass(frozen=True)
 class _CollisionEntry:
     entity: Entity
-    collider: Collider
+    collider: Optional[Collider]
     rigidbody: Optional[RigidBody]
     aabb: AABB
 
@@ -70,13 +74,38 @@ class CollisionSystem:
             collider = entity.get_component(Collider)
             if transform is None or collider is None or not collider.enabled:
                 continue
+            bounds = self._compute_shape_bounds(entity, transform)
+            if bounds is None:
+                bounds = collider.get_bounds(transform.x, transform.y)
             entry = _CollisionEntry(
                 entity=entity,
                 collider=collider,
                 rigidbody=entity.get_component(RigidBody),
-                aabb=collider.get_bounds(transform.x, transform.y),
+                aabb=bounds,
             )
             entries_by_id[int(entity.id)] = entry
+            grid.insert(entity.id, entry.aabb)
+
+        # Also gather entities with dedicated shape components but no Collider
+        for entity in world.get_entities_with(Transform):
+            entity_id = int(entity.id)
+            if entity_id in entries_by_id:
+                continue
+            transform = entity.get_component(Transform)
+            if transform is None:
+                continue
+            if not self._entity_has_collision_shape(entity):
+                continue
+            bounds = self._compute_shape_bounds(entity, transform)
+            if bounds is None:
+                continue
+            entry = _CollisionEntry(
+                entity=entity,
+                collider=None,
+                rigidbody=entity.get_component(RigidBody),
+                aabb=bounds,
+            )
+            entries_by_id[entity_id] = entry
             grid.insert(entity.id, entry.aabb)
 
         checked_pairs = self._checked_pairs
@@ -107,14 +136,16 @@ class CollisionSystem:
                 if not self._aabbs_overlap(entry_a.aabb, entry_b.aabb):
                     continue
 
-                if entry_a.collider.shape_type == "capsule" or entry_b.collider.shape_type == "capsule":
-                    if not self._narrow_phase_capsule(entry_a, entry_b):
-                        continue
+                # Narrow-phase: usar ShapeFactory si alguna shape no es AABB pura
+                if not self._narrow_phase_check(entry_a, entry_b):
+                    continue
 
+                is_trigger_a = entry_a.collider.is_trigger if entry_a.collider is not None else False
+                is_trigger_b = entry_b.collider.is_trigger if entry_b.collider is not None else False
                 collision = CollisionInfo(
                     entity_a=entry_a.entity,
                     entity_b=entry_b.entity,
-                    is_trigger=bool(entry_a.collider.is_trigger or entry_b.collider.is_trigger),
+                    is_trigger=bool(is_trigger_a or is_trigger_b),
                 )
                 self._collisions.append(collision)
                 self._step_metrics["actual_collisions"] += 1
@@ -146,34 +177,203 @@ class CollisionSystem:
         if self._event_bus is None:
             return
         event_name = "on_trigger_enter" if collision.is_trigger else "on_collision"
-        self._event_bus.emit(
-            event_name,
-            {
-                "entity_a": collision.entity_a.name,
-                "entity_b": collision.entity_b.name,
-                "entity_a_id": collision.entity_a.id,
-                "entity_b_id": collision.entity_b.id,
-                "is_trigger": collision.is_trigger,
-            },
+        event_data = {
+            "entity_a": collision.entity_a.name,
+            "entity_b": collision.entity_b.name,
+            "entity_a_id": collision.entity_a.id,
+            "entity_b_id": collision.entity_b.id,
+            "is_trigger": collision.is_trigger,
+        }
+        self._event_bus.emit(event_name, event_data)
+
+        manifold = self._build_contact_manifold(collision)
+        if manifold is not None:
+            self._event_bus.emit("collision_contact", manifold.to_dict())
+
+    def _build_contact_manifold(self, collision: CollisionInfo) -> ContactManifold2D | None:
+        entry_a = self._entries_by_id.get(int(collision.entity_a.id))
+        entry_b = self._entries_by_id.get(int(collision.entity_b.id))
+        if entry_a is None or entry_b is None:
+            return None
+
+        aabb_a = entry_a.aabb  # (left, top, right, bottom)
+        aabb_b = entry_b.aabb
+
+        left_a, top_a, right_a, bottom_a = aabb_a
+        left_b, top_b, right_b, bottom_b = aabb_b
+
+        center_x_a = (left_a + right_a) / 2.0
+        center_y_a = (top_a + bottom_a) / 2.0
+        center_x_b = (left_b + right_b) / 2.0
+        center_y_b = (top_b + bottom_b) / 2.0
+
+        overlap_left = right_a - left_b
+        overlap_right = right_b - left_a
+        overlap_top = bottom_a - top_b
+        overlap_bottom = bottom_b - top_a
+
+        overlap_x = min(overlap_left, overlap_right)
+        overlap_y = min(overlap_top, overlap_bottom)
+
+        normal_x: float = 0.0
+        normal_y: float = 0.0
+
+        if overlap_x < overlap_y:
+            if center_x_a < center_x_b:
+                normal_x = -1.0
+            else:
+                normal_x = 1.0
+        else:
+            if center_y_a < center_y_b:
+                normal_y = -1.0
+            else:
+                normal_y = 1.0
+
+        depth = min(overlap_x, overlap_y)
+
+        contact_point_x = (max(left_a, left_b) + min(right_a, right_b)) / 2.0
+        contact_point_y = (max(top_a, top_b) + min(bottom_a, bottom_b)) / 2.0
+
+        rel_vel_x: float = 0.0
+        rel_vel_y: float = 0.0
+        if entry_a.rigidbody is not None and entry_b.rigidbody is not None:
+            rel_vel_x = entry_a.rigidbody.velocity_x - entry_b.rigidbody.velocity_x
+            rel_vel_y = entry_a.rigidbody.velocity_y - entry_b.rigidbody.velocity_y
+
+        contact_point = ContactPoint2D(
+            point_x=contact_point_x,
+            point_y=contact_point_y,
+            normal_x=normal_x,
+            normal_y=normal_y,
+            depth=depth,
+        )
+
+        return ContactManifold2D(
+            entity_a_id=int(collision.entity_a.id),
+            entity_b_id=int(collision.entity_b.id),
+            entity_a_name=collision.entity_a.name,
+            entity_b_name=collision.entity_b.name,
+            normal_x=normal_x,
+            normal_y=normal_y,
+            depth=depth,
+            relative_velocity_x=rel_vel_x,
+            relative_velocity_y=rel_vel_y,
+            contact_count=1,
+            contacts=[contact_point],
+            is_trigger=collision.is_trigger,
         )
 
     def _can_check_pair(self, world: World, entry_a: _CollisionEntry, entry_b: _CollisionEntry) -> bool:
         if not self._layers_can_collide(world, entry_a.entity.layer, entry_b.entity.layer):
             return False
+        if not self._filter_allows_collision(entry_a.entity, entry_b.entity):
+            return False
         if not self._is_simulated(entry_a.rigidbody) and not self._is_simulated(entry_b.rigidbody):
             return False
         return self._allows_contact(entry_a.rigidbody, entry_b.rigidbody)
+
+    @staticmethod
+    def _compute_shape_bounds(entity: Entity, transform: Transform) -> AABB | None:
+        """Compute AABB bounds from CollisionShape2D, CollisionPolygon2D, or Collider.
+
+        Precedence: CollisionShape2D > CollisionPolygon2D > Collider.
+        Returns None if no valid shape component exists.
+        """
+        shape = entity.get_component(CollisionShape2D)
+        if shape is not None and not shape.disabled:
+            return shape.get_bounds(transform.x, transform.y)
+        poly = entity.get_component(CollisionPolygon2D)
+        if poly is not None and not poly.disabled:
+            return poly.get_bounds(transform.x, transform.y)
+        collider = entity.get_component(Collider)
+        if collider is not None and collider.enabled:
+            return collider.get_bounds(transform.x, transform.y)
+        return None
+
+    @staticmethod
+    def _entity_has_collision_shape(entity: Entity) -> bool:
+        """Check if entity has any collision shape component."""
+        shape = entity.get_component(CollisionShape2D)
+        if shape is not None and not shape.disabled:
+            return True
+        poly = entity.get_component(CollisionPolygon2D)
+        if poly is not None and not poly.disabled:
+            return True
+        return False
 
     def _aabbs_overlap(self, aabb_a: AABB, aabb_b: AABB) -> bool:
         left_a, top_a, right_a, bottom_a = aabb_a
         left_b, top_b, right_b, bottom_b = aabb_b
         return left_a < right_b and right_a > left_b and top_a < bottom_b and bottom_a > top_b
 
+    def _narrow_phase_check(self, entry_a: _CollisionEntry, entry_b: _CollisionEntry) -> bool:
+        """Narrow-phase check usando ShapeFactory para shapes no-AABB."""
+        shape_a = self._build_shape_from_entry(entry_a)
+        shape_b = self._build_shape_from_entry(entry_b)
+
+        if shape_a is None or shape_b is None:
+            return True
+
+        if isinstance(shape_a, AABBShape) and isinstance(shape_b, AABBShape):
+            return True
+
+        return shape_a.intersects_shape(shape_b)
+
+    def _build_shape_from_entry(self, entry: _CollisionEntry):
+        """Construye ShapeInstance desde Collider, CollisionShape2D, CollisionPolygon2D o bounds."""
+        entity = entry.entity
+        transform = entity.get_component(Transform)
+        if transform is None:
+            return None
+
+        # 1. Collider
+        collider = entry.collider
+        if collider is not None and collider.enabled:
+            return ShapeFactory.build(collider, transform.x, transform.y)
+
+        # 2. CollisionShape2D
+        shape2d = entity.get_component(CollisionShape2D)
+        if shape2d is not None and not shape2d.disabled:
+            cx = transform.x
+            cy = transform.y
+            st = shape2d.shape_type
+            if st == "circle":
+                return CircleShape(cx, cy, shape2d.radius)
+            if st == "capsule":
+                return CapsuleShape(cx, cy, shape2d.radius, shape2d.height)
+            if st == "polygon" and shape2d.points:
+                world_verts = [(cx + p[0], cy + p[1]) for p in shape2d.points]
+                return PolygonShape(world_verts)
+            hw = shape2d.width / 2
+            hh = shape2d.height / 2
+            return AABBShape(cx, cy, hw, hh)
+
+        # 3. CollisionPolygon2D
+        poly = entity.get_component(CollisionPolygon2D)
+        if poly is not None and not poly.disabled and poly.polygon:
+            world_verts = [(transform.x + v[0], transform.y + v[1]) for v in poly.polygon]
+            return PolygonShape(world_verts)
+
+        # 4. Fallback: AABB desde bounds calculados
+        aabb = entry.aabb
+        return AABBShape(
+            (aabb[0] + aabb[2]) / 2,
+            (aabb[1] + aabb[3]) / 2,
+            (aabb[2] - aabb[0]) / 2,
+            (aabb[3] - aabb[1]) / 2,
+        )
+
     def _layers_can_collide(self, world: World, layer_a: str, layer_b: str) -> bool:
         matrix = world.feature_metadata.get("physics_2d", {}).get("layer_matrix", {})
         if not matrix:
             return True
         return bool(matrix.get(f"{layer_a}|{layer_b}", True))
+
+    def _filter_allows_collision(self, entity_a: Entity, entity_b: Entity) -> bool:
+        return CollisionFilter2D.should_collide(
+            entity_a.get_component(CollisionFilter2D),
+            entity_b.get_component(CollisionFilter2D),
+        )
 
     def _is_simulated(self, rigidbody: Optional[RigidBody]) -> bool:
         if rigidbody is None:
@@ -197,67 +397,71 @@ class CollisionSystem:
             return rigidbody_b.use_full_kinematic_contacts
         return True
 
-    def _narrow_phase_capsule(self, entry_a: _CollisionEntry, entry_b: _CollisionEntry) -> bool:
-        """Narrow-phase check when at least one collider is a capsule."""
-        shape_a = entry_a.collider.shape_type
-        shape_b = entry_b.collider.shape_type
-
-        if shape_a == "capsule" and shape_b == "capsule":
-            return self._capsule_vs_capsule(entry_a, entry_b)
-        if shape_a == "capsule":
-            return self._capsule_vs_aabb(entry_a, entry_b)
-        if shape_b == "capsule":
-            return self._capsule_vs_aabb(entry_b, entry_a)
-        return True
-
-    def _capsule_vs_aabb(self, capsule_entry: _CollisionEntry, aabb_entry: _CollisionEntry) -> bool:
-        """Capsule vs AABB collision. Capsule = vertical segment + radius."""
-        c = capsule_entry.collider
-        a = aabb_entry.collider
-        # Capsule world position
-        cx = capsule_entry.aabb[0] + c.radius  # left + radius = center x
-        cy = (capsule_entry.aabb[1] + capsule_entry.aabb[3]) / 2  # center y
-        cap_half = c.capsule_height / 2
-        seg_top = cy - cap_half
-        seg_bot = cy + cap_half
-
-        # AABB world bounds
-        aabb_left = aabb_entry.aabb[0]
-        aabb_top = aabb_entry.aabb[1]
-        aabb_right = aabb_entry.aabb[2]
-        aabb_bottom = aabb_entry.aabb[3]
-
-        # Distance from segment to AABB
-        dx = max(aabb_left - cx, cx - aabb_right, 0.0)
-        dy = max(aabb_top - seg_bot, seg_top - aabb_bottom, 0.0)
-
-        return (dx * dx + dy * dy) < (c.radius * c.radius)
-
-    def _capsule_vs_capsule(self, entry_a: _CollisionEntry, entry_b: _CollisionEntry) -> bool:
-        """Capsule vs capsule collision. Checks minimum distance between segments."""
-        ca = entry_a.collider
-        cb = entry_b.collider
-
-        ax = entry_a.aabb[0] + ca.radius
-        ay = (entry_a.aabb[1] + entry_a.aabb[3]) / 2
-        ah = ca.capsule_height / 2
-
-        bx = entry_b.aabb[0] + cb.radius
-        by = (entry_b.aabb[1] + entry_b.aabb[3]) / 2
-        bh = cb.capsule_height / 2
-
-        # Vertical segments: (ax, ay-ah)->(ax, ay+ah) and (bx, by-bh)->(bx, by+bh)
-        seg_a_top = ay - ah
-        seg_a_bot = ay + ah
-        seg_b_top = by - bh
-        seg_b_bot = by + bh
-
-        dx = abs(ax - bx)
-        dy = max(seg_a_top - seg_b_bot, seg_b_top - seg_a_bot, 0.0)
-        distance = math.hypot(dx, dy)
-
-        return distance < (ca.radius + cb.radius)
-
+    # --- Legacy capsule narrow-phase methods (fallback, kept commented) ---
+    # def _narrow_phase_capsule(self, entry_a: _CollisionEntry, entry_b: _CollisionEntry) -> bool:
+    #     """Narrow-phase check when at least one collider is a capsule."""
+    #     shape_a = entry_a.collider.shape_type if entry_a.collider is not None else ""
+    #     shape_b = entry_b.collider.shape_type if entry_b.collider is not None else ""
+    #
+    #     if shape_a == "capsule" and shape_b == "capsule":
+    #         return self._capsule_vs_capsule(entry_a, entry_b)
+    #     if shape_a == "capsule":
+    #         return self._capsule_vs_aabb(entry_a, entry_b)
+    #     if shape_b == "capsule":
+    #         return self._capsule_vs_aabb(entry_b, entry_a)
+    #     return True
+    #
+    # def _capsule_vs_aabb(self, capsule_entry: _CollisionEntry, aabb_entry: _CollisionEntry) -> bool:
+    #     """Capsule vs AABB collision. Capsule = vertical segment + radius."""
+    #     c = capsule_entry.collider
+    #     if c is None:
+    #         return True
+    #     # Capsule world position
+    #     cx = capsule_entry.aabb[0] + c.radius  # left + radius = center x
+    #     cy = (capsule_entry.aabb[1] + capsule_entry.aabb[3]) / 2  # center y
+    #     cap_half = c.capsule_height / 2
+    #     seg_top = cy - cap_half
+    #     seg_bot = cy + cap_half
+    #
+    #     # AABB world bounds
+    #     aabb_left = aabb_entry.aabb[0]
+    #     aabb_top = aabb_entry.aabb[1]
+    #     aabb_right = aabb_entry.aabb[2]
+    #     aabb_bottom = aabb_entry.aabb[3]
+    #
+    #     # Distance from segment to AABB
+    #     dx = max(aabb_left - cx, cx - aabb_right, 0.0)
+    #     dy = max(aabb_top - seg_bot, seg_top - aabb_bottom, 0.0)
+    #
+    #     return (dx * dx + dy * dy) < (c.radius * c.radius)
+    #
+    # def _capsule_vs_capsule(self, entry_a: _CollisionEntry, entry_b: _CollisionEntry) -> bool:
+    #     """Capsule vs capsule collision. Checks minimum distance between segments."""
+    #     ca = entry_a.collider
+    #     cb = entry_b.collider
+    #     if ca is None or cb is None:
+    #         return True
+    #
+    #     ax = entry_a.aabb[0] + ca.radius
+    #     ay = (entry_a.aabb[1] + entry_a.aabb[3]) / 2
+    #     ah = ca.capsule_height / 2
+    #
+    #     bx = entry_b.aabb[0] + cb.radius
+    #     by = (entry_b.aabb[1] + entry_b.aabb[3]) / 2
+    #     bh = cb.capsule_height / 2
+    #
+    #     # Vertical segments: (ax, ay-ah)->(ax, ay+ah) and (bx, by-bh)->(bx, by+bh)
+    #     seg_a_top = ay - ah
+    #     seg_a_bot = ay + ah
+    #     seg_b_top = by - bh
+    #     seg_b_bot = by + bh
+    #
+    #     dx = abs(ax - bx)
+    #     dy = max(seg_a_top - seg_b_bot, seg_b_top - seg_a_bot, 0.0)
+    #     distance = math.hypot(dx, dy)
+    #
+    #     return distance < (ca.radius + cb.radius)
+    #
     @staticmethod
     def _closest_point_on_segment(px: float, py: float, ax: float, ay: float, bx: float, by: float) -> tuple[float, float]:
         """Closest point on segment AB to point P."""

@@ -11,7 +11,6 @@ import random
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import pyray as rl
-
 from engine.components.particle_emitter2d import ColorRampStop, ParticleEmitter2D
 from engine.components.transform import Transform
 
