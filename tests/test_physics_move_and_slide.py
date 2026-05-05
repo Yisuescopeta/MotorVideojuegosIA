@@ -221,6 +221,93 @@ class MoveAndSlideTests(unittest.TestCase):
         self.assertFalse(result.on_floor)
         self.assertFalse(result.on_ceiling)
 
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    # Test 9: max_slides=1 gives same position as before
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+
+    def test_max_slides_one_same_as_before(self) -> None:
+        """player vs wall con max_slides=1 — posicion final identica."""
+        player = _make_entity(self.world, "Player", 80.0, 100.0, w=32.0, h=32.0)
+        _make_entity(self.world, "Wall", 104.0, 100.0, w=16.0, h=300.0)
+
+        result = self.backend.move_and_slide(
+            self.world, player, velocity=(200.0, 0.0), delta_time=0.016,
+            max_slides=1,
+        )
+        self.assertAlmostEqual(result.position_x, 80.0, places=0,
+                               msg="Player no debe mover en X (pared tocando)")
+        self.assertTrue(result.on_wall)
+
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    # Test 10: multi-slide corner (wall + floor, diagonal)
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+
+    def test_multi_slide_corner(self) -> None:
+        """Pared vertical + suelo horizontal, player diagonal. slide_count >= 2."""
+        player = _make_entity(self.world, "Player", 80.0, 200.0, w=32.0, h=32.0)
+        _make_entity(self.world, "Wall", 104.0, 200.0, w=16.0, h=300.0)
+        _make_entity(self.world, "Floor", 200.0, 224.0, w=400.0, h=16.0)
+
+        result = self.backend.move_and_slide(
+            self.world, player, velocity=(200.0, 200.0), delta_time=0.016,
+            max_slides=4,
+        )
+        self.assertGreaterEqual(result.slide_count, 2,
+                                f"Esperado slide_count >= 2 en esquina, fue {result.slide_count}")
+        self.assertTrue(result.on_wall)
+        self.assertTrue(result.on_floor)
+
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    # Test 11: single wall gives slide_count == 1
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+
+    def test_slide_count_single_wall(self) -> None:
+        """Pared simple, slide_count == 1 (una sola colision en el frame)."""
+        player = _make_entity(self.world, "Player", 80.0, 100.0, w=32.0, h=32.0)
+        _make_entity(self.world, "Wall", 104.0, 100.0, w=16.0, h=300.0)
+
+        result = self.backend.move_and_slide(
+            self.world, player, velocity=(200.0, 0.0), delta_time=0.016,
+            max_slides=4,
+        )
+        self.assertEqual(result.slide_count, 1,
+                         f"Pared simple debe dar slide_count=1, fue {result.slide_count}")
+
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    # Test 12: sequential walls — no atraviesa, slide_count > 1
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+
+    def test_sequential_walls(self) -> None:
+        """Dos paredes: X colisiona con primera, Y colisiona con segunda."""
+        player = _make_entity(self.world, "Player", 80.0, 100.0, w=32.0, h=32.0)
+        _make_entity(self.world, "WallA", 104.0, 100.0, w=16.0, h=300.0)
+        _make_entity(self.world, "WallB", 80.0, 124.0, w=32.0, h=16.0)
+
+        result = self.backend.move_and_slide(
+            self.world, player, velocity=(500.0, 300.0), delta_time=0.016,
+            max_slides=4,
+        )
+        self.assertGreater(result.slide_count, 1,
+                           f"Esperado slide_count > 1, fue {result.slide_count}")
+
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    # Test 13: max_slides=1 caps iterations
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+
+    def test_max_slides_caps_iterations(self) -> None:
+        """max_slides=1 con colision en corner → slide_count <= 1? No, cap es iteraciones no slides."""
+        player = _make_entity(self.world, "Player", 80.0, 100.0, w=32.0, h=32.0)
+        _make_entity(self.world, "Wall", 104.0, 100.0, w=16.0, h=300.0)
+
+        result = self.backend.move_and_slide(
+            self.world, player, velocity=(200.0, 0.0), delta_time=0.016,
+            max_slides=1,
+        )
+        self.assertEqual(result.slide_count, 1,
+                         f"max_slides=1 con una pared debe dar slide_count=1, fue {result.slide_count}")
+        self.assertAlmostEqual(result.position_x, 80.0, places=0)
+        self.assertTrue(result.on_wall)
+
 
 # ──────────────────────────────────────────────────────────────
 # Box2D tests — solo ejecutan si Box2D instalado

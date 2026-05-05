@@ -253,11 +253,13 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         wall_min_slide_angle: float = 0.261799,
         max_slides: int = 4,
     ) -> MoveResult2D:
-        """Movimiento de personaje con detección AABB y deslizamiento por ejes.
+        """Movimiento de personaje con detección AABB y deslizamiento multi-iteración.
 
-        Migrado de CharacterControllerSystem._move_entity(). Realiza barrido
-        horizontal + vertical, floor snap y clasificación de colisiones
-        (floor/wall/ceiling) usando dot product contra up_direction.
+        Realiza barrido horizontal + vertical por eje en cada iteración,
+        recalculando el remainder entre iteraciones hasta consumir todo el
+        movimiento o alcanzar max_slides. Incluye floor snap posterior
+        y clasificación de colisiones (floor/wall/ceiling) via dot product
+        contra up_direction.
 
         Args:
             world: World actual con las entidades y sólidos.
@@ -268,10 +270,11 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             floor_snap_distance: Distancia de snap al suelo al perder contacto.
             up_direction: Vector up para clasificación de colisiones.
             wall_min_slide_angle: Ángulo mínimo para considerar pared.
-            max_slides: Reservado para futuro bucle de deslizamiento (actualmente 1).
+            max_slides: Máximo de iteraciones de deslizamiento (default 4).
 
         Returns:
-            MoveResult2D con posición final, velocidad ajustada y flags de estado.
+            MoveResult2D con posición final, velocidad ajustada, flags de estado
+            y slide_count real.
         """
         transform = entity.get_component(Transform) if hasattr(entity, "get_component") else None
         collider: Collider | None = entity.get_component(Collider) if hasattr(entity, "get_component") else None
@@ -282,6 +285,7 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
                 position_y=transform.y if transform else 0.0,
                 velocity_x=vx,
                 velocity_y=vy,
+                slide_count=0,
             )
 
         up_x, up_y = float(up_direction[0]), float(up_direction[1])
@@ -297,6 +301,7 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
                 position_y=transform.y,
                 velocity_x=vx,
                 velocity_y=vy,
+                slide_count=0,
             )
         solids: list[Any] = []
         for other in world.get_entities_with(Transform, Collider):
@@ -311,54 +316,80 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         collision_nx = 0.0
         collision_ny = 0.0
         contacts: list[PhysicsContact] = []
+        slide_count = 0
 
-        # --- sweep horizontal ---
-        delta_x = vx * delta_time
-        safe_delta_x = self._sweep_axis(
-            world=world,
-            entity=entity,
-            transform=transform,
-            collider=collider,
-            solids=solids,
-            delta=delta_x,
-            axis="x",
-            contacts=contacts,
-        )
-        transform.x += safe_delta_x
-        if abs(safe_delta_x - delta_x) > 1e-6:
-            vx = 0.0
-            collision_nx = -1.0 if delta_x > 0 else 1.0
-            collision_type = self._classify_collision_static(
-                collision_nx, 0.0, up_x, up_y, floor_max_angle, wall_min_slide_angle
-            )
-            if collision_type == "wall":
-                on_wall = True
+        motion_x = vx * delta_time
+        motion_y = vy * delta_time
+        start_x, start_y = transform.x, transform.y
 
-        # --- sweep vertical ---
-        delta_y = vy * delta_time
-        safe_delta_y = self._sweep_axis(
-            world=world,
-            entity=entity,
-            transform=transform,
-            collider=collider,
-            solids=solids,
-            delta=delta_y,
-            axis="y",
-            contacts=contacts,
-        )
-        transform.y += safe_delta_y
-        if abs(safe_delta_y - delta_y) > 1e-6:
-            vy = 0.0
-            collision_ny = -1.0 if delta_y > 0 else 1.0
-            if delta_y > 0:
-                on_floor = True
-            collision_type = self._classify_collision_static(
-                collision_nx, collision_ny, up_x, up_y, floor_max_angle, wall_min_slide_angle
-            )
-            if collision_type == "ceiling":
-                on_ceiling = True
-            elif collision_type == "wall":
-                on_wall = True
+        for _iteration in range(max_slides):
+            remaining_x = motion_x - (transform.x - start_x)
+            remaining_y = motion_y - (transform.y - start_y)
+
+            if abs(remaining_x) < 1e-6 and abs(remaining_y) < 1e-6:
+                break
+
+            prev_x, prev_y = transform.x, transform.y
+            had_collision = False
+
+            # --- sweep X ---
+            if vx != 0.0 and abs(remaining_x) > 1e-6:
+                safe_delta_x = self._sweep_axis(
+                    world=world,
+                    entity=entity,
+                    transform=transform,
+                    collider=collider,
+                    solids=solids,
+                    delta=remaining_x,
+                    axis="x",
+                    contacts=contacts,
+                )
+                transform.x += safe_delta_x
+                if abs(safe_delta_x - remaining_x) > 1e-6:
+                    vx = 0.0
+                    collision_nx = -1.0 if remaining_x > 0 else 1.0
+                    collision_type = self._classify_collision_static(
+                        collision_nx, 0.0, up_x, up_y, floor_max_angle, wall_min_slide_angle
+                    )
+                    if collision_type == "wall":
+                        on_wall = True
+                    slide_count += 1
+                    had_collision = True
+
+            # --- sweep Y ---
+            if vy != 0.0 and abs(remaining_y) > 1e-6:
+                safe_delta_y = self._sweep_axis(
+                    world=world,
+                    entity=entity,
+                    transform=transform,
+                    collider=collider,
+                    solids=solids,
+                    delta=remaining_y,
+                    axis="y",
+                    contacts=contacts,
+                )
+                transform.y += safe_delta_y
+                if abs(safe_delta_y - remaining_y) > 1e-6:
+                    vy = 0.0
+                    collision_ny = -1.0 if remaining_y > 0 else 1.0
+                    if remaining_y > 0:
+                        on_floor = True
+                    collision_type = self._classify_collision_static(
+                        collision_nx, collision_ny, up_x, up_y, floor_max_angle, wall_min_slide_angle
+                    )
+                    if collision_type == "ceiling":
+                        on_ceiling = True
+                    elif collision_type == "wall":
+                        on_wall = True
+                    slide_count += 1
+                    had_collision = True
+
+            if not had_collision:
+                break
+
+            # --- stuck prevention ---
+            if abs(transform.x - prev_x) < 1e-6 and abs(transform.y - prev_y) < 1e-6:
+                break
 
         # --- floor snap ---
         if was_on_floor and not on_floor and floor_snap_distance > 0.0:
@@ -390,7 +421,7 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             collision_normal_x=collision_nx,
             collision_normal_y=collision_ny,
             contacts=contacts,
-            slide_count=1,
+            slide_count=slide_count,
             floor_angle=0.0,
         )
 

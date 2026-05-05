@@ -36,6 +36,7 @@ class CharacterController2D(Component):
         floor_block_on_wall: bool = True,
         platform_velocity_x: float = 0.0,
         platform_velocity_y: float = 0.0,
+        max_slides: int = 4,
     ) -> None:
         self.enabled: bool = True
         self.move_mode: str = str(move_mode or "move_and_slide")
@@ -65,6 +66,7 @@ class CharacterController2D(Component):
         self.floor_block_on_wall: bool = bool(floor_block_on_wall)
         self.platform_velocity_x: float = float(platform_velocity_x)
         self.platform_velocity_y: float = float(platform_velocity_y)
+        self.max_slides: int = int(max_slides)
         self.slide_collisions: list[dict] = []
         self._was_on_floor: bool = False
 
@@ -95,6 +97,7 @@ class CharacterController2D(Component):
             "floor_block_on_wall": self.floor_block_on_wall,
             "platform_velocity_x": self.platform_velocity_x,
             "platform_velocity_y": self.platform_velocity_y,
+            "max_slides": self.max_slides,
         }
 
     @classmethod
@@ -124,6 +127,7 @@ class CharacterController2D(Component):
             floor_block_on_wall=data.get("floor_block_on_wall", True),
             platform_velocity_x=data.get("platform_velocity_x", 0.0),
             platform_velocity_y=data.get("platform_velocity_y", 0.0),
+            max_slides=data.get("max_slides", 4),
         )
         component.enabled = data.get("enabled", True)
         return component

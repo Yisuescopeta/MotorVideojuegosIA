@@ -150,6 +150,7 @@ class CharacterControllerSystem:
                 floor_snap_distance=controller.floor_snap_distance,
                 up_direction=(controller.up_direction_x, controller.up_direction_y),
                 wall_min_slide_angle=controller.wall_min_slide_angle,
+                max_slides=controller.max_slides,
             )
 
         # Aplicar resultado al Transform
