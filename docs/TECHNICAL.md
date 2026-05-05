@@ -303,6 +303,21 @@ Lee `collider.shape_type` y construye la shape correspondiente:
 - `"polygon"` → `PolygonShape` con `collider.points` transformados a world space
 - `"box"` o cualquier otro → `AABBShape` con `collider.width` y `collider.height`
 
+**Factory from params:**
+
+```python
+ShapeFactory.build_from_params(shape_type, cx, cy, **params) -> ShapeInstance
+```
+
+Construye una shape desde parametros explicitos sin requerir un `Collider`. Soporta:
+
+- `box`: `width`, `height`
+- `circle`: `radius`
+- `capsule`: `radius`, `height`
+- `polygon`: `vertices` (lista de `(x, y)` locales)
+
+Usado internamente por `swept_collision` para construir la shape de barrido en cada punto de la busqueda binaria.
+
 **Integracion en CollisionSystem:**
 
 `CollisionSystem._narrow_phase_check(entry_a, entry_b)` reemplaza a la antigua
@@ -327,6 +342,42 @@ AABB‑AABB, Circle‑Circle, Circle‑AABB, Circle‑Capsule, Capsule‑AABB,
 Capsule‑Capsule, Polygon‑AABB, la factoria desde Collider, y la integracion en
 `_sweep_axis` del backend legacy.
 
+### Swept collision (barrido continuo)
+
+`engine/physics/swept_collision.py` implementa el algoritmo de **swept collision
+con busqueda binaria TOI** (Time of Impact). Reemplaza el antiguo barrido
+discreto de 20 pasos por un metodo continuo que encuentra con precision el
+primer impacto entre una shape en movimiento y una shape objetivo.
+
+**Entrada:** `swept_shape_toi(shape_type, shape_params, origin, direction,
+max_distance, target_shape, target_info, epsilon=0.001, max_iter=64)`
+
+**Algoritmo:**
+1. Normaliza la direccion de barrido.
+2. Verifica overlap en origen — si hay solapamiento inicial, retorna `fraction=0.0`.
+3. Verifica overlap en el extremo del cast — si no hay, intenta deteccion con
+   `_scan_and_refine()` (linear scan de 20 pasos + busqueda binaria entre el
+   ultimo punto claro y el primer hit).
+4. Si hay overlap en el extremo, ejecuta busqueda binaria entre `[0, max_distance]`
+   para encontrar el TOI exacto (epsilon configurable, 64 iteraciones max).
+5. La normal se computa desde `ShapeInstance.collide_shape()` en el punto del TOI
+   y se orienta contra la direccion de barrido.
+
+**Broad-phase AABB:** Antes de la busqueda binaria por entidad,
+`LegacyAABBPhysicsBackend.query_shape_cast()` construye el AABB union del
+barrido (origen + extremo) y filtra entidades candidatas, reduciendo el numero
+de shapes objetivo para la fase estrecha.
+
+**Uso en `LegacyAABBPhysicsBackend`:**
+- `query_shape_cast()` delega el TOI por entidad en `_swept_toi()`, que llama a
+  `swept_shape_toi()`.
+- Las shapes de barrido se construyen via `ShapeFactory.build_from_params()`
+  con los `shape_params` recibidos (o derivados de `shape_size` legacy).
+
+**Tests:** 12 tests en `tests/test_swept_collision.py` que cubren caja vs caja
+(precision TOI, overlap en origen, sin colision, epsilon convergence, grazing
+edge, datos de entidad, direccion cero) y barrido con shape circle/capsule.
+
 ### Limitaciones actuales
 
 - **`legacy_aabb` es el backend default estable.** `box2d` es opt-in via
@@ -340,8 +391,13 @@ Capsule‑Capsule, Polygon‑AABB, la factoria desde Collider, y la integracion 
 - **`PolygonShape` asume poligonos convexos.** No hay deteccion de concavidad.
   El SAT implementado es correcto para convexos pero no tiene manifold completo
   (depth/normal aproximados desde AABB de los vertices).
-- **`query_shape_cast` legacy usa barrido por pasos discretos** (20 steps).
-  No es un cast continuo real. Adecuado para depuracion y queries gruesas.
+- **`query_shape_cast` usa swept collision real con busqueda binaria TOI.**
+  La implementacion en `LegacyAABBPhysicsBackend` ya no usa 20 pasos discretos.
+  Emplea `swept_collision.swept_shape_toi()` con broad-phase AABB, linear scan
+  de 20 pasos para deteccion inicial y busqueda binaria (64 iteraciones max,
+  epsilon 0.001) para precision TOI. La normal se obtiene del manifold de
+  `collide_shape()`. No obstante, la precision del manifold depende del par de
+  shapes (ver tabla).
 - **`ShapeFactory.collide_shape()` devuelve `ContactManifold2D` con normal y
   depth**, pero no todos los pares de shapes tienen precision fisica completa
   (ver tabla abajo).
@@ -365,7 +421,7 @@ Capsule‑Capsule, Polygon‑AABB, la factoria desde Collider, y la integracion 
 - Manifold completo para PolygonShape (SAT con depth y normal real)
 - Unificacion de contactos por frame (evitar duplicacion entre CharacterController y CollisionSystem)
 - CI matrix con Box2D instalado y sin Box2D
-- `query_shape_cast` continuo (no discreto) en backends
+- `query_shape_cast` continuo nativo en backend Box2D
 
 `AudioSystem` sigue siendo la superficie ECS/runtime compatible y delega en la
 foundation interna de `engine/audio/`. El backend real de audio, buses/mixer,

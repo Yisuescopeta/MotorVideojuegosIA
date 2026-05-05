@@ -3197,6 +3197,42 @@
                 "move_and_slide",
                 "runtime"
             ]
+        },
+        {
+            "id": "physics:query:shape_cast",
+            "summary": "Cast a shape through physics space and find first hit",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.query_physics_shape_cast"
+            ],
+            "cli_command": "motor physics query shape-cast <shape_type> <width> <height> <ox> <oy> <dx> <dy> <max_dist>",
+            "example": {
+                "description": "Cast a 16x16 box from (0,0) rightwards 200px",
+                "api_calls": [
+                    {
+                        "method": "query_physics_shape_cast",
+                        "args": {
+                            "shape_type": "box",
+                            "shape_width": 16.0,
+                            "shape_height": 16.0,
+                            "origin_x": 0.0,
+                            "origin_y": 0.0,
+                            "direction_x": 1.0,
+                            "direction_y": 0.0,
+                            "max_distance": 200.0
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns list with first hit entity, position, normal and fraction. Empty if no hit."
+            },
+            "notes": "Supports box, circle, capsule and polygon shapes. Optional shape_params for polygon vertices. Delegates to swept_shape_toi for zero-length direction overlap-at-origin. Delegates to swept_collision for narrow-phase.",
+            "tags": [
+                "physics",
+                "query",
+                "collision",
+                "swept"
+            ]
         }
     ],
     "planned_capabilities": [
@@ -3359,9 +3395,9 @@
         }
     ],
     "capability_counts": {
-        "implemented": 107,
+        "implemented": 108,
         "planned": 6,
-        "total": 113
+        "total": 114
     },
     "project": {
         "name": "MotorVideojuegosIA",

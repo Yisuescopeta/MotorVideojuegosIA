@@ -156,13 +156,17 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
     ) -> list[PhysicsShapeCastHit]:
         ox, oy = float(origin[0]), float(origin[1])
         dx, dy = float(direction[0]), float(direction[1])
-        length = math.hypot(dx, dy)
-        if length <= 1e-6:
-            return []
 
         # Build sweep shape params from shape_size or explicit shape_params
         if shape_params is not None:
             params = dict(shape_params)
+            if shape_type == "polygon":
+                verts = params.get("vertices")
+                if not isinstance(verts, list) or len(verts) < 3:
+                    raise ValueError(
+                        f"shape_cast with shape_type='polygon' requires shape_params "
+                        f"with 'vertices' list of at least 3 points; got {verts!r}"
+                    )
         else:
             sw, sh = float(shape_size[0]), float(shape_size[1])
             if shape_type in ("circle",):
@@ -170,7 +174,8 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             elif shape_type in ("capsule",):
                 params = {"radius": sw / 2.0, "height": sh}
             elif shape_type in ("polygon",):
-                params = {"vertices": []}
+                hw, hh = sw / 2.0, sh / 2.0
+                params = {"vertices": [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]]}
             else:
                 params = {"width": sw, "height": sh}
 

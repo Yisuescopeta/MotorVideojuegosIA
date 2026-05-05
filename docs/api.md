@@ -241,7 +241,15 @@ Fisica:
 
 - `query_physics_aabb(left, top, right, bottom)`
 - `query_physics_ray(origin_x, origin_y, direction_x, direction_y, max_distance)`
-- `query_physics_shape_cast(shape_type, shape_params, origin_x, origin_y, direction_x, direction_y, max_distance)`
+- `query_physics_shape_cast(shape_type, shape_width, shape_height, origin_x, origin_y, direction_x, direction_y, max_distance, shape_params=None)`
+  - `shape_type`: `'box'`, `'circle'`, `'capsule'` o `'polygon'`
+  - `shape_width` / `shape_height`: tamaño base (diametro para circle/capsule)
+  - `shape_params` (dict opcional): parametros explicitos que sobreescriben `shape_width`/`shape_height`. Claves soportadas:
+    - `width`, `height` (box)
+    - `radius` (circle)
+    - `radius`, `height` (capsule)
+    - `vertices` (polygon: lista de `[x, y]` locales)
+  - El cast usa **barrido continuo con busqueda binaria TOI** (swept collision real), no pasos discretos. Retorna `list[ShapeCastResult]`.
 - `apply_force(entity_name, force_x, force_y)`
 - `apply_impulse(entity_name, impulse_x, impulse_y)`
 - `apply_torque(entity_name, torque)`

@@ -152,6 +152,7 @@ class EngineRuntimePort(Protocol):
         direction_x: float,
         direction_y: float,
         max_distance: float,
+        shape_params: Optional[dict] = None,
     ) -> list[dict[str, Any]]:
         ...
 

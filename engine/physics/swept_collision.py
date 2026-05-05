@@ -140,7 +140,15 @@ def _scan_and_refine(
     epsilon: float,
 ) -> Optional[dict]:
     """Linear scan to find first overlap, then binary search between last clear and first hit."""
-    scan_steps = 20
+    target_aabb = target_shape.get_aabb()
+    target_w = max(target_aabb[2] - target_aabb[0], 0.0)
+    target_h = max(target_aabb[3] - target_aabb[1], 0.0)
+    target_min_dim = target_w + target_h
+    if target_min_dim < 1.0:
+        target_min_dim = 1.0
+    scan_steps = max(20, int(max_distance / target_min_dim))
+    if scan_steps > 200:
+        scan_steps = 200
     last_clear = 0.0
     for i in range(1, scan_steps + 1):
         t = max_distance * (i / float(scan_steps))
