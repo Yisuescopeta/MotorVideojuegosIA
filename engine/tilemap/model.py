@@ -178,6 +178,7 @@ class TilemapData:
     orientation: str = "orthogonal"
     tileset: dict[str, str] = field(default_factory=dict)
     tileset_path: str = ""
+    tileset_resource_path: str = ""
     layers: list[TileLayerData] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     tileset_tile_width: int = 16
@@ -209,6 +210,7 @@ class TilemapData:
             orientation=normalized_orientation,
             tileset=tileset_ref,
             tileset_path=tileset_ref.get("path", ""),
+            tileset_resource_path=str(payload.get("tileset_resource_path", "") or ""),
             layers=layers,
             metadata=_clone_metadata(payload.get("metadata", {})),
             tileset_tile_width=max(1, int(payload.get("tileset_tile_width", 16))),
@@ -421,6 +423,7 @@ class TilemapData:
             "orientation": self.orientation,
             "tileset": self.get_tileset_reference(),
             "tileset_path": self.tileset_path,
+            "tileset_resource_path": self.tileset_resource_path,
             "layers": [layer.to_serialized_payload() for layer in self.layers],
             "metadata": copy.deepcopy(self.metadata),
             "tileset_tile_width": self.tileset_tile_width,

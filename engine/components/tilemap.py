@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import copy
 import math
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from engine.assets.asset_reference import clone_asset_reference, normalize_asset_reference
 from engine.ecs.component import Component
 from engine.tilemap.model import TileData, TileLayerData, TilemapData
+
+if TYPE_CHECKING:
+    from engine.resources.tileset import TileSet
 
 
 class Tilemap(Component):
@@ -30,6 +33,7 @@ class Tilemap(Component):
         tileset_spacing: int = 0,
         tileset_margin: int = 0,
         default_layer_name: str = "Layer",
+        tileset_resource_path: str = "",
     ) -> None:
         self.enabled: bool = True
         self.cell_width: int = max(1, int(cell_width))
@@ -46,6 +50,9 @@ class Tilemap(Component):
         self.tileset_spacing: int = max(0, int(tileset_spacing))
         self.tileset_margin: int = max(0, int(tileset_margin))
         self.default_layer_name: str = str(default_layer_name or "Layer").strip() or "Layer"
+        self.tileset_resource_path: str = str(tileset_resource_path or "")
+        self._tileset_resource_cache: TileSet | None = None
+        self._tileset_resource_cache_key: str = ""
 
     def get_tileset_reference(self) -> dict[str, str]:
         return clone_asset_reference(self.tileset)
@@ -53,6 +60,23 @@ class Tilemap(Component):
     def sync_tileset_reference(self, reference: Any) -> None:
         self.tileset = normalize_asset_reference(reference)
         self.tileset_path = self.tileset.get("path", "")
+
+    def get_tileset_resource(self) -> TileSet | None:
+        """Carga lazy del TileSet resource desde tileset_resource_path.
+
+        Cache interno por instancia. Retorna None si no hay path o falla carga.
+        """
+        from engine.resources.tileset import load_tileset
+
+        path = self.tileset_resource_path
+        if not path:
+            return None
+        if path == self._tileset_resource_cache_key and self._tileset_resource_cache is not None:
+            return self._tileset_resource_cache
+        ts = load_tileset(path)
+        self._tileset_resource_cache = ts
+        self._tileset_resource_cache_key = path
+        return ts
 
     def set_tile(
         self,
@@ -270,7 +294,9 @@ class Tilemap(Component):
         return True
 
     def to_dict(self) -> dict[str, Any]:
-        return self._build_model_from_surface().to_component_payload(enabled=self.enabled)
+        payload = self._build_model_from_surface().to_component_payload(enabled=self.enabled)
+        payload["tileset_resource_path"] = self.tileset_resource_path
+        return payload
 
     def iter_runtime_chunks(self, layer: dict[str, Any]) -> list[dict[str, Any]]:
         chunks = layer.get("_runtime_chunks", {})
@@ -350,6 +376,7 @@ class Tilemap(Component):
             tileset_spacing=model.tileset_spacing,
             tileset_margin=model.tileset_margin,
             default_layer_name=model.default_layer_name,
+            tileset_resource_path=model.tileset_resource_path,
         )
         component.enabled = data.get("enabled", True)
         return component
@@ -379,6 +406,7 @@ class Tilemap(Component):
                 "orientation": self.orientation,
                 "tileset": self.tileset,
                 "tileset_path": self.tileset_path,
+                "tileset_resource_path": self.tileset_resource_path,
                 "layers": self._serialized_layers_payload(),
                 "metadata": self.metadata,
                 "tileset_tile_width": self.tileset_tile_width,

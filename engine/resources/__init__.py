@@ -8,6 +8,8 @@ PROPÓSITO:
 MÓDULOS:
     - texture_manager: Carga y caché de texturas
     - curve_2d: Curva Bezier 2D serializable
+    - tileset: TileSet con atlas, metadata, terrain peering y autotile
+    - physics_material: PhysicsMaterial con fricción, rebote y propiedades de superficie
 """
 
 from engine.resources.curve_2d import Curve2D

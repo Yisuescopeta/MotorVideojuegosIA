@@ -1063,6 +1063,56 @@ class AuthoringAPI(EngineAPIComponent):
         success = self.scene_authoring.replace_component_data(entity_name, "Tilemap", tilemap.to_dict())
         return self.ok("Bulk tiles set", {"entity": entity_name, "layer": layer_name, "count": count}) if success else self.fail("Bulk tile update failed")
 
+    def set_cells_terrain_connect(
+        self,
+        entity_name: str,
+        layer_name: str,
+        cells: list[dict[str, int]],
+        terrain_name: str,
+    ) -> ActionResult:
+        """Aplica autotile conectivo a celdas especificas usando TileSet terrain peering.
+
+        Args:
+            entity_name: Nombre de la entidad tilemap.
+            layer_name: Nombre de la capa objetivo.
+            cells: Lista de dicts con "x" e "y".
+            terrain_name: Nombre del terreno para peering en el TileSet.
+
+        Returns:
+            ActionResult con count de celdas modificadas.
+        """
+        self.ensure_edit_mode()
+        if self.scene_authoring is None:
+            return self.fail("SceneManager not ready")
+        payload = self._load_tilemap_payload(entity_name)
+        if payload is None:
+            return self.fail("Tilemap not found")
+        tilemap = Tilemap.from_dict(payload)
+        tileset = tilemap.get_tileset_resource()
+        if tileset is None:
+            return self.fail("No TileSet resource loaded for this tilemap")
+        layer_dict = tilemap._find_layer(layer_name)
+        if layer_dict is None:
+            return self.fail(f"Layer '{layer_name}' not found")
+
+        def _get_tile_at(lx: int, ly: int) -> dict[str, Any] | None:
+            return tilemap.get_tile(layer_name, lx, ly)
+
+        def _set_tile_at(lx: int, ly: int, tid: str) -> None:
+            tilemap.set_tile(layer_name, lx, ly, tid)
+
+        count = tileset.set_cells_terrain_connect(
+            cells, terrain_name, _get_tile_at, _set_tile_at
+        )
+        success = self.scene_authoring.replace_component_data(
+            entity_name, "Tilemap", tilemap.to_dict()
+        )
+        return (
+            self.ok("Terrain connect applied", {"count": count})
+            if success
+            else self.fail("Tilemap save failed")
+        )
+
     def resize_tilemap(
         self,
         entity_name: str,
