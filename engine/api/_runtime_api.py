@@ -961,6 +961,37 @@ class RuntimeAPI(EngineAPIComponent):
         registrar(name, service)
         return self.ok("Builtin service registered", {"name": name})
 
+    def get_raycast_result(self, entity_name: str) -> dict[str, object]:
+        """Obtiene el resultado runtime de un RayCast2D.
+
+        Args:
+            entity_name: Nombre de la entidad con componente RayCast2D.
+
+        Returns:
+            Diccionario con is_colliding, collision_point_x/y,
+            collision_normal_x/y, collider_entity. Si la entidad no
+            existe o no tiene RayCast2D, retorna dict vacio.
+        """
+        from engine.components.raycast_2d import RayCast2D
+
+        runtime = self.runtime
+        if runtime is None or runtime.world is None:
+            return {}
+        entity = runtime.world.get_entity_by_name(entity_name)
+        if entity is None:
+            return {}
+        raycast = entity.get_component(RayCast2D)
+        if raycast is None:
+            return {}
+        return {
+            "is_colliding": raycast.is_colliding,
+            "collision_point_x": raycast.collision_point_x,
+            "collision_point_y": raycast.collision_point_y,
+            "collision_normal_x": raycast.collision_normal_x,
+            "collision_normal_y": raycast.collision_normal_y,
+            "collider_entity": raycast.collider_entity,
+        }
+
     # --- CanvasItem2D drawing API ---
 
     def draw_rect(
