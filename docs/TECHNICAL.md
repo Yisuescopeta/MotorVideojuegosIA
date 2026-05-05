@@ -385,12 +385,11 @@ edge, datos de entidad, direccion cero) y barrido con shape circle/capsule.
 - **Box2D NO soporta `move_and_slide` ni `move_and_collide`.** Su
   `supports_kinematic_move()` retorna `False`. El `PhysicsKinematicMoveService`
   usa el fallback legacy AABB solver automaticamente.
-- **`CapsuleShape.collide_shape()` tiene manifold aproximado.** El punto de
-  contacto y la normal son estimados; no hay resolucion SAT completa para
-  capsulas.
+- **`CapsuleShape.collide_shape()` produce manifold completo.** Depth, normal y
+  punto de contacto reales para colisiones con AABB, Circle, Capsule y Polygon.
 - **`PolygonShape` asume poligonos convexos.** No hay deteccion de concavidad.
-  El SAT implementado es correcto para convexos pero no tiene manifold completo
-  (depth/normal aproximados desde AABB de los vertices).
+  El SAT con clipping de aristas produce manifold completo (depth, normal y
+  puntos de contacto reales) para pares Polygon-Polygon y Polygon-AABB.
 - **`query_shape_cast` usa swept collision real con busqueda binaria TOI.**
   La implementacion en `LegacyAABBPhysicsBackend` ya no usa 20 pasos discretos.
   Emplea `swept_collision.swept_shape_toi()` con broad-phase AABB, linear scan
@@ -399,26 +398,23 @@ edge, datos de entidad, direccion cero) y barrido con shape circle/capsule.
   `collide_shape()`. No obstante, la precision del manifold depende del par de
   shapes (ver tabla).
 - **`ShapeFactory.collide_shape()` devuelve `ContactManifold2D` con normal y
-  depth**, pero no todos los pares de shapes tienen precision fisica completa
-  (ver tabla abajo).
+  depth reales** para la mayoria de los pares de shapes (ver tabla abajo).
 
 | Par de shapes | Manifold | Precision |
 |--------------|----------|-----------|
 | AABB x AABB | Completo | Normal y depth exactas |
 | Circle x Circle | Completo | Normal y depth exactas |
 | Circle x AABB | Completo | Normal y depth exactas |
-| Capsule x AABB | Aproximado | Punto de contacto estimado |
-| Capsule x Circle | Aproximado | Punto de contacto estimado |
-| Capsule x Capsule | Aproximado | Solo deteccion booleana |
-| Polygon x AABB | Aproximado | SAT implementado, manifold basico |
-| Polygon x Polygon | Aproximado | SAT implementado, manifold basico |
+| Capsule x AABB | Completo | Normal, depth y punto de contacto reales |
+| Capsule x Circle | Completo | Normal, depth y punto de contacto reales |
+| Capsule x Capsule | Completo | Segment overlap + capsulas extremas |
+| Polygon x AABB | Completo | SAT con clipping, depth y normal reales |
+| Polygon x Polygon | Completo | SAT con clipping, depth y normal reales |
 | Polygon x Circle | Aproximado | Distancia a aristas, normal estimada |
 
 ### Trabajo futuro
 
 - Box2D `move_and_slide` real con shape casts nativos
-- Manifold completo para CapsuleShape (capsula vs todos)
-- Manifold completo para PolygonShape (SAT con depth y normal real)
 - Unificacion de contactos por frame (evitar duplicacion entre CharacterController y CollisionSystem)
 - CI matrix con Box2D instalado y sin Box2D
 - `query_shape_cast` continuo nativo en backend Box2D
