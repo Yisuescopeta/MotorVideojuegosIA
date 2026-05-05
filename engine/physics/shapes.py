@@ -180,15 +180,7 @@ class CircleShape(ShapeInstance):
 
     def _collide_polygon(self, poly: PolygonShape) -> Optional[ContactManifold2D]:
         """Circle vs Polygon: punto más cercano en polígono al centro del círculo."""
-        if poly._point_inside(self.cx, self.cy):
-            cp = ContactPoint2D(point_x=self.cx, point_y=self.cy, normal_x=0.0, normal_y=-1.0, depth=self.radius)
-            return ContactManifold2D(
-                entity_a_id=0, entity_b_id=0, entity_a_name="", entity_b_name="",
-                normal_x=0.0, normal_y=-1.0, depth=self.radius,
-                relative_velocity_x=0.0, relative_velocity_y=0.0,
-                contact_count=1, contacts=[cp], is_trigger=False,
-            )
-        # Punto más cercano en aristas del polígono
+        # Encontrar punto más cercano en aristas del polígono
         closest_dist_sq = float("inf")
         closest_px = 0.0
         closest_py = 0.0
@@ -211,15 +203,27 @@ class CircleShape(ShapeInstance):
                 closest_dist_sq = d_sq
                 closest_px = px
                 closest_py = py
-        if closest_dist_sq > self.radius * self.radius:
-            return None
-        dist = closest_dist_sq ** 0.5
-        depth = self.radius - dist
-        if dist < 0.0001:
-            nx, ny = 0.0, -1.0
+
+        inside = poly._point_inside(self.cx, self.cy)
+        if inside:
+            dist = closest_dist_sq ** 0.5
+            depth = self.radius + dist
+            if dist < 0.0001:
+                nx, ny = 0.0, -1.0
+            else:
+                nx = (self.cx - closest_px) / dist
+                ny = (self.cy - closest_py) / dist
         else:
-            nx = (self.cx - closest_px) / dist
-            ny = (self.cy - closest_py) / dist
+            if closest_dist_sq > self.radius * self.radius:
+                return None
+            dist = closest_dist_sq ** 0.5
+            depth = self.radius - dist
+            if dist < 0.0001:
+                nx, ny = 0.0, -1.0
+            else:
+                nx = (self.cx - closest_px) / dist
+                ny = (self.cy - closest_py) / dist
+
         cp = ContactPoint2D(point_x=closest_px, point_y=closest_py, normal_x=nx, normal_y=ny, depth=depth)
         return ContactManifold2D(
             entity_a_id=0, entity_b_id=0, entity_a_name="", entity_b_name="",
@@ -311,24 +315,8 @@ class CapsuleShape(ShapeInstance):
         return min(d1_sq, d2_sq) <= r * r
 
     def _intersects_polygon(self, poly: PolygonShape) -> bool:
-        """Capsule vs Polygon: test extremos como círculos + muestreo del segmento."""
-        top_y, bottom_y = self._segment_ends()
-
-        top_circle = CircleShape(self.cx, top_y, self.radius)
-        if top_circle.collide_shape(poly) is not None:
-            return True
-
-        bot_circle = CircleShape(self.cx, bottom_y, self.radius)
-        if bot_circle.collide_shape(poly) is not None:
-            return True
-
-        steps = 4
-        for i in range(steps + 1):
-            t = i / steps
-            py = top_y + t * (bottom_y - top_y)
-            if poly._point_inside(self.cx, py):
-                return True
-        return False
+        """Capsule vs Polygon: delega en _collide_polygon para consistencia."""
+        return self._collide_polygon(poly) is not None
 
     # ── Manifold real methods ────────────────────────────────────
 
@@ -479,9 +467,14 @@ class CapsuleShape(ShapeInstance):
                     closest_px = px_c
                     closest_py = py_c
 
-            if closest_dist_sq <= self.radius * self.radius:
+            outside_hit = closest_dist_sq <= self.radius * self.radius
+            inside = poly._point_inside(self.cx, py)
+            if outside_hit or inside:
                 dist = closest_dist_sq ** 0.5
-                depth = self.radius - dist
+                if inside:
+                    depth = self.radius + dist
+                else:
+                    depth = self.radius - dist
                 if depth > best_depth:
                     best_depth = depth
                     if dist < 0.0001:

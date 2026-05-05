@@ -383,6 +383,65 @@ Componente data-only que marca una entidad como obstáculo para
 api.add_component("wall", "NavigationObstacle2D", {"radius": 16.0})
 ```
 
+### Eventos de contacto de colisión (collision_contact)
+
+El sistema de colisión emite eventos `collision_contact` con datos de manifold
+completos (normal, depth, contact points) a través del `EventBus`. Los agentes
+pueden consumirlos durante `PLAY` para reaccionar a colisiones.
+
+#### Lectura runtime desde agente
+
+```python
+from engine.api import EngineAPI
+
+api = EngineAPI(project_root=".")
+api.load_scene("levels/main_scene.json")
+
+# Iniciar runtime headless
+api.start_play()
+
+# Avanzar frames
+api.step_frames(10)
+
+# Consumir eventos de contacto
+events = api.get_recent_events()
+collision_events = [e for e in events if e.get("name") == "collision_contact"]
+
+for evt in collision_events:
+    data = evt["data"]
+    entity_a = data["entity_a_name"]
+    entity_b = data["entity_b_name"]
+    normal_x = data["normal_x"]
+    normal_y = data["normal_y"]
+    depth = data["depth"]
+    contacts = data["contacts"]  # lista de ContactPoint2D dicts
+    contact_count = data["contact_count"]
+    is_trigger = data.get("is_trigger", False)
+
+    print(f"{entity_a} vs {entity_b}: depth={depth:.2f}, normal=({normal_x:.1f},{normal_y:.1f})")
+    for cp in contacts:
+        print(f"  contact at ({cp['point_x']:.1f}, {cp['point_y']:.1f}), depth={cp['depth']:.2f}")
+
+    # Ejemplo: detectar colisión contra el suelo (normal apunta hacia arriba)
+    if normal_y < -0.7 and entity_b == "Ground":
+        print("Player está en el suelo")
+
+api.stop_play()
+api.shutdown()
+```
+
+Los campos disponibles en cada evento `collision_contact`:
+- `entity_a_id`, `entity_b_id`: IDs de entidades
+- `entity_a_name`, `entity_b_name`: nombres de entidades
+- `normal_x`, `normal_y`: normal de colisión (apunta de A hacia B)
+- `depth`: profundidad máxima de penetración
+- `impulse_x`, `impulse_y`: impulso aplicado en resolución
+- `relative_velocity_x`, `relative_velocity_y`: velocidad relativa en punto de contacto
+- `contact_count`: número de puntos de contacto
+- `contacts`: lista de dicts con `point_x`, `point_y`, `normal_x`, `normal_y`, `depth`
+- `is_trigger`: True si es colisión de trigger
+- `schema_version`: versión del schema (≥1)
+
 ### Limitaciones de física para agentes IA
 
 - `box2d` es backend opt-in. No usar a menos que esté explicitamente configurado.
