@@ -23,7 +23,7 @@ La fuente de verdad para componentes publicos registrados es
 Familias principales:
 
 - Espacial/render: `Transform`, `RectTransform`, `Sprite`, `Animator`, `Camera2D`, `RenderOrder2D`, `RenderStyle2D`.
-- Gameplay/fisica: `Collider`, `RigidBody`, `CharacterController2D`, `PlayerController2D`, `Joint2D`, `InputMap`, `AudioSource`, `ScriptBehaviour`.
+- Gameplay/fisica: `Collider`, `RigidBody`, `CharacterController2D`, `PlayerController2D`, `Joint2D`, `InputMap`, `AudioSource`, `ScriptBehaviour`, `RayCast2D`, `NavigationObstacle2D`.
 - Gameplay semantico 2D: `Collectible2D`, `Hazard2D`, `Goal2D`, `RespawnPoint2D`, `MovingPlatform2D`, `EnemyPatrol2D`, `Checkpoint2D`, `KillZone2D`, `LevelBounds2D`. Son componentes serializables. En runtime, `Gameplay2DSemanticSystem` consume contactos fisicos existentes para emitir eventos de coleccionable, hazard, goal, checkpoint y killzone, aplicar respawn runtime y no modificar la escena serializada. Tambien evalua `LevelBounds2D` por frame: emite `level_bounds_exited`, clampa salidas horizontales y respawnea salidas por `bottom` con el respawn de sesion o el primer `RespawnPoint2D` activo. `Checkpoint2D` puede activar un respawn de sesion usando un `RespawnPoint2D` con el mismo id o su propio `Transform`; `KillZone2D` puede devolver al Player a ese respawn o al primer `RespawnPoint2D` activo. `MovingPlatform2D` mueve la entidad por su path, emite eventos de plataforma sin modificar la escena serializada y transporta al Player cuando su `Collider` esta apoyado encima del `Collider` de la plataforma antes del movimiento del frame. Este soporte de riders es minimo, centrado en Player; los eventos `moving_platform_rider_attached`, `moving_platform_rider_moved` y `moving_platform_rider_detached` quedan planned. `EnemyPatrol2D` mueve la entidad entre sus puntos de patrulla en runtime de forma ciclica, emite `enemy_patrol_started` y `enemy_patrol_reached_point`, y al contactar con Player emite `enemy_touched` (o el evento configurado) con daño y respawn usando el respawn de sesion o el primer `RespawnPoint2D` activo; si no hay respawn emite `enemy_respawn_missing`. Si `EnemyPatrol2D` y `Hazard2D` coexisten en la misma entidad, `EnemyPatrol2D` absorbe la interaccion para evitar eventos duplicados. No persiste progreso runtime en la escena.
 - Escena, tilemap y UI: `Tilemap`, `SceneLink`, `SceneEntryPoint`, `SceneTransition*`, `Canvas`, `UIText`, `UIButton`, `UIImage`.
 
@@ -140,6 +140,35 @@ lo pasa a `CharacterControllerSystem.set_physics_backend()` antes de llamar a
 `update()`. Esto mantiene el `legacy_aabb` como fallback: si el registry
 devuelve `None`, el sistema sigue usando sus barridos AABB manuales
 (`_sweep_horizontal`/`_sweep_vertical`/`_floor_snap`) sin cambios.
+
+### RayCast2DSystem — Raycast por componente
+
+`RayCast2DSystem` se ejecuta cada frame en `RuntimeController.update_gameplay()`:
+para cada entidad con `RayCast2D` y `Transform`, lanza un rayo mediante
+`query_physics_ray` desde la posición de la entidad hacia `cast_to` y puebla
+los campos de resultado (`is_colliding`, `collision_point_*`,
+`collision_normal_*`, `collider_entity`).
+
+El componente `RayCast2D` se registra en `engine/levels/component_registry.py`
+y sus campos serializables son `enabled`, `cast_to_x`, `cast_to_y`,
+`collision_mask`, `collide_with_areas`, `collide_with_bodies`,
+`exclude_parent`. Los campos runtime de colisión no se serializan.
+
+El wiring ocurre en `Game.set_raycast_2d_system()`, que inyecta
+`query_physics_ray` como función de consulta. `RuntimeController` obtiene el
+sistema desde el contexto y lo actualiza tras `backend.step()`.
+
+### GPUParticlesSystem — Placeholder no-op
+
+`GPUParticlesSystem` (en `engine/systems/gpu_particles_system.py`) es un
+**marcador de posición (placeholder) que no realiza cómputo real de partículas
+en GPU**. Expone `update(world, dt)`, `render(world)` y `reset()` como no-ops exclusivamente
+para satisfacer el contrato de `RuntimeControllerContext` y `Renderer` sin romper el wiring
+existente.
+
+**No es una feature implementada.** Cuando se desarrolle un sistema real de
+partículas GPU en el futuro, este placeholder será reemplazado por la
+implementación completa.
 
 ### ShapeFactory y narrow-phase multi-shape
 

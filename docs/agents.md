@@ -295,6 +295,31 @@ cada frame desde `RuntimeController`. No es necesario que el agente configure na
 El componente `CharacterController2D` determina el modo (`move_and_slide` vs
 `move_and_collide`) y el backend lo respeta.
 
+### RayCast2D — Raycast por componente
+
+`RayCast2D` es un componente que lanza un rayo cada frame desde la entidad
+usando internamente `query_physics_ray`. El sistema `RayCast2DSystem` está
+wired en `EngineAPI` y `RuntimeController`, y se ejecuta automáticamente
+durante `PLAY`.
+
+Uso desde authoring:
+```python
+api.add_component("player", "RayCast2D", {"cast_to_y": 100})
+```
+
+Campos runtime actualizados cada frame: `is_colliding`, `collision_point_*`,
+`collision_normal_*`, `collider_entity`.
+
+### NavigationObstacle2D — Obstáculo estático para avoidance
+
+Componente data-only que marca una entidad como obstáculo para
+`NavigationAgentSystem`. Campos: `radius` (default: `0.0`),
+`affect_avoidance` (default: `true`). No requiere configuración runtime.
+
+```python
+api.add_component("wall", "NavigationObstacle2D", {"radius": 16.0})
+```
+
 ### Limitaciones de física para agentes IA
 
 - `box2d` es backend opt-in. No usar a menos que esté explicitamente configurado.

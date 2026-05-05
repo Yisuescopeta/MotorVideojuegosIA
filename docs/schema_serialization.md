@@ -88,6 +88,12 @@ comportamiento actual:
   `event_name`
 - `KillZone2D`: `damage`, `respawn_on_touch`, `event_name`
 - `LevelBounds2D`: `left`, `right`, `top`, `bottom`
+- `NavigationObstacle2D`: `radius`, `affect_avoidance`. Datos para avoidance local en `NavigationAgentSystem`. Componente data-only sin runtime behavior propio.
+
+`RayCast2D` serializa `enabled`, `cast_to_x`, `cast_to_y`, `collision_mask`,
+`collide_with_areas`, `collide_with_bodies`, `exclude_parent`. Los campos
+runtime de colisión (`is_colliding`, `collision_point_*`, `collision_normal_*`,
+`collider_entity`) no se serializan.
 
 En `Animator`, el payload vigente sigue usando `animations`, `default_state`,
 `current_state`, `sprite_sheet` y `sprite_sheet_path`. Como foundation opcional

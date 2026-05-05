@@ -308,6 +308,55 @@ api.set_collider_trigger("damage_zone", True)
 api.connect_signal("damage_zone", "body_entered", on_body_entered)
 ```
 
+### RayCast2D — Detección de colisiones por rayo
+
+RayCast2D es un componente que lanza un rayo cada frame desde la posición de
+la entidad usando `query_physics_ray` internamente. El sistema
+`RayCast2DSystem` (wired en `EngineAPI` y `RuntimeController`) actualiza los
+campos runtime automáticamente.
+
+**Campos serializables (autor: `add_component`):**
+- `enabled`: activa/desactiva el raycast (default: `true`)
+- `cast_to_x`, `cast_to_y`: dirección y distancia del rayo (default: `0, 50`)
+- `collision_mask`: bitmask de capas con las que colisiona (default: `1`)
+- `collide_with_areas`: colisiona con áreas (default: `false`)
+- `collide_with_bodies`: colisiona con bodies (default: `true`)
+- `exclude_parent`: excluye la entidad padre del resultado (default: `true`)
+
+**Campos runtime (lectura tras cada frame):**
+- `is_colliding`: `true` si hay colisión
+- `collision_point_x`, `collision_point_y`: punto de impacto
+- `collision_normal_x`, `collision_normal_y`: normal de la superficie
+- `collider_entity`: nombre de la entidad con la que colisionó
+
+```python
+api.add_component("player", "RayCast2D", {
+    "cast_to_x": 0,
+    "cast_to_y": 100,
+    "collision_mask": 1
+})
+# El sistema actualiza is_colliding, collision_point_*, etc. cada frame
+```
+
+### NavigationObstacle2D — Obstáculo estático para navegación
+
+Componente data-only que marca una entidad como obstáculo para el sistema de
+avoidance de `NavigationAgentSystem`.
+
+**Campos serializables:**
+- `radius`: radio del obstáculo (default: `0.0`)
+- `affect_avoidance`: si afecta el cálculo de avoidance (default: `true`)
+
+No requiere configuración runtime ni expone métodos públicos adicionales.
+`NavigationAgentSystem` consume estos datos cada frame.
+
+```python
+api.add_component("enemy", "NavigationObstacle2D", {
+    "radius": 32.0,
+    "affect_avoidance": True
+})
+```
+
 ### CollisionFilter2D — Filtrado por capas
 
 Controla qué entidades colisionan entre sí usando máscaras de bits (uint32).

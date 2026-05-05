@@ -27,6 +27,10 @@ class GPUParticlesSystem:
         """No-op: no hay implementación real de partículas GPU todavía."""
         pass
 
+    def render(self, world: "World") -> None:
+        """No-op: placeholder sin cómputo real de partículas GPU."""
+        pass
+
     def reset(self) -> None:
         """No-op."""
         pass
