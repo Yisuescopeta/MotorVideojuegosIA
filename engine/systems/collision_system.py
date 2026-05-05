@@ -217,6 +217,25 @@ class CollisionSystem:
         if entry_a is None or entry_b is None:
             return None
 
+        # Intento narrow-phase con shapes reales
+        shape_a = self._build_shape_from_entry(entry_a)
+        shape_b = self._build_shape_from_entry(entry_b)
+        if shape_a is not None and shape_b is not None:
+            manifold = shape_a.collide_shape(shape_b)
+            if manifold is not None:
+                # Populate entity IDs/names desde el collision original
+                manifold.entity_a_id = int(collision.entity_a.id)
+                manifold.entity_b_id = int(collision.entity_b.id)
+                manifold.entity_a_name = collision.entity_a.name
+                manifold.entity_b_name = collision.entity_b.name
+                manifold.is_trigger = collision.is_trigger
+                # relative velocity
+                if entry_a.rigidbody is not None and entry_b.rigidbody is not None:
+                    manifold.relative_velocity_x = entry_a.rigidbody.velocity_x - entry_b.rigidbody.velocity_x
+                    manifold.relative_velocity_y = entry_a.rigidbody.velocity_y - entry_b.rigidbody.velocity_y
+                return manifold
+
+        # Fallback AABB
         aabb_a = entry_a.aabb  # (left, top, right, bottom)
         aabb_b = entry_b.aabb
 
@@ -241,14 +260,14 @@ class CollisionSystem:
 
         if overlap_x < overlap_y:
             if center_x_a < center_x_b:
-                normal_x = -1.0
-            else:
                 normal_x = 1.0
+            else:
+                normal_x = -1.0
         else:
             if center_y_a < center_y_b:
-                normal_y = -1.0
-            else:
                 normal_y = 1.0
+            else:
+                normal_y = -1.0
 
         depth = min(overlap_x, overlap_y)
 

@@ -209,10 +209,10 @@ class CircleShape(ShapeInstance):
             dist = closest_dist_sq ** 0.5
             depth = self.radius + dist
             if dist < 0.0001:
-                nx, ny = 0.0, -1.0
+                nx, ny = 0.0, 1.0
             else:
-                nx = (self.cx - closest_px) / dist
-                ny = (self.cy - closest_py) / dist
+                nx = (closest_px - self.cx) / dist
+                ny = (closest_py - self.cy) / dist
         else:
             if closest_dist_sq > self.radius * self.radius:
                 return None
@@ -478,10 +478,14 @@ class CapsuleShape(ShapeInstance):
                 if depth > best_depth:
                     best_depth = depth
                     if dist < 0.0001:
-                        nx, ny = 0.0, -1.0
+                        nx, ny = 0.0, (-1.0 if not inside else 1.0)
                     else:
-                        nx = (self.cx - closest_px) / dist
-                        ny = (py - closest_py) / dist
+                        if inside:
+                            nx = (closest_px - self.cx) / dist
+                            ny = (closest_py - py) / dist
+                        else:
+                            nx = (self.cx - closest_px) / dist
+                            ny = (py - closest_py) / dist
                     cp = ContactPoint2D(point_x=closest_px, point_y=closest_py, normal_x=nx, normal_y=ny, depth=depth)
                     best_result = ContactManifold2D(
                         entity_a_id=0, entity_b_id=0, entity_a_name="", entity_b_name="",
