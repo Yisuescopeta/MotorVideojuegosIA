@@ -351,11 +351,18 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
                 # Skip one-way collisions in the wrong direction
                 one_way = bool(getattr(other_collider, "one_way_collision", False))
                 if one_way:
-                    ow_dir = float(getattr(other_collider, "one_way_collision_direction_y", 1.0))
-                    if ow_dir > 0.0 and pen_bottom < pen_top:
+                    ow_dir_y = float(getattr(other_collider, "one_way_collision_direction_y", 1.0))
+                    ow_margin = float(getattr(other_collider, "one_way_collision_margin", 1.0))
+                    # Skip if penetration depth is within margin
+                    if pen_bottom <= ow_margin and ow_dir_y < 0.0:
+                        continue
+                    if pen_top <= ow_margin and ow_dir_y > 0.0:
+                        continue
+                    # Direction-based skip
+                    if ow_dir_y > 0.0 and pen_bottom < pen_top:
                         # One-way facing down, entity pushing from below → skip
                         continue
-                    if ow_dir < 0.0 and pen_top < pen_bottom:
+                    if ow_dir_y < 0.0 and pen_top < pen_bottom:
                         # One-way facing up, entity pushing from above → skip
                         continue
 
