@@ -351,7 +351,44 @@ class CollisionSystem:
             return False
         if not self._is_simulated(entry_a.rigidbody) and not self._is_simulated(entry_b.rigidbody):
             return False
-        return self._allows_contact(entry_a.rigidbody, entry_b.rigidbody)
+        if not self._allows_contact(entry_a.rigidbody, entry_b.rigidbody):
+            return False
+        if self._is_one_way_pair(entry_a, entry_b):
+            return False
+        return True
+
+    @staticmethod
+    def _is_one_way_pair(entry_a: _CollisionEntry, entry_b: _CollisionEntry) -> bool:
+        """Skip pair if either entity's one-way shape faces away from the other."""
+        transform_a = entry_a.entity.get_component(Transform)
+        transform_b = entry_b.entity.get_component(Transform)
+        if transform_a is None or transform_b is None:
+            return False
+
+        # Check entry A: one-way shapes on A → filter if B is below pass-through side
+        for shape_def in entry_a.shape_defs:
+            if shape_def is not None and getattr(shape_def, "one_way_collision", False):
+                ow_dir_x = float(getattr(shape_def, "one_way_collision_direction_x", 0.0))
+                ow_dir_y = float(getattr(shape_def, "one_way_collision_direction_y", -1.0))
+                # Vector from platform (A) to other body (B)
+                dx = transform_b.x - transform_a.x
+                dy = transform_b.y - transform_a.y
+                dot = dx * ow_dir_x + dy * ow_dir_y
+                if dot < 0.0:
+                    return True
+
+        # Check entry B: one-way shapes on B → filter if A is below pass-through side
+        for shape_def in entry_b.shape_defs:
+            if shape_def is not None and getattr(shape_def, "one_way_collision", False):
+                ow_dir_x = float(getattr(shape_def, "one_way_collision_direction_x", 0.0))
+                ow_dir_y = float(getattr(shape_def, "one_way_collision_direction_y", -1.0))
+                dx = transform_a.x - transform_b.x
+                dy = transform_a.y - transform_b.y
+                dot = dx * ow_dir_x + dy * ow_dir_y
+                if dot < 0.0:
+                    return True
+
+        return False
 
     @staticmethod
     def _compute_shape_bounds(entity: Entity, transform: Transform) -> AABB | None:
