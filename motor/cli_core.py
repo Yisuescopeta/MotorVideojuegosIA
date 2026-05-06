@@ -3080,6 +3080,79 @@ def cmd_physics_query_ray(
 
 
 # ============================================================================
+# Physics Shape-Cast Query
+# ============================================================================
+
+def cmd_physics_query_shape_cast(
+    project_path: Path,
+    shape_type: str,
+    shape_width: float,
+    shape_height: float,
+    origin_x: float,
+    origin_y: float,
+    direction_x: float,
+    direction_y: float,
+    max_distance: float,
+    json_output: bool = False,
+) -> int:
+    """Cast a shape through physics world."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        data = _runtime_response_base("physics query shape-cast", True, warnings)
+        data.update({
+            "scene": scene,
+            "query": {
+                "shape_type": shape_type,
+                "shape_width": float(shape_width),
+                "shape_height": float(shape_height),
+                "origin_x": float(origin_x),
+                "origin_y": float(origin_y),
+                "direction_x": float(direction_x),
+                "direction_y": float(direction_y),
+                "max_distance": float(max_distance),
+            },
+            "hits": [],
+            "count": 0,
+        })
+        if not scene_ready:
+            return _output(False, "Physics shape cast failed: no active scene", data, json_output)
+
+        api.play()
+        api.step(1)
+        hits = api.query_physics_shape_cast(
+            shape_type=shape_type,
+            shape_width=float(shape_width),
+            shape_height=float(shape_height),
+            origin_x=float(origin_x),
+            origin_y=float(origin_y),
+            direction_x=float(direction_x),
+            direction_y=float(direction_y),
+            max_distance=float(max_distance),
+        )
+        api.stop()
+        data["hits"] = hits
+        data["count"] = len(hits)
+        if not hits:
+            return _output(True, "No hit found", data, json_output)
+        return _output(True, f"Shape cast returned {len(hits)} hits", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Physics shape cast failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.stop()
+                api.shutdown()
+            except Exception:
+                pass
+
+
+# ============================================================================
 # Physics Motion Query
 # ============================================================================
 
