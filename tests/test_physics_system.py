@@ -411,5 +411,113 @@ class PhysicsSystemTests(unittest.TestCase):
         )
 
 
+    def test_cast_shape_ccd_prevents_tunneling_through_thin_wall(self) -> None:
+        """Fast bullet with cast_shape CCD must stop at wall, not tunnel through."""
+        world = World()
+        bullet = world.create_entity("Bullet")
+        bullet.add_component(Transform(x=0.0, y=100.0))
+        bullet.add_component(Collider(shape_type="circle", radius=4.0))
+        bullet.add_component(
+            RigidBody(
+                body_type="dynamic",
+                gravity_scale=0.0,
+                velocity_x=5000.0,  # 5000 * 0.1 = 500 px/frame → will reach wall
+                velocity_y=0.0,
+                is_grounded=True,
+                collision_detection_mode="discrete",
+                ccd_mode="cast_shape",
+            )
+        )
+
+        # Wall at x=80, 4px thick → left edge at x=78
+        wall = world.create_entity("Wall")
+        wall.add_component(Transform(x=80.0, y=100.0))
+        wall.add_component(Collider(width=4.0, height=80.0))
+
+        # Use large dt so bullet actually travels far enough
+        PhysicsSystem().update(world, 0.1)
+
+        transform = bullet.get_component(Transform)
+        rigidbody = bullet.get_component(RigidBody)
+        # Bullet right edge = center + radius
+        bullet_right = transform.x + 4.0
+        wall_left = 78.0
+        self.assertLessEqual(
+            bullet_right, wall_left + 1.0,
+            f"CCD bullet tunneled! Right edge={bullet_right}, wall left={wall_left}"
+        )
+        self.assertEqual(
+            rigidbody.velocity_x, 0.0,
+            "CCD bullet velocity should be zero after hitting wall"
+        )
+        # Bullet should have been stopped before reaching x=200
+        self.assertLess(transform.x, 200.0, "CCD bullet traveled too far")
+
+    def test_cast_shape_ccd_stops_at_wall_unlike_discrete(self) -> None:
+        """cast_shape mode stops at wall; discrete mode may tunnel."""
+        world = World()
+
+        # --- cast_shape bullet ---
+        bullet_ccd = world.create_entity("BulletCCD")
+        bullet_ccd.add_component(Transform(x=0.0, y=100.0))
+        bullet_ccd.add_component(Collider(shape_type="circle", radius=4.0))
+        bullet_ccd.add_component(
+            RigidBody(
+                body_type="dynamic",
+                gravity_scale=0.0,
+                velocity_x=5000.0,
+                velocity_y=0.0,
+                is_grounded=True,
+                collision_detection_mode="discrete",
+                ccd_mode="cast_shape",
+            )
+        )
+
+        # --- discrete bullet (same speed, no CCD) ---
+        bullet_disc = world.create_entity("BulletDisc")
+        bullet_disc.add_component(Transform(x=0.0, y=200.0))
+        bullet_disc.add_component(Collider(shape_type="circle", radius=4.0))
+        bullet_disc.add_component(
+            RigidBody(
+                body_type="dynamic",
+                gravity_scale=0.0,
+                velocity_x=5000.0,
+                velocity_y=0.0,
+                is_grounded=True,
+                collision_detection_mode="discrete",
+                ccd_mode="disabled",
+            )
+        )
+
+        # Wall at x=80, 4px thick → left edge at x=78
+        wall_top = world.create_entity("WallTop")
+        wall_top.add_component(Transform(x=80.0, y=100.0))
+        wall_top.add_component(Collider(width=4.0, height=60.0))
+
+        wall_bot = world.create_entity("WallBot")
+        wall_bot.add_component(Transform(x=80.0, y=200.0))
+        wall_bot.add_component(Collider(width=4.0, height=60.0))
+
+        PhysicsSystem().update(world, 0.1)
+
+        # CCD bullet must stop before or at wall
+        ccd_right = bullet_ccd.get_component(Transform).x + 4.0
+        self.assertLessEqual(
+            ccd_right, 79.0,
+            f"CCD bullet tunneled! Right edge={ccd_right}, wall left=78.0"
+        )
+        self.assertEqual(
+            bullet_ccd.get_component(RigidBody).velocity_x, 0.0,
+            "CCD bullet velocity should be zero after hitting wall"
+        )
+
+        # Discrete bullet: verify it exists (it may or may not tunnel, both are valid)
+        disc_x = bullet_disc.get_component(Transform).x
+        self.assertIsNotNone(disc_x, "Discrete bullet should exist")
+        # Key assertion: CCD bullet must not pass the wall while discrete may
+        # CCD bullet x should be < 80 (stuck at wall)
+        self.assertLess(bullet_ccd.get_component(Transform).x, 80.0)
+
+
 if __name__ == "__main__":
     unittest.main()

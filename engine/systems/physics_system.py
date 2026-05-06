@@ -34,6 +34,28 @@ class _SolidCandidate:
 class PhysicsSystem:
     """Sistema que aplica fisica 2D determinista y simple."""
 
+    @staticmethod
+    def _collider_to_shape_params(collider: Collider) -> dict[str, Any]:
+        """Convert Collider to shape params dict compatible with swept_shape_toi."""
+        shape_type = str(collider.shape_type or "box")
+        if shape_type == "circle":
+            return {"radius": float(collider.radius)}
+        elif shape_type == "capsule":
+            return {"radius": float(collider.radius), "height": float(collider.capsule_height)}
+        elif shape_type == "polygon":
+            pts = getattr(collider, "points", None)
+            if pts and len(pts) >= 3:
+                return {"vertices": [list(p) for p in pts]}
+            # Fallback: use aabb dimensions as polygon
+            return {"vertices": [
+                [-collider.width / 2, -collider.height / 2],
+                [collider.width / 2, -collider.height / 2],
+                [collider.width / 2, collider.height / 2],
+                [-collider.width / 2, collider.height / 2],
+            ]}
+        else:
+            return {"width": float(collider.width), "height": float(collider.height)}
+
     def __init__(self, gravity: float = GRAVITY_DEFAULT) -> None:
         self.gravity: float = gravity
         self._step_metrics: dict[str, float] = {
@@ -206,26 +228,60 @@ class PhysicsSystem:
             elif rigidbody.collision_detection_mode == "continuous":
                 self._step_metrics["ccd_bodies"] += 1
 
-            if rigidbody.freeze_x:
-                rigidbody.velocity_x = 0.0
-            else:
-                if continuous_mode and collider is not None and collider.enabled:
-                    delta_x = self._sweep_horizontal(entity, transform, rigidbody, collider, nearby_solids, delta_x)
-                transform.x += delta_x
-                if collider is not None and collider.enabled:
-                    self._resolve_horizontal(transform, rigidbody, collider, nearby_solids)
+            cast_shape_mode = rigidbody.ccd_mode == "cast_shape" and collider is not None and collider.enabled
 
-            if rigidbody.freeze_y:
-                rigidbody.velocity_y = 0.0
-            else:
-                if continuous_mode and collider is not None and collider.enabled:
-                    delta_y = self._sweep_vertical(entity, transform, rigidbody, collider, nearby_solids, delta_y)
-                transform.y += delta_y
+            if cast_shape_mode:
+                # --- Shape-based CCD: 2D sweep + per-axis resolution ---
+                if (not rigidbody.freeze_x or not rigidbody.freeze_y):
+                    hit = self._sweep_shape_cast(
+                        entity, transform, collider, nearby_solids, delta_x, delta_y
+                    )
+                    if hit is not None:
+                        pos = hit.get("position", {})
+                        transform.x = float(pos.get("x", transform.x + delta_x))
+                        transform.y = float(pos.get("y", transform.y + delta_y))
+                        rigidbody.velocity_x = 0.0
+                        rigidbody.velocity_y = 0.0
+                        self._step_metrics["swept_checks"] += 1
+                    else:
+                        if not rigidbody.freeze_x:
+                            transform.x += delta_x
+                        if not rigidbody.freeze_y:
+                            transform.y += delta_y
+                # Per-axis collision resolution after shape CCD move
+                if collider is not None and collider.enabled:
+                    if not rigidbody.freeze_x:
+                        self._resolve_horizontal(transform, rigidbody, collider, nearby_solids)
                 rigidbody.is_grounded = False
                 if collider is not None and collider.enabled:
-                    self._resolve_vertical(transform, rigidbody, collider, nearby_solids)
-                    if not rigidbody.is_grounded:
-                        rigidbody.is_grounded = self._has_ground_support(entity, transform, collider, nearby_solids)
+                    if not rigidbody.freeze_y:
+                        self._resolve_vertical(transform, rigidbody, collider, nearby_solids)
+                    if not rigidbody.is_grounded and not rigidbody.freeze_y:
+                        rigidbody.is_grounded = self._has_ground_support(
+                            entity, transform, collider, nearby_solids
+                        )
+            else:
+                # --- Existing per-axis AABB sweep (cast_ray / continuous) ---
+                if rigidbody.freeze_x:
+                    rigidbody.velocity_x = 0.0
+                else:
+                    if continuous_mode and collider is not None and collider.enabled:
+                        delta_x = self._sweep_horizontal(entity, transform, rigidbody, collider, nearby_solids, delta_x)
+                    transform.x += delta_x
+                    if collider is not None and collider.enabled:
+                        self._resolve_horizontal(transform, rigidbody, collider, nearby_solids)
+
+                if rigidbody.freeze_y:
+                    rigidbody.velocity_y = 0.0
+                else:
+                    if continuous_mode and collider is not None and collider.enabled:
+                        delta_y = self._sweep_vertical(entity, transform, rigidbody, collider, nearby_solids, delta_y)
+                    transform.y += delta_y
+                    rigidbody.is_grounded = False
+                    if collider is not None and collider.enabled:
+                        self._resolve_vertical(transform, rigidbody, collider, nearby_solids)
+                        if not rigidbody.is_grounded:
+                            rigidbody.is_grounded = self._has_ground_support(entity, transform, collider, nearby_solids)
 
             # --- Lock rotation ---
             if rigidbody.lock_rotation:
@@ -583,6 +639,82 @@ class PhysicsSystem:
                         safe_delta = max(safe_delta, min(0.0, gap))
                         self._record_swept_contact(entity, other.entity)
         return safe_delta
+
+    def _sweep_shape_cast(
+        self,
+        entity: Entity,
+        transform: Transform,
+        collider: Collider,
+        solids: list[_SolidCandidate],
+        delta_x: float,
+        delta_y: float,
+    ) -> dict | None:
+        """Shape-based 2D CCD sweep using swept_shape_toi.
+
+        Returns dict with safe_distance/hit_entity/normal/position or None if no hit.
+        """
+        from engine.physics.shapes import ShapeFactory
+        from engine.physics.swept_collision import swept_shape_toi
+
+        total_dist = math.hypot(delta_x, delta_y)
+        if total_dist <= 1e-6:
+            return None
+
+        dx = delta_x / total_dist
+        dy = delta_y / total_dist
+
+        shape_type = str(collider.shape_type or "box")
+        shape_params = self._collider_to_shape_params(collider)
+
+        best_hit: dict | None = None
+        best_distance = total_dist
+
+        for solid in solids:
+            if solid.entity.id == entity.id:
+                continue
+            other_transform = solid.entity.get_component(Transform)
+            if other_transform is None or not solid.collider.enabled:
+                continue
+
+            target_shape = ShapeFactory.build(solid.collider, other_transform.x, other_transform.y)
+            target_info = {
+                "entity": str(solid.entity.name),
+                "entity_id": int(solid.entity.id),
+                "is_trigger": bool(solid.collider.is_trigger),
+            }
+
+            hit = swept_shape_toi(
+                shape_type=shape_type,
+                shape_params=shape_params,
+                origin=(float(transform.x) + float(collider.offset_x), float(transform.y) + float(collider.offset_y)),
+                direction=(dx, dy),
+                max_distance=total_dist,
+                target_shape=target_shape,
+                target_info=target_info,
+            )
+
+            if hit is not None and hit.get("hit"):
+                dist = float(hit["fraction"]) * total_dist
+                if dist < best_distance:
+                    best_distance = dist
+                    best_hit = hit
+
+        if best_hit is not None:
+            # Record swept contact for external consumers (events, contact monitoring)
+            hit_eid = best_hit.get("entity_id", 0)
+            if hit_eid:
+                for solid in solids:
+                    if int(solid.entity.id) == int(hit_eid):
+                        self._record_swept_contact(entity, solid.entity)
+                        break
+            return {
+                "safe_distance": best_distance,
+                "hit_entity": best_hit.get("entity", ""),
+                "position": best_hit.get("position", {"x": 0.0, "y": 0.0}),
+                "normal": best_hit.get("normal", {"x": 0.0, "y": 0.0}),
+                "entity_id": hit_eid,
+            }
+        return None
 
     def _record_swept_contact(self, entity: Entity, other: Entity) -> None:
         left_id = int(entity.id)
