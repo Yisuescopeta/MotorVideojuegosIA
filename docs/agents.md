@@ -323,6 +323,7 @@ monitoreo de overlaps vía Area2D. Todos los métodos usan la fachada pública
 - **Area2D**: monitorea overlaps con eventos `body_entered`/`body_exited`/`area_entered`/`area_exited`. Requiere un Collider. El payload de eventos incluye `entity_id`, `other_entity_id`, `entity_name` y `other_entity_name`.
 - `CollisionFilter2D.should_collide(entity_a, entity_b)`: Verifica si dos entidades colisionan según sus filtros de capa/máscara.
 - `ImpulseSolver2D`: resolver de contactos PGS con warm-starting. Metricas via `get_solver_metrics()`. Configurable via `PhysicsSystem.solver_iterations` (default 8).
+- `IslandBuilder2D`: agrupa cuerpos rigidos en islas independientes via BFS sobre contactos y joints. Cada isla se resuelve en un solo pase PGS. Soporta island-level sleeping: islas completas se saltan resolucion si todos sus cuerpos estan dormidos. Metricas via `get_step_metrics()`: `island_count`, `sleeping_islands`. Estado persistido entre frames via `_body_id_to_island`.
 
 ### Ejemplo mínimo de física
 

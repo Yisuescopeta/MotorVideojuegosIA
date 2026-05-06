@@ -21,6 +21,7 @@ from engine.config import GRAVITY_DEFAULT
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.physics.contact_solver import ContactConstraint2D, ImpulseSolver2D
+from engine.physics.island_manager import Island2D, IslandBuilder2D
 from engine.physics.spatial_hash import SpatialHash2D
 from engine.resources.physics_material import load_physics_material
 
@@ -33,6 +34,7 @@ class _StaticSolverBody:
     mass = 0.0
     velocity_x = 0.0
     velocity_y = 0.0
+    can_sleep = True
 
 
 @dataclass(frozen=True)
@@ -79,12 +81,13 @@ class PhysicsSystem:
         self._event_bus: Optional[Any] = None  # type: ignore[no-any-explicit]  # EventBus: tipo externo determinado en runtime
         self._impulse_solver = ImpulseSolver2D()
         self._solver_iterations: int = 8
+        self._body_id_to_island: dict[int, Island2D] = {}
 
     def set_event_bus(self, event_bus: Optional[Any]) -> None:  # type: ignore[no-any-explicit]  # EventBus: tipo externo determinado en runtime
         self._event_bus = event_bus
 
     def update(self, world: World, delta_time: float) -> None:
-        self._step_metrics = {"ccd_bodies": 0, "swept_checks": 0, "candidate_solids": 0}
+        self._step_metrics = {"ccd_bodies": 0, "swept_checks": 0, "candidate_solids": 0, "island_count": 0, "sleeping_islands": 0}
         self._swept_contacts = []
         self._swept_contact_set = set()
         entities = world.get_entities_with(Transform, RigidBody)
@@ -110,48 +113,40 @@ class PhysicsSystem:
 
         moving_candidates.sort(key=lambda candidate: int(candidate.entity.id))
 
-        transform_changed = False
-        physics_changed = False
+        # ── PASO 1: Integrar fuerzas + recolectar constraints globalmente ──
+        all_constraints: list[ContactConstraint2D] = []
+        all_bodies: dict[int, Any] = {}
+        body_deltas: dict[int, tuple[float, float]] = {}
+        body_nearby: dict[int, list[_SolidCandidate]] = {}
+        sleeping_body_ids: set[int] = set()
+        initial_transform_states: dict[int, tuple[float, float]] = {}
+        initial_rigidbody_states: dict[int, tuple[float, float, bool]] = {}
+
         for entity in entities:
             transform = entity.get_component(Transform)
             rigidbody = entity.get_component(RigidBody)
             if transform is None or rigidbody is None or not rigidbody.simulated:
                 continue
-            before_transform_state = (transform.x, transform.y)
-            before_rigidbody_state = (
-                rigidbody.velocity_x,
-                rigidbody.velocity_y,
-                rigidbody.is_grounded,
-            )
             effective_type = self._get_effective_body_type(entity)
             if effective_type == "static":
                 if rigidbody is not None:
                     rigidbody._clear_force_buffers()
                     rigidbody.velocity_x = 0.0
                     rigidbody.velocity_y = 0.0
-                physics_changed = physics_changed or before_rigidbody_state != (
-                    rigidbody.velocity_x if rigidbody else 0.0,
-                    rigidbody.velocity_y if rigidbody else 0.0,
-                    rigidbody.is_grounded if rigidbody else False,
-                )
                 continue
 
             collider = entity.get_component(Collider)
 
-            # --- Sleeping check (before processing forces) ---
+            # Sleeping check (per-body)
             self._check_sleeping(rigidbody, delta_time)
-
-            # Skip sleeping bodies for motion integration
             if rigidbody.sleeping:
+                sleeping_body_ids.add(int(entity.id))
                 rigidbody._clear_force_buffers()
-                transform_changed = transform_changed or before_transform_state != (transform.x, transform.y)
-                physics_changed = physics_changed or before_rigidbody_state != (
-                    rigidbody.velocity_x,
-                    rigidbody.velocity_y,
-                    rigidbody.is_grounded,
-                )
                 continue
 
+            # ── Force integration ──
+            initial_transform_states[int(entity.id)] = (transform.x, transform.y)
+            initial_rigidbody_states[int(entity.id)] = (rigidbody.velocity_x, rigidbody.velocity_y, rigidbody.is_grounded)
             if rigidbody.body_type == "dynamic" and not rigidbody.is_grounded:
                 grav_x, grav_y = self._get_effective_gravity(world, entity, transform, rigidbody)
                 rigidbody.velocity_x += grav_x * rigidbody.gravity_scale * delta_time
@@ -170,40 +165,30 @@ class PhysicsSystem:
                 rigidbody.angular_velocity *= angular_damping_factor
 
             if rigidbody.body_type == "dynamic":
-                # Aplicar impulsos instantáneos (cambian velocidad directamente)
                 if rigidbody._impulse_buffer_x != 0.0 or rigidbody._impulse_buffer_y != 0.0:
                     mass = rigidbody.mass
                     if mass > 0.0:
                         rigidbody.velocity_x += rigidbody._impulse_buffer_x / mass
                         rigidbody.velocity_y += rigidbody._impulse_buffer_y / mass
-
-                # Aplicar fuerzas acumuladas (F=ma → a=F/m, v+=a*dt)
                 if rigidbody._force_buffer_x != 0.0 or rigidbody._force_buffer_y != 0.0:
                     mass = rigidbody.mass
                     if mass > 0.0:
                         rigidbody.velocity_x += (rigidbody._force_buffer_x / mass) * delta_time
                         rigidbody.velocity_y += (rigidbody._force_buffer_y / mass) * delta_time
-
-                # Aplicar torque acumulado
                 if rigidbody._torque_buffer != 0.0:
                     inertia = rigidbody.inertia
                     if inertia > 0.0:
                         angular_accel = rigidbody._torque_buffer / inertia
                         rigidbody.angular_velocity += angular_accel * delta_time
-
-                # --- Constant forces (applied every frame, not consumed) ---
                 if rigidbody.constant_force_x != 0.0 or rigidbody.constant_force_y != 0.0:
                     mass = rigidbody.mass
                     if mass > 0.0:
                         rigidbody.velocity_x += (rigidbody.constant_force_x / mass) * delta_time
                         rigidbody.velocity_y += (rigidbody.constant_force_y / mass) * delta_time
-
                 if rigidbody.constant_torque != 0.0:
                     inertia = rigidbody.inertia
                     if inertia > 0.0:
                         rigidbody.angular_velocity += (rigidbody.constant_torque / inertia) * delta_time
-
-                # --- Custom integrator callback ---
                 if rigidbody.custom_integrator and self._event_bus is not None:
                     self._event_bus.emit("rigidbody_integrate_forces", {
                         "entity_id": int(entity.id),
@@ -216,38 +201,24 @@ class PhysicsSystem:
                         "delta_time": delta_time,
                     })
 
-            # Limpiar buffers al final del frame (siempre, incluso para static/kinematic)
             rigidbody._clear_force_buffers()
 
             delta_x = 0.0 if rigidbody.freeze_x else rigidbody.velocity_x * delta_time
             delta_y = 0.0 if rigidbody.freeze_y else rigidbody.velocity_y * delta_time
-            ccd_active = rigidbody.ccd_mode != "disabled"
-            continuous_mode = bool(
-                collider is not None and collider.enabled
-                and (rigidbody.collision_detection_mode == "continuous" or ccd_active)
-            )
+
+            # Collect candidate solids
             nearby_solids = self._collect_candidate_solids(
-                world,
-                entity,
-                rigidbody,
-                collider,
-                transform,
-                grid,
-                static_like_candidates,
-                moving_candidates,
-                delta_x,
-                delta_y,
+                world, entity, rigidbody, collider, transform,
+                grid, static_like_candidates, moving_candidates,
+                delta_x, delta_y,
             )
             self._step_metrics["candidate_solids"] += len(nearby_solids)
+            body_nearby[int(entity.id)] = nearby_solids
+            body_deltas[int(entity.id)] = (delta_x, delta_y)
 
-            # ── PGS Impulse Solver ──
-            # Construir constraints de contacto entre este cuerpo y sus sólidos cercanos
-            # usando las posiciones tentativas (antes de mover)
+            # ── Construir constraints (sin resolver PGS aun) ──
             if collider is not None and collider.enabled and not collider.is_trigger:
-                solver_constraints: list[ContactConstraint2D] = []
-                solver_bodies: dict[int, Any] = {}
-                solver_bodies[int(entity.id)] = rigidbody
-
+                all_bodies[int(entity.id)] = rigidbody
                 tentative_x = transform.x + delta_x
                 tentative_y = transform.y + delta_y
 
@@ -255,33 +226,26 @@ class PhysicsSystem:
                     if solid.entity.id == entity.id:
                         continue
                     other_rb = solid.entity.get_component(RigidBody)
-                    # Include static bodies (no RigidBody or body_type="static")
                     is_static = (other_rb is None or other_rb.body_type == "static")
                     is_dynamic = (other_rb is not None and other_rb.simulated
                                   and other_rb.body_type in ("dynamic", "kinematic"))
                     if not is_static and not is_dynamic:
                         continue
-
                     other_transform = solid.entity.get_component(Transform)
                     if other_transform is None:
                         continue
 
-                    # Narrow-phase: detectar overlap AABB y extraer normal+depth
                     my_bounds = collider.get_bounds(tentative_x, tentative_y)
                     other_bounds = solid.collider.get_bounds(other_transform.x, other_transform.y)
-
                     if not self._aabb_overlaps(my_bounds, other_bounds):
                         continue
 
-                    # Compute contact normal and depth from AABB overlap
                     left_a, top_a, right_a, bottom_a = my_bounds
                     left_b, top_b, right_b, bottom_b = other_bounds
-
                     overlap_left = right_a - left_b
                     overlap_right = right_b - left_a
                     overlap_top = bottom_a - top_b
                     overlap_bottom = bottom_b - top_a
-
                     overlap_x = min(overlap_left, overlap_right)
                     overlap_y = min(overlap_top, overlap_bottom)
 
@@ -294,39 +258,30 @@ class PhysicsSystem:
                         normal_y = 1.0 if tentative_y < other_transform.y else -1.0
                         depth = overlap_y
 
-                    # Allow zero or tiny positive depth for resting contacts
-                    # (friction needs sustained contact even without penetration)
-                    if depth < -0.001:  # negative = no overlap at all
+                    if depth < -0.001:
                         continue
 
-                    # Material properties
                     my_bounce, my_friction_val = self._resolve_material_props(
                         rigidbody.physics_material_override_path, collider,
                     )
                     other_bounce, other_friction_val = self._resolve_material_props(
                         self._get_material_path_from_entity(solid.entity), solid.collider,
                     )
-
                     restitution = max(my_bounce, other_bounce)
                     if not math.isfinite(restitution):
                         restitution = 0.0
                     restitution = max(0.0, min(1.0, restitution))
-
                     friction = math.sqrt(max(0.0, my_friction_val) * max(0.0, other_friction_val))
                     if not math.isfinite(friction):
                         friction = 1.0
 
-                    # Effective mass
                     inv_mass_self = 1.0 / rigidbody.mass if (rigidbody.mass > 0 and rigidbody.body_type == "dynamic") else 0.0
-
-                    # For static bodies without RigidBody, use zero inverse mass
                     if other_rb is None or other_rb.body_type == "static":
                         inv_mass_other = 0.0
-                        other_bounce = solid.collider.restitution if hasattr(solid.collider, 'restitution') else 0.0
-                        other_friction_val = solid.collider.friction if hasattr(solid.collider, 'friction') else 1.0
-                        solver_bodies[int(solid.entity.id)] = _StaticSolverBody()
+                        all_bodies[int(solid.entity.id)] = _StaticSolverBody()
                     else:
                         inv_mass_other = 1.0 / other_rb.mass if (other_rb.mass > 0 and other_rb.body_type == "dynamic") else 0.0
+                        all_bodies[int(solid.entity.id)] = other_rb
 
                     total_inv = inv_mass_self + inv_mass_other
                     if total_inv <= 1e-10:
@@ -334,54 +289,111 @@ class PhysicsSystem:
 
                     mass_normal = 1.0 / total_inv
                     mass_tangent = mass_normal
-
-                    # Baumgarte bias: only for penetration (depth > slop)
                     effective_depth = max(0.0, depth)
                     bias = min(ImpulseSolver2D.MAX_BIAS,
                                ImpulseSolver2D.BAUMGARTE_FACTOR * max(0.0, effective_depth - ImpulseSolver2D.SLOP) / max(delta_time, 1e-6))
-
                     contact_x = (max(left_a, left_b) + min(right_a, right_b)) / 2.0
                     contact_y = (max(top_a, top_b) + min(bottom_a, bottom_b)) / 2.0
 
                     constraint = ContactConstraint2D(
                         entity_a_id=int(entity.id),
                         entity_b_id=int(solid.entity.id),
-                        normal_x=normal_x,
-                        normal_y=normal_y,
-                        tangent_x=-normal_y,
-                        tangent_y=normal_x,
-                        depth=depth,
-                        mass_normal=mass_normal,
-                        mass_tangent=mass_tangent,
-                        restitution=restitution,
-                        friction=friction,
-                        bias=bias,
-                        contact_x=contact_x,
-                        contact_y=contact_y,
+                        normal_x=normal_x, normal_y=normal_y,
+                        tangent_x=-normal_y, tangent_y=normal_x,
+                        depth=depth, mass_normal=mass_normal, mass_tangent=mass_tangent,
+                        restitution=restitution, friction=friction, bias=bias,
+                        contact_x=contact_x, contact_y=contact_y,
                     )
-                    solver_constraints.append(constraint)
-                    if other_rb is not None and other_rb.body_type != "static":
-                        solver_bodies[int(solid.entity.id)] = other_rb
+                    all_constraints.append(constraint)
 
-                if solver_constraints:
-                    self._impulse_solver.solve(solver_constraints, solver_bodies, delta_time, self._solver_iterations)
-                    # ── Recalcular deltas con velocidades corregidas por PGS ──
-                    delta_x = 0.0 if rigidbody.freeze_x else rigidbody.velocity_x * delta_time
-                    delta_y = 0.0 if rigidbody.freeze_y else rigidbody.velocity_y * delta_time
+        # ── PASO 2: Construir islas + PGS solve por isla ──
+        joint_pairs = self._collect_joint_pairs(world)
+        active_body_ids = {eid for eid in body_deltas if eid not in sleeping_body_ids}
+        all_body_ids_for_islands = active_body_ids | {eid for eid in all_bodies if eid not in active_body_ids}
 
-            if ccd_active:
-                self._step_metrics["ccd_bodies"] += 1
-            elif rigidbody.collision_detection_mode == "continuous":
+        islands = IslandBuilder2D.build_islands(
+            all_constraints, joint_pairs, all_body_ids_for_islands,
+            self._body_id_to_island,
+        )
+
+        sleeping_count = 0
+        for island in islands:
+            if island.sleeping:
+                sleeping_count += 1
+                for bid in island.body_ids:
+                    body = all_bodies.get(bid)
+                    if body is not None and hasattr(body, 'velocity_x'):
+                        body.velocity_x = 0.0
+                        body.velocity_y = 0.0
+                        if hasattr(body, 'sleeping'):
+                            body.sleeping = True
+                continue
+
+            island_constraints = [c for c in all_constraints
+                                  if c.entity_a_id in island.body_ids
+                                  and c.entity_b_id in island.body_ids]
+            if island_constraints:
+                self._impulse_solver.solve(island_constraints, all_bodies, delta_time, self._solver_iterations)
+
+            self._check_island_sleeping(island, all_bodies, delta_time)
+            if island.sleeping:
+                sleeping_count += 1
+
+        self._step_metrics["island_count"] = len(islands)
+        self._step_metrics["sleeping_islands"] = sleeping_count
+
+        # Persistir island mapping para siguiente frame
+        self._body_id_to_island = {}
+        for island in islands:
+            for bid in island.body_ids:
+                self._body_id_to_island[bid] = island
+
+        # ── PASO 3: Per-body movimiento + push-out ──
+        transform_changed = False
+        physics_changed = False
+
+        for entity in entities:
+            transform = entity.get_component(Transform)
+            rigidbody = entity.get_component(RigidBody)
+            if transform is None or rigidbody is None or not rigidbody.simulated:
+                continue
+
+            eid = int(entity.id)
+            before_transform_state = initial_transform_states.get(eid, (transform.x, transform.y))
+            before_rigidbody_state = initial_rigidbody_states.get(
+                eid, (rigidbody.velocity_x, rigidbody.velocity_y, rigidbody.is_grounded)
+            )
+
+            effective_type = self._get_effective_body_type(entity)
+            if effective_type == "static":
+                physics_changed = physics_changed or before_rigidbody_state != (rigidbody.velocity_x, rigidbody.velocity_y, rigidbody.is_grounded)
+                continue
+
+            if int(entity.id) in sleeping_body_ids:
+                transform_changed = transform_changed or before_transform_state != (transform.x, transform.y)
+                physics_changed = physics_changed or before_rigidbody_state != (rigidbody.velocity_x, rigidbody.velocity_y, rigidbody.is_grounded)
+                continue
+
+            collider = entity.get_component(Collider)
+            nearby_solids = body_nearby.get(int(entity.id), [])
+
+            # Recalcular deltas con velocidades corregidas por PGS
+            delta_x = 0.0 if rigidbody.freeze_x else rigidbody.velocity_x * delta_time
+            delta_y = 0.0 if rigidbody.freeze_y else rigidbody.velocity_y * delta_time
+
+            ccd_active = rigidbody.ccd_mode != "disabled"
+            continuous_mode = bool(
+                collider is not None and collider.enabled
+                and (rigidbody.collision_detection_mode == "continuous" or ccd_active)
+            )
+            if ccd_active or rigidbody.collision_detection_mode == "continuous":
                 self._step_metrics["ccd_bodies"] += 1
 
             cast_shape_mode = rigidbody.ccd_mode == "cast_shape" and collider is not None and collider.enabled
 
             if cast_shape_mode:
-                # --- Shape-based CCD: 2D sweep + per-axis resolution ---
                 if (not rigidbody.freeze_x or not rigidbody.freeze_y):
-                    hit = self._sweep_shape_cast(
-                        entity, transform, collider, nearby_solids, delta_x, delta_y
-                    )
+                    hit = self._sweep_shape_cast(entity, transform, collider, nearby_solids, delta_x, delta_y)
                     if hit is not None:
                         pos = hit.get("position", {})
                         transform.x = float(pos.get("x", transform.x + delta_x))
@@ -394,7 +406,6 @@ class PhysicsSystem:
                             transform.x += delta_x
                         if not rigidbody.freeze_y:
                             transform.y += delta_y
-                # Per-axis collision resolution after shape CCD move
                 if collider is not None and collider.enabled:
                     if not rigidbody.freeze_x:
                         self._resolve_horizontal(transform, rigidbody, collider, nearby_solids)
@@ -403,11 +414,8 @@ class PhysicsSystem:
                     if not rigidbody.freeze_y:
                         self._resolve_vertical(transform, rigidbody, collider, nearby_solids)
                     if not rigidbody.is_grounded and not rigidbody.freeze_y:
-                        rigidbody.is_grounded = self._has_ground_support(
-                            entity, transform, collider, nearby_solids
-                        )
+                        rigidbody.is_grounded = self._has_ground_support(entity, transform, collider, nearby_solids)
             else:
-                # --- Existing per-axis AABB sweep (cast_ray / continuous) ---
                 if rigidbody.freeze_x:
                     rigidbody.velocity_x = 0.0
                 else:
@@ -429,18 +437,13 @@ class PhysicsSystem:
                         if not rigidbody.is_grounded:
                             rigidbody.is_grounded = self._has_ground_support(entity, transform, collider, nearby_solids)
 
-            # --- Lock rotation ---
             if rigidbody.lock_rotation:
                 rigidbody.angular_velocity = 0.0
 
             transform_changed = transform_changed or before_transform_state != (transform.x, transform.y)
-            physics_changed = physics_changed or before_rigidbody_state != (
-                rigidbody.velocity_x,
-                rigidbody.velocity_y,
-                rigidbody.is_grounded,
-            )
+            physics_changed = physics_changed or before_rigidbody_state != (rigidbody.velocity_x, rigidbody.velocity_y, rigidbody.is_grounded)
 
-        # Apply StaticBody2D constant velocity (moving platforms)
+        # StaticBody2D constant velocity (moving platforms)
         for entity in world.get_entities_with(Transform, StaticBody2D):
             transform = entity.get_component(Transform)
             sb = entity.get_component(StaticBody2D)
@@ -476,10 +479,11 @@ class PhysicsSystem:
         self._solver_iterations = value
 
     def get_solver_metrics(self) -> dict[str, Any]:
-        """Retorna métricas del solver de impulsos (warm-start cache size, etc.)."""
         return {
             "warm_start_cache_size": self._impulse_solver.warm_start_cache_size,
             "iterations": self._solver_iterations,
+            "island_count": self._step_metrics.get("island_count", 0),
+            "sleeping_islands": self._step_metrics.get("sleeping_islands", 0),
         }
 
     def consume_swept_contacts(self) -> list[tuple[int, int]]:
@@ -505,6 +509,53 @@ class PhysicsSystem:
         else:
             body._sleep_timer = 0.0
             body.sleeping = False
+
+    def _check_island_sleeping(self, island: Island2D, bodies: dict[int, Any], dt: float) -> None:
+        """Check if all bodies in an island are still enough to sleep the whole island."""
+        all_still = True
+        max_time_to_sleep = 0.5  # default
+
+        for bid in island.body_ids:
+            body = bodies.get(bid)
+            if body is None:
+                continue
+            # Static bodies never prevent island sleep (they don't move)
+            body_type = getattr(body, 'body_type', 'dynamic')
+            if body_type == 'static':
+                continue
+            if not hasattr(body, 'can_sleep') or not body.can_sleep:
+                all_still = False
+                break
+            if body_type != 'dynamic':
+                continue
+
+            vel = math.sqrt(getattr(body, 'velocity_x', 0.0) ** 2 + getattr(body, 'velocity_y', 0.0) ** 2)
+            ang = abs(getattr(body, 'angular_velocity', 0.0))
+            threshold_lin = getattr(body, 'sleep_linear_threshold', 0.5)
+            threshold_ang = getattr(body, 'sleep_angular_threshold', 0.1)
+            tts = getattr(body, 'time_to_sleep', 0.5)
+
+            if vel >= threshold_lin or ang >= threshold_ang:
+                all_still = False
+                break
+            max_time_to_sleep = max(max_time_to_sleep, tts)
+
+        if all_still and not island.sleeping:
+            island.sleep_timer += dt
+            if island.sleep_timer >= max_time_to_sleep:
+                island.sleeping = True
+                for bid in island.body_ids:
+                    body = bodies.get(bid)
+                    if body is not None and hasattr(body, 'velocity_x'):
+                        body.velocity_x = 0.0
+                        body.velocity_y = 0.0
+                        if hasattr(body, 'angular_velocity'):
+                            body.angular_velocity = 0.0
+                        if hasattr(body, 'sleeping'):
+                            body.sleeping = True
+        elif not all_still:
+            island.sleep_timer = 0.0
+            island.sleeping = False
 
     def _get_effective_gravity(
         self, world: World, entity: Entity, transform: Transform, rigidbody: RigidBody
@@ -1112,6 +1163,22 @@ class PhysicsSystem:
                 self._resolve_groove_joint(transform_a, transform_b, rigid_a, rigid_b, joint)
             elif joint.joint_type == "damped_spring":
                 self._resolve_spring_joint(transform_a, transform_b, rigid_a, rigid_b, joint, dt)
+
+    def _collect_joint_pairs(self, world: World) -> list[tuple[int, int]]:
+        """Collect (body_a_id, body_b_id) pairs for all active joints.
+
+        Used by IslandBuilder2D to add joint edges to the connectivity graph.
+        """
+        pairs: list[tuple[int, int]] = []
+        for entity in world.iter_entities():
+            joint = entity.get_component(Joint2D)
+            if not joint or not joint.enabled or not joint.connected_entity:
+                continue
+            other = world.get_entity_by_name(joint.connected_entity)
+            if not other:
+                continue
+            pairs.append((int(entity.id), int(other.id)))
+        return pairs
 
     def _resolve_fixed_joint(
         self,

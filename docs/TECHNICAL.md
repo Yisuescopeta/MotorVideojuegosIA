@@ -509,6 +509,7 @@ de contactos entre cuerpos rigidos 2D.
 
 **Archivos:**
 - `engine/physics/contact_solver.py` — `ContactConstraint2D` y `ImpulseSolver2D`
+- `engine/physics/island_manager.py` — `Island2D` y `IslandBuilder2D`
 - `engine/systems/physics_system.py` — integracion con `PhysicsSystem.update()`
 
 **Parametros:**
@@ -529,6 +530,26 @@ de contactos entre cuerpos rigidos 2D.
 - Warm starting entre frames via cache por par de entidades
 - Baumgarte stabilization para correccion posicional suave
 - Soporte para cuerpos dinamicos, kinematic y estaticos
+
+**Islas fisicas (Constraint Islands):**
+- `IslandBuilder2D` agrupa cuerpos rigidos en islas independientes usando BFS
+  sobre conectividad de contactos y joints (pares de cuerpos unidos por joint).
+- Cada isla agrupa cuerpos que interactuan via restricciones directas o
+  indirectas; cuerpos en islas distintas no interactuan y se resuelven por
+  separado.
+- `Island2D` almacena `body_ids`, `constraints`, flag `sleeping` y `sleep_timer`.
+  Expone propiedades `size` (numero de cuerpos) y `constraint_count`.
+- **Island-level sleeping**: si todos los cuerpos de una isla estaban en la
+  misma isla dormida el frame anterior y sus velocidades estan por debajo de
+  los umbrales (`sleep_linear_threshold`, `sleep_angular_threshold`), la isla
+  completa se marca como dormida, se salta la resolucion PGS y las velocidades
+  se ponen a cero. El temporizador `sleep_timer` se acumula hasta superar
+  `time_to_sleep` (default 0.5s) antes de dormir. Cualquier movimiento reactiva
+  la isla.
+- **Metricas** via `get_step_metrics()`: `island_count` (total de islas) y
+  `sleeping_islands` (islas dormidas este frame).
+- `_body_id_to_island` persiste el mapeo entre frames para transferir estado
+  de sueño entre islas que mantienen la misma composicion.
 
 ### Limitaciones actuales
 
