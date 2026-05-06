@@ -10,6 +10,7 @@ from engine.components.inputmap import InputMap
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
+from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
 
 
 class CharacterControllerSystem:
@@ -26,11 +27,6 @@ class CharacterControllerSystem:
 
     def update(self, world: World, delta_time: float, backend: Any = None) -> None:
         self._emitted_contacts = set()
-        solids: list[Entity] = []
-        for entity in world.get_entities_with(Transform, Collider):
-            collider = entity.get_component(Collider)
-            if entity.active and collider is not None and collider.enabled and not collider.is_trigger:
-                solids.append(entity)
         for entity in world.get_entities_with(Transform, Collider, CharacterController2D):
             transform = entity.get_component(Transform)
             collider = entity.get_component(Collider)
@@ -41,10 +37,9 @@ class CharacterControllerSystem:
             if not entity.active or not collider.enabled or not controller.enabled:
                 continue
             self._apply_inputs(controller, input_map)
-            if backend is not None:
-                self._move_with_service(backend, world, entity, transform, collider, controller, float(delta_time))
-            else:
-                self._move_entity_legacy(world, entity, transform, collider, controller, solids, float(delta_time))
+            if backend is None:
+                backend = LegacyAABBPhysicsBackend(None, None)
+            self._move_with_service(backend, world, entity, transform, collider, controller, float(delta_time))
 
     def _apply_inputs(self, controller: CharacterController2D, input_map: InputMap | None) -> None:
         controller.collision_normal_x = 0.0
@@ -73,6 +68,11 @@ class CharacterControllerSystem:
         solids: list[Entity],
         delta_time: float,
     ) -> None:
+        """[DEPRECATED] Legacy per-axis sweep path. No longer called directly.
+
+        Kept for backward compatibility with external code that may reference this method.
+        PhysicsKinematicMoveService via LegacyAABBPhysicsBackend is now the unified path.
+        """
         controller._was_on_floor = controller.on_floor
         controller.on_wall = False
         controller.on_ceiling = False
@@ -204,6 +204,7 @@ class CharacterControllerSystem:
         solids: list[Entity],
         delta_x: float,
     ) -> float:
+        """[DEPRECATED] Legacy horizontal sweep. Only referenced by _move_entity_legacy."""
         if abs(delta_x) <= 1e-6:
             return 0.0
         left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
@@ -262,6 +263,7 @@ class CharacterControllerSystem:
         solids: list[Entity],
         delta_y: float,
     ) -> float:
+        """[DEPRECATED] Legacy vertical sweep. Only referenced by _move_entity_legacy."""
         if abs(delta_y) <= 1e-6:
             return 0.0
         left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
