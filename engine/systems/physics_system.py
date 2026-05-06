@@ -16,7 +16,7 @@ from engine.components.joint2d import Joint2D
 from engine.components.rigidbody import RigidBody
 from engine.components.static_body_2d import StaticBody2D
 from engine.components.transform import Transform
-from engine.config import GRAVITY_DEFAULT, GROUND_Y_TEMP
+from engine.config import GRAVITY_DEFAULT
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.physics.spatial_hash import SpatialHash2D
@@ -230,11 +230,6 @@ class PhysicsSystem:
             # --- Lock rotation ---
             if rigidbody.lock_rotation:
                 rigidbody.angular_velocity = 0.0
-
-            if rigidbody.body_type == "dynamic" and not rigidbody.is_grounded and transform.y > GROUND_Y_TEMP:
-                transform.y = GROUND_Y_TEMP
-                rigidbody.velocity_y = 0.0
-                rigidbody.is_grounded = True
 
             transform_changed = transform_changed or before_transform_state != (transform.x, transform.y)
             physics_changed = physics_changed or before_rigidbody_state != (

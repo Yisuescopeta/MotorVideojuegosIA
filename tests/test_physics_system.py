@@ -292,6 +292,124 @@ class PhysicsSystemTests(unittest.TestCase):
         self.assertEqual(rb._impulse_buffer_x, 0.0, f"Impulse buffer X not cleared: {rb._impulse_buffer_x}")
         self.assertEqual(rb._torque_buffer, 0.0, f"Torque buffer not cleared: {rb._torque_buffer}")
 
+    def test_body_falling_below_550_not_teleported(self) -> None:
+        """Dynamic body falling with no collider must NOT be teleported to Y=550."""
+        world = World()
+        entity = world.create_entity("Faller")
+        entity.add_component(Transform(x=0.0, y=600.0))
+        entity.add_component(
+            RigidBody(
+                body_type="dynamic",
+                gravity_scale=1.0,
+                velocity_x=0.0,
+                velocity_y=0.0,
+                is_grounded=False,
+                can_sleep=False,
+            )
+        )
+        PhysicsSystem(gravity=980.0).update(world, 0.5)
+
+        transform = entity.get_component(Transform)
+        rigidbody = entity.get_component(RigidBody)
+        self.assertGreater(
+            transform.y, 550.0,
+            "Body should NOT be teleported back to Y=550 after GROUND_Y_TEMP removal"
+        )
+        self.assertFalse(
+            rigidbody.is_grounded,
+            "Body without ground collider should not be marked grounded"
+        )
+        self.assertGreater(
+            rigidbody.velocity_y, 0.0,
+            "Body should have downward velocity from gravity"
+        )
+
+    def test_body_lands_on_ground_above_550_not_clamped(self) -> None:
+        """Body with collider landing on actual ground above 550 must not be teleported to 550."""
+        world = World()
+        hero = world.create_entity("Hero")
+        hero.add_component(Transform(x=0.0, y=600.0))
+        hero.add_component(Collider(width=10.0, height=10.0))
+        hero.add_component(
+            RigidBody(
+                body_type="dynamic",
+                gravity_scale=0.0,
+                velocity_x=0.0,
+                velocity_y=40.0,
+                is_grounded=False,
+                collision_detection_mode="continuous",
+            )
+        )
+
+        ground = world.create_entity("Ground")
+        ground.add_component(Transform(x=0.0, y=630.0))
+        ground.add_component(Collider(width=100.0, height=10.0))
+
+        PhysicsSystem().update(world, 0.5)
+
+        transform = hero.get_component(Transform)
+        rigidbody = hero.get_component(RigidBody)
+        self.assertGreater(
+            transform.y, 550.0,
+            "Body should land on real ground collider, not be teleported to Y=550"
+        )
+        self.assertTrue(
+            rigidbody.is_grounded,
+            "Body should be grounded after landing on collider above 550"
+        )
+
+    def test_dynamic_body_already_grounded_above_550_not_clamped(self) -> None:
+        """Grounded body at Y=600 must stay at Y=600, not teleported to 550."""
+        world = World()
+        entity = world.create_entity("Grounded")
+        entity.add_component(Transform(x=0.0, y=600.0))
+        entity.add_component(
+            RigidBody(
+                body_type="dynamic",
+                gravity_scale=0.0,
+                velocity_x=0.0,
+                velocity_y=0.0,
+                is_grounded=True,
+                can_sleep=False,
+            )
+        )
+
+        PhysicsSystem().update(world, 0.5)
+
+        transform = entity.get_component(Transform)
+        self.assertEqual(
+            transform.y, 600.0,
+            "Grounded body should stay at its position"
+        )
+        self.assertNotEqual(
+            transform.y, 550.0,
+            "Grounded body must NOT be teleported to Y=550"
+        )
+
+    def test_kinematic_body_above_550_not_touched(self) -> None:
+        """Kinematic body at Y=600 must stay at Y=600."""
+        world = World()
+        entity = world.create_entity("Kinematic")
+        entity.add_component(Transform(x=0.0, y=600.0))
+        entity.add_component(
+            RigidBody(
+                body_type="kinematic",
+                gravity_scale=0.0,
+                velocity_x=0.0,
+                velocity_y=0.0,
+                is_grounded=False,
+                can_sleep=False,
+            )
+        )
+
+        PhysicsSystem().update(world, 0.5)
+
+        transform = entity.get_component(Transform)
+        self.assertEqual(
+            transform.y, 600.0,
+            "Kinematic body should stay at its position"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
