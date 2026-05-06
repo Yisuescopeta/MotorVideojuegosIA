@@ -103,8 +103,8 @@ class RigidBody(Component):
             angular_damping: Amortiguación angular (0=sin fricción rotacional)
             angular_velocity: Velocidad angular en rad/s
             inertia: Momento de inercia (afecta respuesta a torque)
-            center_of_mass_x: Centro de masa relativo X
-            center_of_mass_y: Centro de masa relativo Y
+            center_of_mass_x: Centro de masa relativo X (Godot parity, not yet consumed by PhysicsSystem)
+            center_of_mass_y: Centro de masa relativo Y (Godot parity, not yet consumed by PhysicsSystem)
             ccd_mode: Modo CCD ("disabled", "cast_ray", "cast_shape")
             can_sleep: Si el cuerpo puede dormirse
             sleeping: Si el cuerpo está dormido
@@ -115,9 +115,9 @@ class RigidBody(Component):
             constant_force_x: Fuerza constante X (aplicada cada frame)
             constant_force_y: Fuerza constante Y (aplicada cada frame)
             constant_torque: Torque constante (aplicado cada frame)
-            center_of_mass_mode: "auto" o "custom"
-            linear_damp_mode: "combine" o "replace"
-            angular_damp_mode: "combine" o "replace"
+            center_of_mass_mode: "auto" o "custom" (Godot parity, not yet consumed by PhysicsSystem)
+            linear_damp_mode: "combine" o "replace" (Godot parity, not yet consumed by PhysicsSystem)
+            angular_damp_mode: "combine" o "replace" (Godot parity, not yet consumed by PhysicsSystem)
             lock_rotation: Si la rotación está bloqueada
             contact_monitor: Activa monitoreo de contactos (Godot-like: 0 = sin límite,
                 >0 = máx contactos reportados). Requiere max_contacts_reported > 0
@@ -229,6 +229,8 @@ class RigidBody(Component):
             "constant_force_x": self.constant_force_x,
             "constant_force_y": self.constant_force_y,
             "constant_torque": self.constant_torque,
+            # NOTE: These fields serialize for forward compat but aren't yet
+            # consumed by PhysicsSystem. They exist for Godot API parity.
             "center_of_mass_mode": self.center_of_mass_mode,
             "linear_damp_mode": self.linear_damp_mode,
             "angular_damp_mode": self.angular_damp_mode,

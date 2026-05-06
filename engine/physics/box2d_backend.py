@@ -3,9 +3,13 @@ from __future__ import annotations
 import math
 from typing import Any, Optional
 
+from engine.components.animatable_body_2d import AnimatableBody2D
 from engine.components.collider import Collider
+from engine.components.collision_filter_2d import CollisionFilter2D
+from engine.components.collision_shape_set_2d import CollisionShapeSet2D
 from engine.components.joint2d import Joint2D
 from engine.components.rigidbody import RigidBody
+from engine.components.static_body_2d import StaticBody2D
 from engine.components.transform import Transform
 from engine.physics.backend import PhysicsAABBHit, PhysicsBackend, PhysicsContact, PhysicsRayHit
 
@@ -111,6 +115,24 @@ class Box2DPhysicsBackend(PhysicsBackend):
         if transform is None or collider is None or not collider.enabled:
             return
         rigidbody = entity.get_component(RigidBody)
+
+        # Warn about unsupported features
+        unsupported = []
+        if entity.get_component(CollisionShapeSet2D) if hasattr(entity, "get_component") else None:
+            unsupported.append("CollisionShapeSet2D")
+        if entity.get_component(CollisionFilter2D) if hasattr(entity, "get_component") else None:
+            unsupported.append("CollisionFilter2D")
+        if entity.get_component(StaticBody2D) if hasattr(entity, "get_component") else None:
+            unsupported.append("StaticBody2D")
+        if entity.get_component(AnimatableBody2D) if hasattr(entity, "get_component") else None:
+            unsupported.append("AnimatableBody2D")
+        if unsupported:
+            import warnings
+            warnings.warn(
+                f"Box2D backend: entity '{entity.name}' uses unsupported components: "
+                f"{', '.join(unsupported)}. Behavior may differ from legacy_aabb backend."
+            )
+
         signature = self._signature(entity, transform, collider, rigidbody)
         body = self._bodies.get(int(entity.id))
         if self._signatures.get(entity.id) == signature:
