@@ -458,12 +458,37 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
                 velocity_y=vy,
                 slide_count=0,
             )
+        # --- compute motion region for broad-phase filtering ---
+        e_left, e_top, e_right, e_bottom = collider.get_bounds(transform.x, transform.y)
+        motion_x = vx * delta_time
+        motion_y = vy * delta_time
+        margin = max(1.0, floor_snap_distance)
+        region_left = min(e_left, e_left + motion_x) - margin
+        region_right = max(e_right, e_right + motion_x) + margin
+        region_top = min(e_top, e_top + motion_y) - margin
+        region_bottom = max(e_bottom, e_bottom + motion_y) + margin
+
         solids: list[Any] = []
         for other in world.get_entities_with(Transform, Collider):
+            if int(other.id) == int(entity.id):
+                continue
             other_collider = other.get_component(Collider)
             if other_collider is None or not other_collider.enabled or other_collider.is_trigger:
                 continue
-            solids.append(other)
+            other_transform = other.get_component(Transform)
+            if other_transform is None:
+                continue
+            o_left, o_top, o_right, o_bottom = other_collider.get_bounds(
+                other_transform.x, other_transform.y
+            )
+            # Broad-phase AABB test: only include solids overlapping motion region
+            if (
+                o_left < region_right
+                and o_right > region_left
+                and o_top < region_bottom
+                and o_bottom > region_top
+            ):
+                solids.append(other)
 
         on_floor = False
         on_wall = False
