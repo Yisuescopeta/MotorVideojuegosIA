@@ -299,6 +299,20 @@ class PhysicsSystem:
                 rigidbody.is_grounded,
             )
 
+        # Apply StaticBody2D constant velocity (moving platforms)
+        for entity in world.get_entities_with(Transform, StaticBody2D):
+            transform = entity.get_component(Transform)
+            sb = entity.get_component(StaticBody2D)
+            if transform is None or sb is None:
+                continue
+            if sb.constant_linear_velocity_x != 0.0 or sb.constant_linear_velocity_y != 0.0:
+                transform.x += sb.constant_linear_velocity_x * delta_time
+                transform.y += sb.constant_linear_velocity_y * delta_time
+                transform_changed = True
+            if sb.constant_angular_velocity != 0.0:
+                transform.rotation += sb.constant_angular_velocity * delta_time
+                transform_changed = True
+
         self._resolve_joints(world, delta_time)
 
         if transform_changed:
@@ -484,8 +498,15 @@ class PhysicsSystem:
         rigidbody = entity.get_component(RigidBody)
         has_static = entity.has_component(StaticBody2D)
         has_animatable = entity.has_component(AnimatableBody2D)
-        if has_static or has_animatable:
+        if has_static:
             return "static"
+        if has_animatable:
+            anim = entity.get_component(AnimatableBody2D)
+            if anim is not None and anim.sync_to_physics:
+                return "static"
+            if rigidbody is not None:
+                return rigidbody.body_type
+            return "kinematic"
         if rigidbody is None:
             return "static"
         return rigidbody.body_type

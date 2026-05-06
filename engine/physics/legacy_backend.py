@@ -935,6 +935,9 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         contacts: list[PhysicsContact] = []
         slide_count = 0
         exclude_list: list[int] = []
+        platform_eid: int = 0
+        platform_vx: float = 0.0
+        platform_vy: float = 0.0
 
         # --- Slide loop via body_test_motion ---
         for _iteration in range(max_slides):
@@ -994,6 +997,9 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             if collision_type == "floor":
                 on_floor = True
                 collision_ny = ny
+                if hit_entity is not None:
+                    platform_eid = int(hit_entity.id) if hasattr(hit_entity, "id") else 0
+                    platform_vx, platform_vy = self._get_entity_velocity(hit_entity)
             elif collision_type == "wall":
                 on_wall = True
                 collision_nx = nx
@@ -1073,6 +1079,9 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             contacts=contacts,
             slide_count=slide_count,
             floor_angle=0.0,
+            platform_entity_id=platform_eid,
+            platform_velocity_x=platform_vx,
+            platform_velocity_y=platform_vy,
         )
 
     def move_and_collide(

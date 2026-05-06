@@ -7,6 +7,8 @@ from engine.components.charactercontroller2d import CharacterController2D
 from engine.components.collider import Collider
 from engine.components.collision_filter_2d import CollisionFilter2D
 from engine.components.inputmap import InputMap
+from engine.components.rigidbody import RigidBody
+from engine.components.static_body_2d import StaticBody2D
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
@@ -123,6 +125,24 @@ class CharacterControllerSystem:
         controller.platform_velocity_x = 0.0
         controller.platform_velocity_y = 0.0
 
+        # Apply platform velocity from tracked platform entity
+        if controller.platform_entity_name:
+            platform_e = world.get_entity_by_name(controller.platform_entity_name)
+            if platform_e is not None:
+                pv_x, pv_y = 0.0, 0.0
+                platform_sb = platform_e.get_component(StaticBody2D) if hasattr(platform_e, "get_component") else None
+                if platform_sb is not None:
+                    pv_x = platform_sb.constant_linear_velocity_x
+                    pv_y = platform_sb.constant_linear_velocity_y
+                else:
+                    platform_rb = platform_e.get_component(RigidBody) if hasattr(platform_e, "get_component") else None
+                    if platform_rb is not None:
+                        pv_x = platform_rb.velocity_x
+                        pv_y = platform_rb.velocity_y
+                if pv_x != 0.0 or pv_y != 0.0:
+                    transform.x += pv_x * delta_time
+                    transform.y += pv_y * delta_time
+
         # Calcular velocidad (gravedad + input)
         if not controller.on_floor:
             controller.velocity_y = min(
@@ -167,6 +187,35 @@ class CharacterControllerSystem:
         controller.collision_normal_x = result.collision_normal_x
         controller.collision_normal_y = result.collision_normal_y
         controller._was_on_floor = was_on_floor
+
+        # Track platform entity from move result
+        if result.on_floor and result.platform_entity_id > 0:
+            platform_e = world.get_entity(result.platform_entity_id)
+            if platform_e is not None:
+                controller.platform_entity_name = str(platform_e.name) if hasattr(platform_e, "name") else ""
+        elif not result.on_floor:
+            controller.platform_entity_name = ""
+
+        # platform_on_leave: apply velocity when leaving a moving platform
+        if was_on_floor and not result.on_floor and controller.platform_entity_name:
+            leave_platform = world.get_entity_by_name(controller.platform_entity_name)
+            if leave_platform is not None:
+                lv_x, lv_y = 0.0, 0.0
+                lp_sb = leave_platform.get_component(StaticBody2D) if hasattr(leave_platform, "get_component") else None
+                if lp_sb is not None:
+                    lv_x = lp_sb.constant_linear_velocity_x
+                    lv_y = lp_sb.constant_linear_velocity_y
+                else:
+                    lp_rb = leave_platform.get_component(RigidBody) if hasattr(leave_platform, "get_component") else None
+                    if lp_rb is not None:
+                        lv_x = lp_rb.velocity_x
+                        lv_y = lp_rb.velocity_y
+                if controller.platform_on_leave == "add_velocity":
+                    controller.velocity_x += lv_x
+                    controller.velocity_y += lv_y
+                elif controller.platform_on_leave == "add_upward_velocity":
+                    controller.velocity_y += lv_y
+            controller.platform_entity_name = ""
 
         # Emitir eventos de contacto
         for contact in result.contacts:

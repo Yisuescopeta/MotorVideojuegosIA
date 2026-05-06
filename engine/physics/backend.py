@@ -73,6 +73,9 @@ class MoveResult2D:
     contacts: list[PhysicsContact] = dc_field(default_factory=list)
     slide_count: int = 0
     floor_angle: float = 0.0
+    platform_entity_id: int = 0
+    platform_velocity_x: float = 0.0
+    platform_velocity_y: float = 0.0
 
 
 @dataclass
