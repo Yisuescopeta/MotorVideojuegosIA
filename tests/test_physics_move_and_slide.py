@@ -308,6 +308,110 @@ class MoveAndSlideTests(unittest.TestCase):
         self.assertAlmostEqual(result.position_x, 80.0, places=0)
         self.assertTrue(result.on_wall)
 
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    # Test 14: unstuck Y-axis (different Y centers)
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+
+    def test_unstuck_pushes_entity_out_of_overlapping_solid_y_axis(self) -> None:
+        """Entity starting inside a solid on Y-axis gets pushed out correctly."""
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        # Player above wall, overlapping on Y-axis
+        player = world.create_entity("Player")
+        player.add_component(Transform(x=100.0, y=100.0))
+        player.add_component(Collider(width=20.0, height=20.0))
+
+        # Wall below player → Y-axis overlap (different Y centers)
+        wall = world.create_entity("Wall")
+        wall.add_component(Transform(x=100.0, y=110.0))
+        wall.add_component(Collider(width=40.0, height=20.0))
+
+        backend.sync_world(world)
+
+        backend.move_and_slide(
+            world, player, (0.0, 0.0), 1 / 60,
+        )
+
+        # Player should be pushed UP (above wall) after unstuck
+        _, p_top, _, p_bottom = player.get_component(Collider).get_bounds(
+            player.get_component(Transform).x, player.get_component(Transform).y
+        )
+        _, w_top, _, _ = wall.get_component(Collider).get_bounds(
+            wall.get_component(Transform).x, wall.get_component(Transform).y
+        )
+        self.assertLessEqual(
+            p_bottom, w_top + 0.5,
+            f"Unstuck Y failed! Player bottom={p_bottom}, Wall top={w_top}"
+        )
+        # Player Y should have moved up (smaller Y)
+        self.assertLess(
+            player.get_component(Transform).y, 100.0,
+            "Player should move UP after Y-axis unstuck"
+        )
+
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    # Test 15: unstuck X-axis (different X centers)
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+
+    def test_unstuck_pushes_entity_out_of_overlapping_solid_x_axis(self) -> None:
+        """Entity starting inside a solid on X-axis gets pushed out."""
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        player = world.create_entity("Player")
+        player.add_component(Transform(x=100.0, y=100.0))
+        player.add_component(Collider(width=20.0, height=20.0))
+
+        wall = world.create_entity("Wall")
+        wall.add_component(Transform(x=105.0, y=100.0))
+        wall.add_component(Collider(width=20.0, height=40.0))
+
+        backend.sync_world(world)
+
+        backend.move_and_slide(
+            world, player, (0.0, 0.0), 1 / 60,
+        )
+
+        p_left, _, p_right, _ = player.get_component(Collider).get_bounds(
+            player.get_component(Transform).x, player.get_component(Transform).y
+        )
+        w_left, _, w_right, _ = wall.get_component(Collider).get_bounds(
+            wall.get_component(Transform).x, wall.get_component(Transform).y
+        )
+        no_overlap_x = p_right <= w_left + 0.5 or p_left >= w_right - 0.5
+        self.assertTrue(
+            no_overlap_x,
+            f"Unstuck X failed! Player=[{p_left},{p_right}], Wall=[{w_left},{w_right}]"
+        )
+
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    # Test 16: unstuck does not affect non-overlapping entity
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+
+    def test_unstuck_does_not_affect_non_overlapping_entity(self) -> None:
+        """Entity NOT overlapping any solid stays at its position and moves normally."""
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        player = world.create_entity("Player")
+        player.add_component(Transform(x=100.0, y=100.0))
+        player.add_component(Collider(width=20.0, height=20.0))
+
+        wall = world.create_entity("Wall")
+        wall.add_component(Transform(x=200.0, y=100.0))
+        wall.add_component(Collider(width=20.0, height=20.0))
+
+        backend.sync_world(world)
+
+        backend.move_and_slide(
+            world, player, (100.0, 0.0), 1 / 60,
+        )
+
+        px = player.get_component(Transform).x
+        self.assertGreater(px, 100.0, "Player should move right normally")
+        self.assertLess(px, 102.0, "Player moved unexpectedly far")
+
 
 # ──────────────────────────────────────────────────────────────
 # Box2D tests — solo ejecutan si Box2D instalado

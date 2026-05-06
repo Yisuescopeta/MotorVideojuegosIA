@@ -283,6 +283,117 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
     # move_and_slide / move_and_collide
     # ------------------------------------------------------------------
 
+    def _recover_from_penetration(
+        self,
+        world: Any,
+        entity: Any,
+        transform: Any,
+        collider: Collider,
+        solids: list[Any],
+        max_attempts: int = 4,
+        margin: float = 0.08,
+        recovery_factor: float = 0.6,
+    ) -> bool:
+        """Recovery phase: push entity out of overlapping solids before main sweep.
+
+        Godot equivalent: test_body_motion STEP 1 — FREE BODY IF STUCK.
+        Uses sequential resolution: each iteration finds the deepest penetration
+        and pushes out on that axis, then recomputes. This prevents push
+        cancellation when squeezed between multiple solids.
+
+        Args:
+            world: Current World (for collision filter checks).
+            entity: The moving entity.
+            transform: Entity's Transform.
+            collider: Entity's Collider.
+            solids: List of solid entities (with Transform + Collider).
+            max_attempts: Max recovery iterations (Godot uses 4).
+            margin: Minimum contact depth to maintain.
+            recovery_factor: Fraction of penetration to resolve per iteration.
+
+        Returns:
+            True if any recovery was applied.
+        """
+        recovered = False
+
+        for _attempt in range(max_attempts):
+            e_left, e_top, e_right, e_bottom = collider.get_bounds(transform.x, transform.y)
+
+            best_pen = 0.0
+            best_axis = ""  # "left", "right", "top", "bottom"
+
+            for other in solids:
+                if int(other.id) == int(entity.id):
+                    continue
+                other_transform = other.get_component(Transform)
+                other_collider = other.get_component(Collider)
+                if other_transform is None or other_collider is None or not other_collider.enabled:
+                    continue
+                if other_collider.is_trigger:
+                    continue
+                # Respect collision filter
+                if not self._can_collide(world, entity, other):
+                    continue
+
+                o_left, o_top, o_right, o_bottom = other_collider.get_bounds(
+                    other_transform.x, other_transform.y
+                )
+
+                # Penetration depths (positive = overlapping)
+                pen_left = o_right - e_left
+                pen_right = e_right - o_left
+                pen_top = o_bottom - e_top
+                pen_bottom = e_bottom - o_top
+
+                if pen_left <= 0.0 or pen_right <= 0.0 or pen_top <= 0.0 or pen_bottom <= 0.0:
+                    continue
+
+                # Skip one-way collisions in the wrong direction
+                one_way = bool(getattr(other_collider, "one_way_collision", False))
+                if one_way:
+                    ow_dir = float(getattr(other_collider, "one_way_collision_direction_y", 1.0))
+                    if ow_dir > 0.0 and pen_bottom < pen_top:
+                        # One-way facing down, entity pushing from below → skip
+                        continue
+                    if ow_dir < 0.0 and pen_top < pen_bottom:
+                        # One-way facing up, entity pushing from above → skip
+                        continue
+
+                # Find minimum-penetration axis (standard SAT MTV direction)
+                pen_x = min(pen_left, pen_right)
+                pen_y = min(pen_top, pen_bottom)
+
+                if pen_x <= pen_y:
+                    overlap_depth = pen_x
+                    axis = "right" if pen_left <= pen_right else "left"
+                else:
+                    overlap_depth = pen_y
+                    axis = "bottom" if pen_top <= pen_bottom else "top"
+
+                # Pick the most deeply embedded solid (largest min penetration)
+                if overlap_depth > best_pen:
+                    best_pen = overlap_depth
+                    best_axis = axis
+
+            if best_pen <= margin:
+                break
+
+            depth = best_pen - margin
+            push = depth * recovery_factor
+
+            if best_axis == "left":
+                transform.x -= push
+            elif best_axis == "right":
+                transform.x += push
+            elif best_axis == "top":
+                transform.y -= push
+            elif best_axis == "bottom":
+                transform.y += push
+
+            recovered = True
+
+        return recovered
+
     def move_and_slide(
         self,
         world: Any,
@@ -299,7 +410,9 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
 
         Realiza barrido horizontal + vertical por eje en cada iteración,
         recalculando el remainder entre iteraciones hasta consumir todo el
-        movimiento o alcanzar max_slides. Incluye floor snap posterior
+        movimiento o alcanzar max_slides. Antes del barrido ejecuta una fase
+        de unstuck/recovery para liberar el cuerpo si está penetrando sólidos.
+        Incluye floor snap posterior
         y clasificación de colisiones (floor/wall/ceiling) via dot product
         contra up_direction.
 
@@ -359,6 +472,15 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         collision_ny = 0.0
         contacts: list[PhysicsContact] = []
         slide_count = 0
+
+        # --- unstuck / recovery from penetration ---
+        self._recover_from_penetration(
+            world=world,
+            entity=entity,
+            transform=transform,
+            collider=collider,
+            solids=solids,
+        )
 
         motion_x = vx * delta_time
         motion_y = vy * delta_time
