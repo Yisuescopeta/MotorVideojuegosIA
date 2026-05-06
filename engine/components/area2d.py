@@ -47,6 +47,10 @@ class Area2D(Component):
         gravity_point: bool = False,
         gravity_distance_scale: float = 0.0,
         priority: int = 0,
+        gravity_override_x: float = 0.0,
+        gravity_override_y: float = 0.0,
+        linear_damp_override: float = 0.0,
+        angular_damp_override: float = 0.0,
     ) -> None:
         self.enabled: bool = True
         self.monitoring: bool = monitoring
@@ -55,6 +59,10 @@ class Area2D(Component):
         self.gravity_point: bool = gravity_point
         self.gravity_distance_scale: float = gravity_distance_scale
         self.priority: int = int(priority)
+        self.gravity_override_x: float = float(gravity_override_x)
+        self.gravity_override_y: float = float(gravity_override_y)
+        self.linear_damp_override: float = float(linear_damp_override)
+        self.angular_damp_override: float = float(angular_damp_override)
         # Runtime tracking (NO serializado)
         self._tracked_bodies: set[int] = set()
         self._tracked_areas: set[int] = set()
@@ -68,6 +76,10 @@ class Area2D(Component):
             "gravity_point": self.gravity_point,
             "gravity_distance_scale": self.gravity_distance_scale,
             "priority": self.priority,
+            "gravity_override_x": self.gravity_override_x,
+            "gravity_override_y": self.gravity_override_y,
+            "linear_damp_override": self.linear_damp_override,
+            "angular_damp_override": self.angular_damp_override,
         }
 
     @classmethod
@@ -79,6 +91,10 @@ class Area2D(Component):
             gravity_point=data.get("gravity_point", False),
             gravity_distance_scale=data.get("gravity_distance_scale", 0.0),
             priority=data.get("priority", 0),
+            gravity_override_x=data.get("gravity_override_x", 0.0),
+            gravity_override_y=data.get("gravity_override_y", 0.0),
+            linear_damp_override=data.get("linear_damp_override", 0.0),
+            angular_damp_override=data.get("angular_damp_override", 0.0),
         )
         component.enabled = data.get("enabled", True)
         return component

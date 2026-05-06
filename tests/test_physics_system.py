@@ -1,5 +1,6 @@
 import unittest
 
+from engine.components.area2d import Area2D
 from engine.components.collider import Collider
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
@@ -517,6 +518,40 @@ class PhysicsSystemTests(unittest.TestCase):
         # Key assertion: CCD bullet must not pass the wall while discrete may
         # CCD bullet x should be < 80 (stuck at wall)
         self.assertLess(bullet_ccd.get_component(Transform).x, 80.0)
+
+
+    def test_area_gravity_override_affects_dynamic_body(self) -> None:
+        """Dynamic body inside area with gravity override uses area gravity."""
+        world = World()
+
+        area_e = world.create_entity("AntiGravZone")
+        area_e.add_component(Transform(x=100.0, y=100.0))
+        area_e.add_component(Collider(width=100.0, height=100.0, is_trigger=True))
+        area_e.add_component(Area2D(
+            space_override="replace",
+            gravity_override_x=0.0,
+            gravity_override_y=-200.0,
+            priority=1,
+        ))
+
+        body = world.create_entity("Body")
+        body.add_component(Transform(x=100.0, y=100.0))
+        body.add_component(Collider(width=10.0, height=10.0))
+        body.add_component(RigidBody(
+            body_type="dynamic",
+            gravity_scale=1.0,
+            is_grounded=False,
+            can_sleep=False,
+        ))
+
+        ps = PhysicsSystem(gravity=980.0)
+        ps.update(world, 0.5)
+
+        rb = body.get_component(RigidBody)
+        # With area gravity_override_y=-200, gravity_scale=1, dt=0.5:
+        # vy = -200 * 1.0 * 0.5 = -100.0 (no damping since linear_damping=0)
+        msg = f"Area gravity override magnitude wrong: vy={rb.velocity_y}, expected ~ -100.0"
+        self.assertAlmostEqual(rb.velocity_y, -100.0, delta=0.5, msg=msg)
 
 
 if __name__ == "__main__":

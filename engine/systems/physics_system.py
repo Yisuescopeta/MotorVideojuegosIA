@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from engine.components.animatable_body_2d import AnimatableBody2D
+from engine.components.area2d import Area2D
 from engine.components.collider import Collider
 from engine.components.collision_filter_2d import CollisionFilter2D
 from engine.components.collision_shape_set_2d import CollisionShape2DDef, CollisionShapeSet2D
@@ -141,16 +142,20 @@ class PhysicsSystem:
                 continue
 
             if rigidbody.body_type == "dynamic" and not rigidbody.is_grounded:
-                rigidbody.velocity_y += self.gravity * rigidbody.gravity_scale * delta_time
+                grav_x, grav_y = self._get_effective_gravity(world, entity, transform, rigidbody)
+                rigidbody.velocity_x += grav_x * rigidbody.gravity_scale * delta_time
+                rigidbody.velocity_y += grav_y * rigidbody.gravity_scale * delta_time
 
             if rigidbody.body_type == "dynamic":
-                damping_factor = max(0.0, 1.0 - rigidbody.linear_damping * delta_time)
+                effective_linear_damp = self._get_effective_linear_damp(world, entity, transform, rigidbody)
+                damping_factor = max(0.0, 1.0 - effective_linear_damp * delta_time)
                 rigidbody.velocity_x *= damping_factor
                 rigidbody.velocity_y *= damping_factor
 
             if rigidbody.body_type == "dynamic" and rigidbody.angular_velocity != 0.0:
                 transform.rotation += rigidbody.angular_velocity * delta_time
-                angular_damping_factor = max(0.0, 1.0 - rigidbody.angular_damping * delta_time)
+                effective_angular_damp = self._get_effective_angular_damp(world, entity, transform, rigidbody)
+                angular_damping_factor = max(0.0, 1.0 - effective_angular_damp * delta_time)
                 rigidbody.angular_velocity *= angular_damping_factor
 
             if rigidbody.body_type == "dynamic":
@@ -327,6 +332,145 @@ class PhysicsSystem:
         else:
             body._sleep_timer = 0.0
             body.sleeping = False
+
+    def _get_effective_gravity(
+        self, world: World, entity: Entity, transform: Transform, rigidbody: RigidBody
+    ) -> tuple[float, float]:
+        """Get gravity from area overrides or default global gravity."""
+        best_priority = -1
+        best_gx = 0.0
+        best_gy = self.gravity
+        best_is_point = False
+        best_unit_dist = 0.0
+        best_area_entity: Entity | None = None
+
+        for area_entity in world.iter_entities():
+            area = area_entity.get_component(Area2D)
+            if area is None or not area.enabled:
+                continue
+            if area.space_override == "disabled":
+                continue
+            area_collider = area_entity.get_component(Collider)
+            if area_collider is None:
+                continue
+            area_transform = area_entity.get_component(Transform)
+            if area_transform is None:
+                continue
+
+            body_left, body_top, body_right, body_bottom = self._get_body_bounds(entity, transform)
+            a_left, a_top, a_right, a_bottom = area_collider.get_bounds(
+                area_transform.x, area_transform.y
+            )
+            if not (body_left < a_right and body_right > a_left and
+                    body_top < a_bottom and body_bottom > a_top):
+                continue
+
+            if area.priority > best_priority:
+                best_priority = area.priority
+                best_gx = area.gravity_override_x
+                best_gy = area.gravity_override_y
+                best_is_point = area.gravity_point
+                best_unit_dist = area.gravity_distance_scale
+                best_area_entity = area_entity
+
+        if best_priority < 0:
+            return (0.0, self.gravity)
+
+        if best_priority >= 0 and best_is_point and best_unit_dist > 0.0 and best_area_entity is not None:
+            area_transform = best_area_entity.get_component(Transform)
+            if area_transform is not None:
+                dx = area_transform.x - transform.x
+                dy = area_transform.y - transform.y
+                dist = math.hypot(dx, dy)
+                if dist >= 1e-6:
+                    strength = max(0.0, 1.0 - dist / best_unit_dist)
+                    mag = math.hypot(best_gx, best_gy)
+                    if mag < 1e-6:
+                        mag = self.gravity
+                    return (dx / dist * mag * strength, dy / dist * mag * strength)
+        if best_priority >= 0:
+            return (best_gx, best_gy)
+
+        return (best_gx, best_gy)
+
+    def _get_body_bounds(self, entity: Entity, transform: Transform) -> tuple[float, float, float, float]:
+        """Get AABB for any entity that might fall into an area."""
+        collider = entity.get_component(Collider)
+        if collider is not None:
+            return collider.get_bounds(transform.x, transform.y)
+        return (transform.x, transform.y, transform.x, transform.y)
+
+    def _get_effective_linear_damp(
+        self, world: World, entity: Entity, transform: Transform, rigidbody: RigidBody
+    ) -> float:
+        """Get linear damping from area overrides or use body's own damping."""
+        best_priority = -1
+        best_damp = rigidbody.linear_damping
+
+        for area_entity in world.iter_entities():
+            area = area_entity.get_component(Area2D)
+            if area is None or not area.enabled:
+                continue
+            if area.space_override == "disabled":
+                continue
+            if area.linear_damp_override == 0.0:
+                continue
+            area_collider = area_entity.get_component(Collider)
+            if area_collider is None:
+                continue
+            area_transform = area_entity.get_component(Transform)
+            if area_transform is None:
+                continue
+
+            body_left, body_top, body_right, body_bottom = self._get_body_bounds(entity, transform)
+            a_left, a_top, a_right, a_bottom = area_collider.get_bounds(
+                area_transform.x, area_transform.y
+            )
+            if not (body_left < a_right and body_right > a_left and
+                    body_top < a_bottom and body_bottom > a_top):
+                continue
+
+            if area.priority > best_priority:
+                best_priority = area.priority
+                best_damp = area.linear_damp_override
+
+        return best_damp
+
+    def _get_effective_angular_damp(
+        self, world: World, entity: Entity, transform: Transform, rigidbody: RigidBody
+    ) -> float:
+        """Get angular damping from area overrides or use body's own damping."""
+        best_priority = -1
+        best_damp = rigidbody.angular_damping
+
+        for area_entity in world.iter_entities():
+            area = area_entity.get_component(Area2D)
+            if area is None or not area.enabled:
+                continue
+            if area.space_override == "disabled":
+                continue
+            if area.angular_damp_override == 0.0:
+                continue
+            area_collider = area_entity.get_component(Collider)
+            if area_collider is None:
+                continue
+            area_transform = area_entity.get_component(Transform)
+            if area_transform is None:
+                continue
+
+            body_left, body_top, body_right, body_bottom = self._get_body_bounds(entity, transform)
+            a_left, a_top, a_right, a_bottom = area_collider.get_bounds(
+                area_transform.x, area_transform.y
+            )
+            if not (body_left < a_right and body_right > a_left and
+                    body_top < a_bottom and body_bottom > a_top):
+                continue
+
+            if area.priority > best_priority:
+                best_priority = area.priority
+                best_damp = area.angular_damp_override
+
+        return best_damp
 
     def _is_solid_body(self, entity: Entity) -> bool:
         rigidbody = entity.get_component(RigidBody)
