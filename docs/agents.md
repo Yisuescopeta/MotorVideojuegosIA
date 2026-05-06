@@ -322,6 +322,7 @@ monitoreo de overlaps vía Area2D. Todos los métodos usan la fachada pública
 - `set_collision_filter(entity, layer, mask)`: Configura capas de colisión con máscaras de bits (uint32). La regla de colisión es `(A.mask & B.layer) != 0 AND (B.mask & A.layer) != 0`.
 - **Area2D**: monitorea overlaps con eventos `body_entered`/`body_exited`/`area_entered`/`area_exited`. Requiere un Collider. El payload de eventos incluye `entity_id`, `other_entity_id`, `entity_name` y `other_entity_name`.
 - `CollisionFilter2D.should_collide(entity_a, entity_b)`: Verifica si dos entidades colisionan según sus filtros de capa/máscara.
+- `ImpulseSolver2D`: resolver de contactos PGS con warm-starting. Metricas via `get_solver_metrics()`. Configurable via `PhysicsSystem.solver_iterations` (default 8).
 
 ### Ejemplo mínimo de física
 

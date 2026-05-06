@@ -256,6 +256,7 @@ Fisica:
 - `apply_torque(entity_name, torque)`
 - `list_physics_backends()`
 - `get_physics_backend_selection()`
+- `get_solver_metrics()`: Retorna metricas del solver PGS: `{"warm_start_cache_size": int, "iterations": int}`
 
 #### Ejemplo: aplicar fuerzas a un RigidBody
 

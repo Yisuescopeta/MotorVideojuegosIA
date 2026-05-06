@@ -502,6 +502,34 @@ de shapes objetivo para la fase estrecha.
 (precision TOI, overlap en origen, sin colision, epsilon convergence, grazing
 edge, datos de entidad, direccion cero) y barrido con shape circle/capsule.
 
+### PGS Impulse Solver (NUEVO)
+
+El motor incluye un solver de impulsos por Proyeccion Gauss-Seidel (PGS) para resolucion
+de contactos entre cuerpos rigidos 2D.
+
+**Archivos:**
+- `engine/physics/contact_solver.py` — `ContactConstraint2D` y `ImpulseSolver2D`
+- `engine/systems/physics_system.py` — integracion con `PhysicsSystem.update()`
+
+**Parametros:**
+| Parametro | Default | Descripcion |
+|-----------|---------|-------------|
+| `solver_iterations` | 8 | Iteraciones PGS por frame |
+| `BAUMGARTE_FACTOR` | 0.2 | Factor de estabilizacion Baumgarte |
+| `SLOP` | 0.01 | Tolerancia de penetracion |
+| `MAX_BIAS` | 10.0 | Velocidad maxima de correccion posicional |
+
+**Metricas expuestas via `get_solver_metrics()`:**
+- `warm_start_cache_size`: pares de contacto activos en cache
+- `iterations`: iteraciones configuradas
+
+**Caracteristicas:**
+- Impulso normal con clamp no-negativo (non-penetration)
+- Friccion Coulomb (tangente clamp a friction * normal_impulse)
+- Warm starting entre frames via cache por par de entidades
+- Baumgarte stabilization para correccion posicional suave
+- Soporte para cuerpos dinamicos, kinematic y estaticos
+
 ### Limitaciones actuales
 
 - **`legacy_aabb` es el backend default estable.** `box2d` es opt-in via

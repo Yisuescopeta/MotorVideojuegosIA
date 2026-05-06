@@ -119,6 +119,7 @@ El core conserva un contrato comun de backends fisicos:
 - `query_physics_ray` y `query_physics_aabb` mantienen su significado publico
 - `body_test_motion` añade un sweep-test no-mutante (barrido de colisión sin modificar el mundo), bloque fundamental del que depende `move_and_slide`
 - **P0-2:** `move_and_slide` fue reescrito de barrido por eje separado (horizontal + vertical por iteración) a un **bucle `body_test_motion` unificado 2D** con `_slide_remainder` para proyección sobre normal. El snap al suelo también usa `body_test_motion`. Se añadió `floor_stop_on_slope` (bool) y detección one-way por normal (Godot-style).
+4. **PGS Impulse Solver**: tras integrar fuerzas, el sistema construye constraints de contacto (normal, profundidad, friccion, restitution) entre cuerpos solapados y ejecuta iteraciones PGS para corregir velocidades antes de integrar posiciones.
 
 ## Taxonomia arquitectonica
 

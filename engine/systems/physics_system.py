@@ -20,10 +20,19 @@ from engine.components.transform import Transform
 from engine.config import GRAVITY_DEFAULT
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
+from engine.physics.contact_solver import ContactConstraint2D, ImpulseSolver2D
 from engine.physics.spatial_hash import SpatialHash2D
 from engine.resources.physics_material import load_physics_material
 
 AABB = tuple[float, float, float, float]
+
+
+class _StaticSolverBody:
+    """Lightweight static body representation for the PGS solver."""
+    body_type = "static"
+    mass = 0.0
+    velocity_x = 0.0
+    velocity_y = 0.0
 
 
 @dataclass(frozen=True)
@@ -68,6 +77,8 @@ class PhysicsSystem:
         self._swept_contact_set: set[tuple[int, int]] = set()
         self._spatial_hash_cell_size: float = 128.0
         self._event_bus: Optional[Any] = None  # type: ignore[no-any-explicit]  # EventBus: tipo externo determinado en runtime
+        self._impulse_solver = ImpulseSolver2D()
+        self._solver_iterations: int = 8
 
     def set_event_bus(self, event_bus: Optional[Any]) -> None:  # type: ignore[no-any-explicit]  # EventBus: tipo externo determinado en runtime
         self._event_bus = event_bus
@@ -228,6 +239,136 @@ class PhysicsSystem:
                 delta_y,
             )
             self._step_metrics["candidate_solids"] += len(nearby_solids)
+
+            # ── PGS Impulse Solver ──
+            # Construir constraints de contacto entre este cuerpo y sus sólidos cercanos
+            # usando las posiciones tentativas (antes de mover)
+            if collider is not None and collider.enabled and not collider.is_trigger:
+                solver_constraints: list[ContactConstraint2D] = []
+                solver_bodies: dict[int, Any] = {}
+                solver_bodies[int(entity.id)] = rigidbody
+
+                tentative_x = transform.x + delta_x
+                tentative_y = transform.y + delta_y
+
+                for solid in nearby_solids:
+                    if solid.entity.id == entity.id:
+                        continue
+                    other_rb = solid.entity.get_component(RigidBody)
+                    # Include static bodies (no RigidBody or body_type="static")
+                    is_static = (other_rb is None or other_rb.body_type == "static")
+                    is_dynamic = (other_rb is not None and other_rb.simulated
+                                  and other_rb.body_type in ("dynamic", "kinematic"))
+                    if not is_static and not is_dynamic:
+                        continue
+
+                    other_transform = solid.entity.get_component(Transform)
+                    if other_transform is None:
+                        continue
+
+                    # Narrow-phase: detectar overlap AABB y extraer normal+depth
+                    my_bounds = collider.get_bounds(tentative_x, tentative_y)
+                    other_bounds = solid.collider.get_bounds(other_transform.x, other_transform.y)
+
+                    if not self._aabb_overlaps(my_bounds, other_bounds):
+                        continue
+
+                    # Compute contact normal and depth from AABB overlap
+                    left_a, top_a, right_a, bottom_a = my_bounds
+                    left_b, top_b, right_b, bottom_b = other_bounds
+
+                    overlap_left = right_a - left_b
+                    overlap_right = right_b - left_a
+                    overlap_top = bottom_a - top_b
+                    overlap_bottom = bottom_b - top_a
+
+                    overlap_x = min(overlap_left, overlap_right)
+                    overlap_y = min(overlap_top, overlap_bottom)
+
+                    if overlap_x < overlap_y:
+                        normal_x = 1.0 if tentative_x < other_transform.x else -1.0
+                        normal_y = 0.0
+                        depth = overlap_x
+                    else:
+                        normal_x = 0.0
+                        normal_y = 1.0 if tentative_y < other_transform.y else -1.0
+                        depth = overlap_y
+
+                    # Allow zero or tiny positive depth for resting contacts
+                    # (friction needs sustained contact even without penetration)
+                    if depth < -0.001:  # negative = no overlap at all
+                        continue
+
+                    # Material properties
+                    my_bounce, my_friction_val = self._resolve_material_props(
+                        rigidbody.physics_material_override_path, collider,
+                    )
+                    other_bounce, other_friction_val = self._resolve_material_props(
+                        self._get_material_path_from_entity(solid.entity), solid.collider,
+                    )
+
+                    restitution = max(my_bounce, other_bounce)
+                    if not math.isfinite(restitution):
+                        restitution = 0.0
+                    restitution = max(0.0, min(1.0, restitution))
+
+                    friction = math.sqrt(max(0.0, my_friction_val) * max(0.0, other_friction_val))
+                    if not math.isfinite(friction):
+                        friction = 1.0
+
+                    # Effective mass
+                    inv_mass_self = 1.0 / rigidbody.mass if (rigidbody.mass > 0 and rigidbody.body_type == "dynamic") else 0.0
+
+                    # For static bodies without RigidBody, use zero inverse mass
+                    if other_rb is None or other_rb.body_type == "static":
+                        inv_mass_other = 0.0
+                        other_bounce = solid.collider.restitution if hasattr(solid.collider, 'restitution') else 0.0
+                        other_friction_val = solid.collider.friction if hasattr(solid.collider, 'friction') else 1.0
+                        solver_bodies[int(solid.entity.id)] = _StaticSolverBody()
+                    else:
+                        inv_mass_other = 1.0 / other_rb.mass if (other_rb.mass > 0 and other_rb.body_type == "dynamic") else 0.0
+
+                    total_inv = inv_mass_self + inv_mass_other
+                    if total_inv <= 1e-10:
+                        continue
+
+                    mass_normal = 1.0 / total_inv
+                    mass_tangent = mass_normal
+
+                    # Baumgarte bias: only for penetration (depth > slop)
+                    effective_depth = max(0.0, depth)
+                    bias = min(ImpulseSolver2D.MAX_BIAS,
+                               ImpulseSolver2D.BAUMGARTE_FACTOR * max(0.0, effective_depth - ImpulseSolver2D.SLOP) / max(delta_time, 1e-6))
+
+                    contact_x = (max(left_a, left_b) + min(right_a, right_b)) / 2.0
+                    contact_y = (max(top_a, top_b) + min(bottom_a, bottom_b)) / 2.0
+
+                    constraint = ContactConstraint2D(
+                        entity_a_id=int(entity.id),
+                        entity_b_id=int(solid.entity.id),
+                        normal_x=normal_x,
+                        normal_y=normal_y,
+                        tangent_x=-normal_y,
+                        tangent_y=normal_x,
+                        depth=depth,
+                        mass_normal=mass_normal,
+                        mass_tangent=mass_tangent,
+                        restitution=restitution,
+                        friction=friction,
+                        bias=bias,
+                        contact_x=contact_x,
+                        contact_y=contact_y,
+                    )
+                    solver_constraints.append(constraint)
+                    if other_rb is not None and other_rb.body_type != "static":
+                        solver_bodies[int(solid.entity.id)] = other_rb
+
+                if solver_constraints:
+                    self._impulse_solver.solve(solver_constraints, solver_bodies, delta_time, self._solver_iterations)
+                    # ── Recalcular deltas con velocidades corregidas por PGS ──
+                    delta_x = 0.0 if rigidbody.freeze_x else rigidbody.velocity_x * delta_time
+                    delta_y = 0.0 if rigidbody.freeze_y else rigidbody.velocity_y * delta_time
+
             if ccd_active:
                 self._step_metrics["ccd_bodies"] += 1
             elif rigidbody.collision_detection_mode == "continuous":
@@ -322,6 +463,24 @@ class PhysicsSystem:
 
     def get_step_metrics(self) -> dict[str, float]:
         return dict(self._step_metrics)
+
+    @property
+    def solver_iterations(self) -> int:
+        """Numero de iteraciones del solver PGS (default 8)."""
+        return self._solver_iterations
+
+    @solver_iterations.setter
+    def solver_iterations(self, value: int) -> None:
+        if value < 1:
+            value = 1
+        self._solver_iterations = value
+
+    def get_solver_metrics(self) -> dict[str, Any]:
+        """Retorna métricas del solver de impulsos (warm-start cache size, etc.)."""
+        return {
+            "warm_start_cache_size": self._impulse_solver.warm_start_cache_size,
+            "iterations": self._solver_iterations,
+        }
 
     def consume_swept_contacts(self) -> list[tuple[int, int]]:
         contacts = list(self._swept_contacts)
@@ -713,7 +872,7 @@ class PhysicsSystem:
             other_transform = other.entity.get_component(Transform)
             if other_transform is None or not other.collider.enabled:
                 continue
-            for o_aabb, shape_def in self._get_entity_shape_aabbs(other.entity, other_transform):
+            for o_aabb, _shape_def in self._get_entity_shape_aabbs(other.entity, other_transform):
                 o_left, o_top, o_right, o_bottom = o_aabb
                 overlap_y = top < o_bottom and bottom > o_top
                 overlap_x = left < o_right and right > o_left
@@ -723,27 +882,6 @@ class PhysicsSystem:
                     transform.x -= right - o_left
                 elif rigidbody.velocity_x < 0:
                     transform.x += o_right - left
-
-                # Apply friction and bounce
-                my_bounce, my_friction = self._resolve_material_props(
-                    rigidbody.physics_material_override_path, collider,
-                )
-                if shape_def is not None:
-                    other_bounce = shape_def.restitution
-                    other_friction = shape_def.friction
-                else:
-                    other_bounce, other_friction = self._resolve_material_props(
-                        self._get_material_path_from_entity(other.entity), other.collider,
-                    )
-                bounce = max(my_bounce, other_bounce)
-                friction = (my_friction + other_friction) * 0.5
-                if not math.isfinite(bounce):
-                    bounce = 1.0
-                if math.isnan(friction):
-                    friction = 1.0
-                rigidbody.velocity_x *= -bounce
-                rigidbody.velocity_y *= max(0.0, 1.0 - friction * 0.5)
-
                 left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
 
     def _resolve_vertical(
@@ -758,7 +896,7 @@ class PhysicsSystem:
             other_transform = other.entity.get_component(Transform)
             if other_transform is None or not other.collider.enabled:
                 continue
-            for o_aabb, shape_def in self._get_entity_shape_aabbs(other.entity, other_transform):
+            for o_aabb, _shape_def in self._get_entity_shape_aabbs(other.entity, other_transform):
                 o_left, o_top, o_right, o_bottom = o_aabb
                 overlap_y = top < o_bottom and bottom > o_top
                 overlap_x = left < o_right and right > o_left
@@ -769,27 +907,6 @@ class PhysicsSystem:
                     rigidbody.is_grounded = True
                 elif rigidbody.velocity_y < 0:
                     transform.y += o_bottom - top
-
-                # Apply friction and bounce
-                my_bounce, my_friction = self._resolve_material_props(
-                    rigidbody.physics_material_override_path, collider,
-                )
-                if shape_def is not None:
-                    other_bounce = shape_def.restitution
-                    other_friction = shape_def.friction
-                else:
-                    other_bounce, other_friction = self._resolve_material_props(
-                        self._get_material_path_from_entity(other.entity), other.collider,
-                    )
-                bounce = max(my_bounce, other_bounce)
-                friction = (my_friction + other_friction) * 0.5
-                if not math.isfinite(bounce):
-                    bounce = 1.0
-                if math.isnan(friction):
-                    friction = 1.0
-                rigidbody.velocity_y *= -bounce
-                rigidbody.velocity_x *= max(0.0, 1.0 - friction * 0.5)
-
                 left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
 
     def _sweep_horizontal(
