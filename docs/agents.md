@@ -244,6 +244,72 @@ Cuando el motor esta en `EDIT`, los cambios persistentes de grupos deben entrar
 por la ruta de authoring expuesta por `EngineAPI`; en `PLAY`, esos cambios solo
 afectan al runtime activo.
 
+## TileSet — Terreno y autotile
+
+`EngineAPI.set_cells_terrain_connect` aplica autotile conectivo usando peering
+de terreno definido en un `TileSet`. Para cada celda indicada, computa la mascara
+de vecinos con el mismo terreno y asigna el tile cuyo peering bits coincide
+exactamente.
+
+Requisitos:
+- La entidad tilemap debe existir y tener una capa.
+- El `TileSet` debe tener `terrain_sets` y `terrain_peering` definidos
+  (`TileSet.from_dict` desde un `.json` de tileset).
+- La capa del tilemap debe referenciar el tileset via `tilemap_source`.
+
+### Ejemplo
+
+```python
+from engine.api import EngineAPI
+
+api = EngineAPI(project_root=".")
+api.load_scene("levels/main_scene.json")
+
+# Crear tilemap con capa y tileset
+api.create_tilemap(
+    "TerrainMap", 16, 16, tileset="tilesets/grassland.tileset.json"
+)
+api.create_tilemap_layer("TerrainMap", "ground")
+
+# Colocar tiles de terreno base
+for x in range(0, 20):
+    api.set_tilemap_tile("TerrainMap", "ground", x, 0, "grass_base")
+
+# Autotile conectivo sobre las celdas base
+cells = [{"x": x, "y": 0} for x in range(0, 20)]
+api.set_cells_terrain_connect("TerrainMap", "ground", cells, "grass")
+
+api.save_scene()
+api.shutdown()
+```
+
+El metodo `set_cells_terrain_connect` computa mascara de vecindad (3x3) por
+celda y busca el tile con peering bits exacto en `terrain_peering[terrain_name]`.
+Si no existe tile para un mask, la celda queda sin modificar. Retorna
+`ActionResult` con `count` de celdas modificadas.
+
+Para definir `terrain_peering` en el tileset `.json`:
+
+```json
+{
+    "tiles": {...},
+    "terrain_sets": [{"name": "grass", "mode": "match_corners_and_sides"}],
+    "terrain_peering": {
+        "grass": {
+            "grass_center": 0,
+            "grass_right": 1,
+            "grass_down": 2,
+            "grass_corner": 3,
+            "grass_down_right": 15,
+            "...": "..."
+        }
+    }
+}
+```
+
+Cada tile en `terrain_peering` tiene un `peering_bits` (0-255) que codifica que
+vecinos (N, NE, E, SE, S, SW, W, NW) comparten el mismo terreno.
+
 ## Física avanzada (P0)
 
 La API de física expone fuerzas, impulsos, torque, capas de colisión y

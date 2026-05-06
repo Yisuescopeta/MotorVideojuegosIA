@@ -247,6 +247,63 @@ Campos serializables del recurso:
 - `schema_version`: int, versión del formato de serialización (1 = actual).
   Desde `from_dict()`, legacy payloads sin este campo se cargan con default 1.
 
+### TileSet — Recurso de atlas, terrenos y autotile conectivo
+
+`TileSet` (en `engine/resources/tileset.py`) es un recurso serializable que define
+un atlas de tiles con metadata por tile, conjuntos de terreno y peering bits para
+autotile conectivo (adaptado de Godot TileSet). Se serializa como archivo `.json`
+independiente.
+
+```json
+{
+  "resource_id": "grass_tileset",
+  "resource_name": "Grass Tileset",
+  "schema_version": 1,
+  "atlas": { "texture_path": "assets/tiles/grass.png", "tile_width": 32, "tile_height": 32, "columns": 8 },
+  "tile_metadata": {},
+  "terrain_sets": [{"name": "grass", "color": "#00ff00", "mode": 0}],
+  "terrain_peering": {"grass": {"tile_0": 0, "tile_1": 255}}
+}
+```
+
+**API pública del módulo:**
+- `load_tileset(path: str) -> TileSet | None`: Carga desde archivo JSON. Retorna
+  `None` si el archivo no existe, el JSON es inválido o el path está vacío.
+  Resultados cacheados por ruta resuelta.
+- `clear_tileset_cache()`: Limpia el caché global (útil en tests).
+- `TileSet.from_dict(data)`: Construye desde dict.
+- `TileSet.to_dict()`: Serializa a dict.
+
+**Estructura:**
+- `TileAtlasSource`: Define la textura del atlas, dimensiones de tile, columnas,
+  márgenes y espaciado. Método `get_tile_region(tile_index)` → `(sx, sy, sw, sh)`.
+- `TileMetadata`: Metadata por tile con `tile_id`, `physics_layers` (shapes box/circle),
+  `custom_data` y `terrain_id` (índice en `terrain_sets`).
+- `TerrainSet`: Conjunto de terreno con `name`, `color` y `mode` (0=corners_and_sides,
+  1=corners, 2=sides).
+- `terrain_peering`: Mapa `terrain_name → {tile_id → peering_bits}` donde
+  peering_bits es entero de 8 bits (bit 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW).
+
+**Autotile conectivo:**
+- `compute_terrain_mask(layer_tiles, x, y, terrain_name) → int`: Computa máscara
+  de 8 bits para celda `(x, y)` según vecinos que comparten el terreno.
+- `get_autotile_tile(terrain_name, neighbor_mask) → str | None`: Busca tile con
+  peering bits exacto para `terrain_name`. Si no hay match exacto, busca el tile
+  con más bits coincidentes como fallback ponderado.
+- `set_cells_terrain_connect(cells, terrain_name, get_tile_at, set_tile_at) → int`:
+  Para cada celda en `cells` (lista de dicts `{x, y}`), computa máscara, busca
+  tile de autotile y lo coloca vía `set_tile_at`. Retorna número de celdas modificadas.
+
+**Integración en Tilemap:**
+`Tilemap` componente expone `tileset_resource_path` (str, campo serializable) y
+`get_tileset_resource() → TileSet | None` que carga lazy con caché interno por
+instancia. Desde `EngineAPI`, `set_cells_terrain_connect()` permite aplicar
+autotile conectivo sobre una capa tilemap.
+
+**Tests:** `tests/test_tileset.py` (355+ líneas) cubre roundtrip, atlas regions,
+terrain peering, autotile exacto y fallback, compute_terrain_mask, loader con
+cache, estados vacíos y modos de TerrainSet.
+
 ### RigidBody contact_monitor — Monitoreo de contactos runtime
 
 `RigidBody` ahora incluye monitoreo de contactos estilo Godot, activado
@@ -560,8 +617,10 @@ La foundation del dominio vive en `engine/tilemap/model.py`. Esa capa mantiene:
 
 `engine/components/tilemap.py` sigue siendo el componente serializable estable;
 usa esa foundation para parseo y serializacion canonica, sin convertirse en un
-espejo complejo del dominio ni en una integracion fuerte con editor/runtime. En
-runtime mantiene tiles por coordenada `tuple[int, int]` y chunks efimeros con
+espejo complejo del dominio ni en una integracion fuerte con editor/runtime.
+Serializa el nuevo campo `tileset_resource_path` (ruta a archivo `.json` de
+TileSet) y expone `get_tileset_resource()` para carga lazy con cache interno.
+En runtime mantiene tiles por coordenada `tuple[int, int]` y chunks efimeros con
 `version`/`dirty`; ese cache alimenta el render sin cambiar el payload de
 escena ni serializar estado runtime.
 
@@ -601,6 +660,18 @@ api.shutdown()
 ```
 
 La referencia agrupada vive en [api.md](api.md).
+
+**Métodos públicos de tilemap en EngineAPI (autoría):**
+- `set_tilemap_tile(entity, layer, x, y, tile_id, ...)`: Coloca un tile individual.
+- `bulk_set_tilemap_tiles(entity, layer, tiles)`: Coloca múltiples tiles.
+- `set_cells_terrain_connect(entity, layer, cells, terrain_name)`: Aplica autotile
+  conectivo sobre celdas específicas usando el TileSet cargado. Cada celda es
+  `{"x": int, "y": int}`. El `terrain_name` debe coincidir con un `TerrainSet`
+  definido en el TileSet. Internamente computa máscara de vecinos (8 bits),
+  busca tile de autotile vía peering, y lo coloca en la capa. Retorna
+  `ActionResult` con `count` de celdas modificadas.
+- `resize_tilemap(entity, cell_width, cell_height, *, offset_x, offset_y)`: Cambia
+  dimensiones de la rejilla del tilemap.
 
 ## CLI oficial
 

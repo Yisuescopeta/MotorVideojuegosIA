@@ -3413,6 +3413,42 @@
             ]
         },
         {
+            "id": "tilemap:tileset:autotile",
+            "summary": "Apply connective autotile using TileSet terrain peering",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.set_cells_terrain_connect"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "Apply grass autotile to a row of grass tiles",
+                "api_calls": [
+                    {
+                        "method": "set_cells_terrain_connect",
+                        "args": {
+                            "entity_name": "TerrainMap",
+                            "layer_name": "ground",
+                            "cells": [
+                                {"x": 0, "y": 0},
+                                {"x": 1, "y": 0},
+                                {"x": 2, "y": 0}
+                            ],
+                            "terrain_name": "grass"
+                        }
+                    }
+                ],
+                "expected_outcome": "Each cell is replaced with the tile whose peering bits match the neighbor mask, using terrain peering from the TileSet"
+            },
+            "notes": "Requires a TileSet with terrain_sets and terrain_peering loaded in the tilemap layer. Computes 3x3 neighbor mask per cell, then looks up exact peering bits match in terrain_peering[terrain_name]. Cells without a matching tile are left unmodified. Returns count of cells modified.",
+            "tags": [
+                "tileset",
+                "terrain",
+                "autotile",
+                "authoring"
+            ]
+        },
+        {
             "id": "project:open",
             "summary": "Open a different project and load its startup scene",
             "mode": "both",
@@ -3441,7 +3477,7 @@
         }
     ],
     "capability_counts": {
-        "implemented": 108,
+        "implemented": 109,
         "planned": 6,
         "total": 114
     },

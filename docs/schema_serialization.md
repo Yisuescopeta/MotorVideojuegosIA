@@ -108,6 +108,91 @@ Estos campos son serializables y roundtripean correctamente. Los contactos
 runtime (`_contact_bodies`) y los métodos `get_colliding_bodies()` /
 `get_contact_count()` no se serializan.
 
+### TileSet — Recurso serializable independiente
+
+`TileSet` se serializa como archivo `.json` independiente, no como parte del payload
+de escena. Define un atlas de tiles con metadata, conjuntos de terreno y peering bits
+para autotile conectivo. El contrato serializable incluye:
+
+| Campo | Tipo | Default | Descripción |
+|-------|------|---------|-------------|
+| `resource_id` | str | `""` | Identificador único del tileset |
+| `resource_name` | str | `"default"` | Nombre legible |
+| `schema_version` | int | `1` | Versión del formato de serialización |
+| `atlas` | dict | `{}` | Fuente de atlas: `texture_path`, `tile_width`, `tile_height`, `columns`, `margin`, `spacing` |
+| `tile_metadata` | dict | `{}` | Mapa `tile_id → {tile_id, physics_layers, custom_data, terrain_id}` |
+| `terrain_sets` | list | `[]` | Lista de conjuntos de terreno: `{name, color, mode}` donde `mode` ∈ {0=corners_and_sides, 1=corners, 2=sides} |
+| `terrain_peering` | dict | `{}` | Mapa `terrain_name → {tile_id → peering_bits}`. peering_bits es entero de 8 bits (bit 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW) |
+
+Cada `TileAtlasSource` (`atlas`) serializa:
+
+| Campo | Tipo | Default | Descripción |
+|-------|------|---------|-------------|
+| `texture_path` | str | `""` | Ruta a la textura del atlas |
+| `tile_width` | int | `16` | Ancho de cada tile en píxeles |
+| `tile_height` | int | `16` | Alto de cada tile en píxeles |
+| `columns` | int | `0` | Número de columnas en el atlas (0 = una sola celda) |
+| `margin` | int | `0` | Margen exterior en píxeles |
+| `spacing` | int | `0` | Espacio entre tiles en píxeles |
+
+Cada `TileMetadata` serializa:
+
+| Campo | Tipo | Default | Descripción |
+|-------|------|---------|-------------|
+| `tile_id` | str | `""` | Identificador del tile |
+| `physics_layers` | list | `[]` | Lista de `{shape_type, points}` (box o circle con puntos locales) |
+| `custom_data` | dict | `{}` | Datos arbitrarios por tile |
+| `terrain_id` | int | `-1` | Índice del terreno en `terrain_sets` (-1 = sin terreno) |
+
+Ejemplo de archivo `tilesets/grass.json`:
+```json
+{
+  "resource_id": "grass_tileset",
+  "resource_name": "Grass Tileset",
+  "schema_version": 1,
+  "atlas": {
+    "texture_path": "assets/tiles/grass.png",
+    "tile_width": 32,
+    "tile_height": 32,
+    "columns": 8,
+    "margin": 1,
+    "spacing": 2
+  },
+  "tile_metadata": {
+    "grass_0_0": {
+      "tile_id": "grass_0_0",
+      "physics_layers": [{"shape_type": "box", "points": [[0.0, 0.0], [32.0, 32.0]]}],
+      "custom_data": {"weight": 1},
+      "terrain_id": 0
+    }
+  },
+  "terrain_sets": [
+    {"name": "grass", "color": "#00ff00", "mode": 0},
+    {"name": "dirt", "color": "#8b4513", "mode": 0}
+  ],
+  "terrain_peering": {
+    "grass": {
+      "grass_0_0": 0,
+      "grass_1_0": 15,
+      "grass_2_0": 240,
+      "grass_3_0": 255
+    }
+  }
+}
+```
+
+**Compatibilidad legacy:**
+- Payloads sin `schema_version` se cargan con default `1`.
+- Payloads sin `resource_id` o `resource_name` se cargan con defaults vacíos.
+- `terrain_sets` vacío o ausente no produce terrenos.
+- `terrain_peering` vacío o ausente desactiva autotile conectivo.
+- `tile_metadata` vacío o ausente no asigna metadata a tiles.
+
+**Uso desde escena:**
+`Tilemap` referencia un TileSet mediante el campo `tileset_resource_path` (ruta
+relativa al proyecto a un archivo `.json`). En runtime, `Tilemap.get_tileset_resource()`
+carga y cachea el recurso.
+
 ### PhysicsMaterial — Recurso serializable independiente
 
 `PhysicsMaterial` se serializa como archivo `.json` independiente, no como parte del
@@ -246,7 +331,7 @@ La migracion cubre:
 - `id` estable de entidad cuando falta o esta vacio, generado de forma
   determinista desde la escena, posicion y nombre legacy
 - canonicalizacion de componentes core legacy
-- referencias de asset legacy en campos publicos core: `Sprite.texture`, `Animator.sprite_sheet`, `Tilemap.tileset`, `AudioSource.asset`, `ScriptBehaviour.script`
+- referencias de asset legacy en campos publicos core: `Sprite.texture`, `Animator.sprite_sheet`, `Tilemap.tileset`, `Tilemap.tileset_resource_path`, `AudioSource.asset`, `ScriptBehaviour.script`
 
 ### Prefabs
 
