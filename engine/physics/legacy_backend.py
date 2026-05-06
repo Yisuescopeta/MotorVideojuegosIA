@@ -610,6 +610,12 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
                 for t_idx, t_shape, t_transform, t_entity in targets:
                     t_aabb = self._shape_aabb(t_shape, t_transform.x, t_transform.y)
                     if self._aabbs_overlap(self_shape_aabb, t_aabb):
+                        # Compute actual penetration depth at origin
+                        depth = 0.0
+                        if hasattr(moving_shape, "collide_shape"):
+                            manifold = moving_shape.collide_shape(t_shape)
+                            if manifold is not None:
+                                depth = manifold.depth
                         cvx, cvy = self._get_entity_velocity(t_entity)
                         return MotionResult2D(
                             travel_x=0.0,
@@ -622,7 +628,7 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
                             collision_normal_y=0.0,
                             collider_velocity_x=cvx,
                             collider_velocity_y=cvy,
-                            collision_depth=0.0,
+                            collision_depth=depth,
                             collision_safe_fraction=0.0,
                             collision_unsafe_fraction=1.0,
                             collision_local_shape=shape_idx,
@@ -694,6 +700,24 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             pos = best_hit.get("position", {"x": 0.0, "y": 0.0})
             nrm = best_hit.get("normal", {"x": 0.0, "y": 0.0})
 
+            # Compute actual penetration depth at TOI
+            depth = 0.0
+            if best_moving_shape_idx >= 0 and best_moving_shape_idx < len(local_shapes):
+                _, shape_type, moving_shape_ref = local_shapes[best_moving_shape_idx]
+                hit_x = float(transform.x) + mx * fraction
+                hit_y = float(transform.y) + my * fraction
+                shape_params = self._shape_instance_to_params(moving_shape_ref, shape_type)
+                hit_shape = ShapeFactory.build_from_params(
+                    shape_type, hit_x, hit_y, **shape_params
+                )
+                for t_idx, t_shape, t_transform, t_entity in targets:
+                    if hasattr(t_entity, "id") and int(t_entity.id) == hit_entity_id:
+                        if hasattr(hit_shape, "collide_shape"):
+                            manifold = hit_shape.collide_shape(t_shape)
+                            if manifold is not None:
+                                depth = manifold.depth
+                        break
+
             return MotionResult2D(
                 travel_x=travel_x,
                 travel_y=travel_y,
@@ -705,7 +729,7 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
                 collision_normal_y=float(nrm["y"]),
                 collider_velocity_x=cvx,
                 collider_velocity_y=cvy,
-                collision_depth=0.0,
+                collision_depth=depth,
                 collision_safe_fraction=fraction,
                 collision_unsafe_fraction=1.0 - fraction,
                 collision_local_shape=best_moving_shape_idx,

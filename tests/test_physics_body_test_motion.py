@@ -219,22 +219,28 @@ class BodyTestMotionTests(unittest.TestCase):
                                msg="Should return target's RigidBody velocity_x")
 
     # ------------------------------------------------------------------
-    # test_12: collision_depth field exists and is a float
+    # test_12: collision depth reports actual penetration at TOI point
     # ------------------------------------------------------------------
     def test_12_collision_depth(self) -> None:
         mover = self.world.create_entity("Mover")
-        mover.add_component(Transform(x=0.0, y=100.0))
+        mover.add_component(Transform(x=80.0, y=50.0))
         mover.add_component(Collider(width=16.0, height=16.0))
 
         wall = self.world.create_entity("Wall")
-        wall.add_component(Transform(x=50.0, y=0.0))
-        wall.add_component(RigidBody())
+        wall.add_component(Transform(x=100.0, y=50.0))
         wall.add_component(Collider(width=16.0, height=200.0))
 
-        result = self.backend.body_test_motion(self.world, mover, (100.0, 0.0))
+        result = self.backend.body_test_motion(
+            self.world, mover, (100.0, 0.0),
+        )
 
-        self.assertIsInstance(result.collision_depth, float,
-                              "collision_depth must be a float")
+        self.assertIsInstance(result.collision_depth, float)
+        self.assertLess(result.collision_safe_fraction, 1.0,
+                        "Should detect collision")
+        # With box-vs-box collision, depth should be positive
+        # (the shapes would overlap at TOI)
+        self.assertGreaterEqual(result.collision_depth, 0.0,
+                                "Depth should be non-negative")
 
     # ------------------------------------------------------------------
     # test_13: target uses CollisionShapeSet2D (not Collider)

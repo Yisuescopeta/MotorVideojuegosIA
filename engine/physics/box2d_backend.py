@@ -86,7 +86,8 @@ class _AABBQueryCollector(b2QueryCallback):  # type: ignore[misc]
 
 
 class Box2DPhysicsBackend(PhysicsBackend):
-    backend_name = "box2d"
+    backend_name = "box2d (experimental)"
+    experimental = True
 
     def __init__(self, gravity: float = 600.0, event_bus: Optional[Any] = None, fixed_dt: float = 1.0 / 60.0) -> None:
         if b2World is None:
