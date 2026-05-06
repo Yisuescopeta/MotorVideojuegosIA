@@ -45,8 +45,8 @@ Cargo estas skills antes de empezar a documentar:
 
 ## Proceso
 
-1. **Ejecutar `git diff HEAD~1`** (o `git diff --cached` si hay staged) para
-   entender qué archivos de código cambiaron.
+1. **Ejecutar `git diff --`** (y `git diff --cached --` si hay staged previo)
+   para entender qué archivos cambiaron antes del commit.
 2. **Clasificar el tipo de cambio** según la tabla de correspondencia
    (ver sección MAPA DE CAMBIOS → DOCS).
 3. **Leer la documentación canónica existente** para entender el estilo y formato.

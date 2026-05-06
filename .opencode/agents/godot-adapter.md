@@ -10,7 +10,15 @@ temperature: 0.3
 permission:
   read: allow
   edit: allow
-  bash: allow
+  bash:
+    "*": deny
+    "py -m unittest *": allow
+    "py -m ruff check *": allow
+    "py -m mypy *": allow
+    "py -m motor *": allow
+    "git diff *": allow
+    "git status *": allow
+    "git log *": allow
   glob: allow
   grep: allow
   webfetch: allow
@@ -35,7 +43,7 @@ Cargo estas skills ANTES de implementar (según la feature):
 - **`godot-feature-adapter`** (SIEMPRE): Contrato de traducción Godot→Motor. Mapeos Node→Entity, Resource→Dato serializable, Signal→EventBus, _process→System. Es mi biblia de referencia.
 - **`unity-feature-adapter`** (cuando aplique): Si la feature tiene equivalente en Unity, para comparar enfoques y adaptar patrones cross-engine.
 - **`error-handling-patterns`**: Para APIs públicas, contratos de sistema, y manejo de errores en el adaptador.
-- **`python-testing-patterns`**: Para escribir tests de la feature implementada (pytest, fixtures, mocking).
+- **`python-testing-patterns`**: Para escribir tests de la feature implementada usando `unittest`.
 - **`python-performance-optimization`**: Si la feature es de física, render, o cualquier subsistema crítico de rendimiento.
 
 **Regla de carga:**
@@ -228,22 +236,26 @@ class SpriteData:
 
 ```bash
 # Focused tests
-py -m pytest tests/test_<subsystem>.py -v
+py -m unittest tests.test_<subsystem> -v
 
 # Component registration
-py -m pytest tests/test_component_registry.py -v
+py -m unittest tests.test_component_registry -v
 
 # Serialization
-py -m pytest tests/test_scene_serialization.py -v
+py -m unittest tests.test_scene_serialization -v
 
 # Motor doctor
-py -m motor doctor --project .
+py -m motor doctor --project . --json
 
 # Full contract regression
-py -m pytest tests/test_official_contract_regression.py -v
+py -m unittest tests.test_official_contract_regression -v
 
 # Governance
-py -m pytest tests/test_repository_governance.py -v
+py -m unittest tests.test_repository_governance -v
+
+# Lint/typecheck when applicable
+py -m ruff check engine cli tools main.py
+py -m mypy engine cli tools main.py
 ```
 
 ## Sub-agent Communication

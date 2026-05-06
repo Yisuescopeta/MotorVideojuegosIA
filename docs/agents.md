@@ -548,6 +548,27 @@ con tipo, offset, flags y geometría.
   precision variable en el manifold de contacto. Para fisica precisa, usar
   `box2d` como backend (requiere Box2D instalado).
 
+## Queen OpenCode
+
+Queen es tooling multiagente experimental de OpenCode. No cambia el contrato del
+motor 2D y no debe tocar `engine/` salvo necesidad estricta y justificada.
+
+Ciclo operativo:
+
+```text
+RECON -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE
+```
+
+`max_cycles = 5`. El commit ocurre solo despues de tests, documentacion, review
+y AI audit aplicables. La Definition of Done exige tests enfocados verdes,
+lint/typecheck cuando aplique, docs canonicas si cambia contrato, cero
+`must_fix` del reviewer, score AI `>= 90` cuando aplique, sin cambios fuera de
+alcance y reporte final claro si termina `partial`, `blocked` o `failed`.
+
+`context-recon` vive en `.opencode/agents/context-recon.md` y es read-only:
+`read`, `glob` y `grep` permitidos; `bash`, `edit`, `write`, `webfetch`,
+`websearch`, `task` y `todowrite` denegados.
+
 ## Que evitar
 
 - No editar `SceneManager.edit_world` directamente para flujos publicos nuevos.

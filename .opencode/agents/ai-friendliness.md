@@ -11,7 +11,9 @@ permission:
   bash:
     "*": deny
     "py -m motor *": allow
-    "py -m pytest tests/test_repository_governance*": allow
+    "py -m unittest tests.test_repository_governance*": allow
+    "py -m unittest tests.test_motor_cli_contract*": allow
+    "py -m unittest tests.test_start_here_ai_coherence*": allow
   glob: allow
   grep: allow
   edit: deny

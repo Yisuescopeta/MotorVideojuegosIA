@@ -2,7 +2,7 @@
   "$schema": "https://opencode.ai/config.json",
   "agent": {
     "queen": {
-      "description": "Reina orquestadora — orgullosa, perfeccionista. Solo delega, nunca escribe código.",
+      "description": "Reina orquestadora bounded. Solo delega. Ciclo: RECON -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE.",
       "mode": "primary",
       "model": "opencode-go/deepseek-v4-pro",
       "temperature": 0.2,
@@ -38,14 +38,23 @@
       }
     },
     "builder": {
-      "description": "Code implementer. Writes changes, runs tests, reports results.",
+      "description": "Code implementer. Writes changes, runs allowed validation commands, reports results.",
       "mode": "subagent",
       "model": "opencode-go/deepseek-v4-pro",
       "temperature": 0.3,
       "permission": {
         "read": "allow",
         "edit": "allow",
-        "bash": "allow",
+        "bash": {
+          "*": "deny",
+          "py -m unittest *": "allow",
+          "py -m ruff check *": "allow",
+          "py -m mypy *": "allow",
+          "py -m motor *": "allow",
+          "git diff *": "allow",
+          "git status *": "allow",
+          "git log *": "allow"
+        },
         "glob": "allow",
         "grep": "allow",
         "skill": "allow"
@@ -62,9 +71,13 @@
         "grep": "allow",
         "skill": "allow",
         "bash": {
-          "py -m pytest *": "allow",
+          "*": "deny",
+          "py -m unittest *": "allow",
+          "py -m ruff check *": "allow",
+          "py -m mypy *": "allow",
           "py -m motor *": "allow",
           "git diff *": "allow",
+          "git status *": "allow",
           "git log *": "allow"
         },
         "edit": "deny"
@@ -80,8 +93,11 @@
         "glob": "allow",
         "grep": "allow",
         "bash": {
+          "*": "deny",
           "py -m motor *": "allow",
-          "py -m pytest tests/test_repository_governance*": "allow"
+          "py -m unittest tests.test_repository_governance*": "allow",
+          "py -m unittest tests.test_motor_cli_contract*": "allow",
+          "py -m unittest tests.test_start_here_ai_coherence*": "allow"
         },
         "edit": "deny"
       }
@@ -92,8 +108,12 @@
       "model": "opencode-go/deepseek-v4-flash",
       "temperature": 0.1,
       "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
         "bash": "deny",
         "edit": "deny",
+        "write": "deny",
         "webfetch": "deny",
         "task": "deny",
         "todowrite": "deny",
@@ -148,7 +168,16 @@
       "permission": {
         "read": "allow",
         "edit": "allow",
-        "bash": "allow",
+        "bash": {
+          "*": "deny",
+          "py -m unittest *": "allow",
+          "py -m ruff check *": "allow",
+          "py -m mypy *": "allow",
+          "py -m motor *": "allow",
+          "git diff *": "allow",
+          "git status *": "allow",
+          "git log *": "allow"
+        },
         "glob": "allow",
         "grep": "allow",
         "webfetch": "allow",
@@ -156,19 +185,18 @@
       }
     },
     "committer": {
-      "description": "Git committer. Crea commits en español con mensajes descriptivos y convencionales.",
+      "description": "Git committer. Crea commits en espanol con staging explicito y validacion de alcance.",
       "mode": "subagent",
       "model": "opencode-go/deepseek-v4-flash",
       "temperature": 0.1,
       "permission": {
         "read": "allow",
         "bash": {
-          "git add *": "allow",
+          "git add -- *": "allow",
           "git commit *": "allow",
           "git diff *": "allow",
           "git log *": "allow",
-          "git status *": "allow",
-          "git stash *": "allow"
+          "git status *": "allow"
         },
         "glob": "allow",
         "grep": "allow",
@@ -204,8 +232,8 @@
   },
   "command": {
     "queen": {
-      "description": "Queen orchestrator: decompose complex task, assign sub-agents, execute autonomously",
-      "template": "I want you to act as the QUEEN orchestrator agent. Decompose this task into sub-tasks, assign the optimal agent and model to each, execute in parallel where possible, and report results.\n\nUser task: $ARGUMENTS\n\nFollow the queen system prompt in .opencode/agents/queen.md.",
+      "description": "Queen orchestrator: bounded, safe, verifiable multi-agent programming flow",
+      "template": "I want you to act as the QUEEN orchestrator agent. Follow this cycle exactly: RECON -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE. Commit only after tests, docs, review, and AI audit pass. Max cycles: 5.\n\nUser task: $ARGUMENTS\n\nFollow the queen system prompt in .opencode/agents/queen.md.",
       "agent": "queen",
       "model": "opencode-go/deepseek-v4-pro"
     },
