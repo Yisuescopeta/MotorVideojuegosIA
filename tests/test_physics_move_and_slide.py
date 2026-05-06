@@ -412,6 +412,172 @@ class MoveAndSlideTests(unittest.TestCase):
         self.assertGreater(px, 100.0, "Player should move right normally")
         self.assertLess(px, 102.0, "Player moved unexpectedly far")
 
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    # Test 17: slide along wall (glancing diagonal)
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+
+    def test_slide_along_wall_glancing(self) -> None:
+        """Diagonal collision against wall: body slides along wall, doesn't stop."""
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        wall = world.create_entity("Wall")
+        wall.add_component(Transform(x=100.0, y=100.0))
+        wall.add_component(Collider(width=8.0, height=200.0))
+
+        mover = world.create_entity("Mover")
+        mover.add_component(Transform(x=0.0, y=100.0))
+        mover.add_component(Collider(width=8.0, height=16.0))
+
+        # Diagonal motion: right + down toward wall
+        result = backend.move_and_slide(
+            world=world, entity=mover,
+            velocity=(200.0, 100.0),
+            delta_time=0.5,
+            up_direction=(0.0, -1.0),
+            max_slides=4,
+        )
+
+        # Should have collided (slide_count >= 1) but not stopped at x=0
+        self.assertGreaterEqual(result.slide_count, 1, "Should collide with wall")
+        # Position should be past the wall's left edge minus mover width
+        mover_collider = mover.get_component(Collider)
+        wall_left = 100.0 - 4.0  # wall center - half_width
+        max_x = wall_left - mover_collider.width / 2.0
+        self.assertLessEqual(result.position_x, max_x + 0.5,
+                             f"Mover should not pass through wall. x={result.position_x}, max={max_x}")
+
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    # Test 18: floor_stop_on_slope halts immediately
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+
+    def test_floor_stop_on_slope_halts_immediately(self) -> None:
+        """With floor_stop_on_slope=True, movement stops on first floor contact."""
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        floor = world.create_entity("Floor")
+        floor.add_component(Transform(x=50.0, y=100.0))
+        floor.add_component(Collider(width=200.0, height=8.0))
+
+        mover = world.create_entity("Mover")
+        mover.add_component(Transform(x=50.0, y=0.0))
+        mover.add_component(Collider(width=8.0, height=16.0))
+
+        result = backend.move_and_slide(
+            world=world, entity=mover,
+            velocity=(50.0, 200.0),
+            delta_time=0.5,
+            up_direction=(0.0, -1.0),
+            floor_stop_on_slope=True,
+            max_slides=4,
+        )
+
+        self.assertTrue(result.on_floor, "Should be on floor")
+        # With floor_stop_on_slope, velocity should be zeroed
+        self.assertEqual(result.velocity_x, 0.0, "Horizontal velocity should be zeroed")
+        self.assertEqual(result.velocity_y, 0.0, "Vertical velocity should be zeroed")
+
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    # Test 19: returned velocity zero on wall
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+
+    def test_returned_velocity_zero_on_wall(self) -> None:
+        """After hitting a wall, returned velocity_x is zero."""
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        wall = world.create_entity("Wall")
+        wall.add_component(Transform(x=100.0, y=50.0))
+        wall.add_component(Collider(width=8.0, height=200.0))
+
+        mover = world.create_entity("Mover")
+        mover.add_component(Transform(x=0.0, y=50.0))
+        mover.add_component(Collider(width=8.0, height=16.0))
+
+        result = backend.move_and_slide(
+            world=world, entity=mover,
+            velocity=(300.0, 0.0),
+            delta_time=0.5,
+            max_slides=4,
+        )
+
+        self.assertTrue(result.on_wall or result.slide_count >= 1,
+                        f"Should detect wall or slide. on_wall={result.on_wall}, slides={result.slide_count}")
+        self.assertEqual(result.velocity_x, 0.0,
+                         f"Velocity X should be zero after hitting wall, got {result.velocity_x}")
+
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    # Test 20: one-way platform pass-through (moving up)
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+
+    def test_one_way_platform_pass_through(self) -> None:
+        """Entity moving upward through one-way platform is not blocked."""
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        platform = world.create_entity("OneWayPlatform")
+        platform.add_component(Transform(x=50.0, y=80.0))
+        platform.add_component(Collider(
+            width=100.0, height=4.0,
+            one_way_collision=True,
+            one_way_collision_direction_y=-1.0,
+        ))
+
+        mover = world.create_entity("Mover")
+        mover.add_component(Transform(x=50.0, y=120.0))
+        mover.add_component(Collider(width=8.0, height=16.0))
+
+        result = backend.move_and_slide(
+            world=world, entity=mover,
+            velocity=(0.0, -200.0),  # moving UP
+            delta_time=0.5,
+            max_slides=4,
+        )
+
+        # Should pass through platform (moving upward)
+        platform_y = 80.0
+        self.assertTrue(
+            result.position_y < platform_y,
+            f"Should pass through one-way platform moving up. y={result.position_y}, platform_y={platform_y}"
+        )
+
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+    # Test 21: one-way platform land on top (falling down)
+    # –––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+
+    def test_one_way_platform_land_on_top(self) -> None:
+        """Entity falling onto one-way platform from above IS stopped."""
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        platform = world.create_entity("OneWayPlatform")
+        platform.add_component(Transform(x=50.0, y=80.0))
+        platform.add_component(Collider(
+            width=100.0, height=4.0,
+            one_way_collision=True,
+            one_way_collision_direction_y=-1.0,
+        ))
+
+        mover = world.create_entity("Mover")
+        mover.add_component(Transform(x=50.0, y=40.0))
+        mover.add_component(Collider(width=8.0, height=16.0))
+
+        result = backend.move_and_slide(
+            world=world, entity=mover,
+            velocity=(0.0, 200.0),  # falling DOWN
+            delta_time=0.5,
+            max_slides=4,
+        )
+
+        # Should land on platform
+        self.assertTrue(result.on_floor, "Should land on one-way platform")
+        # Position should be on top of platform
+        platform_top = 80.0 - 2.0  # center - half height
+        expected_y = platform_top - 8.0  # minus mover half height
+        self.assertAlmostEqual(result.position_y, expected_y, delta=1.0,
+                               msg=f"Should rest on platform top. y={result.position_y}, expected~{expected_y}")
+
 
 # ──────────────────────────────────────────────────────────────
 # Box2D tests — solo ejecutan si Box2D instalado

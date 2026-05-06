@@ -285,6 +285,36 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             collision_safe_fraction=1.0,
         )
 
+    @staticmethod
+    def _slide_remainder(
+        remainder_x: float, remainder_y: float,
+        normal_x: float, normal_y: float,
+    ) -> tuple[float, float]:
+        """Slide remainder vector along collision normal (Godot Vector2.slide)."""
+        dot = remainder_x * normal_x + remainder_y * normal_y
+        return (remainder_x - dot * normal_x, remainder_y - dot * normal_y)
+
+    @staticmethod
+    def _is_one_way_ignorable(
+        motion_x: float, motion_y: float,
+        normal_x: float, normal_y: float,
+        target_entity: Any,
+    ) -> bool:
+        """Check if a one-way collision should be ignored.
+
+        Godot algorithm: pass through when collision normal opposes
+        the one-way direction (body is on the back side of the platform).
+        dot(normal, one_way_direction) < 0 → pass through.
+        """
+        collider_check = target_entity.get_component(Collider) if hasattr(target_entity, "get_component") else None
+        if collider_check is None or not collider_check.one_way_collision:
+            return False
+        ow_dir_x = float(getattr(collider_check, "one_way_collision_direction_x", 0.0))
+        ow_dir_y = float(getattr(collider_check, "one_way_collision_direction_y", -1.0))
+        # If collision normal opposes one-way direction, body is on pass-through side
+        dot = normal_x * ow_dir_x + normal_y * ow_dir_y
+        return dot < 0.0
+
     def _get_motion_body_shapes(self, entity: Any, transform: Any) -> list[tuple[int, str, Any]]:
         """Return list of (shape_index, shape_type, ShapeInstance) for the moving entity."""
         shapes: list[tuple[int, str, Any]] = []
@@ -749,6 +779,7 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         floor_snap_distance: float = 2.0,
         up_direction: tuple[float, float] = (0.0, -1.0),
         wall_min_slide_angle: float = 0.261799,
+        floor_stop_on_slope: bool = False,
         max_slides: int = 4,
     ) -> MoveResult2D:
         """Movimiento de personaje con detección AABB y deslizamiento multi-iteración.
@@ -792,7 +823,6 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         vx, vy = float(velocity[0]), float(velocity[1])
         was_on_floor = getattr(entity, "_move_slide_was_on_floor", False)
 
-        # --- collect solids ---
         if world is None:
             transform.x += vx * delta_time
             transform.y += vy * delta_time
@@ -803,47 +833,19 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
                 velocity_y=vy,
                 slide_count=0,
             )
-        # --- compute motion region for broad-phase filtering ---
-        e_left, e_top, e_right, e_bottom = collider.get_bounds(transform.x, transform.y)
-        motion_x = vx * delta_time
-        motion_y = vy * delta_time
-        margin = max(1.0, floor_snap_distance)
-        region_left = min(e_left, e_left + motion_x) - margin
-        region_right = max(e_right, e_right + motion_x) + margin
-        region_top = min(e_top, e_top + motion_y) - margin
-        region_bottom = max(e_bottom, e_bottom + motion_y) + margin
 
+        # --- Recovery (unstuck) ---
         solids: list[Any] = []
-        for other in world.get_entities_with(Transform, Collider):
+        for other in world.get_all_entities():
             if int(other.id) == int(entity.id):
                 continue
-            other_collider = other.get_component(Collider)
-            if other_collider is None or not other_collider.enabled or other_collider.is_trigger:
+            if not self._can_collide(world, entity, other):
                 continue
-            other_transform = other.get_component(Transform)
-            if other_transform is None:
-                continue
-            o_left, o_top, o_right, o_bottom = other_collider.get_bounds(
-                other_transform.x, other_transform.y
-            )
-            # Broad-phase AABB test: only include solids overlapping motion region
-            if (
-                o_left < region_right
-                and o_right > region_left
-                and o_top < region_bottom
-                and o_bottom > region_top
-            ):
+            other_transform = other.get_component(Transform) if hasattr(other, "get_component") else None
+            other_collider = other.get_component(Collider) if hasattr(other, "get_component") else None
+            if other_transform is not None and other_collider is not None and other_collider.enabled and not other_collider.is_trigger:
                 solids.append(other)
 
-        on_floor = False
-        on_wall = False
-        on_ceiling = False
-        collision_nx = 0.0
-        collision_ny = 0.0
-        contacts: list[PhysicsContact] = []
-        slide_count = 0
-
-        # --- unstuck / recovery from penetration ---
         self._recover_from_penetration(
             world=world,
             entity=entity,
@@ -854,93 +856,137 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
 
         motion_x = vx * delta_time
         motion_y = vy * delta_time
-        start_x, start_y = transform.x, transform.y
 
+        on_floor = False
+        on_wall = False
+        on_ceiling = False
+        collision_nx = 0.0
+        collision_ny = 0.0
+        contacts: list[PhysicsContact] = []
+        slide_count = 0
+        exclude_list: list[int] = []
+
+        # --- Slide loop via body_test_motion ---
         for _iteration in range(max_slides):
-            remaining_x = motion_x - (transform.x - start_x)
-            remaining_y = motion_y - (transform.y - start_y)
-
-            if abs(remaining_x) < 1e-6 and abs(remaining_y) < 1e-6:
+            if abs(motion_x) < 1e-6 and abs(motion_y) < 1e-6:
                 break
 
-            prev_x, prev_y = transform.x, transform.y
-            had_collision = False
-
-            # --- sweep X ---
-            if vx != 0.0 and abs(remaining_x) > 1e-6:
-                safe_delta_x = self._sweep_axis(
-                    world=world,
-                    entity=entity,
-                    transform=transform,
-                    collider=collider,
-                    solids=solids,
-                    delta=remaining_x,
-                    axis="x",
-                    contacts=contacts,
-                )
-                transform.x += safe_delta_x
-                if abs(safe_delta_x - remaining_x) > 1e-6:
-                    vx = 0.0
-                    collision_nx = -1.0 if remaining_x > 0 else 1.0
-                    collision_type = self._classify_collision_static(
-                        collision_nx, 0.0, up_x, up_y, floor_max_angle, wall_min_slide_angle
-                    )
-                    if collision_type == "wall":
-                        on_wall = True
-                    slide_count += 1
-                    had_collision = True
-
-            # --- sweep Y ---
-            if vy != 0.0 and abs(remaining_y) > 1e-6:
-                safe_delta_y = self._sweep_axis(
-                    world=world,
-                    entity=entity,
-                    transform=transform,
-                    collider=collider,
-                    solids=solids,
-                    delta=remaining_y,
-                    axis="y",
-                    contacts=contacts,
-                )
-                transform.y += safe_delta_y
-                if abs(safe_delta_y - remaining_y) > 1e-6:
-                    vy = 0.0
-                    collision_ny = -1.0 if remaining_y > 0 else 1.0
-                    if remaining_y > 0:
-                        on_floor = True
-                    collision_type = self._classify_collision_static(
-                        collision_nx, collision_ny, up_x, up_y, floor_max_angle, wall_min_slide_angle
-                    )
-                    if collision_type == "ceiling":
-                        on_ceiling = True
-                    elif collision_type == "wall":
-                        on_wall = True
-                    slide_count += 1
-                    had_collision = True
-
-            if not had_collision:
-                break
-
-            # --- stuck prevention ---
-            if abs(transform.x - prev_x) < 1e-6 and abs(transform.y - prev_y) < 1e-6:
-                break
-
-        # --- floor snap ---
-        if was_on_floor and not on_floor and floor_snap_distance > 0.0:
-            snap = self._floor_snap(
+            result = self.body_test_motion(
                 world=world,
                 entity=entity,
-                transform=transform,
-                collider=collider,
-                solids=solids,
-                snap_distance=floor_snap_distance,
-                contacts=contacts,
+                motion=(motion_x, motion_y),
+                margin=0.08,
+                recovery_as_collision=False,
+                exclude_ids=exclude_list if exclude_list else None,
+                collide_with_bodies=True,
+                collide_with_areas=False,
             )
-            if snap is not None:
-                transform.y += snap
-                on_floor = True
 
-        # persist floor state
+            if result.collision_safe_fraction >= 1.0:
+                # No collision — apply full travel
+                transform.x += result.travel_x
+                transform.y += result.travel_y
+                motion_x -= result.travel_x
+                motion_y -= result.travel_y
+                break
+
+            # Collision detected — apply safe travel
+            transform.x += result.travel_x
+            transform.y += result.travel_y
+
+            # Cache hit entity lookup
+            hit_entity = None
+            if result.collider_id > 0:
+                hit_entity = self._find_entity(world, result.collider_id)
+
+            nx = result.collision_normal_x
+            ny = result.collision_normal_y
+
+            # Skip t≈0 collisions where motion isn't pushing into the normal
+            if result.collision_safe_fraction < 1e-6:
+                motion_into = motion_x * nx + motion_y * ny
+                if motion_into >= 0.0:
+                    exclude_list.append(int(result.collider_id))
+                    continue
+
+            collision_type = self._classify_collision_static(
+                nx, ny, up_x, up_y, floor_max_angle, wall_min_slide_angle,
+            )
+
+            # One-way collision check
+            if hit_entity is not None and self._is_one_way_ignorable(
+                motion_x, motion_y, nx, ny, hit_entity,
+            ):
+                exclude_list.append(int(result.collider_id))
+                continue
+
+            # Update state
+            if collision_type == "floor":
+                on_floor = True
+                collision_ny = ny
+            elif collision_type == "wall":
+                on_wall = True
+                collision_nx = nx
+            elif collision_type == "ceiling":
+                on_ceiling = True
+                collision_ny = ny
+
+            slide_count += 1
+
+            # Record contact
+            if hit_entity is not None:
+                self._add_contact(contacts, entity, hit_entity)
+
+            # floor_stop_on_slope: stop immediately on floor contact
+            if floor_stop_on_slope and collision_type == "floor":
+                vx = 0.0
+                vy = 0.0
+                break
+
+            # Compute new motion from remainder via slide along normal
+            remainder_x = motion_x - result.travel_x
+            remainder_y = motion_y - result.travel_y
+
+            new_mx, new_my = self._slide_remainder(remainder_x, remainder_y, nx, ny)
+
+            # Stop if sliding goes backwards relative to original velocity
+            dot = new_mx * vx + new_my * vy
+            if dot <= 0.0:
+                vx = 0.0
+                vy = 0.0
+                break
+
+            motion_x = new_mx
+            motion_y = new_my
+
+        # --- Velocity adjustment ---
+        if on_wall:
+            vx = 0.0
+        if on_floor or on_ceiling:
+            vy = 0.0
+
+        # --- Floor snap ---
+        if was_on_floor and not on_floor and floor_snap_distance > 0.0:
+            # Use body_test_motion for snap
+            snap_result = self.body_test_motion(
+                world=world,
+                entity=entity,
+                motion=(-up_x * floor_snap_distance, -up_y * floor_snap_distance),
+                margin=0.0,
+                collide_with_bodies=True,
+                collide_with_areas=False,
+            )
+            if snap_result.collision_safe_fraction < 1.0:
+                transform.x += snap_result.travel_x
+                transform.y += snap_result.travel_y
+                collision_type = self._classify_collision_static(
+                    snap_result.collision_normal_x, snap_result.collision_normal_y,
+                    up_x, up_y, floor_max_angle, wall_min_slide_angle,
+                )
+                if collision_type == "floor":
+                    on_floor = True
+
+        # Persist floor state
         if hasattr(entity, "__dict__"):
             entity._move_slide_was_on_floor = on_floor  # type: ignore[attr-defined]
 

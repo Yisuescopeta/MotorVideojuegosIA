@@ -236,6 +236,7 @@ Input, audio y scripts:
 - `get_script_public_data(entity_name)`
 - `get_raycast_result(entity_name)`: obtiene el resultado runtime de un RayCast2D como dict
 - `set_character_max_slides(entity_name, max_slides)`: setea max_slides en CharacterController2D (default 4, rango 1-8, controla iteraciones de deslizamiento en move_and_slide)
+- `floor_stop_on_slope` (bool, default False) configurable via `edit_component(entity, "CharacterController2D", "floor_stop_on_slope", True)`: cuando True, move_and_slide frena la velocidad al instante al contactar el suelo (sin deslizar remanente horizontal). No expone método EngineAPI dedicado; se accede por el campo serializable del componente.
 
 Fisica:
 
@@ -296,6 +297,16 @@ colisiones, más flags de estado.
 > `PhysicsBackend`. El acceso público para agentes IA es a través de
 > `EngineAPI.step()` y el componente `CharacterController2D`, que internamente
 > usan el backend configurado.
+>
+> **Cambio P0-2:** `move_and_slide` en `LegacyAABBPhysicsBackend` fue
+> reescrito de barrido por eje separado (horizontal + vertical por iteración)
+> a un **bucle de deslizamiento basado en `body_test_motion`** unificado 2D.
+> Cada iteración prueba el vector de movimiento completo contra el mundo,
+> aplica el `travel` seguro, y proyecta el `remainder` deslizando sobre la
+> normal de colisión (Godot `Vector2.slide`). Esto mejora la resolución de
+> esquinas y el deslizamiento en paredes diagonales. El nuevo parámetro
+> `floor_stop_on_slope` detiene la velocidad al primer contacto con el suelo.
+> Se añadió detección de one-way collision basada en normal (Godot-style).
 
 #### MotionResult2D — Resultado de prueba de movimiento (sweep-test no mutante)
 

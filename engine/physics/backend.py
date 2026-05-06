@@ -213,6 +213,7 @@ class PhysicsBackend(ABC):
         floor_snap_distance: float = 2.0,
         up_direction: tuple[float, float] = (0.0, -1.0),
         wall_min_slide_angle: float = 0.261799,
+        floor_stop_on_slope: bool = False,
         max_slides: int = 4,
     ) -> MoveResult2D:
         """Movimiento de personaje con detección de colisiones y deslizamiento."""

@@ -82,13 +82,16 @@ metodos de movimiento cinematico:
 
 - `move_and_slide(entity, velocity, delta_time, ...)` -> `MoveResult2D`: mueve la
   entidad con deteccion de colisiones y deslizamiento multi-iteracion por
-  superficies. El bucle interno repite barrido horizontal + vertical por
-  iteracion, recalculando el remainder entre pasos hasta consumir todo el
-  movimiento o alcanzar `max_slides` iteraciones. Soporta configuracion de
-  `floor_max_angle`, `floor_snap_distance`, `up_direction`,
-  `wall_min_slide_angle` y `max_slides` (default 4). Implementado en
-  `LegacyAABBPhysicsBackend` con barrido separado por eje (horizontal/vertical),
-  snap al suelo y clasificacion de colisiones (suelo/pared/techo).
+  superficies. El bucle interno usa **`body_test_motion` unificado 2D por
+  iteracion**: prueba el vector de movimiento completo contra el mundo, aplica
+  el `travel` seguro, y proyecta el remainder deslizando sobre la normal de
+  colision (Godot `Vector2.slide` via `_slide_remainder`). Repite hasta
+  consumir todo el movimiento o alcanzar `max_slides` iteraciones. Soporta
+  configuracion de `floor_max_angle`, `floor_snap_distance`, `up_direction`,
+  `wall_min_slide_angle`, `floor_stop_on_slope` (bool, default False) y
+  `max_slides` (default 4). Implementado en `LegacyAABBPhysicsBackend` con
+  bucle `body_test_motion` + `_slide_remainder`, snap al suelo via
+  `body_test_motion`, y clasificacion de colisiones (suelo/pared/techo).
   `slide_count` refleja el numero real de iteraciones de deslizamiento
   (0 si no hubo colision, 1 en colision simple, >1 en esquinas o paredes
   secuenciales).
@@ -117,10 +120,16 @@ class MoveResult2D:
 
 Actualmente estos metodos son contratos del backend (nivel `PhysicsBackend`) y
 no estan expuestos directamente en `EngineAPI`. La implementacion en
-`LegacyAABBPhysicsBackend` usa barrido AABB con `_sweep_axis()`, snap al suelo
-con `_floor_snap()`, filtrado por `CollisionFilter2D` y matriz de capas desde
+`LegacyAABBPhysicsBackend` usa un **bucle de deslizamiento basado en
+`body_test_motion` unificado 2D** (P0-2), proyectando el remainder via
+`_slide_remainder` (Godot `Vector2.slide`). El snap al suelo tambien usa
+`body_test_motion` en lugar del antiguo `_floor_snap()`. Incluye deteccion de
+one-way collision por normal (`_is_one_way_ignorable`), filtrado por
+`CollisionFilter2D` y matriz de capas desde
 `feature_metadata.physics_2d.layer_matrix`. La clasificacion de colisiones
-(suelo/pared/techo) se realiza por angulo respecto a `up_direction`.
+(suelo/pared/techo) se realiza por angulo respecto a `up_direction`. La
+velocidad de retorno se pone a cero por tipo: `vx=0` si `on_wall`, `vy=0` si
+`on_floor` o `on_ceiling`.
 
 ### Integracion runtime del backend en CharacterControllerSystem
 
@@ -131,7 +140,7 @@ metodo del backend:
 
 - `move_and_slide`: llama a `PhysicsBackend.move_and_slide()` con parametros
   completos (velocidad, gravedad, `up_direction`, `floor_max_angle`,
-  `floor_snap_distance`, `wall_min_slide_angle`).
+  `floor_snap_distance`, `wall_min_slide_angle`, `floor_stop_on_slope`).
 - `move_and_collide`: llama a `PhysicsBackend.move_and_collide()` con solo
   velocidad y delta, deteniendose en la primera colision.
 
