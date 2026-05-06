@@ -910,7 +910,7 @@ class PhysicsSystem:
             if joint.joint_type == "fixed":
                 self._resolve_fixed_joint(transform_a, transform_b, rigid_a, rigid_b)
             elif joint.joint_type == "distance":
-                self._resolve_distance_joint(transform_a, transform_b, rigid_a, rigid_b)
+                self._resolve_distance_joint(transform_a, transform_b, rigid_a, rigid_b, joint)
             elif joint.joint_type == "pin":
                 self._resolve_pin_joint(transform_a, transform_b, rigid_a, rigid_b, joint, dt)
             elif joint.joint_type == "groove":
@@ -945,19 +945,36 @@ class PhysicsSystem:
         trans_b: Transform,
         rigid_a: RigidBody | None,
         rigid_b: RigidBody | None,
+        joint: Joint2D,
     ) -> None:
-        """Distance joint: maintain a fixed distance between two bodies."""
+        """Distance joint: maintain a fixed distance between two bodies via position correction."""
         dx = trans_b.x - trans_a.x
         dy = trans_b.y - trans_a.y
-        dist = (dx * dx + dy * dy) ** 0.5
+        dist = math.hypot(dx, dy)
         if dist < 0.0001:
             return
+
+        # Direction normal from A to B
+        nx = dx / dist
+        ny = dy / dist
+
+        # Distance error (positive = too far, negative = too close)
+        error = dist - joint.rest_length
+
+        # Mass-weighted position correction
+        inv_mass_a = 1.0 / rigid_a.mass if (rigid_a and rigid_a.body_type == "dynamic" and rigid_a.mass > 0.0) else 0.0
+        inv_mass_b = 1.0 / rigid_b.mass if (rigid_b and rigid_b.body_type == "dynamic" and rigid_b.mass > 0.0) else 0.0
+        total_inv = inv_mass_a + inv_mass_b
+        if total_inv <= 0.0:
+            return
+
+        correction = error / total_inv
         if rigid_a and rigid_a.body_type == "dynamic":
-            rigid_a.velocity_x = 0.0
-            rigid_a.velocity_y = 0.0
+            trans_a.x += nx * correction * inv_mass_a
+            trans_a.y += ny * correction * inv_mass_a
         if rigid_b and rigid_b.body_type == "dynamic":
-            rigid_b.velocity_x = 0.0
-            rigid_b.velocity_y = 0.0
+            trans_b.x -= nx * correction * inv_mass_b
+            trans_b.y -= ny * correction * inv_mass_b
 
     def _resolve_pin_joint(
         self,

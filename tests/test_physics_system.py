@@ -1,7 +1,9 @@
+import math
 import unittest
 
 from engine.components.area2d import Area2D
 from engine.components.collider import Collider
+from engine.components.joint2d import Joint2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
@@ -552,6 +554,112 @@ class PhysicsSystemTests(unittest.TestCase):
         # vy = -200 * 1.0 * 0.5 = -100.0 (no damping since linear_damping=0)
         msg = f"Area gravity override magnitude wrong: vy={rb.velocity_y}, expected ~ -100.0"
         self.assertAlmostEqual(rb.velocity_y, -100.0, delta=0.5, msg=msg)
+
+
+    def test_distance_joint_pulls_bodies_to_rest_length(self) -> None:
+        """Bodies too far apart get pulled to exact rest_length (100px)."""
+        world = World()
+        entity_a = world.create_entity("A")
+        entity_a.add_component(Transform(x=0.0, y=0.0))
+        entity_a.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+        joint_a = Joint2D()
+        joint_a.joint_type = "distance"
+        joint_a.connected_entity = "B"
+        joint_a.rest_length = 100.0
+        entity_a.add_component(joint_a)
+
+        entity_b = world.create_entity("B")
+        entity_b.add_component(Transform(x=200.0, y=0.0))
+        entity_b.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+
+        PhysicsSystem().update(world, 1 / 60)
+
+        ta = entity_a.get_component(Transform)
+        tb = entity_b.get_component(Transform)
+        new_dist = math.hypot(tb.x - ta.x, tb.y - ta.y)
+        self.assertAlmostEqual(new_dist, 100.0, delta=0.01,
+            msg=f"Joint should enforce exact rest_length=100, got dist={new_dist}")
+
+    def test_distance_joint_pushes_bodies_apart_when_too_close(self) -> None:
+        """Bodies inside rest_length get pushed apart to rest_length."""
+        world = World()
+        entity_a = world.create_entity("A")
+        entity_a.add_component(Transform(x=0.0, y=0.0))
+        entity_a.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+        joint_a = Joint2D()
+        joint_a.joint_type = "distance"
+        joint_a.connected_entity = "B"
+        joint_a.rest_length = 100.0
+        entity_a.add_component(joint_a)
+        entity_b = world.create_entity("B")
+        entity_b.add_component(Transform(x=30.0, y=0.0))
+        entity_b.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+
+        PhysicsSystem().update(world, 1 / 60)
+
+        ta = entity_a.get_component(Transform)
+        tb = entity_b.get_component(Transform)
+        new_dist = math.hypot(tb.x - ta.x, tb.y - ta.y)
+        self.assertAlmostEqual(new_dist, 100.0, delta=0.01,
+            msg=f"Joint should push bodies apart to rest_length=100, got dist={new_dist}")
+        # A should have moved left, B should have moved right
+        self.assertLess(ta.x, 0.0, "A should move left when too close")
+        self.assertGreater(tb.x, 30.0, "B should move right when too close")
+
+    def test_distance_joint_mass_ratio_100_to_1(self) -> None:
+        """Heavy body (mass=100) moves ~1% of light body (mass=1) displacement."""
+        world = World()
+        entity_a = world.create_entity("Heavy")
+        entity_a.add_component(Transform(x=0.0, y=0.0))
+        entity_a.add_component(RigidBody(body_type="dynamic", mass=100.0, gravity_scale=0.0))
+        joint_a = Joint2D()
+        joint_a.joint_type = "distance"
+        joint_a.connected_entity = "Light"
+        joint_a.rest_length = 50.0
+        entity_a.add_component(joint_a)
+        entity_b = world.create_entity("Light")
+        entity_b.add_component(Transform(x=150.0, y=0.0))
+        entity_b.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+
+        PhysicsSystem().update(world, 1 / 60)
+
+        ta = entity_a.get_component(Transform)
+        tb = entity_b.get_component(Transform)
+        new_dist = math.hypot(tb.x - ta.x, tb.y - ta.y)
+        self.assertAlmostEqual(new_dist, 50.0, delta=0.01)
+
+        delta_heavy = abs(ta.x)
+        delta_light = abs(150.0 - tb.x)
+        ratio = delta_light / max(delta_heavy, 0.001)
+        self.assertGreater(ratio, 50.0,
+            f"Light/heavy ratio={ratio:.1f}, expected ~100 (mass ratio). "
+            f"Heavy moved {delta_heavy:.2f}, Light moved {delta_light:.2f}")
+
+    def test_distance_joint_dynamic_to_static(self) -> None:
+        """Dynamic body moves toward static body to satisfy distance joint."""
+        world = World()
+        entity_a = world.create_entity("Dynamic")
+        entity_a.add_component(Transform(x=0.0, y=0.0))
+        entity_a.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+        joint_a = Joint2D()
+        joint_a.joint_type = "distance"
+        joint_a.connected_entity = "Static"
+        joint_a.rest_length = 50.0
+        entity_a.add_component(joint_a)
+        entity_b = world.create_entity("Static")
+        entity_b.add_component(Transform(x=100.0, y=0.0))
+        entity_b.add_component(RigidBody(body_type="static", mass=1.0))
+
+        PhysicsSystem().update(world, 1 / 60)
+
+        ta = entity_a.get_component(Transform)
+        tb = entity_b.get_component(Transform)
+        new_dist = math.hypot(tb.x - ta.x, tb.y - ta.y)
+        self.assertAlmostEqual(new_dist, 50.0, delta=0.01)
+        # Static body must NOT have moved
+        self.assertEqual(tb.x, 100.0, "Static body should not move")
+        # Dynamic body must have moved toward static
+        self.assertGreater(ta.x, 0.0, "Dynamic body should move toward static")
 
 
 if __name__ == "__main__":
