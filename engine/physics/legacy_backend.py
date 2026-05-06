@@ -6,6 +6,8 @@ from typing import Any, Optional
 from engine.components.animatable_body_2d import AnimatableBody2D
 from engine.components.collider import Collider
 from engine.components.collision_filter_2d import CollisionFilter2D
+from engine.components.collision_polygon_2d import CollisionPolygon2D
+from engine.components.collision_shape_2d import CollisionShape2D
 from engine.components.collision_shape_set_2d import CollisionShapeSet2D
 from engine.components.rigidbody import RigidBody
 from engine.components.static_body_2d import StaticBody2D
@@ -106,49 +108,51 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         dx /= length
         dy /= length
         hits: list[PhysicsRayHit] = []
-        for entity in world.get_entities_with(Transform, Collider):
-            transform = entity.get_component(Transform)
-            collider = entity.get_component(Collider)
-            if transform is None or collider is None or not collider.enabled:
+        for entity in world.get_all_entities() if hasattr(world, "get_all_entities") else []:
+            transform = entity.get_component(Transform) if hasattr(entity, "get_component") else None
+            if transform is None:
                 continue
-            result: tuple[float, tuple[float, float]] | None = None
-            if collider.shape_type == "capsule":
-                result = self._ray_capsule_distance(ox, oy, dx, dy, collider, transform.x, transform.y, max_distance)
-            else:
-                left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
+            if not self._entity_has_query_shapes(entity):
+                continue
+            for _shape_idx, shape_inst, is_trigger in self._get_entity_query_shapes(entity, transform):
+                aabb = shape_inst.get_aabb() if hasattr(shape_inst, "get_aabb") else (transform.x - 8, transform.y - 8, transform.x + 8, transform.y + 8)
+                left, top, right, bottom = aabb
                 result = self._ray_aabb_distance(ox, oy, dx, dy, left, top, right, bottom, max_distance)
-            if result is None:
-                continue
-            distance, normal = result
-            hits.append(
-                {
-                    "entity": entity.name,
-                    "entity_id": entity.id,
-                    "distance": distance,
-                    "point": {"x": ox + dx * distance, "y": oy + dy * distance},
-                    "normal": {"x": normal[0], "y": normal[1]},
-                    "is_trigger": bool(collider.is_trigger),
-                }
-            )
+                if result is None:
+                    continue
+                distance, normal = result
+                hits.append(
+                    {
+                        "entity": entity.name if hasattr(entity, "name") else "",
+                        "entity_id": entity.id if hasattr(entity, "id") else 0,
+                        "distance": distance,
+                        "point": {"x": ox + dx * distance, "y": oy + dy * distance},
+                        "normal": {"x": normal[0], "y": normal[1]},
+                        "is_trigger": bool(is_trigger),
+                    }
+                )
         return sorted(hits, key=lambda item: (float(item["distance"]), int(item["entity_id"])))
 
     def query_aabb(self, world: Any, bounds: tuple[float, float, float, float]) -> list[PhysicsAABBHit]:
         left, top, right, bottom = [float(value) for value in bounds]
         hits: list[PhysicsAABBHit] = []
-        for entity in world.get_entities_with(Transform, Collider):
-            transform = entity.get_component(Transform)
-            collider = entity.get_component(Collider)
-            if transform is None or collider is None or not collider.enabled:
+        for entity in world.get_all_entities() if hasattr(world, "get_all_entities") else []:
+            transform = entity.get_component(Transform) if hasattr(entity, "get_component") else None
+            if transform is None:
                 continue
-            e_left, e_top, e_right, e_bottom = collider.get_bounds(transform.x, transform.y)
-            if left < e_right and right > e_left and top < e_bottom and bottom > e_top:
-                hits.append(
-                    {
-                        "entity": entity.name,
-                        "entity_id": entity.id,
-                        "is_trigger": bool(collider.is_trigger),
-                    }
-                )
+            if not self._entity_has_query_shapes(entity):
+                continue
+            for _shape_idx, shape_inst, is_trigger in self._get_entity_query_shapes(entity, transform):
+                aabb = shape_inst.get_aabb() if hasattr(shape_inst, "get_aabb") else (transform.x - 8, transform.y - 8, transform.x + 8, transform.y + 8)
+                e_left, e_top, e_right, e_bottom = aabb
+                if left < e_right and right > e_left and top < e_bottom and bottom > e_top:
+                    hits.append(
+                        {
+                            "entity": entity.name if hasattr(entity, "name") else "",
+                            "entity_id": entity.id if hasattr(entity, "id") else 0,
+                            "is_trigger": bool(is_trigger),
+                        }
+                    )
         return hits
 
     def query_shape_cast(
@@ -201,51 +205,50 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         sweep_right = max(so_aabb[2], se_aabb[2])
         sweep_bottom = max(so_aabb[3], se_aabb[3])
 
-        for entity in world.get_entities_with(Transform, Collider):
-            transform = entity.get_component(Transform)
-            collider = entity.get_component(Collider)
-            if transform is None or collider is None or not collider.enabled:
+        for entity in world.get_all_entities() if hasattr(world, "get_all_entities") else []:
+            transform = entity.get_component(Transform) if hasattr(entity, "get_component") else None
+            if transform is None:
                 continue
-
-            # Broad-phase AABB test
-            c_left, c_top, c_right, c_bottom = collider.get_bounds(transform.x, transform.y)
-            if not (
-                sweep_left < c_right
-                and sweep_right > c_left
-                and sweep_top < c_bottom
-                and sweep_bottom > c_top
-            ):
+            if not self._entity_has_query_shapes(entity):
                 continue
+            for _shape_idx, shape_inst, is_trigger in self._get_entity_query_shapes(entity, transform):
+                # Broad-phase AABB test
+                aabb = shape_inst.get_aabb() if hasattr(shape_inst, "get_aabb") else (transform.x - 8, transform.y - 8, transform.x + 8, transform.y + 8)
+                c_left, c_top, c_right, c_bottom = aabb
+                if not (
+                    sweep_left < c_right
+                    and sweep_right > c_left
+                    and sweep_top < c_bottom
+                    and sweep_bottom > c_top
+                ):
+                    continue
 
-            # Build target shape for narrow-phase
-            target_shape = ShapeFactory.build(collider, transform.x, transform.y)
-
-            target_info = {
-                "entity": entity.name,
-                "entity_id": int(entity.id),
-                "is_trigger": bool(collider.is_trigger),
-            }
-
-            result = self._swept_toi(
-                shape_type=shape_type,
-                shape_params=params,
-                origin=(ox, oy),
-                direction=(dx, dy),
-                max_distance=max_distance,
-                target_shape=target_shape,
-                target_info=target_info,
-            )
-
-            if result is not None and result["fraction"] < best_fraction:
-                best_fraction = result["fraction"]
-                best_hit = {
-                    "entity": str(result["entity"]),
-                    "entity_id": int(result["entity_id"]),
-                    "position": {"x": float(result["position"]["x"]), "y": float(result["position"]["y"])},
-                    "normal": {"x": float(result["normal"]["x"]), "y": float(result["normal"]["y"])},
-                    "fraction": float(result["fraction"]),
-                    "is_trigger": bool(result.get("is_trigger", False)),
+                target_info = {
+                    "entity": entity.name if hasattr(entity, "name") else "",
+                    "entity_id": int(entity.id) if hasattr(entity, "id") else 0,
+                    "is_trigger": bool(is_trigger),
                 }
+
+                result = self._swept_toi(
+                    shape_type=shape_type,
+                    shape_params=params,
+                    origin=(ox, oy),
+                    direction=(dx, dy),
+                    max_distance=max_distance,
+                    target_shape=shape_inst,
+                    target_info=target_info,
+                )
+
+                if result is not None and result["fraction"] < best_fraction:
+                    best_fraction = result["fraction"]
+                    best_hit = {
+                        "entity": str(result["entity"]),
+                        "entity_id": int(result["entity_id"]),
+                        "position": {"x": float(result["position"]["x"]), "y": float(result["position"]["y"])},
+                        "normal": {"x": float(result["normal"]["x"]), "y": float(result["normal"]["y"])},
+                        "fraction": float(result["fraction"]),
+                        "is_trigger": bool(result.get("is_trigger", False)),
+                    }
 
         return [best_hit] if best_hit is not None else []
 
@@ -417,6 +420,73 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             shape_inst = ShapeFactory.build(collider, transform.x, transform.y)
             shapes.append((0, shape_inst))
         return shapes
+
+    @staticmethod
+    def _get_entity_query_shapes(entity: Any, transform: Any) -> list[tuple[int, Any, bool]]:
+        """Return list of (shape_index, ShapeInstance, is_trigger) for query purposes.
+
+        Covers: CollisionShapeSet2D, CollisionShape2D, CollisionPolygon2D, Collider.
+        Returns empty list if entity has no collision geometry.
+        """
+        shapes: list[tuple[int, Any, bool]] = []
+        shape_set = entity.get_component(CollisionShapeSet2D) if hasattr(entity, "get_component") else None
+        if shape_set is not None:
+            for i, shape_def in enumerate(shape_set.shapes):
+                if shape_def.disabled:
+                    continue
+                try:
+                    shape_inst = ShapeFactory.build_from_def(shape_def, transform.x, transform.y)
+                    shapes.append((i, shape_inst, shape_def.is_trigger))
+                except (ValueError, TypeError):
+                    continue
+            if shapes:
+                return shapes
+
+        # Check CollisionShape2D
+        shape_2d = entity.get_component(CollisionShape2D) if hasattr(entity, "get_component") else None
+        if shape_2d is not None and not shape_2d.disabled:
+            bounds = shape_2d.get_bounds(transform.x, transform.y)
+            from engine.physics.shapes import AABBShape
+            aabb_shape = AABBShape(bounds[0], bounds[1], bounds[2], bounds[3])
+            shapes.append((0, aabb_shape, False))
+            if shapes:
+                return shapes
+
+        # Check CollisionPolygon2D
+        poly_2d = entity.get_component(CollisionPolygon2D) if hasattr(entity, "get_component") else None
+        if poly_2d is not None and not poly_2d.disabled:
+            bounds = poly_2d.get_bounds(transform.x, transform.y)
+            from engine.physics.shapes import AABBShape
+            aabb_shape = AABBShape(bounds[0], bounds[1], bounds[2], bounds[3])
+            shapes.append((0, aabb_shape, False))
+            if shapes:
+                return shapes
+
+        # Fallback to Collider
+        collider = entity.get_component(Collider) if hasattr(entity, "get_component") else None
+        if collider is not None and collider.enabled:
+            shape_inst = ShapeFactory.build(collider, transform.x, transform.y)
+            shapes.append((0, shape_inst, collider.is_trigger))
+        return shapes
+
+    @staticmethod
+    def _entity_has_query_shapes(entity: Any) -> bool:
+        """Check if entity has any collision geometry for query purposes."""
+        if not hasattr(entity, "get_component"):
+            return False
+        shape_set = entity.get_component(CollisionShapeSet2D)
+        if shape_set is not None:
+            enabled = shape_set.get_enabled_non_trigger_shapes() if hasattr(shape_set, "get_enabled_non_trigger_shapes") else shape_set.shapes
+            if enabled:
+                return True
+        shape_2d = entity.get_component(CollisionShape2D)
+        if shape_2d is not None and not shape_2d.disabled:
+            return True
+        poly_2d = entity.get_component(CollisionPolygon2D)
+        if poly_2d is not None and not poly_2d.disabled:
+            return True
+        collider = entity.get_component(Collider)
+        return collider is not None and collider.enabled
 
     @staticmethod
     def _get_entity_velocity(entity: Any) -> tuple[float, float]:

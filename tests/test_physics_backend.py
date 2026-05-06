@@ -536,5 +536,72 @@ class PhysicsBackendTests(unittest.TestCase):
         dot = nx * to_origin_x + ny * to_origin_y
         self.assertGreater(dot, 0.0, f"Normal must point toward ray origin, dot={dot}")
 
+    def test_query_aabb_hits_collision_shape_2d(self) -> None:
+        """query_aabb finds entity with CollisionShape2D (no Collider)."""
+        from engine.components.collision_shape_2d import CollisionShape2D
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        target = world.create_entity("ShapeTarget")
+        target.add_component(Transform(x=200.0, y=100.0))
+        target.add_component(CollisionShape2D(width=32.0, height=32.0))
+
+        hits = backend.query_aabb(world, (180.0, 80.0, 220.0, 120.0))
+        names = [h["entity"] for h in hits]
+        self.assertIn("ShapeTarget", names,
+                      "query_aabb should find CollisionShape2D entity without Collider")
+
+    def test_query_ray_hits_collision_polygon_2d(self) -> None:
+        """query_ray finds entity with CollisionPolygon2D (no Collider)."""
+        from engine.components.collision_polygon_2d import CollisionPolygon2D
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        target = world.create_entity("PolyTarget")
+        target.add_component(Transform(x=200.0, y=100.0))
+        target.add_component(CollisionPolygon2D(
+            polygon=[[-16, -16], [16, -16], [16, 16], [-16, 16]]
+        ))
+
+        hits = backend.query_ray(
+            world=world,
+            origin=(100.0, 100.0),
+            direction=(1.0, 0.0),
+            max_distance=200.0,
+        )
+        names = [h["entity"] for h in hits]
+        self.assertIn("PolyTarget", names,
+                      "query_ray should find CollisionPolygon2D entity without Collider")
+
+    def test_query_shape_cast_hits_collision_shape_set(self) -> None:
+        """query_shape_cast finds entity with CollisionShapeSet2D (no Collider)."""
+        from engine.components.collision_shape_set_2d import CollisionShape2DDef, CollisionShapeSet2D
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        target = world.create_entity("ShapeSetTarget")
+        target.add_component(Transform(x=200.0, y=100.0))
+        shape_set = CollisionShapeSet2D(shapes=[
+            CollisionShape2DDef(
+                shape_type="box",
+                width=32.0,
+                height=32.0,
+                disabled=False,
+                is_trigger=False,
+            )
+        ])
+        target.add_component(shape_set)
+
+        hits = backend.query_shape_cast(
+            world=world,
+            shape_type="box",
+            shape_size=(16.0, 16.0),
+            origin=(100.0, 100.0),
+            direction=(1.0, 0.0),
+            max_distance=200.0,
+        )
+        self.assertGreater(len(hits), 0,
+                           "query_shape_cast should find CollisionShapeSet2D entity without Collider")
+
 if __name__ == "__main__":
     unittest.main()
