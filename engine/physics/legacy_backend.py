@@ -107,19 +107,22 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             collider = entity.get_component(Collider)
             if transform is None or collider is None or not collider.enabled:
                 continue
+            result: tuple[float, tuple[float, float]] | None = None
             if collider.shape_type == "capsule":
-                distance = self._ray_capsule_distance(ox, oy, dx, dy, collider, transform.x, transform.y, max_distance)
+                result = self._ray_capsule_distance(ox, oy, dx, dy, collider, transform.x, transform.y, max_distance)
             else:
                 left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
-                distance = self._ray_aabb_distance(ox, oy, dx, dy, left, top, right, bottom, max_distance)
-            if distance is None:
+                result = self._ray_aabb_distance(ox, oy, dx, dy, left, top, right, bottom, max_distance)
+            if result is None:
                 continue
+            distance, normal = result
             hits.append(
                 {
                     "entity": entity.name,
                     "entity_id": entity.id,
                     "distance": distance,
                     "point": {"x": ox + dx * distance, "y": oy + dy * distance},
+                    "normal": {"x": normal[0], "y": normal[1]},
                     "is_trigger": bool(collider.is_trigger),
                 }
             )
@@ -717,8 +720,8 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         pos_x: float,
         pos_y: float,
         max_distance: float,
-    ) -> float | None:
-        """Ray-capsule intersection: ray vs vertical segment + radius."""
+    ) -> tuple[float, tuple[float, float]] | None:
+        """Ray-capsule intersection: ray vs vertical segment + radius. Returns (distance, normal)."""
         cx = pos_x + collider.offset_x
         cy = pos_y + collider.offset_y
         r = collider.radius
@@ -760,31 +763,63 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             far = max(t1, t2)
             return (max(t_min, near), min(t_max, far))
 
-        best = float("inf")
+        best_t = float("inf")
+        best_normal: tuple[float, float] = (0.0, 0.0)
 
         # Top cap: circle at (cx, y_top)
         t_top = _ray_circle(cx, y_top, r)
-        if t_top is not None:
-            best = min(best, t_top)
+        if t_top is not None and t_top < best_t:
+            hx = ox + dx * t_top
+            hy = oy + dy * t_top
+            n_len = math.hypot(hx - cx, hy - y_top)
+            if n_len > 1e-8:
+                best_normal = ((hx - cx) / n_len, (hy - y_top) / n_len)
+            else:
+                best_normal = (-dx, -dy)
+            best_t = t_top
 
         # Bottom cap: circle at (cx, y_bot)
         t_bot = _ray_circle(cx, y_bot, r)
-        if t_bot is not None:
-            best = min(best, t_bot)
+        if t_bot is not None and t_bot < best_t:
+            hx = ox + dx * t_bot
+            hy = oy + dy * t_bot
+            n_len = math.hypot(hx - cx, hy - y_bot)
+            if n_len > 1e-8:
+                best_normal = ((hx - cx) / n_len, (hy - y_bot) / n_len)
+            else:
+                best_normal = (-dx, -dy)
+            best_t = t_bot
 
         # Rectangular body: [cx - r, cx + r] x [y_top, y_bot]
-        result = _ray_slab(0.0, max_distance, ox, dx, cx - r, cx + r)
+        body_left = cx - r
+        body_right = cx + r
+        body_top = y_top
+        body_bottom = y_bot
+        result = _ray_slab(0.0, max_distance, ox, dx, body_left, body_right)
         if result is not None:
-            t_min, t_max = result
-            if t_min <= t_max:
-                result_y = _ray_slab(t_min, t_max, oy, dy, y_top, y_bot)
+            t_min_x, t_max_x = result
+            if t_min_x <= t_max_x:
+                result_y = _ray_slab(t_min_x, t_max_x, oy, dy, body_top, body_bottom)
                 if result_y is not None:
                     ty_min, ty_max = result_y
-                    if ty_min <= ty_max and ty_min >= 0.0:
-                        best = min(best, ty_min)
+                    if ty_min <= ty_max and ty_min >= 0.0 and ty_min < best_t:
+                        hx = ox + dx * ty_min
+                        hy = oy + dy * ty_min
+                        eps = 1e-4
+                        if abs(hx - body_left) < eps:
+                            best_normal = (-1.0, 0.0)
+                        elif abs(hx - body_right) < eps:
+                            best_normal = (1.0, 0.0)
+                        elif abs(hy - body_top) < eps:
+                            best_normal = (0.0, -1.0)
+                        elif abs(hy - body_bottom) < eps:
+                            best_normal = (0.0, 1.0)
+                        else:
+                            best_normal = (-dx, -dy)
+                        best_t = ty_min
 
-        if math.isfinite(best):
-            return best
+        if math.isfinite(best_t):
+            return (best_t, best_normal)
         return None
 
     def _ray_aabb_distance(
@@ -798,7 +833,7 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         right: float,
         bottom: float,
         max_distance: float,
-    ) -> float | None:
+    ) -> tuple[float, tuple[float, float]] | None:
         t_min = 0.0
         t_max = float(max_distance)
         for origin, direction, minimum, maximum in (
@@ -818,4 +853,20 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             t_max = min(t_max, far)
             if t_min > t_max:
                 return None
-        return t_min if 0.0 <= t_min <= max_distance else None
+        if 0.0 <= t_min <= max_distance:
+            hx = ox + dx * t_min
+            hy = oy + dy * t_min
+            eps = 1e-4
+            if abs(hx - left) < eps:
+                nx, ny = -1.0, 0.0
+            elif abs(hx - right) < eps:
+                nx, ny = 1.0, 0.0
+            elif abs(hy - top) < eps:
+                nx, ny = 0.0, -1.0
+            elif abs(hy - bottom) < eps:
+                nx, ny = 0.0, 1.0
+            else:
+                # Ray starts inside AABB; direction-based fallback
+                nx, ny = -dx, -dy
+            return (t_min, (nx, ny))
+        return None

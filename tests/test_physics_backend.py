@@ -431,5 +431,110 @@ class PhysicsBackendTests(unittest.TestCase):
         self.assertEqual(rigidbody["velocity_x"], 0.0)
 
 
+    def test_legacy_ray_normal_aabb(self) -> None:
+        """Legacy query_ray returns correct normal for AABB hits from all 4 directions."""
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        entity = world.create_entity("Box")
+        entity.add_component(Transform(x=100.0, y=100.0))
+        entity.add_component(Collider(shape_type="box", width=20.0, height=20.0))
+        backend.sync_world(world)
+
+        # Ray from left
+        hits = backend.query_ray(world, (80.0, 100.0), (1.0, 0.0), 50.0)
+        self.assertTrue(hits, "Ray from left should hit")
+        self.assertIn("normal", hits[0], "Hit must include normal field")
+        self.assertAlmostEqual(hits[0]["normal"]["x"], -1.0, delta=0.01)
+        self.assertAlmostEqual(hits[0]["normal"]["y"], 0.0, delta=0.01)
+
+        # Ray from right
+        hits = backend.query_ray(world, (120.0, 100.0), (-1.0, 0.0), 50.0)
+        self.assertTrue(hits, "Ray from right should hit")
+        self.assertAlmostEqual(hits[0]["normal"]["x"], 1.0, delta=0.01)
+        self.assertAlmostEqual(hits[0]["normal"]["y"], 0.0, delta=0.01)
+
+        # Ray from top
+        hits = backend.query_ray(world, (100.0, 80.0), (0.0, 1.0), 50.0)
+        self.assertTrue(hits, "Ray from top should hit")
+        self.assertAlmostEqual(hits[0]["normal"]["x"], 0.0, delta=0.01)
+        self.assertAlmostEqual(hits[0]["normal"]["y"], -1.0, delta=0.01)
+
+        # Ray from bottom
+        hits = backend.query_ray(world, (100.0, 120.0), (0.0, -1.0), 50.0)
+        self.assertTrue(hits, "Ray from bottom should hit")
+        self.assertAlmostEqual(hits[0]["normal"]["x"], 0.0, delta=0.01)
+        self.assertAlmostEqual(hits[0]["normal"]["y"], 1.0, delta=0.01)
+
+    def test_legacy_ray_normal_capsule(self) -> None:
+        """Legacy query_ray returns normal for capsule hits (body and caps)."""
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        entity = world.create_entity("Capsule")
+        entity.add_component(Transform(x=100.0, y=100.0))
+        entity.add_component(
+            Collider(shape_type="capsule", radius=10.0, capsule_height=40.0)
+        )
+        backend.sync_world(world)
+
+        # Ray hitting body from left
+        hits = backend.query_ray(world, (80.0, 100.0), (1.0, 0.0), 50.0)
+        self.assertTrue(hits, "Ray should hit capsule body from left")
+        self.assertIn("normal", hits[0])
+        self.assertAlmostEqual(hits[0]["normal"]["x"], -1.0, delta=0.01)
+
+        # Ray hitting top cap
+        hits = backend.query_ray(world, (100.0, 60.0), (0.0, 1.0), 50.0)
+        self.assertTrue(hits, "Ray should hit capsule top cap")
+        self.assertIn("normal", hits[0])
+        self.assertLess(hits[0]["normal"]["y"], 0.0, "Top cap normal should point up")
+
+        # Ray hitting bottom cap
+        hits = backend.query_ray(world, (100.0, 140.0), (0.0, -1.0), 50.0)
+        self.assertTrue(hits, "Ray should hit capsule bottom cap")
+        self.assertIn("normal", hits[0])
+        self.assertGreater(hits[0]["normal"]["y"], 0.0, "Bottom cap normal should point down")
+
+    def test_legacy_ray_normal_points_away_from_hit_object(self) -> None:
+        """Normal must point from surface toward ray origin (opposite ray direction)."""
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        entity = world.create_entity("Box")
+        entity.add_component(Transform(x=100.0, y=100.0))
+        entity.add_component(Collider(shape_type="box", width=20.0, height=20.0))
+        backend.sync_world(world)
+
+        # Ray from left hits left face → normal should be (-1, 0) pointing toward origin
+        hits = backend.query_ray(world, (80.0, 95.0), (1.0, 0.0), 50.0)
+        self.assertTrue(hits)
+        nx, ny = hits[0]["normal"]["x"], hits[0]["normal"]["y"]
+        hx, hy = hits[0]["point"]["x"], hits[0]["point"]["y"]
+        to_origin_x = 80.0 - hx
+        to_origin_y = 95.0 - hy
+        dot = nx * to_origin_x + ny * to_origin_y
+        self.assertGreater(dot, 0.0, f"Normal must point toward ray origin, dot={dot}")
+
+        # Ray from right hits right face
+        hits = backend.query_ray(world, (120.0, 95.0), (-1.0, 0.0), 50.0)
+        self.assertTrue(hits)
+        nx, ny = hits[0]["normal"]["x"], hits[0]["normal"]["y"]
+        hx, hy = hits[0]["point"]["x"], hits[0]["point"]["y"]
+        to_origin_x = 120.0 - hx
+        to_origin_y = 95.0 - hy
+        dot = nx * to_origin_x + ny * to_origin_y
+        self.assertGreater(dot, 0.0, f"Normal must point toward ray origin, dot={dot}")
+
+        # Ray from top hits top face
+        hits = backend.query_ray(world, (95.0, 80.0), (0.0, 1.0), 50.0)
+        self.assertTrue(hits)
+        nx, ny = hits[0]["normal"]["x"], hits[0]["normal"]["y"]
+        hx, hy = hits[0]["point"]["x"], hits[0]["point"]["y"]
+        to_origin_x = 95.0 - hx
+        to_origin_y = 80.0 - hy
+        dot = nx * to_origin_x + ny * to_origin_y
+        self.assertGreater(dot, 0.0, f"Normal must point toward ray origin, dot={dot}")
+
 if __name__ == "__main__":
     unittest.main()
