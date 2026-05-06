@@ -439,6 +439,31 @@ El backend físico delega en `swept_shape_toi` para detección precisa de TOI
 y en `swept_collision` para narrow-phase. Con dirección cero reporta overlaps
 en el origen. Retorna lista vacía si no hay hit o no hay backend activo.
 
+### query_physics_motion — Prueba de movimiento no mutante
+
+Prueba si una entidad puede moverse a lo largo de un vector sin colisionar.
+**No modifica** el Transform ni el estado del mundo.
+
+```python
+result = api.query_physics_motion("Player", motion_x=100.0, motion_y=0.0)
+if result["collision_safe_fraction"] < 1.0:
+    print(f"Colisión con {result['collider_entity_name']} a {result['collision_safe_fraction']*100:.1f}% del trayecto")
+    print(f"Viaje seguro: ({result['travel_x']}, {result['travel_y']})")
+    print(f"Restante: ({result['remainder_x']}, {result['remainder_y']})")
+else:
+    print("Sin colisión, movimiento completo seguro")
+```
+
+Parámetros: `entity_name`, `motion_x`, `motion_y`, `margin` (default 0.08),
+`recovery_as_collision` (default False), `exclude_entity_names`,
+`collision_mask`, `collide_with_bodies`, `collide_with_areas`.
+
+Campos del resultado: `travel_x`, `travel_y`, `remainder_x`, `remainder_y`,
+`collision_point_x`, `collision_point_y`, `collision_normal_x`, `collision_normal_y`,
+`collider_velocity_x`, `collider_velocity_y`, `collision_depth`,
+`collision_safe_fraction`, `collision_unsafe_fraction`, `collision_local_shape`,
+`collider_id`, `collider_entity_name`, `collider_shape`.
+
 ### NavigationObstacle2D — Obstáculo estático para avoidance
 
 Componente data-only que marca una entidad como obstáculo para

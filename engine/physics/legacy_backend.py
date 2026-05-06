@@ -3,11 +3,15 @@ from __future__ import annotations
 import math
 from typing import Any, Optional
 
+from engine.components.animatable_body_2d import AnimatableBody2D
 from engine.components.collider import Collider
 from engine.components.collision_filter_2d import CollisionFilter2D
+from engine.components.collision_shape_set_2d import CollisionShapeSet2D
 from engine.components.rigidbody import RigidBody
+from engine.components.static_body_2d import StaticBody2D
 from engine.components.transform import Transform
 from engine.physics.backend import (
+    MotionResult2D,
     MoveResult2D,
     PhysicsAABBHit,
     PhysicsBackend,
@@ -270,6 +274,188 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             max_iter=64,
         )
 
+    @staticmethod
+    def _motion_result_no_hit(mx: float, my: float) -> MotionResult2D:
+        """Return MotionResult2D for no collision (full travel)."""
+        return MotionResult2D(
+            travel_x=mx,
+            travel_y=my,
+            remainder_x=0.0,
+            remainder_y=0.0,
+            collision_safe_fraction=1.0,
+        )
+
+    def _get_motion_body_shapes(self, entity: Any, transform: Any) -> list[tuple[int, str, Any]]:
+        """Return list of (shape_index, shape_type, ShapeInstance) for the moving entity."""
+        shapes: list[tuple[int, str, Any]] = []
+        shape_set = entity.get_component(CollisionShapeSet2D) if hasattr(entity, "get_component") else None
+        if shape_set is not None:
+            for i, shape_def in enumerate(shape_set.shapes):
+                if shape_def.disabled:
+                    continue
+                try:
+                    shape_inst = ShapeFactory.build_from_def(shape_def, transform.x, transform.y)
+                    shapes.append((i, shape_def.shape_type, shape_inst))
+                except (ValueError, TypeError):
+                    continue
+            if shapes:
+                return shapes
+        collider = entity.get_component(Collider) if hasattr(entity, "get_component") else None
+        if collider is not None and collider.enabled:
+            shape_inst = ShapeFactory.build(collider, transform.x, transform.y)
+            shapes.append((0, collider.shape_type, shape_inst))
+        return shapes
+
+    def _collect_motion_targets(
+        self, world: Any, entity: Any, transform: Any,
+        mx: float, my: float, margin: float,
+        exclude_set: set[int], collision_mask: int,
+        collide_with_bodies: bool, collide_with_areas: bool,
+    ) -> list[tuple[int, Any, Any, Any]]:
+        """Collect (target_shape_index, ShapeInstance, Transform, Entity) for all potential collision targets."""
+        targets: list[tuple[int, Any, Any, Any]] = []
+        self_id = int(entity.id) if hasattr(entity, "id") else -1
+
+        for other in world.get_all_entities() if hasattr(world, "get_all_entities") else []:
+            other_id = int(other.id) if hasattr(other, "id") else -1
+            if other_id == self_id or other_id in exclude_set:
+                continue
+            if not self._can_collide(world, entity, other):
+                continue
+            other_transform = other.get_component(Transform) if hasattr(other, "get_component") else None
+            if other_transform is None:
+                continue
+
+            # Check body components for body vs area discrimination
+            rb = other.get_component(RigidBody) if hasattr(other, "get_component") else None
+            anim = other.get_component(AnimatableBody2D) if hasattr(other, "get_component") else None
+            sb = other.get_component(StaticBody2D) if hasattr(other, "get_component") else None
+            shape_set_check = other.get_component(CollisionShapeSet2D) if hasattr(other, "get_component") else None
+
+            has_body_component = rb is not None or anim is not None or sb is not None or shape_set_check is not None
+
+            is_area_like = False
+            if not has_body_component:
+                collider_check = other.get_component(Collider) if hasattr(other, "get_component") else None
+                if collider_check is None or collider_check.is_trigger:
+                    is_area_like = True
+            else:
+                # Has a body component — only area-like if trigger collider
+                collider_check = other.get_component(Collider) if hasattr(other, "get_component") else None
+                if collider_check is not None and collider_check.is_trigger:
+                    # But check if CollisionShapeSet2D has non-trigger shapes
+                    if shape_set_check is not None:
+                        non_trigger_shapes = shape_set_check.get_enabled_non_trigger_shapes()
+                        is_area_like = len(non_trigger_shapes) == 0
+                    else:
+                        is_area_like = True
+
+            if is_area_like and not collide_with_areas:
+                continue
+            if not is_area_like and not collide_with_bodies:
+                continue
+
+            # collision_mask filtering: check target's layer against mask
+            if collision_mask != 0xFFFFFFFF:
+                target_filter = other.get_component(CollisionFilter2D) if hasattr(other, "get_component") else None
+                target_layer_val = target_filter.collision_layer if target_filter is not None else 1
+                if (collision_mask & target_layer_val) == 0:
+                    continue
+
+            for t_idx, t_shape in self._get_target_shapes(other, other_transform):
+                targets.append((t_idx, t_shape, other_transform, other))
+        return targets
+
+    @staticmethod
+    def _get_target_shapes(entity: Any, transform: Any) -> list[tuple[int, Any]]:
+        """Yield (shape_index, ShapeInstance) for a target entity."""
+        shapes: list[tuple[int, Any]] = []
+        shape_set = entity.get_component(CollisionShapeSet2D) if hasattr(entity, "get_component") else None
+        if shape_set is not None:
+            for i, shape_def in enumerate(shape_set.shapes):
+                if shape_def.disabled or shape_def.is_trigger:
+                    continue
+                try:
+                    shape_inst = ShapeFactory.build_from_def(shape_def, transform.x, transform.y)
+                    shapes.append((i, shape_inst))
+                except (ValueError, TypeError):
+                    continue
+            if shapes:
+                return shapes
+        collider = entity.get_component(Collider) if hasattr(entity, "get_component") else None
+        if collider is not None and collider.enabled and not collider.is_trigger:
+            shape_inst = ShapeFactory.build(collider, transform.x, transform.y)
+            shapes.append((0, shape_inst))
+        return shapes
+
+    @staticmethod
+    def _get_entity_velocity(entity: Any) -> tuple[float, float]:
+        """Extract velocity from entity's RigidBody or AnimatableBody2D."""
+        if entity is None:
+            return (0.0, 0.0)
+        rb = entity.get_component(RigidBody) if hasattr(entity, "get_component") else None
+        if rb is not None:
+            return (float(rb.velocity_x), float(rb.velocity_y))
+        anim = entity.get_component(AnimatableBody2D) if hasattr(entity, "get_component") else None
+        if anim is not None:
+            return (0.0, 0.0)
+        sb = entity.get_component(StaticBody2D) if hasattr(entity, "get_component") else None
+        if sb is not None:
+            return (float(sb.constant_linear_velocity_x), float(sb.constant_linear_velocity_y))
+        return (0.0, 0.0)
+
+    @staticmethod
+    def _find_motion_target_entity(
+        targets: list[tuple[int, Any, Any, Any]], entity_id: int,
+    ) -> Any:
+        for _t_idx, _t_shape, _t_transform, t_entity in targets:
+            if hasattr(t_entity, "id") and int(t_entity.id) == entity_id:
+                return t_entity
+        return None
+
+    @staticmethod
+    def _shape_instance_to_params(shape: Any, shape_type: str) -> dict[str, Any]:
+        """Convert a ShapeInstance to params dict for swept_shape_toi."""
+        if shape_type == "box":
+            return {"width": getattr(shape, "width", shape.half_w * 2), "height": getattr(shape, "height", shape.half_h * 2)}
+        elif shape_type == "circle":
+            return {"radius": shape.radius}
+        elif shape_type == "capsule":
+            return {"radius": shape.radius, "height": getattr(shape, "height", getattr(shape, "capsule_height", 32.0))}
+        elif shape_type == "polygon":
+            return {"vertices": [list(p) for p in shape.vertices]} if hasattr(shape, "vertices") else {"width": getattr(shape, "width", shape.half_w * 2), "height": getattr(shape, "height", shape.half_h * 2)}
+        return {"width": getattr(shape, "width", shape.half_w * 2), "height": getattr(shape, "height", shape.half_h * 2)}
+
+    @staticmethod
+    def _motion_sweep_aabb(shape: Any, ox: float, oy: float, mx: float, my: float, margin: float = 0.08) -> tuple[float, float, float, float]:
+        """Compute union AABB of shape at origin and at origin+motion, expanded by margin."""
+        if hasattr(shape, "get_aabb"):
+            s_aabb = shape.get_aabb()
+            left_start, top_start, right_start, bottom_start = s_aabb
+            left_end = left_start + mx
+            right_end = right_start + mx
+            top_end = top_start + my
+            bottom_end = bottom_start + my
+            return (
+                min(left_start, left_end) - margin,
+                min(top_start, top_end) - margin,
+                max(right_start, right_end) + margin,
+                max(bottom_start, bottom_end) + margin,
+            )
+        return (ox - margin, oy - margin, ox + mx + margin, oy + my + margin)
+
+    @staticmethod
+    def _shape_aabb(shape: Any, tx: float, ty: float) -> tuple[float, float, float, float]:
+        """Get AABB for a shape instance."""
+        if hasattr(shape, "get_aabb"):
+            aabb = shape.get_aabb()
+            return aabb
+        return (tx - 8, ty - 8, tx + 8, ty + 8)
+
+    @staticmethod
+    def _aabbs_overlap(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> bool:
+        return a[0] < b[2] and a[2] > b[0] and a[1] < b[3] and a[3] > b[1]
+
     def collect_contacts(self, world: Any) -> list[PhysicsContact]:
         del world
         return list(self._latest_contacts)
@@ -278,6 +464,158 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         if self._physics_system is not None and hasattr(self._physics_system, "get_step_metrics"):
             return dict(self._physics_system.get_step_metrics())
         return {"ccd_bodies": 0, "swept_checks": 0}
+
+    # ------------------------------------------------------------------
+    # body_test_motion
+    # ------------------------------------------------------------------
+
+    def body_test_motion(
+        self,
+        world: Any,
+        entity: Any,
+        motion: tuple[float, float],
+        margin: float = 0.08,
+        recovery_as_collision: bool = False,
+        exclude_ids: Optional[list[int]] = None,
+        collision_mask: int = 0xFFFFFFFF,
+        collide_with_bodies: bool = True,
+        collide_with_areas: bool = False,
+    ) -> MotionResult2D:
+        """Non-mutating swept motion test. Equivalent to Godot body_test_motion.
+
+        Sweeps the entity along motion vector and returns the first collision
+        found. Does NOT modify the entity's Transform.
+        """
+        transform = entity.get_component(Transform) if hasattr(entity, "get_component") else None
+        if transform is None:
+            return self._motion_result_no_hit(float(motion[0]), float(motion[1]))
+
+        mx, my = float(motion[0]), float(motion[1])
+        exclude_set: set[int] = set(exclude_ids) if exclude_ids else set()
+        exclude_set.discard(int(entity.id) if hasattr(entity, "id") else -1)
+
+        # Build moving body shapes
+        local_shapes = self._get_motion_body_shapes(entity, transform)
+
+        # Build target list
+        targets = self._collect_motion_targets(
+            world, entity, transform, mx, my, margin, exclude_set,
+            collision_mask, collide_with_bodies, collide_with_areas,
+        )
+
+        # Recovery check: if entity starts overlapping, report as collision
+        if recovery_as_collision:
+            for shape_idx, _shape_type, moving_shape in local_shapes:
+                self_shape_aabb = moving_shape.get_aabb()
+                for t_idx, t_shape, t_transform, t_entity in targets:
+                    t_aabb = self._shape_aabb(t_shape, t_transform.x, t_transform.y)
+                    if self._aabbs_overlap(self_shape_aabb, t_aabb):
+                        cvx, cvy = self._get_entity_velocity(t_entity)
+                        return MotionResult2D(
+                            travel_x=0.0,
+                            travel_y=0.0,
+                            remainder_x=mx,
+                            remainder_y=my,
+                            collision_point_x=float(transform.x),
+                            collision_point_y=float(transform.y),
+                            collision_normal_x=0.0,
+                            collision_normal_y=0.0,
+                            collider_velocity_x=cvx,
+                            collider_velocity_y=cvy,
+                            collision_depth=0.0,
+                            collision_safe_fraction=0.0,
+                            collision_unsafe_fraction=1.0,
+                            collision_local_shape=shape_idx,
+                            collider_id=int(t_entity.id) if hasattr(t_entity, "id") else 0,
+                            collider_entity_name=str(t_entity.name) if hasattr(t_entity, "name") else "",
+                            collider_shape=t_idx,
+                        )
+
+        best_hit: Optional[dict] = None
+        best_fraction = float("inf")
+        best_moving_shape_idx = -1
+        best_target_shape_idx: int = -1
+
+        for shape_idx, shape_type, moving_shape in local_shapes:
+            shape_params = self._shape_instance_to_params(moving_shape, shape_type)
+            ox, oy = float(transform.x), float(transform.y)
+
+            # AABB of swept shape for broad phase
+            sweep_aabb = self._motion_sweep_aabb(moving_shape, ox, oy, mx, my, margin)
+
+            for target_idx, target_shape, target_transform, target_entity in targets:
+                # Broad phase
+                t_aabb = self._shape_aabb(target_shape, target_transform.x, target_transform.y)
+                if not self._aabbs_overlap(sweep_aabb, t_aabb):
+                    continue
+
+                target_info = {
+                    "entity": target_entity.name if hasattr(target_entity, "name") else "",
+                    "entity_id": int(target_entity.id) if hasattr(target_entity, "id") else 0,
+                    "is_trigger": False,
+                }
+
+                distance = math.hypot(mx, my)
+                if distance <= 1e-9:
+                    continue
+
+                dx, dy = mx / distance, my / distance
+
+                hit = self._swept_toi(
+                    shape_type=shape_type,
+                    shape_params=shape_params,
+                    origin=(ox, oy),
+                    direction=(dx, dy),
+                    max_distance=distance,
+                    target_shape=target_shape,
+                    target_info=target_info,
+                )
+
+                if hit is not None and hit.get("fraction", 1.0) < best_fraction:
+                    best_fraction = float(hit["fraction"])
+                    best_hit = hit
+                    best_moving_shape_idx = shape_idx
+                    best_target_shape_idx = target_idx
+
+        if best_hit is not None and best_fraction < 1.0:
+            fraction = best_fraction
+            # travel = fraction of motion
+            travel_x = mx * fraction
+            travel_y = my * fraction
+            # remainder = what's left
+            remainder_x = mx * (1.0 - fraction)
+            remainder_y = my * (1.0 - fraction)
+
+            # Get collider velocity
+            hit_entity_id = best_hit.get("entity_id", 0)
+            hit_entity = self._find_motion_target_entity(targets, hit_entity_id)
+            cvx, cvy = self._get_entity_velocity(hit_entity) if hit_entity is not None else (0.0, 0.0)
+
+            pos = best_hit.get("position", {"x": 0.0, "y": 0.0})
+            nrm = best_hit.get("normal", {"x": 0.0, "y": 0.0})
+
+            return MotionResult2D(
+                travel_x=travel_x,
+                travel_y=travel_y,
+                remainder_x=remainder_x,
+                remainder_y=remainder_y,
+                collision_point_x=float(pos["x"]),
+                collision_point_y=float(pos["y"]),
+                collision_normal_x=float(nrm["x"]),
+                collision_normal_y=float(nrm["y"]),
+                collider_velocity_x=cvx,
+                collider_velocity_y=cvy,
+                collision_depth=0.0,
+                collision_safe_fraction=fraction,
+                collision_unsafe_fraction=1.0 - fraction,
+                collision_local_shape=best_moving_shape_idx,
+                collider_id=int(hit_entity_id),
+                collider_entity_name=str(best_hit.get("entity", "")),
+                collider_shape=best_target_shape_idx,
+            )
+
+        # No collision — full travel
+        return self._motion_result_no_hit(mx, my)
 
     # ------------------------------------------------------------------
     # move_and_slide / move_and_collide

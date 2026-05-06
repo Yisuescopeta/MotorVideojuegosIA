@@ -297,6 +297,64 @@ colisiones, más flags de estado.
 > `EngineAPI.step()` y el componente `CharacterController2D`, que internamente
 > usan el backend configurado.
 
+#### MotionResult2D — Resultado de prueba de movimiento (sweep-test no mutante)
+
+`MotionResult2D` es la estructura de datos devuelta por
+`PhysicsBackend.body_test_motion()`. Representa el resultado de barrer
+(sweep) el collider de una entidad a lo largo de un vector de movimiento **sin
+modificar el mundo** — ni el Transform de la entidad ni el estado de colisión.
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `travel_x`, `travel_y` | float | Vector de movimiento seguro recorrido antes de la colisión |
+| `remainder_x`, `remainder_y` | float | Porción restante del movimiento original tras la colisión |
+| `collision_point_x`, `collision_point_y` | float | Punto de impacto en espacio mundo |
+| `collision_normal_x`, `collision_normal_y` | float | Normal de la superficie en el punto de colisión |
+| `collider_velocity_x`, `collider_velocity_y` | float | Velocidad del colisionador impactado (útil para colisiones con cuerpos móviles) |
+| `collision_depth` | float | Profundidad de penetración |
+| `collision_safe_fraction` | float | Fracción del movimiento que se puede recorrer sin colisionar (0.0 = colisión en origen, 1.0 = sin colisión) |
+| `collision_unsafe_fraction` | float | Fracción del movimiento restante tras la colisión |
+| `collision_local_shape` | int | Índice de la shape local que colisionó (-1 si no aplica) |
+| `collider_id` | int | ID de la entidad impactada |
+| `collider_entity_name` | str | Nombre de la entidad impactada |
+| `collider_shape` | int | Índice de la shape del colisionador impactado |
+
+**Signature del método `body_test_motion` en `PhysicsBackend`:**
+
+```python
+def body_test_motion(
+    self,
+    world: Any,
+    entity: Any,
+    motion: tuple[float, float],
+    margin: float = 0.08,
+    recovery_as_collision: bool = False,
+    exclude_ids: Optional[list[int]] = None,
+    collision_mask: int = 0xFFFFFFFF,
+    collide_with_bodies: bool = True,
+    collide_with_areas: bool = False,
+) -> MotionResult2D:
+```
+
+**Parámetros:**
+- `world`: mundo activo sobre el que realizar la prueba
+- `entity`: entidad cuyo collider se usa como origen del barrido
+- `motion`: vector de movimiento `(x, y)` a probar
+- `margin`: margen de colisión para broad-phase (default: 0.08)
+- `recovery_as_collision`: si `True`, el recovery de penetración cuenta como colisión
+- `exclude_ids`: IDs de entidades a excluir de la prueba
+- `collision_mask`: máscara de bits para filtrado por capas (default: todas las capas)
+- `collide_with_bodies`: colisiona con cuerpos no-trigger (default: `True`)
+- `collide_with_areas`: colisiona con áreas/triggers (default: `False`)
+
+> **Relación con `move_and_slide`:** `body_test_motion` es el bloque fundamental
+> sobre el que se construye `move_and_slide`. Mientras que `move_and_slide`
+> itera múltiples veces (resolviendo colisiones, deslizando y repitiendo hasta
+> `max_slides`), `body_test_motion` realiza una **única prueba no-mutante**.
+> Para simular `move_and_slide` manualmente, se puede invocar
+> `body_test_motion`, avanzar la entidad el `travel` resultante, ajustar la
+> velocidad según la normal, y repetir.
+
 ### Area2D — Monitoreo de overlaps
 
 Area2D monitorea cuerpos (RigidBody) y otras áreas que entran/salen de su zona.

@@ -4,7 +4,7 @@ import json
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Union
 
 from engine.api._context import EngineAPIComponent
-from engine.api.types import ActionResult, EngineStatus, EntityData, ShapeCastResult
+from engine.api.types import ActionResult, EngineStatus, EntityData, MotionTestResult, ShapeCastResult
 from engine.components.rigidbody import RigidBody
 from engine.ecs.entity import normalize_entity_groups
 from engine.events.signals import SignalConnectionFlags
@@ -395,6 +395,53 @@ class RuntimeAPI(EngineAPIComponent):
             shape_type, shape_width, shape_height,
             origin_x, origin_y, direction_x, direction_y, max_distance,
             shape_params=shape_params,
+        )
+
+    def query_physics_motion(
+        self,
+        entity_name: str,
+        motion_x: float,
+        motion_y: float,
+        margin: float = 0.08,
+        recovery_as_collision: bool = False,
+        exclude_entity_names: Optional[list[str]] = None,
+        collision_mask: int = 0xFFFFFFFF,
+        collide_with_bodies: bool = True,
+        collide_with_areas: bool = False,
+    ) -> MotionTestResult:
+        """Test if an entity can move along a motion vector without colliding.
+
+        Non-mutating: does NOT change the entity's Transform or the world.
+
+        Args:
+            entity_name: Name of the entity to test motion for.
+            motion_x: X component of motion vector.
+            motion_y: Y component of motion vector.
+            margin: Safety margin (Godot default 0.08).
+            recovery_as_collision: If True, existing overlaps are reported.
+            exclude_entity_names: Entity names to exclude from collision.
+            collision_mask: Bitmask for collision layer filtering.
+            collide_with_bodies: Whether to collide with physics bodies.
+            collide_with_areas: Whether to collide with areas/triggers.
+
+        Returns:
+            MotionTestResult dict with travel, remainder, collision info.
+        """
+        runtime = self.runtime
+        if runtime is None:
+            return MotionTestResult(
+                travel_x=motion_x,
+                travel_y=motion_y,
+                collision_safe_fraction=1.0,
+            )
+        return runtime.query_physics_motion(
+            entity_name, motion_x, motion_y,
+            margin=margin,
+            recovery_as_collision=recovery_as_collision,
+            exclude_entity_names=exclude_entity_names,
+            collision_mask=collision_mask,
+            collide_with_bodies=collide_with_bodies,
+            collide_with_areas=collide_with_areas,
         )
 
     def list_physics_backends(self) -> list[PhysicsBackendInfo]:

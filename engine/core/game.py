@@ -57,6 +57,7 @@ from engine.editor.terminal_panel import TerminalPanel
 from engine.editor.undo_redo import UndoRedoManager
 from engine.events.signals import SignalConnectionFlags
 from engine.physics.backend import (
+    MotionResult2D,
     PhysicsAABBHit,
     PhysicsBackendInfo,
     PhysicsBackendSelection,
@@ -986,6 +987,80 @@ class Game:
             max_distance,
             shape_params=shape_params,
         )
+
+    def query_physics_motion(
+        self,
+        entity_name: str,
+        motion_x: float,
+        motion_y: float,
+        margin: float = 0.08,
+        recovery_as_collision: bool = False,
+        exclude_entity_names: Optional[list[str]] = None,
+        collision_mask: int = 0xFFFFFFFF,
+        collide_with_bodies: bool = True,
+        collide_with_areas: bool = False,
+    ) -> dict[str, object]:
+        active_world = self.world
+        if active_world is None:
+            return {
+                "travel_x": motion_x,
+                "travel_y": motion_y,
+                "collision_safe_fraction": 1.0,
+            }
+        entity = active_world.get_entity_by_name(entity_name)
+        if entity is None:
+            return {
+                "travel_x": motion_x,
+                "travel_y": motion_y,
+                "collision_safe_fraction": 1.0,
+            }
+        resolved_backend = self._physics_backend_registry.resolve(
+            active_world,
+            default_backend_name=self._physics_backend_name,
+        )
+        if resolved_backend.backend is None:
+            return {
+                "travel_x": motion_x,
+                "travel_y": motion_y,
+                "collision_safe_fraction": 1.0,
+            }
+        exclude_ids: Optional[list[int]] = None
+        if exclude_entity_names:
+            exclude_ids = []
+            for name in exclude_entity_names:
+                excluded = active_world.get_entity_by_name(name)
+                if excluded is not None:
+                    exclude_ids.append(excluded.id)
+        result: MotionResult2D = resolved_backend.backend.body_test_motion(
+            active_world,
+            entity,
+            (motion_x, motion_y),
+            margin=margin,
+            recovery_as_collision=recovery_as_collision,
+            exclude_ids=exclude_ids,
+            collision_mask=collision_mask,
+            collide_with_bodies=collide_with_bodies,
+            collide_with_areas=collide_with_areas,
+        )
+        return {
+            "travel_x": result.travel_x,
+            "travel_y": result.travel_y,
+            "remainder_x": result.remainder_x,
+            "remainder_y": result.remainder_y,
+            "collision_point_x": result.collision_point_x,
+            "collision_point_y": result.collision_point_y,
+            "collision_normal_x": result.collision_normal_x,
+            "collision_normal_y": result.collision_normal_y,
+            "collider_velocity_x": result.collider_velocity_x,
+            "collider_velocity_y": result.collider_velocity_y,
+            "collision_depth": result.collision_depth,
+            "collision_safe_fraction": result.collision_safe_fraction,
+            "collision_unsafe_fraction": result.collision_unsafe_fraction,
+            "collision_local_shape": result.collision_local_shape,
+            "collider_id": result.collider_id,
+            "collider_entity_name": result.collider_entity_name,
+            "collider_shape": result.collider_shape,
+        }
 
     def refresh_ui_layout(self, viewport_size: Optional[tuple[float, float]] = None) -> bool:
         active_world = self.world

@@ -117,6 +117,7 @@ El core conserva un contrato comun de backends fisicos:
 - si `box2d` no puede activarse, el runtime cae a `legacy_aabb`
 - el backend solicitado en `feature_metadata.physics_2d.backend` no debe sobrescribirse por el fallback efectivo
 - `query_physics_ray` y `query_physics_aabb` mantienen su significado publico
+- `body_test_motion` añade un sweep-test no-mutante (barrido de colisión sin modificar el mundo), bloque fundamental del que depende `move_and_slide`
 
 ## Taxonomia arquitectonica
 

@@ -156,6 +156,20 @@ class EngineRuntimePort(Protocol):
     ) -> list[dict[str, Any]]:
         ...
 
+    def query_physics_motion(
+        self,
+        entity_name: str,
+        motion_x: float,
+        motion_y: float,
+        margin: float = ...,
+        recovery_as_collision: bool = ...,
+        exclude_entity_names: Optional[list[str]] = ...,
+        collision_mask: int = ...,
+        collide_with_bodies: bool = ...,
+        collide_with_areas: bool = ...,
+    ) -> dict[str, object]:
+        ...
+
     def list_physics_backends(self) -> list[PhysicsBackendInfo]:
         ...
 

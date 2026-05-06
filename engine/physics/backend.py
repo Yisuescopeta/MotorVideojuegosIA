@@ -75,6 +75,31 @@ class MoveResult2D:
     floor_angle: float = 0.0
 
 
+@dataclass
+class MotionResult2D:
+    """Resultado canónico de body_test_motion — no muta el mundo.
+
+    Equivalente a Godot PhysicsServer2D::MotionResult.
+    """
+    travel_x: float = 0.0
+    travel_y: float = 0.0
+    remainder_x: float = 0.0
+    remainder_y: float = 0.0
+    collision_point_x: float = 0.0
+    collision_point_y: float = 0.0
+    collision_normal_x: float = 0.0
+    collision_normal_y: float = 0.0
+    collider_velocity_x: float = 0.0
+    collider_velocity_y: float = 0.0
+    collision_depth: float = 0.0
+    collision_safe_fraction: float = 1.0
+    collision_unsafe_fraction: float = 0.0
+    collision_local_shape: int = -1
+    collider_id: int = 0
+    collider_entity_name: str = ""
+    collider_shape: int = -1
+
+
 class PhysicsBackend(ABC):
     """
     Contrato estable para backends de fisica 2D.
@@ -153,6 +178,30 @@ class PhysicsBackend(ABC):
 
     def get_step_metrics(self) -> dict[str, float]:
         return {}
+
+    def body_test_motion(
+        self,
+        world: Any,
+        entity: Any,
+        motion: tuple[float, float],
+        margin: float = 0.08,
+        recovery_as_collision: bool = False,
+        exclude_ids: Optional[list[int]] = None,
+        collision_mask: int = 0xFFFFFFFF,
+        collide_with_bodies: bool = True,
+        collide_with_areas: bool = False,
+    ) -> MotionResult2D:
+        """Prueba de movimiento no-mutante contra el mundo físico.
+
+        Barre la entidad a lo largo del vector motion y devuelve el
+        MotionResult2D con la fracción segura, el resto, punto de colisión,
+        normal, profundidad y velocidad del colisionador.
+
+        NO modifica el Transform de la entidad ni el estado del mundo.
+        """
+        raise NotImplementedError(
+            f"body_test_motion not implemented by {self.backend_name}"
+        )
 
     def move_and_slide(
         self,
