@@ -555,6 +555,87 @@ class PhysicsSystemTests(unittest.TestCase):
         msg = f"Area gravity override magnitude wrong: vy={rb.velocity_y}, expected ~ -100.0"
         self.assertAlmostEqual(rb.velocity_y, -100.0, delta=0.5, msg=msg)
 
+    def test_area_gravity_combine_adds_effects(self) -> None:
+        """Two areas with COMBINE mode stack their gravity effects."""
+        world = World()
+
+        area1 = world.create_entity("Zone1")
+        area1.add_component(Transform(x=100.0, y=100.0))
+        area1.add_component(Collider(width=100.0, height=100.0, is_trigger=True))
+        area1.add_component(Area2D(
+            gravity_space_override="combine",
+            gravity_override_y=-100.0,
+            priority=10,
+        ))
+
+        area2 = world.create_entity("Zone2")
+        area2.add_component(Transform(x=100.0, y=100.0))
+        area2.add_component(Collider(width=100.0, height=100.0, is_trigger=True))
+        area2.add_component(Area2D(
+            gravity_space_override="combine",
+            gravity_override_y=-50.0,
+            priority=20,
+        ))
+
+        body = world.create_entity("Body")
+        body.add_component(Transform(x=100.0, y=100.0))
+        body.add_component(Collider(width=10.0, height=10.0))
+        body.add_component(RigidBody(
+            body_type="dynamic",
+            gravity_scale=1.0,
+            is_grounded=False,
+            can_sleep=False,
+        ))
+
+        ps = PhysicsSystem(gravity=980.0)
+        ps.update(world, 0.5)
+
+        rb = body.get_component(RigidBody)
+        # World gravity 980 + zone1(-100) + zone2(-50) = 830. dt=0.5 → vy = 415
+        expected = 415.0
+        self.assertAlmostEqual(rb.velocity_y, expected, delta=1.0,
+                               msg=f"Combined gravity wrong: vy={rb.velocity_y}, expected ~{expected}")
+
+    def test_area_gravity_replace_stops_combine(self) -> None:
+        """REPLACE mode area overrides lower-priority COMBINE areas."""
+        world = World()
+
+        area1 = world.create_entity("Zone1")
+        area1.add_component(Transform(x=100.0, y=100.0))
+        area1.add_component(Collider(width=100.0, height=100.0, is_trigger=True))
+        area1.add_component(Area2D(
+            gravity_space_override="combine",
+            gravity_override_y=-100.0,
+            priority=10,
+        ))
+
+        area2 = world.create_entity("Zone2")
+        area2.add_component(Transform(x=100.0, y=100.0))
+        area2.add_component(Collider(width=100.0, height=100.0, is_trigger=True))
+        area2.add_component(Area2D(
+            gravity_space_override="replace",
+            gravity_override_y=-30.0,
+            priority=20,
+        ))
+
+        body = world.create_entity("Body")
+        body.add_component(Transform(x=100.0, y=100.0))
+        body.add_component(Collider(width=10.0, height=10.0))
+        body.add_component(RigidBody(
+            body_type="dynamic",
+            gravity_scale=1.0,
+            is_grounded=False,
+            can_sleep=False,
+        ))
+
+        ps = PhysicsSystem(gravity=980.0)
+        ps.update(world, 0.5)
+
+        rb = body.get_component(RigidBody)
+        # Only the replace area: -30. dt=0.5 → vy = -15
+        expected = -15.0
+        self.assertAlmostEqual(rb.velocity_y, expected, delta=1.0,
+                               msg=f"Replace should override combine. vy={rb.velocity_y}, expected ~{expected}")
 
     def test_distance_joint_pulls_bodies_to_rest_length(self) -> None:
         """Bodies too far apart get pulled to exact rest_length (100px)."""

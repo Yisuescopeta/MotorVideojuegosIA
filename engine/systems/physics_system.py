@@ -350,19 +350,16 @@ class PhysicsSystem:
     def _get_effective_gravity(
         self, world: World, entity: Entity, transform: Transform, rigidbody: RigidBody
     ) -> tuple[float, float]:
-        """Get gravity from area overrides or default global gravity."""
-        best_priority = -1
-        best_gx = 0.0
-        best_gy = self.gravity
-        best_is_point = False
-        best_unit_dist = 0.0
-        best_area_entity: Entity | None = None
-
+        """Get gravity from area overrides or default global gravity with mode support."""
+        overlapping: list[tuple[int, Area2D, Entity]] = []
         for area_entity in world.iter_entities():
             area = area_entity.get_component(Area2D)
             if area is None or not area.enabled:
                 continue
-            if area.space_override == "disabled":
+            mode = getattr(area, "gravity_space_override", area.space_override)
+            if mode == "disabled":
+                continue
+            if area.gravity_override_x == 0.0 and area.gravity_override_y == 0.0:
                 continue
             area_collider = area_entity.get_component(Collider)
             if area_collider is None:
@@ -370,7 +367,6 @@ class PhysicsSystem:
             area_transform = area_entity.get_component(Transform)
             if area_transform is None:
                 continue
-
             body_left, body_top, body_right, body_bottom = self._get_body_bounds(entity, transform)
             a_left, a_top, a_right, a_bottom = area_collider.get_bounds(
                 area_transform.x, area_transform.y
@@ -378,34 +374,57 @@ class PhysicsSystem:
             if not (body_left < a_right and body_right > a_left and
                     body_top < a_bottom and body_bottom > a_top):
                 continue
+            overlapping.append((area.priority, area, area_entity))
 
-            if area.priority > best_priority:
-                best_priority = area.priority
-                best_gx = area.gravity_override_x
-                best_gy = area.gravity_override_y
-                best_is_point = area.gravity_point
-                best_unit_dist = area.gravity_distance_scale
-                best_area_entity = area_entity
-
-        if best_priority < 0:
+        if not overlapping:
             return (0.0, self.gravity)
 
-        if best_priority >= 0 and best_is_point and best_unit_dist > 0.0 and best_area_entity is not None:
-            area_transform = best_area_entity.get_component(Transform)
-            if area_transform is not None:
-                dx = area_transform.x - transform.x
-                dy = area_transform.y - transform.y
-                dist = math.hypot(dx, dy)
-                if dist >= 1e-6:
-                    strength = max(0.0, 1.0 - dist / best_unit_dist)
-                    mag = math.hypot(best_gx, best_gy)
-                    if mag < 1e-6:
-                        mag = self.gravity
-                    return (dx / dist * mag * strength, dy / dist * mag * strength)
-        if best_priority >= 0:
-            return (best_gx, best_gy)
+        overlapping.sort(key=lambda x: x[0])
 
-        return (best_gx, best_gy)
+        final_gx = 0.0
+        final_gy = self.gravity
+        combining = True
+
+        for _priority, area, _area_entity in overlapping:
+            mode = getattr(area, "gravity_space_override", area.space_override)
+            if mode == "disabled":
+                continue
+            elif mode == "replace":
+                final_gx = area.gravity_override_x
+                final_gy = area.gravity_override_y
+                combining = False
+            elif mode == "replace_combine":
+                final_gx = area.gravity_override_x
+                final_gy = area.gravity_override_y
+                combining = True
+            elif mode == "combine_replace":
+                if combining:
+                    final_gx += area.gravity_override_x
+                    final_gy += area.gravity_override_y
+                combining = False
+            elif mode == "combine":
+                if combining:
+                    final_gx += area.gravity_override_x
+                    final_gy += area.gravity_override_y
+
+        # Point gravity: use the highest-priority REPLACE or REPLACE_COMBINE area
+        for _priority, area, area_entity in overlapping:
+            mode = getattr(area, "gravity_space_override", area.space_override)
+            if mode in ("replace", "replace_combine") and area.gravity_point:
+                area_transform = area_entity.get_component(Transform)
+                if area_transform is not None and area.gravity_distance_scale > 0.0:
+                    dx = area_transform.x - transform.x
+                    dy = area_transform.y - transform.y
+                    dist = math.hypot(dx, dy)
+                    if dist >= 1e-6:
+                        strength = max(0.0, 1.0 - dist / area.gravity_distance_scale)
+                        mag = math.hypot(area.gravity_override_x, area.gravity_override_y)
+                        if mag < 1e-6:
+                            mag = self.gravity
+                        return (dx / dist * mag * strength, dy / dist * mag * strength)
+            break
+
+        return (final_gx, final_gy)
 
     def _get_body_bounds(self, entity: Entity, transform: Transform) -> tuple[float, float, float, float]:
         """Get AABB for any entity that might fall into an area."""
@@ -417,15 +436,14 @@ class PhysicsSystem:
     def _get_effective_linear_damp(
         self, world: World, entity: Entity, transform: Transform, rigidbody: RigidBody
     ) -> float:
-        """Get linear damping from area overrides or use body's own damping."""
-        best_priority = -1
-        best_damp = rigidbody.linear_damping
-
+        """Get linear damping from area overrides or use body's own damping with mode support."""
+        overlapping: list[tuple[int, Area2D, Entity]] = []
         for area_entity in world.iter_entities():
             area = area_entity.get_component(Area2D)
             if area is None or not area.enabled:
                 continue
-            if area.space_override == "disabled":
+            mode = getattr(area, "linear_damp_space_override", area.space_override)
+            if mode == "disabled":
                 continue
             if area.linear_damp_override == 0.0:
                 continue
@@ -435,7 +453,6 @@ class PhysicsSystem:
             area_transform = area_entity.get_component(Transform)
             if area_transform is None:
                 continue
-
             body_left, body_top, body_right, body_bottom = self._get_body_bounds(entity, transform)
             a_left, a_top, a_right, a_bottom = area_collider.get_bounds(
                 area_transform.x, area_transform.y
@@ -443,25 +460,45 @@ class PhysicsSystem:
             if not (body_left < a_right and body_right > a_left and
                     body_top < a_bottom and body_bottom > a_top):
                 continue
+            overlapping.append((area.priority, area, area_entity))
 
-            if area.priority > best_priority:
-                best_priority = area.priority
-                best_damp = area.linear_damp_override
+        if not overlapping:
+            return rigidbody.linear_damping
 
-        return best_damp
+        overlapping.sort(key=lambda x: x[0])
+
+        final_damp = rigidbody.linear_damping
+        combining = True
+
+        for _priority, area, _area_entity in overlapping:
+            mode = getattr(area, "linear_damp_space_override", area.space_override)
+            if mode == "replace":
+                final_damp = area.linear_damp_override
+                combining = False
+            elif mode == "replace_combine":
+                final_damp = area.linear_damp_override
+                combining = True
+            elif mode == "combine_replace":
+                if combining:
+                    final_damp += area.linear_damp_override
+                combining = False
+            elif mode == "combine":
+                if combining:
+                    final_damp += area.linear_damp_override
+
+        return final_damp
 
     def _get_effective_angular_damp(
         self, world: World, entity: Entity, transform: Transform, rigidbody: RigidBody
     ) -> float:
-        """Get angular damping from area overrides or use body's own damping."""
-        best_priority = -1
-        best_damp = rigidbody.angular_damping
-
+        """Get angular damping from area overrides or use body's own damping with mode support."""
+        overlapping: list[tuple[int, Area2D, Entity]] = []
         for area_entity in world.iter_entities():
             area = area_entity.get_component(Area2D)
             if area is None or not area.enabled:
                 continue
-            if area.space_override == "disabled":
+            mode = getattr(area, "angular_damp_space_override", area.space_override)
+            if mode == "disabled":
                 continue
             if area.angular_damp_override == 0.0:
                 continue
@@ -471,7 +508,6 @@ class PhysicsSystem:
             area_transform = area_entity.get_component(Transform)
             if area_transform is None:
                 continue
-
             body_left, body_top, body_right, body_bottom = self._get_body_bounds(entity, transform)
             a_left, a_top, a_right, a_bottom = area_collider.get_bounds(
                 area_transform.x, area_transform.y
@@ -479,12 +515,33 @@ class PhysicsSystem:
             if not (body_left < a_right and body_right > a_left and
                     body_top < a_bottom and body_bottom > a_top):
                 continue
+            overlapping.append((area.priority, area, area_entity))
 
-            if area.priority > best_priority:
-                best_priority = area.priority
-                best_damp = area.angular_damp_override
+        if not overlapping:
+            return rigidbody.angular_damping
 
-        return best_damp
+        overlapping.sort(key=lambda x: x[0])
+
+        final_damp = rigidbody.angular_damping
+        combining = True
+
+        for _priority, area, _area_entity in overlapping:
+            mode = getattr(area, "angular_damp_space_override", area.space_override)
+            if mode == "replace":
+                final_damp = area.angular_damp_override
+                combining = False
+            elif mode == "replace_combine":
+                final_damp = area.angular_damp_override
+                combining = True
+            elif mode == "combine_replace":
+                if combining:
+                    final_damp += area.angular_damp_override
+                combining = False
+            elif mode == "combine":
+                if combining:
+                    final_damp += area.angular_damp_override
+
+        return final_damp
 
     def _is_solid_body(self, entity: Entity) -> bool:
         rigidbody = entity.get_component(RigidBody)
