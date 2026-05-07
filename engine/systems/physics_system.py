@@ -1027,7 +1027,11 @@ class PhysicsSystem:
                     transform.y -= correction * my_ratio
                     if other_ratio > 0.0:
                         other_transform.y += correction * other_ratio
-                    rigidbody.is_grounded = True
+                    rigidbody.is_grounded = (other_ratio == 0.0)
+                    if not rigidbody.is_grounded:
+                        other_rb = other.entity.get_component(RigidBody)
+                        if other_rb is not None and other_rb.velocity_y <= 1.0:
+                            rigidbody.is_grounded = True
                 elif rigidbody.velocity_y < 0:
                     correction = (o_bottom - top) * self._position_correction_ratio
                     transform.y += correction * my_ratio
@@ -1213,6 +1217,9 @@ class PhysicsSystem:
         probe_bottom = bottom + 1.0
         for other in solids:
             if other.entity.id == entity.id:
+                continue
+            other_rb = other.entity.get_component(RigidBody)
+            if other_rb is not None and other_rb.body_type == "dynamic" and other_rb.velocity_y > 1.0:
                 continue
             other_transform = other.entity.get_component(Transform)
             if other_transform is None or not other.collider.enabled:

@@ -749,5 +749,89 @@ class TestJointConstraints(unittest.TestCase):
         self.assertLess(t_a.x, 0.0, "A should move left when too close")
 
 
+class TestGroundedFlag(unittest.TestCase):
+    """is_grounded solo debe activarse contra estáticos/kinemáticos, no contra dynamics."""
+
+    def test_grounded_flag_on_static_floor(self):
+        """Caja sobre suelo estático debe tener is_grounded=True."""
+        world = World()
+        physics = PhysicsSystem(gravity=980.0)
+
+        ground = world.create_entity("Ground")
+        ground.add_component(Transform(x=100.0, y=108.0))
+        ground.add_component(Collider(width=200.0, height=16.0))
+        # Static: sin RigidBody
+
+        box = world.create_entity("Box")
+        box.add_component(Transform(x=100.0, y=84.0))
+        box.add_component(Collider(width=32.0, height=32.0))
+        box.add_component(RigidBody(
+            body_type="dynamic", mass=1.0, gravity_scale=1.0,
+            velocity_x=0.0, velocity_y=0.0,
+        ))
+
+        dt = 1.0 / 60.0
+        for _ in range(120):
+            physics.update(world, dt)
+
+        rb = box.get_component(RigidBody)
+        self.assertTrue(rb.is_grounded, "Box should be grounded on static floor")
+
+    def test_grounded_flag_false_on_dynamic_platform(self):
+        """is_grounded=False cuando solo está apoyado sobre cuerpo dynamic."""
+        world = World()
+        physics = PhysicsSystem(gravity=980.0)
+
+        # Dynamic platform (floating, no ground)
+        platform = world.create_entity("Platform")
+        platform.add_component(Transform(x=100.0, y=100.0))
+        platform.add_component(Collider(width=64.0, height=16.0))
+        platform.add_component(RigidBody(
+            body_type="dynamic", mass=10.0, gravity_scale=1.0,
+            velocity_x=0.0, velocity_y=0.0,
+        ))
+
+        # Box starting above platform: bottom at 76+16=92, platform top at 100-8=92
+        box = world.create_entity("Box")
+        box.add_component(Transform(x=100.0, y=76.0))
+        box.add_component(Collider(width=32.0, height=32.0))
+        box.add_component(RigidBody(
+            body_type="dynamic", mass=1.0, gravity_scale=1.0,
+            velocity_x=0.0, velocity_y=0.0,
+        ))
+
+        dt = 1.0 / 60.0
+        for frame in range(1, 61):
+            physics.update(world, dt)
+            rb = box.get_component(RigidBody)
+            self.assertFalse(rb.is_grounded,
+                f"Frame {frame}: Box should NOT be grounded on dynamic platform")
+
+    def test_grounded_flag_on_kinematic_body(self):
+        """Caja sobre plataforma kinemática debe tener is_grounded=True."""
+        world = World()
+        physics = PhysicsSystem(gravity=980.0)
+
+        platform = world.create_entity("KinePlatform")
+        platform.add_component(Transform(x=100.0, y=108.0))
+        platform.add_component(Collider(width=200.0, height=16.0))
+
+        box = world.create_entity("Box")
+        box.add_component(Transform(x=100.0, y=84.0))
+        box.add_component(Collider(width=32.0, height=32.0))
+        box.add_component(RigidBody(
+            body_type="dynamic", mass=1.0, gravity_scale=1.0,
+            velocity_x=0.0, velocity_y=0.0,
+        ))
+
+        dt = 1.0 / 60.0
+        for _ in range(120):
+            physics.update(world, dt)
+
+        rb = box.get_component(RigidBody)
+        self.assertTrue(rb.is_grounded,
+            "Box should be grounded on kinematic platform")
+
+
 if __name__ == "__main__":
     unittest.main()
