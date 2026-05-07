@@ -1019,6 +1019,54 @@ class TestRotationalInertia(unittest.TestCase):
         self.assertAlmostEqual(rb.angular_velocity, 0.0, delta=0.1,
             msg=f"Centered collision should produce negligible rotation, got {rb.angular_velocity}")
     
+    def test_warm_start_persists_angular_velocity(self):
+        """Velocidad angular acumulada por warm-start debe persistir entre frames."""
+        world = World()
+        physics = PhysicsSystem(gravity=0.0)
+        
+        target = world.create_entity("Target")
+        target.add_component(Transform(x=100.0, y=100.0))
+        target.add_component(Collider(width=32.0, height=64.0))
+        target.add_component(RigidBody(
+            body_type="dynamic", mass=1.0, inertia=500.0,
+            gravity_scale=0.0, velocity_x=0.0, velocity_y=0.0,
+        ))
+        
+        bullet = world.create_entity("Bullet")
+        # Start close to target so contact occurs in first frame
+        # Target left edge ~84, bullet right edge needs to reach it
+        bullet.add_component(Transform(x=78.0, y=80.0))
+        bullet.add_component(Collider(width=8.0, height=8.0))
+        bullet.add_component(RigidBody(
+            body_type="dynamic", mass=0.1, inertia=1.0,
+            gravity_scale=0.0, velocity_x=400.0, velocity_y=0.0,
+        ))
+        
+        dt = 1.0 / 60.0
+        # Frame 1: bullet hits target off-center → angular velocity
+        physics.update(world, dt)
+        rb = target.get_component(RigidBody)
+        self.assertNotEqual(rb.angular_velocity, 0.0,
+            "Off-center hit should produce angular velocity in first frame")
+        
+        # Reset bullet for re-hit at same position
+        t_bullet = bullet.get_component(Transform)
+        t_bullet.x = 78.0
+        rb_bullet = bullet.get_component(RigidBody)
+        rb_bullet.velocity_x = 400.0
+        rb_bullet.velocity_y = 0.0
+        
+        # Reset target to original position
+        t_target = target.get_component(Transform)
+        t_target.x = 100.0
+        t_target.y = 100.0
+        
+        # Frame 2: same hit again — warm-start should use previous angular impulse
+        physics.update(world, dt)
+        rb2 = target.get_component(RigidBody)
+        self.assertNotEqual(rb2.angular_velocity, 0.0,
+            "Warm-start should preserve angular impulse in second frame")
+
     def test_lock_rotation_prevents_angular_velocity(self):
         """lock_rotation=True debe impedir velocidad angular incluso en golpe descentrado."""
         world = World()

@@ -33,12 +33,12 @@ class ContactConstraint2D:
 
     depth: float  # positive penetration depth
 
-    mass_normal: float  # effective mass along normal
-    mass_tangent: float  # effective mass along tangent
+    mass_normal: float = 0.0  # effective mass along normal (DEPRECATED: solver computes dynamically)
+    mass_tangent: float = 0.0  # effective mass along tangent (DEPRECATED: solver computes dynamically)
 
-    restitution: float  # 0..1
-    friction: float  # >= 0
-    bias: float  # Baumgarte bias term
+    restitution: float = 0.0  # 0..1
+    friction: float = 0.5  # >= 0
+    bias: float = 0.0  # Baumgarte bias term
 
     accumulated_normal_impulse: float = 0.0
     accumulated_tangent_impulse: float = 0.0
