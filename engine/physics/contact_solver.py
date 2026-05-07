@@ -163,7 +163,10 @@ class ImpulseSolver2D:
                 vt = rel_vx * c.tangent_x + rel_vy * c.tangent_y
 
                 # --- normal impulse ---------------------------------------
-                jn = (-(c.bounce_velocity + vn + c.bias)) * eff_mass_normal
+                if c.is_bilateral:
+                    jn = (-(c.bounce_velocity + vn + c.bias)) * eff_mass_normal
+                else:
+                    jn = (c.bias - c.bounce_velocity - vn) * eff_mass_normal
                 old_normal = c.accumulated_normal_impulse
                 if c.is_bilateral:
                     c.accumulated_normal_impulse = old_normal + jn  # sin clamp
@@ -296,6 +299,24 @@ class ImpulseSolver2D:
                     transform_a.y -= correction * c.normal_y * ratio_a
                     transform_b.x += correction * c.normal_x * ratio_b
                     transform_b.y += correction * c.normal_y * ratio_b
+
+                # --- apply rotational position correction ---
+                inv_inertia_a = self._effective_inv_inertia(body_a) if body_a is not None else 0.0
+                inv_inertia_b = self._effective_inv_inertia(body_b) if body_b is not None else 0.0
+
+                if inv_inertia_a > 0.0 or inv_inertia_b > 0.0:
+                    # Effective mass with rotation for position correction
+                    rnA = c.rA_x * c.normal_y - c.rA_y * c.normal_x
+                    rnB = c.rB_x * c.normal_y - c.rB_y * c.normal_x
+                    rot_inv = total_inv + rnA * rnA * inv_inertia_a + rnB * rnB * inv_inertia_b
+                    if rot_inv > 1e-10:
+                        rot_mass = 1.0 / rot_inv
+                        if inv_inertia_a > 0.0:
+                            delta_angle_a = -rnA * correction * rot_mass * inv_inertia_a
+                            transform_a.rotation += delta_angle_a
+                        if inv_inertia_b > 0.0:
+                            delta_angle_b = rnB * correction * rot_mass * inv_inertia_b
+                            transform_b.rotation += delta_angle_b
 
     # ------------------------------------------------------------------
     # Public properties

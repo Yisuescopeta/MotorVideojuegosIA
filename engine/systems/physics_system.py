@@ -298,15 +298,26 @@ class PhysicsSystem:
 
                     mass_normal = 1.0 / total_inv
                     mass_tangent = mass_normal
-                    effective_depth = max(0.0, depth)
+                    # Compute bias from current-depth (not tentative) to avoid
+                    # over-correcting collisions that only overlap in speculative positions.
+                    current_bounds = collider.get_bounds(transform.x, transform.y)
+                    c_left_a, c_top_a, c_right_a, c_bottom_a = current_bounds
+                    c_overlap_left = c_right_a - left_b
+                    c_overlap_right = right_b - c_left_a
+                    c_overlap_top = c_bottom_a - top_b
+                    c_overlap_bottom = bottom_b - c_top_a
+                    c_overlap_x = min(c_overlap_left, c_overlap_right)
+                    c_overlap_y = min(c_overlap_top, c_overlap_bottom)
+                    c_current_depth = c_overlap_x if c_overlap_x < c_overlap_y else c_overlap_y
+                    c_effective_current = max(0.0, c_current_depth)
                     bias = min(ImpulseSolver2D.MAX_BIAS,
-                               ImpulseSolver2D.BAUMGARTE_FACTOR * max(0.0, effective_depth - ImpulseSolver2D.SLOP) / max(delta_time, 1e-6))
+                               ImpulseSolver2D.BAUMGARTE_FACTOR * max(0.0, c_effective_current - ImpulseSolver2D.SLOP) / max(delta_time, 1e-6))
                     contact_x = (max(left_a, left_b) + min(right_a, right_b)) / 2.0
                     contact_y = (max(top_a, top_b) + min(bottom_a, bottom_b)) / 2.0
 
                     # Compute lever arms for rotational inertia
-                    rA_x = contact_x - tentative_x
-                    rA_y = contact_y - tentative_y
+                    rA_x = contact_x - transform.x
+                    rA_y = contact_y - transform.y
                     rB_x = contact_x - other_transform.x
                     rB_y = contact_y - other_transform.y
 
@@ -378,7 +389,7 @@ class PhysicsSystem:
                 if transforms_for_island:
                     self._impulse_solver.solve_positions(
                         island_constraints, transforms_for_island, all_bodies,
-                        delta_time=delta_time, iterations=3,
+                        delta_time=delta_time, iterations=5,
                     )
 
             self._check_island_sleeping(island, all_bodies, delta_time)
