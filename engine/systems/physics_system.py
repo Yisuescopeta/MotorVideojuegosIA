@@ -1252,7 +1252,7 @@ class PhysicsSystem:
 
     def _resolve_joints(self, world: World, dt: float) -> None:
         """Resolve joint constraints between entities."""
-        for entity in world.iter_entities():
+        for entity in world.get_entities_with(Joint2D):
             joint = entity.get_component(Joint2D)
             if not joint or not joint.connected_entity:
                 continue
@@ -1306,7 +1306,7 @@ class PhysicsSystem:
         Used by IslandBuilder2D to add joint edges to the connectivity graph.
         """
         pairs: list[tuple[int, int]] = []
-        for entity in world.iter_entities():
+        for entity in world.get_entities_with(Joint2D):
             joint = entity.get_component(Joint2D)
             if not joint or not joint.enabled or not joint.connected_entity:
                 continue
@@ -1321,9 +1321,9 @@ class PhysicsSystem:
     ) -> list[ContactConstraint2D]:
         """Build PGS-compatible bilateral constraints for fixed, distance, and pin joints."""
         constraints: list[ContactConstraint2D] = []
-        for entity in world.iter_entities():
+        for entity in world.get_entities_with(Joint2D):
             joint = entity.get_component(Joint2D)
-            if not joint or not joint.enabled or not joint.connected_entity:
+            if not joint or not joint.connected_entity:
                 continue
             other = world.get_entity_by_name(joint.connected_entity)
             if not other:
