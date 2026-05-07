@@ -5,6 +5,7 @@ import unittest
 
 from engine.components.collider import Collider
 from engine.components.collision_filter_2d import CollisionFilter2D
+from engine.components.static_body_2d import StaticBody2D
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
@@ -205,3 +206,17 @@ class TestCrossBackendContract(unittest.TestCase):
                 "Box2D: fixture categoryBits should match CollisionFilter2D.layer")
             self.assertEqual(int(fixture.filterData.maskBits), 4,
                 "Box2D: fixture maskBits should match CollisionFilter2D.mask")
+
+    def test_box2d_handles_static_body_without_warning(self):
+        """Box2D backend should handle StaticBody2D component without warning."""
+        import warnings
+        w, player, ground = _make_world_with_floor()
+        player.add_component(StaticBody2D())
+        box2d = Box2DPhysicsBackend(gravity=600)
+        with warnings.catch_warnings(record=True) as w_list:
+            warnings.simplefilter("always")
+            box2d.sync_world(w)
+        # No warning about StaticBody2D should be emitted
+        static_warnings = [x for x in w_list if "StaticBody2D" in str(x.message)]
+        self.assertEqual(len(static_warnings), 0,
+            "Box2D should not warn about StaticBody2D")

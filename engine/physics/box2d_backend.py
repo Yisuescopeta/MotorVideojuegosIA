@@ -9,7 +9,6 @@ from engine.components.collision_filter_2d import CollisionFilter2D
 from engine.components.collision_shape_set_2d import CollisionShapeSet2D
 from engine.components.joint2d import Joint2D
 from engine.components.rigidbody import RigidBody
-from engine.components.static_body_2d import StaticBody2D
 from engine.components.transform import Transform
 from engine.physics.backend import PhysicsAABBHit, PhysicsBackend, PhysicsContact, PhysicsRayHit
 
@@ -121,10 +120,6 @@ class Box2DPhysicsBackend(PhysicsBackend):
 
         # Warn about unsupported features
         unsupported = []
-        if entity.get_component(CollisionShapeSet2D) if hasattr(entity, "get_component") else None:
-            unsupported.append("CollisionShapeSet2D")
-        if entity.get_component(StaticBody2D) if hasattr(entity, "get_component") else None:
-            unsupported.append("StaticBody2D")
         if entity.get_component(AnimatableBody2D) if hasattr(entity, "get_component") else None:
             unsupported.append("AnimatableBody2D")
         if unsupported:
@@ -243,6 +238,45 @@ class Box2DPhysicsBackend(PhysicsBackend):
             body.CreatePolygonFixture(vertices=[(float(point[0]), float(point[1])) for point in collider.points], **fixture_kwargs)
         else:
             body.CreatePolygonFixture(box=(float(collider.width) / 2.0, float(collider.height) / 2.0, (float(collider.offset_x), float(collider.offset_y)), 0.0), **fixture_kwargs)
+        # Support CollisionShapeSet2D: create additional fixtures
+        if hasattr(entity, 'get_component'):
+            shape_set = entity.get_component(CollisionShapeSet2D)
+            if shape_set is not None:
+                from engine.physics.shapes import ShapeFactory
+                for shape_def in shape_set.shapes:
+                    shape = ShapeFactory.build_from_def(shape_def, transform.x, transform.y)
+                    if hasattr(shape, 'radius'):
+                        # Circle or capsule
+                        if hasattr(shape, 'height'):
+                            # Capsule: create as box for now (Box2D capsule not directly supported)
+                            body.CreatePolygonFixture(
+                                box=(float(shape.radius), float(shape.height) / 2.0 + float(shape.radius),
+                                     (float(shape_def.offset_x), float(shape_def.offset_y)), 0.0),
+                                density=float(collider.density),
+                                friction=float(collider.friction),
+                                restitution=float(collider.restitution),
+                                isSensor=bool(collider.is_trigger),
+                            )
+                        else:
+                            # Circle
+                            body.CreateCircleFixture(
+                                radius=float(shape.radius),
+                                pos=(float(shape_def.offset_x), float(shape_def.offset_y)),
+                                density=float(collider.density),
+                                friction=float(collider.friction),
+                                restitution=float(collider.restitution),
+                                isSensor=bool(collider.is_trigger),
+                            )
+                    elif hasattr(shape, 'half_w'):
+                        # AABB
+                        body.CreatePolygonFixture(
+                            box=(float(shape.half_w), float(shape.half_h),
+                                 (float(shape_def.offset_x), float(shape_def.offset_y)), 0.0),
+                            density=float(collider.density),
+                            friction=float(collider.friction),
+                            restitution=float(collider.restitution),
+                            isSensor=bool(collider.is_trigger),
+                        )
         # Apply collision filter if present
         if hasattr(entity, 'get_component'):
             filter_comp = entity.get_component(CollisionFilter2D)
