@@ -22,6 +22,7 @@ try:
     from Box2D import (
         b2AABB,
         b2ContactListener,
+        b2Filter,
         b2PolygonShape,
         b2QueryCallback,
         b2RayCastCallback,
@@ -31,6 +32,7 @@ try:
 except Exception:  # pragma: no cover - optional dependency path
     b2AABB = None
     b2ContactListener = object
+    b2Filter = None
     b2PolygonShape = None
     b2QueryCallback = object
     b2RayCastCallback = object
@@ -121,8 +123,6 @@ class Box2DPhysicsBackend(PhysicsBackend):
         unsupported = []
         if entity.get_component(CollisionShapeSet2D) if hasattr(entity, "get_component") else None:
             unsupported.append("CollisionShapeSet2D")
-        if entity.get_component(CollisionFilter2D) if hasattr(entity, "get_component") else None:
-            unsupported.append("CollisionFilter2D")
         if entity.get_component(StaticBody2D) if hasattr(entity, "get_component") else None:
             unsupported.append("StaticBody2D")
         if entity.get_component(AnimatableBody2D) if hasattr(entity, "get_component") else None:
@@ -243,6 +243,18 @@ class Box2DPhysicsBackend(PhysicsBackend):
             body.CreatePolygonFixture(vertices=[(float(point[0]), float(point[1])) for point in collider.points], **fixture_kwargs)
         else:
             body.CreatePolygonFixture(box=(float(collider.width) / 2.0, float(collider.height) / 2.0, (float(collider.offset_x), float(collider.offset_y)), 0.0), **fixture_kwargs)
+        # Apply collision filter if present
+        if hasattr(entity, 'get_component'):
+            filter_comp = entity.get_component(CollisionFilter2D)
+            if filter_comp is not None:
+                layer = int(getattr(filter_comp, 'layer', 0))
+                mask = int(getattr(filter_comp, 'mask', 0xFFFF))
+                for fixture in body.fixtures:
+                    fixture.filterData = b2Filter(
+                        categoryBits=layer,
+                        maskBits=mask,
+                        groupIndex=0,
+                    )
         return body
 
     def _sync_body_runtime_state(self, body: Any, transform: Transform, rigidbody: Optional[RigidBody]) -> None:
