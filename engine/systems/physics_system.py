@@ -82,6 +82,7 @@ class PhysicsSystem:
         self._impulse_solver = ImpulseSolver2D()
         self._solver_iterations: int = 8
         self._body_id_to_island: dict[int, Island2D] = {}
+        self._position_correction_ratio: float = 0.3  # Baumgarte-style: only correct 30% of penetration per frame
 
     def set_event_bus(self, event_bus: Optional[Any]) -> None:  # type: ignore[no-any-explicit]  # EventBus: tipo externo determinado en runtime
         self._event_bus = event_bus
@@ -911,6 +912,27 @@ class PhysicsSystem:
         left_b, top_b, right_b, bottom_b = aabb_b
         return left_a < right_b and right_a > left_b and top_a < bottom_b and bottom_a > top_b
 
+    @staticmethod
+    def _compute_push_out_ratio(
+        my_rigidbody: RigidBody,
+        other_entity: Entity,
+    ) -> tuple[float, float]:
+        """Compute (my_ratio, other_ratio) for mass-weighted positional correction.
+
+        Dynamic bodies share the push-out based on inverse mass ratio.
+        Static/kinematic bodies don't move (other_ratio = 0).
+        """
+        other_rb = other_entity.get_component(RigidBody)
+        if other_rb is None or other_rb.body_type != "dynamic":
+            return (1.0, 0.0)
+        my_mass = max(my_rigidbody.mass, 0.001)
+        other_mass = max(other_rb.mass, 0.001)
+        total = my_mass + other_mass
+        # Inverse mass: lighter body moves more
+        my_ratio = other_mass / total
+        other_ratio = my_mass / total
+        return (my_ratio, other_ratio)
+
     def _resolve_horizontal(
         self,
         transform: Transform,
@@ -929,10 +951,30 @@ class PhysicsSystem:
                 overlap_x = left < o_right and right > o_left
                 if not overlap_x or not overlap_y:
                     continue
+                # Mass-weighted bilateral push-out
+                my_ratio, other_ratio = self._compute_push_out_ratio(rigidbody, other.entity)
                 if rigidbody.velocity_x > 0:
-                    transform.x -= right - o_left
+                    correction = (right - o_left) * self._position_correction_ratio
+                    transform.x -= correction * my_ratio
+                    if other_ratio > 0.0:
+                        other_transform.x += correction * other_ratio
                 elif rigidbody.velocity_x < 0:
-                    transform.x += o_right - left
+                    correction = (o_right - left) * self._position_correction_ratio
+                    transform.x += correction * my_ratio
+                    if other_ratio > 0.0:
+                        other_transform.x -= correction * other_ratio
+                elif other_ratio > 0.0:
+                    # At rest but overlapping another dynamic body — push out based on penetration
+                    overlap_right = right - o_left
+                    overlap_left = o_right - left
+                    if overlap_right > 0 and overlap_right >= overlap_left:
+                        correction = overlap_right * self._position_correction_ratio
+                        transform.x -= correction * my_ratio
+                        other_transform.x += correction * other_ratio
+                    elif overlap_left > 0:
+                        correction = overlap_left * self._position_correction_ratio
+                        transform.x += correction * my_ratio
+                        other_transform.x -= correction * other_ratio
                 left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
 
     def _resolve_vertical(
@@ -953,11 +995,31 @@ class PhysicsSystem:
                 overlap_x = left < o_right and right > o_left
                 if not overlap_x or not overlap_y:
                     continue
+                # Mass-weighted bilateral push-out
+                my_ratio, other_ratio = self._compute_push_out_ratio(rigidbody, other.entity)
                 if rigidbody.velocity_y > 0:
-                    transform.y -= bottom - o_top
+                    correction = (bottom - o_top) * self._position_correction_ratio
+                    transform.y -= correction * my_ratio
+                    if other_ratio > 0.0:
+                        other_transform.y += correction * other_ratio
                     rigidbody.is_grounded = True
                 elif rigidbody.velocity_y < 0:
-                    transform.y += o_bottom - top
+                    correction = (o_bottom - top) * self._position_correction_ratio
+                    transform.y += correction * my_ratio
+                    if other_ratio > 0.0:
+                        other_transform.y -= correction * other_ratio
+                elif other_ratio > 0.0:
+                    # At rest but overlapping another dynamic body — push out based on penetration
+                    overlap_bottom = bottom - o_top
+                    overlap_top = o_bottom - top
+                    if overlap_bottom > 0 and overlap_bottom >= overlap_top:
+                        correction = overlap_bottom * self._position_correction_ratio
+                        transform.y -= correction * my_ratio
+                        other_transform.y += correction * other_ratio
+                    elif overlap_top > 0:
+                        correction = overlap_top * self._position_correction_ratio
+                        transform.y += correction * my_ratio
+                        other_transform.y -= correction * other_ratio
                 left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
 
     def _sweep_horizontal(

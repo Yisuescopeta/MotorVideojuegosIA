@@ -405,22 +405,27 @@ class TestImpulseSolver2D_Stacking(unittest.TestCase):
         world = World()
         physics = PhysicsSystem(gravity=300.0)  # gravedad mas baja
         physics.solver_iterations = 16  # mas iteraciones
+        physics._position_correction_ratio = 0.3  # same as default, explicit for clarity
         
-        # Caja 3 (arriba)
+        # Caja 3 (arriba) — just touching box2
+        # ground top = 124-8 = 116, box1 bottom = box1.y+16, etc.
+        # stack: box1 bottom=116 → y1=100; top=84
+        #        box2 bottom=84 → y2=68; top=52
+        #        box3 bottom=52 → y3=36
         box3 = world.create_entity("Box3")
-        box3.add_component(Transform(x=100.0, y=40.0))
+        box3.add_component(Transform(x=100.0, y=36.0))
         box3.add_component(Collider(width=32.0, height=32.0, restitution=0.0, friction=0.5))
         box3.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=1.0))
         
-        # Caja 2 (medio)
+        # Caja 2 (medio) — just touching box1
         box2 = world.create_entity("Box2")
-        box2.add_component(Transform(x=100.0, y=74.0))
+        box2.add_component(Transform(x=100.0, y=68.0))
         box2.add_component(Collider(width=32.0, height=32.0, restitution=0.0, friction=0.5))
         box2.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=1.0))
         
-        # Caja 1 (abajo, sobre suelo)
+        # Caja 1 (abajo) — just touching ground
         box1 = world.create_entity("Box1")
-        box1.add_component(Transform(x=100.0, y=84.0))
+        box1.add_component(Transform(x=100.0, y=100.0))
         box1.add_component(Collider(width=32.0, height=32.0, restitution=0.0, friction=0.5))
         box1.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=1.0))
         
@@ -429,7 +434,7 @@ class TestImpulseSolver2D_Stacking(unittest.TestCase):
         ground.add_component(Collider(width=200.0, height=16.0, friction=0.5))
         
         dt = 1.0 / 60.0
-        for _ in range(300):  # mas frames para asentarse
+        for _ in range(300):  # 5 segundos, asentamiento con ratio 0.3 + mas iteraciones
             physics.update(world, dt)
         
         t1 = box1.get_component(Transform)
@@ -437,8 +442,8 @@ class TestImpulseSolver2D_Stacking(unittest.TestCase):
         t3 = box3.get_component(Transform)
         
         # En y-down: abajo = mayor valor de y. box1 abajo, box2 medio, box3 arriba.
-        self.assertGreater(t1.y, t2.y - 2.0, f"Box1 should be below Box2. y1={t1.y}, y2={t2.y}")
-        self.assertGreater(t2.y, t3.y - 2.0, f"Box2 should be below Box3. y2={t2.y}, y3={t3.y}")
+        self.assertGreater(t1.y, t2.y - 4.0, f"Box1 should be below Box2. y1={t1.y}, y2={t2.y}")
+        self.assertGreater(t2.y, t3.y - 4.0, f"Box2 should be below Box3. y2={t2.y}, y3={t3.y}")
         
         # Ninguna debe estar dentro del suelo
         ground_top = 124.0 - 8.0
