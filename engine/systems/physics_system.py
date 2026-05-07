@@ -82,7 +82,7 @@ class PhysicsSystem:
         self._impulse_solver = ImpulseSolver2D()
         self._solver_iterations: int = 8
         self._body_id_to_island: dict[int, Island2D] = {}
-        self._position_correction_ratio: float = 0.2  # Baumgarte-style: only correct 20% of penetration per frame
+        self._position_correction_ratio: float = 0.05  # Minimal safety net; PGS position solve handles main correction
         self._PUSH_OUT_MIN_OVERLAP: float = 0.005
 
     def set_event_bus(self, event_bus: Optional[Any]) -> None:  # type: ignore[no-any-explicit]  # EventBus: tipo externo determinado en runtime
@@ -125,6 +125,11 @@ class PhysicsSystem:
         sleeping_body_ids: set[int] = set()
         initial_transform_states: dict[int, tuple[float, float]] = {}
         initial_rigidbody_states: dict[int, tuple[float, float, bool]] = {}
+        entity_transforms: dict[int, Transform] = {}
+        for entity in world.iter_entities():
+            transform = entity.get_component(Transform)
+            if transform is not None:
+                entity_transforms[int(entity.id)] = transform
 
         for entity in entities:
             transform = entity.get_component(Transform)
@@ -356,6 +361,18 @@ class PhysicsSystem:
                                   and c.entity_b_id in island.body_ids]
             if island_constraints:
                 self._impulse_solver.solve(island_constraints, all_bodies, delta_time, self._solver_iterations)
+
+            if island_constraints:
+                transforms_for_island = {
+                    bid: entity_transforms[bid]
+                    for bid in island.body_ids
+                    if bid in entity_transforms
+                }
+                if transforms_for_island:
+                    self._impulse_solver.solve_positions(
+                        island_constraints, transforms_for_island, all_bodies,
+                        delta_time=delta_time, iterations=3,
+                    )
 
             self._check_island_sleeping(island, all_bodies, delta_time)
             if island.sleeping:
@@ -1266,8 +1283,8 @@ class PhysicsSystem:
                     transform_b.rotation = transform_a.rotation
                     rigid_b.angular_velocity = 0.0
             elif joint.joint_type == "distance":
-                # Resolved via PGS bilateral constraints
-                pass
+                # PGS handles velocity-level constraint; this is the final positional pass
+                self._resolve_distance_joint(transform_a, transform_b, rigid_a, rigid_b, joint)
             elif joint.joint_type == "pin":
                 self._resolve_pin_joint(transform_a, transform_b, rigid_a, rigid_b, joint, dt)
             elif joint.joint_type == "groove":

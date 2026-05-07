@@ -186,6 +186,73 @@ class ImpulseSolver2D:
         for k in stale:
             del self._warm_start_cache[k]
 
+    def solve_positions(
+        self,
+        constraints: list[ContactConstraint2D],
+        transforms: dict[int, Any],
+        bodies: dict[int, Any],
+        delta_time: float = 0.016,
+        iterations: int = 3,
+    ) -> None:
+        """Resolve positional overlap using PGS iterations on transforms directly.
+
+        Applies mass-weighted positional corrections to entity transforms.
+        For contacts: pushes bodies apart along normal to resolve penetration.
+        For bilateral (joints): corrects relative position toward constraint target.
+        Correction scaled by abs(bias) * delta_time so stiffness affects convergence speed.
+        """
+        POSITION_CORRECTION_FACTOR: float = 0.2
+        POSITION_SLOP: float = 0.005  # Allowable penetration before correction
+
+        for _ in range(iterations):
+            for c in constraints:
+                transform_a = transforms.get(c.entity_a_id)
+                transform_b = transforms.get(c.entity_b_id)
+                if transform_a is None or transform_b is None:
+                    continue
+
+                body_a = bodies.get(c.entity_a_id)
+                body_b = bodies.get(c.entity_b_id)
+
+                inv_mass_a = self._effective_inv_mass(body_a) if body_a is not None else 0.0
+                inv_mass_b = self._effective_inv_mass(body_b) if body_b is not None else 0.0
+                total_inv = inv_mass_a + inv_mass_b
+                if total_inv <= 1e-10:
+                    continue
+
+                if c.is_bilateral:
+                    # Joint: correct toward target. bias sign gives direction.
+                    # Scale correction by stiffness via bias: bias = error * stiffness / dt.
+                    direction = 1.0 if c.bias >= 0.0 else -1.0
+                    correction = abs(c.bias) * delta_time * POSITION_CORRECTION_FACTOR
+                    if correction > c.depth:
+                        correction = c.depth
+                    correction *= direction
+                else:
+                    # Contact: push apart if penetrating beyond slop
+                    if c.depth <= POSITION_SLOP:
+                        continue
+                    correction = (c.depth - POSITION_SLOP) * POSITION_CORRECTION_FACTOR
+
+                # Mass-weighted distribution
+                ratio_a = inv_mass_a / total_inv
+                ratio_b = inv_mass_b / total_inv
+
+                # normal points from A toward B
+                if c.is_bilateral:
+                    # Bilateral: correction > 0 means too far apart — bring together
+                    # A moves +normal (toward B), B moves -normal (toward A)
+                    transform_a.x += correction * c.normal_x * ratio_a
+                    transform_a.y += correction * c.normal_y * ratio_a
+                    transform_b.x -= correction * c.normal_x * ratio_b
+                    transform_b.y -= correction * c.normal_y * ratio_b
+                else:
+                    # Contact: push A away from B (-normal), B away from A (+normal)
+                    transform_a.x -= correction * c.normal_x * ratio_a
+                    transform_a.y -= correction * c.normal_y * ratio_a
+                    transform_b.x += correction * c.normal_x * ratio_b
+                    transform_b.y += correction * c.normal_y * ratio_b
+
     # ------------------------------------------------------------------
     # Public properties
     # ------------------------------------------------------------------

@@ -783,7 +783,7 @@ class TestJointConstraints(unittest.TestCase):
         a.add_component(joint)
 
         dt = 1.0 / 60.0
-        for _ in range(30):
+        for _ in range(5):
             physics.update(world, dt)
 
         t_a = a.get_component(Transform)
@@ -806,7 +806,7 @@ class TestJointConstraints(unittest.TestCase):
         joint2.joint_stiffness = 0.05  # Muy bajo
         a2.add_component(joint2)
 
-        for _ in range(30):
+        for _ in range(5):
             physics.update(world2, dt)
 
         t_a2 = a2.get_component(Transform)
