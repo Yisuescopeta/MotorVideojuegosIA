@@ -82,7 +82,7 @@ class PhysicsSystem:
         self._impulse_solver = ImpulseSolver2D()
         self._solver_iterations: int = 8
         self._body_id_to_island: dict[int, Island2D] = {}
-        self._position_correction_ratio: float = 0.3  # Baumgarte-style: only correct 30% of penetration per frame
+        self._position_correction_ratio: float = 0.2  # Baumgarte-style: only correct 20% of penetration per frame
         self._PUSH_OUT_MIN_OVERLAP: float = 0.005
 
     def set_event_bus(self, event_bus: Optional[Any]) -> None:  # type: ignore[no-any-explicit]  # EventBus: tipo externo determinado en runtime
