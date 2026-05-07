@@ -81,12 +81,12 @@ class AABBShape(ShapeInstance):
         overlap_y = min(overlap_top, overlap_bottom)
 
         if overlap_x < overlap_y:
-            nx = -1.0 if self.cx < other.cx else 1.0
+            nx = 1.0 if self.cx < other.cx else -1.0
             ny = 0.0
             depth = overlap_x
         else:
             nx = 0.0
-            ny = -1.0 if self.cy < other.cy else 1.0
+            ny = 1.0 if self.cy < other.cy else -1.0
             depth = overlap_y
 
         contact_x = (max(self.cx - self.half_w, other.cx - other.half_w)
@@ -170,9 +170,9 @@ class CircleShape(ShapeInstance):
         if dist < 0.0001:
             nx, ny = 0.0, -1.0
         else:
-            nx, ny = dx / dist, dy / dist
-        contact_x = self.cx - nx * (self.radius - depth / 2)
-        contact_y = self.cy - ny * (self.radius - depth / 2)
+            nx, ny = -dx / dist, -dy / dist
+        contact_x = self.cx + nx * (self.radius - depth / 2)
+        contact_y = self.cy + ny * (self.radius - depth / 2)
         cp = ContactPoint2D(point_x=contact_x, point_y=contact_y, normal_x=nx, normal_y=ny, depth=depth)
         return ContactManifold2D(
             entity_a_id=0, entity_b_id=0, entity_a_name="", entity_b_name="",
@@ -337,9 +337,9 @@ class CapsuleShape(ShapeInstance):
         if dist < 0.0001:
             nx, ny = 0.0, -1.0
         else:
-            nx, ny = dx / dist, dy / dist
-        contact_x = cx - nx * (self.radius - depth / 2)
-        contact_y = cy - ny * (self.radius - depth / 2)
+            nx, ny = -dx / dist, -dy / dist
+        contact_x = cx + nx * (self.radius - depth / 2)
+        contact_y = cy + ny * (self.radius - depth / 2)
         cp = ContactPoint2D(point_x=contact_x, point_y=contact_y, normal_x=nx, normal_y=ny, depth=depth)
         return ContactManifold2D(
             entity_a_id=0, entity_b_id=0, entity_a_name="", entity_b_name="",
