@@ -22,6 +22,7 @@ from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.physics.contact_solver import ContactConstraint2D, ImpulseSolver2D
 from engine.physics.island_manager import Island2D, IslandBuilder2D
+from engine.physics.shapes import ShapeFactory
 from engine.physics.spatial_hash import SpatialHash2D
 from engine.resources.physics_material import load_physics_material
 
@@ -251,21 +252,57 @@ class PhysicsSystem:
 
                     left_a, top_a, right_a, bottom_a = my_bounds
                     left_b, top_b, right_b, bottom_b = other_bounds
-                    overlap_left = right_a - left_b
-                    overlap_right = right_b - left_a
-                    overlap_top = bottom_a - top_b
-                    overlap_bottom = bottom_b - top_a
-                    overlap_x = min(overlap_left, overlap_right)
-                    overlap_y = min(overlap_top, overlap_bottom)
 
-                    if overlap_x < overlap_y:
-                        normal_x = 1.0 if tentative_x < other_transform.x else -1.0
-                        normal_y = 0.0
-                        depth = overlap_x
+                    # Try shape-based narrow-phase for accurate contact data
+                    shape_normal_x = None
+                    shape_normal_y = None
+                    shape_depth = 0.0
+                    shape_contact_x = 0.0
+                    shape_contact_y = 0.0
+                    try:
+                        my_shape = ShapeFactory.build(collider, tentative_x, tentative_y)
+                        other_shape = ShapeFactory.build(solid.collider, other_transform.x, other_transform.y)
+                        manifold = my_shape.collide_shape(other_shape)
+                        if manifold is not None and manifold.depth > 0:
+                            shape_normal_x = manifold.normal_x
+                            shape_normal_y = manifold.normal_y
+                            shape_depth = manifold.depth
+                            if manifold.contacts:
+                                shape_contact_x = manifold.contacts[0].point_x
+                                shape_contact_y = manifold.contacts[0].point_y
+                            else:
+                                shape_contact_x = (max(left_a, left_b) + min(right_a, right_b)) / 2.0
+                                shape_contact_y = (max(top_a, top_b) + min(bottom_a, bottom_b)) / 2.0
+                    except Exception:
+                        pass  # Fall back to AABB
+
+                    if shape_normal_x is not None:
+                        # Use shape-based manifold data
+                        normal_x = shape_normal_x
+                        normal_y = shape_normal_y
+                        depth = shape_depth
+                        contact_x = shape_contact_x
+                        contact_y = shape_contact_y
                     else:
-                        normal_x = 0.0
-                        normal_y = 1.0 if tentative_y < other_transform.y else -1.0
-                        depth = overlap_y
+                        # AABB-based fallback
+                        overlap_left = right_a - left_b
+                        overlap_right = right_b - left_a
+                        overlap_top = bottom_a - top_b
+                        overlap_bottom = bottom_b - top_a
+                        overlap_x = min(overlap_left, overlap_right)
+                        overlap_y = min(overlap_top, overlap_bottom)
+
+                        if overlap_x < overlap_y:
+                            normal_x = 1.0 if tentative_x < other_transform.x else -1.0
+                            normal_y = 0.0
+                            depth = overlap_x
+                        else:
+                            normal_x = 0.0
+                            normal_y = 1.0 if tentative_y < other_transform.y else -1.0
+                            depth = overlap_y
+
+                        contact_x = (max(left_a, left_b) + min(right_a, right_b)) / 2.0
+                        contact_y = (max(top_a, top_b) + min(bottom_a, bottom_b)) / 2.0
 
                     if depth < -0.001:
                         continue
@@ -312,8 +349,6 @@ class PhysicsSystem:
                     c_effective_current = max(0.0, c_current_depth)
                     bias = min(ImpulseSolver2D.MAX_BIAS,
                                ImpulseSolver2D.BAUMGARTE_FACTOR * max(0.0, c_effective_current - ImpulseSolver2D.SLOP) / max(delta_time, 1e-6))
-                    contact_x = (max(left_a, left_b) + min(right_a, right_b)) / 2.0
-                    contact_y = (max(top_a, top_b) + min(bottom_a, bottom_b)) / 2.0
 
                     # Compute lever arms for rotational inertia
                     rA_x = contact_x - transform.x
