@@ -118,8 +118,12 @@ El core conserva un contrato comun de backends fisicos:
 - el backend solicitado en `feature_metadata.physics_2d.backend` no debe sobrescribirse por el fallback efectivo
 - `query_physics_ray` y `query_physics_aabb` mantienen su significado publico
 - `body_test_motion` añade un sweep-test no-mutante (barrido de colisión sin modificar el mundo), bloque fundamental del que depende `move_and_slide`
-- **P0-2:** `move_and_slide` fue reescrito de barrido por eje separado (horizontal + vertical por iteración) a un **bucle `body_test_motion` unificado 2D** con `_slide_remainder` para proyección sobre normal. El snap al suelo también usa `body_test_motion`. Se añadió `floor_stop_on_slope` (bool) y detección one-way por normal (Godot-style).
-4. **PGS Impulse Solver**: tras integrar fuerzas, el sistema construye constraints de contacto (normal, profundidad, friccion, restitution) entre cuerpos solapados y ejecuta iteraciones PGS para corregir velocidades antes de integrar posiciones.
+- **PGS Impulse Solver (dos fases):** tras integrar fuerzas, el sistema construye constraints de contacto y joints bilaterales (fixed, distance, pin) entre cuerpos, agrupa en islas via BFS, y ejecuta:
+  1. **PGS velocity solve** (8 iteraciones): impulsos normales con clamp no-negativo y friccion Coulomb
+  2. **PGS position solve** (3 iteraciones): correccion mass-weighted sobre transforms con age-based damping
+  Los joints bilaterales usan `is_bilateral=True` para permitir impulso negativo.
+- **Broadphase unificado**: `SpatialHash2D` compartido (celda 128px) construido una vez por frame y reutilizado entre PhysicsSystem, CollisionSystem y queries espaciales.
+- **Joint stiffness**: `Joint2D.joint_stiffness` (default 0.2) controla bias en constraints PGS bilaterales.
 
 ## Taxonomia arquitectonica
 

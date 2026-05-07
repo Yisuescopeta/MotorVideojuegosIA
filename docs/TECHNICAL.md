@@ -502,54 +502,167 @@ de shapes objetivo para la fase estrecha.
 (precision TOI, overlap en origen, sin colision, epsilon convergence, grazing
 edge, datos de entidad, direccion cero) y barrido con shape circle/capsule.
 
-### PGS Impulse Solver (NUEVO)
+### Pipeline de fisica
 
-El motor incluye un solver de impulsos por Proyeccion Gauss-Seidel (PGS) para resolucion
-de contactos entre cuerpos rigidos 2D.
+El pipeline completo de fisica por frame se ejecuta en este orden dentro de
+`PhysicsSystem.update()`:
+
+```text
+1. Force integration (gravedad, fuerzas aplicadas, fuerzas constantes de StaticBody2D)
+2. Construir constraints de contacto (pares overlap de broadphase)
+3. Construir constraints bilaterales de joints (fixed, distance, pin)
+4. Construir islas fisicas (BFS sobre contactos + joint pairs)
+5. Por cada isla:
+   a. PGS velocity solve (8 iteraciones) — normal + friccion Coulomb
+   b. PGS position solve (3 iteraciones) — correccion mass-weighted sobre transforms
+6. Per-body CCD (swept collision continua con busqueda binaria TOI)
+7. Push-out safety net (factor 0.05, overlap minimo 0.005)
+8. Joint legacy pass (groove, damped_spring, angular limits/motor)
+```
+
+### PGS Impulse Solver
+
+El motor incluye un solver de impulsos por Proyeccion Gauss-Seidel (PGS) para
+resolucion de contactos y joints bilaterales entre cuerpos rigidos 2D.
 
 **Archivos:**
 - `engine/physics/contact_solver.py` — `ContactConstraint2D` y `ImpulseSolver2D`
 - `engine/physics/island_manager.py` — `Island2D` y `IslandBuilder2D`
 - `engine/systems/physics_system.py` — integracion con `PhysicsSystem.update()`
 
-**Parametros:**
+#### Parametros de contacto
+
 | Parametro | Default | Descripcion |
 |-----------|---------|-------------|
-| `solver_iterations` | 8 | Iteraciones PGS por frame |
-| `BAUMGARTE_FACTOR` | 0.2 | Factor de estabilizacion Baumgarte |
-| `SLOP` | 0.01 | Tolerancia de penetracion |
+| `solver_iterations` | 8 | Iteraciones PGS de velocidad por frame |
+| `BAUMGARTE_FACTOR` | 0.2 | Factor de estabilizacion Baumgarte (velocity solve) |
+| `SLOP` | 0.01 | Tolerancia de penetracion (velocity solve) |
 | `MAX_BIAS` | 10.0 | Velocidad maxima de correccion posicional |
+
+#### Parametros de correccion posicional (solve_positions)
+
+| Parametro | Default | Descripcion |
+|-----------|---------|-------------|
+| `POSITION_ITERATIONS` | 3 | Iteraciones PGS posicionales por frame |
+| `POSITION_CORRECTION_FACTOR` | 0.2 | Fraccion de correccion por iteracion |
+| `POSITION_SLOP` | 0.005 | Penetracion permitida antes de corregir |
+| `position_correction_ratio` | 0.05 | Safety net push-out (push-out post-PGS) |
+| `PUSH_OUT_MIN_OVERLAP` | 0.005 | Overlap minimo para push-out |
+
+**Pipeline de resolucion por isla:**
+1. **Velocity solve** (`ImpulseSolver2D.solve()`): aplica impulsos normales y de
+   friccion (Coulomb) sobre las velocidades de los cuerpos. Los contactos usan
+   clamp no-negativo (non-penetration); los joints bilaterales (`is_bilateral=True`)
+   permiten impulso negativo (atraccion).
+2. **Position solve** (`ImpulseSolver2D.solve_positions()`): corrige posiciones
+   directamente sobre los `Transform` con distribucion mass-weighted. Para contactos
+   usa correccion proporcional a `(depth - slop) * factor`; para joints bilaterales
+   usa direccion desde `bias` escalada por `stiffness * dt * factor`.
 
 **Metricas expuestas via `get_solver_metrics()`:**
 - `warm_start_cache_size`: pares de contacto activos en cache
-- `iterations`: iteraciones configuradas
+- `iterations`: iteraciones de velocidad configuradas
+- `island_count`: total de islas este frame
+- `sleeping_islands`: islas dormidas este frame
 
-**Caracteristicas:**
-- Impulso normal con clamp no-negativo (non-penetration)
-- Friccion Coulomb (tangente clamp a friction * normal_impulse)
-- Warm starting entre frames via cache por par de entidades
-- Baumgarte stabilization para correccion posicional suave
+**Caracteristicas del solver:**
+- Impulso normal con clamp no-negativo para contactos (`is_bilateral=False`)
+- Impulso normal sin clamp para joints bilaterales (`is_bilateral=True`)
+- Friccion Coulomb (tangente clamp a friction * normal_impulse, desactivada para bilaterales)
+- Warm starting entre frames via cache por par de entidades con **contact age tracking**:
+  el cache ahora almacena `(normal_impulse, tangent_impulse, contact_age)`. La edad
+  de contacto se incrementa cada frame que el par persiste y se usa en
+  `solve_positions()` para reducir la correccion posicional en contactos estables
+  via `age_factor = 1.0 / (1.0 + age * 0.1)`, eliminando jitter.
+- Baumgarte stabilization para correccion posicional suave en velocity solve
 - Soporte para cuerpos dinamicos, kinematic y estaticos
+- `validate_contacts()` eliminado (codigo muerto; la cache de warm-start ya filtra
+  contactos por clave de posicion via `CONTACT_RECYCLE_RADIUS`)
 
-**Islas fisicas (Constraint Islands):**
+#### Islas fisicas (Constraint Islands)
+
 - `IslandBuilder2D` agrupa cuerpos rigidos en islas independientes usando BFS
-  sobre conectividad de contactos y joints (pares de cuerpos unidos por joint).
+  sobre conectividad de contactos y joints (pares de cuerpos unidos por joint,
+  incluyendo joints registrados via `_collect_joint_pairs()`).
 - Cada isla agrupa cuerpos que interactuan via restricciones directas o
   indirectas; cuerpos en islas distintas no interactuan y se resuelven por
-  separado.
+  separado en su propio pase PGS.
 - `Island2D` almacena `body_ids`, `constraints`, flag `sleeping` y `sleep_timer`.
   Expone propiedades `size` (numero de cuerpos) y `constraint_count`.
 - **Island-level sleeping**: si todos los cuerpos de una isla estaban en la
   misma isla dormida el frame anterior y sus velocidades estan por debajo de
   los umbrales (`sleep_linear_threshold`, `sleep_angular_threshold`), la isla
-  completa se marca como dormida, se salta la resolucion PGS y las velocidades
-  se ponen a cero. El temporizador `sleep_timer` se acumula hasta superar
-  `time_to_sleep` (default 0.5s) antes de dormir. Cualquier movimiento reactiva
-  la isla.
-- **Metricas** via `get_step_metrics()`: `island_count` (total de islas) y
-  `sleeping_islands` (islas dormidas este frame).
+  completa se marca como dormida, se salta la resolucion PGS completa (velocity
+  solve + position solve) y las velocidades se ponen a cero. El temporizador
+  `sleep_timer` se acumula hasta superar `time_to_sleep` (default 0.5s) antes
+  de dormir. Cualquier movimiento reactiva la isla.
+- **Metricas** via `get_step_metrics()`: `ccd_bodies`, `swept_checks`,
+  `candidate_solids`, `island_count` (total de islas) y `sleeping_islands`
+  (islas dormidas este frame).
 - `_body_id_to_island` persiste el mapeo entre frames para transferir estado
   de sueño entre islas que mantienen la misma composicion.
+
+#### Joints como constraints PGS bilaterales
+
+Los tipos de joint `fixed`, `distance` y `pin` se construyen como constraints
+PGS bilaterales con `is_bilateral=True` en `_build_joint_constraints()`. Esto
+permite que el PGS resuelva la velocidad de los joints integrada con los
+contactos dentro de la misma isla:
+
+- **Fixed joint**: 2 constraints (x, y) que bloquean posicion relativa.
+  La rotacion relativa se bloquea en el legacy pass posterior.
+- **Distance joint**: 1 constraint en la direccion del vector A→B, con `error
+  = dist - rest_length`. Bias usa `joint_stiffness`.
+- **Pin joint**: 2 constraints (x, y) que anclan ambos cuerpos al mismo punto.
+  `softness > 0` suaviza la correccion via factor `1.0 / (1.0 + softness * 10.0)`.
+
+Los joints legacy (`groove`, `damped_spring`) y la correccion angular de
+`fixed`, los angular limits/motor de `pin` se resuelven en el **legacy pass**
+(`_resolve_joints()`) despues del PGS posicional, CCD y push-out.
+
+**Joint stiffness:** `Joint2D.joint_stiffness` (default 0.2, rango 0–1) controla
+el factor de bias en las constraints PGS bilaterales. Se serializa y expone via
+`from_dict`/`to_dict`. A mayor valor, correccion mas agresiva del error de
+posicion.
+
+La busqueda de entidades con joints paso de `world.iter_entities()` a
+`world.get_entities_with(Joint2D)` en `_collect_joint_pairs()` y
+`_resolve_joints()`, reduciendo el escaneo a solo entidades con Joint2D.
+
+### Broadphase unificado
+
+El motor mantiene un unico `SpatialHash2D` (celda 128px) compartido entre
+`PhysicsSystem`, `CollisionSystem` y las queries de `LegacyAABBPhysicsBackend`:
+
+1. `LegacyAABBPhysicsBackend.step()` construye el grid de todos los colliders
+   del mundo al inicio del frame (shared_grid).
+2. Pasa `shared_grid=grid` a `PhysicsSystem.update()`: PhysicsSystem lo usa
+   como broadphase en lugar de construir su propio `SpatialHash2D`.
+3. Despues de la simulacion, repuebla el grid con posiciones post-fisica y lo
+   pasa a `CollisionSystem.update(shared_grid=grid)`, que lo reusa en lugar de
+   construir su propio grid.
+4. `query_physics_ray()`, `query_physics_aabb()` y `query_shape_cast()` usan
+   el grid compartido (`self._shared_grid`) para obtener candidatos iniciales
+   en vez de iterar todas las entidades del mundo.
+
+Benefits: ~1 SpatialHash2D construido por frame (vs ~3 antes de la
+unificacion). El grid se almacena como `PhysicsSystem.spatial_grid` (propiedad
+de solo lectura) y en `LegacyAABBPhysicsBackend._shared_grid`.
+
+**Nuevo metodo en SpatialHash2D:**
+- `query_ray_candidates(ox, oy, dx, dy, max_distance)`: retorna IDs de entidad
+  en celdas intersecadas por el barrido AABB del segmento de rayo (DDA
+  conservativo via swept AABB). Usado por `query_physics_ray` para reducir
+  candidatos.
+
+### Box2D: CollisionFilter2D soportado
+
+El backend Box2D (opt-in, requiere Box2D 2.3.10) ahora soporta
+`CollisionFilter2D`: cuando una entidad tiene este componente, sus valores
+`layer` y `mask` (uint32) se mapean a `b2Filter.categoryBits` y
+`b2Filter.maskBits` en cada fixture del body Box2D. La entrada
+`"CollisionFilter2D"` fue eliminada de la lista de componentes no-soportados
+del backend.
 
 ### Limitaciones actuales
 
