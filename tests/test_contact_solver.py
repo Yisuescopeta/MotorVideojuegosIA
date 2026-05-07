@@ -954,5 +954,100 @@ class TestContactPersistenceAge(unittest.TestCase):
         self.assertEqual(c.contact_age, 0, "New contact should have age=0")
 
 
+class TestRotationalInertia(unittest.TestCase):
+    """Verifica que contactos descentrados generan rotacion."""
+    
+    def test_off_center_collision_produces_rotation(self):
+        """Golpe descentrado debe generar velocidad angular no cero."""
+        world = World()
+        physics = PhysicsSystem(gravity=0.0)
+        
+        # Box that will be hit off-center
+        target = world.create_entity("Target")
+        target.add_component(Transform(x=100.0, y=100.0))
+        target.add_component(Collider(width=32.0, height=64.0))  # tall box
+        target.add_component(RigidBody(
+            body_type="dynamic", mass=1.0, inertia=500.0,
+            gravity_scale=0.0, velocity_x=0.0, velocity_y=0.0,
+        ))
+        
+        # Projectile hitting the top half of the target
+        bullet = world.create_entity("Bullet")
+        bullet.add_component(Transform(x=70.0, y=80.0))  # hits upper portion
+        bullet.add_component(Collider(width=8.0, height=8.0))
+        bullet.add_component(RigidBody(
+            body_type="dynamic", mass=0.1, inertia=1.0,
+            gravity_scale=0.0, velocity_x=200.0, velocity_y=0.0,
+        ))
+        
+        dt = 1.0 / 60.0
+        for _ in range(5):
+            physics.update(world, dt)
+        
+        rb = target.get_component(RigidBody)
+        # Off-center hit should produce rotation
+        self.assertNotEqual(rb.angular_velocity, 0.0,
+            f"Off-center collision should produce angular velocity, got {rb.angular_velocity}")
+    
+    def test_centered_collision_produces_no_rotation(self):
+        """Golpe centrado NO debe generar rotacion significativa."""
+        world = World()
+        physics = PhysicsSystem(gravity=0.0)
+        
+        target = world.create_entity("Target")
+        target.add_component(Transform(x=100.0, y=100.0))
+        target.add_component(Collider(width=32.0, height=32.0))
+        target.add_component(RigidBody(
+            body_type="dynamic", mass=1.0, inertia=500.0,
+            gravity_scale=0.0, velocity_x=0.0, velocity_y=0.0,
+        ))
+        
+        bullet = world.create_entity("Bullet")
+        bullet.add_component(Transform(x=70.0, y=100.0))  # centered
+        bullet.add_component(Collider(width=8.0, height=8.0))
+        bullet.add_component(RigidBody(
+            body_type="dynamic", mass=0.1, inertia=1.0,
+            gravity_scale=0.0, velocity_x=200.0, velocity_y=0.0,
+        ))
+        
+        dt = 1.0 / 60.0
+        for _ in range(5):
+            physics.update(world, dt)
+        
+        rb = target.get_component(RigidBody)
+        # Centered hit: angular velocity should be negligible
+        self.assertAlmostEqual(rb.angular_velocity, 0.0, delta=0.1,
+            msg=f"Centered collision should produce negligible rotation, got {rb.angular_velocity}")
+    
+    def test_lock_rotation_prevents_angular_velocity(self):
+        """lock_rotation=True debe impedir velocidad angular incluso en golpe descentrado."""
+        world = World()
+        physics = PhysicsSystem(gravity=0.0)
+        
+        target = world.create_entity("Target")
+        target.add_component(Transform(x=100.0, y=100.0))
+        target.add_component(Collider(width=32.0, height=64.0))
+        target.add_component(RigidBody(
+            body_type="dynamic", mass=1.0, inertia=500.0,
+            gravity_scale=0.0, lock_rotation=True,
+        ))
+        
+        bullet = world.create_entity("Bullet")
+        bullet.add_component(Transform(x=70.0, y=80.0))
+        bullet.add_component(Collider(width=8.0, height=8.0))
+        bullet.add_component(RigidBody(
+            body_type="dynamic", mass=0.1, inertia=1.0,
+            gravity_scale=0.0, velocity_x=200.0, velocity_y=0.0,
+        ))
+        
+        dt = 1.0 / 60.0
+        for _ in range(5):
+            physics.update(world, dt)
+        
+        rb = target.get_component(RigidBody)
+        self.assertEqual(rb.angular_velocity, 0.0,
+            "lock_rotation=True should prevent any angular velocity")
+
+
 if __name__ == "__main__":
     unittest.main()

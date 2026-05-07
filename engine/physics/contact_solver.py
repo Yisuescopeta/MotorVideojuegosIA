@@ -48,6 +48,11 @@ class ContactConstraint2D:
     contact_x: float = 0.0
     contact_y: float = 0.0
 
+    rA_x: float = 0.0  # vector from body A center to contact point
+    rA_y: float = 0.0
+    rB_x: float = 0.0  # vector from body B center to contact point
+    rB_y: float = 0.0
+
     is_bilateral: bool = False  # True para joints (permite impulso negativo), False para contactos
 
     contact_age: int = 0  # frames this contact has persisted (0 = new)
@@ -107,6 +112,13 @@ class ImpulseSolver2D:
             body_b.velocity_x += imp_x * inv_b
             body_b.velocity_y += imp_y * inv_b
 
+            inv_inertia_a = self._effective_inv_inertia(body_a)
+            inv_inertia_b = self._effective_inv_inertia(body_b)
+            if inv_inertia_a > 0.0:
+                body_a.angular_velocity -= (c.rA_x * imp_y - c.rA_y * imp_x) * inv_inertia_a
+            if inv_inertia_b > 0.0:
+                body_b.angular_velocity += (c.rB_x * imp_y - c.rB_y * imp_x) * inv_inertia_b
+
         # --- compute bounce velocities (before PGS, using initial velocities) ---
         for c in constraints:
             body_a = bodies.get(c.entity_a_id)
@@ -130,8 +142,18 @@ class ImpulseSolver2D:
                 inv_mass_a = self._effective_inv_mass(body_a)
                 inv_mass_b = self._effective_inv_mass(body_b)
 
-                total_inv = inv_mass_a + inv_mass_b
-                if total_inv <= 1e-10:
+                # Rotational inertia
+                inv_inertia_a = self._effective_inv_inertia(body_a)
+                inv_inertia_b = self._effective_inv_inertia(body_b)
+
+                # Effective mass with rotation
+                eff_mass_normal = self._effective_mass_with_rotation(
+                    inv_mass_a, inv_mass_b,
+                    c.rA_x, c.rA_y, c.rB_x, c.rB_y,
+                    c.normal_x, c.normal_y,
+                    inv_inertia_a, inv_inertia_b,
+                )
+                if eff_mass_normal <= 0.0:
                     continue
 
                 rel_vx = body_b.velocity_x - body_a.velocity_x
@@ -141,7 +163,7 @@ class ImpulseSolver2D:
                 vt = rel_vx * c.tangent_x + rel_vy * c.tangent_y
 
                 # --- normal impulse ---------------------------------------
-                jn = (-(c.bounce_velocity + vn + c.bias)) * c.mass_normal
+                jn = (-(c.bounce_velocity + vn + c.bias)) * eff_mass_normal
                 old_normal = c.accumulated_normal_impulse
                 if c.is_bilateral:
                     c.accumulated_normal_impulse = old_normal + jn  # sin clamp
@@ -151,7 +173,13 @@ class ImpulseSolver2D:
 
                 # --- tangent impulse (Coulomb friction, skipped for joints) ---
                 if not c.is_bilateral:
-                    jt = -vt * c.mass_tangent
+                    eff_mass_tangent = self._effective_mass_with_rotation(
+                        inv_mass_a, inv_mass_b,
+                        c.rA_x, c.rA_y, c.rB_x, c.rB_y,
+                        c.tangent_x, c.tangent_y,
+                        inv_inertia_a, inv_inertia_b,
+                    )
+                    jt = -vt * eff_mass_tangent
                     jn_raw = c.friction * c.accumulated_normal_impulse
                     max_friction = jn_raw if math.isfinite(jn_raw) else float('inf')
                     old_tangent = c.accumulated_tangent_impulse
@@ -160,7 +188,7 @@ class ImpulseSolver2D:
                 else:
                     jt = 0.0
 
-                # --- apply impulses to velocities -------------------------
+                # --- apply impulses to velocities (linear) -----------------
                 imp_x = c.normal_x * jn + c.tangent_x * jt
                 imp_y = c.normal_y * jn + c.tangent_y * jt
 
@@ -168,6 +196,15 @@ class ImpulseSolver2D:
                 body_a.velocity_y -= imp_y * inv_mass_a
                 body_b.velocity_x += imp_x * inv_mass_b
                 body_b.velocity_y += imp_y * inv_mass_b
+
+                # --- apply angular impulses ---------------------------------
+                if inv_inertia_a > 0.0:
+                    # Cross product: r × impulse in 2D
+                    angular_impulse_a = c.rA_x * imp_y - c.rA_y * imp_x
+                    body_a.angular_velocity -= angular_impulse_a * inv_inertia_a
+                if inv_inertia_b > 0.0:
+                    angular_impulse_b = c.rB_x * imp_y - c.rB_y * imp_x
+                    body_b.angular_velocity += angular_impulse_b * inv_inertia_b
 
         # --- update warm-start cache (spatial) ----------------------------
         active_keys: set[tuple] = set()
@@ -289,6 +326,35 @@ class ImpulseSolver2D:
         qx = int(contact_x / max(recycle_radius, 0.01))
         qy = int(contact_y / max(recycle_radius, 0.01))
         return (a, b, qx, qy)
+
+    @staticmethod
+    def _effective_inv_inertia(body: Any) -> float:
+        """Return 1/inertia for dynamic bodies, 0.0 otherwise."""
+        body_type = getattr(body, "body_type", "static")
+        if body_type != "dynamic":
+            return 0.0
+        if getattr(body, "lock_rotation", False):
+            return 0.0
+        inertia = getattr(body, "inertia", 1.0)
+        if not math.isfinite(inertia) or inertia <= 0.0:
+            return 0.0
+        return 1.0 / inertia
+
+    @staticmethod
+    def _effective_mass_with_rotation(
+        inv_mass_a: float, inv_mass_b: float,
+        rA_x: float, rA_y: float, rB_x: float, rB_y: float,
+        normal_x: float, normal_y: float,
+        inv_inertia_a: float, inv_inertia_b: float,
+    ) -> float:
+        """Compute effective mass including rotational inertia terms (Box2D formula)."""
+        # Cross product: r × n in 2D = r.x * n.y - r.y * n.x
+        rnA = rA_x * normal_y - rA_y * normal_x
+        rnB = rB_x * normal_y - rB_y * normal_x
+        inv_mass = inv_mass_a + inv_mass_b + rnA * rnA * inv_inertia_a + rnB * rnB * inv_inertia_b
+        if inv_mass <= 1e-10:
+            return 0.0
+        return 1.0 / inv_mass
 
     @staticmethod
     def _effective_inv_mass(body: Any) -> float:

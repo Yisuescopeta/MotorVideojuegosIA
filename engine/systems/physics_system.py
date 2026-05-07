@@ -304,6 +304,12 @@ class PhysicsSystem:
                     contact_x = (max(left_a, left_b) + min(right_a, right_b)) / 2.0
                     contact_y = (max(top_a, top_b) + min(bottom_a, bottom_b)) / 2.0
 
+                    # Compute lever arms for rotational inertia
+                    rA_x = contact_x - tentative_x
+                    rA_y = contact_y - tentative_y
+                    rB_x = contact_x - other_transform.x
+                    rB_y = contact_y - other_transform.y
+
                     constraint = ContactConstraint2D(
                         entity_a_id=int(entity.id),
                         entity_b_id=int(solid.entity.id),
@@ -312,6 +318,7 @@ class PhysicsSystem:
                         depth=depth, mass_normal=mass_normal, mass_tangent=mass_tangent,
                         restitution=restitution, friction=friction, bias=bias,
                         contact_x=contact_x, contact_y=contact_y,
+                        rA_x=rA_x, rA_y=rA_y, rB_x=rB_x, rB_y=rB_y,
                     )
                     all_constraints.append(constraint)
 
@@ -1152,6 +1159,8 @@ class PhysicsSystem:
 
         Returns dict with safe_distance/hit_entity/normal/position or None if no hit.
         """
+
+
         from engine.physics.shapes import ShapeFactory
         from engine.physics.swept_collision import swept_shape_toi
 
