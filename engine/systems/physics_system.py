@@ -87,14 +87,14 @@ class PhysicsSystem:
     def set_event_bus(self, event_bus: Optional[Any]) -> None:  # type: ignore[no-any-explicit]  # EventBus: tipo externo determinado en runtime
         self._event_bus = event_bus
 
-    def update(self, world: World, delta_time: float) -> None:
+    def update(self, world: World, delta_time: float, shared_grid: SpatialHash2D | None = None) -> None:
         self._step_metrics = {"ccd_bodies": 0, "swept_checks": 0, "candidate_solids": 0, "island_count": 0, "sleeping_islands": 0}
         self._swept_contacts = []
         self._swept_contact_set = set()
         entities = world.get_entities_with(Transform, RigidBody)
         static_like_candidates: dict[int, _SolidCandidate] = {}
         moving_candidates: list[_SolidCandidate] = []
-        grid = SpatialHash2D(cell_size=self._spatial_hash_cell_size)
+        grid = shared_grid if shared_grid is not None else SpatialHash2D(cell_size=self._spatial_hash_cell_size)
 
         for entity in world.get_entities_with(Transform, Collider):
             transform = entity.get_component(Transform)
@@ -108,9 +108,11 @@ class PhysicsSystem:
             solid_aabb = self._get_solid_composite_aabb(entity, transform, collider)
             if effective_type == "static":
                 static_like_candidates[int(entity.id)] = candidate
-                grid.insert(entity.id, solid_aabb)
+                if shared_grid is None:
+                    grid.insert(entity.id, solid_aabb)
             else:
                 moving_candidates.append(candidate)
+        self._last_grid = grid
 
         moving_candidates.sort(key=lambda candidate: int(candidate.entity.id))
 
@@ -504,6 +506,11 @@ class PhysicsSystem:
             "island_count": self._step_metrics.get("island_count", 0),
             "sleeping_islands": self._step_metrics.get("sleeping_islands", 0),
         }
+
+    @property
+    def spatial_grid(self) -> SpatialHash2D | None:
+        """The spatial hash grid built during the last update(). None before first update."""
+        return getattr(self, '_last_grid', None)
 
     def consume_swept_contacts(self) -> list[tuple[int, int]]:
         contacts = list(self._swept_contacts)

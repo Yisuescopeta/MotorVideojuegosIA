@@ -22,6 +22,7 @@ from engine.physics.backend import (
     PhysicsShapeCastHit,
 )
 from engine.physics.shapes import ShapeFactory
+from engine.physics.spatial_hash import SpatialHash2D
 
 
 class LegacyAABBPhysicsBackend(PhysicsBackend):
@@ -38,6 +39,7 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         self._latest_contacts: list[PhysicsContact] = []
         self._synced_world_id: int | None = None
         self._synced_structure_version: int | None = None
+        self._shared_grid: SpatialHash2D | None = None
 
     def set_event_bus(self, event_bus: Optional[Any]) -> None:
         self._event_bus = event_bus
@@ -86,8 +88,46 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
     def step(self, world: Any, dt: float) -> None:
         self.sync_world(world)
         self._latest_contacts = []
+
+        # Build shared spatial hash once per frame
+        grid: SpatialHash2D | None = None
+        if hasattr(world, "get_all_entities"):
+            grid = SpatialHash2D(cell_size=128.0)
+            for entity in world.get_all_entities():
+                transform = entity.get_component(Transform) if hasattr(entity, "get_component") else None
+                if transform is None:
+                    continue
+                # Try Collider first
+                collider = entity.get_component(Collider) if hasattr(entity, "get_component") else None
+                if collider is not None and collider.enabled:
+                    aabb = collider.get_bounds(transform.x, transform.y)
+                    grid.insert(entity.id, aabb)
+                    continue
+                # Try CollisionShapeSet2D
+                shape_set = entity.get_component(CollisionShapeSet2D) if hasattr(entity, "get_component") else None
+                if shape_set is not None:
+                    aabb = shape_set.get_composite_bounds(transform.x, transform.y)
+                    grid.insert(entity.id, aabb)
+                    continue
+                # Try CollisionShape2D
+                shape_2d = entity.get_component(CollisionShape2D) if hasattr(entity, "get_component") else None
+                if shape_2d is not None and not shape_2d.disabled:
+                    aabb = shape_2d.get_bounds(transform.x, transform.y)
+                    grid.insert(entity.id, aabb)
+                    continue
+                # Try CollisionPolygon2D
+                poly_2d = entity.get_component(CollisionPolygon2D) if hasattr(entity, "get_component") else None
+                if poly_2d is not None and not poly_2d.disabled:
+                    aabb = poly_2d.get_bounds(transform.x, transform.y)
+                    grid.insert(entity.id, aabb)
+                    continue
+            self._shared_grid = grid
+
         if self._physics_system is not None:
-            self._physics_system.update(world, dt)
+            try:
+                self._physics_system.update(world, dt, shared_grid=grid)
+            except TypeError:
+                self._physics_system.update(world, dt)
         if self._collision_system is not None:
             self._collision_system.update(world)
         self._latest_contacts.extend(self._build_overlap_contacts())
@@ -107,8 +147,28 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             return []
         dx /= length
         dy /= length
+
+        # Use shared grid for fast candidate lookup
+        candidate_ids: set[int] = set()
+        if self._shared_grid is not None:
+            candidate_ids = self._shared_grid.query_ray_candidates(ox, oy, dx, dy, max_distance)
+
         hits: list[PhysicsRayHit] = []
-        for entity in world.get_all_entities() if hasattr(world, "get_all_entities") else []:
+        # Get entity lookup from world if available
+        entity_map: dict[int, Any] = {}
+        if hasattr(world, "get_all_entities"):
+            entity_map = {e.id: e for e in world.get_all_entities() if hasattr(e, 'id')}
+
+        # If shared grid is available, iterate candidates; otherwise fall back to all entities
+        if self._shared_grid is not None:
+            iterate_ids = candidate_ids
+        else:
+            iterate_ids = set(entity_map.keys())
+
+        for entity_id in iterate_ids:
+            entity = entity_map.get(entity_id)
+            if entity is None:
+                continue
             transform = entity.get_component(Transform) if hasattr(entity, "get_component") else None
             if transform is None:
                 continue
@@ -134,17 +194,36 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         return sorted(hits, key=lambda item: (float(item["distance"]), int(item["entity_id"])))
 
     def query_aabb(self, world: Any, bounds: tuple[float, float, float, float]) -> list[PhysicsAABBHit]:
-        left, top, right, bottom = [float(value) for value in bounds]
+        left, top, right, bottom = [float(v) for v in bounds]
+
+        # Use shared grid for fast candidate lookup
+        candidate_ids: set[int] = set()
+        if self._shared_grid is not None:
+            candidate_ids = self._shared_grid.query((left, top, right, bottom))
+
         hits: list[PhysicsAABBHit] = []
-        for entity in world.get_all_entities() if hasattr(world, "get_all_entities") else []:
+        entity_map: dict[int, Any] = {}
+        if hasattr(world, "get_all_entities"):
+            entity_map = {e.id: e for e in world.get_all_entities() if hasattr(e, 'id')}
+
+        # If shared grid is available, iterate candidates; otherwise fall back to all entities
+        if self._shared_grid is not None:
+            iterate_ids = candidate_ids
+        else:
+            iterate_ids = set(entity_map.keys())
+
+        for entity_id in iterate_ids:
+            entity = entity_map.get(entity_id)
+            if entity is None:
+                continue
             transform = entity.get_component(Transform) if hasattr(entity, "get_component") else None
             if transform is None:
                 continue
             if not self._entity_has_query_shapes(entity):
                 continue
             for _shape_idx, shape_inst, is_trigger in self._get_entity_query_shapes(entity, transform):
-                aabb = shape_inst.get_aabb() if hasattr(shape_inst, "get_aabb") else (transform.x - 8, transform.y - 8, transform.x + 8, transform.y + 8)
-                e_left, e_top, e_right, e_bottom = aabb
+                e_aabb = shape_inst.get_aabb() if hasattr(shape_inst, "get_aabb") else (transform.x - 8, transform.y - 8, transform.x + 8, transform.y + 8)
+                e_left, e_top, e_right, e_bottom = e_aabb
                 if left < e_right and right > e_left and top < e_bottom and bottom > e_top:
                     hits.append(
                         {
