@@ -694,6 +694,74 @@ Crea una entidad hija bajo un padre existente. `--name` es obligatorio.
 py -m motor entity create-child Player --name Sword --project . --json
 ```
 
+## Componentes
+
+### `motor component add`
+
+Agrega un componente a una entidad con datos iniciales opcionales.
+
+```bash
+py -m motor component add Player Transform --data '{"x":0,"y":0}' --project . --json
+```
+
+### `motor component edit`
+
+Edita una propiedad de un componente. Usa `--raw` para valores literales sin parseo JSON.
+
+```bash
+py -m motor component edit Player Transform x 200 --project . --json
+```
+
+### `motor component remove`
+
+Elimina un componente de una entidad.
+
+```bash
+py -m motor component remove Player Sprite --project . --json
+```
+
+## Animator
+
+### `motor animator info`
+
+Muestra la configuracion del Animator de una entidad.
+
+```bash
+py -m motor animator info Player --project . --json
+```
+
+### `motor animator set-sheet`
+
+Asigna un sprite sheet al Animator de una entidad.
+
+```bash
+py -m motor animator set-sheet Player assets/player.png --project . --json
+```
+
+### `motor animator ensure`
+
+Asegura que el componente Animator existe. Si se pasa `--sheet`, actualiza el sprite sheet.
+
+```bash
+py -m motor animator ensure Player --sheet assets/player.png --project . --json
+```
+
+### `motor animator state create`
+
+Crea o actualiza un estado de animacion con slices, fps y opciones de loop/default.
+
+```bash
+py -m motor animator state create Player idle --slices idle_1,idle_2,idle_3 --fps 8 --loop --set-default --project . --json
+```
+
+### `motor animator state remove`
+
+Elimina un estado de animacion.
+
+```bash
+py -m motor animator state remove Player idle --project . --json
+```
+
 ## Validacion recomendada
 
 ```bash

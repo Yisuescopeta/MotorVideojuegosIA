@@ -293,7 +293,7 @@ Para definir `terrain_peering` en el tileset `.json`:
 ```json
 {
     "tiles": {...},
-    "terrain_sets": [{"name": "grass", "mode": "match_corners_and_sides"}],
+    "terrain_sets": [{"name": "grass", "mode": 0}],
     "terrain_peering": {
         "grass": {
             "grass_center": 0,
@@ -335,7 +335,7 @@ api = EngineAPI(project_root=".")
 api.load_scene("levels/main_scene.json")
 
 # RigidBody dinámico con fuerzas
-api.create_entity("player", components=["RigidBody", "Collider", "Transform"])
+api.create_entity("player", components={"RigidBody": {}, "Collider": {}, "Transform": {}})
 api.edit_component("player", "RigidBody", "body_type", "dynamic")
 api.edit_component("player", "RigidBody", "mass", 2.0)
 api.apply_force("player", 500.0, 0.0)
@@ -345,9 +345,10 @@ api.apply_impulse("player", 0.0, -300.0)
 api.set_collision_filter("player", layer=1, mask=1)
 
 # Area2D para monitoreo
-api.create_entity("damage_zone", components=["Area2D", "Collider", "Transform"])
-api.set_collider_rect("damage_zone", 100, 100)
-api.set_collider_trigger("damage_zone", True)
+api.create_entity("damage_zone", components={"Area2D": {}, "Collider": {}, "Transform": {}})
+api.edit_component("damage_zone", "Collider", "width", 100)
+api.edit_component("damage_zone", "Collider", "height", 100)
+api.edit_component("damage_zone", "Collider", "is_trigger", True)
 
 api.save_scene()
 api.shutdown()
@@ -492,10 +493,10 @@ api = EngineAPI(project_root=".")
 api.load_scene("levels/main_scene.json")
 
 # Iniciar runtime headless
-api.start_play()
+api.play()
 
 # Avanzar frames
-api.step_frames(10)
+api.step(frames=10)
 
 # Consumir eventos de contacto
 events = api.get_recent_events()
@@ -520,7 +521,7 @@ for evt in collision_events:
     if normal_y < -0.7 and entity_b == "Ground":
         print("Player está en el suelo")
 
-api.stop_play()
+api.stop()
 api.shutdown()
 ```
 

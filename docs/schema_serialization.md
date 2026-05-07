@@ -74,9 +74,10 @@ payload legacy basado en colores. `UIImage` serializa `sprite`, `slice_name`,
 `tint` y `preserve_aspect`.
 
 Los componentes semanticos minimos de gameplay 2D se serializan como datos.
-`EnemyPatrol2D` ya tiene runtime support semantico via `Gameplay2DSemanticSystem`
-(ver [TECHNICAL.md](TECHNICAL.md)). Los demas de esta lista son data-only en su
-comportamiento actual:
+En runtime, `Gameplay2DSemanticSystem` consume contactos fisicos para emitir
+eventos de gameplay (coleccionable, hazard, goal, checkpoint, killzone,
+enemy patrol), manejar respawn de sesion, mover plataformas y evaluar bounds
+sin modificar la escena serializada (ver [TECHNICAL.md](TECHNICAL.md)).
 
 - `Collectible2D`: `points`, `destroy_on_collect`, `event_name`
 - `Hazard2D`: `damage`, `respawn_on_touch`, `event_name`
@@ -84,11 +85,14 @@ comportamiento actual:
 - `RespawnPoint2D`: `spawn_id`, `active`
 - `MovingPlatform2D`: `path` como lista de puntos `{x, y}`, `speed`, `loop`,
   `start_active`
+- `EnemyPatrol2D`: `waypoints`, `speed`, `damage`, `event_name`, `loop`
 - `Checkpoint2D`: `checkpoint_id`, `active`, `set_respawn_on_touch`,
   `event_name`
 - `KillZone2D`: `damage`, `respawn_on_touch`, `event_name`
 - `LevelBounds2D`: `left`, `right`, `top`, `bottom`
-- `NavigationObstacle2D`: `radius`, `affect_avoidance`. Datos para avoidance local en `NavigationAgentSystem`. Componente data-only sin runtime behavior propio.
+- `NavigationObstacle2D`: `radius`, `affect_avoidance`. Datos para avoidance
+  local en `NavigationAgentSystem`. Componente data-only sin runtime behavior
+  propio.
 
 `RayCast2D` serializa `enabled`, `cast_to_x`, `cast_to_y`, `collision_mask`,
 `collide_with_areas`, `collide_with_bodies`, `exclude_parent`. Los campos

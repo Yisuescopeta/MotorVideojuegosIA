@@ -57,10 +57,6 @@ contratos runtime (`AudioPlaybackRequest`, `AudioVoiceState`,
 `AudioRuntimeEvent`), un `NullAudioBackend` headless-safe y `AudioRuntime`
 como nucleo independiente de ECS.
 
-`RenderSystem` mantiene render graph, sorting layers, batching, tilemap chunks,
-debug geometry y render targets con fallback seguro cuando no hay backend
-grafico disponible.
-
 `UIRenderSystem` renderiza la UI overlay serializable. `UISystem` conserva
 layout e interaccion y ahora soporta dos modos de foundation sobre
 `RectTransform`:
@@ -951,3 +947,22 @@ Cobertura relevante:
 - `box2d` no es dependencia obligatoria.
 - `engine/rl` y datasets son experimentales.
 - Material archivado en `docs/archive/` no es contrato vigente.
+
+## Deuda tecnica conocida
+
+### EngineAPI._initialize_engine()
+
+`EngineAPI._initialize_engine()` (en `engine/api/engine_api.py`) instancia ~50 lineas de sistemas
+hardcode (RenderSystem, PhysicsSystem, CollisionSystem, etc.) con imports inline. Crea acoplamiento
+fuerte entre la fachada publica y cada sistema concreto. El constructor de `Game` ya expone setters
+individuales (`set_render_system`, `set_physics_system`, etc.) pero `_initialize_engine` no aprovecha
+inyeccion de dependencias ni factory pattern.
+
+Riesgo: cada nuevo sistema requiere modificar `EngineAPI` directamente.
+Refactor futuro deseable: registry de sistemas + factory o DI container.
+
+### HeadlessGame como default
+
+`EngineAPI` siempre instancia `HeadlessGame` como game engine interno (desde `cli/headless_game.py`),
+sin abstraccion para otros modos. Esto acopla la fachada publica a una implementacion concreta y
+crea dependencia circular de paquete (`engine/api` depende de `cli/`).

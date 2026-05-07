@@ -251,6 +251,8 @@ Fisica:
     - `radius`, `height` (capsule)
     - `vertices` (polygon: lista de `[x, y]` locales)
   - El cast usa **barrido continuo con busqueda binaria TOI** (swept collision real), no pasos discretos. Retorna `list[ShapeCastResult]`.
+- `query_physics_motion(entity_name, motion_x, motion_y, margin=0.08, recovery_as_collision=False, exclude_entity_names=None, collision_mask=0xFFFFFFFF, collide_with_bodies=True, collide_with_areas=False)`
+  - Prueba de movimiento no mutante sobre una entidad. No modifica el Transform ni el estado del mundo. Retorna dict con: `travel_x`, `travel_y`, `remainder_x`, `remainder_y`, `collision_point_x`, `collision_point_y`, `collision_normal_x`, `collision_normal_y`, `collision_safe_fraction`, `collision_unsafe_fraction`, `collision_local_shape`, `collider_id`, `collider_entity_name`, `collider_shape`, `collider_velocity_x`, `collider_velocity_y`.
 - `apply_force(entity_name, force_x, force_y)`
 - `apply_impulse(entity_name, impulse_x, impulse_y)`
 - `apply_torque(entity_name, torque)`
@@ -262,7 +264,7 @@ Fisica:
 
 ```python
 # Crear entidad con RigidBody
-api.create_entity("player", components=["RigidBody", "Collider", "Transform"])
+api.create_entity("player", components={"RigidBody": {}, "Collider": {}, "Transform": {}})
 api.edit_component("player", "RigidBody", "body_type", "dynamic")
 api.edit_component("player", "RigidBody", "mass", 2.0)
 
@@ -380,9 +382,10 @@ Requiere un Collider para definir la forma del área.
 
 ```python
 # Crear área de daño
-api.create_entity("damage_zone", components=["Area2D", "Collider", "Transform"])
-api.set_collider_rect("damage_zone", 100, 100)
-api.set_collider_trigger("damage_zone", True)
+api.create_entity("damage_zone", components={"Area2D": {}, "Collider": {}, "Transform": {}})
+api.edit_component("damage_zone", "Collider", "width", 100)
+api.edit_component("damage_zone", "Collider", "height", 100)
+api.edit_component("damage_zone", "Collider", "is_trigger", True)
 
 # Suscribirse a eventos
 api.connect_signal("damage_zone", "body_entered", on_body_entered)
@@ -491,7 +494,7 @@ de la entidad indicada. Retornan `[]` y `0` respectivamente si la entidad no exi
 no tiene `RigidBody`, o `contact_monitor` está desactivado.
 
 ```python
-api.create_entity("player", components=["RigidBody", "Collider", "Transform"])
+api.create_entity("player", components={"RigidBody": {}, "Collider": {}, "Transform": {}})
 api.edit_component("player", "RigidBody", "body_type", "dynamic")
 api.edit_component("player", "RigidBody", "contact_monitor", True)
 api.edit_component("player", "RigidBody", "max_contacts_reported", 10)
