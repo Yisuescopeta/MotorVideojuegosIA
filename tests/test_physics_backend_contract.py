@@ -26,7 +26,7 @@ def _make_world_with_floor() -> tuple[World, Entity, Entity]:
     """Crea World con suelo y devuelve (world, player, ground)."""
     world = World()
     player = Entity(name="Player")
-    player.add_component(Transform(x=160, y=50))
+    player.add_component(Transform(x=160, y=168))
     player.add_component(Collider(width=32, height=32))
     world.add_entity(player)
     ground = Entity(name="Ground")
