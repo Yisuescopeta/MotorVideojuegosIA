@@ -59,7 +59,6 @@ class ImpulseSolver2D:
     MAX_BIAS: float = 10.0
     DEFAULT_ITERATIONS: int = 8
     CONTACT_RECYCLE_RADIUS: float = 0.5  # radio para matching de contactos entre frames
-    CONTACT_MAX_SEPARATION: float = 1.5  # separacion maxima antes de descartar contacto
 
     def __init__(self) -> None:
         self._warm_start_cache: dict[
@@ -186,36 +185,6 @@ class ImpulseSolver2D:
         stale = [k for k in self._warm_start_cache if k not in active_keys]
         for k in stale:
             del self._warm_start_cache[k]
-
-    # ------------------------------------------------------------------
-    # Contact validation
-    # ------------------------------------------------------------------
-
-    def validate_contacts(
-        self,
-        constraints: list[ContactConstraint2D],
-    ) -> list[ContactConstraint2D]:
-        """Filter out contacts that are too far from their previous frame positions.
-
-        Contacts whose current position is farther than CONTACT_MAX_SEPARATION
-        from the cached position are considered broken and their impulses discarded.
-        """
-        valid: list[ContactConstraint2D] = []
-        for c in constraints:
-            key = self._contact_key(
-                c.entity_a_id, c.entity_b_id,
-                c.contact_x, c.contact_y,
-                self.CONTACT_RECYCLE_RADIUS,
-            )
-            # Contact is valid if it has a cache entry (nearby previous contact)
-            # or is a new contact (no cache entry needed)
-            if key in self._warm_start_cache:
-                # Existing contact: keep it (warm-start will load impulses)
-                valid.append(c)
-            else:
-                # New contact: still valid, just no warm-start data
-                valid.append(c)
-        return valid
 
     # ------------------------------------------------------------------
     # Public properties

@@ -636,27 +636,6 @@ class TestContactPersistenceSpatial(unittest.TestCase):
         # Cache debe estar vacio
         self.assertEqual(len(solver._warm_start_cache), 0)
 
-    def test_validate_contacts_returns_all(self):
-        """validate_contacts retorna todos los constraints (filtro basico)."""
-        from engine.physics.contact_solver import ContactConstraint2D, ImpulseSolver2D
-
-        solver = ImpulseSolver2D()
-        c1 = ContactConstraint2D(
-            entity_a_id=1, entity_b_id=2,
-            normal_x=0.0, normal_y=1.0, tangent_x=-1.0, tangent_y=0.0,
-            depth=0.5, mass_normal=1.0, mass_tangent=1.0,
-            restitution=0.0, friction=1.0, bias=0.0,
-            contact_x=10.0, contact_y=10.0,
-        )
-        c2 = ContactConstraint2D(
-            entity_a_id=3, entity_b_id=4,
-            normal_x=0.0, normal_y=1.0, tangent_x=-1.0, tangent_y=0.0,
-            depth=0.3, mass_normal=1.0, mass_tangent=1.0,
-            restitution=0.0, friction=1.0, bias=0.0,
-            contact_x=20.0, contact_y=20.0,
-        )
-        result = solver.validate_contacts([c1, c2])
-        self.assertEqual(len(result), 2)
 
 
 class TestJointConstraints(unittest.TestCase):
