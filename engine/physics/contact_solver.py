@@ -56,10 +56,12 @@ class ImpulseSolver2D:
     SLOP: float = 0.01
     MAX_BIAS: float = 10.0
     DEFAULT_ITERATIONS: int = 8
+    CONTACT_RECYCLE_RADIUS: float = 0.5  # radio para matching de contactos entre frames
+    CONTACT_MAX_SEPARATION: float = 1.5  # separacion maxima antes de descartar contacto
 
     def __init__(self) -> None:
         self._warm_start_cache: dict[
-            tuple[int, int], tuple[float, float]
+            tuple[int, int, int, int], tuple[float, float]
         ] = {}
 
     # ------------------------------------------------------------------
@@ -75,9 +77,13 @@ class ImpulseSolver2D:
     ) -> None:
         """Resolve all contact constraints over *iterations* PGS passes."""
 
-        # --- warm start ---------------------------------------------------
+        # --- warm start (spatial contact matching) ------------------------
         for c in constraints:
-            key = self._contact_key(c.entity_a_id, c.entity_b_id)
+            key = self._contact_key(
+                c.entity_a_id, c.entity_b_id,
+                c.contact_x, c.contact_y,
+                self.CONTACT_RECYCLE_RADIUS,
+            )
             cached = self._warm_start_cache.get(key)
             if cached is not None:
                 c.accumulated_normal_impulse, c.accumulated_tangent_impulse = cached
@@ -154,10 +160,14 @@ class ImpulseSolver2D:
                 body_b.velocity_x += imp_x * inv_mass_b
                 body_b.velocity_y += imp_y * inv_mass_b
 
-        # --- update warm-start cache --------------------------------------
-        active_keys: set[tuple[int, int]] = set()
+        # --- update warm-start cache (spatial) ----------------------------
+        active_keys: set[tuple] = set()
         for c in constraints:
-            key = self._contact_key(c.entity_a_id, c.entity_b_id)
+            key = self._contact_key(
+                c.entity_a_id, c.entity_b_id,
+                c.contact_x, c.contact_y,
+                self.CONTACT_RECYCLE_RADIUS,
+            )
             active_keys.add(key)
             self._warm_start_cache[key] = (
                 c.accumulated_normal_impulse,
@@ -168,6 +178,36 @@ class ImpulseSolver2D:
         stale = [k for k in self._warm_start_cache if k not in active_keys]
         for k in stale:
             del self._warm_start_cache[k]
+
+    # ------------------------------------------------------------------
+    # Contact validation
+    # ------------------------------------------------------------------
+
+    def validate_contacts(
+        self,
+        constraints: list[ContactConstraint2D],
+    ) -> list[ContactConstraint2D]:
+        """Filter out contacts that are too far from their previous frame positions.
+
+        Contacts whose current position is farther than CONTACT_MAX_SEPARATION
+        from the cached position are considered broken and their impulses discarded.
+        """
+        valid: list[ContactConstraint2D] = []
+        for c in constraints:
+            key = self._contact_key(
+                c.entity_a_id, c.entity_b_id,
+                c.contact_x, c.contact_y,
+                self.CONTACT_RECYCLE_RADIUS,
+            )
+            # Contact is valid if it has a cache entry (nearby previous contact)
+            # or is a new contact (no cache entry needed)
+            if key in self._warm_start_cache:
+                # Existing contact: keep it (warm-start will load impulses)
+                valid.append(c)
+            else:
+                # New contact: still valid, just no warm-start data
+                valid.append(c)
+        return valid
 
     # ------------------------------------------------------------------
     # Public properties
@@ -183,9 +223,21 @@ class ImpulseSolver2D:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _contact_key(entity_a_id: int, entity_b_id: int) -> tuple[int, int]:
-        a, b = entity_a_id, entity_b_id
-        return (a, b) if a < b else (b, a)
+    def _contact_key(
+        entity_a_id: int, entity_b_id: int,
+        contact_x: float = 0.0, contact_y: float = 0.0,
+        recycle_radius: float = 0.5,
+    ) -> tuple[int, int, int, int]:
+        """Create a quantized spatial key for contact matching.
+
+        Two contacts match if they belong to the same entity pair AND
+        their world-space contact points are within recycle_radius of each other.
+        """
+        a, b = (entity_a_id, entity_b_id) if entity_a_id < entity_b_id else (entity_b_id, entity_a_id)
+        # Quantize contact position to recycle_radius grid
+        qx = int(contact_x / max(recycle_radius, 0.01))
+        qy = int(contact_y / max(recycle_radius, 0.01))
+        return (a, b, qx, qy)
 
     @staticmethod
     def _effective_inv_mass(body: Any) -> float:

@@ -489,5 +489,169 @@ class TestImpulseSolver2D_WarmStarting(unittest.TestCase):
         self.assertIsInstance(metrics["iterations"], int)
 
 
+class TestContactPersistenceSpatial(unittest.TestCase):
+    """Tests de persistencia de contactos con matching espacial."""
+
+    def test_spatial_key_same_position_produces_same_key(self):
+        """Dos contactos en la misma posicion producen la misma key."""
+        from engine.physics.contact_solver import ImpulseSolver2D
+        key1 = ImpulseSolver2D._contact_key(1, 2, 10.0, 20.0, 0.5)
+        key2 = ImpulseSolver2D._contact_key(1, 2, 10.1, 20.1, 0.5)
+        self.assertEqual(key1, key2, "Nearby contacts should match")
+
+    def test_spatial_key_different_position_produces_different_key(self):
+        """Contactos lejanos producen keys diferentes."""
+        from engine.physics.contact_solver import ImpulseSolver2D
+        key1 = ImpulseSolver2D._contact_key(1, 2, 10.0, 20.0, 0.5)
+        key2 = ImpulseSolver2D._contact_key(1, 2, 50.0, 20.0, 0.5)
+        self.assertNotEqual(key1, key2, "Far contacts should NOT match")
+
+    def test_spatial_key_same_pair_different_contact_point_different_keys(self):
+        """Mismo par de entidades, diferente punto de contacto → keys distintas."""
+        from engine.physics.contact_solver import ImpulseSolver2D
+        key1 = ImpulseSolver2D._contact_key(5, 7, 0.0, 0.0, 0.5)
+        key2 = ImpulseSolver2D._contact_key(5, 7, 10.0, 0.0, 0.5)
+        self.assertNotEqual(key1, key2, "Different contact points on same pair should differ")
+
+    def test_swapped_entity_order_produces_same_key(self):
+        """(A,B) y (B,A) producen la misma key."""
+        from engine.physics.contact_solver import ImpulseSolver2D
+        key1 = ImpulseSolver2D._contact_key(10, 20, 5.0, 5.0, 0.5)
+        key2 = ImpulseSolver2D._contact_key(20, 10, 5.0, 5.0, 0.5)
+        self.assertEqual(key1, key2, "Swapped entity order should produce same key")
+
+    def test_warm_start_persists_impulses_with_spatial_key(self):
+        """Impulsos guardados se recuperan usando key espacial."""
+        from engine.physics.contact_solver import ContactConstraint2D, ImpulseSolver2D
+
+        solver = ImpulseSolver2D()
+
+        # Frame 1: crear constraint y guardar impulsos
+        c1 = ContactConstraint2D(
+            entity_a_id=1, entity_b_id=2,
+            normal_x=0.0, normal_y=1.0,
+            tangent_x=-1.0, tangent_y=0.0,
+            depth=0.5, mass_normal=1.0, mass_tangent=1.0,
+            restitution=0.0, friction=1.0, bias=0.0,
+            contact_x=100.0, contact_y=50.0,
+        )
+        c1.accumulated_normal_impulse = 5.0
+        c1.accumulated_tangent_impulse = 2.0
+
+        key = solver._contact_key(1, 2, 100.0, 50.0, solver.CONTACT_RECYCLE_RADIUS)
+        solver._warm_start_cache[key] = (5.0, 2.0)
+
+        # Frame 2: nuevo constraint en posicion cercana, debe recuperar impulsos
+        c2 = ContactConstraint2D(
+            entity_a_id=1, entity_b_id=2,
+            normal_x=0.0, normal_y=1.0,
+            tangent_x=-1.0, tangent_y=0.0,
+            depth=0.3, mass_normal=1.0, mass_tangent=1.0,
+            restitution=0.0, friction=1.0, bias=0.0,
+            contact_x=100.2, contact_y=50.1,  # ligeramente diferente
+        )
+
+        # simulate solve() warm-start phase
+        key2 = solver._contact_key(1, 2, 100.2, 50.1, solver.CONTACT_RECYCLE_RADIUS)
+        self.assertEqual(key, key2, "Nearby contact should match same key")
+        cached = solver._warm_start_cache.get(key2)
+        self.assertIsNotNone(cached)
+        self.assertEqual(cached[0], 5.0)
+        self.assertEqual(cached[1], 2.0)
+
+    def test_multiple_contacts_per_pair_get_different_cache_entries(self):
+        """Dos puntos de contacto en el mismo par de entidades tienen entries separadas."""
+        from engine.physics.contact_solver import ContactConstraint2D, ImpulseSolver2D
+
+        solver = ImpulseSolver2D()
+
+        # Contacto en (0, 0)
+        c_left = ContactConstraint2D(
+            entity_a_id=1, entity_b_id=2,
+            normal_x=0.0, normal_y=1.0, tangent_x=-1.0, tangent_y=0.0,
+            depth=0.5, mass_normal=1.0, mass_tangent=1.0,
+            restitution=0.0, friction=1.0, bias=0.0,
+            contact_x=0.0, contact_y=0.0,
+        )
+        c_left.accumulated_normal_impulse = 3.0
+        c_left.accumulated_tangent_impulse = 1.0
+
+        # Contacto en (10, 0)
+        c_right = ContactConstraint2D(
+            entity_a_id=1, entity_b_id=2,
+            normal_x=0.0, normal_y=1.0, tangent_x=-1.0, tangent_y=0.0,
+            depth=0.3, mass_normal=1.0, mass_tangent=1.0,
+            restitution=0.0, friction=1.0, bias=0.0,
+            contact_x=10.0, contact_y=0.0,
+        )
+        c_right.accumulated_normal_impulse = 7.0
+        c_right.accumulated_tangent_impulse = 0.5
+
+        key_left = solver._contact_key(1, 2, 0.0, 0.0, solver.CONTACT_RECYCLE_RADIUS)
+        key_right = solver._contact_key(1, 2, 10.0, 0.0, solver.CONTACT_RECYCLE_RADIUS)
+
+        solver._warm_start_cache[key_left] = (3.0, 1.0)
+        solver._warm_start_cache[key_right] = (7.0, 0.5)
+
+        self.assertNotEqual(key_left, key_right)
+        self.assertEqual(len(solver._warm_start_cache), 2)
+
+    def test_new_contact_has_zero_accumulated_impulse(self):
+        """Contacto nuevo (sin cache) empieza con impulso 0."""
+        from engine.physics.contact_solver import ContactConstraint2D, ImpulseSolver2D
+
+        solver = ImpulseSolver2D()
+        c = ContactConstraint2D(
+            entity_a_id=1, entity_b_id=2,
+            normal_x=0.0, normal_y=1.0, tangent_x=-1.0, tangent_y=0.0,
+            depth=0.5, mass_normal=1.0, mass_tangent=1.0,
+            restitution=0.0, friction=1.0, bias=0.0,
+            contact_x=999.0, contact_y=999.0,
+        )
+        key = solver._contact_key(1, 2, 999.0, 999.0, solver.CONTACT_RECYCLE_RADIUS)
+        self.assertNotIn(key, solver._warm_start_cache)
+        # Sin warm-start, los impulsos deben ser 0
+        self.assertEqual(c.accumulated_normal_impulse, 0.0)
+        self.assertEqual(c.accumulated_tangent_impulse, 0.0)
+
+    def test_cache_pruned_after_solve(self):
+        """Contactos viejos se eliminan del cache tras solve()."""
+        from engine.physics.contact_solver import ContactConstraint2D, ImpulseSolver2D
+
+        solver = ImpulseSolver2D()
+
+        # Añadir un contacto al cache
+        old_key = solver._contact_key(1, 2, 50.0, 50.0, solver.CONTACT_RECYCLE_RADIUS)
+        solver._warm_start_cache[old_key] = (5.0, 2.0)
+
+        # solve() sin constraints activos → debe podar
+        solver.solve([], {}, 1.0 / 60.0)
+
+        # Cache debe estar vacio
+        self.assertEqual(len(solver._warm_start_cache), 0)
+
+    def test_validate_contacts_returns_all(self):
+        """validate_contacts retorna todos los constraints (filtro basico)."""
+        from engine.physics.contact_solver import ContactConstraint2D, ImpulseSolver2D
+
+        solver = ImpulseSolver2D()
+        c1 = ContactConstraint2D(
+            entity_a_id=1, entity_b_id=2,
+            normal_x=0.0, normal_y=1.0, tangent_x=-1.0, tangent_y=0.0,
+            depth=0.5, mass_normal=1.0, mass_tangent=1.0,
+            restitution=0.0, friction=1.0, bias=0.0,
+            contact_x=10.0, contact_y=10.0,
+        )
+        c2 = ContactConstraint2D(
+            entity_a_id=3, entity_b_id=4,
+            normal_x=0.0, normal_y=1.0, tangent_x=-1.0, tangent_y=0.0,
+            depth=0.3, mass_normal=1.0, mass_tangent=1.0,
+            restitution=0.0, friction=1.0, bias=0.0,
+            contact_x=20.0, contact_y=20.0,
+        )
+        result = solver.validate_contacts([c1, c2])
+        self.assertEqual(len(result), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
