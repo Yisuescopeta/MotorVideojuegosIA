@@ -84,7 +84,6 @@ class MotorRegistryAlignmentTests(unittest.TestCase):
         """Registry commands should either work or be marked as future."""
         # Commands that are expected to fail (not yet implemented)
         known_future_commands = {
-            "motor runtime pause",
             "motor prefab edit",
             "motor physics query ray",
             "motor physics backends",
