@@ -83,6 +83,7 @@ class PhysicsSystem:
         self._solver_iterations: int = 8
         self._body_id_to_island: dict[int, Island2D] = {}
         self._position_correction_ratio: float = 0.3  # Baumgarte-style: only correct 30% of penetration per frame
+        self._PUSH_OUT_MIN_OVERLAP: float = 0.005
 
     def set_event_bus(self, event_bus: Optional[Any]) -> None:  # type: ignore[no-any-explicit]  # EventBus: tipo externo determinado en runtime
         self._event_bus = event_bus
@@ -992,11 +993,11 @@ class PhysicsSystem:
                     # At rest but overlapping another dynamic body — push out based on penetration
                     overlap_right = right - o_left
                     overlap_left = o_right - left
-                    if overlap_right > 0 and overlap_right >= overlap_left:
+                    if overlap_right > self._PUSH_OUT_MIN_OVERLAP and overlap_right >= overlap_left:
                         correction = overlap_right * self._position_correction_ratio
                         transform.x -= correction * my_ratio
                         other_transform.x += correction * other_ratio
-                    elif overlap_left > 0:
+                    elif overlap_left > self._PUSH_OUT_MIN_OVERLAP:
                         correction = overlap_left * self._position_correction_ratio
                         transform.x += correction * my_ratio
                         other_transform.x -= correction * other_ratio
@@ -1041,11 +1042,11 @@ class PhysicsSystem:
                     # At rest but overlapping another dynamic body — push out based on penetration
                     overlap_bottom = bottom - o_top
                     overlap_top = o_bottom - top
-                    if overlap_bottom > 0 and overlap_bottom >= overlap_top:
+                    if overlap_bottom > self._PUSH_OUT_MIN_OVERLAP and overlap_bottom >= overlap_top:
                         correction = overlap_bottom * self._position_correction_ratio
                         transform.y -= correction * my_ratio
                         other_transform.y += correction * other_ratio
-                    elif overlap_top > 0:
+                    elif overlap_top > self._PUSH_OUT_MIN_OVERLAP:
                         correction = overlap_top * self._position_correction_ratio
                         transform.y += correction * my_ratio
                         other_transform.y -= correction * other_ratio
