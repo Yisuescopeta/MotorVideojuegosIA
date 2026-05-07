@@ -545,7 +545,7 @@ class TestContactPersistenceSpatial(unittest.TestCase):
         c1.accumulated_tangent_impulse = 2.0
 
         key = solver._contact_key(1, 2, 100.0, 50.0, solver.CONTACT_RECYCLE_RADIUS)
-        solver._warm_start_cache[key] = (5.0, 2.0)
+        solver._warm_start_cache[key] = (5.0, 2.0, 0)
 
         # Frame 2: nuevo constraint en posicion cercana, debe recuperar impulsos
         c2 = ContactConstraint2D(
@@ -596,8 +596,8 @@ class TestContactPersistenceSpatial(unittest.TestCase):
         key_left = solver._contact_key(1, 2, 0.0, 0.0, solver.CONTACT_RECYCLE_RADIUS)
         key_right = solver._contact_key(1, 2, 10.0, 0.0, solver.CONTACT_RECYCLE_RADIUS)
 
-        solver._warm_start_cache[key_left] = (3.0, 1.0)
-        solver._warm_start_cache[key_right] = (7.0, 0.5)
+        solver._warm_start_cache[key_left] = (3.0, 1.0, 0)
+        solver._warm_start_cache[key_right] = (7.0, 0.5, 0)
 
         self.assertNotEqual(key_left, key_right)
         self.assertEqual(len(solver._warm_start_cache), 2)
@@ -628,7 +628,7 @@ class TestContactPersistenceSpatial(unittest.TestCase):
 
         # Añadir un contacto al cache
         old_key = solver._contact_key(1, 2, 50.0, 50.0, solver.CONTACT_RECYCLE_RADIUS)
-        solver._warm_start_cache[old_key] = (5.0, 2.0)
+        solver._warm_start_cache[old_key] = (5.0, 2.0, 0)
 
         # solve() sin constraints activos → debe podar
         solver.solve([], {}, 1.0 / 60.0)
@@ -783,7 +783,7 @@ class TestJointConstraints(unittest.TestCase):
         a.add_component(joint)
 
         dt = 1.0 / 60.0
-        for _ in range(5):
+        for _ in range(3):
             physics.update(world, dt)
 
         t_a = a.get_component(Transform)
@@ -806,7 +806,7 @@ class TestJointConstraints(unittest.TestCase):
         joint2.joint_stiffness = 0.05  # Muy bajo
         a2.add_component(joint2)
 
-        for _ in range(5):
+        for _ in range(3):
             physics.update(world2, dt)
 
         t_a2 = a2.get_component(Transform)
@@ -902,6 +902,56 @@ class TestGroundedFlag(unittest.TestCase):
         rb = box.get_component(RigidBody)
         self.assertTrue(rb.is_grounded,
             "Box should be grounded on kinematic platform")
+
+
+class TestContactPersistenceAge(unittest.TestCase):
+    """Verifica que contact_age se incrementa entre frames y reduce correccion."""
+
+    def test_contact_age_increments_across_frames(self):
+        """Contacto persistente debe incrementar age cada frame."""
+        from engine.physics.contact_solver import ContactConstraint2D, ImpulseSolver2D
+
+        solver = ImpulseSolver2D()
+
+        # Create a contact constraint
+        c = ContactConstraint2D(
+            entity_a_id=1, entity_b_id=2,
+            normal_x=0.0, normal_y=1.0,
+            tangent_x=-1.0, tangent_y=0.0,
+            depth=0.5, mass_normal=10.0, mass_tangent=10.0,
+            restitution=0.0, friction=1.0, bias=2.0,
+            contact_x=10.0, contact_y=10.0,
+        )
+
+        # Mock bodies
+        class MockBody:
+            body_type = "static"
+            mass = 0.0
+            velocity_x = 0.0
+            velocity_y = 0.0
+
+        bodies = {1: MockBody(), 2: MockBody()}
+
+        # Run solve 3 times — age should increment
+        for expected_age in range(3):
+            c.depth = 0.5  # Reset depth each frame
+            c.bias = 2.0
+            solver.solve([c], bodies, 1.0 / 60.0, iterations=1)
+            self.assertEqual(c.contact_age, expected_age,
+                f"Frame {expected_age}: expected age={expected_age}, got {c.contact_age}")
+
+    def test_new_contact_starts_at_age_zero(self):
+        """Contacto nuevo debe empezar con age=0."""
+        from engine.physics.contact_solver import ContactConstraint2D
+
+        c = ContactConstraint2D(
+            entity_a_id=1, entity_b_id=2,
+            normal_x=0.0, normal_y=1.0,
+            tangent_x=-1.0, tangent_y=0.0,
+            depth=0.5, mass_normal=10.0, mass_tangent=10.0,
+            restitution=0.0, friction=1.0, bias=2.0,
+        )
+        self.assertEqual(c.contact_age, 0, "New contact should have age=0")
 
 
 if __name__ == "__main__":

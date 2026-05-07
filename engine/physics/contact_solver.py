@@ -50,6 +50,8 @@ class ContactConstraint2D:
 
     is_bilateral: bool = False  # True para joints (permite impulso negativo), False para contactos
 
+    contact_age: int = 0  # frames this contact has persisted (0 = new)
+
 
 class ImpulseSolver2D:
     """Projected Gauss-Seidel impulse solver with warm-starting and friction."""
@@ -62,7 +64,7 @@ class ImpulseSolver2D:
 
     def __init__(self) -> None:
         self._warm_start_cache: dict[
-            tuple[int, int, int, int], tuple[float, float]
+            tuple[int, int, int, int], tuple[float, float, int]
         ] = {}
 
     # ------------------------------------------------------------------
@@ -87,7 +89,7 @@ class ImpulseSolver2D:
             )
             cached = self._warm_start_cache.get(key)
             if cached is not None:
-                c.accumulated_normal_impulse, c.accumulated_tangent_impulse = cached
+                c.accumulated_normal_impulse, c.accumulated_tangent_impulse, c.contact_age = cached
 
             body_a = bodies.get(c.entity_a_id)
             body_b = bodies.get(c.entity_b_id)
@@ -176,9 +178,11 @@ class ImpulseSolver2D:
                 self.CONTACT_RECYCLE_RADIUS,
             )
             active_keys.add(key)
+            age = c.contact_age + 1
             self._warm_start_cache[key] = (
                 c.accumulated_normal_impulse,
                 c.accumulated_tangent_impulse,
+                age,
             )
 
         # prune stale pairs
@@ -233,6 +237,9 @@ class ImpulseSolver2D:
                     if c.depth <= POSITION_SLOP:
                         continue
                     correction = (c.depth - POSITION_SLOP) * POSITION_CORRECTION_FACTOR
+                    # Reduce correction for old stable contacts to prevent jitter
+                    age_factor = 1.0 / (1.0 + c.contact_age * 0.1)
+                    correction *= age_factor
 
                 # Mass-weighted distribution
                 ratio_a = inv_mass_a / total_inv

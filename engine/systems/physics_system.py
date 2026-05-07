@@ -1446,7 +1446,7 @@ class PhysicsSystem:
         if total_inv <= 0.0:
             return
 
-        correction = error / total_inv
+        correction = error * joint.joint_stiffness / total_inv
         if rigid_a and rigid_a.body_type == "dynamic":
             trans_a.x += nx * correction * inv_mass_a
             trans_a.y += ny * correction * inv_mass_a
