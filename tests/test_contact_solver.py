@@ -6,6 +6,7 @@ import math
 import unittest
 
 from engine.components.collider import Collider
+from engine.components.joint2d import Joint2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
@@ -656,6 +657,96 @@ class TestContactPersistenceSpatial(unittest.TestCase):
         )
         result = solver.validate_contacts([c1, c2])
         self.assertEqual(len(result), 2)
+
+
+class TestJointConstraints(unittest.TestCase):
+    """Tests para joints resueltos como constraints PGS bilaterales."""
+
+    def test_fixed_joint_keeps_bodies_together(self):
+        """Fixed joint mantiene dos cuerpos juntos."""
+        world = World()
+        physics = PhysicsSystem(gravity=0.0)
+
+        a = world.create_entity("A")
+        a.add_component(Transform(x=0.0, y=0.0))
+        a.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+
+        b = world.create_entity("B")
+        b.add_component(Transform(x=50.0, y=0.0))
+        b.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+
+        joint = Joint2D()
+        joint.joint_type = "fixed"
+        joint.connected_entity = "B"
+        a.add_component(joint)
+
+        dt = 1.0 / 60.0
+        for _ in range(30):
+            physics.update(world, dt)
+
+        t_a = a.get_component(Transform)
+        t_b = b.get_component(Transform)
+        # Con fixed joint, deben estar cerca
+        self.assertAlmostEqual(t_a.x, t_b.x, delta=5.0)
+        self.assertAlmostEqual(t_a.y, t_b.y, delta=5.0)
+
+    def test_distance_joint_maintains_rest_length(self):
+        """Distance joint mantiene la distancia de reposo entre cuerpos."""
+        world = World()
+        physics = PhysicsSystem(gravity=0.0)
+
+        a = world.create_entity("A")
+        a.add_component(Transform(x=0.0, y=0.0))
+        a.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+
+        b = world.create_entity("B")
+        b.add_component(Transform(x=200.0, y=0.0))
+        b.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+
+        joint = Joint2D()
+        joint.joint_type = "distance"
+        joint.connected_entity = "B"
+        joint.rest_length = 100.0
+        a.add_component(joint)
+
+        dt = 1.0 / 60.0
+        for _ in range(60):
+            physics.update(world, dt)
+
+        t_a = a.get_component(Transform)
+        t_b = b.get_component(Transform)
+        dist = math.hypot(t_b.x - t_a.x, t_b.y - t_a.y)
+        self.assertAlmostEqual(dist, 100.0, delta=5.0)
+
+    def test_distance_joint_pushes_apart_when_too_close(self):
+        """Bodies inside rest_length get pushed apart."""
+        world = World()
+        physics = PhysicsSystem(gravity=0.0)
+
+        a = world.create_entity("A")
+        a.add_component(Transform(x=0.0, y=0.0))
+        a.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+
+        b = world.create_entity("B")
+        b.add_component(Transform(x=30.0, y=0.0))
+        b.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+
+        joint = Joint2D()
+        joint.joint_type = "distance"
+        joint.connected_entity = "B"
+        joint.rest_length = 100.0
+        a.add_component(joint)
+
+        dt = 1.0 / 60.0
+        for _ in range(60):
+            physics.update(world, dt)
+
+        t_a = a.get_component(Transform)
+        t_b = b.get_component(Transform)
+        dist = math.hypot(t_b.x - t_a.x, t_b.y - t_a.y)
+        self.assertAlmostEqual(dist, 100.0, delta=10.0)
+        # A should have moved left
+        self.assertLess(t_a.x, 0.0, "A should move left when too close")
 
 
 if __name__ == "__main__":

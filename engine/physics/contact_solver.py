@@ -48,6 +48,8 @@ class ContactConstraint2D:
     contact_x: float = 0.0
     contact_y: float = 0.0
 
+    is_bilateral: bool = False  # True para joints (permite impulso negativo), False para contactos
+
 
 class ImpulseSolver2D:
     """Projected Gauss-Seidel impulse solver with warm-starting and friction."""
@@ -140,16 +142,22 @@ class ImpulseSolver2D:
                 # --- normal impulse ---------------------------------------
                 jn = (-(c.bounce_velocity + vn + c.bias)) * c.mass_normal
                 old_normal = c.accumulated_normal_impulse
-                c.accumulated_normal_impulse = max(0.0, old_normal + jn)
+                if c.is_bilateral:
+                    c.accumulated_normal_impulse = old_normal + jn  # sin clamp
+                else:
+                    c.accumulated_normal_impulse = max(0.0, old_normal + jn)
                 jn = c.accumulated_normal_impulse - old_normal
 
-                # --- tangent impulse (Coulomb friction) -------------------
-                jt = -vt * c.mass_tangent
-                jn_raw = c.friction * c.accumulated_normal_impulse
-                max_friction = jn_raw if math.isfinite(jn_raw) else float('inf')
-                old_tangent = c.accumulated_tangent_impulse
-                c.accumulated_tangent_impulse = max(-max_friction, min(max_friction, old_tangent + jt))
-                jt = c.accumulated_tangent_impulse - old_tangent
+                # --- tangent impulse (Coulomb friction, skipped for joints) ---
+                if not c.is_bilateral:
+                    jt = -vt * c.mass_tangent
+                    jn_raw = c.friction * c.accumulated_normal_impulse
+                    max_friction = jn_raw if math.isfinite(jn_raw) else float('inf')
+                    old_tangent = c.accumulated_tangent_impulse
+                    c.accumulated_tangent_impulse = max(-max_friction, min(max_friction, old_tangent + jt))
+                    jt = c.accumulated_tangent_impulse - old_tangent
+                else:
+                    jt = 0.0
 
                 # --- apply impulses to velocities -------------------------
                 imp_x = c.normal_x * jn + c.tangent_x * jt

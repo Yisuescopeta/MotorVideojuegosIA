@@ -307,6 +307,24 @@ class PhysicsSystem:
                     )
                     all_constraints.append(constraint)
 
+        # ── Build joint constraints (PGS bilateral) ──
+        joint_constraints = self._build_joint_constraints(world, delta_time)
+        # Register joint bodies in all_bodies if not already present
+        for jc in joint_constraints:
+            if jc.entity_a_id not in all_bodies:
+                ea = world.get_entity(jc.entity_a_id)
+                if ea is not None:
+                    rba = ea.get_component(RigidBody)
+                    if rba is not None:
+                        all_bodies[jc.entity_a_id] = rba
+            if jc.entity_b_id not in all_bodies:
+                eb = world.get_entity(jc.entity_b_id)
+                if eb is not None:
+                    rbb = eb.get_component(RigidBody)
+                    if rbb is not None:
+                        all_bodies[jc.entity_b_id] = rbb
+        all_constraints.extend(joint_constraints)
+
         # ── PASO 2: Construir islas + PGS solve por isla ──
         joint_pairs = self._collect_joint_pairs(world)
         active_body_ids = {eid for eid in body_deltas if eid not in sleeping_body_ids}
@@ -1216,9 +1234,11 @@ class PhysicsSystem:
             if not transform_a or not transform_b:
                 continue
             if joint.joint_type == "fixed":
-                self._resolve_fixed_joint(transform_a, transform_b, rigid_a, rigid_b)
+                # Resolved via PGS bilateral constraints
+                pass
             elif joint.joint_type == "distance":
-                self._resolve_distance_joint(transform_a, transform_b, rigid_a, rigid_b, joint)
+                # Resolved via PGS bilateral constraints
+                pass
             elif joint.joint_type == "pin":
                 self._resolve_pin_joint(transform_a, transform_b, rigid_a, rigid_b, joint, dt)
             elif joint.joint_type == "groove":
@@ -1241,6 +1261,94 @@ class PhysicsSystem:
                 continue
             pairs.append((int(entity.id), int(other.id)))
         return pairs
+
+    def _build_joint_constraints(
+        self, world: World, delta_time: float,
+    ) -> list[ContactConstraint2D]:
+        """Build PGS-compatible bilateral constraints for distance and fixed joints."""
+        constraints: list[ContactConstraint2D] = []
+        for entity in world.iter_entities():
+            joint = entity.get_component(Joint2D)
+            if not joint or not joint.enabled or not joint.connected_entity:
+                continue
+            other = world.get_entity_by_name(joint.connected_entity)
+            if not other:
+                continue
+            transform_a = entity.get_component(Transform)
+            transform_b = other.get_component(Transform)
+            rigid_a = entity.get_component(RigidBody)
+            rigid_b = other.get_component(RigidBody)
+            if not transform_a or not transform_b:
+                continue
+
+            if joint.joint_type == "fixed":
+                # Fixed joint: 2 constraints (x and y) to lock relative position
+                # Constraint in X
+                dx = transform_b.x - transform_a.x
+                c_x = ContactConstraint2D(
+                    entity_a_id=int(entity.id),
+                    entity_b_id=int(other.id),
+                    normal_x=1.0, normal_y=0.0,
+                    tangent_x=0.0, tangent_y=1.0,
+                    depth=abs(dx),
+                    mass_normal=self._joint_effective_mass(rigid_a, rigid_b),
+                    mass_tangent=0.0,
+                    restitution=0.0, friction=0.0,
+                    bias=dx * 0.2 / max(delta_time, 1e-6),
+                    is_bilateral=True,
+                )
+                constraints.append(c_x)
+                # Constraint in Y
+                dy = transform_b.y - transform_a.y
+                c_y = ContactConstraint2D(
+                    entity_a_id=int(entity.id),
+                    entity_b_id=int(other.id),
+                    normal_x=0.0, normal_y=1.0,
+                    tangent_x=-1.0, tangent_y=0.0,
+                    depth=abs(dy),
+                    mass_normal=self._joint_effective_mass(rigid_a, rigid_b),
+                    mass_tangent=0.0,
+                    restitution=0.0, friction=0.0,
+                    bias=dy * 0.2 / max(delta_time, 1e-6),
+                    is_bilateral=True,
+                )
+                constraints.append(c_y)
+
+            elif joint.joint_type == "distance":
+                dx = transform_b.x - transform_a.x
+                dy = transform_b.y - transform_a.y
+                dist = math.hypot(dx, dy)
+                if dist < 0.0001:
+                    continue
+                nx = dx / dist
+                ny = dy / dist
+                error = dist - joint.rest_length
+                c = ContactConstraint2D(
+                    entity_a_id=int(entity.id),
+                    entity_b_id=int(other.id),
+                    normal_x=nx, normal_y=ny,
+                    tangent_x=-ny, tangent_y=nx,
+                    depth=abs(error),
+                    mass_normal=self._joint_effective_mass(rigid_a, rigid_b),
+                    mass_tangent=0.0,
+                    restitution=0.0, friction=0.0,
+                    bias=error * 0.2 / max(delta_time, 1e-6),
+                    is_bilateral=True,
+                )
+                constraints.append(c)
+
+        return constraints
+
+    @staticmethod
+    def _joint_effective_mass(
+        rigid_a: RigidBody | None,
+        rigid_b: RigidBody | None,
+    ) -> float:
+        """Compute effective mass for a joint constraint (linear only)."""
+        inv_a = 1.0 / rigid_a.mass if (rigid_a and rigid_a.body_type == "dynamic" and rigid_a.mass > 0.0) else 0.0
+        inv_b = 1.0 / rigid_b.mass if (rigid_b and rigid_b.body_type == "dynamic" and rigid_b.mass > 0.0) else 0.0
+        total = inv_a + inv_b
+        return 1.0 / total if total > 1e-10 else 0.0
 
     def _resolve_fixed_joint(
         self,
