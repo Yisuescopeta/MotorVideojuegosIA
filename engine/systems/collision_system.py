@@ -64,7 +64,7 @@ class CollisionSystem:
     def set_event_bus(self, event_bus: "EventBus") -> None:
         self._event_bus = event_bus
 
-    def update(self, world: World) -> None:
+    def update(self, world: World, shared_grid: SpatialHash2D | None = None) -> None:
         self._collisions.clear()
         self._reset_step_metrics()
         self._query_buffer.clear()
@@ -72,7 +72,11 @@ class CollisionSystem:
         # Limpiar contactos runtime para RigidBodies con contact_monitor activo
         self._clear_contact_tracking(world)
 
-        grid = self._prepare_grid()
+        if shared_grid is not None:
+            shared_grid.clear()
+            grid = shared_grid
+        else:
+            grid = self._prepare_grid()
         entries_by_id = self._entries_by_id
         entries_by_id.clear()
 

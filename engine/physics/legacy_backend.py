@@ -129,7 +129,43 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             except TypeError:
                 self._physics_system.update(world, dt)
         if self._collision_system is not None:
-            self._collision_system.update(world)
+            # Reuse shared grid: clear and repopulate with post-physics positions
+            if grid is not None:
+                grid.clear()
+                # Repopulate with current entity positions after physics step
+                if hasattr(world, "get_all_entities"):
+                    for entity in world.get_all_entities():
+                        transform = entity.get_component(Transform) if hasattr(entity, "get_component") else None
+                        if transform is None:
+                            continue
+                        collider = entity.get_component(Collider) if hasattr(entity, "get_component") else None
+                        if collider is not None and collider.enabled:
+                            aabb = collider.get_bounds(transform.x, transform.y)
+                            grid.insert(entity.id, aabb)
+                            continue
+                        shape_set = entity.get_component(CollisionShapeSet2D) if hasattr(entity, "get_component") else None
+                        if shape_set is not None:
+                            aabb = shape_set.get_composite_bounds(transform.x, transform.y)
+                            grid.insert(entity.id, aabb)
+                            continue
+                        shape_2d = entity.get_component(CollisionShape2D) if hasattr(entity, "get_component") else None
+                        if shape_2d is not None and not shape_2d.disabled:
+                            aabb = shape_2d.get_bounds(transform.x, transform.y)
+                            grid.insert(entity.id, aabb)
+                            continue
+                        poly_2d = entity.get_component(CollisionPolygon2D) if hasattr(entity, "get_component") else None
+                        if poly_2d is not None and not poly_2d.disabled:
+                            aabb = poly_2d.get_bounds(transform.x, transform.y)
+                            grid.insert(entity.id, aabb)
+                            continue
+                    self._shared_grid = grid
+
+                try:
+                    self._collision_system.update(world, shared_grid=grid)
+                except TypeError:
+                    self._collision_system.update(world)
+            else:
+                self._collision_system.update(world)
         self._latest_contacts.extend(self._build_overlap_contacts())
         self._append_swept_contacts(world)
 
