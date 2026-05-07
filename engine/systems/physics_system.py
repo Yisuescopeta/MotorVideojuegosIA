@@ -1286,7 +1286,15 @@ class PhysicsSystem:
                 # PGS handles velocity-level constraint; this is the final positional pass
                 self._resolve_distance_joint(transform_a, transform_b, rigid_a, rigid_b, joint)
             elif joint.joint_type == "pin":
-                self._resolve_pin_joint(transform_a, transform_b, rigid_a, rigid_b, joint, dt)
+                # Position handled by PGS bilateral constraints
+                # Only apply angular limits and motor here
+                if joint.angular_limit_enabled and rigid_b:
+                    if transform_b.rotation < joint.angular_limit_lower:
+                        transform_b.rotation = joint.angular_limit_lower
+                    elif transform_b.rotation > joint.angular_limit_upper:
+                        transform_b.rotation = joint.angular_limit_upper
+                if joint.motor_enabled and rigid_b:
+                    rigid_b.angular_velocity += joint.motor_target_velocity * dt
             elif joint.joint_type == "groove":
                 self._resolve_groove_joint(transform_a, transform_b, rigid_a, rigid_b, joint)
             elif joint.joint_type == "damped_spring":
@@ -1311,7 +1319,7 @@ class PhysicsSystem:
     def _build_joint_constraints(
         self, world: World, delta_time: float,
     ) -> list[ContactConstraint2D]:
-        """Build PGS-compatible bilateral constraints for distance and fixed joints."""
+        """Build PGS-compatible bilateral constraints for fixed, distance, and pin joints."""
         constraints: list[ContactConstraint2D] = []
         for entity in world.iter_entities():
             joint = entity.get_component(Joint2D)
@@ -1382,6 +1390,41 @@ class PhysicsSystem:
                     is_bilateral=True,
                 )
                 constraints.append(c)
+
+            elif joint.joint_type == "pin":
+                # Pin joint: constrain positions to same point
+                # softness=0 → hard pin (fast correction); softness>0 → soft pin (slow correction)
+                pin_stiffness = 1.0 if joint.softness <= 0.0 else max(0.01, 1.0 / (1.0 + joint.softness * 10.0))
+                # Constraint in X
+                dx = transform_b.x - transform_a.x
+                c_x = ContactConstraint2D(
+                    entity_a_id=int(entity.id),
+                    entity_b_id=int(other.id),
+                    normal_x=1.0, normal_y=0.0,
+                    tangent_x=0.0, tangent_y=1.0,
+                    depth=abs(dx),
+                    mass_normal=self._joint_effective_mass(rigid_a, rigid_b),
+                    mass_tangent=0.0,
+                    restitution=0.0, friction=0.0,
+                    bias=dx * pin_stiffness / max(delta_time, 1e-6),
+                    is_bilateral=True,
+                )
+                constraints.append(c_x)
+                # Constraint in Y
+                dy = transform_b.y - transform_a.y
+                c_y = ContactConstraint2D(
+                    entity_a_id=int(entity.id),
+                    entity_b_id=int(other.id),
+                    normal_x=0.0, normal_y=1.0,
+                    tangent_x=-1.0, tangent_y=0.0,
+                    depth=abs(dy),
+                    mass_normal=self._joint_effective_mass(rigid_a, rigid_b),
+                    mass_tangent=0.0,
+                    restitution=0.0, friction=0.0,
+                    bias=dy * pin_stiffness / max(delta_time, 1e-6),
+                    is_bilateral=True,
+                )
+                constraints.append(c_y)
 
         return constraints
 
