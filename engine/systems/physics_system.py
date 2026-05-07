@@ -1323,7 +1323,7 @@ class PhysicsSystem:
                     mass_normal=self._joint_effective_mass(rigid_a, rigid_b),
                     mass_tangent=0.0,
                     restitution=0.0, friction=0.0,
-                    bias=dx * 0.2 / max(delta_time, 1e-6),
+                    bias=dx * joint.joint_stiffness / max(delta_time, 1e-6),
                     is_bilateral=True,
                 )
                 constraints.append(c_x)
@@ -1338,7 +1338,7 @@ class PhysicsSystem:
                     mass_normal=self._joint_effective_mass(rigid_a, rigid_b),
                     mass_tangent=0.0,
                     restitution=0.0, friction=0.0,
-                    bias=dy * 0.2 / max(delta_time, 1e-6),
+                    bias=dy * joint.joint_stiffness / max(delta_time, 1e-6),
                     is_bilateral=True,
                 )
                 constraints.append(c_y)
@@ -1361,7 +1361,7 @@ class PhysicsSystem:
                     mass_normal=self._joint_effective_mass(rigid_a, rigid_b),
                     mass_tangent=0.0,
                     restitution=0.0, friction=0.0,
-                    bias=error * 0.2 / max(delta_time, 1e-6),
+                    bias=error * joint.joint_stiffness / max(delta_time, 1e-6),
                     is_bilateral=True,
                 )
                 constraints.append(c)

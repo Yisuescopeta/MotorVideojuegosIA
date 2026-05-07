@@ -761,6 +761,64 @@ class TestJointConstraints(unittest.TestCase):
         # A should have moved left
         self.assertLess(t_a.x, 0.0, "A should move left when too close")
 
+    def test_joint_stiffness_affects_correction_speed(self):
+        """Stiffness alto debe corregir mas rapido que stiffness bajo."""
+        world = World()
+        physics = PhysicsSystem(gravity=0.0)
+
+        # Dos cuerpos separados 50px con distance joint rest_length=100
+        a = world.create_entity("A")
+        a.add_component(Transform(x=0.0, y=0.0))
+        a.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+
+        b = world.create_entity("B")
+        b.add_component(Transform(x=50.0, y=0.0))
+        b.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+
+        joint = Joint2D()
+        joint.joint_type = "distance"
+        joint.connected_entity = "B"
+        joint.rest_length = 100.0
+        joint.joint_stiffness = 1.0  # Maximo
+        a.add_component(joint)
+
+        dt = 1.0 / 60.0
+        for _ in range(30):
+            physics.update(world, dt)
+
+        t_a = a.get_component(Transform)
+        t_b = b.get_component(Transform)
+        dist_high = math.hypot(t_b.x - t_a.x, t_b.y - t_a.y)
+
+        # Repetir con stiffness bajo
+        world2 = World()
+        a2 = world2.create_entity("A2")
+        a2.add_component(Transform(x=0.0, y=0.0))
+        a2.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+        b2 = world2.create_entity("B2")
+        b2.add_component(Transform(x=50.0, y=0.0))
+        b2.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+
+        joint2 = Joint2D()
+        joint2.joint_type = "distance"
+        joint2.connected_entity = "B2"
+        joint2.rest_length = 100.0
+        joint2.joint_stiffness = 0.05  # Muy bajo
+        a2.add_component(joint2)
+
+        for _ in range(30):
+            physics.update(world2, dt)
+
+        t_a2 = a2.get_component(Transform)
+        t_b2 = b2.get_component(Transform)
+        dist_low = math.hypot(t_b2.x - t_a2.x, t_b2.y - t_a2.y)
+
+        # High stiffness should get closer to rest_length than low stiffness
+        error_high = abs(dist_high - 100.0)
+        error_low = abs(dist_low - 100.0)
+        self.assertLess(error_high, error_low,
+            f"High stiffness (error={error_high:.1f}) should converge faster than low stiffness (error={error_low:.1f})")
+
 
 class TestGroundedFlag(unittest.TestCase):
     """is_grounded solo debe activarse contra estáticos/kinemáticos, no contra dynamics."""
