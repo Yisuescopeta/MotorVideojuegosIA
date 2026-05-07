@@ -697,6 +697,40 @@ class TestJointConstraints(unittest.TestCase):
         dist = math.hypot(t_b.x - t_a.x, t_b.y - t_a.y)
         self.assertAlmostEqual(dist, 100.0, delta=5.0)
 
+    def test_fixed_joint_locks_rotation(self):
+        """Fixed joint debe bloquear rotacion relativa entre los dos cuerpos."""
+        world = World()
+        physics = PhysicsSystem(gravity=0.0)
+
+        a = world.create_entity("A")
+        a.add_component(Transform(x=0.0, y=0.0, rotation=0.0))
+        a.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0, angular_velocity=180.0))
+
+        b = world.create_entity("B")
+        b.add_component(Transform(x=50.0, y=0.0, rotation=45.0))
+        b.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0, angular_velocity=-90.0))
+
+        joint = Joint2D()
+        joint.joint_type = "fixed"
+        joint.connected_entity = "B"
+        a.add_component(joint)
+
+        dt = 1.0 / 60.0
+        for _ in range(30):
+            physics.update(world, dt)
+
+        t_a = a.get_component(Transform)
+        t_b = b.get_component(Transform)
+        rb_a = a.get_component(RigidBody)
+        rb_b = b.get_component(RigidBody)
+
+        # Las rotaciones deben ser iguales (o casi)
+        self.assertAlmostEqual(t_a.rotation, t_b.rotation, delta=1.0,
+            msg="Fixed joint should lock relative rotation")
+        # Las velocidades angulares deben ser cero
+        self.assertAlmostEqual(rb_a.angular_velocity, 0.0, delta=1.0)
+        self.assertAlmostEqual(rb_b.angular_velocity, 0.0, delta=1.0)
+
     def test_distance_joint_pushes_apart_when_too_close(self):
         """Bodies inside rest_length get pushed apart."""
         world = World()

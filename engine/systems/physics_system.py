@@ -1249,8 +1249,22 @@ class PhysicsSystem:
             if not transform_a or not transform_b:
                 continue
             if joint.joint_type == "fixed":
-                # Resolved via PGS bilateral constraints
-                pass
+                # Linear part handled by PGS bilateral constraints.
+                # Lock relative rotation between the two bodies.
+                a_dynamic = rigid_a is not None and rigid_a.body_type == "dynamic"
+                b_dynamic = rigid_b is not None and rigid_b.body_type == "dynamic"
+                if a_dynamic and b_dynamic:
+                    mid_rot = (transform_a.rotation + transform_b.rotation) * 0.5
+                    transform_a.rotation = mid_rot
+                    transform_b.rotation = mid_rot
+                    rigid_a.angular_velocity = 0.0
+                    rigid_b.angular_velocity = 0.0
+                elif a_dynamic:
+                    transform_a.rotation = transform_b.rotation
+                    rigid_a.angular_velocity = 0.0
+                elif b_dynamic:
+                    transform_b.rotation = transform_a.rotation
+                    rigid_b.angular_velocity = 0.0
             elif joint.joint_type == "distance":
                 # Resolved via PGS bilateral constraints
                 pass
