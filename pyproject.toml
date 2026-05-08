@@ -13,6 +13,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+editor = [
+    "PySide6>=6.7",
+]
 dev = [
     "bandit>=1.7.10",
     "mypy>=1.12.0",
@@ -28,10 +31,14 @@ version = {attr = "engine.config.ENGINE_VERSION"}
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["engine*", "cli*", "tools*", "motor*"]
+include = ["engine*", "cli*", "tools*", "motor*", "editor_qt*"]
+
+[tool.setuptools.package-data]
+editor_qt = ["theme/*.qss"]
 
 [project.scripts]
 motor = "motor.cli:main"
+motor-editor = "editor_qt.app:main"
 
 [tool.ruff]
 target-version = "py311"

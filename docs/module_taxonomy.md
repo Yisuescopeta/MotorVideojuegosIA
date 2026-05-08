@@ -34,6 +34,7 @@ orquestacion. Pueden ser valiosos, pero no son contrato duro del motor.
 | contratos internos de escena/runtime (`engine/scenes/contracts.py`, `engine/core/runtime_contracts.py`) | `core obligatorio` | Fijan limites de integracion entre runtime, authoring, workspace y API. |
 | serializacion y schema/migraciones | `core obligatorio` | Fijan `scene schema_version = 2`, `prefab schema_version = 2` y guardado canonico. |
 | editor base | `core obligatorio` | Traduce authoring al modelo compartido. |
+| `editor_qt` | `experimental/tooling` | Base visual PySide6 opcional; no reemplaza aun el editor base ni cambia contratos core. |
 | jerarquia | `core obligatorio` | Forma parte de datos serializables y tests de authoring. |
 | `EngineAPI` | `core obligatorio` | Fachada estable para agentes, tests, CLI y automatizacion. |
 | contrato comun de physics backends + fallback `legacy_aabb` | `core obligatorio` | Garantiza una ruta fisica base y queries publicas. |
@@ -60,6 +61,12 @@ orquestacion. Pueden ser valiosos, pero no son contrato duro del motor.
 El editor base es `core obligatorio` porque el proyecto incluye authoring como
 parte del contrato. Aun asi, la UI no es fuente de verdad: debe traducir al
 modelo serializable y a `SceneManager`/`EngineAPI`.
+
+### Editor Qt
+
+`editor_qt` es una base visual opcional para migrar progresivamente el editor
+principal hacia PySide6. Mientras conserve viewport placeholder y no sustituya
+el flujo raylib/raygui, se clasifica como `experimental/tooling`.
 
 ### Jerarquia
 

@@ -49,6 +49,31 @@ class AssetsProjectAPI(EngineAPIComponent):
             return self.fail("Open project failed")
         return self.ok("Project opened", {"path": self.project_service.project_root_display.as_posix()})
 
+    def create_project(self, path: str, name: str = "") -> ActionResult:
+        """Create a project directory through the public EngineAPI surface.
+
+        Args:
+            path: Target project root directory. It must not be a non-empty
+                directory.
+            name: Optional manifest display name.
+
+        Returns:
+            ActionResult with the project root path and manifest name.
+        """
+        if self.project_service is None:
+            return self.fail("Project service not ready")
+        try:
+            manifest = self.project_service.create_project(path, name=name)
+        except Exception as exc:
+            return self.fail(f"Project creation failed: {exc}")
+        return self.ok(
+            "Project created",
+            {
+                "path": self.project_service.project_root_display.as_posix(),
+                "name": manifest.name,
+            },
+        )
+
     def get_editor_state(self) -> Dict[str, Any]:
         """Load the persisted editor state for the current project.
 

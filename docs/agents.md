@@ -37,6 +37,8 @@ prueba de funcionalidad actual.
 - Las mutaciones runtime no deben convertirse en authoring state por accidente.
 - Cambios serializables compartidos deben pasar por `SceneManager` o `EngineAPI`.
 - `EngineAPI` es la fachada publica para agentes, tests, CLI y automatizacion.
+- Creacion de proyectos desde herramientas/editor externo debe usar
+  `EngineAPI.create_project(path, name="")`; no crear `project.json` a mano.
 - `legacy_aabb` debe seguir funcionando como fallback fisico.
 - Componentes publicos nuevos deben registrarse en `engine/levels/component_registry.py`.
 
@@ -96,6 +98,10 @@ final, aprobacion pendiente, cancelacion o limite de iteraciones.
   `unknown` si no existen datos fiables de usage/precios.
 - Las sesiones legacy se migran explicitamente con backup `.legacy-v1.bak` y
   evento `session_migrated`; una sesion corrupta se conserva sin sobrescribir.
+
+El editor Qt (`editor_qt`) expone un `AgentPanel` que se comunica con el motor
+via `EditorEngineFacade`. Consulta `docs/editor_qt.md` para la arquitectura y
+flujo de señales.
 
 Para CLI:
 

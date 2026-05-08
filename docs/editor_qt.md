@@ -1,0 +1,210 @@
+# Editor Qt
+
+Estado: `experimental/tooling`.
+
+`editor_qt` inicia la base progresiva del editor principal en PySide6. No
+reemplaza `main.py`, no elimina el editor raylib/raygui y el viewport Qt-native
+es de authoring (sin raylib, sin `Game.run()`).
+
+## Instalacion
+
+PySide6 es dependencia opcional del editor:
+
+```bash
+py -m pip install -e ".[editor]"
+```
+
+El core, runtime headless y editor legacy no dependen de PySide6.
+
+## Ejecucion
+
+```bash
+py -m editor_qt.app
+```
+
+Sin `--project`, Qt abre primero el launcher de proyectos. Desde ahi se puede
+buscar proyectos recientes, registrar una carpeta existente con `Add` y entrar
+al editor con doble click. `New Project` crea proyectos mediante
+`EditorEngineFacade -> EngineAPI.create_project()`.
+
+Tambien queda disponible el entry point:
+
+```bash
+motor-editor
+```
+
+Opciones iniciales:
+
+```bash
+py -m editor_qt.app --project .
+py -m editor_qt.app --project . --scene levels/demo_level.json
+```
+
+## Arquitectura
+
+Los widgets Qt no acceden a `World`, `SceneManager` ni sistemas internos. La
+ruta inicial es:
+
+```text
+Qt UI -> EditorEngineFacade -> EngineAPI -> SceneManager/Scene
+```
+
+`EditorEngineFacade` vive en `editor_qt/bridge/engine_facade.py` y es la unica
+entrada de los paneles Qt hacia el motor. La seleccion visual es estado efimero
+del editor; las mutaciones de authoring se delegan a `EngineAPI`.
+
+### EditorEngineFacade
+
+Metodos publicos del facade hacia los paneles Qt:
+
+| Metodo | Descripcion |
+|---|---|
+| `list_entities()` | Lista entidades de la escena activa |
+| `get_entity(name)` | Datos de una entidad |
+| `create_entity(name)` | Crea entidad raiz |
+| `delete_entity(name)` | Elimina entidad |
+| `set_entity_parent(name, parent)` | Re-parenta o des-parenta entidad |
+| `create_child_entity(parent, name)` | Crea entidad hija en parent |
+| `duplicate_entity(name)` | Duplica entidad con todos sus componentes |
+| `add_component(entity, component, data)` | Agrega componente a entidad |
+| `remove_component(entity, component)` | Elimina componente de entidad |
+| `replace_component_data(entity, component, data)` | Reemplaza data completa de componente |
+| `update_component_property(entity, comp, prop, value)` | Edita propiedad serializable |
+| `select_entity(name)` | Fija seleccion visual |
+| `get_active_scene_info()` | Info de escena activa |
+| `load_scene(ref)` / `load_default_scene()` | Carga escena |
+| `create_scene(name)` | Crea escena nueva |
+| `save_scene()` | Guarda escena activa |
+| `undo()` / `redo()` | Deshacer / rehacer |
+| `has_unsaved_changes()` | Escena activa tiene dirty state |
+| `get_scene_connections()` / `set_scene_connection()` | Scene flow |
+| `get_animator_info()`, `list_animator_states()`, `ensure_animator()`, `set_animator_sprite_sheet()`, `upsert_animator_state()`, `remove_animator_state()`, `set_animator_speed()`, `set_animator_flip()` | Animator |
+| `list_agent_providers()`, `list_agent_tools()`, `create_agent_session()`, `send_agent_message()`, `approve_agent_action()` | Agent |
+| `list_project_scenes()`, `list_project_assets()`, `list_project_scripts()`, `list_project_prefabs()` | Project browser |
+| `create_project()`, `open_project()` | Project lifecycle |
+| `refresh_assets()` | Asset catalog |
+| `shutdown()` | Cierre |
+
+El facade NO expone `EngineAPI` directamente. Los paneles solo ven metodos
+tipados del facade.
+
+## Estado actual
+
+### Proyecto y launcher
+
+- Launcher Qt de proyectos recientes antes de entrar al editor.
+- `New Project` crea proyectos mediante `EngineAPI.create_project()`.
+
+### Ventana principal
+
+- `QMainWindow` con composicion fija: menu bar, toolbar superior,
+  `Hierarchy` izquierda, `Inspector` derecha, tabs centrales
+  `Scene/Game/Flow/Animator` y tabs inferiores `Project/Flow/Console/Terminal/Agent`.
+
+### Viewports (Qt-native, sin raylib)
+
+- `Scene` y `Game` renderizan entidades con QPainter sobre fondo oscuro.
+- **Camara de editor**: pan con middle-mouse drag, zoom con scroll wheel
+  (zoom hacia el cursor).
+- **Grid** dibujado en coordenadas mundo con lineas cada 32px y ejes en origen.
+- **Seleccion visual**: click izquierdo sobre bounding rect de entidad.
+- **Gizmo Move**: arrastre de entidad seleccionada con handles coloreados
+  (rojo=X, verde=Y, blanco=libre).
+- Toolbar con herramientas `Select` / `Move` / `Rotate` / `Scale` (checkables;
+  solo `Move` activa gizmo actualmente; `Rotate` y `Scale` son placeholder).
+- Senal `entity_moved` que commitea posicion final via `EngineAPI.edit_component()`.
+
+### Hierarchy
+
+- `QTreeWidget` con estructura de arbol por parentesco.
+- **Drag-drop reparenting**: arrastrar entidad sobre otra la re-parenta.
+- **Menu contextual** sobre entidad: `Create Entity`, `Create Child Entity`,
+  `Delete Entity`, `Duplicate Entity`, `Unparent`, `Save as Prefab`.
+- Botones `Create`, `Delete`, `Refresh`.
+- Senales: `entity_selected`, `entity_create_requested`, `entity_delete_requested`,
+  `entity_create_child_requested`, `entity_duplicate_requested`,
+  `entity_reparent_requested`.
+
+### Inspector
+
+- `QTreeWidget` con componentes como foldouts expandibles.
+- **Editores tipados** inline por tipo de valor:
+  - `bool` → `QCheckBox`
+  - `int` → `QSpinBox` (-999999 a 999999)
+  - `float` → `QDoubleSpinBox` (3 decimales, -999999 a 999999)
+  - `str`, `None`, `list`, `dict` → `QLineEdit` con codificacion JSON
+- Boton **Add Component**: prompt textual, emite `component_add_requested`.
+- Boton **Remove Component** (`✕`) por componente, excepto `Transform` que es
+  inamovible.
+- Senales: `property_edit_requested`, `component_add_requested`,
+  `component_remove_requested`.
+
+### Scene Flow, Animator, Terminal, Agent
+
+- `Flow` edita conexiones `scene_flow` via `EngineAPI`.
+- `Animator` trabaja sobre la entidad seleccionada.
+- `Terminal` usa `QProcess`, solo arranca al pulsar `Start`.
+- `Agent` crea sesiones y envia mensajes via `EngineAPI` AgentAPI.
+
+### Project panel
+
+- Muestra escenas, assets, prefabs y scripts en modo read-only (con
+  `list_project_scenes()`, `list_project_assets()`, `list_project_scripts()`,
+  `list_project_prefabs()`).
+
+### Gizmo (`editor_qt/gizmo/`)
+
+Paquete nuevo `experimental/tooling` dentro de `editor_qt`:
+
+- `GizmoMode` enum: `NONE`, `TRANSLATE_X`, `TRANSLATE_Y`, `TRANSLATE_FREE`.
+- `GizmoHandle`: handle individual con modo y rect de hit-test.
+- `GizmoManager`:
+  - `set_mode(mode)`
+  - `hit_test(screen_pos)` → handle id o `None`
+  - `start_drag(handle_id, screen_pos, world_x, world_y)`
+  - `update_drag(screen_pos, zoom)` → `(world_x, world_y)`
+  - `end_drag()` → `{handle, world_x, world_y}` o `None`
+  - `render(painter, entity_rect, zoom)`: pinta ejes rojo/verde con flechas y
+    cuadrado central blanco, handles en screen-space constante.
+
+### Estado general
+
+- Carga escena inicial con `EngineAPI.load_scene_for_runtime_inspection()`.
+- Guardado manual con `Save Scene` (`EngineAPI.save_scene()`).
+- `Undo` / `Redo` delegan en `EngineAPI`.
+- `Canvas`, `Text` y `Button` delegados en rutas UI de `EngineAPI`.
+- `Refresh Assets` delega en `EngineAPI.refresh_asset_catalog()`.
+- Barra de estado muestra proyecto, escena activa, entidades y `Unsaved`.
+- Al cerrar con dirty state, Qt pide guardar, descartar o cancelar.
+- No se inicializa raylib ni se ejecuta `Game.run()`.
+
+## Flujo de señales
+
+Los paneles Qt no llaman directamente a `EngineAPI`. Emiten señales Qt que la
+`MainWindow` conecta a slots, y esos slots delegan en `EditorEngineFacade`, que
+a su vez usa `EngineAPI`. El patrón es:
+
+```text
+Panel → Signal → MainWindow slot → Facade → EngineAPI
+```
+
+| Señal | Origen | Parámetros | Dispara |
+|-------|--------|------------|---------|
+| `entity_selected` | HierarchyPanel, QtSceneViewportPanel | `entity_name: str` | Inspector refresh, Animator refresh |
+| `entity_create_requested` | HierarchyPanel | `entity_name: str` | `facade.create_entity()` |
+| `entity_delete_requested` | HierarchyPanel | `entity_name: str` | `facade.delete_entity()` |
+| `entity_create_child_requested` | HierarchyPanel | `parent_name: str, child_name: str` | `facade.create_child_entity()` |
+| `entity_duplicate_requested` | HierarchyPanel | `entity_name: str` | `facade.duplicate_entity()` |
+| `entity_reparent_requested` | HierarchyPanel | `entity_name: str, new_parent: str` | `facade.set_entity_parent()` |
+| `property_edit_requested` | InspectorPanel | `entity, component, property, value_text, original` | `facade.update_component_property()` |
+| `component_add_requested` | InspectorPanel | `entity_name: str, component_name: str` | `facade.add_component()` |
+| `component_remove_requested` | InspectorPanel | `entity_name: str, component_name: str` | `facade.remove_component()` |
+| `entity_moved` | QtSceneViewportPanel | `entity, component, prop, new_x: float, new_y: float` | `facade.update_component_property()` x2 |
+| `scene_requested` | ProjectPanel | `scene_ref: str` | `facade.load_scene()` |
+
+## Validacion automatizada
+
+Los tests cubren el cierre con escena dirty en modo offscreen: cancelar,
+descartar, guardar con exito y fallo de guardado. Tambien verifican Undo/Redo
+contra `EngineAPI` real en un proyecto temporal. La validacion no automatizada
+restante es solo la experiencia visual/interactiva humana de la ventana.

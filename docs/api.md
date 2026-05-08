@@ -630,6 +630,7 @@ Proyecto:
 
 - `list_recent_projects()`
 - `get_project_manifest()`
+- `create_project(path, name="")`
 - `open_project(path)`
 - `get_editor_state()`
 - `save_editor_state(data)`
