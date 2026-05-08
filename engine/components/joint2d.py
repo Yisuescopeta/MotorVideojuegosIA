@@ -36,6 +36,9 @@ class Joint2D(Component):
         self.connected_anchor_x: float = 0.0
         self.connected_anchor_y: float = 0.0
 
+        # Joint stiffness (bias factor for positional correction, 0..1)
+        self.joint_stiffness: float = 0.2
+
         # Frequency/damping for distance joints
         self.frequency_hz: float = 0.0
         self.damping_ratio: float = 0.0
@@ -61,6 +64,7 @@ class Joint2D(Component):
             "anchor_y": self.anchor_y,
             "connected_anchor_x": self.connected_anchor_x,
             "connected_anchor_y": self.connected_anchor_y,
+            "joint_stiffness": self.joint_stiffness,
             "frequency_hz": self.frequency_hz,
             "damping_ratio": self.damping_ratio,
             "groove_length": self.groove_length,
@@ -89,6 +93,7 @@ class Joint2D(Component):
         j.anchor_y = data.get("anchor_y", 0.0)
         j.connected_anchor_x = data.get("connected_anchor_x", 0.0)
         j.connected_anchor_y = data.get("connected_anchor_y", 0.0)
+        j.joint_stiffness = data.get("joint_stiffness", 0.2)
         j.frequency_hz = data.get("frequency_hz", 0.0)
         j.damping_ratio = data.get("damping_ratio", 0.0)
         j.groove_length = data.get("groove_length", 100.0)

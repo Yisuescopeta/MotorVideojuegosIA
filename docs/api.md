@@ -179,7 +179,7 @@ Helpers de componentes oficiales:
 - audio: `create_audio_source`, `update_audio_source`
 - scripts: `add_script_behaviour`, `update_script_behaviour`, `set_script_public_data`
 - render/fisica: `set_sorting_layers`, `set_render_order`, `set_physics_layer_collision`, `set_physics_backend`, `set_rigidbody_constraints`, `set_collision_filter`
-- tilemap: `create_tilemap`, `set_tilemap_tile`, `clear_tilemap_tile`, `get_tilemap`, `get_tilemap_layer`, `create_tilemap_layer`, `update_tilemap_layer`, `delete_tilemap_layer`, `set_tilemap_tile_full`, `bulk_set_tilemap_tiles`, `resize_tilemap`
+- tilemap: `create_tilemap`, `set_tilemap_tile`, `clear_tilemap_tile`, `get_tilemap`, `get_tilemap_layer`, `create_tilemap_layer`, `update_tilemap_layer`, `delete_tilemap_layer`, `set_tilemap_tile_full`, `bulk_set_tilemap_tiles`, `resize_tilemap`, `set_cells_terrain_connect`
 - animator: `list_animator_states`, `set_animator_sprite_sheet`, `upsert_animator_state`, `set_animator_state_frames`, `remove_animator_state`, `duplicate_animator_state`, `rename_animator_state`, `set_animator_flip`, `set_animator_speed`, `get_animator_info`, `create_animator_state`
 
 Metadata:
@@ -234,25 +234,39 @@ Input, audio y scripts:
 - `pause_audio(entity_name)`
 - `resume_audio(entity_name)`
 - `get_script_public_data(entity_name)`
+- `get_raycast_result(entity_name)`: obtiene el resultado runtime de un RayCast2D como dict
+- `set_character_max_slides(entity_name, max_slides)`: setea max_slides en CharacterController2D (default 4, rango 1-8, controla iteraciones de deslizamiento en move_and_slide)
+- `floor_stop_on_slope` (bool, default False) configurable via `edit_component(entity, "CharacterController2D", "floor_stop_on_slope", True)`: cuando True, move_and_slide frena la velocidad al instante al contactar el suelo (sin deslizar remanente horizontal). No expone método EngineAPI dedicado; se accede por el campo serializable del componente.
 
 Fisica:
 
 - `query_physics_aabb(left, top, right, bottom)`
 - `query_physics_ray(origin_x, origin_y, direction_x, direction_y, max_distance)`
-- `query_physics_shape_cast(shape_type, shape_params, origin_x, origin_y, direction_x, direction_y, max_distance)`
+- `query_physics_shape_cast(shape_type, shape_width, shape_height, origin_x, origin_y, direction_x, direction_y, max_distance, shape_params=None)`
+  - `shape_type`: `'box'`, `'circle'`, `'capsule'` o `'polygon'`
+  - `shape_width` / `shape_height`: tamaño base (diametro para circle/capsule)
+  - `shape_params` (dict opcional): parametros explicitos que sobreescriben `shape_width`/`shape_height`. Claves soportadas:
+    - `width`, `height` (box)
+    - `radius` (circle)
+    - `radius`, `height` (capsule)
+    - `vertices` (polygon: lista de `[x, y]` locales)
+  - El cast usa **barrido continuo con busqueda binaria TOI** (swept collision real), no pasos discretos. Retorna `list[ShapeCastResult]`.
+- `query_physics_motion(entity_name, motion_x, motion_y, margin=0.08, recovery_as_collision=False, exclude_entity_names=None, collision_mask=0xFFFFFFFF, collide_with_bodies=True, collide_with_areas=False)`
+  - Prueba de movimiento no mutante sobre una entidad. No modifica el Transform ni el estado del mundo. Retorna dict con: `travel_x`, `travel_y`, `remainder_x`, `remainder_y`, `collision_point_x`, `collision_point_y`, `collision_normal_x`, `collision_normal_y`, `collider_velocity_x`, `collider_velocity_y`, `collision_depth`, `collision_safe_fraction`, `collision_unsafe_fraction`, `collision_local_shape`, `collider_id`, `collider_entity_name`, `collider_shape`.
 - `apply_force(entity_name, force_x, force_y)`
 - `apply_impulse(entity_name, impulse_x, impulse_y)`
 - `apply_torque(entity_name, torque)`
 - `list_physics_backends()`
 - `get_physics_backend_selection()`
+- `get_solver_metrics()`: Retorna metricas del solver PGS: `{"warm_start_cache_size": int, "iterations": int, "island_count": int, "sleeping_islands": int}`
 
 #### Ejemplo: aplicar fuerzas a un RigidBody
 
 ```python
 # Crear entidad con RigidBody
-api.create_entity("player", components=["RigidBody", "Collider", "Transform"])
-api.set_rigidbody_property("player", "body_type", "dynamic")
-api.set_rigidbody_property("player", "mass", 2.0)
+api.create_entity("player", components={"RigidBody": {}, "Collider": {}, "Transform": {}})
+api.edit_component("player", "RigidBody", "body_type", "dynamic")
+api.edit_component("player", "RigidBody", "mass", 2.0)
 
 # Aplicar fuerza continua (acelera cada frame)
 api.apply_force("player", 500.0, 0.0)
@@ -279,13 +293,81 @@ colisiones, más flags de estado.
 | `on_ceiling` | bool | True si el cuerpo colisiona con un techo |
 | `collision_normal_x/y` | float | Normal de la última colisión |
 | `contacts` | list[PhysicsContact] | Contactos generados durante el movimiento |
-| `slide_count` | int | Número de deslizamientos realizados |
+| `slide_count` | int | Iteraciones de deslizamiento reales (0 si no hubo colisión, 1 en colisión simple, >1 en esquinas/paredes secuenciales) |
 | `floor_angle` | float | Ángulo del suelo detectado (rad) |
 
 > **Nota:** `move_and_slide` y `move_and_collide` son contratos internos de
 > `PhysicsBackend`. El acceso público para agentes IA es a través de
 > `EngineAPI.step()` y el componente `CharacterController2D`, que internamente
 > usan el backend configurado.
+>
+> **Cambio P0-2:** `move_and_slide` en `LegacyAABBPhysicsBackend` fue
+> reescrito de barrido por eje separado (horizontal + vertical por iteración)
+> a un **bucle de deslizamiento basado en `body_test_motion`** unificado 2D.
+> Cada iteración prueba el vector de movimiento completo contra el mundo,
+> aplica el `travel` seguro, y proyecta el `remainder` deslizando sobre la
+> normal de colisión (Godot `Vector2.slide`). Esto mejora la resolución de
+> esquinas y el deslizamiento en paredes diagonales. El nuevo parámetro
+> `floor_stop_on_slope` detiene la velocidad al primer contacto con el suelo.
+> Se añadió detección de one-way collision basada en normal (Godot-style).
+
+#### MotionResult2D — Resultado de prueba de movimiento (sweep-test no mutante)
+
+`MotionResult2D` es la estructura de datos devuelta por
+`PhysicsBackend.body_test_motion()`. Representa el resultado de barrer
+(sweep) el collider de una entidad a lo largo de un vector de movimiento **sin
+modificar el mundo** — ni el Transform de la entidad ni el estado de colisión.
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `travel_x`, `travel_y` | float | Vector de movimiento seguro recorrido antes de la colisión |
+| `remainder_x`, `remainder_y` | float | Porción restante del movimiento original tras la colisión |
+| `collision_point_x`, `collision_point_y` | float | Punto de impacto en espacio mundo |
+| `collision_normal_x`, `collision_normal_y` | float | Normal de la superficie en el punto de colisión |
+| `collider_velocity_x`, `collider_velocity_y` | float | Velocidad del colisionador impactado (útil para colisiones con cuerpos móviles) |
+| `collision_depth` | float | Profundidad de penetración |
+| `collision_safe_fraction` | float | Fracción del movimiento que se puede recorrer sin colisionar (0.0 = colisión en origen, 1.0 = sin colisión) |
+| `collision_unsafe_fraction` | float | Fracción del movimiento restante tras la colisión |
+| `collision_local_shape` | int | Índice de la shape local que colisionó (-1 si no aplica) |
+| `collider_id` | int | ID de la entidad impactada |
+| `collider_entity_name` | str | Nombre de la entidad impactada |
+| `collider_shape` | int | Índice de la shape del colisionador impactado |
+
+**Signature del método `body_test_motion` en `PhysicsBackend`:**
+
+```python
+def body_test_motion(
+    self,
+    world: Any,
+    entity: Any,
+    motion: tuple[float, float],
+    margin: float = 0.08,
+    recovery_as_collision: bool = False,
+    exclude_ids: Optional[list[int]] = None,
+    collision_mask: int = 0xFFFFFFFF,
+    collide_with_bodies: bool = True,
+    collide_with_areas: bool = False,
+) -> MotionResult2D:
+```
+
+**Parámetros:**
+- `world`: mundo activo sobre el que realizar la prueba
+- `entity`: entidad cuyo collider se usa como origen del barrido
+- `motion`: vector de movimiento `(x, y)` a probar
+- `margin`: margen de colisión para broad-phase (default: 0.08)
+- `recovery_as_collision`: si `True`, el recovery de penetración cuenta como colisión
+- `exclude_ids`: IDs de entidades a excluir de la prueba
+- `collision_mask`: máscara de bits para filtrado por capas (default: todas las capas)
+- `collide_with_bodies`: colisiona con cuerpos no-trigger (default: `True`)
+- `collide_with_areas`: colisiona con áreas/triggers (default: `False`)
+
+> **Relación con `move_and_slide`:** `body_test_motion` es el bloque fundamental
+> sobre el que se construye `move_and_slide`. Mientras que `move_and_slide`
+> itera múltiples veces (resolviendo colisiones, deslizando y repitiendo hasta
+> `max_slides`), `body_test_motion` realiza una **única prueba no-mutante**.
+> Para simular `move_and_slide` manualmente, se puede invocar
+> `body_test_motion`, avanzar la entidad el `travel` resultante, ajustar la
+> velocidad según la normal, y repetir.
 
 ### Area2D — Monitoreo de overlaps
 
@@ -300,13 +382,132 @@ Requiere un Collider para definir la forma del área.
 
 ```python
 # Crear área de daño
-api.create_entity("damage_zone", components=["Area2D", "Collider", "Transform"])
-api.set_collider_rect("damage_zone", 100, 100)
-api.set_collider_trigger("damage_zone", True)
+api.create_entity("damage_zone", components={"Area2D": {}, "Collider": {}, "Transform": {}})
+api.edit_component("damage_zone", "Collider", "width", 100)
+api.edit_component("damage_zone", "Collider", "height", 100)
+api.edit_component("damage_zone", "Collider", "is_trigger", True)
 
 # Suscribirse a eventos
 api.connect_signal("damage_zone", "body_entered", on_body_entered)
 ```
+
+### RayCast2D — Detección de colisiones por rayo
+
+RayCast2D es un componente que lanza un rayo cada frame desde la posición de
+la entidad usando `query_physics_ray` internamente. El sistema
+`RayCast2DSystem` (wired en `EngineAPI` y `RuntimeController`) actualiza los
+campos runtime automáticamente.
+
+**Campos serializables (autor: `add_component`):**
+- `enabled`: activa/desactiva el raycast (default: `true`)
+- `cast_to_x`, `cast_to_y`: dirección y distancia del rayo (default: `0, 50`)
+- `collision_mask`: bitmask de capas con las que colisiona (default: `1`)
+- `collide_with_areas`: colisiona con áreas (default: `false`)
+- `collide_with_bodies`: colisiona con bodies (default: `true`)
+- `exclude_parent`: excluye la entidad padre del resultado (default: `true`)
+
+**Campos runtime (lectura tras cada frame):**
+- `is_colliding`: `true` si hay colisión
+- `collision_point_x`, `collision_point_y`: punto de impacto
+- `collision_normal_x`, `collision_normal_y`: normal de la superficie
+- `collider_entity`: nombre de la entidad con la que colisionó
+
+```python
+api.add_component("player", "RayCast2D", {
+    "cast_to_x": 0,
+    "cast_to_y": 100,
+    "collision_mask": 1
+})
+# El sistema actualiza is_colliding, collision_point_*, etc. cada frame
+```
+
+El sistema `RayCast2DSystem` aplica los filtros configurados en cada frame, en
+este orden:
+
+1. `exclude_parent`: descarta hits contra la propia entidad y sus hijos
+   (por `parent_name`)
+2. `collide_with_areas`: si es `false`, descarta hits con `is_trigger=True`
+3. `collide_with_bodies`: si es `false`, descarta hits con `is_trigger=False`
+4. `collision_mask`: descarta entidades cuya capa (`CollisionFilter2D.layer`)
+   no esté incluida en la máscara de bits. Si la entidad golpeada no tiene
+   `CollisionFilter2D`, se asume capa `1`.
+
+#### Consultar resultados runtime con `get_raycast_result`
+
+`get_raycast_result(entity_name)` expone los campos runtime del RayCast2D
+como un diccionario plano:
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `is_colliding` | bool | `true` si hay colisión este frame |
+| `collision_point_x`, `collision_point_y` | float | Punto de impacto |
+| `collision_normal_x`, `collision_normal_y` | float | Normal de la superficie |
+| `collider_entity` | str | Nombre de la entidad golpeada |
+
+Si la entidad no existe, no tiene `RayCast2D` o el runtime no está activo,
+retorna `{}`.
+
+```python
+result = api.get_raycast_result("player")
+if result.get("is_colliding"):
+    print(f"Colisión con: {result['collider_entity']}")
+```
+
+### NavigationObstacle2D — Obstáculo estático para navegación
+
+Componente data-only que marca una entidad como obstáculo para el sistema de
+avoidance de `NavigationAgentSystem`.
+
+**Campos serializables:**
+- `radius`: radio del obstáculo (default: `0.0`)
+- `affect_avoidance`: si afecta el cálculo de avoidance (default: `true`)
+
+No requiere configuración runtime ni expone métodos públicos adicionales.
+`NavigationAgentSystem` consume estos datos cada frame.
+
+```python
+api.add_component("enemy", "NavigationObstacle2D", {
+    "radius": 32.0,
+    "affect_avoidance": True
+})
+```
+
+### RigidBody contact_monitor — Monitoreo de contactos runtime
+
+`RigidBody` expone monitoreo de contactos estilo Godot, activado por campos
+serializables y consultable mediante métodos runtime.
+
+**Campos serializables (via `add_component` o `set_rigidbody_property`):**
+
+| Campo | Tipo | Default | Descripción |
+|-------|------|---------|-------------|
+| `contact_monitor` | bool | `false` | Activa el tracking por frame |
+| `max_contacts_reported` | int | `0` | Máx. contactos a reportar (`0` = deshabilitado) |
+| `physics_material_override_path` | str | `""` | Ruta a PhysicsMaterial `.json` para sobreescribir fricción/rebote |
+
+**Métodos públicos runtime (solo durante PLAY):**
+- `get_colliding_bodies(entity_name) -> list[int]`: IDs de entidades en contacto este frame.
+- `get_contact_count(entity_name) -> int`: Número de contactos activos.
+
+Ambos wrappers delegan en `RigidBody.get_colliding_bodies()` / `get_contact_count()`
+de la entidad indicada. Retornan `[]` y `0` respectivamente si la entidad no existe,
+no tiene `RigidBody`, o `contact_monitor` está desactivado.
+
+```python
+api.create_entity("player", components={"RigidBody": {}, "Collider": {}, "Transform": {}})
+api.edit_component("player", "RigidBody", "body_type", "dynamic")
+api.edit_component("player", "RigidBody", "contact_monitor", True)
+api.edit_component("player", "RigidBody", "max_contacts_reported", 10)
+
+# En PLAY, tras colisionar:
+bodies = api.get_colliding_bodies("player")
+count = api.get_contact_count("player")
+```
+
+**Comportamiento (anti-humo):**
+- `contact_monitor=false` o `max_contacts_reported=0`: sin tracking.
+- Solo colisiones reales (no triggers) registran contactos.
+- Los contactos se limpian cada frame — no persisten entre frames.
 
 ### CollisionFilter2D — Filtrado por capas
 

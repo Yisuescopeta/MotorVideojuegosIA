@@ -4,7 +4,7 @@ import json
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Union
 
 from engine.api._context import EngineAPIComponent
-from engine.api.types import ActionResult, EngineStatus, EntityData, ShapeCastResult
+from engine.api.types import ActionResult, EngineStatus, EntityData, MotionTestResult, ShapeCastResult
 from engine.components.rigidbody import RigidBody
 from engine.ecs.entity import normalize_entity_groups
 from engine.events.signals import SignalConnectionFlags
@@ -368,18 +368,22 @@ class RuntimeAPI(EngineAPIComponent):
         direction_x: float,
         direction_y: float,
         max_distance: float,
+        shape_params: Optional[dict] = None,
     ) -> list[ShapeCastResult]:
         """Cast a shape through the physics world and return the first hit.
 
         Args:
-            shape_type: 'box' or 'circle'.
-            shape_width: Width of the shape (diameter for circle).
-            shape_height: Height of the shape (diameter for circle).
+            shape_type: 'box', 'circle', 'capsule', or 'polygon'.
+            shape_width: Width of the shape (diameter for circle/capsule).
+            shape_height: Height of the shape (diameter for circle, height for capsule).
             origin_x: Starting position x.
             origin_y: Starting position y.
             direction_x: Direction x component.
             direction_y: Direction y component.
             max_distance: Maximum cast distance.
+            shape_params: Optional dict with explicit shape params
+                (width, height, radius, vertices). Overrides shape_width/height
+                when provided. Default None maintains compat.
 
         Returns:
             List with at most one ShapeCastResult hit, or empty list if no hit.
@@ -390,6 +394,54 @@ class RuntimeAPI(EngineAPIComponent):
         return runtime.query_physics_shape_cast(  # type: ignore[return-value]  # list[dict[str, Any]] vs list[ShapeCastResult]
             shape_type, shape_width, shape_height,
             origin_x, origin_y, direction_x, direction_y, max_distance,
+            shape_params=shape_params,
+        )
+
+    def query_physics_motion(
+        self,
+        entity_name: str,
+        motion_x: float,
+        motion_y: float,
+        margin: float = 0.08,
+        recovery_as_collision: bool = False,
+        exclude_entity_names: Optional[list[str]] = None,
+        collision_mask: int = 0xFFFFFFFF,
+        collide_with_bodies: bool = True,
+        collide_with_areas: bool = False,
+    ) -> MotionTestResult:
+        """Test if an entity can move along a motion vector without colliding.
+
+        Non-mutating: does NOT change the entity's Transform or the world.
+
+        Args:
+            entity_name: Name of the entity to test motion for.
+            motion_x: X component of motion vector.
+            motion_y: Y component of motion vector.
+            margin: Safety margin (Godot default 0.08).
+            recovery_as_collision: If True, existing overlaps are reported.
+            exclude_entity_names: Entity names to exclude from collision.
+            collision_mask: Bitmask for collision layer filtering.
+            collide_with_bodies: Whether to collide with physics bodies.
+            collide_with_areas: Whether to collide with areas/triggers.
+
+        Returns:
+            MotionTestResult dict with travel, remainder, collision info.
+        """
+        runtime = self.runtime
+        if runtime is None:
+            return MotionTestResult(
+                travel_x=motion_x,
+                travel_y=motion_y,
+                collision_safe_fraction=1.0,
+            )
+        return runtime.query_physics_motion(
+            entity_name, motion_x, motion_y,
+            margin=margin,
+            recovery_as_collision=recovery_as_collision,
+            exclude_entity_names=exclude_entity_names,
+            collision_mask=collision_mask,
+            collide_with_bodies=collide_with_bodies,
+            collide_with_areas=collide_with_areas,
         )
 
     def list_physics_backends(self) -> list[PhysicsBackendInfo]:
@@ -503,6 +555,46 @@ class RuntimeAPI(EngineAPIComponent):
             return ActionResult(success=False, message=f"Entity '{entity_name}' has no RigidBody", data=None)
         rb.can_sleep = bool(can_sleep)
         return ActionResult(success=True, message=f"can_sleep={rb.can_sleep} on {entity_name}", data=None)
+
+    def get_colliding_bodies(self, entity_name: str) -> list[int]:
+        """Get entity IDs currently colliding with this RigidBody entity.
+
+        Requires contact_monitor=True and max_contacts_reported > 0 on the
+        RigidBody component. Returns the list of entity IDs detected during
+        the current frame's collision step.
+
+        Args:
+            entity_name: Name of the entity with a RigidBody component.
+
+        Returns:
+            List of colliding entity IDs. Empty list if no RigidBody or no
+            contacts detected this frame.
+        """
+        entity = self.require_entity(entity_name)
+        rb = entity.get_component(RigidBody)
+        if rb is None:
+            return []
+        return rb.get_colliding_bodies()
+
+    def get_contact_count(self, entity_name: str) -> int:
+        """Get number of entities colliding with this RigidBody entity.
+
+        Requires contact_monitor=True and max_contacts_reported > 0 on the
+        RigidBody component. Returns the count of contacts detected during
+        the current frame's collision step.
+
+        Args:
+            entity_name: Name of the entity with a RigidBody component.
+
+        Returns:
+            Number of colliding entities. 0 if no RigidBody or no contacts
+            detected this frame.
+        """
+        entity = self.require_entity(entity_name)
+        rb = entity.get_component(RigidBody)
+        if rb is None:
+            return 0
+        return rb.get_contact_count()
 
     def play_audio(self, entity_name: str) -> ActionResult:
         """Start audio playback for an AudioSource entity.
@@ -960,6 +1052,61 @@ class RuntimeAPI(EngineAPIComponent):
             return self.fail("Service registry does not support builtin registration")
         registrar(name, service)
         return self.ok("Builtin service registered", {"name": name})
+
+    def get_raycast_result(self, entity_name: str) -> dict[str, object]:
+        """Obtiene el resultado runtime de un RayCast2D.
+
+        Args:
+            entity_name: Nombre de la entidad con componente RayCast2D.
+
+        Returns:
+            Diccionario con is_colliding, collision_point_x/y,
+            collision_normal_x/y, collider_entity. Si la entidad no
+            existe o no tiene RayCast2D, retorna dict vacio.
+        """
+        from engine.components.raycast_2d import RayCast2D
+
+        runtime = self.runtime
+        if runtime is None or runtime.world is None:
+            return {}
+        entity = runtime.world.get_entity_by_name(entity_name)
+        if entity is None:
+            return {}
+        raycast = entity.get_component(RayCast2D)
+        if raycast is None:
+            return {}
+        return {
+            "is_colliding": raycast.is_colliding,
+            "collision_point_x": raycast.collision_point_x,
+            "collision_point_y": raycast.collision_point_y,
+            "collision_normal_x": raycast.collision_normal_x,
+            "collision_normal_y": raycast.collision_normal_y,
+            "collider_entity": raycast.collider_entity,
+        }
+
+    # --- CharacterController2D ---
+
+    def set_character_max_slides(self, entity_name: str, max_slides: int) -> ActionResult:
+        """Set max_slides on a CharacterController2D entity.
+
+        Args:
+            entity_name: Name of the entity with a CharacterController2D component.
+            max_slides: Maximum slide iterations (default 4, range 1-8).
+
+        Returns:
+            ActionResult confirming the change.
+        """
+        from engine.components.charactercontroller2d import CharacterController2D
+
+        entity = self.require_entity(entity_name)
+        controller = entity.get_component(CharacterController2D)
+        if controller is None:
+            return self.fail(f"Entity '{entity_name}' has no CharacterController2D")
+        controller.max_slides = max(1, min(8, int(max_slides)))
+        return self.ok(
+            f"max_slides set to {controller.max_slides} on {entity_name}",
+            {"entity": entity_name, "max_slides": controller.max_slides},
+        )
 
     # --- CanvasItem2D drawing API ---
 

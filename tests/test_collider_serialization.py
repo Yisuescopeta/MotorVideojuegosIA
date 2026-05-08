@@ -71,6 +71,21 @@ class ColliderSerializationTests(unittest.TestCase):
         self.assertTrue(restored.one_way_collision)
         self.assertEqual(restored.one_way_collision_direction_y, -1.0)
 
+    def test_one_way_collision_margin_and_direction_x_serialize(self) -> None:
+        """one_way_collision_margin and direction_x survive roundtrip."""
+        c = Collider(
+            one_way_collision=True,
+            one_way_collision_margin=2.5,
+            one_way_collision_direction_x=0.5,
+            one_way_collision_direction_y=-1.0,
+        )
+        data = c.to_dict()
+        self.assertEqual(data["one_way_collision_margin"], 2.5)
+        self.assertEqual(data["one_way_collision_direction_x"], 0.5)
+        c2 = Collider.from_dict(data)
+        self.assertEqual(c2.one_way_collision_margin, 2.5)
+        self.assertEqual(c2.one_way_collision_direction_x, 0.5)
+
     def test_roundtrip_enabled(self) -> None:
         original = Collider(width=64, height=48)
         original.enabled = False

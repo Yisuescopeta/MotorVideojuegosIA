@@ -10,6 +10,8 @@ Usage:
     py -m tools.queen_state cycle-summary <task_id> <cycle> <summary_json>
 
 State lives in .motor/queen_state/ as JSON files.
+Queen uses max_cycles=5, a measurable Definition of Done, and final states:
+completed, partial, blocked, failed.
 """
 
 import json
@@ -24,6 +26,20 @@ REPORTS_DIR = os.path.join(QUEEN_STATE_DIR, "reports")
 LOGS_DIR = os.path.join(QUEEN_STATE_DIR, "logs")
 
 DEFAULT_MAX_CYCLES = 5
+FINAL_STATUSES = {"completed", "partial", "blocked", "failed"}
+
+
+def _default_definition_of_done():
+    return {
+        "focused_tests_pass": False,
+        "lint_pass": None,
+        "typecheck_pass": None,
+        "canonical_docs_updated": None,
+        "review_must_fix_count": None,
+        "ai_friendliness_score": None,
+        "no_scope_creep": False,
+        "commit_created": False,
+    }
 
 
 def _ensure_dirs():
@@ -52,6 +68,8 @@ def cmd_init(task_id, goal):
         "status": "in_progress",
         "max_cycles": DEFAULT_MAX_CYCLES,
         "current_cycle": 1,
+        "definition_of_done": _default_definition_of_done(),
+        "final_statuses": sorted(FINAL_STATUSES),
         "cycles": [],
         "subtasks": [],
         "final_report": None,
@@ -146,7 +164,13 @@ def cmd_list():
     for pid in sorted(plans, reverse=True):
         plan = _load_json(os.path.join(PLANS_DIR, f"{pid}.json"))
         if plan:
-            status_icon = {"in_progress": "[RUN]", "completed": "[OK]", "failed": "[FAIL]", "partial": "[WARN]"}
+            status_icon = {
+                "in_progress": "[RUN]",
+                "completed": "[OK]",
+                "partial": "[WARN]",
+                "blocked": "[BLOCK]",
+                "failed": "[FAIL]",
+            }
             icon = status_icon.get(plan.get("status", ""), "[??]")
             cycle_info = f" (c{plan.get('current_cycle', 1)}/{plan.get('max_cycles', 5)})" if plan.get("status") == "in_progress" else ""
             print(f"  {icon} {pid}{cycle_info}: {plan.get('goal', '?')[:60]}")
@@ -162,6 +186,8 @@ def cmd_report(task_id):
         "goal": plan["goal"],
         "status": plan["status"],
         "max_cycles": plan.get("max_cycles", DEFAULT_MAX_CYCLES),
+        "definition_of_done": plan.get("definition_of_done", _default_definition_of_done()),
+        "final_statuses": plan.get("final_statuses", sorted(FINAL_STATUSES)),
         "completed_cycles": len(plan.get("cycles", [])),
         "current_cycle": plan.get("current_cycle", 1),
         "cycles": plan.get("cycles", []),

@@ -36,6 +36,9 @@ class CharacterController2D(Component):
         floor_block_on_wall: bool = True,
         platform_velocity_x: float = 0.0,
         platform_velocity_y: float = 0.0,
+        max_slides: int = 4,
+        platform_on_leave: str = "add_velocity",
+        platform_entity_name: str = "",
     ) -> None:
         self.enabled: bool = True
         self.move_mode: str = str(move_mode or "move_and_slide")
@@ -65,6 +68,10 @@ class CharacterController2D(Component):
         self.floor_block_on_wall: bool = bool(floor_block_on_wall)
         self.platform_velocity_x: float = float(platform_velocity_x)
         self.platform_velocity_y: float = float(platform_velocity_y)
+        self.max_slides: int = int(max_slides)
+        valid_leave_modes = {"add_velocity", "add_upward_velocity", "do_nothing"}
+        self.platform_on_leave: str = str(platform_on_leave) if str(platform_on_leave) in valid_leave_modes else "add_velocity"
+        self.platform_entity_name: str = str(platform_entity_name)
         self.slide_collisions: list[dict] = []
         self._was_on_floor: bool = False
 
@@ -95,6 +102,9 @@ class CharacterController2D(Component):
             "floor_block_on_wall": self.floor_block_on_wall,
             "platform_velocity_x": self.platform_velocity_x,
             "platform_velocity_y": self.platform_velocity_y,
+            "max_slides": self.max_slides,
+            "platform_on_leave": self.platform_on_leave,
+            "platform_entity_name": self.platform_entity_name,
         }
 
     @classmethod
@@ -124,6 +134,9 @@ class CharacterController2D(Component):
             floor_block_on_wall=data.get("floor_block_on_wall", True),
             platform_velocity_x=data.get("platform_velocity_x", 0.0),
             platform_velocity_y=data.get("platform_velocity_y", 0.0),
+            max_slides=data.get("max_slides", 4),
+            platform_on_leave=data.get("platform_on_leave", "add_velocity"),
+            platform_entity_name=data.get("platform_entity_name", ""),
         )
         component.enabled = data.get("enabled", True)
         return component

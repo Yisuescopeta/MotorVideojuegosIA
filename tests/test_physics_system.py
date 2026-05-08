@@ -1,6 +1,9 @@
+import math
 import unittest
 
+from engine.components.area2d import Area2D
 from engine.components.collider import Collider
+from engine.components.joint2d import Joint2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
@@ -291,6 +294,465 @@ class PhysicsSystemTests(unittest.TestCase):
         self.assertEqual(rb._force_buffer_y, 0.0, f"Force buffer Y not cleared: {rb._force_buffer_y}")
         self.assertEqual(rb._impulse_buffer_x, 0.0, f"Impulse buffer X not cleared: {rb._impulse_buffer_x}")
         self.assertEqual(rb._torque_buffer, 0.0, f"Torque buffer not cleared: {rb._torque_buffer}")
+
+    def test_body_falling_below_550_not_teleported(self) -> None:
+        """Dynamic body falling with no collider must NOT be teleported to Y=550."""
+        world = World()
+        entity = world.create_entity("Faller")
+        entity.add_component(Transform(x=0.0, y=600.0))
+        entity.add_component(
+            RigidBody(
+                body_type="dynamic",
+                gravity_scale=1.0,
+                velocity_x=0.0,
+                velocity_y=0.0,
+                is_grounded=False,
+                can_sleep=False,
+            )
+        )
+        PhysicsSystem(gravity=980.0).update(world, 0.5)
+
+        transform = entity.get_component(Transform)
+        rigidbody = entity.get_component(RigidBody)
+        self.assertGreater(
+            transform.y, 550.0,
+            "Body should NOT be teleported back to Y=550 after GROUND_Y_TEMP removal"
+        )
+        self.assertFalse(
+            rigidbody.is_grounded,
+            "Body without ground collider should not be marked grounded"
+        )
+        self.assertGreater(
+            rigidbody.velocity_y, 0.0,
+            "Body should have downward velocity from gravity"
+        )
+
+    def test_body_lands_on_ground_above_550_not_clamped(self) -> None:
+        """Body with collider landing on actual ground above 550 must not be teleported to 550."""
+        world = World()
+        hero = world.create_entity("Hero")
+        hero.add_component(Transform(x=0.0, y=600.0))
+        hero.add_component(Collider(width=10.0, height=10.0))
+        hero.add_component(
+            RigidBody(
+                body_type="dynamic",
+                gravity_scale=0.0,
+                velocity_x=0.0,
+                velocity_y=40.0,
+                is_grounded=False,
+                collision_detection_mode="continuous",
+            )
+        )
+
+        ground = world.create_entity("Ground")
+        ground.add_component(Transform(x=0.0, y=630.0))
+        ground.add_component(Collider(width=100.0, height=10.0))
+
+        PhysicsSystem().update(world, 0.5)
+
+        transform = hero.get_component(Transform)
+        rigidbody = hero.get_component(RigidBody)
+        self.assertGreater(
+            transform.y, 550.0,
+            "Body should land on real ground collider, not be teleported to Y=550"
+        )
+        self.assertTrue(
+            rigidbody.is_grounded,
+            "Body should be grounded after landing on collider above 550"
+        )
+
+    def test_dynamic_body_already_grounded_above_550_not_clamped(self) -> None:
+        """Grounded body at Y=600 must stay at Y=600, not teleported to 550."""
+        world = World()
+        entity = world.create_entity("Grounded")
+        entity.add_component(Transform(x=0.0, y=600.0))
+        entity.add_component(
+            RigidBody(
+                body_type="dynamic",
+                gravity_scale=0.0,
+                velocity_x=0.0,
+                velocity_y=0.0,
+                is_grounded=True,
+                can_sleep=False,
+            )
+        )
+
+        PhysicsSystem().update(world, 0.5)
+
+        transform = entity.get_component(Transform)
+        self.assertEqual(
+            transform.y, 600.0,
+            "Grounded body should stay at its position"
+        )
+        self.assertNotEqual(
+            transform.y, 550.0,
+            "Grounded body must NOT be teleported to Y=550"
+        )
+
+    def test_kinematic_body_above_550_not_touched(self) -> None:
+        """Kinematic body at Y=600 must stay at Y=600."""
+        world = World()
+        entity = world.create_entity("Kinematic")
+        entity.add_component(Transform(x=0.0, y=600.0))
+        entity.add_component(
+            RigidBody(
+                body_type="kinematic",
+                gravity_scale=0.0,
+                velocity_x=0.0,
+                velocity_y=0.0,
+                is_grounded=False,
+                can_sleep=False,
+            )
+        )
+
+        PhysicsSystem().update(world, 0.5)
+
+        transform = entity.get_component(Transform)
+        self.assertEqual(
+            transform.y, 600.0,
+            "Kinematic body should stay at its position"
+        )
+
+
+    def test_cast_shape_ccd_prevents_tunneling_through_thin_wall(self) -> None:
+        """Fast bullet with cast_shape CCD must stop at wall, not tunnel through."""
+        world = World()
+        bullet = world.create_entity("Bullet")
+        bullet.add_component(Transform(x=0.0, y=100.0))
+        bullet.add_component(Collider(shape_type="circle", radius=4.0))
+        bullet.add_component(
+            RigidBody(
+                body_type="dynamic",
+                gravity_scale=0.0,
+                velocity_x=5000.0,  # 5000 * 0.1 = 500 px/frame → will reach wall
+                velocity_y=0.0,
+                is_grounded=True,
+                collision_detection_mode="discrete",
+                ccd_mode="cast_shape",
+            )
+        )
+
+        # Wall at x=80, 4px thick → left edge at x=78
+        wall = world.create_entity("Wall")
+        wall.add_component(Transform(x=80.0, y=100.0))
+        wall.add_component(Collider(width=4.0, height=80.0))
+
+        # Use large dt so bullet actually travels far enough
+        PhysicsSystem().update(world, 0.1)
+
+        transform = bullet.get_component(Transform)
+        rigidbody = bullet.get_component(RigidBody)
+        # Bullet right edge = center + radius
+        bullet_right = transform.x + 4.0
+        wall_left = 78.0
+        self.assertLessEqual(
+            bullet_right, wall_left + 1.0,
+            f"CCD bullet tunneled! Right edge={bullet_right}, wall left={wall_left}"
+        )
+        self.assertEqual(
+            rigidbody.velocity_x, 0.0,
+            "CCD bullet velocity should be zero after hitting wall"
+        )
+        # Bullet should have been stopped before reaching x=200
+        self.assertLess(transform.x, 200.0, "CCD bullet traveled too far")
+
+    def test_cast_shape_ccd_stops_at_wall_unlike_discrete(self) -> None:
+        """cast_shape mode stops at wall; discrete mode may tunnel."""
+        world = World()
+
+        # --- cast_shape bullet ---
+        bullet_ccd = world.create_entity("BulletCCD")
+        bullet_ccd.add_component(Transform(x=0.0, y=100.0))
+        bullet_ccd.add_component(Collider(shape_type="circle", radius=4.0))
+        bullet_ccd.add_component(
+            RigidBody(
+                body_type="dynamic",
+                gravity_scale=0.0,
+                velocity_x=5000.0,
+                velocity_y=0.0,
+                is_grounded=True,
+                collision_detection_mode="discrete",
+                ccd_mode="cast_shape",
+            )
+        )
+
+        # --- discrete bullet (same speed, no CCD) ---
+        bullet_disc = world.create_entity("BulletDisc")
+        bullet_disc.add_component(Transform(x=0.0, y=200.0))
+        bullet_disc.add_component(Collider(shape_type="circle", radius=4.0))
+        bullet_disc.add_component(
+            RigidBody(
+                body_type="dynamic",
+                gravity_scale=0.0,
+                velocity_x=5000.0,
+                velocity_y=0.0,
+                is_grounded=True,
+                collision_detection_mode="discrete",
+                ccd_mode="disabled",
+            )
+        )
+
+        # Wall at x=80, 4px thick → left edge at x=78
+        wall_top = world.create_entity("WallTop")
+        wall_top.add_component(Transform(x=80.0, y=100.0))
+        wall_top.add_component(Collider(width=4.0, height=60.0))
+
+        wall_bot = world.create_entity("WallBot")
+        wall_bot.add_component(Transform(x=80.0, y=200.0))
+        wall_bot.add_component(Collider(width=4.0, height=60.0))
+
+        PhysicsSystem().update(world, 0.1)
+
+        # CCD bullet must stop before or at wall
+        ccd_right = bullet_ccd.get_component(Transform).x + 4.0
+        self.assertLessEqual(
+            ccd_right, 79.0,
+            f"CCD bullet tunneled! Right edge={ccd_right}, wall left=78.0"
+        )
+        self.assertEqual(
+            bullet_ccd.get_component(RigidBody).velocity_x, 0.0,
+            "CCD bullet velocity should be zero after hitting wall"
+        )
+
+        # Discrete bullet: verify it exists (it may or may not tunnel, both are valid)
+        disc_x = bullet_disc.get_component(Transform).x
+        self.assertIsNotNone(disc_x, "Discrete bullet should exist")
+        # Key assertion: CCD bullet must not pass the wall while discrete may
+        # CCD bullet x should be < 80 (stuck at wall)
+        self.assertLess(bullet_ccd.get_component(Transform).x, 80.0)
+
+
+    def test_area_gravity_override_affects_dynamic_body(self) -> None:
+        """Dynamic body inside area with gravity override uses area gravity."""
+        world = World()
+
+        area_e = world.create_entity("AntiGravZone")
+        area_e.add_component(Transform(x=100.0, y=100.0))
+        area_e.add_component(Collider(width=100.0, height=100.0, is_trigger=True))
+        area_e.add_component(Area2D(
+            space_override="replace",
+            gravity_override_x=0.0,
+            gravity_override_y=-200.0,
+            priority=1,
+        ))
+
+        body = world.create_entity("Body")
+        body.add_component(Transform(x=100.0, y=100.0))
+        body.add_component(Collider(width=10.0, height=10.0))
+        body.add_component(RigidBody(
+            body_type="dynamic",
+            gravity_scale=1.0,
+            is_grounded=False,
+            can_sleep=False,
+        ))
+
+        ps = PhysicsSystem(gravity=980.0)
+        ps.update(world, 0.5)
+
+        rb = body.get_component(RigidBody)
+        # With area gravity_override_y=-200, gravity_scale=1, dt=0.5:
+        # vy = -200 * 1.0 * 0.5 = -100.0 (no damping since linear_damping=0)
+        msg = f"Area gravity override magnitude wrong: vy={rb.velocity_y}, expected ~ -100.0"
+        self.assertAlmostEqual(rb.velocity_y, -100.0, delta=0.5, msg=msg)
+
+    def test_area_gravity_combine_adds_effects(self) -> None:
+        """Two areas with COMBINE mode stack their gravity effects."""
+        world = World()
+
+        area1 = world.create_entity("Zone1")
+        area1.add_component(Transform(x=100.0, y=100.0))
+        area1.add_component(Collider(width=100.0, height=100.0, is_trigger=True))
+        area1.add_component(Area2D(
+            gravity_space_override="combine",
+            gravity_override_y=-100.0,
+            priority=10,
+        ))
+
+        area2 = world.create_entity("Zone2")
+        area2.add_component(Transform(x=100.0, y=100.0))
+        area2.add_component(Collider(width=100.0, height=100.0, is_trigger=True))
+        area2.add_component(Area2D(
+            gravity_space_override="combine",
+            gravity_override_y=-50.0,
+            priority=20,
+        ))
+
+        body = world.create_entity("Body")
+        body.add_component(Transform(x=100.0, y=100.0))
+        body.add_component(Collider(width=10.0, height=10.0))
+        body.add_component(RigidBody(
+            body_type="dynamic",
+            gravity_scale=1.0,
+            is_grounded=False,
+            can_sleep=False,
+        ))
+
+        ps = PhysicsSystem(gravity=980.0)
+        ps.update(world, 0.5)
+
+        rb = body.get_component(RigidBody)
+        # World gravity 980 + zone1(-100) + zone2(-50) = 830. dt=0.5 → vy = 415
+        expected = 415.0
+        self.assertAlmostEqual(rb.velocity_y, expected, delta=1.0,
+                               msg=f"Combined gravity wrong: vy={rb.velocity_y}, expected ~{expected}")
+
+    def test_area_gravity_replace_stops_combine(self) -> None:
+        """REPLACE mode area overrides lower-priority COMBINE areas."""
+        world = World()
+
+        area1 = world.create_entity("Zone1")
+        area1.add_component(Transform(x=100.0, y=100.0))
+        area1.add_component(Collider(width=100.0, height=100.0, is_trigger=True))
+        area1.add_component(Area2D(
+            gravity_space_override="combine",
+            gravity_override_y=-100.0,
+            priority=10,
+        ))
+
+        area2 = world.create_entity("Zone2")
+        area2.add_component(Transform(x=100.0, y=100.0))
+        area2.add_component(Collider(width=100.0, height=100.0, is_trigger=True))
+        area2.add_component(Area2D(
+            gravity_space_override="replace",
+            gravity_override_y=-30.0,
+            priority=20,
+        ))
+
+        body = world.create_entity("Body")
+        body.add_component(Transform(x=100.0, y=100.0))
+        body.add_component(Collider(width=10.0, height=10.0))
+        body.add_component(RigidBody(
+            body_type="dynamic",
+            gravity_scale=1.0,
+            is_grounded=False,
+            can_sleep=False,
+        ))
+
+        ps = PhysicsSystem(gravity=980.0)
+        ps.update(world, 0.5)
+
+        rb = body.get_component(RigidBody)
+        # Only the replace area: -30. dt=0.5 → vy = -15
+        expected = -15.0
+        self.assertAlmostEqual(rb.velocity_y, expected, delta=1.0,
+                               msg=f"Replace should override combine. vy={rb.velocity_y}, expected ~{expected}")
+
+    def test_distance_joint_pulls_bodies_to_rest_length(self) -> None:
+        """Bodies too far apart get pulled to exact rest_length (100px)."""
+        world = World()
+        entity_a = world.create_entity("A")
+        entity_a.add_component(Transform(x=0.0, y=0.0))
+        entity_a.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+        joint_a = Joint2D()
+        joint_a.joint_type = "distance"
+        joint_a.connected_entity = "B"
+        joint_a.rest_length = 100.0
+        entity_a.add_component(joint_a)
+
+        entity_b = world.create_entity("B")
+        entity_b.add_component(Transform(x=200.0, y=0.0))
+        entity_b.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+
+        physics = PhysicsSystem()
+        dt = 1 / 60
+        for _ in range(60):
+            physics.update(world, dt)
+
+        ta = entity_a.get_component(Transform)
+        tb = entity_b.get_component(Transform)
+        new_dist = math.hypot(tb.x - ta.x, tb.y - ta.y)
+        self.assertAlmostEqual(new_dist, 100.0, delta=5.0,
+            msg=f"Joint should enforce rest_length=100, got dist={new_dist}")
+
+    def test_distance_joint_pushes_bodies_apart_when_too_close(self) -> None:
+        """Bodies inside rest_length get pushed apart to rest_length."""
+        world = World()
+        entity_a = world.create_entity("A")
+        entity_a.add_component(Transform(x=0.0, y=0.0))
+        entity_a.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+        joint_a = Joint2D()
+        joint_a.joint_type = "distance"
+        joint_a.connected_entity = "B"
+        joint_a.rest_length = 100.0
+        entity_a.add_component(joint_a)
+        entity_b = world.create_entity("B")
+        entity_b.add_component(Transform(x=30.0, y=0.0))
+        entity_b.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+
+        physics = PhysicsSystem()
+        dt = 1 / 60
+        for _ in range(60):
+            physics.update(world, dt)
+
+        ta = entity_a.get_component(Transform)
+        tb = entity_b.get_component(Transform)
+        new_dist = math.hypot(tb.x - ta.x, tb.y - ta.y)
+        self.assertAlmostEqual(new_dist, 100.0, delta=10.0,
+            msg=f"Joint should push bodies apart to rest_length=100, got dist={new_dist}")
+        # A should have moved left, B should have moved right
+        self.assertLess(ta.x, 0.0, "A should move left when too close")
+        self.assertGreater(tb.x, 30.0, "B should move right when too close")
+
+    def test_distance_joint_mass_ratio_100_to_1(self) -> None:
+        """Heavy body (mass=100) moves ~1% of light body (mass=1) displacement."""
+        world = World()
+        entity_a = world.create_entity("Heavy")
+        entity_a.add_component(Transform(x=0.0, y=0.0))
+        entity_a.add_component(RigidBody(body_type="dynamic", mass=100.0, gravity_scale=0.0))
+        joint_a = Joint2D()
+        joint_a.joint_type = "distance"
+        joint_a.connected_entity = "Light"
+        joint_a.rest_length = 50.0
+        entity_a.add_component(joint_a)
+        entity_b = world.create_entity("Light")
+        entity_b.add_component(Transform(x=150.0, y=0.0))
+        entity_b.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+
+        physics = PhysicsSystem()
+        dt = 1 / 60
+        for _ in range(60):
+            physics.update(world, dt)
+
+        ta = entity_a.get_component(Transform)
+        tb = entity_b.get_component(Transform)
+        new_dist = math.hypot(tb.x - ta.x, tb.y - ta.y)
+        self.assertAlmostEqual(new_dist, 50.0, delta=1.0)
+
+        delta_heavy = abs(ta.x)
+        delta_light = abs(150.0 - tb.x)
+        ratio = delta_light / max(delta_heavy, 0.001)
+        self.assertGreater(ratio, 50.0,
+            f"Light/heavy ratio={ratio:.1f}, expected ~100 (mass ratio). "
+            f"Heavy moved {delta_heavy:.2f}, Light moved {delta_light:.2f}")
+
+    def test_distance_joint_dynamic_to_static(self) -> None:
+        """Dynamic body moves toward static body to satisfy distance joint."""
+        world = World()
+        entity_a = world.create_entity("Dynamic")
+        entity_a.add_component(Transform(x=0.0, y=0.0))
+        entity_a.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=0.0))
+        joint_a = Joint2D()
+        joint_a.joint_type = "distance"
+        joint_a.connected_entity = "Static"
+        joint_a.rest_length = 50.0
+        entity_a.add_component(joint_a)
+        entity_b = world.create_entity("Static")
+        entity_b.add_component(Transform(x=100.0, y=0.0))
+        entity_b.add_component(RigidBody(body_type="static", mass=1.0))
+
+        physics = PhysicsSystem()
+        dt = 1 / 60
+        for _ in range(60):
+            physics.update(world, dt)
+
+        ta = entity_a.get_component(Transform)
+        tb = entity_b.get_component(Transform)
+        new_dist = math.hypot(tb.x - ta.x, tb.y - ta.y)
+        self.assertAlmostEqual(new_dist, 50.0, delta=1.0)
+        # Static body must NOT have moved
+        self.assertEqual(tb.x, 100.0, "Static body should not move")
+        # Dynamic body must have moved toward static
+        self.assertGreater(ta.x, 0.0, "Dynamic body should move toward static")
 
 
 if __name__ == "__main__":

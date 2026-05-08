@@ -73,6 +73,34 @@ class MoveResult2D:
     contacts: list[PhysicsContact] = dc_field(default_factory=list)
     slide_count: int = 0
     floor_angle: float = 0.0
+    platform_entity_id: int = 0
+    platform_velocity_x: float = 0.0
+    platform_velocity_y: float = 0.0
+
+
+@dataclass
+class MotionResult2D:
+    """Resultado canónico de body_test_motion — no muta el mundo.
+
+    Equivalente a Godot PhysicsServer2D::MotionResult.
+    """
+    travel_x: float = 0.0
+    travel_y: float = 0.0
+    remainder_x: float = 0.0
+    remainder_y: float = 0.0
+    collision_point_x: float = 0.0
+    collision_point_y: float = 0.0
+    collision_normal_x: float = 0.0
+    collision_normal_y: float = 0.0
+    collider_velocity_x: float = 0.0
+    collider_velocity_y: float = 0.0
+    collision_depth: float = 0.0
+    collision_safe_fraction: float = 1.0
+    collision_unsafe_fraction: float = 0.0
+    collision_local_shape: int = -1
+    collider_id: int = 0
+    collider_entity_name: str = ""
+    collider_shape: int = -1
 
 
 class PhysicsBackend(ABC):
@@ -131,8 +159,9 @@ class PhysicsBackend(ABC):
         origin: tuple[float, float],
         direction: tuple[float, float],
         max_distance: float,
+        shape_params: Optional[dict] = None,
     ) -> list[PhysicsShapeCastHit]:
-        del world, shape_type, shape_size, origin, direction, max_distance
+        del world, shape_type, shape_size, origin, direction, max_distance, shape_params
         return []
 
     def query_shape(self, world: Any, shape: dict[str, Any]) -> list[dict[str, Any]]:
@@ -153,6 +182,30 @@ class PhysicsBackend(ABC):
     def get_step_metrics(self) -> dict[str, float]:
         return {}
 
+    def body_test_motion(
+        self,
+        world: Any,
+        entity: Any,
+        motion: tuple[float, float],
+        margin: float = 0.08,
+        recovery_as_collision: bool = False,
+        exclude_ids: Optional[list[int]] = None,
+        collision_mask: int = 0xFFFFFFFF,
+        collide_with_bodies: bool = True,
+        collide_with_areas: bool = False,
+    ) -> MotionResult2D:
+        """Prueba de movimiento no-mutante contra el mundo físico.
+
+        Barre la entidad a lo largo del vector motion y devuelve el
+        MotionResult2D con la fracción segura, el resto, punto de colisión,
+        normal, profundidad y velocidad del colisionador.
+
+        NO modifica el Transform de la entidad ni el estado del mundo.
+        """
+        raise NotImplementedError(
+            f"body_test_motion not implemented by {self.backend_name}"
+        )
+
     def move_and_slide(
         self,
         world: Any,
@@ -163,6 +216,7 @@ class PhysicsBackend(ABC):
         floor_snap_distance: float = 2.0,
         up_direction: tuple[float, float] = (0.0, -1.0),
         wall_min_slide_angle: float = 0.261799,
+        floor_stop_on_slope: bool = False,
         max_slides: int = 4,
     ) -> MoveResult2D:
         """Movimiento de personaje con detección de colisiones y deslizamiento."""

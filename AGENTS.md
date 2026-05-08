@@ -173,6 +173,7 @@ py -m unittest tests.test_repository_governance tests.test_motor_cli_contract te
 py -m unittest tests.test_official_contract_regression tests.test_parser_registry_alignment tests.test_motor_interface_coherence tests.test_motor_registry_consistency -v
 py -m motor --help
 py -m motor doctor --project . --json
+```
 
 ## Sistema Queen Agent
 
@@ -204,6 +205,7 @@ Queen (primary agent, DeepSeek Pro Max)
 | `.opencode/agents/builder.md` | Implementador de codigo |
 | `.opencode/agents/code-reviewer.md` | Revisor de codigo |
 | `.opencode/agents/ai-friendliness.md` | Auditor de amigabilidad IA |
+| `.opencode/agents/context-recon.md` | Reconocimiento read-only |
 | `.opencode/agents/documenter.md` | Cronista — actualiza docs canónicas |
 | `.opencode/agents/committer.md` | Escriba — commits en español |
 | `.opencode/agents/godot-source-analyzer.md` | Analista de codigo fuente Godot |
@@ -250,7 +252,28 @@ opencode run --agent queen "mejorar las fisicas del motor"
 - **Autonomia total**: la Reina descompone, asigna, ejecuta sin preguntar.
 - **Routing de modelos**: Pro Max para tareas complejas (arquitectura, fisicas, render), Flash para las simples (review, docs, tests).
 - **Paralelismo inteligente**: sub-tareas independientes se ejecutan en paralelo.
-- **Replanificacion**: si un sub-agente falla, la Reina intenta al menos 3 enfoques antes de escalar.
+- **Replanificacion bounded**: `max_cycles = 5`; no hay ciclos infinitos.
 - **Persistencia**: todo el estado vive en `.motor/queen_state/`.
-- **No toca engine/**: los cambios se hacen via OpenCode (builder sub-agent) usando read/edit/write/bash.
+- **No toca engine/** salvo necesidad estricta y justificada por la tarea.
 
+### Ciclo operativo
+
+Queen usa un unico ciclo:
+
+```text
+RECON -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE
+```
+
+El commit ocurre solo despues de que tests, documentacion, review y auditoria IA
+aplicables pasen. Si no se cumple la Definition of Done tras 5 ciclos, Queen
+termina con estado `completed`, `partial`, `blocked` o `failed` y reporte claro.
+
+### Definition of Done
+
+- Tests enfocados pasan.
+- Lint/typecheck pasan cuando aplican.
+- Documentacion canonica actualizada si cambia contrato publico, schema, CLI, API, arquitectura o reglas operativas.
+- `code-reviewer` queda sin hallazgos `must_fix`.
+- `ai-friendliness` obtiene score `>= 90` cuando aplica.
+- No hay cambios fuera de alcance.
+- `committer` stagea solo archivos esperados y bloquea secretos, `.env`, temporales o estado local accidental.

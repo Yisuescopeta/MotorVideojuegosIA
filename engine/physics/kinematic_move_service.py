@@ -28,6 +28,7 @@ class PhysicsKinematicMoveService:
         floor_snap_distance: float = 2.0,
         up_direction: tuple[float, float] = (0.0, -1.0),
         wall_min_slide_angle: float = 0.261799,
+        floor_stop_on_slope: bool = False,
         max_slides: int = 4,
     ) -> MoveResult2D:
         """Ejecuta move_and_slide usando el mejor solver disponible.
@@ -42,6 +43,7 @@ class PhysicsKinematicMoveService:
                 delta_time=delta_time, floor_max_angle=floor_max_angle,
                 floor_snap_distance=floor_snap_distance,
                 up_direction=up_direction, wall_min_slide_angle=wall_min_slide_angle,
+                floor_stop_on_slope=floor_stop_on_slope,
                 max_slides=max_slides,
             )
 
@@ -57,6 +59,7 @@ class PhysicsKinematicMoveService:
             delta_time=delta_time, floor_max_angle=floor_max_angle,
             floor_snap_distance=floor_snap_distance,
             up_direction=up_direction, wall_min_slide_angle=wall_min_slide_angle,
+            floor_stop_on_slope=floor_stop_on_slope,
             max_slides=max_slides,
         )
 

@@ -431,5 +431,177 @@ class PhysicsBackendTests(unittest.TestCase):
         self.assertEqual(rigidbody["velocity_x"], 0.0)
 
 
+    def test_legacy_ray_normal_aabb(self) -> None:
+        """Legacy query_ray returns correct normal for AABB hits from all 4 directions."""
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        entity = world.create_entity("Box")
+        entity.add_component(Transform(x=100.0, y=100.0))
+        entity.add_component(Collider(shape_type="box", width=20.0, height=20.0))
+        backend.sync_world(world)
+
+        # Ray from left
+        hits = backend.query_ray(world, (80.0, 100.0), (1.0, 0.0), 50.0)
+        self.assertTrue(hits, "Ray from left should hit")
+        self.assertIn("normal", hits[0], "Hit must include normal field")
+        self.assertAlmostEqual(hits[0]["normal"]["x"], -1.0, delta=0.01)
+        self.assertAlmostEqual(hits[0]["normal"]["y"], 0.0, delta=0.01)
+
+        # Ray from right
+        hits = backend.query_ray(world, (120.0, 100.0), (-1.0, 0.0), 50.0)
+        self.assertTrue(hits, "Ray from right should hit")
+        self.assertAlmostEqual(hits[0]["normal"]["x"], 1.0, delta=0.01)
+        self.assertAlmostEqual(hits[0]["normal"]["y"], 0.0, delta=0.01)
+
+        # Ray from top
+        hits = backend.query_ray(world, (100.0, 80.0), (0.0, 1.0), 50.0)
+        self.assertTrue(hits, "Ray from top should hit")
+        self.assertAlmostEqual(hits[0]["normal"]["x"], 0.0, delta=0.01)
+        self.assertAlmostEqual(hits[0]["normal"]["y"], -1.0, delta=0.01)
+
+        # Ray from bottom
+        hits = backend.query_ray(world, (100.0, 120.0), (0.0, -1.0), 50.0)
+        self.assertTrue(hits, "Ray from bottom should hit")
+        self.assertAlmostEqual(hits[0]["normal"]["x"], 0.0, delta=0.01)
+        self.assertAlmostEqual(hits[0]["normal"]["y"], 1.0, delta=0.01)
+
+    def test_legacy_ray_normal_capsule(self) -> None:
+        """Legacy query_ray returns normal for capsule hits (body and caps)."""
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        entity = world.create_entity("Capsule")
+        entity.add_component(Transform(x=100.0, y=100.0))
+        entity.add_component(
+            Collider(shape_type="capsule", radius=10.0, capsule_height=40.0)
+        )
+        backend.sync_world(world)
+
+        # Ray hitting body from left
+        hits = backend.query_ray(world, (80.0, 100.0), (1.0, 0.0), 50.0)
+        self.assertTrue(hits, "Ray should hit capsule body from left")
+        self.assertIn("normal", hits[0])
+        self.assertAlmostEqual(hits[0]["normal"]["x"], -1.0, delta=0.01)
+
+        # Ray hitting top cap
+        hits = backend.query_ray(world, (100.0, 60.0), (0.0, 1.0), 50.0)
+        self.assertTrue(hits, "Ray should hit capsule top cap")
+        self.assertIn("normal", hits[0])
+        self.assertLess(hits[0]["normal"]["y"], 0.0, "Top cap normal should point up")
+
+        # Ray hitting bottom cap
+        hits = backend.query_ray(world, (100.0, 140.0), (0.0, -1.0), 50.0)
+        self.assertTrue(hits, "Ray should hit capsule bottom cap")
+        self.assertIn("normal", hits[0])
+        self.assertGreater(hits[0]["normal"]["y"], 0.0, "Bottom cap normal should point down")
+
+    def test_legacy_ray_normal_points_away_from_hit_object(self) -> None:
+        """Normal must point from surface toward ray origin (opposite ray direction)."""
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        entity = world.create_entity("Box")
+        entity.add_component(Transform(x=100.0, y=100.0))
+        entity.add_component(Collider(shape_type="box", width=20.0, height=20.0))
+        backend.sync_world(world)
+
+        # Ray from left hits left face → normal should be (-1, 0) pointing toward origin
+        hits = backend.query_ray(world, (80.0, 95.0), (1.0, 0.0), 50.0)
+        self.assertTrue(hits)
+        nx, ny = hits[0]["normal"]["x"], hits[0]["normal"]["y"]
+        hx, hy = hits[0]["point"]["x"], hits[0]["point"]["y"]
+        to_origin_x = 80.0 - hx
+        to_origin_y = 95.0 - hy
+        dot = nx * to_origin_x + ny * to_origin_y
+        self.assertGreater(dot, 0.0, f"Normal must point toward ray origin, dot={dot}")
+
+        # Ray from right hits right face
+        hits = backend.query_ray(world, (120.0, 95.0), (-1.0, 0.0), 50.0)
+        self.assertTrue(hits)
+        nx, ny = hits[0]["normal"]["x"], hits[0]["normal"]["y"]
+        hx, hy = hits[0]["point"]["x"], hits[0]["point"]["y"]
+        to_origin_x = 120.0 - hx
+        to_origin_y = 95.0 - hy
+        dot = nx * to_origin_x + ny * to_origin_y
+        self.assertGreater(dot, 0.0, f"Normal must point toward ray origin, dot={dot}")
+
+        # Ray from top hits top face
+        hits = backend.query_ray(world, (95.0, 80.0), (0.0, 1.0), 50.0)
+        self.assertTrue(hits)
+        nx, ny = hits[0]["normal"]["x"], hits[0]["normal"]["y"]
+        hx, hy = hits[0]["point"]["x"], hits[0]["point"]["y"]
+        to_origin_x = 95.0 - hx
+        to_origin_y = 80.0 - hy
+        dot = nx * to_origin_x + ny * to_origin_y
+        self.assertGreater(dot, 0.0, f"Normal must point toward ray origin, dot={dot}")
+
+    def test_query_aabb_hits_collision_shape_2d(self) -> None:
+        """query_aabb finds entity with CollisionShape2D (no Collider)."""
+        from engine.components.collision_shape_2d import CollisionShape2D
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        target = world.create_entity("ShapeTarget")
+        target.add_component(Transform(x=200.0, y=100.0))
+        target.add_component(CollisionShape2D(width=32.0, height=32.0))
+
+        hits = backend.query_aabb(world, (180.0, 80.0, 220.0, 120.0))
+        names = [h["entity"] for h in hits]
+        self.assertIn("ShapeTarget", names,
+                      "query_aabb should find CollisionShape2D entity without Collider")
+
+    def test_query_ray_hits_collision_polygon_2d(self) -> None:
+        """query_ray finds entity with CollisionPolygon2D (no Collider)."""
+        from engine.components.collision_polygon_2d import CollisionPolygon2D
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        target = world.create_entity("PolyTarget")
+        target.add_component(Transform(x=200.0, y=100.0))
+        target.add_component(CollisionPolygon2D(
+            polygon=[[-16, -16], [16, -16], [16, 16], [-16, 16]]
+        ))
+
+        hits = backend.query_ray(
+            world=world,
+            origin=(100.0, 100.0),
+            direction=(1.0, 0.0),
+            max_distance=200.0,
+        )
+        names = [h["entity"] for h in hits]
+        self.assertIn("PolyTarget", names,
+                      "query_ray should find CollisionPolygon2D entity without Collider")
+
+    def test_query_shape_cast_hits_collision_shape_set(self) -> None:
+        """query_shape_cast finds entity with CollisionShapeSet2D (no Collider)."""
+        from engine.components.collision_shape_set_2d import CollisionShape2DDef, CollisionShapeSet2D
+        world = World()
+        backend = LegacyAABBPhysicsBackend(None, None)
+
+        target = world.create_entity("ShapeSetTarget")
+        target.add_component(Transform(x=200.0, y=100.0))
+        shape_set = CollisionShapeSet2D(shapes=[
+            CollisionShape2DDef(
+                shape_type="box",
+                width=32.0,
+                height=32.0,
+                disabled=False,
+                is_trigger=False,
+            )
+        ])
+        target.add_component(shape_set)
+
+        hits = backend.query_shape_cast(
+            world=world,
+            shape_type="box",
+            shape_size=(16.0, 16.0),
+            origin=(100.0, 100.0),
+            direction=(1.0, 0.0),
+            max_distance=200.0,
+        )
+        self.assertGreater(len(hits), 0,
+                           "query_shape_cast should find CollisionShapeSet2D entity without Collider")
+
 if __name__ == "__main__":
     unittest.main()

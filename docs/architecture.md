@@ -117,6 +117,13 @@ El core conserva un contrato comun de backends fisicos:
 - si `box2d` no puede activarse, el runtime cae a `legacy_aabb`
 - el backend solicitado en `feature_metadata.physics_2d.backend` no debe sobrescribirse por el fallback efectivo
 - `query_physics_ray` y `query_physics_aabb` mantienen su significado publico
+- `body_test_motion` añade un sweep-test no-mutante (barrido de colisión sin modificar el mundo), bloque fundamental del que depende `move_and_slide`
+- **PGS Impulse Solver (dos fases):** tras integrar fuerzas, el sistema construye constraints de contacto y joints bilaterales (fixed, distance, pin) entre cuerpos, agrupa en islas via BFS, y ejecuta:
+  1. **PGS velocity solve** (8 iteraciones): impulsos normales con clamp no-negativo y friccion Coulomb
+  2. **PGS position solve** (3 iteraciones): correccion mass-weighted sobre transforms con age-based damping
+  Los joints bilaterales usan `is_bilateral=True` para permitir impulso negativo.
+- **Broadphase unificado**: `SpatialHash2D` compartido (celda 128px) construido una vez por frame y reutilizado entre PhysicsSystem, CollisionSystem y queries espaciales.
+- **Joint stiffness**: `Joint2D.joint_stiffness` (default 0.2) controla bias en constraints PGS bilaterales.
 
 ## Taxonomia arquitectonica
 

@@ -1901,6 +1901,52 @@
             ]
         },
         {
+            "id": "physics:collision:shape_set",
+            "summary": "Define multiple collision shapes per entity with individual offsets and properties",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.add_component",
+                "AuthoringAPI.edit_component"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "Add CollisionShapeSet2D with box body and circle head trigger",
+                "api_calls": [
+                    {
+                        "method": "add_component",
+                        "args": {
+                            "entity_name": "boss",
+                            "component_name": "CollisionShapeSet2D",
+                            "data": {
+                                "shapes": [
+                                    {
+                                        "shape_type": "box",
+                                        "width": 64.0,
+                                        "height": 48.0,
+                                        "offset_y": -24.0
+                                    },
+                                    {
+                                        "shape_type": "circle",
+                                        "radius": 20.0,
+                                        "offset_y": -48.0,
+                                        "is_trigger": true
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                ],
+                "expected_outcome": "Entity 'boss' has a compound collision shape with body and head trigger"
+            },
+            "notes": "Each shape supports box, circle, capsule or polygon with per-shape offset, disabled, is_trigger, friction, restitution. Use get_composite_bounds() for the enclosing AABB.",
+            "tags": [
+                "physics",
+                "collision",
+                "authoring"
+            ]
+        },
+        {
             "id": "prefab:apply",
             "summary": "Apply instance overrides back to the source prefab",
             "mode": "edit",
@@ -3063,6 +3109,176 @@
                 "ui",
                 "authoring"
             ]
+        },
+        {
+            "id": "physics:particles:cpu_fallback",
+            "summary": "GPUParticlesSystem CPU-backed adapter (no real GPU, delegates to ParticleSystem CPU fallback)",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "GPUParticlesSystem.update",
+                "GPUParticlesSystem.render",
+                "GPUParticlesSystem.reset"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "GPUParticlesSystem wired via RuntimeController and Game, no direct EngineAPI endpoint",
+                "api_calls": [],
+                "expected_outcome": "Particle rendering delegates to CPU ParticleSystem; no GPU acceleration"
+            },
+            "notes": "Wired internally in RuntimeController and Game. Exposes update(world, dt), render(world), reset(), active_particle_count y total_particle_count. No usa GPU real — delega en ParticleSystem de CPU. Componentes ParticleEmitter son consumidos automáticamente durante PLAY.",
+            "tags": [
+                "physics",
+                "particles",
+                "render",
+                "cpu-fallback"
+            ]
+        },
+        {
+            "id": "physics:resource:material",
+            "summary": "PhysicsMaterial resource (friction/bounce/rough/absorbent, schema_version 1, path override en RigidBody/StaticBody2D)",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "PhysicsMaterial.from_dict",
+                "PhysicsMaterial.to_dict",
+                "load_physics_material",
+                "clear_physics_material_cache"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "Configurar PhysicsMaterial para RigidBody via physics_material_override_path",
+                "api_calls": [
+                    {
+                        "method": "edit_component",
+                        "args": {
+                            "entity_name": "player",
+                            "component": "RigidBody",
+                            "property": "physics_material_override_path",
+                            "value": "materials/ice.json"
+                        }
+                    }
+                ],
+                "expected_outcome": "RigidBody usa PhysicsMaterial del archivo .json para fricción/rebote durante colisiones"
+            },
+            "notes": "PhysicsMaterial define friction (0=ice, 1=normal), bounce (0=sin rebote, 1=rebote perfecto), rough (fricción infinita) y absorbent (bounce=0 siempre). Se carga desde .json con load_physics_material(). Campos rough y absorbent aplican override sobre friction/bounce respectivamente. Cache de carga compartido; usar clear_physics_material_cache() para tests. Compatible con StaticBody2D.",
+            "tags": [
+                "physics",
+                "resource",
+                "material",
+                "collision"
+            ]
+        },
+        {
+            "id": "physics:rigidbody:contact_monitor",
+            "summary": "RigidBody contact_monitor con EngineAPI wrappers get_colliding_bodies y get_contact_count",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.get_colliding_bodies",
+                "RuntimeAPI.get_contact_count",
+                "RigidBody.get_colliding_bodies",
+                "RigidBody.get_contact_count"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "Monitorear contactos de un RigidBody durante PLAY",
+                "api_calls": [
+                    {
+                        "method": "edit_component",
+                        "args": {
+                            "entity_name": "player",
+                            "component": "RigidBody",
+                            "property": "contact_monitor",
+                            "value": true
+                        }
+                    },
+                    {
+                        "method": "edit_component",
+                        "args": {
+                            "entity_name": "player",
+                            "component": "RigidBody",
+                            "property": "max_contacts_reported",
+                            "value": 10
+                        }
+                    }
+                ],
+                "expected_outcome": "Tras step() en PLAY, get_colliding_bodies('player') retorna IDs de entidades en contacto; get_contact_count('player') retorna el número de contactos activos"
+            },
+            "notes": "contact_monitor (bool) y max_contacts_reported (int, 0=deshabilitado) se configuran via edit_component. Los wrappers EngineAPI get_colliding_bodies(entity_name) y get_contact_count(entity_name) delegan en RigidBody.get_colliding_bodies()/get_contact_count(). Retornan [] y 0 si la entidad no existe, no tiene RigidBody o contact_monitor está desactivado. Solo colisiones reales (no triggers) registran contactos. Los contactos se limpian cada frame.",
+            "tags": [
+                "physics",
+                "rigidbody",
+                "contact",
+                "collision",
+                "runtime"
+            ]
+        },
+        {
+            "id": "physics:character:max_slides",
+            "summary": "Set max_slides on CharacterController2D (controls slide iteration cap during move_and_slide)",
+            "mode": "play",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.set_character_max_slides"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "Set Player max_slides to 6 for smoother wall sliding",
+                "api_calls": [
+                    {
+                        "method": "set_character_max_slides",
+                        "args": {
+                            "entity_name": "Player",
+                            "max_slides": 6
+                        }
+                    }
+                ],
+                "expected_outcome": "Player CharacterController2D.max_slides updated to 6. Default is 4. Valid range 1-8."
+            },
+            "notes": "Runtime-only. Clamps to 1-8. Entity must have CharacterController2D component. max_slides=1 disables sliding (move_and_collide behavior).",
+            "tags": [
+                "physics",
+                "character",
+                "move_and_slide",
+                "runtime"
+            ]
+        },
+        {
+            "id": "physics:query:shape_cast",
+            "summary": "Cast a shape through physics space and find first hit",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.query_physics_shape_cast"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "Cast a 16x16 box from (0,0) rightwards 200px",
+                "api_calls": [
+                    {
+                        "method": "query_physics_shape_cast",
+                        "args": {
+                            "shape_type": "box",
+                            "shape_width": 16.0,
+                            "shape_height": 16.0,
+                            "origin_x": 0.0,
+                            "origin_y": 0.0,
+                            "direction_x": 1.0,
+                            "direction_y": 0.0,
+                            "max_distance": 200.0
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns list with first hit entity, position, normal and fraction. Empty if no hit."
+            },
+            "notes": "Supports box, circle, capsule and polygon shapes. Optional shape_params for polygon vertices. Delegates to swept_shape_toi for zero-length direction overlap-at-origin. Delegates to swept_collision for narrow-phase.",
+            "tags": [
+                "physics",
+                "query",
+                "collision",
+                "swept"
+            ]
         }
     ],
     "planned_capabilities": [
@@ -3197,6 +3413,42 @@
             ]
         },
         {
+            "id": "tilemap:tileset:autotile",
+            "summary": "Apply connective autotile using TileSet terrain peering",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "AuthoringAPI.set_cells_terrain_connect"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "Apply grass autotile to a row of grass tiles",
+                "api_calls": [
+                    {
+                        "method": "set_cells_terrain_connect",
+                        "args": {
+                            "entity_name": "TerrainMap",
+                            "layer_name": "ground",
+                            "cells": [
+                                {"x": 0, "y": 0},
+                                {"x": 1, "y": 0},
+                                {"x": 2, "y": 0}
+                            ],
+                            "terrain_name": "grass"
+                        }
+                    }
+                ],
+                "expected_outcome": "Each cell is replaced with the tile whose peering bits match the neighbor mask, using terrain peering from the TileSet"
+            },
+            "notes": "Requires a TileSet with terrain_sets and terrain_peering loaded in the tilemap layer. Computes 3x3 neighbor mask per cell, then looks up exact peering bits match in terrain_peering[terrain_name]. Cells without a matching tile are left unmodified. Returns count of cells modified.",
+            "tags": [
+                "tileset",
+                "terrain",
+                "autotile",
+                "authoring"
+            ]
+        },
+        {
             "id": "project:open",
             "summary": "Open a different project and load its startup scene",
             "mode": "both",
@@ -3225,9 +3477,9 @@
         }
     ],
     "capability_counts": {
-        "implemented": 103,
+        "implemented": 109,
         "planned": 6,
-        "total": 109
+        "total": 114
     },
     "project": {
         "name": "MotorVideojuegosIA",

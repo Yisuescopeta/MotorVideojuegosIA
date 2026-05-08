@@ -40,6 +40,36 @@ class SpatialHash2D:
             for cell_y in range(min_cell_y, max_cell_y + 1):
                 yield (cell_x, cell_y)
 
+    def query_ray_candidates(
+        self, ox: float, oy: float, dx: float, dy: float, max_distance: float
+    ) -> set[int]:
+        """Return candidate entity IDs along a ray segment using DDA grid traversal.
+
+        Args:
+            ox, oy: Ray origin in world coordinates.
+            dx, dy: Normalized ray direction.
+            max_distance: Maximum ray distance.
+
+        Returns:
+            Set of entity IDs in cells intersected by the ray.
+        """
+        entity_ids: set[int] = set()
+        end_x = ox + dx * max_distance
+        end_y = oy + dy * max_distance
+
+        # Build swept AABB of the ray segment
+        left = min(ox, end_x)
+        top = min(oy, end_y)
+        right = max(ox, end_x)
+        bottom = max(oy, end_y)
+
+        # Query cells covering the swept AABB (conservative, avoids complex DDA)
+        for cell in self._iter_cells((left, top, right, bottom)):
+            cell_ids = self._cells.get(cell)
+            if cell_ids is not None:
+                entity_ids.update(cell_ids)
+        return entity_ids
+
     def _max_cell(self, minimum: float, maximum: float) -> int:
         if maximum <= minimum:
             return math.floor(minimum / self.cell_size)

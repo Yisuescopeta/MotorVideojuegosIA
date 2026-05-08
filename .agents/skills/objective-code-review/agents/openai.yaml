@@ -1,0 +1,4 @@
+interface:
+  display_name: "Objective Code Review"
+  short_description: "Revision objetiva con evidencia"
+  default_prompt: "Use $objective-code-review to review code objectively with evidence-first findings."

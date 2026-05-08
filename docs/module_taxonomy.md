@@ -37,6 +37,7 @@ orquestacion. Pueden ser valiosos, pero no son contrato duro del motor.
 | jerarquia | `core obligatorio` | Forma parte de datos serializables y tests de authoring. |
 | `EngineAPI` | `core obligatorio` | Fachada estable para agentes, tests, CLI y automatizacion. |
 | contrato comun de physics backends + fallback `legacy_aabb` | `core obligatorio` | Garantiza una ruta fisica base y queries publicas. |
+| `engine/physics/island_manager.py` (IslandBuilder2D) | `core obligatorio` | Construye islas de restricciones por BFS; cada isla se resuelve independientemente por el solver PGS. Integrado en PhysicsSystem para multi-body stacking y island-level sleeping. |
 | assets | `modulos oficiales opcionales` | Integrados y soportados, pero no requisito del nucleo minimo. |
 | prefabs | `modulos oficiales opcionales` | Integrados en authoring/serializacion, pero no condicion minima. |
 | tilemap | `modulos oficiales opcionales` | Capacidad oficial basada en datos, fuera del nucleo minimo. |

@@ -177,7 +177,120 @@ class EngineAPIPublicContractTests(unittest.TestCase):
         self.assertEqual([item["name"] for item in api.list_sprite_slices("assets/player_sheet.png")], ["hero_0"])
         self.assertEqual(api.get_sprite_slice_rect("assets/player_sheet.png", "hero_0")["width"], 1)
 
-    def test_create_prefab_saves_entity_subtree_inside_project(self) -> None:
+    # --- Contact monitor (get_colliding_bodies / get_contact_count) ---
+
+    def test_get_colliding_bodies_exists_and_callable(self) -> None:
+        api = self._make_api()
+        self.assertTrue(hasattr(api, "get_colliding_bodies"))
+        self.assertTrue(callable(api.get_colliding_bodies))
+
+    def test_get_contact_count_exists_and_callable(self) -> None:
+        api = self._make_api()
+        self.assertTrue(hasattr(api, "get_contact_count"))
+        self.assertTrue(callable(api.get_contact_count))
+
+    def test_get_colliding_bodies_no_rigidbody_returns_empty(self) -> None:
+        api = self._make_api()
+        api.load_level(self.scene_path.as_posix())
+        result = api.get_colliding_bodies("Ground")
+        self.assertEqual(result, [])
+
+    def test_get_contact_count_no_rigidbody_returns_zero(self) -> None:
+        api = self._make_api()
+        api.load_level(self.scene_path.as_posix())
+        result = api.get_contact_count("Ground")
+        self.assertEqual(result, 0)
+
+    def test_get_colliding_bodies_with_rigidbody_returns_real_values(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from engine.components.rigidbody import RigidBody
+
+        api = self._make_api()
+        api.load_level(self.scene_path.as_posix())
+
+        mock_entity = MagicMock()
+        rb = RigidBody(contact_monitor=True, max_contacts_reported=5)
+        rb._register_contact(10)
+        rb._register_contact(20)
+        mock_entity.get_component.return_value = rb
+
+        with patch.object(api.game.world, "get_entity_by_name", return_value=mock_entity):
+            result = api.get_colliding_bodies("Player")
+            self.assertEqual(result, [10, 20])
+
+    def test_get_contact_count_with_rigidbody_returns_real_count(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from engine.components.rigidbody import RigidBody
+
+        api = self._make_api()
+        api.load_level(self.scene_path.as_posix())
+
+        mock_entity = MagicMock()
+        rb = RigidBody(contact_monitor=True, max_contacts_reported=5)
+        rb._register_contact(10)
+        rb._register_contact(20)
+        mock_entity.get_component.return_value = rb
+
+        with patch.object(api.game.world, "get_entity_by_name", return_value=mock_entity):
+            result = api.get_contact_count("Player")
+            self.assertEqual(result, 2)
+
+    # --- set_character_max_slides ---
+
+    def test_set_character_max_slides_exists_and_callable(self) -> None:
+        api = self._make_api()
+        self.assertTrue(hasattr(api, "set_character_max_slides"))
+        self.assertTrue(callable(api.set_character_max_slides))
+
+    def test_set_character_max_slides_no_charactercontroller_fails(self) -> None:
+        api = self._make_api()
+        api.load_level(self.scene_path.as_posix())
+        result = api.set_character_max_slides("Ground", 6)
+        self.assertFalse(result["success"])
+        self.assertIn("no CharacterController2D", result["message"])
+
+    def test_set_character_max_slides_sets_value(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from engine.components.charactercontroller2d import CharacterController2D
+
+        api = self._make_api()
+        api.load_level(self.scene_path.as_posix())
+
+        mock_entity = MagicMock()
+        controller = CharacterController2D(max_slides=4)
+        mock_entity.get_component.return_value = controller
+
+        with patch.object(api.game.world, "get_entity_by_name", return_value=mock_entity):
+            result = api.set_character_max_slides("Player", 6)
+            self.assertTrue(result["success"])
+            self.assertEqual(result["data"]["max_slides"], 6)
+            self.assertEqual(controller.max_slides, 6)
+
+    def test_set_character_max_slides_clamps_range(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from engine.components.charactercontroller2d import CharacterController2D
+
+        api = self._make_api()
+        api.load_level(self.scene_path.as_posix())
+
+        mock_entity = MagicMock()
+        controller = CharacterController2D(max_slides=4)
+        mock_entity.get_component.return_value = controller
+
+        with patch.object(api.game.world, "get_entity_by_name", return_value=mock_entity):
+            result = api.set_character_max_slides("Player", 0)
+            self.assertTrue(result["success"])
+            self.assertEqual(controller.max_slides, 1)
+
+            result = api.set_character_max_slides("Player", 99)
+            self.assertTrue(result["success"])
+            self.assertEqual(controller.max_slides, 8)
+
+    # --- CharacterController2D end ---
         api = self._make_api()
         api.load_level(self.scene_path.as_posix())
         self.assertTrue(api.create_entity("PrefabRoot")["success"])

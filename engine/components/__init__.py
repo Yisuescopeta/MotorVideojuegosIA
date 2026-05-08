@@ -18,6 +18,7 @@ from engine.components.audiosource import AudioSource
 from engine.components.camera2d import Camera2D
 from engine.components.charactercontroller2d import CharacterController2D
 from engine.components.collider import Collider
+from engine.components.collision_shape_set_2d import CollisionShape2DDef, CollisionShapeSet2D
 from engine.components.gameplay2d import (
     Checkpoint2D,
     Collectible2D,
@@ -59,6 +60,8 @@ __all__ = [
     "Transform",
     "Sprite",
     "Collider",
+    "CollisionShape2DDef",
+    "CollisionShapeSet2D",
     "Collectible2D",
     "Hazard2D",
     "Goal2D",

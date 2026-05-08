@@ -86,9 +86,11 @@ class EngineAPI:
         from engine.systems.character_controller_system import CharacterControllerSystem
         from engine.systems.collision_system import CollisionSystem
         from engine.systems.gameplay2d_semantic_system import Gameplay2DSemanticSystem
+        from engine.systems.gpu_particles_system import GPUParticlesSystem
         from engine.systems.input_system import InputSystem
         from engine.systems.physics_system import PhysicsSystem
         from engine.systems.player_controller_system import PlayerControllerSystem
+        from engine.systems.raycast_2d_system import RayCast2DSystem
         from engine.systems.render_system import RenderSystem
         from engine.systems.script_behaviour_system import ScriptBehaviourSystem
         from engine.systems.ui_render_system import UIRenderSystem
@@ -118,6 +120,8 @@ class EngineAPI:
         self.game.set_script_behaviour_system(ScriptBehaviourSystem())
         self.game.set_audio_system(AudioSystem())
         self.game.set_area2d_system(Area2DSystem(event_bus=event_bus))
+        self.game.set_raycast_2d_system(RayCast2DSystem())
+        self.game.set_gpu_particles_system(GPUParticlesSystem())
         self.game.set_gameplay2d_semantic_system(Gameplay2DSemanticSystem())
         self.game.set_inspector_system(InspectorSystem())
         self.game.set_ui_system(UISystem())
@@ -223,6 +227,16 @@ class EngineAPI:
         if value.endswith(".json") or "/" in value or "\\" in value:
             return self.project_service.resolve_path(value).as_posix()
         return value
+
+    def get_solver_metrics(self) -> dict:
+        """Retorna metricas del solver de impulsos PGS.
+
+        Returns:
+            dict con: warm_start_cache_size (int), iterations (int)
+        """
+        if self.game is not None and self.game.physics_system is not None:
+            return self.game.physics_system.get_solver_metrics()
+        return {"warm_start_cache_size": 0, "iterations": 0}
 
     def _resolve_api_path(self, path: str | os.PathLike[str], *, purpose: str) -> Path:
         candidate = Path(path)

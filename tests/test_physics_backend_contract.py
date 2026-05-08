@@ -4,6 +4,8 @@ from __future__ import annotations
 import unittest
 
 from engine.components.collider import Collider
+from engine.components.collision_filter_2d import CollisionFilter2D
+from engine.components.static_body_2d import StaticBody2D
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
@@ -26,7 +28,7 @@ def _make_world_with_floor() -> tuple[World, Entity, Entity]:
     """Crea World con suelo y devuelve (world, player, ground)."""
     world = World()
     player = Entity(name="Player")
-    player.add_component(Transform(x=160, y=50))
+    player.add_component(Transform(x=160, y=168))
     player.add_component(Collider(width=32, height=32))
     world.add_entity(player)
     ground = Entity(name="Ground")
@@ -175,3 +177,46 @@ class TestCrossBackendContract(unittest.TestCase):
 
         assert len(hits1) >= 2, f"Legacy: AABB encontró solo {len(hits1)} entidades"
         assert len(hits2) >= 2, f"Box2D: AABB encontró solo {len(hits2)} entidades"
+
+    def test_collision_filter_blocks_collision(self):
+        """CollisionFilter2D debe bloquear colisiones entre cuerpos con capas excluyentes.
+
+        Para Box2D, como move_and_slide no está implementado, se verifica que
+        los fixtures del body tengan los datos de filtro correctos.
+        Legacy sí usa move_and_slide con detección de filtros."""
+        # Legacy: player mask=0 → no colisiona con nada
+        w1, player, ground = _make_world_with_floor()
+        player.add_component(CollisionFilter2D(layer=1, mask=0))
+        ground.add_component(CollisionFilter2D(layer=1, mask=1))
+        legacy = LegacyAABBPhysicsBackend(physics_system=None, collision_system=None)
+        legacy.step(w1, 0.0)
+        result_legacy = legacy.move_and_slide(w1, player, (0, 2000), 1 / 60)
+        self.assertGreater(result_legacy.position_y, 200,
+            "Legacy: player with mask=0 should fall through floor")
+
+        # Box2D: verifica que los fixtures tienen el filtro correcto
+        w2, player2, ground2 = _make_world_with_floor()
+        player2.add_component(CollisionFilter2D(layer=2, mask=4))
+        box2d = Box2DPhysicsBackend(gravity=600)
+        box2d.sync_world(w2)
+        body = box2d._bodies.get(int(player2.id))
+        self.assertIsNotNone(body, "Box2D: player body not created")
+        for fixture in body.fixtures:
+            self.assertEqual(int(fixture.filterData.categoryBits), 2,
+                "Box2D: fixture categoryBits should match CollisionFilter2D.layer")
+            self.assertEqual(int(fixture.filterData.maskBits), 4,
+                "Box2D: fixture maskBits should match CollisionFilter2D.mask")
+
+    def test_box2d_handles_static_body_without_warning(self):
+        """Box2D backend should handle StaticBody2D component without warning."""
+        import warnings
+        w, player, ground = _make_world_with_floor()
+        player.add_component(StaticBody2D())
+        box2d = Box2DPhysicsBackend(gravity=600)
+        with warnings.catch_warnings(record=True) as w_list:
+            warnings.simplefilter("always")
+            box2d.sync_world(w)
+        # No warning about StaticBody2D should be emitted
+        static_warnings = [x for x in w_list if "StaticBody2D" in str(x.message)]
+        self.assertEqual(len(static_warnings), 0,
+            "Box2D should not warn about StaticBody2D")

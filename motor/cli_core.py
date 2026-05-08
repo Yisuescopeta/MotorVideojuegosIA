@@ -3079,6 +3079,163 @@ def cmd_physics_query_ray(
                 pass
 
 
+# ============================================================================
+# Physics Shape-Cast Query
+# ============================================================================
+
+def cmd_physics_query_shape_cast(
+    project_path: Path,
+    shape_type: str,
+    shape_width: float,
+    shape_height: float,
+    origin_x: float,
+    origin_y: float,
+    direction_x: float,
+    direction_y: float,
+    max_distance: float,
+    json_output: bool = False,
+) -> int:
+    """Cast a shape through physics world."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        data = _runtime_response_base("physics query shape-cast", True, warnings)
+        data.update({
+            "scene": scene,
+            "query": {
+                "shape_type": shape_type,
+                "shape_width": float(shape_width),
+                "shape_height": float(shape_height),
+                "origin_x": float(origin_x),
+                "origin_y": float(origin_y),
+                "direction_x": float(direction_x),
+                "direction_y": float(direction_y),
+                "max_distance": float(max_distance),
+            },
+            "hits": [],
+            "count": 0,
+        })
+        if not scene_ready:
+            return _output(False, "Physics shape cast failed: no active scene", data, json_output)
+
+        api.play()
+        api.step(1)
+        hits = api.query_physics_shape_cast(
+            shape_type=shape_type,
+            shape_width=float(shape_width),
+            shape_height=float(shape_height),
+            origin_x=float(origin_x),
+            origin_y=float(origin_y),
+            direction_x=float(direction_x),
+            direction_y=float(direction_y),
+            max_distance=float(max_distance),
+        )
+        api.stop()
+        data["hits"] = hits
+        data["count"] = len(hits)
+        if not hits:
+            return _output(True, "No hit found", data, json_output)
+        return _output(True, f"Shape cast returned {len(hits)} hits", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Physics shape cast failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.stop()
+                api.shutdown()
+            except Exception:
+                pass
+
+
+# ============================================================================
+# Physics Motion Query
+# ============================================================================
+
+def cmd_physics_query_motion(
+    project_path: Path,
+    entity_name: str,
+    motion_x: float,
+    motion_y: float,
+    margin: float = 0.08,
+    recovery_as_collision: bool = False,
+    exclude_names: Optional[list[str]] = None,
+    collision_mask: int = 0xFFFFFFFF,
+    collide_with_areas: bool = False,
+    json_output: bool = False,
+) -> int:
+    """Test entity motion against physics world (non-mutating)."""
+    api: Optional[EngineAPI] = None
+    warnings: List[str] = []
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        scene_ready, scene = _ensure_runtime_scene(api, warnings)
+        data = _runtime_response_base("physics query motion", True, warnings)
+        data.update({
+            "scene": scene,
+            "query": {
+                "entity_name": entity_name,
+                "motion_x": float(motion_x),
+                "motion_y": float(motion_y),
+                "margin": float(margin),
+                "recovery_as_collision": bool(recovery_as_collision),
+                "exclude_names": exclude_names or [],
+                "collision_mask": collision_mask,
+                "collide_with_areas": bool(collide_with_areas),
+            },
+            "result": {},
+            "has_collision": False,
+            "status_after": _runtime_status(api),
+        })
+        if not scene_ready:
+            return _output(False, "Physics motion query failed: no active scene", data, json_output)
+
+        api.play()
+        api.step(1)
+        result = api.query_physics_motion(
+            entity_name=entity_name,
+            motion_x=float(motion_x),
+            motion_y=float(motion_y),
+            margin=float(margin),
+            recovery_as_collision=bool(recovery_as_collision),
+            exclude_entity_names=exclude_names,
+            collision_mask=int(collision_mask),
+            collide_with_bodies=True,
+            collide_with_areas=bool(collide_with_areas),
+        )
+        api.stop()
+        has_collision = result.get("collision_safe_fraction", 1.0) < 1.0
+        data["result"] = dict(result)
+        data["has_collision"] = has_collision
+        data["status_after"] = _runtime_status(api)
+        data["warnings"] = list(warnings)
+        if has_collision:
+            collider = result.get("collider_entity_name", "unknown")
+            fraction = result.get("collision_safe_fraction", 0.0)
+            return _output(
+                True,
+                f"Motion test: collision with '{collider}' at {fraction*100:.1f}% of path",
+                data, json_output,
+            )
+        return _output(True, "Motion test: no collision — full travel possible", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Physics motion query failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.stop()
+                api.shutdown()
+            except Exception:
+                pass
+
+
 def cmd_physics_backend_list(project_path: Path, json_output: bool) -> int:
     """List physics backends in a stateless headless runtime process."""
     api: Optional[EngineAPI] = None

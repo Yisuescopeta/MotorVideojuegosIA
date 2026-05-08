@@ -58,6 +58,7 @@ class RuntimeController:
         self._get_path_follow_system = context.get_path_follow_system
         self._get_gameplay2d_semantic_system = context.get_gameplay2d_semantic_system
         self._get_navigation_agent_system = context.get_navigation_agent_system
+        self._get_raycast_2d_system = context.get_raycast_2d_system
         self._get_scene_transition_controller = context.get_scene_transition_controller
         self._get_physics_backend_registry = context.get_physics_backend_registry
         self._reset_profiler = context.reset_profiler
@@ -335,6 +336,9 @@ class RuntimeController:
             if nav_agent is not None:
                 nav_agent.update(world, dt)
             backend.step(world, dt)
+            raycast_2d_system = self._get_raycast_2d_system()
+            if raycast_2d_system is not None:
+                raycast_2d_system.update(world, dt)
             if g2d is not None:
                 g2d.update(
                     world,

@@ -244,6 +244,72 @@ Cuando el motor esta en `EDIT`, los cambios persistentes de grupos deben entrar
 por la ruta de authoring expuesta por `EngineAPI`; en `PLAY`, esos cambios solo
 afectan al runtime activo.
 
+## TileSet — Terreno y autotile
+
+`EngineAPI.set_cells_terrain_connect` aplica autotile conectivo usando peering
+de terreno definido en un `TileSet`. Para cada celda indicada, computa la mascara
+de vecinos con el mismo terreno y asigna el tile cuyo peering bits coincide
+exactamente.
+
+Requisitos:
+- La entidad tilemap debe existir y tener una capa.
+- El `TileSet` debe tener `terrain_sets` y `terrain_peering` definidos
+  (`TileSet.from_dict` desde un `.json` de tileset).
+- La capa del tilemap debe referenciar el tileset via `tilemap_source`.
+
+### Ejemplo
+
+```python
+from engine.api import EngineAPI
+
+api = EngineAPI(project_root=".")
+api.load_scene("levels/main_scene.json")
+
+# Crear tilemap con capa y tileset
+api.create_tilemap(
+    "TerrainMap", 16, 16, tileset="tilesets/grassland.tileset.json"
+)
+api.create_tilemap_layer("TerrainMap", "ground")
+
+# Colocar tiles de terreno base
+for x in range(0, 20):
+    api.set_tilemap_tile("TerrainMap", "ground", x, 0, "grass_base")
+
+# Autotile conectivo sobre las celdas base
+cells = [{"x": x, "y": 0} for x in range(0, 20)]
+api.set_cells_terrain_connect("TerrainMap", "ground", cells, "grass")
+
+api.save_scene()
+api.shutdown()
+```
+
+El metodo `set_cells_terrain_connect` computa mascara de vecindad (3x3) por
+celda y busca el tile con peering bits exacto en `terrain_peering[terrain_name]`.
+Si no existe tile para un mask, la celda queda sin modificar. Retorna
+`ActionResult` con `count` de celdas modificadas.
+
+Para definir `terrain_peering` en el tileset `.json`:
+
+```json
+{
+    "tiles": {...},
+    "terrain_sets": [{"name": "grass", "mode": 0}],
+    "terrain_peering": {
+        "grass": {
+            "grass_center": 0,
+            "grass_right": 1,
+            "grass_down": 2,
+            "grass_corner": 3,
+            "grass_down_right": 15,
+            "...": "..."
+        }
+    }
+}
+```
+
+Cada tile en `terrain_peering` tiene un `peering_bits` (0-255) que codifica que
+vecinos (N, NE, E, SE, S, SW, W, NW) comparten el mismo terreno.
+
 ## Física avanzada (P0)
 
 La API de física expone fuerzas, impulsos, torque, capas de colisión y
@@ -256,6 +322,9 @@ monitoreo de overlaps vía Area2D. Todos los métodos usan la fachada pública
 - `set_collision_filter(entity, layer, mask)`: Configura capas de colisión con máscaras de bits (uint32). La regla de colisión es `(A.mask & B.layer) != 0 AND (B.mask & A.layer) != 0`.
 - **Area2D**: monitorea overlaps con eventos `body_entered`/`body_exited`/`area_entered`/`area_exited`. Requiere un Collider. El payload de eventos incluye `entity_id`, `other_entity_id`, `entity_name` y `other_entity_name`.
 - `CollisionFilter2D.should_collide(entity_a, entity_b)`: Verifica si dos entidades colisionan según sus filtros de capa/máscara.
+- `ImpulseSolver2D`: resolver de contactos PGS con warm-starting. Metricas via `get_solver_metrics()`. Configurable via `PhysicsSystem.solver_iterations` (default 8).
+- `IslandBuilder2D`: agrupa cuerpos rigidos en islas independientes via BFS sobre contactos y joints. Cada isla se resuelve en un solo pase PGS de dos fases: velocity solve (8 iter) + position solve (3 iter). Soporta island-level sleeping: islas completas se saltan resolucion si todos sus cuerpos estan dormidos. Metricas via `get_solver_metrics()`: `warm_start_cache_size`, `iterations`, `island_count`, `sleeping_islands`. Estado persistido entre frames via `_body_id_to_island`.
+- Joint2D expone `joint_stiffness` (float, default 0.2): controla que tan agresivamente el PGS corrige la posicion del joint por frame. A mayor valor, correccion mas rapida pero posible sobrecorreccion.
 
 ### Ejemplo mínimo de física
 
@@ -266,9 +335,9 @@ api = EngineAPI(project_root=".")
 api.load_scene("levels/main_scene.json")
 
 # RigidBody dinámico con fuerzas
-api.create_entity("player", components=["RigidBody", "Collider", "Transform"])
-api.set_rigidbody_property("player", "body_type", "dynamic")
-api.set_rigidbody_property("player", "mass", 2.0)
+api.create_entity("player", components={"RigidBody": {}, "Collider": {}, "Transform": {}})
+api.edit_component("player", "RigidBody", "body_type", "dynamic")
+api.edit_component("player", "RigidBody", "mass", 2.0)
 api.apply_force("player", 500.0, 0.0)
 api.apply_impulse("player", 0.0, -300.0)
 
@@ -276,9 +345,10 @@ api.apply_impulse("player", 0.0, -300.0)
 api.set_collision_filter("player", layer=1, mask=1)
 
 # Area2D para monitoreo
-api.create_entity("damage_zone", components=["Area2D", "Collider", "Transform"])
-api.set_collider_rect("damage_zone", 100, 100)
-api.set_collider_trigger("damage_zone", True)
+api.create_entity("damage_zone", components={"Area2D": {}, "Collider": {}, "Transform": {}})
+api.edit_component("damage_zone", "Collider", "width", 100)
+api.edit_component("damage_zone", "Collider", "height", 100)
+api.edit_component("damage_zone", "Collider", "is_trigger", True)
 
 api.save_scene()
 api.shutdown()
@@ -293,7 +363,209 @@ cada frame desde `RuntimeController`. No es necesario que el agente configure na
 - Sin backend: fallback a código legacy AABB interno
 
 El componente `CharacterController2D` determina el modo (`move_and_slide` vs
-`move_and_collide`) y el backend lo respeta.
+`move_and_collide`) y el backend lo respeta. `CharacterController2D` expone
+`max_slides` (default 4) como campo serializable que controla el maximo de
+iteraciones de deslizamiento en `move_and_slide`. A mayor valor, mejor
+resolucion de esquinas y paredes secuenciales; `max_slides=1` equivale a
+detenerse en la primera colision (comportamiento previo al cambio).
+
+```python
+api.add_component("player", "CharacterController2D", {
+    "move_mode": "move_and_slide",
+    "max_slides": 6,
+})
+```
+
+### RayCast2D — Raycast por componente
+
+`RayCast2D` es un componente que lanza un rayo cada frame desde la entidad
+usando internamente `query_physics_ray`. El sistema `RayCast2DSystem` está
+wired en `EngineAPI` y `RuntimeController`, y se ejecuta automáticamente
+durante `PLAY`.
+
+Uso desde authoring:
+```python
+api.add_component("player", "RayCast2D", {"cast_to_y": 100})
+```
+
+Campos runtime actualizados cada frame: `is_colliding`, `collision_point_*`,
+`collision_normal_*`, `collider_entity`.
+
+Filtros activos en el sistema (orden de aplicación):
+1. `exclude_parent`: excluye la entidad padre y sus hijos
+2. `collide_with_areas`: colisiona con áreas (`is_trigger`)
+3. `collide_with_bodies`: colisiona con cuerpos (no trigger)
+4. `collision_mask`: máscara de bits contra `CollisionFilter2D.layer`
+
+Lectura runtime desde agente:
+```python
+result = api.get_raycast_result("player")
+if result.get("is_colliding"):
+    print(f"Chocó contra: {result['collider_entity']}")
+```
+Retorna `{}` si la entidad no existe, no tiene `RayCast2D` o el runtime no está activo.
+
+### ShapeCast — Barrido de formas (API)
+
+`query_physics_shape_cast()` está disponible en `RuntimeAPI` y `EngineAPI`.
+No existe componente `ShapeCast2D` ni sistema `ShapeCast2DSystem`: se usa como
+API directa desde código runtime o scripts.
+
+Shape types soportados: `"box"`, `"circle"`, `"capsule"`, `"polygon"`.
+
+Signature:
+```python
+hits: list[ShapeCastResult] = api.query_physics_shape_cast(
+    shape_type="box",
+    shape_width=16.0,
+    shape_height=16.0,
+    origin_x=0.0, origin_y=0.0,
+    direction_x=1.0, direction_y=0.0,
+    max_distance=200.0,
+    shape_params=None,  # opcional, e.g. {"vertices": [[-8,-8],[8,-8],[8,8],[-8,8]]}
+)
+```
+
+Cada `ShapeCastResult` es un dict con campos: `hit`, `entity_id`, `entity`,
+`position` (dict `x`/`y`), `normal` (dict `x`/`y`), `fraction`.
+
+```python
+hits = api.query_physics_shape_cast("circle", 10.0, 10.0, 0.0, 0.0, 0.0, 1.0, 100.0)
+if hits:
+    h = hits[0]
+    print(f"Impacto en {h['entity']} a fracción {h['fraction']:.2f}")
+```
+
+`shape_params` puede sobrescribir `shape_width`/`shape_height` con valores
+explícitos (`width`, `height`, `radius`, `vertices`).
+
+El backend físico delega en `swept_shape_toi` para detección precisa de TOI
+y en `swept_collision` para narrow-phase. Con dirección cero reporta overlaps
+en el origen. Retorna lista vacía si no hay hit o no hay backend activo.
+
+### query_physics_motion — Prueba de movimiento no mutante
+
+Prueba si una entidad puede moverse a lo largo de un vector sin colisionar.
+**No modifica** el Transform ni el estado del mundo.
+
+```python
+result = api.query_physics_motion("Player", motion_x=100.0, motion_y=0.0)
+if result["collision_safe_fraction"] < 1.0:
+    print(f"Colisión con {result['collider_entity_name']} a {result['collision_safe_fraction']*100:.1f}% del trayecto")
+    print(f"Viaje seguro: ({result['travel_x']}, {result['travel_y']})")
+    print(f"Restante: ({result['remainder_x']}, {result['remainder_y']})")
+else:
+    print("Sin colisión, movimiento completo seguro")
+```
+
+Parámetros: `entity_name`, `motion_x`, `motion_y`, `margin` (default 0.08),
+`recovery_as_collision` (default False), `exclude_entity_names`,
+`collision_mask`, `collide_with_bodies`, `collide_with_areas`.
+
+Campos del resultado: `travel_x`, `travel_y`, `remainder_x`, `remainder_y`,
+`collision_point_x`, `collision_point_y`, `collision_normal_x`, `collision_normal_y`,
+`collider_velocity_x`, `collider_velocity_y`, `collision_depth`,
+`collision_safe_fraction`, `collision_unsafe_fraction`, `collision_local_shape`,
+`collider_id`, `collider_entity_name`, `collider_shape`.
+
+### NavigationObstacle2D — Obstáculo estático para avoidance
+
+Componente data-only que marca una entidad como obstáculo para
+`NavigationAgentSystem`. Campos: `radius` (default: `0.0`),
+`affect_avoidance` (default: `true`). No requiere configuración runtime.
+
+```python
+api.add_component("wall", "NavigationObstacle2D", {"radius": 16.0})
+```
+
+### Eventos de contacto de colisión (collision_contact)
+
+El sistema de colisión emite eventos `collision_contact` con datos de manifold
+completos (normal, depth, contact points) a través del `EventBus`. Los agentes
+pueden consumirlos durante `PLAY` para reaccionar a colisiones.
+
+#### Lectura runtime desde agente
+
+```python
+from engine.api import EngineAPI
+
+api = EngineAPI(project_root=".")
+api.load_scene("levels/main_scene.json")
+
+# Iniciar runtime headless
+api.play()
+
+# Avanzar frames
+api.step(frames=10)
+
+# Consumir eventos de contacto
+events = api.get_recent_events()
+collision_events = [e for e in events if e.get("name") == "collision_contact"]
+
+for evt in collision_events:
+    data = evt["data"]
+    entity_a = data["entity_a_name"]
+    entity_b = data["entity_b_name"]
+    normal_x = data["normal_x"]
+    normal_y = data["normal_y"]
+    depth = data["depth"]
+    contacts = data["contacts"]  # lista de ContactPoint2D dicts
+    contact_count = data["contact_count"]
+    is_trigger = data.get("is_trigger", False)
+
+    print(f"{entity_a} vs {entity_b}: depth={depth:.2f}, normal=({normal_x:.1f},{normal_y:.1f})")
+    for cp in contacts:
+        print(f"  contact at ({cp['point_x']:.1f}, {cp['point_y']:.1f}), depth={cp['depth']:.2f}")
+
+    # Ejemplo: detectar colisión contra el suelo (normal apunta hacia arriba)
+    if normal_y < -0.7 and entity_b == "Ground":
+        print("Player está en el suelo")
+
+api.stop()
+api.shutdown()
+```
+
+Los campos disponibles en cada evento `collision_contact`:
+- `entity_a_id`, `entity_b_id`: IDs de entidades
+- `entity_a_name`, `entity_b_name`: nombres de entidades
+- `normal_x`, `normal_y`: normal de colisión (apunta de A hacia B)
+- `depth`: profundidad máxima de penetración
+- `impulse_x`, `impulse_y`: impulso aplicado en resolución
+- `relative_velocity_x`, `relative_velocity_y`: velocidad relativa en punto de contacto
+- `contact_count`: número de puntos de contacto
+- `contacts`: lista de dicts con `point_x`, `point_y`, `normal_x`, `normal_y`, `depth`
+- `is_trigger`: True si es colisión de trigger
+- `schema_version`: versión del schema (≥1)
+
+### CollisionShapeSet2D — Múltiples formas de colisión por entidad
+
+`CollisionShapeSet2D` permite definir varias formas de colisión (box, circle, capsule,
+polygon) en una sola entidad. Cada `CollisionShape2DDef` tiene su propio offset,
+flags de trigger/disabled, friction, restitution y geometría. Útil para entidades
+con formas compuestas (por ejemplo, un personaje con cuerpo box + cabeza circle).
+
+Uso desde authoring:
+```python
+from engine.components.collision_shape_set_2d import (
+    CollisionShape2DDef,
+    CollisionShapeSet2D,
+)
+
+api.add_component("boss", "CollisionShapeSet2D", {
+    "shapes": [
+        {"shape_type": "box", "width": 64.0, "height": 48.0, "offset_y": -24.0},
+        {"shape_type": "circle", "radius": 20.0, "offset_y": -48.0, "is_trigger": True},
+    ],
+})
+```
+
+Métodos clave:
+- `get_composite_bounds(x, y)`: AABB que envuelve todas las shapes habilitadas no-trigger.
+- `get_enabled_non_trigger_shapes()`: lista filtrada de shapes activas no-trigger.
+- `CollisionShape2DDef.get_bounds(cx, cy)`: AABB de una shape individual en espacio mundo.
+
+Serialización: las shapes se guardan como lista de dicts en el campo `"shapes"`, cada una
+con tipo, offset, flags y geometría.
 
 ### Limitaciones de física para agentes IA
 
@@ -304,6 +576,27 @@ El componente `CharacterController2D` determina el modo (`move_and_slide` vs
 - Las shapes no-AABB (circle, capsule, polygon) tienen narrow-phase pero con
   precision variable en el manifold de contacto. Para fisica precisa, usar
   `box2d` como backend (requiere Box2D instalado).
+
+## Queen OpenCode
+
+Queen es tooling multiagente experimental de OpenCode. No cambia el contrato del
+motor 2D y no debe tocar `engine/` salvo necesidad estricta y justificada.
+
+Ciclo operativo:
+
+```text
+RECON -> PLAN -> CRITICA DEL PLAN -> IMPLEMENTAR -> DOCUMENTAR -> VALIDAR -> REVIEW -> AI AUDIT -> COMMIT -> REPORTE
+```
+
+`max_cycles = 5`. El commit ocurre solo despues de tests, documentacion, review
+y AI audit aplicables. La Definition of Done exige tests enfocados verdes,
+lint/typecheck cuando aplique, docs canonicas si cambia contrato, cero
+`must_fix` del reviewer, score AI `>= 90` cuando aplique, sin cambios fuera de
+alcance y reporte final claro si termina `partial`, `blocked` o `failed`.
+
+`context-recon` vive en `.opencode/agents/context-recon.md` y es read-only:
+`read`, `glob` y `grep` permitidos; `bash`, `edit`, `write`, `webfetch`,
+`websearch`, `task` y `todowrite` denegados.
 
 ## Que evitar
 

@@ -88,6 +88,8 @@ from motor.cli_core import (
     cmd_runtime_events,
     cmd_physics_query_aabb,
     cmd_physics_query_ray,
+    cmd_physics_query_shape_cast,
+    cmd_physics_query_motion,
     cmd_physics_backend_list,
     cmd_signal_connect,
     cmd_signal_emit,
@@ -975,6 +977,61 @@ Documentation:
         help="Path to project directory"
     )
     physics_query_ray_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    physics_query_shape_cast_parser = physics_query_subparsers.add_parser(
+        "shape-cast",
+        help="Cast a shape through physics world and return first hit",
+    )
+    physics_query_shape_cast_parser.add_argument("shape_type", type=str, help="Shape type: box, circle, capsule, polygon")
+    physics_query_shape_cast_parser.add_argument("shape_width", type=float, help="Shape width (diameter for circle/capsule)")
+    physics_query_shape_cast_parser.add_argument("shape_height", type=float, help="Shape height (diameter for circle)")
+    physics_query_shape_cast_parser.add_argument("origin_x", type=float, help="Origin X")
+    physics_query_shape_cast_parser.add_argument("origin_y", type=float, help="Origin Y")
+    physics_query_shape_cast_parser.add_argument("direction_x", type=float, help="Direction X")
+    physics_query_shape_cast_parser.add_argument("direction_y", type=float, help="Direction Y")
+    physics_query_shape_cast_parser.add_argument(
+        "--max-distance", type=float, default=1000.0,
+        help="Maximum cast distance (default: 1000)"
+    )
+    physics_query_shape_cast_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    physics_query_shape_cast_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    physics_query_motion_parser = physics_query_subparsers.add_parser(
+        "motion",
+        help="Test entity motion against physics world (non-mutating)",
+    )
+    physics_query_motion_parser.add_argument("entity_name", type=str, help="Entity to test motion for")
+    physics_query_motion_parser.add_argument("motion_x", type=float, help="Motion X component")
+    physics_query_motion_parser.add_argument("motion_y", type=float, help="Motion Y component")
+    physics_query_motion_parser.add_argument(
+        "--margin", type=float, default=0.08, help="Safety margin (default: 0.08)"
+    )
+    physics_query_motion_parser.add_argument(
+        "--recovery-as-collision", action="store_true",
+        help="Report pre-existing overlaps as collisions"
+    )
+    physics_query_motion_parser.add_argument(
+        "--exclude-names", type=str, default="",
+        help="Comma-separated entity names to exclude from collision"
+    )
+    physics_query_motion_parser.add_argument(
+        "--collision-mask", type=lambda x: int(x, 0), default=0xFFFFFFFF,
+        help="Bitmask for collision layer filtering (hex ok)"
+    )
+    physics_query_motion_parser.add_argument(
+        "--collide-with-areas", action="store_true",
+        help="Include area/trigger entities in test"
+    )
+    physics_query_motion_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory"
+    )
+    physics_query_motion_parser.add_argument(
+        "--json", action="store_true", help="Output in JSON format"
+    )
 
     physics_backend_list_parser = physics_subparsers.add_parser(
         "backend",
@@ -2251,6 +2308,33 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 direction_x=parsed.direction_x,
                 direction_y=parsed.direction_y,
                 max_distance=parsed.max_distance,
+                json_output=parsed.json,
+            )
+        elif parsed.physics_subcommand == "query" and parsed.physics_query_subcommand == "shape-cast":
+            return cmd_physics_query_shape_cast(
+                project_path=Path(parsed.project_root).resolve(),
+                shape_type=parsed.shape_type,
+                shape_width=parsed.shape_width,
+                shape_height=parsed.shape_height,
+                origin_x=parsed.origin_x,
+                origin_y=parsed.origin_y,
+                direction_x=parsed.direction_x,
+                direction_y=parsed.direction_y,
+                max_distance=parsed.max_distance,
+                json_output=parsed.json,
+            )
+        elif parsed.physics_subcommand == "query" and parsed.physics_query_subcommand == "motion":
+            exclude_names = [n.strip() for n in parsed.exclude_names.split(",") if n.strip()] if parsed.exclude_names else None
+            return cmd_physics_query_motion(
+                project_path=Path(parsed.project_root).resolve(),
+                entity_name=parsed.entity_name,
+                motion_x=parsed.motion_x,
+                motion_y=parsed.motion_y,
+                margin=parsed.margin,
+                recovery_as_collision=parsed.recovery_as_collision,
+                exclude_names=exclude_names,
+                collision_mask=parsed.collision_mask,
+                collide_with_areas=parsed.collide_with_areas,
                 json_output=parsed.json,
             )
         elif parsed.physics_subcommand == "backend" and parsed.physics_backend_subcommand == "list":

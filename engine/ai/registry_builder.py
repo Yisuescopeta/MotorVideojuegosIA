@@ -1380,6 +1380,47 @@ class CapabilityRegistryBuilder:
         ))
 
         self._add(Capability(
+            id="physics:query:shape-cast",
+            summary="Cast a shape through physics world and find intersections",
+            mode="both",
+            api_methods=["RuntimeAPI.query_physics_shape_cast"],
+            cli_command="motor physics query shape-cast <shape_type> <shape_width> <shape_height> <origin_x> <origin_y> <direction_x> <direction_y> <max_distance>",
+            example=CapabilityExample(
+                description="Cast a box shape from origin (100,100) to the right",
+                api_calls=[
+                    {"method": "query_physics_shape_cast", "args": {
+                        "shape_type": "box", "shape_width": 32, "shape_height": 32,
+                        "origin_x": 100, "origin_y": 100,
+                        "direction_x": 1, "direction_y": 0,
+                        "max_distance": 500,
+                    }},
+                ],
+                expected_outcome="Returns list of hits sorted by distance",
+            ),
+            notes="Direction is normalized. Supports box, circle, capsule shapes.",
+            tags=["physics", "query", "collision"],
+        ))
+        self._add(Capability(
+            id="physics:query:motion",
+            summary="Test entity motion against physics world without applying it",
+            mode="both",
+            api_methods=["RuntimeAPI.query_physics_motion"],
+            cli_command="motor physics query motion <entity_name> <motion_x> <motion_y>",
+            example=CapabilityExample(
+                description="Test if player would collide moving 100px right",
+                api_calls=[
+                    {"method": "query_physics_motion", "args": {
+                        "entity_name": "player", "motion_x": 100, "motion_y": 0,
+                        "margin": 0.08,
+                    }},
+                ],
+                expected_outcome="Returns collision info and safe displacement",
+            ),
+            notes="Non-mutating. Uses active physics backend for motion testing.",
+            tags=["physics", "query", "collision", "motion"],
+        ))
+
+        self._add(Capability(
             id="physics:backend:list",
             summary="List available physics backends and their status",
             mode="both",

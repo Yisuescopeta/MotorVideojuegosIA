@@ -37,6 +37,7 @@ class RuntimeControllerTests(unittest.TestCase):
         self.path_follow_system = Mock()
         self.gameplay2d_semantic_system = Mock()
         self.navigation_agent_system = Mock()
+        self.raycast_2d_system = Mock()
         self.scene_transition_controller = Mock()
         self.physics_backend_registry = PhysicsBackendRegistry()
         self.reset_profiler = Mock()
@@ -71,6 +72,7 @@ class RuntimeControllerTests(unittest.TestCase):
                 get_path_follow_system=lambda: self.path_follow_system,
                 get_gameplay2d_semantic_system=lambda: self.gameplay2d_semantic_system,
                 get_navigation_agent_system=lambda: self.navigation_agent_system,
+                get_raycast_2d_system=lambda: self.raycast_2d_system,
                 get_scene_transition_controller=lambda: self.scene_transition_controller,
                 get_physics_backend_registry=lambda: self.physics_backend_registry,
                 reset_profiler=self.reset_profiler,
@@ -228,6 +230,7 @@ class RuntimeControllerTests(unittest.TestCase):
         self.player_controller_system.update.assert_called_once_with(world)
         self.script_behaviour_system.update.assert_called_once_with(world, 0.25, is_edit_mode=False)
         backend.step.assert_called_once_with(world, 0.25)
+        self.raycast_2d_system.update.assert_called_once_with(world, 0.25)
         self.physics_system.update.assert_not_called()
         self.collision_system.update.assert_not_called()
         self.audio_system.update.assert_called_once_with(world)
@@ -243,6 +246,7 @@ class RuntimeControllerTests(unittest.TestCase):
         self.controller.update_gameplay(world, 0.1)
 
         legacy_backend.step.assert_called_once_with(world, 0.1)
+        self.raycast_2d_system.update.assert_called_once_with(world, 0.1)
         self.physics_system.update.assert_not_called()
         self.collision_system.update.assert_not_called()
         self.audio_system.update.assert_called_once_with(world)
@@ -395,6 +399,7 @@ class RuntimeControllerTests(unittest.TestCase):
                 get_path_follow_system=lambda: self.path_follow_system,
                 get_gameplay2d_semantic_system=lambda: self.gameplay2d_semantic_system,
                 get_navigation_agent_system=lambda: self.navigation_agent_system,
+                get_raycast_2d_system=lambda: self.raycast_2d_system,
                 get_audio_system=lambda: self.audio_system,
                 get_scene_transition_controller=lambda: self.scene_transition_controller,
                 get_physics_backend_registry=lambda: self.physics_backend_registry,

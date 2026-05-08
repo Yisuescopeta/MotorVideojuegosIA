@@ -40,9 +40,6 @@ ENGINE_VERSION: str = "2026.03"
 GRAVITY_DEFAULT: float = 980.0
 """Gravedad por defecto en píxeles/segundo²."""
 
-GROUND_Y_TEMP: float = 550.0
-"""Posición Y del suelo temporal (se eliminará cuando CollisionSystem lo gestione)."""
-
 # === ANIMACIÓN ===
 EDIT_ANIMATION_SPEED: float = 0.25
 """Velocidad de preview de animación en modo EDIT (multiplicador de dt)."""

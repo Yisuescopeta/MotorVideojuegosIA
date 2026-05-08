@@ -87,6 +87,8 @@ class RigidBody(Component):
         angular_damp_mode: str = "combine",
         lock_rotation: bool = False,
         physics_material_override_path: str = "",
+        contact_monitor: bool = False,
+        max_contacts_reported: int = 0,
     ) -> None:
         """
         Inicializa el RigidBody.
@@ -101,8 +103,8 @@ class RigidBody(Component):
             angular_damping: Amortiguación angular (0=sin fricción rotacional)
             angular_velocity: Velocidad angular en rad/s
             inertia: Momento de inercia (afecta respuesta a torque)
-            center_of_mass_x: Centro de masa relativo X
-            center_of_mass_y: Centro de masa relativo Y
+            center_of_mass_x: Centro de masa relativo X (Godot parity, not yet consumed by PhysicsSystem)
+            center_of_mass_y: Centro de masa relativo Y (Godot parity, not yet consumed by PhysicsSystem)
             ccd_mode: Modo CCD ("disabled", "cast_ray", "cast_shape")
             can_sleep: Si el cuerpo puede dormirse
             sleeping: Si el cuerpo está dormido
@@ -113,10 +115,16 @@ class RigidBody(Component):
             constant_force_x: Fuerza constante X (aplicada cada frame)
             constant_force_y: Fuerza constante Y (aplicada cada frame)
             constant_torque: Torque constante (aplicado cada frame)
-            center_of_mass_mode: "auto" o "custom"
-            linear_damp_mode: "combine" o "replace"
-            angular_damp_mode: "combine" o "replace"
+            center_of_mass_mode: "auto" o "custom" (Godot parity, not yet consumed by PhysicsSystem)
+            linear_damp_mode: "combine" o "replace" (Godot parity, not yet consumed by PhysicsSystem)
+            angular_damp_mode: "combine" o "replace" (Godot parity, not yet consumed by PhysicsSystem)
             lock_rotation: Si la rotación está bloqueada
+            contact_monitor: Activa monitoreo de contactos (Godot-like: 0 = sin límite,
+                >0 = máx contactos reportados). Requiere max_contacts_reported > 0
+                para habilitar reporte.
+            max_contacts_reported: Máximo número de contactos reportados.
+                0 = deshabilitado (no reporta ninguno). >0 = reporta hasta N colisiones.
+                Comportamiento consistente con Godot: 0 reporta 0 contactos.
         """
         self.enabled: bool = True
         self.velocity_x: float = velocity_x
@@ -174,6 +182,13 @@ class RigidBody(Component):
         # Physics material override (path to a .physmat resource)
         self.physics_material_override_path: str = str(physics_material_override_path)
 
+        # Contact monitor (Godot-like)
+        self.contact_monitor: bool = contact_monitor
+        self.max_contacts_reported: int = max_contacts_reported
+
+        # Estado runtime de contactos (NO se serializa)
+        self._contact_bodies: list[int] = []
+
         # Buffers de fuerzas runtime (NO se serializan — se limpian cada frame)
         self._force_buffer_x: float = 0.0
         self._force_buffer_y: float = 0.0
@@ -214,11 +229,15 @@ class RigidBody(Component):
             "constant_force_x": self.constant_force_x,
             "constant_force_y": self.constant_force_y,
             "constant_torque": self.constant_torque,
+            # NOTE: These fields serialize for forward compat but aren't yet
+            # consumed by PhysicsSystem. They exist for Godot API parity.
             "center_of_mass_mode": self.center_of_mass_mode,
             "linear_damp_mode": self.linear_damp_mode,
             "angular_damp_mode": self.angular_damp_mode,
             "lock_rotation": self.lock_rotation,
             "physics_material_override_path": self.physics_material_override_path,
+            "contact_monitor": self.contact_monitor,
+            "max_contacts_reported": self.max_contacts_reported,
         }
 
     @classmethod
@@ -259,6 +278,8 @@ class RigidBody(Component):
             angular_damp_mode=data.get("angular_damp_mode", "combine"),
             lock_rotation=data.get("lock_rotation", False),
             physics_material_override_path=data.get("physics_material_override_path", ""),
+            contact_monitor=data.get("contact_monitor", False),
+            max_contacts_reported=data.get("max_contacts_reported", 0),
         )
         component.enabled = data.get("enabled", True)
         return component
@@ -301,6 +322,31 @@ class RigidBody(Component):
         if freeze_y:
             return ["FreezePositionY"]
         return ["None"]
+
+    # --- Contact monitor (Godot-like) ---
+
+    def get_colliding_bodies(self) -> list[int]:
+        """Devuelve los IDs de entidades en contacto este frame."""
+        return list(self._contact_bodies)
+
+    def get_contact_count(self) -> int:
+        """Devuelve el número de contactos activos este frame."""
+        return len(self._contact_bodies)
+
+    def _clear_contacts(self) -> None:
+        """Limpia el tracking de contactos (llamado por CollisionSystem al inicio del frame)."""
+        self._contact_bodies.clear()
+
+    def _register_contact(self, other_entity_id: int) -> None:
+        """Registra un contacto con otra entidad (llamado por CollisionSystem).
+
+        Respeta max_contacts_reported: si es >0 y ya alcanzó el límite, no registra más.
+        """
+        if self.max_contacts_reported <= 0:
+            return
+        if len(self._contact_bodies) < self.max_contacts_reported:
+            if other_entity_id not in self._contact_bodies:
+                self._contact_bodies.append(other_entity_id)
 
     def _wake(self) -> None:
         """Despierta el cuerpo si estaba dormido."""

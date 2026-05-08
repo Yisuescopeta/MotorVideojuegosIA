@@ -114,6 +114,7 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.collision_filter_2d import CollisionFilter2D
     from engine.components.collision_polygon_2d import CollisionPolygon2D
     from engine.components.collision_shape_2d import CollisionShape2D
+    from engine.components.collision_shape_set_2d import CollisionShapeSet2D
     from engine.components.gameplay2d import (
         Checkpoint2D,
         Collectible2D,
@@ -131,6 +132,7 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.line2d import Line2D
     from engine.components.marker2d import Marker2D
     from engine.components.navigation_agent_2d import NavigationAgent2D
+    from engine.components.navigation_obstacle_2d import NavigationObstacle2D
     from engine.components.parallax_layer import ParallaxLayer
     from engine.components.particle_emitter2d import ParticleEmitter2D
     from engine.components.path_follower_2d import PathFollower2D
@@ -180,6 +182,13 @@ def create_default_registry() -> ComponentRegistry:
         description="Dedicated collision shape (Godot CollisionShape2D). Takes precedence over Collider when both present.",
         default_payload=CollisionShape2D().to_dict(),
         editor_tags=("physics", "layer:Physics", "collision", "shape"),
+    )
+    registry.register(
+        "CollisionShapeSet2D",
+        CollisionShapeSet2D,
+        description="Multiple collision shapes for a single entity. Each shape can have its own type, offset, trigger flag, and physical properties.",
+        default_payload=CollisionShapeSet2D().to_dict(),
+        editor_tags=("physics", "layer:Physics", "collision", "shape", "composite"),
     )
     registry.register(
         "CollisionPolygon2D",
@@ -330,6 +339,13 @@ def create_default_registry() -> ComponentRegistry:
         description="Navigates an entity toward a target using A* pathfinding on a navigation grid.",
         default_payload=NavigationAgent2D().to_dict(),
         editor_tags=("navigation", "tag:NavigationAgent", "layer:Gameplay", "moving"),
+    )
+    registry.register(
+        "NavigationObstacle2D",
+        NavigationObstacle2D,
+        description="Static obstacle that blocks navigation agents during pathfinding and avoidance.",
+        default_payload=NavigationObstacle2D().to_dict(),
+        editor_tags=("navigation", "tag:NavigationObstacle", "layer:Gameplay"),
     )
     registry.register(
         "PathFollower2D",

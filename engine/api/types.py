@@ -75,6 +75,28 @@ class ShapeCastResult(TypedDict, total=False):
     fraction: float
 
 
+class MotionTestResult(TypedDict, total=False):
+    """Resultado de query_physics_motion (body_test_motion)."""
+
+    travel_x: float
+    travel_y: float
+    remainder_x: float
+    remainder_y: float
+    collision_point_x: float
+    collision_point_y: float
+    collision_normal_x: float
+    collision_normal_y: float
+    collider_velocity_x: float
+    collider_velocity_y: float
+    collision_depth: float
+    collision_safe_fraction: float
+    collision_unsafe_fraction: float
+    collision_local_shape: int
+    collider_id: int
+    collider_entity_name: str
+    collider_shape: int
+
+
 class ProfilerReport(TypedDict, total=False):
     """Reporte del profiler."""
 

@@ -57,6 +57,7 @@ from engine.editor.terminal_panel import TerminalPanel
 from engine.editor.undo_redo import UndoRedoManager
 from engine.events.signals import SignalConnectionFlags
 from engine.physics.backend import (
+    MotionResult2D,
     PhysicsAABBHit,
     PhysicsBackendInfo,
     PhysicsBackendSelection,
@@ -89,6 +90,7 @@ if TYPE_CHECKING:
     from engine.systems.parallax_system import ParallaxSystem
     from engine.systems.particle_system import ParticleSystem
     from engine.systems.path_follow_system import PathFollowSystem
+    from engine.systems.raycast_2d_system import RayCast2DSystem
     from engine.systems.physics_system import PhysicsSystem
     from engine.systems.player_controller_system import PlayerControllerSystem
     from engine.systems.render_system import RenderSystem
@@ -157,6 +159,7 @@ class Game:
         self._path_follow_system: Optional["PathFollowSystem"] = None
         self._gameplay2d_semantic_system: Optional["Gameplay2DSemanticSystem"] = None
         self._navigation_agent_system: Optional["NavigationAgentSystem"] = None
+        self._raycast_2d_system: Optional["RayCast2DSystem"] = None
         self._ui_focus_system: Optional["UIFocusSystem"] = None
 
         self.script_executor: Optional["ScriptExecutor"] = None
@@ -273,6 +276,7 @@ class Game:
                 get_path_follow_system=lambda: self._path_follow_system,
                 get_gameplay2d_semantic_system=lambda: self._gameplay2d_semantic_system,
                 get_navigation_agent_system=lambda: self._navigation_agent_system,
+                get_raycast_2d_system=lambda: self._raycast_2d_system,
                 get_scene_transition_controller=lambda: self._scene_transition_controller,
                 get_physics_backend_registry=lambda: self._physics_backend_registry,
                 reset_profiler=self.reset_profiler,
@@ -758,6 +762,12 @@ class Game:
     def set_navigation_agent_system(self, system: "NavigationAgentSystem") -> None:
         self._navigation_agent_system = system
 
+    def set_raycast_2d_system(self, system: "RayCast2DSystem") -> None:
+        self._raycast_2d_system = system
+        system.set_ray_cast_query(
+            lambda ox, oy, dx, dy, md: self.query_physics_ray(ox, oy, dx, dy, md)
+        )
+
     def set_ui_focus_system(self, system: "UIFocusSystem") -> None:
         self._ui_focus_system = system
         if self._event_bus is not None:
@@ -957,6 +967,7 @@ class Game:
         direction_x: float,
         direction_y: float,
         max_distance: float,
+        shape_params: Optional[dict] = None,
     ) -> list[PhysicsShapeCastHit]:
         active_world = self.world
         if active_world is None:
@@ -974,7 +985,82 @@ class Game:
             (origin_x, origin_y),
             (direction_x, direction_y),
             max_distance,
+            shape_params=shape_params,
         )
+
+    def query_physics_motion(
+        self,
+        entity_name: str,
+        motion_x: float,
+        motion_y: float,
+        margin: float = 0.08,
+        recovery_as_collision: bool = False,
+        exclude_entity_names: Optional[list[str]] = None,
+        collision_mask: int = 0xFFFFFFFF,
+        collide_with_bodies: bool = True,
+        collide_with_areas: bool = False,
+    ) -> dict[str, object]:
+        active_world = self.world
+        if active_world is None:
+            return {
+                "travel_x": motion_x,
+                "travel_y": motion_y,
+                "collision_safe_fraction": 1.0,
+            }
+        entity = active_world.get_entity_by_name(entity_name)
+        if entity is None:
+            return {
+                "travel_x": motion_x,
+                "travel_y": motion_y,
+                "collision_safe_fraction": 1.0,
+            }
+        resolved_backend = self._physics_backend_registry.resolve(
+            active_world,
+            default_backend_name=self._physics_backend_name,
+        )
+        if resolved_backend.backend is None:
+            return {
+                "travel_x": motion_x,
+                "travel_y": motion_y,
+                "collision_safe_fraction": 1.0,
+            }
+        exclude_ids: Optional[list[int]] = None
+        if exclude_entity_names:
+            exclude_ids = []
+            for name in exclude_entity_names:
+                excluded = active_world.get_entity_by_name(name)
+                if excluded is not None:
+                    exclude_ids.append(excluded.id)
+        result: MotionResult2D = resolved_backend.backend.body_test_motion(
+            active_world,
+            entity,
+            (motion_x, motion_y),
+            margin=margin,
+            recovery_as_collision=recovery_as_collision,
+            exclude_ids=exclude_ids,
+            collision_mask=collision_mask,
+            collide_with_bodies=collide_with_bodies,
+            collide_with_areas=collide_with_areas,
+        )
+        return {
+            "travel_x": result.travel_x,
+            "travel_y": result.travel_y,
+            "remainder_x": result.remainder_x,
+            "remainder_y": result.remainder_y,
+            "collision_point_x": result.collision_point_x,
+            "collision_point_y": result.collision_point_y,
+            "collision_normal_x": result.collision_normal_x,
+            "collision_normal_y": result.collision_normal_y,
+            "collider_velocity_x": result.collider_velocity_x,
+            "collider_velocity_y": result.collider_velocity_y,
+            "collision_depth": result.collision_depth,
+            "collision_safe_fraction": result.collision_safe_fraction,
+            "collision_unsafe_fraction": result.collision_unsafe_fraction,
+            "collision_local_shape": result.collision_local_shape,
+            "collider_id": result.collider_id,
+            "collider_entity_name": result.collider_entity_name,
+            "collider_shape": result.collider_shape,
+        }
 
     def refresh_ui_layout(self, viewport_size: Optional[tuple[float, float]] = None) -> bool:
         active_world = self.world

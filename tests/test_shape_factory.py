@@ -7,6 +7,7 @@ from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
+from engine.physics.contact_data import ContactManifold2D, ContactPoint2D
 from engine.physics.shapes import AABBShape, CapsuleShape, CircleShape, PolygonShape, ShapeFactory
 
 
@@ -276,25 +277,95 @@ class ShapeFactoryTests(unittest.TestCase):
         assert m.depth > 0
         assert m.contact_count >= 1
 
-    # ── Capsule approximate manifold ──────────────────────────────
+    # ── Capsule real manifold ────────────────────────────────────
 
-    def test_capsule_manifold_is_approximate(self) -> None:
-        """Cápsula vs AABB: manifold existe pero es aproximado."""
+    def test_capsule_manifold_is_real(self) -> None:
+        """Cápsula vs AABB: manifold con normal real, depth no trivial, contact point no centro."""
         a = CapsuleShape(10, 10, 8, 32)
         b = AABBShape(30, 10, 16, 16)
         m = a.collide_shape(b)
         assert m is not None, "Cápsula debería detectar colisión con AABB"
+        assert m.depth > 0
+        assert m.depth != a.radius, f"Depth {m.depth} no debería ser radio trivial {a.radius}"
+        assert abs(m.normal_x) > 0 or abs(m.normal_y) > 0, f"Normal no nula: ({m.normal_x}, {m.normal_y})"
         assert m.contact_count >= 1
+        cp = m.contacts[0]
+        # Contact point no debería ser el centro de la cápsula
+        assert not (abs(cp.point_x - a.cx) < 0.01 and abs(cp.point_y - a.cy) < 0.01), (
+            f"Contact point {cp.point_x},{cp.point_y} no debería ser centro cápsula {a.cx},{a.cy}"
+        )
 
     # ── Polygon SAT manifold ──────────────────────────────────────
 
     def test_polygon_sat_manifold_exists(self) -> None:
-        """Polígono vs AABB vía SAT → manifold existe con depth > 0."""
+        """Polígono vs AABB vía SAT → manifold con normal real y depth > 0."""
         poly = PolygonShape([(5, 0), (15, 20), (0, 10)])
         aabb = AABBShape(10, 5, 20, 15)
         m = poly.collide_shape(aabb)
         assert m is not None, "SAT debería detectar colisión"
         assert m.depth > 0, f"Depth debería ser > 0, es {m.depth}"
+        assert abs(m.normal_x) > 0 or abs(m.normal_y) > 0, f"Normal no nula: ({m.normal_x}, {m.normal_y})"
+        assert m.contact_count >= 1
+
+    # ── Capsule vs Circle manifold ────────────────────────────────
+
+    def test_capsule_vs_circle_manifold_real(self) -> None:
+        """Cápsula vs Circle: manifold real con depth y normal correctos."""
+        cap = CapsuleShape(0, 0, 5, 20)
+        circle = CircleShape(8, 0, 5)
+        m = cap.collide_shape(circle)
+        assert m is not None
+        assert m.depth > 0
+        assert abs(m.normal_x) > 0.5, f"Normal debería ser horizontal: ({m.normal_x}, {m.normal_y})"
+
+    # ── Capsule vs Capsule manifold ───────────────────────────────
+
+    def test_capsule_vs_capsule_manifold_real(self) -> None:
+        """Cápsula vs Cápsula: manifold real con segment overlap."""
+        a = CapsuleShape(100, 100, 10, 32)
+        b = CapsuleShape(115, 100, 10, 32)
+        m = a.collide_shape(b)
+        assert m is not None
+        assert m.depth > 0
+        assert abs(m.normal_x) > 0.5, f"Normal horizontal esperada: ({m.normal_x}, {m.normal_y})"
+
+    # ── Polygon vs Polygon manifold ───────────────────────────────
+
+    def test_polygon_vs_polygon_manifold_real(self) -> None:
+        """Polígono vs Polígono: SAT produce manifold real."""
+        a = PolygonShape([(0, 0), (20, 0), (20, 20), (0, 20)])
+        b = PolygonShape([(10, 10), (30, 10), (30, 30), (10, 30)])
+        m = a.collide_shape(b)
+        assert m is not None
+        assert m.depth > 0
+        assert m.depth < 20.0, f"Depth no trivial: {m.depth}"
+        assert abs(m.normal_x) > 0 or abs(m.normal_y) > 0
+        assert m.contact_count >= 1
+
+    # ── Capsule vs Polygon manifold ───────────────────────────────
+
+    def test_capsule_vs_polygon_manifold_real(self) -> None:
+        """Cápsula vs Polygon: manifold real con depth y normal."""
+        capsule = CapsuleShape(100, 100, 10, 32)
+        poly = PolygonShape([(50, 50), (150, 50), (150, 150), (50, 150)])
+        m = capsule.collide_shape(poly)
+        assert m is not None, "Cápsula dentro del polígono debería colisionar"
+        assert m.depth > 0
+        assert m.contact_count >= 1
+
+    # ── No-collision capsule/polygon ──────────────────────────────
+
+    def test_capsule_collide_no_collision_returns_none(self) -> None:
+        """Cápsula sin colisión → None."""
+        cap = CapsuleShape(0, 0, 5, 10)
+        box = AABBShape(50, 50, 10, 10)
+        assert cap.collide_shape(box) is None
+
+    def test_polygon_collide_no_collision_returns_none(self) -> None:
+        """Polígono sin colisión → None."""
+        a = PolygonShape([(0, 0), (10, 0), (10, 10)])
+        b = PolygonShape([(100, 100), (110, 100), (110, 110)])
+        assert a.collide_shape(b) is None
 
     # ── No collision → None ───────────────────────────────────────
 

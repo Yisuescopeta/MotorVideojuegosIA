@@ -39,6 +39,10 @@ class Area2D(Component):
     Requiere un Collider para definir la forma del area.
     """
 
+    VALID_SPACE_OVERRIDE_MODES = {"disabled", "combine", "combine_replace", "replace", "replace_combine"}
+
+    _OLD_OVERRIDE_DEFAULTS = {"", "disabled"}
+
     def __init__(
         self,
         monitoring: bool = True,
@@ -47,14 +51,45 @@ class Area2D(Component):
         gravity_point: bool = False,
         gravity_distance_scale: float = 0.0,
         priority: int = 0,
+        gravity_override_x: float = 0.0,
+        gravity_override_y: float = 0.0,
+        linear_damp_override: float = 0.0,
+        angular_damp_override: float = 0.0,
+        gravity_space_override: str = "disabled",
+        linear_damp_space_override: str = "disabled",
+        angular_damp_space_override: str = "disabled",
     ) -> None:
         self.enabled: bool = True
         self.monitoring: bool = monitoring
         self.monitorable: bool = monitorable
-        self.space_override: str = str(space_override or "disabled")
+        self.space_override: str = str(space_override or "disabled")  # Deprecated: use per-mode overrides
         self.gravity_point: bool = gravity_point
         self.gravity_distance_scale: float = gravity_distance_scale
         self.priority: int = int(priority)
+        self.gravity_override_x: float = float(gravity_override_x)
+        self.gravity_override_y: float = float(gravity_override_y)
+        self.linear_damp_override: float = float(linear_damp_override)
+        self.angular_damp_override: float = float(angular_damp_override)
+
+        # New per-mode space override fields (Godot-compatible)
+        gso = str(gravity_space_override or "disabled")
+        self.gravity_space_override: str = gso if gso in self.VALID_SPACE_OVERRIDE_MODES else "disabled"
+        lds = str(linear_damp_space_override or "disabled")
+        self.linear_damp_space_override: str = lds if lds in self.VALID_SPACE_OVERRIDE_MODES else "disabled"
+        ads = str(angular_damp_space_override or "disabled")
+        self.angular_damp_space_override: str = ads if ads in self.VALID_SPACE_OVERRIDE_MODES else "disabled"
+
+        # Backward compat: if old space_override is set but new per-mode fields aren't,
+        # inherit from old field
+        old_mode = self.space_override
+        if old_mode not in self._OLD_OVERRIDE_DEFAULTS and old_mode in self.VALID_SPACE_OVERRIDE_MODES:
+            if gso in self._OLD_OVERRIDE_DEFAULTS:
+                self.gravity_space_override = old_mode
+            if lds in self._OLD_OVERRIDE_DEFAULTS:
+                self.linear_damp_space_override = old_mode
+            if ads in self._OLD_OVERRIDE_DEFAULTS:
+                self.angular_damp_space_override = old_mode
+
         # Runtime tracking (NO serializado)
         self._tracked_bodies: set[int] = set()
         self._tracked_areas: set[int] = set()
@@ -68,6 +103,13 @@ class Area2D(Component):
             "gravity_point": self.gravity_point,
             "gravity_distance_scale": self.gravity_distance_scale,
             "priority": self.priority,
+            "gravity_override_x": self.gravity_override_x,
+            "gravity_override_y": self.gravity_override_y,
+            "linear_damp_override": self.linear_damp_override,
+            "angular_damp_override": self.angular_damp_override,
+            "gravity_space_override": self.gravity_space_override,
+            "linear_damp_space_override": self.linear_damp_space_override,
+            "angular_damp_space_override": self.angular_damp_space_override,
         }
 
     @classmethod
@@ -79,6 +121,13 @@ class Area2D(Component):
             gravity_point=data.get("gravity_point", False),
             gravity_distance_scale=data.get("gravity_distance_scale", 0.0),
             priority=data.get("priority", 0),
+            gravity_override_x=data.get("gravity_override_x", 0.0),
+            gravity_override_y=data.get("gravity_override_y", 0.0),
+            linear_damp_override=data.get("linear_damp_override", 0.0),
+            angular_damp_override=data.get("angular_damp_override", 0.0),
+            gravity_space_override=data.get("gravity_space_override", "disabled"),
+            linear_damp_space_override=data.get("linear_damp_space_override", "disabled"),
+            angular_damp_space_override=data.get("angular_damp_space_override", "disabled"),
         )
         component.enabled = data.get("enabled", True)
         return component

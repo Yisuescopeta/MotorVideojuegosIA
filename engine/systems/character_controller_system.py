@@ -7,9 +7,12 @@ from engine.components.charactercontroller2d import CharacterController2D
 from engine.components.collider import Collider
 from engine.components.collision_filter_2d import CollisionFilter2D
 from engine.components.inputmap import InputMap
+from engine.components.rigidbody import RigidBody
+from engine.components.static_body_2d import StaticBody2D
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
+from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
 
 
 class CharacterControllerSystem:
@@ -26,11 +29,6 @@ class CharacterControllerSystem:
 
     def update(self, world: World, delta_time: float, backend: Any = None) -> None:
         self._emitted_contacts = set()
-        solids: list[Entity] = []
-        for entity in world.get_entities_with(Transform, Collider):
-            collider = entity.get_component(Collider)
-            if entity.active and collider is not None and collider.enabled and not collider.is_trigger:
-                solids.append(entity)
         for entity in world.get_entities_with(Transform, Collider, CharacterController2D):
             transform = entity.get_component(Transform)
             collider = entity.get_component(Collider)
@@ -41,10 +39,9 @@ class CharacterControllerSystem:
             if not entity.active or not collider.enabled or not controller.enabled:
                 continue
             self._apply_inputs(controller, input_map)
-            if backend is not None:
-                self._move_with_service(backend, world, entity, transform, collider, controller, float(delta_time))
-            else:
-                self._move_entity_legacy(world, entity, transform, collider, controller, solids, float(delta_time))
+            if backend is None:
+                backend = LegacyAABBPhysicsBackend(None, None)
+            self._move_with_service(backend, world, entity, transform, collider, controller, float(delta_time))
 
     def _apply_inputs(self, controller: CharacterController2D, input_map: InputMap | None) -> None:
         controller.collision_normal_x = 0.0
@@ -73,6 +70,11 @@ class CharacterControllerSystem:
         solids: list[Entity],
         delta_time: float,
     ) -> None:
+        """[DEPRECATED] Legacy per-axis sweep path. No longer called directly.
+
+        Kept for backward compatibility with external code that may reference this method.
+        PhysicsKinematicMoveService via LegacyAABBPhysicsBackend is now the unified path.
+        """
         controller._was_on_floor = controller.on_floor
         controller.on_wall = False
         controller.on_ceiling = False
@@ -123,6 +125,24 @@ class CharacterControllerSystem:
         controller.platform_velocity_x = 0.0
         controller.platform_velocity_y = 0.0
 
+        # Apply platform velocity from tracked platform entity
+        if controller.platform_entity_name:
+            platform_e = world.get_entity_by_name(controller.platform_entity_name)
+            if platform_e is not None:
+                pv_x, pv_y = 0.0, 0.0
+                platform_sb = platform_e.get_component(StaticBody2D) if hasattr(platform_e, "get_component") else None
+                if platform_sb is not None:
+                    pv_x = platform_sb.constant_linear_velocity_x
+                    pv_y = platform_sb.constant_linear_velocity_y
+                else:
+                    platform_rb = platform_e.get_component(RigidBody) if hasattr(platform_e, "get_component") else None
+                    if platform_rb is not None:
+                        pv_x = platform_rb.velocity_x
+                        pv_y = platform_rb.velocity_y
+                if pv_x != 0.0 or pv_y != 0.0:
+                    transform.x += pv_x * delta_time
+                    transform.y += pv_y * delta_time
+
         # Calcular velocidad (gravedad + input)
         if not controller.on_floor:
             controller.velocity_y = min(
@@ -150,6 +170,8 @@ class CharacterControllerSystem:
                 floor_snap_distance=controller.floor_snap_distance,
                 up_direction=(controller.up_direction_x, controller.up_direction_y),
                 wall_min_slide_angle=controller.wall_min_slide_angle,
+                floor_stop_on_slope=controller.floor_stop_on_slope,
+                max_slides=controller.max_slides,
             )
 
         # Aplicar resultado al Transform
@@ -165,6 +187,35 @@ class CharacterControllerSystem:
         controller.collision_normal_x = result.collision_normal_x
         controller.collision_normal_y = result.collision_normal_y
         controller._was_on_floor = was_on_floor
+
+        # Track platform entity from move result
+        if result.on_floor and result.platform_entity_id > 0:
+            platform_e = world.get_entity(result.platform_entity_id)
+            if platform_e is not None:
+                controller.platform_entity_name = str(platform_e.name) if hasattr(platform_e, "name") else ""
+        elif not result.on_floor:
+            controller.platform_entity_name = ""
+
+        # platform_on_leave: apply velocity when leaving a moving platform
+        if was_on_floor and not result.on_floor and controller.platform_entity_name:
+            leave_platform = world.get_entity_by_name(controller.platform_entity_name)
+            if leave_platform is not None:
+                lv_x, lv_y = 0.0, 0.0
+                lp_sb = leave_platform.get_component(StaticBody2D) if hasattr(leave_platform, "get_component") else None
+                if lp_sb is not None:
+                    lv_x = lp_sb.constant_linear_velocity_x
+                    lv_y = lp_sb.constant_linear_velocity_y
+                else:
+                    lp_rb = leave_platform.get_component(RigidBody) if hasattr(leave_platform, "get_component") else None
+                    if lp_rb is not None:
+                        lv_x = lp_rb.velocity_x
+                        lv_y = lp_rb.velocity_y
+                if controller.platform_on_leave == "add_velocity":
+                    controller.velocity_x += lv_x
+                    controller.velocity_y += lv_y
+                elif controller.platform_on_leave == "add_upward_velocity":
+                    controller.velocity_y += lv_y
+            controller.platform_entity_name = ""
 
         # Emitir eventos de contacto
         for contact in result.contacts:
@@ -203,6 +254,7 @@ class CharacterControllerSystem:
         solids: list[Entity],
         delta_x: float,
     ) -> float:
+        """[DEPRECATED] Legacy horizontal sweep. Only referenced by _move_entity_legacy."""
         if abs(delta_x) <= 1e-6:
             return 0.0
         left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
@@ -261,6 +313,7 @@ class CharacterControllerSystem:
         solids: list[Entity],
         delta_y: float,
     ) -> float:
+        """[DEPRECATED] Legacy vertical sweep. Only referenced by _move_entity_legacy."""
         if abs(delta_y) <= 1e-6:
             return 0.0
         left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
