@@ -94,7 +94,7 @@ class QtSceneViewportPanel(QWidget):
                     self._gizmo_entity_world_rect.center().x(),
                     self._gizmo_entity_world_rect.center().y(),
                 )
-                self._gizmo._build_handles(
+                self._gizmo.build_handles(
                     QPointF(center_screen[0], center_screen[1]), self._zoom
                 )
                 handle = self._gizmo.hit_test(pos)
@@ -146,7 +146,7 @@ class QtSceneViewportPanel(QWidget):
             result = self._gizmo.end_drag()
             if result is not None and self._selected_entity:
                 after = result.get("after_state", {})
-                mode = self._gizmo._mode
+                mode = self._gizmo.mode
                 if mode == GizmoMode.ROTATE_Z:
                     self.entity_rotated.emit(
                         self._selected_entity, "Transform", "rotation",
@@ -280,19 +280,19 @@ class QtSceneViewportPanel(QWidget):
 
             painter.save()
             if self._gizmo.is_dragging and self._selected_entity == entity_name:
-                mode = self._gizmo._mode
+                mode = self._gizmo.mode
                 if mode == GizmoMode.ROTATE_Z:
                     cx = rect.center().x()
                     cy = rect.center().y()
                     painter.translate(cx, cy)
-                    painter.rotate(float(self._gizmo._current_angle or 0))
+                    painter.rotate(float(self._gizmo.current_angle or 0))
                     painter.translate(-cx, -cy)
                 elif mode in (GizmoMode.SCALE_X, GizmoMode.SCALE_Y, GizmoMode.SCALE_UNIFORM):
                     cx = rect.center().x()
                     cy = rect.center().y()
                     painter.translate(cx, cy)
-                    sx = float(self._gizmo._current_scale[0] if self._gizmo._current_scale else 1.0)
-                    sy = float(self._gizmo._current_scale[1] if self._gizmo._current_scale else 1.0)
+                    sx = float(self._gizmo.current_scale[0] if self._gizmo.current_scale else 1.0)
+                    sy = float(self._gizmo.current_scale[1] if self._gizmo.current_scale else 1.0)
                     painter.scale(sx, sy)
                     painter.translate(-cx, -cy)
 

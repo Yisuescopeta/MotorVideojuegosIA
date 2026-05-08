@@ -85,6 +85,22 @@ class GizmoManager:
         if mode in (GizmoMode.NONE, GizmoMode.SELECT):
             self._handles.clear()
 
+    @property
+    def mode(self) -> GizmoMode:
+        return self._mode
+
+    @property
+    def current_angle(self) -> float:
+        return self._current_angle
+
+    @property
+    def current_scale(self) -> tuple[float, float]:
+        return self._current_scale
+
+    def build_handles(self, center_screen: QPointF, zoom: float, rect_w: float = 0, rect_h: float = 0) -> None:
+        """Public wrapper for _build_handles."""
+        self._build_handles(center_screen, zoom, rect_w=rect_w, rect_h=rect_h)
+
     def hit_test(self, screen_pos: QPointF) -> str | None:
         """Return handle id if *screen_pos* hits any handle, else None."""
         for handle_id, handle in self._handles.items():

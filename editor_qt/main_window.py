@@ -24,6 +24,7 @@ from editor_qt.panels.flow_panel import FlowPanel
 from editor_qt.panels.hierarchy_panel import HierarchyPanel
 from editor_qt.panels.inspector_panel import InspectorPanel
 from editor_qt.panels.project_panel import ProjectPanel
+from editor_qt.panels.sprite_editor_dialog import open_sprite_editor
 from editor_qt.panels.terminal_panel import TerminalPanel
 from editor_qt.panels.viewport_panel import QtSceneViewportPanel
 from editor_qt.value_codec import parse_value
@@ -285,6 +286,7 @@ class MainWindow(QMainWindow):
         self.animator_panel.flip_set_requested.connect(self._set_animator_flip)
         self.animator_panel.state_upsert_requested.connect(self._upsert_animator_state)
         self.animator_panel.state_remove_requested.connect(self._remove_animator_state)
+        self.animator_panel.sprite_editor_requested.connect(self._on_animator_open_sprite_editor)
         self.agent_panel.refresh_requested.connect(self._refresh_agent_panel)
         self.agent_panel.session_create_requested.connect(self._create_agent_session)
         self.agent_panel.message_send_requested.connect(self._send_agent_message)
@@ -476,6 +478,18 @@ class MainWindow(QMainWindow):
         result = self.facade.remove_animator_state(entity_name, state_name)
         self._log_action_result(result)
         if result.get("success"):
+            self._on_entity_selected(entity_name)
+
+    def _on_animator_open_sprite_editor(self, entity_name: str) -> None:
+        """Open sprite editor for the entity's animator sprite sheet."""
+        info = self.facade.get_animator_info(entity_name)
+        sheet_path = str(info.get("sprite_sheet") or "")
+        if not sheet_path:
+            self.console_panel.log("No sprite sheet set. Enter a path first.")
+            return
+        accepted, image_path, slices = open_sprite_editor(sheet_path, self)
+        if accepted and slices:
+            self.console_panel.log(f"Sprite editor: {len(slices)} slices saved for {image_path}")
             self._on_entity_selected(entity_name)
 
     def _refresh_agent_panel(self) -> None:

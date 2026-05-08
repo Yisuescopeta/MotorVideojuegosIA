@@ -168,6 +168,7 @@ tipados del facade.
   - Señales: `connection_created(source_key, target_key)`,
     `node_position_changed(node_key, x, y)`, `refresh_requested`.
 - `Animator` trabaja sobre la entidad seleccionada.
+- **Sprite Editor**: diálogo modal (`SpriteEditorDialog`) para recortar spritesheets en modos `Grid`, `Auto` y `Manual`. Se abre desde el botón `Open Sprite Editor` en el panel Animator. El modo `Grid` genera slices regulares desde cell width/height, margin y spacing. El preview muestra el spritesheet con overlay de slices. Al guardar, emite `slices_saved(image_path, slices)` y el MainWindow persiste los slices; el botón solo aparece si hay entidad seleccionada con animator.
 - `Terminal` usa `QProcess`, solo arranca al pulsar `Start`.
 - `Agent` crea sesiones y envia mensajes via `EngineAPI` AgentAPI.
 
@@ -188,6 +189,8 @@ Paquete `experimental/tooling` dentro de `editor_qt`:
 - `GizmoHandle`: handle individual con modo y rect de hit-test.
 - `GizmoManager`:
   - `set_mode(mode)`
+  - `mode` (property), `current_angle` (property), `current_scale` (property, `tuple[float,float]`)
+  - `build_handles(center_screen, zoom, rect_w=0, rect_h=0)` — envoltorio público de `_build_handles()`
   - `hit_test(screen_pos)` → handle id o `None`
   - `start_drag(handle_id, screen_pos, world_x, world_y, *, rotation=0,
     scale_x=1, scale_y=1, entity_name="", component_name="")`
@@ -248,6 +251,8 @@ Panel → Signal → MainWindow slot → Facade → EngineAPI
 | `scene_requested` | ProjectPanel | `scene_ref: str` | `facade.load_scene()` |
 
 ## Validacion automatizada
+
+Los tests unitarios de `GizmoManager` (`tests/test_editor_qt_gizmo.py`, 31 tests) cubren modo enum, drag, snap, constrain y render de todos los modos.
 
 Los tests cubren el cierre con escena dirty en modo offscreen: cancelar,
 descartar, guardar con exito y fallo de guardado. Tambien verifican Undo/Redo

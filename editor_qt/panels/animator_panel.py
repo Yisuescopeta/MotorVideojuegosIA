@@ -28,6 +28,7 @@ class AnimatorPanel(QWidget):
     flip_set_requested = Signal(str, bool, bool)
     state_upsert_requested = Signal(str, str, list, float, bool, object, bool)
     state_remove_requested = Signal(str, str)
+    sprite_editor_requested = Signal(str)  # entity_name
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -37,6 +38,7 @@ class AnimatorPanel(QWidget):
         self.status_label = QLabel("Animator not loaded")
         self.sprite_sheet_edit = QLineEdit()
         self.sprite_sheet_edit.setPlaceholderText("assets/sheet.png")
+        self.sprite_editor_button = QPushButton("Open Sprite Editor")
         self.speed_spin = QDoubleSpinBox()
         self.speed_spin.setRange(0.01, 100.0)
         self.speed_spin.setSingleStep(0.1)
@@ -83,7 +85,10 @@ class AnimatorPanel(QWidget):
         layout.setSpacing(6)
         layout.addWidget(self.entity_label)
         layout.addWidget(self.status_label)
-        layout.addWidget(self.sprite_sheet_edit)
+        sprite_row = QHBoxLayout()
+        sprite_row.addWidget(self.sprite_sheet_edit, stretch=1)
+        sprite_row.addWidget(self.sprite_editor_button)
+        layout.addLayout(sprite_row)
         layout.addWidget(self.speed_spin)
         layout.addWidget(self.flip_x_check)
         layout.addWidget(self.flip_y_check)
@@ -93,10 +98,15 @@ class AnimatorPanel(QWidget):
 
         self.ensure_button.clicked.connect(self._emit_ensure)
         self.apply_sheet_button.clicked.connect(self._emit_sheet)
+        self.sprite_editor_button.clicked.connect(self._emit_sprite_editor)
         self.apply_speed_button.clicked.connect(self._emit_speed_flip)
         self.upsert_state_button.clicked.connect(self._emit_upsert_state)
         self.remove_state_button.clicked.connect(self._emit_remove_state)
         self.states_tree.itemSelectionChanged.connect(self._sync_selected_state)
+
+    def _emit_sprite_editor(self) -> None:
+        if self._entity_name:
+            self.sprite_editor_requested.emit(self._entity_name)
 
     def set_entity(
         self,

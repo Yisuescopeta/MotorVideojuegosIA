@@ -3279,6 +3279,112 @@
                 "collision",
                 "swept"
             ]
+        },
+        {
+            "id": "ui:editor_qt",
+            "summary": "PySide6 editor shell with hierarchy, inspector, viewport, gizmo, flow canvas, and project management",
+            "mode": "gui",
+            "status": "implemented",
+            "api_methods": [
+                "EditorEngineFacade.get_entity",
+                "EditorEngineFacade.create_entity",
+                "EditorEngineFacade.add_component",
+                "EditorEngineFacade.remove_component",
+                "EditorEngineFacade.set_entity_parent",
+                "EditorEngineFacade.duplicate_entity",
+                "EditorEngineFacade.migrate_legacy_project"
+            ],
+            "cli_command": "motor-editor",
+            "example": {
+                "description": "Launch the PySide6 editor shell",
+                "cli": "motor-editor --project .",
+                "api_calls": [
+                    {
+                        "method": "select_entity",
+                        "args": {
+                            "entity_name": "Player"
+                        }
+                    }
+                ],
+                "expected_outcome": "Editor opens with entity selected in hierarchy and inspector"
+            },
+            "notes": "Experimental/tooling. PySide6 is optional dependency via .[editor]. Entry point: motor-editor or py -m editor_qt.app.",
+            "tags": [
+                "editor",
+                "gui",
+                "experimental",
+                "tooling"
+            ]
+        },
+        {
+            "id": "editor_qt:gizmo",
+            "summary": "Viewport gizmo for Move, Rotate, Scale, Rect with snap (Ctrl) and constrain (Shift)",
+            "mode": "gui",
+            "status": "implemented",
+            "api_methods": [
+                "EditorEngineFacade.update_component_property",
+                "EditorEngineFacade.commit_transform_state"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "Select entity and use Move tool (W) to reposition via gizmo drag",
+                "api_calls": [],
+                "expected_outcome": "Gizmo handles appear; drag axis or center to move entity; snap to grid with Ctrl"
+            },
+            "notes": "Qt-only gizmo. GizmoManager renders translate axes, rotate ring, scale handles. Snap step: 16px translation, 15deg rotation, 0.25 scale.",
+            "tags": [
+                "editor",
+                "gui",
+                "viewport",
+                "gizmo"
+            ]
+        },
+        {
+            "id": "editor_qt:inspector",
+            "summary": "Component-based inspector with typed editors, commit-on-finish, and Add/Remove Component",
+            "mode": "gui",
+            "status": "implemented",
+            "api_methods": [
+                "EditorEngineFacade.edit_component",
+                "EditorEngineFacade.add_component",
+                "EditorEngineFacade.remove_component",
+                "EditorEngineFacade.replace_component_data"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "Select entity in hierarchy, edit Transform.x in inspector, press Enter to commit",
+                "api_calls": [],
+                "expected_outcome": "Property changes commit on Enter/focus-out; Escape restores original value"
+            },
+            "notes": "QTreeWidget with expandable component groups. QSpinBox/QDoubleSpinBox with commit-on-finish. QCheckBox immediate. QLineEdit editingFinished.",
+            "tags": [
+                "editor",
+                "gui",
+                "inspector"
+            ]
+        },
+        {
+            "id": "editor_qt:flow_canvas",
+            "summary": "Visual Scene Flow graph with QGraphicsView nodes, edges, and sidebar",
+            "mode": "gui",
+            "status": "implemented",
+            "api_methods": [
+                "EditorEngineFacade.get_scene_connections",
+                "EditorEngineFacade.set_scene_connection"
+            ],
+            "cli_command": null,
+            "example": {
+                "description": "Open Flow tab; drag sidebar SceneLink to canvas; connect nodes by dragging connector handles",
+                "api_calls": [],
+                "expected_outcome": "Visual nodes with directed edges appear on canvas; one-way/two-way modes supported"
+            },
+            "notes": "FlowCanvasWidget uses QGraphicsScene/QGraphicsView. Nodes are movable; edges are directed with arrowheads. Legacy project import via launcher.",
+            "tags": [
+                "editor",
+                "gui",
+                "flow",
+                "scene"
+            ]
         }
     ],
     "planned_capabilities": [
