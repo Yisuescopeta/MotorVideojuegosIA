@@ -120,6 +120,60 @@ class EditorEngineFacade:
                 self._project_root = Path(str(root)).expanduser().resolve()
         return result
 
+    def migrate_legacy_project(self, path: str) -> ActionResult:
+        """Create project.json in an existing folder that has scene data but no project manifest."""
+        import json
+        from pathlib import Path
+
+        target = Path(path).expanduser().resolve()
+        manifest_path = target / "project.json"
+
+        if manifest_path.exists():
+            return {"success": True, "message": "Project already exists", "data": {"path": str(target)}}
+
+        # Check for legacy content
+        levels_dir = target / "levels"
+        has_levels = levels_dir.exists() and any(levels_dir.rglob("*.json"))
+        if not has_levels:
+            return self._failure("No scene files found. Not a valid legacy project folder.")
+
+        try:
+            # Try EngineAPI first
+            return self._call_action("create_project", str(target), str(target.name),
+                                     failure_message="Legacy project migration failed")
+        except Exception:
+            # Fallback: create project.json manually
+            try:
+                manifest = {
+                    "name": target.name,
+                    "version": "1.0.0",
+                    "engine_version": "0.1.0",
+                    "template": "empty",
+                    "paths": {
+                        "assets": "assets",
+                        "levels": "levels",
+                        "scripts": "scripts",
+                        "prefabs": "prefabs",
+                        "settings": "project"
+                    }
+                }
+                manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+                # Create required directories
+                for subdir in ("assets", "scripts", "prefabs", "project"):
+                    (target / subdir).mkdir(exist_ok=True)
+
+                # Create default settings
+                settings_path = target / "project" / "settings.json"
+                if not settings_path.exists():
+                    settings_path.parent.mkdir(parents=True, exist_ok=True)
+                    settings_path.write_text(json.dumps({"startup_scene": ""}, indent=2), encoding="utf-8")
+
+                return {"success": True, "message": "Legacy project imported",
+                        "data": {"path": str(target), "manifest": str(manifest_path)}}
+            except Exception as exc:
+                return self._failure(f"Legacy project migration failed: {exc}")
+
     def load_default_scene(self) -> ActionResult:
         return self._load_scene_for_runtime_inspection("")
 

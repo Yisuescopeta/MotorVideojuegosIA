@@ -82,6 +82,7 @@ Metodos publicos del facade hacia los paneles Qt:
 | `list_agent_providers()`, `list_agent_tools()`, `create_agent_session()`, `send_agent_message()`, `approve_agent_action()` | Agent |
 | `list_project_scenes()`, `list_project_assets()`, `list_project_scripts()`, `list_project_prefabs()` | Project browser |
 | `create_project()`, `open_project()` | Project lifecycle |
+| `migrate_legacy_project(path)` | Importa carpeta legacy (`levels/*.json`) sin `project.json` |
 | `refresh_assets()` | Asset catalog |
 | `shutdown()` | Cierre |
 
@@ -94,6 +95,8 @@ tipados del facade.
 
 - Launcher Qt de proyectos recientes antes de entrar al editor.
 - `New Project` crea proyectos mediante `EngineAPI.create_project()`.
+- **Import Legacy**: botón que abre selector de carpeta y migra proyectos existentes sin `project.json`.
+- **Auto-detección**: al hacer doble click en carpeta sin `project.json` pero con `levels/*.json`, pregunta si migrar y lo hace mediante `facade.migrate_legacy_project()`.
 
 ### Ventana principal
 
@@ -110,9 +113,14 @@ tipados del facade.
 - **Seleccion visual**: click izquierdo sobre bounding rect de entidad.
 - **Gizmo Move**: arrastre de entidad seleccionada con handles coloreados
   (rojo=X, verde=Y, blanco=libre).
-- Toolbar con herramientas `Select` / `Move` / `Rotate` / `Scale` (checkables;
-  solo `Move` activa gizmo actualmente; `Rotate` y `Scale` son placeholder).
-- Senal `entity_moved` que commitea posicion final via `EngineAPI.edit_component()`.
+- Toolbar con herramientas `Select` / `Move` / `Rotate` / `Scale` (checkables):
+  - `Select` → `GizmoMode.SELECT` (sin render)
+  - `Move` → `GizmoMode.TRANSLATE_FREE`
+  - `Rotate` → `GizmoMode.ROTATE_Z` (anillo + angulo)
+  - `Scale` → `GizmoMode.SCALE_UNIFORM` (escala uniforme con handles ±X y ±Y)
+- Senal `entity_moved` que commitea `after_state` (x, y, rotation, scale_x,
+  scale_y) via `EngineAPI.edit_component()`. Usa `after_state` del gizmo
+  en lugar de `world_x`/`world_y` directos.
 
 ### Hierarchy
 
@@ -130,9 +138,13 @@ tipados del facade.
 - `QTreeWidget` con componentes como foldouts expandibles.
 - **Editores tipados** inline por tipo de valor:
   - `bool` → `QCheckBox`
-  - `int` → `QSpinBox` (-999999 a 999999)
-  - `float` → `QDoubleSpinBox` (3 decimales, -999999 a 999999)
+  - `int` → `_CommittableSpinBox` (-999999 a 999999)
+  - `float` → `_CommittableDoubleSpinBox` (3 decimales, -999999 a 999999)
   - `str`, `None`, `list`, `dict` → `QLineEdit` con codificacion JSON
+- **Commit-on-finish**: `_CommittableSpinBox`/`_CommittableDoubleSpinBox`
+  emiten `commit_requested` solo en **Enter** o **focusOut**. **Escape**
+  restaura el valor original sin commit. El slot `property_edit_requested` se
+  conecta a `commit_requested`, no a `valueChanged`.
 - Boton **Add Component**: prompt textual, emite `component_add_requested`.
 - Boton **Remove Component** (`✕`) por componente, excepto `Transform` que es
   inamovible.
@@ -142,6 +154,19 @@ tipados del facade.
 ### Scene Flow, Animator, Terminal, Agent
 
 - `Flow` edita conexiones `scene_flow` via `EngineAPI`.
+- **FlowCanvasWidget** (`editor_qt/panels/flow_canvas.py`): vista
+  QGraphicsView + sidebar con nodos arrastrables y aristas dirigidas.
+  - `FlowNodeItem`: nodo rectangular (160×56) con circulo conector izquierdo
+    y derecho. Arrastrable, emite `node_moved` via `FlowScene.node_moved`.
+  - `FlowEdgeItem`: linea naranja dirigida entre dos nodos.
+  - `FlowScene`: `node_moved(node_key, x, y)`, `add_flow_node()`,
+    `add_flow_edge()`, `clear_flow()`.
+  - `FlowCanvasWidget`: toolbar (modo one-way/two-way, filtro, refresh),
+    sidebar con lista de SceneLink objects, splitter, boton Add SceneLink.
+  - Datos cargados via `set_flow_data(flow_graph, scenes)` con
+    `sidebar_items`, `canvas_nodes`, `canvas_edges`.
+  - Señales: `connection_created(source_key, target_key)`,
+    `node_position_changed(node_key, x, y)`, `refresh_requested`.
 - `Animator` trabaja sobre la entidad seleccionada.
 - `Terminal` usa `QProcess`, solo arranca al pulsar `Start`.
 - `Agent` crea sesiones y envia mensajes via `EngineAPI` AgentAPI.
@@ -154,18 +179,35 @@ tipados del facade.
 
 ### Gizmo (`editor_qt/gizmo/`)
 
-Paquete nuevo `experimental/tooling` dentro de `editor_qt`:
+Paquete `experimental/tooling` dentro de `editor_qt`:
 
-- `GizmoMode` enum: `NONE`, `TRANSLATE_X`, `TRANSLATE_Y`, `TRANSLATE_FREE`.
+- `GizmoMode` enum: `NONE`, `SELECT`, `TRANSLATE_X`, `TRANSLATE_Y`,
+  `TRANSLATE_FREE`, `ROTATE_Z`, `SCALE_X`, `SCALE_Y`, `SCALE_UNIFORM`, `RECT`.
+- `CompletedGizmoDrag` dataclass: `entity_name`, `component_name`,
+  `before_state`, `after_state`, `label`.
 - `GizmoHandle`: handle individual con modo y rect de hit-test.
 - `GizmoManager`:
   - `set_mode(mode)`
   - `hit_test(screen_pos)` → handle id o `None`
-  - `start_drag(handle_id, screen_pos, world_x, world_y)`
+  - `start_drag(handle_id, screen_pos, world_x, world_y, *, rotation=0,
+    scale_x=1, scale_y=1, entity_name="", component_name="")`
   - `update_drag(screen_pos, zoom)` → `(world_x, world_y)`
-  - `end_drag()` → `{handle, world_x, world_y}` o `None`
-  - `render(painter, entity_rect, zoom)`: pinta ejes rojo/verde con flechas y
-    cuadrado central blanco, handles en screen-space constante.
+  - `end_drag()` → `{handle, world_x, world_y, rotation, scale_x, scale_y,
+    before_state, after_state, label}` o `None`
+  - `render(painter, entity_rect, zoom)`: renderiza segun modo activo
+- **Translate**: ejes rojo/verde con flechas y cuadrado central blanco,
+  handles en screen-space constante.
+- **Rotate**: anillo naranja `#44aaff` + linea de angulo `#ffaa44`.
+  Arrastre rota en Z. Hit-test en el anillo (`abs(dist - radius) <= 6px`).
+- **Scale**: ejes X (rojo) e Y (verde) con handles cuadrados.
+  `SCALE_UNIFORM` pinta ambos ejes con handles en ±X y ±Y.
+- **RECT**: 8 handles (4 esquinas + 4 puntos medios) + outline azul.
+- **Snap** (Ctrl): posiciones/rotaciones/escalas redondean a `SNAP_STEP` (16px)
+  o `15°` en rotación.
+- **Constrain** (Shift): en TRANSLATE_FREE restringe a eje dominante;
+  en SCALE_UNIFORM escala uniforme (recalcula ratio).
+- `end_drag()` devuelve `before_state`/`after_state` con `{x, y, rotation,
+  scale_x, scale_y}` + `label` legible (ej. `"rotate_z"`, `"scale_uniform"`).
 
 ### Estado general
 
@@ -199,7 +241,10 @@ Panel → Signal → MainWindow slot → Facade → EngineAPI
 | `property_edit_requested` | InspectorPanel | `entity, component, property, value_text, original` | `facade.update_component_property()` |
 | `component_add_requested` | InspectorPanel | `entity_name: str, component_name: str` | `facade.add_component()` |
 | `component_remove_requested` | InspectorPanel | `entity_name: str, component_name: str` | `facade.remove_component()` |
-| `entity_moved` | QtSceneViewportPanel | `entity, component, prop, new_x: float, new_y: float` | `facade.update_component_property()` x2 |
+| `entity_moved` | QtSceneViewportPanel | `entity, component, prop, new_x: float, new_y: float` | `facade.update_component_property()` x2; emite `after_state` del gizmo |
+| `connection_created` | FlowCanvasWidget | `source_key: str, target_key: str` | `facade.set_scene_connection()` |
+| `node_position_changed` | FlowCanvasWidget | `node_key: str, x: float, y: float` | Persist position (placeholder) |
+| `refresh_requested` | FlowCanvasWidget | — | `facade.get_scene_connections()` para recargar |
 | `scene_requested` | ProjectPanel | `scene_ref: str` | `facade.load_scene()` |
 
 ## Validacion automatizada

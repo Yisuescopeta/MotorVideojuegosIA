@@ -1,4 +1,4 @@
-"""Qt scene-flow panel."""
+"""Qt scene-flow panel with canvas and table views."""
 
 from __future__ import annotations
 
@@ -15,9 +15,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from editor_qt.panels.flow_canvas import FlowCanvasWidget
+
 
 class FlowPanel(QWidget):
-    """Minimal editable view over active scene_flow connections."""
+    """Editable view over active scene_flow connections with canvas + table."""
 
     connection_set_requested = Signal(str, str)
     refresh_requested = Signal()
@@ -29,6 +31,10 @@ class FlowPanel(QWidget):
         self.status_label = QLabel("No scene flow loaded")
         self.status_label.setObjectName("PanelSubtitle")
 
+        # Flow canvas
+        self._canvas = FlowCanvasWidget()
+
+        # Table (secondary view, kept for backward compat)
         self.table = QTableWidget(0, 2)
         self.table.setHorizontalHeaderLabels(["Key", "Target Scene"])
         self.table.horizontalHeader().setStretchLastSection(True)
@@ -48,6 +54,7 @@ class FlowPanel(QWidget):
         layout.setSpacing(6)
         layout.addWidget(self.title_label)
         layout.addWidget(self.status_label)
+        layout.addWidget(self._canvas, stretch=2)
         layout.addWidget(self.table, stretch=1)
         layout.addLayout(buttons)
 
@@ -55,13 +62,36 @@ class FlowPanel(QWidget):
         self.apply_button.clicked.connect(self._apply_current)
         self.refresh_button.clicked.connect(self.refresh_requested.emit)
 
-    def set_flow_data(self, connections: list[dict[str, str]], scenes: list[dict[str, Any]]) -> None:
+        # Forward canvas signals
+        self._canvas.node_position_changed.connect(self._on_node_moved)
+        self._canvas.connection_created.connect(self._on_connection_created)
+        self._canvas.refresh_requested.connect(self.refresh_requested.emit)
+
+    def set_flow_data(
+        self,
+        connections: list[dict[str, str]],
+        scenes: list[dict[str, Any]],
+        flow_graph: dict[str, Any] | None = None,
+    ) -> None:
+        # Table (backward compat)
         self.table.setRowCount(0)
         for row_data in connections:
             self._append_row(str(row_data.get("key") or ""), str(row_data.get("target") or ""))
         self.status_label.setText(f"{len(connections)} connections | {len(scenes)} scenes")
         if self.table.rowCount() == 0:
             self._append_row("next_scene", "")
+
+        # Canvas
+        if flow_graph:
+            self._canvas.set_flow_data(flow_graph, scenes)
+
+    def _on_node_moved(self, node_key: str, x: float, y: float) -> None:
+        """Handle node position changes from canvas (placeholder)."""
+
+    def _on_connection_created(self, source_key: str, target: str) -> None:
+        """Handle new SceneLink creation request from canvas."""
+        if source_key:
+            self.connection_set_requested.emit(source_key, target)
 
     def _add_row(self) -> None:
         self._append_row("", "")

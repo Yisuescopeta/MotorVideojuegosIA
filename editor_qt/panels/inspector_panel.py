@@ -108,6 +108,78 @@ class _TreeWithCompat(QTreeWidget):
         self._flat.clear()
 
 
+class _CommittableSpinBox(QSpinBox):
+    """SpinBox that only commits on Enter or focusOut, Escape restores."""
+    commit_requested = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._original_value = 0
+        self._committed = False
+
+    def setValue(self, value):
+        self._original_value = value
+        super().setValue(value)
+
+    def focusInEvent(self, event):
+        self._original_value = self.value()
+        self._committed = False
+        super().focusInEvent(event)
+
+    def focusOutEvent(self, event):
+        if not self._committed and self.value() != self._original_value:
+            self.commit_requested.emit()
+        super().focusOutEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+            self._committed = True
+            self.commit_requested.emit()
+            self.clearFocus()
+        elif event.key() == Qt.Key.Key_Escape:
+            self._committed = True
+            self.setValue(self._original_value)
+            self.clearFocus()
+        else:
+            super().keyPressEvent(event)
+
+
+class _CommittableDoubleSpinBox(QDoubleSpinBox):
+    """DoubleSpinBox that only commits on Enter or focusOut, Escape restores."""
+    commit_requested = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._original_value = 0.0
+        self._committed = False
+
+    def setValue(self, value):
+        self._original_value = value
+        super().setValue(value)
+
+    def focusInEvent(self, event):
+        self._original_value = self.value()
+        self._committed = False
+        super().focusInEvent(event)
+
+    def focusOutEvent(self, event):
+        if not self._committed and self.value() != self._original_value:
+            self.commit_requested.emit()
+        super().focusOutEvent(event)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+            self._committed = True
+            self.commit_requested.emit()
+            self.clearFocus()
+        elif event.key() == Qt.Key.Key_Escape:
+            self._committed = True
+            self.setValue(self._original_value)
+            self.clearFocus()
+        else:
+            super().keyPressEvent(event)
+
+
 class InspectorPanel(QWidget):
     property_edit_requested = Signal(str, str, str, str, object)
     component_add_requested = Signal(str, str)
@@ -238,24 +310,24 @@ class InspectorPanel(QWidget):
             return cb
 
         if isinstance(value, int):
-            spin = QSpinBox()
+            spin = _CommittableSpinBox()
             spin.setRange(-999_999, 999_999)
             spin.setValue(value)
-            spin.valueChanged.connect(
-                lambda val, cn=component_name, pn=property_name, ov=value: (
-                    self._emit_edit(cn, pn, val, ov)
+            spin.commit_requested.connect(
+                lambda cn=component_name, pn=property_name, ov=value, w=spin: (
+                    self._emit_edit(cn, pn, w.value(), ov)
                 )
             )
             return spin
 
         if isinstance(value, float):
-            dspin = QDoubleSpinBox()
+            dspin = _CommittableDoubleSpinBox()
             dspin.setDecimals(3)
             dspin.setRange(-999_999.0, 999_999.0)
             dspin.setValue(value)
-            dspin.valueChanged.connect(
-                lambda val, cn=component_name, pn=property_name, ov=value: (
-                    self._emit_edit(cn, pn, val, ov)
+            dspin.commit_requested.connect(
+                lambda cn=component_name, pn=property_name, ov=value, w=dspin: (
+                    self._emit_edit(cn, pn, w.value(), ov)
                 )
             )
             return dspin

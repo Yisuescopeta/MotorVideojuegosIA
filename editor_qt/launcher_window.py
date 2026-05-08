@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -43,11 +44,13 @@ class LauncherWindow(QWidget):
         self.search_box = QLineEdit()
         self.search_box.setPlaceholderText("Search")
         self.add_button = QPushButton("Add")
+        self.import_legacy_button = QPushButton("Import Legacy")
         self.new_project_button = QPushButton("+ New project")
 
         search_layout = QHBoxLayout()
         search_layout.addWidget(self.search_box, stretch=1)
         search_layout.addWidget(self.add_button)
+        search_layout.addWidget(self.import_legacy_button)
         search_layout.addWidget(self.new_project_button)
 
         self.projects_table = QTableWidget(0, 4)
@@ -79,6 +82,7 @@ class LauncherWindow(QWidget):
 
         self.search_box.textChanged.connect(self._populate)
         self.add_button.clicked.connect(self._add_project)
+        self.import_legacy_button.clicked.connect(self._import_legacy_project)
         self.new_project_button.clicked.connect(self._new_project)
         self.exit_button.clicked.connect(self.close)
         self.projects_table.itemDoubleClicked.connect(self._open_row_for_item)
@@ -136,6 +140,23 @@ class LauncherWindow(QWidget):
             return
         self.status_label.setText(str(result.get("message") or "Project creation failed."))
 
+    def _import_legacy_project(self) -> None:
+        path = QFileDialog.getExistingDirectory(self, "Import Legacy Project")
+        if not path:
+            return
+        target = Path(path)
+        levels_dir = target / "levels"
+        has_levels = levels_dir.exists() and any(levels_dir.rglob("*.json"))
+        has_scene_files = list(target.glob("*.json"))
+        if not has_levels and not has_scene_files:
+            self.status_label.setText("No scene files found. Not a valid legacy project folder.")
+            return
+        result = self.facade.migrate_legacy_project(path)
+        if result.get("success"):
+            self.project_open_requested.emit(path)
+        else:
+            self.status_label.setText(str(result.get("message") or "Migration failed."))
+
     def _open_row_for_item(self, item: QTableWidgetItem) -> None:
         project = item.data(Qt.ItemDataRole.UserRole)
         if isinstance(project, dict):
@@ -144,6 +165,30 @@ class LauncherWindow(QWidget):
                 self._open_project(root)
 
     def _open_project(self, path: str) -> None:
+        target = Path(path).expanduser().resolve()
+        manifest_path = target / "project.json"
+
+        if not manifest_path.exists():
+            # Detect legacy project
+            levels_dir = target / "levels"
+            has_levels = levels_dir.exists() and any(levels_dir.rglob("*.json"))
+            has_scene_files = list(target.glob("*.json"))
+            if has_levels or has_scene_files:
+                reply = QMessageBox.question(
+                    self,
+                    "Import Legacy Project",
+                    "This folder does not have a project.json. Do you want to create a Motor project in this folder?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    migrate_result = self.facade.migrate_legacy_project(str(target))
+                    if not migrate_result.get("success"):
+                        self.status_label.setText(str(migrate_result.get("message") or "Migration failed."))
+                        return
+                else:
+                    self.status_label.setText("Operation cancelled. Not a valid Motor project.")
+                    return
+
         result = self.facade.open_project(path)
         if not result.get("success"):
             validator = EditorEngineFacade(project_root=path, auto_ensure_project=False)

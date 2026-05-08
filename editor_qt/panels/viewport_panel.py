@@ -18,6 +18,8 @@ class QtSceneViewportPanel(QWidget):
 
     entity_selected = Signal(str)
     entity_moved = Signal(str, str, str, float, float)
+    entity_rotated = Signal(str, str, str, float)  # entity, component, property, new_rotation
+    entity_scaled = Signal(str, str, str, float, float)  # entity, component, property, new_scale_x, new_scale_y
 
     def __init__(self, mode: str = "Scene", parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -64,12 +66,12 @@ class QtSceneViewportPanel(QWidget):
 
     def set_gizmo_mode(self, mode_str: str) -> None:
         mapping: dict[str, GizmoMode] = {
-            "Select": GizmoMode.NONE,
+            "Select": GizmoMode.SELECT,
             "Move": GizmoMode.TRANSLATE_FREE,
-            "Rotate": GizmoMode.NONE,
-            "Scale": GizmoMode.NONE,
+            "Rotate": GizmoMode.ROTATE_Z,
+            "Scale": GizmoMode.SCALE_UNIFORM,
         }
-        self._gizmo.set_mode(mapping.get(mode_str, GizmoMode.NONE))
+        self._gizmo.set_mode(mapping.get(mode_str, GizmoMode.SELECT))
         self.update()
 
     # -- mouse events ---------------------------------------------------------
@@ -143,15 +145,25 @@ class QtSceneViewportPanel(QWidget):
         if event.button() == Qt.MouseButton.LeftButton and self._gizmo.is_dragging:
             result = self._gizmo.end_drag()
             if result is not None and self._selected_entity:
-                new_x = float(result.get("world_x", 0.0))
-                new_y = float(result.get("world_y", 0.0))
-                self.entity_moved.emit(
-                    self._selected_entity,
-                    "Transform",
-                    "position",
-                    new_x,
-                    new_y,
-                )
+                after = result.get("after_state", {})
+                mode = self._gizmo._mode
+                if mode == GizmoMode.ROTATE_Z:
+                    self.entity_rotated.emit(
+                        self._selected_entity, "Transform", "rotation",
+                        float(after.get("rotation", 0.0)),
+                    )
+                elif mode in (GizmoMode.SCALE_X, GizmoMode.SCALE_Y, GizmoMode.SCALE_UNIFORM):
+                    self.entity_scaled.emit(
+                        self._selected_entity, "Transform", "scale",
+                        float(after.get("scale_x", 1.0)),
+                        float(after.get("scale_y", 1.0)),
+                    )
+                else:
+                    self.entity_moved.emit(
+                        self._selected_entity, "Transform", "position",
+                        float(after.get("x", 0.0)),
+                        float(after.get("y", 0.0)),
+                    )
             self._gizmo_drag_preview = None
             self._update_gizmo_rect()
             self.update()
@@ -266,6 +278,24 @@ class QtSceneViewportPanel(QWidget):
                 px, py = self._gizmo_drag_preview
                 rect = QRectF(px - width / 2.0, py - height / 2.0, width, height)
 
+            painter.save()
+            if self._gizmo.is_dragging and self._selected_entity == entity_name:
+                mode = self._gizmo._mode
+                if mode == GizmoMode.ROTATE_Z:
+                    cx = rect.center().x()
+                    cy = rect.center().y()
+                    painter.translate(cx, cy)
+                    painter.rotate(float(self._gizmo._current_angle or 0))
+                    painter.translate(-cx, -cy)
+                elif mode in (GizmoMode.SCALE_X, GizmoMode.SCALE_Y, GizmoMode.SCALE_UNIFORM):
+                    cx = rect.center().x()
+                    cy = rect.center().y()
+                    painter.translate(cx, cy)
+                    sx = float(self._gizmo._current_scale[0] if self._gizmo._current_scale else 1.0)
+                    sy = float(self._gizmo._current_scale[1] if self._gizmo._current_scale else 1.0)
+                    painter.scale(sx, sy)
+                    painter.translate(-cx, -cy)
+
             pixmap = self._load_pixmap(str(entity.get("sprite") or ""))
             if pixmap is not None:
                 scaled = pixmap.scaled(
@@ -290,6 +320,7 @@ class QtSceneViewportPanel(QWidget):
                 Qt.AlignmentFlag.AlignLeft,
                 entity_name or "Entity",
             )
+            painter.restore()
 
     def _draw_gizmo(self, painter: QPainter) -> None:
         if not self._selected_entity:
