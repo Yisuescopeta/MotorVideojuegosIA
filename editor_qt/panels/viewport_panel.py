@@ -20,6 +20,7 @@ class QtSceneViewportPanel(QWidget):
     entity_moved = Signal(str, str, str, float, float)
     entity_rotated = Signal(str, str, str, float)  # entity, component, property, new_rotation
     entity_scaled = Signal(str, str, str, float, float)  # entity, component, property, new_scale_x, new_scale_y
+    asset_dropped = Signal(str, float, float)  # file_path, world_x, world_y
 
     def __init__(self, mode: str = "Scene", parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -27,6 +28,7 @@ class QtSceneViewportPanel(QWidget):
         self.setObjectName("ViewportPanel")
         self.setMinimumSize(420, 280)
         self.setMouseTracking(True)
+        self.setAcceptDrops(True)
         self._scene_info: dict[str, Any] = {}
         self._entities: list[dict[str, Any]] = []
         self._project_root = Path.cwd()
@@ -188,6 +190,35 @@ class QtSceneViewportPanel(QWidget):
 
         self._update_gizmo_rect()
         self.update()
+
+    def dragEnterEvent(self, event) -> None:  # noqa: N802
+        if event.mimeData().hasUrls() or event.mimeData().hasText():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event) -> None:  # noqa: N802
+        if event.mimeData().hasUrls() or event.mimeData().hasText():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event) -> None:  # noqa: N802
+        file_path = ""
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            if urls:
+                file_path = urls[0].toLocalFile()
+        elif event.mimeData().hasText():
+            file_path = event.mimeData().text()
+
+        if file_path:
+            # Convert screen drop position to world coordinates
+            drop_pos = event.position()
+            world_x, world_y = self._screen_to_world(QPointF(drop_pos))
+            self.asset_dropped.emit(file_path, world_x, world_y)
+
+        event.acceptProposedAction()
 
     # -- paint ----------------------------------------------------------------
 

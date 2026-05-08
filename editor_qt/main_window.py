@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt
@@ -55,6 +56,8 @@ class MainWindow(QMainWindow):
         self.terminal_panel = TerminalPanel()
         self.agent_panel = AgentPanel()
         self._agent_session_id = ""
+        self._dragging_asset: str = ""
+        self._dragging_asset_type: str = ""
 
         self._build_actions()
         self._build_menu_bar()
@@ -276,6 +279,9 @@ class MainWindow(QMainWindow):
         self.game_viewport.entity_selected.connect(self._on_entity_selected)
         self.scene_viewport.entity_moved.connect(self._on_gizmo_entity_moved)
         self.game_viewport.entity_moved.connect(self._on_gizmo_entity_moved)
+        # Viewport drop support (accept drops from project panel)
+        self.scene_viewport.asset_dropped.connect(self._on_viewport_asset_dropped)
+        self.game_viewport.asset_dropped.connect(self._on_viewport_asset_dropped)
         self.flow_panel.connection_set_requested.connect(self._set_scene_connection)
         self.flow_tools_panel.connection_set_requested.connect(self._set_scene_connection)
         self.flow_panel.refresh_requested.connect(self._refresh_scene_panels)
@@ -296,6 +302,12 @@ class MainWindow(QMainWindow):
         self.hierarchy_panel.entity_delete_requested.connect(self._delete_entity)
         self.inspector_panel.property_edit_requested.connect(self._update_component_property)
         self.project_panel.scene_requested.connect(self._on_scene_requested)
+        # Project panel new signals
+        self.project_panel.asset_drag_started.connect(self._on_asset_drag_started)
+        self.project_panel.sprite_editor_requested.connect(self._on_project_sprite_editor)
+        self.project_panel.scene_open_requested.connect(self._on_scene_requested)
+        # Animator panel new signal
+        self.animator_panel.slice_names_requested.connect(self._on_animator_slice_names_requested)
         # New Inspector signals (foldouts + add/remove component)
         self.inspector_panel.component_add_requested.connect(self._add_component_to_entity)
         self.inspector_panel.component_remove_requested.connect(self._remove_component_from_entity)
@@ -657,4 +669,55 @@ class MainWindow(QMainWindow):
         result = self.facade.set_entity_parent(entity_name, parent)
         self._log_action_result(result)
         if result.get("success"):
+            self._refresh_scene_panels()
+
+    # -- new slots (project panel / animator / viewport drop) -----------------
+
+    def _on_asset_drag_started(self, file_path: str, asset_type: str) -> None:
+        """Track drag from project panel for viewport drop handling."""
+        self._dragging_asset = file_path
+        self._dragging_asset_type = asset_type
+        self.console_panel.log(f"Dragging asset: {Path(file_path).name}")
+
+    def _on_project_sprite_editor(self, asset_path: str) -> None:
+        """Open sprite editor for project panel asset."""
+        accepted, img_path, slices = open_sprite_editor(asset_path, self)
+        if accepted:
+            self.console_panel.log(f"Sprite editor: {len(slices)} slices from {img_path}")
+
+    def _on_animator_slice_names_requested(self, entity_name: str) -> None:
+        """Provide slice names from the entity's animator sprite sheet metadata."""
+        info = self.facade.get_animator_info(entity_name)
+        sheet_path = str(info.get("sprite_sheet") or "")
+        slice_names: list[str] = []
+        if sheet_path:
+            try:
+                api = self.facade._engine_api()
+                if hasattr(api, 'asset_service') and api.asset_service:
+                    metadata = api.asset_service.get_sprite_metadata(sheet_path)
+                    slices = metadata.get("slices", [])
+                    slice_names = [str(s.get("name", "")) for s in slices if s.get("name")]
+            except Exception:
+                pass
+        self.animator_panel.set_available_slice_names(slice_names)
+
+    def _on_viewport_asset_dropped(self, file_path: str, world_x: float, world_y: float) -> None:
+        """Create entity when asset is dropped on viewport at world position."""
+        filename = Path(file_path).stem
+        entities = self.facade.list_entities()
+        existing_names = {str(e.get("name", "")) for e in entities}
+        new_name = filename
+        counter = 1
+        while new_name in existing_names:
+            new_name = f"{filename}_{counter}"
+            counter += 1
+        result = self.facade.create_entity(new_name)
+        if result.get("success"):
+            self.facade.update_component_property(new_name, "Transform", "x", world_x)
+            self.facade.update_component_property(new_name, "Transform", "y", world_y)
+            # Add sprite if it's an image
+            ext = Path(file_path).suffix.lower()
+            if ext in (".png", ".jpg", ".jpeg", ".bmp"):
+                self.facade.add_component(new_name, "Sprite", {"texture_path": file_path})
+            self.facade.add_component(new_name, "Collider", {"width": 32, "height": 32})
             self._refresh_scene_panels()
