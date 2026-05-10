@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import cast
 
 from PySide6.QtWidgets import QApplication
 
@@ -62,9 +63,9 @@ def main(argv: list[str] | None = None) -> int:
     if app is None:
         app = QApplication(qt_argv)
 
-    _load_dark_theme(app)
+    _load_dark_theme(cast(QApplication, app))
 
-    window = _create_startup_window(app, args)
+    window = _create_startup_window(cast(QApplication, app), args)
     app._motor_startup_window = window  # type: ignore[attr-defined]
     window.show()
     return app.exec()

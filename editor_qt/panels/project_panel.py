@@ -212,8 +212,8 @@ class ProjectPanel(QWidget):
         self._all_assets = assets
         self._populate_scenes(scenes, str(active_scene.get("path") or ""))
         self._populate_assets(assets)
-        self._populate_paths(self.scripts_tree, scripts or [], "No scripts")
-        self._populate_paths(self.prefabs_tree, prefabs or [], "No prefabs")
+        self._populate_paths(self.scripts_tree, scripts or [], "No scripts", "script")
+        self._populate_paths(self.prefabs_tree, prefabs or [], "No prefabs", "prefab")
         self._rebuild_folder_tree(assets)
         self._apply_filter()
 
@@ -266,7 +266,7 @@ class ProjectPanel(QWidget):
 
             self.assets_tree.addTopLevelItem(item)
 
-    def _populate_paths(self, tree: QTreeWidget, paths: list[str], empty_label: str) -> None:
+    def _populate_paths(self, tree: QTreeWidget, paths: list[str], empty_label: str, asset_type: str = "script") -> None:
         tree.clear()
         if not paths:
             empty = QTreeWidgetItem([empty_label])
@@ -277,7 +277,7 @@ class ProjectPanel(QWidget):
             short = os.path.basename(path) if path else path
             item = QTreeWidgetItem([short])
             item.setData(0, Qt.ItemDataRole.UserRole, path)
-            item.setData(0, Qt.ItemDataRole.UserRole + 1, "script")
+            item.setData(0, Qt.ItemDataRole.UserRole + 1, asset_type)
             tree.addTopLevelItem(item)
 
     # ------------------------------------------------------------------
@@ -339,8 +339,10 @@ class ProjectPanel(QWidget):
         # clear existing breadcrumb widgets
         while self._breadcrumb_layout.count():
             item = self._breadcrumb_layout.takeAt(0)
-            if item and item.widget():
-                item.widget().deleteLater()
+            if item:
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
 
         # always show "Project" as root
         root_label = QLabel('<a href="#" style="color: #4fc3f7;">Project</a>')

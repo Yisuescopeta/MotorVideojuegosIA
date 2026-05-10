@@ -84,6 +84,9 @@ Metodos publicos del facade hacia los paneles Qt:
 | `create_project()`, `open_project()` | Project lifecycle |
 | `migrate_legacy_project(path)` | Importa carpeta legacy (`levels/*.json`) sin `project.json` |
 | `refresh_assets()` | Asset catalog |
+| `instantiate_prefab(path, name, x, y)` | Instancia un prefab en posicion mundo con override de Transform |
+| `get_sprite_metadata(asset_path)` | Lee metadatos de sprite de un asset (slices, etc.) |
+| `save_sprite_metadata(asset_path, metadata)` | Persiste metadatos de sprite de un asset |
 | `shutdown()` | Cierre |
 
 El facade NO expone `EngineAPI` directamente. Los paneles solo ven metodos
@@ -121,6 +124,14 @@ tipados del facade.
 - Senal `entity_moved` que commitea `after_state` (x, y, rotation, scale_x,
   scale_y) via `EngineAPI.edit_component()`. Usa `after_state` del gizmo
   en lugar de `world_x`/`world_y` directos.
+- **Asset drop**: arrastrar asset desde Project Panel al viewport invoca
+  `_on_viewport_asset_dropped()`. La ruta depende de `asset_type`:
+  - `prefab`: llama `facade.instantiate_prefab(path, name, x, y)` que
+    instancia el prefab con Transform sobreescrito en la posicion de drop.
+  - `image` (`.png`, `.jpg`, `.jpeg`, `.bmp`): crea entidad via
+    `facade.create_entity()`, asigna Transform en posicion de drop,
+    agrega componente `Sprite` con `texture_path` y componente `Collider`
+    (32×32). No pasa por `instantiate_prefab`.
 
 ### Hierarchy
 
@@ -168,7 +179,8 @@ tipados del facade.
   - Señales: `connection_created(source_key, target_key)`,
     `node_position_changed(node_key, x, y)`, `refresh_requested`.
 - `Animator` trabaja sobre la entidad seleccionada.
-- **Sprite Editor**: diálogo modal (`SpriteEditorDialog`) para recortar spritesheets en modos `Grid`, `Auto` y `Manual`. Se abre desde el botón `Open Sprite Editor` en el panel Animator. El modo `Grid` genera slices regulares desde cell width/height, margin y spacing. El preview muestra el spritesheet con overlay de slices. Al guardar, emite `slices_saved(image_path, slices)` y el MainWindow persiste los slices; el botón solo aparece si hay entidad seleccionada con animator.
+- **Sprite Editor**: diálogo modal (`SpriteEditorDialog`) para recortar spritesheets en modos `Grid`, `Auto` y `Manual`. Se abre desde el botón `Open Sprite Editor` en el panel Animator. Al guardar, el MainWindow lee metadata existente via `facade.get_sprite_metadata()`, fusiona los nuevos slices bajo clave `"slices"` y persiste via `facade.save_sprite_metadata()`. El botón solo aparece si hay entidad seleccionada con animator.
+- **Slice names**: el panel Animator solicita nombres de slices via `facade.get_sprite_metadata(sheet_path)` — sin bypass directo a `EngineAPI`.
 - `Terminal` usa `QProcess`, solo arranca al pulsar `Start`.
 - `Agent` crea sesiones y envia mensajes via `EngineAPI` AgentAPI.
 
@@ -177,6 +189,9 @@ tipados del facade.
 - Muestra escenas, assets, prefabs y scripts en modo read-only (con
   `list_project_scenes()`, `list_project_assets()`, `list_project_scripts()`,
   `list_project_prefabs()`).
+- Los items del arbol de prefabs llevan `asset_type='prefab'` en datos
+  de drag; los de scripts llevan `asset_type='script'`. El MainWindow
+  usa este tipo para decidir la ruta de drop en el viewport.
 
 ### Gizmo (`editor_qt/gizmo/`)
 
@@ -249,6 +264,58 @@ Panel → Signal → MainWindow slot → Facade → EngineAPI
 | `node_position_changed` | FlowCanvasWidget | `node_key: str, x: float, y: float` | Persist position (placeholder) |
 | `refresh_requested` | FlowCanvasWidget | — | `facade.get_scene_connections()` para recargar |
 | `scene_requested` | ProjectPanel | `scene_ref: str` | `facade.load_scene()` |
+
+## Ejemplos para agentes IA
+
+Uso headless desde Python mediante `EditorEngineFacade`. No existe comando CLI
+`sprite metadata`; usa la ruta Python (EngineAPI / facade).
+
+### instantiate_prefab
+
+```python
+from editor_qt.bridge.engine_facade import EditorEngineFacade
+
+facade = EditorEngineFacade(project_root=".")
+facade.load_default_scene()
+result = facade.instantiate_prefab(
+    path="prefabs/Enemy.prefab",
+    name="Enemy_01",
+    x=320.0,
+    y=240.0,
+)
+# result.success == True si se instanció correctamente
+```
+
+### get_sprite_metadata / save_sprite_metadata
+
+Leer metadatos, fusionar slices nuevos y persistir sin perder metadata
+existente:
+
+```python
+# 1. Leer metadata actual (slices, dimensions, etc.)
+metadata = facade.get_sprite_metadata(asset_path="assets/player.png")
+# → dict existente o {} si no hay metadata guardada aun
+
+# 2. Agregar nuevos slices conservando los previos
+new_slices = [
+    {"name": "idle_1", "x": 0, "y": 0, "w": 32, "h": 48},
+    {"name": "idle_2", "x": 32, "y": 0, "w": 32, "h": 48},
+]
+metadata.setdefault("slices", []).extend(new_slices)
+
+# 3. Persistir el dict completo
+result = facade.save_sprite_metadata(
+    asset_path="assets/player.png",
+    metadata=metadata,
+)
+# result.success == True si se guardó correctamente
+```
+
+`save_sprite_metadata` fusiona/actualiza el metadata existente del asset. No
+reemplaza el dict completo: conserva claves previas no incluidas en la llamada.
+Para evitar sobrescritura accidental de datos, lee siempre con
+`get_sprite_metadata`, modifica el dict y guarda — tal como muestra el ejemplo
+anterior.
 
 ## Validacion automatizada
 

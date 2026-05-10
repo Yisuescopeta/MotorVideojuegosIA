@@ -55,6 +55,9 @@ class FakeEngineAPI:
         self.redo_calls = 0
         self.dirty = False
         self.save_fails = False
+        self.instantiate_prefab_calls: list[tuple] = []
+        self._sprite_metadata: dict[str, dict] = {}
+        self.save_asset_metadata_calls: list[tuple] = []
 
     def list_entities(self):
         return list(self.entities.values())
@@ -64,7 +67,8 @@ class FakeEngineAPI:
 
     def edit_component(self, entity_name, component_name, property_name, value):
         self.edits.append((entity_name, component_name, property_name, value))
-        self.entities[entity_name]["components"][component_name][property_name] = value
+        components = self.entities[entity_name].setdefault("components", {})
+        components.setdefault(component_name, {})[property_name] = value
         self.dirty = True
         return {"success": True, "message": "Edit applied", "data": None}
 
@@ -244,6 +248,27 @@ class FakeEngineAPI:
         self.redo_calls += 1
         self.dirty = True
         return {"success": True, "message": "Redo applied", "data": None}
+
+    def instantiate_prefab(self, path, name=None, parent=None, overrides=None):
+        self.instantiate_prefab_calls.append((path, name, parent, overrides))
+        self.entities[name] = {
+            "name": name,
+            "active": True,
+            "tag": "",
+            "layer": "",
+            "parent": parent,
+            "components": overrides.get("", {}).get("components", {}) if overrides else {},
+        }
+        self.dirty = True
+        return {"success": True, "message": "Prefab instantiated", "data": {"entity": name}}
+
+    def get_sprite_metadata(self, asset_path):
+        return self._sprite_metadata.get(asset_path, {})
+
+    def save_asset_metadata(self, asset_path, metadata):
+        self.save_asset_metadata_calls.append((asset_path, metadata))
+        self._sprite_metadata[asset_path] = dict(metadata)
+        return {"success": True, "message": "Asset metadata saved", "data": metadata}
 
 
 class EditorQtFoundationTests(unittest.TestCase):
@@ -954,6 +979,146 @@ class EditorQtFoundationTests(unittest.TestCase):
         app.processEvents()
 
         self.assertEqual(received, ["levels/main.json"])
+
+
+    def test_facade_instantiate_prefab_delegates_path_name_parent_overrides(self) -> None:
+        api = FakeEngineAPI()
+        facade = EditorEngineFacade(engine_api=api)
+
+        result = facade.instantiate_prefab(path="prefabs/enemy.prefab", name="Enemy1", x=100.0, y=200.0)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(len(api.instantiate_prefab_calls), 1)
+        path, name, parent, overrides = api.instantiate_prefab_calls[0]
+        self.assertEqual(path, "prefabs/enemy.prefab")
+        self.assertEqual(name, "Enemy1")
+        self.assertIsNone(parent)
+        self.assertEqual(overrides[""]["components"]["Transform"]["x"], 100.0)
+        self.assertEqual(overrides[""]["components"]["Transform"]["y"], 200.0)
+        self.assertIn("Enemy1", api.entities)
+
+    def test_facade_get_sprite_metadata_returns_stored_metadata(self) -> None:
+        api = FakeEngineAPI()
+        api._sprite_metadata["assets/sheet.png"] = {"slices": [{"name": "run_0"}]}
+        facade = EditorEngineFacade(engine_api=api)
+
+        meta = facade.get_sprite_metadata("assets/sheet.png")
+
+        self.assertEqual(meta, {"slices": [{"name": "run_0"}]})
+
+    def test_facade_get_sprite_metadata_returns_empty_for_missing(self) -> None:
+        api = FakeEngineAPI()
+        facade = EditorEngineFacade(engine_api=api)
+
+        meta = facade.get_sprite_metadata("assets/nonexistent.png")
+
+        self.assertEqual(meta, {})
+
+    def test_facade_save_sprite_metadata_delegates_to_engine_api(self) -> None:
+        api = FakeEngineAPI()
+        facade = EditorEngineFacade(engine_api=api)
+
+        result = facade.save_sprite_metadata("assets/sheet.png", {"slices": [{"name": "walk_0"}]})
+
+        self.assertTrue(result["success"])
+        self.assertEqual(len(api.save_asset_metadata_calls), 1)
+        path, metadata = api.save_asset_metadata_calls[0]
+        self.assertEqual(path, "assets/sheet.png")
+        self.assertEqual(metadata, {"slices": [{"name": "walk_0"}]})
+        self.assertEqual(api._sprite_metadata["assets/sheet.png"], {"slices": [{"name": "walk_0"}]})
+
+    @unittest.skipIf(importlib.util.find_spec("PySide6") is None, "PySide6 optional dependency not installed")
+    def test_viewport_drop_prefab_calls_instantiate_not_create_entity(self) -> None:
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication
+
+        from editor_qt.main_window import MainWindow
+
+        app = QApplication.instance() or QApplication([])
+        api = FakeEngineAPI()
+        window = MainWindow(facade=EditorEngineFacade(engine_api=api))
+        app.processEvents()
+        try:
+            window._dragging_asset_type = "prefab"
+            window._on_viewport_asset_dropped("prefabs/enemy.prefab", 150.0, 250.0)
+            app.processEvents()
+
+            self.assertEqual(len(api.instantiate_prefab_calls), 1)
+            path, name, parent, overrides = api.instantiate_prefab_calls[0]
+            self.assertEqual(path, "prefabs/enemy.prefab")
+            self.assertEqual(name, "enemy")
+            self.assertEqual(overrides[""]["components"]["Transform"]["x"], 150.0)
+            self.assertEqual(overrides[""]["components"]["Transform"]["y"], 250.0)
+        finally:
+            api.dirty = False
+            window.close()
+
+    @unittest.skipIf(importlib.util.find_spec("PySide6") is None, "PySide6 optional dependency not installed")
+    def test_viewport_drop_image_creates_sprite_and_collider(self) -> None:
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication
+
+        from editor_qt.main_window import MainWindow
+
+        app = QApplication.instance() or QApplication([])
+        api = FakeEngineAPI()
+        window = MainWindow(facade=EditorEngineFacade(engine_api=api))
+        app.processEvents()
+        try:
+            window._dragging_asset_type = "image"
+            window._on_viewport_asset_dropped("assets/hero.png", 50.0, 60.0)
+            app.processEvents()
+
+            self.assertIn("hero", api.entities)
+            entity = api.entities["hero"]
+            self.assertIn("Sprite", entity["components"])
+            self.assertEqual(entity["components"]["Sprite"]["texture_path"], "assets/hero.png")
+            self.assertIn("Collider", entity["components"])
+            self.assertEqual(entity["components"]["Transform"]["x"], 50.0)
+            self.assertEqual(entity["components"]["Transform"]["y"], 60.0)
+            self.assertEqual(len(api.instantiate_prefab_calls), 0)
+        finally:
+            api.dirty = False
+            window.close()
+
+    @unittest.skipIf(importlib.util.find_spec("PySide6") is None, "PySide6 optional dependency not installed")
+    def test_project_panel_prefabs_tree_emits_prefab_asset_type_on_drag(self) -> None:
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtCore import QMimeData, QUrl
+        from PySide6.QtWidgets import QApplication
+
+        from editor_qt.panels.project_panel import ProjectPanel
+
+        app = QApplication.instance() or QApplication([])
+        panel = ProjectPanel()
+        panel.set_project_data(
+            project={"name": "Test"},
+            active_scene={},
+            scenes=[],
+            assets=[],
+            scripts=[],
+            prefabs=["prefabs/enemy.prefab"],
+        )
+        app.processEvents()
+
+        received: list[tuple[str, str]] = []
+        panel.asset_drag_started.connect(lambda path, atype: received.append((path, atype)))
+
+        item = panel.prefabs_tree.topLevelItem(0)
+        item.setSelected(True)
+        panel.prefabs_tree.setCurrentItem(item)
+
+        mime = QMimeData()
+        mime.setUrls([QUrl.fromLocalFile("prefabs/enemy.prefab")])
+        mime.setText("prefabs/enemy.prefab")
+        from PySide6.QtGui import QDrag
+        drag = QDrag(panel.prefabs_tree)
+        drag.setMimeData(mime)
+        panel.prefabs_tree.asset_drag_started.emit("prefabs/enemy.prefab", "prefab")
+        app.processEvents()
+
+        self.assertEqual(len(received), 1)
+        self.assertEqual(received[0], ("prefabs/enemy.prefab", "prefab"))
 
 
 if __name__ == "__main__":

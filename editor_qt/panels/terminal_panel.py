@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from PySide6.QtCore import QProcess
+from PySide6.QtCore import QByteArray, QProcess
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
 
 
@@ -80,11 +80,13 @@ class TerminalPanel(QWidget):
 
     def _read_stdout(self) -> None:
         if self.process is not None:
-            self.output.appendPlainText(bytes(self.process.readAllStandardOutput()).decode("utf-8", errors="replace"))
+            data: QByteArray = self.process.readAllStandardOutput()
+            self.output.appendPlainText(bytes(data.data()).decode("utf-8", errors="replace"))
 
     def _read_stderr(self) -> None:
         if self.process is not None:
-            self.output.appendPlainText(bytes(self.process.readAllStandardError()).decode("utf-8", errors="replace"))
+            data: QByteArray = self.process.readAllStandardError()
+            self.output.appendPlainText(bytes(data.data()).decode("utf-8", errors="replace"))
 
     def _on_finished(self, *_args: object) -> None:
         self.process = None

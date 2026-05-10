@@ -407,6 +407,31 @@ class EditorEngineFacade:
             result["data"] = normalize_agent_session(result["data"])
         return result
 
+    def instantiate_prefab(
+        self,
+        path: str,
+        name: str,
+        x: float = 0.0,
+        y: float = 0.0,
+    ) -> ActionResult:
+        """Instantiate a prefab at a world position in the active scene."""
+        overrides = {"": {"components": {"Transform": {"x": x, "y": y}}}}
+        return self._call_action(
+            "instantiate_prefab", path, name, None, overrides,
+            failure_message="Prefab instantiation failed",
+        )
+
+    def get_sprite_metadata(self, asset_path: str) -> dict[str, Any]:
+        """Read sprite metadata for an asset through the engine API."""
+        return self._call_read_args("get_sprite_metadata", {}, asset_path)
+
+    def save_sprite_metadata(self, asset_path: str, metadata: dict[str, Any]) -> ActionResult:
+        """Persist sprite metadata for an asset through the engine API."""
+        return self._call_action(
+            "save_asset_metadata", asset_path, metadata,
+            failure_message="Sprite metadata save failed",
+        )
+
     def save_scene(self) -> ActionResult:
         return self._call_action("save_scene", failure_message="Scene save failed")
 

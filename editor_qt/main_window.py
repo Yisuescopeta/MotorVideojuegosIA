@@ -683,7 +683,14 @@ class MainWindow(QMainWindow):
         """Open sprite editor for project panel asset."""
         accepted, img_path, slices = open_sprite_editor(asset_path, self)
         if accepted:
-            self.console_panel.log(f"Sprite editor: {len(slices)} slices from {img_path}")
+            existing = self.facade.get_sprite_metadata(img_path)
+            if not isinstance(existing, dict):
+                existing = {}
+            merged = dict(existing)
+            merged["slices"] = slices
+            result = self.facade.save_sprite_metadata(img_path, merged)
+            self._log_action_result(result)
+            self.console_panel.log(f"Sprite editor: {len(slices)} slices saved for {img_path}")
 
     def _on_animator_slice_names_requested(self, entity_name: str) -> None:
         """Provide slice names from the entity's animator sprite sheet metadata."""
@@ -692,17 +699,23 @@ class MainWindow(QMainWindow):
         slice_names: list[str] = []
         if sheet_path:
             try:
-                api = self.facade._engine_api()
-                if hasattr(api, 'asset_service') and api.asset_service:
-                    metadata = api.asset_service.get_sprite_metadata(sheet_path)
-                    slices = metadata.get("slices", [])
-                    slice_names = [str(s.get("name", "")) for s in slices if s.get("name")]
+                metadata = self.facade.get_sprite_metadata(sheet_path)
+                slices = metadata.get("slices", []) if isinstance(metadata, dict) else []
+                slice_names = [str(s.get("name", "")) for s in slices if s.get("name")]
             except Exception:
                 pass
         self.animator_panel.set_available_slice_names(slice_names)
 
     def _on_viewport_asset_dropped(self, file_path: str, world_x: float, world_y: float) -> None:
         """Create entity when asset is dropped on viewport at world position."""
+        asset_type = self._dragging_asset_type
+        ext = Path(file_path).suffix.lower()
+        if not asset_type:
+            if ext == ".prefab":
+                asset_type = "prefab"
+            elif ext in (".png", ".jpg", ".jpeg", ".bmp"):
+                asset_type = "image"
+
         filename = Path(file_path).stem
         entities = self.facade.list_entities()
         existing_names = {str(e.get("name", "")) for e in entities}
@@ -711,12 +724,21 @@ class MainWindow(QMainWindow):
         while new_name in existing_names:
             new_name = f"{filename}_{counter}"
             counter += 1
+
+        if asset_type == "prefab":
+            result = self.facade.instantiate_prefab(
+                path=file_path, name=new_name, x=world_x, y=world_y,
+            )
+            self._log_action_result(result)
+            if result.get("success"):
+                self.console_panel.log(f"Prefab instantiated: {new_name}")
+                self._refresh_scene_panels()
+            return
+
         result = self.facade.create_entity(new_name)
         if result.get("success"):
             self.facade.update_component_property(new_name, "Transform", "x", world_x)
             self.facade.update_component_property(new_name, "Transform", "y", world_y)
-            # Add sprite if it's an image
-            ext = Path(file_path).suffix.lower()
             if ext in (".png", ".jpg", ".jpeg", ".bmp"):
                 self.facade.add_component(new_name, "Sprite", {"texture_path": file_path})
             self.facade.add_component(new_name, "Collider", {"width": 32, "height": 32})
