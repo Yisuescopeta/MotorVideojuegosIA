@@ -3,18 +3,27 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QCloseEvent
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QAction, QCloseEvent, QIcon
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
+    QFrame,
+    QHBoxLayout,
     QInputDialog,
+    QLabel,
     QMainWindow,
     QMessageBox,
+    QPushButton,
+    QSizePolicy,
+    QStyle,
     QSplitter,
     QTabWidget,
-    QToolBar,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from editor_qt.bridge.engine_facade import EditorEngineFacade
@@ -28,24 +37,46 @@ from editor_qt.panels.project_panel import ProjectPanel
 from editor_qt.panels.sprite_editor_dialog import open_sprite_editor
 from editor_qt.panels.terminal_panel import TerminalPanel
 from editor_qt.panels.viewport_panel import QtSceneViewportPanel
+from editor_qt.theme import (
+    DEFAULT_THEME,
+    load_editor_icon,
+    load_editor_pixmap,
+    load_theme,
+    normalize_theme_name,
+)
 from editor_qt.value_codec import parse_value
 
 
 class MainWindow(QMainWindow):
     """Fixed editor shell shaped like the legacy editor, backed by EngineAPI."""
 
-    def __init__(self, facade: EditorEngineFacade | None = None, initial_scene: str = "") -> None:
+    def __init__(
+        self,
+        facade: EditorEngineFacade | None = None,
+        initial_scene: str = "",
+        initial_theme: str = "",
+    ) -> None:
         super().__init__()
+        self.setObjectName("AppRoot")
         self.facade = facade or EditorEngineFacade()
         self.initial_scene = initial_scene
         self._active_center_tab = "Scene"
         self._base_center_tab_count = 4
+        self._loading_preferences = False
+        self._scene_selector_loading = False
+        self._editor_state = self.facade.get_editor_state()
+        self._preferences = self._extract_preferences(self._editor_state)
+        self._theme_name = self._resolve_initial_theme(initial_theme)
+        app = QApplication.instance()
+        if app is not None:
+            load_theme(cast(QApplication, app), self._theme_name)
 
         self.setWindowTitle("MotorVideojuegosIA Editor")
         self.resize(1440, 860)
 
-        self.hierarchy_panel = HierarchyPanel(self.facade)
+        self.hierarchy_panel = HierarchyPanel()
         self.inspector_panel = InspectorPanel()
+        self.inspector_panel.set_component_descriptors(self.facade.list_component_descriptors())
         self.project_panel = ProjectPanel()
         self.console_panel = ConsolePanel()
         self.scene_viewport = QtSceneViewportPanel("Scene")
@@ -63,13 +94,25 @@ class MainWindow(QMainWindow):
         self._build_menu_bar()
         self._build_toolbar()
         self._build_shell()
+        self._apply_saved_preferences()
         self._connect_signals()
 
         self.console_panel.log("Qt editor initialized.")
         self._refresh_project_panel()
         self._load_initial_scene()
 
+    def _extract_preferences(self, state: dict[str, Any]) -> dict[str, Any]:
+        preferences = state.get("preferences", {}) if isinstance(state, dict) else {}
+        return dict(preferences) if isinstance(preferences, dict) else {}
+
+    def _resolve_initial_theme(self, initial_theme: str) -> str:
+        if initial_theme:
+            return normalize_theme_name(initial_theme)
+        saved = str(self._preferences.get("theme") or "")
+        return normalize_theme_name(saved or DEFAULT_THEME)
+
     def closeEvent(self, event: QCloseEvent) -> None:
+        self._save_ui_preferences()
         if not self.facade.has_unsaved_changes():
             event.accept()
             return
@@ -107,6 +150,7 @@ class MainWindow(QMainWindow):
         self.redo_action = QAction("Redo", self)
         self.refresh_action = QAction("Refresh", self)
         self.refresh_assets_action = QAction("Refresh Assets", self)
+        self.project_action = QAction("Project", self)
 
         self.create_empty_action = QAction("Create Empty", self)
         self.create_canvas_action = QAction("Canvas", self)
@@ -134,6 +178,15 @@ class MainWindow(QMainWindow):
         for action in (self.play_action, self.pause_action, self.step_action):
             action.setEnabled(False)
             action.setToolTip("Runtime playback is not wired in the Qt editor yet.")
+        self.build_action = QAction("Build", self)
+        self.launch_action = QAction("Launch", self)
+        for action in (self.build_action, self.launch_action):
+            action.setEnabled(False)
+            action.setToolTip("Build/launch is not wired in the Qt editor yet.")
+
+        self.reset_camera_action = QAction("Reset Camera", self)
+        self.frame_selected_action = QAction("Frame Selected", self)
+        self.theme_action = QAction("Light Theme" if self._theme_name == "frost_dark" else "Dark Theme", self)
 
     def _build_menu_bar(self) -> None:
         file_menu = self.menuBar().addMenu("File")
@@ -149,6 +202,12 @@ class MainWindow(QMainWindow):
 
         assets_menu = self.menuBar().addMenu("Assets")
         assets_menu.addAction(self.refresh_assets_action)
+
+        view_menu = self.menuBar().addMenu("View")
+        view_menu.addAction(self.reset_camera_action)
+        view_menu.addAction(self.frame_selected_action)
+        view_menu.addSeparator()
+        view_menu.addAction(self.theme_action)
 
         game_object_menu = self.menuBar().addMenu("GameObject")
         game_object_menu.addAction(self.create_empty_action)
@@ -177,44 +236,155 @@ class MainWindow(QMainWindow):
         help_menu.addAction(about_action)
 
     def _build_toolbar(self) -> None:
-        toolbar = QToolBar("Editor")
-        toolbar.setObjectName("EditorToolbar")
-        toolbar.setMovable(False)
-        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
+        self.top_bar = QFrame()
+        self.top_bar.setObjectName("TopBar")
+        layout = QHBoxLayout(self.top_bar)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(10)
 
-        toolbar.addAction(self.select_tool_action)
-        toolbar.addAction(self.move_tool_action)
-        toolbar.addAction(self.rotate_tool_action)
-        toolbar.addAction(self.scale_tool_action)
-        toolbar.addSeparator()
-        toolbar.addAction(self.play_action)
-        toolbar.addAction(self.pause_action)
-        toolbar.addAction(self.step_action)
-        toolbar.addSeparator()
-        toolbar.addAction(self.new_scene_action)
-        toolbar.addAction(self.open_scene_action)
-        toolbar.addAction(self.save_scene_action)
-        toolbar.addAction(self.refresh_action)
-        toolbar.addSeparator()
+        logo_group = self._create_topbar_group("TopBarLogoGroup")
+        logo_layout = cast(QHBoxLayout, logo_group.layout())
+        logo_pixmap = load_editor_pixmap("brand", "logo_frostline.png")
+        if logo_pixmap is not None:
+            logo_mark = QLabel()
+            logo_mark.setObjectName("TopBarLogoImage")
+            logo_mark.setPixmap(logo_pixmap.scaledToHeight(46, Qt.TransformationMode.SmoothTransformation))
+            logo_layout.addWidget(logo_mark)
+        else:
+            logo_mark = QLabel("*")
+            logo_mark.setObjectName("TopBarLogoMark")
+            logo_wordmark = QLabel("FROSTLINE\nENGINE")
+            logo_wordmark.setObjectName("TopBarLogo")
+            logo_layout.addWidget(logo_mark)
+            logo_layout.addWidget(logo_wordmark)
+        layout.addWidget(logo_group)
 
-        self.project_action = QAction("Project", self)
-        toolbar.addAction(self.project_action)
-        toolbar.addAction(self.create_canvas_action)
-        toolbar.addAction(self.create_text_action)
-        toolbar.addAction(self.create_button_action)
-        toolbar.addSeparator()
+        self.project_combo = QComboBox()
+        self.project_combo.setObjectName("ProjectSelector")
+        self.project_combo.setMinimumWidth(160)
+        self.project_combo.setEnabled(False)
+        self.project_combo.setToolTip("Active project")
+        project_group = self._create_topbar_labeled_group("Project", self.project_combo)
+        project_group.setObjectName("TopBarProjectGroup")
+        layout.addWidget(project_group)
+
+        self.scene_combo = QComboBox()
+        self.scene_combo.setObjectName("SceneSelector")
+        self.scene_combo.setMinimumWidth(180)
+        self.scene_combo.setToolTip("Active scene")
+        scene_group = self._create_topbar_labeled_group("Scene", self.scene_combo)
+        scene_group.setObjectName("TopBarSceneGroup")
+        layout.addWidget(scene_group)
+
+        transform_group = self._create_topbar_group("TopBarTransformGroup")
+        transform_layout = cast(QHBoxLayout, transform_group.layout())
+        transform_layout.addWidget(self._make_action_button(self.select_tool_action, "Select", "icons/tool_select.png", "SP_ArrowUp"))
+        transform_layout.addWidget(self._make_action_button(self.move_tool_action, "Move", "icons/tool_move.png", "SP_ArrowForward"))
+        transform_layout.addWidget(self._make_action_button(self.rotate_tool_action, "Rotate", "icons/tool_rotate.png", "SP_BrowserReload"))
+        transform_layout.addWidget(self._make_action_button(self.scale_tool_action, "Scale", "icons/tool_scale.png", "SP_TitleBarMaxButton"))
+        layout.addWidget(transform_group)
+
+        playback_group = self._create_topbar_group("TopBarPlaybackGroup")
+        playback_layout = cast(QHBoxLayout, playback_group.layout())
+        playback_layout.addWidget(self._make_action_button(self.play_action, "Play", "icons/tool_play.png", "SP_MediaPlay"))
+        playback_layout.addWidget(self._make_action_button(self.pause_action, "Pause", "icons/tool_pause.png", "SP_MediaPause"))
+        playback_layout.addWidget(self._make_action_button(self.step_action, "Stop", "icons/tool_stop.png", "SP_MediaStop"))
+        layout.addWidget(playback_group)
+
+        deploy_group = self._create_topbar_group("TopBarDeployGroup")
+        deploy_layout = cast(QHBoxLayout, deploy_group.layout())
+        deploy_layout.addWidget(self._make_action_button(self.build_action, "Build", "icons/tool_build.png", "SP_DialogSaveButton"))
+        deploy_layout.addWidget(self._make_action_button(self.launch_action, "Launch", "icons/tool_launch.png", "SP_ArrowUp"))
+        layout.addWidget(deploy_group)
+
+        layout.addStretch(1)
+
+        utility_group = self._create_topbar_group("TopBarUtilityGroup")
+        utility_layout = cast(QHBoxLayout, utility_group.layout())
+        utility_layout.addWidget(self._make_action_button(self.undo_action, "Undo", "icons/tool_undo.png", "SP_ArrowBack"))
+        utility_layout.addWidget(self._make_action_button(self.redo_action, "Redo", "icons/tool_redo.png", "SP_ArrowForward"))
+        utility_layout.addWidget(self._make_action_button(self.theme_action, "Theme", "icons/tool_theme.png", "SP_FileDialogDetailedView"))
+        layout.addWidget(utility_group)
+
+        account_group = self._create_topbar_group("TopBarAccountGroup")
+        account_layout = cast(QHBoxLayout, account_group.layout())
+        self.account_button = QToolButton()
+        self.account_button.setObjectName("AccountButton")
+        avatar_icon = load_editor_icon("brand", "avatar_a.png")
+        if not avatar_icon.isNull():
+            self.account_button.setIcon(avatar_icon)
+            self.account_button.setIconSize(QSize(30, 30))
+        else:
+            self.account_button.setText("A")
+        self.account_button.setToolTip("Account menu is not wired in the Qt editor yet.")
+        self.account_button.setEnabled(False)
+        self.account_button.setFixedSize(QSize(34, 34))
+        self.account_menu_button = QToolButton()
+        self.account_menu_button.setObjectName("AccountMenuButton")
+        self.account_menu_button.setText("v")
+        self.account_menu_button.setEnabled(False)
+        self.account_menu_button.setToolTip("Account menu is not wired in the Qt editor yet.")
+        account_layout.addWidget(self.account_button)
+        account_layout.addWidget(self.account_menu_button)
+        layout.addWidget(account_group)
 
         self.layers_combo = QComboBox()
         self.layers_combo.setObjectName("LayersCombo")
         self.layers_combo.addItems(["Layers", "Default"])
         self.layers_combo.setEnabled(False)
-        toolbar.addWidget(self.layers_combo)
+        self.layers_combo.setToolTip("Layer filtering is not wired in the Qt editor yet.")
 
         self.layout_combo = QComboBox()
         self.layout_combo.setObjectName("LayoutCombo")
         self.layout_combo.addItems(["Layout", "Default"])
         self.layout_combo.setEnabled(False)
-        toolbar.addWidget(self.layout_combo)
+        self.layout_combo.setToolTip("Layout presets are not wired in the Qt editor yet.")
+
+    def _create_topbar_group(self, object_name: str) -> QFrame:
+        frame = QFrame()
+        frame.setObjectName(object_name)
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(6)
+        return frame
+
+    def _create_topbar_labeled_group(self, label_text: str, widget: QWidget) -> QFrame:
+        frame = self._create_topbar_group("TopBarSelectGroup")
+        layout = cast(QHBoxLayout, frame.layout())
+        column = QVBoxLayout()
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(3)
+        label = QLabel(label_text)
+        label.setObjectName("TopBarFieldLabel")
+        column.addWidget(label)
+        column.addWidget(widget)
+        layout.addLayout(column)
+        return frame
+
+    def _make_action_button(self, action: QAction, label: str, asset_rel: str, icon_name: str) -> QToolButton:
+        button = QToolButton()
+        button.setObjectName("TopBarActionButton")
+        button.setDefaultAction(action)
+        button.setText(label)
+        button.setIcon(self._style_icon(asset_rel, icon_name))
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+        button.setAutoRaise(False)
+        button.setIconSize(QSize(18, 18))
+        return button
+
+    def _style_icon(self, asset_rel: str, icon_name: str) -> QIcon:
+        if asset_rel:
+            asset_parts = tuple(asset_rel.split("/"))
+            icon = load_editor_icon(*asset_parts)
+            if not icon.isNull():
+                return icon
+        style = self.style()
+        if style is None:
+            return QIcon()
+        icon_enum = getattr(QStyle.StandardPixmap, icon_name, None)
+        if icon_enum is None:
+            return QIcon()
+        return style.standardIcon(icon_enum)
 
     def _build_shell(self) -> None:
         self.center_tabs = QTabWidget()
@@ -232,25 +402,124 @@ class MainWindow(QMainWindow):
         self.bottom_tabs.addTab(self.terminal_panel, "Terminal")
         self.bottom_tabs.addTab(self.agent_panel, "Agent")
 
-        top_splitter = QSplitter(Qt.Orientation.Horizontal)
-        top_splitter.setObjectName("MainHorizontalSplitter")
-        top_splitter.addWidget(self.hierarchy_panel)
-        top_splitter.addWidget(self.center_tabs)
-        top_splitter.addWidget(self.inspector_panel)
-        top_splitter.setStretchFactor(0, 0)
-        top_splitter.setStretchFactor(1, 1)
-        top_splitter.setStretchFactor(2, 0)
-        top_splitter.setSizes([220, 900, 280])
+        self.top_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.top_splitter.setObjectName("MainHorizontalSplitter")
+        self.top_splitter.addWidget(self.hierarchy_panel)
+        self.top_splitter.addWidget(self.center_tabs)
+        self.top_splitter.addWidget(self.inspector_panel)
+        self.top_splitter.setStretchFactor(0, 0)
+        self.top_splitter.setStretchFactor(1, 1)
+        self.top_splitter.setStretchFactor(2, 0)
+        self.top_splitter.setSizes([240, 900, 320])
 
-        main_splitter = QSplitter(Qt.Orientation.Vertical)
-        main_splitter.setObjectName("MainVerticalSplitter")
-        main_splitter.addWidget(top_splitter)
-        main_splitter.addWidget(self.bottom_tabs)
-        main_splitter.setStretchFactor(0, 3)
-        main_splitter.setStretchFactor(1, 1)
-        main_splitter.setSizes([620, 240])
+        self.main_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.main_splitter.setObjectName("MainVerticalSplitter")
+        self.main_splitter.addWidget(self.top_splitter)
+        self.main_splitter.addWidget(self.bottom_tabs)
+        self.main_splitter.setStretchFactor(0, 3)
+        self.main_splitter.setStretchFactor(1, 1)
+        self.main_splitter.setSizes([620, 240])
 
-        self.setCentralWidget(main_splitter)
+        root = QWidget()
+        root.setObjectName("AppRoot")
+        shell = QHBoxLayout(root)
+        shell.setContentsMargins(8, 8, 8, 8)
+        shell.setSpacing(8)
+        content = QWidget()
+        content.setObjectName("AppShell")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(8)
+        content_layout.addWidget(self.top_bar)
+        content_layout.addWidget(self.main_splitter, stretch=1)
+        shell.addWidget(self._build_left_rail())
+        shell.addWidget(content, stretch=1)
+        self.setCentralWidget(root)
+
+    def _build_left_rail(self) -> QWidget:
+        rail = QFrame()
+        rail.setObjectName("SideRail")
+        rail.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        layout = QVBoxLayout(rail)
+        layout.setContentsMargins(6, 8, 6, 8)
+        layout.setSpacing(6)
+        self._rail_buttons: dict[str, QToolButton] = {}
+        for label, target, asset_rel, icon_name in (
+            ("Hierarchy", "Hierarchy", "icons/rail_hierarchy.png", "SP_FileDialogListView"),
+            ("Scenes", "Scene", "icons/rail_scenes.png", "SP_FileDialogContentsView"),
+            ("World", "Game", "icons/rail_world.png", "SP_ComputerIcon"),
+            ("Lighting", "Console", "icons/rail_lighting.png", "SP_DialogYesButton"),
+            ("Scripting", "Agent", "icons/rail_scripting.png", "SP_FileIcon"),
+            ("Audio", "Project", "icons/rail_audio.png", "SP_MediaVolume"),
+            ("Settings", "Settings", "icons/rail_settings.png", "SP_FileDialogDetailedView"),
+        ):
+            button = QToolButton()
+            button.setObjectName("RailButton")
+            button.setText(label)
+            button.setIcon(self._style_icon(asset_rel, icon_name))
+            button.setCheckable(True)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+            button.setIconSize(QSize(18, 18))
+            button.clicked.connect(lambda _checked=False, value=target: self._focus_rail_target(value))
+            self._rail_buttons[target] = button
+            layout.addWidget(button)
+        layout.addStretch()
+        return rail
+
+    def _apply_saved_preferences(self) -> None:
+        self._loading_preferences = True
+        try:
+            main_sizes = self._preferences.get("main_splitter_sizes")
+            if isinstance(main_sizes, list) and len(main_sizes) == 2:
+                self.main_splitter.setSizes([int(value) for value in main_sizes])
+            top_sizes = self._preferences.get("top_splitter_sizes")
+            if isinstance(top_sizes, list) and len(top_sizes) == 3:
+                self.top_splitter.setSizes([int(value) for value in top_sizes])
+            self.project_panel.set_view_mode(str(self._preferences.get("project_view_mode") or "grid"))
+            center_tab = str(self._preferences.get("center_tab") or "Scene")
+            bottom_tab = str(self._preferences.get("bottom_tab") or "Project")
+            self._focus_center_tab(center_tab)
+            self._focus_bottom_tab(bottom_tab)
+            self._set_rail_active(str(self._preferences.get("rail_active") or "Scene"))
+        finally:
+            self._loading_preferences = False
+
+    def _save_ui_preferences(self, extra: dict[str, Any] | None = None) -> None:
+        if self._loading_preferences:
+            return
+        preferences = {
+            "theme": self._theme_name,
+            "main_splitter_sizes": self.main_splitter.sizes() if hasattr(self, "main_splitter") else [],
+            "top_splitter_sizes": self.top_splitter.sizes() if hasattr(self, "top_splitter") else [],
+            "center_tab": self._active_center_tab,
+            "bottom_tab": self.bottom_tabs.tabText(self.bottom_tabs.currentIndex()) if hasattr(self, "bottom_tabs") else "Project",
+            "rail_active": self._current_rail_target(),
+            "project_view_mode": self.project_panel.view_mode(),
+        }
+        if extra:
+            preferences.update(extra)
+        self._preferences.update(preferences)
+        self.facade.save_editor_preferences(preferences)
+
+    def _focus_rail_target(self, target: str) -> None:
+        if target in {"Scene", "Game", "Flow", "Animator"}:
+            self._focus_center_tab(target)
+        elif target in {"Project", "Console", "Terminal", "Agent"}:
+            self._focus_bottom_tab(target)
+        elif target == "Settings":
+            self.console_panel.log("Settings panel is not wired in the Qt editor yet.", "warning")
+        self._set_rail_active(target)
+        self._save_ui_preferences({"rail_active": target})
+
+    def _set_rail_active(self, target: str) -> None:
+        for label, button in getattr(self, "_rail_buttons", {}).items():
+            button.setChecked(label == target)
+
+    def _current_rail_target(self) -> str:
+        for label, button in getattr(self, "_rail_buttons", {}).items():
+            if button.isChecked():
+                return label
+        return "Scene"
 
     def _connect_signals(self) -> None:
         self.new_scene_action.triggered.connect(lambda _checked=False: self._request_new_scene())
@@ -262,6 +531,10 @@ class MainWindow(QMainWindow):
         self.refresh_action.triggered.connect(lambda _checked=False: self._refresh_scene_panels())
         self.refresh_assets_action.triggered.connect(lambda _checked=False: self._refresh_assets())
         self.project_action.triggered.connect(lambda _checked=False: self._focus_project_panel())
+        self.theme_action.triggered.connect(lambda _checked=False: self._toggle_theme())
+        self.reset_camera_action.triggered.connect(lambda _checked=False: self._reset_active_viewport_camera())
+        self.frame_selected_action.triggered.connect(lambda _checked=False: self._frame_selected_in_active_viewport())
+        self.scene_combo.activated.connect(self._on_scene_selector_activated)
 
         self.create_empty_action.triggered.connect(lambda _checked=False: self._request_create_empty_entity())
         self.create_canvas_action.triggered.connect(lambda _checked=False: self._create_canvas())
@@ -279,6 +552,10 @@ class MainWindow(QMainWindow):
         self.game_viewport.entity_selected.connect(self._on_entity_selected)
         self.scene_viewport.entity_moved.connect(self._on_gizmo_entity_moved)
         self.game_viewport.entity_moved.connect(self._on_gizmo_entity_moved)
+        self.scene_viewport.entity_rotated.connect(self._on_gizmo_entity_rotated)
+        self.game_viewport.entity_rotated.connect(self._on_gizmo_entity_rotated)
+        self.scene_viewport.entity_scaled.connect(self._on_gizmo_entity_scaled)
+        self.game_viewport.entity_scaled.connect(self._on_gizmo_entity_scaled)
         # Viewport drop support (accept drops from project panel)
         self.scene_viewport.asset_dropped.connect(self._on_viewport_asset_dropped)
         self.game_viewport.asset_dropped.connect(self._on_viewport_asset_dropped)
@@ -300,12 +577,16 @@ class MainWindow(QMainWindow):
         self.hierarchy_panel.entity_selected.connect(self._on_entity_selected)
         self.hierarchy_panel.entity_create_requested.connect(self._create_entity)
         self.hierarchy_panel.entity_delete_requested.connect(self._delete_entity)
+        self.hierarchy_panel.entity_active_set_requested.connect(self._set_entity_active)
         self.inspector_panel.property_edit_requested.connect(self._update_component_property)
         self.project_panel.scene_requested.connect(self._on_scene_requested)
         # Project panel new signals
         self.project_panel.asset_drag_started.connect(self._on_asset_drag_started)
         self.project_panel.sprite_editor_requested.connect(self._on_project_sprite_editor)
         self.project_panel.scene_open_requested.connect(self._on_scene_requested)
+        self.project_panel.scene_create_requested.connect(self._request_new_scene)
+        self.project_panel.view_mode_changed.connect(lambda mode: self._save_ui_preferences({"project_view_mode": mode}))
+        self.console_panel.command_submitted.connect(self._on_console_command_submitted)
         # Animator panel new signal
         self.animator_panel.slice_names_requested.connect(self._on_animator_slice_names_requested)
         # New Inspector signals (foldouts + add/remove component)
@@ -315,10 +596,14 @@ class MainWindow(QMainWindow):
         self.hierarchy_panel.entity_create_child_requested.connect(self._create_child_entity)
         self.hierarchy_panel.entity_duplicate_requested.connect(self._duplicate_entity)
         self.hierarchy_panel.entity_reparent_requested.connect(self._reparent_entity)
+        self.main_splitter.splitterMoved.connect(lambda _pos, _index: self._save_ui_preferences())
+        self.top_splitter.splitterMoved.connect(lambda _pos, _index: self._save_ui_preferences())
 
     def _on_entity_selected(self, entity_name: str) -> None:
         entity = self.facade.select_entity(entity_name)
         self.inspector_panel.set_entity(entity, self.facade)
+        self.scene_viewport.set_selected_entity(entity_name)
+        self.game_viewport.set_selected_entity(entity_name)
         self.animator_panel.set_entity(
             entity,
             self.facade.get_animator_info(entity_name),
@@ -507,6 +792,35 @@ class MainWindow(QMainWindow):
     def _refresh_agent_panel(self) -> None:
         self.agent_panel.set_agent_data(self.facade.list_agent_providers(), self.facade.list_agent_tools())
 
+    def _sync_top_bar(
+        self,
+        project: dict[str, Any],
+        active_scene: dict[str, Any],
+        scenes: list[dict[str, Any]],
+    ) -> None:
+        self.project_combo.blockSignals(True)
+        self.project_combo.clear()
+        self.project_combo.addItem(str(project.get("name") or "No project"))
+        self.project_combo.blockSignals(False)
+
+        active_path = str(active_scene.get("path") or "")
+        self._scene_selector_loading = True
+        try:
+            self.scene_combo.clear()
+            for scene in scenes:
+                label = str(scene.get("name") or scene.get("path") or "Scene")
+                path = str(scene.get("path") or "")
+                self.scene_combo.addItem(label, path)
+                if path and path == active_path:
+                    self.scene_combo.setCurrentIndex(self.scene_combo.count() - 1)
+            if self.scene_combo.count() == 0:
+                self.scene_combo.addItem("No scene", "")
+                self.scene_combo.setEnabled(False)
+            else:
+                self.scene_combo.setEnabled(True)
+        finally:
+            self._scene_selector_loading = False
+
     def _create_agent_session(self) -> None:
         result = self.facade.create_agent_session()
         self._log_action_result(result)
@@ -537,6 +851,7 @@ class MainWindow(QMainWindow):
         entities = self.facade.list_entities()
         scenes = self.facade.list_project_scenes()
         flow_connections = self.facade.get_scene_connections()
+        self._sync_top_bar(project, active_scene, scenes)
         self.project_panel.set_project_data(
             project=project,
             active_scene=active_scene,
@@ -545,8 +860,11 @@ class MainWindow(QMainWindow):
             scripts=self.facade.list_project_scripts(),
             prefabs=self.facade.list_project_prefabs(),
         )
+        self.hierarchy_panel.set_entities(entities)
         self.scene_viewport.set_snapshot(scene_info=active_scene, entities=entities, project_root=self.facade.project_root)
         self.game_viewport.set_snapshot(scene_info=active_scene, entities=entities, project_root=self.facade.project_root)
+        self.scene_viewport.set_theme_name(self._theme_name)
+        self.game_viewport.set_theme_name(self._theme_name)
         self.flow_panel.set_flow_data(flow_connections, scenes)
         self.flow_tools_panel.set_flow_data(flow_connections, scenes)
         self.terminal_panel.set_project_root(self.facade.project_root)
@@ -557,7 +875,6 @@ class MainWindow(QMainWindow):
     def _refresh_scene_panels(self) -> None:
         self._refresh_project_panel()
         self.inspector_panel.set_entity(None, self.facade)
-        self.hierarchy_panel.refresh()
 
     def _refresh_open_scene_tabs(self, active_scene: dict[str, Any]) -> None:
         while self.center_tabs.count() > self._base_center_tab_count:
@@ -571,8 +888,12 @@ class MainWindow(QMainWindow):
             name = str(scene.get("name") or scene.get("path") or "Scene")
             label = f"{name} *" if scene.get("dirty") else name
             widget = QtSceneViewportPanel("Scene")
+            widget.set_theme_name(self._theme_name)
             widget.set_snapshot(scene_info=scene, entities=self.facade.list_entities(), project_root=self.facade.project_root)
             widget.entity_selected.connect(self._on_entity_selected)
+            widget.entity_moved.connect(self._on_gizmo_entity_moved)
+            widget.entity_rotated.connect(self._on_gizmo_entity_rotated)
+            widget.entity_scaled.connect(self._on_gizmo_entity_scaled)
             widget.setProperty("scene_key", str(scene.get("key") or scene.get("path") or ""))
             self.center_tabs.addTab(widget, label)
 
@@ -597,6 +918,7 @@ class MainWindow(QMainWindow):
 
     def _focus_project_panel(self) -> None:
         self._focus_bottom_tab("Project")
+        self._set_rail_active("Project")
 
     def _focus_center_tab(self, name: str) -> None:
         for index in range(self.center_tabs.count()):
@@ -613,10 +935,47 @@ class MainWindow(QMainWindow):
     def _on_center_tab_changed(self, index: int) -> None:
         self._active_center_tab = self.center_tabs.tabText(index).replace(" *", "") if index >= 0 else "Scene"
         self._update_status_bar(self.facade.get_project_manifest(), self.facade.get_active_scene_info())
+        self._save_ui_preferences({"center_tab": self._active_center_tab})
 
     def _on_bottom_tab_changed(self, index: int) -> None:
         if index >= 0:
-            self.console_panel.log(f"Bottom tab active: {self.bottom_tabs.tabText(index)}")
+            tab_name = self.bottom_tabs.tabText(index)
+            self.console_panel.log(f"Bottom tab active: {tab_name}")
+            self._save_ui_preferences({"bottom_tab": tab_name})
+
+    def _on_scene_selector_activated(self, index: int) -> None:
+        if self._scene_selector_loading:
+            return
+        scene_ref = str(self.scene_combo.itemData(index) or "")
+        if scene_ref:
+            self._on_scene_requested(scene_ref)
+
+    def _toggle_theme(self) -> None:
+        self._theme_name = "frost_light" if self._theme_name == "frost_dark" else "frost_dark"
+        app = QApplication.instance()
+        if app is not None:
+            load_theme(cast(QApplication, app), self._theme_name)
+        self.theme_action.setText("Light Theme" if self._theme_name == "frost_dark" else "Dark Theme")
+        for index in range(self.center_tabs.count()):
+            widget = self.center_tabs.widget(index)
+            if isinstance(widget, QtSceneViewportPanel):
+                widget.set_theme_name(self._theme_name)
+        self._save_ui_preferences({"theme": self._theme_name})
+
+    def _active_viewport(self) -> QtSceneViewportPanel:
+        widget = self.center_tabs.currentWidget()
+        if isinstance(widget, QtSceneViewportPanel):
+            return widget
+        return self.scene_viewport
+
+    def _reset_active_viewport_camera(self) -> None:
+        self._active_viewport().reset_camera()
+
+    def _frame_selected_in_active_viewport(self) -> None:
+        self._active_viewport().frame_selected()
+
+    def _on_console_command_submitted(self, command: str) -> None:
+        self.console_panel.log(f"Unsupported console command: {command}", "warning")
 
     def _select_tool(self, selected_action: QAction) -> None:
         for action in (
@@ -630,6 +989,12 @@ class MainWindow(QMainWindow):
         mode_name = selected_action.text()
         self.scene_viewport.set_gizmo_mode(mode_name)
         self.game_viewport.set_gizmo_mode(mode_name)
+
+    def _set_entity_active(self, entity_name: str, active: bool) -> None:
+        result = self.facade.set_entity_active(entity_name, active)
+        self._log_action_result(result)
+        if result.get("success"):
+            self._refresh_scene_panels()
 
     def _add_component_to_entity(self, entity_name: str, component_name: str) -> None:
         component_name = component_name.strip()
@@ -663,6 +1028,37 @@ class MainWindow(QMainWindow):
         self.facade.update_component_property(entity_name, component_name, "x", float(new_x))
         self.facade.update_component_property(entity_name, component_name, "y", float(new_y))
         self._refresh_scene_panels()
+
+    def _on_gizmo_entity_rotated(
+        self,
+        entity_name: str,
+        component_name: str,
+        property_name: str,
+        new_rotation: float,
+    ) -> None:
+        result = self.facade.update_component_property(
+            entity_name,
+            component_name,
+            property_name,
+            float(new_rotation),
+        )
+        self._log_action_result(result)
+        if result.get("success"):
+            self._refresh_scene_panels()
+
+    def _on_gizmo_entity_scaled(
+        self,
+        entity_name: str,
+        component_name: str,
+        property_name: str,
+        new_scale_x: float,
+        new_scale_y: float,
+    ) -> None:
+        x_result = self.facade.update_component_property(entity_name, component_name, "scale_x", float(new_scale_x))
+        y_result = self.facade.update_component_property(entity_name, component_name, "scale_y", float(new_scale_y))
+        self._log_action_result(y_result if y_result.get("success") else x_result)
+        if x_result.get("success") and y_result.get("success"):
+            self._refresh_scene_panels()
 
     def _reparent_entity(self, entity_name: str, new_parent_name: str) -> None:
         parent = new_parent_name if new_parent_name else None

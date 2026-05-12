@@ -7,12 +7,17 @@ from typing import Any
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QDoubleSpinBox,
     QHBoxLayout,
     QHeaderView,
     QInputDialog,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QSizePolicy,
     QSpinBox,
@@ -29,6 +34,82 @@ PROPERTY_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 VALUE_ROLE = int(Qt.ItemDataRole.UserRole) + 2
 
 _UNREMOVABLE = {"Transform"}
+
+
+class ComponentPickerDialog(QDialog):
+    """Searchable component picker backed by registry descriptors."""
+
+    def __init__(
+        self,
+        descriptors: list[dict[str, Any]],
+        existing_components: set[str],
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("ComponentPickerDialog")
+        self.setWindowTitle("Add Component")
+        self._descriptors = descriptors
+        self._existing_components = existing_components
+        self.search = QLineEdit()
+        self.search.setObjectName("SearchField")
+        self.search.setPlaceholderText("Search components")
+        self.list_widget = QListWidget()
+        self.list_widget.setObjectName("ComponentPickerList")
+        self.buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+        title = QLabel("Components")
+        title.setObjectName("PanelTitle")
+        layout.addWidget(title)
+        layout.addWidget(self.search)
+        layout.addWidget(self.list_widget)
+        layout.addWidget(self.buttons)
+
+        self.search.textChanged.connect(self._populate)
+        self.list_widget.itemDoubleClicked.connect(lambda _item: self.accept())
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        self._populate()
+
+    def selected_component_name(self) -> str:
+        item = self.list_widget.currentItem()
+        if item is None:
+            return ""
+        return str(item.data(Qt.ItemDataRole.UserRole) or "")
+
+    def _populate(self) -> None:
+        self.list_widget.clear()
+        needle = self.search.text().strip().lower()
+        for descriptor in self._descriptors:
+            name = str(descriptor.get("name") or "")
+            if not name or name in self._existing_components:
+                continue
+            tags = " ".join(str(tag) for tag in descriptor.get("editor_tags", []))
+            haystack = " ".join(
+                [
+                    name,
+                    str(descriptor.get("badge") or ""),
+                    str(descriptor.get("origin") or ""),
+                    str(descriptor.get("description") or ""),
+                    tags,
+                ]
+            ).lower()
+            if needle and needle not in haystack:
+                continue
+            badge = str(descriptor.get("badge") or "CORE")
+            description = str(descriptor.get("description") or "").strip()
+            label = f"{name}  [{badge}]"
+            if description:
+                label = f"{label}\n{description}"
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, name)
+            self.list_widget.addItem(item)
+        if self.list_widget.count():
+            self.list_widget.setCurrentRow(0)
 
 
 class _CompatItem:
@@ -187,12 +268,36 @@ class InspectorPanel(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("InspectorPanel")
         self._entity_name = ""
         self._loading = False
         self._facade: Any = None
+        self._component_names: set[str] = set()
+        self._component_descriptors: list[dict[str, Any]] = []
 
-        # Header
-        self.title = QLabel("No entity selected")
+        self.header_title = QLabel("INSPECTOR")
+        self.header_title.setObjectName("PanelTitle")
+        self.entity_tab = QPushButton("Entity")
+        self.entity_tab.setObjectName("InspectorModeTab")
+        self.entity_tab.setCheckable(True)
+        self.entity_tab.setChecked(True)
+        self.component_tab = QPushButton("Component")
+        self.component_tab.setObjectName("InspectorModeTab")
+        self.component_tab.setCheckable(True)
+        self.entity_name_label = QLabel("No entity selected")
+        self.entity_name_label.setObjectName("InspectorEntityTitle")
+        self.static_toggle = QCheckBox("Static")
+        self.static_toggle.setObjectName("InspectorStaticToggle")
+        self.static_toggle.setEnabled(False)
+
+        self.tag_combo = QComboBox()
+        self.tag_combo.setObjectName("InspectorMetaField")
+        self.tag_combo.addItems(["Untagged"])
+        self.tag_combo.setEnabled(False)
+        self.layer_combo = QComboBox()
+        self.layer_combo.setObjectName("InspectorMetaField")
+        self.layer_combo.addItems(["World"])
+        self.layer_combo.setEnabled(False)
 
         # Tree
         self.tree = _TreeWithCompat(self)
@@ -209,14 +314,45 @@ class InspectorPanel(QWidget):
 
         # Add Component button
         self._add_btn = QPushButton("Add Component")
+        self._add_btn.setObjectName("PrimaryAction")
         self._add_btn.clicked.connect(self._on_add_component)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(8)
-        layout.addWidget(self.title)
+        layout.addWidget(self.header_title)
+        tabs_row = QHBoxLayout()
+        tabs_row.setContentsMargins(0, 0, 0, 0)
+        tabs_row.setSpacing(6)
+        tabs_row.addWidget(self.entity_tab)
+        tabs_row.addWidget(self.component_tab)
+        tabs_row.addStretch()
+        layout.addLayout(tabs_row)
+
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(6)
+        title_row.addWidget(self.entity_name_label, stretch=1)
+        title_row.addWidget(self.static_toggle)
+        layout.addLayout(title_row)
+
+        meta_row = QHBoxLayout()
+        meta_row.setContentsMargins(0, 0, 0, 0)
+        meta_row.setSpacing(6)
+        tag_label = QLabel("Tag")
+        tag_label.setObjectName("InspectorMetaLabel")
+        layer_label = QLabel("Layer")
+        layer_label.setObjectName("InspectorMetaLabel")
+        meta_row.addWidget(tag_label)
+        meta_row.addWidget(self.tag_combo, stretch=1)
+        meta_row.addWidget(layer_label)
+        meta_row.addWidget(self.layer_combo, stretch=1)
+        layout.addLayout(meta_row)
         layout.addWidget(self.tree)
         layout.addWidget(self._add_btn)
+
+        self.entity_tab.clicked.connect(lambda checked=False: self._set_mode_tab("entity"))
+        self.component_tab.clicked.connect(lambda checked=False: self._set_mode_tab("component"))
 
     # ------------------------------------------------------------------
     # Public API
@@ -228,21 +364,56 @@ class InspectorPanel(QWidget):
 
         if not entity_data:
             self._entity_name = ""
-            self.title.setText("No entity selected")
+            self._component_names = set()
+            self.entity_name_label.setText("No entity selected")
+            self.static_toggle.setChecked(False)
+            self.tag_combo.clear()
+            self.tag_combo.addItems(["Untagged"])
+            self.layer_combo.clear()
+            self.layer_combo.addItems(["World"])
             self._loading = False
             return
 
         name = str(entity_data.get("name", "Entity"))
         self._entity_name = name
-        self.title.setText(name)
+        self.entity_name_label.setText(name)
+        self.static_toggle.setChecked(bool(entity_data.get("static", False)))
+        self.tag_combo.clear()
+        self.tag_combo.addItems([str(entity_data.get("tag") or "Untagged")])
+        self.layer_combo.clear()
+        self.layer_combo.addItems([str(entity_data.get("layer") or "World")])
 
         components = entity_data.get("components") or {}
         if isinstance(components, dict):
+            self._component_names = {str(component_name) for component_name in components.keys()}
             for comp_name, comp_data in sorted(components.items()):
                 self._append_component(str(comp_name), comp_data)
 
         self.tree.expandAll()
         self._loading = False
+
+    def _set_mode_tab(self, mode: str) -> None:
+        self.entity_tab.setChecked(mode == "entity")
+        self.component_tab.setChecked(mode == "component")
+
+    def set_component_descriptors(self, descriptors: list[dict[str, Any]]) -> None:
+        self._component_descriptors = sorted(
+            [dict(item) for item in descriptors if isinstance(item, dict)],
+            key=lambda item: str(item.get("name") or "").lower(),
+        )
+
+    def component_names_for_query(self, query: str) -> list[str]:
+        needle = query.strip().lower()
+        names: list[str] = []
+        for descriptor in self._component_descriptors:
+            name = str(descriptor.get("name") or "")
+            if not name or name in self._component_names:
+                continue
+            tags = " ".join(str(tag) for tag in descriptor.get("editor_tags", []))
+            haystack = f"{name} {descriptor.get('badge', '')} {descriptor.get('origin', '')} {descriptor.get('description', '')} {tags}".lower()
+            if not needle or needle in haystack:
+                names.append(name)
+        return names
 
     # ------------------------------------------------------------------
     # Tree building
@@ -364,6 +535,13 @@ class InspectorPanel(QWidget):
 
     def _on_add_component(self) -> None:
         if not self._entity_name:
+            return
+        if self._component_descriptors:
+            dialog = ComponentPickerDialog(self._component_descriptors, self._component_names, self)
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                component_name = dialog.selected_component_name()
+                if component_name:
+                    self.component_add_requested.emit(self._entity_name, component_name)
             return
         text, ok = QInputDialog.getText(self, "Add Component", "Component name:")
         if ok and text.strip():

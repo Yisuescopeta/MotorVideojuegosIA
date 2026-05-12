@@ -38,7 +38,11 @@ Opciones iniciales:
 ```bash
 py -m editor_qt.app --project .
 py -m editor_qt.app --project . --scene levels/demo_level.json
+py -m editor_qt.app --project . --theme frost_light
 ```
+
+`--theme` acepta `frost_dark` y `frost_light`. Si se omite, usa la
+preferencia guardada en `editor_state.preferences.theme` o `frost_dark`.
 
 ## Arquitectura
 
@@ -81,6 +85,9 @@ Metodos publicos del facade hacia los paneles Qt:
 | `get_animator_info()`, `list_animator_states()`, `ensure_animator()`, `set_animator_sprite_sheet()`, `upsert_animator_state()`, `remove_animator_state()`, `set_animator_speed()`, `set_animator_flip()` | Animator |
 | `list_agent_providers()`, `list_agent_tools()`, `create_agent_session()`, `send_agent_message()`, `approve_agent_action()` | Agent |
 | `list_project_scenes()`, `list_project_assets()`, `list_project_scripts()`, `list_project_prefabs()` | Project browser |
+| `get_editor_state()` / `save_editor_state()` / `save_editor_preferences()` | Preferencias UI del editor |
+| `set_entity_active(name, active)` | Activa/desactiva entidad desde Hierarchy |
+| `list_component_descriptors()` | Componentes disponibles para Add Component |
 | `create_project()`, `open_project()` | Project lifecycle |
 | `migrate_legacy_project(path)` | Importa carpeta legacy (`levels/*.json`) sin `project.json` |
 | `refresh_assets()` | Asset catalog |
@@ -103,9 +110,17 @@ tipados del facade.
 
 ### Ventana principal
 
-- `QMainWindow` con composicion fija: menu bar, toolbar superior,
+- `QMainWindow` con tema Frostline, menu bar, top bar superior, left rail,
   `Hierarchy` izquierda, `Inspector` derecha, tabs centrales
   `Scene/Game/Flow/Animator` y tabs inferiores `Project/Flow/Console/Terminal/Agent`.
+- Top bar: proyecto activo, selector de escena, herramientas de transform,
+  play/build deshabilitados con tooltip, shell segmentado tipo Frostline,
+  utilidades undo/redo/theme y avatar/menu placeholder.
+- Left rail: icono + label, estado activo cyan, enfoca vistas principales sin
+  mutar escena.
+- Preferencias UI persistidas en `editor_state.preferences`: tema, splitters,
+  tabs activos, rail activo y modo grid/list del Project panel. No se guardan
+  como datos de escena.
 
 ### Viewports (Qt-native, sin raylib)
 
@@ -133,16 +148,25 @@ tipados del facade.
     agrega componente `Sprite` con `texture_path` y componente `Collider`
     (32×32). No pasa por `instantiate_prefab`.
 
+- **Viewport chrome Frostline**: overlay con zoom, reset camera y frame
+  selected; outline de seleccion y hover; ghost preview al arrastrar assets;
+  grid adaptado para tema claro/oscuro.
+
 ### Hierarchy
 
-- `QTreeWidget` con estructura de arbol por parentesco.
+- `QTreeWidget` con estructura de arbol por parentesco, busqueda y columna
+  Active.
+- La busqueda filtra sin destruir datos y conserva seleccion/expansion cuando
+  es posible.
+- El toggle Active emite `entity_active_set_requested`; `MainWindow` delega en
+  `EditorEngineFacade.set_entity_active()`.
 - **Drag-drop reparenting**: arrastrar entidad sobre otra la re-parenta.
 - **Menu contextual** sobre entidad: `Create Entity`, `Create Child Entity`,
   `Delete Entity`, `Duplicate Entity`, `Unparent`, `Save as Prefab`.
 - Botones `Create`, `Delete`, `Refresh`.
 - Senales: `entity_selected`, `entity_create_requested`, `entity_delete_requested`,
   `entity_create_child_requested`, `entity_duplicate_requested`,
-  `entity_reparent_requested`.
+  `entity_reparent_requested`, `entity_active_set_requested`.
 
 ### Inspector
 
@@ -156,7 +180,8 @@ tipados del facade.
   emiten `commit_requested` solo en **Enter** o **focusOut**. **Escape**
   restaura el valor original sin commit. El slot `property_edit_requested` se
   conecta a `commit_requested`, no a `valueChanged`.
-- Boton **Add Component**: prompt textual, emite `component_add_requested`.
+- Boton **Add Component**: picker searchable basado en
+  `ComponentRegistry.list_descriptors()`, emite `component_add_requested`.
 - Boton **Remove Component** (`✕`) por componente, excepto `Transform` que es
   inamovible.
 - Senales: `property_edit_requested`, `component_add_requested`,
@@ -189,9 +214,18 @@ tipados del facade.
 - Muestra escenas, assets, prefabs y scripts en modo read-only (con
   `list_project_scenes()`, `list_project_assets()`, `list_project_scripts()`,
   `list_project_prefabs()`).
+- Assets soporta modo grid/list, thumbnails para imagenes, breadcrumbs,
+  filtros tipo pill y card **Add Scene** que emite `scene_create_requested`.
 - Los items del arbol de prefabs llevan `asset_type='prefab'` en datos
   de drag; los de scripts llevan `asset_type='script'`. El MainWindow
   usa este tipo para decidir la ruta de drop en el viewport.
+
+### Console
+
+- Console Qt usa filtros pill `All`, `Log`, `Warning`, `Error`, timestamps,
+  clear action, resumen de contadores y fila de comando.
+- `clear` y `help` se manejan localmente. Otros comandos emiten
+  `command_submitted`; no se ejecuta shell generica desde el panel.
 
 ### Gizmo (`editor_qt/gizmo/`)
 
@@ -256,6 +290,7 @@ Panel → Signal → MainWindow slot → Facade → EngineAPI
 | `entity_create_child_requested` | HierarchyPanel | `parent_name: str, child_name: str` | `facade.create_child_entity()` |
 | `entity_duplicate_requested` | HierarchyPanel | `entity_name: str` | `facade.duplicate_entity()` |
 | `entity_reparent_requested` | HierarchyPanel | `entity_name: str, new_parent: str` | `facade.set_entity_parent()` |
+| `entity_active_set_requested` | HierarchyPanel | `entity_name: str, active: bool` | `facade.set_entity_active()` |
 | `property_edit_requested` | InspectorPanel | `entity, component, property, value_text, original` | `facade.update_component_property()` |
 | `component_add_requested` | InspectorPanel | `entity_name: str, component_name: str` | `facade.add_component()` |
 | `component_remove_requested` | InspectorPanel | `entity_name: str, component_name: str` | `facade.remove_component()` |
@@ -264,6 +299,9 @@ Panel → Signal → MainWindow slot → Facade → EngineAPI
 | `node_position_changed` | FlowCanvasWidget | `node_key: str, x: float, y: float` | Persist position (placeholder) |
 | `refresh_requested` | FlowCanvasWidget | — | `facade.get_scene_connections()` para recargar |
 | `scene_requested` | ProjectPanel | `scene_ref: str` | `facade.load_scene()` |
+
+| `scene_create_requested` | ProjectPanel | — | abre flujo `New Scene` en `MainWindow` |
+| `command_submitted` | ConsolePanel | `command: str` | `MainWindow` registra comando no soportado |
 
 ## Ejemplos para agentes IA
 

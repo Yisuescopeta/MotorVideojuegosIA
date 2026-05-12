@@ -3,22 +3,28 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QMimeData, Qt, QUrl, Signal
-from PySide6.QtGui import QDrag
+from PySide6.QtCore import QMimeData, QSize, Qt, QUrl, Signal
+from PySide6.QtGui import QColor, QDrag, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QSplitter,
+    QStackedWidget,
     QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+
+from editor_qt.theme import load_editor_icon
 
 
 class _DraggableTreeWidget(QTreeWidget):
@@ -51,33 +57,99 @@ class _DraggableTreeWidget(QTreeWidget):
         drag.exec(supportedActions)
 
 
+class _DraggableListWidget(QListWidget):
+    asset_drag_started = Signal(str, str)  # file_path, asset_type
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setDragEnabled(True)
+
+    def startDrag(self, supportedActions: Qt.DropAction) -> None:
+        item = self.currentItem()
+        if item is None:
+            return
+        file_path = item.data(Qt.ItemDataRole.UserRole)
+        asset_type = item.data(Qt.ItemDataRole.UserRole + 1)
+        if file_path:
+            self.asset_drag_started.emit(str(file_path), str(asset_type or ""))
+        drag = QDrag(self)
+        mime = QMimeData()
+        if file_path:
+            mime.setUrls([QUrl.fromLocalFile(str(file_path))])
+            mime.setText(str(file_path))
+        drag.setMimeData(mime)
+        drag.exec(supportedActions)
+
+
 class ProjectPanel(QWidget):
     scene_requested = Signal(str)
     asset_drag_started = Signal(str, str)  # file_path, asset_type
     sprite_editor_requested = Signal(str)  # asset_path
     scene_open_requested = Signal(str)  # scene_path
+    scene_create_requested = Signal()
+    view_mode_changed = Signal(str)
 
     _ASSET_TYPE_IMAGE = "image"
     _ASSET_TYPE_SCENE = "scene"
+    _SCENE_THUMB_MAP = {
+        "frozen outpost": "frozen_outpost.png",
+        "ice caves": "ice_caves.png",
+        "mountain pass": "mountain_pass.png",
+        "ancient ruins": "ancient_ruins.png",
+        "nordic village": "nordic_village.png",
+        "forgotten temple": "forgotten_temple.png",
+    }
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("ProjectPanel")
 
         # ---- state ----
         self._all_assets: list[dict[str, Any]] = []
+        self._visible_assets: list[dict[str, Any]] = []
         self._current_folder: str = ""  # relative folder path, "" = root
         self._current_filter: str = "All"
         self._breadcrumb_stack: list[str] = []  # folder segments from root
+        self._project_root = Path.cwd()
+        self._view_mode = "grid"
+
+        self._panel_title = QLabel("PROJECT")
+        self._panel_title.setObjectName("PanelTitle")
+        self._panel_summary = QLabel("Assets")
+        self._panel_summary.setObjectName("ProjectSummary")
+        self._zoom_badge = QPushButton("1x")
+        self._zoom_badge.setObjectName("PanelToolButton")
+        self._zoom_badge.setEnabled(False)
+        self._zoom_badge.setToolTip("Asset preview zoom presets are not wired in the Qt editor yet.")
+
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(6)
+        title_row.addWidget(self._panel_title)
+        title_row.addStretch()
+        title_row.addWidget(self._panel_summary)
 
         # ---- row 1: search + refresh ----
         self._search_input = QLineEdit()
-        self._search_input.setPlaceholderText("Search assets")
+        self._search_input.setObjectName("SearchField")
+        self._search_input.setPlaceholderText("Search assets...")
 
         self._refresh_btn = QPushButton("Refresh Assets")
+        self._refresh_btn.setObjectName("PanelToolButton")
+        self._grid_btn = QPushButton("Grid")
+        self._grid_btn.setObjectName("PanelToolButton")
+        self._grid_btn.setCheckable(True)
+        self._grid_btn.setChecked(True)
+        self._list_btn = QPushButton("List")
+        self._list_btn.setObjectName("PanelToolButton")
+        self._list_btn.setCheckable(True)
 
         row1 = QHBoxLayout()
         row1.setSpacing(6)
         row1.addWidget(self._search_input, stretch=1)
+        row1.addWidget(self._grid_btn)
+        row1.addWidget(self._list_btn)
+        row1.addWidget(self._zoom_badge)
         row1.addWidget(self._refresh_btn)
 
         # ---- row 2: filter buttons ----
@@ -86,6 +158,7 @@ class ProjectPanel(QWidget):
         row2.setSpacing(4)
         for label in ("All", "Images", "Scenes", "Prefabs", "Scripts"):
             btn = QPushButton(label)
+            btn.setObjectName("FilterPill")
             btn.setCheckable(True)
             btn.setFlat(True)
             btn.setProperty("filterGroup", True)
@@ -104,6 +177,7 @@ class ProjectPanel(QWidget):
 
         # ---- left sidebar: folder tree ----
         self._folder_tree = QTreeWidget()
+        self._folder_tree.setObjectName("FolderTree")
         self._folder_tree.setHeaderLabels(["Folders"])
         self._folder_tree.setMaximumWidth(180)
         project_root = QTreeWidgetItem(["Project"])
@@ -113,30 +187,50 @@ class ProjectPanel(QWidget):
 
         # ---- right content: tab widget with draggable trees ----
         self.assets_tree = _DraggableTreeWidget()
+        self.assets_tree.setObjectName("AssetList")
         self.assets_tree.setHeaderLabels(["Assets"])
         self.assets_tree.setDragEnabled(True)
         self.assets_tree.asset_drag_started.connect(self.asset_drag_started.emit)
         self.assets_tree.itemDoubleClicked.connect(self._on_asset_item_double_clicked)
         self.assets_tree.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
 
+        self.assets_grid = _DraggableListWidget()
+        self.assets_grid.setObjectName("AssetGrid")
+        self.assets_grid.setViewMode(QListWidget.ViewMode.IconMode)
+        self.assets_grid.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self.assets_grid.setMovement(QListWidget.Movement.Static)
+        self.assets_grid.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self.assets_grid.setIconSize(QSize(72, 54))
+        self.assets_grid.setGridSize(QSize(156, 108))
+        self.assets_grid.setSpacing(8)
+        self.assets_grid.asset_drag_started.connect(self.asset_drag_started.emit)
+        self.assets_grid.itemDoubleClicked.connect(self._on_asset_grid_double_clicked)
+        self.assets_grid.currentItemChanged.connect(self._on_asset_grid_selection_changed)
+
         self.scenes_tree = _DraggableTreeWidget()
+        self.scenes_tree.setObjectName("SceneList")
         self.scenes_tree.setHeaderLabels(["Scenes"])
         self.scenes_tree.setDragEnabled(True)
         self.scenes_tree.asset_drag_started.connect(self.asset_drag_started.emit)
         self.scenes_tree.itemDoubleClicked.connect(self._on_scene_activated)
 
         self.prefabs_tree = _DraggableTreeWidget()
+        self.prefabs_tree.setObjectName("PrefabList")
         self.prefabs_tree.setHeaderLabels(["Prefabs"])
         self.prefabs_tree.setDragEnabled(True)
         self.prefabs_tree.asset_drag_started.connect(self.asset_drag_started.emit)
 
         self.scripts_tree = _DraggableTreeWidget()
+        self.scripts_tree.setObjectName("ScriptList")
         self.scripts_tree.setHeaderLabels(["Scripts"])
         self.scripts_tree.setDragEnabled(True)
         self.scripts_tree.asset_drag_started.connect(self.asset_drag_started.emit)
 
         self.tabs = QTabWidget()
-        self.tabs.addTab(self.assets_tree, "Assets")
+        self.assets_stack = QStackedWidget()
+        self.assets_stack.addWidget(self.assets_grid)
+        self.assets_stack.addWidget(self.assets_tree)
+        self.tabs.addTab(self.assets_stack, "Assets")
         self.tabs.addTab(self.scenes_tree, "Scenes")
         self.tabs.addTab(self.prefabs_tree, "Prefabs")
         self.tabs.addTab(self.scripts_tree, "Scripts")
@@ -150,6 +244,7 @@ class ProjectPanel(QWidget):
 
         # ---- bottom: asset detail panel ----
         self._detail_container = QWidget()
+        self._detail_container.setObjectName("AssetDetail")
         self._detail_container.setVisible(False)
         detail_layout = QVBoxLayout(self._detail_container)
         detail_layout.setContentsMargins(4, 4, 4, 4)
@@ -162,9 +257,11 @@ class ProjectPanel(QWidget):
         detail_buttons = QHBoxLayout()
         detail_buttons.setSpacing(6)
         self._sprite_editor_btn = QPushButton("Open Sprite Editor")
+        self._sprite_editor_btn.setObjectName("PanelToolButton")
         self._sprite_editor_btn.clicked.connect(self._on_open_sprite_editor)
         self._sprite_editor_btn.setVisible(False)
         self._open_scene_btn = QPushButton("Open Scene")
+        self._open_scene_btn.setObjectName("PanelToolButton")
         self._open_scene_btn.clicked.connect(self._on_open_scene_from_detail)
         self._open_scene_btn.setVisible(False)
         detail_buttons.addWidget(self._sprite_editor_btn)
@@ -185,6 +282,7 @@ class ProjectPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
+        layout.addLayout(title_row)
         layout.addLayout(row1)
         layout.addLayout(row2)
         layout.addLayout(self._breadcrumb_layout)
@@ -193,6 +291,8 @@ class ProjectPanel(QWidget):
         # ---- signal wiring ----
         self._search_input.textChanged.connect(self._apply_filter)
         self._refresh_btn.clicked.connect(self._apply_filter)
+        self._grid_btn.clicked.connect(lambda _checked=False: self.set_view_mode("grid"))
+        self._list_btn.clicked.connect(lambda _checked=False: self.set_view_mode("list"))
         self.assets_tree.currentItemChanged.connect(self._on_asset_selection_changed)
         self._current_detail_asset: dict[str, Any] | None = None
 
@@ -209,13 +309,30 @@ class ProjectPanel(QWidget):
         scripts: list[str] | None = None,
         prefabs: list[str] | None = None,
     ) -> None:
+        root = str(project.get("root") or "")
+        if root:
+            self._project_root = Path(root).expanduser().resolve()
         self._all_assets = assets
+        self._panel_summary.setText(f"{len(assets)} Assets")
         self._populate_scenes(scenes, str(active_scene.get("path") or ""))
         self._populate_assets(assets)
         self._populate_paths(self.scripts_tree, scripts or [], "No scripts", "script")
         self._populate_paths(self.prefabs_tree, prefabs or [], "No prefabs", "prefab")
         self._rebuild_folder_tree(assets)
         self._apply_filter()
+
+    def set_view_mode(self, mode: str) -> None:
+        resolved = "list" if mode == "list" else "grid"
+        if resolved == self._view_mode:
+            return
+        self._view_mode = resolved
+        self.assets_stack.setCurrentWidget(self.assets_tree if resolved == "list" else self.assets_grid)
+        self._grid_btn.setChecked(resolved == "grid")
+        self._list_btn.setChecked(resolved == "list")
+        self.view_mode_changed.emit(resolved)
+
+    def view_mode(self) -> str:
+        return self._view_mode
 
     # ------------------------------------------------------------------
     # internal populate helpers (kept compatible)
@@ -344,22 +461,23 @@ class ProjectPanel(QWidget):
                 if widget is not None:
                     widget.deleteLater()
 
-        # always show "Project" as root
-        root_label = QLabel('<a href="#" style="color: #4fc3f7;">Project</a>')
-        root_label.setOpenExternalLinks(False)
-        root_label.linkActivated.connect(lambda: self._navigate_to_folder(""))
-        self._breadcrumb_layout.addWidget(root_label)
+        root_button = QPushButton("Project")
+        root_button.setObjectName("BreadcrumbButton")
+        root_button.setFlat(True)
+        root_button.clicked.connect(lambda _checked=False: self._navigate_to_folder(""))
+        self._breadcrumb_layout.addWidget(root_button)
 
         for i, seg in enumerate(self._breadcrumb_stack):
             sep = QLabel("  &gt;  ")
-            sep.setStyleSheet("color: #888;")
+            sep.setObjectName("BreadcrumbSeparator")
             self._breadcrumb_layout.addWidget(sep)
 
             partial = "/".join(self._breadcrumb_stack[: i + 1])
-            link = QLabel(f'<a href="#" style="color: #4fc3f7;">{seg}</a>')
-            link.setOpenExternalLinks(False)
-            link.linkActivated.connect(lambda _checked=False, f=partial: self._navigate_to_folder(f))
-            self._breadcrumb_layout.addWidget(link)
+            button = QPushButton(seg)
+            button.setObjectName("BreadcrumbButton")
+            button.setFlat(True)
+            button.clicked.connect(lambda _checked=False, f=partial: self._navigate_to_folder(f))
+            self._breadcrumb_layout.addWidget(button)
 
         self._breadcrumb_layout.addStretch()
 
@@ -398,7 +516,11 @@ class ProjectPanel(QWidget):
             a_type = str(asset.get("type") or "asset")
 
             # type filter
-            if target_type is not None and a_type != target_type:
+            if target_type == "image" and not self._is_image_asset(asset):
+                continue
+            if target_type == "scene" and not self._is_scene_asset(asset):
+                continue
+            if target_type not in (None, "image", "scene") and a_type != target_type:
                 continue
 
             # folder filter: asset path must start with current folder
@@ -416,6 +538,8 @@ class ProjectPanel(QWidget):
 
             visible.append(asset)
 
+        self._visible_assets = visible
+        self._populate_asset_grid(visible)
         if not visible:
             empty = QTreeWidgetItem(["No matching assets"])
             empty.setFlags(empty.flags() & ~Qt.ItemFlag.ItemIsSelectable)
@@ -439,6 +563,27 @@ class ProjectPanel(QWidget):
             item.setData(0, Qt.ItemDataRole.UserRole, path)
             item.setData(0, Qt.ItemDataRole.UserRole + 1, asset_type)
             self.assets_tree.addTopLevelItem(item)
+
+    def _populate_asset_grid(self, assets: list[dict[str, Any]]) -> None:
+        self.assets_grid.clear()
+        add_scene = QListWidgetItem(
+            load_editor_icon("chrome", "add_scene_tile.png", fallback=self._placeholder_icon("scene")),
+            "Add Scene",
+        )
+        add_scene.setData(Qt.ItemDataRole.UserRole, "__add_scene__")
+        add_scene.setData(Qt.ItemDataRole.UserRole + 1, "add_scene")
+        add_scene.setToolTip("Create a new scene")
+        self.assets_grid.addItem(add_scene)
+        for asset in assets:
+            path = str(asset.get("path") or "")
+            name = str(asset.get("name") or path or "Asset")
+            asset_type = str(asset.get("type") or "asset")
+            label = os.path.basename(path) if path else name
+            item = QListWidgetItem(self._asset_icon(asset), f"{label}\n{asset_type}")
+            item.setData(Qt.ItemDataRole.UserRole, path)
+            item.setData(Qt.ItemDataRole.UserRole + 1, asset_type)
+            item.setToolTip(path)
+            self.assets_grid.addItem(item)
 
     # ------------------------------------------------------------------
     # asset item interaction
@@ -468,6 +613,17 @@ class ProjectPanel(QWidget):
         if asset_type == "scene":
             self.scene_open_requested.emit(path)
 
+    def _on_asset_grid_double_clicked(self, item: QListWidgetItem) -> None:
+        data = item.data(Qt.ItemDataRole.UserRole)
+        asset_type = str(item.data(Qt.ItemDataRole.UserRole + 1) or "")
+        if data == "__add_scene__":
+            self.scene_create_requested.emit()
+            return
+        if not data:
+            return
+        if asset_type == "scene" or self._is_scene_path(str(data)):
+            self.scene_open_requested.emit(str(data))
+
     def _on_asset_selection_changed(self, current: QTreeWidgetItem, _previous: QTreeWidgetItem) -> None:
         if current is None:
             self._detail_container.setVisible(False)
@@ -494,6 +650,25 @@ class ProjectPanel(QWidget):
             self._current_detail_asset = None
             return
 
+        self._current_detail_asset = asset_dict
+        self._show_asset_detail(asset_dict)
+
+    def _on_asset_grid_selection_changed(self, current: QListWidgetItem, _previous: QListWidgetItem) -> None:
+        if current is None:
+            self._detail_container.setVisible(False)
+            self._current_detail_asset = None
+            return
+        data = current.data(Qt.ItemDataRole.UserRole)
+        if not data or data == "__add_scene__":
+            self._detail_container.setVisible(False)
+            self._current_detail_asset = None
+            return
+        path = str(data)
+        asset_dict = next((asset for asset in self._all_assets if str(asset.get("path") or "") == path), None)
+        if asset_dict is None:
+            self._detail_container.setVisible(False)
+            self._current_detail_asset = None
+            return
         self._current_detail_asset = asset_dict
         self._show_asset_detail(asset_dict)
 
@@ -528,11 +703,72 @@ class ProjectPanel(QWidget):
         self._detail_container.setVisible(True)
 
         # action buttons
-        is_image = asset_type == self._ASSET_TYPE_IMAGE
-        is_scene = asset_type == self._ASSET_TYPE_SCENE
+        is_image = self._is_image_asset(asset)
+        is_scene = self._is_scene_asset(asset)
         self._sprite_editor_btn.setVisible(is_image)
         self._open_scene_btn.setVisible(is_scene)
         self._sprite_editor_btn.setProperty("asset_path", path)
+
+    def _asset_icon(self, asset: dict[str, Any]) -> QIcon:
+        path = str(asset.get("path") or "")
+        thumb_icon = self._frostline_scene_icon(asset)
+        if not thumb_icon.isNull():
+            return thumb_icon
+        if self._is_image_asset(asset):
+            resolved = Path(path)
+            if not resolved.is_absolute():
+                resolved = self._project_root / path
+            pixmap = QPixmap(resolved.as_posix())
+            if not pixmap.isNull():
+                return QIcon(
+                    pixmap.scaled(
+                        72,
+                        54,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                )
+        if self._is_scene_asset(asset):
+            return load_editor_icon("thumbs", "frozen_outpost.png", fallback=self._placeholder_icon("scene"))
+        return self._placeholder_icon(str(asset.get("type") or "asset"))
+
+    def _frostline_scene_icon(self, asset: dict[str, Any]) -> QIcon:
+        candidates = [
+            str(asset.get("name") or "").strip().lower(),
+            Path(str(asset.get("path") or "")).stem.replace("_", " ").strip().lower(),
+        ]
+        for candidate in candidates:
+            filename = self._SCENE_THUMB_MAP.get(candidate)
+            if filename:
+                return load_editor_icon("thumbs", filename)
+        return QIcon()
+
+    def _placeholder_icon(self, label: str) -> QIcon:
+        pixmap = QPixmap(96, 64)
+        pixmap.fill(QColor("#102b42"))
+        painter = QPainter(pixmap)
+        painter.setPen(QColor("#32c7ff"))
+        painter.drawRect(1, 1, 94, 62)
+        painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, str(label or "asset")[:8])
+        painter.end()
+        return QIcon(pixmap)
+
+    def _is_image_asset(self, asset: dict[str, Any]) -> bool:
+        path = str(asset.get("path") or "").lower()
+        asset_type = str(asset.get("type") or "").lower()
+        return asset_type in {"image", "texture", "sprite", "sprite_sheet"} or path.endswith(
+            (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp")
+        )
+
+    def _is_scene_asset(self, asset: dict[str, Any]) -> bool:
+        path = str(asset.get("path") or "").lower()
+        asset_type = str(asset.get("type") or "").lower()
+        return asset_type == self._ASSET_TYPE_SCENE or self._is_scene_path(path)
+
+    @staticmethod
+    def _is_scene_path(path: str) -> bool:
+        normalized = path.replace("\\", "/").lower()
+        return normalized.endswith(".json") and (normalized.startswith("levels/") or "/levels/" in normalized)
 
     def _on_open_sprite_editor(self) -> None:
         if self._current_detail_asset:

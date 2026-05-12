@@ -128,17 +128,28 @@ class LauncherWindow(QWidget):
         if not ok:
             return
         project_name = name.strip() or "Untitled Project"
-        result = self.facade.create_project(path, project_name)
-        if not result.get("success"):
-            creator = EditorEngineFacade(project_root=Path.cwd())
-            try:
-                result = creator.create_project(path, project_name)
-            finally:
-                creator.shutdown()
-        if result.get("success"):
-            self.project_open_requested.emit(path)
-            return
-        self.status_label.setText(str(result.get("message") or "Project creation failed."))
+        target = Path(path).expanduser().resolve()
+        target.mkdir(parents=True, exist_ok=True)
+        manifest_path = target / "project.json"
+        if not manifest_path.exists():
+            import json
+            manifest = {
+                "name": project_name,
+                "version": "1.0.0",
+                "engine_version": "0.1.0",
+                "template": "empty",
+                "paths": {
+                    "assets": "assets",
+                    "levels": "levels",
+                    "scripts": "scripts",
+                    "prefabs": "prefabs",
+                    "settings": "project"
+                }
+            }
+            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+            for subdir in ("assets", "scripts", "prefabs", "project"):
+                (target / subdir).mkdir(exist_ok=True)
+        self._open_project(str(target))
 
     def _import_legacy_project(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Import Legacy Project")
@@ -169,7 +180,6 @@ class LauncherWindow(QWidget):
         manifest_path = target / "project.json"
 
         if not manifest_path.exists():
-            # Detect legacy project
             levels_dir = target / "levels"
             has_levels = levels_dir.exists() and any(levels_dir.rglob("*.json"))
             has_scene_files = list(target.glob("*.json"))
@@ -191,11 +201,11 @@ class LauncherWindow(QWidget):
 
         result = self.facade.open_project(path)
         if not result.get("success"):
-            validator = EditorEngineFacade(project_root=path, auto_ensure_project=False)
+            opener = EditorEngineFacade(project_root=path, auto_ensure_project=False)
             try:
-                result = validator.open_project(path)
+                result = opener.open_project(path)
             finally:
-                validator.shutdown()
+                opener.shutdown()
         if result.get("success"):
             self.project_open_requested.emit(path)
             return

@@ -69,6 +69,8 @@ class EngineAPI:
                 f"Directory {self._project_root} does not exist. "
                 "Create it first or specify a valid --project-root."
             )
+        if self._read_only:
+            return
         manifest = project_path / "project.json"
         if not manifest.exists():
             raise InvalidOperationError(

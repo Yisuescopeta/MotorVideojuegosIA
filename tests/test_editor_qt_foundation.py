@@ -58,6 +58,15 @@ class FakeEngineAPI:
         self.instantiate_prefab_calls: list[tuple] = []
         self._sprite_metadata: dict[str, dict] = {}
         self.save_asset_metadata_calls: list[tuple] = []
+        self.editor_state = {
+            "recent_assets": {},
+            "last_scene": "",
+            "open_scenes": [],
+            "active_scene": "",
+            "scene_view_states": {},
+            "preferences": {},
+        }
+        self.set_active_calls: list[tuple[str, bool]] = []
 
     def list_entities(self):
         return list(self.entities.values())
@@ -88,6 +97,12 @@ class FakeEngineAPI:
         self.entities.pop(name, None)
         self.dirty = True
         return {"success": True, "message": "Entity removed", "data": {"entity": name}}
+
+    def set_entity_active(self, name, active):
+        self.set_active_calls.append((name, bool(active)))
+        self.entities[name]["active"] = bool(active)
+        self.dirty = True
+        return {"success": True, "message": "Entity active updated", "data": {"entity": name}}
 
     def get_project_manifest(self):
         return {"name": "Test Project", "root": "C:/project", "engine_version": "test"}
@@ -135,6 +150,13 @@ class FakeEngineAPI:
             }
         ]
 
+    def get_editor_state(self):
+        return dict(self.editor_state)
+
+    def save_editor_state(self, data):
+        self.editor_state = dict(data)
+        return {"success": True, "message": "Editor state saved", "data": dict(self.editor_state)}
+
     def load_scene_for_runtime_inspection(self, scene_ref=""):
         self.scene_loads.append(scene_ref)
         self.dirty = False
@@ -174,7 +196,7 @@ class FakeEngineAPI:
 
     def add_component(self, entity_name, component_name, payload):
         self.add_component_calls.append((entity_name, component_name, payload))
-        self.entities[entity_name]["components"][component_name] = dict(payload)
+        self.entities[entity_name]["components"][component_name] = dict(payload or {})
         return {"success": True, "message": "Component added", "data": {"entity": entity_name}}
 
     def get_animator_info(self, entity_name):
@@ -517,29 +539,36 @@ class EditorQtFoundationTests(unittest.TestCase):
             window.close()
 
     @unittest.skipIf(importlib.util.find_spec("PySide6") is None, "PySide6 optional dependency not installed")
-    def test_launcher_new_project_calls_facade_and_emits_project_path(self) -> None:
+    def test_launcher_new_project_creates_project_files_and_emits_path(self) -> None:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        import json
+        from pathlib import Path
+
         from PySide6.QtWidgets import QApplication
 
         import editor_qt.launcher_window as launcher_module
         from editor_qt.launcher_window import LauncherWindow
 
         app = QApplication.instance() or QApplication([])
-        api = FakeEngineAPI()
-        launcher = LauncherWindow(facade=EditorEngineFacade(engine_api=api))
-        received: list[str] = []
-        launcher.project_open_requested.connect(received.append)
-        with (
-            patch.object(launcher_module.QFileDialog, "getExistingDirectory", return_value="C:/new"),
-            patch.object(launcher_module.QInputDialog, "getText", return_value=("New Game", True)),
-        ):
-            launcher.new_project_button.click()
-        app.processEvents()
-        try:
-            self.assertEqual(api.create_project_calls, [("C:/new", "New Game")])
-            self.assertEqual(received, ["C:/new"])
-        finally:
-            launcher.close()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            api = FakeEngineAPI()
+            launcher = LauncherWindow(facade=EditorEngineFacade(engine_api=api))
+            received: list[str] = []
+            launcher.project_open_requested.connect(received.append)
+            with (
+                patch.object(launcher_module.QFileDialog, "getExistingDirectory", return_value=tmpdir),
+                patch.object(launcher_module.QInputDialog, "getText", return_value=("New Game", True)),
+            ):
+                launcher.new_project_button.click()
+            app.processEvents()
+            try:
+                manifest_path = Path(tmpdir) / "project.json"
+                self.assertTrue(manifest_path.exists(), "project.json should be created by _new_project")
+                data = json.loads(manifest_path.read_text(encoding="utf-8"))
+                self.assertEqual(data.get("name"), "New Game")
+                self.assertIn(tmpdir, received, "Launcher signal should carry the project path")
+            finally:
+                launcher.close()
 
     @unittest.skipIf(importlib.util.find_spec("PySide6") is None, "PySide6 optional dependency not installed")
     def test_app_builds_editor_shell_with_project(self) -> None:
@@ -584,7 +613,7 @@ class EditorQtFoundationTests(unittest.TestCase):
         app.processEvents()
         try:
             menu_names = [action.text() for action in window.menuBar().actions()]
-            self.assertEqual(menu_names, ["File", "Edit", "Assets", "GameObject", "Component", "Window", "Help"])
+            self.assertEqual(menu_names, ["File", "Edit", "Assets", "View", "GameObject", "Component", "Window", "Help"])
             self.assertEqual([window.center_tabs.tabText(index) for index in range(4)], ["Scene", "Game", "Flow", "Animator"])
             self.assertEqual(
                 [window.bottom_tabs.tabText(index) for index in range(window.bottom_tabs.count())],

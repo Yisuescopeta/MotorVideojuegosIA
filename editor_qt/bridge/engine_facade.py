@@ -100,6 +100,44 @@ class EditorEngineFacade:
         payload = self._call_read("list_open_scenes", [])
         return [normalize_scene_summary(scene) for scene in payload if isinstance(scene, dict)]
 
+    def get_editor_state(self) -> dict[str, Any]:
+        payload = self._call_read("get_editor_state", {})
+        return dict(payload) if isinstance(payload, dict) else {}
+
+    def save_editor_state(self, data: dict[str, Any]) -> ActionResult:
+        return self._call_action("save_editor_state", data, failure_message="Editor state save failed")
+
+    def save_editor_preferences(self, preferences: dict[str, Any]) -> ActionResult:
+        state = self.get_editor_state()
+        current_preferences = state.get("preferences", {})
+        if not isinstance(current_preferences, dict):
+            current_preferences = {}
+        merged = dict(current_preferences)
+        merged.update(preferences)
+        state["preferences"] = merged
+        return self.save_editor_state(state)
+
+    def list_component_descriptors(self) -> list[dict[str, Any]]:
+        try:
+            from engine.levels.component_registry import create_default_registry
+
+            registry = create_default_registry()
+            descriptors = registry.list_descriptors()
+        except Exception as exc:
+            self.last_error = str(exc)
+            return []
+        return [
+            {
+                "name": descriptor.name,
+                "origin": descriptor.origin,
+                "badge": descriptor.badge,
+                "description": descriptor.description,
+                "default_payload": dict(descriptor.default_payload),
+                "editor_tags": list(descriptor.editor_tags),
+            }
+            for descriptor in descriptors
+        ]
+
     def open_project(self, path: str) -> ActionResult:
         result = self._call_action("open_project", path, failure_message="Project open failed")
         if result.get("success"):
@@ -131,48 +169,39 @@ class EditorEngineFacade:
         if manifest_path.exists():
             return {"success": True, "message": "Project already exists", "data": {"path": str(target)}}
 
-        # Check for legacy content
         levels_dir = target / "levels"
         has_levels = levels_dir.exists() and any(levels_dir.rglob("*.json"))
         if not has_levels:
             return self._failure("No scene files found. Not a valid legacy project folder.")
 
         try:
-            # Try EngineAPI first
-            return self._call_action("create_project", str(target), str(target.name),
-                                     failure_message="Legacy project migration failed")
-        except Exception:
-            # Fallback: create project.json manually
-            try:
-                manifest = {
-                    "name": target.name,
-                    "version": "1.0.0",
-                    "engine_version": "0.1.0",
-                    "template": "empty",
-                    "paths": {
-                        "assets": "assets",
-                        "levels": "levels",
-                        "scripts": "scripts",
-                        "prefabs": "prefabs",
-                        "settings": "project"
-                    }
+            manifest = {
+                "name": target.name,
+                "version": "1.0.0",
+                "engine_version": "0.1.0",
+                "template": "empty",
+                "paths": {
+                    "assets": "assets",
+                    "levels": "levels",
+                    "scripts": "scripts",
+                    "prefabs": "prefabs",
+                    "settings": "project"
                 }
-                manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+            }
+            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
-                # Create required directories
-                for subdir in ("assets", "scripts", "prefabs", "project"):
-                    (target / subdir).mkdir(exist_ok=True)
+            for subdir in ("assets", "scripts", "prefabs", "project"):
+                (target / subdir).mkdir(exist_ok=True)
 
-                # Create default settings
-                settings_path = target / "project" / "settings.json"
-                if not settings_path.exists():
-                    settings_path.parent.mkdir(parents=True, exist_ok=True)
-                    settings_path.write_text(json.dumps({"startup_scene": ""}, indent=2), encoding="utf-8")
+            settings_path = target / "project" / "settings.json"
+            if not settings_path.exists():
+                settings_path.parent.mkdir(parents=True, exist_ok=True)
+                settings_path.write_text(json.dumps({"startup_scene": ""}, indent=2), encoding="utf-8")
 
-                return {"success": True, "message": "Legacy project imported",
-                        "data": {"path": str(target), "manifest": str(manifest_path)}}
-            except Exception as exc:
-                return self._failure(f"Legacy project migration failed: {exc}")
+            return {"success": True, "message": "Legacy project imported",
+                    "data": {"path": str(target), "manifest": str(manifest_path)}}
+        except Exception as exc:
+            return self._failure(f"Legacy project migration failed: {exc}")
 
     def load_default_scene(self) -> ActionResult:
         return self._load_scene_for_runtime_inspection("")
@@ -223,6 +252,14 @@ class EditorEngineFacade:
         if result.get("success") and self._selected_entity_name == entity_name:
             self._selected_entity_name = None
         return result
+
+    def set_entity_active(self, entity_name: str, active: bool) -> ActionResult:
+        return self._call_action(
+            "set_entity_active",
+            entity_name,
+            bool(active),
+            failure_message="Entity active update failed",
+        )
 
     def set_entity_parent(self, entity_name: str, parent_name: str | None) -> ActionResult:
         """Set or clear the parent entity of an entity."""
