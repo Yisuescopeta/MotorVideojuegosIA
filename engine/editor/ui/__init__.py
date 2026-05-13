@@ -37,6 +37,15 @@ from engine.editor.ui.panels import (
 )
 from engine.editor.ui.scroll import EditorScrollResult, editor_scroll_area
 from engine.editor.ui.theme import UNITY_DARK, EditorTheme, theme_to_raygui_map
+from engine.editor.ui.tree_view import (
+    TreeModel,
+    TreeNode,
+    filter_nodes,
+    filter_visible_rows,
+    get_entity_type,
+    get_type_icon,
+    matches_search,
+)
 from engine.editor.ui.widget_state import (
     WidgetResult,
     WidgetState,
@@ -78,6 +87,8 @@ __all__ = [
     "ICON_STOP",
     "UNITY_DARK",
     "EditorScrollResult",
+    "TreeModel",
+    "TreeNode",
     "WidgetResult",
     "WidgetState",
     "WidgetVisualState",
@@ -102,6 +113,10 @@ __all__ = [
     "editor_toggle_button",
     "editor_scroll_area",
     "end_panel_content",
+    "filter_nodes",
+    "filter_visible_rows",
+    "get_entity_type",
+    "get_type_icon",
     "icon_exists",
     "is_clicked",
     "is_clicked_at",
@@ -112,6 +127,7 @@ __all__ = [
     "is_right_clicked",
     "is_right_clicked_at",
     "mouse_position",
+    "matches_search",
     "raygui_dropdown_bridge",
     "raygui_textbox_bridge",
     "resolve_visual_state",

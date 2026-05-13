@@ -57,6 +57,22 @@ class HierarchyPanelRowsTests(unittest.TestCase):
         self.assertIsNot(expanded_rows, first_rows)
         self.assertEqual(expanded_rows, [(root.id, 0), (child.id, 1)])
 
+    def test_visible_rows_cache_tracks_search_text(self) -> None:
+        world = World()
+        root = world.create_entity("Root")
+        child = world.create_entity("Needle")
+        child.parent_name = "Root"
+        sibling = world.create_entity("Sibling")
+        panel = HierarchyPanel()
+
+        first_rows = panel._get_visible_rows(world)
+        panel.search_text = "needle"
+        filtered_rows = panel._get_visible_rows(world)
+
+        self.assertIsNot(filtered_rows, first_rows)
+        self.assertEqual(filtered_rows, [(root.id, 0), (child.id, 1)])
+        self.assertNotIn((sibling.id, 0), filtered_rows)
+
     def test_visible_rows_cache_invalidates_on_structure_version(self) -> None:
         world = World()
         root = world.create_entity("Root")
@@ -72,6 +88,20 @@ class HierarchyPanelRowsTests(unittest.TestCase):
 
         self.assertIsNot(updated_rows, first_rows)
         self.assertEqual(updated_rows, [(root.id, 0), (second_root.id, 0)])
+
+    def test_tree_model_cache_tracks_structure_version(self) -> None:
+        world = World()
+        root = world.create_entity("Root")
+        panel = HierarchyPanel()
+
+        first_model = panel._get_tree_model(world)
+        self.assertIn(root.id, first_model.node_map)
+
+        second = world.create_entity("Second")
+        second_model = panel._get_tree_model(world)
+
+        self.assertIsNot(second_model, first_model)
+        self.assertIn(second.id, second_model.node_map)
 
 
 if __name__ == "__main__":

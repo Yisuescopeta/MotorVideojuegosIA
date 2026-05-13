@@ -236,6 +236,12 @@ class EditorLayoutToolStateTests(unittest.TestCase):
         ), patch(
             "pyray.end_scissor_mode"
         ) as end_scissor_mode, patch(
+            "pyray.draw_rectangle_rounded"
+        ), patch(
+            "pyray.begin_scissor_mode"
+        ), patch(
+            "pyray.draw_text"
+        ), patch(
             "pyray.is_window_ready",
             return_value=True,
         ), patch.object(

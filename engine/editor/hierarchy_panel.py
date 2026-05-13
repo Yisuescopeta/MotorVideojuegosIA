@@ -15,6 +15,8 @@ from engine.ecs.world import World
 from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.editor_selection import EditorSelectionState
 from engine.editor.render_safety import editor_scissor
+from engine.editor.ui.icons import draw_icon
+from engine.editor.ui.tree_view import TreeModel, filter_visible_rows, get_type_icon
 
 
 class HierarchyPanel:
@@ -47,10 +49,13 @@ class HierarchyPanel:
         self._cached_world_id: int = -1
         self._cached_structure_version: int = -1
         self._cached_roots: List[Entity] = []
+        self._cached_tree_model: Optional[TreeModel] = None
         self._cached_rows_world_id: int = -1
         self._cached_rows_structure_version: int = -1
         self._cached_rows_expanded_ids: Tuple[int, ...] = ()
+        self._cached_rows_search_text: str = ""
         self._cached_visible_rows: List[Tuple[int, int]] = []
+        self.search_text: str = ""
 
         # Context Menu State
         self.context_menu_active: bool = False
@@ -159,11 +164,14 @@ class HierarchyPanel:
             # ========================================
             # 2. Content Area
             # ========================================
-            content_y_start = y + self.HEADER_HEIGHT + 5
-            content_height = height - self.HEADER_HEIGHT
+            search_y = y + self.HEADER_HEIGHT + 4
+            search_height = 18
+            content_y_start = search_y + search_height + 4
+            content_height = height - self.HEADER_HEIGHT - search_height - 4
 
             # Fondo del contenido
-            rl.draw_rectangle(x, int(y + self.HEADER_HEIGHT), width, int(content_height), self.UNITY_BG)
+            rl.draw_rectangle(x, int(y + self.HEADER_HEIGHT), width, int(height - self.HEADER_HEIGHT), self.UNITY_BG)
+            self._draw_search_field(x, search_y, width, search_height)
 
             # Obtener entidades raíz
             visible_rows = self._get_visible_rows(world)
@@ -226,7 +234,9 @@ class HierarchyPanel:
 
     def _render_row(self, entity: Entity, depth: int, panel_x: int, y: int, world: "World", panel_y: int, panel_h: int) -> None:
         """Renderiza una fila visible de la jerarquia."""
-        has_children = bool(self._get_child_entities(world, entity))
+        tree_model = self._get_tree_model(world)
+        node = tree_model.node_map.get(entity.id)
+        has_children = bool(node.is_expandable) if node is not None else bool(self._get_child_entities(world, entity))
 
         # Dibujar fila
         row_height = self.LINE_HEIGHT
@@ -304,10 +314,14 @@ class HierarchyPanel:
                     tri_color
                 )
 
-        # Nombre
+        # Icono + nombre
+        text_x = indent_x
+        if node is not None:
+            draw_icon(get_type_icon(node.entity_type), (int(indent_x), int(y + 3), 12, 12), (180, 180, 180, 255))
+            text_x += 15
         rl.draw_text(
             f"{entity.name}",
-            int(indent_x),
+            int(text_x),
             int(y + 4),
             self.FONT_SIZE,
             self.UNITY_TEXT
@@ -322,50 +336,50 @@ class HierarchyPanel:
         return int(getattr(world, "structure_version", getattr(world, "version", -1)))
 
     def _get_root_entities(self, world: "World") -> List[Entity]:
-        world_id = id(world)
-        structure_version = self._get_world_structure_version(world)
-        if self._cached_world_id == world_id and self._cached_structure_version == structure_version:
-            return self._cached_roots
-
-        get_children = getattr(world, "get_children", None)
-        if callable(get_children):
-            roots = list(get_children(None))
-        else:
-            roots = []
-            for entity in world.iter_all_entities():
-                transform = entity.get_component(Transform)
-                if transform is None or transform.parent is None:
-                    roots.append(entity)
-        roots.sort(key=lambda item: item.id)
-
-        self._cached_world_id = world_id
-        self._cached_structure_version = structure_version
-        self._cached_roots = roots
-        return roots
+        model = self._get_tree_model(world)
+        roots = [world.get_entity(node.id) for node in model.root_nodes]
+        return [entity for entity in roots if entity is not None]
 
     def _get_child_entities(self, world: "World", entity: Entity) -> List[Entity]:
-        get_children = getattr(world, "get_children", None)
-        if callable(get_children):
-            children = list(get_children(entity.name))
-        else:
-            children = []
-            transform = entity.get_component(Transform)
-            if transform:
-                for child_trans in transform.children:
-                    child_ent = self._find_entity_by_transform(world, child_trans)
-                    if child_ent:
-                        children.append(child_ent)
-        children.sort(key=lambda item: item.id)
-        return children
+        model = self._get_tree_model(world)
+        node = model.node_map.get(entity.id)
+        if node is None:
+            return []
+        children = [world.get_entity(child.id) for child in node.children]
+        return [child for child in children if child is not None]
+
+    def _get_tree_model(self, world: "World") -> TreeModel:
+        world_id = id(world)
+        structure_version = self._get_world_structure_version(world)
+        if (
+            self._cached_tree_model is not None
+            and self._cached_world_id == world_id
+            and self._cached_structure_version == structure_version
+        ):
+            return self._cached_tree_model
+
+        model = TreeModel.build(world)
+        self._cached_world_id = world_id
+        self._cached_structure_version = structure_version
+        self._cached_tree_model = model
+        roots: List[Entity] = []
+        for node in model.root_nodes:
+            entity = world.get_entity(node.id)
+            if entity is not None:
+                roots.append(entity)
+        self._cached_roots = roots
+        return model
 
     def _get_visible_rows(self, world: "World") -> List[Tuple[int, int]]:
         world_id = id(world)
         structure_version = self._get_world_structure_version(world)
         expanded_ids = tuple(sorted(self.expanded_ids))
+        search_text = self.search_text.strip().lower()
         if (
             self._cached_rows_world_id == world_id
             and self._cached_rows_structure_version == structure_version
             and self._cached_rows_expanded_ids == expanded_ids
+            and self._cached_rows_search_text == search_text
         ):
             return self._cached_visible_rows
 
@@ -373,28 +387,22 @@ class HierarchyPanel:
         self._cached_rows_world_id = world_id
         self._cached_rows_structure_version = structure_version
         self._cached_rows_expanded_ids = expanded_ids
+        self._cached_rows_search_text = search_text
         self._cached_visible_rows = rows
         return rows
 
     def _build_visible_rows(self, world: "World", roots: List[Entity]) -> List[Tuple[int, int]]:
-        rows: List[Tuple[int, int]] = []
-        stack: List[Tuple[Entity, int]] = [(entity, 0) for entity in reversed(roots)]
-        visited: Set[int] = set()
+        del roots
+        model = self._get_tree_model(world)
+        return filter_visible_rows(model, self.expanded_ids, self.search_text)
 
-        while stack:
-            entity, depth = stack.pop()
-            if entity.id in visited:
-                continue
-            visited.add(entity.id)
-            rows.append((entity.id, depth))
-
-            if entity.id not in self.expanded_ids:
-                continue
-
-            for child in reversed(self._get_child_entities(world, entity)):
-                stack.append((child, depth + 1))
-
-        return rows
+    def _draw_search_field(self, x: int, y: int, width: int, height: int) -> None:
+        field_rect = rl.Rectangle(x + 6, y, max(0, width - 12), height)
+        rl.draw_rectangle_rec(field_rect, rl.Color(35, 35, 35, 255))
+        rl.draw_rectangle_lines_ex(field_rect, 1, self.UNITY_BORDER)
+        label = self.search_text if self.search_text else "Search"
+        color = self.UNITY_TEXT if self.search_text else self.UNITY_TEXT_DIM
+        rl.draw_text(label[:32], int(field_rect.x + 6), int(field_rect.y + 5), self.FONT_SIZE, color)
 
     def _complete_hierarchy_drag(self, world: "World") -> None:
         """Finish a drag-and-drop reparenting operation."""
