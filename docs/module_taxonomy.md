@@ -34,7 +34,7 @@ orquestacion. Pueden ser valiosos, pero no son contrato duro del motor.
 | contratos internos de escena/runtime (`engine/scenes/contracts.py`, `engine/core/runtime_contracts.py`) | `core obligatorio` | Fijan limites de integracion entre runtime, authoring, workspace y API. |
 | serializacion y schema/migraciones | `core obligatorio` | Fijan `scene schema_version = 2`, `prefab schema_version = 2` y guardado canonico. |
 | editor base | `core obligatorio` | Traduce authoring al modelo compartido. |
-| `engine/editor/ui/` | `editor/base` | Tokens, tema, geometria y wrappers minimos de dibujo compartidos por el editor; no son fuente de verdad serializable. |
+| `engine/editor/ui/` | `editor/base` | Tokens, tema, geometria, data models y wrappers minimos de dibujo compartidos por el editor; no son fuente de verdad serializable. |
 | jerarquia | `core obligatorio` | Forma parte de datos serializables y tests de authoring. |
 | `EngineAPI` | `core obligatorio` | Fachada estable para agentes, tests, CLI y automatizacion. |
 | contrato comun de physics backends + fallback `legacy_aabb` | `core obligatorio` | Garantiza una ruta fisica base y queries publicas. |

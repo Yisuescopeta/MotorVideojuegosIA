@@ -4,6 +4,7 @@ doc_type: editor_plan
 status: active_plan
 created: 2026-05-13
 updated: 2026-05-13
+queen_updated: queen-20260513-002
 queen_task_id: queen-20260513-001
 phase_scope: all
 implemented_capability: false
@@ -135,7 +136,13 @@ Construir el panel de inspector de propiedades:
 - Edición vía rutas existentes de authoring (SceneManager / EngineAPI).
 - Soporte para propiedades anidadas y arrays.
 
-**Entregables:** `engine/editor/ui/inspector.py`, `engine/editor/ui/property_widgets.py`, panel Inspector funcional.
+**Estado real (2026-05-13, foundation v1):**
+- ✅ `engine/editor/ui/property_widgets.py` — creado: PropertyKind, PropertyDescriptor, EditTransaction, CommitContract, PropertyEditResult. Pure data model, sin render.
+- ✅ `engine/editor/ui/inspector.py` — creado: InspectorGroup, InspectorModel, build_inspector_model_from_dict, infer_property_kind. Pure data model/builders, sin render.
+- ❌ Panel Inspector funcional — NO implementado. Los módulos existen como foundation de datos, pero el inspector production existente (`engine/inspector/inspector_system.py`) NO está reemplazado ni el nuevo panel está wired en el layout del editor. Testing via nuevos tests unitarios.
+
+**Entregables plan original:** `engine/editor/ui/inspector.py`, `engine/editor/ui/property_widgets.py`, panel Inspector funcional.
+**Entregables entregados:** `engine/editor/ui/inspector.py` (foundation), `engine/editor/ui/property_widgets.py` (foundation). Panel Inspector pendiente.
 
 ---
 

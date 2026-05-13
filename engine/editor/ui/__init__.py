@@ -28,12 +28,25 @@ from engine.editor.ui.input import (
     mouse_position,
     wheel_delta,
 )
+from engine.editor.ui.inspector import (
+    InspectorGroup,
+    InspectorModel,
+    build_inspector_model_from_dict,
+    infer_property_kind,
+)
 from engine.editor.ui.panels import (
     begin_panel_content,
     draw_editor_panel,
     draw_editor_panel_frame,
     draw_panel_header,
     end_panel_content,
+)
+from engine.editor.ui.property_widgets import (
+    CommitContract,
+    EditTransaction,
+    PropertyDescriptor,
+    PropertyEditResult,
+    PropertyKind,
 )
 from engine.editor.ui.scroll import EditorScrollResult, editor_scroll_area
 from engine.editor.ui.theme import UNITY_DARK, EditorTheme, theme_to_raygui_map
@@ -87,6 +100,13 @@ __all__ = [
     "ICON_STOP",
     "UNITY_DARK",
     "EditorScrollResult",
+    "EditTransaction",
+    "InspectorGroup",
+    "InspectorModel",
+    "CommitContract",
+    "PropertyDescriptor",
+    "PropertyEditResult",
+    "PropertyKind",
     "TreeModel",
     "TreeNode",
     "WidgetResult",
@@ -94,6 +114,7 @@ __all__ = [
     "WidgetVisualState",
     "draw_icon",
     "begin_panel_content",
+    "build_inspector_model_from_dict",
     "draw_editor_panel",
     "draw_editor_panel_frame",
     "draw_panel_header",
@@ -118,6 +139,7 @@ __all__ = [
     "get_entity_type",
     "get_type_icon",
     "icon_exists",
+    "infer_property_kind",
     "is_clicked",
     "is_clicked_at",
     "is_hovered",
