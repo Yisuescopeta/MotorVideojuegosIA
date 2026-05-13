@@ -14,6 +14,7 @@ import pyray as rl
 from engine.assets.asset_service import AssetService
 from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.render_safety import editor_scissor
+from engine.editor.thumbnail_provider import ThumbnailProvider
 from engine.project.project_service import ProjectService
 
 
@@ -45,6 +46,9 @@ class ProjectPanel:
         "scripts": "Scripts",
     }
     IMAGE_EXTENSIONS: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".bmp")
+    SCRIPT_EXTENSIONS: tuple[str, ...] = (".py",)
+    AUDIO_EXTENSIONS: tuple[str, ...] = (".wav", ".ogg", ".mp3", ".flac")
+    MATERIAL_EXTENSIONS: tuple[str, ...] = (".mat", ".material", ".mtl")
 
     def __init__(self, root_path: str = ".") -> None:
         self.root_path = os.path.abspath(root_path)
@@ -77,6 +81,7 @@ class ProjectPanel:
         self._breadcrumb_cache: List[tuple[str, int]] = []
         self._cursor_interactive_rects: List[rl.Rectangle] = []
         self._search_rect: rl.Rectangle = rl.Rectangle(0, 0, 0, 0)
+        self.thumbnail_provider = ThumbnailProvider()
 
         self.refresh()
 
@@ -91,6 +96,7 @@ class ProjectPanel:
         return self._view_mode
 
     def set_project_service(self, project_service: ProjectService) -> None:
+        self.thumbnail_provider.clear()
         self.project_service = project_service
         self.asset_service = None
         if project_service.has_project:
@@ -205,7 +211,23 @@ class ProjectPanel:
         return 0.0 <= elapsed <= self.DOUBLE_CLICK_SECONDS
 
     def _open_selected_asset_by_type(self) -> bool:
-        return self.open_selected_sprite_editor() or self.open_selected_scene()
+        return self.open_selected_sprite_editor() or self.open_selected_scene() or self._reveal_asset_in_panel()
+
+    def _reveal_asset_in_panel(self) -> bool:
+        detail = self.get_selected_asset_detail()
+        if not detail or detail.get("is_image", False) or detail.get("is_scene", False):
+            return False
+        absolute_path = str(detail.get("absolute_path", "") or "")
+        if not absolute_path or not os.path.isfile(absolute_path):
+            return False
+        parent = os.path.dirname(absolute_path)
+        if parent != self.current_path:
+            self.current_path = parent
+            self.scroll_offset = 0.0
+        if not self._matches_filter(detail):
+            self.asset_filter = "all"
+        self.refresh()
+        return self.select_asset(absolute_path)
 
     def _handle_file_item_click(self, item: Dict[str, Any], mouse_pos: rl.Vector2, now: Optional[float] = None) -> bool:
         item_key = str(item.get("absolute_path", ""))
@@ -486,13 +508,7 @@ class ProjectPanel:
                 self.open_selected_scene()
 
     def _draw_item_icon(self, rect: rl.Rectangle, item: Dict[str, Any]) -> None:
-        if item["entry_type"] == "dir":
-            rl.draw_rectangle_rec(rect, self.UNITY_FOLDER_ICON)
-            rl.draw_rectangle(int(rect.x), int(rect.y), 15, 5, self.UNITY_FOLDER_ICON)
-            return
-        color = self.UNITY_IMAGE_ICON if item.get("is_image", False) else rl.Color(160, 160, 160, 255)
-        rl.draw_rectangle_rec(rect, color)
-        rl.draw_rectangle_lines_ex(rect, 1, rl.Color(100, 100, 100, 255))
+        self.thumbnail_provider.draw_item_icon(rect, item)
 
     def _draw_text_input(self, rect: rl.Rectangle, value: str, placeholder: str, focused: bool) -> None:
         background = rl.Color(46, 46, 46, 255) if focused else rl.Color(38, 38, 38, 255)
@@ -651,7 +667,7 @@ class ProjectPanel:
         if not absolute_path:
             return None
         name = str(entry.get("name", "") or os.path.basename(absolute_path))
-        asset_kind = str(entry.get("asset_kind", "unknown"))
+        asset_kind = self._infer_asset_kind(str(entry.get("asset_kind", "unknown")), absolute_path)
         importer = str(entry.get("importer", "unknown"))
         guid_short = str(entry.get("guid_short", ""))
         has_meta = bool(entry.get("has_meta", False))
@@ -712,6 +728,25 @@ class ProjectPanel:
         if self.asset_filter == "scripts":
             return item.get("asset_kind") == "script"
         return True
+
+    def _infer_asset_kind(self, asset_kind: str, absolute_path: str) -> str:
+        value = str(asset_kind or "unknown").strip().lower()
+        if value and value != "unknown":
+            return value
+        lower_path = str(absolute_path).lower()
+        if lower_path.endswith(self.IMAGE_EXTENSIONS):
+            return "texture"
+        if self._is_scene_path(absolute_path):
+            return "scene_data"
+        if lower_path.endswith(".prefab"):
+            return "prefab"
+        if lower_path.endswith(self.SCRIPT_EXTENSIONS):
+            return "script"
+        if lower_path.endswith(self.AUDIO_EXTENSIONS):
+            return "audio"
+        if lower_path.endswith(self.MATERIAL_EXTENSIONS):
+            return "material"
+        return "unknown"
 
     def _sync_selection_with_visible_entries(self) -> None:
         if self.selected_file and not os.path.exists(self.selected_file):

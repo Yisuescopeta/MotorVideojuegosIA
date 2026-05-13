@@ -35,6 +35,9 @@ class ProjectPanelAssetTests(unittest.TestCase):
         self._write_script("scripts/player_logic.py")
         self._write_prefab("prefabs/enemy.prefab")
         self._write_scene("levels/intro.json")
+        self._write_text("assets/readme.txt")
+        self._write_text("audio/theme.ogg")
+        self._write_text("materials/wall.material")
 
         self.panel.refresh_asset_catalog()
         assert self.panel.asset_service is not None
@@ -86,6 +89,11 @@ class ProjectPanelAssetTests(unittest.TestCase):
         path = self.root / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"name": "Intro", "entities": [], "rules": []}), encoding="utf-8")
+
+    def _write_text(self, relative_path: str) -> None:
+        path = self.root / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("notes\n", encoding="utf-8")
 
     def _asset_item(self, relative_path: str) -> dict:
         item = self.panel._build_file_entry((self.root / relative_path).as_posix())
@@ -143,6 +151,30 @@ class ProjectPanelAssetTests(unittest.TestCase):
         self.assertEqual(detail["pipeline_detail"], "sprite ready")
         self.assertTrue(detail["has_meta"])
 
+    def test_file_entry_infers_asset_kind_from_extension_when_unknown(self) -> None:
+        cases = (
+            ("scripts/player_logic.py", "script"),
+            ("prefabs/enemy.prefab", "prefab"),
+            ("audio/theme.ogg", "audio"),
+            ("materials/wall.material", "material"),
+            ("levels/intro.json", "scene_data"),
+            ("assets/readme.txt", "unknown"),
+        )
+
+        for relative_path, expected_kind in cases:
+            with self.subTest(relative_path=relative_path):
+                item = self.panel._build_file_entry_from_entry(
+                    {
+                        "name": Path(relative_path).name,
+                        "path": relative_path,
+                        "absolute_path": (self.root / relative_path).as_posix(),
+                        "asset_kind": "unknown",
+                        "importer": "unknown",
+                    }
+                )
+                self.assertIsNotNone(item)
+                self.assertEqual(item["asset_kind"], expected_kind)
+
     def test_panel_can_request_open_sprite_editor_for_selected_image(self) -> None:
         self.assertTrue(self.panel.select_asset("assets/characters/hero_ready.png"))
         self.assertTrue(self.panel.open_selected_sprite_editor())
@@ -175,12 +207,14 @@ class ProjectPanelAssetTests(unittest.TestCase):
         self.panel.set_view_mode("list")
         self.panel._last_click_key = "asset"
         self.panel._last_click_time = 1.0
+        self.panel.thumbnail_provider._textures["fake"] = object()
 
         self.panel.set_project_service(self.project_service)
 
         self.assertEqual(self.panel.get_view_mode(), "grid")
         self.assertIsNone(self.panel._last_click_key)
         self.assertEqual(self.panel._last_click_time, -1.0)
+        self.assertEqual(self.panel.thumbnail_provider._textures, {})
 
     def test_compute_list_view_rows_scroll_zero_offset_empty_and_bounded(self) -> None:
         self.panel._visible_entries = [{"name": f"item{i}"} for i in range(10)]
@@ -225,15 +259,61 @@ class ProjectPanelAssetTests(unittest.TestCase):
 
         self.assertEqual(self.panel.request_open_scene_for, "levels/intro.json")
 
-    def test_double_click_non_openable_asset_is_noop(self) -> None:
+    def test_double_click_script_reveals_and_selects_without_open_requests(self) -> None:
         item = self._asset_item("scripts/player_logic.py")
         mouse = rl.Vector2(1, 1)
 
         self.assertFalse(self.panel._handle_file_item_click(item, mouse, now=10.0))
-        self.assertFalse(self.panel._handle_file_item_click(item, mouse, now=10.2))
+        self.assertTrue(self.panel._handle_file_item_click(item, mouse, now=10.2))
 
         self.assertIsNone(self.panel.request_open_sprite_editor_for)
         self.assertIsNone(self.panel.request_open_scene_for)
+        self.assertEqual(Path(self.panel.selected_file), self.root / "scripts/player_logic.py")
+        self.assertEqual(Path(self.panel.current_path), self.root / "scripts")
+
+    def test_double_click_prefab_reveals_and_resets_hiding_filter(self) -> None:
+        self.panel.set_asset_filter("images")
+        item = self._asset_item("prefabs/enemy.prefab")
+        mouse = rl.Vector2(1, 1)
+
+        self.assertFalse(self.panel._handle_file_item_click(item, mouse, now=20.0))
+        self.assertTrue(self.panel._handle_file_item_click(item, mouse, now=20.2))
+
+        self.assertEqual(self.panel.asset_filter, "all")
+        self.assertIsNone(self.panel.request_open_sprite_editor_for)
+        self.assertIsNone(self.panel.request_open_scene_for)
+        self.assertEqual(Path(self.panel.selected_file), self.root / "prefabs/enemy.prefab")
+        self.assertEqual(Path(self.panel.current_path), self.root / "prefabs")
+
+    def test_double_click_unknown_reveals_without_open_requests(self) -> None:
+        item = self._asset_item("assets/readme.txt")
+        mouse = rl.Vector2(1, 1)
+
+        self.assertFalse(self.panel._handle_file_item_click(item, mouse, now=30.0))
+        self.assertTrue(self.panel._handle_file_item_click(item, mouse, now=30.2))
+
+        self.assertIsNone(self.panel.request_open_sprite_editor_for)
+        self.assertIsNone(self.panel.request_open_scene_for)
+        self.assertEqual(Path(self.panel.selected_file), self.root / "assets/readme.txt")
+
+    def test_draw_item_icon_delegates_to_thumbnail_provider(self) -> None:
+        calls = []
+
+        class FakeThumbnailProvider:
+            def draw_item_icon(self, rect, item):
+                calls.append((rect, item))
+
+            def clear(self):
+                pass
+
+        provider = FakeThumbnailProvider()
+        self.panel.thumbnail_provider = provider
+        rect = rl.Rectangle(1, 2, 3, 4)
+        item = self._asset_item("assets/plain.png")
+
+        self.panel._draw_item_icon(rect, item)
+
+        self.assertEqual(calls, [(rect, item)])
 
 
 class ProjectPanelSourceRegressionTests(unittest.TestCase):

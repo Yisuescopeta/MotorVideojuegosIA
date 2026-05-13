@@ -4,8 +4,8 @@ doc_type: editor_plan
 status: active_plan
 created: 2026-05-13
 updated: 2026-05-13
-queen_updated: queen-20260513-003
-queen_task_id: queen-20260513-001
+queen_updated: queen-20260513-004
+queen_task_id: queen-20260513-004
 phase_scope: all
 implemented_capability: false
 ---
@@ -156,7 +156,7 @@ Construir el navegador de proyectos y assets:
 - Integración con `AssetService` existente.
 - Doble-click para abrir asset en inspector o editor correspondiente.
 
-**Estado real (2026-05-13, Fase 7 minimal done):**
+**Estado real (2026-05-13, Fase 7 risk corrected):**
 - ✅ Vista grid — existente, refactorizada a `_render_content_grid()`.
 - ✅ Vista lista — NUEVA: `_render_content_list()`, toggle grid/list en toolbar.
 - ✅ Breadcrumbs de navegación — existentes.
@@ -164,13 +164,15 @@ Construir el navegador de proyectos y assets:
 - ✅ Integración con `AssetService` — existente.
 - ✅ Doble-click en imagen → abre sprite editor (`request_open_sprite_editor_for`).
 - ✅ Doble-click en escena (`levels/`) → abre escena (`request_open_scene_for`).
-- ❌ Doble-click en otros tipos (scripts, prefabs, etc.) — no-op, futuro.
-- ❌ Thumbnails reales — NO implementados. Iconos placeholder de color sólido.
+- ✅ Doble-click en otros tipos (scripts, prefabs, audio, material, unknown) → `_reveal_asset_in_panel()`: navega a directorio padre, resetea filtro si oculta el asset, selecciona el archivo. Sin ejecución de script, sin shell, sin `game.py`.
+- ✅ Inferencia de `asset_kind` desde extensión cuando metadata catalogo es `"unknown"` — scripts, audio, material, prefab, scene_data se categorizan automáticamente.
+- ✅ `ThumbnailProvider`: iconos tipados por tipo (folder, image, scene, prefab, script, audio, material, unknown) con colores y decoraciones distintivas (círculos, barras, bordes). Cuando `rl.is_window_ready()` es true y `rl.load_texture` funciona, carga la imagen real escalada al icono. Sin ventana Raylib o si falla carga, fallback automático al icono tipado.
+- ✅ Limpieza de caché de thumbnails al cambiar de proyecto (`set_project_service`).
 - ❌ Drag & drop desde asset browser a viewport/inspector — no implementado.
 - ❌ Vista de tarjetas (cards) con preview grande — no implementado.
 
 **Entregables plan original:** Panel AssetBrowser funcional con vista grid/lista.
-**Entregables entregados:** Vista grid/lista funcional, doble-click para image/scene, toggle view mode. Pendiente: thumbnails reales, drag & drop, doble-click para otros tipos, vista de tarjetas.
+**Entregables entregados:** Vista grid/lista funcional, doble-click para image/scene + reveal seguro para otros tipos, toggle view mode, ThumbnailProvider con thumbnails reales (contexto ventana) + fallback iconos tipados, inferencia de asset_kind desde extensión. Pendiente: drag & drop, vista de tarjetas.
 
 ---
 
