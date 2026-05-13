@@ -7,6 +7,10 @@ PROPÓSITO:
 """
 
 import pyray as rl
+from engine.editor.ui.colors import rgba_to_int
+from engine.editor.ui.theme import UNITY_DARK as EDITOR_UNITY_DARK
+from engine.editor.ui.theme import theme_to_raygui_map
+from engine.editor.ui.tokens import BG_RAYGUI_DARK
 
 # ============================================================================
 # Constantes de Estilo Raygui
@@ -59,19 +63,19 @@ BACKGROUND_COLOR = 19
 
 def color_to_int(r: int, g: int, b: int, a: int = 255) -> int:
     """Convierte RGBA a entero para gui_set_style."""
-    return (r << 24) | (g << 16) | (b << 8) | a
+    return rgba_to_int((r, g, b, a))
 
 # Paleta Unity
-UNITY_BG = color_to_int(56, 56, 56)           # #383838 - Fondo principal
-UNITY_PANEL = color_to_int(45, 45, 45)        # #2D2D2D - Paneles
-UNITY_DARK = color_to_int(32, 32, 32)         # #202020 - Más oscuro
-UNITY_BORDER = color_to_int(30, 30, 30)       # #1E1E1E - Bordes
-UNITY_TEXT = color_to_int(200, 200, 200)      # Texto claro
-UNITY_TEXT_DIM = color_to_int(140, 140, 140)  # Texto apagado
-UNITY_BLUE = color_to_int(44, 93, 135)        # Selección/Focus
-UNITY_BLUE_HOVER = color_to_int(60, 110, 160) # Hover
-UNITY_BUTTON = color_to_int(65, 65, 65)       # Botones
-UNITY_BUTTON_HOVER = color_to_int(80, 80, 80) # Botón hover
+UNITY_BG = rgba_to_int(EDITOR_UNITY_DARK.bg)                    # #383838 - Fondo principal
+UNITY_PANEL = rgba_to_int(EDITOR_UNITY_DARK.panel)              # #2D2D2D - Paneles
+UNITY_DARK = rgba_to_int(BG_RAYGUI_DARK)                        # #202020 - Más oscuro
+UNITY_BORDER = rgba_to_int(EDITOR_UNITY_DARK.border)            # #1E1E1E - Bordes
+UNITY_TEXT = rgba_to_int(EDITOR_UNITY_DARK.text)                # Texto claro
+UNITY_TEXT_DIM = rgba_to_int(EDITOR_UNITY_DARK.text_muted)      # Texto apagado
+UNITY_BLUE = rgba_to_int(EDITOR_UNITY_DARK.accent)              # Selección/Focus
+UNITY_BLUE_HOVER = rgba_to_int(EDITOR_UNITY_DARK.accent_hover)  # Hover
+UNITY_BUTTON = rgba_to_int(EDITOR_UNITY_DARK.button)            # Botones
+UNITY_BUTTON_HOVER = rgba_to_int(EDITOR_UNITY_DARK.button_hover) # Botón hover
 
 def apply_unity_dark_theme() -> None:
     """
@@ -81,72 +85,7 @@ def apply_unity_dark_theme() -> None:
     # Cargar estilo por defecto primero
     rl.gui_load_style_default()
 
-    # ========================================
-    # DEFAULT (afecta a todos los controles)
-    # ========================================
-    rl.gui_set_style(DEFAULT, BORDER_COLOR_NORMAL, UNITY_BORDER)
-    rl.gui_set_style(DEFAULT, BASE_COLOR_NORMAL, UNITY_BG)
-    rl.gui_set_style(DEFAULT, TEXT_COLOR_NORMAL, UNITY_TEXT)
-
-    rl.gui_set_style(DEFAULT, BORDER_COLOR_FOCUSED, UNITY_BLUE)
-    rl.gui_set_style(DEFAULT, BASE_COLOR_FOCUSED, UNITY_BUTTON_HOVER)
-    rl.gui_set_style(DEFAULT, TEXT_COLOR_FOCUSED, UNITY_TEXT)
-
-    rl.gui_set_style(DEFAULT, BORDER_COLOR_PRESSED, UNITY_BLUE)
-    rl.gui_set_style(DEFAULT, BASE_COLOR_PRESSED, UNITY_BLUE)
-    rl.gui_set_style(DEFAULT, TEXT_COLOR_PRESSED, UNITY_TEXT)
-
-    rl.gui_set_style(DEFAULT, BORDER_COLOR_DISABLED, UNITY_DARK)
-    rl.gui_set_style(DEFAULT, BASE_COLOR_DISABLED, UNITY_DARK)
-    rl.gui_set_style(DEFAULT, TEXT_COLOR_DISABLED, UNITY_TEXT_DIM)
-
-    rl.gui_set_style(DEFAULT, TEXT_SIZE, 10)
-    rl.gui_set_style(DEFAULT, TEXT_SPACING, 1)
-    rl.gui_set_style(DEFAULT, LINE_COLOR, UNITY_BORDER)
-    rl.gui_set_style(DEFAULT, BACKGROUND_COLOR, UNITY_PANEL)
-
-    # ========================================
-    # BUTTON
-    # ========================================
-    rl.gui_set_style(BUTTON, BASE_COLOR_NORMAL, UNITY_BUTTON)
-    rl.gui_set_style(BUTTON, BORDER_COLOR_NORMAL, UNITY_BORDER)
-    rl.gui_set_style(BUTTON, BASE_COLOR_FOCUSED, UNITY_BUTTON_HOVER)
-    rl.gui_set_style(BUTTON, BASE_COLOR_PRESSED, UNITY_BLUE)
-
-    # ========================================
-    # TOGGLE (para tabs)
-    # ========================================
-    rl.gui_set_style(TOGGLE, BASE_COLOR_NORMAL, UNITY_PANEL)
-    rl.gui_set_style(TOGGLE, BASE_COLOR_PRESSED, UNITY_BG)  # Activo = más claro
-
-    # ========================================
-    # SLIDER
-    # ========================================
-    rl.gui_set_style(SLIDER, BASE_COLOR_NORMAL, UNITY_DARK)
-    rl.gui_set_style(SLIDER, BASE_COLOR_PRESSED, UNITY_BLUE)
-
-    # ========================================
-    # CHECKBOX
-    # ========================================
-    rl.gui_set_style(CHECKBOX, BASE_COLOR_NORMAL, UNITY_DARK)
-    rl.gui_set_style(CHECKBOX, BASE_COLOR_PRESSED, UNITY_BLUE)
-
-    # ========================================
-    # TEXTBOX
-    # ========================================
-    rl.gui_set_style(TEXTBOX, BASE_COLOR_NORMAL, UNITY_DARK)
-    rl.gui_set_style(TEXTBOX, BORDER_COLOR_FOCUSED, UNITY_BLUE)
-
-    # ========================================
-    # LISTVIEW
-    # ========================================
-    rl.gui_set_style(LISTVIEW, BASE_COLOR_NORMAL, UNITY_PANEL)
-    rl.gui_set_style(LISTVIEW, BASE_COLOR_FOCUSED, UNITY_BLUE)
-
-    # ========================================
-    # SCROLLBAR
-    # ========================================
-    rl.gui_set_style(SCROLLBAR, BASE_COLOR_NORMAL, UNITY_DARK)
-    rl.gui_set_style(SCROLLBAR, BASE_COLOR_PRESSED, UNITY_BUTTON)
+    for (control, property_id), value in theme_to_raygui_map(EDITOR_UNITY_DARK).items():
+        rl.gui_set_style(control, property_id, value)
 
     print("[THEME] Unity Dark Theme aplicado a Raygui")
