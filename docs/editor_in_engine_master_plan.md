@@ -4,7 +4,7 @@ doc_type: editor_plan
 status: active_plan
 created: 2026-05-13
 updated: 2026-05-13
-queen_updated: queen-20260513-002
+queen_updated: queen-20260513-003
 queen_task_id: queen-20260513-001
 phase_scope: all
 implemented_capability: false
@@ -156,7 +156,21 @@ Construir el navegador de proyectos y assets:
 - Integración con `AssetService` existente.
 - Doble-click para abrir asset en inspector o editor correspondiente.
 
-**Entregables:** Panel AssetBrowser funcional con vista grid/lista.
+**Estado real (2026-05-13, Fase 7 minimal done):**
+- ✅ Vista grid — existente, refactorizada a `_render_content_grid()`.
+- ✅ Vista lista — NUEVA: `_render_content_list()`, toggle grid/list en toolbar.
+- ✅ Breadcrumbs de navegación — existentes.
+- ✅ Filtros por tipo de asset — existentes.
+- ✅ Integración con `AssetService` — existente.
+- ✅ Doble-click en imagen → abre sprite editor (`request_open_sprite_editor_for`).
+- ✅ Doble-click en escena (`levels/`) → abre escena (`request_open_scene_for`).
+- ❌ Doble-click en otros tipos (scripts, prefabs, etc.) — no-op, futuro.
+- ❌ Thumbnails reales — NO implementados. Iconos placeholder de color sólido.
+- ❌ Drag & drop desde asset browser a viewport/inspector — no implementado.
+- ❌ Vista de tarjetas (cards) con preview grande — no implementado.
+
+**Entregables plan original:** Panel AssetBrowser funcional con vista grid/lista.
+**Entregables entregados:** Vista grid/lista funcional, doble-click para image/scene, toggle view mode. Pendiente: thumbnails reales, drag & drop, doble-click para otros tipos, vista de tarjetas.
 
 ---
 

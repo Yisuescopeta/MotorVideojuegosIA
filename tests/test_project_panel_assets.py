@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import pyray as rl
+
 from engine.editor.project_panel import ProjectPanel
 from engine.project.project_service import ProjectService
 
@@ -85,6 +87,11 @@ class ProjectPanelAssetTests(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"name": "Intro", "entities": [], "rules": []}), encoding="utf-8")
 
+    def _asset_item(self, relative_path: str) -> dict:
+        item = self.panel._build_file_entry((self.root / relative_path).as_posix())
+        assert item is not None
+        return item
+
     def test_search_finds_assets_by_name_and_relative_path(self) -> None:
         self.panel.set_search_text("hero_ready")
         by_name = {item["relative_path"] for item in self.panel.get_visible_entries()}
@@ -146,6 +153,88 @@ class ProjectPanelAssetTests(unittest.TestCase):
         self.assertTrue(self.panel.open_selected_scene())
         self.assertEqual(self.panel.request_open_scene_for, "levels/intro.json")
 
+    def test_view_mode_defaults_to_grid_and_valid_changes_reset_scroll(self) -> None:
+        self.assertEqual(self.panel.get_view_mode(), "grid")
+
+        self.panel.scroll_offset = 42.0
+        self.panel.set_view_mode("list")
+        self.assertEqual(self.panel.get_view_mode(), "list")
+        self.assertEqual(self.panel.scroll_offset, 0.0)
+
+        self.panel.scroll_offset = 23.0
+        self.panel.set_view_mode("list")
+        self.assertEqual(self.panel.get_view_mode(), "list")
+        self.assertEqual(self.panel.scroll_offset, 0.0)
+
+        self.panel.scroll_offset = 17.0
+        self.panel.set_view_mode("invalid")
+        self.assertEqual(self.panel.get_view_mode(), "list")
+        self.assertEqual(self.panel.scroll_offset, 17.0)
+
+    def test_set_project_service_resets_view_mode_and_click_tracking(self) -> None:
+        self.panel.set_view_mode("list")
+        self.panel._last_click_key = "asset"
+        self.panel._last_click_time = 1.0
+
+        self.panel.set_project_service(self.project_service)
+
+        self.assertEqual(self.panel.get_view_mode(), "grid")
+        self.assertIsNone(self.panel._last_click_key)
+        self.assertEqual(self.panel._last_click_time, -1.0)
+
+    def test_compute_list_view_rows_scroll_zero_offset_empty_and_bounded(self) -> None:
+        self.panel._visible_entries = [{"name": f"item{i}"} for i in range(10)]
+        self.panel.scroll_offset = 0.0
+
+        rows = self.panel._compute_list_view_rows(10, 20, 200, self.panel.LIST_ROW_HEIGHT * 2)
+        self.assertEqual([row["index"] for row in rows], [0, 1])
+        self.assertEqual(rows[0]["x"], 10)
+        self.assertEqual(rows[0]["y"], 20)
+
+        self.panel.scroll_offset = float(self.panel.LIST_ROW_HEIGHT)
+        rows = self.panel._compute_list_view_rows(10, 20, 200, self.panel.LIST_ROW_HEIGHT * 2)
+        self.assertEqual([row["index"] for row in rows], [1, 2])
+
+        self.panel._visible_entries = []
+        self.assertEqual(self.panel._compute_list_view_rows(10, 20, 200, 100), [])
+
+    def test_is_double_click_true_and_false_cases(self) -> None:
+        self.panel._last_click_key = "a"
+        self.panel._last_click_time = 1.0
+
+        self.assertTrue(self.panel._is_double_click(1.2, "a"))
+        self.assertFalse(self.panel._is_double_click(1.5, "a"))
+        self.assertFalse(self.panel._is_double_click(1.2, "b"))
+        self.assertFalse(self.panel._is_double_click(0.9, "a"))
+
+    def test_double_click_image_sets_sprite_editor_request(self) -> None:
+        item = self._asset_item("assets/plain.png")
+        mouse = rl.Vector2(1, 1)
+
+        self.assertFalse(self.panel._handle_file_item_click(item, mouse, now=10.0))
+        self.assertTrue(self.panel._handle_file_item_click(item, mouse, now=10.2))
+
+        self.assertEqual(self.panel.request_open_sprite_editor_for, "assets/plain.png")
+
+    def test_double_click_scene_sets_scene_open_request(self) -> None:
+        item = self._asset_item("levels/intro.json")
+        mouse = rl.Vector2(1, 1)
+
+        self.assertFalse(self.panel._handle_file_item_click(item, mouse, now=10.0))
+        self.assertTrue(self.panel._handle_file_item_click(item, mouse, now=10.2))
+
+        self.assertEqual(self.panel.request_open_scene_for, "levels/intro.json")
+
+    def test_double_click_non_openable_asset_is_noop(self) -> None:
+        item = self._asset_item("scripts/player_logic.py")
+        mouse = rl.Vector2(1, 1)
+
+        self.assertFalse(self.panel._handle_file_item_click(item, mouse, now=10.0))
+        self.assertFalse(self.panel._handle_file_item_click(item, mouse, now=10.2))
+
+        self.assertIsNone(self.panel.request_open_sprite_editor_for)
+        self.assertIsNone(self.panel.request_open_scene_for)
+
 
 class ProjectPanelSourceRegressionTests(unittest.TestCase):
     def test_project_panel_accepts_service_without_loaded_project(self) -> None:
@@ -168,6 +257,9 @@ class ProjectPanelSourceRegressionTests(unittest.TestCase):
             "._input_system",
             "._event_bus",
             "._process_ui_requests(",
+            "engine.core.game",
+            "scene_manager",
+            "Game(",
         )
 
         for token in forbidden_tokens:
