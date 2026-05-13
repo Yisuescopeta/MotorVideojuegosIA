@@ -30,6 +30,7 @@ from engine.editor.editor_tools import EditorTool, PivotMode, SnapSettings, Tran
 from engine.editor.render_safety import safe_reset_clip_state
 from engine.editor.ui.draw import draw_border, draw_rounded_rect
 from engine.editor.ui.icons import ICON_PAUSE, ICON_PLAY
+from engine.editor.ui.panels import draw_editor_panel_frame
 from engine.editor.ui.widgets import editor_button, editor_icon_button, editor_toggle_button
 
 
@@ -792,25 +793,9 @@ class EditorLayout:
         # ========================================
         # 3. Panel Backgrounds
         # ========================================
-        # Hierarchy panel background
-        rl.draw_rectangle_rec(self.hierarchy_rect, self.UNITY_BG_DARK)
-        rl.draw_line(
-            int(self.hierarchy_rect.x + self.hierarchy_rect.width),
-            int(self.hierarchy_rect.y),
-            int(self.hierarchy_rect.x + self.hierarchy_rect.width),
-            int(self.hierarchy_rect.y + self.hierarchy_rect.height),
-            self.UNITY_BORDER,
-        )
-
-        # Inspector panel background
-        rl.draw_rectangle_rec(self.inspector_rect, self.UNITY_BG_DARK)
-        rl.draw_line(
-            int(self.inspector_rect.x),
-            int(self.inspector_rect.y),
-            int(self.inspector_rect.x),
-            int(self.inspector_rect.y + self.inspector_rect.height),
-            self.UNITY_BORDER,
-        )
+        self._draw_panel_frame(self.hierarchy_rect, "Hierarchy")
+        self._draw_panel_frame(self.inspector_rect, "Inspector")
+        self._draw_panel_frame(self.center_rect, "Viewport", active=True, subtitle=self.active_tab.title())
 
         # ========================================
         # 4. Scene Workspace Tabs
@@ -859,7 +844,7 @@ class EditorLayout:
         # ========================================
         # 7. Bottom Area (Project / Console / Terminal)
         # ========================================
-        rl.draw_rectangle_rec(self.bottom_rect, self.UNITY_BG_DARK)
+        self._draw_panel_frame(self.bottom_rect, self.active_bottom_tab.title(), active=True)
         rl.draw_line(0, int(self.bottom_rect.y), self.screen_width, int(self.bottom_rect.y), self.UNITY_BORDER)
 
         # Draw Content
@@ -1254,17 +1239,24 @@ class EditorLayout:
         hover_right = rl.check_collision_point_rec(mouse_pos, self.splitter_right_rect)
         hover_bottom = rl.check_collision_point_rec(mouse_pos, self.bottom_splitter_rect)
 
-        col_left = self.SPLITTER_HOVER_COLOR if hover_left or self.dragging_splitter == "left" else self.SPLITTER_COLOR
+        drag_color = self.UNITY_BLUE_HOVER
+        col_left = drag_color if self.dragging_splitter == "left" else self.SPLITTER_HOVER_COLOR if hover_left else self.SPLITTER_COLOR
         col_right = (
-            self.SPLITTER_HOVER_COLOR if hover_right or self.dragging_splitter == "right" else self.SPLITTER_COLOR
+            drag_color if self.dragging_splitter == "right" else self.SPLITTER_HOVER_COLOR if hover_right else self.SPLITTER_COLOR
         )
         col_bottom = (
-            self.SPLITTER_HOVER_COLOR if hover_bottom or self.dragging_splitter == "bottom" else self.SPLITTER_COLOR
+            drag_color if self.dragging_splitter == "bottom" else self.SPLITTER_HOVER_COLOR if hover_bottom else self.SPLITTER_COLOR
         )
 
-        rl.draw_rectangle_rec(self.splitter_left_rect, col_left)
-        rl.draw_rectangle_rec(self.splitter_right_rect, col_right)
-        rl.draw_rectangle_rec(self.bottom_splitter_rect, col_bottom)
+        self._draw_splitter_visual(self.splitter_left_rect, col_left)
+        self._draw_splitter_visual(self.splitter_right_rect, col_right)
+        self._draw_splitter_visual(self.bottom_splitter_rect, col_bottom)
+
+    def _draw_panel_frame(self, rect: rl.Rectangle, title: str, *, active: bool = False, subtitle: str = "") -> None:
+        draw_editor_panel_frame(_to_ui_rect(rect), title, active=active, subtitle=subtitle)
+
+    def _draw_splitter_visual(self, rect: rl.Rectangle, color: rl.Color) -> None:
+        draw_rounded_rect(_to_ui_rect(rect), (color.r, color.g, color.b, color.a), 2)
 
     def open_project_folder(self) -> None:
         """Abre la carpeta del proyecto en el explorador de archivos del sistema."""

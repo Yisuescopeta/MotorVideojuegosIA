@@ -6,6 +6,7 @@ from engine.editor.ui.icons import (
     ICON_CHEVRON_RIGHT,
     ICON_CLOSE,
     ICON_GEAR,
+    ICON_MENU,
     ICON_MINUS,
     ICON_PAUSE,
     ICON_PLAY,
@@ -27,6 +28,14 @@ from engine.editor.ui.input import (
     mouse_position,
     wheel_delta,
 )
+from engine.editor.ui.panels import (
+    begin_panel_content,
+    draw_editor_panel,
+    draw_editor_panel_frame,
+    draw_panel_header,
+    end_panel_content,
+)
+from engine.editor.ui.scroll import EditorScrollResult, editor_scroll_area
 from engine.editor.ui.theme import UNITY_DARK, EditorTheme, theme_to_raygui_map
 from engine.editor.ui.widget_state import (
     WidgetResult,
@@ -60,6 +69,7 @@ __all__ = [
     "ICON_CHEVRON_RIGHT",
     "ICON_CLOSE",
     "ICON_GEAR",
+    "ICON_MENU",
     "ICON_MINUS",
     "ICON_PAUSE",
     "ICON_PLAY",
@@ -67,10 +77,15 @@ __all__ = [
     "ICON_SEARCH",
     "ICON_STOP",
     "UNITY_DARK",
+    "EditorScrollResult",
     "WidgetResult",
     "WidgetState",
     "WidgetVisualState",
     "draw_icon",
+    "begin_panel_content",
+    "draw_editor_panel",
+    "draw_editor_panel_frame",
+    "draw_panel_header",
     "editor_badge",
     "editor_button",
     "editor_checkbox",
@@ -85,6 +100,8 @@ __all__ = [
     "editor_tab_bar",
     "editor_text_field_simple",
     "editor_toggle_button",
+    "editor_scroll_area",
+    "end_panel_content",
     "icon_exists",
     "is_clicked",
     "is_clicked_at",

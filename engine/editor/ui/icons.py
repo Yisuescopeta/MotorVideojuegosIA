@@ -18,6 +18,7 @@ ICON_ARROW_DOWN = "arrow_down"
 ICON_CHEVRON_RIGHT = "chevron_right"
 ICON_SEARCH = "search"
 ICON_GEAR = "gear"
+ICON_MENU = "menu"
 
 KNOWN_ICONS = {
     ICON_PLAY,
@@ -31,6 +32,7 @@ KNOWN_ICONS = {
     ICON_CHEVRON_RIGHT,
     ICON_SEARCH,
     ICON_GEAR,
+    ICON_MENU,
 }
 
 
@@ -110,3 +112,7 @@ def draw_icon(
         rl.draw_line(cx, bottom - 3, cx, bottom, c)
         rl.draw_line(left, cy, left + 3, cy, c)
         rl.draw_line(right - 3, cy, right, cy, c)
+    elif icon_name == ICON_MENU:
+        dot_radius = max(1, int(min(w, h) * 0.07))
+        for dot_x in (left, cx, right):
+            rl.draw_circle(dot_x, cy, dot_radius, c)
