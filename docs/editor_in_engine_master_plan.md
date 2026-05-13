@@ -4,8 +4,8 @@ doc_type: editor_plan
 status: active_plan
 created: 2026-05-13
 updated: 2026-05-14
-queen_updated: queen-20260513-006
-queen_task_id: queen-20260513-006
+queen_updated: queen-20260513-007
+queen_task_id: queen-20260513-007
 phase_scope: all
 implemented_capability: false
 ---
@@ -222,16 +222,17 @@ Mejorar el viewport del editor:
 
 ---
 
-### Fase 10 — Separación oficial Editor UI vs Runtime UI
+### Fase 10 — Separación oficial Editor UI vs Runtime UI ✅
 
-Crear separación arquitectónica clara:
-- Documentar la separación en `docs/editor_ui_architecture.md`.
-- Crear `engine/editor/ui_core/` mínimo con controles compartibles.
-- Los helpers de UI que el runtime pueda usar van en `ui_core`.
-- La UI del editor (paneles, menús, inspector) se queda en `engine/editor/ui/`.
-- Runtime UI no importa de `engine/editor/ui/` directamente.
+Separación arquitectónica completada.
 
-**Entregables:** `docs/editor_ui_architecture.md`, `engine/editor/ui_core/` con controles base reubicados.
+**Realizado (2026-05-13):**
+- ✅ `engine/editor/ui_core/` creado con 9 módulos puros: `tokens`, `colors`, `geometry`, `widget_state`, `theme`, `property_widgets`, `inspector`, `tree_view`, `__init__`. Ninguno importa pyray ni `engine.editor.ui`.
+- ✅ Legacy `engine/editor/ui/*` (8 módulos) convertidos a shims que re-exportan de `ui_core` via `import *`. La función `to_ray_color()` se queda en el shim `colors.py` por su dependencia de `pyray`.
+- ✅ `tests/test_ui_core_purity.py` — 4 tests que verifican: import sin pyray, análisis AST de imports prohibidos, accesibilidad de símbolos, identidad de objetos entre shim y core.
+- ✅ `docs/editor_ui_architecture.md` — documento canónico que define el límite Pure Core vs Impure Shell, mapa de módulos, patrón de shim, pruebas de pureza, reglas para contribuidores y relación con Runtime UI.
+
+**Entregables:** `docs/editor_ui_architecture.md`, `engine/editor/ui_core/` con controles base reubicados, shims legacy, tests de pureza.
 
 ---
 

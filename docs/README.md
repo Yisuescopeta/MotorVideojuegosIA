@@ -44,6 +44,7 @@ contradecirlos.
 - [api.md](api.md) - referencia publica de `EngineAPI`.
 - [cli.md](cli.md) - referencia oficial de la CLI `motor`.
 - [MOTOR_AI_JSON_CONTRACT.md](MOTOR_AI_JSON_CONTRACT.md) - contrato del artefacto generado `motor_ai.json`.
+- [editor_ui_architecture.md](editor_ui_architecture.md) - separación oficial Editor UI (impuro) vs `ui_core` (puro).
 
 ## Referencia operativa
 

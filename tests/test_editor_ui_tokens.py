@@ -1,6 +1,7 @@
 import unittest
 
 from engine.editor.ui import tokens
+from engine.editor import ui_core
 
 
 class EditorUITokenTests(unittest.TestCase):
@@ -46,6 +47,18 @@ class EditorUITokenTests(unittest.TestCase):
             "FONT_SIZE_LG",
         ]:
             self.assertGreater(getattr(tokens, name), 0, name)
+
+    def test_legacy_token_module_matches_ui_core(self) -> None:
+        for name in [
+            "EDITOR_BG",
+            "EDITOR_PANEL",
+            "EDITOR_ACCENT",
+            "BG_RAYGUI_DARK",
+            "ROW_HEIGHT",
+            "PANEL_PADDING",
+            "FONT_SIZE_MD",
+        ]:
+            self.assertEqual(getattr(tokens, name), getattr(ui_core, name), name)
 
 
 if __name__ == "__main__":
