@@ -28,6 +28,7 @@ from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.editor_shell_state import EditorPanelSlots, EditorShellState
 from engine.editor.editor_tools import EditorTool, PivotMode, SnapSettings, TransformSpace
 from engine.editor.render_safety import safe_reset_clip_state
+from engine.editor.toast_notifications import TOAST_MANAGER
 from engine.editor.ui.draw import draw_border, draw_rounded_rect
 from engine.editor.ui.icons import ICON_PAUSE, ICON_PLAY
 from engine.editor.ui.panels import draw_editor_panel_frame
@@ -912,6 +913,8 @@ class EditorLayout:
             self._draw_project_dirty_modal()
         if self.show_about_modal:
             self._draw_about_modal()
+
+        TOAST_MANAGER.render(self.screen_width, self.screen_height)
 
     @property
     def dropdown_active(self) -> bool:

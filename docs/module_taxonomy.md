@@ -35,6 +35,7 @@ orquestacion. Pueden ser valiosos, pero no son contrato duro del motor.
 | serializacion y schema/migraciones | `core obligatorio` | Fijan `scene schema_version = 2`, `prefab schema_version = 2` y guardado canonico. |
 | editor base | `core obligatorio` | Traduce authoring al modelo compartido. |
 | `engine/editor/ui/` | `editor/base` | Tokens, tema, geometria, data models y wrappers minimos de dibujo compartidos por el editor; no son fuente de verdad serializable. |
+| `engine/editor/toast_notifications.py` | `editor/base` | `ToastManager`: notificaciones temporales con niveles (INFO/WARN/ERR/DEBUG), auto-dismiss, render en esquina inferior-derecha del editor. Singleton `TOAST_MANAGER`. No es fuente de verdad serializable. |
 | jerarquia | `core obligatorio` | Forma parte de datos serializables y tests de authoring. |
 | `EngineAPI` | `core obligatorio` | Fachada estable para agentes, tests, CLI y automatizacion. |
 | contrato comun de physics backends + fallback `legacy_aabb` | `core obligatorio` | Garantiza una ruta fisica base y queries publicas. |

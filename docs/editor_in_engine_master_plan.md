@@ -4,8 +4,8 @@ doc_type: editor_plan
 status: active_plan
 created: 2026-05-13
 updated: 2026-05-13
-queen_updated: queen-20260513-004
-queen_task_id: queen-20260513-004
+queen_updated: queen-20260513-005
+queen_task_id: queen-20260513-005
 phase_scope: all
 implemented_capability: false
 ---
@@ -186,7 +186,16 @@ Construir el panel de consola y feedback:
 - Notificaciones del sistema (toast, notificaciones de error breve).
 - Seguridad: sanitizar input de comandos, no exponer APIs internas peligrosas.
 
-**Entregables:** Panel Console funcional, sistema de notificaciones.
+**Estado real (2026-05-13, completado):**
+- ✅ Nivel DEBUG — `log_debug()`, toggle button en toolbar, icono `(#)` y color SKYBLUE.
+- ✅ Filtros por nivel — checkboxes INFO/WARN/ERROR/DEBUG. Search text input con filtro case-insensitive sobre mensaje y nivel.
+- ✅ Badges de conteo — barra de herramientas muestra `I:N W:N E:N D:N` en tiempo real.
+- ✅ Command input — campo de texto en parte inferior. Comandos allowlist: `help`, `clear`, `echo <text>`, `toggle_debug`, `version`, `time`. Rechaza comandos desconocidos con "Unknown command:". **Sin shell, sin scripts.**
+- ✅ Toast notifications — `engine/editor/toast_notifications.py`: `ToastManager` con niveles INFO/WARN/ERR/DEBUG, auto-dismiss por duration, render en esquina inferior-derecha, singleton `TOAST_MANAGER`.
+- ✅ EditorLayout integrado — `TOAST_MANAGER.render()` llamado al final de `EditorLayout.render()`.
+- ✅ Tests unitarios — cobertura de `log_debug`, `_count_by_level`, `_get_filtered_logs` con filtros combinados, `_execute_command` con todos los comandos allowlist + unknown, `clear` y `toggle_debug`.
+
+**Entregables:** Panel Console con search, badges, debug level, command allowlist. Sistema de toasts integrado en EditorLayout.
 
 ---
 
