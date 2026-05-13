@@ -31,6 +31,18 @@ class EditorUIGeometryTests(unittest.TestCase):
         self.assertEqual(clamp_rect((90, 90, 20, 20), (0, 0, 100, 100)), (80, 80, 20, 20))
         self.assertEqual(clamp_rect((-10, -10, 150, 150), (0, 0, 100, 100)), (0, 0, 100, 100))
 
+    def test_split_helpers_clamp_negative_and_oversized_values(self) -> None:
+        rect = (0, 0, 10, 8)
+        self.assertEqual(split_top(rect, -5), ((0, 0, 10, 0.0), (0, 0.0, 10, 8.0)))
+        self.assertEqual(split_left(rect, 99), ((0, 0, 10, 8), (10, 0, 0, 8)))
+
+    def test_rect_contains_zero_size_and_negative_size(self) -> None:
+        self.assertTrue(rect_contains((5, 5, 0, 0), 5, 5))
+        self.assertFalse(rect_contains((5, 5, -1, 10), 5, 5))
+
+    def test_clamp_rect_handles_negative_rect_size(self) -> None:
+        self.assertEqual(clamp_rect((4, 4, -1, -2), (0, 0, 10, 10)), (4, 4, 0.0, 0.0))
+
 
 if __name__ == "__main__":
     unittest.main()

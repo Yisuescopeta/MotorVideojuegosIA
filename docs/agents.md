@@ -627,6 +627,9 @@ alcance y reporte final claro si termina `partial`, `blocked` o `failed`.
 - Quiero entender `motor_ai.json`: [MOTOR_AI_JSON_CONTRACT.md](MOTOR_AI_JSON_CONTRACT.md).
 - Quiero cambiar documentacion: [documentation_governance.md](documentation_governance.md).
 - Quiero entender el plan del editor in-engine: [editor_in_engine_master_plan.md](editor_in_engine_master_plan.md). Es plan/desarrollo paralelo — no contrato de capacidad implementada.
+- Para fases internas de editor, `engine/editor/ui/` contiene toolkit inmediato
+  del editor; no es `EngineAPI`, no es CLI oficial y no representa Runtime UI
+  serializable.
 - Quiero contexto historico: [archive/](archive/).
 
 ## Checks minimos antes de entregar docs o contratos
