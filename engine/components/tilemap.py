@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import copy
 import math
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from engine.assets.asset_reference import clone_asset_reference, normalize_asset_reference
 from engine.ecs.component import Component

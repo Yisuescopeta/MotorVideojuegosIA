@@ -4,6 +4,9 @@ import random
 from types import SimpleNamespace
 from typing import Any
 
+GymEnvBase: Any
+spaces: Any
+
 try:
     import gymnasium as gym  # type: ignore
     from gymnasium import spaces  # type: ignore

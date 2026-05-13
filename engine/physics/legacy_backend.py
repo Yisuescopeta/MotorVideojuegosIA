@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from engine.components.animatable_body_2d import AnimatableBody2D
 from engine.components.collider import Collider
@@ -338,7 +338,7 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
                         "is_trigger": bool(result.get("is_trigger", False)),
                     }
 
-        return [best_hit] if best_hit is not None else []
+        return [cast(PhysicsShapeCastHit, best_hit)] if best_hit is not None else []
 
     def _swept_toi(
         self,

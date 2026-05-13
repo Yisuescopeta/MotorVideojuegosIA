@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Union, cast
 
 from engine.api._context import EngineAPIComponent
 from engine.api.types import ActionResult, EngineStatus, EntityData, MotionTestResult, ShapeCastResult
@@ -434,7 +434,7 @@ class RuntimeAPI(EngineAPIComponent):
                 travel_y=motion_y,
                 collision_safe_fraction=1.0,
             )
-        return runtime.query_physics_motion(
+        return cast(MotionTestResult, runtime.query_physics_motion(
             entity_name, motion_x, motion_y,
             margin=margin,
             recovery_as_collision=recovery_as_collision,
@@ -442,7 +442,7 @@ class RuntimeAPI(EngineAPIComponent):
             collision_mask=collision_mask,
             collide_with_bodies=collide_with_bodies,
             collide_with_areas=collide_with_areas,
-        )
+        ))
 
     def list_physics_backends(self) -> list[PhysicsBackendInfo]:
         """List all available physics backends with their capabilities.

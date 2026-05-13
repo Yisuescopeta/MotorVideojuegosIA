@@ -18,7 +18,7 @@ Fábrica:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
 from engine.physics.contact_data import ContactManifold2D, ContactPoint2D
 
@@ -866,7 +866,7 @@ class ShapeFactory:
         shape_type: str,
         cx: float,
         cy: float,
-        **params: float,
+        **params: Any,
     ) -> ShapeInstance:
         """Crea ShapeInstance desde parámetros explícitos en (cx, cy).
 
@@ -893,8 +893,13 @@ class ShapeFactory:
             return CapsuleShape(cx, cy, radius, height)
 
         if st == "polygon":
-            vertices_raw = params.get("vertices", [])
-            world_verts = [(cx + v[0], cy + v[1]) for v in vertices_raw]
+            vertices_value = params.get("vertices", [])
+            vertices_raw: list[Any] = list(vertices_value) if isinstance(vertices_value, (list, tuple)) else []
+            world_verts = [
+                (cx + float(v[0]), cy + float(v[1]))
+                for v in vertices_raw
+                if isinstance(v, (list, tuple)) and len(v) >= 2
+            ]
             return PolygonShape(world_verts)
 
         # fallback: box

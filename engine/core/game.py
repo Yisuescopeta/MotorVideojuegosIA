@@ -19,7 +19,7 @@ CONTROLES:
 
 import random
 import time
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional, cast
 
 import pyray as rl
 from engine.app import (
@@ -90,9 +90,9 @@ if TYPE_CHECKING:
     from engine.systems.parallax_system import ParallaxSystem
     from engine.systems.particle_system import ParticleSystem
     from engine.systems.path_follow_system import PathFollowSystem
-    from engine.systems.raycast_2d_system import RayCast2DSystem
     from engine.systems.physics_system import PhysicsSystem
     from engine.systems.player_controller_system import PlayerControllerSystem
+    from engine.systems.raycast_2d_system import RayCast2DSystem
     from engine.systems.render_system import RenderSystem
     from engine.systems.resource_preloader_system import ResourcePreloaderSystem
     from engine.systems.script_behaviour_system import ScriptBehaviourSystem
@@ -765,7 +765,10 @@ class Game:
     def set_raycast_2d_system(self, system: "RayCast2DSystem") -> None:
         self._raycast_2d_system = system
         system.set_ray_cast_query(
-            lambda ox, oy, dx, dy, md: self.query_physics_ray(ox, oy, dx, dy, md)
+            cast(
+                Callable[[float, float, float, float, float], list[dict[Any, Any]]],
+                lambda ox, oy, dx, dy, md: self.query_physics_ray(ox, oy, dx, dy, md),
+            )
         )
 
     def set_ui_focus_system(self, system: "UIFocusSystem") -> None:
