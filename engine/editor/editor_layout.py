@@ -290,6 +290,11 @@ class EditorLayout:
         self.editor_camera.zoom = 1.0
         self.editor_camera.offset = rl.Vector2(0, 0)
         self.editor_camera.target = rl.Vector2(0, 0)
+        self.grid_enabled = True
+        self.grid_step_size = 50
+        self.grid_opacity = 10
+        self.grid_show_center_lines = True
+        self.viewport_overlay_context: dict[str, Any] = {"selected_entity": None}
 
         # Rects
         self.hierarchy_rect = rl.Rectangle(0, 0, 0, 0)
@@ -350,6 +355,30 @@ class EditorLayout:
     def set_project_scene_entries(self, scene_entries: list[dict]) -> None:
         self.project_scene_entries = [dict(item) for item in scene_entries]
         self._clamp_scene_browser_scroll()
+
+    def set_grid_config(
+        self,
+        enabled: Optional[bool] = None,
+        step_size: Optional[int] = None,
+        opacity: Optional[int] = None,
+        show_center_lines: Optional[bool] = None,
+    ) -> None:
+        if enabled is not None:
+            self.grid_enabled = bool(enabled)
+        if step_size is not None:
+            self.grid_step_size = max(5, min(500, int(step_size)))
+        if opacity is not None:
+            self.grid_opacity = max(0, min(255, int(opacity)))
+        if show_center_lines is not None:
+            self.grid_show_center_lines = bool(show_center_lines)
+
+    def reset_camera(self) -> None:
+        self.editor_camera.zoom = 1.0
+        self.editor_camera.target = rl.Vector2(0, 0)
+        self._sync_editor_camera_offset()
+
+    def set_viewport_overlay_context(self, *, selected_entity: Optional[Any] = None) -> None:
+        self.viewport_overlay_context = {"selected_entity": selected_entity}
 
     def set_launcher_feedback(self, message: str, is_error: bool = False) -> None:
         self.launcher_feedback_text = str(message or "")
@@ -548,6 +577,10 @@ class EditorLayout:
 
         # C. Camera Logic (Only if SCENE tab active)
         if self.active_tab == "SCENE":
+            if rl.is_key_pressed(rl.KEY_HOME):
+                if self.active_bottom_tab != "TERMINAL":
+                    self.reset_camera()
+
             is_hover_view = rl.check_collision_point_rec(mouse_pos, self.get_center_view_rect())
 
             if is_hover_view or self.is_panning:
@@ -835,7 +868,8 @@ class EditorLayout:
         else:
             rl.draw_rectangle_rec(view_rect, self.VIEW_BG_COLOR)
 
-        rl.draw_rectangle_lines_ex(view_rect, 1, self.UNITY_BORDER)
+        self._draw_viewport_chrome(view_rect)
+        self._draw_viewport_overlay(view_rect)
 
         # ========================================
         # 6. Splitters
@@ -1973,6 +2007,60 @@ class EditorLayout:
         view_rect = self.get_center_view_rect()
         self.editor_camera.offset = rl.Vector2(view_rect.width / 2, view_rect.height / 2)
 
+    def _draw_viewport_chrome(self, view_rect: rl.Rectangle) -> None:
+        shadow = rl.Color(0, 0, 0, 80)
+        accent = rl.Color(self.UNITY_BLUE_HOVER.r, self.UNITY_BLUE_HOVER.g, self.UNITY_BLUE_HOVER.b, 150)
+        shadow_rect = rl.Rectangle(view_rect.x + 2, view_rect.y + 2, view_rect.width, view_rect.height)
+        rl.draw_rectangle_lines_ex(shadow_rect, 2, shadow)
+        rl.draw_rectangle_lines_ex(view_rect, 1, self.UNITY_BORDER)
+
+        x = int(view_rect.x)
+        y = int(view_rect.y)
+        right = int(view_rect.x + view_rect.width)
+        bottom = int(view_rect.y + view_rect.height)
+        length = 16
+        rl.draw_line(x, y, x + length, y, accent)
+        rl.draw_line(x, y, x, y + length, accent)
+        rl.draw_line(right - length, y, right, y, accent)
+        rl.draw_line(right, y, right, y + length, accent)
+        rl.draw_line(x, bottom, x + length, bottom, accent)
+        rl.draw_line(x, bottom - length, x, bottom, accent)
+        rl.draw_line(right - length, bottom, right, bottom, accent)
+        rl.draw_line(right, bottom - length, right, bottom, accent)
+
+    def _draw_viewport_overlay(self, view_rect: rl.Rectangle) -> None:
+        try:
+            fps = int(rl.get_fps())
+        except Exception:
+            fps = 0
+
+        lines = [
+            f"FPS {fps}",
+            f"Zoom {self.editor_camera.zoom:.2f}",
+            f"Target {self.editor_camera.target.x:.1f}, {self.editor_camera.target.y:.1f}",
+        ]
+        if self.active_tab == "SCENE":
+            try:
+                mouse_world = self.get_scene_mouse_pos()
+                lines.insert(1, f"Mouse {mouse_world.x:.1f}, {mouse_world.y:.1f}")
+            except Exception:
+                pass
+        selected = self.viewport_overlay_context.get("selected_entity")
+        if selected is not None:
+            lines.append(f"Selected {selected}")
+
+        padding = 8
+        line_h = 14
+        width = max((self._measure_text(line, 10) for line in lines), default=0) + padding * 2
+        height = len(lines) * line_h + padding * 2
+        overlay = rl.Rectangle(view_rect.x + 8, view_rect.y + 8, float(width), float(height))
+        rl.draw_rectangle_rec(overlay, rl.Color(0, 0, 0, 105))
+        rl.draw_rectangle_lines_ex(overlay, 1, rl.Color(255, 255, 255, 28))
+        text_y = int(overlay.y + padding)
+        for line in lines:
+            rl.draw_text(line, int(overlay.x + padding), text_y, 10, self.UNITY_TEXT)
+            text_y += line_h
+
     def _draw_project_modal(self) -> None:
         rl.draw_rectangle(0, 0, self.screen_width, self.screen_height, rl.Color(0, 0, 0, 150))
         modal = rl.Rectangle(self.screen_width / 2 - 260, self.screen_height / 2 - 180, 520, 360)
@@ -2042,6 +2130,9 @@ class EditorLayout:
             self.show_project_dirty_modal = False
 
     def _draw_grid_2d(self) -> None:
+        if not self.grid_enabled:
+            return
+
         # Unity Style Grid
         # Thick lines every 10 units, Thin every 1 unit
 
@@ -2050,14 +2141,16 @@ class EditorLayout:
         # But we work in world units.
 
         # Center lines
-        rl.draw_line(-10000, 0, 10000, 0, rl.Color(100, 100, 100, 100))
-        rl.draw_line(0, -10000, 0, 10000, rl.Color(100, 100, 100, 100))
+        if self.grid_show_center_lines:
+            center_alpha = max(self.grid_opacity, min(255, self.grid_opacity * 10))
+            rl.draw_line(-10000, 0, 10000, 0, rl.Color(100, 100, 100, center_alpha))
+            rl.draw_line(0, -10000, 0, 10000, rl.Color(100, 100, 100, center_alpha))
 
         # Grid
         # Needs to be efficient. With Raylib rlBeginMode2D, grid is world space.
-        grid_color = rl.Color(255, 255, 255, 10)  # Very faint
+        grid_color = rl.Color(255, 255, 255, self.grid_opacity)  # Very faint
         steps = 50
-        step_size = 50
+        step_size = self.grid_step_size
 
         for i in range(-steps, steps + 1):
             if i == 0:

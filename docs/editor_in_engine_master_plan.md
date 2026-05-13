@@ -3,9 +3,9 @@ schema_version: 1
 doc_type: editor_plan
 status: active_plan
 created: 2026-05-13
-updated: 2026-05-13
-queen_updated: queen-20260513-005
-queen_task_id: queen-20260513-005
+updated: 2026-05-14
+queen_updated: queen-20260513-006
+queen_task_id: queen-20260513-006
 phase_scope: all
 implemented_capability: false
 ---
@@ -208,7 +208,17 @@ Mejorar el viewport del editor:
 - Overlay de información (FPS, coordenadas, nodo seleccionado).
 - Profesionalizar el viewport: bordes, sombra exterior, esquinas.
 
-**Entregables:** Viewport con grid, cámara, gizmo de movimiento, overlay de info.
+**Estado real (2026-05-14, entregado sin gizmo):**
+- ✅ Grid configurable — `grid_enabled`, `grid_step_size` (5–500), `grid_opacity` (0–255), `grid_show_center_lines`. Método `set_grid_config()` con clamping.
+- ✅ Reset de cámara — `reset_camera()` lleva zoom y target al origen. Tecla **Home** en tab SCENE (no en TERMINAL).
+- ✅ Viewport chrome — sombra exterior (2px offset, alpha 80), borde UNITY_BORDER, 8 corner accent lines (16px, color UNITY_BLUE_HOVER alpha 150).
+- ✅ Viewport overlay — semitransparente (α=105) en esquina superior-izquierda del viewport. Muestra: FPS, Mouse (solo tab SCENE, screen-to-world), Zoom, Target. Si `viewport_overlay_context["selected_entity"]` está definido, muestra `Selected <nombre>`. No hace world lookup ni frame-selected.
+- ✅ Tests unitarios — `test_editor_layout_fase9.py`: grid defaults, grid config clamping, reset_camera + offset sync, Home shortcut con/sin terminal, overlay context, smoke draw_layout con chrome+overlay, scene_mouse_pos con coordenadas locales del viewport.
+- ❌ Gizmo (mover/rotar/escalar) — NO implementado. No se tocaron `game.py`, gizmo files ni archivos críticos.
+- ❌ Botón Home en toolbar — NO implementado. Solo atajo de teclado Home.
+
+**Entregables plan original:** Viewport con grid, cámara, gizmo de movimiento, overlay de info.
+**Entregables entregados:** Grid configurable, reset cámara (Home), viewport chrome (sombra + esquinas), overlay informativo con FPS/mouse/cámara/selected-if-provided. Gizmo de movimiento y botón Home pendientes.
 
 ---
 
