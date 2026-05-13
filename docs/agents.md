@@ -626,6 +626,7 @@ alcance y reporte final claro si termina `partial`, `blocked` o `failed`.
 - Quiero automatizar por CLI: [cli.md](cli.md).
 - Quiero entender `motor_ai.json`: [MOTOR_AI_JSON_CONTRACT.md](MOTOR_AI_JSON_CONTRACT.md).
 - Quiero cambiar documentacion: [documentation_governance.md](documentation_governance.md).
+- Quiero entender el plan del editor in-engine: [editor_in_engine_master_plan.md](editor_in_engine_master_plan.md). Es plan/desarrollo paralelo — no contrato de capacidad implementada.
 - Quiero contexto historico: [archive/](archive/).
 
 ## Checks minimos antes de entregar docs o contratos
