@@ -28,6 +28,13 @@ from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.editor_shell_state import EditorPanelSlots, EditorShellState
 from engine.editor.editor_tools import EditorTool, PivotMode, SnapSettings, TransformSpace
 from engine.editor.render_safety import safe_reset_clip_state
+from engine.editor.ui.draw import draw_border, draw_rounded_rect
+from engine.editor.ui.icons import ICON_PAUSE, ICON_PLAY
+from engine.editor.ui.widgets import editor_button, editor_icon_button, editor_toggle_button
+
+
+def _to_ui_rect(rect: rl.Rectangle) -> tuple[float, float, float, float]:
+    return (float(rect.x), float(rect.y), float(rect.width), float(rect.height))
 
 _SHELL_STATE_FIELDS = (
     "active_tab",
@@ -1316,29 +1323,8 @@ class EditorLayout:
             rect = rl.Rectangle(tool_x, tool_y, tool_size, tool_size)
             self._register_cursor_rect(rect)
             is_active = self.active_tool == tool
-
-            # Toggle manual (sin punteros)
-            mouse_pos = rl.get_mouse_position()
-            is_hover = rl.check_collision_point_rec(mouse_pos, rect)
-
-            # Colores
-            if is_active:
-                bg_color = self.UNITY_BLUE
-            elif is_hover:
-                bg_color = self.UNITY_BUTTON_HOVER
-            else:
-                bg_color = self.UNITY_BUTTON
-
-            rl.draw_rectangle_rec(rect, bg_color)
-
-            # Texto centrado
-            text_w = self._measure_text(shortcut, 10)
-            text_x = int(tool_x + (tool_size - text_w) // 2)
-            text_y = int(tool_y + (tool_size - 10) // 2)
-            rl.draw_text(shortcut, text_x, text_y, 10, self.UNITY_TEXT)
-
-            # Click
-            if is_hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+            result = editor_toggle_button(_to_ui_rect(rect), shortcut, is_active)
+            if result.clicked:
                 self.set_active_tool(tool)
 
             tool_x += tool_size + tool_spacing
@@ -1394,20 +1380,19 @@ class EditorLayout:
         # Play button
         play_rect = rl.Rectangle(center_x - btn_width - 20, play_y, btn_width, btn_height)
         self._register_cursor_rect(play_rect)
-        play_text = "||" if is_playing else ">"  # Pause o Play symbol
-        if rl.gui_button(play_rect, play_text):
+        if editor_icon_button(_to_ui_rect(play_rect), ICON_PLAY, active=is_playing).clicked:
             self.request_play = True
 
         # Pause button (solo visible durante play)
         pause_rect = rl.Rectangle(center_x - btn_width // 2, play_y, btn_width, btn_height)
         self._register_cursor_rect(pause_rect)
-        if rl.gui_button(pause_rect, "||"):
+        if editor_icon_button(_to_ui_rect(pause_rect), ICON_PAUSE).clicked:
             self.request_pause = True
 
         # Step button
         step_rect = rl.Rectangle(center_x + 20, play_y, btn_width, btn_height)
         self._register_cursor_rect(step_rect)
-        if rl.gui_button(step_rect, ">|"):
+        if editor_button(_to_ui_rect(step_rect), ">|").clicked:
             self.request_step = True
 
         # ========================================
@@ -1471,42 +1456,51 @@ class EditorLayout:
         file_btn_w = 40
         file_x = center_x + 100
 
-        if rl.gui_button(rl.Rectangle(file_x, play_y, file_btn_w, btn_height), "New"):
+        new_rect = rl.Rectangle(file_x, play_y, file_btn_w, btn_height)
+        self._register_cursor_rect(new_rect)
+        if editor_button(_to_ui_rect(new_rect), "New").clicked:
             self.show_create_scene_modal = True
             self.scene_create_name = "New Scene"
             self.scene_create_name_focused = True
 
         file_x += file_btn_w + 5
-        if rl.gui_button(rl.Rectangle(file_x, play_y, file_btn_w, btn_height), "Open"):
+        open_rect = rl.Rectangle(file_x, play_y, file_btn_w, btn_height)
+        self._register_cursor_rect(open_rect)
+        if editor_button(_to_ui_rect(open_rect), "Open").clicked:
             self.request_load_scene = True
 
         file_x += file_btn_w + 5
-        if rl.gui_button(rl.Rectangle(file_x, play_y, file_btn_w, btn_height), "Save"):
+        save_rect = rl.Rectangle(file_x, play_y, file_btn_w, btn_height)
+        self._register_cursor_rect(save_rect)
+        if editor_button(_to_ui_rect(save_rect), "Save").clicked:
             self.request_save_scene = True
 
         file_x += file_btn_w + 5
-        if rl.gui_button(rl.Rectangle(file_x, play_y, 52, btn_height), "Project"):
+        project_rect = rl.Rectangle(file_x, play_y, 52, btn_height)
+        self._register_cursor_rect(project_rect)
+        if editor_button(_to_ui_rect(project_rect), "Project").clicked:
             self.show_project_modal = True
         file_x += 57
-        if rl.gui_button(rl.Rectangle(file_x, play_y, 52, btn_height), "Canvas"):
+        canvas_rect = rl.Rectangle(file_x, play_y, 52, btn_height)
+        self._register_cursor_rect(canvas_rect)
+        if editor_button(_to_ui_rect(canvas_rect), "Canvas").clicked:
             self.request_create_canvas = True
         file_x += 57
-        if rl.gui_button(rl.Rectangle(file_x, play_y, 44, btn_height), "Text"):
+        text_rect = rl.Rectangle(file_x, play_y, 44, btn_height)
+        self._register_cursor_rect(text_rect)
+        if editor_button(_to_ui_rect(text_rect), "Text").clicked:
             self.request_create_ui_text = True
         file_x += 49
-        if rl.gui_button(rl.Rectangle(file_x, play_y, 56, btn_height), "Button"):
+        button_rect = rl.Rectangle(file_x, play_y, 56, btn_height)
+        self._register_cursor_rect(button_rect)
+        if editor_button(_to_ui_rect(button_rect), "Button").clicked:
             self.request_create_ui_button = True
 
     def _draw_toolbar_toggle(self, x: int, y: int, label: str, is_active: bool, on_click, height: int = 20) -> int:
         width = self._measure_text(label, 10) + 16
         rect = rl.Rectangle(x, y, width, height)
         self._register_cursor_rect(rect)
-        hover = rl.check_collision_point_rec(rl.get_mouse_position(), rect)
-        bg_color = self.UNITY_BLUE if is_active else (self.UNITY_BUTTON_HOVER if hover else self.UNITY_BUTTON)
-        rl.draw_rectangle_rec(rect, bg_color)
-        rl.draw_rectangle_lines_ex(rect, 1, self.UNITY_BORDER)
-        rl.draw_text(label, int(rect.x + 8), int(rect.y + (rect.height - 10) / 2), 10, self.UNITY_TEXT)
-        if hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+        if editor_toggle_button(_to_ui_rect(rect), label, is_active).clicked:
             on_click()
         return int(x + width)
 
@@ -1719,8 +1713,6 @@ class EditorLayout:
         rl.draw_line(0, self.MENU_HEIGHT - 1, self.screen_width, self.MENU_HEIGHT - 1, self.UNITY_BORDER)
 
         items = list(self._MENU_DEFINITIONS.keys())
-        mouse = rl.get_mouse_position()
-        clicked = rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT)
         x = 8
 
         for item in items:
@@ -1729,19 +1721,10 @@ class EditorLayout:
             rect = rl.Rectangle(x, 1, item_width, self.MENU_HEIGHT - 2)
             self._menu_item_rects[item] = rect
             self._register_cursor_rect(rect)
-
-            is_hover = rl.check_collision_point_rec(mouse, rect)
             is_active = self._active_menu == item
 
-            if is_active:
-                rl.draw_rectangle_rec(rect, self.UNITY_BLUE)
-            elif is_hover:
-                rl.draw_rectangle_rec(rect, self.UNITY_BG_LIGHT)
-
-            text_x = x + (item_width - text_width) // 2
-            rl.draw_text(item, int(text_x), 5, 10, self.UNITY_TEXT)
-
-            if is_hover and clicked:
+            result = editor_button(_to_ui_rect(rect), item, active=is_active)
+            if result.clicked:
                 if self._active_menu == item:
                     self._active_menu = None
                 else:
@@ -1797,8 +1780,10 @@ class EditorLayout:
         """Dibuja un tab estilo Unity con línea azul inferior si está activo."""
         # Fondo del tab
         self._register_cursor_rect(rect)
-        bg_color = self.UNITY_TAB_ACTIVE if is_active else self.UNITY_TAB_INACTIVE
-        rl.draw_rectangle_rec(rect, bg_color)
+        tab_color = self.UNITY_TAB_ACTIVE if is_active else self.UNITY_TAB_INACTIVE
+        bg_color = (tab_color.r, tab_color.g, tab_color.b, tab_color.a)
+        draw_rounded_rect(_to_ui_rect(rect), bg_color, radius=3.0)
+        draw_border(_to_ui_rect(rect), (25, 25, 25, 255))
 
         # Línea azul inferior si está activo
         if is_active:
