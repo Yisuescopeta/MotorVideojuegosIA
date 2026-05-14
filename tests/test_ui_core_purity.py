@@ -18,6 +18,11 @@ UI_CORE_MODULES = [
     "property_widgets",
     "inspector",
     "tree_view",
+    "controls/__init__",
+    "controls/events",
+    "controls/control",
+    "controls/container",
+    "controls/focus",
 ]
 
 

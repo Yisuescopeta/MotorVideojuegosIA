@@ -236,16 +236,22 @@ Separación arquitectónica completada.
 
 ---
 
-### Fase 11 — Control tree retained-mode v1
+### Fase 11 — Control tree retained-mode v1 ✅
 
-Implementar sistema de controles retained-mode tipo Godot:
-- `measure()` y `arrange()` para layout.
-- Sistema de eventos (mouse_enter, mouse_exit, click, drag, focus, blur).
-- Focus management con tab-order.
-- Controles base: Control, Container, Button, Label, Panel.
-- Demo de controles retained-mode funcionando en el editor.
+Sistema de controles retained-mode tipo Godot completado.
 
-**Entregables:** `engine/editor/ui/controls/` con controles retained-mode, demo funcional.
+**Realizado (2026-05-14):**
+- ✅ `engine/editor/ui_core/controls/` creado con 5 módulos puros: `events` (ControlEvent, ControlEventKind, Size, Anchor, Margin), `control` (Control, Label, Button, Panel, TextureRect), `container` (Container, VBoxContainer, HBoxContainer, ScrollContainer), `focus` (FocusManager con tab-order), `__init__`. Ninguno importa pyray.
+- ✅ `measure()` y `arrange()` para layout. Soporta expand_h/expand_v, spacing, alignment (start/center/end) en containers horizontales y verticales.
+- ✅ Sistema de eventos: MOUSE_ENTER, MOUSE_EXIT, MOUSE_DOWN, MOUSE_UP, CLICK, DOUBLE_CLICK, DRAG_START, DRAG, DRAG_END, FOCUS_GAIN, FOCUS_LOST, KEY_DOWN, KEY_UP, RESIZED, SCROLL.
+- ✅ FocusManager con tab-order: `build_tab_order()`, `focus_next()`, `focus_prev()`, `pick_at()` para picking descendente, `grab()`/`ungrab()` para modal grab.
+- ✅ Controles base: Control, Label (texto con font_size), Button (con on_click callback), Panel (contenedor simple), TextureRect (placeholder).
+- ✅ `engine/editor/ui/controls.py` — impure shell: `render_control()` con pyray, `process_input()` para input de ratón/teclado, `demo_control_tree()` para demo funcional.
+- ✅ `engine/editor/ui_core/__init__.py` — exporta todos los símbolos de controls.
+- ✅ Tests: `tests/test_ui_core_controls.py` — 45 tests cubriendo Size, eventos, Control base (add_child, global_rect, contains_point, dispatch, focus), Label, Button, Panel, TextureRect, Container (VBox/HBox con expand, spacing, alignment, margin), ScrollContainer, FocusManager (tab-order, pick_at, grab), pureza de imports.
+- ✅ Pureza verificada: purity test extendido con 5 nuevos módulos.
+
+**Entregables:** `engine/editor/ui_core/controls/` con controles retained-mode puros, `engine/editor/ui/controls.py` con render impuro, demo funcional, tests completos.
 
 ---
 

@@ -44,6 +44,11 @@ El runtime UI (cuando exista) debe importar solo de `ui_core`, nunca de `ui`.
 | `inspector.py` | `InspectorGroup`, `InspectorModel`, `build_inspector_model_from_dict()` | `property_widgets` |
 | `tree_view.py` | `TreeModel`, `TreeNode`, `matches_search()`, `filter_nodes()` | solo stdlib |
 | `__init__.py` | Re-export público de todos los símbolos de ui_core | todos los anteriores |
+| `controls/__init__.py` | Re-export de símbolos públicos del subpaquete controls | todos los de controls/ |
+| `controls/events.py` | `ControlEvent`, `ControlEventKind`, `Size`, `Anchor`, `Margin` | solo stdlib |
+| `controls/control.py` | `Control`, `Label`, `Button`, `Panel`, `TextureRect` retained-mode | `controls.events`, `controls.focus` (TYPE_CHECKING) |
+| `controls/container.py` | `Container`, `VBoxContainer`, `HBoxContainer`, `ScrollContainer` con measure/arrange | `controls.control`, `controls.events` |
+| `controls/focus.py` | `FocusManager` con tab-order, grab, pick_at | `controls.control` (TYPE_CHECKING) |
 
 Regla: **ningún módulo en `ui_core` puede importar `pyray`, `engine.editor.ui`,
 ni ningún módulo del runtime.**
@@ -66,6 +71,7 @@ ni ningún módulo del runtime.**
 | `panels.py` | impuro (layout de paneles) | `ui_core.*`, `pyray` |
 | `scroll.py` | impuro (scroll con pyray) | `ui_core.*`, `pyray` |
 | `widgets.py` | impuro (widgets raygui) | `ui_core.*`, `pyray` |
+| `controls.py` | impuro (render retained-mode + process_input + `demo_control_tree()`) | `ui_core.controls.*`, `pyray` |
 
 La función `to_ray_color()` es la única función que vive en el shim
 `colors.py` (no en `ui_core.colors`) porque requiere `import pyray` en

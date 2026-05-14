@@ -281,7 +281,9 @@ The entries below are available now and are safe to use from the CLI.
 
 - `physics:backend:list`: List available physics backends and their status
 - `physics:query:aabb`: Query physics entities within an axis-aligned bounding box
+- `physics:query:motion`: Test entity motion against physics world without applying it
 - `physics:query:ray`: Cast a ray and find intersecting physics bodies
+- `physics:query:shape-cast`: Cast a shape through physics world and find intersections
 
 ### Introspection
 

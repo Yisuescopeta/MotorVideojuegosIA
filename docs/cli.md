@@ -642,6 +642,107 @@ Rehace la ultima accion deshecha. Usa `EngineAPI.redo()` internamente.
 py -m motor runtime redo --project . --json
 ```
 
+## Física
+
+Los comandos `motor physics` consultan el backend físico del runtime.
+Son read-only y stateless: no mutan la escena ni el estado de authoring.
+Usan `EngineAPI` y el `PhysicsBackend` activo (por defecto `legacy_aabb`).
+Si no hay escena activa en el proceso CLI, cargan una escena fallback solo
+para la consulta runtime y lo reportan en `warnings`.
+
+### `motor physics backend list`
+
+Lista los backends físicos disponibles y cuál está activo.
+
+```bash
+py -m motor physics backend list --project . --json
+```
+
+El JSON incluye:
+- `backends`: lista con `name`, `available` y `unavailable_reason` por backend.
+- `active_backend`: nombre del backend activo.
+- `selection`: `requested_backend`, `effective_backend`, `used_fallback` y `fallback_reason`.
+- `count`: total de backends listados.
+
+### `motor physics query aabb`
+
+Consulta colisionadores que solapan un AABB (axis-aligned bounding box).
+Retorna las entidades cuyos colliders intersectan el rectángulo dado.
+
+```bash
+py -m motor physics query aabb 0 0 640 480 --project . --json
+```
+
+Parámetros posicionales: `left`, `top`, `right`, `bottom`.
+
+El JSON incluye:
+- `query`: AABB consultado (`left`, `top`, `right`, `bottom`).
+- `hits`: lista de colisionadores encontrados. Cada hit incluye `entity_id`, `entity_name` y `position`.
+- `count`: número de hits.
+- `status_after`: estado del runtime tras la consulta (`state`, `frame`, `time`, `fps`, `entity_count`).
+
+### `motor physics query ray`
+
+Lanza un rayo y retorna el primer colisionador intersectado (o ninguno).
+
+```bash
+py -m motor physics query ray 0 0 1 0 --project . --json
+py -m motor physics query ray 100 200 0 1 --max-distance 500 --project . --json
+```
+
+Parámetros posicionales: `origin_x`, `origin_y`, `direction_x`, `direction_y`.
+Opciones: `--max-distance` (default: 1000).
+
+El JSON incluye:
+- `query`: rayo lanzado (`origin_x`, `origin_y`, `direction_x`, `direction_y`, `max_distance`).
+- `hits`: lista con el primer hit (si existe). Cada hit incluye `entity_id`, `entity_name`, `position`, `normal` y `distance`.
+- `count`: 0 o 1.
+- `status_after`: estado del runtime tras la consulta.
+
+### `motor physics query shape-cast`
+
+Barre una forma a través del mundo físico y retorna los colisionadores impactados
+en orden de primer contacto.
+
+```bash
+py -m motor physics query shape-cast box 16 16 0 0 1 0 --max-distance 200 --project . --json
+py -m motor physics query shape-cast circle 10 10 100 100 0 1 --project . --json
+```
+
+Parámetros posicionales: `shape_type`, `shape_width`, `shape_height`, `origin_x`, `origin_y`, `direction_x`, `direction_y`.
+Tipos de forma: `box`, `circle`, `capsule`, `polygon`.
+Opciones: `--max-distance` (default: 1000).
+
+El JSON incluye:
+- `query`: parámetros del cast (`shape_type`, `shape_width`, `shape_height`, `origin_*`, `direction_*`, `max_distance`).
+- `hits`: lista de hits ordenados. Cada hit incluye `entity_id`, `entity_name`, `position`, `normal`, `fraction` y `distance`.
+- `count`: número de hits.
+
+### `motor physics query motion`
+
+Prueba si una entidad puede moverse a lo largo de un vector sin colisionar.
+**No muta** el `Transform` ni el estado del mundo. Útil para predicción de
+movimiento y validación de trayectorias.
+
+```bash
+py -m motor physics query motion Player 100 0 --project . --json
+py -m motor physics query motion Enemy_A 0 -50 --margin 0.1 --exclude-names Ground --project . --json
+```
+
+Parámetros posicionales: `entity_name`, `motion_x`, `motion_y`.
+Opciones:
+- `--margin`: margen de seguridad (default: 0.08).
+- `--recovery-as-collision`: reporta overlaps preexistentes como colisiones.
+- `--exclude-names`: nombres de entidades a excluir (separados por coma).
+- `--collision-mask`: máscara de bits para filtrado de capas (hex válido).
+- `--collide-with-areas`: incluye entidades area/trigger en la prueba.
+
+El JSON incluye:
+- `query`: parámetros de la prueba (`entity_name`, `motion_x`, `motion_y`, `margin`, `recovery_as_collision`, `exclude_names`, `collision_mask`, `collide_with_areas`).
+- `result`: dict con `travel_x`, `travel_y`, `remainder_x`, `remainder_y`, `collision_point_*`, `collision_normal_*`, `collision_depth`, `collision_safe_fraction`, `collision_unsafe_fraction`, `collider_entity_name` y campos del colisionador impactado.
+- `has_collision`: bool que indica si hubo colisión.
+- `status_after`: estado del runtime tras la consulta.
+
 ## Entidades
 
 ### `motor entity create <name>`

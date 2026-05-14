@@ -34,8 +34,9 @@ orquestacion. Pueden ser valiosos, pero no son contrato duro del motor.
 | contratos internos de escena/runtime (`engine/scenes/contracts.py`, `engine/core/runtime_contracts.py`) | `core obligatorio` | Fijan limites de integracion entre runtime, authoring, workspace y API. |
 | serializacion y schema/migraciones | `core obligatorio` | Fijan `scene schema_version = 2`, `prefab schema_version = 2` y guardado canonico. |
 | editor base | `core obligatorio` | Traduce authoring al modelo compartido. |
-| `engine/editor/ui_core/` | `editor/base` | Modelos puros separados del render: tokens, colores, geometria, widget_state, theme, property_widgets, inspector, tree_view. Sin dependencia de pyray. Importable desde runtime UI. |
-| `engine/editor/ui/` | `editor/base` | Impure shell: render, input, paneles, scroll, iconos, draw. Re-exporta `ui_core` via shims para compatibilidad legacy. Antes contenia los modelos puros. |
+| `engine/editor/ui_core/` | `editor/base` | Modelos puros separados del render: tokens, colores, geometria, widget_state, theme, property_widgets, inspector, tree_view, controls. Sin dependencia de pyray. Importable desde runtime UI. |
+| `engine/editor/ui_core/controls/` | `editor/base` | Arbol de controles retained-mode puro (Godot-style): Control, Label, Button, Panel, Container, VBoxContainer, HBoxContainer, ScrollContainer, FocusManager, eventos (ControlEvent, ControlEventKind). Measure/Arrange layout, focus con tab-order, dispatch de eventos. Sin dependencia de pyray. |
+| `engine/editor/ui/` | `editor/base` | Impure shell: render, input, paneles, scroll, iconos, draw, controls (render retained-mode). Re-exporta `ui_core` via shims para compatibilidad legacy. Antes contenia los modelos puros. |
 | `engine/editor/toast_notifications.py` | `editor/base` | `ToastManager`: notificaciones temporales con niveles (INFO/WARN/ERR/DEBUG), auto-dismiss, render en esquina inferior-derecha del editor. Singleton `TOAST_MANAGER`. No es fuente de verdad serializable. |
 | jerarquia | `core obligatorio` | Forma parte de datos serializables y tests de authoring. |
 | `EngineAPI` | `core obligatorio` | Fachada estable para agentes, tests, CLI y automatizacion. |
