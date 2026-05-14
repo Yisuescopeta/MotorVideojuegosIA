@@ -92,6 +92,7 @@ class EditorUIWidgetsTests(unittest.TestCase):
             "draw_panel_header_background",
             "draw_rounded_rect",
             "draw_separator",
+            "draw_tab_accent_bar",
             "draw_text_clipped",
             "draw_icon",
         ):

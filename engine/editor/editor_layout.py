@@ -1624,13 +1624,7 @@ class EditorLayout:
         # Botón Abrir Carpeta del Proyecto
         folder_rect = rl.Rectangle(right_x - 32, play_y, 28, btn_height)
         self._register_cursor_rect(folder_rect)
-        folder_hover = rl.check_collision_point_rec(rl.get_mouse_position(), folder_rect)
-        folder_bg = self.UNITY_BUTTON_HOVER if folder_hover else self.UNITY_BUTTON
-        rl.draw_rectangle_rec(folder_rect, folder_bg)
-        rl.draw_rectangle_lines_ex(folder_rect, 1, self.UNITY_BORDER)
-        # Centrar el emoji en el botón
-        rl.draw_text("📁", int(folder_rect.x + 4), int(play_y + 4), 14, self.UNITY_TEXT)
-        if folder_hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+        if editor_icon_button(_to_ui_rect(folder_rect), "folder").clicked:
             self.open_project_folder()
 
         # Layers dropdown

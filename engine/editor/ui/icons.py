@@ -19,6 +19,7 @@ ICON_CHEVRON_RIGHT = "chevron_right"
 ICON_SEARCH = "search"
 ICON_GEAR = "gear"
 ICON_MENU = "menu"
+ICON_FOLDER = "folder"
 
 KNOWN_ICONS = {
     ICON_PLAY,
@@ -33,6 +34,7 @@ KNOWN_ICONS = {
     ICON_SEARCH,
     ICON_GEAR,
     ICON_MENU,
+    ICON_FOLDER,
 }
 
 
@@ -116,3 +118,10 @@ def draw_icon(
         dot_radius = max(1, int(min(w, h) * 0.07))
         for dot_x in (left, cx, right):
             rl.draw_circle(dot_x, cy, dot_radius, c)
+    elif icon_name == ICON_FOLDER:
+        tab_w = max(2, int(w * 0.35))
+        tab_h = max(2, int(h * 0.18))
+        rl.draw_rectangle(left, top, tab_w, tab_h, c)
+        rl.draw_rectangle_lines(left, top, right - left, bottom - top, c)
+        rl.draw_line(left, top + tab_h, left + tab_w, top + tab_h, c)
+        rl.draw_line(left + tab_w, top + tab_h, left + tab_w, top, c)

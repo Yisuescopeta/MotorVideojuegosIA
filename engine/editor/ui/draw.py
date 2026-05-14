@@ -16,6 +16,9 @@ from engine.editor.ui.tokens import (
     TAB_HEIGHT,
 )
 
+_SHADOW_COLOR: RGBA = (0, 0, 0, 30)
+_SHADOW_OFFSET = 2
+
 
 def _rl():
     import pyray as rl
@@ -92,3 +95,15 @@ def draw_hover_overlay(rect: Rect, color: RGBA | None = None) -> None:
 
 def draw_selected_overlay(rect: Rect, color: RGBA | None = None) -> None:
     draw_rounded_rect(rect, color or with_alpha(EDITOR_ACCENT, 70), PANEL_RADIUS)
+
+
+def draw_panel_shadow(rect: Rect, radius: float = PANEL_RADIUS) -> None:
+    shadow = inset_rect(rect, -_SHADOW_OFFSET)
+    draw_rounded_rect(shadow, _SHADOW_COLOR, radius + _SHADOW_OFFSET)
+
+
+def draw_tab_accent_bar(rect: Rect, color: RGBA | None = None) -> None:
+    x, y, w, _h = rect
+    bar_color = color or EDITOR_ACCENT
+    bar_y = y + rect[3] - 2
+    _rl().draw_rectangle(int(x), int(bar_y), int(w), 2, to_ray_color(bar_color))

@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 from engine.editor.ui import input as ui_input
 from engine.editor.ui.colors import to_ray_color
-from engine.editor.ui.draw import draw_border, draw_panel_background, draw_rounded_rect, draw_text_clipped
+from engine.editor.ui.draw import draw_border, draw_panel_background, draw_panel_shadow, draw_rounded_rect, draw_text_clipped
 from engine.editor.ui.geometry import Rect, inset_rect, split_top
 from engine.editor.ui.theme import UNITY_DARK, EditorTheme, resolve_theme
 from engine.editor.ui.tokens import CONTROL_PADDING_X, FONT_SIZE_SM, PANEL_PADDING, TAB_HEIGHT
@@ -52,7 +52,7 @@ def _draw_header_button(rect: Rect, label: str, theme: EditorTheme) -> WidgetRes
     bg = theme.button_hover if result.hovered else theme.button
     if result.pressed:
         bg = theme.accent
-    draw_rounded_rect(rect, bg, 3)
+    draw_rounded_rect(rect, bg, theme.button_radius)
     draw_border(rect, theme.border_hover if result.hovered else theme.border)
     draw_text_clipped(label, inset_rect(rect, 4), theme.text, FONT_SIZE_SM)
     return result
@@ -118,6 +118,7 @@ def draw_editor_panel(
     """Draw full editor panel frame and header."""
 
     theme = resolve_theme(theme)
+    draw_panel_shadow(rect, theme.panel_radius)
     draw_panel_background(rect, theme)
     draw_border(rect, theme.accent if active else theme.border)
     header, _content = split_top(rect, PANEL_HEADER_HEIGHT)

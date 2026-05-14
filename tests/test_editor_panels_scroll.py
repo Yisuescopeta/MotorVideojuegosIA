@@ -39,6 +39,7 @@ class EditorPanelsScrollTests(unittest.TestCase):
         self.stack.enter_context(patch.object(panels, "draw_panel_background", self.mock_panel_bg))
         self.mock_border = Mock()
         self.stack.enter_context(patch.object(panels, "draw_border", self.mock_border))
+        self.stack.enter_context(patch.object(panels, "draw_panel_shadow", Mock()))
         self.stack.enter_context(patch.object(panels, "draw_rounded_rect", Mock()))
         self.draw_text = self.stack.enter_context(patch.object(panels, "draw_text_clipped", Mock()))
         self.stack.enter_context(patch.object(panels.ui_input, "is_hovered", Mock(return_value=False)))

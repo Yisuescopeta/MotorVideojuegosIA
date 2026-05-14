@@ -11,6 +11,7 @@ from engine.editor.ui.draw import (
     draw_panel_background,
     draw_rounded_rect,
     draw_separator,
+    draw_tab_accent_bar,
     draw_text_clipped,
 )
 from engine.editor.ui.draw import (
@@ -201,6 +202,8 @@ def editor_tab(
     if active is not None:
         selected = active
     result = editor_button(rect, text, enabled=enabled, active=selected, theme=theme)
+    if selected:
+        draw_tab_accent_bar(rect, theme.accent)
     if icon:
         x, y, _w, h = rect
         draw_icon(icon, (x + CONTROL_PADDING_X, y + (h - ICON_SIZE_SM) / 2, ICON_SIZE_SM, ICON_SIZE_SM), theme.text, theme)
