@@ -392,7 +392,7 @@ Migrar paneles existentes a la nueva arquitectura de controles retained-mode:
 
 ---
 
-### Fase 16 — Compartir helpers con Runtime UI
+### Fase 16 — Compartir helpers con Runtime UI ✅
 
 Compartir helpers de UI entre Editor UI y Runtime UI:
 - Identificar controles y utilidades que el runtime puede usar (label, button, layout básico).
@@ -400,7 +400,18 @@ Compartir helpers de UI entre Editor UI y Runtime UI:
 - Runtime UI consume desde ahí sin arrastrar dependencias de editor.
 - No compartir: persistencia, estado de authoring, paneles del editor.
 
-**Entregables:** Helpers compartidos documentados, runtime importa desde `ui_core` sin dependencias de editor.
+**Estado real (2026-05-14, completado):**
+- ✅ `engine/ui/shared.py` — helpers puros: geometría (`Rect`, `inset_rect`, `split_*`, `rect_contains`, `clamp_rect`, `rect_union`, `rect_intersection`, `rect_center`), color (`rgba`, `with_alpha`, `lerp_color`, `is_dark_theme`, `rgba_to_int`, `int_to_rgba`, `rgba_to_hex`), math (`clamp`, `lerp`, `distance`, `text_width_estimate`, `line_height_estimate`). Sin dependencias de pyray, editor ni engine internals.
+- ✅ `engine/ui/shared_constants.py` — tokens sin acoplamiento a editor: `RGBA`, `FONT_SIZE_*`, `SPACING_*`, `PADDING_*`, `ROW_HEIGHT_*`, `ICON_SIZE_*`, `BUTTON_HEIGHT`, `INPUT_HEIGHT`, `SCROLLBAR_WIDTH`, `KEY_SHORTCUT_*`, paleta mínima `COLOR_*`. Sin referencias a `EditorTheme` ni `ThemeRegistry`.
+- ✅ `engine/ui/__init__.py` — re-export público de todos los símbolos.
+- ✅ Runtime UI puede importar `from engine.ui import shared` sin arrastrar `engine.editor.*`, `pyray` o internos del motor.
+- ✅ Editor UI modules (`engine.editor.ui_core`) mantienen compatibilidad: misma API surface para geometría y color.
+- ✅ Editor shims (`engine.editor.ui/geometry.py`, `engine.editor.ui/colors.py`, `engine.editor.ui/tokens.py`) siguen funcionando sin cambios.
+- ✅ Tests: `tests/test_ui_shared.py` — 41 tests: pureza (4), geometría (15), color (8), math (6), constantes (4), re-import desde editor (4).
+- ✅ Pureza verificada: `shared.py` y `shared_constants.py` no importan `pyray`, `engine.editor.*`, `engine.core.*`, `engine.systems.*`, `engine.components.*`, `engine.scenes.*`, `engine.app.*`.
+- ✅ `engine.ui` no exporta símbolos del editor (`EditorTheme`, `ThemeRegistry`, `InspectorModel`, `TreeModel`, etc.).
+
+**Entregables:** Helpers compartidos documentados, runtime importa desde `engine.ui` sin dependencias de editor.
 
 ---
 

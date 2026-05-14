@@ -231,11 +231,31 @@ from engine.editor.ui.widgets import button
 
 ---
 
+## Capa compartida `engine/ui/`
+
+`engine/ui/` es la capa de helpers de UI compartida entre Editor y Runtime.
+No depende de pyray, del editor ni de internos del motor. Contiene funciones
+puras de geometría, color, matemáticas y constantes de diseño sin acoplamiento
+al sistema de temas del editor.
+
+### `engine/ui/` — Shared helpers
+
+| Módulo | Contenido | Importa de |
+|--------|-----------|------------|
+| `shared.py` | `Rect`, `inset_rect()`, `split_*()`, `rect_contains()`, `clamp_rect()`, `rect_union()`, `rect_intersection()`, `rect_center()`, `rgba()`, `with_alpha()`, `lerp_color()`, `is_dark_theme()`, `rgba_to_int()`, `int_to_rgba()`, `rgba_to_hex()`, `clamp()`, `lerp()`, `distance()`, `text_width_estimate()`, `line_height_estimate()` | `shared_constants`, stdlib |
+| `shared_constants.py` | `RGBA`, `FONT_SIZE_*`, `SPACING_*`, `PADDING_*`, `ROW_HEIGHT_*`, `ICON_SIZE_*`, `BUTTON_HEIGHT`, `INPUT_HEIGHT`, `SCROLLBAR_WIDTH`, `KEY_SHORTCUT_*`, `COLOR_*` (paleta mínima) | solo stdlib |
+
+Regla: **ningún módulo en `engine/ui/` puede importar `pyray`, `engine.editor`,
+ni internos del motor.**
+
+---
+
 ## Relación con Runtime UI
 
 El runtime UI (UI serializable en escenas, como Canvas/Button/Text) es
 un sistema diferente. No comparte estado de authoring ni persistencia con
-el editor UI. Lo que comparte son los _modelos de datos puros_ de
+el editor UI. Lo que comparte son los _helpers puros_ de
+`engine/ui/` (geometría, color, constantes) y los modelos puros de
 `ui_core` (colores, geometría, temas) cuando el runtime necesita dibujar
 controles con apariencia consistente.
 
@@ -246,9 +266,11 @@ El runtime UI **no debe**:
 - Usar `WidgetState` del editor (el runtime tiene su propio estado de UI)
 
 El runtime UI **puede**:
-- Usar `tokens`, `colors`, `geometry` de `ui_core` para mantener
-  consistencia visual
+- Usar `engine.ui.shared` y `engine.ui.shared_constants` como fuente
+  canónica de helpers puros (geometría, color, layout, constantes)
 - Usar `Rect` y helpers geométricos
+- Usar `RGBA`, `clamp()`, `lerp()`, `distance()` y helpers de estimación
+  de texto
 
 ---
 
@@ -263,3 +285,4 @@ El runtime UI **puede**:
 | 2026-05-14 | Añadidos `text_input_render.py`, `popup_render.py`, `context_menu_render.py`, `dropdown_render.py` a `ui/` impure shell (Fase 13) |
 | 2026-05-14 | `EditorTheme` expandido: `name`, `to_dict()/from_dict()`, `ThemeRegistry`, `UNITY_LIGHT`, `get_active_theme()`, `set_active_theme()`, `resolve_theme()` en todos los widgets. Todo puro, sin pyray, sin file IO (Fase 14) |
 | 2026-05-14 | Añadido `console_control.py` a `ui_core.controls` como modelo puro piloto para migración gradual de ConsolePanel a EditorControl. Feature flags foundation en `editor_control_flags.py`. Adapter `ConsolePanelEditorControlAdapter` con flag-based delegation (default off) (Fase 15) |
+| 2026-05-14 | Creada capa compartida `engine/ui/` con `shared.py` (geometría, color, math) y `shared_constants.py` (tokens sin acoplamiento a editor). Runtime UI puede importar de `engine.ui` sin arrastrar pyray ni editor. Editor modules mantienen compatibilidad con misma API. (Fase 16) |
