@@ -279,7 +279,20 @@ Crear sistema de docking completo:
 - Drag de pestañas para reordenar/acoplar.
 - Auto-hide y pin de paneles laterales.
 
-**Entregables:** Sistema de docking completo con persistencia de layout.
+**Estado real (2026-05-14, v3 correctivo):**
+- ✅ Modelo puro serializable de docking en `engine/editor/ui_core/docking.py`: áreas, splits, tabs activos, move/reorder y roundtrip JSON-compatible.
+- ✅ Ventanas flotantes como estado serializable: `FloatingDockWindow` (`tab_id`, rect, `is_open`) y métodos `float_tab()`, `dock_floating_tab()`, `move_floating_window()`, `close_floating_window()` con persistencia testeada.
+- ✅ Auto-hide/pin como estado serializable por área: `DockArea.pinned`, `DockArea.auto_hide`, métodos `set_area_pinned()` y `set_area_auto_hide()`; persistencia testeada sin cambiar el layout visual por defecto.
+- ✅ Rectángulos visuales dock-driven en `engine/editor/ui_core/dock_rects.py`: `compute_dock_rects()` proyecta árbol `DockLayout` a áreas y splitters.
+- ✅ `EditorLayout` usa esos rects para `hierarchy_rect`, `inspector_rect`, `center_rect`, `bottom_rect` y splitters; si el cálculo falla, conserva fallback legacy seguro.
+- ✅ Tabs dock-driven: `compute_dock_tab_rects()`, `move_dock_tab()`, `reorder_dock_tab()`, `set_dock_active_tab()`, `begin_dock_tab_drag()` y `complete_dock_tab_drag()` exponen comportamiento determinista y testeable para mover/reordenar/acoplar.
+- ✅ `EditorLayout` expone wrappers para floating y pin/auto-hide, marcando dirty flag para persistencia de preferencias/layout.
+- ✅ Persistencia de layout via `editor_state["layout"]` con export/import roundtrip en tests.
+- ⚠️ Visual shell de ventanas flotantes diferido: el estado y persistencia existen; no hay render/hit-testing de ventanas flotantes completo.
+- ⚠️ Auto-hide visual diferido: pin/auto-hide persisten; el colapso animado/strip interactivo queda pendiente.
+- ⚠️ Drag GUI completo diferido: existe finalización determinista testeada y command-backed; no hay handler visual completo de arrastre con preview.
+
+**Entregables reales:** docking persistente funcional para layout principal, rects visuales derivados del árbol dock, tabs movibles/reordenables/acoplables por comandos testeables, estado serializable persistente para floating windows y pin/auto-hide. Pulido visual de floating, auto-hide y drag preview queda diferido explícitamente.
 
 ---
 

@@ -15,6 +15,8 @@ UI_CORE_MODULES = [
     "colors",
     "theme",
     "protocols",
+    "docking",
+    "dock_rects",
     "property_widgets",
     "inspector",
     "tree_view",

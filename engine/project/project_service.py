@@ -837,6 +837,7 @@ class ProjectService:
             "active_scene": "",
             "scene_view_states": {},
             "preferences": {},
+            "layout": {},
         }
 
     def _normalize_editor_state(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -873,6 +874,10 @@ class ProjectService:
         preferences = data.get("preferences", {})
         if isinstance(preferences, dict):
             state["preferences"] = dict(preferences)
+
+        layout = data.get("layout", {})
+        if isinstance(layout, dict):
+            state["layout"] = dict(layout)
 
         return state
 

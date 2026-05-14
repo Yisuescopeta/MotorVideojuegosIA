@@ -31,6 +31,8 @@ from engine.editor.ui_core.controls import (
     TextureRect,
     VBoxContainer,
 )
+from engine.editor.ui_core.dock_rects import DockRects, RectTuple, compute_dock_rects
+from engine.editor.ui_core.docking import DockArea, DockLayout, DockSplit, dock_node_from_dict, normalize_ratio
 from engine.editor.ui_core.geometry import (
     Rect,
     clamp_rect,
@@ -124,6 +126,10 @@ __all__ = [
     "Control",
     "ControlEvent",
     "ControlEventKind",
+    "DockArea",
+    "DockLayout",
+    "DockRects",
+    "DockSplit",
     "EDITOR_ACCENT",
     "EDITOR_ACCENT_HOVER",
     "EDITOR_BG",
@@ -161,6 +167,7 @@ __all__ = [
     "PropertyKind",
     "PropertyValue",
     "RGBA",
+    "RectTuple",
     "ROW_HEIGHT",
     "Rect",
     "SPLITTER_WIDTH",
@@ -180,6 +187,8 @@ __all__ = [
     "WorldLike",
     "build_inspector_model_from_dict",
     "clamp_rect",
+    "compute_dock_rects",
+    "dock_node_from_dict",
     "filter_nodes",
     "filter_visible_rows",
     "get_entity_type",
@@ -190,6 +199,7 @@ __all__ = [
     "is_dark_theme",
     "lerp_color",
     "matches_search",
+    "normalize_ratio",
     "rect_contains",
     "resolve_visual_state",
     "rgba",

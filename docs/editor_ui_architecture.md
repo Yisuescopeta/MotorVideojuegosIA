@@ -43,6 +43,8 @@ El runtime UI (cuando exista) debe importar solo de `ui_core`, nunca de `ui`.
 | `property_widgets.py` | `PropertyKind`, `PropertyDescriptor`, `EditTransaction`, `PropertyEditResult` | solo stdlib |
 | `inspector.py` | `InspectorGroup`, `InspectorModel`, `build_inspector_model_from_dict()` | `property_widgets` |
 | `tree_view.py` | `TreeModel`, `TreeNode`, `matches_search()`, `filter_nodes()` | solo stdlib |
+| `docking.py` | `DockLayout`, `DockSplit`, `DockArea`, `dock_node_from_dict()`, `normalize_ratio()` — modelo puro serializable de docking | solo stdlib |
+| `dock_rects.py` | `compute_dock_rects()`, `DockRects`, `RectTuple` — proyección de árbol dock a rectángulos visuales | solo stdlib |
 | `__init__.py` | Re-export público de todos los símbolos de ui_core | todos los anteriores |
 | `controls/__init__.py` | Re-export de símbolos públicos del subpaquete controls | todos los de controls/ |
 | `controls/events.py` | `ControlEvent`, `ControlEventKind`, `Size`, `Anchor`, `Margin` | solo stdlib |
@@ -212,3 +214,4 @@ El runtime UI **puede**:
 |-------|--------|
 | 2026-05-13 | Creación del documento (Fase 10) |
 | 2026-05-14 | Añadido `inspector_render.py` como capa impura editor UI (InspectorPanel v1 opcional) |
+| 2026-05-14 | Añadidos `docking.py` y `dock_rects.py` al mapa puro de `ui_core` (Fase 12) |

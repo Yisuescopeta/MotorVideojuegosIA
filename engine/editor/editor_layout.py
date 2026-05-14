@@ -33,6 +33,8 @@ from engine.editor.ui.draw import draw_border, draw_rounded_rect
 from engine.editor.ui.icons import ICON_PAUSE, ICON_PLAY
 from engine.editor.ui.panels import draw_editor_panel_frame
 from engine.editor.ui.widgets import editor_button, editor_icon_button, editor_toggle_button
+from engine.editor.ui_core.dock_rects import compute_dock_rects
+from engine.editor.ui_core.docking import DockLayout, DockSplit
 
 
 def _to_ui_rect(rect: rl.Rectangle) -> tuple[float, float, float, float]:
@@ -269,6 +271,9 @@ class EditorLayout:
         self.pivot_mode: PivotMode = PivotMode.PIVOT
         self.snap_settings: SnapSettings = SnapSettings()
         self._editor_preferences_dirty: bool = False
+        self.dock_layout: DockLayout = DockLayout.default()
+        self._dock_layout_dirty: bool = False
+        self._dock_drag_tab_id: str | None = None
 
         # Anchos dinámicos
         self.hierarchy_width = 200
@@ -312,6 +317,7 @@ class EditorLayout:
         self.tab_game_rect = rl.Rectangle(0, 0, 0, 0)
         self.tab_flow_rect = rl.Rectangle(0, 0, 0, 0)
         self.tab_animator_rect = rl.Rectangle(0, 0, 0, 0)
+        self._dock_tab_rects: dict[str, dict[str, rl.Rectangle]] = {}
         self.btn_play_rect = rl.Rectangle(0, 0, 0, 0)
 
         self.tab_game_rect = rl.Rectangle(0, 0, 0, 0)
@@ -432,9 +438,173 @@ class EditorLayout:
         return data
 
     def consume_editor_preferences_dirty(self) -> bool:
-        dirty = self._editor_preferences_dirty
+        dirty = self._editor_preferences_dirty or self._dock_layout_dirty
         self._editor_preferences_dirty = False
+        self._dock_layout_dirty = False
         return dirty
+
+    def apply_dock_layout(self, layout_data: object) -> None:
+        self.dock_layout = DockLayout.from_dict(layout_data)
+        self._apply_dock_active_tabs()
+        self.update_layout(self.screen_width, self.screen_height, update_texture=False)
+        self._dock_layout_dirty = False
+
+    def export_dock_layout(self) -> dict[str, object]:
+        return self.dock_layout.to_dict()
+
+    def consume_dock_layout_dirty(self) -> bool:
+        dirty = self._dock_layout_dirty
+        self._dock_layout_dirty = False
+        return dirty
+
+    def move_dock_tab(self, tab_id: str, target_area_id: str, index: int | None = None) -> bool:
+        if not self.dock_layout.move_tab(tab_id, target_area_id, index):
+            return False
+        self._apply_dock_active_tabs()
+        self._dock_layout_dirty = True
+        return True
+
+    def reorder_dock_tab(self, area_id: str, tab_id: str, index: int) -> bool:
+        if not self.dock_layout.reorder_tab(area_id, tab_id, index):
+            return False
+        self._apply_dock_active_tabs()
+        self._dock_layout_dirty = True
+        return True
+
+    def set_dock_active_tab(self, area_id: str, tab_id: str) -> bool:
+        if not self.dock_layout.set_active_tab(area_id, tab_id):
+            return False
+        self._apply_dock_active_tabs()
+        self._dock_layout_dirty = True
+        return True
+
+    def float_dock_tab(self, tab_id: str, from_area: str, rect: tuple[float, float, float, float]) -> bool:
+        if not self.dock_layout.float_tab(tab_id, from_area, rect):
+            return False
+        self._apply_dock_active_tabs()
+        self.update_layout(self.screen_width, self.screen_height, update_texture=False)
+        self._dock_layout_dirty = True
+        return True
+
+    def dock_floating_tab(self, tab_id: str, to_area: str, position: int = -1) -> bool:
+        if not self.dock_layout.dock_floating_tab(tab_id, to_area, position):
+            return False
+        self._apply_dock_active_tabs()
+        self.update_layout(self.screen_width, self.screen_height, update_texture=False)
+        self._dock_layout_dirty = True
+        return True
+
+    def move_floating_window(self, tab_id: str, rect: tuple[float, float, float, float]) -> bool:
+        if not self.dock_layout.move_floating_window(tab_id, rect):
+            return False
+        self._dock_layout_dirty = True
+        return True
+
+    def close_floating_window(self, tab_id: str) -> bool:
+        if not self.dock_layout.close_floating_window(tab_id):
+            return False
+        self._dock_layout_dirty = True
+        return True
+
+    def set_dock_area_pinned(self, area_id: str, pinned: bool) -> bool:
+        if not self.dock_layout.set_area_pinned(area_id, pinned):
+            return False
+        self._dock_layout_dirty = True
+        return True
+
+    def set_dock_area_auto_hide(self, area_id: str, auto_hide: bool) -> bool:
+        if not self.dock_layout.set_area_auto_hide(area_id, auto_hide):
+            return False
+        self.update_layout(self.screen_width, self.screen_height, update_texture=False)
+        self._dock_layout_dirty = True
+        return True
+
+    def begin_dock_tab_drag(self, tab_id: str) -> bool:
+        if self.dock_layout.find_tab_area(tab_id) is None:
+            return False
+        self._dock_drag_tab_id = str(tab_id)
+        return True
+
+    def complete_dock_tab_drag(self, target_area_id: str, index: int | None = None) -> bool:
+        tab_id = self._dock_drag_tab_id
+        self._dock_drag_tab_id = None
+        if not tab_id:
+            return False
+        return self.move_dock_tab(tab_id, target_area_id, index)
+
+    def _set_dock_split_ratio(self, split_id: str, ratio: float) -> bool:
+        def visit(node: object) -> DockSplit | None:
+            if isinstance(node, DockSplit):
+                if node.id == split_id:
+                    return node
+                return visit(node.first) or visit(node.second)
+            return None
+
+        split = visit(self.dock_layout.root)
+        if split is None:
+            return False
+        split.ratio = max(0.1, min(0.9, float(ratio)))
+        self._dock_layout_dirty = True
+        return True
+
+    def compute_dock_tab_rects(self, area_id: str) -> dict[str, rl.Rectangle]:
+        area = self.dock_layout.find_area(area_id)
+        if area is None:
+            return {}
+        header = self._dock_area_header_rect(area_id)
+        tab_y = header.y + 2
+        tab_h = max(0.0, header.height - 4)
+        tab_x = header.x + 4
+        rects: dict[str, rl.Rectangle] = {}
+        for tab_id in area.tabs:
+            label = self._dock_tab_label(tab_id)
+            tab_w = max(62, min(120, self._measure_text(label, 10) + 24))
+            rects[tab_id] = rl.Rectangle(tab_x, tab_y, tab_w, tab_h)
+            tab_x += tab_w + 4
+        return rects
+
+    def _dock_area_header_rect(self, area_id: str) -> rl.Rectangle:
+        if area_id == "bottom":
+            return self.bottom_header_rect
+        if area_id == "center":
+            return rl.Rectangle(self.center_rect.x, self.center_rect.y, self.center_rect.width, self.TAB_HEIGHT)
+        rect = self._dock_area_rect(area_id)
+        return rl.Rectangle(rect.x, rect.y, rect.width, self.TAB_HEIGHT)
+
+    def _dock_area_rect(self, area_id: str) -> rl.Rectangle:
+        if area_id == "hierarchy":
+            return self.hierarchy_rect
+        if area_id == "inspector":
+            return self.inspector_rect
+        if area_id == "bottom":
+            return self.bottom_rect
+        return self.center_rect
+
+    def _dock_tab_label(self, tab_id: str) -> str:
+        labels = {
+            "FLOW_PANEL": "Flow",
+            "SCENE": "Scene",
+            "GAME": "Game",
+            "FLOW": "Flow",
+            "ANIMATOR": "Animator",
+            "PROJECT": "Project",
+            "CONSOLE": "Console",
+            "TERMINAL": "Terminal",
+            "AGENT": "Agent",
+            "HIERARCHY": "Hierarchy",
+            "INSPECTOR": "Inspector",
+        }
+        return labels.get(tab_id, tab_id.title())
+
+    def _apply_dock_active_tabs(self) -> None:
+        center_tab = self.dock_layout.active_tab("center")
+        if center_tab in {"SCENE", "GAME", "FLOW", "ANIMATOR"}:
+            self.active_tab = center_tab
+        bottom_tab = self.dock_layout.active_tab("bottom")
+        if bottom_tab == "FLOW_PANEL":
+            bottom_tab = "FLOW"
+        if bottom_tab in {"PROJECT", "FLOW", "CONSOLE", "TERMINAL", "AGENT"}:
+            self.active_bottom_tab = bottom_tab
 
     def update_layout(self, width: int, height: int, update_texture: bool = True) -> None:
         """Recalcula layout."""
@@ -447,57 +617,65 @@ class EditorLayout:
         top_offset = self.MENU_HEIGHT + self.TOOLBAR_HEIGHT
         bottom_height = self._clamp_bottom_height(self.bottom_height, screen_height=height)
         self.bottom_height = bottom_height
-        content_height = height - top_offset - bottom_height
 
-        # 1. Hierarchy (Left) - Starts below Toolbar
-        self.hierarchy_rect = rl.Rectangle(0, top_offset, self.hierarchy_width, content_height)
+        try:
+            dock_rects = compute_dock_rects(
+                self.dock_layout,
+                (0.0, float(top_offset), float(width), float(height - top_offset)),
+                float(self.SPLITTER_WIDTH),
+            )
+            self.hierarchy_rect = self._rl_rect_from_tuple(dock_rects.areas["hierarchy"])
+            self.inspector_rect = self._rl_rect_from_tuple(dock_rects.areas["inspector"])
+            self.center_rect = self._rl_rect_from_tuple(dock_rects.areas["center"])
+            self.bottom_rect = self._rl_rect_from_tuple(dock_rects.areas["bottom"])
+            self.splitter_left_rect = self._rl_rect_from_tuple(dock_rects.splitters.get("main", (0, 0, 0, 0)))
+            self.splitter_right_rect = self._rl_rect_from_tuple(dock_rects.splitters.get("main_right", (0, 0, 0, 0)))
+            self.bottom_splitter_rect = self._rl_rect_from_tuple(dock_rects.splitters.get("root", (0, 0, 0, 0)))
+        except Exception:
+            content_height = height - top_offset - bottom_height
+            self.hierarchy_rect = rl.Rectangle(0, top_offset, self.hierarchy_width, content_height)
+            self.splitter_left_rect = rl.Rectangle(self.hierarchy_width, top_offset, self.SPLITTER_WIDTH, content_height)
+            self.inspector_rect = rl.Rectangle(width - self.inspector_width, top_offset, self.inspector_width, content_height)
+            self.splitter_right_rect = rl.Rectangle(
+                width - self.inspector_width - self.SPLITTER_WIDTH, top_offset, self.SPLITTER_WIDTH, content_height
+            )
+            center_x = self.hierarchy_width + self.SPLITTER_WIDTH
+            center_right = width - self.inspector_width - self.SPLITTER_WIDTH
+            self.center_rect = rl.Rectangle(center_x, top_offset, center_right - center_x, content_height)
+            self.bottom_rect = rl.Rectangle(0, height - bottom_height, width, bottom_height)
+            self.bottom_splitter_rect = rl.Rectangle(0, self.bottom_rect.y - self.SPLITTER_WIDTH, width, self.SPLITTER_WIDTH)
 
-        # Splitter Left
-        self.splitter_left_rect = rl.Rectangle(self.hierarchy_width, top_offset, self.SPLITTER_WIDTH, content_height)
+        self.hierarchy_width = int(self.hierarchy_rect.width)
+        self.inspector_width = int(self.inspector_rect.width)
+        self.bottom_height = int(self.bottom_rect.height)
 
-        # 2. Inspector (Right)
-        self.inspector_rect = rl.Rectangle(
-            width - self.inspector_width, top_offset, self.inspector_width, content_height
-        )
-
-        # Splitter Right
-        self.splitter_right_rect = rl.Rectangle(
-            width - self.inspector_width - self.SPLITTER_WIDTH, top_offset, self.SPLITTER_WIDTH, content_height
-        )
-
-        # 3. Center View (Reference for Scene and Game)
-        center_x = self.hierarchy_width + self.SPLITTER_WIDTH
-        center_right = width - self.inspector_width - self.SPLITTER_WIDTH
-        center_width = center_right - center_x
-
-        self.center_rect = rl.Rectangle(center_x, top_offset, center_width, content_height)
-
-        # Center header layout: fixed view tabs + scene workspace tabs.
-        tab_y = top_offset + 2
-        tab_h = self.TAB_HEIGHT - 4
-        tab_x = center_x + 4
-        self.tab_scene_rect = rl.Rectangle(tab_x, tab_y, 74, tab_h)
-        self.tab_game_rect = rl.Rectangle(tab_x + 78, tab_y, 74, tab_h)
-        self.tab_flow_rect = rl.Rectangle(tab_x + 156, tab_y, 74, tab_h)
-        self.tab_animator_rect = rl.Rectangle(tab_x + 234, tab_y, 92, tab_h)
+        center_tabs = self.compute_dock_tab_rects("center")
+        self.tab_scene_rect = center_tabs.get("SCENE", rl.Rectangle(0, 0, 0, 0))
+        self.tab_game_rect = center_tabs.get("GAME", rl.Rectangle(0, 0, 0, 0))
+        self.tab_flow_rect = center_tabs.get("FLOW", rl.Rectangle(0, 0, 0, 0))
+        self.tab_animator_rect = center_tabs.get("ANIMATOR", rl.Rectangle(0, 0, 0, 0))
         # Play is handled directly by toolbar buttons; keep this rect inert.
         self.btn_play_rect = rl.Rectangle(0, 0, 0, 0)
 
         # 4. Bottom
-        self.bottom_rect = rl.Rectangle(0, height - bottom_height, width, bottom_height)
-        self.bottom_header_rect = rl.Rectangle(0, height - bottom_height, width, self.TAB_HEIGHT)
+        self.bottom_header_rect = rl.Rectangle(self.bottom_rect.x, self.bottom_rect.y, self.bottom_rect.width, self.TAB_HEIGHT)
         self.bottom_content_rect = rl.Rectangle(
-            0, self.bottom_header_rect.y + self.bottom_header_rect.height, width, bottom_height - self.TAB_HEIGHT
+            self.bottom_rect.x,
+            self.bottom_header_rect.y + self.bottom_header_rect.height,
+            self.bottom_rect.width,
+            max(0, self.bottom_rect.height - self.TAB_HEIGHT),
         )
-        self.bottom_splitter_rect = rl.Rectangle(
-            0, self.bottom_rect.y - self.SPLITTER_WIDTH, width, self.SPLITTER_WIDTH
-        )
+        self._dock_tab_rects = {"center": center_tabs, "bottom": self.compute_dock_tab_rects("bottom")}
 
         self._sync_editor_camera_offset()
 
         if update_texture:
             view_rect = self.get_center_view_rect()
             self._resize_render_textures(int(view_rect.width), int(view_rect.height))
+
+    def _rl_rect_from_tuple(self, rect: tuple[float, float, float, float]) -> rl.Rectangle:
+        x, y, width, height = rect
+        return rl.Rectangle(float(round(x)), float(round(y)), max(0.0, float(round(width))), max(0.0, float(round(height))))
 
     def update_input(self) -> None:
         """Procesa input general (Tabs, Splitters, Camara)."""
@@ -525,13 +703,13 @@ class EditorLayout:
         if not mouse_in_inspector and not mouse_in_hierarchy and not mouse_in_bottom:
             if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 if rl.check_collision_point_rec(mouse_pos, self.tab_scene_rect):
-                    self.active_tab = "SCENE"
+                    self.set_dock_active_tab("center", "SCENE")
                 elif rl.check_collision_point_rec(mouse_pos, self.tab_game_rect):
-                    self.active_tab = "GAME"
+                    self.set_dock_active_tab("center", "GAME")
                 elif rl.check_collision_point_rec(mouse_pos, self.tab_flow_rect):
-                    self.active_tab = "FLOW"
+                    self.set_dock_active_tab("center", "FLOW")
                 elif rl.check_collision_point_rec(mouse_pos, self.tab_animator_rect):
-                    self.active_tab = "ANIMATOR"
+                    self.set_dock_active_tab("center", "ANIMATOR")
                 elif rl.check_collision_point_rec(mouse_pos, self.btn_play_rect):
                     self.request_play = True
 
@@ -548,6 +726,8 @@ class EditorLayout:
                     if new_width > self.screen_width - self.inspector_width - 100:
                         new_width = self.screen_width - self.inspector_width - 100
                     self.hierarchy_width = int(new_width)
+                    usable = max(1.0, float(self.screen_width - self.SPLITTER_WIDTH))
+                    self._set_dock_split_ratio("main", float(new_width) / usable)
 
                 elif self.dragging_splitter == "right":
                     new_width = self.screen_width - mouse_pos.x
@@ -556,10 +736,15 @@ class EditorLayout:
                     if new_width > self.screen_width - self.hierarchy_width - 100:
                         new_width = self.screen_width - self.hierarchy_width - 100
                     self.inspector_width = int(new_width)
+                    total = max(1.0, float(self.center_rect.width + self.inspector_rect.width))
+                    self._set_dock_split_ratio("main_right", (total - float(new_width)) / total)
                 elif self.dragging_splitter == "bottom":
                     new_height = self.screen_height - mouse_pos.y
                     self.bottom_height = self._clamp_bottom_height(int(new_height))
                     self._editor_preferences_dirty = True
+                    top_offset = self.MENU_HEIGHT + self.TOOLBAR_HEIGHT
+                    usable = max(1.0, float(self.screen_height - top_offset - self.SPLITTER_WIDTH))
+                    self._set_dock_split_ratio("root", (usable - float(self.bottom_height)) / usable)
 
                 self.update_layout(self.screen_width, self.screen_height, update_texture=True)
                 return
@@ -1839,29 +2024,11 @@ class EditorLayout:
         if not rl.check_collision_point_rec(mouse_pos, self.bottom_header_rect):
             return
 
-        bottom_tab_y = int(self.bottom_header_rect.y) + 2
-        bottom_tab_h = self.TAB_HEIGHT - 4
-        proj_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 2, bottom_tab_y, 70, bottom_tab_h)
-        flow_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 75, bottom_tab_y, 62, bottom_tab_h)
-        cons_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 140, bottom_tab_y, 70, bottom_tab_h)
-        term_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 213, bottom_tab_y, 70, bottom_tab_h)
-        agent_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 286, bottom_tab_y, 62, bottom_tab_h)
-        self._register_cursor_rect(proj_tab_rect)
-        self._register_cursor_rect(flow_tab_rect)
-        self._register_cursor_rect(cons_tab_rect)
-        self._register_cursor_rect(term_tab_rect)
-        self._register_cursor_rect(agent_tab_rect)
-
-        if rl.check_collision_point_rec(mouse_pos, proj_tab_rect):
-            self.active_bottom_tab = "PROJECT"
-        elif rl.check_collision_point_rec(mouse_pos, flow_tab_rect):
-            self.active_bottom_tab = "FLOW"
-        elif rl.check_collision_point_rec(mouse_pos, cons_tab_rect):
-            self.active_bottom_tab = "CONSOLE"
-        elif rl.check_collision_point_rec(mouse_pos, term_tab_rect):
-            self.active_bottom_tab = "TERMINAL"
-        elif rl.check_collision_point_rec(mouse_pos, agent_tab_rect):
-            self.active_bottom_tab = "AGENT"
+        for tab_id, rect in self.compute_dock_tab_rects("bottom").items():
+            self._register_cursor_rect(rect)
+            if rl.check_collision_point_rec(mouse_pos, rect):
+                self.set_dock_active_tab("bottom", tab_id)
+                return
 
     def draw_bottom_tabs(self) -> None:
         rl.draw_rectangle_rec(self.bottom_header_rect, self.UNITY_BG_DARK)
@@ -1873,19 +2040,9 @@ class EditorLayout:
             self.UNITY_BORDER,
         )
 
-        bottom_tab_y = int(self.bottom_header_rect.y) + 2
-        bottom_tab_h = self.TAB_HEIGHT - 4
-        proj_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 2, bottom_tab_y, 70, bottom_tab_h)
-        flow_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 75, bottom_tab_y, 62, bottom_tab_h)
-        cons_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 140, bottom_tab_y, 70, bottom_tab_h)
-        term_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 213, bottom_tab_y, 70, bottom_tab_h)
-        agent_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 286, bottom_tab_y, 62, bottom_tab_h)
-
-        self._draw_tab("Project", proj_tab_rect, self.active_bottom_tab == "PROJECT")
-        self._draw_tab("Flow", flow_tab_rect, self.active_bottom_tab == "FLOW")
-        self._draw_tab("Console", cons_tab_rect, self.active_bottom_tab == "CONSOLE")
-        self._draw_tab("Terminal", term_tab_rect, self.active_bottom_tab == "TERMINAL")
-        self._draw_tab("Agent", agent_tab_rect, self.active_bottom_tab == "AGENT")
+        for tab_id, rect in self.compute_dock_tab_rects("bottom").items():
+            active_id = "FLOW_PANEL" if self.active_bottom_tab == "FLOW" else self.active_bottom_tab
+            self._draw_tab(self._dock_tab_label(tab_id), rect, active_id == tab_id)
 
     def _clamp_bottom_height(self, value: int, screen_height: int | None = None) -> int:
         height = self.screen_height if screen_height is None else int(screen_height)
