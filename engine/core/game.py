@@ -70,6 +70,7 @@ from engine.project.project_service import ProjectService
 if TYPE_CHECKING:
     from cli.script_executor import ScriptExecutor
     from engine.ecs.world import World
+    from engine.editor.ui.inspector_render import InspectorPanel
     from engine.events.event_bus import EventBus
     from engine.events.rule_system import RuleSystem
     from engine.inspector.inspector_system import InspectorSystem
@@ -140,6 +141,7 @@ class Game:
         self._character_controller_system: Optional["CharacterControllerSystem"] = None
         self._script_behaviour_system: Optional["ScriptBehaviourSystem"] = None
         self._inspector_system: Optional["InspectorSystem"] = None
+        self._inspector_panel: Optional["InspectorPanel"] = None
         self._timer_system: Optional["TimerSystem"] = None
         self._tween_system: Optional["TweenSystem"] = None
         self._visible_on_screen_system: Optional["VisibleOnScreenSystem"] = None
@@ -605,6 +607,11 @@ class Game:
         if self._scene_manager is not None:
             self._inspector_system.set_scene_manager(self._scene_manager)
 
+    def set_inspector_panel(self, panel: Optional["InspectorPanel"]) -> None:
+        self._inspector_panel = panel
+        if self._inspector_panel is not None and self._scene_manager is not None:
+            self._inspector_panel.set_scene_manager(self._scene_manager)
+
     def set_level_loader(self, loader: "LevelLoader") -> None:
         self._level_loader = loader
 
@@ -641,6 +648,8 @@ class Game:
         # Conectar inspector al scene_manager para edición
         if self._inspector_system is not None:
             self._inspector_system.set_scene_manager(manager)
+        if self._inspector_panel is not None:
+            self._inspector_panel.set_scene_manager(manager)
         if self.animator_panel is not None:
             self.animator_panel.set_scene_manager(manager)
         if self.sprite_editor_modal is not None:
@@ -1625,20 +1634,30 @@ class Game:
                     self._render_system.render(active_world)
 
             # Inspector Render (Overlay on Layout)
-            if self._inspector_system is not None and overlay_world is not None:
+            if (self._inspector_panel is not None or self._inspector_system is not None) and overlay_world is not None:
                 if self.editor_layout:
                     safe_reset_clip_state()
                     rect = self.editor_layout.inspector_rect
                     inspector_start = time.perf_counter()
                     try:
-                        self._inspector_system.render(
-                            overlay_world,
-                            int(rect.x),
-                            int(rect.y),
-                            int(rect.width),
-                            int(rect.height),
-                            is_edit_mode=self.is_edit_mode,
-                        )
+                        if self._inspector_panel is not None:
+                            self._inspector_panel.render(
+                                overlay_world,
+                                int(rect.x),
+                                int(rect.y),
+                                int(rect.width),
+                                int(rect.height),
+                                is_edit_mode=self.is_edit_mode,
+                            )
+                        elif self._inspector_system is not None:
+                            self._inspector_system.render(
+                                overlay_world,
+                                int(rect.x),
+                                int(rect.y),
+                                int(rect.width),
+                                int(rect.height),
+                                is_edit_mode=self.is_edit_mode,
+                            )
                     except Exception as exc:
                         safe_reset_clip_state()
                         log_err(f"Inspector render error: {exc}")

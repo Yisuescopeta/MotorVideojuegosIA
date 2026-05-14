@@ -34,6 +34,7 @@ from engine.editor.ui.inspector import (
     build_inspector_model_from_dict,
     infer_property_kind,
 )
+from engine.editor.ui.inspector_render import InspectorPanel, InspectorWidgetRect
 from engine.editor.ui.panels import (
     begin_panel_content,
     draw_editor_panel,
@@ -103,6 +104,8 @@ __all__ = [
     "EditTransaction",
     "InspectorGroup",
     "InspectorModel",
+    "InspectorPanel",
+    "InspectorWidgetRect",
     "CommitContract",
     "PropertyDescriptor",
     "PropertyEditResult",

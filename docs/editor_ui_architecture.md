@@ -72,6 +72,7 @@ ni ningún módulo del runtime.**
 | `scroll.py` | impuro (scroll con pyray) | `ui_core.*`, `pyray` |
 | `widgets.py` | impuro (widgets raygui) | `ui_core.*`, `pyray` |
 | `controls.py` | impuro (render retained-mode + process_input + `demo_control_tree()`) | `ui_core.controls.*`, `pyray` |
+| `inspector_render.py` | impuro (render inspector + edición inline vía SceneManager/EngineAPI) | `inspector`, `property_widgets`, `pyray` |
 
 La función `to_ray_color()` es la única función que vive en el shim
 `colors.py` (no en `ui_core.colors`) porque requiere `import pyray` en
@@ -210,3 +211,4 @@ El runtime UI **puede**:
 | Fecha | Cambio |
 |-------|--------|
 | 2026-05-13 | Creación del documento (Fase 10) |
+| 2026-05-14 | Añadido `inspector_render.py` como capa impura editor UI (InspectorPanel v1 opcional) |

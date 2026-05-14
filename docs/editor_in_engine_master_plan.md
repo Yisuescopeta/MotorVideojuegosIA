@@ -4,8 +4,8 @@ doc_type: editor_plan
 status: active_plan
 created: 2026-05-13
 updated: 2026-05-14
-queen_updated: queen-20260513-007
-queen_task_id: queen-20260513-007
+queen_updated: queen-20260514-001
+queen_task_id: queen-20260514-001
 phase_scope: all
 implemented_capability: false
 ---
@@ -136,13 +136,22 @@ Construir el panel de inspector de propiedades:
 - Edición vía rutas existentes de authoring (SceneManager / EngineAPI).
 - Soporte para propiedades anidadas y arrays.
 
-**Estado real (2026-05-13, foundation v1):**
+**Estado real (2026-05-14, foundation + panel v1 opcional):**
 - ✅ `engine/editor/ui/property_widgets.py` — creado: PropertyKind, PropertyDescriptor, EditTransaction, CommitContract, PropertyEditResult. Pure data model, sin render.
 - ✅ `engine/editor/ui/inspector.py` — creado: InspectorGroup, InspectorModel, build_inspector_model_from_dict, infer_property_kind. Pure data model/builders, sin render.
-- ❌ Panel Inspector funcional — NO implementado. Los módulos existen como foundation de datos, pero el inspector production existente (`engine/inspector/inspector_system.py`) NO está reemplazado ni el nuevo panel está wired en el layout del editor. Testing via nuevos tests unitarios.
+- ✅ `engine/editor/ui/inspector_render.py` — creado: `InspectorPanel` editor-only con pyray. Renderiza grupos/propiedades del inspector. Soporta edición inline: bool toggle, text edit para INT/FLOAT/STR con commit/cancel. Display read-only para COLOR, VECTOR2, VECTOR3, DICT, LIST.
+- ✅ Commit via SceneManager/EngineAPI: `commit_property()` delega en `SceneManager.update_entity_property` o `apply_edit_to_world`. Sin SceneManager → no-op con `last_error`.
+- ✅ Text editing: `begin_text_edit()`, `set_text_buffer()`, `commit_text_edit()` con parseo de tipo, `handle_key()` (ENTER commit, ESC cancel).
+- ✅ Wiring opcional en `Game.set_inspector_panel()`: cuando se inyecta un `InspectorPanel`, toma prioridad sobre `InspectorSystem` legacy en el render loop. `None` restaura fallback legacy.
+- ✅ Export público via `engine/editor/ui/__init__.py`: `InspectorPanel`, `InspectorWidgetRect`.
+- ✅ Tests: `tests/test_inspector_render.py` — 8 tests: build_model con world object y dict, no_selection no-op, bool_commit invoca SceneManager, text_edit_commit invoca SceneManager e invalid numeric no commit, escape cancels, no_SceneManager_no_mutate, render_layout_bounds, game_setter.
+- ❌ Legacy `InspectorSystem` sigue siendo el render por defecto/fallback. `InspectorPanel` es opt-in vía `Game.set_inspector_panel()`.
+- ❌ Edición inline para COLOR, VECTOR2, VECTOR3, DICT, LIST — solo display read-only, sin widget interactivo.
+- ❌ Soporte para propiedades anidadas y arrays — no implementado.
+- ❌ Sin wiring automático en EditorLayout — el panel debe inyectarse explícitamente desde fuera.
 
 **Entregables plan original:** `engine/editor/ui/inspector.py`, `engine/editor/ui/property_widgets.py`, panel Inspector funcional.
-**Entregables entregados:** `engine/editor/ui/inspector.py` (foundation), `engine/editor/ui/property_widgets.py` (foundation). Panel Inspector pendiente.
+**Entregables entregados:** `engine/editor/ui/inspector.py` (foundation), `engine/editor/ui/property_widgets.py` (foundation), `engine/editor/ui/inspector_render.py` (panel v1 opcional con SceneManager/EngineAPI wiring). Legacy `InspectorSystem` preservado como fallback.
 
 ---
 

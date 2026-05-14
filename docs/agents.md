@@ -244,6 +244,13 @@ Cuando el motor esta en `EDIT`, los cambios persistentes de grupos deben entrar
 por la ruta de authoring expuesta por `EngineAPI`; en `PLAY`, esos cambios solo
 afectan al runtime activo.
 
+Para edicion headless equivalente al inspector, los agentes deben usar metodos
+publicos existentes de `EngineAPI`: `get_entity(name)` para leer el payload
+serializado, `edit_component(entity_name, component, property, value)` para
+cambiar una propiedad de componente y `replace_component_data(entity_name,
+component_name, data)` para reemplazar el payload completo de un componente.
+No existe un metodo publico dedicado llamado "inspector".
+
 ## TileSet — Terreno y autotile
 
 `EngineAPI.set_cells_terrain_connect` aplica autotile conectivo usando peering
