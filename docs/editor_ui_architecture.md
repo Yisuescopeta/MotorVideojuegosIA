@@ -51,9 +51,18 @@ El runtime UI (cuando exista) debe importar solo de `ui_core`, nunca de `ui`.
 | `controls/control.py` | `Control`, `Label`, `Button`, `Panel`, `TextureRect` retained-mode | `controls.events`, `controls.focus` (TYPE_CHECKING) |
 | `controls/container.py` | `Container`, `VBoxContainer`, `HBoxContainer`, `ScrollContainer` con measure/arrange | `controls.control`, `controls.events` |
 | `controls/focus.py` | `FocusManager` con tab-order, grab, pick_at | `controls.control` (TYPE_CHECKING) |
+| `controls/text_input.py` | `TextInput` con cursor, selección, clipboard commands, insert/backspace/delete, `measure()`, `to_dict()` | `controls.control`, `controls.events` |
+| `controls/popup.py` | `PopupModel` con open/close/toggle, `contains_point()`, `handle_pointer_down()`, `place_below()` | solo stdlib |
+| `controls/context_menu.py` | `ContextMenuItem`, `ContextMenuModel` con highlight navigation, activate, `context_menu_from_tuples()` factory | `popup` |
+| `controls/dropdown.py` | `DropdownOption`, `DropdownModel`, `ComboBoxModel` (editable) con filtro por query, select por index/id/point | `popup` |
 
 Regla: **ningún módulo en `ui_core` puede importar `pyray`, `engine.editor.ui`,
 ni ningún módulo del runtime.**
+
+Los controles de Fase 13 (`TextInput`, `PopupModel`, `ContextMenuModel`,
+`DropdownModel`, `ComboBoxModel`) son modelos internos del editor. No son
+superficie pública de `EngineAPI` ni CLI `motor`; los agentes deben seguir
+usando `EngineAPI` para authoring de escenas.
 
 ### `engine/editor/ui/` — Impure shell / shims
 
@@ -75,6 +84,10 @@ ni ningún módulo del runtime.**
 | `widgets.py` | impuro (widgets raygui) | `ui_core.*`, `pyray` |
 | `controls.py` | impuro (render retained-mode + process_input + `demo_control_tree()`) | `ui_core.controls.*`, `pyray` |
 | `inspector_render.py` | impuro (render inspector + edición inline vía SceneManager/EngineAPI) | `inspector`, `property_widgets`, `pyray` |
+| `text_input_render.py` | impuro (`render_text_input()`, `process_text_input()` — pyray draw + char/key input) | `ui_core.controls.text_input`, `pyray` |
+| `popup_render.py` | impuro (`render_popup_frame()` — pyray frame draw) | `ui_core.controls.popup`, `pyray` |
+| `context_menu_render.py` | impuro (`render_context_menu()`, `process_context_menu_pointer()` — pyray items + highlight + activate) | `ui_core.controls.context_menu`, `pyray` |
+| `dropdown_render.py` | impuro (`render_dropdown()`, `process_dropdown_pointer()` — pyray button + popup list) | `ui_core.controls.dropdown`, `pyray` |
 
 La función `to_ray_color()` es la única función que vive en el shim
 `colors.py` (no en `ui_core.colors`) porque requiere `import pyray` en
@@ -163,6 +176,18 @@ def test_ui_core_module_has_no_impure_imports() -> None:
     assert "engine.editor.ui" not in imports
 ```
 
+### Roundtrip de control puro
+
+```python
+from engine.editor.ui_core.controls import TextInput
+
+control = TextInput(text="Player", placeholder="Name")
+payload = control.to_dict()
+restored = TextInput.from_dict(payload)
+
+assert restored.to_dict() == payload
+```
+
 ### Shims legacy
 
 ```python
@@ -215,3 +240,5 @@ El runtime UI **puede**:
 | 2026-05-13 | Creación del documento (Fase 10) |
 | 2026-05-14 | Añadido `inspector_render.py` como capa impura editor UI (InspectorPanel v1 opcional) |
 | 2026-05-14 | Añadidos `docking.py` y `dock_rects.py` al mapa puro de `ui_core` (Fase 12) |
+| 2026-05-14 | Añadidos `text_input.py`, `popup.py`, `context_menu.py`, `dropdown.py` al mapa puro de `ui_core.controls` (Fase 13) |
+| 2026-05-14 | Añadidos `text_input_render.py`, `popup_render.py`, `context_menu_render.py`, `dropdown_render.py` a `ui/` impure shell (Fase 13) |

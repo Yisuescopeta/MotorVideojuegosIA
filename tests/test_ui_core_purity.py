@@ -25,6 +25,10 @@ UI_CORE_MODULES = [
     "controls/control",
     "controls/container",
     "controls/focus",
+    "controls/text_input",
+    "controls/popup",
+    "controls/context_menu",
+    "controls/dropdown",
 ]
 
 

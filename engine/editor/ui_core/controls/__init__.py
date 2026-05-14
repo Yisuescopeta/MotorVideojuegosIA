@@ -13,6 +13,12 @@ from engine.editor.ui_core.controls.container import (
     ScrollContainer,
     VBoxContainer,
 )
+from engine.editor.ui_core.controls.context_menu import (
+    ContextMenuItem,
+    ContextMenuManager,
+    ContextMenuModel,
+    context_menu_from_tuples,
+)
 from engine.editor.ui_core.controls.control import (
     Button,
     Control,
@@ -20,6 +26,7 @@ from engine.editor.ui_core.controls.control import (
     Panel,
     TextureRect,
 )
+from engine.editor.ui_core.controls.dropdown import ComboBoxModel, DropdownModel, DropdownOption
 from engine.editor.ui_core.controls.events import (
     Anchor,
     ControlEvent,
@@ -28,6 +35,8 @@ from engine.editor.ui_core.controls.events import (
     Size,
 )
 from engine.editor.ui_core.controls.focus import FocusManager
+from engine.editor.ui_core.controls.popup import PopupManager, PopupModel, alert_popup, confirm_popup, yes_no_popup
+from engine.editor.ui_core.controls.text_input import TextInput
 
 __all__ = [
     "Anchor",
@@ -36,14 +45,27 @@ __all__ = [
     "Control",
     "ControlEvent",
     "ControlEventKind",
+    "ComboBoxModel",
+    "ContextMenuItem",
+    "ContextMenuManager",
+    "ContextMenuModel",
+    "DropdownModel",
+    "DropdownOption",
     "FocusManager",
     "HBoxContainer",
     "Label",
     "LayoutDirection",
     "Margin",
     "Panel",
+    "PopupManager",
+    "PopupModel",
     "ScrollContainer",
     "Size",
+    "TextInput",
     "TextureRect",
     "VBoxContainer",
+    "alert_popup",
+    "confirm_popup",
+    "context_menu_from_tuples",
+    "yes_no_popup",
 ]

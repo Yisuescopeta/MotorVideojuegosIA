@@ -296,7 +296,7 @@ Crear sistema de docking completo:
 
 ---
 
-### Fase 13 — Text input serio, popups, menús contextuales
+### Fase 13 — Text input serio, popups, menús contextuales ✅
 
 Profesionalizar la entrada de texto y los menús:
 - Text input con cursor, selección, clipboard (cortar/copiar/pegar), undo/redo.
@@ -304,7 +304,32 @@ Profesionalizar la entrada de texto y los menús:
 - Menús contextuales (click derecho en jerarquía, inspector, viewport).
 - Dropdowns y comboboxes.
 
-**Entregables:** TextInput profesional, sistema de popups, menús contextuales.
+**Estado real (2026-05-14, controles puros + render shells, sin integración en paneles):**
+- ✅ `engine/editor/ui_core/controls/text_input.py` — `TextInput` (hereda de `Control`): cursor, selección (range, select_all, clear), insert/backspace/delete, replace/delete selection, cut/copy/paste puros, undo/redo stacks, move_cursor/set_cursor (con selecting), handle_command (insert/delete/navigation/select_all/cut/copy/paste/undo/redo), `to_dict()`, `measure()`, soporte multiline, password, readonly, max_length, placeholder. Pure data model, sin render.
+- ✅ `engine/editor/ui_core/controls/popup.py` — `PopupModel`: open/close/toggle, `contains_point()`, `handle_pointer_down()` (inside/closed/outside/ignored), `place_below()` con flip arriba/abajo según viewport, `to_dict()`, datos concretos de diálogo (`title`, `message`, `buttons`, `dialog_type`), factories `alert_popup()`, `confirm_popup()`, `yes_no_popup()` y `PopupManager` LIFO. Pure data model, sin render.
+- ✅ `engine/editor/ui_core/controls/context_menu.py` — `ContextMenuItem` (id, label, enabled, separator, checked, shortcut, children), `ContextMenuModel` (items, PopupModel, highlight navigation con move_highlight/activate_highlighted, item_at/highlight_at/activate_at para pointer, submenús con `open_submenu()` y `child_menu`, `context_menu_from_tuples()` factory), `ContextMenuManager` lifecycle, `to_dict()`. Pure data model, sin render.
+- ✅ `engine/editor/ui_core/controls/dropdown.py` — `DropdownOption`, `DropdownModel` (options, selected_index, open/close/toggle, filtered_options para editable query, `max_visible_items`, `scroll_offset`, `visible_options`, `scroll_by()`), `ComboBoxModel` (hereda de DropdownModel con editable=True), select_index/select_id/select_at, `to_dict()`. Pure data model, sin render.
+- ✅ Re-exports: `engine/editor/ui_core/controls/__init__.py` y `engine/editor/ui_core/__init__.py` exportan todos los nuevos símbolos públicos.
+- ✅ Render shells impuros en `engine/editor/ui/`:
+  - `text_input_render.py`: `render_text_input()` (rect, border, display/placeholder text) y `process_text_input()` (char codepoints, backspace, delete, left/right keys, Ctrl+C/V/X con clipboard pyray si existe, Ctrl+Z/Y).
+  - `popup_render.py`: `render_popup_frame()` (rectángulo relleno + borde).
+  - `context_menu_render.py`: `render_context_menu()` (items con highlight, separadores, check, shortcut, indicador y render mínimo de submenús) y `process_context_menu_pointer()` (mouse hover highlight, click activate, right-click close).
+  - `dropdown_render.py`: `render_dropdown()` (button + popup window con scroll visual y thumb) y `process_dropdown_pointer()` (click select, wheel scroll).
+- ✅ Tests unitarios:
+  - `tests/test_ui_core_text_input.py` — 10 tests: insert/delete/cursor, selection replace/delete, cut/copy/paste, undo/redo, single-line strips newlines + max_length, readonly no-op, commands + password + serialization + measure, render shell key wiring.
+  - `tests/test_ui_core_popup.py` — 5 tests: open/close/contains/serialize, outside click closes, place_below flips, dialog factories, PopupManager LIFO.
+  - `tests/test_ui_core_context_menu.py` — 5 tests: open/highlight/activate con separators y disabled, item_at/disabled not selectable, factory + serialize, submenús, manager lifecycle.
+  - `tests/test_ui_core_dropdown.py` — 6 tests: select by index/id, disabled option not selected, open/select_at, combobox filters by query, serialization, max_visible_items/window/scroll_offset.
+- ✅ Pureza verificada: `tests/test_ui_core_purity.py` extendido con 4 nuevos módulos (text_input, popup, context_menu, dropdown).
+- ❌ **Integración en paneles existentes diferida a Fase 15.** Hierarchy, Inspector, Console, AssetBrowser, Viewport no usan estos controles todavía. No hay wiring en EditorLayout.
+- ✅ Clipboard/cut/copy/paste — implementado como métodos puros (`copy_selection()`, `cut_selection()`, `paste_text()`) y shell pyray con Ctrl+C/V/X cuando clipboard nativo está disponible; fallback no-op si no existe.
+- ✅ Undo/redo — `TextInput` mantiene `undo_stack`/`redo_stack` para ediciones de texto.
+- ✅ Popups concretos básicos — factories `alert_popup()`, `confirm_popup()`, `yes_no_popup()` con botones y datos de diálogo. Selector de archivo sigue fuera de alcance.
+- ✅ Submenús en context menu — modelo/manager lifecycle y render mínimo de child menus implementados.
+- ✅ Dropdown window/scroll thumb — `max_visible_items`, `scroll_offset`, `visible_options`, wheel scroll y thumb visual implementados.
+
+**Entregables plan original:** TextInput profesional, sistema de popups, menús contextuales.
+**Entregables entregados:** Controles retained-mode puros para TextInput, Popup, ContextMenu, Dropdown/ComboBox con sus render shells impuros. Sin integración en paneles (deferido a Fase 15). Selector de archivo y drag preview quedan fuera de esta corrección.
 
 ---
 

@@ -208,6 +208,10 @@ no define todavia eventos publicos `moving_platform_rider_attached`,
 
 Para UI serializable usa los helpers publicos de `EngineAPI` como
 `create_canvas`, `create_ui_text`, `create_ui_button` y `create_ui_image`.
+Los modelos en `engine/editor/ui_core/controls/` (`TextInput`, `PopupModel`,
+`ContextMenuModel`, `DropdownModel`) son controles puros serializables internos
+del editor: no son `EngineAPI` ni CLI `motor`. Para authoring de escenas, los
+agentes deben usar `EngineAPI`.
 
 ## Recetas manuales seguras por genero
 
