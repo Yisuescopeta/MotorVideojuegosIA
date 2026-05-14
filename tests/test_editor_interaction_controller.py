@@ -305,6 +305,129 @@ class EditorInteractionControllerTests(unittest.TestCase):
         self.assertEqual(payload["Sprite"]["texture_path"], "assets/player.png")
         self.scene_manager.set_selected_entity.assert_called_with("player")
 
+    def test_handle_scene_view_drag_drop_without_scene_manager_does_not_mutate_world(self) -> None:
+        world = Mock()
+        world.selected_entity_name = None
+        texture_path = self.project_root / "assets" / "player.png"
+        texture_path.parent.mkdir(parents=True, exist_ok=True)
+        texture_path.write_bytes(b"")
+        self.layout.project_panel.dragging_file = texture_path.as_posix()
+        controller = EditorInteractionController(
+            get_state=lambda: self.state,
+            get_editor_layout=lambda: self.layout,
+            get_editor_selection=lambda: self.editor_selection,
+            get_scene_manager=lambda: None,
+            get_selection_system=lambda: self.selection_system,
+            get_gizmo_system=lambda: self.gizmo_system,
+            get_ui_system=lambda: self.ui_system,
+            get_hierarchy_panel=lambda: self.hierarchy_panel,
+            get_inspector_system=lambda: self.inspector_system,
+            get_history_manager=lambda: self.history_manager,
+            get_current_scene_viewport_size=lambda: (320.0, 180.0),
+            get_current_viewport_size=lambda: (640.0, 360.0),
+        )
+
+        with patch("pyray.is_mouse_button_released", return_value=True):
+            controller.handle_scene_view_drag_drop(world)
+
+        world.create_entity.assert_not_called()
+        world.get_entity_by_name.assert_not_called()
+        world.add_component.assert_not_called()
+
+    def test_handle_inspector_drag_drop_image_assigns_sprite_texture_via_scene_manager(self) -> None:
+        texture_path = self.project_root / "assets" / "player.png"
+        texture_path.parent.mkdir(parents=True, exist_ok=True)
+        texture_path.write_bytes(b"")
+        self.layout.project_panel.dragging_file = texture_path.as_posix()
+        self.layout.is_mouse_in_inspector.return_value = True
+        self.editor_selection.set("Hero")
+
+        with patch("pyray.is_mouse_button_released", return_value=True):
+            self.controller.handle_inspector_drag_drop()
+
+        self.scene_manager.apply_edit_to_world.assert_called_once_with("Hero", "Sprite", "texture_path", "assets/player.png")
+
+    def test_handle_inspector_drag_drop_maps_supported_asset_types_to_registered_fields(self) -> None:
+        self.layout.is_mouse_in_inspector.return_value = True
+        self.editor_selection.set("Hero")
+        cases = (
+            ("scripts/player_logic.py", "ScriptBehaviour", "module_path", "scripts/player_logic.py"),
+            ("audio/theme.ogg", "AudioSource", "asset_path", "audio/theme.ogg"),
+            ("materials/wall.material", "RenderStyle2D", "material_path", "materials/wall.material"),
+        )
+
+        for relative_path, component_name, property_name, expected_locator in cases:
+            with self.subTest(relative_path=relative_path):
+                self.scene_manager.apply_edit_to_world.reset_mock()
+                asset_path = self.project_root / relative_path
+                asset_path.parent.mkdir(parents=True, exist_ok=True)
+                asset_path.write_text("asset\n", encoding="utf-8")
+                self.layout.project_panel.dragging_file = asset_path.as_posix()
+
+                with patch("pyray.is_mouse_button_released", return_value=True):
+                    self.controller.handle_inspector_drag_drop()
+
+                self.scene_manager.apply_edit_to_world.assert_called_once_with(
+                    "Hero",
+                    component_name,
+                    property_name,
+                    expected_locator,
+                )
+
+    def test_handle_inspector_drag_drop_no_selection_noop(self) -> None:
+        self.layout.project_panel.dragging_file = (self.project_root / "assets" / "player.png").as_posix()
+        self.layout.is_mouse_in_inspector.return_value = True
+
+        with patch("pyray.is_mouse_button_released", return_value=True):
+            self.controller.handle_inspector_drag_drop()
+
+        self.scene_manager.apply_edit_to_world.assert_not_called()
+
+    def test_handle_inspector_drag_drop_no_manager_noop(self) -> None:
+        self.layout.project_panel.dragging_file = (self.project_root / "assets" / "player.png").as_posix()
+        self.layout.is_mouse_in_inspector.return_value = True
+        self.editor_selection.set("Hero")
+        controller = EditorInteractionController(
+            get_state=lambda: self.state,
+            get_editor_layout=lambda: self.layout,
+            get_editor_selection=lambda: self.editor_selection,
+            get_scene_manager=lambda: None,
+            get_selection_system=lambda: self.selection_system,
+            get_gizmo_system=lambda: self.gizmo_system,
+            get_ui_system=lambda: self.ui_system,
+            get_hierarchy_panel=lambda: self.hierarchy_panel,
+            get_inspector_system=lambda: self.inspector_system,
+            get_history_manager=lambda: self.history_manager,
+            get_current_scene_viewport_size=lambda: (320.0, 180.0),
+            get_current_viewport_size=lambda: (640.0, 360.0),
+        )
+
+        with patch("pyray.is_mouse_button_released", return_value=True):
+            controller.handle_inspector_drag_drop()
+
+        self.scene_manager.apply_edit_to_world.assert_not_called()
+
+    def test_handle_inspector_drag_drop_prefab_level_non_edit_and_outside_noop(self) -> None:
+        self.editor_selection.set("Hero")
+        self.layout.is_mouse_in_inspector.return_value = True
+        for relative_path in ("prefabs/enemy.prefab", "levels/intro.json"):
+            with self.subTest(relative_path=relative_path):
+                self.layout.project_panel.dragging_file = (self.project_root / relative_path).as_posix()
+                with patch("pyray.is_mouse_button_released", return_value=True):
+                    self.controller.handle_inspector_drag_drop()
+
+        self.state = EngineState.PLAY
+        self.layout.project_panel.dragging_file = (self.project_root / "assets" / "player.png").as_posix()
+        with patch("pyray.is_mouse_button_released", return_value=True):
+            self.controller.handle_inspector_drag_drop()
+
+        self.state = EngineState.EDIT
+        self.layout.is_mouse_in_inspector.return_value = False
+        with patch("pyray.is_mouse_button_released", return_value=True):
+            self.controller.handle_inspector_drag_drop()
+
+        self.scene_manager.apply_edit_to_world.assert_not_called()
+
     def test_handle_scene_view_drag_drop_instantiates_prefab_with_project_relative_locator_when_scene_has_no_path(self) -> None:
         world = Mock()
 

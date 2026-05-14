@@ -87,7 +87,7 @@ class ProjectPanel:
 
     def set_view_mode(self, mode: str) -> None:
         value = str(mode or "").strip().lower()
-        if value not in ("grid", "list"):
+        if value not in ("grid", "list", "cards"):
             return
         self._view_mode = value
         self.scroll_offset = 0.0
@@ -299,15 +299,19 @@ class ProjectPanel:
             filter_x += button_width + 6
 
         toggle_x = filter_x + 4
-        if toggle_x + 90 < x + width - 124:
+        if toggle_x + 140 < x + width - 124:
             grid_rect = rl.Rectangle(toggle_x, filter_y, 42.0, 18.0)
             list_rect = rl.Rectangle(toggle_x + 46, filter_y, 42.0, 18.0)
+            cards_rect = rl.Rectangle(toggle_x + 92, filter_y, 48.0, 18.0)
             self._register_cursor_rect(grid_rect)
             self._register_cursor_rect(list_rect)
+            self._register_cursor_rect(cards_rect)
             if rl.gui_button(grid_rect, "* Grid" if self._view_mode == "grid" else "Grid"):
                 self.set_view_mode("grid")
             if rl.gui_button(list_rect, "* List" if self._view_mode == "list" else "List"):
                 self.set_view_mode("list")
+            if rl.gui_button(cards_rect, "* Cards" if self._view_mode == "cards" else "Cards"):
+                self.set_view_mode("cards")
 
         breadcrumb_x = x + 360
         for text, text_width in self._breadcrumb_cache:
@@ -348,6 +352,8 @@ class ProjectPanel:
 
             if self._view_mode == "list":
                 self._render_content_list(x, y, width, height, mouse_pos, is_mouse_in)
+            elif self._view_mode == "cards":
+                self._render_content_cards(x, y, width, height, mouse_pos, is_mouse_in)
             else:
                 self._render_content_grid(x, y, width, height, mouse_pos, is_mouse_in)
 
@@ -430,6 +436,58 @@ class ProjectPanel:
                 }
             )
         return rows
+
+    def _compute_card_view_rects(self, x: int, y: int, width: int, height: int) -> List[Dict[str, Any]]:
+        if height <= 0 or width <= 0 or not self._visible_entries:
+            return []
+        card_w, card_h = 150, 54
+        padding = 8
+        cols = max(1, int(width // (card_w + padding)))
+        rects: List[Dict[str, Any]] = []
+        for index, item in enumerate(self._visible_entries):
+            row = index // cols
+            col = index % cols
+            ix = x + padding + col * (card_w + padding)
+            iy = y + padding + row * (card_h + padding) - int(self.scroll_offset)
+            if iy + card_h < y:
+                continue
+            if iy > y + height:
+                break
+            rects.append({"index": index, "item": item, "x": ix, "y": iy, "width": card_w, "height": card_h})
+        return rects
+
+    def _render_content_cards(self, x: int, y: int, width: int, height: int, mouse_pos: rl.Vector2, is_mouse_in: bool) -> None:
+        for card in self._compute_card_view_rects(x, y, width, height):
+            item = card["item"]
+            rect = rl.Rectangle(card["x"], card["y"], card["width"], card["height"])
+            self._register_cursor_rect(rect)
+            is_hover = rl.check_collision_point_rec(mouse_pos, rect) and is_mouse_in
+            is_selected = self.selected_file == item.get("absolute_path")
+            if is_selected:
+                rl.draw_rectangle_rec(rect, self.UNITY_SELECTED)
+            elif is_hover:
+                rl.draw_rectangle_rec(rect, self.UNITY_HOVER)
+            rl.draw_rectangle_lines_ex(rect, 1, self.UNITY_BORDER)
+
+            if is_hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                if item["entry_type"] == "dir":
+                    self.current_path = str(item["absolute_path"])
+                    self.scroll_offset = 0.0
+                    self.refresh()
+                else:
+                    self._handle_file_item_click(item, mouse_pos)
+
+            icon_rect = rl.Rectangle(rect.x + 8, rect.y + 8, 36, 36)
+            self._draw_item_icon(icon_rect, item)
+            name = str(item.get("trunc_name", item.get("name", "")))
+            rl.draw_text(name, int(rect.x + 52), int(rect.y + 10), 10, self.UNITY_TEXT)
+            meta = str(item.get("meta", ""))
+            if meta:
+                rl.draw_text(meta, int(rect.x + 52), int(rect.y + 28), 9, self.UNITY_TEXT_DIM)
+
+            if item["entry_type"] == "file" and self.drag_start_pos and is_hover:
+                if rl.vector2_distance(self.drag_start_pos, mouse_pos) > 5:
+                    self.dragging_file = str(item["absolute_path"])
 
     def _render_content_list(self, x: int, y: int, width: int, height: int, mouse_pos: rl.Vector2, is_mouse_in: bool) -> None:
         for row in self._compute_list_view_rows(x, y, width, height):

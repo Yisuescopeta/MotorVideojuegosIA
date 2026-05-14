@@ -1249,6 +1249,7 @@ class Game:
                         self.step()
 
                 self._editor_interaction_controller.handle_scene_view_drag_drop(active_world)
+                self._editor_interaction_controller.handle_inspector_drag_drop(active_world)
 
             # 2. Gizmos & Selection (Only if interaction enabled)
             selection_gizmo_start = time.perf_counter()

@@ -198,10 +198,36 @@ class ProjectPanelAssetTests(unittest.TestCase):
         self.assertEqual(self.panel.get_view_mode(), "list")
         self.assertEqual(self.panel.scroll_offset, 0.0)
 
+        self.panel.scroll_offset = 9.0
+        self.panel.set_view_mode("cards")
+        self.assertEqual(self.panel.get_view_mode(), "cards")
+        self.assertEqual(self.panel.scroll_offset, 0.0)
+
         self.panel.scroll_offset = 17.0
         self.panel.set_view_mode("invalid")
-        self.assertEqual(self.panel.get_view_mode(), "list")
+        self.assertEqual(self.panel.get_view_mode(), "cards")
         self.assertEqual(self.panel.scroll_offset, 17.0)
+
+    def test_cards_view_refresh_keeps_mode_and_visible_entries_are_copy_data(self) -> None:
+        self.panel.set_view_mode("cards")
+        self.panel.set_search_text("plain")
+        self.panel.refresh_asset_catalog()
+
+        self.assertEqual(self.panel.get_view_mode(), "cards")
+        entries = self.panel.get_visible_entries()
+        self.assertTrue(any(item["relative_path"] == "assets/plain.png" for item in entries))
+
+        entries[0]["name"] = "mutated"
+        self.assertNotEqual(self.panel.get_visible_entries()[0]["name"], "mutated")
+
+    def test_compute_card_view_rects_without_window(self) -> None:
+        self.panel.set_view_mode("cards")
+        rows = self.panel._compute_card_view_rects(10, 20, 320, 120)
+
+        self.assertTrue(rows)
+        self.assertEqual(rows[0]["x"], 18)
+        self.assertEqual(rows[0]["y"], 28)
+        self.assertIn("item", rows[0])
 
     def test_set_project_service_resets_view_mode_and_click_tracking(self) -> None:
         self.panel.set_view_mode("list")

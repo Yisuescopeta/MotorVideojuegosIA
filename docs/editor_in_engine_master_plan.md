@@ -165,9 +165,10 @@ Construir el navegador de proyectos y assets:
 - Integración con `AssetService` existente.
 - Doble-click para abrir asset en inspector o editor correspondiente.
 
-**Estado real (2026-05-13, Fase 7 risk corrected):**
+**Estado real (2026-05-14, Fase 7 completado):**
 - ✅ Vista grid — existente, refactorizada a `_render_content_grid()`.
-- ✅ Vista lista — NUEVA: `_render_content_list()`, toggle grid/list en toolbar.
+- ✅ Vista lista — existente: `_render_content_list()`, toggle grid/list en toolbar.
+- ✅ Vista de tarjetas (cards) — NUEVA: `_render_content_cards()` renderiza tarjetas (150×54) con icono tipado, nombre truncado y metadato. Toggle "Cards" en toolbar junto a Grid/List. Click en directorios navega; click en archivos selecciona. Drag desde cards vía `dragging_file` para drag-to-viewport e inspector. Computación de rects en `_compute_card_view_rects()` con scroll, wrapping por columnas y break anticipado.
 - ✅ Breadcrumbs de navegación — existentes.
 - ✅ Filtros por tipo de asset — existentes.
 - ✅ Integración con `AssetService` — existente.
@@ -177,11 +178,17 @@ Construir el navegador de proyectos y assets:
 - ✅ Inferencia de `asset_kind` desde extensión cuando metadata catalogo es `"unknown"` — scripts, audio, material, prefab, scene_data se categorizan automáticamente.
 - ✅ `ThumbnailProvider`: iconos tipados por tipo (folder, image, scene, prefab, script, audio, material, unknown) con colores y decoraciones distintivas (círculos, barras, bordes). Cuando `rl.is_window_ready()` es true y `rl.load_texture` funciona, carga la imagen real escalada al icono. Sin ventana Raylib o si falla carga, fallback automático al icono tipado.
 - ✅ Limpieza de caché de thumbnails al cambiar de proyecto (`set_project_service`).
-- ❌ Drag & drop desde asset browser a viewport/inspector — no implementado.
-- ❌ Vista de tarjetas (cards) con preview grande — no implementado.
+- ✅ **Drag desde asset browser a viewport** — existente para prefabs y escenas vía `SceneManager`. En esta fase: **eliminado el fallback legacy** que mutaba `World` directamente (`active_world.create_entity()` / `active_world.add_component()`). Ahora: sin SceneManager → no-op; tipo desconocido → no-op. Sin World mutation accidental. Comportamiento validado en test `test_handle_scene_view_drag_drop_without_scene_manager_does_not_mutate_world`.
+- ✅ **Drag desde asset browser a inspector** — NUEVO: `handle_inspector_drag_drop()`. Mapas explícitos por extensión de archivo:
+  - `.png`/`.jpg`/`.jpeg`/`.bmp` → `Sprite.texture_path`
+  - `.py` → `ScriptBehaviour.module_path`
+  - `.wav`/`.ogg`/`.mp3`/`.flac` → `AudioSource.asset_path`
+  - `.mat`/`.material`/`.mtl` → `RenderStyle2D.material_path`
+  - Requiere SceneManager y entidad seleccionada. Delega en `SceneManager.apply_edit_to_world()`. Prefabs y niveles (`levels/`) no se asignan al inspector. Sin SceneManager, sin selección, fuera de EDIT, o fuera del inspector → no-op. Validado con 5 tests.
+- ✅ Wiring en `Game` — `handle_inspector_drag_drop(active_world)` llamado en el loop principal junto a `handle_scene_view_drag_drop`.
 
-**Entregables plan original:** Panel AssetBrowser funcional con vista grid/lista.
-**Entregables entregados:** Vista grid/lista funcional, doble-click para image/scene + reveal seguro para otros tipos, toggle view mode, ThumbnailProvider con thumbnails reales (contexto ventana) + fallback iconos tipados, inferencia de asset_kind desde extensión. Pendiente: drag & drop, vista de tarjetas.
+**Entregables plan original:** Panel AssetBrowser funcional con vista grid/lista, cards, drag-to-viewport, drag-to-inspector.
+**Entregables entregados:** Vista grid/lista/cards funcional, doble-click para image/scene + reveal seguro para otros tipos, toggle view mode, ThumbnailProvider con thumbnails reales (contexto ventana) + fallback iconos tipados, inferencia de asset_kind desde extensión, drag-to-viewport via SceneManager (sin World fallback), drag-to-inspector con mapeo explícito para Sprite/ScriptBehaviour/AudioSource/RenderStyle2D, wiring en Game loop. Sin pendientes de Fase 7.
 
 ---
 
