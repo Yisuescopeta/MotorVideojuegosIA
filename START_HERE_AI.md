@@ -317,6 +317,14 @@ The entries below are available now and are safe to use from the CLI.
 - `ui:create_image`: Create a UI image element
 - `ui:create_text`: Create a UI text element
 
+### Editor
+
+- `editor:theme:active`: Show the active editor UI theme
+- `editor:theme:export`: Export an editor UI theme to JSON
+- `editor:theme:import`: Import an editor UI theme from JSON
+- `editor:theme:list`: List available editor UI themes
+- `editor:theme:set`: Set the active editor UI theme
+
 ## Coming Soon
 
 These capabilities are planned but **not yet available** via the CLI.

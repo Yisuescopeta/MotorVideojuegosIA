@@ -38,7 +38,7 @@ El runtime UI (cuando exista) debe importar solo de `ui_core`, nunca de `ui`.
 | `colors.py` | Helpers de color: `rgba()`, `lerp_color()`, `with_alpha()`, conversiones | `tokens` |
 | `geometry.py` | Helpers de rect: `inset_rect()`, `split_*()`, `Rect`, `clamp_rect()` | solo stdlib |
 | `widget_state.py` | `WidgetResult`, `WidgetState`, `WidgetVisualState`, `resolve_visual_state()` | solo stdlib |
-| `theme.py` | `EditorTheme`, `UNITY_DARK`, `theme_to_raygui_map()` | `tokens` |
+| `theme.py` | `EditorTheme` (con `name`, `to_dict()`, `from_dict()`, `colors`/`fonts`/`metrics`), `ThemeRegistry`, `UNITY_DARK`, `UNITY_LIGHT`, `THEME_REGISTRY`, `get_active_theme()`, `set_active_theme()`, `resolve_theme()`, `theme_to_raygui_map()` | `tokens` |
 | `protocols.py` | `EntityLike`, `WorldLike`, `PropertyValue` para contratos estructurales puros | solo stdlib |
 | `property_widgets.py` | `PropertyKind`, `PropertyDescriptor`, `EditTransaction`, `PropertyEditResult` | solo stdlib |
 | `inspector.py` | `InspectorGroup`, `InspectorModel`, `build_inspector_model_from_dict()` | `property_widgets` |
@@ -242,3 +242,4 @@ El runtime UI **puede**:
 | 2026-05-14 | Añadidos `docking.py` y `dock_rects.py` al mapa puro de `ui_core` (Fase 12) |
 | 2026-05-14 | Añadidos `text_input.py`, `popup.py`, `context_menu.py`, `dropdown.py` al mapa puro de `ui_core.controls` (Fase 13) |
 | 2026-05-14 | Añadidos `text_input_render.py`, `popup_render.py`, `context_menu_render.py`, `dropdown_render.py` a `ui/` impure shell (Fase 13) |
+| 2026-05-14 | `EditorTheme` expandido: `name`, `to_dict()/from_dict()`, `ThemeRegistry`, `UNITY_LIGHT`, `get_active_theme()`, `set_active_theme()`, `resolve_theme()` en todos los widgets. Todo puro, sin pyray, sin file IO (Fase 14) |

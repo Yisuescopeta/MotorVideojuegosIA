@@ -640,6 +640,17 @@ Proyecto:
 - `set_startup_scene(path)`
 - `run_ai_compliance(strict=False)`
 
+Editor:
+
+- `list_editor_themes()`
+- `get_active_editor_theme()`
+- `set_active_editor_theme(name)`
+- `export_editor_theme(path, name=None)`
+- `import_editor_theme(path, activate=True)`
+
+El tema activo del editor se persiste en `.motor/editor_state.json` bajo
+`preferences.editor_theme`. No forma parte del schema de escena.
+
 Assets:
 
 - `list_project_assets(search="")`

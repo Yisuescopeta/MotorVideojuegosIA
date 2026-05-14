@@ -1572,6 +1572,103 @@ def cmd_scene_list(project_path: Path, json_output: bool) -> int:
                 pass
 
 
+def cmd_editor_theme_list(project_path: Path, json_output: bool) -> int:
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        themes = api.list_editor_themes()
+        active = api.get_active_editor_theme().get("name", "")
+        data = {"count": len(themes), "active": active, "themes": themes}
+        return _output(True, f"Found {len(themes)} editor themes", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to list editor themes: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_editor_theme_active(project_path: Path, json_output: bool) -> int:
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        theme = api.get_active_editor_theme()
+        return _output(True, f"Active editor theme: {theme.get('name', '')}", theme, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to get active editor theme: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_editor_theme_set(project_path: Path, name: str, json_output: bool) -> int:
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = api.set_active_editor_theme(name)
+        return _output(bool(result.get("success")), result.get("message", "Editor theme updated"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to set editor theme: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_editor_theme_export(project_path: Path, path: str, name: str | None, json_output: bool) -> int:
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = api.export_editor_theme(path, name=name)
+        return _output(bool(result.get("success")), result.get("message", "Editor theme exported"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to export editor theme: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_editor_theme_import(project_path: Path, path: str, activate: bool, json_output: bool) -> int:
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = api.import_editor_theme(path, activate=activate)
+        return _output(bool(result.get("success")), result.get("message", "Editor theme imported"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to import editor theme: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
 def cmd_scene_create(project_path: Path, name: str, json_output: bool) -> int:
     """Create a new scene."""
     api: Optional[EngineAPI] = None

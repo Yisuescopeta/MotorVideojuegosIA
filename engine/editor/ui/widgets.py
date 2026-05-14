@@ -18,7 +18,7 @@ from engine.editor.ui.draw import (
 )
 from engine.editor.ui.geometry import Rect, inset_rect, split_left
 from engine.editor.ui.icons import draw_icon
-from engine.editor.ui.theme import UNITY_DARK, EditorTheme
+from engine.editor.ui.theme import UNITY_DARK, EditorTheme, resolve_theme
 from engine.editor.ui.tokens import (
     CONTROL_PADDING_X,
     CONTROL_PADDING_Y,
@@ -126,10 +126,11 @@ def editor_button(
     *,
     enabled: bool = True,
     active: bool = False,
-    theme: EditorTheme = UNITY_DARK,
+    theme: EditorTheme | None = UNITY_DARK,
 ) -> WidgetResult:
     """Draw a clickable editor button and report pointer interaction."""
 
+    theme = resolve_theme(theme)
     result = _result(rect, enabled=enabled, value=text)
     state = resolve_visual_state(enabled, result.hovered, result.pressed, active)
     color = theme.button
@@ -152,10 +153,11 @@ def editor_icon_button(
     *,
     enabled: bool = True,
     active: bool = False,
-    theme: EditorTheme = UNITY_DARK,
+    theme: EditorTheme | None = UNITY_DARK,
 ) -> WidgetResult:
     """Draw a button with centered primitive icon."""
 
+    theme = resolve_theme(theme)
     result = editor_button(rect, "", enabled=enabled, active=active, theme=theme)
     draw_icon(icon_name, inset_rect(rect, 3), theme.text if enabled else theme.text_disabled, theme)
     result.value = icon_name
@@ -168,10 +170,11 @@ def editor_toggle_button(
     value: bool,
     *,
     enabled: bool = True,
-    theme: EditorTheme = UNITY_DARK,
+    theme: EditorTheme | None = UNITY_DARK,
 ) -> WidgetResult:
     """Draw a toggle button and return next boolean value on click."""
 
+    theme = resolve_theme(theme)
     result = editor_button(rect, text, enabled=enabled, active=value, theme=theme)
     if result.clicked:
         result.changed = True
@@ -190,10 +193,11 @@ def editor_tab(
     icon: str = "",
     closeable: bool = False,
     enabled: bool = True,
-    theme: EditorTheme = UNITY_DARK,
+    theme: EditorTheme | None = UNITY_DARK,
 ) -> WidgetResult:
     """Draw one tab and report click state for selection changes."""
 
+    theme = resolve_theme(theme)
     if active is not None:
         selected = active
     result = editor_button(rect, text, enabled=enabled, active=selected, theme=theme)
@@ -212,10 +216,11 @@ def editor_tab_bar(
     selected_index: int = 0,
     *,
     active_index: int | None = None,
-    theme: EditorTheme = UNITY_DARK,
+    theme: EditorTheme | None = UNITY_DARK,
 ) -> WidgetResult:
     """Draw equal-width tabs and return selected tab index."""
 
+    theme = resolve_theme(theme)
     if active_index is not None:
         selected_index = active_index
     if not tabs:
@@ -242,10 +247,11 @@ def editor_panel(
     *,
     collapsible: bool = False,
     collapsed: bool = False,
-    theme: EditorTheme = UNITY_DARK,
+    theme: EditorTheme | None = UNITY_DARK,
 ) -> WidgetResult:
     """Draw editor panel background and optional interactive header."""
 
+    theme = resolve_theme(theme)
     draw_panel_background(rect, theme)
     draw_border(rect, theme.border)
     if title is None:
@@ -266,10 +272,11 @@ def editor_panel_header(
     *,
     collapsible: bool = False,
     collapsed: bool = False,
-    theme: EditorTheme = UNITY_DARK,
+    theme: EditorTheme | None = UNITY_DARK,
 ) -> WidgetResult:
     """Draw panel header and report collapse toggle changes when enabled."""
 
+    theme = resolve_theme(theme)
     draw_panel_header_background(rect, title, theme)
     result = _result(rect, value=title)
     if collapsible and result.clicked:
@@ -331,10 +338,11 @@ def editor_checkbox(
     value: bool,
     *,
     enabled: bool = True,
-    theme: EditorTheme = UNITY_DARK,
+    theme: EditorTheme | None = UNITY_DARK,
 ) -> WidgetResult:
     """Draw checkbox with label and return next boolean value on click."""
 
+    theme = resolve_theme(theme)
     box, text_rect = split_left(rect, ICON_SIZE_SM + CONTROL_PADDING_X)
     result = _result(rect, enabled=enabled, value=value)
     draw_border(inset_rect(box, 3), theme.border_hover if result.hovered else theme.border)
@@ -355,10 +363,11 @@ def editor_slider_float(
     *,
     step: float = 0.0,
     enabled: bool = True,
-    theme: EditorTheme = UNITY_DARK,
+    theme: EditorTheme | None = UNITY_DARK,
 ) -> WidgetResult:
     """Draw float slider and return adjusted value while pressed."""
 
+    theme = resolve_theme(theme)
     result = _result(rect, enabled=enabled, value=value)
     x, y, w, h = rect
     span = max(0.000001, max_val - min_val)
@@ -385,10 +394,11 @@ def editor_text_field_simple(
     max_chars: int = 256,
     focused: bool = False,
     enabled: bool = True,
-    theme: EditorTheme = UNITY_DARK,
+    theme: EditorTheme | None = UNITY_DARK,
 ) -> WidgetResult:
     """Draw simple non-editing text field shell for editor forms."""
 
+    theme = resolve_theme(theme)
     value = text[:max_chars]
     result = _result(rect, enabled=enabled, value=value)
     draw_rounded_rect(rect, theme.raygui_dark)

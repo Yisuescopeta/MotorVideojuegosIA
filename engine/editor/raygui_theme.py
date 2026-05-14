@@ -9,7 +9,7 @@ PROPÓSITO:
 import pyray as rl
 from engine.editor.ui.colors import rgba_to_int
 from engine.editor.ui.theme import UNITY_DARK as EDITOR_UNITY_DARK
-from engine.editor.ui.theme import theme_to_raygui_map
+from engine.editor.ui.theme import get_active_theme, theme_to_raygui_map
 from engine.editor.ui.tokens import BG_RAYGUI_DARK
 
 # ============================================================================
@@ -85,7 +85,8 @@ def apply_unity_dark_theme() -> None:
     # Cargar estilo por defecto primero
     rl.gui_load_style_default()
 
-    for (control, property_id), value in theme_to_raygui_map(EDITOR_UNITY_DARK).items():
+    active_theme = get_active_theme()
+    for (control, property_id), value in theme_to_raygui_map(active_theme).items():
         rl.gui_set_style(control, property_id, value)
 
-    print("[THEME] Unity Dark Theme aplicado a Raygui")
+    print(f"[THEME] {active_theme.name} Theme aplicado a Raygui")

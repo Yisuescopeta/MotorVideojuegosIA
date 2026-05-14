@@ -104,6 +104,11 @@ py -m motor ai start --project . --json
 py -m motor ai compliance --project . --json
 py -m motor ai self-test --project . --profile platformer --json
 py -m motor doctor --project . --json
+py -m motor editor theme list --project . --json
+py -m motor editor theme active --project . --json
+py -m motor editor theme set unity_dark --project . --json
+py -m motor editor theme export theme.json --name unity_dark --project . --json
+py -m motor editor theme import theme.json --project . --json
 py -m motor recipe list --project . --json
 py -m motor recipe show platformer-basic --project . --json
 py -m motor recipe show platformer-advanced --project . --json
@@ -133,6 +138,12 @@ py -m motor component add Player Transform --data '{"x":0,"y":0}' --project . --
 py -m motor component edit Player Transform x 200 --project . --json
 py -m motor component remove Player Sprite --project . --json
 ```
+
+Los temas de editor son preferencia de proyecto, no authoring de escena. Usa
+`EngineAPI.list_editor_themes`, `get_active_editor_theme`,
+`set_active_editor_theme`, `export_editor_theme` e `import_editor_theme`, o la
+CLI `motor editor theme ...`. El valor persistente vive en
+`.motor/editor_state.json -> preferences.editor_theme`.
 
 Para construir plataformas sin tocar JSON, usa `motor game platformer create`
 y luego los comandos incrementales `add-player`, `add-ground`, `add-platform`,

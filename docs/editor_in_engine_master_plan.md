@@ -342,7 +342,27 @@ Implementar sistema de temas completo:
 - Themes intercambiables (light, dark, custom).
 - Theme editor básico (cambiar colores en vivo).
 
-**Entregables:** `engine/editor/theme/` completo, themes light/dark, theme editor básico.
+**Estado real (2026-05-14, named registry + presets + widget resolution, sin directorio dedicado ni font loading):**
+- ✅ `EditorTheme.name` — campo `name` con default `"unity_dark"` para identificación nominal.
+- ✅ `EditorTheme.to_dict()` / `EditorTheme.from_dict()` — serialización completa a diccionario JSON-compatible con grupos `colors`, `fonts`, `metrics`. Los valores RGB se emiten como listas `[r,g,b,a]`.
+- ✅ `EditorTheme.font_size_sm`, `font_size_md`, `font_size_lg`, `panel_radius`, `button_radius`, `control_padding_x` — nuevos campos de métricas/fuentes que reemplazan el uso directo de constantes de `tokens.py` en el mapeo raygui.
+- ✅ `ThemeRegistry` — registro nominal puro (`register()`, `get()`, `set_active()`, `active()`, `names()`), sin file IO, sin pyray. `to_dict()` exporta estado completo para persistencia.
+- ✅ `UNITY_LIGHT` — preset claro completo con 17 colores definidos explícitamente (bg claro, panel gris claro, texto oscuro, accent azul).
+- ✅ `THEME_REGISTRY` — singleton global con `UNITY_DARK` y `UNITY_LIGHT` pre-registrados.
+- ✅ `get_active_theme()` / `set_active_theme(name)` — acceso global al tema activo del registry.
+- ✅ `resolve_theme(theme=None)` — función puente: si recibe `None` devuelve el activo; si recibe un tema concreto lo usa. Permite que todo el código widget acepte `None` para heredar el tema activo.
+- ✅ Todos los widgets en `ui/draw.py`, `ui/panels.py`, `ui/scroll.py`, `ui/widgets.py` (11 funciones) cambian firma de `EditorTheme = UNITY_DARK` a `EditorTheme | None = UNITY_DARK` con `resolve_theme(theme)` al inicio. Compatibilidad total con callsites existentes que pasan `UNITY_DARK` explícitamente.
+- ✅ `apply_unity_dark_theme()` en `raygui_theme.py` ahora usa `get_active_theme()` en lugar de la constante `EDITOR_UNITY_DARK`. Compatible hacia atrás: el registry activa `unity_dark` por defecto, así que el comportamiento es idéntico.
+- ✅ `theme_to_raygui_map()` usa `resolve_theme()` y lee `font_size_sm`, `button_radius`, `control_padding_x` del tema en lugar de constantes hardcodeadas.
+- ✅ `__init__.py` re-exporta `THEME_REGISTRY`, `ThemeRegistry`, `UNITY_LIGHT`, `get_active_theme`, `set_active_theme`, `resolve_theme`.
+- ✅ Tests: `test_unity_dark_theme_exposes_editor_colors` verifica `UNITY_DARK.name == "unity_dark"`.
+- ❌ **`engine/editor/theme/` directorio no creado.** Todo el código de tema vive en `engine/editor/ui_core/theme.py`. No hay intención de moverlo a un directorio separado mientras siga siendo un modelo puro sin file IO.
+- ❌ **Iconos en múltiples tamaños (16px, 24px, 32px, 64px) no implementados.** El sistema de iconos actual (`icons.py`) no escala por tamaño de tema.
+- ❌ **Font loading (TTF con sistema de fallback) no implementado.** Las fuentes se usan desde constantes de `tokens.py` (`FONT_SIZE_SM`, etc.) y se reflejan como campos del tema, pero no hay carga real de TTF ni fallback chain.
+- ❌ **Theme editor básico (cambiar colores en vivo) no implementado.** El serializador y registry están listos para persistencia, pero no hay UI de edición de paletas.
+
+**Entregables plan original:** `engine/editor/theme/` completo, themes light/dark, theme editor básico.
+**Entregables entregados:** `ThemeRegistry`, `UNITY_LIGHT`, `to_dict()/from_dict()`, active theme resolution en todos los widgets (11 funciones), `resolve_theme()` como puente, `apply_unity_dark_theme()` ahora usa active theme. Sin directorio dedicado, sin icon sizing, sin font loading, sin theme editor.
 
 ---
 

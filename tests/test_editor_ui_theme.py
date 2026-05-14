@@ -34,6 +34,7 @@ from engine.editor.ui.theme import (
 class EditorUIThemeTests(unittest.TestCase):
     def test_unity_dark_theme_exposes_editor_colors(self) -> None:
         self.assertIsInstance(UNITY_DARK, EditorTheme)
+        self.assertEqual(UNITY_DARK.name, "unity_dark")
         self.assertEqual(UNITY_DARK.bg, (56, 56, 56, 255))
 
     def test_theme_to_raygui_map_is_pure_int_mapping(self) -> None:

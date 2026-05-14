@@ -69,7 +69,17 @@ from engine.editor.ui_core.property_widgets import (
     PropertyKind,
 )
 from engine.editor.ui_core.protocols import EntityLike, PropertyValue, WorldLike
-from engine.editor.ui_core.theme import UNITY_DARK, EditorTheme, theme_to_raygui_map
+from engine.editor.ui_core.theme import (
+    THEME_REGISTRY,
+    UNITY_DARK,
+    UNITY_LIGHT,
+    EditorTheme,
+    ThemeRegistry,
+    get_active_theme,
+    resolve_theme,
+    set_active_theme,
+    theme_to_raygui_map,
+)
 from engine.editor.ui_core.tokens import (
     BG_RAYGUI_DARK,
     BUTTON_RADIUS,
@@ -195,6 +205,8 @@ __all__ = [
     "ScrollContainer",
     "Size",
     "TAB_HEIGHT",
+    "THEME_REGISTRY",
+    "ThemeRegistry",
     "TOOLBAR_HEIGHT",
     "TextureRect",
     "TextInput",
@@ -202,6 +214,7 @@ __all__ = [
     "TreeNode",
     "UI_CORE_CONTRACT",
     "UNITY_DARK",
+    "UNITY_LIGHT",
     "VBoxContainer",
     "WidgetResult",
     "WidgetState",
@@ -217,6 +230,7 @@ __all__ = [
     "filter_nodes",
     "filter_visible_rows",
     "get_entity_type",
+    "get_active_theme",
     "get_type_icon",
     "infer_property_kind",
     "inset_rect",
@@ -227,6 +241,8 @@ __all__ = [
     "normalize_ratio",
     "rect_contains",
     "resolve_visual_state",
+    "resolve_theme",
+    "set_active_theme",
     "rgba",
     "rgba_to_hex",
     "rgba_to_int",

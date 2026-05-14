@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from engine.editor.ui.colors import to_ray_color, with_alpha
 from engine.editor.ui.geometry import Rect, inset_rect, split_top
-from engine.editor.ui.theme import UNITY_DARK, EditorTheme
+from engine.editor.ui.theme import UNITY_DARK, EditorTheme, resolve_theme
 from engine.editor.ui.tokens import (
     CONTROL_PADDING_Y,
     EDITOR_ACCENT,
@@ -36,11 +36,13 @@ def draw_rounded_rect(rect: Rect, color: RGBA, radius: float = PANEL_RADIUS) -> 
     rl.draw_rectangle_rounded(_rectangle(rect), roundness, 8, to_ray_color(color))
 
 
-def draw_panel_background(rect: Rect, theme: EditorTheme = UNITY_DARK) -> None:
+def draw_panel_background(rect: Rect, theme: EditorTheme | None = UNITY_DARK) -> None:
+    theme = resolve_theme(theme)
     draw_rounded_rect(rect, theme.panel, PANEL_RADIUS)
 
 
-def draw_panel_header(rect: Rect, title: str | None = None, theme: EditorTheme = UNITY_DARK) -> None:
+def draw_panel_header(rect: Rect, title: str | None = None, theme: EditorTheme | None = UNITY_DARK) -> None:
+    theme = resolve_theme(theme)
     rl = _rl()
     header, _ = split_top(rect, TAB_HEIGHT)
     rl.draw_rectangle_rec(_rectangle(header), to_ray_color(theme.panel_header))
@@ -57,13 +59,13 @@ def draw_panel_header(rect: Rect, title: str | None = None, theme: EditorTheme =
 
 def draw_border(rect: Rect, color: RGBA | None = None, thickness: int = 1) -> None:
     rl = _rl()
-    rl.draw_rectangle_lines_ex(_rectangle(rect), thickness, to_ray_color(color or UNITY_DARK.border))
+    rl.draw_rectangle_lines_ex(_rectangle(rect), thickness, to_ray_color(color or resolve_theme(None).border))
 
 
 def draw_separator(rect: Rect, vertical: bool = False, color: RGBA | None = None) -> None:
     rl = _rl()
     x, y, w, h = rect
-    line_color = to_ray_color(color or UNITY_DARK.border)
+    line_color = to_ray_color(color or resolve_theme(None).border)
     if vertical:
         rl.draw_line(int(x + w / 2), int(y), int(x + w / 2), int(y + h), line_color)
     else:

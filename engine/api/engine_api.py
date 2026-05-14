@@ -14,6 +14,7 @@ from engine.api._authoring_api import AuthoringAPI
 from engine.api._context import EngineAPIContext
 from engine.api._contracts import EngineAPIContracts, build_engine_api_contracts
 from engine.api._debug_api import DebugAPI
+from engine.api._editor_api import EditorAPI
 from engine.api._runtime_api import RuntimeAPI
 from engine.api._scene_workspace_api import SceneWorkspaceAPI
 from engine.api._ui_api import UIAPI
@@ -136,6 +137,8 @@ class EngineAPI:
         self._debug_api = DebugAPI(self._context)
         self._ui_api = UIAPI(self._context)
         self._agent_api = AgentAPI(self._context)
+        self._editor_api = EditorAPI(self._context)
+        self._editor_api.load_editor_preferences()
         self._delegates = (
             self._runtime_api,
             self._debug_api,
@@ -144,6 +147,7 @@ class EngineAPI:
             self._assets_project_api,
             self._ui_api,
             self._agent_api,
+            self._editor_api,
         )
 
     def _refresh_contracts(self) -> EngineAPIContracts:

@@ -196,6 +196,25 @@ py -m motor project bootstrap-ai --project . --json
 El formato actual de `motor_ai.json` es `schema_version = 3`; ver
 [MOTOR_AI_JSON_CONTRACT.md](MOTOR_AI_JSON_CONTRACT.md).
 
+## Editor
+
+### `motor editor theme list|active|set|export|import`
+
+Gestiona temas del editor desde `EngineAPI`. El tema activo se guarda en
+`.motor/editor_state.json -> preferences.editor_theme`; no se serializa en
+escenas.
+
+```bash
+py -m motor editor theme list --project . --json
+py -m motor editor theme active --project . --json
+py -m motor editor theme set unity_dark --project . --json
+py -m motor editor theme export theme.json --name unity_dark --project . --json
+py -m motor editor theme import theme.json --project . --json
+```
+
+`export` escribe JSON de tema. `import` registra el tema y lo activa por defecto;
+usa `--no-activate` para solo registrarlo en el proceso actual.
+
 ## Recetas IA
 
 Las recetas IA son workflows declarativos versionados empaquetados con el

@@ -45,6 +45,7 @@ class CapabilityRegistryBuilder:
         self._register_agent_capabilities()
         self._register_signal_capabilities()
         self._register_ui_capabilities()
+        self._register_editor_capabilities()
         self._register_debug_capabilities()
         self._register_service_capabilities()
         self._register_entity_group_capabilities()
@@ -1892,6 +1893,88 @@ class CapabilityRegistryBuilder:
             tags=["ui", "authoring"],
         ))
 
+    def _register_editor_capabilities(self) -> None:
+        self._add(Capability(
+            id="editor:theme:list",
+            summary="List available editor UI themes",
+            mode="edit",
+            api_methods=["EngineAPI.list_editor_themes", "EngineAPI.get_active_editor_theme"],
+            cli_command="motor editor theme list [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="List built-in and imported editor themes",
+                api_calls=[
+                    {"method": "list_editor_themes", "args": {}},
+                ],
+                expected_outcome="Returns available themes and the active theme name",
+            ),
+            notes="Read-only editor preference query. Does not mutate scene authoring state.",
+            tags=["editor", "theme", "query"],
+        ))
+        self._add(Capability(
+            id="editor:theme:active",
+            summary="Show the active editor UI theme",
+            mode="edit",
+            api_methods=["EngineAPI.get_active_editor_theme"],
+            cli_command="motor editor theme active [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Inspect the active editor theme",
+                api_calls=[
+                    {"method": "get_active_editor_theme", "args": {}},
+                ],
+                expected_outcome="Returns the active theme payload",
+            ),
+            notes="Read-only editor preference query.",
+            tags=["editor", "theme", "query"],
+        ))
+        self._add(Capability(
+            id="editor:theme:set",
+            summary="Set the active editor UI theme",
+            mode="edit",
+            api_methods=["EngineAPI.set_active_editor_theme"],
+            cli_command="motor editor theme set <name> [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Switch the editor to the light Unity-style theme",
+                api_calls=[
+                    {"method": "set_active_editor_theme", "args": {"name": "unity_light"}},
+                ],
+                expected_outcome="Editor theme preference is persisted for the project",
+            ),
+            notes="Persists only editor preferences in .motor/editor_state.json.",
+            tags=["editor", "theme", "preferences"],
+        ))
+        self._add(Capability(
+            id="editor:theme:export",
+            summary="Export an editor UI theme to JSON",
+            mode="edit",
+            api_methods=["EngineAPI.export_editor_theme"],
+            cli_command="motor editor theme export <path> [--name <theme>] [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Export the Unity dark editor theme",
+                api_calls=[
+                    {"method": "export_editor_theme", "args": {"path": "theme.json", "name": "unity_dark"}},
+                ],
+                expected_outcome="Theme JSON is written under the project path",
+            ),
+            notes="Export path is resolved through EngineAPI project path guards.",
+            tags=["editor", "theme", "import-export"],
+        ))
+        self._add(Capability(
+            id="editor:theme:import",
+            summary="Import an editor UI theme from JSON",
+            mode="edit",
+            api_methods=["EngineAPI.import_editor_theme"],
+            cli_command="motor editor theme import <path> [--no-activate] [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Import and activate an editor theme JSON file",
+                api_calls=[
+                    {"method": "import_editor_theme", "args": {"path": "theme.json"}},
+                ],
+                expected_outcome="Theme is imported and active unless activation is disabled",
+            ),
+            notes="Import path is resolved through EngineAPI project path guards.",
+            tags=["editor", "theme", "import-export"],
+        ))
+
     def _register_debug_capabilities(self) -> None:
         self._add(Capability(
             id="debug:profiler:reset",
@@ -2220,6 +2303,7 @@ class MotorAIBootstrapBuilder:
             "Services": ["service:"],
             "Signals": ["signal:"],
             "UI": ["ui:"],
+            "Editor": ["editor:"],
         }
 
         for category_name, prefixes in categories.items():

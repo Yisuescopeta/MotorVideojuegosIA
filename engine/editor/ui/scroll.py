@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from engine.editor.ui import input as ui_input
 from engine.editor.ui.draw import draw_rounded_rect
 from engine.editor.ui.geometry import Rect
-from engine.editor.ui.theme import UNITY_DARK, EditorTheme
+from engine.editor.ui.theme import UNITY_DARK, EditorTheme, resolve_theme
 from engine.editor.ui.tokens import PANEL_RADIUS
 
 
@@ -40,10 +40,11 @@ def editor_scroll_area(
     wheel_step: float = 32.0,
     scrollbar_width: float = 8.0,
     min_thumb_height: float = 24.0,
-    theme: EditorTheme = UNITY_DARK,
+    theme: EditorTheme | None = UNITY_DARK,
 ) -> EditorScrollResult:
     """Draw vertical scroll track/thumb and return clamped offset."""
 
+    theme = resolve_theme(theme)
     x, y, w, h = rect
     viewport_height = max(0.0, float(h))
     content_height = max(0.0, float(content_height))

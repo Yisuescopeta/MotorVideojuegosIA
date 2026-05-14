@@ -8,7 +8,7 @@ from engine.editor.ui import input as ui_input
 from engine.editor.ui.colors import to_ray_color
 from engine.editor.ui.draw import draw_border, draw_panel_background, draw_rounded_rect, draw_text_clipped
 from engine.editor.ui.geometry import Rect, inset_rect, split_top
-from engine.editor.ui.theme import UNITY_DARK, EditorTheme
+from engine.editor.ui.theme import UNITY_DARK, EditorTheme, resolve_theme
 from engine.editor.ui.tokens import CONTROL_PADDING_X, FONT_SIZE_SM, PANEL_PADDING, TAB_HEIGHT
 from engine.editor.ui.widget_state import WidgetResult
 
@@ -64,10 +64,11 @@ def draw_panel_header(
     actions: Sequence[object] | None = None,
     active: bool = False,
     subtitle: str = "",
-    theme: EditorTheme = UNITY_DARK,
+    theme: EditorTheme | None = UNITY_DARK,
 ) -> WidgetResult:
     """Draw fixed panel header with uppercase title, menu button and optional actions."""
 
+    theme = resolve_theme(theme)
     x, y, w, h = rect
     header_h = min(float(PANEL_HEADER_HEIGHT), max(0.0, h))
     header_rect = (x, y, w, header_h)
@@ -112,10 +113,11 @@ def draw_editor_panel(
     active: bool = False,
     subtitle: str = "",
     actions: Sequence[object] | None = None,
-    theme: EditorTheme = UNITY_DARK,
+    theme: EditorTheme | None = UNITY_DARK,
 ) -> WidgetResult:
     """Draw full editor panel frame and header."""
 
+    theme = resolve_theme(theme)
     draw_panel_background(rect, theme)
     draw_border(rect, theme.accent if active else theme.border)
     header, _content = split_top(rect, PANEL_HEADER_HEIGHT)
@@ -133,7 +135,7 @@ def draw_editor_panel_frame(
     active: bool = False,
     subtitle: str = "",
     actions: Sequence[object] | None = None,
-    theme: EditorTheme = UNITY_DARK,
+    theme: EditorTheme | None = UNITY_DARK,
 ) -> WidgetResult:
     """Alias for panel frame drawing used by editor layout."""
 
