@@ -224,17 +224,17 @@ Mejorar el viewport del editor:
 - Overlay de información (FPS, coordenadas, nodo seleccionado).
 - Profesionalizar el viewport: bordes, sombra exterior, esquinas.
 
-**Estado real (2026-05-14, entregado sin gizmo):**
+**Estado real (2026-05-14, gizmo legado verificado, Home button implementado):**
 - ✅ Grid configurable — `grid_enabled`, `grid_step_size` (5–500), `grid_opacity` (0–255), `grid_show_center_lines`. Método `set_grid_config()` con clamping.
 - ✅ Reset de cámara — `reset_camera()` lleva zoom y target al origen. Tecla **Home** en tab SCENE (no en TERMINAL).
 - ✅ Viewport chrome — sombra exterior (2px offset, alpha 80), borde UNITY_BORDER, 8 corner accent lines (16px, color UNITY_BLUE_HOVER alpha 150).
 - ✅ Viewport overlay — semitransparente (α=105) en esquina superior-izquierda del viewport. Muestra: FPS, Mouse (solo tab SCENE, screen-to-world), Zoom, Target. Si `viewport_overlay_context["selected_entity"]` está definido, muestra `Selected <nombre>`. No hace world lookup ni frame-selected.
 - ✅ Tests unitarios — `test_editor_layout_fase9.py`: grid defaults, grid config clamping, reset_camera + offset sync, Home shortcut con/sin terminal, overlay context, smoke draw_layout con chrome+overlay, scene_mouse_pos con coordenadas locales del viewport.
-- ❌ Gizmo (mover/rotar/escalar) — NO implementado. No se tocaron `game.py`, gizmo files ni archivos críticos.
-- ❌ Botón Home en toolbar — NO implementado. Solo atajo de teclado Home.
+- ✅ Gizmo de movimiento (legado) — verificado funcional por test de arrastre (`test_move_gizmo_drag_updates_transform_and_reports_completed_drag`). No es reimplementación; el gizmo existente se validó con drag y `consume_completed_drag()`. Rotar/escalar siguen sin test.
+- ✅ Botón Home en toolbar — implementado en `editor_layout.py` como botón que invoca `reset_camera()`. Test `test_toolbar_home_button_resets_camera_without_changing_play_requests` verifica que resetea cámara sin afectar requests de play/pause/step. KEY_HOME preservado.
 
 **Entregables plan original:** Viewport con grid, cámara, gizmo de movimiento, overlay de info.
-**Entregables entregados:** Grid configurable, reset cámara (Home), viewport chrome (sombra + esquinas), overlay informativo con FPS/mouse/cámara/selected-if-provided. Gizmo de movimiento y botón Home pendientes.
+**Entregables entregados:** Grid configurable, reset cámara (Home + botón toolbar), viewport chrome (sombra + esquinas), overlay informativo con FPS/mouse/cámara/selected-if-provided. Gizmo de movimiento legado verificado funcional por test.
 
 ---
 

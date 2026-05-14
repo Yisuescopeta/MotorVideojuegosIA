@@ -96,6 +96,26 @@ class EditorLayoutFase9Tests(unittest.TestCase):
         self.assertEqual(self.layout.editor_camera.zoom, 2.0)
         self.assertEqual((self.layout.editor_camera.target.x, self.layout.editor_camera.target.y), (7, 8))
 
+    def test_toolbar_home_button_resets_camera_without_changing_play_requests(self) -> None:
+        self.layout.editor_camera.zoom = 2.5
+        self.layout.editor_camera.target = layout_module.rl.Vector2(12, -9)
+        self.layout.request_play = False
+        self.layout.request_pause = False
+        self.layout.request_step = False
+
+        def click_home(_rect, text, **_kwargs):
+            return WidgetResult(clicked=text == "Home")
+
+        layout_module.editor_button.side_effect = click_home
+
+        self.layout._draw_toolbar(is_playing=False)
+
+        self.assertEqual(self.layout.editor_camera.zoom, 1.0)
+        self.assertEqual((self.layout.editor_camera.target.x, self.layout.editor_camera.target.y), (0, 0))
+        self.assertFalse(self.layout.request_play)
+        self.assertFalse(self.layout.request_pause)
+        self.assertFalse(self.layout.request_step)
+
     def test_overlay_context_stores_selected_entity(self) -> None:
         self.layout.set_viewport_overlay_context(selected_entity="player")
         self.assertEqual(self.layout.viewport_overlay_context["selected_entity"], "player")

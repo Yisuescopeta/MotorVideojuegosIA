@@ -1389,7 +1389,7 @@ class EditorLayout:
             height=toggle_h,
         )
         toggle_x += toggle_gap
-        self._draw_toolbar_toggle(
+        toggle_x = self._draw_toolbar_toggle(
             toggle_x,
             toggle_y,
             "Center",
@@ -1397,6 +1397,11 @@ class EditorLayout:
             lambda: self.set_pivot_mode(PivotMode.CENTER),
             height=toggle_h,
         )
+        toggle_x += 12
+        home_rect = rl.Rectangle(toggle_x, toggle_y, 48, toggle_h)
+        self._register_cursor_rect(home_rect)
+        if editor_button(_to_ui_rect(home_rect), "Home").clicked:
+            self.reset_camera()
 
         # ========================================
         # CENTRO: Play / Pause / Step
