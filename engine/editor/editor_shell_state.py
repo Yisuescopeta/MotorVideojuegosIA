@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from engine.editor.agent_panel import AgentPanel
-from engine.editor.console_panel import ConsolePanel
+from engine.editor.editor_control_adapter import ConsolePanelEditorControlAdapter
 from engine.editor.project_panel import ProjectPanel
 from engine.editor.scene_flow_panel import SceneFlowPanel
 
@@ -16,7 +16,7 @@ class EditorPanelSlots:
     project_panel: Any = field(default_factory=lambda: ProjectPanel("assets"))
     flow_panel: Any = field(default_factory=SceneFlowPanel)
     flow_workspace_panel: Any = field(default_factory=SceneFlowPanel)
-    console_panel: Any = field(default_factory=ConsolePanel)
+    console_panel: Any = field(default_factory=ConsolePanelEditorControlAdapter)
     terminal_panel: Any = None
     agent_panel: Any = field(default_factory=AgentPanel)
 

@@ -319,6 +319,8 @@ The entries below are available now and are safe to use from the CLI.
 
 ### Editor
 
+- `editor:feature_flags:list`: List editor feature flags
+- `editor:feature_flags:set`: Set an editor feature flag
 - `editor:theme:active`: Show the active editor UI theme
 - `editor:theme:export`: Export an editor UI theme to JSON
 - `editor:theme:import`: Import an editor UI theme from JSON

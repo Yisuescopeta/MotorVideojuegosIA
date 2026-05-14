@@ -1974,6 +1974,38 @@ class CapabilityRegistryBuilder:
             notes="Import path is resolved through EngineAPI project path guards.",
             tags=["editor", "theme", "import-export"],
         ))
+        self._add(Capability(
+            id="editor:feature_flags:list",
+            summary="List editor feature flags",
+            mode="edit",
+            api_methods=["EngineAPI.get_editor_feature_flags"],
+            cli_command="motor editor feature-flags list [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Inspect editor control migration flags",
+                api_calls=[
+                    {"method": "get_editor_feature_flags", "args": {}},
+                ],
+                expected_outcome="Returns schema_version, current flag values, and env overrides",
+            ),
+            notes="Read-only editor preference query. Env vars can override persisted values at runtime.",
+            tags=["editor", "feature-flags", "query"],
+        ))
+        self._add(Capability(
+            id="editor:feature_flags:set",
+            summary="Set an editor feature flag",
+            mode="edit",
+            api_methods=["EngineAPI.set_editor_feature_flag"],
+            cli_command="motor editor feature-flags set <name> <true|false> [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Enable retained console panel pilot for the project",
+                api_calls=[
+                    {"method": "set_editor_feature_flag", "args": {"name": "console_panel", "value": True}},
+                ],
+                expected_outcome="Feature flag preference is persisted for the project",
+            ),
+            notes="Persists only editor preferences in .motor/editor_state.json. Defaults remain false.",
+            tags=["editor", "feature-flags", "preferences"],
+        ))
 
     def _register_debug_capabilities(self) -> None:
         self._add(Capability(

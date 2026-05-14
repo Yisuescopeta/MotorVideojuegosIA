@@ -215,6 +215,21 @@ py -m motor editor theme import theme.json --project . --json
 `export` escribe JSON de tema. `import` registra el tema y lo activa por defecto;
 usa `--no-activate` para solo registrarlo en el proceso actual.
 
+### `motor editor feature-flags list|set`
+
+Gestiona flags de migracion del editor. Los defaults son `false` y los valores
+persistidos viven en `.motor/editor_state.json -> preferences.editor_feature_flags`.
+Variables de entorno como `MOTOR_EDITOR_CONTROL_CONSOLE` pueden sobrescribir el
+valor persistido durante el proceso actual.
+
+```bash
+py -m motor editor feature-flags list --project . --json
+py -m motor editor feature-flags set console_panel true --project . --json
+```
+
+El payload JSON incluye `schema_version`, `flags`, `env_overrides` y
+`preference_key`.
+
 ## Recetas IA
 
 Las recetas IA son workflows declarativos versionados empaquetados con el

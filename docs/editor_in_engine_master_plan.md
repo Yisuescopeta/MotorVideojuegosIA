@@ -366,7 +366,7 @@ Implementar sistema de temas completo:
 
 ---
 
-### Fase 15 — Migración gradual paneles a EditorControl
+### Fase 15 — Migración gradual paneles a EditorControl ✅
 
 Migrar paneles existentes a la nueva arquitectura de controles retained-mode:
 - Feature flags para activar/desactivar migración por panel.
@@ -374,7 +374,21 @@ Migrar paneles existentes a la nueva arquitectura de controles retained-mode:
 - Los paneles migrados conviven con los no migrados.
 - Rollback rápido si un panel migrado falla.
 
-**Entregables:** Paneles migrados progresivamente, feature flags operativos.
+**Estado real (2026-05-14, foundation + piloto consola, sin migración visual de paneles):**
+- ✅ `engine/editor/editor_control_flags.py` — `EditorControlFeatureFlags` dataclass frozen con `console_panel: bool = False`. Variable de entorno `MOTOR_EDITOR_CONTROL_CONSOLE` (default `"0"`, off). Base para añadir flags por panel.
+- ✅ `engine/editor/ui_core/controls/console_control.py` — `ConsoleControlModel` puro (stdlib, sin pyray, sin editor deps): `count_by_level()`, `filtered_logs()`, `execute_command()` con `ConsoleCommandResult` (output, clear_logs, show_debug). Lógica extraída del `ConsolePanel` legacy.
+- ✅ `engine/editor/editor_control_adapter.py` — `ConsolePanelEditorControlAdapter` wrapper: flag `False` → delega todo al `ConsolePanel` legacy sin cambios. Flag `True` → sync bidireccional model↔panel antes/después de render. `__getattr__` fallthrough para compatibilidad total.
+- ✅ `engine/editor/console_panel.py` — refactor interno: crea `ConsoleControlModel`, delega `_count_by_level()`, `_get_filtered_logs()`, `_execute_command()` al modelo. Bridge `_sync_control_model_from_panel()` mantiene sync. Render y layout sin cambios.
+- ✅ `engine/editor/editor_shell_state.py` — `EditorPanelSlots.console_panel` ahora instancia `ConsolePanelEditorControlAdapter` en lugar de `ConsolePanel`. Compatible porque el adapter hace `__getattr__` fallthrough.
+- ✅ Re-exports: `ConsoleControlModel`, `ConsoleCommandResult`, `LogEntry` exportados desde `engine/editor/ui_core/controls/__init__.py` y `engine/editor/ui_core/__init__.py`.
+- ✅ Tests: `tests/test_editor_control_migration.py` — 4 tests: flag defaults false, model count/filter/command, adapter flag false delega legacy, adapter flag true sync model↔panel.
+- ⚠️ Solo Console panel piloteado. Hierarchy, Inspector, AssetBrowser, Viewport no migrados.
+- ❌ Sin cambio en render/input de ConsolePanel: con flag `False` (default) el render es idéntico al legacy.
+- ❌ Sin wiring en `EditorLayout` — el adapter se usa como reemplazo directo de `ConsolePanel` con la misma interfaz pública.
+- ❌ Sin migración visual de paneles a retained-mode `Control` tree. Los controles de Fase 13 (TextInput, Popup, Dropdown, ContextMenu) siguen sin integrarse en paneles.
+
+**Entregables plan original:** Paneles migrados progresivamente, feature flags operativos.
+**Entregables entregados:** Feature flags foundation, ConsoleControlModel puro, ConsolePanelEditorControlAdapter con flag-based delegation (default off), refactor de ConsolePanel para delegar lógica al modelo, wiring en editor_shell_state, tests. Piloto consola funcional pero inactivo por defecto.
 
 ---
 

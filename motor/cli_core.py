@@ -1593,6 +1593,59 @@ def cmd_editor_theme_list(project_path: Path, json_output: bool) -> int:
                 pass
 
 
+def _parse_editor_flag_value(value: str) -> bool:
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError("Feature flag value must be true or false")
+
+
+def cmd_editor_feature_flags_list(project_path: Path, json_output: bool) -> int:
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        data = api.get_editor_feature_flags()
+        return _output(True, "Editor feature flags listed", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to list editor feature flags: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_editor_feature_flags_set(project_path: Path, name: str, value: str, json_output: bool) -> int:
+    api: Optional[EngineAPI] = None
+    try:
+        flag_value = _parse_editor_flag_value(value)
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = api.set_editor_feature_flag(name, flag_value)
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Editor feature flag updated"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to set editor feature flag: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
 def cmd_editor_theme_active(project_path: Path, json_output: bool) -> int:
     api: Optional[EngineAPI] = None
     try:

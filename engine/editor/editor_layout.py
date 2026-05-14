@@ -416,6 +416,8 @@ class EditorLayout:
         self._editor_preferences_dirty = True
 
     def apply_editor_preferences(self, preferences: dict[str, object]) -> None:
+        if self.console_panel is not None and hasattr(self.console_panel, "apply_feature_flag_preferences"):
+            self.console_panel.apply_feature_flag_preferences(preferences)
         self.active_tool = EditorTool.from_value(preferences.get("editor_active_tool", EditorTool.MOVE.value))
         self.transform_space = TransformSpace.from_value(
             preferences.get("editor_transform_space", TransformSpace.WORLD.value)

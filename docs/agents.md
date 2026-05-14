@@ -109,6 +109,8 @@ py -m motor editor theme active --project . --json
 py -m motor editor theme set unity_dark --project . --json
 py -m motor editor theme export theme.json --name unity_dark --project . --json
 py -m motor editor theme import theme.json --project . --json
+py -m motor editor feature-flags list --project . --json
+py -m motor editor feature-flags set console_panel true --project . --json
 py -m motor recipe list --project . --json
 py -m motor recipe show platformer-basic --project . --json
 py -m motor recipe show platformer-advanced --project . --json
@@ -144,6 +146,12 @@ Los temas de editor son preferencia de proyecto, no authoring de escena. Usa
 `set_active_editor_theme`, `export_editor_theme` e `import_editor_theme`, o la
 CLI `motor editor theme ...`. El valor persistente vive en
 `.motor/editor_state.json -> preferences.editor_theme`.
+
+Los feature flags del editor tambien son preferencia de proyecto, no authoring
+de escena. Usa `EngineAPI.get_editor_feature_flags`,
+`set_editor_feature_flag`, o la CLI `motor editor feature-flags ...`. Defaults
+son `false`; variables de entorno como `MOTOR_EDITOR_CONTROL_CONSOLE` pueden
+sobrescribir el valor persistido durante el proceso actual.
 
 Para construir plataformas sin tocar JSON, usa `motor game platformer create`
 y luego los comandos incrementales `add-player`, `add-ground`, `add-platform`,

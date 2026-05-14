@@ -55,6 +55,7 @@ El runtime UI (cuando exista) debe importar solo de `ui_core`, nunca de `ui`.
 | `controls/popup.py` | `PopupModel` con open/close/toggle, `contains_point()`, `handle_pointer_down()`, `place_below()` | solo stdlib |
 | `controls/context_menu.py` | `ContextMenuItem`, `ContextMenuModel` con highlight navigation, activate, `context_menu_from_tuples()` factory | `popup` |
 | `controls/dropdown.py` | `DropdownOption`, `DropdownModel`, `ComboBoxModel` (editable) con filtro por query, select por index/id/point | `popup` |
+| `controls/console_control.py` | `ConsoleControlModel`, `ConsoleCommandResult` — modelo puro piloto para migración gradual de ConsolePanel a EditorControl | solo stdlib |
 
 Regla: **ningún módulo en `ui_core` puede importar `pyray`, `engine.editor.ui`,
 ni ningún módulo del runtime.**
@@ -63,6 +64,24 @@ Los controles de Fase 13 (`TextInput`, `PopupModel`, `ContextMenuModel`,
 `DropdownModel`, `ComboBoxModel`) son modelos internos del editor. No son
 superficie pública de `EngineAPI` ni CLI `motor`; los agentes deben seguir
 usando `EngineAPI` para authoring de escenas.
+
+La migración gradual a `EditorControl` usa feature flags con defaults seguros
+apagados. El piloto de consola vive en `ConsoleControlModel` y el adapter
+`ConsolePanelEditorControlAdapter`; con `MOTOR_EDITOR_CONTROL_CONSOLE` apagado
+se delega al `ConsolePanel` legacy sin cambiar render/input.
+
+Los flags se pueden consultar y persistir por proyecto desde la superficie
+publica, sin tocar estado de escena:
+
+```bash
+py -m motor editor feature-flags list --project . --json
+py -m motor editor feature-flags set console_panel true --project . --json
+```
+
+La persistencia vive en `.motor/editor_state.json -> preferences.editor_feature_flags`.
+El payload incluye `schema_version`. Si existe una variable de entorno del flag,
+por ejemplo `MOTOR_EDITOR_CONTROL_CONSOLE`, esa variable gana durante el proceso
+actual.
 
 ### `engine/editor/ui/` — Impure shell / shims
 
@@ -243,3 +262,4 @@ El runtime UI **puede**:
 | 2026-05-14 | Añadidos `text_input.py`, `popup.py`, `context_menu.py`, `dropdown.py` al mapa puro de `ui_core.controls` (Fase 13) |
 | 2026-05-14 | Añadidos `text_input_render.py`, `popup_render.py`, `context_menu_render.py`, `dropdown_render.py` a `ui/` impure shell (Fase 13) |
 | 2026-05-14 | `EditorTheme` expandido: `name`, `to_dict()/from_dict()`, `ThemeRegistry`, `UNITY_LIGHT`, `get_active_theme()`, `set_active_theme()`, `resolve_theme()` en todos los widgets. Todo puro, sin pyray, sin file IO (Fase 14) |
+| 2026-05-14 | Añadido `console_control.py` a `ui_core.controls` como modelo puro piloto para migración gradual de ConsolePanel a EditorControl. Feature flags foundation en `editor_control_flags.py`. Adapter `ConsolePanelEditorControlAdapter` con flag-based delegation (default off) (Fase 15) |

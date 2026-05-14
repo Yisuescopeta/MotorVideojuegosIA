@@ -2,11 +2,11 @@
 engine/editor/console_panel.py - Panel de Consola estilo Unity
 """
 
-from datetime import datetime
 from typing import List, Tuple
 
 import pyray as rl
 from engine.editor.render_safety import gui_toggle_bool
+from engine.editor.ui_core.controls.console_control import ConsoleControlModel
 
 # Sistema de Logs Global
 GLOBAL_LOGS: List[Tuple[str, str]] = []
@@ -59,55 +59,39 @@ class ConsolePanel:
         self.body_rect = rl.Rectangle(0, 0, 0, 0)
         self.search_rect = rl.Rectangle(0, 0, 0, 0)
         self.command_rect = rl.Rectangle(0, 0, 0, 0)
+        self.control_model = ConsoleControlModel()
         log_info("Console initialized.")
 
     def clear(self) -> None:
         GLOBAL_LOGS.clear()
 
     def _count_by_level(self) -> dict[str, int]:
-        counts = {self.INFO: 0, self.WARNING: 0, self.ERROR: 0, self.DEBUG: 0}
-        for level, _message in GLOBAL_LOGS:
-            if level in counts:
-                counts[level] += 1
-        return counts
+        self._sync_control_model_from_panel()
+        return self.control_model.count_by_level(GLOBAL_LOGS)
 
     def _get_filtered_logs(self) -> list[tuple[str, str]]:
-        query = self.search_text.strip().lower()
-        filtered: list[tuple[str, str]] = []
-        for level, message in GLOBAL_LOGS:
-            if level == self.INFO and not self.show_info:
-                continue
-            if level == self.WARNING and not self.show_warn:
-                continue
-            if level == self.ERROR and not self.show_err:
-                continue
-            if level == self.DEBUG and not self.show_debug:
-                continue
-            if query and query not in message.lower() and query not in level.lower():
-                continue
-            filtered.append((level, message))
-        return filtered
+        self._sync_control_model_from_panel()
+        return self.control_model.filtered_logs(GLOBAL_LOGS)
 
     def _execute_command(self, text: str) -> str:
-        command = text.strip()
-        if not command:
-            return ""
-        lower = command.lower()
-        if lower == "help":
-            return "Commands: help, clear, echo <text>, toggle_debug, version, time"
-        if lower == "clear":
+        self._sync_control_model_from_panel()
+        result = self.control_model.execute_command(text)
+        if result.clear_logs:
             self.clear()
-            return "Console cleared."
-        if lower.startswith("echo "):
-            return command[5:]
-        if lower == "toggle_debug":
-            self.show_debug = not self.show_debug
-            return f"Debug logs {'shown' if self.show_debug else 'hidden'}."
-        if lower == "version":
-            return "Motor editor console v1"
-        if lower == "time":
-            return datetime.now().isoformat(timespec="seconds")
-        return f"Unknown command: {command}"
+        if result.show_debug is not None:
+            self.show_debug = result.show_debug
+        self._sync_control_model_from_panel()
+        return result.output
+
+    def _sync_control_model_from_panel(self) -> None:
+        self.control_model.show_info = self.show_info
+        self.control_model.show_warn = self.show_warn
+        self.control_model.show_err = self.show_err
+        self.control_model.show_debug = self.show_debug
+        self.control_model.search_text = self.search_text
+        self.control_model.command_text = self.command_text
+        self.control_model.command_output = self.command_output
+        self.control_model.scroll_offset = self.scroll_offset
 
     def render(self, x: int, y: int, width: int, height: int) -> None:
         """Renderiza la consola dentro del rectángulo de contenido inferior."""

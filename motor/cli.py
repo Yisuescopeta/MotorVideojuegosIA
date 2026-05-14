@@ -55,6 +55,8 @@ from motor.cli_core import (
     cmd_ai_start,
     cmd_capabilities,
     cmd_doctor,
+    cmd_editor_feature_flags_list,
+    cmd_editor_feature_flags_set,
     cmd_editor_theme_active,
     cmd_editor_theme_export,
     cmd_editor_theme_import,
@@ -182,6 +184,7 @@ AI-Facing Commands:
   
   project info              Show project information
   editor theme list|active|set|export|import
+  editor feature-flags list|set
   project bootstrap-ai      Generate AI bootstrap files
   recipe list/show/run      Declarative AI recipes for common workflows
   game platformer create    Create minimal native 2D platformer scene
@@ -392,6 +395,22 @@ Documentation:
     editor_theme_import_parser.add_argument("--no-activate", action="store_true", help="Import without making theme active")
     editor_theme_import_parser.add_argument("--project", dest="project_root", default=".", help="Path to project directory")
     editor_theme_import_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    editor_flags_parser = editor_subparsers.add_parser(
+        "feature-flags",
+        help="Editor feature flag preferences",
+    )
+    editor_flags_subparsers = editor_flags_parser.add_subparsers(dest="editor_flags_subcommand", required=True)
+
+    editor_flags_list_parser = editor_flags_subparsers.add_parser("list", help="List editor feature flags")
+    editor_flags_list_parser.add_argument("--project", dest="project_root", default=".", help="Path to project directory")
+    editor_flags_list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    editor_flags_set_parser = editor_flags_subparsers.add_parser("set", help="Set editor feature flag")
+    editor_flags_set_parser.add_argument("name", help="Feature flag name")
+    editor_flags_set_parser.add_argument("value", choices=("true", "false"), help="Feature flag value")
+    editor_flags_set_parser.add_argument("--project", dest="project_root", default=".", help="Path to project directory")
+    editor_flags_set_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === project ===
     project_parser = subparsers.add_parser(
@@ -2045,6 +2064,11 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 return cmd_editor_theme_export(Path(parsed.project_root).resolve(), parsed.path, parsed.name, parsed.json)
             if parsed.editor_theme_subcommand == "import":
                 return cmd_editor_theme_import(Path(parsed.project_root).resolve(), parsed.path, not parsed.no_activate, parsed.json)
+        if parsed.editor_subcommand == "feature-flags":
+            if parsed.editor_flags_subcommand == "list":
+                return cmd_editor_feature_flags_list(Path(parsed.project_root).resolve(), parsed.json)
+            if parsed.editor_flags_subcommand == "set":
+                return cmd_editor_feature_flags_set(Path(parsed.project_root).resolve(), parsed.name, parsed.value, parsed.json)
      
     # === project ===
     elif parsed.command == "project":

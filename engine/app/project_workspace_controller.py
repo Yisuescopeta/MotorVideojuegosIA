@@ -165,7 +165,11 @@ class ProjectWorkspaceController:
         if project_service is None or editor_layout is None or not project_service.has_project:
             return
         state = project_service.load_editor_state()
-        state["preferences"] = editor_layout.export_editor_preferences()
+        preferences = state.get("preferences", {})
+        if not isinstance(preferences, dict):
+            preferences = {}
+        preferences.update(editor_layout.export_editor_preferences())
+        state["preferences"] = preferences
         if hasattr(editor_layout, "export_dock_layout"):
             state["layout"] = editor_layout.export_dock_layout()
         project_service.save_editor_state(state)

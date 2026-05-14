@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 from engine.api import EngineAPI
 from engine.editor.ui_core.theme import set_active_theme
@@ -101,3 +103,54 @@ class EditorAPIThemeTests(unittest.TestCase):
             code, response = _run_cli("editor", "theme", "import", "theme.json", "--project", project_arg, "--json")
             self.assertEqual(code, 0)
             self.assertEqual(response["data"]["name"], "cli_custom_dark")
+
+    def test_engine_api_feature_flags_default_set_persist_and_env_override(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ):
+            os.environ.pop("MOTOR_EDITOR_CONTROL_CONSOLE", None)
+            project = _create_project(Path(tmp))
+            api = EngineAPI(project_root=str(project))
+
+            payload = api.get_editor_feature_flags()
+            self.assertEqual(payload["schema_version"], 1)
+            self.assertEqual(payload["flags"], {"console_panel": False})
+
+            result = api.set_editor_feature_flag("console_panel", True)
+            self.assertTrue(result["success"])
+            self.assertEqual(result["data"]["flags"]["console_panel"], True)
+            api.shutdown()
+
+            api = EngineAPI(project_root=str(project))
+            self.assertEqual(api.get_editor_feature_flags()["flags"]["console_panel"], True)
+            api.shutdown()
+
+            with patch.dict(os.environ, {"MOTOR_EDITOR_CONTROL_CONSOLE": "false"}):
+                api = EngineAPI(project_root=str(project))
+                payload = api.get_editor_feature_flags()
+                self.assertEqual(payload["flags"]["console_panel"], False)
+                self.assertEqual(payload["env_overrides"], {"console_panel": "MOTOR_EDITOR_CONTROL_CONSOLE"})
+                api.shutdown()
+
+    def test_engine_api_feature_flags_reject_unknown(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = _create_project(Path(tmp))
+            api = EngineAPI(project_root=str(project))
+            result = api.set_editor_feature_flag("missing", True)
+            self.assertFalse(result["success"])
+            self.assertIn("Unknown editor feature flag", result["message"])
+            api.shutdown()
+
+    def test_cli_feature_flags_list_and_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ):
+            os.environ.pop("MOTOR_EDITOR_CONTROL_CONSOLE", None)
+            project = _create_project(Path(tmp))
+            project_arg = str(project)
+
+            code, response = _run_cli("editor", "feature-flags", "list", "--project", project_arg, "--json")
+            self.assertEqual(code, 0)
+            self.assertEqual(response["data"]["flags"], {"console_panel": False})
+
+            code, response = _run_cli(
+                "editor", "feature-flags", "set", "console_panel", "true", "--project", project_arg, "--json"
+            )
+            self.assertEqual(code, 0)
+            self.assertEqual(response["data"]["flags"]["console_panel"], True)

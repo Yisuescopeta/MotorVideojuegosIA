@@ -6,6 +6,7 @@ measure/arrange layout, event dispatch, focus management, and basic controls.
 All modules are pure: no pyray, no engine.editor.ui, no window dependencies.
 """
 
+from engine.editor.ui_core.controls.console_control import ConsoleCommandResult, ConsoleControlModel, LogEntry
 from engine.editor.ui_core.controls.container import (
     Container,
     HBoxContainer,
@@ -46,6 +47,8 @@ __all__ = [
     "ControlEvent",
     "ControlEventKind",
     "ComboBoxModel",
+    "ConsoleCommandResult",
+    "ConsoleControlModel",
     "ContextMenuItem",
     "ContextMenuManager",
     "ContextMenuModel",
@@ -55,6 +58,7 @@ __all__ = [
     "HBoxContainer",
     "Label",
     "LayoutDirection",
+    "LogEntry",
     "Margin",
     "Panel",
     "PopupManager",
