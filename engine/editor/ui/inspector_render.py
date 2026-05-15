@@ -98,6 +98,9 @@ class InspectorPanel:
         # Expand state for DICT/LIST
         self.expanded_keys: set[str] = set()
 
+        # Color slider hit areas (channel_idx, x, y, w, h)
+        self._color_slider_bounds: list[tuple[int, float, float, float, float]] = []
+
     def set_scene_manager(self, scene_manager: SceneManagerLike | None) -> None:
         self._scene_manager = scene_manager
 
@@ -389,15 +392,25 @@ class InspectorPanel:
         self.editing_color_prop = ""
         self.editing_color_value = (128, 128, 128, 255)
         self.editing_key = None
+        self._color_slider_bounds = []
 
     def _is_click_on_color_sliders(self, mx: float, my: float) -> bool:
         """Return True if click is within the color slider area."""
-        del mx, my
+        for _idx, x, y, w, h in self._color_slider_bounds:
+            if x <= mx <= x + w and y <= my <= y + h:
+                return True
         return False
 
     def _handle_color_slider_click(self, mx: float, my: float) -> None:
         """Process click on color slider. Adjust channel value based on click position."""
-        del mx, my
+        for channel_idx, x, y, w, h in self._color_slider_bounds:
+            if x <= mx <= x + w and y <= my <= y + h:
+                fraction = max(0.0, min(1.0, (mx - x) / max(w, 1.0)))
+                val = int(fraction * 255)
+                values = list(self.editing_color_value)
+                values[channel_idx] = val
+                self.editing_color_value = (values[0], values[1], values[2], values[3])
+                return
 
     def _draw_vector(self, prop: PropertyDescriptor, rect: InspectorWidgetRect) -> None:
         """Draw vector property as inline X/Y(/Z) fields."""
@@ -583,12 +596,15 @@ class InspectorPanel:
         self._draw_text("Edit Color", sl_x, y, 10, self._color(220, 220, 200, 255))
         y += 16
 
-        for value, label, color_label in [(r, 'R', (255, 80, 80)), (g, 'G', (80, 255, 80)), (b, 'B', (80, 80, 255)), (a, 'A', (200, 200, 200))]:
+        channels = [('R', r, (255, 80, 80)), ('G', g, (80, 255, 80)), ('B', b, (80, 80, 255)), ('A', a, (200, 200, 200))]
+        self._color_slider_bounds = []
+        for idx, (label, value, color_label) in enumerate(channels):
             self._draw_text(f"{label}: {value}", sl_x, y, 10, self._color(*color_label, 255))
             track_y = y + 12
             self._draw_rectangle(sl_x, track_y, sl_w, 8, self._color(50, 50, 50, 255))
             fill_w = int(sl_w * value / 255)
             self._draw_rectangle(sl_x, track_y, fill_w, 8, self._color(*color_label, 255))
+            self._color_slider_bounds.append((idx, float(sl_x), float(track_y), float(sl_w), 8.0))
             y += 24
 
         swatch_x = sl_x + sl_w + 8
