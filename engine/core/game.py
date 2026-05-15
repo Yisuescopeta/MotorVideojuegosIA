@@ -19,7 +19,7 @@ CONTROLES:
 
 import random
 import time
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional, cast
 
 import pyray as rl
 from engine.app import (
@@ -70,6 +70,7 @@ from engine.project.project_service import ProjectService
 if TYPE_CHECKING:
     from cli.script_executor import ScriptExecutor
     from engine.ecs.world import World
+    from engine.editor.ui.inspector_render import InspectorPanel
     from engine.events.event_bus import EventBus
     from engine.events.rule_system import RuleSystem
     from engine.inspector.inspector_system import InspectorSystem
@@ -90,9 +91,9 @@ if TYPE_CHECKING:
     from engine.systems.parallax_system import ParallaxSystem
     from engine.systems.particle_system import ParticleSystem
     from engine.systems.path_follow_system import PathFollowSystem
-    from engine.systems.raycast_2d_system import RayCast2DSystem
     from engine.systems.physics_system import PhysicsSystem
     from engine.systems.player_controller_system import PlayerControllerSystem
+    from engine.systems.raycast_2d_system import RayCast2DSystem
     from engine.systems.render_system import RenderSystem
     from engine.systems.resource_preloader_system import ResourcePreloaderSystem
     from engine.systems.script_behaviour_system import ScriptBehaviourSystem
@@ -140,6 +141,7 @@ class Game:
         self._character_controller_system: Optional["CharacterControllerSystem"] = None
         self._script_behaviour_system: Optional["ScriptBehaviourSystem"] = None
         self._inspector_system: Optional["InspectorSystem"] = None
+        self._inspector_panel: Optional["InspectorPanel"] = None
         self._timer_system: Optional["TimerSystem"] = None
         self._tween_system: Optional["TweenSystem"] = None
         self._visible_on_screen_system: Optional["VisibleOnScreenSystem"] = None
@@ -605,6 +607,11 @@ class Game:
         if self._scene_manager is not None:
             self._inspector_system.set_scene_manager(self._scene_manager)
 
+    def set_inspector_panel(self, panel: Optional["InspectorPanel"]) -> None:
+        self._inspector_panel = panel
+        if self._inspector_panel is not None and self._scene_manager is not None:
+            self._inspector_panel.set_scene_manager(self._scene_manager)
+
     def set_level_loader(self, loader: "LevelLoader") -> None:
         self._level_loader = loader
 
@@ -641,6 +648,8 @@ class Game:
         # Conectar inspector al scene_manager para edición
         if self._inspector_system is not None:
             self._inspector_system.set_scene_manager(manager)
+        if self._inspector_panel is not None:
+            self._inspector_panel.set_scene_manager(manager)
         if self.animator_panel is not None:
             self.animator_panel.set_scene_manager(manager)
         if self.sprite_editor_modal is not None:
@@ -765,7 +774,10 @@ class Game:
     def set_raycast_2d_system(self, system: "RayCast2DSystem") -> None:
         self._raycast_2d_system = system
         system.set_ray_cast_query(
-            lambda ox, oy, dx, dy, md: self.query_physics_ray(ox, oy, dx, dy, md)
+            cast(
+                Callable[[float, float, float, float, float], list[dict[Any, Any]]],
+                lambda ox, oy, dx, dy, md: self.query_physics_ray(ox, oy, dx, dy, md),
+            )
         )
 
     def set_ui_focus_system(self, system: "UIFocusSystem") -> None:
@@ -1237,6 +1249,7 @@ class Game:
                         self.step()
 
                 self._editor_interaction_controller.handle_scene_view_drag_drop(active_world)
+                self._editor_interaction_controller.handle_inspector_drag_drop(active_world)
 
             # 2. Gizmos & Selection (Only if interaction enabled)
             selection_gizmo_start = time.perf_counter()
@@ -1622,20 +1635,30 @@ class Game:
                     self._render_system.render(active_world)
 
             # Inspector Render (Overlay on Layout)
-            if self._inspector_system is not None and overlay_world is not None:
+            if (self._inspector_panel is not None or self._inspector_system is not None) and overlay_world is not None:
                 if self.editor_layout:
                     safe_reset_clip_state()
                     rect = self.editor_layout.inspector_rect
                     inspector_start = time.perf_counter()
                     try:
-                        self._inspector_system.render(
-                            overlay_world,
-                            int(rect.x),
-                            int(rect.y),
-                            int(rect.width),
-                            int(rect.height),
-                            is_edit_mode=self.is_edit_mode,
-                        )
+                        if self._inspector_panel is not None:
+                            self._inspector_panel.render(
+                                overlay_world,
+                                int(rect.x),
+                                int(rect.y),
+                                int(rect.width),
+                                int(rect.height),
+                                is_edit_mode=self.is_edit_mode,
+                            )
+                        elif self._inspector_system is not None:
+                            self._inspector_system.render(
+                                overlay_world,
+                                int(rect.x),
+                                int(rect.y),
+                                int(rect.width),
+                                int(rect.height),
+                                is_edit_mode=self.is_edit_mode,
+                            )
                     except Exception as exc:
                         safe_reset_clip_state()
                         log_err(f"Inspector render error: {exc}")

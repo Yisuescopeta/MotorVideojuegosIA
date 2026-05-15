@@ -97,13 +97,15 @@ class EditorInteractionController:
         filename = os.path.basename(file_path)
         name, ext = os.path.splitext(filename)
         scene_manager = self._get_scene_manager()
+        if scene_manager is None:
+            return
 
         if ext.lower() == ".prefab":
             print(f"[DROP] Instantiating Prefab '{name}' from {file_path}")
             from engine.assets.prefab import PrefabManager
 
             prefab_data = PrefabManager.load_prefab_data(file_path)
-            if prefab_data and scene_manager is not None:
+            if prefab_data:
                 prefab_locator = self._build_prefab_locator(file_path, scene_manager)
                 unique_name = name
                 count = 1
@@ -133,17 +135,35 @@ class EditorInteractionController:
             )
             if created:
                 self._apply_selection(active_world, name)
+        return
+
+    def handle_inspector_drag_drop(self, active_world: Optional["World"] = None) -> None:
+        state = self._get_state()
+        layout = self._get_editor_layout()
+        project_panel = getattr(layout, "project_panel", None) if layout is not None else None
+        if (
+            not state.is_edit()
+            or layout is None
+            or project_panel is None
+            or not getattr(project_panel, "dragging_file", None)
+            or not hasattr(layout, "is_mouse_in_inspector")
+            or not layout.is_mouse_in_inspector()
+        ):
+            return
+        if not rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
             return
 
-        new_entity = active_world.create_entity(name)
-        from engine.components.collider import Collider
-        from engine.components.sprite import Sprite
-        from engine.components.transform import Transform
-
-        new_entity.add_component(Transform(drop_pos.x, drop_pos.y))
-        new_entity.add_component(Sprite(file_path))
-        new_entity.add_component(Collider(32, 32))
-        self._apply_selection(active_world, name)
+        scene_manager = self._get_scene_manager()
+        if scene_manager is None or not hasattr(scene_manager, "apply_edit_to_world"):
+            return
+        entity_name = self._get_selected_entity_name(active_world)
+        if not entity_name:
+            return
+        edit_target = self._inspector_asset_edit_target(str(project_panel.dragging_file))
+        if edit_target is None:
+            return
+        component_name, property_name, locator = edit_target
+        scene_manager.apply_edit_to_world(entity_name, component_name, property_name, locator)
 
     def handle_selection_and_gizmos(self, active_world: Optional["World"]) -> None:
         state = self._get_state()
@@ -354,6 +374,30 @@ class EditorInteractionController:
         active_scene = scene_manager.get_active_scene_summary() if hasattr(scene_manager, "get_active_scene_summary") else {}
         scene_source_path = str(active_scene.get("path", "")).strip() or None
         return project_service.to_scene_locator(file_path, scene_source_path=scene_source_path)
+
+    def _get_selected_entity_name(self, active_world: Optional["World"]) -> Optional[str]:
+        selection_state = self._get_editor_selection()
+        selected = getattr(selection_state, "entity_name", None)
+        if selected:
+            return str(selected)
+        if active_world is not None:
+            selected = getattr(active_world, "selected_entity_name", None)
+            if selected:
+                return str(selected)
+        return None
+
+    def _inspector_asset_edit_target(self, file_path: str) -> Optional[tuple[str, str, str]]:
+        locator = self._build_project_asset_locator(file_path)
+        lower = file_path.lower()
+        if lower.endswith((".png", ".jpg", ".jpeg", ".bmp")):
+            return ("Sprite", "texture_path", locator)
+        if lower.endswith(".py"):
+            return ("ScriptBehaviour", "module_path", locator)
+        if lower.endswith((".wav", ".ogg", ".mp3", ".flac")):
+            return ("AudioSource", "asset_path", locator)
+        if lower.endswith((".mat", ".material", ".mtl")):
+            return ("RenderStyle2D", "material_path", locator)
+        return None
 
     def _get_project_service(self) -> Any:
         layout = self._get_editor_layout()

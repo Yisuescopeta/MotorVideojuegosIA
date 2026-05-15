@@ -44,6 +44,7 @@ contradecirlos.
 - [api.md](api.md) - referencia publica de `EngineAPI`.
 - [cli.md](cli.md) - referencia oficial de la CLI `motor`.
 - [MOTOR_AI_JSON_CONTRACT.md](MOTOR_AI_JSON_CONTRACT.md) - contrato del artefacto generado `motor_ai.json`.
+- [editor_ui_architecture.md](editor_ui_architecture.md) - separación oficial Editor UI (impuro) vs `ui_core` (puro).
 
 ## Referencia operativa
 
@@ -56,6 +57,9 @@ Estos documentos coordinan ramas, workspaces e integracion. Son referencia
 operativa y no prueba de capacidades implementadas del motor.
 
 - [roadmap/master-plan.md](roadmap/master-plan.md) - plan maestro por fases para abrir trabajo paralelo.
+- [editor_in_engine_master_plan.md](editor_in_engine_master_plan.md) - plan maestro: editor profesional in-engine estilo Godot (fases 0-20).
+- [editor_in_engine_baseline.md](editor_in_engine_baseline.md) - linea base del editor actual (Fase 0 del plan editor).
+- [editor_in_engine_godot_reference_notes.md](editor_in_engine_godot_reference_notes.md) - notas de referencia del editor Godot.
 - [roadmap/milestone-template.md](roadmap/milestone-template.md) - plantilla de milestone por rama.
 - [roadmap/rfc-lite-template.md](roadmap/rfc-lite-template.md) - decision minima previa a ramas grandes.
 - [architecture/branch-strategy.md](architecture/branch-strategy.md) - convencion de ramas y workspaces.

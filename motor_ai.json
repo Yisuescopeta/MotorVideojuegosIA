@@ -980,6 +980,199 @@
             ]
         },
         {
+            "id": "editor:feature_flags:list",
+            "summary": "List editor feature flags",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "EngineAPI.get_editor_feature_flags"
+            ],
+            "cli_command": "motor editor feature-flags list [--project <path>] [--json]",
+            "example": {
+                "description": "Inspect editor control migration flags",
+                "api_calls": [
+                    {
+                        "method": "get_editor_feature_flags",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns schema_version, current flag values, and env overrides"
+            },
+            "notes": "Read-only editor preference query. Env vars can override persisted values at runtime.",
+            "tags": [
+                "editor",
+                "feature-flags",
+                "query"
+            ]
+        },
+        {
+            "id": "editor:feature_flags:set",
+            "summary": "Set an editor feature flag",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "EngineAPI.set_editor_feature_flag"
+            ],
+            "cli_command": "motor editor feature-flags set <name> <true|false> [--project <path>] [--json]",
+            "example": {
+                "description": "Enable retained console panel pilot for the project",
+                "api_calls": [
+                    {
+                        "method": "set_editor_feature_flag",
+                        "args": {
+                            "name": "console_panel",
+                            "value": true
+                        }
+                    }
+                ],
+                "expected_outcome": "Feature flag preference is persisted for the project"
+            },
+            "notes": "Persists only editor preferences in .motor/editor_state.json. Defaults remain false.",
+            "tags": [
+                "editor",
+                "feature-flags",
+                "preferences"
+            ]
+        },
+        {
+            "id": "editor:theme:active",
+            "summary": "Show the active editor UI theme",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "EngineAPI.get_active_editor_theme"
+            ],
+            "cli_command": "motor editor theme active [--project <path>] [--json]",
+            "example": {
+                "description": "Inspect the active editor theme",
+                "api_calls": [
+                    {
+                        "method": "get_active_editor_theme",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns the active theme payload"
+            },
+            "notes": "Read-only editor preference query.",
+            "tags": [
+                "editor",
+                "theme",
+                "query"
+            ]
+        },
+        {
+            "id": "editor:theme:export",
+            "summary": "Export an editor UI theme to JSON",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "EngineAPI.export_editor_theme"
+            ],
+            "cli_command": "motor editor theme export <path> [--name <theme>] [--project <path>] [--json]",
+            "example": {
+                "description": "Export the Unity dark editor theme",
+                "api_calls": [
+                    {
+                        "method": "export_editor_theme",
+                        "args": {
+                            "path": "theme.json",
+                            "name": "unity_dark"
+                        }
+                    }
+                ],
+                "expected_outcome": "Theme JSON is written under the project path"
+            },
+            "notes": "Export path is resolved through EngineAPI project path guards.",
+            "tags": [
+                "editor",
+                "theme",
+                "import-export"
+            ]
+        },
+        {
+            "id": "editor:theme:import",
+            "summary": "Import an editor UI theme from JSON",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "EngineAPI.import_editor_theme"
+            ],
+            "cli_command": "motor editor theme import <path> [--no-activate] [--project <path>] [--json]",
+            "example": {
+                "description": "Import and activate an editor theme JSON file",
+                "api_calls": [
+                    {
+                        "method": "import_editor_theme",
+                        "args": {
+                            "path": "theme.json"
+                        }
+                    }
+                ],
+                "expected_outcome": "Theme is imported and active unless activation is disabled"
+            },
+            "notes": "Import path is resolved through EngineAPI project path guards.",
+            "tags": [
+                "editor",
+                "theme",
+                "import-export"
+            ]
+        },
+        {
+            "id": "editor:theme:list",
+            "summary": "List available editor UI themes",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "EngineAPI.list_editor_themes",
+                "EngineAPI.get_active_editor_theme"
+            ],
+            "cli_command": "motor editor theme list [--project <path>] [--json]",
+            "example": {
+                "description": "List built-in and imported editor themes",
+                "api_calls": [
+                    {
+                        "method": "list_editor_themes",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns available themes and the active theme name"
+            },
+            "notes": "Read-only editor preference query. Does not mutate scene authoring state.",
+            "tags": [
+                "editor",
+                "theme",
+                "query"
+            ]
+        },
+        {
+            "id": "editor:theme:set",
+            "summary": "Set the active editor UI theme",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "EngineAPI.set_active_editor_theme"
+            ],
+            "cli_command": "motor editor theme set <name> [--project <path>] [--json]",
+            "example": {
+                "description": "Switch the editor to the light Unity-style theme",
+                "api_calls": [
+                    {
+                        "method": "set_active_editor_theme",
+                        "args": {
+                            "name": "unity_light"
+                        }
+                    }
+                ],
+                "expected_outcome": "Editor theme preference is persisted for the project"
+            },
+            "notes": "Persists only editor preferences in .motor/editor_state.json.",
+            "tags": [
+                "editor",
+                "theme",
+                "preferences"
+            ]
+        },
+        {
             "id": "entity:create",
             "summary": "Create a new entity with optional components",
             "mode": "edit",
@@ -1869,6 +2062,38 @@
             ]
         },
         {
+            "id": "physics:query:motion",
+            "summary": "Test entity motion against physics world without applying it",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "RuntimeAPI.query_physics_motion"
+            ],
+            "cli_command": "motor physics query motion <entity_name> <motion_x> <motion_y>",
+            "example": {
+                "description": "Test if player would collide moving 100px right",
+                "api_calls": [
+                    {
+                        "method": "query_physics_motion",
+                        "args": {
+                            "entity_name": "player",
+                            "motion_x": 100,
+                            "motion_y": 0,
+                            "margin": 0.08
+                        }
+                    }
+                ],
+                "expected_outcome": "Returns collision info and safe displacement"
+            },
+            "notes": "Non-mutating. Uses active physics backend for motion testing.",
+            "tags": [
+                "physics",
+                "query",
+                "collision",
+                "motion"
+            ]
+        },
+        {
             "id": "physics:query:ray",
             "summary": "Cast a ray and find intersecting physics bodies",
             "mode": "both",
@@ -1901,49 +2126,38 @@
             ]
         },
         {
-            "id": "physics:collision:shape_set",
-            "summary": "Define multiple collision shapes per entity with individual offsets and properties",
-            "mode": "edit",
+            "id": "physics:query:shape-cast",
+            "summary": "Cast a shape through physics world and find intersections",
+            "mode": "both",
             "status": "implemented",
             "api_methods": [
-                "AuthoringAPI.add_component",
-                "AuthoringAPI.edit_component"
+                "RuntimeAPI.query_physics_shape_cast"
             ],
-            "cli_command": null,
+            "cli_command": "motor physics query shape-cast <shape_type> <shape_width> <shape_height> <origin_x> <origin_y> <direction_x> <direction_y> <max_distance>",
             "example": {
-                "description": "Add CollisionShapeSet2D with box body and circle head trigger",
+                "description": "Cast a box shape from origin (100,100) to the right",
                 "api_calls": [
                     {
-                        "method": "add_component",
+                        "method": "query_physics_shape_cast",
                         "args": {
-                            "entity_name": "boss",
-                            "component_name": "CollisionShapeSet2D",
-                            "data": {
-                                "shapes": [
-                                    {
-                                        "shape_type": "box",
-                                        "width": 64.0,
-                                        "height": 48.0,
-                                        "offset_y": -24.0
-                                    },
-                                    {
-                                        "shape_type": "circle",
-                                        "radius": 20.0,
-                                        "offset_y": -48.0,
-                                        "is_trigger": true
-                                    }
-                                ]
-                            }
+                            "shape_type": "box",
+                            "shape_width": 32,
+                            "shape_height": 32,
+                            "origin_x": 100,
+                            "origin_y": 100,
+                            "direction_x": 1,
+                            "direction_y": 0,
+                            "max_distance": 500
                         }
                     }
                 ],
-                "expected_outcome": "Entity 'boss' has a compound collision shape with body and head trigger"
+                "expected_outcome": "Returns list of hits sorted by distance"
             },
-            "notes": "Each shape supports box, circle, capsule or polygon with per-shape offset, disabled, is_trigger, friction, restitution. Use get_composite_bounds() for the enclosing AABB.",
+            "notes": "Direction is normalized. Supports box, circle, capsule shapes.",
             "tags": [
                 "physics",
-                "collision",
-                "authoring"
+                "query",
+                "collision"
             ]
         },
         {
@@ -3109,176 +3323,6 @@
                 "ui",
                 "authoring"
             ]
-        },
-        {
-            "id": "physics:particles:cpu_fallback",
-            "summary": "GPUParticlesSystem CPU-backed adapter (no real GPU, delegates to ParticleSystem CPU fallback)",
-            "mode": "play",
-            "status": "implemented",
-            "api_methods": [
-                "GPUParticlesSystem.update",
-                "GPUParticlesSystem.render",
-                "GPUParticlesSystem.reset"
-            ],
-            "cli_command": null,
-            "example": {
-                "description": "GPUParticlesSystem wired via RuntimeController and Game, no direct EngineAPI endpoint",
-                "api_calls": [],
-                "expected_outcome": "Particle rendering delegates to CPU ParticleSystem; no GPU acceleration"
-            },
-            "notes": "Wired internally in RuntimeController and Game. Exposes update(world, dt), render(world), reset(), active_particle_count y total_particle_count. No usa GPU real — delega en ParticleSystem de CPU. Componentes ParticleEmitter son consumidos automáticamente durante PLAY.",
-            "tags": [
-                "physics",
-                "particles",
-                "render",
-                "cpu-fallback"
-            ]
-        },
-        {
-            "id": "physics:resource:material",
-            "summary": "PhysicsMaterial resource (friction/bounce/rough/absorbent, schema_version 1, path override en RigidBody/StaticBody2D)",
-            "mode": "both",
-            "status": "implemented",
-            "api_methods": [
-                "PhysicsMaterial.from_dict",
-                "PhysicsMaterial.to_dict",
-                "load_physics_material",
-                "clear_physics_material_cache"
-            ],
-            "cli_command": null,
-            "example": {
-                "description": "Configurar PhysicsMaterial para RigidBody via physics_material_override_path",
-                "api_calls": [
-                    {
-                        "method": "edit_component",
-                        "args": {
-                            "entity_name": "player",
-                            "component": "RigidBody",
-                            "property": "physics_material_override_path",
-                            "value": "materials/ice.json"
-                        }
-                    }
-                ],
-                "expected_outcome": "RigidBody usa PhysicsMaterial del archivo .json para fricción/rebote durante colisiones"
-            },
-            "notes": "PhysicsMaterial define friction (0=ice, 1=normal), bounce (0=sin rebote, 1=rebote perfecto), rough (fricción infinita) y absorbent (bounce=0 siempre). Se carga desde .json con load_physics_material(). Campos rough y absorbent aplican override sobre friction/bounce respectivamente. Cache de carga compartido; usar clear_physics_material_cache() para tests. Compatible con StaticBody2D.",
-            "tags": [
-                "physics",
-                "resource",
-                "material",
-                "collision"
-            ]
-        },
-        {
-            "id": "physics:rigidbody:contact_monitor",
-            "summary": "RigidBody contact_monitor con EngineAPI wrappers get_colliding_bodies y get_contact_count",
-            "mode": "play",
-            "status": "implemented",
-            "api_methods": [
-                "RuntimeAPI.get_colliding_bodies",
-                "RuntimeAPI.get_contact_count",
-                "RigidBody.get_colliding_bodies",
-                "RigidBody.get_contact_count"
-            ],
-            "cli_command": null,
-            "example": {
-                "description": "Monitorear contactos de un RigidBody durante PLAY",
-                "api_calls": [
-                    {
-                        "method": "edit_component",
-                        "args": {
-                            "entity_name": "player",
-                            "component": "RigidBody",
-                            "property": "contact_monitor",
-                            "value": true
-                        }
-                    },
-                    {
-                        "method": "edit_component",
-                        "args": {
-                            "entity_name": "player",
-                            "component": "RigidBody",
-                            "property": "max_contacts_reported",
-                            "value": 10
-                        }
-                    }
-                ],
-                "expected_outcome": "Tras step() en PLAY, get_colliding_bodies('player') retorna IDs de entidades en contacto; get_contact_count('player') retorna el número de contactos activos"
-            },
-            "notes": "contact_monitor (bool) y max_contacts_reported (int, 0=deshabilitado) se configuran via edit_component. Los wrappers EngineAPI get_colliding_bodies(entity_name) y get_contact_count(entity_name) delegan en RigidBody.get_colliding_bodies()/get_contact_count(). Retornan [] y 0 si la entidad no existe, no tiene RigidBody o contact_monitor está desactivado. Solo colisiones reales (no triggers) registran contactos. Los contactos se limpian cada frame.",
-            "tags": [
-                "physics",
-                "rigidbody",
-                "contact",
-                "collision",
-                "runtime"
-            ]
-        },
-        {
-            "id": "physics:character:max_slides",
-            "summary": "Set max_slides on CharacterController2D (controls slide iteration cap during move_and_slide)",
-            "mode": "play",
-            "status": "implemented",
-            "api_methods": [
-                "RuntimeAPI.set_character_max_slides"
-            ],
-            "cli_command": null,
-            "example": {
-                "description": "Set Player max_slides to 6 for smoother wall sliding",
-                "api_calls": [
-                    {
-                        "method": "set_character_max_slides",
-                        "args": {
-                            "entity_name": "Player",
-                            "max_slides": 6
-                        }
-                    }
-                ],
-                "expected_outcome": "Player CharacterController2D.max_slides updated to 6. Default is 4. Valid range 1-8."
-            },
-            "notes": "Runtime-only. Clamps to 1-8. Entity must have CharacterController2D component. max_slides=1 disables sliding (move_and_collide behavior).",
-            "tags": [
-                "physics",
-                "character",
-                "move_and_slide",
-                "runtime"
-            ]
-        },
-        {
-            "id": "physics:query:shape_cast",
-            "summary": "Cast a shape through physics space and find first hit",
-            "mode": "both",
-            "status": "implemented",
-            "api_methods": [
-                "RuntimeAPI.query_physics_shape_cast"
-            ],
-            "cli_command": null,
-            "example": {
-                "description": "Cast a 16x16 box from (0,0) rightwards 200px",
-                "api_calls": [
-                    {
-                        "method": "query_physics_shape_cast",
-                        "args": {
-                            "shape_type": "box",
-                            "shape_width": 16.0,
-                            "shape_height": 16.0,
-                            "origin_x": 0.0,
-                            "origin_y": 0.0,
-                            "direction_x": 1.0,
-                            "direction_y": 0.0,
-                            "max_distance": 200.0
-                        }
-                    }
-                ],
-                "expected_outcome": "Returns list with first hit entity, position, normal and fraction. Empty if no hit."
-            },
-            "notes": "Supports box, circle, capsule and polygon shapes. Optional shape_params for polygon vertices. Delegates to swept_shape_toi for zero-length direction overlap-at-origin. Delegates to swept_collision for narrow-phase.",
-            "tags": [
-                "physics",
-                "query",
-                "collision",
-                "swept"
-            ]
         }
     ],
     "planned_capabilities": [
@@ -3413,42 +3457,6 @@
             ]
         },
         {
-            "id": "tilemap:tileset:autotile",
-            "summary": "Apply connective autotile using TileSet terrain peering",
-            "mode": "edit",
-            "status": "implemented",
-            "api_methods": [
-                "AuthoringAPI.set_cells_terrain_connect"
-            ],
-            "cli_command": null,
-            "example": {
-                "description": "Apply grass autotile to a row of grass tiles",
-                "api_calls": [
-                    {
-                        "method": "set_cells_terrain_connect",
-                        "args": {
-                            "entity_name": "TerrainMap",
-                            "layer_name": "ground",
-                            "cells": [
-                                {"x": 0, "y": 0},
-                                {"x": 1, "y": 0},
-                                {"x": 2, "y": 0}
-                            ],
-                            "terrain_name": "grass"
-                        }
-                    }
-                ],
-                "expected_outcome": "Each cell is replaced with the tile whose peering bits match the neighbor mask, using terrain peering from the TileSet"
-            },
-            "notes": "Requires a TileSet with terrain_sets and terrain_peering loaded in the tilemap layer. Computes 3x3 neighbor mask per cell, then looks up exact peering bits match in terrain_peering[terrain_name]. Cells without a matching tile are left unmodified. Returns count of cells modified.",
-            "tags": [
-                "tileset",
-                "terrain",
-                "autotile",
-                "authoring"
-            ]
-        },
-        {
             "id": "project:open",
             "summary": "Open a different project and load its startup scene",
             "mode": "both",
@@ -3477,9 +3485,9 @@
         }
     ],
     "capability_counts": {
-        "implemented": 109,
+        "implemented": 112,
         "planned": 6,
-        "total": 114
+        "total": 118
     },
     "project": {
         "name": "MotorVideojuegosIA",

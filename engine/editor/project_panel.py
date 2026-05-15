@@ -14,6 +14,7 @@ import pyray as rl
 from engine.assets.asset_service import AssetService
 from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.render_safety import editor_scissor
+from engine.editor.thumbnail_provider import ThumbnailProvider
 from engine.project.project_service import ProjectService
 
 
@@ -34,6 +35,8 @@ class ProjectPanel:
     MENU_WIDTH: int = 140
     HEADER_HEIGHT: int = 52
     DETAIL_HEIGHT: int = 88
+    LIST_ROW_HEIGHT: int = 24
+    DOUBLE_CLICK_SECONDS: float = 0.35
     FILTER_ORDER: tuple[str, ...] = ("all", "images", "scenes", "prefabs", "scripts")
     FILTER_LABELS: Dict[str, str] = {
         "all": "All",
@@ -43,9 +46,13 @@ class ProjectPanel:
         "scripts": "Scripts",
     }
     IMAGE_EXTENSIONS: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".bmp")
+    SCRIPT_EXTENSIONS: tuple[str, ...] = (".py",)
+    AUDIO_EXTENSIONS: tuple[str, ...] = (".wav", ".ogg", ".mp3", ".flac")
+    MATERIAL_EXTENSIONS: tuple[str, ...] = (".mat", ".material", ".mtl")
 
-    def __init__(self, root_path: str = ".") -> None:
+    def __init__(self, root_path: str = ".", layout: Any = None) -> None:
         self.root_path = os.path.abspath(root_path)
+        self._layout = layout
         self.current_path = self.root_path
         self.items: List[Tuple[str, str]] = []
         self.project_service: Optional[ProjectService] = None
@@ -53,13 +60,14 @@ class ProjectPanel:
         self.selected_file: Optional[str] = None
         self.request_open_sprite_editor_for: Optional[str] = None
         self.request_open_scene_for: Optional[str] = None
-        self.show_context_menu: bool = False
-        self.context_menu_pos: Optional[rl.Vector2] = None
 
         self.scroll_offset: float = 0.0
         self.sidebar_scroll: float = 0.0
         self.dragging_file: Optional[str] = None
         self.drag_start_pos: Optional[rl.Vector2] = None
+        self._view_mode: str = "grid"
+        self._last_click_key: Optional[str] = None
+        self._last_click_time: float = -1.0
 
         self.search_text: str = ""
         self.search_focused: bool = False
@@ -72,10 +80,22 @@ class ProjectPanel:
         self._breadcrumb_cache: List[tuple[str, int]] = []
         self._cursor_interactive_rects: List[rl.Rectangle] = []
         self._search_rect: rl.Rectangle = rl.Rectangle(0, 0, 0, 0)
+        self.thumbnail_provider = ThumbnailProvider()
 
         self.refresh()
 
+    def set_view_mode(self, mode: str) -> None:
+        value = str(mode or "").strip().lower()
+        if value not in ("grid", "list", "cards"):
+            return
+        self._view_mode = value
+        self.scroll_offset = 0.0
+
+    def get_view_mode(self) -> str:
+        return self._view_mode
+
     def set_project_service(self, project_service: ProjectService) -> None:
+        self.thumbnail_provider.clear()
         self.project_service = project_service
         self.asset_service = None
         if project_service.has_project:
@@ -94,6 +114,9 @@ class ProjectPanel:
         self.sidebar_scroll = 0.0
         self.dragging_file = None
         self.drag_start_pos = None
+        self._view_mode = "grid"
+        self._last_click_key = None
+        self._last_click_time = -1.0
         self.search_text = ""
         self.search_focused = False
         self.asset_filter = "all"
@@ -180,6 +203,48 @@ class ProjectPanel:
         self.request_open_scene_for = str(detail.get("relative_path", "") or detail.get("absolute_path", ""))
         return bool(self.request_open_scene_for)
 
+    def _is_double_click(self, now: float, item_key: str) -> bool:
+        if not item_key or self._last_click_key != item_key or self._last_click_time < 0:
+            return False
+        elapsed = float(now) - self._last_click_time
+        return 0.0 <= elapsed <= self.DOUBLE_CLICK_SECONDS
+
+    def _open_selected_asset_by_type(self) -> bool:
+        return self.open_selected_sprite_editor() or self.open_selected_scene() or self._reveal_asset_in_panel()
+
+    def _reveal_asset_in_panel(self) -> bool:
+        detail = self.get_selected_asset_detail()
+        if not detail or detail.get("is_image", False) or detail.get("is_scene", False):
+            return False
+        absolute_path = str(detail.get("absolute_path", "") or "")
+        if not absolute_path or not os.path.isfile(absolute_path):
+            return False
+        parent = os.path.dirname(absolute_path)
+        if parent != self.current_path:
+            self.current_path = parent
+            self.scroll_offset = 0.0
+        if not self._matches_filter(detail):
+            self.asset_filter = "all"
+        self.refresh()
+        return self.select_asset(absolute_path)
+
+    def _handle_file_item_click(self, item: Dict[str, Any], mouse_pos: rl.Vector2, now: Optional[float] = None) -> bool:
+        item_key = str(item.get("absolute_path", ""))
+        if not item_key:
+            return False
+        click_time = rl.get_time() if now is None else float(now)
+        self.select_asset(item_key)
+        opened = False
+        if self._is_double_click(click_time, item_key):
+            opened = self._open_selected_asset_by_type()
+            self._last_click_key = None
+            self._last_click_time = -1.0
+        else:
+            self._last_click_key = item_key
+            self._last_click_time = click_time
+        self.drag_start_pos = mouse_pos
+        return opened
+
     def render(self, x: int, y: int, width: int, height: int) -> None:
         self._cursor_interactive_rects = []
         self._handle_search_input()
@@ -207,7 +272,6 @@ class ProjectPanel:
 
         self._render_content(content_x, main_y, content_w, content_h)
         self._render_detail_panel(content_x, detail_y, content_w, self.DETAIL_HEIGHT)
-        self._render_context_menu(content_x, main_y, content_w, content_h)
 
     def _render_header(self, x: int, y: int, width: int) -> None:
         search_rect = rl.Rectangle(x + 10, y + 6, max(120, width - 330), 18)
@@ -231,6 +295,21 @@ class ProjectPanel:
             if rl.gui_button(button_rect, button_label):
                 self.set_asset_filter(key)
             filter_x += button_width + 6
+
+        toggle_x = filter_x + 4
+        if toggle_x + 140 < x + width - 124:
+            grid_rect = rl.Rectangle(toggle_x, filter_y, 42.0, 18.0)
+            list_rect = rl.Rectangle(toggle_x + 46, filter_y, 42.0, 18.0)
+            cards_rect = rl.Rectangle(toggle_x + 92, filter_y, 48.0, 18.0)
+            self._register_cursor_rect(grid_rect)
+            self._register_cursor_rect(list_rect)
+            self._register_cursor_rect(cards_rect)
+            if rl.gui_button(grid_rect, "* Grid" if self._view_mode == "grid" else "Grid"):
+                self.set_view_mode("grid")
+            if rl.gui_button(list_rect, "* List" if self._view_mode == "list" else "List"):
+                self.set_view_mode("list")
+            if rl.gui_button(cards_rect, "* Cards" if self._view_mode == "cards" else "Cards"):
+                self.set_view_mode("cards")
 
         breadcrumb_x = x + 360
         for text, text_width in self._breadcrumb_cache:
@@ -266,54 +345,21 @@ class ProjectPanel:
             if is_mouse_in:
                 self.scroll_offset = max(0.0, self.scroll_offset - rl.get_mouse_wheel_move() * 20.0)
                 if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_RIGHT):
-                    self.show_context_menu = True
-                    self.context_menu_pos = rl.get_mouse_position()
+                    if self._layout:
+                        from engine.editor.ui_core.controls.context_menu import ContextMenuItem, ContextMenuModel
+                        menu = ContextMenuModel(id="project_menu", items=[
+                            ContextMenuItem(id="create_folder", label="Create Folder"),
+                            ContextMenuItem(id="refresh", label="Refresh Assets"),
+                        ])
+                        mouse = rl.get_mouse_position()
+                        self._layout.show_context_menu(menu, mouse.x, mouse.y)
 
-            icon_w, icon_h = 88, 72
-            padding = 10
-            cols = max(1, int(width // (icon_w + padding)))
-
-            for index, item in enumerate(self._visible_entries):
-                row = index // cols
-                col = index % cols
-                ix = x + padding + col * (icon_w + padding)
-                iy = y + padding + row * (icon_h + padding) - int(self.scroll_offset)
-                if iy + icon_h < y:
-                    continue
-                if iy > y + height:
-                    break
-
-                rect = rl.Rectangle(ix, iy, icon_w, icon_h)
-                self._register_cursor_rect(rect)
-                is_hover = rl.check_collision_point_rec(mouse_pos, rect) and is_mouse_in
-                is_selected = self.selected_file == item.get("absolute_path")
-                if is_selected:
-                    rl.draw_rectangle_rec(rect, self.UNITY_SELECTED)
-                elif is_hover:
-                    rl.draw_rectangle_rec(rect, self.UNITY_HOVER)
-
-                if is_hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-                    if item["entry_type"] == "dir":
-                        self.current_path = str(item["absolute_path"])
-                        self.scroll_offset = 0.0
-                        self.refresh()
-                    else:
-                        self.select_asset(str(item["absolute_path"]))
-                        self.drag_start_pos = mouse_pos
-
-                icon_rect = rl.Rectangle(ix + 24, iy + 6, 40, 34)
-                self._draw_item_icon(icon_rect, item)
-
-                trunc_name = str(item.get("trunc_name", item["name"]))
-                text_w = int(item.get("text_width", rl.measure_text(trunc_name, 10)))
-                rl.draw_text(trunc_name, int(ix + (icon_w - text_w) / 2), int(iy + 46), 10, self.UNITY_TEXT)
-                meta = str(item.get("meta", ""))
-                if meta:
-                    rl.draw_text(meta, int(ix + 4), int(iy + 58), 8, self.UNITY_TEXT_DIM)
-
-                if item["entry_type"] == "file" and self.drag_start_pos and is_hover:
-                    if rl.vector2_distance(self.drag_start_pos, mouse_pos) > 5:
-                        self.dragging_file = str(item["absolute_path"])
+            if self._view_mode == "list":
+                self._render_content_list(x, y, width, height, mouse_pos, is_mouse_in)
+            elif self._view_mode == "cards":
+                self._render_content_cards(x, y, width, height, mouse_pos, is_mouse_in)
+            else:
+                self._render_content_grid(x, y, width, height, mouse_pos, is_mouse_in)
 
             if rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
                 self.drag_start_pos = None
@@ -322,6 +368,172 @@ class ProjectPanel:
             if not self._visible_entries:
                 message = "No assets match the current search/filter" if self.search_text.strip() else "This folder is empty"
                 rl.draw_text(message, int(x + 14), int(y + 14), 10, self.UNITY_TEXT_DIM)
+
+            # Process global context menu actions
+            if self._layout:
+                action = self._layout._process_global_context_menu()
+                if action == "create_folder":
+                    self.create_folder()
+                elif action == "refresh":
+                    self.refresh_asset_catalog()
+
+    def _render_content_grid(self, x: int, y: int, width: int, height: int, mouse_pos: rl.Vector2, is_mouse_in: bool) -> None:
+        icon_w, icon_h = 88, 72
+        padding = 10
+        cols = max(1, int(width // (icon_w + padding)))
+
+        for index, item in enumerate(self._visible_entries):
+            row = index // cols
+            col = index % cols
+            ix = x + padding + col * (icon_w + padding)
+            iy = y + padding + row * (icon_h + padding) - int(self.scroll_offset)
+            if iy + icon_h < y:
+                continue
+            if iy > y + height:
+                break
+
+            rect = rl.Rectangle(ix, iy, icon_w, icon_h)
+            self._register_cursor_rect(rect)
+            is_hover = rl.check_collision_point_rec(mouse_pos, rect) and is_mouse_in
+            is_selected = self.selected_file == item.get("absolute_path")
+            if is_selected:
+                rl.draw_rectangle_rec(rect, self.UNITY_SELECTED)
+            elif is_hover:
+                rl.draw_rectangle_rec(rect, self.UNITY_HOVER)
+
+            if is_hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                if item["entry_type"] == "dir":
+                    self.current_path = str(item["absolute_path"])
+                    self.scroll_offset = 0.0
+                    self.refresh()
+                else:
+                    self._handle_file_item_click(item, mouse_pos)
+
+            icon_rect = rl.Rectangle(ix + 24, iy + 6, 40, 34)
+            self._draw_item_icon(icon_rect, item)
+
+            trunc_name = str(item.get("trunc_name", item["name"]))
+            text_w = int(item.get("text_width", rl.measure_text(trunc_name, 10)))
+            rl.draw_text(trunc_name, int(ix + (icon_w - text_w) / 2), int(iy + 46), 10, self.UNITY_TEXT)
+            meta = str(item.get("meta", ""))
+            if meta:
+                rl.draw_text(meta, int(ix + 4), int(iy + 58), 8, self.UNITY_TEXT_DIM)
+
+            if item["entry_type"] == "file" and self.drag_start_pos and is_hover:
+                if rl.vector2_distance(self.drag_start_pos, mouse_pos) > 5:
+                    self.dragging_file = str(item["absolute_path"])
+
+    def _compute_list_view_rows(self, x: int, y: int, width: int, height: int) -> List[Dict[str, Any]]:
+        if height <= 0 or width <= 0 or not self._visible_entries:
+            return []
+        row_height = self.LIST_ROW_HEIGHT
+        offset = max(0.0, float(self.scroll_offset))
+        start_index = max(0, int(offset // row_height))
+        y_offset = int(offset % row_height)
+        rows: List[Dict[str, Any]] = []
+        for index in range(start_index, len(self._visible_entries)):
+            row_y = y + (index - start_index) * row_height - y_offset
+            if row_y >= y + height:
+                break
+            if row_y + row_height <= y:
+                continue
+            rows.append(
+                {
+                    "index": index,
+                    "item": self._visible_entries[index],
+                    "x": x,
+                    "y": row_y,
+                    "width": width,
+                    "height": row_height,
+                }
+            )
+        return rows
+
+    def _compute_card_view_rects(self, x: int, y: int, width: int, height: int) -> List[Dict[str, Any]]:
+        if height <= 0 or width <= 0 or not self._visible_entries:
+            return []
+        card_w, card_h = 150, 54
+        padding = 8
+        cols = max(1, int(width // (card_w + padding)))
+        rects: List[Dict[str, Any]] = []
+        for index, item in enumerate(self._visible_entries):
+            row = index // cols
+            col = index % cols
+            ix = x + padding + col * (card_w + padding)
+            iy = y + padding + row * (card_h + padding) - int(self.scroll_offset)
+            if iy + card_h < y:
+                continue
+            if iy > y + height:
+                break
+            rects.append({"index": index, "item": item, "x": ix, "y": iy, "width": card_w, "height": card_h})
+        return rects
+
+    def _render_content_cards(self, x: int, y: int, width: int, height: int, mouse_pos: rl.Vector2, is_mouse_in: bool) -> None:
+        for card in self._compute_card_view_rects(x, y, width, height):
+            item = card["item"]
+            rect = rl.Rectangle(card["x"], card["y"], card["width"], card["height"])
+            self._register_cursor_rect(rect)
+            is_hover = rl.check_collision_point_rec(mouse_pos, rect) and is_mouse_in
+            is_selected = self.selected_file == item.get("absolute_path")
+            if is_selected:
+                rl.draw_rectangle_rec(rect, self.UNITY_SELECTED)
+            elif is_hover:
+                rl.draw_rectangle_rec(rect, self.UNITY_HOVER)
+            rl.draw_rectangle_lines_ex(rect, 1, self.UNITY_BORDER)
+
+            if is_hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                if item["entry_type"] == "dir":
+                    self.current_path = str(item["absolute_path"])
+                    self.scroll_offset = 0.0
+                    self.refresh()
+                else:
+                    self._handle_file_item_click(item, mouse_pos)
+
+            icon_rect = rl.Rectangle(rect.x + 8, rect.y + 8, 36, 36)
+            self._draw_item_icon(icon_rect, item)
+            name = str(item.get("trunc_name", item.get("name", "")))
+            rl.draw_text(name, int(rect.x + 52), int(rect.y + 10), 10, self.UNITY_TEXT)
+            meta = str(item.get("meta", ""))
+            if meta:
+                rl.draw_text(meta, int(rect.x + 52), int(rect.y + 28), 9, self.UNITY_TEXT_DIM)
+
+            if item["entry_type"] == "file" and self.drag_start_pos and is_hover:
+                if rl.vector2_distance(self.drag_start_pos, mouse_pos) > 5:
+                    self.dragging_file = str(item["absolute_path"])
+
+    def _render_content_list(self, x: int, y: int, width: int, height: int, mouse_pos: rl.Vector2, is_mouse_in: bool) -> None:
+        for row in self._compute_list_view_rows(x, y, width, height):
+            item = row["item"]
+            rect = rl.Rectangle(row["x"], row["y"], row["width"], row["height"])
+            self._register_cursor_rect(rect)
+            is_hover = rl.check_collision_point_rec(mouse_pos, rect) and is_mouse_in
+            is_selected = self.selected_file == item.get("absolute_path")
+            if is_selected:
+                rl.draw_rectangle_rec(rect, self.UNITY_SELECTED)
+            elif is_hover:
+                rl.draw_rectangle_rec(rect, self.UNITY_HOVER)
+
+            if is_hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                if item["entry_type"] == "dir":
+                    self.current_path = str(item["absolute_path"])
+                    self.scroll_offset = 0.0
+                    self.refresh()
+                else:
+                    self._handle_file_item_click(item, mouse_pos)
+
+            icon_rect = rl.Rectangle(rect.x + 6, rect.y + 4, 16, 16)
+            self._draw_item_icon(icon_rect, item)
+            name = str(item.get("name", ""))
+            rl.draw_text(name, int(rect.x + 30), int(rect.y + 7), 10, self.UNITY_TEXT)
+            meta = str(item.get("meta", ""))
+            asset_kind = str(item.get("asset_kind", ""))
+            detail = meta or asset_kind
+            if detail:
+                rl.draw_text(detail, int(rect.x + max(180, width // 2)), int(rect.y + 7), 10, self.UNITY_TEXT_DIM)
+
+            if item["entry_type"] == "file" and self.drag_start_pos and is_hover:
+                if rl.vector2_distance(self.drag_start_pos, mouse_pos) > 5:
+                    self.dragging_file = str(item["absolute_path"])
 
     def _render_detail_panel(self, x: int, y: int, width: int, height: int) -> None:
         detail = self._selected_asset_detail
@@ -366,13 +578,7 @@ class ProjectPanel:
                 self.open_selected_scene()
 
     def _draw_item_icon(self, rect: rl.Rectangle, item: Dict[str, Any]) -> None:
-        if item["entry_type"] == "dir":
-            rl.draw_rectangle_rec(rect, self.UNITY_FOLDER_ICON)
-            rl.draw_rectangle(int(rect.x), int(rect.y), 15, 5, self.UNITY_FOLDER_ICON)
-            return
-        color = self.UNITY_IMAGE_ICON if item.get("is_image", False) else rl.Color(160, 160, 160, 255)
-        rl.draw_rectangle_rec(rect, color)
-        rl.draw_rectangle_lines_ex(rect, 1, rl.Color(100, 100, 100, 255))
+        self.thumbnail_provider.draw_item_icon(rect, item)
 
     def _draw_text_input(self, rect: rl.Rectangle, value: str, placeholder: str, focused: bool) -> None:
         background = rl.Color(46, 46, 46, 255) if focused else rl.Color(38, 38, 38, 255)
@@ -410,37 +616,6 @@ class ProjectPanel:
                 continue
             if char.isprintable() and len(self.search_text) < 64:
                 self.set_search_text(self.search_text + char)
-
-    def _render_context_menu(self, x: int, y: int, width: int, height: int) -> None:
-        if not self.show_context_menu or self.context_menu_pos is None:
-            return
-
-        menu_x = int(min(self.context_menu_pos.x, x + width - self.MENU_WIDTH - 4))
-        menu_y = int(min(self.context_menu_pos.y, y + height - 78))
-        menu_rect = rl.Rectangle(menu_x, menu_y, self.MENU_WIDTH, 52)
-        self._register_cursor_rect(menu_rect)
-        rl.draw_rectangle_rec(menu_rect, self.UNITY_HEADER)
-        rl.draw_rectangle_lines_ex(menu_rect, 1, self.UNITY_BORDER)
-
-        create_rect = rl.Rectangle(menu_rect.x + 4, menu_rect.y + 4, menu_rect.width - 8, 20)
-        refresh_rect = rl.Rectangle(menu_rect.x + 4, menu_rect.y + 28, menu_rect.width - 8, 20)
-        self._register_cursor_rect(create_rect)
-        self._register_cursor_rect(refresh_rect)
-        if rl.gui_button(create_rect, "Create Folder"):
-            self.create_folder()
-            self.show_context_menu = False
-            self.context_menu_pos = None
-            return
-        if rl.gui_button(refresh_rect, "Refresh Assets"):
-            self.refresh_asset_catalog()
-            self.show_context_menu = False
-            self.context_menu_pos = None
-            return
-
-        mouse_pos = rl.get_mouse_position()
-        if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT) and not rl.check_collision_point_rec(mouse_pos, menu_rect):
-            self.show_context_menu = False
-            self.context_menu_pos = None
 
     def _rebuild_display_cache(self) -> None:
         self._item_display_cache = {}
@@ -531,7 +706,7 @@ class ProjectPanel:
         if not absolute_path:
             return None
         name = str(entry.get("name", "") or os.path.basename(absolute_path))
-        asset_kind = str(entry.get("asset_kind", "unknown"))
+        asset_kind = self._infer_asset_kind(str(entry.get("asset_kind", "unknown")), absolute_path)
         importer = str(entry.get("importer", "unknown"))
         guid_short = str(entry.get("guid_short", ""))
         has_meta = bool(entry.get("has_meta", False))
@@ -592,6 +767,25 @@ class ProjectPanel:
         if self.asset_filter == "scripts":
             return item.get("asset_kind") == "script"
         return True
+
+    def _infer_asset_kind(self, asset_kind: str, absolute_path: str) -> str:
+        value = str(asset_kind or "unknown").strip().lower()
+        if value and value != "unknown":
+            return value
+        lower_path = str(absolute_path).lower()
+        if lower_path.endswith(self.IMAGE_EXTENSIONS):
+            return "texture"
+        if self._is_scene_path(absolute_path):
+            return "scene_data"
+        if lower_path.endswith(".prefab"):
+            return "prefab"
+        if lower_path.endswith(self.SCRIPT_EXTENSIONS):
+            return "script"
+        if lower_path.endswith(self.AUDIO_EXTENSIONS):
+            return "audio"
+        if lower_path.endswith(self.MATERIAL_EXTENSIONS):
+            return "material"
+        return "unknown"
 
     def _sync_selection_with_visible_entries(self) -> None:
         if self.selected_file and not os.path.exists(self.selected_file):

@@ -277,6 +277,8 @@ class PhysicsSystem:
                         pass  # Fall back to AABB
 
                     if shape_normal_x is not None:
+                        if shape_normal_y is None:
+                            continue
                         # Use shape-based manifold data
                         normal_x = shape_normal_x
                         normal_y = shape_normal_y
@@ -484,6 +486,8 @@ class PhysicsSystem:
             cast_shape_mode = rigidbody.ccd_mode == "cast_shape" and collider is not None and collider.enabled
 
             if cast_shape_mode:
+                if collider is None:
+                    continue
                 if (not rigidbody.freeze_x or not rigidbody.freeze_y):
                     hit = self._sweep_shape_cast(entity, transform, collider, nearby_solids, delta_x, delta_y)
                     if hit is not None:
@@ -1326,15 +1330,21 @@ class PhysicsSystem:
                 a_dynamic = rigid_a is not None and rigid_a.body_type == "dynamic"
                 b_dynamic = rigid_b is not None and rigid_b.body_type == "dynamic"
                 if a_dynamic and b_dynamic:
+                    if rigid_a is None or rigid_b is None:
+                        continue
                     mid_rot = (transform_a.rotation + transform_b.rotation) * 0.5
                     transform_a.rotation = mid_rot
                     transform_b.rotation = mid_rot
                     rigid_a.angular_velocity = 0.0
                     rigid_b.angular_velocity = 0.0
                 elif a_dynamic:
+                    if rigid_a is None:
+                        continue
                     transform_a.rotation = transform_b.rotation
                     rigid_a.angular_velocity = 0.0
                 elif b_dynamic:
+                    if rigid_b is None:
+                        continue
                     transform_b.rotation = transform_a.rotation
                     rigid_b.angular_velocity = 0.0
             elif joint.joint_type == "distance":

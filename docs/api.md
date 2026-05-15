@@ -143,6 +143,40 @@ Los metodos de authoring y proyecto suelen devolver `ActionResult`:
 
 Los metodos de consulta devuelven diccionarios o listas serializables.
 
+## Editor
+
+Fuente: `engine/api/_editor_api.py`.
+
+Preferencias de tema:
+
+- `list_editor_themes()`
+- `get_active_editor_theme()`
+- `set_active_editor_theme(name)`
+- `export_editor_theme(path, name=None)`
+- `import_editor_theme(path, activate=True)`
+
+Feature flags de migracion del editor:
+
+- `get_editor_feature_flags()` devuelve dict con `schema_version`, `flags`,
+  `env_overrides` y `preference_key`.
+- `set_editor_feature_flag(name, value)` devuelve `ActionResult` y persiste en
+  `.motor/editor_state.json -> preferences.editor_feature_flags`.
+
+Defaults seguros: todos los flags conocidos empiezan en `false`. Variables de
+entorno como `MOTOR_EDITOR_CONTROL_CONSOLE` pueden sobrescribir el valor
+persistido durante el proceso actual.
+
+```python
+from engine.api import EngineAPI
+
+api = EngineAPI(project_root=".")
+try:
+    flags = api.get_editor_feature_flags()
+    api.set_editor_feature_flag("console_panel", True)
+finally:
+    api.shutdown()
+```
+
 ## Authoring
 
 Fuente: `engine/api/_authoring_api.py`.
@@ -639,6 +673,17 @@ Proyecto:
 - `get_startup_scene()`
 - `set_startup_scene(path)`
 - `run_ai_compliance(strict=False)`
+
+Editor:
+
+- `list_editor_themes()`
+- `get_active_editor_theme()`
+- `set_active_editor_theme(name)`
+- `export_editor_theme(path, name=None)`
+- `import_editor_theme(path, activate=True)`
+
+El tema activo del editor se persiste en `.motor/editor_state.json` bajo
+`preferences.editor_theme`. No forma parte del schema de escena.
 
 Assets:
 

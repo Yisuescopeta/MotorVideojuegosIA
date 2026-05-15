@@ -269,8 +269,11 @@ class Box2DPhysicsBackend(PhysicsBackend):
                             )
                     elif hasattr(shape, 'half_w'):
                         # AABB
+                        half_h = getattr(shape, "half_h", None)
+                        if half_h is None:
+                            continue
                         body.CreatePolygonFixture(
-                            box=(float(shape.half_w), float(shape.half_h),
+                            box=(float(shape.half_w), float(half_h),
                                  (float(shape_def.offset_x), float(shape_def.offset_y)), 0.0),
                             density=float(collider.density),
                             friction=float(collider.friction),

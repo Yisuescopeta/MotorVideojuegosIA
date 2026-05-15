@@ -281,7 +281,9 @@ The entries below are available now and are safe to use from the CLI.
 
 - `physics:backend:list`: List available physics backends and their status
 - `physics:query:aabb`: Query physics entities within an axis-aligned bounding box
+- `physics:query:motion`: Test entity motion against physics world without applying it
 - `physics:query:ray`: Cast a ray and find intersecting physics bodies
+- `physics:query:shape-cast`: Cast a shape through physics world and find intersections
 
 ### Introspection
 
@@ -314,6 +316,16 @@ The entries below are available now and are safe to use from the CLI.
 - `ui:create_canvas`: Create a UI canvas entity
 - `ui:create_image`: Create a UI image element
 - `ui:create_text`: Create a UI text element
+
+### Editor
+
+- `editor:feature_flags:list`: List editor feature flags
+- `editor:feature_flags:set`: Set an editor feature flag
+- `editor:theme:active`: Show the active editor UI theme
+- `editor:theme:export`: Export an editor UI theme to JSON
+- `editor:theme:import`: Import an editor UI theme from JSON
+- `editor:theme:list`: List available editor UI themes
+- `editor:theme:set`: Set the active editor UI theme
 
 ## Coming Soon
 

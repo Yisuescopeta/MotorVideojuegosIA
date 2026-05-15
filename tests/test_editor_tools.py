@@ -236,6 +236,12 @@ class EditorLayoutToolStateTests(unittest.TestCase):
         ), patch(
             "pyray.end_scissor_mode"
         ) as end_scissor_mode, patch(
+            "pyray.draw_rectangle_rounded"
+        ), patch(
+            "pyray.begin_scissor_mode"
+        ), patch(
+            "pyray.draw_text"
+        ), patch(
             "pyray.is_window_ready",
             return_value=True,
         ), patch.object(
@@ -576,6 +582,53 @@ class GizmoSystemMathTests(unittest.TestCase):
         self.assertEqual((constrained.x, constrained.y), (20.0, 0.0))
         self.assertEqual(gizmo._snap(43.0, 10.0), 40.0)
         self.assertAlmostEqual(gizmo._snap(28.0, 15.0), 30.0)
+
+    def test_move_gizmo_drag_updates_transform_and_reports_completed_drag(self) -> None:
+        gizmo = GizmoSystem()
+        world = SceneManager(create_default_registry()).load_scene(
+            {
+                "name": "MoveGizmoProbe",
+                "entities": [
+                    {
+                        "name": "Player",
+                        "active": True,
+                        "tag": "Untagged",
+                        "layer": "Default",
+                        "components": {
+                            "Transform": {
+                                "enabled": True,
+                                "x": 10.0,
+                                "y": 20.0,
+                                "rotation": 0.0,
+                                "scale_x": 1.0,
+                                "scale_y": 1.0,
+                            }
+                        },
+                    }
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+        world.selected_entity_name = "Player"
+        player = world.get_entity_by_name("Player")
+        transform = player.get_component(Transform)
+
+        with patch("pyray.is_mouse_button_pressed", side_effect=[True]), patch(
+            "pyray.is_mouse_button_released",
+            side_effect=[False, True],
+        ), patch("pyray.is_key_down", return_value=False):
+            gizmo.update(world, rl.Vector2(10.0, 20.0), EditorTool.MOVE, TransformSpace.WORLD, PivotMode.PIVOT)
+            gizmo.update(world, rl.Vector2(35.0, 45.0), EditorTool.MOVE, TransformSpace.WORLD, PivotMode.PIVOT)
+            gizmo.update(world, rl.Vector2(35.0, 45.0), EditorTool.MOVE, TransformSpace.WORLD, PivotMode.PIVOT)
+
+        self.assertEqual((transform.local_x, transform.local_y), (35.0, 45.0))
+        drag = gizmo.consume_completed_drag()
+        self.assertIsNotNone(drag)
+        self.assertEqual(drag.entity_name, "Player")
+        self.assertEqual(drag.component_name, "Transform")
+        self.assertEqual(drag.after_state["x"], 35.0)
+        self.assertEqual(drag.after_state["y"], 45.0)
 
     def test_rect_transform_selection_resolves_transform_tool_to_rect_tool(self) -> None:
         gizmo = GizmoSystem()

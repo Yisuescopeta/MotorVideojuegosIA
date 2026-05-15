@@ -19,8 +19,9 @@ FUNCIONALIDADES:
 import os
 import platform
 import subprocess
+import time
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import pyray as rl
 from engine.editor.console_panel import log_err
@@ -28,6 +29,28 @@ from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.editor_shell_state import EditorPanelSlots, EditorShellState
 from engine.editor.editor_tools import EditorTool, PivotMode, SnapSettings, TransformSpace
 from engine.editor.render_safety import safe_reset_clip_state
+from engine.editor.toast_notifications import TOAST_MANAGER
+from engine.editor.ui.context_menu_render import process_context_menu_pointer, render_context_menu
+from engine.editor.ui.dock_render import (
+    draw_auto_hide_collapsed_strip,
+    draw_drag_preview,
+    draw_floating_window,
+)
+from engine.editor.ui.draw import draw_border, draw_rounded_rect
+from engine.editor.ui.icons import ICON_PAUSE, ICON_PLAY
+from engine.editor.ui.panels import draw_editor_panel_frame
+from engine.editor.ui.widgets import editor_button, editor_icon_button, editor_toggle_button
+from engine.editor.ui_core import ContextMenuManager, ContextMenuModel
+from engine.editor.ui_core.controls.popup import PopupManager
+from engine.editor.ui_core.dock_rects import (
+    compute_auto_hide_collapsed_rect,
+    compute_dock_rects,
+)
+from engine.editor.ui_core.docking import DockLayout, DockSplit
+
+
+def _to_ui_rect(rect: rl.Rectangle) -> tuple[float, float, float, float]:
+    return (float(rect.x), float(rect.y), float(rect.width), float(rect.height))
 
 _SHELL_STATE_FIELDS = (
     "active_tab",
@@ -92,6 +115,7 @@ _PANEL_SLOT_FIELDS = (
     "console_panel",
     "terminal_panel",
     "agent_panel",
+    "asset_browser",
 )
 
 
@@ -113,6 +137,7 @@ class EditorLayout:
     console_panel: Any
     terminal_panel: Any
     agent_panel: Any
+    asset_browser: Any
 
     # ========================================
     # Layout Dimensions (Unity-style)
@@ -260,6 +285,16 @@ class EditorLayout:
         self.pivot_mode: PivotMode = PivotMode.PIVOT
         self.snap_settings: SnapSettings = SnapSettings()
         self._editor_preferences_dirty: bool = False
+        self.dock_layout: DockLayout = DockLayout.default()
+        self._dock_layout_dirty: bool = False
+        self._dock_drag_tab_id: str | None = None
+        self._last_active_tab: str = ""
+        self._last_bottom_tab: str = ""
+        self._panel_profile: dict[str, float] = {}
+
+        # Floating window state
+        self._floating_drag_state: dict | None = None
+        self._auto_hide_states: dict[str, dict] = {}
 
         # Anchos dinámicos
         self.hierarchy_width = 200
@@ -281,6 +316,11 @@ class EditorLayout:
         self.editor_camera.zoom = 1.0
         self.editor_camera.offset = rl.Vector2(0, 0)
         self.editor_camera.target = rl.Vector2(0, 0)
+        self.grid_enabled = True
+        self.grid_step_size = 50
+        self.grid_opacity = 10
+        self.grid_show_center_lines = True
+        self.viewport_overlay_context: dict[str, Any] = {"selected_entity": None}
 
         # Rects
         self.hierarchy_rect = rl.Rectangle(0, 0, 0, 0)
@@ -298,6 +338,7 @@ class EditorLayout:
         self.tab_game_rect = rl.Rectangle(0, 0, 0, 0)
         self.tab_flow_rect = rl.Rectangle(0, 0, 0, 0)
         self.tab_animator_rect = rl.Rectangle(0, 0, 0, 0)
+        self._dock_tab_rects: dict[str, dict[str, rl.Rectangle]] = {}
         self.btn_play_rect = rl.Rectangle(0, 0, 0, 0)
 
         self.tab_game_rect = rl.Rectangle(0, 0, 0, 0)
@@ -311,8 +352,38 @@ class EditorLayout:
         self.scene_browser_list_rect = rl.Rectangle(0, 0, 0, 0)
         self._cursor_interactive_rects: list[rl.Rectangle] = []
         self._cursor_text_rects: list[rl.Rectangle] = []
+        self._context_menu_manager = ContextMenuManager()
+        self._popup_manager = PopupManager()
 
         self.update_layout(screen_width, screen_height)
+
+    def get_debug_profile(self) -> dict:
+        """Return per-panel render timing breakdown."""
+        return {
+            "panels": dict(self._panel_profile),
+            "total_panels": len(self._panel_profile),
+        }
+
+    def show_context_menu(self, menu: "ContextMenuModel", x: float, y: float) -> None:
+        """Open a context menu at screen coordinates."""
+        self._context_menu_manager.open(menu, x, y)
+
+    def close_context_menu(self) -> None:
+        self._context_menu_manager.close()
+
+    def _render_global_context_menu(self) -> None:
+        """Render the global context menu overlay if active."""
+        root = self._context_menu_manager.root
+        if root is None:
+            return
+        render_context_menu(root)
+
+    def _process_global_context_menu(self) -> str | None:
+        """Process pointer input for the global context menu. Returns action_id or None."""
+        root = self._context_menu_manager.root
+        if root is None:
+            return None
+        return process_context_menu_pointer(root)
 
     @property
     def shell_state(self) -> EditorShellState:
@@ -341,6 +412,30 @@ class EditorLayout:
     def set_project_scene_entries(self, scene_entries: list[dict]) -> None:
         self.project_scene_entries = [dict(item) for item in scene_entries]
         self._clamp_scene_browser_scroll()
+
+    def set_grid_config(
+        self,
+        enabled: Optional[bool] = None,
+        step_size: Optional[int] = None,
+        opacity: Optional[int] = None,
+        show_center_lines: Optional[bool] = None,
+    ) -> None:
+        if enabled is not None:
+            self.grid_enabled = bool(enabled)
+        if step_size is not None:
+            self.grid_step_size = max(5, min(500, int(step_size)))
+        if opacity is not None:
+            self.grid_opacity = max(0, min(255, int(opacity)))
+        if show_center_lines is not None:
+            self.grid_show_center_lines = bool(show_center_lines)
+
+    def reset_camera(self) -> None:
+        self.editor_camera.zoom = 1.0
+        self.editor_camera.target = rl.Vector2(0, 0)
+        self._sync_editor_camera_offset()
+
+    def set_viewport_overlay_context(self, *, selected_entity: Optional[Any] = None) -> None:
+        self.viewport_overlay_context = {"selected_entity": selected_entity}
 
     def set_launcher_feedback(self, message: str, is_error: bool = False) -> None:
         self.launcher_feedback_text = str(message or "")
@@ -372,6 +467,8 @@ class EditorLayout:
         self._editor_preferences_dirty = True
 
     def apply_editor_preferences(self, preferences: dict[str, object]) -> None:
+        if self.console_panel is not None and hasattr(self.console_panel, "apply_feature_flag_preferences"):
+            self.console_panel.apply_feature_flag_preferences(preferences)
         self.active_tool = EditorTool.from_value(preferences.get("editor_active_tool", EditorTool.MOVE.value))
         self.transform_space = TransformSpace.from_value(
             preferences.get("editor_transform_space", TransformSpace.WORLD.value)
@@ -394,9 +491,347 @@ class EditorLayout:
         return data
 
     def consume_editor_preferences_dirty(self) -> bool:
-        dirty = self._editor_preferences_dirty
+        dirty = self._editor_preferences_dirty or self._dock_layout_dirty
         self._editor_preferences_dirty = False
+        self._dock_layout_dirty = False
         return dirty
+
+    def apply_dock_layout(self, layout_data: object) -> None:
+        self.dock_layout = DockLayout.from_dict(layout_data)
+        self._apply_dock_active_tabs()
+        self.update_layout(self.screen_width, self.screen_height, update_texture=False)
+        self._dock_layout_dirty = False
+
+    def export_dock_layout(self) -> dict[str, object]:
+        return self.dock_layout.to_dict()
+
+    def consume_dock_layout_dirty(self) -> bool:
+        dirty = self._dock_layout_dirty
+        self._dock_layout_dirty = False
+        return dirty
+
+    def move_dock_tab(self, tab_id: str, target_area_id: str, index: int | None = None) -> bool:
+        if not self.dock_layout.move_tab(tab_id, target_area_id, index):
+            return False
+        self._apply_dock_active_tabs()
+        self._dock_layout_dirty = True
+        return True
+
+    def reorder_dock_tab(self, area_id: str, tab_id: str, index: int) -> bool:
+        if not self.dock_layout.reorder_tab(area_id, tab_id, index):
+            return False
+        self._apply_dock_active_tabs()
+        self._dock_layout_dirty = True
+        return True
+
+    def set_dock_active_tab(self, area_id: str, tab_id: str) -> bool:
+        if not self.dock_layout.set_active_tab(area_id, tab_id):
+            return False
+        self._apply_dock_active_tabs()
+        self._dock_layout_dirty = True
+        return True
+
+    def float_dock_tab(self, tab_id: str, from_area: str, rect: tuple[float, float, float, float]) -> bool:
+        if not self.dock_layout.float_tab(tab_id, from_area, rect):
+            return False
+        self._apply_dock_active_tabs()
+        self.update_layout(self.screen_width, self.screen_height, update_texture=False)
+        self._dock_layout_dirty = True
+        return True
+
+    def dock_floating_tab(self, tab_id: str, to_area: str, position: int = -1) -> bool:
+        if not self.dock_layout.dock_floating_tab(tab_id, to_area, position):
+            return False
+        self._apply_dock_active_tabs()
+        self.update_layout(self.screen_width, self.screen_height, update_texture=False)
+        self._dock_layout_dirty = True
+        return True
+
+    def move_floating_window(self, tab_id: str, rect: tuple[float, float, float, float]) -> bool:
+        if not self.dock_layout.move_floating_window(tab_id, rect):
+            return False
+        self._dock_layout_dirty = True
+        return True
+
+    def close_floating_window(self, tab_id: str) -> bool:
+        if not self.dock_layout.close_floating_window(tab_id):
+            return False
+        self._dock_layout_dirty = True
+        return True
+
+    def set_dock_area_pinned(self, area_id: str, pinned: bool) -> bool:
+        if not self.dock_layout.set_area_pinned(area_id, pinned):
+            return False
+        self._dock_layout_dirty = True
+        return True
+
+    def set_dock_area_auto_hide(self, area_id: str, auto_hide: bool) -> bool:
+        if not self.dock_layout.set_area_auto_hide(area_id, auto_hide):
+            return False
+        self.update_layout(self.screen_width, self.screen_height, update_texture=False)
+        self._dock_layout_dirty = True
+        return True
+
+    def begin_dock_tab_drag(self, tab_id: str) -> bool:
+        if self.dock_layout.find_tab_area(tab_id) is None:
+            return False
+        self._dock_drag_tab_id = str(tab_id)
+        return True
+
+    def complete_dock_tab_drag(self, target_area_id: str, index: int | None = None) -> bool:
+        tab_id = self._dock_drag_tab_id
+        self._dock_drag_tab_id = None
+        if not tab_id:
+            return False
+        return self.move_dock_tab(tab_id, target_area_id, index)
+
+    # ── Floating window rendering ──────────────────────────────────
+
+    def _update_floating_windows(self) -> None:
+        """Draw floating windows and handle drag/close/dock input."""
+        mouse = rl.get_mouse_position()
+        mx, my = float(mouse.x), float(mouse.y)
+
+        for window in list(self.dock_layout.floating_windows):
+            if not getattr(window, "is_open", True):
+                continue
+
+            rect = (float(window.x), float(window.y), float(window.width), float(window.height))
+            title = self._dock_tab_label(window.tab_id)
+
+            is_dragging = (
+                self._floating_drag_state is not None
+                and self._floating_drag_state.get("tab_id") == window.tab_id
+            )
+            if is_dragging and rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT):
+                assert self._floating_drag_state is not None
+                off_x = self._floating_drag_state.get("offset_x", 0.0)
+                off_y = self._floating_drag_state.get("offset_y", 0.0)
+                new_rect = (mx - off_x, my - off_y, window.width, window.height)
+                self.move_floating_window(window.tab_id, new_rect)
+                rect = new_rect
+            elif not rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT):
+                self._floating_drag_state = None
+
+            result = draw_floating_window(rect, title, is_dragging=is_dragging)
+
+            if not is_dragging and result.value:
+                val = cast("dict[str, bool]", result.value)
+                if val.get("close") and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                    self.close_floating_window(window.tab_id)
+                elif val.get("dock") and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                    target = self._find_nearest_dock_area(mx, my)
+                    if target:
+                        self.dock_floating_tab(window.tab_id, target)
+                elif val.get("title_drag") and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                    self._floating_drag_state = {
+                        "tab_id": window.tab_id,
+                        "offset_x": mx - window.x,
+                        "offset_y": my - window.y,
+                    }
+
+    def _find_nearest_dock_area(self, mx: float, my: float) -> str | None:
+        """Find dock area under the given screen point."""
+        areas = self.dock_layout.collect_areas()
+        for area in areas:
+            rect = self._dock_area_rect(area.id)
+            if rl.check_collision_point_rec(rl.Vector2(mx, my), rect):
+                return area.id
+        return None
+
+    # ── Auto-hide strips ───────────────────────────────────────────
+
+    def _init_auto_hide_states(self) -> None:
+        """Ensure auto_hide_states entries exist for all auto-hide areas."""
+        areas = self.dock_layout.collect_areas()
+        for area in areas:
+            if area.auto_hide and area.id not in self._auto_hide_states:
+                self._auto_hide_states[area.id] = {
+                    "animation": 1.0 if area.pinned else 0.0,
+                    "target": 1.0 if area.pinned else 0.0,
+                    "hovered": False,
+                }
+
+    def _update_auto_hide_animations(self) -> None:
+        """Lerp auto-hide animations each frame."""
+        dt = rl.get_frame_time()
+        speed = 8.0
+        mouse = rl.get_mouse_position()
+        mx, my = float(mouse.x), float(mouse.y)
+
+        self._init_auto_hide_states()
+        areas = self.dock_layout.collect_areas()
+
+        for area in areas:
+            if not area.auto_hide:
+                continue
+            state = self._auto_hide_states.get(area.id)
+            if state is None:
+                continue
+
+            area_rect = self._dock_area_rect(area.id)
+            collapsed = compute_auto_hide_collapsed_rect(
+                (area_rect.x, area_rect.y, area_rect.width, area_rect.height),
+                self._area_edge(area.id),
+            )
+
+            hovered = (
+                collapsed[0] <= mx <= collapsed[0] + collapsed[2]
+                and collapsed[1] <= my <= collapsed[1] + collapsed[3]
+            )
+            state["hovered"] = hovered
+
+            if area.pinned:
+                state["target"] = 1.0
+            elif hovered:
+                state["target"] = 1.0
+            else:
+                state["target"] = 0.0
+
+            current = state["animation"]
+            target = state["target"]
+            if abs(current - target) < 0.01:
+                state["animation"] = target
+            else:
+                state["animation"] += (target - current) * min(dt * speed, 1.0)
+
+    def _area_edge(self, area_id: str) -> str:
+        """Return the edge where an auto-hide area collapses."""
+        if area_id == "hierarchy":
+            return "left"
+        elif area_id == "inspector":
+            return "right"
+        else:
+            return "bottom"
+
+    def _draw_auto_hide_strips(self) -> None:
+        """Draw collapsed auto-hide strips."""
+        self._init_auto_hide_states()
+        areas = self.dock_layout.collect_areas()
+
+        for area in areas:
+            if not area.auto_hide:
+                continue
+            state = self._auto_hide_states.get(area.id)
+            if state is None:
+                continue
+
+            area_rect = self._dock_area_rect(area.id)
+            collapsed = compute_auto_hide_collapsed_rect(
+                (area_rect.x, area_rect.y, area_rect.width, area_rect.height),
+                self._area_edge(area.id),
+            )
+            edge = self._area_edge(area.id)
+            animation = float(state.get("animation", 0.0))
+            hovered = bool(state.get("hovered", False))
+
+            result = draw_auto_hide_collapsed_strip(
+                area.id, collapsed, edge, list(area.tabs),
+                hovered=hovered, animation=animation,
+            )
+
+            if result.value and cast("dict[str, bool]", result.value).get("pinned"):
+                new_pinned = not area.pinned
+                self.set_dock_area_pinned(area.id, new_pinned)
+
+    # ── Drag preview ───────────────────────────────────────────────
+
+    def _draw_drag_preview(self) -> None:
+        """Draw tab drag preview with drop zone highlights."""
+        if self._dock_drag_tab_id is None:
+            return
+
+        mouse = rl.get_mouse_position()
+        mx, my = float(mouse.x), float(mouse.y)
+        tab_label = self._dock_tab_label(self._dock_drag_tab_id)
+
+        drop_zones: list[tuple[str, tuple[float, float, float, float]]] = []
+        highlight_zone: str | None = None
+        areas = self.dock_layout.collect_areas()
+        for area in areas:
+            zone_rect = self._dock_area_rect(area.id)
+            zone_tuple = (zone_rect.x, zone_rect.y, zone_rect.width, zone_rect.height)
+            drop_zones.append((area.id, zone_tuple))
+            if rl.check_collision_point_rec(mouse, zone_rect):
+                highlight_zone = area.id
+
+        draw_drag_preview(
+            (mx, my), tab_label, drop_zones, highlight_zone=highlight_zone,
+        )
+
+    def _set_dock_split_ratio(self, split_id: str, ratio: float) -> bool:
+        def visit(node: object) -> DockSplit | None:
+            if isinstance(node, DockSplit):
+                if node.id == split_id:
+                    return node
+                return visit(node.first) or visit(node.second)
+            return None
+
+        split = visit(self.dock_layout.root)
+        if split is None:
+            return False
+        split.ratio = max(0.1, min(0.9, float(ratio)))
+        self._dock_layout_dirty = True
+        return True
+
+    def compute_dock_tab_rects(self, area_id: str) -> dict[str, rl.Rectangle]:
+        area = self.dock_layout.find_area(area_id)
+        if area is None:
+            return {}
+        header = self._dock_area_header_rect(area_id)
+        tab_y = header.y + 2
+        tab_h = max(0.0, header.height - 4)
+        tab_x = header.x + 4
+        rects: dict[str, rl.Rectangle] = {}
+        for tab_id in area.tabs:
+            label = self._dock_tab_label(tab_id)
+            tab_w = max(62, min(120, self._measure_text(label, 10) + 24))
+            rects[tab_id] = rl.Rectangle(tab_x, tab_y, tab_w, tab_h)
+            tab_x += tab_w + 4
+        return rects
+
+    def _dock_area_header_rect(self, area_id: str) -> rl.Rectangle:
+        if area_id == "bottom":
+            return self.bottom_header_rect
+        if area_id == "center":
+            return rl.Rectangle(self.center_rect.x, self.center_rect.y, self.center_rect.width, self.TAB_HEIGHT)
+        rect = self._dock_area_rect(area_id)
+        return rl.Rectangle(rect.x, rect.y, rect.width, self.TAB_HEIGHT)
+
+    def _dock_area_rect(self, area_id: str) -> rl.Rectangle:
+        if area_id == "hierarchy":
+            return self.hierarchy_rect
+        if area_id == "inspector":
+            return self.inspector_rect
+        if area_id == "bottom":
+            return self.bottom_rect
+        return self.center_rect
+
+    def _dock_tab_label(self, tab_id: str) -> str:
+        labels = {
+            "FLOW_PANEL": "Flow",
+            "SCENE": "Scene",
+            "GAME": "Game",
+            "FLOW": "Flow",
+            "ANIMATOR": "Animator",
+            "PROJECT": "Project",
+            "CONSOLE": "Console",
+            "TERMINAL": "Terminal",
+            "AGENT": "Agent",
+            "HIERARCHY": "Hierarchy",
+            "INSPECTOR": "Inspector",
+        }
+        return labels.get(tab_id, tab_id.title())
+
+    def _apply_dock_active_tabs(self) -> None:
+        center_tab = self.dock_layout.active_tab("center")
+        if center_tab in {"SCENE", "GAME", "FLOW", "ANIMATOR"}:
+            self.active_tab = center_tab
+        bottom_tab = self.dock_layout.active_tab("bottom")
+        if bottom_tab == "FLOW_PANEL":
+            bottom_tab = "FLOW"
+        if bottom_tab in {"PROJECT", "FLOW", "CONSOLE", "TERMINAL", "AGENT", "ASSETS"}:
+            self.active_bottom_tab = bottom_tab
 
     def update_layout(self, width: int, height: int, update_texture: bool = True) -> None:
         """Recalcula layout."""
@@ -409,57 +844,65 @@ class EditorLayout:
         top_offset = self.MENU_HEIGHT + self.TOOLBAR_HEIGHT
         bottom_height = self._clamp_bottom_height(self.bottom_height, screen_height=height)
         self.bottom_height = bottom_height
-        content_height = height - top_offset - bottom_height
 
-        # 1. Hierarchy (Left) - Starts below Toolbar
-        self.hierarchy_rect = rl.Rectangle(0, top_offset, self.hierarchy_width, content_height)
+        try:
+            dock_rects = compute_dock_rects(
+                self.dock_layout,
+                (0.0, float(top_offset), float(width), float(height - top_offset)),
+                float(self.SPLITTER_WIDTH),
+            )
+            self.hierarchy_rect = self._rl_rect_from_tuple(dock_rects.areas["hierarchy"])
+            self.inspector_rect = self._rl_rect_from_tuple(dock_rects.areas["inspector"])
+            self.center_rect = self._rl_rect_from_tuple(dock_rects.areas["center"])
+            self.bottom_rect = self._rl_rect_from_tuple(dock_rects.areas["bottom"])
+            self.splitter_left_rect = self._rl_rect_from_tuple(dock_rects.splitters.get("main", (0, 0, 0, 0)))
+            self.splitter_right_rect = self._rl_rect_from_tuple(dock_rects.splitters.get("main_right", (0, 0, 0, 0)))
+            self.bottom_splitter_rect = self._rl_rect_from_tuple(dock_rects.splitters.get("root", (0, 0, 0, 0)))
+        except Exception:
+            content_height = height - top_offset - bottom_height
+            self.hierarchy_rect = rl.Rectangle(0, top_offset, self.hierarchy_width, content_height)
+            self.splitter_left_rect = rl.Rectangle(self.hierarchy_width, top_offset, self.SPLITTER_WIDTH, content_height)
+            self.inspector_rect = rl.Rectangle(width - self.inspector_width, top_offset, self.inspector_width, content_height)
+            self.splitter_right_rect = rl.Rectangle(
+                width - self.inspector_width - self.SPLITTER_WIDTH, top_offset, self.SPLITTER_WIDTH, content_height
+            )
+            center_x = self.hierarchy_width + self.SPLITTER_WIDTH
+            center_right = width - self.inspector_width - self.SPLITTER_WIDTH
+            self.center_rect = rl.Rectangle(center_x, top_offset, center_right - center_x, content_height)
+            self.bottom_rect = rl.Rectangle(0, height - bottom_height, width, bottom_height)
+            self.bottom_splitter_rect = rl.Rectangle(0, self.bottom_rect.y - self.SPLITTER_WIDTH, width, self.SPLITTER_WIDTH)
 
-        # Splitter Left
-        self.splitter_left_rect = rl.Rectangle(self.hierarchy_width, top_offset, self.SPLITTER_WIDTH, content_height)
+        self.hierarchy_width = int(self.hierarchy_rect.width)
+        self.inspector_width = int(self.inspector_rect.width)
+        self.bottom_height = int(self.bottom_rect.height)
 
-        # 2. Inspector (Right)
-        self.inspector_rect = rl.Rectangle(
-            width - self.inspector_width, top_offset, self.inspector_width, content_height
-        )
-
-        # Splitter Right
-        self.splitter_right_rect = rl.Rectangle(
-            width - self.inspector_width - self.SPLITTER_WIDTH, top_offset, self.SPLITTER_WIDTH, content_height
-        )
-
-        # 3. Center View (Reference for Scene and Game)
-        center_x = self.hierarchy_width + self.SPLITTER_WIDTH
-        center_right = width - self.inspector_width - self.SPLITTER_WIDTH
-        center_width = center_right - center_x
-
-        self.center_rect = rl.Rectangle(center_x, top_offset, center_width, content_height)
-
-        # Center header layout: fixed view tabs + scene workspace tabs.
-        tab_y = top_offset + 2
-        tab_h = self.TAB_HEIGHT - 4
-        tab_x = center_x + 4
-        self.tab_scene_rect = rl.Rectangle(tab_x, tab_y, 74, tab_h)
-        self.tab_game_rect = rl.Rectangle(tab_x + 78, tab_y, 74, tab_h)
-        self.tab_flow_rect = rl.Rectangle(tab_x + 156, tab_y, 74, tab_h)
-        self.tab_animator_rect = rl.Rectangle(tab_x + 234, tab_y, 92, tab_h)
+        center_tabs = self.compute_dock_tab_rects("center")
+        self.tab_scene_rect = center_tabs.get("SCENE", rl.Rectangle(0, 0, 0, 0))
+        self.tab_game_rect = center_tabs.get("GAME", rl.Rectangle(0, 0, 0, 0))
+        self.tab_flow_rect = center_tabs.get("FLOW", rl.Rectangle(0, 0, 0, 0))
+        self.tab_animator_rect = center_tabs.get("ANIMATOR", rl.Rectangle(0, 0, 0, 0))
         # Play is handled directly by toolbar buttons; keep this rect inert.
         self.btn_play_rect = rl.Rectangle(0, 0, 0, 0)
 
         # 4. Bottom
-        self.bottom_rect = rl.Rectangle(0, height - bottom_height, width, bottom_height)
-        self.bottom_header_rect = rl.Rectangle(0, height - bottom_height, width, self.TAB_HEIGHT)
+        self.bottom_header_rect = rl.Rectangle(self.bottom_rect.x, self.bottom_rect.y, self.bottom_rect.width, self.TAB_HEIGHT)
         self.bottom_content_rect = rl.Rectangle(
-            0, self.bottom_header_rect.y + self.bottom_header_rect.height, width, bottom_height - self.TAB_HEIGHT
+            self.bottom_rect.x,
+            self.bottom_header_rect.y + self.bottom_header_rect.height,
+            self.bottom_rect.width,
+            max(0, self.bottom_rect.height - self.TAB_HEIGHT),
         )
-        self.bottom_splitter_rect = rl.Rectangle(
-            0, self.bottom_rect.y - self.SPLITTER_WIDTH, width, self.SPLITTER_WIDTH
-        )
+        self._dock_tab_rects = {"center": center_tabs, "bottom": self.compute_dock_tab_rects("bottom")}
 
         self._sync_editor_camera_offset()
 
         if update_texture:
             view_rect = self.get_center_view_rect()
             self._resize_render_textures(int(view_rect.width), int(view_rect.height))
+
+    def _rl_rect_from_tuple(self, rect: tuple[float, float, float, float]) -> rl.Rectangle:
+        x, y, width, height = rect
+        return rl.Rectangle(float(round(x)), float(round(y)), max(0.0, float(round(width))), max(0.0, float(round(height))))
 
     def update_input(self) -> None:
         """Procesa input general (Tabs, Splitters, Camara)."""
@@ -477,6 +920,12 @@ class EditorLayout:
         self._handle_tool_shortcuts()
         mouse_pos = rl.get_mouse_position()
 
+        # Block panel input when context menu is open (panels will process the action)
+        root = self._context_menu_manager.root
+        if root is not None:
+            if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT) or rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_RIGHT):
+                return
+
         # Guard: Skip toolbar/tab processing if mouse is in inspector or hierarchy
         mouse_in_inspector = rl.check_collision_point_rec(mouse_pos, self.inspector_rect)
         mouse_in_hierarchy = rl.check_collision_point_rec(mouse_pos, self.hierarchy_rect)
@@ -487,13 +936,13 @@ class EditorLayout:
         if not mouse_in_inspector and not mouse_in_hierarchy and not mouse_in_bottom:
             if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 if rl.check_collision_point_rec(mouse_pos, self.tab_scene_rect):
-                    self.active_tab = "SCENE"
+                    self.set_dock_active_tab("center", "SCENE")
                 elif rl.check_collision_point_rec(mouse_pos, self.tab_game_rect):
-                    self.active_tab = "GAME"
+                    self.set_dock_active_tab("center", "GAME")
                 elif rl.check_collision_point_rec(mouse_pos, self.tab_flow_rect):
-                    self.active_tab = "FLOW"
+                    self.set_dock_active_tab("center", "FLOW")
                 elif rl.check_collision_point_rec(mouse_pos, self.tab_animator_rect):
-                    self.active_tab = "ANIMATOR"
+                    self.set_dock_active_tab("center", "ANIMATOR")
                 elif rl.check_collision_point_rec(mouse_pos, self.btn_play_rect):
                     self.request_play = True
 
@@ -510,6 +959,8 @@ class EditorLayout:
                     if new_width > self.screen_width - self.inspector_width - 100:
                         new_width = self.screen_width - self.inspector_width - 100
                     self.hierarchy_width = int(new_width)
+                    usable = max(1.0, float(self.screen_width - self.SPLITTER_WIDTH))
+                    self._set_dock_split_ratio("main", float(new_width) / usable)
 
                 elif self.dragging_splitter == "right":
                     new_width = self.screen_width - mouse_pos.x
@@ -518,10 +969,15 @@ class EditorLayout:
                     if new_width > self.screen_width - self.hierarchy_width - 100:
                         new_width = self.screen_width - self.hierarchy_width - 100
                     self.inspector_width = int(new_width)
+                    total = max(1.0, float(self.center_rect.width + self.inspector_rect.width))
+                    self._set_dock_split_ratio("main_right", (total - float(new_width)) / total)
                 elif self.dragging_splitter == "bottom":
                     new_height = self.screen_height - mouse_pos.y
                     self.bottom_height = self._clamp_bottom_height(int(new_height))
                     self._editor_preferences_dirty = True
+                    top_offset = self.MENU_HEIGHT + self.TOOLBAR_HEIGHT
+                    usable = max(1.0, float(self.screen_height - top_offset - self.SPLITTER_WIDTH))
+                    self._set_dock_split_ratio("root", (usable - float(self.bottom_height)) / usable)
 
                 self.update_layout(self.screen_width, self.screen_height, update_texture=True)
                 return
@@ -539,6 +995,10 @@ class EditorLayout:
 
         # C. Camera Logic (Only if SCENE tab active)
         if self.active_tab == "SCENE":
+            if rl.is_key_pressed(rl.KEY_HOME):
+                if self.active_bottom_tab != "TERMINAL":
+                    self.reset_camera()
+
             is_hover_view = rl.check_collision_point_rec(mouse_pos, self.get_center_view_rect())
 
             if is_hover_view or self.is_panning:
@@ -769,6 +1229,13 @@ class EditorLayout:
     def draw_layout(self, is_playing: bool) -> None:
         """Dibuja el layout completo del editor."""
         self._reset_cursor_regions()
+        layout_changed = (
+            self.active_tab != self._last_active_tab
+            or self.active_bottom_tab != self._last_bottom_tab
+        )
+        if layout_changed:
+            self._last_active_tab = self.active_tab
+            self._last_bottom_tab = self.active_bottom_tab
         safe_reset_clip_state()
         rl.clear_background(self.UNITY_BG_DARKEST)
 
@@ -785,25 +1252,9 @@ class EditorLayout:
         # ========================================
         # 3. Panel Backgrounds
         # ========================================
-        # Hierarchy panel background
-        rl.draw_rectangle_rec(self.hierarchy_rect, self.UNITY_BG_DARK)
-        rl.draw_line(
-            int(self.hierarchy_rect.x + self.hierarchy_rect.width),
-            int(self.hierarchy_rect.y),
-            int(self.hierarchy_rect.x + self.hierarchy_rect.width),
-            int(self.hierarchy_rect.y + self.hierarchy_rect.height),
-            self.UNITY_BORDER,
-        )
-
-        # Inspector panel background
-        rl.draw_rectangle_rec(self.inspector_rect, self.UNITY_BG_DARK)
-        rl.draw_line(
-            int(self.inspector_rect.x),
-            int(self.inspector_rect.y),
-            int(self.inspector_rect.x),
-            int(self.inspector_rect.y + self.inspector_rect.height),
-            self.UNITY_BORDER,
-        )
+        self._draw_panel_frame(self.hierarchy_rect, "Hierarchy")
+        self._draw_panel_frame(self.inspector_rect, "Inspector")
+        self._draw_panel_frame(self.center_rect, "Viewport", active=True, subtitle=self.active_tab.title())
 
         # ========================================
         # 4. Scene Workspace Tabs
@@ -842,7 +1293,8 @@ class EditorLayout:
         else:
             rl.draw_rectangle_rec(view_rect, self.VIEW_BG_COLOR)
 
-        rl.draw_rectangle_lines_ex(view_rect, 1, self.UNITY_BORDER)
+        self._draw_viewport_chrome(view_rect)
+        self._draw_viewport_overlay(view_rect)
 
         # ========================================
         # 6. Splitters
@@ -852,19 +1304,21 @@ class EditorLayout:
         # ========================================
         # 7. Bottom Area (Project / Console / Terminal)
         # ========================================
-        rl.draw_rectangle_rec(self.bottom_rect, self.UNITY_BG_DARK)
+        self._draw_panel_frame(self.bottom_rect, self.active_bottom_tab.title(), active=True)
         rl.draw_line(0, int(self.bottom_rect.y), self.screen_width, int(self.bottom_rect.y), self.UNITY_BORDER)
 
         # Draw Content
         safe_reset_clip_state()
         try:
             if self.active_bottom_tab == "PROJECT" and self.project_panel:
+                t0 = time.perf_counter()
                 self.project_panel.render(
                     int(self.bottom_content_rect.x),
                     int(self.bottom_content_rect.y),
                     int(self.bottom_content_rect.width),
                     int(self.bottom_content_rect.height),
                 )
+                self._panel_profile["project"] = time.perf_counter() - t0
                 if self.project_panel.dragging_file:
                     mouse = rl.get_mouse_position()
                     rl.draw_rectangle(int(mouse.x), int(mouse.y), 20, 20, rl.Color(255, 255, 255, 128))
@@ -876,39 +1330,62 @@ class EditorLayout:
                         rl.WHITE,
                     )
             elif self.active_bottom_tab == "FLOW" and self.flow_panel is not None:
+                t0 = time.perf_counter()
                 self.flow_panel.render(
                     int(self.bottom_content_rect.x),
                     int(self.bottom_content_rect.y),
                     int(self.bottom_content_rect.width),
                     int(self.bottom_content_rect.height),
                 )
+                self._panel_profile["flow"] = time.perf_counter() - t0
             elif self.active_bottom_tab == "CONSOLE" and self.console_panel:
+                t0 = time.perf_counter()
                 self.console_panel.render(
                     int(self.bottom_content_rect.x),
                     int(self.bottom_content_rect.y),
                     int(self.bottom_content_rect.width),
                     int(self.bottom_content_rect.height),
                 )
+                self._panel_profile["console"] = time.perf_counter() - t0
             elif self.active_bottom_tab == "TERMINAL" and self.terminal_panel is not None:
+                t0 = time.perf_counter()
                 self.terminal_panel.render(
                     int(self.bottom_content_rect.x),
                     int(self.bottom_content_rect.y),
                     int(self.bottom_content_rect.width),
                     int(self.bottom_content_rect.height),
                 )
+                self._panel_profile["terminal"] = time.perf_counter() - t0
             elif self.active_bottom_tab == "AGENT" and self.agent_panel is not None:
+                t0 = time.perf_counter()
                 self.agent_panel.render(
                     int(self.bottom_content_rect.x),
                     int(self.bottom_content_rect.y),
                     int(self.bottom_content_rect.width),
                     int(self.bottom_content_rect.height),
                 )
+                self._panel_profile["agent"] = time.perf_counter() - t0
+            elif self.active_bottom_tab == "ASSETS" and self.asset_browser:
+                t0 = time.perf_counter()
+                self.asset_browser.render(
+                    int(self.bottom_content_rect.x),
+                    int(self.bottom_content_rect.y),
+                    int(self.bottom_content_rect.width),
+                    int(self.bottom_content_rect.height),
+                )
+                self._panel_profile["assets"] = time.perf_counter() - t0
         except Exception as exc:
             log_err(f"Bottom panel render error ({self.active_bottom_tab}): {exc}")
             safe_reset_clip_state()
 
         safe_reset_clip_state()
         self.draw_bottom_tabs()
+
+        # ── Docking chrome: floating windows, auto-hide, drag preview ──
+        self._update_auto_hide_animations()
+        self._draw_auto_hide_strips()
+        self._update_floating_windows()
+        self._draw_drag_preview()
 
         if self.show_project_modal:
             self._draw_project_modal()
@@ -920,6 +1397,9 @@ class EditorLayout:
             self._draw_project_dirty_modal()
         if self.show_about_modal:
             self._draw_about_modal()
+
+        TOAST_MANAGER.render(self.screen_width, self.screen_height)
+        self._render_global_context_menu()
 
     @property
     def dropdown_active(self) -> bool:
@@ -1247,17 +1727,24 @@ class EditorLayout:
         hover_right = rl.check_collision_point_rec(mouse_pos, self.splitter_right_rect)
         hover_bottom = rl.check_collision_point_rec(mouse_pos, self.bottom_splitter_rect)
 
-        col_left = self.SPLITTER_HOVER_COLOR if hover_left or self.dragging_splitter == "left" else self.SPLITTER_COLOR
+        drag_color = self.UNITY_BLUE_HOVER
+        col_left = drag_color if self.dragging_splitter == "left" else self.SPLITTER_HOVER_COLOR if hover_left else self.SPLITTER_COLOR
         col_right = (
-            self.SPLITTER_HOVER_COLOR if hover_right or self.dragging_splitter == "right" else self.SPLITTER_COLOR
+            drag_color if self.dragging_splitter == "right" else self.SPLITTER_HOVER_COLOR if hover_right else self.SPLITTER_COLOR
         )
         col_bottom = (
-            self.SPLITTER_HOVER_COLOR if hover_bottom or self.dragging_splitter == "bottom" else self.SPLITTER_COLOR
+            drag_color if self.dragging_splitter == "bottom" else self.SPLITTER_HOVER_COLOR if hover_bottom else self.SPLITTER_COLOR
         )
 
-        rl.draw_rectangle_rec(self.splitter_left_rect, col_left)
-        rl.draw_rectangle_rec(self.splitter_right_rect, col_right)
-        rl.draw_rectangle_rec(self.bottom_splitter_rect, col_bottom)
+        self._draw_splitter_visual(self.splitter_left_rect, col_left)
+        self._draw_splitter_visual(self.splitter_right_rect, col_right)
+        self._draw_splitter_visual(self.bottom_splitter_rect, col_bottom)
+
+    def _draw_panel_frame(self, rect: rl.Rectangle, title: str, *, active: bool = False, subtitle: str = "") -> None:
+        draw_editor_panel_frame(_to_ui_rect(rect), title, active=active, subtitle=subtitle)
+
+    def _draw_splitter_visual(self, rect: rl.Rectangle, color: rl.Color) -> None:
+        draw_rounded_rect(_to_ui_rect(rect), (color.r, color.g, color.b, color.a), 2)
 
     def open_project_folder(self) -> None:
         """Abre la carpeta del proyecto en el explorador de archivos del sistema."""
@@ -1316,29 +1803,8 @@ class EditorLayout:
             rect = rl.Rectangle(tool_x, tool_y, tool_size, tool_size)
             self._register_cursor_rect(rect)
             is_active = self.active_tool == tool
-
-            # Toggle manual (sin punteros)
-            mouse_pos = rl.get_mouse_position()
-            is_hover = rl.check_collision_point_rec(mouse_pos, rect)
-
-            # Colores
-            if is_active:
-                bg_color = self.UNITY_BLUE
-            elif is_hover:
-                bg_color = self.UNITY_BUTTON_HOVER
-            else:
-                bg_color = self.UNITY_BUTTON
-
-            rl.draw_rectangle_rec(rect, bg_color)
-
-            # Texto centrado
-            text_w = self._measure_text(shortcut, 10)
-            text_x = int(tool_x + (tool_size - text_w) // 2)
-            text_y = int(tool_y + (tool_size - 10) // 2)
-            rl.draw_text(shortcut, text_x, text_y, 10, self.UNITY_TEXT)
-
-            # Click
-            if is_hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+            result = editor_toggle_button(_to_ui_rect(rect), shortcut, is_active)
+            if result.clicked:
                 self.set_active_tool(tool)
 
             tool_x += tool_size + tool_spacing
@@ -1374,7 +1840,7 @@ class EditorLayout:
             height=toggle_h,
         )
         toggle_x += toggle_gap
-        self._draw_toolbar_toggle(
+        toggle_x = self._draw_toolbar_toggle(
             toggle_x,
             toggle_y,
             "Center",
@@ -1382,6 +1848,11 @@ class EditorLayout:
             lambda: self.set_pivot_mode(PivotMode.CENTER),
             height=toggle_h,
         )
+        toggle_x += 12
+        home_rect = rl.Rectangle(toggle_x, toggle_y, 48, toggle_h)
+        self._register_cursor_rect(home_rect)
+        if editor_button(_to_ui_rect(home_rect), "Home").clicked:
+            self.reset_camera()
 
         # ========================================
         # CENTRO: Play / Pause / Step
@@ -1394,20 +1865,19 @@ class EditorLayout:
         # Play button
         play_rect = rl.Rectangle(center_x - btn_width - 20, play_y, btn_width, btn_height)
         self._register_cursor_rect(play_rect)
-        play_text = "||" if is_playing else ">"  # Pause o Play symbol
-        if rl.gui_button(play_rect, play_text):
+        if editor_icon_button(_to_ui_rect(play_rect), ICON_PLAY, active=is_playing).clicked:
             self.request_play = True
 
         # Pause button (solo visible durante play)
         pause_rect = rl.Rectangle(center_x - btn_width // 2, play_y, btn_width, btn_height)
         self._register_cursor_rect(pause_rect)
-        if rl.gui_button(pause_rect, "||"):
+        if editor_icon_button(_to_ui_rect(pause_rect), ICON_PAUSE).clicked:
             self.request_pause = True
 
         # Step button
         step_rect = rl.Rectangle(center_x + 20, play_y, btn_width, btn_height)
         self._register_cursor_rect(step_rect)
-        if rl.gui_button(step_rect, ">|"):
+        if editor_button(_to_ui_rect(step_rect), ">|").clicked:
             self.request_step = True
 
         # ========================================
@@ -1418,13 +1888,7 @@ class EditorLayout:
         # Botón Abrir Carpeta del Proyecto
         folder_rect = rl.Rectangle(right_x - 32, play_y, 28, btn_height)
         self._register_cursor_rect(folder_rect)
-        folder_hover = rl.check_collision_point_rec(rl.get_mouse_position(), folder_rect)
-        folder_bg = self.UNITY_BUTTON_HOVER if folder_hover else self.UNITY_BUTTON
-        rl.draw_rectangle_rec(folder_rect, folder_bg)
-        rl.draw_rectangle_lines_ex(folder_rect, 1, self.UNITY_BORDER)
-        # Centrar el emoji en el botón
-        rl.draw_text("📁", int(folder_rect.x + 4), int(play_y + 4), 14, self.UNITY_TEXT)
-        if folder_hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+        if editor_icon_button(_to_ui_rect(folder_rect), "folder").clicked:
             self.open_project_folder()
 
         # Layers dropdown
@@ -1471,42 +1935,51 @@ class EditorLayout:
         file_btn_w = 40
         file_x = center_x + 100
 
-        if rl.gui_button(rl.Rectangle(file_x, play_y, file_btn_w, btn_height), "New"):
+        new_rect = rl.Rectangle(file_x, play_y, file_btn_w, btn_height)
+        self._register_cursor_rect(new_rect)
+        if editor_button(_to_ui_rect(new_rect), "New").clicked:
             self.show_create_scene_modal = True
             self.scene_create_name = "New Scene"
             self.scene_create_name_focused = True
 
         file_x += file_btn_w + 5
-        if rl.gui_button(rl.Rectangle(file_x, play_y, file_btn_w, btn_height), "Open"):
+        open_rect = rl.Rectangle(file_x, play_y, file_btn_w, btn_height)
+        self._register_cursor_rect(open_rect)
+        if editor_button(_to_ui_rect(open_rect), "Open").clicked:
             self.request_load_scene = True
 
         file_x += file_btn_w + 5
-        if rl.gui_button(rl.Rectangle(file_x, play_y, file_btn_w, btn_height), "Save"):
+        save_rect = rl.Rectangle(file_x, play_y, file_btn_w, btn_height)
+        self._register_cursor_rect(save_rect)
+        if editor_button(_to_ui_rect(save_rect), "Save").clicked:
             self.request_save_scene = True
 
         file_x += file_btn_w + 5
-        if rl.gui_button(rl.Rectangle(file_x, play_y, 52, btn_height), "Project"):
+        project_rect = rl.Rectangle(file_x, play_y, 52, btn_height)
+        self._register_cursor_rect(project_rect)
+        if editor_button(_to_ui_rect(project_rect), "Project").clicked:
             self.show_project_modal = True
         file_x += 57
-        if rl.gui_button(rl.Rectangle(file_x, play_y, 52, btn_height), "Canvas"):
+        canvas_rect = rl.Rectangle(file_x, play_y, 52, btn_height)
+        self._register_cursor_rect(canvas_rect)
+        if editor_button(_to_ui_rect(canvas_rect), "Canvas").clicked:
             self.request_create_canvas = True
         file_x += 57
-        if rl.gui_button(rl.Rectangle(file_x, play_y, 44, btn_height), "Text"):
+        text_rect = rl.Rectangle(file_x, play_y, 44, btn_height)
+        self._register_cursor_rect(text_rect)
+        if editor_button(_to_ui_rect(text_rect), "Text").clicked:
             self.request_create_ui_text = True
         file_x += 49
-        if rl.gui_button(rl.Rectangle(file_x, play_y, 56, btn_height), "Button"):
+        button_rect = rl.Rectangle(file_x, play_y, 56, btn_height)
+        self._register_cursor_rect(button_rect)
+        if editor_button(_to_ui_rect(button_rect), "Button").clicked:
             self.request_create_ui_button = True
 
     def _draw_toolbar_toggle(self, x: int, y: int, label: str, is_active: bool, on_click, height: int = 20) -> int:
         width = self._measure_text(label, 10) + 16
         rect = rl.Rectangle(x, y, width, height)
         self._register_cursor_rect(rect)
-        hover = rl.check_collision_point_rec(rl.get_mouse_position(), rect)
-        bg_color = self.UNITY_BLUE if is_active else (self.UNITY_BUTTON_HOVER if hover else self.UNITY_BUTTON)
-        rl.draw_rectangle_rec(rect, bg_color)
-        rl.draw_rectangle_lines_ex(rect, 1, self.UNITY_BORDER)
-        rl.draw_text(label, int(rect.x + 8), int(rect.y + (rect.height - 10) / 2), 10, self.UNITY_TEXT)
-        if hover and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+        if editor_toggle_button(_to_ui_rect(rect), label, is_active).clicked:
             on_click()
         return int(x + width)
 
@@ -1564,6 +2037,8 @@ class EditorLayout:
             self.active_bottom_tab = "TERMINAL"
         elif action_id == "bottom_agent":
             self.active_bottom_tab = "AGENT"
+        elif action_id == "bottom_assets":
+            self.active_bottom_tab = "ASSETS"
         elif action_id == "about":
             self.show_about_modal = True
 
@@ -1719,8 +2194,6 @@ class EditorLayout:
         rl.draw_line(0, self.MENU_HEIGHT - 1, self.screen_width, self.MENU_HEIGHT - 1, self.UNITY_BORDER)
 
         items = list(self._MENU_DEFINITIONS.keys())
-        mouse = rl.get_mouse_position()
-        clicked = rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT)
         x = 8
 
         for item in items:
@@ -1729,19 +2202,10 @@ class EditorLayout:
             rect = rl.Rectangle(x, 1, item_width, self.MENU_HEIGHT - 2)
             self._menu_item_rects[item] = rect
             self._register_cursor_rect(rect)
-
-            is_hover = rl.check_collision_point_rec(mouse, rect)
             is_active = self._active_menu == item
 
-            if is_active:
-                rl.draw_rectangle_rec(rect, self.UNITY_BLUE)
-            elif is_hover:
-                rl.draw_rectangle_rec(rect, self.UNITY_BG_LIGHT)
-
-            text_x = x + (item_width - text_width) // 2
-            rl.draw_text(item, int(text_x), 5, 10, self.UNITY_TEXT)
-
-            if is_hover and clicked:
+            result = editor_button(_to_ui_rect(rect), item, active=is_active)
+            if result.clicked:
                 if self._active_menu == item:
                     self._active_menu = None
                 else:
@@ -1797,8 +2261,10 @@ class EditorLayout:
         """Dibuja un tab estilo Unity con línea azul inferior si está activo."""
         # Fondo del tab
         self._register_cursor_rect(rect)
-        bg_color = self.UNITY_TAB_ACTIVE if is_active else self.UNITY_TAB_INACTIVE
-        rl.draw_rectangle_rec(rect, bg_color)
+        tab_color = self.UNITY_TAB_ACTIVE if is_active else self.UNITY_TAB_INACTIVE
+        bg_color = (tab_color.r, tab_color.g, tab_color.b, tab_color.a)
+        draw_rounded_rect(_to_ui_rect(rect), bg_color, radius=3.0)
+        draw_border(_to_ui_rect(rect), (25, 25, 25, 255))
 
         # Línea azul inferior si está activo
         if is_active:
@@ -1820,29 +2286,11 @@ class EditorLayout:
         if not rl.check_collision_point_rec(mouse_pos, self.bottom_header_rect):
             return
 
-        bottom_tab_y = int(self.bottom_header_rect.y) + 2
-        bottom_tab_h = self.TAB_HEIGHT - 4
-        proj_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 2, bottom_tab_y, 70, bottom_tab_h)
-        flow_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 75, bottom_tab_y, 62, bottom_tab_h)
-        cons_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 140, bottom_tab_y, 70, bottom_tab_h)
-        term_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 213, bottom_tab_y, 70, bottom_tab_h)
-        agent_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 286, bottom_tab_y, 62, bottom_tab_h)
-        self._register_cursor_rect(proj_tab_rect)
-        self._register_cursor_rect(flow_tab_rect)
-        self._register_cursor_rect(cons_tab_rect)
-        self._register_cursor_rect(term_tab_rect)
-        self._register_cursor_rect(agent_tab_rect)
-
-        if rl.check_collision_point_rec(mouse_pos, proj_tab_rect):
-            self.active_bottom_tab = "PROJECT"
-        elif rl.check_collision_point_rec(mouse_pos, flow_tab_rect):
-            self.active_bottom_tab = "FLOW"
-        elif rl.check_collision_point_rec(mouse_pos, cons_tab_rect):
-            self.active_bottom_tab = "CONSOLE"
-        elif rl.check_collision_point_rec(mouse_pos, term_tab_rect):
-            self.active_bottom_tab = "TERMINAL"
-        elif rl.check_collision_point_rec(mouse_pos, agent_tab_rect):
-            self.active_bottom_tab = "AGENT"
+        for tab_id, rect in self.compute_dock_tab_rects("bottom").items():
+            self._register_cursor_rect(rect)
+            if rl.check_collision_point_rec(mouse_pos, rect):
+                self.set_dock_active_tab("bottom", tab_id)
+                return
 
     def draw_bottom_tabs(self) -> None:
         rl.draw_rectangle_rec(self.bottom_header_rect, self.UNITY_BG_DARK)
@@ -1854,19 +2302,9 @@ class EditorLayout:
             self.UNITY_BORDER,
         )
 
-        bottom_tab_y = int(self.bottom_header_rect.y) + 2
-        bottom_tab_h = self.TAB_HEIGHT - 4
-        proj_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 2, bottom_tab_y, 70, bottom_tab_h)
-        flow_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 75, bottom_tab_y, 62, bottom_tab_h)
-        cons_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 140, bottom_tab_y, 70, bottom_tab_h)
-        term_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 213, bottom_tab_y, 70, bottom_tab_h)
-        agent_tab_rect = rl.Rectangle(self.bottom_header_rect.x + 286, bottom_tab_y, 62, bottom_tab_h)
-
-        self._draw_tab("Project", proj_tab_rect, self.active_bottom_tab == "PROJECT")
-        self._draw_tab("Flow", flow_tab_rect, self.active_bottom_tab == "FLOW")
-        self._draw_tab("Console", cons_tab_rect, self.active_bottom_tab == "CONSOLE")
-        self._draw_tab("Terminal", term_tab_rect, self.active_bottom_tab == "TERMINAL")
-        self._draw_tab("Agent", agent_tab_rect, self.active_bottom_tab == "AGENT")
+        for tab_id, rect in self.compute_dock_tab_rects("bottom").items():
+            active_id = "FLOW_PANEL" if self.active_bottom_tab == "FLOW" else self.active_bottom_tab
+            self._draw_tab(self._dock_tab_label(tab_id), rect, active_id == tab_id)
 
     def _clamp_bottom_height(self, value: int, screen_height: int | None = None) -> int:
         height = self.screen_height if screen_height is None else int(screen_height)
@@ -1993,6 +2431,60 @@ class EditorLayout:
         view_rect = self.get_center_view_rect()
         self.editor_camera.offset = rl.Vector2(view_rect.width / 2, view_rect.height / 2)
 
+    def _draw_viewport_chrome(self, view_rect: rl.Rectangle) -> None:
+        shadow = rl.Color(0, 0, 0, 80)
+        accent = rl.Color(self.UNITY_BLUE_HOVER.r, self.UNITY_BLUE_HOVER.g, self.UNITY_BLUE_HOVER.b, 150)
+        shadow_rect = rl.Rectangle(view_rect.x + 2, view_rect.y + 2, view_rect.width, view_rect.height)
+        rl.draw_rectangle_lines_ex(shadow_rect, 2, shadow)
+        rl.draw_rectangle_lines_ex(view_rect, 1, self.UNITY_BORDER)
+
+        x = int(view_rect.x)
+        y = int(view_rect.y)
+        right = int(view_rect.x + view_rect.width)
+        bottom = int(view_rect.y + view_rect.height)
+        length = 16
+        rl.draw_line(x, y, x + length, y, accent)
+        rl.draw_line(x, y, x, y + length, accent)
+        rl.draw_line(right - length, y, right, y, accent)
+        rl.draw_line(right, y, right, y + length, accent)
+        rl.draw_line(x, bottom, x + length, bottom, accent)
+        rl.draw_line(x, bottom - length, x, bottom, accent)
+        rl.draw_line(right - length, bottom, right, bottom, accent)
+        rl.draw_line(right, bottom - length, right, bottom, accent)
+
+    def _draw_viewport_overlay(self, view_rect: rl.Rectangle) -> None:
+        try:
+            fps = int(rl.get_fps())
+        except Exception:
+            fps = 0
+
+        lines = [
+            f"FPS {fps}",
+            f"Zoom {self.editor_camera.zoom:.2f}",
+            f"Target {self.editor_camera.target.x:.1f}, {self.editor_camera.target.y:.1f}",
+        ]
+        if self.active_tab == "SCENE":
+            try:
+                mouse_world = self.get_scene_mouse_pos()
+                lines.insert(1, f"Mouse {mouse_world.x:.1f}, {mouse_world.y:.1f}")
+            except Exception:
+                pass
+        selected = self.viewport_overlay_context.get("selected_entity")
+        if selected is not None:
+            lines.append(f"Selected {selected}")
+
+        padding = 8
+        line_h = 14
+        width = max((self._measure_text(line, 10) for line in lines), default=0) + padding * 2
+        height = len(lines) * line_h + padding * 2
+        overlay = rl.Rectangle(view_rect.x + 8, view_rect.y + 8, float(width), float(height))
+        rl.draw_rectangle_rec(overlay, rl.Color(0, 0, 0, 105))
+        rl.draw_rectangle_lines_ex(overlay, 1, rl.Color(255, 255, 255, 28))
+        text_y = int(overlay.y + padding)
+        for line in lines:
+            rl.draw_text(line, int(overlay.x + padding), text_y, 10, self.UNITY_TEXT)
+            text_y += line_h
+
     def _draw_project_modal(self) -> None:
         rl.draw_rectangle(0, 0, self.screen_width, self.screen_height, rl.Color(0, 0, 0, 150))
         modal = rl.Rectangle(self.screen_width / 2 - 260, self.screen_height / 2 - 180, 520, 360)
@@ -2062,6 +2554,9 @@ class EditorLayout:
             self.show_project_dirty_modal = False
 
     def _draw_grid_2d(self) -> None:
+        if not self.grid_enabled:
+            return
+
         # Unity Style Grid
         # Thick lines every 10 units, Thin every 1 unit
 
@@ -2070,14 +2565,16 @@ class EditorLayout:
         # But we work in world units.
 
         # Center lines
-        rl.draw_line(-10000, 0, 10000, 0, rl.Color(100, 100, 100, 100))
-        rl.draw_line(0, -10000, 0, 10000, rl.Color(100, 100, 100, 100))
+        if self.grid_show_center_lines:
+            center_alpha = max(self.grid_opacity, min(255, self.grid_opacity * 10))
+            rl.draw_line(-10000, 0, 10000, 0, rl.Color(100, 100, 100, center_alpha))
+            rl.draw_line(0, -10000, 0, 10000, rl.Color(100, 100, 100, center_alpha))
 
         # Grid
         # Needs to be efficient. With Raylib rlBeginMode2D, grid is world space.
-        grid_color = rl.Color(255, 255, 255, 10)  # Very faint
+        grid_color = rl.Color(255, 255, 255, self.grid_opacity)  # Very faint
         steps = 50
-        step_size = 50
+        step_size = self.grid_step_size
 
         for i in range(-steps, steps + 1):
             if i == 0:

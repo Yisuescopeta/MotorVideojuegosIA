@@ -10,14 +10,14 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict
+from typing import TypedDict, cast
 
 _physics_material_cache: dict[str, PhysicsMaterial | None] = {}
 
 
 class PhysicsMaterialData(TypedDict, total=False):
     """Typed representation of a PhysicsMaterial serialized payload.
-    
+
     Keys are optional to support legacy payloads missing fields.
     schema_version may be absent in pre-v1 payloads.
     """
@@ -117,7 +117,7 @@ def load_physics_material(path_str: str) -> PhysicsMaterial | None:
         if not isinstance(data, dict):
             _physics_material_cache[cache_key] = None
             return None
-        mat = PhysicsMaterial.from_dict(data)
+        mat = PhysicsMaterial.from_dict(cast(PhysicsMaterialData, data))
         _physics_material_cache[cache_key] = mat
         return mat
     except (OSError, ValueError, TypeError):

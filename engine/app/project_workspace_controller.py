@@ -133,7 +133,9 @@ class ProjectWorkspaceController:
             editor_layout.set_recent_projects(service.list_launcher_projects())
             if scene_manager is not None:
                 editor_layout.set_scene_tabs(scene_manager.list_open_scenes(), scene_manager.active_scene_key)
-            editor_layout.apply_editor_preferences(service.load_editor_state().get("preferences", {}))
+            editor_state = service.load_editor_state()
+            editor_layout.apply_editor_preferences(editor_state.get("preferences", {}))
+            editor_layout.apply_dock_layout(editor_state.get("layout", {}))
 
         self._set_project_loaded(True)
 
@@ -163,7 +165,13 @@ class ProjectWorkspaceController:
         if project_service is None or editor_layout is None or not project_service.has_project:
             return
         state = project_service.load_editor_state()
-        state["preferences"] = editor_layout.export_editor_preferences()
+        preferences = state.get("preferences", {})
+        if not isinstance(preferences, dict):
+            preferences = {}
+        preferences.update(editor_layout.export_editor_preferences())
+        state["preferences"] = preferences
+        if hasattr(editor_layout, "export_dock_layout"):
+            state["layout"] = editor_layout.export_dock_layout()
         project_service.save_editor_state(state)
 
     def reset_project_bound_state(self) -> None:
@@ -254,6 +262,9 @@ class ProjectWorkspaceController:
         state["scene_view_states"] = scene_view_states
         current_scene_path = self._get_current_scene_path()
         state["last_scene"] = project_service.to_relative_path(current_scene_path) if current_scene_path else ""
+        editor_layout = self._get_editor_layout()
+        if editor_layout is not None and hasattr(editor_layout, "export_dock_layout"):
+            state["layout"] = editor_layout.export_dock_layout()
         project_service.save_editor_state(state)
 
     def restore_workspace_from_project_state(self) -> bool:
@@ -262,6 +273,9 @@ class ProjectWorkspaceController:
         if project_service is None or scene_manager is None or not project_service.has_project:
             return False
         state = project_service.load_editor_state()
+        editor_layout = self._get_editor_layout()
+        if editor_layout is not None:
+            editor_layout.apply_dock_layout(state.get("layout", {}))
         open_scenes = list(state.get("open_scenes", []))
         scene_view_states = dict(state.get("scene_view_states", {}))
         for scene_ref in open_scenes:

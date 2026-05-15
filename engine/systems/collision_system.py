@@ -91,9 +91,11 @@ class CollisionSystem:
                 bounds = shape_set.get_composite_bounds(transform.x, transform.y)
                 shape_defs = tuple(shape_set.shapes)
             else:
-                bounds = self._compute_shape_bounds(entity, transform)
-                if bounds is None:
+                computed_bounds = self._compute_shape_bounds(entity, transform)
+                if computed_bounds is None:
                     bounds = collider.get_bounds(transform.x, transform.y)
+                else:
+                    bounds = computed_bounds
                 shape_defs = (self._collider_to_shape_def(collider),)
             entry = _CollisionEntry(
                 entity=entity,
@@ -131,14 +133,14 @@ class CollisionSystem:
                 continue
             if not self._entity_has_collision_shape(entity):
                 continue
-            bounds = self._compute_shape_bounds(entity, transform)
-            if bounds is None:
+            computed_bounds = self._compute_shape_bounds(entity, transform)
+            if computed_bounds is None:
                 continue
             entry = _CollisionEntry(
                 entity=entity,
                 collider=None,
                 rigidbody=entity.get_component(RigidBody),
-                aabb=bounds,
+                aabb=computed_bounds,
             )
             entries_by_id[entity_id] = entry
             grid.insert(entity.id, entry.aabb)

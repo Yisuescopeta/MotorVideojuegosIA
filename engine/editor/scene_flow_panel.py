@@ -46,7 +46,8 @@ class SceneFlowPanel:
     CONTEXT_MENU_WIDTH = 128
     CONTEXT_MENU_ITEM_HEIGHT = 24
 
-    def __init__(self) -> None:
+    def __init__(self, layout: Any = None) -> None:
+        self._layout = layout
         self.project_service: Any = None
         self.scene_manager: Any = None
         self.current_scene_only: bool = True
@@ -72,8 +73,6 @@ class SceneFlowPanel:
         self._drag_node_key: str = ""
         self._drag_offset = rl.Vector2(0.0, 0.0)
         self._connecting_from_node_key: str = ""
-        self._context_menu_active: bool = False
-        self._context_menu_pos = rl.Vector2(0.0, 0.0)
         self._context_menu_node_key: str = ""
         self._list_scroll: float = 0.0
         self._panel_rect = rl.Rectangle(0, 0, 0, 0)
@@ -130,8 +129,6 @@ class SceneFlowPanel:
             self._draw_toolbar(snapshot)
             self._draw_sidebar(snapshot)
             self._draw_canvas(snapshot)
-            if self._context_menu_active:
-                self._draw_canvas_context_menu(snapshot)
             if self._modal_open:
                 self._draw_add_modal()
             self._finalize_drag(snapshot)
@@ -141,6 +138,19 @@ class SceneFlowPanel:
             log_err(f"Scene Flow render error: {exc}")
             self._draw_error_fallback(str(exc))
         rl.draw_rectangle_lines_ex(self._panel_rect, 1, self.BORDER_COLOR)
+        # Process global context menu actions
+        if self._layout and self._context_menu_node_key:
+            action = self._layout._process_global_context_menu()
+            if action == "open_in_scene":
+                snapshot = self._snapshot if hasattr(self, '_snapshot') else self.refresh()
+                node_key = self._context_menu_node_key
+                node = None
+                for n in snapshot.get("canvas_nodes", []):
+                    if str(n.get("node_key", "")) == node_key:
+                        node = n
+                        break
+                if node:
+                    self._request_open_for_node(node)
 
     def _layout_rects(self) -> None:
         inner_x = self._panel_rect.x + self.PANEL_PADDING
@@ -779,8 +789,6 @@ class SceneFlowPanel:
 
     def _handle_canvas_interactions(self, nodes: list[dict[str, Any]], snapshot: dict[str, list[dict[str, Any]]]) -> None:
         mouse = rl.get_mouse_position()
-        if self._context_menu_active:
-            return
         for node in nodes:
             rect = self._node_rects.get(str(node.get("node_key", "") or ""))
             if rect is None:
@@ -788,13 +796,14 @@ class SceneFlowPanel:
             connector = self._connector_rect(rect)
             node_key = str(node.get("node_key", "") or "")
             if rl.check_collision_point_rec(mouse, rect) and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_RIGHT):
-                self._selected_node_key = node_key
-                self._selected_sidebar_key = self._sidebar_key_for_node(node_key, snapshot)
-                self._drag_node_key = ""
-                self._connecting_from_node_key = ""
-                self._context_menu_active = True
-                self._context_menu_pos = rl.Vector2(mouse.x, mouse.y)
-                self._context_menu_node_key = node_key
+                if self._layout:
+                    from engine.editor.ui_core.controls.context_menu import ContextMenuItem, ContextMenuModel
+                    self._context_menu_node_key = node_key
+                    self._selected_node_key = node_key
+                    menu = ContextMenuModel(id="flow_menu", items=[
+                        ContextMenuItem(id="open_in_scene", label="Ver en escena"),
+                    ])
+                    self._layout.show_context_menu(menu, mouse.x, mouse.y)
                 return
             if rl.check_collision_point_rec(mouse, connector) and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 self._connecting_from_node_key = node_key
@@ -859,47 +868,6 @@ class SceneFlowPanel:
         x = rect.x + rect.width - inset if side == "right" else rect.x + inset
         return rl.Vector2(x, rect.y + (rect.height / 2))
 
-    def _draw_canvas_context_menu(self, snapshot: dict[str, list[dict[str, Any]]]) -> None:
-        node = self._context_menu_node(snapshot)
-        if node is None:
-            self._close_context_menu()
-            return
-        menu_rect = self._context_menu_rect()
-        self._register_cursor_rect(menu_rect)
-        if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT) and not rl.check_collision_point_rec(rl.get_mouse_position(), menu_rect):
-            self._close_context_menu()
-            return
-
-        rl.draw_rectangle_rec(menu_rect, self.PANEL_BG)
-        rl.draw_rectangle_lines_ex(menu_rect, 1, self.BORDER_COLOR)
-        item_rect = rl.Rectangle(menu_rect.x, menu_rect.y, menu_rect.width, float(self.CONTEXT_MENU_ITEM_HEIGHT))
-        self._register_cursor_rect(item_rect)
-        hover = rl.check_collision_point_rec(rl.get_mouse_position(), item_rect)
-        if hover:
-            rl.draw_rectangle_rec(item_rect, self.LIST_ROW_HOVER)
-        rl.draw_text("Ver en escena", int(item_rect.x + 10), int(item_rect.y + 6), 10, self.TEXT_COLOR)
-        if hover and rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
-            self._request_open_for_node(node)
-            self._close_context_menu()
-
-    def _context_menu_node(self, snapshot: dict[str, list[dict[str, Any]]]) -> Optional[dict[str, Any]]:
-        node_key = str(self._context_menu_node_key or "")
-        if not node_key:
-            return None
-        for node in snapshot.get("canvas_nodes", []):
-            if str(node.get("node_key", "") or "") == node_key:
-                return dict(node)
-        return None
-
-    def _context_menu_rect(self) -> rl.Rectangle:
-        width = float(self.CONTEXT_MENU_WIDTH)
-        height = float(self.CONTEXT_MENU_ITEM_HEIGHT)
-        mx = min(self._context_menu_pos.x, self._panel_rect.x + self._panel_rect.width - width - 4)
-        my = min(self._context_menu_pos.y, self._panel_rect.y + self._panel_rect.height - height - 4)
-        mx = max(self._panel_rect.x + 4, mx)
-        my = max(self._panel_rect.y + 4, my)
-        return rl.Rectangle(mx, my, width, height)
-
     def _request_open_for_node(self, node: dict[str, Any]) -> None:
         if str(node.get("kind", "")) == "entity":
             self.request_open_source = {
@@ -910,10 +878,6 @@ class SceneFlowPanel:
         scene_ref = str(node.get("scene_ref", "") or "")
         if scene_ref:
             self.request_open_target = {"scene_ref": scene_ref}
-
-    def _close_context_menu(self) -> None:
-        self._context_menu_active = False
-        self._context_menu_node_key = ""
 
     def _resolve_node_rect(self, node: dict[str, Any]) -> rl.Rectangle:
         x = float(node.get("_draw_x", node.get("x", 0.0)) or 0.0)

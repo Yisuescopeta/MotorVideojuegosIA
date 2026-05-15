@@ -45,7 +45,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 from typing import List, Optional
 
 from motor.cli_core import (
@@ -55,6 +54,13 @@ from motor.cli_core import (
     cmd_ai_start,
     cmd_capabilities,
     cmd_doctor,
+    cmd_editor_feature_flags_list,
+    cmd_editor_feature_flags_set,
+    cmd_editor_theme_active,
+    cmd_editor_theme_export,
+    cmd_editor_theme_import,
+    cmd_editor_theme_list,
+    cmd_editor_theme_set,
     cmd_project_info,
     cmd_project_bootstrap_ai,
     cmd_recipe_list,
@@ -150,10 +156,6 @@ from motor.cli_core import (
     cmd_animator_upsert_state,
     cmd_animator_remove_state,
     cmd_animator_ensure,
-    # Exceptions
-    EngineCLIError,
-    ProjectNotFoundError,
-    EngineInitError,
 )
 
 __all__ = ["main", "cli_main", "run_motor_command", "create_motor_parser"]
@@ -176,6 +178,8 @@ AI-Facing Commands:
   doctor                    Validate project health
   
   project info              Show project information
+  editor theme list|active|set|export|import
+  editor feature-flags list|set
   project bootstrap-ai      Generate AI bootstrap files
   recipe list/show/run      Declarative AI recipes for common workflows
   game platformer create    Create minimal native 2D platformer scene
@@ -349,6 +353,59 @@ Documentation:
         help="Path to project directory (default: current directory)"
     )
     doctor_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    # === editor ===
+    editor_parser = subparsers.add_parser(
+        "editor",
+        help="Editor preferences",
+    )
+    editor_subparsers = editor_parser.add_subparsers(dest="editor_subcommand", required=True)
+    editor_theme_parser = editor_subparsers.add_parser(
+        "theme",
+        help="Editor theme preferences",
+    )
+    editor_theme_subparsers = editor_theme_parser.add_subparsers(dest="editor_theme_subcommand", required=True)
+
+    editor_theme_list_parser = editor_theme_subparsers.add_parser("list", help="List editor themes")
+    editor_theme_list_parser.add_argument("--project", dest="project_root", default=".", help="Path to project directory")
+    editor_theme_list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    editor_theme_active_parser = editor_theme_subparsers.add_parser("active", help="Show active editor theme")
+    editor_theme_active_parser.add_argument("--project", dest="project_root", default=".", help="Path to project directory")
+    editor_theme_active_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    editor_theme_set_parser = editor_theme_subparsers.add_parser("set", help="Set active editor theme")
+    editor_theme_set_parser.add_argument("name", help="Theme name")
+    editor_theme_set_parser.add_argument("--project", dest="project_root", default=".", help="Path to project directory")
+    editor_theme_set_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    editor_theme_export_parser = editor_theme_subparsers.add_parser("export", help="Export editor theme JSON")
+    editor_theme_export_parser.add_argument("path", help="Output theme JSON path")
+    editor_theme_export_parser.add_argument("--name", default=None, help="Theme name; defaults to active theme")
+    editor_theme_export_parser.add_argument("--project", dest="project_root", default=".", help="Path to project directory")
+    editor_theme_export_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    editor_theme_import_parser = editor_theme_subparsers.add_parser("import", help="Import editor theme JSON")
+    editor_theme_import_parser.add_argument("path", help="Input theme JSON path")
+    editor_theme_import_parser.add_argument("--no-activate", action="store_true", help="Import without making theme active")
+    editor_theme_import_parser.add_argument("--project", dest="project_root", default=".", help="Path to project directory")
+    editor_theme_import_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    editor_flags_parser = editor_subparsers.add_parser(
+        "feature-flags",
+        help="Editor feature flag preferences",
+    )
+    editor_flags_subparsers = editor_flags_parser.add_subparsers(dest="editor_flags_subcommand", required=True)
+
+    editor_flags_list_parser = editor_flags_subparsers.add_parser("list", help="List editor feature flags")
+    editor_flags_list_parser.add_argument("--project", dest="project_root", default=".", help="Path to project directory")
+    editor_flags_list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    editor_flags_set_parser = editor_flags_subparsers.add_parser("set", help="Set editor feature flag")
+    editor_flags_set_parser.add_argument("name", help="Feature flag name")
+    editor_flags_set_parser.add_argument("value", choices=("true", "false"), help="Feature flag value")
+    editor_flags_set_parser.add_argument("--project", dest="project_root", default=".", help="Path to project directory")
+    editor_flags_set_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
     # === project ===
     project_parser = subparsers.add_parser(
@@ -1988,7 +2045,26 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
             project_path=Path(parsed.project_root).resolve(),
             json_output=parsed.json,
         )
-    
+
+    # === editor ===
+    elif parsed.command == "editor":
+        if parsed.editor_subcommand == "theme":
+            if parsed.editor_theme_subcommand == "list":
+                return cmd_editor_theme_list(Path(parsed.project_root).resolve(), parsed.json)
+            if parsed.editor_theme_subcommand == "active":
+                return cmd_editor_theme_active(Path(parsed.project_root).resolve(), parsed.json)
+            if parsed.editor_theme_subcommand == "set":
+                return cmd_editor_theme_set(Path(parsed.project_root).resolve(), parsed.name, parsed.json)
+            if parsed.editor_theme_subcommand == "export":
+                return cmd_editor_theme_export(Path(parsed.project_root).resolve(), parsed.path, parsed.name, parsed.json)
+            if parsed.editor_theme_subcommand == "import":
+                return cmd_editor_theme_import(Path(parsed.project_root).resolve(), parsed.path, not parsed.no_activate, parsed.json)
+        if parsed.editor_subcommand == "feature-flags":
+            if parsed.editor_flags_subcommand == "list":
+                return cmd_editor_feature_flags_list(Path(parsed.project_root).resolve(), parsed.json)
+            if parsed.editor_flags_subcommand == "set":
+                return cmd_editor_feature_flags_set(Path(parsed.project_root).resolve(), parsed.name, parsed.value, parsed.json)
+     
     # === project ===
     elif parsed.command == "project":
         if parsed.project_subcommand == "info":

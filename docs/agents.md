@@ -104,6 +104,13 @@ py -m motor ai start --project . --json
 py -m motor ai compliance --project . --json
 py -m motor ai self-test --project . --profile platformer --json
 py -m motor doctor --project . --json
+py -m motor editor theme list --project . --json
+py -m motor editor theme active --project . --json
+py -m motor editor theme set unity_dark --project . --json
+py -m motor editor theme export theme.json --name unity_dark --project . --json
+py -m motor editor theme import theme.json --project . --json
+py -m motor editor feature-flags list --project . --json
+py -m motor editor feature-flags set console_panel true --project . --json
 py -m motor recipe list --project . --json
 py -m motor recipe show platformer-basic --project . --json
 py -m motor recipe show platformer-advanced --project . --json
@@ -133,6 +140,18 @@ py -m motor component add Player Transform --data '{"x":0,"y":0}' --project . --
 py -m motor component edit Player Transform x 200 --project . --json
 py -m motor component remove Player Sprite --project . --json
 ```
+
+Los temas de editor son preferencia de proyecto, no authoring de escena. Usa
+`EngineAPI.list_editor_themes`, `get_active_editor_theme`,
+`set_active_editor_theme`, `export_editor_theme` e `import_editor_theme`, o la
+CLI `motor editor theme ...`. El valor persistente vive en
+`.motor/editor_state.json -> preferences.editor_theme`.
+
+Los feature flags del editor tambien son preferencia de proyecto, no authoring
+de escena. Usa `EngineAPI.get_editor_feature_flags`,
+`set_editor_feature_flag`, o la CLI `motor editor feature-flags ...`. Defaults
+son `false`; variables de entorno como `MOTOR_EDITOR_CONTROL_CONSOLE` pueden
+sobrescribir el valor persistido durante el proceso actual.
 
 Para construir plataformas sin tocar JSON, usa `motor game platformer create`
 y luego los comandos incrementales `add-player`, `add-ground`, `add-platform`,
@@ -208,6 +227,10 @@ no define todavia eventos publicos `moving_platform_rider_attached`,
 
 Para UI serializable usa los helpers publicos de `EngineAPI` como
 `create_canvas`, `create_ui_text`, `create_ui_button` y `create_ui_image`.
+Los modelos en `engine/editor/ui_core/controls/` (`TextInput`, `PopupModel`,
+`ContextMenuModel`, `DropdownModel`) son controles puros serializables internos
+del editor: no son `EngineAPI` ni CLI `motor`. Para authoring de escenas, los
+agentes deben usar `EngineAPI`.
 
 ## Recetas manuales seguras por genero
 
@@ -243,6 +266,13 @@ Para gameplay runtime usa la fachada publica de `EngineAPI` en lugar de tocar
 Cuando el motor esta en `EDIT`, los cambios persistentes de grupos deben entrar
 por la ruta de authoring expuesta por `EngineAPI`; en `PLAY`, esos cambios solo
 afectan al runtime activo.
+
+Para edicion headless equivalente al inspector, los agentes deben usar metodos
+publicos existentes de `EngineAPI`: `get_entity(name)` para leer el payload
+serializado, `edit_component(entity_name, component, property, value)` para
+cambiar una propiedad de componente y `replace_component_data(entity_name,
+component_name, data)` para reemplazar el payload completo de un componente.
+No existe un metodo publico dedicado llamado "inspector".
 
 ## TileSet — Terreno y autotile
 
@@ -626,6 +656,11 @@ alcance y reporte final claro si termina `partial`, `blocked` o `failed`.
 - Quiero automatizar por CLI: [cli.md](cli.md).
 - Quiero entender `motor_ai.json`: [MOTOR_AI_JSON_CONTRACT.md](MOTOR_AI_JSON_CONTRACT.md).
 - Quiero cambiar documentacion: [documentation_governance.md](documentation_governance.md).
+- Quiero entender el plan del editor in-engine: [editor_in_engine_master_plan.md](editor_in_engine_master_plan.md). Es plan/desarrollo paralelo — no contrato de capacidad implementada.
+- Quiero cambiar modelos puros del editor UI: [editor_ui_architecture.md](editor_ui_architecture.md).
+- Para fases internas de editor, `engine/editor/ui/` contiene toolkit inmediato
+  del editor; no es `EngineAPI`, no es CLI oficial y no representa Runtime UI
+  serializable.
 - Quiero contexto historico: [archive/](archive/).
 
 ## Checks minimos antes de entregar docs o contratos

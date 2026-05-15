@@ -12,6 +12,8 @@ from engine.rl.gym_compat import spaces
 from engine.rl.gym_env import ACTION_SPEC_VERSION, OBSERVATION_SPEC_VERSION, _resolve_project_root
 from engine.rl.pettingzoo_compat import ParallelEnv
 
+_BOX_DTYPE: Any = float
+
 
 class MotorParallelEnv(ParallelEnv):
     metadata = {"name": "motor_parallel_v1", "is_parallelizable": True}
@@ -38,15 +40,15 @@ class MotorParallelEnv(ParallelEnv):
         self._episode_step = 0
         self._settle_frames = 1
         self._last_distances: dict[str, float] = {}
-        self.action_spaces = {agent: spaces.Discrete(6) for agent in self.possible_agents}
-        self.observation_spaces = {
+        self.action_spaces: dict[str, Any] = {agent: spaces.Discrete(6) for agent in self.possible_agents}
+        self.observation_spaces: dict[str, Any] = {
             agent: spaces.Dict(
                 {
-                    "self_position": spaces.Box(low=-100000.0, high=100000.0, shape=(2,), dtype=float),
-                    "self_velocity": spaces.Box(low=-100000.0, high=100000.0, shape=(2,), dtype=float),
-                    "goal_delta": spaces.Box(low=-100000.0, high=100000.0, shape=(2,), dtype=float),
-                    "goal_exists": spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=float),
-                    "last_action": spaces.Box(low=-1.0, high=1.0, shape=(4,), dtype=float),
+                    "self_position": spaces.Box(low=-100000.0, high=100000.0, shape=(2,), dtype=_BOX_DTYPE),
+                    "self_velocity": spaces.Box(low=-100000.0, high=100000.0, shape=(2,), dtype=_BOX_DTYPE),
+                    "goal_delta": spaces.Box(low=-100000.0, high=100000.0, shape=(2,), dtype=_BOX_DTYPE),
+                    "goal_exists": spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=_BOX_DTYPE),
+                    "last_action": spaces.Box(low=-1.0, high=1.0, shape=(4,), dtype=_BOX_DTYPE),
                 }
             )
             for agent in self.possible_agents

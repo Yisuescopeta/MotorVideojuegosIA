@@ -36,6 +36,20 @@ class DebugAPI(EngineAPIComponent):
             return {}
         return runtime.get_profiler_report()
 
+    def get_debug_profile(self) -> dict:
+        """Get per-panel render timing breakdown from the editor layout.
+
+        Returns:
+            Dictionary with panel timing data. Empty dict if editor not available.
+        """
+        runtime = self.runtime
+        if runtime is None:
+            return {}
+        layout = getattr(runtime, "editor_layout", None)
+        if layout is not None and hasattr(layout, "get_debug_profile"):
+            return layout.get_debug_profile()
+        return {}
+
     def configure_debug_overlay(
         self,
         *,

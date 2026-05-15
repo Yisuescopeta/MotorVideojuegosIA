@@ -45,6 +45,7 @@
       "permission": {
         "read": "allow",
         "edit": "allow",
+        "write": "allow",
         "bash": {
           "*": "deny",
           "py -m unittest *": "allow",

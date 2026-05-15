@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 from engine.ai import get_default_registry
 from engine.api import EngineAPI
 from engine.config import ENGINE_VERSION
-from engine.project.project_service import ProjectService, ProjectManifest
+from engine.project.project_service import ProjectManifest
 from engine.api.errors import (
     RecipeError,
     RecipeNotFoundError,
@@ -1564,6 +1564,156 @@ def cmd_scene_list(project_path: Path, json_output: bool) -> int:
         return _output(False, exc.message, None, json_output)
     except Exception as exc:
         return _output(False, f"Failed to list scenes: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_editor_theme_list(project_path: Path, json_output: bool) -> int:
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        themes = api.list_editor_themes()
+        active = api.get_active_editor_theme().get("name", "")
+        data = {"count": len(themes), "active": active, "themes": themes}
+        return _output(True, f"Found {len(themes)} editor themes", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to list editor themes: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def _parse_editor_flag_value(value: str) -> bool:
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError("Feature flag value must be true or false")
+
+
+def cmd_editor_feature_flags_list(project_path: Path, json_output: bool) -> int:
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        data = api.get_editor_feature_flags()
+        return _output(True, "Editor feature flags listed", data, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to list editor feature flags: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_editor_feature_flags_set(project_path: Path, name: str, value: str, json_output: bool) -> int:
+    api: Optional[EngineAPI] = None
+    try:
+        flag_value = _parse_editor_flag_value(value)
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = api.set_editor_feature_flag(name, flag_value)
+        return _output(
+            bool(result.get("success")),
+            result.get("message", "Editor feature flag updated"),
+            result.get("data"),
+            json_output,
+        )
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to set editor feature flag: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_editor_theme_active(project_path: Path, json_output: bool) -> int:
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        theme = api.get_active_editor_theme()
+        return _output(True, f"Active editor theme: {theme.get('name', '')}", theme, json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to get active editor theme: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_editor_theme_set(project_path: Path, name: str, json_output: bool) -> int:
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = api.set_active_editor_theme(name)
+        return _output(bool(result.get("success")), result.get("message", "Editor theme updated"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to set editor theme: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_editor_theme_export(project_path: Path, path: str, name: str | None, json_output: bool) -> int:
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = api.export_editor_theme(path, name=name)
+        return _output(bool(result.get("success")), result.get("message", "Editor theme exported"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to export editor theme: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_editor_theme_import(project_path: Path, path: str, activate: bool, json_output: bool) -> int:
+    api: Optional[EngineAPI] = None
+    try:
+        _ensure_project(project_path)
+        api = _init_engine(project_path)
+        result = api.import_editor_theme(path, activate=activate)
+        return _output(bool(result.get("success")), result.get("message", "Editor theme imported"), result.get("data"), json_output)
+    except ProjectNotFoundError as exc:
+        return _output(False, exc.message, None, json_output)
+    except Exception as exc:
+        return _output(False, f"Failed to import editor theme: {exc}", None, json_output)
     finally:
         if api is not None:
             try:
