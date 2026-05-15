@@ -59,4 +59,55 @@ def compute_dock_rects(layout: DockLayout, root_rect: RectTuple, splitter_size: 
     return DockRects(areas=areas, splitters=splitters)
 
 
-__all__ = ["DockRects", "RectTuple", "compute_dock_rects"]
+def compute_floating_window_rects(
+    layout: DockLayout,
+) -> dict[str, RectTuple]:
+    """Return rects for all open floating windows.
+
+    Args:
+        layout: DockLayout instance
+
+    Returns:
+        dict mapping ``window.tab_id`` to ``(x, y, width, height)`` for each
+        open floating window.
+    """
+    result: dict[str, RectTuple] = {}
+    for window in layout.floating_windows:
+        if getattr(window, "is_open", True):
+            result[window.tab_id] = (window.x, window.y, window.width, window.height)
+    return result
+
+
+def compute_auto_hide_collapsed_rect(
+    area_rect: RectTuple,
+    edge: str,
+    strip_thickness: float = 24.0,
+) -> RectTuple:
+    """Compute the visible collapsed strip rect for an auto-hide area.
+
+    Args:
+        area_rect: Full area rect ``(x, y, width, height)``
+        edge: ``'left'``, ``'right'``, or ``'bottom'``
+        strip_thickness: Width/height of collapsed strip in pixels
+
+    Returns:
+        ``(x, y, width, height)`` of the visible strip
+    """
+    x, y, w, h = area_rect
+    if edge == "left":
+        return (x, y, strip_thickness, h)
+    elif edge == "right":
+        return (x + w - strip_thickness, y, strip_thickness, h)
+    elif edge == "bottom":
+        return (x, y + h - strip_thickness, w, strip_thickness)
+    else:
+        raise ValueError(f"Unknown edge: {edge}")
+
+
+__all__ = [
+    "DockRects",
+    "RectTuple",
+    "compute_auto_hide_collapsed_rect",
+    "compute_dock_rects",
+    "compute_floating_window_rects",
+]

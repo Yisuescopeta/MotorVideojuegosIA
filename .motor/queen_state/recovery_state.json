@@ -1,0 +1,16 @@
+﻿{
+  "schema_version": 1,
+  "plan": "docs/editor_in_engine_recovery_plan.md",
+  "current_batch": "BATCH_E",
+  "batches": {
+    "BATCH_A": {"status": "completed", "items_total": 4, "items_done": 4, "description": "Theme System Completion (Fase 14)"},
+    "BATCH_B": {"status": "completed", "items_total": 3, "items_done": 3, "description": "Inspector Inline Editing (Fase 6)"},
+    "BATCH_C": {"status": "completed", "items_total": 6, "items_done": 6, "description": "Controls Integration into Panels (Fase 13+15)"},
+    "BATCH_D": {"status": "completed", "items_total": 3, "items_done": 3, "description": "Docking Visual Completion (Fase 12)"},
+    "BATCH_E": {"status": "pending", "items_total": 7, "items_done": 0, "description": "Visual Polish + Performance (Fase 17+18)"},
+    "BATCH_F": {"status": "pending", "items_total": 3, "items_done": 0, "description": "Plan Structure Fixes"}
+  },
+  "status": "in_progress",
+  "last_updated": "2026-05-15T20:00:00",
+  "queen_task_ids": ["queen-20260515-001"]
+}

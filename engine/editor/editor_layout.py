@@ -20,7 +20,7 @@ import os
 import platform
 import subprocess
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import pyray as rl
 from engine.editor.console_panel import log_err
@@ -30,14 +30,21 @@ from engine.editor.editor_tools import EditorTool, PivotMode, SnapSettings, Tran
 from engine.editor.render_safety import safe_reset_clip_state
 from engine.editor.toast_notifications import TOAST_MANAGER
 from engine.editor.ui.context_menu_render import process_context_menu_pointer, render_context_menu
+from engine.editor.ui.dock_render import (
+    draw_auto_hide_collapsed_strip,
+    draw_drag_preview,
+    draw_floating_window,
+)
 from engine.editor.ui.draw import draw_border, draw_rounded_rect
 from engine.editor.ui.icons import ICON_PAUSE, ICON_PLAY
 from engine.editor.ui.panels import draw_editor_panel_frame
 from engine.editor.ui.widgets import editor_button, editor_icon_button, editor_toggle_button
 from engine.editor.ui_core import ContextMenuManager, ContextMenuModel
-from engine.editor.asset_browser import AssetBrowserPanel
 from engine.editor.ui_core.controls.popup import PopupManager
-from engine.editor.ui_core.dock_rects import compute_dock_rects
+from engine.editor.ui_core.dock_rects import (
+    compute_auto_hide_collapsed_rect,
+    compute_dock_rects,
+)
 from engine.editor.ui_core.docking import DockLayout, DockSplit
 
 
@@ -280,6 +287,10 @@ class EditorLayout:
         self.dock_layout: DockLayout = DockLayout.default()
         self._dock_layout_dirty: bool = False
         self._dock_drag_tab_id: str | None = None
+
+        # Floating window state
+        self._floating_drag_state: dict | None = None
+        self._auto_hide_states: dict[str, dict] = {}
 
         # Anchos dinámicos
         self.hierarchy_width = 200
@@ -562,6 +573,180 @@ class EditorLayout:
         if not tab_id:
             return False
         return self.move_dock_tab(tab_id, target_area_id, index)
+
+    # ── Floating window rendering ──────────────────────────────────
+
+    def _update_floating_windows(self) -> None:
+        """Draw floating windows and handle drag/close/dock input."""
+        mouse = rl.get_mouse_position()
+        mx, my = float(mouse.x), float(mouse.y)
+
+        for window in list(self.dock_layout.floating_windows):
+            if not getattr(window, "is_open", True):
+                continue
+
+            rect = (float(window.x), float(window.y), float(window.width), float(window.height))
+            title = self._dock_tab_label(window.tab_id)
+
+            is_dragging = (
+                self._floating_drag_state is not None
+                and self._floating_drag_state.get("tab_id") == window.tab_id
+            )
+            if is_dragging and rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT):
+                assert self._floating_drag_state is not None
+                off_x = self._floating_drag_state.get("offset_x", 0.0)
+                off_y = self._floating_drag_state.get("offset_y", 0.0)
+                new_rect = (mx - off_x, my - off_y, window.width, window.height)
+                self.move_floating_window(window.tab_id, new_rect)
+                rect = new_rect
+            elif not rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT):
+                self._floating_drag_state = None
+
+            result = draw_floating_window(rect, title, is_dragging=is_dragging)
+
+            if not is_dragging and result.value:
+                val = cast("dict[str, bool]", result.value)
+                if val.get("close") and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                    self.close_floating_window(window.tab_id)
+                elif val.get("dock") and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                    target = self._find_nearest_dock_area(mx, my)
+                    if target:
+                        self.dock_floating_tab(window.tab_id, target)
+                elif val.get("title_drag") and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+                    self._floating_drag_state = {
+                        "tab_id": window.tab_id,
+                        "offset_x": mx - window.x,
+                        "offset_y": my - window.y,
+                    }
+
+    def _find_nearest_dock_area(self, mx: float, my: float) -> str | None:
+        """Find dock area under the given screen point."""
+        areas = self.dock_layout.collect_areas()
+        for area in areas:
+            rect = self._dock_area_rect(area.id)
+            if rl.check_collision_point_rec(rl.Vector2(mx, my), rect):
+                return area.id
+        return None
+
+    # ── Auto-hide strips ───────────────────────────────────────────
+
+    def _init_auto_hide_states(self) -> None:
+        """Ensure auto_hide_states entries exist for all auto-hide areas."""
+        areas = self.dock_layout.collect_areas()
+        for area in areas:
+            if area.auto_hide and area.id not in self._auto_hide_states:
+                self._auto_hide_states[area.id] = {
+                    "animation": 1.0 if area.pinned else 0.0,
+                    "target": 1.0 if area.pinned else 0.0,
+                    "hovered": False,
+                }
+
+    def _update_auto_hide_animations(self) -> None:
+        """Lerp auto-hide animations each frame."""
+        dt = rl.get_frame_time()
+        speed = 8.0
+        mouse = rl.get_mouse_position()
+        mx, my = float(mouse.x), float(mouse.y)
+
+        self._init_auto_hide_states()
+        areas = self.dock_layout.collect_areas()
+
+        for area in areas:
+            if not area.auto_hide:
+                continue
+            state = self._auto_hide_states.get(area.id)
+            if state is None:
+                continue
+
+            area_rect = self._dock_area_rect(area.id)
+            collapsed = compute_auto_hide_collapsed_rect(
+                (area_rect.x, area_rect.y, area_rect.width, area_rect.height),
+                self._area_edge(area.id),
+            )
+
+            hovered = (
+                collapsed[0] <= mx <= collapsed[0] + collapsed[2]
+                and collapsed[1] <= my <= collapsed[1] + collapsed[3]
+            )
+            state["hovered"] = hovered
+
+            if area.pinned:
+                state["target"] = 1.0
+            elif hovered:
+                state["target"] = 1.0
+            else:
+                state["target"] = 0.0
+
+            current = state["animation"]
+            target = state["target"]
+            if abs(current - target) < 0.01:
+                state["animation"] = target
+            else:
+                state["animation"] += (target - current) * min(dt * speed, 1.0)
+
+    def _area_edge(self, area_id: str) -> str:
+        """Return the edge where an auto-hide area collapses."""
+        if area_id == "hierarchy":
+            return "left"
+        elif area_id == "inspector":
+            return "right"
+        else:
+            return "bottom"
+
+    def _draw_auto_hide_strips(self) -> None:
+        """Draw collapsed auto-hide strips."""
+        self._init_auto_hide_states()
+        areas = self.dock_layout.collect_areas()
+
+        for area in areas:
+            if not area.auto_hide:
+                continue
+            state = self._auto_hide_states.get(area.id)
+            if state is None:
+                continue
+
+            area_rect = self._dock_area_rect(area.id)
+            collapsed = compute_auto_hide_collapsed_rect(
+                (area_rect.x, area_rect.y, area_rect.width, area_rect.height),
+                self._area_edge(area.id),
+            )
+            edge = self._area_edge(area.id)
+            animation = float(state.get("animation", 0.0))
+            hovered = bool(state.get("hovered", False))
+
+            result = draw_auto_hide_collapsed_strip(
+                area.id, collapsed, edge, list(area.tabs),
+                hovered=hovered, animation=animation,
+            )
+
+            if result.value and cast("dict[str, bool]", result.value).get("pinned"):
+                new_pinned = not area.pinned
+                self.set_dock_area_pinned(area.id, new_pinned)
+
+    # ── Drag preview ───────────────────────────────────────────────
+
+    def _draw_drag_preview(self) -> None:
+        """Draw tab drag preview with drop zone highlights."""
+        if self._dock_drag_tab_id is None:
+            return
+
+        mouse = rl.get_mouse_position()
+        mx, my = float(mouse.x), float(mouse.y)
+        tab_label = self._dock_tab_label(self._dock_drag_tab_id)
+
+        drop_zones: list[tuple[str, tuple[float, float, float, float]]] = []
+        highlight_zone: str | None = None
+        areas = self.dock_layout.collect_areas()
+        for area in areas:
+            zone_rect = self._dock_area_rect(area.id)
+            zone_tuple = (zone_rect.x, zone_rect.y, zone_rect.width, zone_rect.height)
+            drop_zones.append((area.id, zone_tuple))
+            if rl.check_collision_point_rec(mouse, zone_rect):
+                highlight_zone = area.id
+
+        draw_drag_preview(
+            (mx, my), tab_label, drop_zones, highlight_zone=highlight_zone,
+        )
 
     def _set_dock_split_ratio(self, split_id: str, ratio: float) -> bool:
         def visit(node: object) -> DockSplit | None:
@@ -1165,6 +1350,12 @@ class EditorLayout:
 
         safe_reset_clip_state()
         self.draw_bottom_tabs()
+
+        # ── Docking chrome: floating windows, auto-hide, drag preview ──
+        self._update_auto_hide_animations()
+        self._draw_auto_hide_strips()
+        self._update_floating_windows()
+        self._draw_drag_preview()
 
         if self.show_project_modal:
             self._draw_project_modal()
