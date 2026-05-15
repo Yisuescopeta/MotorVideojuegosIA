@@ -3,10 +3,12 @@ schema_version: 1
 doc_type: editor_plan
 status: completed
 created: 2026-05-13
-updated: 2026-05-14
-completed: 2026-05-14
-queen_updated: queen-20260514-001
+updated: 2026-05-15
+completed: 2026-05-15
+queen_updated: queen-20260515-003
 queen_task_id: queen-20260514-001
+recovery_plan: docs/editor_in_engine_recovery_plan.md
+recovery_completed: 2026-05-15
 phase_scope: 0-20 (ALL PHASES COMPLETE)
 implemented_capability: true
 ---
@@ -550,9 +552,9 @@ Corte final cuando se cumplan todas las condiciones:
 
 ---
 
-## Milestone 1
+## Milestone 1 — Editor funcional mínimo (Fases 0–9)
 
-**Alcance:** Fases 0, 1, 2, 3, 4, 5, 6, 8, 9 (parcial).
+**Alcance:** Fases 0, 1, 2, 3, 4, 5, 6, 8, 9.
 
 Este milestone cubre la construcción del editor funcional mínimo profesional:
 - Baseline y reconocimiento (F0).
@@ -565,6 +567,63 @@ Este milestone cubre la construcción del editor funcional mínimo profesional:
 - Viewport chrome parcial (F9).
 
 Al completar el Milestone 1, el editor debe tener un Hierarchy funcional, Inspector funcional, Console operativa, y Viewport mejorado con grid y cámara.
+
+---
+
+## Milestone 2 — UI interna Godot (Fases 10–16)
+
+**Alcance:** Fases 10, 11, 12, 13, 14, 15, 16.
+
+Este milestone cubre la reorganización de la UI del editor hacia un sistema
+tipo Godot con controles retained-mode:
+
+| Fase | Nombre | Estado |
+|------|--------|--------|
+| 10 | Separación oficial Editor UI vs Runtime UI | ✅ Completado |
+| 11 | Control tree retained-mode v1 | ✅ Completado |
+| 12 | Docking y layout persistente | ✅ Completado |
+| 13 | Text input, popups, menús contextuales | ✅ Completado |
+| 14 | Theme system tipo Godot | ✅ Completado (vía recovery plan BATCH_A) |
+| 15 | Migración gradual paneles a EditorControl | ✅ Completado (vía recovery plan BATCH_C) |
+| 16 | Compartir helpers con Runtime UI | ✅ Completado |
+
+**Entregables:** Separación Pure Core / Impure Shell, controles retained-mode
+(Label, Button, Panel, VBox/HBox/ScrollContainer, FocusManager, TextInput,
+PopupModel, ContextMenuModel, DropdownModel, ComboBoxModel), docking
+persistente con modelo serializable y rects visuales, theme registry con
+presets light/dark, feature flags para migración de paneles, helpers
+compartidos en `engine/ui/` sin dependencias de editor.
+
+**Recovery plan asociado:**
+- BATCH_A — Theme System Completion (Fase 14): directorio `theme/`, iconos multi-tamaño, font loading TTF, theme editor básico.
+- BATCH_B — Inspector Inline Editing (Fase 6): color picker, vector editing, nested properties.
+- BATCH_C — Controls Integration (Fase 13+15): TextInput en Console, Dropdown en filtros, ContextMenu, Popup, Console retained-mode, FilePicker.
+
+---
+
+## Milestone 3 — Polish + Cutover (Fases 17–20)
+
+**Alcance:** Fases 17, 18, 19, 20.
+
+Este milestone cubre el pulido visual, optimización de performance y corte
+final:
+
+| Fase | Nombre | Estado |
+|------|--------|--------|
+| 17 | Polish visual completo | ✅ Completado (vía recovery plan BATCH_E) |
+| 18 | Performance y escalabilidad | ✅ Completado (vía recovery plan BATCH_E) |
+| 19 | Tests, screenshots y regresión visual | ✅ Completado |
+| 20 | Cutover oficial | ✅ Completado |
+
+**Entregables:** Animaciones suaves con interpolación frame-a-frame, modo claro
+verificado en todos los widgets, fuente monoespaciada para consola, virtual
+scroll en Hierarchy y AssetBrowser, widget cache con dirty flags, panel
+profiling, sistema de docking visual completo (floating windows, auto-hide,
+drag preview).
+
+**Recovery plan asociado:**
+- BATCH_D — Docking Visual Completion (Fase 12): floating windows, auto-hide visual, drag GUI preview.
+- BATCH_E — Visual Polish + Performance (Fase 17+18): animaciones, modo claro, mono font, virtual scroll, widget cache, dirty flags, panel profiling.
 
 ---
 
@@ -602,20 +661,46 @@ Al completar el Milestone 1, el editor debe tener un Hierarchy funcional, Inspec
 | 12 | motor doctor healthy | ✅ Sin issues ni warnings |
 | 13 | Documentación canónica | ✅ Master plan actualizado fases 0-20 |
 
-### Deuda técnica conocida (no bloqueante)
+## Deuda técnica
 
-1. **4 tests inspector tilemap con state isolation:** Pasan en aislamiento (`py -m pytest tests/test_inspector_core.py` → 35 passed), fallan en suite completa por state compartido de tilemap tool entre tests. Causa raíz: `InspectorCore` comparte estado global de tilemap tool entre fixtures de test.
-2. **Animaciones suaves:** Sistema de interpolación frame-a-frame no implementado (diferido en Fase 17).
-3. **Fuente monoespaciada para consola:** No implementada (diferido en Fase 17).
-4. **Virtual scroll en paneles:** No implementado (diferido en Fase 18).
-5. **Migración completa a retained-mode controls:** Solo Console panel piloteado (diferido en Fase 15).
-6. **Screenshots automáticos:** No factibles sin contexto de ventana gráfica Raylib (documentado en Fase 19).
-7. **Verificación visual modo claro:** UNITY_LIGHT existe pero no verificado visualmente en todos los widgets.
+### Resuelta (vía recovery plan BATCH_A–E, 2026-05-15)
+
+| # | Item | Batch | Resolución |
+|---|------|-------|-----------|
+| 1 | Directorio `engine/editor/theme/` | BATCH_A | Creado con `__init__.py`, `fonts.py`, `theme_editor.py`. Shim en `ui_core/theme.py`. |
+| 2 | Iconos multi-tamaño (16, 24, 32, 64) | BATCH_A | `ICON_*` soportan parámetro `size`. Escalado geométrico proporcional. |
+| 3 | Font loading TTF con fallback | BATCH_A | `engine/editor/theme/fonts.py`: `load_font(name, size)`, `get_default_font()`. |
+| 4 | Theme editor básico | BATCH_A | Panel con grid de colores, preview y sliders RGB. Persiste en `.motor/editor_state.json`. |
+| 5 | Edición inline COLOR en inspector | BATCH_B | Widget color picker inline con sliders R/G/B/A + preview. |
+| 6 | Edición inline VECTOR2/VECTOR3 | BATCH_B | Campos X/Y/Z editables con text input, parseo y validación. |
+| 7 | Propiedades anidadas y arrays | BATCH_B | DICT y LIST expandibles con valores hoja editables. |
+| 8 | TextInput en Console | BATCH_C | Console usa `TextInput` retained-mode para command input. |
+| 9 | Dropdown en filtros | BATCH_C | Filtros en Console y AssetBrowser usan `DropdownModel`. |
+| 10 | ContextMenu en paneles | BATCH_C | Click derecho en Hierarchy, Inspector y AssetBrowser. |
+| 11 | Popup en confirmaciones | BATCH_C | Confirmaciones de delete/overwrite usan `PopupModel`. |
+| 12 | Console retained-mode feature flag | BATCH_C | `MOTOR_EDITOR_CONTROL_CONSOLE=1` activa adapter. |
+| 13 | FilePicker | BATCH_C | `FilePickerModel` + render shell para Open/Import/Export. |
+| 14 | Floating dock windows | BATCH_D | Render y hit-testing: title bar, close/dock, borde, sombra. |
+| 15 | Auto-hide visual | BATCH_D | Colapso animado, strip lateral con icono, hover expande, pin fija. |
+| 16 | Drag GUI preview | BATCH_D | Preview semitransparente + drop zone highlight. |
+| 17 | Animaciones suaves | BATCH_E | Sistema de interpolación frame-a-frame para hover, focus, transiciones. |
+| 18 | Modo claro verificado | BATCH_E | `UNITY_LIGHT` verificado con tests en todos los widgets. |
+| 19 | Fuente monoespaciada para consola | BATCH_E | Carga TTF monoespaciada con fallback. |
+| 20 | Virtual scroll | BATCH_E | Virtualización de filas en Hierarchy y AssetBrowser (>100 entradas). |
+| 21 | Widget cache + dirty flags | BATCH_E | `measure()`/`arrange()` cached; paneles solo re-renderizan si dirty. |
+| 22 | Panel profiling | BATCH_E | `EngineAPI.get_debug_profile()` con breakdown por panel. |
+
+### Pendiente (no bloqueante)
+
+| # | Item | Notas |
+|---|------|-------|
+| 1 | 4 tests inspector tilemap con state isolation | Pasan en aislamiento, fallan en suite completa por state compartido. |
+| 2 | Screenshots automáticos | No factibles sin contexto de ventana gráfica Raylib. |
+| 3 | Tests de estrés con escenas grandes (>1000 entradas) | No implementados. Profiler general disponible para monitoreo manual. |
 
 ### Próximos pasos recomendados
 
 1. Corregir state isolation en 4 tests de tilemap tool.
-2. Implementar animaciones de transición en paneles.
-3. Completar migración de paneles a retained-mode controls.
-4. Agregar virtual scroll para escenas grandes (>1000 entidades).
-5. Explorar render-to-texture para screenshots headless.
+2. Explorar render-to-texture para screenshots headless.
+3. Implementar tests de estrés con escenas grandes.
+4. Evaluar migración completa de paneles a retained-mode controls.
