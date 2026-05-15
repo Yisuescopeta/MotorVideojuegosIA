@@ -45,7 +45,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 from typing import List, Optional
 
 from motor.cli_core import (
@@ -157,10 +156,6 @@ from motor.cli_core import (
     cmd_animator_upsert_state,
     cmd_animator_remove_state,
     cmd_animator_ensure,
-    # Exceptions
-    EngineCLIError,
-    ProjectNotFoundError,
-    EngineInitError,
 )
 
 __all__ = ["main", "cli_main", "run_motor_command", "create_motor_parser"]

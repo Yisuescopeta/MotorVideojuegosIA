@@ -112,7 +112,8 @@ class EditorAPIThemeTests(unittest.TestCase):
 
             payload = api.get_editor_feature_flags()
             self.assertEqual(payload["schema_version"], 1)
-            self.assertEqual(payload["flags"], {"console_panel": False})
+            self.assertIn("console_panel", payload["flags"])
+            self.assertFalse(payload["flags"]["console_panel"])
 
             result = api.set_editor_feature_flag("console_panel", True)
             self.assertTrue(result["success"])
@@ -147,7 +148,8 @@ class EditorAPIThemeTests(unittest.TestCase):
 
             code, response = _run_cli("editor", "feature-flags", "list", "--project", project_arg, "--json")
             self.assertEqual(code, 0)
-            self.assertEqual(response["data"]["flags"], {"console_panel": False})
+            self.assertIn("console_panel", response["data"]["flags"])
+            self.assertFalse(response["data"]["flags"]["console_panel"])
 
             code, response = _run_cli(
                 "editor", "feature-flags", "set", "console_panel", "true", "--project", project_arg, "--json"

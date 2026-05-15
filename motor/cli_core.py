@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 from engine.ai import get_default_registry
 from engine.api import EngineAPI
 from engine.config import ENGINE_VERSION
-from engine.project.project_service import ProjectService, ProjectManifest
+from engine.project.project_service import ProjectManifest
 from engine.api.errors import (
     RecipeError,
     RecipeNotFoundError,
