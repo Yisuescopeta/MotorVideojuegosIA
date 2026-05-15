@@ -19,6 +19,7 @@ FUNCIONALIDADES:
 import os
 import platform
 import subprocess
+import time
 from datetime import datetime, timezone
 from typing import Any, Optional, cast
 
@@ -287,6 +288,9 @@ class EditorLayout:
         self.dock_layout: DockLayout = DockLayout.default()
         self._dock_layout_dirty: bool = False
         self._dock_drag_tab_id: str | None = None
+        self._last_active_tab: str = ""
+        self._last_bottom_tab: str = ""
+        self._panel_profile: dict[str, float] = {}
 
         # Floating window state
         self._floating_drag_state: dict | None = None
@@ -352,6 +356,13 @@ class EditorLayout:
         self._popup_manager = PopupManager()
 
         self.update_layout(screen_width, screen_height)
+
+    def get_debug_profile(self) -> dict:
+        """Return per-panel render timing breakdown."""
+        return {
+            "panels": dict(self._panel_profile),
+            "total_panels": len(self._panel_profile),
+        }
 
     def show_context_menu(self, menu: "ContextMenuModel", x: float, y: float) -> None:
         """Open a context menu at screen coordinates."""
@@ -1218,6 +1229,13 @@ class EditorLayout:
     def draw_layout(self, is_playing: bool) -> None:
         """Dibuja el layout completo del editor."""
         self._reset_cursor_regions()
+        layout_changed = (
+            self.active_tab != self._last_active_tab
+            or self.active_bottom_tab != self._last_bottom_tab
+        )
+        if layout_changed:
+            self._last_active_tab = self.active_tab
+            self._last_bottom_tab = self.active_bottom_tab
         safe_reset_clip_state()
         rl.clear_background(self.UNITY_BG_DARKEST)
 
@@ -1293,12 +1311,14 @@ class EditorLayout:
         safe_reset_clip_state()
         try:
             if self.active_bottom_tab == "PROJECT" and self.project_panel:
+                t0 = time.perf_counter()
                 self.project_panel.render(
                     int(self.bottom_content_rect.x),
                     int(self.bottom_content_rect.y),
                     int(self.bottom_content_rect.width),
                     int(self.bottom_content_rect.height),
                 )
+                self._panel_profile["project"] = time.perf_counter() - t0
                 if self.project_panel.dragging_file:
                     mouse = rl.get_mouse_position()
                     rl.draw_rectangle(int(mouse.x), int(mouse.y), 20, 20, rl.Color(255, 255, 255, 128))
@@ -1310,40 +1330,50 @@ class EditorLayout:
                         rl.WHITE,
                     )
             elif self.active_bottom_tab == "FLOW" and self.flow_panel is not None:
+                t0 = time.perf_counter()
                 self.flow_panel.render(
                     int(self.bottom_content_rect.x),
                     int(self.bottom_content_rect.y),
                     int(self.bottom_content_rect.width),
                     int(self.bottom_content_rect.height),
                 )
+                self._panel_profile["flow"] = time.perf_counter() - t0
             elif self.active_bottom_tab == "CONSOLE" and self.console_panel:
+                t0 = time.perf_counter()
                 self.console_panel.render(
                     int(self.bottom_content_rect.x),
                     int(self.bottom_content_rect.y),
                     int(self.bottom_content_rect.width),
                     int(self.bottom_content_rect.height),
                 )
+                self._panel_profile["console"] = time.perf_counter() - t0
             elif self.active_bottom_tab == "TERMINAL" and self.terminal_panel is not None:
+                t0 = time.perf_counter()
                 self.terminal_panel.render(
                     int(self.bottom_content_rect.x),
                     int(self.bottom_content_rect.y),
                     int(self.bottom_content_rect.width),
                     int(self.bottom_content_rect.height),
                 )
+                self._panel_profile["terminal"] = time.perf_counter() - t0
             elif self.active_bottom_tab == "AGENT" and self.agent_panel is not None:
+                t0 = time.perf_counter()
                 self.agent_panel.render(
                     int(self.bottom_content_rect.x),
                     int(self.bottom_content_rect.y),
                     int(self.bottom_content_rect.width),
                     int(self.bottom_content_rect.height),
                 )
+                self._panel_profile["agent"] = time.perf_counter() - t0
             elif self.active_bottom_tab == "ASSETS" and self.asset_browser:
+                t0 = time.perf_counter()
                 self.asset_browser.render(
                     int(self.bottom_content_rect.x),
                     int(self.bottom_content_rect.y),
                     int(self.bottom_content_rect.width),
                     int(self.bottom_content_rect.height),
                 )
+                self._panel_profile["assets"] = time.perf_counter() - t0
         except Exception as exc:
             log_err(f"Bottom panel render error ({self.active_bottom_tab}): {exc}")
             safe_reset_clip_state()

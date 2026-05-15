@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from engine.editor.theme.fonts import get_mono_font as get_mono_font
+from engine.editor.theme.fonts import load_mono_font as load_mono_font
 from engine.editor.ui_core.colors import rgba_to_int
 from engine.editor.ui_core.tokens import (
     BG_RAYGUI_DARK,

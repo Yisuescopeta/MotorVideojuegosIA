@@ -1,5 +1,6 @@
 """Shared editor UI design primitives."""
 
+from engine.editor.ui.animation import AnimationController, ColorLerp, LerpValue, PanelAnimation
 from engine.editor.ui.file_picker_render import process_file_picker, render_file_picker
 from engine.editor.ui.icons import (
     ICON_ARROW_DOWN,
@@ -52,7 +53,7 @@ from engine.editor.ui.property_widgets import (
     PropertyKind,
 )
 from engine.editor.ui.scroll import EditorScrollResult, editor_scroll_area
-from engine.editor.ui.theme import UNITY_DARK, EditorTheme, theme_to_raygui_map
+from engine.editor.ui.theme import UNITY_DARK, UNITY_LIGHT, EditorTheme, theme_to_raygui_map
 from engine.editor.ui.tree_view import (
     TreeModel,
     TreeNode,
@@ -62,6 +63,7 @@ from engine.editor.ui.tree_view import (
     get_type_icon,
     matches_search,
 )
+from engine.editor.ui.virtual_scroll import VirtualScroll
 from engine.editor.ui.widget_state import (
     WidgetResult,
     WidgetState,
@@ -88,6 +90,8 @@ from engine.editor.ui.widgets import (
 )
 
 __all__ = [
+    "AnimationController",
+    "ColorLerp",
     "EditorTheme",
     "ICON_ARROW_DOWN",
     "ICON_CHECK",
@@ -102,16 +106,20 @@ __all__ = [
     "ICON_SEARCH",
     "ICON_STOP",
     "UNITY_DARK",
+    "UNITY_LIGHT",
+    "VirtualScroll",
     "EditorScrollResult",
     "EditTransaction",
     "InspectorGroup",
     "InspectorModel",
     "InspectorPanel",
     "InspectorWidgetRect",
+    "LerpValue",
     "CommitContract",
     "PropertyDescriptor",
     "PropertyEditResult",
     "PropertyKind",
+    "PanelAnimation",
     "TreeModel",
     "TreeNode",
     "WidgetResult",

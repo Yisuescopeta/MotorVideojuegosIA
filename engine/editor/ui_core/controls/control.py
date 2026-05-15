@@ -36,6 +36,7 @@ class Control:
     _focused: bool = field(default=False, repr=False)
     _last_event: ControlEvent | None = field(default=None, repr=False)
     _theme_type_variation: str = ""
+    _dirty: bool = field(default=True, repr=False)
 
     on_click: Callable[[Control, ControlEvent], None] | None = field(default=None, repr=False)
     on_focus: Callable[[Control, ControlEvent], None] | None = field(default=None, repr=False)
@@ -80,6 +81,16 @@ class Control:
     def focused(self) -> bool:
         return self._focused
 
+    @property
+    def is_dirty(self) -> bool:
+        return self._dirty
+
+    def mark_dirty(self) -> None:
+        self._dirty = True
+
+    def mark_clean(self) -> None:
+        self._dirty = False
+
     def measure(self, available: Size) -> Size:
         margin = self.margin
         if self.custom_min_size is not None:
@@ -91,15 +102,18 @@ class Control:
 
     def arrange(self, rect: tuple[float, float, float, float]) -> None:
         self._rect = rect
+        self._dirty = False
 
     def add_child(self, child: Control) -> None:
         child.parent = self
         self.children.append(child)
+        self._dirty = True
 
     def remove_child(self, child: Control) -> None:
         if child in self.children:
             self.children.remove(child)
             child.parent = None
+            self._dirty = True
 
     def find_child(self, name: str) -> Control | None:
         for child in self.children:
@@ -170,6 +184,10 @@ class Label(Control):
             )
         return Size(text_w + margin.horizontal, text_h + margin.vertical)
 
+    def set_text(self, text: str) -> None:
+        self.text = text
+        self._dirty = True
+
 
 @dataclass
 class Button(Control):
@@ -188,8 +206,14 @@ class Button(Control):
             )
         return Size(text_w + margin.horizontal, text_h + margin.vertical)
 
+    def set_text(self, text: str) -> None:
+        self.text = text
+        self._dirty = True
+
     def arrange(self, rect: tuple[float, float, float, float]) -> None:
         self._rect = rect
+        self._dirty = False
+
 
 
 @dataclass
@@ -225,6 +249,7 @@ class Panel(Control):
             if not child.visible:
                 continue
             child.arrange((child_x, child_y, child_w, child_h))
+        self._dirty = False
 
 
 @dataclass

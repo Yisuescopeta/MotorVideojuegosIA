@@ -9,6 +9,7 @@ from typing import Any, Optional
 
 import pyray as rl
 from engine.assets.asset_service import AssetService
+from engine.editor.theme import get_active_theme
 from engine.editor.ui.dropdown_render import process_dropdown_pointer, render_dropdown
 from engine.editor.ui.text_input_render import process_text_input, render_text_input
 from engine.editor.ui_core.controls.context_menu import ContextMenuItem, ContextMenuModel
@@ -108,17 +109,43 @@ class AssetBrowserPanel:
             result = [a for a in result if search in a["name"].lower()]
         self._filtered = result
 
+    def _resolve_colors(self) -> dict:
+        """Resolve colors from the active editor theme."""
+        try:
+            theme = get_active_theme()
+            return {
+                "BG": rl.Color(*theme.panel),
+                "HEADER": rl.Color(*theme.panel_header),
+                "BORDER": rl.Color(*theme.border),
+                "TEXT": rl.Color(*theme.text),
+                "TEXT_DIM": rl.Color(*theme.text_muted),
+                "SELECTED": rl.Color(*theme.accent),
+                "HOVER": rl.Color(*theme.border_hover),
+            }
+        except Exception:
+            return {
+                "BG": self.BG,
+                "HEADER": self.HEADER,
+                "BORDER": self.BORDER,
+                "TEXT": self.TEXT,
+                "TEXT_DIM": self.TEXT_DIM,
+                "SELECTED": self.SELECTED,
+                "HOVER": self.HOVER,
+            }
+
     def render(self, x: int, y: int, width: int, height: int) -> None:
         if width <= 0 or height <= 0:
             return
 
+        colors = self._resolve_colors()
+
         # Panel background
-        rl.draw_rectangle_rec(rl.Rectangle(float(x), float(y), float(width), float(height)), self.BG)
-        rl.draw_rectangle_lines_ex(rl.Rectangle(float(x), float(y), float(width), float(height)), 1.0, self.BORDER)
+        rl.draw_rectangle_rec(rl.Rectangle(float(x), float(y), float(width), float(height)), colors["BG"])
+        rl.draw_rectangle_lines_ex(rl.Rectangle(float(x), float(y), float(width), float(height)), 1.0, colors["BORDER"])
 
         # Toolbar
         toolbar_y = y + 2
-        rl.draw_rectangle_rec(rl.Rectangle(float(x), float(y), float(width), float(self.TOOLBAR_H)), self.HEADER)
+        rl.draw_rectangle_rec(rl.Rectangle(float(x), float(y), float(width), float(self.TOOLBAR_H)), colors["HEADER"])
 
         # Filter dropdown
         dd_x = x + 8
@@ -177,25 +204,25 @@ class AssetBrowserPanel:
             is_hovered = rl.check_collision_point_rec(mouse, cell_rect)
             is_selected = asset["path"] == self._selected_path
 
-            bg_color = self.SELECTED if is_selected else (self.HOVER if is_hovered else self.BG)
+            bg_color = colors["SELECTED"] if is_selected else (colors["HOVER"] if is_hovered else colors["BG"])
             rl.draw_rectangle_rec(cell_rect, bg_color)
-            rl.draw_rectangle_lines_ex(cell_rect, 1.0, self.BORDER if not is_selected else rl.Color(100, 150, 200, 255))
+            rl.draw_rectangle_lines_ex(cell_rect, 1.0, colors["BORDER"] if not is_selected else rl.Color(100, 150, 200, 255))
 
             # Icon based on type
             icon_color = self._icon_color(asset["ext"])
             icon_rect = rl.Rectangle(float(cx + 4), float(cy + 4), float(self.GRID_CELL - 8), float(self.GRID_CELL - 24))
             rl.draw_rectangle_rec(icon_rect, icon_color)
-            rl.draw_rectangle_lines_ex(icon_rect, 1.0, self.BORDER)
+            rl.draw_rectangle_lines_ex(icon_rect, 1.0, colors["BORDER"])
 
             # Extension label
-            rl.draw_text(asset["ext"] or "?", int(cx + 8), int(cy + 4), 10, self.TEXT)
+            rl.draw_text(asset["ext"] or "?", int(cx + 8), int(cy + 4), 10, colors["TEXT"])
 
             # Name (truncated)
             name = asset["name"]
             if len(name) > 10:
                 name = name[:9] + "..."
             text_w = rl.measure_text(name, 10)
-            rl.draw_text(name, int(cx + (self.GRID_CELL - text_w) / 2), int(cy + self.GRID_CELL - 18), 10, self.TEXT)
+            rl.draw_text(name, int(cx + (self.GRID_CELL - text_w) / 2), int(cy + self.GRID_CELL - 18), 10, colors["TEXT"])
 
             if is_hovered:
                 self._hovered_idx = i

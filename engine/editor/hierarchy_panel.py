@@ -15,6 +15,7 @@ from engine.ecs.world import World
 from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.editor_selection import EditorSelectionState
 from engine.editor.render_safety import editor_scissor
+from engine.editor.theme import get_active_theme
 from engine.editor.ui.icons import draw_icon
 from engine.editor.ui.tree_view import TreeModel, filter_visible_rows, get_type_icon
 
@@ -100,6 +101,32 @@ class HierarchyPanel:
             self._selection_state.apply_to_world(world)
         return normalized
 
+    def _resolve_colors(self) -> dict:
+        """Resolve colors from the active editor theme."""
+        try:
+            theme = get_active_theme()
+            return {
+                "BG": rl.Color(*theme.panel),
+                "HEADER": rl.Color(*theme.panel_header),
+                "BORDER": rl.Color(*theme.border),
+                "SELECTED": rl.Color(*theme.accent),
+                "HOVER": rl.Color(*theme.border_hover),
+                "TEXT": rl.Color(*theme.text),
+                "TEXT_DIM": rl.Color(*theme.text_muted),
+                "TAB_LINE": rl.Color(*theme.accent),
+            }
+        except Exception:
+            return {
+                "BG": self.UNITY_BG,
+                "HEADER": self.UNITY_HEADER,
+                "BORDER": self.UNITY_BORDER,
+                "SELECTED": self.UNITY_SELECTED,
+                "HOVER": self.UNITY_HOVER,
+                "TEXT": self.UNITY_TEXT,
+                "TEXT_DIM": self.UNITY_TEXT_DIM,
+                "TAB_LINE": self.UNITY_TAB_LINE,
+            }
+
     def render(self, world: "World", x: int, y: int, width: int, height: int, input_blocked: bool = False) -> None:
         """Renderiza el panel de jerarquía estilo Unity.
 
@@ -109,6 +136,7 @@ class HierarchyPanel:
         """
         if not self.visible:
             return
+        colors = self._resolve_colors()
         self._cursor_interactive_rects = []
         self._input_blocked = input_blocked
 
@@ -128,24 +156,24 @@ class HierarchyPanel:
             # 1. Header Tab
             # ========================================
             header_rect = rl.Rectangle(x, y, width, self.HEADER_HEIGHT)
-            rl.draw_rectangle_rec(header_rect, self.UNITY_HEADER)
+            rl.draw_rectangle_rec(header_rect, colors["HEADER"])
 
             # Tab "Hierarchy" con línea azul
             tab_width = 70
             tab_rect = rl.Rectangle(x + 2, y + 2, tab_width, self.HEADER_HEIGHT - 4)
-            rl.draw_rectangle_rec(tab_rect, self.UNITY_BG)
+            rl.draw_rectangle_rec(tab_rect, colors["BG"])
             # Línea azul inferior
-            rl.draw_rectangle(int(x + 2), int(y + self.HEADER_HEIGHT - 2), tab_width, 2, self.UNITY_TAB_LINE)
+            rl.draw_rectangle(int(x + 2), int(y + self.HEADER_HEIGHT - 2), tab_width, 2, colors["TAB_LINE"])
             # Texto
-            rl.draw_text("Hierarchy", int(x + 10), int(y + 6), 10, self.UNITY_TEXT)
+            rl.draw_text("Hierarchy", int(x + 10), int(y + 6), 10, colors["TEXT"])
 
             # Botón + (crear objeto)
             plus_rect = rl.Rectangle(x + width - 22, y + 2, 18, 18)
             self._register_cursor_rect(plus_rect)
             is_hover_plus = rl.check_collision_point_rec(rl.get_mouse_position(), plus_rect)
-            plus_color = self.UNITY_HOVER if is_hover_plus else self.UNITY_HEADER
+            plus_color = colors["HOVER"] if is_hover_plus else colors["HEADER"]
             rl.draw_rectangle_rec(plus_rect, plus_color)
-            rl.draw_text("+", int(x + width - 17), int(y + 4), 14, self.UNITY_TEXT)
+            rl.draw_text("+", int(x + width - 17), int(y + 4), 14, colors["TEXT"])
 
             if is_hover_plus and not self._input_blocked and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 new_name = f"New Entity {world.entity_count()}"
@@ -157,7 +185,7 @@ class HierarchyPanel:
                     self._set_selected_entity(world, new_entity.name)
 
             # Línea separadora
-            rl.draw_line(x, int(y + self.HEADER_HEIGHT), x + width, int(y + self.HEADER_HEIGHT), self.UNITY_BORDER)
+            rl.draw_line(x, int(y + self.HEADER_HEIGHT), x + width, int(y + self.HEADER_HEIGHT), colors["BORDER"])
 
             # ========================================
             # 2. Content Area
@@ -168,7 +196,7 @@ class HierarchyPanel:
             content_height = height - self.HEADER_HEIGHT - search_height - 4
 
             # Fondo del contenido
-            rl.draw_rectangle(x, int(y + self.HEADER_HEIGHT), width, int(height - self.HEADER_HEIGHT), self.UNITY_BG)
+            rl.draw_rectangle(x, int(y + self.HEADER_HEIGHT), width, int(height - self.HEADER_HEIGHT), colors["BG"])
             self._draw_search_field(x, search_y, width, search_height)
 
             # Obtener entidades raíz
@@ -214,7 +242,7 @@ class HierarchyPanel:
                 if drag_entity is not None:
                     label = drag_entity.name
                     rl.draw_rectangle(int(mouse_pos.x + 12), int(mouse_pos.y - 8), len(label) * 7 + 8, 18, rl.Color(50, 50, 50, 200))
-                    rl.draw_text(label, int(mouse_pos.x + 16), int(mouse_pos.y - 5), 10, self.UNITY_TEXT)
+                    rl.draw_text(label, int(mouse_pos.x + 16), int(mouse_pos.y - 5), 10, colors["TEXT"])
 
                 if rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
                     self._complete_hierarchy_drag(world)
@@ -235,6 +263,7 @@ class HierarchyPanel:
 
     def _render_row(self, entity: Entity, depth: int, panel_x: int, y: int, world: "World", panel_y: int, panel_h: int) -> None:
         """Renderiza una fila visible de la jerarquia."""
+        colors = self._resolve_colors()
         tree_model = self._get_tree_model(world)
         node = tree_model.node_map.get(entity.id)
         has_children = bool(node.is_expandable) if node is not None else bool(self._get_child_entities(world, entity))
@@ -256,7 +285,7 @@ class HierarchyPanel:
         if is_hover:
             self.hovered_entity_id = entity.id
             if not self._is_dragging_entity:
-                rl.draw_rectangle(panel_x, y, self.panel_width, row_height, self.UNITY_HOVER)
+                rl.draw_rectangle(panel_x, y, self.panel_width, row_height, colors["HOVER"])
 
             # Drag-and-drop: track potential drag start
             if not self._input_blocked and not self._is_dragging_entity and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
@@ -286,7 +315,7 @@ class HierarchyPanel:
 
         # Highlight Selection
         if self._get_selected_entity_name(world) == entity.name:
-            rl.draw_rectangle(panel_x, y, self.panel_width, row_height, self.UNITY_SELECTED)
+            rl.draw_rectangle(panel_x, y, self.panel_width, row_height, colors["SELECTED"])
 
         # Indentación
         indent_x = panel_x + 10 + (depth * self.INDENT_SIZE)
@@ -325,7 +354,7 @@ class HierarchyPanel:
             int(text_x),
             int(y + 4),
             self.FONT_SIZE,
-            self.UNITY_TEXT
+            colors["TEXT"]
         )
 
         return None
@@ -398,11 +427,12 @@ class HierarchyPanel:
         return filter_visible_rows(model, self.expanded_ids, self.search_text)
 
     def _draw_search_field(self, x: int, y: int, width: int, height: int) -> None:
+        colors = self._resolve_colors()
         field_rect = rl.Rectangle(x + 6, y, max(0, width - 12), height)
         rl.draw_rectangle_rec(field_rect, rl.Color(35, 35, 35, 255))
-        rl.draw_rectangle_lines_ex(field_rect, 1, self.UNITY_BORDER)
+        rl.draw_rectangle_lines_ex(field_rect, 1, colors["BORDER"])
         label = self.search_text if self.search_text else "Search"
-        color = self.UNITY_TEXT if self.search_text else self.UNITY_TEXT_DIM
+        color = colors["TEXT"] if self.search_text else colors["TEXT_DIM"]
         rl.draw_text(label[:32], int(field_rect.x + 6), int(field_rect.y + 5), self.FONT_SIZE, color)
 
     def _complete_hierarchy_drag(self, world: "World") -> None:

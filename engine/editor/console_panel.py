@@ -2,10 +2,12 @@
 engine/editor/console_panel.py - Panel de Consola estilo Unity
 """
 
-from typing import List, Tuple
+from typing import Any, List, Tuple
 
 import pyray as rl
 from engine.editor.render_safety import gui_toggle_bool
+from engine.editor.theme import get_active_theme
+from engine.editor.theme.fonts import get_mono_font
 from engine.editor.ui.text_input_render import process_text_input, render_text_input
 from engine.editor.ui_core.controls.console_control import ConsoleControlModel
 from engine.editor.ui_core.controls.text_input import TextInput
@@ -60,6 +62,7 @@ class ConsolePanel:
         self.control_model = ConsoleControlModel()
         self.search_input = TextInput(placeholder="Search...", max_length=64, font_size=10)
         self.command_input = TextInput(placeholder="Command: help", max_length=128, font_size=10)
+        self._mono_font: Any = None
         log_info("Console initialized.")
 
     @property
@@ -109,6 +112,28 @@ class ConsolePanel:
         self.control_model.command_output = self.command_output
         self.control_model.scroll_offset = self.scroll_offset
 
+    def _resolve_colors(self) -> dict:
+        """Resolve colors from the active editor theme."""
+        try:
+            theme = get_active_theme()
+            return {
+                "BG": rl.Color(*theme.panel),
+                "BODY": rl.Color(*theme.panel_alt),
+                "HEADER": rl.Color(*theme.panel_header),
+                "TEXT": rl.Color(*theme.text),
+                "TEXT_DIM": rl.Color(*theme.text_muted),
+                "BORDER": rl.Color(*theme.border),
+            }
+        except Exception:
+            return {
+                "BG": self.UNITY_BG,
+                "BODY": self.UNITY_BODY,
+                "HEADER": self.UNITY_HEADER,
+                "TEXT": self.UNITY_TEXT,
+                "TEXT_DIM": self.UNITY_TEXT_DIM,
+                "BORDER": self.UNITY_BORDER,
+            }
+
     def render(self, x: int, y: int, width: int, height: int) -> None:
         """Renderiza la consola dentro del rectangulo de contenido inferior."""
         self.panel_rect = rl.Rectangle(float(x), float(y), float(max(0, width)), float(max(0, height)))
@@ -119,13 +144,14 @@ class ConsolePanel:
         command_h = 24 if body_h >= 48 else 0
         self.body_rect = rl.Rectangle(float(x), float(body_y), float(max(0, width)), float(max(0, body_h - command_h)))
         self.command_rect = rl.Rectangle(float(x + 4), float(y + height - command_h + 2), float(max(0, width - 8)), float(max(0, command_h - 4)))
+        colors = self._resolve_colors()
 
-        rl.draw_rectangle_rec(self.panel_rect, self.UNITY_BG)
-        rl.draw_rectangle_rec(self.toolbar_rect, self.UNITY_HEADER)
-        rl.draw_line(x, y + toolbar_h - 1, x + width, y + toolbar_h - 1, self.UNITY_BORDER)
+        rl.draw_rectangle_rec(self.panel_rect, colors["BG"])
+        rl.draw_rectangle_rec(self.toolbar_rect, colors["HEADER"])
+        rl.draw_line(x, y + toolbar_h - 1, x + width, y + toolbar_h - 1, colors["BORDER"])
         if self.body_rect.width > 0 and self.body_rect.height > 0:
-            rl.draw_rectangle_rec(self.body_rect, self.UNITY_BODY)
-            rl.draw_rectangle_lines_ex(self.body_rect, 1, self.UNITY_BORDER)
+            rl.draw_rectangle_rec(self.body_rect, colors["BODY"])
+            rl.draw_rectangle_lines_ex(self.body_rect, 1, colors["BORDER"])
 
         if rl.gui_button(rl.Rectangle(float(x + 5), float(y + 2), 50.0, 20.0), "Clear"):
             self.clear()
@@ -141,7 +167,7 @@ class ConsolePanel:
 
         counts = self._count_by_level()
         badge_text = f"I:{counts[self.INFO]} W:{counts[self.WARNING]} E:{counts[self.ERROR]} D:{counts[self.DEBUG]}"
-        rl.draw_text(badge_text, fx + 72, y + 7, 10, self.UNITY_TEXT_DIM)
+        rl.draw_text(badge_text, fx + 72, y + 7, 10, colors["TEXT_DIM"])
         self.search_rect = rl.Rectangle(float(max(x + width - 190, fx + 185)), float(y + 3), 180.0, 18.0)
         self.search_input.arrange((self.search_rect.x, self.search_rect.y, self.search_rect.width, self.search_rect.height))
         render_text_input(self.search_input, self.search_input.focused)
@@ -170,7 +196,7 @@ class ConsolePanel:
                 int(self.body_rect.x) + 10,
                 int(self.body_rect.y) + 12,
                 11,
-                self.UNITY_TEXT_DIM,
+                colors["TEXT_DIM"],
             )
         else:
             visible_bottom = int(self.body_rect.y + self.body_rect.height)
@@ -181,7 +207,7 @@ class ConsolePanel:
                 if curr_y > visible_bottom:
                     break
 
-                color = self.UNITY_TEXT
+                color = colors["TEXT"]
                 if ltype == self.WARNING:
                     color = rl.YELLOW
                 elif ltype == self.ERROR:
@@ -194,7 +220,12 @@ class ConsolePanel:
 
                 icon = "(!)" if ltype == self.ERROR else ("/!\\") if ltype == self.WARNING else "(#)" if ltype == self.DEBUG else "(i)"
                 rl.draw_text(icon, int(self.body_rect.x) + 10, curr_y + 4, 10, color)
-                rl.draw_text(msg, int(self.body_rect.x) + 40, curr_y + 4, 10, self.UNITY_TEXT)
+                if self._mono_font is None:
+                    self._mono_font = get_mono_font(10)
+                if self._mono_font is not None:
+                    rl.draw_text_ex(self._mono_font, msg, rl.Vector2(float(self.body_rect.x) + 40, float(curr_y + 4)), 10, 0, colors["TEXT"])
+                else:
+                    rl.draw_text(msg, int(self.body_rect.x) + 40, curr_y + 4, 10, colors["TEXT"])
                 rl.draw_line(
                     int(self.body_rect.x),
                     curr_y + line_height - 1,
@@ -208,7 +239,7 @@ class ConsolePanel:
             self.command_input.arrange((self.command_rect.x, self.command_rect.y, self.command_rect.width, self.command_rect.height))
             render_text_input(self.command_input, self.command_input.focused)
             if self.command_output:
-                rl.draw_text(self.command_output[:80], int(self.command_rect.x + 8), int(self.command_rect.y - 14), 9, self.UNITY_TEXT_DIM)
+                rl.draw_text(self.command_output[:80], int(self.command_rect.x + 8), int(self.command_rect.y - 14), 9, colors["TEXT_DIM"])
 
     def _handle_text_input(self) -> None:
         mouse_pos = rl.get_mouse_position()

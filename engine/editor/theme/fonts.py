@@ -87,6 +87,32 @@ def get_default_font() -> Any:
     return _rl().get_font_default()
 
 
+_MONO_CANDIDATES = ("JetBrainsMono", "CascadiaMono", "DejaVuSansMono", "Consolas", "Courier New")
+
+
+def load_mono_font(size: int) -> Any:
+    """Load a monospaced font, falling back through known candidates."""
+    key = ("__mono__", size)
+    cached = _FONT_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    rl = _rl()
+    for candidate in _MONO_CANDIDATES:
+        path = _font_path(candidate)
+        if path is not None:
+            font = rl.load_font_ex(str(path), size, None, 0)
+            _FONT_CACHE[key] = font
+            return font
+
+    return load_font("default", size)
+
+
+def get_mono_font(size: int = 12) -> Any:
+    """Get or load the monospaced font at the given size."""
+    return load_mono_font(size)
+
+
 def unload_font(font: Any) -> None:
     if font is not None:
         _rl().unload_font(font)

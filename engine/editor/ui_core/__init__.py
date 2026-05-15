@@ -72,17 +72,6 @@ from engine.editor.ui_core.property_widgets import (
     PropertyKind,
 )
 from engine.editor.ui_core.protocols import EntityLike, PropertyValue, WorldLike
-from engine.editor.ui_core.theme import (
-    THEME_REGISTRY,
-    UNITY_DARK,
-    UNITY_LIGHT,
-    EditorTheme,
-    ThemeRegistry,
-    get_active_theme,
-    resolve_theme,
-    set_active_theme,
-    theme_to_raygui_map,
-)
 from engine.editor.ui_core.tokens import (
     BG_RAYGUI_DARK,
     BUTTON_RADIUS,
@@ -130,6 +119,31 @@ from engine.editor.ui_core.widget_state import (
     WidgetVisualState,
     resolve_visual_state,
 )
+
+_THEME_SYMBOLS = {
+    "THEME_REGISTRY",
+    "UNITY_DARK",
+    "UNITY_LIGHT",
+    "EditorTheme",
+    "ThemeRegistry",
+    "get_active_theme",
+    "resolve_theme",
+    "set_active_theme",
+    "theme_to_raygui_map",
+}
+
+
+def __getattr__(name: str):
+    if name not in _THEME_SYMBOLS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    import engine.editor.ui_core.theme as _theme
+
+    g = globals()
+    for sym in _THEME_SYMBOLS:
+        if hasattr(_theme, sym):
+            g[sym] = getattr(_theme, sym)
+    return g[name]
+
 
 UI_CORE_CONTRACT = {
     "name": "ui_core",
