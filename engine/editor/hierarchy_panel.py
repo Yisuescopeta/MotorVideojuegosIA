@@ -39,8 +39,9 @@ class HierarchyPanel:
     LINE_HEIGHT: int = 18
     INDENT_SIZE: int = 14
 
-    def __init__(self, selection_state: Optional[EditorSelectionState] = None) -> None:
+    def __init__(self, selection_state: Optional[EditorSelectionState] = None, layout: Any = None) -> None:
         self.visible: bool = True
+        self._layout = layout
         self.scroll_offset: int = 0
         self.expanded_ids: Set[int] = set()
         self.panel_width: int = 200
@@ -57,11 +58,8 @@ class HierarchyPanel:
         self._cached_visible_rows: List[Tuple[int, int]] = []
         self.search_text: str = ""
 
-        # Context Menu State
-        self.context_menu_active: bool = False
-        self.context_menu_pos = rl.Vector2(0, 0)
-        self.context_target_id: Optional[int] = None
         self.hovered_entity_id: Optional[int] = None
+        self._context_target_name: Optional[str] = None
         self._cursor_interactive_rects: List[rl.Rectangle] = []
         self._input_blocked: bool = False
 
@@ -229,8 +227,11 @@ class HierarchyPanel:
         # Context Menu Logic (After scissor to draw on top)
         self._handle_context_input(world, x, y, width, height)
 
-        if self.context_menu_active:
-             self._draw_context_menu(world)
+        # Process context menu action from global menu
+        if self._layout:
+            action = self._layout._process_global_context_menu()
+            if action:
+                self._execute_context_action(world, action)
 
     def _render_row(self, entity: Entity, depth: int, panel_x: int, y: int, world: "World", panel_y: int, panel_h: int) -> None:
         """Renderiza una fila visible de la jerarquia."""
@@ -462,72 +463,26 @@ class HierarchyPanel:
         in_panel = rl.check_collision_point_rec(mouse, rl.Rectangle(x, y, w, h))
 
         if in_panel and not self._input_blocked and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_RIGHT):
-            self.context_menu_active = True
-            self.context_menu_pos = mouse
-            self.context_target_id = self.hovered_entity_id
-
-    def _draw_context_menu(self, world: "World") -> None:
-        """Dibuja el menú contextual y procesa sus opciones."""
-
-        # Options
-        options = ["Create Entity"]
-        if self.context_target_id is not None:
-             options.append("Create Child Entity")
-             options.append("Delete Entity")
-             options.append("Duplicate Entity")
-             entity = world.get_entity(self.context_target_id)
-             if entity is not None and entity.parent_name is not None:
-                 options.append("Unparent")
-             options.append("Save as Prefab")
-
-        item_height = 24
-        menu_width = 140
-        menu_height = len(options) * item_height
-
-        mx = int(self.context_menu_pos.x)
-        my = int(self.context_menu_pos.y)
-
-        # Keep in screen
-        if mx + menu_width > rl.get_screen_width():
-            mx -= menu_width
-        if my + menu_height > rl.get_screen_height():
-            my -= menu_height
-
-        menu_rect = rl.Rectangle(mx, my, menu_width, menu_height)
-        self._register_cursor_rect(menu_rect)
-
-        # Check close (Click outside)
-        if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-            if not rl.check_collision_point_rec(rl.get_mouse_position(), menu_rect):
-                self.context_menu_active = False
-                return
-
-        # Draw Menu Background
-        rl.draw_rectangle_rec(menu_rect, self.UNITY_BG)
-        rl.draw_rectangle_lines_ex(menu_rect, 1, self.UNITY_BORDER)
-
-        # Draw Items
-        mouse = rl.get_mouse_position()
-
-        for i, option in enumerate(options):
-            item_y = my + (i * item_height)
-            item_rect = rl.Rectangle(mx, item_y, menu_width, item_height)
-            self._register_cursor_rect(item_rect)
-
-            is_hover = rl.check_collision_point_rec(mouse, item_rect)
-
-            if is_hover:
-                rl.draw_rectangle_rec(item_rect, self.UNITY_HOVER)
-
-            rl.draw_text(option, mx + 10, item_y + 6, 10, self.UNITY_TEXT)
-
-            # Click Handler
-            if is_hover and rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
-                self._execute_context_action(world, option)
-                self.context_menu_active = False
+            target_entity = world.get_entity(self.hovered_entity_id) if self.hovered_entity_id is not None else None
+            self._context_target_name = target_entity.name if target_entity else None
+            from engine.editor.ui_core.controls.context_menu import ContextMenuItem, ContextMenuModel
+            items = [
+                ContextMenuItem(id="create_entity", label="Create Entity"),
+            ]
+            if self._context_target_name:
+                items.extend([
+                    ContextMenuItem(id="create_child_entity", label="Create Child Entity"),
+                    ContextMenuItem(id="delete_entity", label="Delete Entity"),
+                    ContextMenuItem(id="duplicate_entity", label="Duplicate Entity"),
+                    ContextMenuItem(id="unparent", label="Unparent"),
+                    ContextMenuItem(id="save_prefab", label="Save as Prefab"),
+                ])
+            menu = ContextMenuModel(id="hierarchy_menu", items=items)
+            if self._layout:
+                self._layout.show_context_menu(menu, mouse.x, mouse.y)
 
     def _execute_context_action(self, world: "World", action: str) -> None:
-        if action == "Create Entity":
+        if action == "create_entity":
             new_name = f"New Entity {world.entity_count()}"
             if self._scene_manager is not None and self._scene_manager.create_entity(new_name):
                 self._set_selected_entity(world, new_name)
@@ -536,39 +491,42 @@ class HierarchyPanel:
                 new_ent.add_component(Transform())
                 self._set_selected_entity(world, new_ent.name)
 
-        elif action == "Delete Entity" and self.context_target_id is not None:
-            entity = world.get_entity(self.context_target_id)
-            if entity:
+        elif action in ("delete_entity", "create_child_entity", "duplicate_entity", "unparent", "save_prefab"):
+            target_name = self._context_target_name
+            if target_name is None:
+                return
+            entity = None
+            for e in world.iter_all_entities():
+                if e.name == target_name:
+                    entity = e
+                    break
+            if entity is None:
+                return
+
+            if action == "delete_entity":
                 if self._scene_manager is not None:
                     self._scene_manager.remove_entity(entity.name)
                 else:
                     world.destroy_entity(entity.id)
-                # Si era el seleccionado, deseleccionar
                 if self._get_selected_entity_name(world) == entity.name:
                     self._set_selected_entity(world, None)
 
-        elif action == "Create Child Entity" and self.context_target_id is not None:
-            parent_entity = world.get_entity(self.context_target_id)
-            if parent_entity is not None and self._scene_manager is not None:
-                child_name = f"New Child {world.entity_count()}"
-                if self._scene_manager.create_child_entity(parent_entity.name, child_name):
-                    self._set_selected_entity(world, child_name)
-                    self.expanded_ids.add(self.context_target_id)
+            elif action == "create_child_entity":
+                if self._scene_manager is not None:
+                    child_name = f"New Child {world.entity_count()}"
+                    if self._scene_manager.create_child_entity(entity.name, child_name):
+                        self._set_selected_entity(world, child_name)
+                        self.expanded_ids.add(entity.id)
 
-        elif action == "Unparent" and self.context_target_id is not None:
-            entity = world.get_entity(self.context_target_id)
-            if entity is not None and self._scene_manager is not None:
-                self._scene_manager.set_entity_parent(entity.name, None)
+            elif action == "unparent":
+                if self._scene_manager is not None:
+                    self._scene_manager.set_entity_parent(entity.name, None)
 
-        elif action == "Duplicate Entity" and self.context_target_id is not None:
-            entity = world.get_entity(self.context_target_id)
-            if entity is not None and self._scene_manager is not None:
-                self._scene_manager.duplicate_entity_subtree(entity.name)
+            elif action == "duplicate_entity":
+                if self._scene_manager is not None:
+                    self._scene_manager.duplicate_entity_subtree(entity.name)
 
-        elif action == "Save as Prefab" and self.context_target_id is not None:
-            entity = world.get_entity(self.context_target_id)
-            if entity:
-                # Use tkinter for dialog (local scope)
+            elif action == "save_prefab":
                 import tkinter as tk
                 from tkinter import filedialog
                 try:

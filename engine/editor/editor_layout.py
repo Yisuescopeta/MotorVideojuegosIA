@@ -29,10 +29,14 @@ from engine.editor.editor_shell_state import EditorPanelSlots, EditorShellState
 from engine.editor.editor_tools import EditorTool, PivotMode, SnapSettings, TransformSpace
 from engine.editor.render_safety import safe_reset_clip_state
 from engine.editor.toast_notifications import TOAST_MANAGER
+from engine.editor.ui.context_menu_render import process_context_menu_pointer, render_context_menu
 from engine.editor.ui.draw import draw_border, draw_rounded_rect
 from engine.editor.ui.icons import ICON_PAUSE, ICON_PLAY
 from engine.editor.ui.panels import draw_editor_panel_frame
 from engine.editor.ui.widgets import editor_button, editor_icon_button, editor_toggle_button
+from engine.editor.ui_core import ContextMenuManager, ContextMenuModel
+from engine.editor.asset_browser import AssetBrowserPanel
+from engine.editor.ui_core.controls.popup import PopupManager
 from engine.editor.ui_core.dock_rects import compute_dock_rects
 from engine.editor.ui_core.docking import DockLayout, DockSplit
 
@@ -103,6 +107,7 @@ _PANEL_SLOT_FIELDS = (
     "console_panel",
     "terminal_panel",
     "agent_panel",
+    "asset_browser",
 )
 
 
@@ -124,6 +129,7 @@ class EditorLayout:
     console_panel: Any
     terminal_panel: Any
     agent_panel: Any
+    asset_browser: Any
 
     # ========================================
     # Layout Dimensions (Unity-style)
@@ -331,8 +337,31 @@ class EditorLayout:
         self.scene_browser_list_rect = rl.Rectangle(0, 0, 0, 0)
         self._cursor_interactive_rects: list[rl.Rectangle] = []
         self._cursor_text_rects: list[rl.Rectangle] = []
+        self._context_menu_manager = ContextMenuManager()
+        self._popup_manager = PopupManager()
 
         self.update_layout(screen_width, screen_height)
+
+    def show_context_menu(self, menu: "ContextMenuModel", x: float, y: float) -> None:
+        """Open a context menu at screen coordinates."""
+        self._context_menu_manager.open(menu, x, y)
+
+    def close_context_menu(self) -> None:
+        self._context_menu_manager.close()
+
+    def _render_global_context_menu(self) -> None:
+        """Render the global context menu overlay if active."""
+        root = self._context_menu_manager.root
+        if root is None:
+            return
+        render_context_menu(root)
+
+    def _process_global_context_menu(self) -> str | None:
+        """Process pointer input for the global context menu. Returns action_id or None."""
+        root = self._context_menu_manager.root
+        if root is None:
+            return None
+        return process_context_menu_pointer(root)
 
     @property
     def shell_state(self) -> EditorShellState:
@@ -605,7 +634,7 @@ class EditorLayout:
         bottom_tab = self.dock_layout.active_tab("bottom")
         if bottom_tab == "FLOW_PANEL":
             bottom_tab = "FLOW"
-        if bottom_tab in {"PROJECT", "FLOW", "CONSOLE", "TERMINAL", "AGENT"}:
+        if bottom_tab in {"PROJECT", "FLOW", "CONSOLE", "TERMINAL", "AGENT", "ASSETS"}:
             self.active_bottom_tab = bottom_tab
 
     def update_layout(self, width: int, height: int, update_texture: bool = True) -> None:
@@ -694,6 +723,12 @@ class EditorLayout:
             pass
         self._handle_tool_shortcuts()
         mouse_pos = rl.get_mouse_position()
+
+        # Block panel input when context menu is open (panels will process the action)
+        root = self._context_menu_manager.root
+        if root is not None:
+            if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT) or rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_RIGHT):
+                return
 
         # Guard: Skip toolbar/tab processing if mouse is in inspector or hierarchy
         mouse_in_inspector = rl.check_collision_point_rec(mouse_pos, self.inspector_rect)
@@ -1117,6 +1152,13 @@ class EditorLayout:
                     int(self.bottom_content_rect.width),
                     int(self.bottom_content_rect.height),
                 )
+            elif self.active_bottom_tab == "ASSETS" and self.asset_browser:
+                self.asset_browser.render(
+                    int(self.bottom_content_rect.x),
+                    int(self.bottom_content_rect.y),
+                    int(self.bottom_content_rect.width),
+                    int(self.bottom_content_rect.height),
+                )
         except Exception as exc:
             log_err(f"Bottom panel render error ({self.active_bottom_tab}): {exc}")
             safe_reset_clip_state()
@@ -1136,6 +1178,7 @@ class EditorLayout:
             self._draw_about_modal()
 
         TOAST_MANAGER.render(self.screen_width, self.screen_height)
+        self._render_global_context_menu()
 
     @property
     def dropdown_active(self) -> bool:
@@ -1773,6 +1816,8 @@ class EditorLayout:
             self.active_bottom_tab = "TERMINAL"
         elif action_id == "bottom_agent":
             self.active_bottom_tab = "AGENT"
+        elif action_id == "bottom_assets":
+            self.active_bottom_tab = "ASSETS"
         elif action_id == "about":
             self.show_about_modal = True
 

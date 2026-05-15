@@ -1,5 +1,6 @@
 """Shared editor UI design primitives."""
 
+from engine.editor.ui.file_picker_render import process_file_picker, render_file_picker
 from engine.editor.ui.icons import (
     ICON_ARROW_DOWN,
     ICON_CHECK,
@@ -42,6 +43,7 @@ from engine.editor.ui.panels import (
     draw_panel_header,
     end_panel_content,
 )
+from engine.editor.ui.popup_render import process_popup_dialog, render_popup_dialog, render_popup_frame
 from engine.editor.ui.property_widgets import (
     CommitContract,
     EditTransaction,
@@ -153,6 +155,11 @@ __all__ = [
     "is_right_clicked_at",
     "mouse_position",
     "matches_search",
+    "process_file_picker",
+    "process_popup_dialog",
+    "render_file_picker",
+    "render_popup_dialog",
+    "render_popup_frame",
     "raygui_dropdown_bridge",
     "raygui_textbox_bridge",
     "resolve_visual_state",

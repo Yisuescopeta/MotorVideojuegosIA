@@ -13,6 +13,8 @@ _FALSE_VALUES = {"0", "false", "no", "off"}
 @dataclass(frozen=True, slots=True)
 class EditorControlFeatureFlags:
     console_panel: bool = False
+    asset_browser: bool = False
+    popup_controls: bool = False
 
 
 @dataclass(slots=True)
@@ -37,6 +39,8 @@ class EditorControlFeatureFlagManager:
 
 FLAG_ENV_VARS = {
     "console_panel": "MOTOR_EDITOR_CONTROL_CONSOLE",
+    "asset_browser": "MOTOR_EDITOR_CONTROL_ASSET_BROWSER",
+    "popup_controls": "MOTOR_EDITOR_CONTROL_POPUP",
 }
 
 

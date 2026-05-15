@@ -36,6 +36,7 @@ from engine.editor.ui_core.controls.events import (
     Size,
 )
 from engine.editor.ui_core.controls.focus import FocusManager
+from engine.editor.ui_core.controls.file_picker import FileEntry, FilePickerModel
 from engine.editor.ui_core.controls.popup import PopupManager, PopupModel, alert_popup, confirm_popup, yes_no_popup
 from engine.editor.ui_core.controls.text_input import TextInput
 
@@ -54,6 +55,8 @@ __all__ = [
     "ContextMenuModel",
     "DropdownModel",
     "DropdownOption",
+    "FileEntry",
+    "FilePickerModel",
     "FocusManager",
     "HBoxContainer",
     "Label",

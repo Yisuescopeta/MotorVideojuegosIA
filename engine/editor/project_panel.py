@@ -50,8 +50,9 @@ class ProjectPanel:
     AUDIO_EXTENSIONS: tuple[str, ...] = (".wav", ".ogg", ".mp3", ".flac")
     MATERIAL_EXTENSIONS: tuple[str, ...] = (".mat", ".material", ".mtl")
 
-    def __init__(self, root_path: str = ".") -> None:
+    def __init__(self, root_path: str = ".", layout: Any = None) -> None:
         self.root_path = os.path.abspath(root_path)
+        self._layout = layout
         self.current_path = self.root_path
         self.items: List[Tuple[str, str]] = []
         self.project_service: Optional[ProjectService] = None
@@ -59,8 +60,6 @@ class ProjectPanel:
         self.selected_file: Optional[str] = None
         self.request_open_sprite_editor_for: Optional[str] = None
         self.request_open_scene_for: Optional[str] = None
-        self.show_context_menu: bool = False
-        self.context_menu_pos: Optional[rl.Vector2] = None
 
         self.scroll_offset: float = 0.0
         self.sidebar_scroll: float = 0.0
@@ -273,7 +272,6 @@ class ProjectPanel:
 
         self._render_content(content_x, main_y, content_w, content_h)
         self._render_detail_panel(content_x, detail_y, content_w, self.DETAIL_HEIGHT)
-        self._render_context_menu(content_x, main_y, content_w, content_h)
 
     def _render_header(self, x: int, y: int, width: int) -> None:
         search_rect = rl.Rectangle(x + 10, y + 6, max(120, width - 330), 18)
@@ -347,8 +345,14 @@ class ProjectPanel:
             if is_mouse_in:
                 self.scroll_offset = max(0.0, self.scroll_offset - rl.get_mouse_wheel_move() * 20.0)
                 if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_RIGHT):
-                    self.show_context_menu = True
-                    self.context_menu_pos = rl.get_mouse_position()
+                    if self._layout:
+                        from engine.editor.ui_core.controls.context_menu import ContextMenuItem, ContextMenuModel
+                        menu = ContextMenuModel(id="project_menu", items=[
+                            ContextMenuItem(id="create_folder", label="Create Folder"),
+                            ContextMenuItem(id="refresh", label="Refresh Assets"),
+                        ])
+                        mouse = rl.get_mouse_position()
+                        self._layout.show_context_menu(menu, mouse.x, mouse.y)
 
             if self._view_mode == "list":
                 self._render_content_list(x, y, width, height, mouse_pos, is_mouse_in)
@@ -364,6 +368,14 @@ class ProjectPanel:
             if not self._visible_entries:
                 message = "No assets match the current search/filter" if self.search_text.strip() else "This folder is empty"
                 rl.draw_text(message, int(x + 14), int(y + 14), 10, self.UNITY_TEXT_DIM)
+
+            # Process global context menu actions
+            if self._layout:
+                action = self._layout._process_global_context_menu()
+                if action == "create_folder":
+                    self.create_folder()
+                elif action == "refresh":
+                    self.refresh_asset_catalog()
 
     def _render_content_grid(self, x: int, y: int, width: int, height: int, mouse_pos: rl.Vector2, is_mouse_in: bool) -> None:
         icon_w, icon_h = 88, 72
@@ -604,37 +616,6 @@ class ProjectPanel:
                 continue
             if char.isprintable() and len(self.search_text) < 64:
                 self.set_search_text(self.search_text + char)
-
-    def _render_context_menu(self, x: int, y: int, width: int, height: int) -> None:
-        if not self.show_context_menu or self.context_menu_pos is None:
-            return
-
-        menu_x = int(min(self.context_menu_pos.x, x + width - self.MENU_WIDTH - 4))
-        menu_y = int(min(self.context_menu_pos.y, y + height - 78))
-        menu_rect = rl.Rectangle(menu_x, menu_y, self.MENU_WIDTH, 52)
-        self._register_cursor_rect(menu_rect)
-        rl.draw_rectangle_rec(menu_rect, self.UNITY_HEADER)
-        rl.draw_rectangle_lines_ex(menu_rect, 1, self.UNITY_BORDER)
-
-        create_rect = rl.Rectangle(menu_rect.x + 4, menu_rect.y + 4, menu_rect.width - 8, 20)
-        refresh_rect = rl.Rectangle(menu_rect.x + 4, menu_rect.y + 28, menu_rect.width - 8, 20)
-        self._register_cursor_rect(create_rect)
-        self._register_cursor_rect(refresh_rect)
-        if rl.gui_button(create_rect, "Create Folder"):
-            self.create_folder()
-            self.show_context_menu = False
-            self.context_menu_pos = None
-            return
-        if rl.gui_button(refresh_rect, "Refresh Assets"):
-            self.refresh_asset_catalog()
-            self.show_context_menu = False
-            self.context_menu_pos = None
-            return
-
-        mouse_pos = rl.get_mouse_position()
-        if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT) and not rl.check_collision_point_rec(mouse_pos, menu_rect):
-            self.show_context_menu = False
-            self.context_menu_pos = None
 
     def _rebuild_display_cache(self) -> None:
         self._item_display_cache = {}

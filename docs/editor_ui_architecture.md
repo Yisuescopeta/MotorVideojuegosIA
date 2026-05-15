@@ -53,17 +53,18 @@ El runtime UI (cuando exista) debe importar solo de `ui_core`, nunca de `ui`.
 | `controls/focus.py` | `FocusManager` con tab-order, grab, pick_at | `controls.control` (TYPE_CHECKING) |
 | `controls/text_input.py` | `TextInput` con cursor, selección, clipboard commands, insert/backspace/delete, `measure()`, `to_dict()` | `controls.control`, `controls.events` |
 | `controls/popup.py` | `PopupModel` con open/close/toggle, `contains_point()`, `handle_pointer_down()`, `place_below()` | solo stdlib |
-| `controls/context_menu.py` | `ContextMenuItem`, `ContextMenuModel` con highlight navigation, activate, `context_menu_from_tuples()` factory | `popup` |
+| `controls/context_menu.py` | `ContextMenuItem`, `ContextMenuModel`, `ContextMenuManager` con highlight navigation, activate/open/close, `context_menu_from_tuples()` factory | `popup` |
 | `controls/dropdown.py` | `DropdownOption`, `DropdownModel`, `ComboBoxModel` (editable) con filtro por query, select por index/id/point | `popup` |
 | `controls/console_control.py` | `ConsoleControlModel`, `ConsoleCommandResult` — modelo puro piloto para migración gradual de ConsolePanel a EditorControl | solo stdlib |
+| `controls/file_picker.py` | `FileEntry`, `FilePickerModel` — modelo puro de navegación de archivos (navigate_to, go_up, set_filter, select, scroll), serializable via `to_dict()`/`from_dict()` | solo stdlib |
 
 Regla: **ningún módulo en `ui_core` puede importar `pyray`, `engine.editor.ui`,
 ni ningún módulo del runtime.**
 
 Los controles de Fase 13 (`TextInput`, `PopupModel`, `ContextMenuModel`,
-`DropdownModel`, `ComboBoxModel`) son modelos internos del editor. No son
-superficie pública de `EngineAPI` ni CLI `motor`; los agentes deben seguir
-usando `EngineAPI` para authoring de escenas.
+`DropdownModel`, `ComboBoxModel`, `FilePickerModel`) son modelos internos
+del editor. No son superficie pública de `EngineAPI` ni CLI `motor`; los
+agentes deben seguir usando `EngineAPI` para authoring de escenas.
 
 La migración gradual a `EditorControl` usa feature flags con defaults seguros
 apagados. El piloto de consola vive en `ConsoleControlModel` y el adapter
@@ -104,9 +105,10 @@ actual.
 | `controls.py` | impuro (render retained-mode + process_input + `demo_control_tree()`) | `ui_core.controls.*`, `pyray` |
 | `inspector_render.py` | impuro (render inspector + edición inline vía SceneManager/EngineAPI) | `inspector`, `property_widgets`, `pyray` |
 | `text_input_render.py` | impuro (`render_text_input()`, `process_text_input()` — pyray draw + char/key input) | `ui_core.controls.text_input`, `pyray` |
-| `popup_render.py` | impuro (`render_popup_frame()` — pyray frame draw) | `ui_core.controls.popup`, `pyray` |
+| `popup_render.py` | impuro (`render_popup_frame()`, `render_popup_dialog()`, `process_popup_dialog()` — pyray frame draw + dialog con título/mensaje/botones) | `ui_core.controls.popup`, `pyray` |
 | `context_menu_render.py` | impuro (`render_context_menu()`, `process_context_menu_pointer()` — pyray items + highlight + activate) | `ui_core.controls.context_menu`, `pyray` |
 | `dropdown_render.py` | impuro (`render_dropdown()`, `process_dropdown_pointer()` — pyray button + popup list) | `ui_core.controls.dropdown`, `pyray` |
+| `file_picker_render.py` | impuro (`render_file_picker()`, `process_file_picker()` — pyray listado de archivos, scroll, breadcrumb, input de nombre, botones OK/Cancel) | `ui_core.controls.file_picker`, `pyray` |
 
 La función `to_ray_color()` es la única función que vive en el shim
 `colors.py` (no en `ui_core.colors`) porque requiere `import pyray` en
@@ -286,3 +288,4 @@ El runtime UI **puede**:
 | 2026-05-14 | `EditorTheme` expandido: `name`, `to_dict()/from_dict()`, `ThemeRegistry`, `UNITY_LIGHT`, `get_active_theme()`, `set_active_theme()`, `resolve_theme()` en todos los widgets. Todo puro, sin pyray, sin file IO (Fase 14) |
 | 2026-05-14 | Añadido `console_control.py` a `ui_core.controls` como modelo puro piloto para migración gradual de ConsolePanel a EditorControl. Feature flags foundation en `editor_control_flags.py`. Adapter `ConsolePanelEditorControlAdapter` con flag-based delegation (default off) (Fase 15) |
 | 2026-05-14 | Creada capa compartida `engine/ui/` con `shared.py` (geometría, color, math) y `shared_constants.py` (tokens sin acoplamiento a editor). Runtime UI puede importar de `engine.ui` sin arrastrar pyray ni editor. Editor modules mantienen compatibilidad con misma API. (Fase 16) |
+| 2026-05-15 | Añadido `file_picker.py` a `ui_core.controls` y `file_picker_render.py` a `ui/` (BATCH_C C6). `popup_render.py` expandido con `render_popup_dialog()` y `process_popup_dialog()` (C4). `ContextMenuManager` documentado en `context_menu.py` (C3). `ConsolePanel` migrado a `TextInput` (C1). |

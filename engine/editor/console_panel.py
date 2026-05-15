@@ -6,7 +6,9 @@ from typing import List, Tuple
 
 import pyray as rl
 from engine.editor.render_safety import gui_toggle_bool
+from engine.editor.ui.text_input_render import process_text_input, render_text_input
 from engine.editor.ui_core.controls.console_control import ConsoleControlModel
+from engine.editor.ui_core.controls.text_input import TextInput
 
 # Sistema de Logs Global
 GLOBAL_LOGS: List[Tuple[str, str]] = []
@@ -49,10 +51,6 @@ class ConsolePanel:
         self.show_warn = True
         self.show_err = True
         self.show_debug = True
-        self.search_text = ""
-        self.search_focused = False
-        self.command_text = ""
-        self.command_focused = False
         self.command_output = ""
         self.panel_rect = rl.Rectangle(0, 0, 0, 0)
         self.toolbar_rect = rl.Rectangle(0, 0, 0, 0)
@@ -60,7 +58,25 @@ class ConsolePanel:
         self.search_rect = rl.Rectangle(0, 0, 0, 0)
         self.command_rect = rl.Rectangle(0, 0, 0, 0)
         self.control_model = ConsoleControlModel()
+        self.search_input = TextInput(placeholder="Search...", max_length=64, font_size=10)
+        self.command_input = TextInput(placeholder="Command: help", max_length=128, font_size=10)
         log_info("Console initialized.")
+
+    @property
+    def search_text(self) -> str:
+        return self.search_input.text
+
+    @search_text.setter
+    def search_text(self, value: str) -> None:
+        self.search_input.set_text(value)
+
+    @property
+    def command_text(self) -> str:
+        return self.command_input.text
+
+    @command_text.setter
+    def command_text(self, value: str) -> None:
+        self.command_input.set_text(value)
 
     def clear(self) -> None:
         GLOBAL_LOGS.clear()
@@ -94,7 +110,7 @@ class ConsolePanel:
         self.control_model.scroll_offset = self.scroll_offset
 
     def render(self, x: int, y: int, width: int, height: int) -> None:
-        """Renderiza la consola dentro del rectángulo de contenido inferior."""
+        """Renderiza la consola dentro del rectangulo de contenido inferior."""
         self.panel_rect = rl.Rectangle(float(x), float(y), float(max(0, width)), float(max(0, height)))
         toolbar_h = min(self.TOOLBAR_HEIGHT, max(0, height))
         self.toolbar_rect = rl.Rectangle(float(x), float(y), float(max(0, width)), float(toolbar_h))
@@ -127,7 +143,8 @@ class ConsolePanel:
         badge_text = f"I:{counts[self.INFO]} W:{counts[self.WARNING]} E:{counts[self.ERROR]} D:{counts[self.DEBUG]}"
         rl.draw_text(badge_text, fx + 72, y + 7, 10, self.UNITY_TEXT_DIM)
         self.search_rect = rl.Rectangle(float(max(x + width - 190, fx + 185)), float(y + 3), 180.0, 18.0)
-        self._draw_text_input(self.search_rect, self.search_text, "Search", self.search_focused)
+        self.search_input.arrange((self.search_rect.x, self.search_rect.y, self.search_rect.width, self.search_rect.height))
+        render_text_input(self.search_input, self.search_input.focused)
 
         self._handle_text_input()
 
@@ -188,51 +205,33 @@ class ConsolePanel:
                 curr_y += line_height
 
         if self.command_rect.height > 0:
-            self._draw_text_input(self.command_rect, self.command_text, "Command: help", self.command_focused)
+            self.command_input.arrange((self.command_rect.x, self.command_rect.y, self.command_rect.width, self.command_rect.height))
+            render_text_input(self.command_input, self.command_input.focused)
             if self.command_output:
                 rl.draw_text(self.command_output[:80], int(self.command_rect.x + 8), int(self.command_rect.y - 14), 9, self.UNITY_TEXT_DIM)
-
-    def _draw_text_input(self, rect: rl.Rectangle, value: str, placeholder: str, focused: bool) -> None:
-        border = rl.SKYBLUE if focused else self.UNITY_BORDER
-        rl.draw_rectangle_rec(rect, self.UNITY_BODY)
-        rl.draw_rectangle_lines_ex(rect, 1, border)
-        text = value if value else placeholder
-        color = self.UNITY_TEXT if value else self.UNITY_TEXT_DIM
-        rl.draw_text(text[:64], int(rect.x + 6), int(rect.y + 5), 10, color)
-        if focused:
-            cursor_x = int(rect.x + 6 + min(len(value), 64) * 6)
-            rl.draw_text("_", cursor_x, int(rect.y + 5), 10, self.UNITY_TEXT)
 
     def _handle_text_input(self) -> None:
         mouse_pos = rl.get_mouse_position()
         if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-            self.search_focused = rl.check_collision_point_rec(mouse_pos, self.search_rect)
-            self.command_focused = rl.check_collision_point_rec(mouse_pos, self.command_rect)
+            if rl.check_collision_point_rec(mouse_pos, self.search_rect):
+                self.search_input._focused = True
+                self.command_input._focused = False
+            elif rl.check_collision_point_rec(mouse_pos, self.command_rect):
+                self.command_input._focused = True
+                self.search_input._focused = False
+            else:
+                self.search_input._focused = False
+                self.command_input._focused = False
 
-        if self.search_focused:
-            self.search_text = self._capture_text(self.search_text, 64)
-        if self.command_focused:
-            self.command_text = self._capture_text(self.command_text, 128)
+        if self.search_input.focused:
+            process_text_input(self.search_input)
+
+        if self.command_input.focused:
+            process_text_input(self.command_input)
             if rl.is_key_pressed(rl.KEY_ENTER) or rl.is_key_pressed(rl.KEY_KP_ENTER):
-                result = self._execute_command(self.command_text)
+                cmd = self.command_input.text
+                result = self._execute_command(cmd)
                 self.command_output = result
-                self.command_text = ""
+                self.command_input.set_text("")
                 if result:
                     log_info(result)
-
-    def _capture_text(self, value: str, max_length: int) -> str:
-        if rl.is_key_pressed(rl.KEY_BACKSPACE) and value:
-            value = value[:-1]
-        while True:
-            codepoint = rl.get_char_pressed()
-            if codepoint == 0:
-                break
-            if codepoint in (10, 13):
-                continue
-            try:
-                char = chr(codepoint)
-            except ValueError:
-                continue
-            if char.isprintable() and len(value) < max_length:
-                value += char
-        return value
