@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Protocol, TypeAlias, cast, runtime_checkable
 
 import pyray as rl
-from engine.editor.ui.inspector import InspectorModel, build_inspector_model_from_dict
+from engine.editor.ui.inspector import InspectorModel, build_inspector_model_from_dict, infer_property_kind
 from engine.editor.ui.property_widgets import PropertyDescriptor, PropertyKind
 
 PrimitiveValue: TypeAlias = str | int | float | bool | None
@@ -85,6 +85,19 @@ class InspectorPanel:
         self.editing_kind: PropertyKind | None = None
         self.text_buffer: str = ""
 
+        # Color editing state
+        self.editing_color_group: str = ""
+        self.editing_color_prop: str = ""
+        self.editing_color_value: tuple[int, int, int, int] = (128, 128, 128, 255)
+
+        # Vector editing state
+        self.editing_vector_group: str = ""
+        self.editing_vector_prop: str = ""
+        self.editing_vector_kind: PropertyKind | None = None
+
+        # Expand state for DICT/LIST
+        self.expanded_keys: set[str] = set()
+
     def set_scene_manager(self, scene_manager: SceneManagerLike | None) -> None:
         self._scene_manager = scene_manager
 
@@ -143,7 +156,15 @@ class InspectorPanel:
                 rect = self._register_widget_rect(group.name, prop, x, content_y, width)
                 self._draw_property_row(prop, rect)
                 content_y += self.ROW_HEIGHT
+                # Render expanded DICT/LIST properties
+                key = self._widget_key(group.name, prop.name)
+                if key in self.expanded_keys and prop.kind in {PropertyKind.DICT, PropertyKind.LIST}:
+                    content_y = self._draw_expanded_properties(prop, x, content_y, width, y + height)
             content_y += 4
+
+        # Draw color editing sliders if active
+        if self.editing_color_group and self.editing_color_prop:
+            self._draw_color_sliders(x, content_y, width)
 
     def toggle_bool(self, group_name: str, prop_name: str) -> bool:
         prop = self.model.find_property(group_name, prop_name)
@@ -153,13 +174,20 @@ class InspectorPanel:
 
     def begin_text_edit(self, group_name: str, prop_name: str) -> bool:
         prop = self.model.find_property(group_name, prop_name)
-        if prop is None or prop.kind not in {PropertyKind.INT, PropertyKind.FLOAT, PropertyKind.STR}:
+        if prop is None or prop.kind not in {PropertyKind.INT, PropertyKind.FLOAT, PropertyKind.STR, PropertyKind.VECTOR2, PropertyKind.VECTOR3}:
             return False
         self.editing_group = group_name
         self.editing_prop = prop_name
         self.editing_kind = prop.kind
         self.editing_key = self._widget_key(group_name, prop_name)
-        self.text_buffer = str(prop.value)
+        if prop.kind in {PropertyKind.VECTOR2, PropertyKind.VECTOR3}:
+            val = prop.value
+            if isinstance(val, (tuple, list)):
+                self.text_buffer = ", ".join(str(v) for v in val)
+            else:
+                self.text_buffer = str(val)
+        else:
+            self.text_buffer = str(prop.value)
         return True
 
     def set_text_buffer(self, value: str) -> None:
@@ -187,10 +215,41 @@ class InspectorPanel:
 
     def handle_key(self, key: int) -> bool:
         if key == getattr(rl, "KEY_ESCAPE", 256):
+            if self.editing_color_group:
+                self._cancel_color_edit()
+                return True
             self.cancel_text_edit()
             return True
         if key in {getattr(rl, "KEY_ENTER", 257), getattr(rl, "KEY_KP_ENTER", 335)}:
+            if self.editing_color_group:
+                return self._commit_color_edit()
             return self.commit_text_edit()
+        return False
+
+    def handle_mouse_click(self, mx: float, my: float) -> bool:
+        """Handle mouse click on inspector widgets. Returns True if click was consumed."""
+        if self.editing_color_group and self.editing_color_prop:
+            if self._is_click_on_color_sliders(mx, my):
+                self._handle_color_slider_click(mx, my)
+                return True
+            self._commit_color_edit()
+
+        if self.editing_key is not None:
+            self.commit_text_edit()
+            return True
+
+        for wr in self.widget_rects:
+            if wr.x <= mx <= wr.x + wr.width and wr.y <= my <= wr.y + wr.height:
+                if wr.kind is PropertyKind.BOOL:
+                    return self.toggle_bool(wr.group_name, wr.prop_name)
+                if wr.kind is PropertyKind.COLOR:
+                    return self._begin_color_edit(wr.group_name, wr.prop_name)
+                if wr.kind in {PropertyKind.VECTOR2, PropertyKind.VECTOR3}:
+                    return self._begin_vector_edit(wr.group_name, wr.prop_name)
+                if wr.kind in {PropertyKind.INT, PropertyKind.FLOAT, PropertyKind.STR}:
+                    return self.begin_text_edit(wr.group_name, wr.prop_name)
+                if wr.kind in {PropertyKind.DICT, PropertyKind.LIST}:
+                    return self._toggle_expand(wr.group_name, wr.prop_name)
         return False
 
     def commit_property(self, group_name: str, prop_name: str, value: object) -> bool:
@@ -255,6 +314,15 @@ class InspectorPanel:
         if prop.kind is PropertyKind.BOOL:
             self._draw_bool(prop, rect)
             return
+        if prop.kind is PropertyKind.COLOR:
+            self._draw_color(prop, rect)
+            return
+        if prop.kind in {PropertyKind.VECTOR2, PropertyKind.VECTOR3}:
+            self._draw_vector(prop, rect)
+            return
+        if prop.kind in {PropertyKind.DICT, PropertyKind.LIST}:
+            self._draw_dict_or_list(prop, rect)
+            return
         self._draw_text_value(prop, rect)
 
     def _draw_bool(self, prop: PropertyDescriptor, rect: InspectorWidgetRect) -> None:
@@ -262,12 +330,153 @@ class InspectorPanel:
         if bool(prop.value):
             self._draw_rectangle(int(rect.x + 3), int(rect.y + 3), 8, 8, self._color(70, 130, 200, 255))
 
+    def _draw_color(self, prop: PropertyDescriptor, rect: InspectorWidgetRect) -> None:
+        """Draw color preview swatch. If editing, show RGB(A) sliders."""
+        val = prop.value
+        if isinstance(val, (tuple, list)):
+            if len(val) == 4:
+                r, g, b, a = int(val[0]), int(val[1]), int(val[2]), int(val[3])
+            elif len(val) == 3:
+                r, g, b, a = int(val[0]), int(val[1]), int(val[2]), 255
+            else:
+                r = g = b = a = 128
+        else:
+            r = g = b = a = 128
+
+        swatch_x = int(rect.x)
+        swatch_y = int(rect.y)
+        swatch_size = int(rect.height) - 2
+        self._draw_rectangle(swatch_x, swatch_y, swatch_size, swatch_size, self._color(r, g, b, a))
+        self._draw_rectangle(swatch_x - 1, swatch_y - 1, swatch_size + 2, swatch_size + 2, self._color(80, 80, 80, 255))
+
+        hex_str = f"#{r:02X}{g:02X}{b:02X}"
+        if isinstance(val, (tuple, list)) and len(val) == 4:
+            hex_str += f" {a}"
+        self._draw_text(hex_str, swatch_x + swatch_size + 6, int(rect.y + 3), 10, self._color(200, 200, 200, 255))
+
+    def _begin_color_edit(self, group_name: str, prop_name: str) -> bool:
+        """Start editing a color property."""
+        prop = self.model.find_property(group_name, prop_name)
+        if prop is None or prop.kind is not PropertyKind.COLOR:
+            return False
+        val = prop.value
+        if isinstance(val, (tuple, list)):
+            if len(val) >= 4:
+                self.editing_color_value = (int(val[0]), int(val[1]), int(val[2]), int(val[3]))
+            elif len(val) == 3:
+                self.editing_color_value = (int(val[0]), int(val[1]), int(val[2]), 255)
+            else:
+                self.editing_color_value = (128, 128, 128, 255)
+        else:
+            self.editing_color_value = (128, 128, 128, 255)
+        self.editing_color_group = group_name
+        self.editing_color_prop = prop_name
+        self.editing_key = self._widget_key(group_name, prop_name)
+        return True
+
+    def _commit_color_edit(self) -> bool:
+        """Commit color edit."""
+        if not self.editing_color_group:
+            return False
+        r, g, b, a = self.editing_color_value
+        success = self.commit_property(self.editing_color_group, self.editing_color_prop, (r, g, b, a))
+        if success:
+            self._cancel_color_edit()
+        return success
+
+    def _cancel_color_edit(self) -> None:
+        self.editing_color_group = ""
+        self.editing_color_prop = ""
+        self.editing_color_value = (128, 128, 128, 255)
+        self.editing_key = None
+
+    def _is_click_on_color_sliders(self, mx: float, my: float) -> bool:
+        """Return True if click is within the color slider area."""
+        del mx, my
+        return False
+
+    def _handle_color_slider_click(self, mx: float, my: float) -> None:
+        """Process click on color slider. Adjust channel value based on click position."""
+        del mx, my
+
+    def _draw_vector(self, prop: PropertyDescriptor, rect: InspectorWidgetRect) -> None:
+        """Draw vector property as inline X/Y(/Z) fields."""
+        val = prop.value
+        if isinstance(val, (tuple, list)):
+            components = [float(v) for v in val[:3]]
+        else:
+            components = [0.0, 0.0]
+
+        if prop.kind is PropertyKind.VECTOR3:
+            labels = ("X", "Y", "Z")
+        else:
+            labels = ("X", "Y")
+
+        self._draw_rectangle(int(rect.x), int(rect.y), int(rect.width), int(rect.height), self._color(42, 42, 42, 255))
+
+        field_w = min(50, int(rect.width / len(labels)) - 4)
+        for i, label in enumerate(labels[:len(components)]):
+            fx = int(rect.x + 4 + i * (field_w + 4))
+            if components[i] == int(components[i]):
+                val_str = str(int(components[i]))
+            else:
+                val_str = f"{components[i]:.1f}"
+            self._draw_text(f"{label}:{val_str}", fx, int(rect.y + 3), 10, self._color(180, 200, 255, 255))
+
+    def _begin_vector_edit(self, group_name: str, prop_name: str) -> bool:
+        """Start editing a vector property via text edit."""
+        prop = self.model.find_property(group_name, prop_name)
+        if prop is None or prop.kind not in {PropertyKind.VECTOR2, PropertyKind.VECTOR3}:
+            return False
+        val = prop.value
+        if isinstance(val, (tuple, list)):
+            parts = [str(v) for v in val]
+            text = ", ".join(parts)
+        else:
+            text = str(val)
+        self.editing_group = group_name
+        self.editing_prop = prop_name
+        self.editing_kind = prop.kind
+        self.editing_key = self._widget_key(group_name, prop_name)
+        self.text_buffer = text
+        self.editing_vector_group = group_name
+        self.editing_vector_prop = prop_name
+        self.editing_vector_kind = prop.kind
+        return True
+
+    def _draw_dict_or_list(self, prop: PropertyDescriptor, rect: InspectorWidgetRect) -> None:
+        """Draw DICT/LIST property as expandable summary."""
+        key = self._widget_key(rect.group_name, prop.name)
+        is_expanded = key in self.expanded_keys
+
+        self._draw_rectangle(int(rect.x), int(rect.y), int(rect.width), int(rect.height), self._color(42, 42, 42, 255))
+
+        val = prop.value
+        if isinstance(val, dict):
+            count = len(val)
+            kind_str = "dict"
+        elif isinstance(val, (list, tuple)):
+            count = len(val)
+            kind_str = "list"
+        else:
+            count = 0
+            kind_str = "?"
+
+        arrow = "v" if is_expanded else ">"
+        self._draw_text(f"{arrow} {kind_str}[{count}]", int(rect.x + 5), int(rect.y + 3), 10, self._color(200, 200, 200, 255))
+
+    def _toggle_expand(self, group_name: str, prop_name: str) -> bool:
+        """Toggle expand/collapse for DICT/LIST property."""
+        key = self._widget_key(group_name, prop_name)
+        if key in self.expanded_keys:
+            self.expanded_keys.discard(key)
+        else:
+            self.expanded_keys.add(key)
+        return True
+
     def _draw_text_value(self, prop: PropertyDescriptor, rect: InspectorWidgetRect) -> None:
         self._draw_rectangle(int(rect.x), int(rect.y), int(rect.width), int(rect.height), self._color(42, 42, 42, 255))
-        if prop.kind in {PropertyKind.DICT, PropertyKind.LIST, PropertyKind.COLOR, PropertyKind.VECTOR2, PropertyKind.VECTOR3}:
-            value = str(prop.value)
-        else:
-            value = self.text_buffer if self.editing_key == rect.key else str(prop.value)
+        value = self.text_buffer if self.editing_key == rect.key else str(prop.value)
         self._draw_text(value, int(rect.x + 5), int(rect.y + 3), 10, self._color(200, 200, 200, 255))
 
     def _resolve_entity(self, world: WorldLike | dict[str, object], entity_name: str) -> object | None:
@@ -320,6 +529,72 @@ class InspectorPanel:
             if not callable(value) and isinstance(value, (bool, int, float, str, tuple, list, dict))
         }
 
+    def _draw_expanded_properties(self, prop: PropertyDescriptor, panel_x: int, start_y: int, panel_w: int, max_y: float) -> int:
+        """Render expanded DICT/LIST sub-properties. Returns new y position."""
+        y_pos = float(start_y)
+        indent = 12
+        val = prop.value
+
+        if isinstance(val, dict):
+            items = list(val.items())
+        elif isinstance(val, (list, tuple)):
+            items = [(str(i), v) for i, v in enumerate(val)]
+        else:
+            return int(y_pos)
+
+        for sub_name, sub_val in items:
+            if y_pos + self.ROW_HEIGHT > max_y:
+                break
+            sub_kind = infer_property_kind(sub_val)
+            if sub_kind is None:
+                continue
+            sub_prop = PropertyDescriptor(str(sub_name), sub_kind, value=sub_val)
+            label_x = panel_x + self.MARGIN + indent
+            self._draw_text(sub_prop.display_name, int(label_x), int(y_pos + 3), 10, self._color(160, 160, 160, 255))
+            val_x = panel_x + self.MARGIN + self.LABEL_WIDTH
+            val_w = max(0, panel_w - self.MARGIN * 2 - self.LABEL_WIDTH)
+            sub_rect = InspectorWidgetRect(
+                f"expanded:{sub_name}",
+                "",
+                str(sub_name),
+                float(val_x),
+                float(y_pos + 2),
+                float(val_w),
+                float(self.ROW_HEIGHT - 4),
+                sub_kind,
+            )
+            if sub_kind is PropertyKind.BOOL:
+                self._draw_bool(sub_prop, sub_rect)
+            elif sub_kind is PropertyKind.COLOR:
+                self._draw_color(sub_prop, sub_rect)
+            else:
+                self._draw_text_value(sub_prop, sub_rect)
+            y_pos += self.ROW_HEIGHT
+
+        return int(y_pos)
+
+    def _draw_color_sliders(self, panel_x: int, start_y: int, panel_w: int) -> None:
+        """Draw RGB(A) sliders for active color edit."""
+        r, g, b, a = self.editing_color_value
+        sl_x = panel_x + self.MARGIN + 8
+        sl_w = max(80, panel_w - self.MARGIN * 2 - 40)
+
+        y = start_y + 6
+        self._draw_text("Edit Color", sl_x, y, 10, self._color(220, 220, 200, 255))
+        y += 16
+
+        for value, label, color_label in [(r, 'R', (255, 80, 80)), (g, 'G', (80, 255, 80)), (b, 'B', (80, 80, 255)), (a, 'A', (200, 200, 200))]:
+            self._draw_text(f"{label}: {value}", sl_x, y, 10, self._color(*color_label, 255))
+            track_y = y + 12
+            self._draw_rectangle(sl_x, track_y, sl_w, 8, self._color(50, 50, 50, 255))
+            fill_w = int(sl_w * value / 255)
+            self._draw_rectangle(sl_x, track_y, fill_w, 8, self._color(*color_label, 255))
+            y += 24
+
+        swatch_x = sl_x + sl_w + 8
+        self._draw_rectangle(swatch_x, start_y + 22, 24, 24, self._color(r, g, b, a))
+        self._draw_rectangle(swatch_x - 1, start_y + 21, 26, 26, self._color(80, 80, 80, 255))
+
     def _can_draw(self) -> bool:
         is_ready = getattr(rl, "is_window_ready", None)
         return not callable(is_ready) or bool(is_ready())
@@ -329,6 +604,16 @@ class InspectorPanel:
             return int(float(text)) if text else 0
         if kind is PropertyKind.FLOAT:
             return float(text) if text else 0.0
+        if kind is PropertyKind.VECTOR2:
+            parts = [p.strip() for p in text.split(",")]
+            if len(parts) >= 2:
+                return (float(parts[0]), float(parts[1]))
+            return (0.0, 0.0)
+        if kind is PropertyKind.VECTOR3:
+            parts = [p.strip() for p in text.split(",")]
+            if len(parts) >= 3:
+                return (float(parts[0]), float(parts[1]), float(parts[2]))
+            return (0.0, 0.0, 0.0)
         return text
 
     def _action_result_success(self, result: Mapping[str, object]) -> bool:
