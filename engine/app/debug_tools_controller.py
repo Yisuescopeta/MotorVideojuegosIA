@@ -177,17 +177,17 @@ class DebugToolsController:
 
         state = self._get_state()
         width = self._get_width()
-        state_color = {
-            EngineState.EDIT: rl.SKYBLUE,
-            EngineState.PLAY: rl.GREEN,
-            EngineState.PAUSED: rl.ORANGE,
-        }
-        rl.draw_text(f"[{state}]", width // 2 - 40, 10, 20, state_color.get(state, rl.WHITE))
-        rl.draw_text(f"FPS: {self._time_manager.fps}", 10, 10, 20, rl.GREEN)
+        # state_color = {
+        #     EngineState.EDIT: rl.SKYBLUE,
+        #     EngineState.PLAY: rl.GREEN,
+        #     EngineState.PAUSED: rl.ORANGE,
+        # }
+        # rl.draw_text(f"[{state}]", width // 2 - 40, 10, 20, state_color.get(state, rl.WHITE))
+        # rl.draw_text(f"FPS: {self._time_manager.fps}", 10, 10, 20, rl.GREEN)
 
-        active_world = self._get_world()
-        if active_world is not None:
-            rl.draw_text(f"Entities: {active_world.entity_count()}", 10, 35, 16, rl.LIGHTGRAY)
+        # active_world = self._get_world()
+        # if active_world is not None:
+        #     rl.draw_text(f"Entities: {active_world.entity_count()}", 10, 35, 16, rl.LIGHTGRAY)
 
         collision_system = self._get_collision_system()
         if collision_system is not None and state == EngineState.PLAY:

@@ -142,12 +142,6 @@ class HierarchyPanel:
 
         self.panel_width = width
 
-        # Input: Close menu if clicking elsewhere (logic inside _draw_context_menu handles its own clicks)
-        if self.context_menu_active and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
-            # Simple check: if not in menu (evaluated later), close.
-            # Actually, let's defer closing to _draw_context_menu to check collision properly.
-            pass
-
         # Reset hover frame state
         self.hovered_entity_id = None
 
