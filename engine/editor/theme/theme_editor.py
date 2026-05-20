@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from engine.editor.theme import (
     THEME_REGISTRY,
@@ -61,7 +62,8 @@ class ThemeEditorPanel:
         current = theme.colors.get(name, (128, 128, 128, 255))
         a = current[3]
         data = theme.to_dict()
-        data["colors"][name] = [r, g, b, a]
+        colors_dict = cast(dict[str, list[int]], data["colors"])
+        colors_dict[name] = [r, g, b, a]
         new_theme = EditorTheme.from_dict(data)
         self._registry.register(new_theme)
         self._registry.set_active(new_theme.name)

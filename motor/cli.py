@@ -48,11 +48,33 @@ import sys
 from typing import List, Optional
 
 from motor.cli_core import (
+    cmd_agent_action_approve,
+    cmd_agent_message_send,
+    cmd_agent_providers_list,
+    cmd_agent_providers_login,
+    cmd_agent_providers_logout,
+    cmd_agent_providers_status,
+    cmd_agent_session_compact,
+    cmd_agent_session_create,
+    cmd_agent_session_inspect,
+    cmd_agent_usage,
     # Commands
     cmd_ai_compliance,
     cmd_ai_self_test,
     cmd_ai_start,
+    cmd_animator_ensure,
+    cmd_animator_info,
+    cmd_animator_remove_state,
+    cmd_animator_set_sheet,
+    cmd_animator_upsert_state,
+    cmd_assets_list,
     cmd_capabilities,
+    cmd_component_add,
+    cmd_component_edit,
+    cmd_component_remove,
+    cmd_debug_overlay,
+    cmd_debug_profiler_report,
+    cmd_debug_profiler_reset,
     cmd_doctor,
     cmd_editor_feature_flags_list,
     cmd_editor_feature_flags_set,
@@ -61,14 +83,22 @@ from motor.cli_core import (
     cmd_editor_theme_import,
     cmd_editor_theme_list,
     cmd_editor_theme_set,
-    cmd_project_info,
-    cmd_project_bootstrap_ai,
-    cmd_recipe_list,
-    cmd_recipe_show,
-    cmd_recipe_run,
+    cmd_entity_create,
+    cmd_entity_create_child,
+    cmd_entity_delete,
+    cmd_entity_group_add,
+    cmd_entity_group_list,
+    cmd_entity_group_remove,
+    cmd_entity_list,
+    cmd_entity_set_parent,
+    cmd_export_build,
+    cmd_export_build_all,
+    cmd_export_doctor,
+    cmd_export_pack,
+    cmd_export_presets_list,
+    cmd_export_presets_validate,
     cmd_game_platformer_add_checkpoint,
     cmd_game_platformer_add_coin,
-    cmd_game_platformer_create,
     cmd_game_platformer_add_enemy_patrol,
     cmd_game_platformer_add_goal,
     cmd_game_platformer_add_ground,
@@ -78,84 +108,60 @@ from motor.cli_core import (
     cmd_game_platformer_add_platform,
     cmd_game_platformer_add_player,
     cmd_game_platformer_add_respawn,
+    cmd_game_platformer_create,
     cmd_game_platformer_set_bounds,
     cmd_game_platformer_set_camera_follow,
     cmd_game_platformer_validate,
-    cmd_scene_list,
-    cmd_scene_create,
-    cmd_scene_load,
-    cmd_scene_save,
-    cmd_runtime_play,
-    cmd_runtime_step,
-    cmd_runtime_stop,
-    cmd_runtime_status,
-    cmd_runtime_entities,
-    cmd_runtime_inspect,
-    cmd_runtime_events,
+    cmd_physics_backend_list,
     cmd_physics_query_aabb,
+    cmd_physics_query_motion,
     cmd_physics_query_ray,
     cmd_physics_query_shape_cast,
-    cmd_physics_query_motion,
-    cmd_physics_backend_list,
-    cmd_signal_connect,
-    cmd_signal_emit,
-    cmd_signal_disconnect,
-    cmd_signal_list,
-    cmd_entity_group_add,
-    cmd_entity_group_remove,
-    cmd_entity_group_list,
-    cmd_ui_create_canvas,
-    cmd_ui_create_text,
-    cmd_ui_create_button,
-    cmd_ui_create_image,
-    cmd_scene_flow_next,
-    cmd_scene_flow_menu,
-    cmd_scene_flow_set_link,
-    cmd_runtime_undo,
-    cmd_runtime_redo,
-    cmd_entity_set_parent,
-    cmd_entity_create_child,
-    cmd_debug_profiler_reset,
-    cmd_debug_profiler_report,
-    cmd_debug_overlay,
-    cmd_service_register,
-    cmd_service_get,
-    cmd_service_has,
-    cmd_runtime_audio_play,
-    cmd_runtime_audio_stop,
-    cmd_runtime_audio_pause,
-    cmd_runtime_audio_resume,
-    cmd_entity_create,
-    cmd_entity_delete,
-    cmd_entity_list,
-    cmd_component_add,
-    cmd_component_edit,
-    cmd_component_remove,
+    cmd_prefab_apply,
     cmd_prefab_create,
     cmd_prefab_instantiate,
-    cmd_prefab_unpack,
-    cmd_prefab_apply,
     cmd_prefab_list,
-    cmd_assets_list,
-    cmd_slices_list,
-    cmd_slices_grid,
+    cmd_prefab_unpack,
+    cmd_project_bootstrap_ai,
+    cmd_project_info,
+    cmd_recipe_list,
+    cmd_recipe_run,
+    cmd_recipe_show,
+    cmd_runtime_audio_pause,
+    cmd_runtime_audio_play,
+    cmd_runtime_audio_resume,
+    cmd_runtime_audio_stop,
+    cmd_runtime_entities,
+    cmd_runtime_events,
+    cmd_runtime_inspect,
+    cmd_runtime_play,
+    cmd_runtime_redo,
+    cmd_runtime_status,
+    cmd_runtime_step,
+    cmd_runtime_stop,
+    cmd_runtime_undo,
+    cmd_scene_create,
+    cmd_scene_flow_menu,
+    cmd_scene_flow_next,
+    cmd_scene_flow_set_link,
+    cmd_scene_list,
+    cmd_scene_load,
+    cmd_scene_save,
+    cmd_service_get,
+    cmd_service_has,
+    cmd_service_register,
+    cmd_signal_connect,
+    cmd_signal_disconnect,
+    cmd_signal_emit,
+    cmd_signal_list,
     cmd_slices_auto,
+    cmd_slices_grid,
+    cmd_slices_list,
     cmd_slices_manual,
-    cmd_agent_session_create,
-    cmd_agent_message_send,
-    cmd_agent_action_approve,
-    cmd_agent_providers_list,
-    cmd_agent_providers_login,
-    cmd_agent_providers_logout,
-    cmd_agent_providers_status,
-    cmd_agent_session_compact,
-    cmd_agent_session_inspect,
-    cmd_agent_usage,
-    cmd_animator_info,
-    cmd_animator_set_sheet,
-    cmd_animator_upsert_state,
-    cmd_animator_remove_state,
-    cmd_animator_ensure,
+    cmd_ui_create_button,
+    cmd_ui_create_canvas,
+    cmd_ui_create_image,
+    cmd_ui_create_text,
 )
 
 __all__ = ["main", "cli_main", "run_motor_command", "create_motor_parser"]
@@ -175,31 +181,31 @@ AI-Facing Commands:
   ai compliance             Validate AI-native project compliance
   ai self-test              Run controlled AI self-test workflow
   capabilities              Discover engine capabilities
-  doctor                    Validate project health
-  
-  project info              Show project information
+   doctor                    Validate project health
+
+   project info              Show project information
   editor theme list|active|set|export|import
   editor feature-flags list|set
   project bootstrap-ai      Generate AI bootstrap files
   recipe list/show/run      Declarative AI recipes for common workflows
   game platformer create    Create minimal native 2D platformer scene
   game platformer add-*     Add/update native platformer entities and semantics
-  game platformer validate  Validate native platformer scene
-  
-  scene list                List all scenes
+   game platformer validate  Validate native platformer scene
+
+   scene list                List all scenes
   scene create <name>       Create new scene
   scene load <path>         Load a scene
   scene save                Save active scene
 
   runtime play              Start a stateless headless runtime check
   runtime step              Run PLAY -> STEP -> STOP headlessly
-  runtime stop              Stop runtime in the current stateless process
-  
-  entity create <name>      Create entity in active scene
+   runtime stop              Stop runtime in the current stateless process
+
+   entity create <name>      Create entity in active scene
   entity list               List entities in active scene
-  entity delete <name>      Delete entity from active scene
-  
-  component add <e> <c>     Add component to entity
+   entity delete <name>      Delete entity from active scene
+
+   component add <e> <c>     Add component to entity
   component edit <e> <c> <p> <v>  Edit component property
   component remove <e> <c>  Remove component from entity
 
@@ -207,15 +213,15 @@ AI-Facing Commands:
   prefab instantiate <p>    Instantiate prefab in active scene
   prefab unpack <e>         Convert prefab instance to explicit entities
   prefab apply <e>          Apply instance overrides to source prefab
-  prefab list               List project prefabs
-  
-  animator info <e>         Show animator configuration
+   prefab list               List project prefabs
+
+   animator info <e>         Show animator configuration
   animator set-sheet <e> <a>  Set sprite sheet
   animator ensure <e>       Ensure Animator exists (creates if missing)
   animator state create <e> <s>  Create/update animation state
-  animator state remove <e> <s>  Remove animation state
-  
-  asset list                List project assets
+   animator state remove <e> <s>  Remove animation state
+
+   asset list                List project assets
   asset slice list <a>      List slices for asset
   asset slice grid <a>      Create grid-based slices
   asset slice auto <a>      Auto-detect slices
@@ -270,7 +276,7 @@ Documentation:
   - See docs/cli.md for the official CLI reference
         """,
     )
-    
+
     parser.add_argument(
         "--version",
         action="version",
@@ -413,7 +419,7 @@ Documentation:
         help="Project operations",
     )
     project_subparsers = project_parser.add_subparsers(dest="project_subcommand", required=True)
-    
+
     proj_info_parser = project_subparsers.add_parser(
         "info",
         help="Get project information",
@@ -423,7 +429,7 @@ Documentation:
         help="Path to project directory"
     )
     proj_info_parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    
+
     proj_bootstrap_parser = project_subparsers.add_parser(
         "bootstrap-ai",
         help="Generate AI bootstrap files (motor_ai.json and START_HERE_AI.md)",
@@ -717,13 +723,100 @@ Documentation:
     )
     game_platformer_validate_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
+    # === export ===
+    export_parser = subparsers.add_parser(
+        "export",
+        help="Export and build operations",
+    )
+    export_subparsers = export_parser.add_subparsers(dest="export_subcommand", required=True)
+
+    export_presets_parser = export_subparsers.add_parser(
+        "presets",
+        help="Manage export presets",
+    )
+    export_presets_subparsers = export_presets_parser.add_subparsers(
+        dest="export_presets_subcommand", required=True,
+    )
+
+    export_presets_list_parser = export_presets_subparsers.add_parser(
+        "list",
+        help="List all export presets",
+    )
+    export_presets_list_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory",
+    )
+    export_presets_list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    export_presets_validate_parser = export_presets_subparsers.add_parser(
+        "validate",
+        help="Validate export presets",
+    )
+    export_presets_validate_parser.add_argument(
+        "--name", dest="preset_name", default=None,
+        help="Validate a specific preset by name",
+    )
+    export_presets_validate_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory",
+    )
+    export_presets_validate_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    export_doctor_parser = export_subparsers.add_parser(
+        "doctor",
+        help="Check export toolchain health",
+    )
+    export_doctor_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory",
+    )
+    export_doctor_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    export_pack_parser = export_subparsers.add_parser(
+        "pack",
+        help="Build content pack for a preset",
+    )
+    export_pack_parser.add_argument(
+        "preset_name",
+        help="Name of the export preset",
+    )
+    export_pack_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory",
+    )
+    export_pack_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    export_build_parser = export_subparsers.add_parser(
+        "build",
+        help="Build export for a preset",
+    )
+    export_build_parser.add_argument(
+        "preset_name",
+        help="Name of the export preset",
+    )
+    export_build_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory",
+    )
+    export_build_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
+    export_build_all_parser = export_subparsers.add_parser(
+        "build-all",
+        help="Build all export presets",
+    )
+    export_build_all_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory",
+    )
+    export_build_all_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
     # === scene ===
     scene_parser = subparsers.add_parser(
         "scene",
         help="Scene operations",
     )
     scene_subparsers = scene_parser.add_subparsers(dest="scene_subcommand", required=True)
-    
+
     scene_list_parser = scene_subparsers.add_parser(
         "list",
         help="List all scenes",
@@ -733,7 +826,7 @@ Documentation:
         help="Path to project directory"
     )
     scene_list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    
+
     scene_create_parser = scene_subparsers.add_parser(
         "create",
         help="Create a new scene",
@@ -744,7 +837,7 @@ Documentation:
         help="Path to project directory"
     )
     scene_create_parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    
+
     scene_load_parser = scene_subparsers.add_parser(
         "load",
         help="Load a scene",
@@ -755,7 +848,7 @@ Documentation:
         help="Path to project directory"
     )
     scene_load_parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    
+
     scene_save_parser = scene_subparsers.add_parser(
         "save",
         help="Save the active scene",
@@ -1171,7 +1264,7 @@ Documentation:
         help="Entity operations",
     )
     entity_subparsers = entity_parser.add_subparsers(dest="entity_subcommand", required=True)
-    
+
     entity_create_parser = entity_subparsers.add_parser(
         "create",
         help="Create a new entity in the active scene",
@@ -1291,7 +1384,7 @@ Documentation:
         help="Component operations",
     )
     component_subparsers = component_parser.add_subparsers(dest="component_subcommand", required=True)
-    
+
     component_add_parser = component_subparsers.add_parser(
         "add",
         help="Add a component to an entity",
@@ -1418,7 +1511,7 @@ Documentation:
         help="Animator operations",
     )
     animator_subparsers = animator_parser.add_subparsers(dest="animator_subcommand", required=True)
-    
+
     animator_info_parser = animator_subparsers.add_parser(
         "info",
         help="Get animator info for an entity",
@@ -1429,7 +1522,7 @@ Documentation:
         help="Path to project directory"
     )
     animator_info_parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    
+
     animator_sheet_parser = animator_subparsers.add_parser(
         "set-sheet",
         help="Set sprite sheet for animator",
@@ -1441,7 +1534,7 @@ Documentation:
         help="Path to project directory"
     )
     animator_sheet_parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    
+
     animator_ensure_parser = animator_subparsers.add_parser(
         "ensure",
         help="Ensure Animator exists with optional sheet (creates or updates)",
@@ -1456,14 +1549,14 @@ Documentation:
         help="Path to project directory"
     )
     animator_ensure_parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    
+
     # animator state subcommand (nueva gramática jerárquica)
     animator_state_parser = animator_subparsers.add_parser(
         "state",
         help="Animator state operations",
     )
     animator_state_subparsers = animator_state_parser.add_subparsers(dest="animator_state_subcommand", required=True)
-    
+
     # state create (antes upsert-state)
     animator_state_create_parser = animator_state_subparsers.add_parser(
         "create",
@@ -1500,7 +1593,7 @@ Documentation:
         help="Path to project directory"
     )
     animator_state_create_parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    
+
     # state remove (antes remove-state)
     animator_state_remove_parser = animator_state_subparsers.add_parser(
         "remove",
@@ -1513,7 +1606,7 @@ Documentation:
         help="Path to project directory"
     )
     animator_state_remove_parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    
+
     # === LEGACY COMMANDS (compatibilidad temporal, no documentados) ===
     # upsert-state legacy alias
     animator_upsert_parser = animator_subparsers.add_parser(
@@ -1530,7 +1623,7 @@ Documentation:
     animator_upsert_parser.add_argument("--auto-create", action="store_true", help=argparse.SUPPRESS)
     animator_upsert_parser.add_argument("--project", dest="project_root", default=".", help=argparse.SUPPRESS)
     animator_upsert_parser.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
-    
+
     # remove-state legacy alias
     animator_remove_parser = animator_subparsers.add_parser(
         "remove-state",
@@ -1547,7 +1640,7 @@ Documentation:
         help="Asset operations",
     )
     asset_subparsers = asset_parser.add_subparsers(dest="asset_subcommand", required=True)
-    
+
     # asset list
     asset_list_parser = asset_subparsers.add_parser(
         "list",
@@ -1562,14 +1655,14 @@ Documentation:
         help="Search filter for asset names"
     )
     asset_list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    
+
     # asset slice
     asset_slice_parser = asset_subparsers.add_parser(
         "slice",
         help="Slice operations",
     )
     asset_slice_subparsers = asset_slice_parser.add_subparsers(dest="slice_subcommand", required=True)
-    
+
     # slice list
     slice_list_parser = asset_slice_subparsers.add_parser(
         "list",
@@ -1581,7 +1674,7 @@ Documentation:
         help="Path to project directory"
     )
     slice_list_parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    
+
     # slice grid
     slice_grid_parser = asset_slice_subparsers.add_parser(
         "grid",
@@ -1621,7 +1714,7 @@ Documentation:
         help="Naming prefix for slices"
     )
     slice_grid_parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    
+
     # slice auto
     slice_auto_parser = asset_slice_subparsers.add_parser(
         "auto",
@@ -1653,7 +1746,7 @@ Documentation:
         help="Preview only, don't save"
     )
     slice_auto_parser.add_argument("--json", action="store_true", help="Output in JSON format")
-    
+
     # slice manual
     slice_manual_parser = asset_slice_subparsers.add_parser(
         "manual",
@@ -2010,10 +2103,10 @@ Documentation:
 def dispatch_command(parsed: argparse.Namespace) -> int:
     """Dispatch to appropriate command handler based on parsed args."""
     from pathlib import Path
-    
+
     if not parsed.command:
         return 0  # Help was already printed
-    
+
     # === capabilities ===
     if parsed.command == "ai":
         if parsed.ai_subcommand == "start":
@@ -2038,7 +2131,7 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
     # === capabilities ===
     if parsed.command == "capabilities":
         return cmd_capabilities(json_output=parsed.json)
-    
+
     # === doctor ===
     elif parsed.command == "doctor":
         return cmd_doctor(
@@ -2064,7 +2157,7 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 return cmd_editor_feature_flags_list(Path(parsed.project_root).resolve(), parsed.json)
             if parsed.editor_flags_subcommand == "set":
                 return cmd_editor_feature_flags_set(Path(parsed.project_root).resolve(), parsed.name, parsed.value, parsed.json)
-     
+
     # === project ===
     elif parsed.command == "project":
         if parsed.project_subcommand == "info":
@@ -2238,7 +2331,7 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                     project_path=Path(parsed.project_root).resolve(),
                     json_output=parsed.json,
                 )
-    
+
     # === scene ===
     elif parsed.command == "scene":
         if parsed.scene_subcommand == "list":
@@ -2282,6 +2375,43 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                     entity_id=parsed.entity_id,
                     json_output=parsed.json,
                 )
+
+    # === export ===
+    elif parsed.command == "export":
+        if parsed.export_subcommand == "presets":
+            if parsed.export_presets_subcommand == "list":
+                return cmd_export_presets_list(
+                    project_path=Path(parsed.project_root).resolve(),
+                    json_output=parsed.json,
+                )
+            if parsed.export_presets_subcommand == "validate":
+                return cmd_export_presets_validate(
+                    project_path=Path(parsed.project_root).resolve(),
+                    preset_name=parsed.preset_name,
+                    json_output=parsed.json,
+                )
+        elif parsed.export_subcommand == "doctor":
+            return cmd_export_doctor(
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
+        elif parsed.export_subcommand == "pack":
+            return cmd_export_pack(
+                project_path=Path(parsed.project_root).resolve(),
+                preset_name=parsed.preset_name,
+                json_output=parsed.json,
+            )
+        elif parsed.export_subcommand == "build":
+            return cmd_export_build(
+                project_path=Path(parsed.project_root).resolve(),
+                preset_name=parsed.preset_name,
+                json_output=parsed.json,
+            )
+        elif parsed.export_subcommand == "build-all":
+            return cmd_export_build_all(
+                project_path=Path(parsed.project_root).resolve(),
+                json_output=parsed.json,
+            )
 
     # === runtime ===
     elif parsed.command == "runtime":
@@ -2492,7 +2622,7 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 name=parsed.name,
                 json_output=parsed.json,
             )
-    
+
     # === component ===
     elif parsed.command == "component":
         if parsed.component_subcommand == "add":
@@ -2649,7 +2779,7 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 state_name=parsed.state,
                 json_output=parsed.json,
             )
-    
+
     # === asset ===
     elif parsed.command == "asset":
         if parsed.asset_subcommand == "list":
@@ -2699,10 +2829,10 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                     if not slices_file.exists():
                         slices_file = Path(parsed.project_root) / slices_input
                     slices_data = json.loads(slices_file.read_text(encoding="utf-8"))
-                
+
                 if isinstance(slices_data, dict) and "slices" in slices_data:
                     slices_data = slices_data["slices"]
-                
+
                 return cmd_slices_manual(
                     project_path=Path(parsed.project_root).resolve(),
                     asset_path=parsed.asset,
@@ -2895,27 +3025,27 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 session_id=parsed.session_id,
                 json_output=parsed.json,
             )
-    
+
     return 1  # Unknown command
 
 
 def run_motor_command(args: Optional[List[str]] = None) -> int:
     """
     Execute motor CLI command with given arguments.
-    
+
     Args:
         args: Command line arguments. If None, uses sys.argv[1:].
-        
+
     Returns:
         Exit code (0 for success, non-zero for errors).
     """
     parser = create_motor_parser()
     parsed = parser.parse_args(args)
-    
+
     if not parsed.command:
         parser.print_help()
         return 0
-    
+
     try:
         return dispatch_command(parsed)
     except KeyboardInterrupt:

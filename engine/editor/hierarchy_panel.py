@@ -501,7 +501,7 @@ class HierarchyPanel:
                     ContextMenuItem(id="unparent", label="Unparent"),
                     ContextMenuItem(id="save_prefab", label="Save as Prefab"),
                 ])
-            menu = ContextMenuModel(id="hierarchy_menu", items=items)
+            menu = ContextMenuModel(items=items)
             if self._layout:
                 self._layout.show_context_menu(menu, mouse.x, mouse.y)
 

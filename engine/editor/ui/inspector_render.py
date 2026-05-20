@@ -420,6 +420,7 @@ class InspectorPanel:
         else:
             components = [0.0, 0.0]
 
+        labels: tuple[str, ...]
         if prop.kind is PropertyKind.VECTOR3:
             labels = ("X", "Y", "Z")
         else:

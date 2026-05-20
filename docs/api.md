@@ -49,6 +49,28 @@ tooling` para adaptadores del editor que necesitan una fachada sobre runtime
 vivo sin inicializar un segundo motor headless. No es un constructor core
 estable ni debe usarse desde CLI o automatizaciones generales.
 
+## Export/build
+
+Fuente: `engine/api/_export_api.py` y servicios en `engine/export/`.
+
+La exportacion publica usa siempre `EngineAPI` o la CLI oficial `motor`. No se
+usa `main.py` del editor como entrypoint de juego exportado.
+
+- `list_export_presets()` lista presets desde `export_presets.motor.json`.
+- `validate_export_preset(name=None)` valida schema, rutas, plataforma, modo,
+  entry scene, output y opciones moviles.
+- `export_doctor()` reporta toolchains disponibles y bloqueos externos.
+- `export_pack(name)` genera content staging, `game.manifest.json` y `game.pak`.
+- `build_export(name)` ejecuta el exporter de plataforma y escribe build report.
+- `build_all_exports()` ejecuta todos los presets y falla si alguno falla.
+
+Todas devuelven `{ "success": bool, "message": str, "data": object }`. Los
+errores accionables incluyen `ENTRY_SCENE_NOT_FOUND`, `UNSAFE_OUTPUT_PATH`,
+`UNKNOWN_PRESET_FIELD` y `TOOLCHAIN_UNAVAILABLE`.
+
+Documentacion relacionada: [export_pipeline.md](export_pipeline.md),
+[export_presets.md](export_presets.md), [build_artifacts.md](build_artifacts.md).
+
 ## Agente experimental
 
 Fuente: `engine/api/_agent_api.py`.

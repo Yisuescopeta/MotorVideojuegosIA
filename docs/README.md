@@ -27,6 +27,7 @@ experimental y archivo historico. Si hay conflicto, manda este orden:
 | Como contribuir | [../CONTRIBUTING.md](../CONTRIBUTING.md) |
 | Que es experimental | [module_taxonomy.md](module_taxonomy.md) |
 | Que interfaz publica existe | [api.md](api.md) y [cli.md](cli.md) |
+| Como exportar/build juegos | [export_pipeline.md](export_pipeline.md), [export_presets.md](export_presets.md), [runtime_templates.md](runtime_templates.md), [build_artifacts.md](build_artifacts.md), [mobile_export.md](mobile_export.md), [troubleshooting_export.md](troubleshooting_export.md), [api.md](api.md) y [cli.md](cli.md) |
 | Donde mirar arquitectura | [architecture.md](architecture.md) y [TECHNICAL.md](TECHNICAL.md) |
 | Como trabajar por ramas y workspaces | [roadmap/master-plan.md](roadmap/master-plan.md), [architecture/branch-strategy.md](architecture/branch-strategy.md) y [architecture/module-boundaries.md](architecture/module-boundaries.md) |
 | Donde mirar automatizacion o IA | [agents.md](agents.md), [ai_assisted_workflows.md](ai_assisted_workflows.md) y [MOTOR_AI_JSON_CONTRACT.md](MOTOR_AI_JSON_CONTRACT.md) |
@@ -43,6 +44,11 @@ contradecirlos.
 - [module_taxonomy.md](module_taxonomy.md) - clasificacion por subsistema.
 - [api.md](api.md) - referencia publica de `EngineAPI`.
 - [cli.md](cli.md) - referencia oficial de la CLI `motor`.
+- [export_pipeline.md](export_pipeline.md) - uso y arquitectura del pipeline de export/build.
+- [export_presets.md](export_presets.md) - formato, schema, validacion y CLI de presets.
+- [runtime_templates.md](runtime_templates.md) - entrypoint separado del editor, flags y plataformas.
+- [build_artifacts.md](build_artifacts.md) - manifiesto, game.pak, content pack y build reports.
+- [mobile_export.md](mobile_export.md) - requisitos, templates y builds Android/iOS.
 - [MOTOR_AI_JSON_CONTRACT.md](MOTOR_AI_JSON_CONTRACT.md) - contrato del artefacto generado `motor_ai.json`.
 - [editor_ui_architecture.md](editor_ui_architecture.md) - separación oficial Editor UI (impuro) vs `ui_core` (puro).
 
@@ -50,6 +56,8 @@ contradecirlos.
 
 - [glossary.md](glossary.md) - conceptos clave para lectores frios.
 - [building.md](building.md) - build y distribucion Windows.
+- [troubleshooting_export.md](troubleshooting_export.md) - diagnostico de errores comunes de export.
+- [export_implementation_report.md](export_implementation_report.md) - reporte operativo de la implementacion del pipeline de export.
 
 ## Desarrollo paralelo
 
@@ -94,6 +102,10 @@ el contrato de `core obligatorio`.
 - [rl.md](rl.md) - wrappers RL, datasets y runners headless.
 - [ai_assisted_workflows.md](ai_assisted_workflows.md) - modelos de flujo para automatizacion.
 - [tooling_foundation.md](tooling_foundation.md) - tooling local para checks enfocados, audit del registry y soporte read-only de worktrees.
+
+## Decisiones de arquitectura (ADR)
+
+- [adr/0001-export-pipeline.md](adr/0001-export-pipeline.md) - separacion editor/runtime, presets, content pack SHA-256, reports sanitizados, TOOLCHAIN_UNAVAILABLE.
 
 ## Gobernanza
 

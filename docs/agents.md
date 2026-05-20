@@ -104,6 +104,12 @@ py -m motor ai start --project . --json
 py -m motor ai compliance --project . --json
 py -m motor ai self-test --project . --profile platformer --json
 py -m motor doctor --project . --json
+py -m motor export presets list --project . --json
+py -m motor export presets validate --project . --json
+py -m motor export doctor --project . --json
+py -m motor export pack "Windows Desktop" --project . --json
+py -m motor export build "Windows Desktop" --project . --json
+py -m motor export build "Android Debug" --project . --json
 py -m motor editor theme list --project . --json
 py -m motor editor theme active --project . --json
 py -m motor editor theme set unity_dark --project . --json

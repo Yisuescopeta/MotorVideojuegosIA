@@ -3323,6 +3323,160 @@
                 "ui",
                 "authoring"
             ]
+        },
+        {
+            "id": "export:presets:list",
+            "summary": "List all export presets",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "ExportAPI.list_export_presets"
+            ],
+            "cli_command": "motor export presets list [--project <path>] [--json]",
+            "example": {
+                "description": "List all configured export presets",
+                "api_calls": [
+                    {
+                        "method": "list_export_presets",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns array of export presets with their platform, mode, and entry scene"
+            },
+            "notes": "Reads export_presets.motor.json from project root. Auto-migrates old schema versions.",
+            "tags": [
+                "export",
+                "presets"
+            ]
+        },
+        {
+            "id": "export:presets:validate",
+            "summary": "Validate export presets against schema and project",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "ExportAPI.validate_export_preset"
+            ],
+            "cli_command": "motor export presets validate [--project <path>] [--json]",
+            "example": {
+                "description": "Validate all export presets",
+                "api_calls": [
+                    {
+                        "method": "validate_export_preset",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns success if all presets are valid, or actionable errors per preset"
+            },
+            "notes": "Checks schema, unique names, platform enums, required fields, entry scene existence, and safe output paths.",
+            "tags": [
+                "export",
+                "validation"
+            ]
+        },
+        {
+            "id": "export:doctor",
+            "summary": "Check export toolchain health",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "ExportAPI.export_doctor"
+            ],
+            "cli_command": "motor export doctor [--project <path>] [--json]",
+            "example": {
+                "description": "Diagnose export toolchain readiness",
+                "api_calls": [
+                    {
+                        "method": "export_doctor",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns toolchain availability for all platforms with actionable warnings"
+            },
+            "notes": "Checks PyInstaller, Android SDK, Java, Gradle, and reports what is missing per platform.",
+            "tags": [
+                "export",
+                "diagnostics"
+            ]
+        },
+        {
+            "id": "export:pack",
+            "summary": "Build content pack for a preset",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "ExportAPI.export_pack"
+            ],
+            "cli_command": "motor export pack <preset_name> [--project <path>] [--json]",
+            "example": {
+                "description": "Build content pack for Windows Desktop preset",
+                "api_calls": [
+                    {
+                        "method": "export_pack",
+                        "args": {
+                            "name": "Windows Desktop"
+                        }
+                    }
+                ],
+                "expected_outcome": "Generates deterministic content pack with manifest, assets, scenes, and scripts"
+            },
+            "notes": "Builds dependency graph from entry scene, collects reachable assets, generates manifest with SHA-256 hashes.",
+            "tags": [
+                "export",
+                "content"
+            ]
+        },
+        {
+            "id": "export:build",
+            "summary": "Build export for a preset",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "ExportAPI.build_export"
+            ],
+            "cli_command": "motor export build <preset_name> [--project <path>] [--json]",
+            "example": {
+                "description": "Build Windows Desktop executable",
+                "api_calls": [
+                    {
+                        "method": "build_export",
+                        "args": {
+                            "name": "Windows Desktop"
+                        }
+                    }
+                ],
+                "expected_outcome": "Produces platform-specific executable or reports TOOLCHAIN_UNAVAILABLE clearly"
+            },
+            "notes": "Builds content pack, generates platform-specific artifacts (exe for Windows). Reports TOOLCHAIN_UNAVAILABLE when PyInstaller/Android SDK/Xcode missing.",
+            "tags": [
+                "export",
+                "build"
+            ]
+        },
+        {
+            "id": "export:build-all",
+            "summary": "Build all export presets",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "ExportAPI.build_all_exports"
+            ],
+            "cli_command": "motor export build-all [--project <path>] [--json]",
+            "example": {
+                "description": "Build all configured export presets",
+                "api_calls": [
+                    {
+                        "method": "build_all_exports",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Builds all presets and reports results per preset"
+            },
+            "notes": "Iterates over all presets and runs build_export for each. Returns aggregated results.",
+            "tags": [
+                "export",
+                "build"
+            ]
         }
     ],
     "planned_capabilities": [
@@ -3485,7 +3639,7 @@
         }
     ],
     "capability_counts": {
-        "implemented": 112,
+        "implemented": 118,
         "planned": 6,
         "total": 118
     },

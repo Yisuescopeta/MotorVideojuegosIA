@@ -1,0 +1,3 @@
+"""
+Android template placeholder.
+"""

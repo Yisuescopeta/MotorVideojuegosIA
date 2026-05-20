@@ -16,13 +16,13 @@ from typing import Any, Dict, List, Optional
 
 from engine.ai import get_default_registry
 from engine.api import EngineAPI
-from engine.config import ENGINE_VERSION
-from engine.project.project_service import ProjectManifest
 from engine.api.errors import (
     RecipeError,
     RecipeNotFoundError,
     RecipeValidationError,
 )
+from engine.config import ENGINE_VERSION
+from engine.project.project_service import ProjectManifest
 from motor.platformer_scaffold import (
     add_platformer_checkpoint,
     add_platformer_coin,
@@ -128,9 +128,9 @@ def _init_engine(project_path: Path, auto_ensure_project: bool = True, read_only
 
 def _auto_load_scene(api: EngineAPI) -> tuple[bool, str]:
     """Auto-load the last active scene if no scene is currently active.
-    
+
     Uses only public EngineAPI surfaces - no direct SceneManager access.
-    
+
     Returns:
         Tuple of (success, message)
     """
@@ -138,7 +138,7 @@ def _auto_load_scene(api: EngineAPI) -> tuple[bool, str]:
     if api.has_active_scene():
         scene_info = api.get_active_scene_info()
         return True, f"Scene already active: {scene_info.get('name', 'unknown')}"
-    
+
     # Try to load the last scene from editor state
     editor_state = api.get_editor_state()
     last_scene = editor_state.get("last_scene", "")
@@ -3054,7 +3054,7 @@ def cmd_project_bootstrap_ai(project_path: Path, json_output: bool) -> int:
         manifest_path = project_path / "project.json"
         manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
         manifest = ProjectManifest.from_dict(manifest_data)
-        motor_ai_data = api.project_service.generate_ai_bootstrap(project_path, manifest)
+        api.project_service.generate_ai_bootstrap(project_path, manifest)
 
         registry_data = api.get_capability_registry()
 
@@ -4398,6 +4398,141 @@ def cmd_runtime_audio_resume(
         if api is not None:
             try:
                 api.stop()
+                api.shutdown()
+            except Exception:
+                pass
+
+
+# ============================================================
+#  Export / Build Pipeline Commands
+# ============================================================
+
+
+def cmd_export_presets_list(project_path: Path, json_output: bool) -> int:
+    api = None
+    try:
+        api = _init_engine(project_path)
+        result = api.list_export_presets()
+        return _output(
+            result.get("success", False),
+            result.get("message", ""),
+            result.get("data"),
+            json_output,
+        )
+    except Exception as exc:
+        return _output(False, f"Preset list failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_export_presets_validate(project_path: Path, preset_name: str | None = None, json_output: bool = False) -> int:
+    api = None
+    try:
+        api = _init_engine(project_path)
+        result = api.validate_export_preset(preset_name)
+        return _output(
+            result.get("success", False),
+            result.get("message", ""),
+            result.get("data"),
+            json_output,
+        )
+    except Exception as exc:
+        return _output(False, f"Preset validation failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_export_doctor(project_path: Path, json_output: bool) -> int:
+    api = None
+    try:
+        api = _init_engine(project_path)
+        result = api.export_doctor()
+        return _output(
+            result.get("success", False),
+            result.get("message", ""),
+            result.get("data"),
+            json_output,
+        )
+    except Exception as exc:
+        return _output(False, f"Export doctor failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_export_pack(
+    project_path: Path, preset_name: str, json_output: bool
+) -> int:
+    api = None
+    try:
+        api = _init_engine(project_path)
+        result = api.export_pack(preset_name)
+        return _output(
+            result.get("success", False),
+            result.get("message", ""),
+            result.get("data"),
+            json_output,
+        )
+    except Exception as exc:
+        return _output(False, f"Export pack failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_export_build(
+    project_path: Path, preset_name: str, json_output: bool
+) -> int:
+    api = None
+    try:
+        api = _init_engine(project_path)
+        result = api.build_export(preset_name)
+        return _output(
+            result.get("success", False),
+            result.get("message", ""),
+            result.get("data"),
+            json_output,
+        )
+    except Exception as exc:
+        return _output(False, f"Export build failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
+                api.shutdown()
+            except Exception:
+                pass
+
+
+def cmd_export_build_all(project_path: Path, json_output: bool) -> int:
+    api = None
+    try:
+        api = _init_engine(project_path)
+        result = api.build_all_exports()
+        return _output(
+            result.get("success", False),
+            result.get("message", ""),
+            result.get("data"),
+            json_output,
+        )
+    except Exception as exc:
+        return _output(False, f"Build-all failed: {exc}", None, json_output)
+    finally:
+        if api is not None:
+            try:
                 api.shutdown()
             except Exception:
                 pass

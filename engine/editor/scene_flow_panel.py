@@ -800,7 +800,7 @@ class SceneFlowPanel:
                     from engine.editor.ui_core.controls.context_menu import ContextMenuItem, ContextMenuModel
                     self._context_menu_node_key = node_key
                     self._selected_node_key = node_key
-                    menu = ContextMenuModel(id="flow_menu", items=[
+                    menu = ContextMenuModel(items=[
                         ContextMenuItem(id="open_in_scene", label="Ver en escena"),
                     ])
                     self._layout.show_context_menu(menu, mouse.x, mouse.y)

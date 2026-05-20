@@ -45,11 +45,103 @@ class CapabilityRegistryBuilder:
         self._register_agent_capabilities()
         self._register_signal_capabilities()
         self._register_ui_capabilities()
+        self._register_export_capabilities()
         self._register_editor_capabilities()
         self._register_debug_capabilities()
         self._register_service_capabilities()
         self._register_entity_group_capabilities()
         return self._registry
+
+    def _register_export_capabilities(self) -> None:
+        self._add(Capability(
+            id="export:presets:list",
+            summary="List export presets configured for the project",
+            mode="both",
+            api_methods=["ExportAPI.list_export_presets"],
+            cli_command="motor export presets list [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="List export presets",
+                api_calls=[{"method": "list_export_presets", "args": {}}],
+                expected_outcome="Returns configured export presets",
+            ),
+            notes="Reads export_presets.motor.json from the project root.",
+            tags=["export", "build", "presets"],
+        ))
+
+        self._add(Capability(
+            id="export:presets:validate",
+            summary="Validate export presets and project paths",
+            mode="both",
+            api_methods=["ExportAPI.validate_export_preset"],
+            cli_command="motor export presets validate [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Validate all export presets",
+                api_calls=[{"method": "validate_export_preset", "args": {}}],
+                expected_outcome="Returns actionable preset validation errors or success",
+            ),
+            notes="Validates schema, entry scene, output path and platform options.",
+            tags=["export", "validation", "presets"],
+        ))
+
+        self._add(Capability(
+            id="export:doctor",
+            summary="Check export toolchains and external SDK availability",
+            mode="both",
+            api_methods=["ExportAPI.export_doctor"],
+            cli_command="motor export doctor [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Check export environment",
+                api_calls=[{"method": "export_doctor", "args": {}}],
+                expected_outcome="Reports PyInstaller, Android SDK, Java, Gradle and OS data",
+            ),
+            notes="Read-only diagnostic; warnings are not build success claims.",
+            tags=["export", "doctor", "toolchain"],
+        ))
+
+        self._add(Capability(
+            id="export:pack",
+            summary="Build deterministic content pack for an export preset",
+            mode="both",
+            api_methods=["ExportAPI.export_pack"],
+            cli_command="motor export pack <preset> [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Pack Windows Desktop content",
+                api_calls=[{"method": "export_pack", "args": {"name": "Windows Desktop"}}],
+                expected_outcome="Writes game.manifest.json, game.pak and staged content",
+            ),
+            notes="Uses reachable content graph unless debug/include_all_assets is enabled.",
+            tags=["export", "content", "pack"],
+        ))
+
+        self._add(Capability(
+            id="export:build",
+            summary="Build a playable export artifact for one preset",
+            mode="both",
+            api_methods=["ExportAPI.build_export"],
+            cli_command="motor export build <preset> [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Build Windows Desktop export",
+                api_calls=[{"method": "build_export", "args": {"name": "Windows Desktop"}}],
+                expected_outcome="Builds artifact or returns TOOLCHAIN_UNAVAILABLE with report",
+            ),
+            notes="Does not use main.py editor as exported game entrypoint.",
+            tags=["export", "build", "runtime"],
+        ))
+
+        self._add(Capability(
+            id="export:build-all",
+            summary="Build all configured export presets",
+            mode="both",
+            api_methods=["ExportAPI.build_all_exports"],
+            cli_command="motor export build-all [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Build all exports",
+                api_calls=[{"method": "build_all_exports", "args": {}}],
+                expected_outcome="Returns per-preset build results and reports",
+            ),
+            notes="Overall command fails if any preset build fails.",
+            tags=["export", "build", "automation"],
+        ))
 
     def _register_scene_capabilities(self) -> None:
         self._add(Capability(
@@ -2300,6 +2392,8 @@ class MotorAIBootstrapBuilder:
             "game:platformer:add-killzone", "game:platformer:set-camera-follow",
             "game:platformer:set-bounds", "game:platformer:validate",
             "recipe:list", "recipe:show", "recipe:run",
+            "export:build", "export:build-all", "export:doctor",
+            "export:pack", "export:presets:list", "export:presets:validate",
             "introspect:capabilities",
         ]
 
@@ -2336,6 +2430,7 @@ class MotorAIBootstrapBuilder:
             "Signals": ["signal:"],
             "UI": ["ui:"],
             "Editor": ["editor:"],
+            "Export": ["export:"],
         }
 
         for category_name, prefixes in categories.items():

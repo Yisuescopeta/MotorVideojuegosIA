@@ -1,0 +1,3 @@
+"""
+macOS export templates placeholder.
+"""

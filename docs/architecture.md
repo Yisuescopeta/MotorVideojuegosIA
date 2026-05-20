@@ -71,6 +71,26 @@ ruta normal para nuevas superficies publicas de authoring.
 
 ## Responsabilidades por capa
 
+### Export pipeline
+
+El build oficial de juegos separa editor y runtime:
+
+```text
+Proyecto editable -> validacion -> grafo de contenido -> content pack ->
+runtime template de plataforma -> artefacto jugable -> smoke/report
+```
+
+`Scene` sigue siendo fuente persistente de verdad. `World` no se serializa como
+authoring durante export. La automatizacion publica entra por `EngineAPI` o
+`py -m motor export ...`. El runtime exportado usa `engine/runtime/exported_game.py`
+y carga `runtime_config.json`, `game.manifest.json`, `game.pak` o `content/` sin
+arrancar paneles de editor.
+
+Documentacion relacionada: [export_pipeline.md](export_pipeline.md),
+[export_presets.md](export_presets.md), [runtime_templates.md](runtime_templates.md),
+[build_artifacts.md](build_artifacts.md), [mobile_export.md](mobile_export.md),
+[troubleshooting_export.md](troubleshooting_export.md).
+
 ### SceneManager
 
 Responsable de workspace, escenas abiertas, escena activa, dirty state,

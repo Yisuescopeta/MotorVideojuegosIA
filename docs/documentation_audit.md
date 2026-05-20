@@ -297,6 +297,40 @@ Ninguna validacion pedida quedo bloqueada por entorno.
 - El registry de capabilities puede listar capacidades `planned`; la CLI publica
   solo debe considerarse disponible si el parser de `motor/cli.py` la expone.
 
+## Expansion documental: Export Pipeline (2026-05-19)
+
+Se incorporaron 7 documentos nuevos para el pipeline de export/build:
+
+- `docs/export_pipeline.md` — arquitectura, CLI, content pack, exporters.
+- `docs/export_presets.md` — schema de presets, validacion, migraciones.
+- `docs/runtime_templates.md` — entrypoint exportado, flags, plataformas.
+- `docs/build_artifacts.md` — manifiesto, game.pak, reports, determinismo.
+- `docs/mobile_export.md` — requisitos y builds Android/iOS.
+- `docs/troubleshooting_export.md` — diagnostico de errores de export.
+- `docs/export_implementation_report.md` — reporte operativo de implementacion.
+- `docs/adr/0001-export-pipeline.md` — ADR: separacion editor/runtime.
+
+Clasificacion en README.md:
+- **Canon**: `export_pipeline.md`, `export_presets.md`, `runtime_templates.md`,
+  `build_artifacts.md`, `mobile_export.md`.
+- **Referencia operativa**: `troubleshooting_export.md`,
+  `export_implementation_report.md`.
+- **ADR**: `adr/0001-export-pipeline.md`.
+
+Actualizaciones a canonicas existentes:
+- `docs/architecture.md` — nueva seccion Export pipeline con enlaces.
+- `docs/TECHNICAL.md` — nueva seccion Export/build pipeline con enlaces.
+- `docs/schema_serialization.md` — schema_version 1 para presets/manifest.
+- `docs/api.md` — 6 metodos de ExportAPI documentados.
+- `docs/cli.md` — 6 comandos `motor export` documentados.
+- `docs/module_taxonomy.md` — export pipeline/runtime/exporters como
+  `modulos oficiales opcionales`.
+- `docs/agents.md` — ejemplos CLI de export anadidos.
+
+Validacion: layer separation respetada, capabilities no sobrestimadas
+(TOOLCHAIN_UNAVAILABLE documentado como estado valido), enlaces locales
+verificados.
+
 ## Cierre tecnico de Fase 0
 
 Fecha: 2026-04-17.
