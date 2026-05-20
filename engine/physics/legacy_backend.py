@@ -824,6 +824,7 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
                 collider_id=int(hit_entity_id),
                 collider_entity_name=str(best_hit.get("entity", "")),
                 collider_shape=best_target_shape_idx,
+                collision_overlap_at_origin=bool(best_hit.get("overlap_at_origin", False)),
             )
 
         # No collision — full travel
@@ -1075,9 +1076,20 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
                 motion_y -= result.travel_y
                 break
 
-            # Collision detected — apply safe travel
-            transform.x += result.travel_x
-            transform.y += result.travel_y
+            # Collision detected — apply safe travel.
+            # Skip micro-travel (< 0.001 px) from binary-search epsilon to avoid
+            # perpendicular drift into adjacent surfaces (e.g. floor while touching wall).
+            _travel_dist = math.hypot(result.travel_x, result.travel_y)
+            if _travel_dist > 0.001:
+                transform.x += result.travel_x
+                transform.y += result.travel_y
+                # Back off along collision normal to undo binary-search epsilon
+                # penetration (swept TOI returns position at hi, which overlaps).
+                # Normal points against sweep direction (toward origin) — adding
+                # along it pushes entity safely away from the hit surface.
+                _slop = 0.005
+                transform.x += result.collision_normal_x * _slop
+                transform.y += result.collision_normal_y * _slop
 
             # Cache hit entity lookup
             hit_entity = None
@@ -1087,10 +1099,13 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
             nx = result.collision_normal_x
             ny = result.collision_normal_y
 
-            # Skip t≈0 collisions where motion isn't pushing into the normal
+            # Skip t≈0 collisions where entity already overlaps at origin.
+            # If pushing into surface, skip to avoid deeper penetration (recovery handles it).
+            # If moving away, skip to allow free exit without slide cancellation.
+            # Only skip when the hit genuinely comes from overlap-at-origin, not exact touch.
             if result.collision_safe_fraction < 1e-6:
                 motion_into = motion_x * nx + motion_y * ny
-                if motion_into >= 0.0:
+                if result.collision_overlap_at_origin or motion_into >= 0.0:
                     exclude_list.append(int(result.collider_id))
                     continue
 

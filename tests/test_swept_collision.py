@@ -134,6 +134,35 @@ class SweptCollisionBoxVsBoxTests(unittest.TestCase):
         hit = self._sweep(target, origin=(0.0, 0.0), direction=(0.0, 0.0), max_dist=100.0)
         self.assertIsNone(hit)
 
+    def test_overlap_at_origin_normal_against_sweep_direction(self) -> None:
+        """Normal from overlap-at-origin must point against sweep direction."""
+        # Sweep shape axially aligned with center of target, moving right.
+        # After normal flip, the normal must point against sweep direction:
+        # dot(normal, direction) <= 0.
+        target = self._target_box(cx=0.0, cy=0.0, hw=32.0, hh=32.0)
+        hit = self._sweep(target, origin=(0.0, 0.0), direction=(1.0, 0.0), max_dist=100.0)
+        self.assertIsNotNone(hit)
+        normal = hit["normal"]
+        # Normal should point against sweep direction (dot <= 0)
+        dot = normal["x"] * 1.0 + normal["y"] * 0.0
+        self.assertLessEqual(dot, 0.0, f"Normal debería apuntar contra sweep; dot={dot}, normal={normal}")
+
+    def test_overlap_at_origin_sweep_down_normal_against_sweep(self) -> None:
+        """Floor sweep (downward): normal must point up against gravity."""
+        target = self._target_box(cx=0.0, cy=0.0, hw=100.0, hh=8.0)
+        # Sweep box moving downward (positive y)
+        hit = self._sweep(
+            target,
+            origin=(0.0, 0.0),
+            direction=(0.0, 1.0),
+            max_dist=100.0,
+            shape_params={"width": 12.0, "height": 24.0},
+        )
+        self.assertIsNotNone(hit)
+        normal = hit["normal"]
+        # Normal should point up (negative y) since sweep is downward
+        self.assertLess(normal["y"], 0.0, f"Normal suelo debe apuntar arriba; fue {normal}")
+
 
 if __name__ == "__main__":
     unittest.main()
