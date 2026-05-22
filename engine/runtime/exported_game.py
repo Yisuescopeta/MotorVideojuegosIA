@@ -59,6 +59,7 @@ def main() -> int:
 def _run_headless_export(config) -> int:  # type: ignore[no-untyped-def]
     """Export-only headless runtime. No EngineAPI, no inspector, no editor."""
     from engine.runtime.content_loader import ContentLoader
+    from engine.runtime.export_runtime import ExportRuntime
 
     loader = ContentLoader(config.base_path)
 
@@ -78,44 +79,31 @@ def _run_headless_export(config) -> int:  # type: ignore[no-untyped-def]
     manifest_entry = loader.get_entry_scene()
     entry_scene = config.entry_scene or manifest_entry
 
-    scene_data = loader.load_scene_json(entry_scene)
-    if scene_data is None:
+    from engine.levels.component_registry import create_default_registry
+
+    registry = create_default_registry()
+    runtime = ExportRuntime(
+        loader=loader,
+        registry=registry,
+        window_config=getattr(config, 'window', {}),
+    )
+
+    if not runtime.load_scene(entry_scene):
         print(
             f"ERROR: Entry scene not found: {entry_scene}",
             file=sys.stderr,
         )
         return 1
 
-    from engine.levels.component_registry import create_default_registry
-    from engine.scenes.scene import Scene
-
-    registry = create_default_registry()
-    scene = Scene(name=entry_scene, data=scene_data, source_path=entry_scene)
-
-    try:
-        world = scene.create_world(registry)
-    except Exception as exc:
-        print(f"ERROR: Cannot build world from scene: {exc}", file=sys.stderr)
-        return 1
-
-    from engine.events.event_bus import EventBus
-    from engine.systems.collision_system import CollisionSystem
-    from engine.systems.physics_system import PhysicsSystem
-
-    event_bus = EventBus()
-    physics = PhysicsSystem(gravity=600)
-    collision = CollisionSystem(event_bus)
-
     max_frames = config.max_frames or 3
     print(f"[Runtime] Headless mode: running {max_frames} frames")
 
     try:
         for _ in range(max_frames):
-            physics.update(world, 1.0 / 60.0)
-            collision.update(world)
+            runtime.run_frame(1.0 / 60.0)
 
         if config.smoke_test:
-            events = event_bus.get_recent_events(50)
+            events = runtime.get_recent_events(50)
             print(
                 f"[SmokeTest] OK: {len(events)} events "
                 f"in {max_frames} frames"
@@ -149,37 +137,26 @@ def _run_windowed_pyray(config) -> int:  # type: ignore[no-untyped-def]
     """Windowed mode using pyray/raylib."""
     import pyray
     from engine.runtime.content_loader import ContentLoader
+    from engine.runtime.export_runtime import ExportRuntime
 
     loader = ContentLoader(config.base_path)
     entry_scene = config.entry_scene or loader.get_entry_scene()
 
-    scene_data = loader.load_scene_json(entry_scene)
-    if scene_data is None:
+    from engine.levels.component_registry import create_default_registry
+
+    registry = create_default_registry()
+    runtime = ExportRuntime(
+        loader=loader,
+        registry=registry,
+        window_config=getattr(config, 'window', {}),
+    )
+
+    if not runtime.load_scene(entry_scene):
         print(
             f"ERROR: Entry scene not found: {entry_scene}",
             file=sys.stderr,
         )
         return 1
-
-    from engine.levels.component_registry import create_default_registry
-    from engine.scenes.scene import Scene
-
-    registry = create_default_registry()
-    scene = Scene(name=entry_scene, data=scene_data, source_path=entry_scene)
-
-    try:
-        world = scene.create_world(registry)
-    except Exception as exc:
-        print(f"ERROR: Cannot build world from scene: {exc}", file=sys.stderr)
-        return 1
-
-    from engine.events.event_bus import EventBus
-    from engine.systems.collision_system import CollisionSystem
-    from engine.systems.physics_system import PhysicsSystem
-
-    event_bus = EventBus()
-    physics = PhysicsSystem(gravity=600)
-    collision = CollisionSystem(event_bus)
 
     window_config = getattr(config, 'window', {}) or {}
     width = int(window_config.get("width", 1280))
@@ -190,8 +167,7 @@ def _run_windowed_pyray(config) -> int:  # type: ignore[no-untyped-def]
     pyray.set_target_fps(60)
 
     while not pyray.window_should_close():
-        physics.update(world, 1.0 / 60.0)
-        collision.update(world)
+        runtime.run_frame(1.0 / 60.0)
 
         pyray.begin_drawing()
         pyray.clear_background(pyray.BLACK)
@@ -201,32 +177,33 @@ def _run_windowed_pyray(config) -> int:  # type: ignore[no-untyped-def]
         from engine.components.sprite import Sprite
         from engine.components.transform import Transform
 
-        for entity in world.iter_entities():
-            transform = entity.get_component(Transform)
-            if transform is None:
-                continue
-            x: float = transform.x
-            y: float = transform.y
+        if runtime.world is not None:
+            for entity in runtime.world.iter_entities():
+                transform = entity.get_component(Transform)
+                if transform is None:
+                    continue
+                x: float = transform.x
+                y: float = transform.y
 
-            sprite = entity.get_component(Sprite)
-            collider = entity.get_component(Collider)
+                sprite = entity.get_component(Sprite)
+                collider = entity.get_component(Collider)
 
-            if sprite is not None:
-                w = float(sprite.width) if sprite.width > 0 else 32.0
-                h = float(sprite.height) if sprite.height > 0 else 32.0
-                color = pyray.WHITE
-            elif collider is not None:
-                w = float(collider.width)
-                h = float(collider.height)
-                color = pyray.DARKGREEN
-            else:
-                w = 32.0
-                h = 32.0
-                color = pyray.GRAY
+                if sprite is not None:
+                    w = float(sprite.width) if sprite.width > 0 else 32.0
+                    h = float(sprite.height) if sprite.height > 0 else 32.0
+                    color = pyray.WHITE
+                elif collider is not None:
+                    w = float(collider.width)
+                    h = float(collider.height)
+                    color = pyray.DARKGREEN
+                else:
+                    w = 32.0
+                    h = 32.0
+                    color = pyray.GRAY
 
-            rect = pyray.Rectangle(x, y, w, h)
-            pyray.draw_rectangle_rec(rect, color)
-            pyray.draw_rectangle_lines_ex(rect, 1, pyray.DARKGRAY)
+                rect = pyray.Rectangle(x, y, w, h)
+                pyray.draw_rectangle_rec(rect, color)
+                pyray.draw_rectangle_lines_ex(rect, 1, pyray.DARKGRAY)
 
         pyray.end_drawing()
 
