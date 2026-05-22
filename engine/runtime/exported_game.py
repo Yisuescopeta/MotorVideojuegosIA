@@ -87,6 +87,7 @@ def _run_headless_export(config) -> int:  # type: ignore[no-untyped-def]
         registry=registry,
         window_config=getattr(config, 'window', {}),
     )
+    runtime.setup_scripts_path()
 
     if not runtime.load_scene(entry_scene):
         print(
@@ -150,6 +151,7 @@ def _run_windowed_pyray(config) -> int:  # type: ignore[no-untyped-def]
         registry=registry,
         window_config=getattr(config, 'window', {}),
     )
+    runtime.setup_scripts_path()
 
     if not runtime.load_scene(entry_scene):
         print(

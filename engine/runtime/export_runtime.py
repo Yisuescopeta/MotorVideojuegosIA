@@ -7,6 +7,7 @@ No persiste mutaciones runtime como authoring state.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from typing import Any
 
 from engine.ecs.world import World
@@ -22,6 +23,7 @@ from engine.systems.input_system import InputSystem
 from engine.systems.physics_system import PhysicsSystem
 from engine.systems.player_controller_system import PlayerControllerSystem
 from engine.systems.render_system import RenderSystem
+from engine.systems.script_behaviour_system import ScriptBehaviourSystem
 from engine.systems.ui_render_system import UIRenderSystem
 from engine.systems.ui_system import UISystem
 
@@ -73,6 +75,11 @@ class ExportRuntime:
             project_service = RuntimeProjectService(loader.base_path)
             self._project_service = project_service
             self._ui_render.set_project_service(self._project_service)
+        # Script behaviour system (no hot-reload in export)
+        self._script_behaviour = ScriptBehaviourSystem()
+        # Set scene_flow_loader to None for now — scripts can use context.load_scene_flow_target
+        self._script_behaviour.set_scene_flow_loader(None)
+        # Don't set hot_reload_manager — it stays None, and _load_module will use importlib fallback
         self._pointer_state: dict[str, Any] | None = None
         self._current_scene_path: str | None = None
         self._frame_count: int = 0
@@ -124,6 +131,7 @@ class ExportRuntime:
             self._frame_count = 0
             self._event_bus.reset_frame_dedup()
             self._event_bus.emit("scene_loaded", {"scene_path": scene_path})
+            self._script_behaviour.on_play(self._world)
             return True
         except Exception as exc:
             print(f"[ExportRuntime] Failed to create world: {exc}", file=sys.stderr)
@@ -136,10 +144,11 @@ class ExportRuntime:
         if not self._active or self._world is None:
             return
         self._event_bus.reset_frame_dedup()
-        # Input → physics-driven controllers → physics → collisions → animation
+        # Input → scripts → physics-driven controllers → physics → collisions → animation
         self._input.update(self._world)
         self._character_controller.update(self._world, dt, backend=None)
         self._player_controller.update(self._world)
+        self._script_behaviour.update(self._world, dt, is_edit_mode=False)
         self._physics.update(self._world, dt)
         self._collision.update(self._world)
         self._animation.update(self._world, dt)
@@ -209,6 +218,14 @@ class ExportRuntime:
         if self._world is None:
             return
         self._ui_render.render(self._world, self._ui_system)
+
+    def setup_scripts_path(self, scripts_dir: str | None = None) -> None:
+        """Add scripts directory to sys.path so script modules are importable."""
+        if scripts_dir is None:
+            scripts_dir = str(self._loader.base_path)
+        scripts_path = str(Path(scripts_dir))
+        if scripts_path not in sys.path:
+            sys.path.insert(0, scripts_path)
 
     def shutdown(self) -> None:
         """Apaga el runtime sin persistir estado."""

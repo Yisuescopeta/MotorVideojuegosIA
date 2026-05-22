@@ -334,6 +334,14 @@ class ScriptBehaviourSystem:
             module = self._hot_reload_manager.ensure_module_loaded(module_name)
 
         if module is None:
+            # Fallback: use standard importlib for exported runtime (no hot-reload)
+            try:
+                import importlib
+                module = importlib.import_module(module_name)
+            except ImportError:
+                pass
+
+        if module is None:
             log_err(f"[Script:{entity_name}] Modulo no encontrado: {module_name}")
         return module
 
