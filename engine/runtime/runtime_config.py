@@ -43,14 +43,14 @@ class RuntimeConfig:
                     self.max_frames = 60
             elif arg == "--headless":
                 self.headless = True
-                if i + 2 < len(args) and args[i + 1] == "--frames":
-                    try:
-                        self.max_frames = int(args[i + 2])
-                        i += 2
-                    except (IndexError, ValueError):
-                        self.max_frames = 3
-                elif self.max_frames == 0:
-                    self.max_frames = 3
+            elif arg == "--frames":
+                try:
+                    self.max_frames = int(args[i + 1])
+                    i += 1
+                except (IndexError, ValueError):
+                    pass
             elif arg == "--print-runtime-info":
                 self.print_runtime_info = True
             i += 1
+        if self.headless and self.max_frames == 0:
+            self.max_frames = 3

@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+from html import escape as _html_escape
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,14 @@ _PLACEHOLDERS = {
     "{{ORIENTATION}}": "orientation",
     "{{ENTRY_SCENE}}": "entry_scene",
 }
+
+
+def _xml_escape(value: str) -> str:
+    return _html_escape(value, quote=True)
+
+
+def _gradle_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"')
 
 
 class AndroidExporter(PlatformExporter):
@@ -201,7 +210,8 @@ class AndroidExporter(PlatformExporter):
             ):
                 try:
                     content = file_path.read_text(encoding="utf-8")
-                    for placeholder, value in replacements.items():
+                    rmap = replacements["gradle"] if file_path.suffix == ".gradle" else replacements["xml"]
+                    for placeholder, value in rmap.items():
                         content = content.replace(placeholder, value)
                     file_path.write_text(content, encoding="utf-8")
                 except Exception:
@@ -209,16 +219,37 @@ class AndroidExporter(PlatformExporter):
 
         return project_dir
 
-    def _build_replacements(self, ctx: BuildContext) -> dict[str, str]:
+    def _build_replacements(self, ctx: BuildContext) -> dict[str, dict[str, str]]:
+        app_id = ctx.preset.application_id or "com.motor.game"
+        display = ctx.preset.display_name or ctx.preset.name
+        version = ctx.preset.version_name
+        version_code = str(ctx.preset.version_code)
+        min_sdk = str(ctx.preset.min_sdk)
+        target_sdk = str(ctx.preset.target_sdk)
+        orientation = ctx.preset.orientation or "landscape"
+        entry = ctx.preset.entry_scene
+
         return {
-            "{{APPLICATION_ID}}": ctx.preset.application_id or "com.motor.game",
-            "{{DISPLAY_NAME}}": ctx.preset.display_name or ctx.preset.name,
-            "{{VERSION_NAME}}": ctx.preset.version_name,
-            "{{VERSION_CODE}}": str(ctx.preset.version_code),
-            "{{MIN_SDK}}": str(ctx.preset.min_sdk),
-            "{{TARGET_SDK}}": str(ctx.preset.target_sdk),
-            "{{ORIENTATION}}": ctx.preset.orientation or "landscape",
-            "{{ENTRY_SCENE}}": ctx.preset.entry_scene,
+            "xml": {
+                "{{APPLICATION_ID}}": _xml_escape(app_id),
+                "{{DISPLAY_NAME}}": _xml_escape(display),
+                "{{VERSION_NAME}}": _xml_escape(version),
+                "{{VERSION_CODE}}": version_code,
+                "{{MIN_SDK}}": min_sdk,
+                "{{TARGET_SDK}}": target_sdk,
+                "{{ORIENTATION}}": _xml_escape(orientation),
+                "{{ENTRY_SCENE}}": _xml_escape(entry),
+            },
+            "gradle": {
+                "{{APPLICATION_ID}}": _gradle_escape(app_id),
+                "{{DISPLAY_NAME}}": _gradle_escape(display),
+                "{{VERSION_NAME}}": _gradle_escape(version),
+                "{{VERSION_CODE}}": version_code,
+                "{{MIN_SDK}}": min_sdk,
+                "{{TARGET_SDK}}": target_sdk,
+                "{{ORIENTATION}}": _gradle_escape(orientation),
+                "{{ENTRY_SCENE}}": _gradle_escape(entry),
+            },
         }
 
     def _run_gradle_build(

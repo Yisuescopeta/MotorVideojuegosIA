@@ -92,11 +92,7 @@ def _traverse_scene(
         return
 
     deps.setdefault(normalized, [])
-    refs_before = len(visited_assets) + len(visited_scripts)
     _extract_references(data, root, visited_assets, visited_scripts, result)
-    refs_after = len(visited_assets) + len(visited_scripts)
-    if refs_after > refs_before:
-        pass
 
     feature_meta = data.get("feature_metadata", {})
     scene_flow = feature_meta.get("scene_flow", {})

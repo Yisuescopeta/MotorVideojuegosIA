@@ -92,7 +92,11 @@ class ExportPreset:
             extra=extra,
         )
 
-    def to_dict(self) -> dict[str, Any]:
+    _SENSITIVE_EXTRA_KEYS = frozenset({
+        "keystore_path", "keystore_password", "key_alias", "key_password",
+    })
+
+    def to_dict(self, include_secrets: bool = False) -> dict[str, Any]:
         result: dict[str, Any] = {
             "name": self.name,
             "platform": self.platform,
@@ -113,7 +117,13 @@ class ExportPreset:
             result["min_sdk"] = self.min_sdk
             result["target_sdk"] = self.target_sdk
             result["orientation"] = self.orientation
-        result.update(self.extra)
+        if include_secrets:
+            result.update(self.extra)
+        else:
+            result.update({
+                k: v for k, v in self.extra.items()
+                if k not in self._SENSITIVE_EXTRA_KEYS
+            })
         return result
 
 
