@@ -49,6 +49,9 @@ edito archivos y no decido ampliar alcance.
 
 ## Reglas
 
+- Solo ejecutable despues de que `validator` pase, `code-reviewer` apruebe
+  y `ai-friendliness` pase o declare `not_applicable`.
+- Committer no puede ser invocado sin estos tres gates en verde.
 - Nunca stage global.
 - Nunca stage por wildcard amplio.
 - Nunca commit de secretos, `.env`, caches, temporales, logs locales o estado

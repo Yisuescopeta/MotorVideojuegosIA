@@ -6,7 +6,13 @@ from collections.abc import Sequence
 
 from engine.editor.ui import input as ui_input
 from engine.editor.ui.colors import to_ray_color
-from engine.editor.ui.draw import draw_border, draw_panel_background, draw_panel_shadow, draw_rounded_rect, draw_text_clipped
+from engine.editor.ui.draw import (
+    draw_border,
+    draw_panel_background,
+    draw_panel_shadow,
+    draw_rounded_rect,
+    draw_text_clipped,
+)
 from engine.editor.ui.geometry import Rect, inset_rect, split_top
 from engine.editor.ui.theme import UNITY_DARK, EditorTheme, resolve_theme
 from engine.editor.ui.tokens import CONTROL_PADDING_X, FONT_SIZE_SM, PANEL_PADDING, TAB_HEIGHT

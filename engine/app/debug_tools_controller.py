@@ -176,7 +176,6 @@ class DebugToolsController:
         from engine.core.engine_state import EngineState
 
         state = self._get_state()
-        width = self._get_width()
         # state_color = {
         #     EngineState.EDIT: rl.SKYBLUE,
         #     EngineState.PLAY: rl.GREEN,

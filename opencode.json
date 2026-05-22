@@ -20,7 +20,7 @@
         "skill": "allow",
         "todowrite": "allow",
         "websearch": "allow",
-        "question": "deny"
+        "question": "allow"
       }
     },
     "planner": {
@@ -121,6 +121,35 @@
         "websearch": "deny"
       }
     },
+    "validator": {
+      "description": "Validation agent. Runs contract/lint/typecheck/doctor commands after implementation. Read-only with restricted bash.",
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4-flash",
+      "temperature": 0.1,
+      "permission": {
+        "read": "allow",
+        "bash": {
+          "*": "deny",
+          "py -m unittest *": "allow",
+          "py -m ruff check *": "allow",
+          "py -m mypy *": "allow",
+          "py -m motor *": "allow",
+          "git diff *": "allow",
+          "git status *": "allow",
+          "git log *": "allow"
+        },
+        "glob": "allow",
+        "grep": "allow",
+        "edit": "deny",
+        "write": "deny",
+        "task": "deny",
+        "todowrite": "deny",
+        "question": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "skill": "deny"
+      }
+    },
     "godot-source-analyzer": {
       "description": "Godot source analyzer. Navigates Godot C++/GDScript source code and extracts feature contracts. Read-only.",
       "mode": "subagent",
@@ -169,6 +198,7 @@
       "permission": {
         "read": "allow",
         "edit": "allow",
+        "write": "allow",
         "bash": {
           "*": "deny",
           "py -m unittest *": "allow",

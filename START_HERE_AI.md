@@ -156,6 +156,30 @@ The entries below are available now and are safe to use from the CLI.
   - API: `CapabilityRegistry.cmd_capabilities`
   - CLI: `motor capabilities [--json]`
 
+- **export:presets:list**: List export presets configured for the project
+  - API: `ExportAPI.list_export_presets`
+  - CLI: `motor export presets list [--project <path>] [--json]`
+
+- **export:presets:validate**: Validate export presets and project paths
+  - API: `ExportAPI.validate_export_preset`
+  - CLI: `motor export presets validate [--project <path>] [--json]`
+
+- **export:doctor**: Check export toolchains and external SDK availability
+  - API: `ExportAPI.export_doctor`
+  - CLI: `motor export doctor [--project <path>] [--json]`
+
+- **export:pack**: Build deterministic content pack for an export preset
+  - API: `ExportAPI.export_pack`
+  - CLI: `motor export pack <preset> [--project <path>] [--json]`
+
+- **export:build**: Build a playable export artifact for one preset
+  - API: `ExportAPI.build_export`
+  - CLI: `motor export build <preset> [--project <path>] [--json]`
+
+- **export:build-all**: Build all configured export presets
+  - API: `ExportAPI.build_all_exports`
+  - CLI: `motor export build-all [--project <path>] [--json]`
+
 ## Capabilities by Category
 
 ### AI
@@ -326,6 +350,15 @@ The entries below are available now and are safe to use from the CLI.
 - `editor:theme:import`: Import an editor UI theme from JSON
 - `editor:theme:list`: List available editor UI themes
 - `editor:theme:set`: Set the active editor UI theme
+
+### Export
+
+- `export:build`: Build a playable export artifact for one preset
+- `export:build-all`: Build all configured export presets
+- `export:doctor`: Check export toolchains and external SDK availability
+- `export:pack`: Build deterministic content pack for an export preset
+- `export:presets:list`: List export presets configured for the project
+- `export:presets:validate`: Validate export presets and project paths
 
 ## Coming Soon
 

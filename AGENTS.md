@@ -186,6 +186,7 @@ Es un plugin de OpenCode — **no toca internos del motor**.
 Queen (primary agent, DeepSeek Pro Max)
 ├── Planner (subagent, Pro Max) — disena planes de implementacion
 ├── Builder (subagent, Pro Max/Flash) — implementa codigo
+├── Validator (subagent, Flash) — valida contratos, tests, lint, doctor
 ├── Code Reviewer (subagent, Flash) — revisa calidad/SOLID
 ├── AI-Friendliness (subagent, Flash) — audita amigabilidad IA
 ├── Documenter (subagent, Flash) — actualiza docs canónicas
@@ -203,6 +204,7 @@ Queen (primary agent, DeepSeek Pro Max)
 | `.opencode/agents/queen.md` | Agente orquestador principal |
 | `.opencode/agents/planner.md` | Planificador de implementacion |
 | `.opencode/agents/builder.md` | Implementador de codigo |
+| `.opencode/agents/validator.md` | Validador read-only de tests, lint y contratos |
 | `.opencode/agents/code-reviewer.md` | Revisor de codigo |
 | `.opencode/agents/ai-friendliness.md` | Auditor de amigabilidad IA |
 | `.opencode/agents/context-recon.md` | Reconocimiento read-only |
@@ -215,6 +217,9 @@ Queen (primary agent, DeepSeek Pro Max)
 | `opencode.json` | Configuracion de agentes y modelos |
 | `tools/queen_state.py` | Helper de persistencia de estado |
 | `.motor/queen_state/` | Estado persistente (planes, reports) |
+| `docs/queen_long_task_mode.md` | Documentacion del modo Long Task Plan |
+| `docs/plans/active/` | Planes operativos activos (versionados) |
+| `docs/plans/archive/` | Planes operativos archivados |
 
 ### Skills asignadas a sub-agentes
 
@@ -249,6 +254,16 @@ opencode run --agent queen "mejorar las fisicas del motor"
 
 ### Comportamiento
 
+- **Dos modos**: Queen opera en **Normal Task Mode** para tareas pequeñas/medianas
+  y **Long Task Plan Mode** para tareas largas, multi-fase, arquitectonicas o
+  de muchas sesiones.
+- **Long Task Plan Mode**: usa un plan persistente como contrato operativo.
+  Activacion automatica si la tarea tiene > 2 fases, toca arquitectura/schema/CLI,
+  requiere multiples sesiones, o el usuario indica "usa plan" o "tarea larga".
+  Ciclo: `LOAD PLAN -> PLAN SYNC -> IMPLEMENTAR FASE -> UPDATE PLAN -> VALIDAR -> REVIEW -> AI AUDIT -> NEXT PHASE | COMMIT | BLOCK`.
+  Antes de cada fase, Queen sincroniza el plan. Despues de cada fase, actualiza
+  estado, progreso y riesgos. Los planes viven en `docs/plans/active/` y se
+  archivan en `docs/plans/archive/`. Ver `docs/queen_long_task_mode.md`.
 - **Autonomia total**: la Reina descompone, asigna, ejecuta sin preguntar.
 - **Routing de modelos**: Pro Max para tareas complejas (arquitectura, fisicas, render), Flash para las simples (review, docs, tests).
 - **Paralelismo inteligente**: sub-tareas independientes se ejecutan en paralelo.
