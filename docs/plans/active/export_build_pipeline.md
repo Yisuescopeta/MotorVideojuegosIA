@@ -1082,3 +1082,64 @@ La funcionalidad queda aceptada cuando:
 - La arquitectura no duplica lógica entre CLI y UI.
 - No hay tests rotos.
 - No hay lint/typecheck roto sin justificación explícita.
+
+---
+
+## 25. Corrections v2 (2026-05-22)
+
+Status: **Implemented** — all 10 correction items applied.
+
+### 1) Desktop PyInstaller specs — remove full engine from datas
+- Windows/Linux/macOS `_write_export_spec()` no longer includes `(engine_src, 'engine')` in datas.
+- Only runtime_config.json, game.manifest.json, and game.pak (or content/) are bundled as datas.
+- Hiddenimports retained so PyInstaller can trace engine imports from runtime entrypoint.
+- Tests assert `'engine')` tuple not in datas section.
+
+### 2) Post-build placement
+- After PyInstaller build, `_install_runtime_files()` copies runtime_config.json, game.manifest.json, game.pak to `exe_path.parent`.
+- For macOS .app bundles, files go to `Contents/Resources/`.
+- Smoke test runs after file installation.
+
+### 3) Runtime bootstrap — sys._MEIPASS
+- `bootstrap.py` uses `sys._MEIPASS` when frozen to find bundled datas.
+- `base_path` set to `sys._MEIPASS` for frozen builds, `Path.cwd()` otherwise.
+- Falls back through candidate paths for runtime_config.json.
+
+### 4) Android .apk/.aab output semantics
+- If preset `output_path` ends with `.apk` or `.aab`, parent directory becomes `output_dir`.
+- Final artifact copied to exact `output_path` filename.
+- `BuildContext._artifact_filename` tracks the target filename.
+
+### 5) Integrity verification
+- `verify_pak(staging_dir)` validates every manifest entry inside game.pak by SHA-256.
+- Called after `write_pak` in `build_content_pack()`; raises `RuntimeError` on tampered entries.
+- `ContentLoader.verify_integrity()` extended to read entries from game.pak when not on filesystem.
+- Smoke test calls `ContentLoader.verify_integrity()` and returns code 3 on failure.
+- Tests: valid, tampered, and missing pak scenarios verified.
+
+### 6) Linux/macOS smoke tests
+- `LinuxExporter._run_smoke_test()` and `MacOSExporter._run_smoke_test()` added.
+- macOS handles .app bundle execution via `open --args`.
+
+### 7) Minimal windowed rendering
+- `_run_windowed_pyray()` now draws visible rectangles for entities with Transform.
+- Gray fill for default, white for Sprite, dark green for Collider.
+- Black outlines via `draw_rectangle_lines_ex`.
+
+### 8) Structured Android keystore errors
+- Error codes: `ANDROID_KEYSTORE_MISSING`, `ANDROID_KEYSTORE_NOT_FOUND`.
+- Keystore path redacted from build.gradle — uses `rootProject.file('keystore.jks')`.
+- Keystore copied to project root for relative resolution.
+- Report sanitization patterns cover `storeFile` paths and `ANDROID_KEYSTORE_*` errors.
+
+### 9) Tests added/updated
+- `test_export_content_pack.py`: `TestVerifyPak` — valid, tampered, missing pak.
+- `test_export_content_loader_pak.py`: verify_integrity valid, tampered, missing from pak, missing entry.
+- `test_export_spec_generation.py`: assert `'engine')` not in datas for all three desktop platforms.
+- `test_export_android_keystore_security.py`: actionable error codes, storeFile redaction, `TestAndroidOutputSemantics`.
+- All tests fast/offline; no real PyInstaller/Android SDK required.
+
+### 10) Docs updated
+- `docs/plans/active/export_build_pipeline.md` — this section.
+- `docs/troubleshooting_export.md` — integrity verification, code 3, keystore error codes.
+- `docs/export_pipeline.md` — content pack integrity, spec datas, Android output semantics, smoke tests.

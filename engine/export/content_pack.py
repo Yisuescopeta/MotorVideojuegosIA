@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from engine.export.build_graph import build_content_graph
-from engine.export.content_collector import collect_content, write_manifest, write_pak
+from engine.export.content_collector import collect_content, verify_pak, write_manifest, write_pak
 from engine.export.models import BuildGraphResult, ContentManifest, ExportPreset
 
 
@@ -46,6 +46,14 @@ def build_content_pack(
     write_manifest(manifest, staging)
     if preset.bundle_mode == "packed":
         write_pak(staging)
+        pak_result = verify_pak(staging)
+        if not pak_result["valid"]:
+            tampered = pak_result["tampered"]
+            raise RuntimeError(
+                f"Content pack integrity check failed: "
+                f"{len(tampered)} entries tampered or missing: "
+                f"{', '.join(tampered[:10])}"
+            )
 
     return manifest, graph
 

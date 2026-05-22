@@ -129,20 +129,26 @@ class WindowsExporter(PlatformExporter):
         if not exe_candidates:
             exe_candidates = list(output.rglob("*.exe"))
 
-        if exe_candidates:
-            exe_path = exe_candidates[0]
-            size = exe_path.stat().st_size
-            ctx.add_artifact(
-                str(exe_path.relative_to(ctx.project_root)),
-                "executable",
-                size,
-            )
-            if not self._run_smoke_test(ctx, exe_path):
-                return False
-        else:
+        if not exe_candidates:
             ctx.add_warning(
                 "No .exe found in output directory after PyInstaller build."
             )
+            return not ctx.has_errors
+
+        exe_path = exe_candidates[0]
+        size = exe_path.stat().st_size
+        ctx.add_artifact(
+            str(exe_path.relative_to(ctx.project_root)),
+            "executable",
+            size,
+        )
+
+        # Post-build: install runtime files to executable directory
+        exe_dir = exe_path.parent
+        self._install_runtime_files(staging, exe_dir, ctx)
+
+        if not self._run_smoke_test(ctx, exe_path):
+            return False
 
         return not ctx.has_errors
 
@@ -171,7 +177,6 @@ class WindowsExporter(PlatformExporter):
         exe_name = _safe_exe_name(ctx.preset.display_name or ctx.preset.name)
         project_src = str(ctx.project_root.as_posix())
         runtime_src = str(runtime_entry.as_posix())
-        engine_src = str(Path(__file__).resolve().parent.parent.as_posix())
         runtime_config_src = str((staging / "runtime_config.json").as_posix())
         manifest_src = str((staging / "game.manifest.json").as_posix())
         content_src = str((staging / "content").as_posix())
@@ -180,14 +185,12 @@ class WindowsExporter(PlatformExporter):
         bundle_mode = getattr(ctx.preset, "bundle_mode", "packed")
         if bundle_mode == "directory":
             datas_lines = (
-                f"        (r'{engine_src}', 'engine'),\n"
                 f"        (r'{runtime_config_src}', '.'),\n"
                 f"        (r'{manifest_src}', '.'),\n"
                 f"        (r'{content_src}', 'content'),\n"
             )
         else:
             datas_lines = (
-                f"        (r'{engine_src}', 'engine'),\n"
                 f"        (r'{runtime_config_src}', '.'),\n"
                 f"        (r'{manifest_src}', '.'),\n"
                 f"        (r'{pak_src}', '.'),\n"
@@ -267,6 +270,16 @@ class WindowsExporter(PlatformExporter):
             return False
         ctx.add_warning("Smoke test passed.")
         return True
+
+    def _install_runtime_files(
+        self, staging: Path, exe_dir: Path, ctx: BuildContext,
+    ) -> None:
+        """Copy runtime_config.json, game.manifest.json, game.pak to executable dir."""
+        for src_name in ("runtime_config.json", "game.manifest.json", "game.pak"):
+            src = staging / src_name
+            if src.exists():
+                shutil.copy2(src, exe_dir / src_name)
+                ctx.add_warning(f"Installed {src_name} to executable directory.")
 
 
 def _safe_exe_name(name: str) -> str:

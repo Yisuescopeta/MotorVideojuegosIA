@@ -132,18 +132,26 @@ class LinuxExporter(PlatformExporter):
                 if f.is_file() and not f.suffix and f.name == exe_name
             ]
 
-        if exe_candidates:
-            exe_path = exe_candidates[0]
-            size = exe_path.stat().st_size
-            ctx.add_artifact(
-                str(exe_path.relative_to(ctx.project_root)),
-                "executable",
-                size,
-            )
-        else:
+        if not exe_candidates:
             ctx.add_warning(
                 "No executable found in output directory after PyInstaller build."
             )
+            return not ctx.has_errors
+
+        exe_path = exe_candidates[0]
+        size = exe_path.stat().st_size
+        ctx.add_artifact(
+            str(exe_path.relative_to(ctx.project_root)),
+            "executable",
+            size,
+        )
+
+        # Post-build: install runtime files to executable directory
+        exe_dir = exe_path.parent
+        self._install_runtime_files(staging, exe_dir, ctx)
+
+        if not self._run_smoke_test(ctx, exe_path):
+            return False
 
         return not ctx.has_errors
 
@@ -172,7 +180,6 @@ class LinuxExporter(PlatformExporter):
         exe_name = _safe_exe_name(ctx.preset.display_name or ctx.preset.name)
         project_src = str(ctx.project_root.as_posix())
         runtime_src = str(runtime_entry.as_posix())
-        engine_src = str(Path(__file__).resolve().parent.parent.as_posix())
         runtime_config_src = str((staging / "runtime_config.json").as_posix())
         manifest_src = str((staging / "game.manifest.json").as_posix())
         content_src = str((staging / "content").as_posix())
@@ -181,14 +188,12 @@ class LinuxExporter(PlatformExporter):
         bundle_mode = getattr(ctx.preset, "bundle_mode", "packed")
         if bundle_mode == "directory":
             datas_lines = (
-                f"        (r'{engine_src}', 'engine'),\n"
                 f"        (r'{runtime_config_src}', '.'),\n"
                 f"        (r'{manifest_src}', '.'),\n"
                 f"        (r'{content_src}', 'content'),\n"
             )
         else:
             datas_lines = (
-                f"        (r'{engine_src}', 'engine'),\n"
                 f"        (r'{runtime_config_src}', '.'),\n"
                 f"        (r'{manifest_src}', '.'),\n"
                 f"        (r'{pak_src}', '.'),\n"
@@ -243,6 +248,39 @@ class LinuxExporter(PlatformExporter):
         spec_path = staging / f"{exe_name}.spec"
         spec_path.write_text(spec, encoding="utf-8")
         return spec_path
+
+    def _run_smoke_test(self, ctx: BuildContext, exe_path: Path) -> bool:
+        try:
+            result = subprocess.run(
+                [str(exe_path), "--smoke-test"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=str(exe_path.parent),
+            )
+        except subprocess.TimeoutExpired:
+            ctx.add_error("Smoke test timed out after 60s")
+            return False
+        except Exception as exc:
+            ctx.add_error(f"Smoke test failed to start: {exc}")
+            return False
+        if result.returncode != 0:
+            ctx.add_error(
+                f"Smoke test failed (code {result.returncode}): "
+                f"{(result.stderr or result.stdout)[:500]}"
+            )
+            return False
+        ctx.add_warning("Smoke test passed.")
+        return True
+
+    def _install_runtime_files(
+        self, staging: Path, exe_dir: Path, ctx: BuildContext,
+    ) -> None:
+        for src_name in ("runtime_config.json", "game.manifest.json", "game.pak"):
+            src = staging / src_name
+            if src.exists():
+                shutil.copy2(src, exe_dir / src_name)
+                ctx.add_warning(f"Installed {src_name} to executable directory.")
 
 
 def _safe_exe_name(name: str) -> str:

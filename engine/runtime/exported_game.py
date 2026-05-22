@@ -61,6 +61,20 @@ def _run_headless_export(config) -> int:  # type: ignore[no-untyped-def]
     from engine.runtime.content_loader import ContentLoader
 
     loader = ContentLoader(config.base_path)
+
+    if config.smoke_test:
+        integrity = loader.verify_integrity()
+        if not integrity["valid"]:
+            tampered = integrity["tampered"]
+            print(
+                f"ERROR: Content integrity check FAILED: "
+                f"{len(tampered)} entries tampered/missing",
+                file=sys.stderr,
+            )
+            for entry in tampered[:10]:
+                print(f"  - {entry}", file=sys.stderr)
+            return 3
+
     manifest_entry = loader.get_entry_scene()
     entry_scene = config.entry_scene or manifest_entry
 
@@ -181,6 +195,39 @@ def _run_windowed_pyray(config) -> int:  # type: ignore[no-untyped-def]
 
         pyray.begin_drawing()
         pyray.clear_background(pyray.BLACK)
+
+        # Draw visible rectangles for entities with Transform component
+        from engine.components.collider import Collider
+        from engine.components.sprite import Sprite
+        from engine.components.transform import Transform
+
+        for entity in world.iter_entities():
+            transform = entity.get_component(Transform)
+            if transform is None:
+                continue
+            x: float = transform.x
+            y: float = transform.y
+
+            sprite = entity.get_component(Sprite)
+            collider = entity.get_component(Collider)
+
+            if sprite is not None:
+                w = float(sprite.width) if sprite.width > 0 else 32.0
+                h = float(sprite.height) if sprite.height > 0 else 32.0
+                color = pyray.WHITE
+            elif collider is not None:
+                w = float(collider.width)
+                h = float(collider.height)
+                color = pyray.DARKGREEN
+            else:
+                w = 32.0
+                h = 32.0
+                color = pyray.GRAY
+
+            rect = pyray.Rectangle(x, y, w, h)
+            pyray.draw_rectangle_rec(rect, color)
+            pyray.draw_rectangle_lines_ex(rect, 1, pyray.DARKGRAY)
+
         pyray.end_drawing()
 
     pyray.close_window()

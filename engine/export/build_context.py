@@ -23,6 +23,7 @@ class BuildContext:
         self.warnings: list[str] = []
         self.errors: list[str] = []
         self.artifacts: list[dict[str, Any]] = []
+        self._artifact_filename: str | None = None
 
     @property
     def has_errors(self) -> bool:

@@ -149,6 +149,12 @@ El content pack incluye:
 Cada asset, escena y script en el manifest incluye `sha256` y `size_bytes`.
 Los GUIDs son estables: derivados del path y dependencias.
 
+### Verificacion de integridad
+- `verify_pak()` valida cada entrada del manifest dentro de `game.pak` por SHA-256.
+- Se ejecuta automaticamente despues de `write_pak()` durante `build_content_pack()`.
+- Si detecta archivos corruptos/tampered, el build falla con `RuntimeError`.
+- En runtime, `--smoke-test` ejecuta `ContentLoader.verify_integrity()` (codigo 3 si invalido).
+
 El grafo de contenido recorre la entry scene y sigue:
 - Scene flow links (`next_scene`, `menu_scene`, `target_scene`)
 - Prefabs referenciados (`prefab_path`)
@@ -165,16 +171,21 @@ usar `include_all_assets` o `mode: debug` en el preset.
 - Requiere PyInstaller (`pip install pyinstaller`)
 - Genera `.exe` standalone
 - `console=True` para debug
+- El spec no empaqueta el directorio completo `engine/` — solo runtime_config, manifest y pak
+- Post-build: copia runtime files al directorio del ejecutable y ejecuta smoke test
 
 ### Linux
 - Requiere PyInstaller
 - Genera binario sin extension
 - Sin `console=True`
+- Post-build y smoke test analogos a Windows
 
 ### macOS
 - Requiere macOS + PyInstaller + Xcode (opcional)
 - Si no es macOS: `TOOLCHAIN_UNAVAILABLE`
 - Si es macOS: genera `.app` o binario con `--windowed`
+- Post-build: runtime files a `Contents/Resources/` para .app, al dir del binario en otro caso
+- Smoke test via `open --args --smoke-test` para .app
 
 ### Android
 - Requiere `ANDROID_HOME`, JDK 11+, Gradle
@@ -182,6 +193,8 @@ usar `include_all_assets` o `mode: debug` en el preset.
 - Debug: `assembleDebug` -> APK
 - Release: `assembleRelease` -> APK firmado, `bundleRelease` -> AAB
 - Keystore configurable via `preset.extra.keystore_path`
+- Errores de keystore con codigos accionables: `ANDROID_KEYSTORE_MISSING`, `ANDROID_KEYSTORE_NOT_FOUND`
+- Si `output_path` termina en `.apk` o `.aab`, el artefacto se copia a ese nombre exacto
 
 ### iOS
 - Requiere macOS + Xcode

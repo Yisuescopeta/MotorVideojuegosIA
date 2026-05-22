@@ -48,6 +48,17 @@ class AndroidExporter(PlatformExporter):
         env = self.validate_environment()
         staging = ctx.staging_dir
         staging.mkdir(parents=True, exist_ok=True)
+
+        # Resolve output semantics: if output_path ends with .apk/.aab,
+        # use parent as output_dir and copy artifact to exact output_path
+        output_path_str = ctx.preset.output_path
+        if output_path_str.endswith((".apk", ".aab")):
+            ctx.output_dir = ctx.project_root / Path(output_path_str).parent
+            ctx._artifact_filename = Path(output_path_str).name
+        else:
+            ctx.output_dir = ctx.project_root / output_path_str
+            ctx._artifact_filename = None
+
         output = ctx.output_dir
         output.mkdir(parents=True, exist_ok=True)
 
@@ -125,7 +136,8 @@ class AndroidExporter(PlatformExporter):
 
         apk = self._find_apk(project_dir)
         if apk:
-            dest = output / apk.name
+            dest_name = ctx._artifact_filename if ctx._artifact_filename else apk.name
+            dest = output / dest_name
             shutil.copy2(apk, dest)
             ctx.add_artifact(
                 str(dest.relative_to(ctx.project_root)),
@@ -136,7 +148,8 @@ class AndroidExporter(PlatformExporter):
         if ctx.preset.mode == "release":
             aab = self._find_aab(project_dir)
             if aab:
-                dest = output / aab.name
+                dest_name = ctx._artifact_filename if ctx._artifact_filename else aab.name
+                dest = output / dest_name
                 shutil.copy2(aab, dest)
                 ctx.add_artifact(
                     str(dest.relative_to(ctx.project_root)),
@@ -257,7 +270,11 @@ class AndroidExporter(PlatformExporter):
         key_pass = ctx.preset.extra.get("key_password", store_pass)
 
         if not keystore:
-            ctx.add_error("Release build requires keystore_path in preset extra.")
+            ctx.add_error(
+                "ANDROID_KEYSTORE_MISSING: Release build requires "
+                "keystore_path in preset extra. Configure keystore_path, "
+                "keystore_password, key_alias in the preset extra fields."
+            )
             return False
 
         keystore_path = Path(keystore)
@@ -265,7 +282,10 @@ class AndroidExporter(PlatformExporter):
             keystore_path = ctx.project_root / keystore_path
 
         if not keystore_path.exists():
-            ctx.add_error(f"Keystore not found: {keystore_path}")
+            ctx.add_error(
+                "ANDROID_KEYSTORE_NOT_FOUND: Keystore not found at configured path. "
+                "Create a keystore or update keystore_path."
+            )
             return False
 
         gradle_path = project_dir / "app" / "build.gradle"
@@ -274,7 +294,7 @@ class AndroidExporter(PlatformExporter):
             signing_block = (
                 "\n    signingConfigs {\n"
                 "        release {\n"
-                f"            storeFile file(System.getenv(\"RELEASE_STORE_FILE\") ?: \"{keystore_path.as_posix()}\")\n"
+                "            storeFile rootProject.file('keystore.jks')\n"
                 "            storePassword System.getenv(\"RELEASE_STORE_PASSWORD\") ?: \"\"\n"
                 f"            keyAlias System.getenv(\"RELEASE_KEY_ALIAS\") ?: \"{key_alias}\"\n"
                 "            keyPassword System.getenv(\"RELEASE_KEY_PASSWORD\") ?: \"\"\n"
@@ -291,6 +311,10 @@ class AndroidExporter(PlatformExporter):
                 "signingConfig signingConfigs.release",
             )
             gradle_path.write_text(content, encoding="utf-8")
+
+        # Copy keystore to project root so relative path resolves
+        keystore_dest = project_dir / "keystore.jks"
+        shutil.copy2(keystore_path, keystore_dest)
 
         sign_env: dict[str, str] = {}
         if store_pass:

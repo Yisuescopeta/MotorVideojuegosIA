@@ -76,21 +76,33 @@ class ContentLoader:
         if not self._loaded:
             self.load_manifest()
         results: dict[str, Any] = {"valid": True, "checks": [], "tampered": []}
+        pak = self._open_pak()
+
         for entry_type in ("assets", "scenes", "scripts"):
             for entry in self.manifest.get(entry_type, []):
                 path = entry.get("path", "")
                 expected_sha = entry.get("sha256", "")
                 if not path or not expected_sha:
                     continue
-                asset_path = self.resolve_asset(path)
                 check = {
                     "path": path,
                     "expected_sha256": expected_sha,
                     "actual_sha256": "",
                     "match": False,
                 }
+                actual = None
+                asset_path = self.resolve_asset(path)
                 if asset_path.exists():
                     actual = _sha256_file(asset_path)
+                elif pak is not None:
+                    # Try reading from pak before reporting missing
+                    try:
+                        data = pak.read(path)
+                        actual = hashlib.sha256(data).hexdigest()
+                    except KeyError:
+                        actual = None
+
+                if actual is not None:
                     check["actual_sha256"] = actual
                     check["match"] = actual == expected_sha
                     if not check["match"]:
@@ -101,7 +113,15 @@ class ContentLoader:
                     results["valid"] = False
                     results["tampered"].append(path)
                 results["checks"].append(check)
+
         return results
+
+    def _open_pak(self):
+        """Open game.pak zip file if it exists. Returns None otherwise."""
+        pak_path = self.base_path / "game.pak"
+        if pak_path.exists():
+            return zipfile.ZipFile(pak_path, "r")
+        return None
 
     def _read_manifest_from_pak(self) -> dict[str, Any] | None:
         pak_path = self.base_path / "game.pak"

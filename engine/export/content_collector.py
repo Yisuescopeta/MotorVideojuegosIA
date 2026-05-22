@@ -7,6 +7,7 @@ import json
 import shutil
 import zipfile
 from pathlib import Path
+from typing import Any
 
 from engine.export.models import BuildGraphResult, ContentManifest, ContentManifestEntry
 
@@ -152,6 +153,62 @@ def write_pak(staging_dir: str | Path) -> Path:
                 info.compress_type = zipfile.ZIP_DEFLATED
                 pak.writestr(info, file_path.read_bytes())
     return pak_path
+
+
+def verify_pak(staging_dir: str | Path) -> dict[str, Any]:
+    """Verify integrity of game.pak by checking every manifest entry inside it.
+
+    Opens game.pak, reads game.manifest.json, and for each asset/scene/script
+    entry verifies the file exists inside the pak with the expected SHA-256 hash.
+
+    Returns dict with 'valid': bool, 'checks': list, 'tampered': list.
+    """
+    staging = Path(staging_dir)
+    pak_path = staging / "game.pak"
+    result: dict[str, Any] = {"valid": True, "checks": [], "tampered": []}
+
+    if not pak_path.exists():
+        result["valid"] = False
+        result["tampered"].append("game.pak")
+        return result
+
+    try:
+        with zipfile.ZipFile(pak_path, "r") as pak:
+            # Read all entries while pak is open
+            manifest_data = json.loads(pak.read("game.manifest.json").decode("utf-8"))
+
+            for entry_type in ("assets", "scenes", "scripts"):
+                for entry in manifest_data.get(entry_type, []):
+                    path = entry.get("path", "")
+                    expected_sha = entry.get("sha256", "")
+                    if not path or not expected_sha:
+                        continue
+                    check: dict[str, Any] = {
+                        "path": path,
+                        "expected_sha256": expected_sha,
+                        "actual_sha256": "",
+                        "match": False,
+                    }
+                    try:
+                        data = pak.read(path)
+                        actual = hashlib.sha256(data).hexdigest()
+                        check["actual_sha256"] = actual
+                        check["match"] = actual == expected_sha
+                        if not check["match"]:
+                            result["valid"] = False
+                            result["tampered"].append(path)
+                    except KeyError:
+                        check["actual_sha256"] = "FILE_NOT_FOUND"
+                        result["valid"] = False
+                        result["tampered"].append(path)
+                    result["checks"].append(check)
+
+    except (KeyError, zipfile.BadZipFile, json.JSONDecodeError) as exc:
+        result["valid"] = False
+        result["tampered"].append(f"game.pak corrupt: {exc}")
+        return result
+
+    return result
 
 
 def _stable_guid(path: str) -> str:

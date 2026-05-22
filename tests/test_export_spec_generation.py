@@ -43,6 +43,8 @@ class TestLinuxSpecGeneration(unittest.TestCase):
         content = spec_path.read_text(encoding="utf-8")
         self.assertIn("game.pak", content)
         self.assertNotIn("'content')", content)
+        # Must NOT include full engine directory as a datas tuple
+        self.assertNotIn("'engine')", content)
 
     def test_spec_directory_includes_content(self):
         from engine.export.linux_exporter import LinuxExporter
@@ -54,6 +56,7 @@ class TestLinuxSpecGeneration(unittest.TestCase):
         content = spec_path.read_text(encoding="utf-8")
         self.assertIn("'content')", content)
         self.assertNotIn("game.pak", content)
+        self.assertNotIn("'engine')", content)
 
 
 class TestMacOSSpecGeneration(unittest.TestCase):
@@ -90,6 +93,7 @@ class TestMacOSSpecGeneration(unittest.TestCase):
         content = spec_path.read_text(encoding="utf-8")
         self.assertIn("game.pak", content)
         self.assertNotIn("'content')", content)
+        self.assertNotIn("'engine')", content)
 
     def test_spec_directory_includes_content(self):
         from engine.export.macos_exporter import MacOSExporter
@@ -101,6 +105,7 @@ class TestMacOSSpecGeneration(unittest.TestCase):
         content = spec_path.read_text(encoding="utf-8")
         self.assertIn("'content')", content)
         self.assertNotIn("game.pak", content)
+        self.assertNotIn("'engine')", content)
 
 
 class TestWindowsSpecGeneration(unittest.TestCase):
@@ -137,6 +142,7 @@ class TestWindowsSpecGeneration(unittest.TestCase):
         content = spec_path.read_text(encoding="utf-8")
         self.assertIn("game.pak", content)
         self.assertNotIn("'content')", content)
+        self.assertNotIn("'engine')", content)
 
     def test_spec_directory_includes_content_not_pak(self):
         from engine.export.windows_exporter import WindowsExporter
@@ -148,6 +154,7 @@ class TestWindowsSpecGeneration(unittest.TestCase):
         content = spec_path.read_text(encoding="utf-8")
         self.assertIn("'content')", content)
         self.assertNotIn("game.pak", content)
+        self.assertNotIn("'engine')", content)
 
     def test_spec_default_bundle_mode_is_packed(self):
         from engine.export.windows_exporter import WindowsExporter

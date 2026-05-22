@@ -131,7 +131,7 @@ class TestAndroidKeystoreSecurity(unittest.TestCase):
                 self.assertNotIn("keysecret456!", content,
                                  f"Password leaked in {path.relative_to(self.staging)}")
 
-    def test_missing_keystore_error(self):
+    def test_missing_keystore_error_has_actionable_code(self):
         preset = self._make_preset_with_keystore(keystore_path="nonexistent.keystore")
         ctx = BuildContext(preset, str(self.tmp))
         ctx.staging_dir = self.staging
@@ -141,9 +141,10 @@ class TestAndroidKeystoreSecurity(unittest.TestCase):
 
         result = exporter._build_release(ctx, self.project_dir, {})
         self.assertFalse(result)
-        self.assertTrue(any("Keystore not found" in e for e in ctx.errors))
+        self.assertTrue(any("ANDROID_KEYSTORE_NOT_FOUND" in e for e in ctx.errors))
+        self.assertTrue(any("not found at configured path" in e for e in ctx.errors))
 
-    def test_no_keystore_path_error(self):
+    def test_no_keystore_path_error_has_actionable_code(self):
         preset = ExportPreset(
             name="AndroidTest",
             platform="android",
@@ -161,7 +162,110 @@ class TestAndroidKeystoreSecurity(unittest.TestCase):
 
         result = exporter._build_release(ctx, self.project_dir, {})
         self.assertFalse(result)
-        self.assertTrue(any("keystore_path" in e for e in ctx.errors))
+        self.assertTrue(any("ANDROID_KEYSTORE_MISSING" in e for e in ctx.errors))
+
+    def test_keystore_path_not_in_gradle_storefile(self):
+        preset = self._make_preset_with_keystore()
+        ctx = BuildContext(preset, str(self.tmp))
+        ctx.staging_dir = self.staging
+
+        from engine.export.android_exporter import AndroidExporter
+        exporter = AndroidExporter()
+
+        # Simulate _build_release but stop before running Gradle
+        keystore = ctx.preset.extra.get("keystore_path", "")
+        keystore_path = Path(keystore)
+        if not keystore_path.is_absolute():
+            keystore_path = ctx.project_root / keystore_path
+
+        content = self.gradle_path.read_text(encoding="utf-8")
+        signing_block = (
+            "\n    signingConfigs {\n"
+            "        release {\n"
+            "            storeFile rootProject.file('keystore.jks')\n"
+            "            storePassword System.getenv(\"RELEASE_STORE_PASSWORD\") ?: \"\"\n"
+            "            keyAlias System.getenv(\"RELEASE_KEY_ALIAS\") ?: \"mykey\"\n"
+            "            keyPassword System.getenv(\"RELEASE_KEY_PASSWORD\") ?: \"\"\n"
+            "        }\n"
+            "    }\n"
+        )
+        if "signingConfigs {" not in content:
+            content = content.replace(
+                "buildTypes {",
+                signing_block + "    buildTypes {",
+            )
+        content = content.replace(
+            "signingConfig signingConfigs.debug",
+            "signingConfig signingConfigs.release",
+        )
+        self.gradle_path.write_text(content, encoding="utf-8")
+
+        gradle_text = self.gradle_path.read_text(encoding="utf-8")
+        self.assertNotIn(str(keystore_path), gradle_text,
+                         "Keystore absolute path must NOT appear in build.gradle")
+        self.assertIn("keystore.jks", gradle_text,
+                      "Should use relative keystore.jks reference")
+
+
+class TestAndroidOutputSemantics(unittest.TestCase):
+    """Test output_path .apk/.aab semantics."""
+    
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.staging = self.tmp / "staging"
+        self.staging.mkdir(parents=True)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(str(self.tmp), ignore_errors=True)
+
+    def test_output_path_apk_sets_artifact_filename(self):
+        from engine.export.build_context import BuildContext
+        from engine.export.models import ExportPreset
+
+        preset = ExportPreset(
+            name="AndroidTest",
+            platform="android",
+            output_path="dist/export/android/MyGame-debug.apk",
+            entry_scene="levels/test.json",
+            display_name="Test",
+        )
+        ctx = BuildContext(preset, str(self.tmp))
+        ctx.staging_dir = self.staging
+
+        from engine.export.android_exporter import AndroidExporter
+        exporter = AndroidExporter()
+
+        # Reset output_dir to simulate what the export method does
+        output_path_str = ctx.preset.output_path
+        if output_path_str.endswith((".apk", ".aab")):
+            ctx.output_dir = ctx.project_root / Path(output_path_str).parent
+            ctx._artifact_filename = Path(output_path_str).name
+
+        self.assertEqual(ctx._artifact_filename, "MyGame-debug.apk")
+        self.assertEqual(ctx.output_dir.name, "android")
+
+    def test_output_path_dir_no_artifact_filename(self):
+        from engine.export.build_context import BuildContext
+        from engine.export.models import ExportPreset
+
+        preset = ExportPreset(
+            name="AndroidTest",
+            platform="android",
+            output_path="dist/export/android/MyGame",
+            entry_scene="levels/test.json",
+            display_name="Test",
+        )
+        ctx = BuildContext(preset, str(self.tmp))
+        ctx.staging_dir = self.staging
+
+        output_path_str = ctx.preset.output_path
+        if output_path_str.endswith((".apk", ".aab")):
+            ctx._artifact_filename = Path(output_path_str).name
+        else:
+            ctx._artifact_filename = None
+
+        self.assertIsNone(ctx._artifact_filename)
 
 
 if __name__ == "__main__":

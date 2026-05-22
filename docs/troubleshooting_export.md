@@ -264,6 +264,8 @@ pip install raylib pyray
 ## Runtime exportado: crash o freeze
 
 1. Ejecuta smoke test: `MyGame.exe --smoke-test`.
+   - El smoke test ejecuta `verify_integrity()` primero. Si retorna codigo 3,
+     el content pack esta corrupto o tiene archivos faltantes.
 2. Si smoke test falla, el problema esta en la carga de escena o fisica.
 3. Ejecuta con `--headless --frames 1 --print-runtime-info` para ver informacion
    de carga sin simulacion larga.
@@ -295,3 +297,47 @@ Si encuentras un error no listado aqui:
 
 No uses scripts sueltos ni modifiques `export_presets.motor.json` sin pasar por
 validacion — los errores de schema se detectan pero no previenen el commit.
+
+## Content pack: verificacion de integridad
+
+El content pack incluye verificacion de integridad automatica:
+
+- `verify_pak()` se ejecuta despues de `write_pak()` durante el build.
+- Si detecta archivos corruptos o con hash incorrecto, el build falla con
+  `Content pack integrity check failed`.
+- En runtime, `--smoke-test` ejecuta `ContentLoader.verify_integrity()`.
+- Si la integridad falla en runtime, el smoke test retorna codigo 3 y lista
+  los archivos corruptos/faltantes.
+
+Para verificar manualmente:
+
+```bash
+# Verificar content pack generado
+py -m motor export pack "Windows Desktop" --project . --json
+# Si falla con error de integridad, revisa game.manifest.json y game.pak
+```
+
+## Android: errores de keystore
+
+Los errores de keystore usan codigos accionables:
+
+### ANDROID_KEYSTORE_MISSING
+El preset no tiene configurado `keystore_path` en `extra`:
+```json
+{
+  "extra": {
+    "keystore_path": "keystore/release.keystore",
+    "keystore_password": "...",
+    "key_alias": "mygame"
+  }
+}
+```
+
+### ANDROID_KEYSTORE_NOT_FOUND
+El archivo de keystore no existe en la ruta configurada.
+- Verifica que la ruta relativa apunte a un archivo existente.
+- Crea un keystore con: `keytool -genkey -v -keystore release.keystore ...`
+
+El `build.gradle` generado NUNCA contiene rutas absolutas de keystore ni
+passwords. Usa `rootProject.file('keystore.jks')` y variables de entorno
+(`RELEASE_STORE_PASSWORD`, `RELEASE_KEY_PASSWORD`) exclusivamente.

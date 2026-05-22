@@ -27,6 +27,8 @@ _SECRET_PATTERNS: list[tuple[str, str]] = [
     (r'(?:password|token|secret|api_key)\s*["\':=]+\s*\S+',
      r'[REDACTED]'),
     (r'(?:--password|--token|--api-key)\s+\S+', r'[REDACTED]'),
+    (r'storeFile\s+\S+', r'storeFile [REDACTED]'),
+    (r'ANDROID_KEYSTORE_NOT_FOUND.*', r'ANDROID_KEYSTORE_NOT_FOUND: [REDACTED]'),
 ]
 
 

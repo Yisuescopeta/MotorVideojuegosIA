@@ -11,7 +11,7 @@ Godot-inspired export preset system:
 from engine.export.artifact_writer import safe_copy
 from engine.export.build_context import BuildContext
 from engine.export.build_graph import build_content_graph
-from engine.export.content_collector import collect_content, write_manifest
+from engine.export.content_collector import collect_content, verify_pak, write_manifest, write_pak
 from engine.export.content_pack import build_content_pack
 from engine.export.diagnostics import run_export_doctor
 from engine.export.exporter_registry import ExporterRegistry
@@ -80,4 +80,6 @@ __all__ = [
     "validate_presets_raw",
     "write_build_report",
     "write_manifest",
+    "write_pak",
+    "verify_pak",
 ]

@@ -1,6 +1,7 @@
 """Tests for ContentLoader scene loading from game.pak."""
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 import unittest
@@ -28,24 +29,32 @@ class TestContentLoaderPakSceneLoading(unittest.TestCase):
         full.write_text(json.dumps(data), encoding="utf-8")
 
     def _build_pak(self, scenes: dict[str, dict] | None = None):
+        if scenes is None:
+            scenes = {"levels/main.json": {"entities": []}}
+        
+        # Compute real SHA-256 for each scene
+        scene_entries = []
+        for rel, data in scenes.items():
+            content = json.dumps(data, ensure_ascii=True).encode("utf-8")
+            sha = hashlib.sha256(content).hexdigest()
+            scene_entries.append({
+                "guid": f"g_{rel}", "path": rel, "kind": "scene",
+                "sha256": sha, "size_bytes": len(content), "dependencies": [],
+            })
+
         manifest = {
             "schema_version": 1,
             "entry_scene": "levels/main.json",
             "project": {"name": "Test", "version": "0.1.0"},
             "assets": [],
-            "scenes": [
-                {"guid": "g1", "path": "levels/main.json", "kind": "scene",
-                 "sha256": "abc", "size_bytes": 100, "dependencies": []},
-            ],
+            "scenes": scene_entries,
             "scripts": [],
         }
-        if scenes is None:
-            scenes = {"levels/main.json": {"entities": []}}
         pak_path = self.tmp / "game.pak"
         with zipfile.ZipFile(pak_path, "w", compression=zipfile.ZIP_DEFLATED) as pak:
             pak.writestr("game.manifest.json", json.dumps(manifest))
             for rel, data in scenes.items():
-                pak.writestr(rel, json.dumps(data))
+                pak.writestr(rel, json.dumps(data, ensure_ascii=True))
         return pak_path
 
     def test_load_scene_json_from_filesystem(self):
@@ -104,6 +113,59 @@ class TestContentLoaderPakSceneLoading(unittest.TestCase):
         loader = ContentLoader(self.tmp)
         entry = loader.get_entry_scene()
         self.assertEqual(entry, "levels/main.json")
+
+    def test_verify_integrity_valid(self):
+        scenes = {"levels/main.json": {"entities": []}}
+        self._build_pak(scenes)
+        # Also write scene to filesystem for integrity check
+        self._write_scene("levels/main.json", {"entities": []})
+        loader = ContentLoader(self.tmp)
+        result = loader.verify_integrity()
+        self.assertTrue(result["valid"])
+        self.assertEqual(len(result["tampered"]), 0)
+
+    def test_verify_integrity_missing_file_from_pak(self):
+        """When file not on FS, ContentLoader reads from pak and verifies hash."""
+        scenes = {"levels/main.json": {"entities": []}}
+        self._build_pak(scenes)
+        loader = ContentLoader(self.tmp)
+        result = loader.verify_integrity()
+        # File is only in pak, but should be found via _read_manifest_from_pak
+        # and hashed from pak data
+        self.assertTrue(result["valid"])
+        self.assertEqual(len(result["tampered"]), 0)
+
+    def test_verify_integrity_tampered(self):
+        scenes = {"levels/main.json": {"entities": [{"id": "x"}]}}
+        self._build_pak(scenes)
+        # Write tampered file on filesystem — content differs from pak, hash mismatch
+        (self.content_dir / "levels" / "main.json").write_text(
+            json.dumps({"entities": [{"id": "tampered"}]}), encoding="utf-8",
+        )
+        loader = ContentLoader(self.tmp)
+        result = loader.verify_integrity()
+        self.assertFalse(result["valid"])
+        self.assertIn("levels/main.json", result["tampered"])
+
+    def test_verify_integrity_missing_entry(self):
+        manifest = {
+            "schema_version": 1,
+            "entry_scene": "levels/main.json",
+            "project": {"name": "Test", "version": "0.1.0"},
+            "assets": [],
+            "scenes": [
+                {"guid": "g1", "path": "levels/missing.json", "kind": "scene",
+                 "sha256": "abc123", "size_bytes": 100, "dependencies": []},
+            ],
+            "scripts": [],
+        }
+        pak_path = self.tmp / "game.pak"
+        with zipfile.ZipFile(pak_path, "w", compression=zipfile.ZIP_DEFLATED) as pak:
+            pak.writestr("game.manifest.json", json.dumps(manifest))
+        loader = ContentLoader(self.tmp)
+        result = loader.verify_integrity()
+        self.assertFalse(result["valid"])
+        self.assertIn("levels/missing.json", result["tampered"])
 
 
 if __name__ == "__main__":
