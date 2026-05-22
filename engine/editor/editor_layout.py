@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional, cast
 
 import pyray as rl
-from engine.editor.console_panel import log_err
+from engine.core.runtime_logging import log_err
 from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.editor_shell_state import EditorPanelSlots, EditorShellState
 from engine.editor.editor_tools import EditorTool, PivotMode, SnapSettings, TransformSpace
@@ -115,6 +115,7 @@ _PANEL_SLOT_FIELDS = (
     "console_panel",
     "terminal_panel",
     "agent_panel",
+    "export_panel",
     "asset_browser",
 )
 
@@ -137,6 +138,7 @@ class EditorLayout:
     console_panel: Any
     terminal_panel: Any
     agent_panel: Any
+    export_panel: Any
     asset_browser: Any
 
     # ========================================
@@ -247,6 +249,7 @@ class EditorLayout:
             ("Console", "", "bottom_console"),
             ("Terminal", "", "bottom_terminal"),
             ("Agent", "", "bottom_agent"),
+            ("Export", "", "bottom_export"),
         ],
         "Help": [
             ("About Motor 2D", "", "about"),
@@ -818,6 +821,7 @@ class EditorLayout:
             "CONSOLE": "Console",
             "TERMINAL": "Terminal",
             "AGENT": "Agent",
+            "EXPORT": "Export",
             "HIERARCHY": "Hierarchy",
             "INSPECTOR": "Inspector",
         }
@@ -830,7 +834,7 @@ class EditorLayout:
         bottom_tab = self.dock_layout.active_tab("bottom")
         if bottom_tab == "FLOW_PANEL":
             bottom_tab = "FLOW"
-        if bottom_tab in {"PROJECT", "FLOW", "CONSOLE", "TERMINAL", "AGENT", "ASSETS"}:
+        if bottom_tab in {"PROJECT", "FLOW", "CONSOLE", "TERMINAL", "AGENT", "EXPORT", "ASSETS"}:
             self.active_bottom_tab = bottom_tab
 
     def update_layout(self, width: int, height: int, update_texture: bool = True) -> None:
@@ -1365,6 +1369,15 @@ class EditorLayout:
                     int(self.bottom_content_rect.height),
                 )
                 self._panel_profile["agent"] = time.perf_counter() - t0
+            elif self.active_bottom_tab == "EXPORT" and self.export_panel:
+                t0 = time.perf_counter()
+                self.export_panel.render(
+                    int(self.bottom_content_rect.x),
+                    int(self.bottom_content_rect.y),
+                    int(self.bottom_content_rect.width),
+                    int(self.bottom_content_rect.height),
+                )
+                self._panel_profile["export"] = time.perf_counter() - t0
             elif self.active_bottom_tab == "ASSETS" and self.asset_browser:
                 t0 = time.perf_counter()
                 self.asset_browser.render(
@@ -1975,6 +1988,13 @@ class EditorLayout:
         if editor_button(_to_ui_rect(button_rect), "Button").clicked:
             self.request_create_ui_button = True
 
+        file_x += 62
+        export_btn_w = 52
+        export_rect = rl.Rectangle(file_x, play_y, export_btn_w, btn_height)
+        self._register_cursor_rect(export_rect)
+        if editor_button(_to_ui_rect(export_rect), "Export").clicked:
+            self.active_bottom_tab = "EXPORT"
+
     def _draw_toolbar_toggle(self, x: int, y: int, label: str, is_active: bool, on_click, height: int = 20) -> int:
         width = self._measure_text(label, 10) + 16
         rect = rl.Rectangle(x, y, width, height)
@@ -2037,6 +2057,8 @@ class EditorLayout:
             self.active_bottom_tab = "TERMINAL"
         elif action_id == "bottom_agent":
             self.active_bottom_tab = "AGENT"
+        elif action_id == "bottom_export":
+            self.active_bottom_tab = "EXPORT"
         elif action_id == "bottom_assets":
             self.active_bottom_tab = "ASSETS"
         elif action_id == "about":
@@ -2303,7 +2325,11 @@ class EditorLayout:
         )
 
         for tab_id, rect in self.compute_dock_tab_rects("bottom").items():
-            active_id = "FLOW_PANEL" if self.active_bottom_tab == "FLOW" else self.active_bottom_tab
+            active_id = self.active_bottom_tab
+            if self.active_bottom_tab == "FLOW":
+                active_id = "FLOW_PANEL"
+            elif self.active_bottom_tab == "EXPORT":
+                active_id = "EXPORT"
             self._draw_tab(self._dock_tab_label(tab_id), rect, active_id == tab_id)
 
     def _clamp_bottom_height(self, value: int, screen_height: int | None = None) -> int:

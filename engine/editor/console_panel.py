@@ -2,34 +2,16 @@
 engine/editor/console_panel.py - Panel de Consola estilo Unity
 """
 
-from typing import Any, List, Tuple
+from typing import Any
 
 import pyray as rl
+from engine.core.runtime_logging import GLOBAL_LOGS, log_debug, log_err, log_info, log_warn  # noqa: F401
 from engine.editor.render_safety import gui_toggle_bool
 from engine.editor.theme import get_active_theme
 from engine.editor.theme.fonts import get_mono_font
 from engine.editor.ui.text_input_render import process_text_input, render_text_input
 from engine.editor.ui_core.controls.console_control import ConsoleControlModel
 from engine.editor.ui_core.controls.text_input import TextInput
-
-# Sistema de Logs Global
-GLOBAL_LOGS: List[Tuple[str, str]] = []
-
-
-def log_info(msg: str):
-    GLOBAL_LOGS.append(("INFO", msg))
-
-
-def log_warn(msg: str):
-    GLOBAL_LOGS.append(("WARN", msg))
-
-
-def log_err(msg: str):
-    GLOBAL_LOGS.append(("ERR", msg))
-
-
-def log_debug(msg: str):
-    GLOBAL_LOGS.append(("DEBUG", msg))
 
 
 class ConsolePanel:

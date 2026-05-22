@@ -64,18 +64,48 @@ class TestExportedRuntimePurity(unittest.TestCase):
         self.assertIsNotNone(bootstrap_config)
         bad = self._added_editor_or_inspector(before)
         self.assertFalse(bad, f"Added editor/inspector modules: {bad}")
-    
+
     def test_runtime_config_no_inspector(self):
         before = self._snapshot()
         from engine.runtime.runtime_config import RuntimeConfig
         self.assertIsNotNone(RuntimeConfig)
         bad = self._added_editor_or_inspector(before)
         self.assertFalse(bad, f"Added editor/inspector modules: {bad}")
-    
+
     def test_content_loader_no_inspector(self):
         before = self._snapshot()
         from engine.runtime.content_loader import ContentLoader
         self.assertIsNotNone(ContentLoader)
+        bad = self._added_editor_or_inspector(before)
+        self.assertFalse(bad, f"Added editor/inspector modules: {bad}")
+
+    def test_import_ui_system_no_editor(self):
+        before = self._snapshot()
+        import engine.systems.ui_system  # noqa: F401
+        bad = self._added_editor_or_inspector(before)
+        self.assertFalse(bad, f"Added editor/inspector modules: {bad}")
+
+    def test_import_script_behaviour_system_no_editor(self):
+        before = self._snapshot()
+        import engine.systems.script_behaviour_system  # noqa: F401
+        bad = self._added_editor_or_inspector(before)
+        self.assertFalse(bad, f"Added editor/inspector modules: {bad}")
+
+    def test_import_render_system_no_editor(self):
+        before = self._snapshot()
+        import engine.systems.render_system  # noqa: F401
+        bad = self._added_editor_or_inspector(before)
+        self.assertFalse(bad, f"Added editor/inspector modules: {bad}")
+
+    def test_import_animation_system_no_editor(self):
+        before = self._snapshot()
+        import engine.systems.animation_system  # noqa: F401
+        bad = self._added_editor_or_inspector(before)
+        self.assertFalse(bad, f"Added editor/inspector modules: {bad}")
+
+    def test_import_audio_system_no_editor(self):
+        before = self._snapshot()
+        import engine.systems.audio_system  # noqa: F401
         bad = self._added_editor_or_inspector(before)
         self.assertFalse(bad, f"Added editor/inspector modules: {bad}")
 

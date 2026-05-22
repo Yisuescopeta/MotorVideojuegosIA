@@ -1,15 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import IntEnum
 
 import pyray as rl
-
-
-class CursorVisualState(IntEnum):
-    DEFAULT = 0
-    INTERACTIVE = 1
-    TEXT = 2
+from engine.core.cursor_state import CursorVisualState
 
 
 @dataclass(frozen=True)

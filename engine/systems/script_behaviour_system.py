@@ -9,8 +9,8 @@ from typing import Any, Callable, Optional
 
 from engine.assets.asset_service import AssetService
 from engine.components.scriptbehaviour import ScriptBehaviour
+from engine.core.runtime_logging import log_err, log_info
 from engine.ecs.world import World
-from engine.editor.console_panel import log_err, log_info
 
 ScriptHook = Callable[..., Any]
 ScriptMembershipSignature = tuple[tuple[int, str, int], ...]
