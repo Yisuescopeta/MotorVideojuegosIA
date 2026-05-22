@@ -14,8 +14,12 @@ from engine.events.event_bus import EventBus
 from engine.levels.component_registry import ComponentRegistry
 from engine.runtime.content_loader import ContentLoader
 from engine.scenes.scene import Scene
+from engine.systems.animation_system import AnimationSystem
+from engine.systems.character_controller_system import CharacterControllerSystem
 from engine.systems.collision_system import CollisionSystem
+from engine.systems.input_system import InputSystem
 from engine.systems.physics_system import PhysicsSystem
+from engine.systems.player_controller_system import PlayerControllerSystem
 
 
 class ExportRuntime:
@@ -37,6 +41,13 @@ class ExportRuntime:
         self._event_bus = EventBus()
         self._physics = PhysicsSystem(gravity=gravity)
         self._collision = CollisionSystem(event_bus=self._event_bus)
+        self._input = InputSystem()
+        self._animation = AnimationSystem(event_bus=self._event_bus)
+        self._character_controller = CharacterControllerSystem()
+        if self._event_bus is not None and hasattr(self._character_controller, "set_event_bus"):
+            self._character_controller.set_event_bus(self._event_bus)
+        self._player_controller = PlayerControllerSystem()
+        self._pointer_state: dict[str, Any] | None = None
         self._current_scene_path: str | None = None
         self._frame_count: int = 0
         self._active: bool = True
@@ -87,13 +98,36 @@ class ExportRuntime:
     # ── game loop ───────────────────────────────────────────────
 
     def run_frame(self, dt: float = 1.0 / 60.0) -> None:
-        """Ejecuta un frame de simulación (física + colisiones)."""
+        """Ejecuta un frame de simulación con todos los sistemas canónicos."""
         if not self._active or self._world is None:
             return
         self._event_bus.reset_frame_dedup()
+        # Input → physics-driven controllers → physics → collisions → animation
+        self._input.update(self._world)
+        self._character_controller.update(self._world, dt, backend=None)
+        self._player_controller.update(self._world)
         self._physics.update(self._world, dt)
         self._collision.update(self._world)
+        self._animation.update(self._world, dt)
         self._frame_count += 1
+
+    # ── input injection (testing / headless) ─────────────────────
+
+    def inject_input(self, entity_name: str, state: dict[str, float], frames: int = 1) -> None:
+        """Inyecta estado de input para testing/headless."""
+        self._input.inject_state(entity_name, state, frames)
+
+    def inject_pointer_state(
+        self, x: float, y: float, *,
+        down: bool = False, pressed: bool = False, released: bool = False,
+        frames: int = 1,
+    ) -> None:
+        """Inyecta estado de puntero para testing."""
+        self._pointer_state = {
+            "x": x, "y": y,
+            "down": down, "pressed": pressed, "released": released,
+            "frames": frames,
+        }
 
     # ── events ──────────────────────────────────────────────────
 
