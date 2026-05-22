@@ -13,6 +13,7 @@ from engine.ecs.world import World
 from engine.events.event_bus import EventBus
 from engine.levels.component_registry import ComponentRegistry
 from engine.runtime.content_loader import ContentLoader
+from engine.runtime.runtime_project_service import RuntimeProjectService
 from engine.scenes.scene import Scene
 from engine.systems.animation_system import AnimationSystem
 from engine.systems.character_controller_system import CharacterControllerSystem
@@ -20,6 +21,7 @@ from engine.systems.collision_system import CollisionSystem
 from engine.systems.input_system import InputSystem
 from engine.systems.physics_system import PhysicsSystem
 from engine.systems.player_controller_system import PlayerControllerSystem
+from engine.systems.render_system import RenderSystem
 
 
 class ExportRuntime:
@@ -32,6 +34,7 @@ class ExportRuntime:
         *,
         window_config: dict[str, Any] | None = None,
         gravity: float = 600.0,
+        render_system: RenderSystem | None = None,
     ) -> None:
         self._loader = loader
         self._registry = registry
@@ -47,6 +50,13 @@ class ExportRuntime:
         if self._event_bus is not None and hasattr(self._character_controller, "set_event_bus"):
             self._character_controller.set_event_bus(self._event_bus)
         self._player_controller = PlayerControllerSystem()
+        if render_system is not None:
+            self._render = render_system
+        else:
+            self._render = RenderSystem()
+            if loader is not None:
+                project_service = RuntimeProjectService(loader.base_path)
+                self._render._project_service = project_service  # type: ignore[assignment]  # duck-typing: set directly to skip AssetService
         self._pointer_state: dict[str, Any] | None = None
         self._current_scene_path: str | None = None
         self._frame_count: int = 0
@@ -73,6 +83,10 @@ class ExportRuntime:
     @property
     def active(self) -> bool:
         return self._active
+
+    @property
+    def render_system(self) -> Any:
+        return self._render
 
     # ── scene loading ───────────────────────────────────────────
 
@@ -110,6 +124,17 @@ class ExportRuntime:
         self._collision.update(self._world)
         self._animation.update(self._world, dt)
         self._frame_count += 1
+
+    def render(self, viewport_size: tuple[float, float] | None = None) -> None:
+        """Render the current world using RenderSystem."""
+        if self._world is None or self._render is None:
+            return
+        if viewport_size is None:
+            viewport_size = (
+                float(self._window_config.get("width", 1280)),
+                float(self._window_config.get("height", 720)),
+            )
+        self._render.render(self._world, viewport_size=viewport_size)
 
     # ── input injection (testing / headless) ─────────────────────
 
