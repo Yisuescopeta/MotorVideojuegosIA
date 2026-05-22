@@ -174,7 +174,20 @@ def _run_windowed_pyray(config) -> int:  # type: ignore[no-untyped-def]
 
         if runtime.world is not None:
             viewport = (float(width), float(height))
+            # Render world
             runtime.render(viewport)
+            # Get real mouse state
+            mouse = pyray.get_mouse_position()
+            runtime.update_ui(
+                viewport,
+                mouse_x=float(mouse.x),
+                mouse_y=float(mouse.y),
+                mouse_down=bool(pyray.is_mouse_button_down(pyray.MOUSE_BUTTON_LEFT)),
+                mouse_pressed=bool(pyray.is_mouse_button_pressed(pyray.MOUSE_BUTTON_LEFT)),
+                mouse_released=bool(pyray.is_mouse_button_released(pyray.MOUSE_BUTTON_LEFT)),
+            )
+            # Render UI overlay
+            runtime.render_ui()
 
         pyray.end_drawing()
 

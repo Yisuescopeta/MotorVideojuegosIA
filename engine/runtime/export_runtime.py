@@ -22,6 +22,8 @@ from engine.systems.input_system import InputSystem
 from engine.systems.physics_system import PhysicsSystem
 from engine.systems.player_controller_system import PlayerControllerSystem
 from engine.systems.render_system import RenderSystem
+from engine.systems.ui_render_system import UIRenderSystem
+from engine.systems.ui_system import UISystem
 
 
 class ExportRuntime:
@@ -56,7 +58,21 @@ class ExportRuntime:
             self._render = RenderSystem()
             if loader is not None:
                 project_service = RuntimeProjectService(loader.base_path)
+                self._project_service = project_service
                 self._render._project_service = project_service  # type: ignore[assignment]  # duck-typing: set directly to skip AssetService
+        # UI systems
+        self._ui_system = UISystem()
+        self._ui_system.set_event_bus(self._event_bus)
+        self._ui_system.set_scene_loader(self.load_scene)
+        self._ui_system.set_runtime_scene_loader(self.load_scene)
+        # Scene flow and transition runners set to None for now (scripts Phase 7)
+        self._ui_render = UIRenderSystem()
+        if hasattr(self, '_project_service'):
+            self._ui_render.set_project_service(self._project_service)
+        elif loader is not None:
+            project_service = RuntimeProjectService(loader.base_path)
+            self._project_service = project_service
+            self._ui_render.set_project_service(self._project_service)
         self._pointer_state: dict[str, Any] | None = None
         self._current_scene_path: str | None = None
         self._frame_count: int = 0
@@ -87,6 +103,10 @@ class ExportRuntime:
     @property
     def render_system(self) -> Any:
         return self._render
+
+    @property
+    def ui_system(self) -> Any:
+        return self._ui_system
 
     # ── scene loading ───────────────────────────────────────────
 
@@ -166,6 +186,29 @@ class ExportRuntime:
         return [{"name": e.name, "data": e.data} for e in events]
 
     # ── lifecycle ───────────────────────────────────────────────
+
+    # ── UI ─────────────────────────────────────────────────────
+
+    def update_ui(
+        self, viewport_size: tuple[float, float], *,
+        mouse_x: float = 0.0, mouse_y: float = 0.0,
+        mouse_down: bool = False, mouse_pressed: bool = False,
+        mouse_released: bool = False,
+    ) -> None:
+        """Update UI system with real or injected mouse input."""
+        if self._world is None:
+            return
+        self._ui_system.inject_pointer_state(
+            mouse_x, mouse_y,
+            down=mouse_down, pressed=mouse_pressed, released=mouse_released,
+        )
+        self._ui_system.update(self._world, viewport_size, allow_interaction=True)
+
+    def render_ui(self) -> None:
+        """Render UI overlay on top of the world."""
+        if self._world is None:
+            return
+        self._ui_render.render(self._world, self._ui_system)
 
     def shutdown(self) -> None:
         """Apaga el runtime sin persistir estado."""
