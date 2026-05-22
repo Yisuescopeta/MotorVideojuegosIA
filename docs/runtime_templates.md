@@ -119,13 +119,42 @@ verifica hashes SHA-256 y expone assets, escenas y scripts al runtime.
 El smoke test se ejecuta via `--smoke-test`:
 
 1. Carga entry scene.
-2. Ejecuta 60 frames de fisica/colision.
-3. Emite eventos semanticos (collisions, collectibles, hazards, goals).
-4. Verifica que no haya errores de carga ni crashes.
-5. Retorna exit code 0 si todo ok, 1 si hay errores.
+2. Ejecuta 60 frames de fisica/colision/input/scripts headless.
+3. Verifica integridad del content pack (SHA-256).
+4. Emite eventos semanticos (collisions, collectibles, hazards, goals).
+5. Verifica que no haya errores de carga ni crashes.
+6. Retorna exit code 0 si todo ok, 1 si errores, 3 si content pack corrupto.
 
 Integrado en el pipeline de build: `WindowsExporter` ejecuta smoke test
 automaticamente despues de generar el ejecutable.
+
+> **⚠ Importante**: el smoke test verifica carga basica + N frames headless, pero
+> **no equivale a jugabilidad completa**. No valida:
+> - Render de sprites/texturas reales (solo headless)
+> - Input de teclado/mouse real (solo inyectado)
+> - Interaccion UI (botones, cambio de escena por click)
+> - ScriptBehaviour ejecutandose con eventos reales
+>
+> Para validacion de jugabilidad real, ver `test_export_runtime_playability.py`.
+
+## Tests de jugabilidad
+
+`tests/test_export_runtime_playability.py` contiene 16 tests en 5 clases que
+verifican el runtime exportado sin requerir PyInstaller ni builds completos:
+
+| Clase | Que verifica |
+|---|---|
+| `TestExportRuntimeSceneLoading` | Carga exitosa, escena faltante, emision de eventos, cambio de escena |
+| `TestExportRuntimeFrame` | Incremento de frames, tolerancia a world=None, shutdown seguro |
+| `TestExportRuntimeGameplay` | Input inyectado mueve Player (izquierda, derecha, salto), gravedad empuja hacia abajo |
+| `TestExportRuntimeUI` | Click en UIButton tipo `load_scene` cambia escena, hover sin click no cambia escena |
+| `TestExportRuntimeSystemsIntegration` | Todas las propiedades accesibles, 30 frames sin crash con todos los sistemas |
+
+Ejecucion:
+
+```bash
+py -m unittest tests.test_export_runtime_playability -v
+```
 
 ## Separacion editor/runtime
 
@@ -140,6 +169,28 @@ automaticamente despues de generar el ejecutable.
 | `engine/runtime/exported_game.py` | No usado | Entrypoint |
 | Content pack | Opcional | Obligatorio |
 
-El runtime exportado solo incluye sistemas necesarios para ejecutar el juego:
-render (si windowed), fisica, colisiones, animacion, input, audio, UI
-serializable y scripts de gameplay.
+El runtime exportado solo incluye sistemas necesarios para ejecutar el juego.
+La clase `ExportRuntime` (`engine/runtime/export_runtime.py`) wirea estos
+sistemas en orden:
+
+| Sistema | Funcion |
+|---|---|
+| `InputSystem` | Captura input de teclado (real en windowed, inyectado en headless) |
+| `CharacterControllerSystem` | Movimiento slide-based con backend fisico o fallback AABB |
+| `PlayerControllerSystem` | Traduce InputMap + PlayerController2D a fuerzas |
+| `PhysicsSystem` | Gravedad, fuerzas, impulsos, PGS solver |
+| `CollisionSystem` | Deteccion AABB, eventos `collision_contact` |
+| `AnimationSystem` | Animator state machine, spritesheet frames |
+| `RenderSystem` | Render de sprites, tilemaps y formas; usa `RuntimeProjectService` para cargar texturas desde `content/` |
+| `UISystem` | Procesa mouse real, resuelve interaccion con Canvas/UIButton/UIText |
+| `UIRenderSystem` | Renderiza UI overlay encima del mundo |
+| `ScriptBehaviourSystem` | Ejecuta `on_play`/`on_update`/`on_stop` via importlib (sin hot-reload) |
+
+El `RenderSystem` en modo runtime usa `RuntimeProjectService` en lugar de
+`AssetService`/`ProjectService` del editor. Las texturas se cargan desde
+el directorio `content/` (directory mode) o desde `game.pak` (packed mode).
+
+> **Nota**: El sistema de audio no esta implementado en `ExportRuntime`.
+> La UI usa `UISystem` + `UIRenderSystem` reales (no "UI serializable" solo
+> data). Los scripts ejecutan `ScriptBehaviourSystem` real con importlib
+> fallback (sin hot-reload manager del editor).

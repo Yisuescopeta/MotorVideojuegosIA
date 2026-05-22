@@ -300,6 +300,30 @@ disponible. Sin esta dependencia, el entrypoint retorna
 `TOOLCHAIN/RUNTIME_UNAVAILABLE` con código 2. El modo headless (`--smoke-test`,
 `--headless --frames N`) funciona sin dependencias gráficas.
 
+### Smoke test no equivale a jugabilidad completa
+
+`--smoke-test` valida carga headless + 60 frames de simulacion con los sistemas
+actuales (InputSystem, PhysicsSystem, CollisionSystem, AnimationSystem,
+CharacterControllerSystem, PlayerControllerSystem y ScriptBehaviourSystem).
+Sin embargo, **no verifica**:
+- Render de sprites/texturas reales (el smoke test es headless, no abre ventana)
+- Input de teclado/mouse real (solo inyectado via `inject_input`)
+- Interaccion UI (mouse real + UISystem + cambio de escena por click en boton)
+- ScriptBehaviour con eventos runtime reales
+
+Para validar jugabilidad real (escena con UI, click en boton que carga otra
+escena, input que mueve Player, colisiones con gravedad), usa los tests de
+`tests/test_export_runtime_playability.py`:
+
+```bash
+py -m unittest tests.test_export_runtime_playability -v
+```
+
+Estos tests verifican ExportRuntime directamente sin PyInstaller ni builds
+completos. Cubren: carga de escenas, ejecucion de frames, movimiento del
+Player por input inyectado (izquierda, derecha, salto), gravedad, click en
+UIButton con cambio de escena, y 30 frames con todos los sistemas activos.
+
 ### Content graph: assets cargados dinamicamente
 
 El grafo de contenido detecta assets por referencias estáticas en campos JSON
