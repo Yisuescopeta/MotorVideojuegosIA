@@ -63,7 +63,6 @@ class WindowsExporter(PlatformExporter):
                     pyinstaller,
                     "--distpath", str(output),
                     "--workpath", str(staging / "pyi_work"),
-                    "--specpath", str(staging),
                     "--noconfirm",
                     str(spec_path),
                 ],
