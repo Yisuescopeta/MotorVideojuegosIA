@@ -5,6 +5,7 @@ from typing import Any
 
 from engine.editor.agent_panel import AgentPanel
 from engine.editor.editor_control_adapter import ConsolePanelEditorControlAdapter
+from engine.editor.export_panel import ExportPanel
 from engine.editor.project_panel import ProjectPanel
 from engine.editor.scene_flow_panel import SceneFlowPanel
 
@@ -19,6 +20,7 @@ class EditorPanelSlots:
     console_panel: Any = field(default_factory=ConsolePanelEditorControlAdapter)
     terminal_panel: Any = None
     agent_panel: Any = field(default_factory=AgentPanel)
+    export_panel: Any = field(default_factory=ExportPanel)
 
 
 @dataclass(slots=True)

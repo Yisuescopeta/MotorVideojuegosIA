@@ -127,6 +127,11 @@ def _extract_references(
     result: BuildGraphResult,
 ) -> None:
     if isinstance(data, dict):
+        asset_ref_path = data.get("path")
+        if _looks_like_asset_reference(data, asset_ref_path):
+            _add_reference(
+                asset_ref_path, root, visited_assets, visited_scripts, result,
+            )
         for key, value in data.items():
             if key in _ASSET_FIELD_PATTERNS and isinstance(value, str) and value:
                 _add_reference(
@@ -141,6 +146,16 @@ def _extract_references(
             _extract_references(
                 item, root, visited_assets, visited_scripts, result,
             )
+
+
+def _looks_like_asset_reference(data: dict[str, Any], path: Any) -> bool:
+    if not isinstance(path, str) or not path:
+        return False
+    if path.endswith(".json"):
+        return False
+    if "guid" in data:
+        return True
+    return path.startswith(("assets/", "scripts/", "prefabs/"))
 
 
 def _add_reference(

@@ -53,6 +53,39 @@ class TestContentCollector(unittest.TestCase):
         copied = self.staging / "content" / "assets" / "player.png"
         self.assertTrue(copied.exists())
 
+    def test_collects_serialized_asset_reference_paths(self):
+        self._write_asset("ui/background.png", "fake_background")
+        self._write_asset("ui/button.png", "fake_button")
+        self._write_scene("main.json", {
+            "entities": [
+                {
+                    "components": {
+                        "UIImage": {
+                            "sprite": {
+                                "guid": "",
+                                "path": "assets/ui/background.png",
+                            },
+                        },
+                        "UIButton": {
+                            "normal_sprite": {
+                                "guid": "",
+                                "path": "assets/ui/button.png",
+                            },
+                        },
+                    },
+                },
+            ],
+        })
+
+        graph = build_content_graph("levels/main.json", str(self.tmp))
+        self.assertIn("assets/ui/background.png", graph.reachable_assets)
+        self.assertIn("assets/ui/button.png", graph.reachable_assets)
+
+        manifest = collect_content(graph, str(self.tmp), str(self.staging))
+        manifest_paths = {asset.path for asset in manifest.assets}
+        self.assertIn("assets/ui/background.png", manifest_paths)
+        self.assertIn("assets/ui/button.png", manifest_paths)
+
     def test_manifest_generation(self):
         self._write_asset("sprite.png", "data")
         self._write_scene("main.json", {

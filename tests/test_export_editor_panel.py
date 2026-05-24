@@ -188,15 +188,15 @@ class TestExportPanelDelegation(unittest.TestCase):
 
     # ── safety / import ─────────────────────────────────────────────
 
-    def test_no_pyray_imported(self):
-        """Panel module must not import pyray or render internals."""
+    def test_pyray_imported_for_render(self):
+        """Panel imports pyray for its render() method (controller+view)."""
         import engine.editor.export_panel as ep
         source = ep.__file__
         if source:
             with open(source, encoding="utf-8") as fh:
                 content = fh.read()
-            self.assertNotIn("import pyray", content)
-            self.assertNotIn("from pyray", content)
+            self.assertIn("import pyray", content)
+            self.assertIn("def render", content)
 
     def test_no_exporter_imports(self):
         """Panel must not import exporter/internal modules directly."""

@@ -1227,6 +1227,17 @@ class CanvasUISystemTests(unittest.TestCase):
         self.assertEqual(disabled["slice_name"], "idle")
         self.assertEqual(disabled["tint"], (175, 168, 161, 219))
 
+    def test_ui_render_label_tolerates_missing_measure_text_result(self) -> None:
+        render_system = UIRenderSystem()
+        rect = SimpleNamespace(x=10.0, y=20.0, width=100.0, height=40.0)
+
+        with patch("engine.systems.ui_render_system.rl.measure_text", return_value=None), patch(
+            "engine.systems.ui_render_system.rl.draw_text"
+        ) as draw_text:
+            render_system._draw_label("Play", rect, 24, SimpleNamespace(), "center", False)
+
+        draw_text.assert_called_once()
+
     def test_real_main_menu_canvas_button_loads_platformer_scene(self) -> None:
         self._copy_real_scene("main_menu_scene.json")
         self._copy_real_scene("platformer_test_scene.json")

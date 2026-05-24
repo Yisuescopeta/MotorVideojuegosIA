@@ -130,6 +130,9 @@ def _run_windowed_export(config) -> int:  # type: ignore[no-untyped-def]
     try:
         return _run_windowed_pyray(config)
     except Exception as exc:
+        import traceback
+
+        traceback.print_exc()
         print(f"ERROR: Windowed export failed: {exc}", file=sys.stderr)
         return 1
 
