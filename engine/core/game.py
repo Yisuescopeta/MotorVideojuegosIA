@@ -22,6 +22,7 @@ import time
 from typing import TYPE_CHECKING, Any, Callable, Optional, cast
 
 import pyray as rl
+from engine.api import EngineAPI
 from engine.app import (
     DebugToolsController,
     EditorInteractionController,
@@ -181,6 +182,7 @@ class Game:
         self.hierarchy_panel: Optional["HierarchyPanel"] = self.editor_shell.hierarchy_panel
         self.gizmo_system: Optional["GizmoSystem"] = GizmoSystem()
         self.editor_layout: Optional["EditorLayout"] = self.editor_shell.layout
+        self._editor_export_api: Optional[EngineAPI] = None
         self._cursor_renderer: CustomCursorRenderer = CustomCursorRenderer()
 
         # Gestión de escenas
@@ -384,6 +386,7 @@ class Game:
             self.editor_layout = self.editor_shell.layout
         self.editor_shell.bind_terminal_panel(self.terminal_panel)
         self.editor_shell.bind_agent_panel(self.agent_panel)
+        self._bind_export_panel_api()
         self.hierarchy_panel = self.editor_shell.hierarchy_panel
         self.hierarchy_panel.set_selection_state(self._editor_selection_state)
         if self._scene_manager is not None:
@@ -396,6 +399,29 @@ class Game:
                 scene_manager=self._scene_manager,
                 project_service=self._project_service,
             )
+
+    def _resolve_editor_export_api(self) -> Optional[EngineAPI]:
+        if self._scene_manager is None or self._project_service is None:
+            self._editor_export_api = None
+            return None
+        cached = self._editor_export_api
+        if (
+            cached is not None
+            and getattr(cached, "game", None) is self
+            and getattr(cached, "scene_manager", None) is self._scene_manager
+            and getattr(cached, "project_service", None) is self._project_service
+        ):
+            return cached
+        self._editor_export_api = EngineAPI.from_runtime(self, self._scene_manager, self._project_service)
+        return self._editor_export_api
+
+    def _bind_export_panel_api(self) -> None:
+        panel = getattr(self.editor_shell.panel_slots, "export_panel", None)
+        if panel is None or not hasattr(panel, "bind_api"):
+            return
+        api = self._resolve_editor_export_api()
+        if api is not None:
+            panel.bind_api(api)
 
     # === PROPIEDADES ===
 

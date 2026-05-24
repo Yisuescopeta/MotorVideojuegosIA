@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from engine.export.build_context import BuildContext
+from engine.export.toolchain import resolve_pyinstaller
 
 try:
     from engine.config import ENGINE_VERSION
@@ -105,9 +106,10 @@ def write_build_report(
 
 
 def _env_info() -> dict[str, str]:
-    pyinstaller = shutil.which("pyinstaller") or ""
+    pyinstaller = resolve_pyinstaller()
     return {
         "python": f"{sys.version_info.major}.{sys.version_info.minor}",
         "os": os.name,
-        "pyinstaller": pyinstaller,
+        "pyinstaller": pyinstaller["pyinstaller_path"],
+        "pyinstaller_resolution": str(pyinstaller["pyinstaller_resolution"]),
     }

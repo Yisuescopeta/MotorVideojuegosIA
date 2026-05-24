@@ -21,7 +21,8 @@ escena o prefab emite payload canonico `v2`.
 `application_id`, version, `bundle_mode`, `include_debug_tools` y opciones de
 ventana o movil. Campos desconocidos fallan salvo extras documentados de Android
 release (`keystore_path`, `keystore_password`, `key_alias`, `key_password`) y
-`include_all_assets`.
+`include_all_assets`. En Windows, `console: true` es un extra documentado para
+forzar consola incluso en release; release normal usa `console=False`.
 
 `game.manifest.json` se genera desde el grafo de contenido. Incluye entry scene,
 version de motor, proyecto, escenas, assets y scripts alcanzables, con `sha256`,

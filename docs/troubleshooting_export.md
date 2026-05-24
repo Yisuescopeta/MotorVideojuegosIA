@@ -36,10 +36,12 @@ El build requiere una herramienta externa que no esta instalada.
 #### PyInstaller not found
 
 ```bash
-pip install pyinstaller
+py -m pip install pyinstaller
 ```
 
 Desktop builds (Windows, Linux, macOS) requieren PyInstaller.
+Usa el mismo interprete que reporta `python_executable` en
+`py -m motor export doctor --project . --json`.
 
 #### ANDROID_HOME not set
 
@@ -252,13 +254,40 @@ Los reports estan sanitizados: credenciales y keystores aparecen como
 
 Si el ejecutable exportado falla en modo windowed:
 
-1. Verifica que `pyray` esta instalado en el entorno de build.
-2. Si no esta, el runtime retorna codigo 2: `TOOLCHAIN/RUNTIME_UNAVAILABLE`.
-3. Usa modo headless para smoke test: `MyGame.exe --smoke-test`.
-4. Instala `raylib` nativa y `pyray`:
+1. Verifica la configuracion y la entry scene:
+
+```bat
+My_Game.exe --print-runtime-info
+```
+
+2. Ejecuta el smoke test headless:
+
+```bat
+My_Game.exe --smoke-test
+```
+
+Este smoke test no valida ventana real, render, input real ni UI interactiva.
+
+3. Ejecuta el modo windowed real y revisa el codigo de salida:
+
+```bat
+My_Game.exe
+echo %ERRORLEVEL%
+```
+
+4. Verifica que `pyray` esta instalado en el entorno de build:
 
 ```bash
-pip install raylib pyray
+py -c "import pyray; print('pyray OK')"
+```
+
+5. Si no esta, el runtime retorna codigo 2: `TOOLCHAIN/RUNTIME_UNAVAILABLE`.
+   Si raylib esta pero no se crea ventana, retorna codigo 2 con
+   `ERROR: raylib window was not created`.
+6. Instala `raylib` nativa y `pyray`:
+
+```bash
+py -m pip install raylib pyray
 ```
 
 ## Runtime exportado: crash o freeze

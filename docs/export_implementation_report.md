@@ -77,13 +77,13 @@ Sistema de export/build implementado sobre `EngineAPI` y CLI oficial `motor`. El
 - `engine/export/content_collector.py`: GUID estable, copia segura, `game.pak` determinista.
 - `engine/export/content_pack.py`: timestamp reproducible (`SOURCE_DATE_EPOCH`) y soporte `include_all_assets`.
 - `engine/export/diagnostics.py`: run_export_doctor con checks de PyInstaller, pip, ANDROID_HOME, Java, Gradle y flag `healthy`.
-- `engine/export/preset_schema.py`: campos desconocidos, application id y version_code Android.
+- `engine/export/preset_schema.py`: campos desconocidos, `console` Windows, application id y version_code Android.
 - `engine/export/reports.py`: build reports sanitizados (keystore/password/token redacted), artifact hashes.
 - `engine/export/validator.py`: validacion segura de entry scene/output.
-- `engine/export/windows_exporter.py`: runtime config/manifest/pak en salida, spec con datas absolutas y smoke test post-build.
+- `engine/export/windows_exporter.py`: runtime config/manifest/pak en salida, spec con datas absolutas, `console=False` en release, imports/binarios raylib y smoke test post-build.
 - `engine/export/android_exporter.py`: genera proyecto Android antes de bloquear por SDK externo.
 - `engine/runtime/content_loader.py`: carga manifest desde `game.pak`.
-- `engine/runtime/exported_game.py`: runtime headless usa `content/` como root del juego exportado. Soporta flags --smoke-test, --headless, --print-runtime-info. Windowed requiere pyray/raylib; sin ellos retorna TOOLCHAIN_UNAVAILABLE.
+- `engine/runtime/exported_game.py`: runtime headless usa `content/` como root del juego exportado. Soporta flags --smoke-test, --headless, --print-runtime-info. Windowed requiere pyray/raylib; sin ellos retorna TOOLCHAIN_UNAVAILABLE y si raylib no crea ventana retorna codigo 2 con error claro.
 - `engine/runtime/runtime_config.py`: conserva base path del runtime.
 - `tests/test_export_cli_contract.py`: contrato JSON, validate con --name, doctor healthy, pack/build error toolchain.
 - `docs/README.md`, `docs/api.md`, `docs/cli.md`, `docs/schema_serialization.md`, `docs/architecture.md`, `docs/TECHNICAL.md`, `docs/agents.md`, `docs/module_taxonomy.md`.
@@ -103,10 +103,10 @@ Sistema de export/build implementado sobre `EngineAPI` y CLI oficial `motor`. El
 | `py -m motor export presets list --project . --json` | OK, 2 presets |
 | `py -m motor export presets validate --project . --json` | OK |
 | `py -m motor export presets validate --project . --name "Windows Desktop" --json` | OK, preset especifico |
-| `py -m motor export doctor --project . --json` | OK con warnings: sin PyInstaller, sin Android SDK; `healthy: false` |
-| `py -m motor export doctor --project . --json \| python -c "import sys,json; d=json.load(sys.stdin); assert d['data']['healthy']==False; print('healthy flag OK')"` | healthy flag verificada |
+| `py -m motor export doctor --project . --json` | OK; `healthy` depende de toolchains instalados en el entorno local |
+| `py -m motor export doctor --project . --json \| python -c "import sys,json; d=json.load(sys.stdin); print(d['data']['healthy'])"` | healthy flag verificada |
 | `py -m motor export pack "Windows Desktop" --project . --json` | OK; genero manifest y `game.pak` |
-| `py -m motor export build "Windows Desktop" --project . --json` | Falla accionable: `TOOLCHAIN_UNAVAILABLE` PyInstaller ausente; report generado |
+| `py -m motor export build "Windows Desktop" --project . --json` | OK cuando PyInstaller esta instalado; genera `My_Game.exe`, runtime config, manifest y `game.pak` |
 | `py -m motor export build "Android Debug" --project . --json` | Falla accionable: `ANDROID_HOME` ausente; proyecto Android staging generado |
 | `py -m ruff check engine cli tools main.py` | OK |
 | `py -m mypy engine/export engine/runtime engine/api/_export_api.py` | OK |
@@ -127,7 +127,7 @@ Sistema de export/build implementado sobre `EngineAPI` y CLI oficial `motor`. El
 
 ## Plataformas verificadas
 
-- Windows: validacion, pack, report y error toolchain verificados. Ejecutable real no verificado por PyInstaller ausente.
+- Windows: validacion, pack, build, report y smoke test del ejecutable verificados cuando PyInstaller esta instalado.
 - Android: template/proyecto generado y bloqueo SDK verificado. APK no verificado por `ANDROID_HOME` ausente.
 - Linux/macOS/iOS: estructura/imports/tests de exporter verificados; builds reales dependen de host/toolchain.
 
@@ -141,13 +141,14 @@ Sistema de export/build implementado sobre `EngineAPI` y CLI oficial `motor`. El
 
 ## Plataformas bloqueadas por entorno
 
-- Windows/Linux desktop real: falta PyInstaller.
+- Windows/Linux desktop real: requiere PyInstaller instalado en el interprete activo.
 - Android APK/AAB: falta `ANDROID_HOME`; Gradle no esta en PATH.
 - macOS/iOS: requiere macOS y Xcode.
 
 ## Limitaciones reales
 
-- Runtime windowed intenta pyray/raylib; si no estan disponibles, retorna `TOOLCHAIN/RUNTIME_UNAVAILABLE` con codigo 2. Smoke/headless funcionan sin dependencias graficas.
+- Windows release genera PyInstaller `console=False`; debug, `include_debug_tools` o `console: true` generan `console=True`.
+- Runtime windowed intenta pyray/raylib; si no estan disponibles, retorna `TOOLCHAIN/RUNTIME_UNAVAILABLE` con codigo 2. Si raylib no crea ventana, retorna codigo 2 con `ERROR: raylib window was not created`. Smoke/headless funcionan sin dependencias graficas y no validan ventana real, render, input real ni UI interactiva.
 - Build reports se sanitizan automaticamente: keystore paths, passwords, tokens y API keys se redactan.
 - Doctor expone `healthy: bool`. Con PyInstaller ausente, healthy=false y API retorna success=false.
 - Content graph detecta referencias estaticas por campos JSON conocidos; assets cargados dinamicamente por scripts requieren `include_all_assets`.

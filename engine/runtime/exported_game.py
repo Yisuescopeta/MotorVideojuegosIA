@@ -168,35 +168,43 @@ def _run_windowed_pyray(config) -> int:  # type: ignore[no-untyped-def]
     height = int(window_config.get("height", 720))
     title = f"{config.project_name} v{config.version}"
 
-    pyray.init_window(width, height, title.encode() if hasattr(title, 'encode') else title)
-    pyray.set_target_fps(60)
+    pyray.init_window(width, height, title)
+    if hasattr(pyray, "is_window_ready") and not pyray.is_window_ready():
+        print("ERROR: raylib window was not created", file=sys.stderr)
+        if hasattr(pyray, "close_window"):
+            pyray.close_window()
+        return 2
 
-    while not pyray.window_should_close():
-        runtime.run_frame(1.0 / 60.0)
+    try:
+        pyray.set_target_fps(60)
 
-        pyray.begin_drawing()
-        pyray.clear_background(pyray.BLACK)
+        while not pyray.window_should_close():
+            runtime.run_frame(1.0 / 60.0)
 
-        if runtime.world is not None:
-            viewport = (float(width), float(height))
-            # Render world
-            runtime.render(viewport)
-            # Get real mouse state
-            mouse = pyray.get_mouse_position()
-            runtime.update_ui(
-                viewport,
-                mouse_x=float(mouse.x),
-                mouse_y=float(mouse.y),
-                mouse_down=bool(pyray.is_mouse_button_down(pyray.MOUSE_BUTTON_LEFT)),
-                mouse_pressed=bool(pyray.is_mouse_button_pressed(pyray.MOUSE_BUTTON_LEFT)),
-                mouse_released=bool(pyray.is_mouse_button_released(pyray.MOUSE_BUTTON_LEFT)),
-            )
-            # Render UI overlay
-            runtime.render_ui()
+            pyray.begin_drawing()
+            pyray.clear_background(pyray.BLACK)
 
-        pyray.end_drawing()
+            if runtime.world is not None:
+                viewport = (float(width), float(height))
+                # Render world
+                runtime.render(viewport)
+                # Get real mouse state
+                mouse = pyray.get_mouse_position()
+                runtime.update_ui(
+                    viewport,
+                    mouse_x=float(mouse.x),
+                    mouse_y=float(mouse.y),
+                    mouse_down=bool(pyray.is_mouse_button_down(pyray.MOUSE_BUTTON_LEFT)),
+                    mouse_pressed=bool(pyray.is_mouse_button_pressed(pyray.MOUSE_BUTTON_LEFT)),
+                    mouse_released=bool(pyray.is_mouse_button_released(pyray.MOUSE_BUTTON_LEFT)),
+                )
+                # Render UI overlay
+                runtime.render_ui()
 
-    pyray.close_window()
+            pyray.end_drawing()
+    finally:
+        if hasattr(pyray, "close_window"):
+            pyray.close_window()
     return 0
 
 

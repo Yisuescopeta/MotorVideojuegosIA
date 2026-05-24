@@ -23,6 +23,7 @@ Configuracion de exportacion estilo Godot para MotorVideojuegosIA. Un archivo
       "bundle_mode": "packed",
       "include_debug_tools": false,
       "include_all_assets": false,
+      "console": false,
       "window": {
         "width": 1280,
         "height": 720,
@@ -51,6 +52,7 @@ Configuracion de exportacion estilo Godot para MotorVideojuegosIA. Un archivo
 | `bundle_mode` | enum | No | `packed` (ZIP) o `directory` (archivos sueltos). Default: `packed`. |
 | `include_debug_tools` | bool | No | Incluir tooling IA y debug en el export. Default: `false`. |
 | `include_all_assets` | bool | No | Incluir todos los assets, no solo los alcanzables por grafo. |
+| `console` | bool | No | Windows: forzar consola. Release normal usa `false`; debug o `include_debug_tools` usan consola. |
 | `window` | object | No | Configuracion de ventana (solo desktop). |
 | `min_sdk` | int | No | API level minimo Android. Default: `23`. |
 | `target_sdk` | int | No | API level objetivo Android. Default: `35`. |
@@ -71,6 +73,12 @@ Configuracion de exportacion estilo Godot para MotorVideojuegosIA. Un archivo
 ```
 
 Estos campos se redactan automaticamente (`[REDACTED]`) en build reports.
+
+### Extra: Windows console
+
+Windows release genera spec PyInstaller con `console=False` por defecto. Usa
+`mode: "debug"`, `include_debug_tools: true` o `console: true` para generar
+`console=True` y ver stdout/stderr en una terminal.
 
 ## Validacion
 

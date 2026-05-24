@@ -21,7 +21,7 @@ import platform
 import subprocess
 import time
 from datetime import datetime, timezone
-from typing import Any, Optional, cast
+from typing import Any, Callable, Optional, cast
 
 import pyray as rl
 from engine.core.runtime_logging import log_err
@@ -357,6 +357,7 @@ class EditorLayout:
         self._cursor_text_rects: list[rl.Rectangle] = []
         self._context_menu_manager = ContextMenuManager()
         self._popup_manager = PopupManager()
+        self._launcher_project_name_suggester: Optional[Callable[[], str]] = None
 
         self.update_layout(screen_width, screen_height)
 
@@ -443,6 +444,30 @@ class EditorLayout:
     def set_launcher_feedback(self, message: str, is_error: bool = False) -> None:
         self.launcher_feedback_text = str(message or "")
         self.launcher_feedback_is_error = bool(is_error)
+
+    def set_launcher_project_name_suggester(self, suggester: Optional[Callable[[], str]]) -> None:
+        self._launcher_project_name_suggester = suggester
+
+    def suggest_launcher_project_name(self) -> str:
+        if self._launcher_project_name_suggester is None:
+            return "NewProject"
+        try:
+            suggested = str(self._launcher_project_name_suggester() or "").strip()
+        except Exception:
+            return "NewProject"
+        return suggested or "NewProject"
+
+    def get_create_project_modal_feedback(self) -> tuple[str, rl.Color] | None:
+        if not self.launcher_feedback_text:
+            return None
+        color = self.UNITY_INVALID_BADGE if self.launcher_feedback_is_error else self.UNITY_TEXT_BRIGHT
+        return (self.launcher_feedback_text, color)
+
+    def open_create_project_modal(self) -> None:
+        self.show_create_project_modal = True
+        self.launcher_create_name = self.suggest_launcher_project_name()
+        self.launcher_create_name_focused = True
+        self.launcher_feedback_text = ""
 
     def set_scene_tabs(self, scene_tabs: list[dict], active_scene_key: str) -> None:
         self.scene_tabs = [dict(item) for item in scene_tabs]
@@ -1451,10 +1476,7 @@ class EditorLayout:
         if self._draw_launcher_button(add_rect, "Add", self.UNITY_BUTTON, self.UNITY_BUTTON_HOVER):
             self.request_browse_project = True
         if self._draw_launcher_button(new_rect, "+ New project", self.UNITY_BLUE, self.UNITY_BLUE_HOVER):
-            self.show_create_project_modal = True
-            self.launcher_create_name = "NewProject"
-            self.launcher_create_name_focused = True
-            self.launcher_feedback_text = ""
+            self.open_create_project_modal()
 
         if self.launcher_feedback_text:
             feedback_color = self.UNITY_INVALID_BADGE if self.launcher_feedback_is_error else self.UNITY_TEXT
@@ -1643,6 +1665,10 @@ class EditorLayout:
         preview_name = preview_name.replace("\\", "").replace("/", "")
         rl.draw_text("Location", int(modal.x + 18), int(modal.y + 150), 10, self.UNITY_TEXT)
         rl.draw_text(f"projects/{preview_name}", int(modal.x + 120), int(modal.y + 150), 10, self.UNITY_TEXT_DIM)
+        feedback = self.get_create_project_modal_feedback()
+        if feedback is not None:
+            feedback_text, feedback_color = feedback
+            rl.draw_text(feedback_text, int(modal.x + 18), int(modal.y + 174), 10, feedback_color)
 
         cancel_rect = rl.Rectangle(modal.x + modal.width - 196, modal.y + modal.height - 42, 84, 26)
         create_rect = rl.Rectangle(modal.x + modal.width - 102, modal.y + modal.height - 42, 84, 26)

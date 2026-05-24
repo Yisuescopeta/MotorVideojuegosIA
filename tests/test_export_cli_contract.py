@@ -45,6 +45,7 @@ class TestExportCLIContract(unittest.TestCase):
         self.assertIn("success", data)
         self.assertIn("data", data)
         self.assertIn("checks", data["data"])
+        self.assertIn("pyinstaller_resolution", data["data"]["checks"])
 
     def test_export_pack_json(self):
         code, stdout, stderr = _run(

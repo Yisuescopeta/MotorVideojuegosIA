@@ -7,6 +7,7 @@ Tests ExportRuntime directly without requiring PyInstaller or full builds.
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -416,6 +417,56 @@ class TestExportRuntimeUI(unittest.TestCase):
 
         # Scene should still be menu
         self.assertEqual(runtime.current_scene_path, "levels/menu.json")
+
+
+class TestExportRuntimeRealMenu(unittest.TestCase):
+    """Tests the shipped menu scene contract used by Windows exports."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        (self.tmp / "levels").mkdir(parents=True)
+        repo_root = Path(__file__).resolve().parents[1]
+        shutil.copy2(
+            repo_root / "levels" / "main_menu_scene.json",
+            self.tmp / "levels" / "main_menu_scene.json",
+        )
+        shutil.copy2(
+            repo_root / "levels" / "platformer_test_scene.json",
+            self.tmp / "levels" / "platformer_test_scene.json",
+        )
+        self.registry = create_default_registry()
+
+    def tearDown(self):
+        shutil.rmtree(str(self.tmp), ignore_errors=True)
+
+    def _make_runtime(self) -> ExportRuntime:
+        loader = ContentLoader(str(self.tmp))
+        return ExportRuntime(loader=loader, registry=self.registry)
+
+    def test_real_main_menu_button_load_scene_flow_next_scene(self):
+        runtime = self._make_runtime()
+        self.assertTrue(runtime.load_scene("levels/main_menu_scene.json"))
+
+        runtime.update_ui(
+            (800.0, 600.0),
+            mouse_x=400.0, mouse_y=336.0,
+            mouse_down=True, mouse_pressed=True, mouse_released=False,
+        )
+        runtime.run_frame()
+        runtime.update_ui(
+            (800.0, 600.0),
+            mouse_x=400.0, mouse_y=336.0,
+            mouse_down=False, mouse_pressed=False, mouse_released=True,
+        )
+
+        self.assertEqual(runtime.current_scene_path, "levels/platformer_test_scene.json")
+
+    def test_scene_flow_missing_target_returns_false(self):
+        runtime = self._make_runtime()
+        self.assertTrue(runtime.load_scene("levels/main_menu_scene.json"))
+
+        self.assertFalse(runtime.load_scene_flow_target("missing_scene"))
+        self.assertEqual(runtime.current_scene_path, "levels/main_menu_scene.json")
 
 
 class TestExportRuntimeSystemsIntegration(unittest.TestCase):

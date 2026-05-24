@@ -81,6 +81,7 @@ class ProjectServiceTests(unittest.TestCase):
                 "active_scene": "",
                 "scene_view_states": {},
                 "preferences": {},
+                "layout": {},
             },
         )
 
@@ -373,6 +374,16 @@ class ProjectServiceTests(unittest.TestCase):
 
         self.assertEqual(first, levels_root / "boss_intro.json")
         self.assertEqual(second, levels_root / "boss_intro_2.json")
+
+    def test_suggest_internal_project_name_avoids_existing_collisions(self) -> None:
+        root, service = self._make_project("LauncherRoot")
+        projects_root = root / ProjectService.PROJECTS_DIR_NAME
+        (projects_root / "NewProject").mkdir(parents=True, exist_ok=True)
+        (projects_root / "NewProject2").mkdir(parents=True, exist_ok=True)
+
+        suggested = service.suggest_internal_project_name("NewProject")
+
+        self.assertEqual(suggested, "NewProject3")
 
     def test_list_project_prefabs_supports_prefab_and_json_and_skips_meta(self) -> None:
         project_root, service = self._make_project("PrefabCatalog")

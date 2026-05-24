@@ -366,6 +366,14 @@ class SceneViewFocusRegressionTests(unittest.TestCase):
         self.assertEqual(self.game.editor_layout.editor_camera.target.y, -75.0)
         self.assertEqual(self.game.editor_layout.editor_camera.zoom, 1.75)
 
+    def test_export_panel_is_bound_after_editor_sync(self) -> None:
+        panel = self.game.editor_shell.panel_slots.export_panel
+
+        self.assertIsNotNone(panel._api)
+        self.assertIs(panel._api.game, self.game)
+        self.assertIs(panel._api.scene_manager, self.game._scene_manager)
+        self.assertIs(panel._api.project_service, self.project_service)
+
 
 class GameUiAuthoringRequestTests(unittest.TestCase):
     def _make_layout(self) -> Mock:

@@ -14,6 +14,7 @@ _VALID_ARCHITECTURES = frozenset({"x86_64", "x86", "arm64-v8a", "armeabi-v7a", "
 _VALID_BUNDLE_MODES = frozenset({"packed", "directory"})
 _VALID_ORIENTATIONS = frozenset({"landscape", "portrait", "sensor"})
 _ALLOWED_EXTRA_FIELDS = frozenset({
+    "console",
     "include_all_assets",
     "keystore_path",
     "keystore_password",

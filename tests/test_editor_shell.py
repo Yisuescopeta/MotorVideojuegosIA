@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from engine.editor import EditorLayout, EditorPanelSlots, EditorSelectionState, EditorShell, EditorShellState
+from engine.editor.export_panel import ExportPanel
 from engine.editor.hierarchy_panel import HierarchyPanel
 
 
@@ -61,6 +62,16 @@ class EditorShellTests(unittest.TestCase):
 
         self.assertEqual(selected_name, "Hero")
         self.assertEqual(selection_state.entity_name, "Hero")
+
+    def test_bind_export_panel_replaces_export_slot_and_layout_reference(self) -> None:
+        with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
+            shell = EditorShell(1280, 720)
+        panel = ExportPanel()
+
+        shell.bind_export_panel(panel)
+
+        self.assertIs(shell.panel_slots.export_panel, panel)
+        self.assertIs(shell.layout.export_panel, panel)
 
 
 if __name__ == "__main__":

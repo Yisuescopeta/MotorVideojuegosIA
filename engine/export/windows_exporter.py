@@ -11,17 +11,21 @@ from typing import Any
 from engine.export.build_context import BuildContext
 from engine.export.content_pack import build_content_pack
 from engine.export.platform_exporter import PlatformExporter
+from engine.export.toolchain import resolve_pyinstaller
 
 
 class WindowsExporter(PlatformExporter):
     platform = "windows"
 
     def validate_environment(self) -> dict[str, Any]:
-        pyinstaller = shutil.which("pyinstaller") or shutil.which("pyinstaller.exe")
+        pyinstaller = resolve_pyinstaller()
         return {
             "platform": "windows",
-            "pyinstaller_available": pyinstaller is not None,
-            "pyinstaller_path": pyinstaller or "",
+            "pyinstaller_available": pyinstaller["pyinstaller_available"],
+            "pyinstaller_path": pyinstaller["pyinstaller_path"],
+            "pyinstaller_module_available": pyinstaller["pyinstaller_module_available"],
+            "pyinstaller_resolution": pyinstaller["pyinstaller_resolution"],
+            "pyinstaller_command": list(pyinstaller["pyinstaller_command"]),
             "python": sys.executable,
         }
 
@@ -30,7 +34,7 @@ class WindowsExporter(PlatformExporter):
         if not env["pyinstaller_available"]:
             ctx.add_error(
                 "TOOLCHAIN_UNAVAILABLE: PyInstaller not found. "
-                "Install with: pip install pyinstaller"
+                f"Install with: {sys.executable} -m pip install pyinstaller"
             )
             return False
 
@@ -56,11 +60,10 @@ class WindowsExporter(PlatformExporter):
 
         spec_path = self._write_export_spec(ctx, staging)
 
-        pyinstaller: str = shutil.which("pyinstaller") or shutil.which("pyinstaller.exe")  # type: ignore[assignment]
         try:
             result = subprocess.run(
                 [
-                    pyinstaller,
+                    *env["pyinstaller_command"],
                     "--distpath", str(output),
                     "--workpath", str(staging / "pyi_work"),
                     "--noconfirm",
@@ -69,7 +72,7 @@ class WindowsExporter(PlatformExporter):
                 capture_output=True,
                 text=True,
                 timeout=300,
-                cwd=str(ctx.project_root),
+                cwd=str(staging),
             )
             if result.returncode != 0:
                 ctx.add_error(
@@ -180,6 +183,12 @@ class WindowsExporter(PlatformExporter):
         manifest_src = str((staging / "game.manifest.json").as_posix())
         content_src = str((staging / "content").as_posix())
         pak_src = str((staging / "game.pak").as_posix())
+        hooks_src = str(self._write_pyinstaller_hooks(staging).as_posix())
+        console_enabled = (
+            ctx.preset.mode == "debug"
+            or ctx.preset.include_debug_tools
+            or bool(ctx.preset.extra.get("console", False))
+        )
 
         bundle_mode = getattr(ctx.preset, "bundle_mode", "packed")
         if bundle_mode == "directory":
@@ -198,10 +207,27 @@ class WindowsExporter(PlatformExporter):
         spec = (
             "# -*- mode: python ; coding: utf-8 -*-\n"
             f"# Auto-generated export spec for {ctx.preset.name}\n"
+            "import site\n"
+            "import sysconfig\n"
+            "from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules\n"
+            "\n"
+            "runtime_pathex = []\n"
+            "for _path in [\n"
+            "    sysconfig.get_paths().get('purelib'),\n"
+            "    sysconfig.get_paths().get('platlib'),\n"
+            "    *site.getsitepackages(),\n"
+            f"    r'{project_src}',\n"
+            "]:\n"
+            "    if _path and _path not in runtime_pathex:\n"
+            "        runtime_pathex.append(_path)\n"
+            "\n"
+            "raylib_hiddenimports = collect_submodules('raylib')\n"
+            "raylib_binaries = collect_dynamic_libs('raylib')\n"
+            "\n"
             "a = Analysis(\n"
             f"    [r'{runtime_src}'],\n"
-            f"    pathex=[r'{project_src}'],\n"
-            "    binaries=[],\n"
+            "    pathex=runtime_pathex,\n"
+            "    binaries=raylib_binaries,\n"
             "    datas=[\n"
             f"{datas_lines}"
             "    ],\n"
@@ -210,8 +236,10 @@ class WindowsExporter(PlatformExporter):
             "        'engine.scenes', 'engine.ecs', 'engine.components',\n"
             "        'engine.systems', 'engine.events', 'engine.physics',\n"
             "        'engine.levels', 'engine.project', 'engine.config',\n"
+            "        'pyray', 'raylib',\n"
+            "        *raylib_hiddenimports,\n"
             "    ],\n"
-            "    hookspath=[],\n"
+            f"    hookspath=[r'{hooks_src}'],\n"
             "    hooksconfig={},\n"
             "    runtime_hooks=[],\n"
             "    excludes=[\n"
@@ -234,7 +262,7 @@ class WindowsExporter(PlatformExporter):
             "    upx=True,\n"
             "    upx_exclude=[],\n"
             "    runtime_tmpdir=None,\n"
-            "    console=True,\n"
+            f"    console={console_enabled!r},\n"
             "    disable_windowed_traceback=False,\n"
             "    argv_emulation=False,\n"
             "    target_arch=None,\n"
@@ -245,6 +273,42 @@ class WindowsExporter(PlatformExporter):
         spec_path = staging / f"{exe_name}.spec"
         spec_path.write_text(spec, encoding="utf-8")
         return spec_path
+
+    def _write_pyinstaller_hooks(self, staging: Path) -> Path:
+        hooks_dir = staging / "pyinstaller_hooks"
+        pre_find_dir = hooks_dir / "pre_find_module_path"
+        pre_find_dir.mkdir(parents=True, exist_ok=True)
+        (pre_find_dir / "hook-pyray.py").write_text(
+            (
+                "from pathlib import Path\n"
+                "import site\n"
+                "import sysconfig\n"
+                "from PyInstaller.utils.hooks import logger\n"
+                "\n"
+                "\n"
+                "def _candidate_paths():\n"
+                "    seen = []\n"
+                "    for path in [\n"
+                "        sysconfig.get_paths().get('purelib'),\n"
+                "        sysconfig.get_paths().get('platlib'),\n"
+                "        *site.getsitepackages(),\n"
+                "    ]:\n"
+                "        if path and path not in seen:\n"
+                "            seen.append(path)\n"
+                "            yield path\n"
+                "\n"
+                "\n"
+                "def pre_find_module_path(api):\n"
+                "    for path in _candidate_paths():\n"
+                "        root = Path(path)\n"
+                "        if (root / 'pyray' / '__init__.py').exists() or (root / 'pyray.py').exists():\n"
+                "            logger.debug('pyray: retargeting to site package dir %r', path)\n"
+                "            api.search_dirs = [path]\n"
+                "            return\n"
+            ),
+            encoding="utf-8",
+        )
+        return hooks_dir
 
     def _run_smoke_test(self, ctx: BuildContext, exe_path: Path) -> bool:
         try:

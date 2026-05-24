@@ -73,10 +73,31 @@ class ExportPanel:
             raise RuntimeError("ExportPanel: bind_api() must be called before use")
         return self._api
 
+    def _require_api(self) -> dict[str, Any] | None:
+        if self._api is not None:
+            return None
+        return {
+            "success": False,
+            "message": "Export panel is not bound to EngineAPI.",
+            "data": {
+                "errors": [
+                    {
+                        "code": "EXPORT_PANEL_API_UNBOUND",
+                        "hint": "Reopen the editor or reload the project.",
+                    }
+                ]
+            },
+        }
+
     # ── public controller methods ─────────────────────────────────────
 
     def list_presets(self) -> dict[str, Any]:
         """Return presets list suitable for UI display."""
+        unbound = self._require_api()
+        if unbound is not None:
+            unbound["ui_items"] = []
+            unbound["ui_total"] = 0
+            return unbound
         result = self._unwrap(self.api.list_export_presets())
         items = []
         if result["success"]:
@@ -96,6 +117,11 @@ class ExportPanel:
 
     def validate_preset(self, name: Optional[str] = None) -> dict[str, Any]:
         """Run validation for a single preset or all presets."""
+        unbound = self._require_api()
+        if unbound is not None:
+            unbound["ui_error_count"] = 1
+            unbound["ui_errors"] = unbound["data"].get("errors", [])
+            return unbound
         result = self._unwrap(self.api.validate_export_preset(name))
         errors = result["data"].get("errors", []) if isinstance(result.get("data"), dict) else []
         result["ui_error_count"] = len(errors)
@@ -104,14 +130,45 @@ class ExportPanel:
 
     def doctor(self) -> dict[str, Any]:
         """Run export toolchain doctor, return checks list for UI."""
+        unbound = self._require_api()
+        if unbound is not None:
+            unbound["ui_checks"] = []
+            unbound["ui_healthy"] = False
+            return unbound
         result = self._unwrap(self.api.export_doctor())
-        checks = result["data"].get("checks", []) if isinstance(result.get("data"), dict) else []
+        checks = []
+        if isinstance(result.get("data"), dict):
+            raw_checks = result["data"].get("checks", {})
+            if isinstance(raw_checks, dict):
+                for key, value in raw_checks.items():
+                    checks.append(
+                        {
+                            "name": str(key),
+                            "label": str(key).replace("_", " "),
+                            "status": "ok" if bool(value) else "err",
+                            "detail": value,
+                        }
+                    )
+            elif isinstance(raw_checks, list):
+                for item in raw_checks:
+                    if isinstance(item, dict):
+                        checks.append(dict(item))
+            for issue in result["data"].get("issues", []) or []:
+                checks.append({"name": "issue", "label": "issue", "status": "err", "detail": str(issue)})
+            for warning in result["data"].get("warnings", []) or []:
+                checks.append({"name": "warning", "label": "warning", "status": "warn", "detail": str(warning)})
         result["ui_checks"] = checks
         result["ui_healthy"] = result["data"].get("healthy", False) if isinstance(result.get("data"), dict) else False
         return result
 
     def build_export(self, name: str) -> dict[str, Any]:
         """Trigger a single-preset build."""
+        unbound = self._require_api()
+        if unbound is not None:
+            unbound["ui_artifacts"] = []
+            unbound["ui_duration"] = 0
+            unbound["ui_report"] = None
+            return unbound
         result = self._unwrap(self.api.build_export(name))
         data = result.get("data")
         if isinstance(data, dict):
@@ -126,6 +183,12 @@ class ExportPanel:
 
     def build_all_exports(self) -> dict[str, Any]:
         """Trigger a build of all presets."""
+        unbound = self._require_api()
+        if unbound is not None:
+            unbound["ui_total"] = 0
+            unbound["ui_success_count"] = 0
+            unbound["ui_results"] = []
+            return unbound
         result = self._unwrap(self.api.build_all_exports())
         data = result.get("data")
         if isinstance(data, dict):

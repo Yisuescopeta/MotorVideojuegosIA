@@ -57,10 +57,12 @@ class FakeEngineAPI:
             "message": "Export toolchain is healthy.",
             "data": {
                 "healthy": True,
-                "checks": [
-                    {"name": "pyinstaller", "status": "ok", "detail": "found"},
-                    {"name": "presets_file", "status": "ok", "detail": "valid"},
-                ],
+                "checks": {
+                    "pyinstaller_available": True,
+                    "pip_available": True,
+                },
+                "issues": [],
+                "warnings": [],
             },
         }
 
@@ -153,7 +155,39 @@ class TestExportPanelDelegation(unittest.TestCase):
         self.assertIn("ui_healthy", result)
         self.assertTrue(result["ui_healthy"])
         self.assertEqual(len(result["ui_checks"]), 2)
-        self.assertEqual(result["ui_checks"][0]["name"], "pyinstaller")
+        self.assertEqual(result["ui_checks"][0]["name"], "pyinstaller_available")
+
+    def test_doctor_ui_checks_include_issues_and_warnings(self):
+        self.fake.export_doctor = lambda: {
+            "success": False,
+            "message": "Export toolchain has issues.",
+            "data": {
+                "healthy": False,
+                "checks": {"pyinstaller_available": False},
+                "issues": ["TOOLCHAIN_UNAVAILABLE: PyInstaller not found"],
+                "warnings": ["ANDROID_HOME not set"],
+            },
+        }
+
+        result = self.panel.doctor()
+
+        self.assertFalse(result["ui_healthy"])
+        self.assertTrue(any(item["status"] == "err" for item in result["ui_checks"]))
+        self.assertTrue(any(item["status"] == "warn" for item in result["ui_checks"]))
+
+    def test_unbound_panel_returns_controlled_errors(self):
+        panel = ExportPanel()
+
+        list_result = panel.list_presets()
+        validate_result = panel.validate_preset()
+        doctor_result = panel.doctor()
+
+        self.assertFalse(list_result["success"])
+        self.assertEqual(list_result["ui_total"], 0)
+        self.assertFalse(validate_result["success"])
+        self.assertEqual(validate_result["ui_error_count"], 1)
+        self.assertFalse(doctor_result["success"])
+        self.assertFalse(doctor_result["ui_healthy"])
 
     # ── build_export ────────────────────────────────────────────────
 

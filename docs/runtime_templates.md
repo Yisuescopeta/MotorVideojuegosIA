@@ -27,7 +27,8 @@ MyGame.exe --print-runtime-info         # Info de runtime y salida
 ### Modo windowed
 
 Requiere `pyray` o `raylib`. Sin ellos, retorna codigo 2 con mensaje
-`TOOLCHAIN/RUNTIME_UNAVAILABLE`.
+`TOOLCHAIN/RUNTIME_UNAVAILABLE`. Si raylib esta disponible pero no consigue
+crear la ventana, retorna codigo 2 con `ERROR: raylib window was not created`.
 
 ### Modo headless
 
@@ -81,9 +82,10 @@ verifica hashes SHA-256 y expone assets, escenas y scripts al runtime.
 ### Windows
 
 - PyInstaller genera `.exe` standalone.
-- `console=True` en modo debug para salida de terminal.
-- `console=False` en modo release (ventana sin consola).
-- Requiere `pyray` para modo windowed.
+- `console=False` en modo release normal (ventana sin consola).
+- `console=True` en modo `debug`, con `include_debug_tools: true` o con
+  `console: true` en el preset.
+- Requiere `pyray`/`raylib` para modo windowed.
 
 ### Linux
 
@@ -129,7 +131,7 @@ Integrado en el pipeline de build: `WindowsExporter` ejecuta smoke test
 automaticamente despues de generar el ejecutable.
 
 > **⚠ Importante**: el smoke test verifica carga basica + N frames headless, pero
-> **no equivale a jugabilidad completa**. No valida:
+> **no valida la ventana real** ni equivale a jugabilidad completa. No valida:
 > - Render de sprites/texturas reales (solo headless)
 > - Input de teclado/mouse real (solo inyectado)
 > - Interaccion UI (botones, cambio de escena por click)
@@ -139,7 +141,7 @@ automaticamente despues de generar el ejecutable.
 
 ## Tests de jugabilidad
 
-`tests/test_export_runtime_playability.py` contiene 16 tests en 5 clases que
+`tests/test_export_runtime_playability.py` contiene pruebas enfocadas que
 verifican el runtime exportado sin requerir PyInstaller ni builds completos:
 
 | Clase | Que verifica |
@@ -148,6 +150,7 @@ verifican el runtime exportado sin requerir PyInstaller ni builds completos:
 | `TestExportRuntimeFrame` | Incremento de frames, tolerancia a world=None, shutdown seguro |
 | `TestExportRuntimeGameplay` | Input inyectado mueve Player (izquierda, derecha, salto), gravedad empuja hacia abajo |
 | `TestExportRuntimeUI` | Click en UIButton tipo `load_scene` cambia escena, hover sin click no cambia escena |
+| `TestExportRuntimeRealMenu` | Menu real `main_menu_scene.json` usa `load_scene_flow` hacia `platformer_test_scene.json` |
 | `TestExportRuntimeSystemsIntegration` | Todas las propiedades accesibles, 30 frames sin crash con todos los sistemas |
 
 Ejecucion:

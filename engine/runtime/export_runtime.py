@@ -77,11 +77,12 @@ class ExportRuntime:
             self._ui_render.set_project_service(self._project_service)
         # Script behaviour system (no hot-reload in export)
         self._script_behaviour = ScriptBehaviourSystem()
-        # Set scene_flow_loader to None for now — scripts can use context.load_scene_flow_target
-        self._script_behaviour.set_scene_flow_loader(None)
+        self._ui_system.set_scene_flow_loader(self.load_scene_flow_target)
+        self._script_behaviour.set_scene_flow_loader(self.load_scene_flow_target)
         # Don't set hot_reload_manager — it stays None, and _load_module will use importlib fallback
         self._pointer_state: dict[str, Any] | None = None
         self._current_scene_path: str | None = None
+        self._current_scene_data: dict[str, Any] | None = None
         self._frame_count: int = 0
         self._active: bool = True
 
@@ -128,6 +129,7 @@ class ExportRuntime:
         try:
             self._world = scene.create_world(self._registry)
             self._current_scene_path = scene_path
+            self._current_scene_data = scene_data
             self._frame_count = 0
             self._event_bus.reset_frame_dedup()
             self._event_bus.emit("scene_loaded", {"scene_path": scene_path})
@@ -138,6 +140,28 @@ class ExportRuntime:
             return False
 
     # ── game loop ───────────────────────────────────────────────
+
+    def load_scene_flow_target(self, target: str) -> bool:
+        if not self._current_scene_data:
+            print(
+                f"[ExportRuntime] No current scene data for scene flow target: {target}",
+                file=sys.stderr,
+            )
+            return False
+
+        metadata = self._current_scene_data.get("feature_metadata", {})
+        if not isinstance(metadata, dict):
+            metadata = {}
+        scene_flow = metadata.get("scene_flow", {})
+        if not isinstance(scene_flow, dict):
+            scene_flow = {}
+
+        path = scene_flow.get(target)
+        if not path:
+            print(f"[ExportRuntime] Scene flow target not found: {target}", file=sys.stderr)
+            return False
+
+        return self.load_scene(str(path))
 
     def run_frame(self, dt: float = 1.0 / 60.0) -> None:
         """Ejecuta un frame de simulación con todos los sistemas canónicos."""

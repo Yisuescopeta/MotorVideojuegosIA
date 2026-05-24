@@ -7,6 +7,8 @@ import shutil
 import sys
 from typing import Any
 
+from engine.export.toolchain import resolve_pyinstaller
+
 _KEY_TOOLCHAINS = frozenset({"pyinstaller", "pip"})
 
 
@@ -18,13 +20,15 @@ def run_export_doctor() -> dict[str, Any]:
     checks["python_version"] = sys.version
     checks["python_executable"] = sys.executable
 
-    pyinstaller_path = shutil.which("pyinstaller") or shutil.which("pyinstaller.exe")
-    checks["pyinstaller_available"] = pyinstaller_path is not None
-    checks["pyinstaller_path"] = pyinstaller_path or ""
-    if not pyinstaller_path:
+    pyinstaller = resolve_pyinstaller()
+    checks["pyinstaller_available"] = pyinstaller["pyinstaller_available"]
+    checks["pyinstaller_path"] = pyinstaller["pyinstaller_path"]
+    checks["pyinstaller_module_available"] = pyinstaller["pyinstaller_module_available"]
+    checks["pyinstaller_resolution"] = pyinstaller["pyinstaller_resolution"]
+    if not pyinstaller["pyinstaller_available"]:
         issues.append(
             "TOOLCHAIN_UNAVAILABLE: PyInstaller not found. Desktop builds will fail. "
-            "Install with: pip install pyinstaller"
+            f"Install with: {sys.executable} -m pip install pyinstaller"
         )
 
     try:
