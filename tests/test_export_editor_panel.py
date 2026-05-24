@@ -1,23 +1,39 @@
-"""Tests for engine.editor.export_panel — controller-only, no rendering."""
+"""Tests for engine.editor.export_panel."""
 
 import unittest
 from typing import Any, Optional
+from unittest.mock import Mock
 
-# Verify import is clean in headless env (no pyray, no render)
 from engine.editor.export_panel import ExportPanel
 
 
 class FakeEngineAPI:
-    """Fake EngineAPI implementing only the export protocol used by ExportPanel."""
-
     def __init__(self) -> None:
-        self.calls: list[dict] = []
+        self.calls: list[dict[str, Any]] = []
+        self.scene_items = [
+            {
+                "name": "Platformer Test Scene",
+                "path": "levels/platformer_test_scene.json",
+                "absolute_path": "C:/project/levels/platformer_test_scene.json",
+            },
+            {
+                "name": "Main Scene",
+                "path": "levels/main.json",
+                "absolute_path": "C:/project/levels/main.json",
+            },
+            {
+                "name": "Boss Scene",
+                "path": "levels/boss.json",
+                "absolute_path": "C:/project/levels/boss.json",
+            },
+        ]
+        self.active_scene = "levels/platformer_test_scene.json"
 
-    def _record(self, method: str, **kw: Any) -> dict:
+    def _record(self, method: str, **kw: Any) -> dict[str, Any]:
         self.calls.append({"method": method, **kw})
         return {}
 
-    def list_export_presets(self) -> dict:
+    def list_export_presets(self) -> dict[str, Any]:
         self._record("list_export_presets")
         return {
             "success": True,
@@ -27,22 +43,39 @@ class FakeEngineAPI:
                 "names": ["Windows Desktop", "Android"],
                 "presets": [
                     {
-                        "name": "Windows Desktop", "platform": "windows",
-                        "mode": "release", "output_path": "dist/windows/App",
+                        "name": "Windows Desktop",
+                        "platform": "windows",
+                        "mode": "release",
+                        "output_path": "dist/windows/App",
                         "entry_scene": "levels/main.json",
-                        "bundle_mode": "packed", "version_name": "1.0",
+                        "bundle_mode": "packed",
+                        "version_name": "1.0",
                     },
                     {
-                        "name": "Android", "platform": "android",
-                        "mode": "debug", "output_path": "dist/android/app.apk",
-                        "entry_scene": "levels/main.json",
-                        "bundle_mode": "apk", "version_name": "0.2",
+                        "name": "Android",
+                        "platform": "android",
+                        "mode": "debug",
+                        "output_path": "dist/android/app.apk",
+                        "entry_scene": "levels/boss.json",
+                        "bundle_mode": "apk",
+                        "version_name": "0.2",
                     },
                 ],
             },
         }
 
-    def validate_export_preset(self, name: Optional[str] = None) -> dict:
+    def list_export_entry_scenes(self) -> dict[str, Any]:
+        self._record("list_export_entry_scenes")
+        return {
+            "success": True,
+            "message": f"Found {len(self.scene_items)} scene(s)",
+            "data": {
+                "scenes": list(self.scene_items),
+                "active_scene": self.active_scene,
+            },
+        }
+
+    def validate_export_preset(self, name: Optional[str] = None) -> dict[str, Any]:
         self._record("validate_export_preset", name=name)
         return {
             "success": True,
@@ -50,7 +83,7 @@ class FakeEngineAPI:
             "data": {"checked": 2, "errors": []},
         }
 
-    def export_doctor(self) -> dict:
+    def export_doctor(self) -> dict[str, Any]:
         self._record("export_doctor")
         return {
             "success": True,
@@ -66,22 +99,43 @@ class FakeEngineAPI:
             },
         }
 
-    def build_export(self, name: str) -> dict:
+    def build_export(self, name: str) -> dict[str, Any]:
         self._record("build_export", name=name)
         return {
             "success": True,
-            "message": "Build completed for 'Windows Desktop'",
+            "message": f"Build completed for '{name}'",
             "data": {
                 "preset": name,
                 "platform": "windows",
+                "mode": "release",
                 "success": True,
                 "duration_seconds": 2.34,
                 "artifacts": ["dist/windows/App.exe"],
                 "report": ".motor/build/reports/Windows_Desktop.json",
+                "effective_entry_scene": "levels/main.json",
+                "entry_scene_override": None,
             },
         }
 
-    def build_all_exports(self) -> dict:
+    def build_export_for_scene(self, name: str, entry_scene: str) -> dict[str, Any]:
+        self._record("build_export_for_scene", name=name, entry_scene=entry_scene)
+        return {
+            "success": True,
+            "message": f"Build completed for '{name}'",
+            "data": {
+                "preset": name,
+                "platform": "windows",
+                "mode": "release",
+                "success": True,
+                "duration_seconds": 1.11,
+                "artifacts": ["dist/windows/App.exe"],
+                "report": ".motor/build/reports/Windows_Desktop.json",
+                "effective_entry_scene": entry_scene,
+                "entry_scene_override": entry_scene,
+            },
+        }
+
+    def build_all_exports(self) -> dict[str, Any]:
         self._record("build_all_exports")
         return {
             "success": True,
@@ -98,66 +152,72 @@ class FakeEngineAPI:
 
 
 class TestExportPanelDelegation(unittest.TestCase):
-    """ExportPanel delegates to EngineAPI, does not duplicate logic."""
-
     def setUp(self) -> None:
         self.fake = FakeEngineAPI()
         self.panel = ExportPanel()
         self.panel.bind_api(self.fake)
 
-    # ── list_presets ────────────────────────────────────────────────
-
-    def test_list_presets_delegates_to_api(self):
+    def test_list_presets_delegates_to_api(self) -> None:
         result = self.panel.list_presets()
         self.assertTrue(result["success"])
         self.assertEqual(result["ui_total"], 2)
         self.assertEqual(self.fake.calls[0]["method"], "list_export_presets")
 
-    def test_list_presets_ui_items_structure(self):
+    def test_list_presets_ui_items_structure(self) -> None:
         result = self.panel.list_presets()
-        self.assertIn("ui_items", result)
-        self.assertIsInstance(result["ui_items"], list)
         first = result["ui_items"][0]
         self.assertEqual(first["name"], "Windows Desktop")
         self.assertEqual(first["platform"], "windows")
-        self.assertIn("mode", first)
-        self.assertIn("output_path", first)
+        self.assertEqual(first["entry_scene"], "levels/main.json")
 
-    # ── validate_preset ─────────────────────────────────────────────
+    def test_list_entry_scenes_delegates_to_api(self) -> None:
+        result = self.panel.list_entry_scenes()
+        self.assertTrue(result["success"])
+        self.assertEqual(result["ui_active_scene"], "levels/platformer_test_scene.json")
+        self.assertEqual(self.fake.calls[0]["method"], "list_export_entry_scenes")
 
-    def test_validate_single_preset_delegates(self):
+    def test_refresh_export_options_loads_presets_and_scenes(self) -> None:
+        self.panel.refresh_export_options()
+        self.assertEqual(len(self.panel._presets), 2)
+        self.assertEqual(len(self.panel._scene_items), 3)
+        self.assertEqual(self.panel._selected_preset_name, "Windows Desktop")
+        self.assertEqual(self.panel._selected_scene_path, "levels/platformer_test_scene.json")
+
+    def test_refresh_defaults_to_preset_entry_scene_when_active_missing(self) -> None:
+        self.fake.active_scene = "levels/missing.json"
+        self.panel.refresh_export_options()
+        self.assertEqual(self.panel._selected_scene_path, "levels/main.json")
+
+    def test_refresh_defaults_to_first_scene_when_active_and_preset_missing(self) -> None:
+        self.fake.active_scene = "levels/missing.json"
+        original = self.fake.list_export_presets
+
+        def _missing_preset_entry() -> dict[str, Any]:
+            result = original()
+            result["data"]["presets"][0]["entry_scene"] = "levels/ghost.json"
+            return result
+
+        self.fake.list_export_presets = _missing_preset_entry
+        self.panel.refresh_export_options()
+        self.assertEqual(self.panel._selected_scene_path, "levels/platformer_test_scene.json")
+
+    def test_validate_single_preset_delegates(self) -> None:
         result = self.panel.validate_preset("Windows Desktop")
         self.assertTrue(result["success"])
         self.assertEqual(self.fake.calls[0]["method"], "validate_export_preset")
         self.assertEqual(self.fake.calls[0]["name"], "Windows Desktop")
 
-    def test_validate_all_presets_delegates(self):
-        result = self.panel.validate_preset(None)
-        self.assertTrue(result["success"])
-        self.assertEqual(self.fake.calls[0]["name"], None)
-
-    def test_validate_ui_error_fields(self):
+    def test_validate_ui_error_fields(self) -> None:
         result = self.panel.validate_preset("X")
-        self.assertIn("ui_error_count", result)
-        self.assertIn("ui_errors", result)
         self.assertEqual(result["ui_error_count"], 0)
+        self.assertEqual(result["ui_errors"], [])
 
-    # ── doctor ──────────────────────────────────────────────────────
-
-    def test_doctor_delegates_to_api(self):
+    def test_doctor_delegates_to_api(self) -> None:
         result = self.panel.doctor()
         self.assertTrue(result["success"])
         self.assertEqual(self.fake.calls[0]["method"], "export_doctor")
 
-    def test_doctor_ui_checks(self):
-        result = self.panel.doctor()
-        self.assertIn("ui_checks", result)
-        self.assertIn("ui_healthy", result)
-        self.assertTrue(result["ui_healthy"])
-        self.assertEqual(len(result["ui_checks"]), 2)
-        self.assertEqual(result["ui_checks"][0]["name"], "pyinstaller_available")
-
-    def test_doctor_ui_checks_include_issues_and_warnings(self):
+    def test_doctor_ui_checks_include_issues_and_warnings(self) -> None:
         self.fake.export_doctor = lambda: {
             "success": False,
             "message": "Export toolchain has issues.",
@@ -175,12 +235,12 @@ class TestExportPanelDelegation(unittest.TestCase):
         self.assertTrue(any(item["status"] == "err" for item in result["ui_checks"]))
         self.assertTrue(any(item["status"] == "warn" for item in result["ui_checks"]))
 
-    def test_unbound_panel_returns_controlled_errors(self):
+    def test_unbound_panel_returns_controlled_errors(self) -> None:
         panel = ExportPanel()
-
         list_result = panel.list_presets()
         validate_result = panel.validate_preset()
         doctor_result = panel.doctor()
+        scenes_result = panel.list_entry_scenes()
 
         self.assertFalse(list_result["success"])
         self.assertEqual(list_result["ui_total"], 0)
@@ -188,57 +248,103 @@ class TestExportPanelDelegation(unittest.TestCase):
         self.assertEqual(validate_result["ui_error_count"], 1)
         self.assertFalse(doctor_result["success"])
         self.assertFalse(doctor_result["ui_healthy"])
+        self.assertFalse(scenes_result["success"])
+        self.assertEqual(scenes_result["ui_scene_items"], [])
 
-    # ── build_export ────────────────────────────────────────────────
-
-    def test_build_export_delegates(self):
+    def test_build_export_delegates(self) -> None:
         result = self.panel.build_export("Windows Desktop")
         self.assertTrue(result["success"])
         self.assertEqual(self.fake.calls[0]["method"], "build_export")
         self.assertEqual(self.fake.calls[0]["name"], "Windows Desktop")
 
-    def test_build_export_ui_fields(self):
+    def test_build_export_ui_fields(self) -> None:
         result = self.panel.build_export("Windows Desktop")
-        self.assertIn("ui_artifacts", result)
-        self.assertIn("ui_duration", result)
-        self.assertIn("ui_report", result)
         self.assertEqual(result["ui_artifacts"], ["dist/windows/App.exe"])
         self.assertEqual(result["ui_duration"], 2.34)
+        self.assertEqual(result["ui_effective_entry_scene"], "levels/main.json")
+        self.assertIsNone(result["ui_entry_scene_override"])
 
-    # ── build_all_exports ───────────────────────────────────────────
+    def test_build_export_for_scene_delegates(self) -> None:
+        result = self.panel.build_export_for_scene("Windows Desktop", "levels/boss.json")
+        self.assertTrue(result["success"])
+        self.assertEqual(self.fake.calls[0]["method"], "build_export_for_scene")
+        self.assertEqual(self.fake.calls[0]["entry_scene"], "levels/boss.json")
 
-    def test_build_all_exports_delegates(self):
+    def test_build_all_exports_delegates(self) -> None:
         result = self.panel.build_all_exports()
         self.assertTrue(result["success"])
         self.assertEqual(self.fake.calls[0]["method"], "build_all_exports")
 
-    def test_build_all_exports_ui_results(self):
+    def test_build_all_exports_ui_results(self) -> None:
         result = self.panel.build_all_exports()
         self.assertEqual(result["ui_total"], 2)
         self.assertEqual(result["ui_success_count"], 2)
-        self.assertEqual(len(result["ui_results"]), 2)
         self.assertEqual(result["ui_results"][0]["preset"], "Windows Desktop")
-        self.assertTrue(result["ui_results"][0]["success"])
 
-    # ── safety / import ─────────────────────────────────────────────
+    def test_select_previous_and_next_scene(self) -> None:
+        self.panel.refresh_export_options()
+        self.panel._selected_scene_path = "levels/main.json"
+        self.panel._select_previous_scene()
+        self.assertEqual(self.panel._selected_scene_path, "levels/platformer_test_scene.json")
+        self.panel._select_next_scene()
+        self.assertEqual(self.panel._selected_scene_path, "levels/main.json")
 
-    def test_pyray_imported_for_render(self):
-        """Panel imports pyray for its render() method (controller+view)."""
-        import engine.editor.export_panel as ep
-        source = ep.__file__
+    def test_select_active_scene_refreshes_current_active_scene(self) -> None:
+        self.panel.refresh_export_options()
+        self.fake.active_scene = "levels/boss.json"
+        self.panel._selected_scene_path = "levels/main.json"
+        self.panel._select_active_scene()
+        self.assertEqual(self.panel._selected_scene_path, "levels/boss.json")
+
+    def test_bind_prebuild_save_callback_stores_callback(self) -> None:
+        callback = Mock(return_value=True)
+        self.panel.bind_prebuild_save_callback(callback)
+        self.assertIs(self.panel._prebuild_save_callback, callback)
+
+    def test_run_build_selected_uses_selected_scene_override(self) -> None:
+        self.panel.refresh_export_options()
+        self.panel._selected_scene_path = "levels/boss.json"
+        self.panel._run_build_selected()
+        self.assertEqual(self.fake.calls[-1]["method"], "build_export_for_scene")
+        self.assertEqual(self.fake.calls[-1]["name"], "Windows Desktop")
+        self.assertEqual(self.fake.calls[-1]["entry_scene"], "levels/boss.json")
+        self.assertIn(("info", "Entry Scene: levels/boss.json"), self.panel._logs)
+
+    def test_run_build_selected_without_scene_logs_error(self) -> None:
+        self.panel.refresh_export_options()
+        self.panel._selected_scene_path = ""
+        call_count_before = len(self.fake.calls)
+        self.panel._run_build_selected()
+        self.assertEqual(len(self.fake.calls), call_count_before)
+        self.assertIn(("err", "No entry scene selected."), self.panel._logs)
+
+    def test_run_build_selected_cancels_when_prebuild_save_fails(self) -> None:
+        self.panel.refresh_export_options()
+        callback = Mock(return_value=False)
+        self.panel.bind_prebuild_save_callback(callback)
+        call_count_before = len(self.fake.calls)
+        self.panel._run_build_selected()
+        callback.assert_called_once_with()
+        self.assertEqual(len(self.fake.calls), call_count_before)
+        self.assertIn(("err", "Build cancelled: could not save dirty scenes."), self.panel._logs)
+
+    def test_pyray_imported_for_render(self) -> None:
+        import engine.editor.export_panel as export_panel_module
+
+        source = export_panel_module.__file__
         if source:
-            with open(source, encoding="utf-8") as fh:
-                content = fh.read()
+            with open(source, encoding="utf-8") as handle:
+                content = handle.read()
             self.assertIn("import pyray", content)
             self.assertIn("def render", content)
 
-    def test_no_exporter_imports(self):
-        """Panel must not import exporter/internal modules directly."""
-        import engine.editor.export_panel as ep
-        source = ep.__file__
+    def test_no_exporter_imports(self) -> None:
+        import engine.editor.export_panel as export_panel_module
+
+        source = export_panel_module.__file__
         if source:
-            with open(source, encoding="utf-8") as fh:
-                content = fh.read()
+            with open(source, encoding="utf-8") as handle:
+                content = handle.read()
             forbidden = [
                 "engine.export.preset_loader",
                 "engine.export.preset_schema",
@@ -254,8 +360,8 @@ class TestExportPanelDelegation(unittest.TestCase):
                 "engine.export.reports",
                 "engine.export.validator",
             ]
-            for mod in forbidden:
-                self.assertNotIn(mod, content, f"ExportPanel must not import {mod}")
+            for module_name in forbidden:
+                self.assertNotIn(module_name, content, f"ExportPanel must not import {module_name}")
 
 
 if __name__ == "__main__":

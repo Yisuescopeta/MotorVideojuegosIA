@@ -57,11 +57,13 @@ La exportacion publica usa siempre `EngineAPI` o la CLI oficial `motor`. No se
 usa `main.py` del editor como entrypoint de juego exportado.
 
 - `list_export_presets()` lista presets desde `export_presets.motor.json`.
+- `list_export_entry_scenes()` lista escenas exportables del proyecto y la activa del editor cuando el runtime ya esta vinculado.
 - `validate_export_preset(name=None)` valida schema, rutas, plataforma, modo,
   entry scene, output y opciones moviles.
 - `export_doctor()` reporta toolchains disponibles y bloqueos externos.
 - `export_pack(name)` genera content staging, `game.manifest.json` y `game.pak`.
 - `build_export(name)` ejecuta el exporter de plataforma y escribe build report.
+- `build_export_for_scene(name, entry_scene)` ejecuta el mismo build con override temporal de `entry_scene` solo en memoria; no reescribe `export_presets.motor.json`.
 - `build_all_exports()` ejecuta todos los presets y falla si alguno falla.
 
 Todas devuelven `{ "success": bool, "message": str, "data": object }`. Los

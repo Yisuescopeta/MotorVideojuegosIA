@@ -1,15 +1,15 @@
 """
-engine/editor/export_panel.py - Export panel controller (Phase 11).
+engine/editor/export_panel.py - Export panel controller.
 
 Model/controller + pyray view for the editor export panel.
 Uses EngineAPI public methods exclusively:
-  list_export_presets, validate_export_preset, build_export,
-  build_all_exports, export_doctor.
+  list_export_presets, list_export_entry_scenes, validate_export_preset,
+  build_export, build_export_for_scene, build_all_exports, export_doctor.
 """
 
 from __future__ import annotations
 
-from typing import Any, Optional, Protocol
+from typing import Any, Callable, Optional, Protocol
 
 import pyray as rl
 from engine.editor.render_safety import editor_scissor
@@ -23,17 +23,14 @@ class _ExportAPIProtocol(Protocol):
     def validate_export_preset(self, name: Optional[str]) -> Any: ...
     def export_doctor(self) -> Any: ...
     def build_export(self, name: str) -> Any: ...
+    def build_export_for_scene(self, name: str, entry_scene: str) -> Any: ...
     def build_all_exports(self) -> Any: ...
+    def list_export_entry_scenes(self) -> Any: ...
 
 
 class ExportPanel:
-    """Controller + pyray view for the editor export panel.
+    """Controller + pyray view for the editor export panel."""
 
-    Delegates all work to an EngineAPI instance (or compatible fake).
-    Call render() to draw the panel in a bottom tab slot.
-    """
-
-    # colors
     BG = rl.Color(30, 30, 30, 255)
     BG_MID = rl.Color(38, 38, 38, 255)
     BG_LIGHT = rl.Color(48, 48, 48, 255)
@@ -41,13 +38,9 @@ class ExportPanel:
     TEXT = rl.Color(210, 210, 210, 255)
     TEXT_DIM = rl.Color(135, 135, 135, 255)
     TEXT_BRIGHT = rl.Color(235, 235, 235, 255)
-    BLUE = rl.Color(44, 93, 135, 255)
-    BLUE_HOVER = rl.Color(60, 115, 165, 255)
     OK = rl.Color(110, 180, 110, 255)
     ERR = rl.Color(220, 90, 90, 255)
     WARN = rl.Color(220, 170, 80, 255)
-    BUTTON = rl.Color(58, 58, 58, 255)
-    BUTTON_HOVER = rl.Color(78, 78, 78, 255)
 
     TOOLBAR_H = 28
     LINE_H = 14
@@ -55,17 +48,21 @@ class ExportPanel:
 
     def __init__(self) -> None:
         self._api: Optional[_ExportAPIProtocol] = None
-
         self._presets: list[dict[str, Any]] = []
-        self._logs: list[tuple[str, str]] = []  # (type, text)  type: ok/err/warn/info
+        self._scene_items: list[dict[str, Any]] = []
+        self._logs: list[tuple[str, str]] = []
         self._busy: bool = False
         self._scroll_y: float = 0.0
-
-    # ── dependency injection ──────────────────────────────────────────
+        self._selected_scene_path: str = ""
+        self._selected_preset_name: str = ""
+        self._active_scene_path: str = ""
+        self._prebuild_save_callback: Optional[Callable[[], bool]] = None
 
     def bind_api(self, api: _ExportAPIProtocol) -> None:
-        """Supply the EngineAPI (or a fake implementing the export protocol)."""
         self._api = api
+
+    def bind_prebuild_save_callback(self, callback: Callable[[], bool]) -> None:
+        self._prebuild_save_callback = callback
 
     @property
     def api(self) -> _ExportAPIProtocol:
@@ -89,34 +86,74 @@ class ExportPanel:
             },
         }
 
-    # ── public controller methods ─────────────────────────────────────
-
     def list_presets(self) -> dict[str, Any]:
-        """Return presets list suitable for UI display."""
         unbound = self._require_api()
         if unbound is not None:
             unbound["ui_items"] = []
             unbound["ui_total"] = 0
             return unbound
         result = self._unwrap(self.api.list_export_presets())
-        items = []
+        items: list[dict[str, Any]] = []
         if result["success"]:
-            for p in result["data"].get("presets", []):
-                items.append({
-                    "name": p.get("name", ""),
-                    "platform": p.get("platform", ""),
-                    "mode": p.get("mode", "release"),
-                    "output_path": p.get("output_path", ""),
-                    "entry_scene": p.get("entry_scene", ""),
-                    "bundle_mode": p.get("bundle_mode", ""),
-                    "version_name": p.get("version_name", ""),
-                })
+            for preset in result["data"].get("presets", []):
+                if not isinstance(preset, dict):
+                    continue
+                items.append(
+                    {
+                        "name": preset.get("name", ""),
+                        "platform": preset.get("platform", ""),
+                        "mode": preset.get("mode", "release"),
+                        "output_path": preset.get("output_path", ""),
+                        "entry_scene": str(preset.get("entry_scene", "") or "").replace("\\", "/"),
+                        "bundle_mode": preset.get("bundle_mode", ""),
+                        "version_name": preset.get("version_name", ""),
+                    }
+                )
         result["ui_items"] = items
         result["ui_total"] = len(items)
         return result
 
+    def list_entry_scenes(self) -> dict[str, Any]:
+        unbound = self._require_api()
+        if unbound is not None:
+            unbound["ui_scene_items"] = []
+            unbound["ui_active_scene"] = ""
+            return unbound
+        result = self._unwrap(self.api.list_export_entry_scenes())
+        items: list[dict[str, Any]] = []
+        active_scene = ""
+        if result["success"] and isinstance(result.get("data"), dict):
+            for scene in result["data"].get("scenes", []):
+                if not isinstance(scene, dict):
+                    continue
+                path = str(scene.get("path", "") or "").replace("\\", "/")
+                if not path:
+                    continue
+                items.append(
+                    {
+                        "name": str(scene.get("name", "") or ""),
+                        "path": path,
+                        "absolute_path": str(scene.get("absolute_path", "") or ""),
+                    }
+                )
+            active_scene = str(result["data"].get("active_scene", "") or "").replace("\\", "/")
+        result["ui_scene_items"] = items
+        result["ui_active_scene"] = active_scene
+        return result
+
+    def refresh_export_options(self) -> None:
+        presets_result = self.list_presets()
+        self._presets = presets_result.get("ui_items", [])
+        valid_preset_names = {str(item.get("name", "") or "") for item in self._presets}
+        if self._selected_preset_name not in valid_preset_names:
+            self._selected_preset_name = self._presets[0]["name"] if self._presets else ""
+
+        scenes_result = self.list_entry_scenes()
+        self._scene_items = scenes_result.get("ui_scene_items", [])
+        self._active_scene_path = str(scenes_result.get("ui_active_scene", "") or "")
+        self._selected_scene_path = self._resolve_default_entry_scene()
+
     def validate_preset(self, name: Optional[str] = None) -> dict[str, Any]:
-        """Run validation for a single preset or all presets."""
         unbound = self._require_api()
         if unbound is not None:
             unbound["ui_error_count"] = 1
@@ -129,7 +166,6 @@ class ExportPanel:
         return result
 
     def doctor(self) -> dict[str, Any]:
-        """Run export toolchain doctor, return checks list for UI."""
         unbound = self._require_api()
         if unbound is not None:
             unbound["ui_checks"] = []
@@ -162,27 +198,20 @@ class ExportPanel:
         return result
 
     def build_export(self, name: str) -> dict[str, Any]:
-        """Trigger a single-preset build."""
         unbound = self._require_api()
         if unbound is not None:
-            unbound["ui_artifacts"] = []
-            unbound["ui_duration"] = 0
-            unbound["ui_report"] = None
-            return unbound
+            return self._with_empty_build_ui(unbound)
         result = self._unwrap(self.api.build_export(name))
-        data = result.get("data")
-        if isinstance(data, dict):
-            result["ui_artifacts"] = data.get("artifacts", [])
-            result["ui_duration"] = data.get("duration_seconds", 0)
-            result["ui_report"] = data.get("report", None)
-        else:
-            result["ui_artifacts"] = []
-            result["ui_duration"] = 0
-            result["ui_report"] = None
-        return result
+        return self._apply_build_ui_fields(result)
+
+    def build_export_for_scene(self, name: str, entry_scene: str) -> dict[str, Any]:
+        unbound = self._require_api()
+        if unbound is not None:
+            return self._with_empty_build_ui(unbound)
+        result = self._unwrap(self.api.build_export_for_scene(name, entry_scene))
+        return self._apply_build_ui_fields(result)
 
     def build_all_exports(self) -> dict[str, Any]:
-        """Trigger a build of all presets."""
         unbound = self._require_api()
         if unbound is not None:
             unbound["ui_total"] = 0
@@ -196,16 +225,15 @@ class ExportPanel:
             result["ui_success_count"] = data.get("success_count", 0)
             results_raw = data.get("results", [])
             result["ui_results"] = [
-                {"preset": r.get("preset", ""), "success": r.get("success", False)}
-                for r in results_raw
+                {"preset": item.get("preset", ""), "success": item.get("success", False)}
+                for item in results_raw
+                if isinstance(item, dict)
             ]
         else:
             result["ui_total"] = 0
             result["ui_success_count"] = 0
             result["ui_results"] = []
         return result
-
-    # ── pyray view ────────────────────────────────────────────────────
 
     def _log(self, kind: str, text: str) -> None:
         self._logs.append((kind, text))
@@ -236,8 +264,8 @@ class ExportPanel:
         btn_rect = rl.Rectangle(float(bx), float(by), float(bw), float(bh))
         if editor_button((btn_rect.x, btn_rect.y, btn_rect.width, btn_rect.height), "Presets").clicked:
             self._busy = True
-            self._presets = self.list_presets().get("ui_items", [])
-            self._log("info", f"Loaded {len(self._presets)} preset(s)")
+            self.refresh_export_options()
+            self._log("info", f"Loaded {len(self._presets)} preset(s) and {len(self._scene_items)} scene(s)")
             self._busy = False
         bx += bw + 4
 
@@ -261,7 +289,7 @@ class ExportPanel:
             self._run_validate()
 
         bx = int(rect.x + rect.width - 64)
-        btn_rect = rl.Rectangle(float(bx), float(by), 56, float(bh))
+        btn_rect = rl.Rectangle(float(bx), float(by), 56.0, float(bh))
         if editor_button((btn_rect.x, btn_rect.y, btn_rect.width, btn_rect.height), "Clear").clicked:
             self._clear_log()
 
@@ -274,11 +302,14 @@ class ExportPanel:
         if self._presets:
             rl.draw_text("Presets:", x + 6, cy, self.FONT_SZ, self.TEXT_BRIGHT)
             cy += self.LINE_H + 2
-            for p in self._presets:
-                label = f"  {p['name']}  ({p['platform']}, {p['mode']})"
-                rl.draw_text(label, x + 6, cy, self.FONT_SZ, self.TEXT)
+            for preset in self._presets:
+                is_selected = preset.get("name", "") == self._selected_preset_name
+                label = f"{'>' if is_selected else ' '} {preset['name']}  ({preset['platform']}, {preset['mode']})"
+                rl.draw_text(label, x + 6, cy, self.FONT_SZ, self.TEXT_BRIGHT if is_selected else self.TEXT)
                 cy += self.LINE_H
             cy += 6
+
+        cy = self._draw_entry_scene_selector(x, cy, width)
 
         if self._logs:
             cy += 2
@@ -294,29 +325,94 @@ class ExportPanel:
 
         self._handle_scroll(height)
 
+    def _draw_entry_scene_selector(self, x: int, y: int, width: int) -> int:
+        cy = y
+        rl.draw_text("Entry Scene:", x + 6, cy, self.FONT_SZ, self.TEXT_BRIGHT)
+        cy += self.LINE_H + 2
+
+        if not self._scene_items:
+            rl.draw_text(
+                "No scenes found. Create or save a scene before export.",
+                x + 6,
+                cy,
+                self.FONT_SZ,
+                self.WARN,
+            )
+            return cy + self.LINE_H + 6
+
+        bx = x + 6
+        by = cy - 2
+        bh = 22
+
+        prev_rect = rl.Rectangle(float(bx), float(by), 24.0, float(bh))
+        if editor_button((prev_rect.x, prev_rect.y, prev_rect.width, prev_rect.height), "<").clicked:
+            self._select_previous_scene()
+        bx += 28
+
+        next_rect = rl.Rectangle(float(bx), float(by), 24.0, float(bh))
+        if editor_button((next_rect.x, next_rect.y, next_rect.width, next_rect.height), ">").clicked:
+            self._select_next_scene()
+        bx += 32
+
+        active_button_w = 82
+        label_w = max(100, width - (bx - x) - active_button_w - 18)
+        label_rect = rl.Rectangle(float(bx), float(by), float(label_w), float(bh))
+        rl.draw_rectangle_rec(label_rect, self.BG_LIGHT)
+        rl.draw_rectangle_lines_ex(label_rect, 1.0, self.BORDER)
+        rl.draw_text(
+            self._selected_scene_path or "(none)",
+            int(label_rect.x) + 6,
+            int(label_rect.y) + 6,
+            self.FONT_SZ,
+            self.TEXT,
+        )
+
+        active_rect = rl.Rectangle(
+            float(x + width - active_button_w - 6),
+            float(by),
+            float(active_button_w),
+            float(bh),
+        )
+        if editor_button((active_rect.x, active_rect.y, active_rect.width, active_rect.height), "Use Active").clicked:
+            self._select_active_scene()
+        return cy + bh + 8
+
     def _handle_scroll(self, view_h: int) -> None:
         wheel = rl.get_mouse_wheel_move()
         if wheel != 0:
             self._scroll_y = max(0.0, self._scroll_y - wheel * self.LINE_H * 3)
 
-    # ── action runners ────────────────────────────────────────────────
-
     def _run_build_selected(self) -> None:
         if not self._presets:
             self._log("warn", "No presets loaded. Click Presets first.")
             return
-        name = self._presets[0]["name"]
+
+        name = self._selected_preset_name or self._presets[0]["name"]
+        entry_scene = self._selected_scene_path.strip()
+
+        if self._prebuild_save_callback is not None and not self._prebuild_save_callback():
+            self._log("err", "Build cancelled: could not save dirty scenes.")
+            return
+        if not entry_scene:
+            self._log("err", "No entry scene selected.")
+            return
+
         self._busy = True
         try:
-            result = self.build_export(name)
+            result = self.build_export_for_scene(name, entry_scene)
+            effective_entry_scene = str(result.get("ui_effective_entry_scene", "") or entry_scene)
             if result["success"]:
                 self._log("ok", f"Build OK: {name} ({result.get('ui_duration', 0):.1f}s)")
-                for a in result.get("ui_artifacts", []):
-                    self._log("info", f"  -> {a}")
+                self._log("info", f"Entry Scene: {effective_entry_scene}")
+                for artifact in result.get("ui_artifacts", []):
+                    self._log("info", f"  -> {artifact}")
             else:
-                self._log("err", f"Build FAILED: {name} — {result.get('message', '')}")
-        except Exception as e:
-            self._log("err", f"Build error: {e}")
+                self._log("err", f"Build FAILED: {name} - {result.get('message', '')}")
+                self._log("info", f"Entry Scene: {effective_entry_scene}")
+                for error in result.get("data", {}).get("errors", []):
+                    self._log("err", f"  {self._format_export_error(error)}")
+        except Exception as exc:
+            self._log("err", f"Build error: {exc}")
         finally:
             self._busy = False
 
@@ -331,13 +427,13 @@ class ExportPanel:
             total = result.get("ui_total", 0)
             if result["success"]:
                 self._log("ok", f"Build All: {ok}/{total} succeeded")
-                for r in result.get("ui_results", []):
-                    kind = "ok" if r["success"] else "err"
-                    self._log(kind, f"  {r['preset']}: {'OK' if r['success'] else 'FAILED'}")
+                for item in result.get("ui_results", []):
+                    kind = "ok" if item["success"] else "err"
+                    self._log(kind, f"  {item['preset']}: {'OK' if item['success'] else 'FAILED'}")
             else:
-                self._log("err", f"Build All FAILED — {result.get('message', '')}")
-        except Exception as e:
-            self._log("err", f"Build All error: {e}")
+                self._log("err", f"Build All FAILED - {result.get('message', '')}")
+        except Exception as exc:
+            self._log("err", f"Build All error: {exc}")
         finally:
             self._busy = False
 
@@ -351,13 +447,13 @@ class ExportPanel:
                 status = check.get("status", "")
                 label = check.get("label", "")
                 if status == "ok":
-                    self._log("ok", f"  \u2713 {label}")
+                    self._log("ok", f"  [ok] {label}")
                 elif status in ("warn", "warning"):
                     self._log("warn", f"  ! {label}: {check.get('detail', '')}")
                 else:
                     self._log("err", f"  x {label}: {check.get('detail', '')}")
-        except Exception as e:
-            self._log("err", f"Doctor error: {e}")
+        except Exception as exc:
+            self._log("err", f"Doctor error: {exc}")
         finally:
             self._busy = False
 
@@ -372,19 +468,103 @@ class ExportPanel:
                 self._log("warn", f"Validation: {err_count} error(s)")
                 for err in result.get("ui_errors", []):
                     self._log("err", f"  {err}")
-        except Exception as e:
-            self._log("err", f"Validation error: {e}")
+        except Exception as exc:
+            self._log("err", f"Validation error: {exc}")
         finally:
             self._busy = False
 
-    # ── helpers ───────────────────────────────────────────────────────
+    def _select_previous_scene(self) -> None:
+        if not self._scene_items:
+            self._selected_scene_path = ""
+            return
+        scene_paths = [str(item.get("path", "") or "") for item in self._scene_items]
+        try:
+            index = scene_paths.index(self._selected_scene_path)
+        except ValueError:
+            index = 0
+        self._selected_scene_path = scene_paths[(index - 1) % len(scene_paths)]
+
+    def _select_next_scene(self) -> None:
+        if not self._scene_items:
+            self._selected_scene_path = ""
+            return
+        scene_paths = [str(item.get("path", "") or "") for item in self._scene_items]
+        try:
+            index = scene_paths.index(self._selected_scene_path)
+        except ValueError:
+            index = -1
+        self._selected_scene_path = scene_paths[(index + 1) % len(scene_paths)]
+
+    def _select_active_scene(self) -> None:
+        result = self.list_entry_scenes()
+        self._scene_items = result.get("ui_scene_items", [])
+        self._active_scene_path = str(result.get("ui_active_scene", "") or "")
+        scene_paths = {str(item.get("path", "") or "") for item in self._scene_items}
+        if self._active_scene_path in scene_paths:
+            self._selected_scene_path = self._active_scene_path
+            return
+        self._selected_scene_path = self._resolve_default_entry_scene()
+
+    def _resolve_default_entry_scene(self) -> str:
+        scene_paths = [str(item.get("path", "") or "") for item in self._scene_items]
+        if self._active_scene_path and self._active_scene_path in scene_paths:
+            return self._active_scene_path
+
+        preset_entry_scene = self._selected_preset_entry_scene()
+        if preset_entry_scene and preset_entry_scene in scene_paths:
+            return preset_entry_scene
+
+        return scene_paths[0] if scene_paths else ""
+
+    def _selected_preset_entry_scene(self) -> str:
+        selected_name = self._selected_preset_name
+        for preset in self._presets:
+            if str(preset.get("name", "") or "") == selected_name:
+                return str(preset.get("entry_scene", "") or "").replace("\\", "/")
+        if self._presets:
+            return str(self._presets[0].get("entry_scene", "") or "").replace("\\", "/")
+        return ""
+
+    @staticmethod
+    def _with_empty_build_ui(result: dict[str, Any]) -> dict[str, Any]:
+        result["ui_artifacts"] = []
+        result["ui_duration"] = 0
+        result["ui_report"] = None
+        result["ui_effective_entry_scene"] = ""
+        result["ui_entry_scene_override"] = None
+        return result
+
+    @classmethod
+    def _apply_build_ui_fields(cls, result: dict[str, Any]) -> dict[str, Any]:
+        data = result.get("data")
+        if not isinstance(data, dict):
+            return cls._with_empty_build_ui(result)
+        result["ui_artifacts"] = data.get("artifacts", [])
+        result["ui_duration"] = data.get("duration_seconds", 0)
+        result["ui_report"] = data.get("report", None)
+        result["ui_effective_entry_scene"] = data.get("effective_entry_scene", "")
+        result["ui_entry_scene_override"] = data.get("entry_scene_override")
+        return result
+
+    @staticmethod
+    def _format_export_error(error: Any) -> str:
+        if not isinstance(error, dict):
+            return str(error)
+        code = str(error.get("code", "") or "").strip()
+        path = str(error.get("path", "") or "").strip()
+        hint = str(error.get("hint", "") or "").strip()
+        parts = [part for part in (code, path, hint) if part]
+        return " - ".join(parts) if parts else str(error)
 
     @staticmethod
     def _unwrap(raw: Any) -> dict[str, Any]:
-        """Normalise ActionResult / dict / return value into a stable dict."""
         if isinstance(raw, dict):
             success = bool(raw.get("success", False))
-            msg = str(raw.get("message", ""))
+            message = str(raw.get("message", ""))
             data = raw.get("data") or {}
-            return {"success": success, "message": msg, "data": dict(data) if isinstance(data, dict) else {"raw": data}}
+            if isinstance(data, dict):
+                payload = dict(data)
+            else:
+                payload = {"raw": data}
+            return {"success": success, "message": message, "data": payload}
         return {"success": False, "message": f"Unexpected response type: {type(raw).__name__}", "data": {}}

@@ -373,6 +373,7 @@ class SceneViewFocusRegressionTests(unittest.TestCase):
         self.assertIs(panel._api.game, self.game)
         self.assertIs(panel._api.scene_manager, self.game._scene_manager)
         self.assertIs(panel._api.project_service, self.project_service)
+        self.assertTrue(callable(panel._prebuild_save_callback))
 
 
 class GameUiAuthoringRequestTests(unittest.TestCase):

@@ -147,6 +147,11 @@ py -m motor component edit Player Transform x 200 --project . --json
 py -m motor component remove Player Sprite --project . --json
 ```
 
+Para tooling/editor sobre un runtime ya vinculado, `EngineAPI` tambien expone
+`list_export_entry_scenes()` y `build_export_for_scene(name, entry_scene)`.
+Ese override de `entry_scene` vive solo en memoria para el build actual y no
+reescribe `export_presets.motor.json`.
+
 Los temas de editor son preferencia de proyecto, no authoring de escena. Usa
 `EngineAPI.list_editor_themes`, `get_active_editor_theme`,
 `set_active_editor_theme`, `export_editor_theme` e `import_editor_theme`, o la

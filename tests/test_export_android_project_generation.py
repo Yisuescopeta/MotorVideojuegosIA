@@ -22,6 +22,7 @@ class TestAndroidProjectGeneration(unittest.TestCase):
             "app/build.gradle",
             "app/src/main/AndroidManifest.xml",
             "app/src/main/java/com/motorvideojuegos/MainActivity.kt",
+            "app/src/main/res/drawable/ic_launcher.xml",
             "app/src/main/res/layout/activity_main.xml",
             "app/proguard-rules.pro",
             "gradle/wrapper/gradle-wrapper.properties",
@@ -37,6 +38,7 @@ class TestAndroidProjectGeneration(unittest.TestCase):
         content = manifest_path.read_text(encoding="utf-8")
         self.assertIn("{{DISPLAY_NAME}}", content)
         self.assertIn("{{ORIENTATION}}", content)
+        self.assertIn("@drawable/ic_launcher", content)
 
     def test_build_gradle_has_placeholders(self):
         gradle_path = self.template_dir / "app" / "build.gradle"

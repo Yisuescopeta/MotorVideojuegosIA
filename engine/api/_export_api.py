@@ -2,10 +2,12 @@
 
 Exposes public export methods:
   list_export_presets()
+  list_export_entry_scenes()
   validate_export_preset(name)
   export_doctor()
   export_pack(name)
   build_export(name)
+  build_export_for_scene(name, entry_scene)
   build_all_exports()
 """
 
@@ -234,6 +236,85 @@ class ExportAPI(EngineAPIComponent):  # type: ignore[misc]
         if preset is None:
             return _fail(f"Preset '{name}' not found.")
 
+        return self._build_export_from_preset(
+            preset,
+            requested_name=name,
+        )
+
+    def build_export_for_scene(
+        self,
+        name: str,
+        entry_scene: str,
+    ) -> dict[str, Any]:
+        try:
+            doc = load_presets(self._context.project_root)
+        except PresetLoadError as exc:
+            return _fail(str(exc), {"errors": _err_dicts(exc)})
+
+        preset = get_preset_by_name(doc, name)
+        if preset is None:
+            return _fail(f"Preset '{name}' not found.")
+
+        normalized_entry_scene = _normalize_project_scene_path(
+            self._context.project_root,
+            entry_scene,
+        )
+        override_preset = ExportPreset.from_dict(
+            preset.to_dict(include_secrets=True),
+        )
+        override_preset.entry_scene = normalized_entry_scene
+        return self._build_export_from_preset(
+            override_preset,
+            requested_name=name,
+            entry_scene_override=normalized_entry_scene,
+        )
+
+    def list_export_entry_scenes(self) -> dict[str, Any]:
+        project_service = self.project_service
+        if project_service is None:
+            return _ok(
+                "Found 0 scene(s)",
+                {"scenes": [], "active_scene": ""},
+            )
+
+        scenes: list[dict[str, str]] = []
+        for raw_scene in project_service.list_project_scenes():
+            normalized = _coerce_existing_export_scene(project_service, raw_scene)
+            if normalized is not None:
+                scenes.append(normalized)
+        scene_paths = {
+            str(scene.get("path", "") or "").replace("\\", "/")
+            for scene in scenes
+        }
+        active_scene = ""
+        scene_manager = self.scene_manager
+        if scene_manager is not None:
+            active_key = str(getattr(scene_manager, "active_scene_key", "") or "").strip()
+            entry = scene_manager.resolve_entry(active_key) if active_key else None
+            active_candidate = (
+                str(getattr(entry, "source_path", "") or "")
+                if entry is not None
+                else active_key
+            )
+            normalized_active = _normalize_scene_path_for_listing(
+                project_service,
+                active_candidate,
+            )
+            if normalized_active in scene_paths:
+                active_scene = normalized_active
+
+        return _ok(
+            f"Found {len(scenes)} scene(s)",
+            {"scenes": scenes, "active_scene": active_scene},
+        )
+
+    def _build_export_from_preset(
+        self,
+        preset: ExportPreset,
+        *,
+        requested_name: str,
+        entry_scene_override: str | None = None,
+    ) -> dict[str, Any]:
         errors = _validate_export_preset_for_project(
             preset, self._context.project_root,
         )
@@ -259,15 +340,17 @@ class ExportAPI(EngineAPIComponent):  # type: ignore[misc]
 
         try:
             report_path = write_build_report(
-                report, self._context.project_root, name,
+                report, self._context.project_root, requested_name,
             )
         except Exception:
             report_path = None
 
         data: dict[str, Any] = {
-            "preset": name,
+            "preset": requested_name,
             "platform": preset.platform,
             "mode": preset.mode,
+            "effective_entry_scene": preset.entry_scene,
+            "entry_scene_override": entry_scene_override,
             "success": success,
             "duration_seconds": round(duration, 2),
             "artifacts": ctx.artifacts,
@@ -277,11 +360,11 @@ class ExportAPI(EngineAPIComponent):  # type: ignore[misc]
 
         if success:
             return _ok(
-                f"Build completed for '{name}'",
+                f"Build completed for '{requested_name}'",
                 data,
             )
         return _fail(
-            f"Build failed for '{name}'",
+            f"Build failed for '{requested_name}'",
             {**data, "errors": ctx.errors, "warnings": ctx.warnings},
         )
 
@@ -350,3 +433,62 @@ def _validate_export_preset_for_project(
     errors = validate_preset(preset)
     errors.extend(validate_preset_against_project(preset, project_root))
     return [error.to_dict() for error in errors]
+
+
+def _normalize_project_scene_path(
+    project_root: str | Path,
+    entry_scene: str,
+) -> str:
+    value = str(entry_scene or "").strip()
+    if not value:
+        return ""
+    candidate = Path(value)
+    if candidate.is_absolute():
+        return _normalize_relative_to_root(Path(project_root), candidate)
+    normalized = value.replace("\\", "/")
+    if normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized
+
+
+def _normalize_scene_path_for_listing(
+    project_service: Any,
+    value: str,
+) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if text.endswith(".json") or "/" in text or "\\" in text or Path(text).is_absolute():
+        return str(project_service.to_relative_path(text)).replace("\\", "/")
+    return text.replace("\\", "/")
+
+
+def _normalize_relative_to_root(project_root: Path, candidate: Path) -> str:
+    try:
+        return candidate.expanduser().resolve().relative_to(project_root.resolve()).as_posix()
+    except ValueError:
+        return candidate.expanduser().resolve().as_posix()
+
+
+def _coerce_existing_export_scene(
+    project_service: Any,
+    raw_scene: Any,
+) -> dict[str, str] | None:
+    if not isinstance(raw_scene, dict):
+        return None
+    path = str(raw_scene.get("path", "") or "").replace("\\", "/").strip()
+    if not path:
+        return None
+    absolute_path = str(raw_scene.get("absolute_path", "") or "").strip()
+    resolved = (
+        Path(absolute_path).expanduser().resolve()
+        if absolute_path
+        else project_service.resolve_path(path)
+    )
+    if not resolved.exists() or not resolved.is_file():
+        return None
+    return {
+        "name": str(raw_scene.get("name", "") or ""),
+        "path": path,
+        "absolute_path": resolved.as_posix(),
+    }

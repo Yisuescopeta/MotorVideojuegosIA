@@ -422,6 +422,10 @@ class Game:
         api = self._resolve_editor_export_api()
         if api is not None:
             panel.bind_api(api)
+            if hasattr(panel, "bind_prebuild_save_callback"):
+                panel.bind_prebuild_save_callback(self._save_all_dirty_scenes)
+            if hasattr(panel, "refresh_export_options"):
+                panel.refresh_export_options()
 
     # === PROPIEDADES ===
 

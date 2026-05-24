@@ -262,6 +262,12 @@ class EngineAPI:
     def build_export(self, name: str) -> dict[str, Any]:
         return self._export_api.build_export(name)
 
+    def build_export_for_scene(self, name: str, entry_scene: str) -> dict[str, Any]:
+        return self._export_api.build_export_for_scene(name, entry_scene)
+
+    def list_export_entry_scenes(self) -> dict[str, Any]:
+        return self._export_api.list_export_entry_scenes()
+
     def build_all_exports(self) -> dict[str, Any]:
         return self._export_api.build_all_exports()
 
