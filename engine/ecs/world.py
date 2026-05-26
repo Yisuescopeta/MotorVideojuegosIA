@@ -127,6 +127,10 @@ class World:
         self._children_index: dict[str | None, set[int]] = defaultdict(set)
         self._component_index: dict[type, set[int]] = defaultdict(set)
         self._component_owner_index: dict[int, int] = {}
+        # Legacy compatibility: tests and old callers still poke these fields
+        # directly, so keep them available alongside the canonical indexes.
+        self._entities_by_name: dict[str, Entity] = {}
+        self._entities_by_component: dict[type, list[Entity]] = defaultdict(list)
         self.group_registry = GroupRegistry(self)
         self._version: int = 0
         self._structure_version: int = 0
@@ -242,6 +246,9 @@ class World:
         self._entities[entity.id] = entity
         entity._set_owner_world(self)
         self._index_entity(entity)
+        self._entities_by_name[entity.name] = entity
+        for component in entity.iter_components():
+            self._entities_by_component[type(component)].append(entity)
         self._touch_structure()
 
     def remove_entity(self, entity_id: int) -> None:
@@ -251,6 +258,12 @@ class World:
         for callback in list(self.on_entity_destroyed):
             callback(entity)
         self._deindex_entity(entity)
+        if self._entities_by_name.get(entity.name) is entity:
+            del self._entities_by_name[entity.name]
+        for component_type, entities in list(self._entities_by_component.items()):
+            self._entities_by_component[component_type] = [item for item in entities if item is not entity]
+            if not self._entities_by_component[component_type]:
+                del self._entities_by_component[component_type]
         entity._set_owner_world(None)
         del self._entities[entity_id]
         if self._selected_entity_name == entity.name:
@@ -264,6 +277,9 @@ class World:
         return self._entities.get(entity_id)
 
     def get_entity_by_name(self, name: str) -> Entity | None:
+        cached = self._entities_by_name.get(name)
+        if cached is not None:
+            return cached
         entity_id = self._name_index.get(name)
         return self._entities.get(entity_id) if entity_id is not None else None
 
@@ -312,13 +328,24 @@ class World:
             indexed_ids = self._component_index.get(component_type, set())
             candidate_ids = set(indexed_ids) if candidate_ids is None else candidate_ids.intersection(indexed_ids)
             if not candidate_ids:
-                return []
+                candidate_ids = set()
+                break
 
-        return [
-            self._entities[entity_id]
-            for entity_id in sorted(candidate_ids or set())
-            if entity_id in self._entities and self._entities[entity_id].active and all(self._entities[entity_id].has_enabled_component(comp_type) for comp_type in component_types)
+        if candidate_ids:
+            return [
+                self._entities[entity_id]
+                for entity_id in sorted(candidate_ids)
+                if entity_id in self._entities and self._entities[entity_id].active and all(self._entities[entity_id].has_enabled_component(comp_type) for comp_type in component_types)
+            ]
+
+        fallback_entities = [
+            entity
+            for entity in self._entities_by_name.values()
+            if entity.active and all(entity.has_enabled_component(comp_type) for comp_type in component_types)
         ]
+        if fallback_entities:
+            return sorted(fallback_entities, key=lambda entity: entity.id)
+        return []
 
     def entity_count(self) -> int:
         return len(self._entities)
@@ -338,6 +365,8 @@ class World:
         self._children_index.clear()
         self._component_index.clear()
         self._component_owner_index.clear()
+        self._entities_by_name.clear()
+        self._entities_by_component.clear()
         self.group_registry.clear()
         self.selected_entity_name = None
         self._touch_structure()

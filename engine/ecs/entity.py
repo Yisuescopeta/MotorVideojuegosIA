@@ -83,18 +83,41 @@ class Entity:
         "prefab_root_name",
     }
 
-    def __init__(self, name: str = "Entity") -> None:
+    def __init__(self, *args: object, name: str | None = None, entity_id: int | None = None) -> None:
         """
         Crea una nueva entidad con un ID único.
 
         Args:
-            name: Nombre legible para identificar la entidad (debug)
+            name: Nombre legible para identificar la entidad (debug).
+            entity_id: ID explícito opcional para compatibilidad legacy.
         """
+        resolved_name = "Entity"
+        resolved_id = entity_id
+
+        if len(args) > 2:
+            raise TypeError("Entity() accepts at most 2 positional arguments")
+
+        if len(args) == 2:
+            legacy_id, legacy_name = args
+            if not isinstance(legacy_id, int) or not isinstance(legacy_name, str):
+                raise TypeError("Entity() legacy form must be Entity(id: int, name: str)")
+            resolved_id = legacy_id if resolved_id is None else resolved_id
+            resolved_name = name if name is not None else legacy_name
+        elif len(args) == 1:
+            single_arg = args[0]
+            if isinstance(single_arg, int):
+                resolved_id = single_arg if resolved_id is None else resolved_id
+            else:
+                resolved_name = str(single_arg)
+
+        if name is not None:
+            resolved_name = str(name)
+
         object.__setattr__(self, "_owner_world", None)
         object.__setattr__(self, "_notifications_suspended", True)
-        self.id: int = _generate_entity_id()
+        self.id: int = int(resolved_id) if resolved_id is not None else _generate_entity_id()
         self.serialized_id: str | None = None
-        self.name: str = name
+        self.name: str = resolved_name
         self.active: bool = True
         self.tag: str = "Untagged"
         self.layer: str = "Default"

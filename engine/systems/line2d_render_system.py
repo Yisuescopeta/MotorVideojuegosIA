@@ -18,10 +18,16 @@ if TYPE_CHECKING:
     from engine.ecs.world import World
 
 
+def _is_window_ready() -> bool:
+    return bool(hasattr(rl, "is_window_ready") and rl.is_window_ready())
+
+
 class Line2DRenderSystem:
     """Renderiza entidades con componente Line2D."""
 
     def render(self, world: "World") -> None:
+        if not _is_window_ready():
+            return
         for entity in world.get_entities_with(Transform, Line2D):
             transform = entity.get_component(Transform)
             line = entity.get_component(Line2D)
@@ -118,6 +124,8 @@ class Line2DRenderSystem:
         half_w: float,
         color: rl.Color,
     ) -> None:
+        if not _is_window_ready():
+            return
         dx = b[0] - a[0]
         dy = b[1] - a[1]
         length = math.sqrt(dx * dx + dy * dy)
