@@ -10,7 +10,7 @@ def log_warn(msg: str) -> None:
     GLOBAL_LOGS.append(("WARN", msg))
 
 def log_err(msg: str) -> None:
-    GLOBAL_LOGS.append(("ERROR", msg))
+    GLOBAL_LOGS.append(("ERR", msg))
 
 def log_debug(msg: str) -> None:
     GLOBAL_LOGS.append(("DEBUG", msg))
