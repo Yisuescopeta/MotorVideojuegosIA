@@ -15,6 +15,7 @@ import unittest
 import zipfile
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from engine.levels.component_registry import create_default_registry
 from engine.runtime.content_loader import ContentLoader
@@ -653,6 +654,46 @@ class TestPrueva1ExportParity(unittest.TestCase):
         for case in self.pickup_cases:
             with self.subTest(pickup=case[0]):
                 self._assert_pickup_effect(self.packed_root, case)
+
+    @unittest.skipUnless(packed_root.exists(), "Prueva1 packed build not present")
+    def test_prueva1_packed_texture_hot_path_does_not_refresh_authoring_catalog(self):
+        from engine.assets.asset_database import AssetDatabase
+        from engine.components.animator import Animator
+        from engine.components.sprite import Sprite
+
+        class FakeTexture:
+            id = 1
+            width = 32
+            height = 32
+
+        loader = ContentLoader(str(self.packed_root))
+        runtime = ExportRuntime(loader=loader, registry=self.registry)
+        runtime.setup_scripts_path()
+        self.assertTrue(runtime.load_scene("levels/playground_platformer.json"))
+
+        drawable_refs = []
+        for entity in runtime.world.iter_all_entities():
+            sprite = entity.get_component(Sprite)
+            if sprite is not None and sprite.enabled and sprite.texture_path:
+                drawable_refs.append((sprite.get_texture_reference(), sprite.texture_path, sprite.sync_texture_reference))
+            animator = entity.get_component(Animator)
+            if animator is not None and animator.enabled and animator.sprite_sheet:
+                drawable_refs.append(
+                    (animator.get_sprite_sheet_reference(), animator.sprite_sheet, animator.sync_sprite_sheet_reference)
+                )
+        self.assertTrue(drawable_refs)
+
+        render_system = runtime.render_system
+        with (
+            patch.object(AssetDatabase, "refresh_catalog", side_effect=AssertionError("authoring catalog used")),
+            patch.object(render_system.texture_manager, "load", return_value=FakeTexture()) as load_texture,
+        ):
+            for _ in range(2):
+                for reference, path, sync_callback in drawable_refs:
+                    render_system._load_texture(reference, path, sync_callback=sync_callback)
+
+        self.assertGreater(load_texture.call_count, 0)
+        runtime.shutdown()
 
     def _assert_pickup_effect(self, base_path: Path, case: tuple[str, float, float, str, float]) -> None:
         pickup_name, x, y, field, expected = case

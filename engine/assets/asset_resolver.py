@@ -26,11 +26,21 @@ class AssetResolver:
         return self._asset_database.build_reference(locator)
 
     def resolve_entry(self, locator: Any) -> Optional[Dict[str, Any]]:
+        runtime_resolver = getattr(self._project_service, "resolve_asset_entry", None)
+        if callable(runtime_resolver):
+            entry = runtime_resolver(locator)
+            if entry is not None:
+                return dict(entry)
+            if bool(getattr(self._project_service, "read_only", False)):
+                return None
         return self._asset_database.get_asset_entry(locator)
 
     def resolve_path(self, locator: Any) -> str:
         entry = self.resolve_entry(locator)
         if entry is not None:
+            absolute_path = str(entry.get("absolute_path", "") or "")
+            if absolute_path:
+                return absolute_path
             return self._project_service.resolve_path(entry["path"]).as_posix()
         ref = normalize_asset_reference(locator)
         if ref.get("path"):
