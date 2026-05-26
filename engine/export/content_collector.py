@@ -104,15 +104,14 @@ def collect_content(
         else:
             manifest.assets.append(entry)
 
-    scripts_dir = staging / "content" / "scripts"
     for script_path in sorted(graph.reachable_scripts):
         src = _safe_project_path(root, script_path)
         if src is None:
             continue
         if not src.exists():
             continue
-        dst = scripts_dir / Path(script_path).name
-        scripts_dir.mkdir(parents=True, exist_ok=True)
+        dst = content_dir / script_path
+        dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
         sha = _sha256_file(src)
         manifest.scripts.append(ContentManifestEntry(

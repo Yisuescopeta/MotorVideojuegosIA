@@ -14,6 +14,13 @@ def make_texture(texture_id: int, width: int = 16, height: int = 8) -> SimpleNam
 
 
 class TestTextureManager(unittest.TestCase):
+    def setUp(self) -> None:
+        self._ready_patcher = patch.object(TextureManager, "is_ready_for_load", return_value=True)
+        self._ready_patcher.start()
+
+    def tearDown(self) -> None:
+        self._ready_patcher.stop()
+
     def test_load_caches_valid_texture(self) -> None:
         texture = make_texture(10)
         manager = TextureManager()
@@ -28,19 +35,18 @@ class TestTextureManager(unittest.TestCase):
         self.assertTrue(manager.is_loaded("player"))
         self.assertEqual(manager.get_loaded_count(), 1)
 
-    def test_failed_load_is_not_cached_and_is_counted(self) -> None:
+    def test_failed_load_is_cached_and_is_counted(self) -> None:
         failed = make_texture(0, width=0, height=0)
-        recovered = make_texture(11)
         manager = TextureManager()
 
-        with patch("engine.resources.texture_manager.rl.load_texture", side_effect=[failed, recovered]) as load_texture:
+        with patch("engine.resources.texture_manager.rl.load_texture", return_value=failed) as load_texture:
             first = manager.load("missing.png", cache_key="missing")
             second = manager.load("missing.png", cache_key="missing")
 
         self.assertIs(first, failed)
-        self.assertIs(second, recovered)
-        self.assertEqual(load_texture.call_count, 2)
-        self.assertTrue(manager.is_loaded("missing"))
+        self.assertEqual(getattr(second, "id", 0), 0)
+        self.assertEqual(load_texture.call_count, 1)
+        self.assertFalse(manager.is_loaded("missing"))
         self.assertEqual(manager.get_failed_count(), 1)
 
     def test_acquire_increments_refcount_for_cached_texture(self) -> None:

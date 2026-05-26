@@ -23,6 +23,7 @@ class TextureManager:
 
     def __init__(self) -> None:
         self._cache: Dict[str, _TextureCacheEntry] = {}
+        self._failed_keys: set[str] = set()
         self._failed_count: int = 0
 
     def load(self, path: str, cache_key: Optional[str] = None) -> rl.Texture:
@@ -31,6 +32,8 @@ class TextureManager:
         key = str(cache_key or path)
         if key in self._cache:
             return self._cache[key].texture
+        if key in self._failed_keys:
+            return rl.Texture()
 
         return self._load_uncounted(path, key)
 
@@ -42,6 +45,8 @@ class TextureManager:
             entry = self._cache[key]
             entry.refcount += 1
             return entry.texture
+        if key in self._failed_keys:
+            return rl.Texture()
 
         texture = self._load_uncounted(path, key)
         if self._is_valid_texture(texture):
@@ -61,12 +66,17 @@ class TextureManager:
             del self._cache[cache_key]
 
     def _load_uncounted(self, path: str, key: str) -> rl.Texture:
+        if not self.is_ready_for_load():
+            self._failed_count += 1
+            return rl.Texture()
         texture = rl.load_texture(path)
         if not self._is_valid_texture(texture):
             self._failed_count += 1
+            self._failed_keys.add(key)
             print(f"[WARNING] No se pudo cargar textura: {path}")
             return texture
 
+        self._failed_keys.discard(key)
         self._cache[key] = _TextureCacheEntry(
             texture=texture,
             path=path,
@@ -77,6 +87,15 @@ class TextureManager:
 
     def _is_valid_texture(self, texture: rl.Texture) -> bool:
         return int(getattr(texture, "id", 0)) != 0
+
+    def is_ready_for_load(self) -> bool:
+        checker = getattr(rl, "is_window_ready", None)
+        if checker is None:
+            return True
+        try:
+            return bool(checker())
+        except Exception:
+            return False
 
     def _estimate_memory(self, texture: rl.Texture) -> int:
         width = max(0, int(getattr(texture, "width", 0)))
@@ -92,6 +111,7 @@ class TextureManager:
         for entry in self._cache.values():
             rl.unload_texture(entry.texture)
         self._cache.clear()
+        self._failed_keys.clear()
 
     def is_loaded(self, cache_key: str) -> bool:
         return cache_key in self._cache

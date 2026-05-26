@@ -17,6 +17,8 @@ class TestContentCollector(unittest.TestCase):
         self.levels.mkdir(parents=True)
         self.assets = self.tmp / "assets"
         self.assets.mkdir(parents=True)
+        self.scripts = self.tmp / "scripts"
+        self.scripts.mkdir(parents=True)
         self.staging = self.tmp / "staging"
         self.staging.mkdir(parents=True)
 
@@ -152,6 +154,22 @@ class TestContentCollector(unittest.TestCase):
         self.assertGreaterEqual(len(manifest.scenes), 1)
         scene_paths = [s.path for s in manifest.scenes]
         self.assertIn("levels/main.json", scene_paths)
+
+    def test_collect_preserves_nested_script_paths(self):
+        nested = self.scripts / "gameplay" / "helpers.py"
+        nested.parent.mkdir(parents=True, exist_ok=True)
+        nested.write_text("VALUE = 1\n", encoding="utf-8")
+        self._write_scene("main.json", {
+            "entities": [
+                {"components": {"ScriptBehaviour": {"script_path": "scripts/gameplay/helpers.py"}}},
+            ],
+        })
+
+        graph = build_content_graph("levels/main.json", str(self.tmp))
+        manifest = collect_content(graph, str(self.tmp), str(self.staging))
+
+        self.assertIn("scripts/gameplay/helpers.py", [script.path for script in manifest.scripts])
+        self.assertTrue((self.staging / "content" / "scripts" / "gameplay" / "helpers.py").exists())
 
 
 class TestVerifyPak(unittest.TestCase):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,7 @@ def build_content_graph(
         entry_scene, root, visited_scenes, visited_assets,
         visited_scripts, result, deps,
     )
+    _expand_script_dependencies(root, visited_assets, visited_scripts, result)
 
     if include_all_assets:
         assets_dir = root / "assets"
@@ -183,6 +185,78 @@ def _add_reference(
         visited_scripts.add(normalized)
     elif full.is_file():
         visited_assets.add(normalized)
+
+
+def _expand_script_dependencies(
+    root: Path,
+    visited_assets: set[str],
+    visited_scripts: set[str],
+    result: BuildGraphResult,
+) -> None:
+    processed: set[str] = set()
+    queue: list[str] = sorted(visited_scripts)
+    while queue:
+        script_path = queue.pop(0)
+        if script_path in processed:
+            continue
+        processed.add(script_path)
+        before_scripts = set(visited_scripts)
+        for dependency in _script_dependencies(root, script_path, result):
+            _add_reference(dependency, root, visited_assets, visited_scripts, result)
+        queue.extend(sorted(visited_scripts - before_scripts - processed))
+
+
+def _script_dependencies(root: Path, script_path: str, result: BuildGraphResult) -> list[str]:
+    dependencies: set[str] = set()
+    meta_path = root / f"{script_path}.meta.json"
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            dependencies.update(
+                str(item).replace("\\", "/")
+                for item in meta.get("dependencies", [])
+                if isinstance(item, str) and item.strip()
+            )
+        except Exception as exc:
+            result.warnings.append(f"Cannot parse script metadata {script_path}.meta.json: {exc}")
+
+    full = root / script_path
+    if full.exists():
+        try:
+            tree = ast.parse(full.read_text(encoding="utf-8"))
+        except Exception as exc:
+            result.warnings.append(f"Cannot parse script {script_path}: {exc}")
+        else:
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    value = node.value.replace("\\", "/").strip()
+                    if _looks_like_project_reference(value):
+                        dependencies.add(value)
+    return sorted(dependencies)
+
+
+def _looks_like_project_reference(value: str) -> bool:
+    if not value.startswith(("assets/", "scripts/", "prefabs/", "levels/")):
+        return False
+    suffix = Path(value).suffix.lower()
+    return suffix in {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".bmp",
+        ".gif",
+        ".svg",
+        ".wav",
+        ".mp3",
+        ".ogg",
+        ".flac",
+        ".ttf",
+        ".otf",
+        ".prefab",
+        ".json",
+        ".py",
+        ".material",
+    }
 
 
 def _safe_project_path(root: Path, relative_path: str) -> Path | None:

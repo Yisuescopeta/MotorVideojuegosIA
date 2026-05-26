@@ -105,12 +105,13 @@ class ResourcePreloaderSystem:
         texture_count = 0
         resolved_count = 0
         resolver = self._asset_service.get_asset_resolver() if self._asset_service is not None else None
+        texture_loader_ready = self._texture_loader_ready()
 
         for ref in references:
             entry = resolver.resolve_entry(ref) if resolver is not None else None
             if entry is not None:
                 resolved_count += 1
-                if include_textures and self._texture_manager is not None:
+                if include_textures and texture_loader_ready and self._texture_manager is not None:
                     self._texture_manager.load(
                         entry["absolute_path"],
                         cache_key=entry.get("guid") or entry.get("path"),
@@ -119,11 +120,22 @@ class ResourcePreloaderSystem:
             else:
                 # Fallback por path directo si no hay catalogo
                 path = ref.get("path", "")
-                if path and include_textures and self._texture_manager is not None:
+                if path and include_textures and texture_loader_ready and self._texture_manager is not None:
                     self._texture_manager.load(path, cache_key=path)
                     texture_count += 1
 
         return texture_count, resolved_count
+
+    def _texture_loader_ready(self) -> bool:
+        if self._texture_manager is None:
+            return False
+        checker = getattr(self._texture_manager, "is_ready_for_load", None)
+        if checker is None:
+            return True
+        try:
+            return bool(checker())
+        except Exception:
+            return False
 
     def _build_budgeted_cache_key(self, world: World) -> tuple[Any, ...]:
         configs = self._gather_configs(world)

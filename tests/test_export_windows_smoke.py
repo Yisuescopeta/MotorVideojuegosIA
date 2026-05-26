@@ -366,7 +366,7 @@ class TestExportedGameWindowed(unittest.TestCase):
             "engine.runtime.content_loader.ContentLoader",
             return_value=fake_loader,
         ), patch(
-            "engine.runtime.export_runtime.ExportRuntime",
+            "engine.runtime.shared_game_runtime.SharedGameRuntime",
             return_value=fake_runtime,
         ), patch(
             "engine.levels.component_registry.create_default_registry",
@@ -378,6 +378,65 @@ class TestExportedGameWindowed(unittest.TestCase):
         fake_pyray.init_window.assert_called_once_with(320, 180, "Test Game v0.1.0")
         fake_pyray.is_window_ready.assert_called_once_with()
         fake_pyray.close_window.assert_called_once_with()
+
+    def test_windowed_pyray_updates_and_renders_once_per_frame(self):
+        from engine.runtime.exported_game import _run_windowed_pyray
+
+        fake_pyray = SimpleNamespace(
+            BLACK=object(),
+            MOUSE_BUTTON_LEFT=0,
+            init_window=MagicMock(),
+            is_window_ready=MagicMock(return_value=True),
+            close_window=MagicMock(),
+            set_target_fps=MagicMock(),
+            window_should_close=MagicMock(side_effect=[False, True]),
+            get_mouse_position=MagicMock(return_value=SimpleNamespace(x=12.0, y=34.0)),
+            is_mouse_button_down=MagicMock(return_value=True),
+            is_mouse_button_pressed=MagicMock(return_value=False),
+            is_mouse_button_released=MagicMock(return_value=True),
+            begin_drawing=MagicMock(),
+            clear_background=MagicMock(),
+            end_drawing=MagicMock(),
+        )
+        fake_runtime = MagicMock()
+        fake_runtime.load_scene.return_value = True
+        fake_runtime.world = object()
+        fake_loader = MagicMock()
+        fake_loader.get_entry_scene.return_value = "levels/test.json"
+        config = SimpleNamespace(
+            base_path=str(Path(".")),
+            entry_scene="levels/test.json",
+            project_name="Test Game",
+            version="0.1.0",
+            window={"width": 320, "height": 180},
+        )
+
+        with patch.dict(sys.modules, {"pyray": fake_pyray}), patch(
+            "engine.runtime.content_loader.ContentLoader",
+            return_value=fake_loader,
+        ), patch(
+            "engine.runtime.shared_game_runtime.SharedGameRuntime",
+            return_value=fake_runtime,
+        ), patch(
+            "engine.levels.component_registry.create_default_registry",
+            return_value=MagicMock(),
+        ):
+            result = _run_windowed_pyray(config)
+
+        self.assertEqual(result, 0)
+        fake_runtime.run_frame.assert_called_once_with(
+            1.0 / 60.0,
+            pointer_state={
+                "x": 12.0,
+                "y": 34.0,
+                "down": True,
+                "pressed": False,
+                "released": True,
+            },
+        )
+        fake_runtime.render.assert_called_once_with((320.0, 180.0))
+        fake_runtime.update_ui.assert_not_called()
+        fake_runtime.render_ui.assert_not_called()
 
 
 if __name__ == "__main__":

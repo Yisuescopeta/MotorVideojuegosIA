@@ -73,8 +73,17 @@ layout e interaccion y ahora soporta dos modos de foundation sobre
 
 `engine/export/` contiene modelos de preset, migraciones, schema, validacion,
 grafo de contenido, collector, pack determinista, registry de exporters,
-diagnosticos y reports. `engine/runtime/` contiene el runtime separado del
-editor para juegos exportados.
+diagnosticos y reports. `engine/runtime/` contiene el entrypoint exportado y
+adaptadores de contenido para juegos exportados. El runtime exportado ya no es
+una reimplementacion independiente: `SharedGameRuntime` construye un
+`Game(editor_enabled=False, hot_reload_enabled=False)` y carga escenas mediante
+`RuntimeController.load_scene_from_data(...)`, conservando el orden de sistemas
+de PLAY del editor sin montar inspector, paneles ni hot-reload. Los sistemas
+runtime se crean con `create_runtime_system_bundle(...)`, usado tanto por
+`main.py` como por export para evitar forks de wiring.
+
+`ExportRuntime` permanece como shim deprecated para compatibilidad de imports y
+tests legacy; el camino canonico nuevo es `SharedGameRuntime`.
 
 Plataformas implementadas:
 

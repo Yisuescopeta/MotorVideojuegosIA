@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
-from engine.editor.console_panel import log_err, log_info, log_warn
+from engine.core.runtime_logging import log_err, log_info, log_warn
 from engine.scenes.scene import Scene
 from engine.scenes.storage import JsonSceneStorage, SceneStorage
 

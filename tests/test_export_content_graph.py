@@ -69,6 +69,39 @@ class TestBuildGraph(unittest.TestCase):
         result = build_content_graph("levels/test.json", str(self.tmp))
         self.assertIn("scripts/player.py", result.reachable_scripts)
 
+    def test_script_literal_asset_dependencies_are_reachable(self):
+        self._write_asset("player_speed.png")
+        script_path = self.scripts / "player_powerups.py"
+        script_path.write_text('SPEED_SHEET = "assets/player_speed.png"\n', encoding="utf-8")
+        self._write_scene("test.json", {
+            "entities": [
+                {"components": {"ScriptBehaviour": {"script": {"path": "scripts/player_powerups.py"}}}},
+            ],
+        })
+
+        result = build_content_graph("levels/test.json", str(self.tmp))
+
+        self.assertIn("scripts/player_powerups.py", result.reachable_scripts)
+        self.assertIn("assets/player_speed.png", result.reachable_assets)
+
+    def test_script_metadata_dependencies_are_reachable(self):
+        self._write_asset("player_jump.png")
+        script_path = self.scripts / "player_powerups.py"
+        script_path.write_text("VALUE = 1\n", encoding="utf-8")
+        (self.scripts / "player_powerups.py.meta.json").write_text(
+            json.dumps({"dependencies": ["assets/player_jump.png"]}),
+            encoding="utf-8",
+        )
+        self._write_scene("test.json", {
+            "entities": [
+                {"components": {"ScriptBehaviour": {"script": {"path": "scripts/player_powerups.py"}}}},
+            ],
+        })
+
+        result = build_content_graph("levels/test.json", str(self.tmp))
+
+        self.assertIn("assets/player_jump.png", result.reachable_assets)
+
     def test_detects_missing_asset(self):
         self._write_scene("test.json", {
             "entities": [

@@ -59,7 +59,7 @@ def main() -> int:
 def _run_headless_export(config) -> int:  # type: ignore[no-untyped-def]
     """Export-only headless runtime. No EngineAPI, no inspector, no editor."""
     from engine.runtime.content_loader import ContentLoader
-    from engine.runtime.export_runtime import ExportRuntime
+    from engine.runtime.shared_game_runtime import SharedGameRuntime
 
     loader = ContentLoader(config.base_path)
 
@@ -82,7 +82,7 @@ def _run_headless_export(config) -> int:  # type: ignore[no-untyped-def]
     from engine.levels.component_registry import create_default_registry
 
     registry = create_default_registry()
-    runtime = ExportRuntime(
+    runtime = SharedGameRuntime(
         loader=loader,
         registry=registry,
         window_config=getattr(config, 'window', {}),
@@ -141,7 +141,7 @@ def _run_windowed_pyray(config) -> int:  # type: ignore[no-untyped-def]
     """Windowed mode using pyray/raylib."""
     import pyray
     from engine.runtime.content_loader import ContentLoader
-    from engine.runtime.export_runtime import ExportRuntime
+    from engine.runtime.shared_game_runtime import SharedGameRuntime
 
     loader = ContentLoader(config.base_path)
     entry_scene = config.entry_scene or loader.get_entry_scene()
@@ -149,20 +149,6 @@ def _run_windowed_pyray(config) -> int:  # type: ignore[no-untyped-def]
     from engine.levels.component_registry import create_default_registry
 
     registry = create_default_registry()
-    runtime = ExportRuntime(
-        loader=loader,
-        registry=registry,
-        window_config=getattr(config, 'window', {}),
-    )
-    runtime.setup_scripts_path()
-
-    if not runtime.load_scene(entry_scene):
-        print(
-            f"ERROR: Entry scene not found: {entry_scene}",
-            file=sys.stderr,
-        )
-        return 1
-
     window_config = getattr(config, 'window', {}) or {}
     width = int(window_config.get("width", 1280))
     height = int(window_config.get("height", 720))
@@ -175,31 +161,42 @@ def _run_windowed_pyray(config) -> int:  # type: ignore[no-untyped-def]
             pyray.close_window()
         return 2
 
+    runtime = SharedGameRuntime(
+        loader=loader,
+        registry=registry,
+        window_config=getattr(config, 'window', {}),
+    )
+    runtime.setup_scripts_path()
+
+    if not runtime.load_scene(entry_scene):
+        print(
+            f"ERROR: Entry scene not found: {entry_scene}",
+            file=sys.stderr,
+        )
+        if hasattr(pyray, "close_window"):
+            pyray.close_window()
+        return 1
+
     try:
         pyray.set_target_fps(60)
 
         while not pyray.window_should_close():
-            runtime.run_frame(1.0 / 60.0)
+            viewport = (float(width), float(height))
+            mouse = pyray.get_mouse_position()
+            pointer_state = {
+                "x": float(mouse.x),
+                "y": float(mouse.y),
+                "down": bool(pyray.is_mouse_button_down(pyray.MOUSE_BUTTON_LEFT)),
+                "pressed": bool(pyray.is_mouse_button_pressed(pyray.MOUSE_BUTTON_LEFT)),
+                "released": bool(pyray.is_mouse_button_released(pyray.MOUSE_BUTTON_LEFT)),
+            }
+            runtime.run_frame(1.0 / 60.0, pointer_state=pointer_state)
 
             pyray.begin_drawing()
             pyray.clear_background(pyray.BLACK)
 
             if runtime.world is not None:
-                viewport = (float(width), float(height))
-                # Render world
                 runtime.render(viewport)
-                # Get real mouse state
-                mouse = pyray.get_mouse_position()
-                runtime.update_ui(
-                    viewport,
-                    mouse_x=float(mouse.x),
-                    mouse_y=float(mouse.y),
-                    mouse_down=bool(pyray.is_mouse_button_down(pyray.MOUSE_BUTTON_LEFT)),
-                    mouse_pressed=bool(pyray.is_mouse_button_pressed(pyray.MOUSE_BUTTON_LEFT)),
-                    mouse_released=bool(pyray.is_mouse_button_released(pyray.MOUSE_BUTTON_LEFT)),
-                )
-                # Render UI overlay
-                runtime.render_ui()
 
             pyray.end_drawing()
     finally:

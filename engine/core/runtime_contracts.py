@@ -45,3 +45,4 @@ class RuntimeControllerContext:
     reset_profiler: Callable[..., None]
     set_physics_backend: Callable[[Any, str], None]
     edit_animation_speed: float
+    load_scene_data: Optional[Callable[[str, dict[str, Any]], Optional["World"]]] = None

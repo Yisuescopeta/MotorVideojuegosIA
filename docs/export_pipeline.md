@@ -38,11 +38,21 @@ BuildReport (.motor/build/export_reports/)
 ExportedGameRuntime
   -> RuntimeConfig (runtime_config.json)
   -> ContentPack (game.manifest.json + game.pak o content/)
-  -> SceneManager.load_scene(...)
-  -> Game.run()
+  -> ContentLoader
+  -> SharedGameRuntime
+      -> Game(editor_enabled=False, hot_reload_enabled=False)
+      -> RuntimeController.load_scene_from_data(...)
+      -> mismos sistemas y orden de PLAY del editor
 ```
 
-El juego exportado usa `engine/runtime/exported_game.py` como entrypoint, separado del editor. No importa `engine.editor`, ni `engine.inspector`, ni `tools`, ni `tests`, ni `docs`, ni `main`.
+El juego exportado usa `engine/runtime/exported_game.py` como entrypoint.
+No monta paneles, inspector, herramientas de editor ni hot-reload, pero ejecuta
+la escena mediante el mismo `Game` + `RuntimeController` usado por PLAY en el
+editor. No importa `engine.editor`, ni `engine.inspector`, ni `tools`, ni
+`tests`, ni `docs`, ni `main`.
+
+`engine/runtime/export_runtime.py` queda como shim deprecated: conserva imports
+legacy de `ExportRuntime`, pero delega en `SharedGameRuntime`.
 
 El binario exportado soporta flags de runtime:
 
@@ -159,11 +169,14 @@ El grafo de contenido recorre la entry scene y sigue:
 - Scene flow links (`next_scene`, `menu_scene`, `target_scene`)
 - Prefabs referenciados (`prefab_path`)
 - Assets referenciados (`texture_path`, `asset_path`, `sprite_sheet`, etc.)
+- Dependencias de scripts alcanzables: `*.py.meta.json.dependencies` y literales
+  Python simples que sean rutas de proyecto (`assets/...`, `scripts/...`, etc.)
 
 Exclusiones: `.git`, `__pycache__`, `.motor`, `dist`, `tests`, `docs`, `build`.
 
-Assets cargados dinamicamente por scripts no se detectan. Para incluirlos,
-usar `include_all_assets` o `mode: debug` en el preset.
+Assets construidos dinamicamente por scripts (por ejemplo concatenando strings)
+no se detectan. Para incluirlos, declararlos en el `.py.meta.json`, usar
+`include_all_assets` o usar `mode: debug` en el preset.
 
 ## Exportadores
 
@@ -302,9 +315,10 @@ disponible. Sin esta dependencia, el entrypoint retorna
 
 ### Smoke test no equivale a jugabilidad completa
 
-`--smoke-test` valida carga headless + 60 frames de simulacion con los sistemas
-actuales (InputSystem, PhysicsSystem, CollisionSystem, AnimationSystem,
-CharacterControllerSystem, PlayerControllerSystem y ScriptBehaviourSystem).
+`--smoke-test` valida carga headless + 60 frames de simulacion usando
+`SharedGameRuntime`, `Game` y `RuntimeController`. Es el mismo orden runtime de
+PLAY del editor, con herramientas de editor desactivadas y sin carga GPU de
+texturas cuando no existe ventana raylib.
 Sin embargo, **no verifica**:
 - Render de sprites/texturas reales (el smoke test es headless, no abre ventana)
 - Input de teclado/mouse real (solo inyectado via `inject_input`)
@@ -319,18 +333,20 @@ escena, input que mueve Player, colisiones con gravedad), usa los tests de
 py -m unittest tests.test_export_runtime_playability -v
 ```
 
-Estos tests verifican ExportRuntime directamente sin PyInstaller ni builds
-completos. Cubren: carga de escenas, ejecucion de frames, movimiento del
-Player por input inyectado (izquierda, derecha, salto), gravedad, click en
-UIButton con cambio de escena, y 30 frames con todos los sistemas activos.
+Estos tests verifican el shim `ExportRuntime` y el runtime compartido sin
+PyInstaller ni builds completos. Cubren: carga de escenas, ejecucion de frames,
+movimiento del Player por input inyectado (izquierda, derecha, salto),
+gravedad, click en UIButton con cambio de escena, scripts desde `.pak`,
+coleccionables semanticos y pickup scriptado que aplica score antes de destruir
+la entidad.
 
 ### Content graph: assets cargados dinamicamente
 
 El grafo de contenido detecta assets por referencias estáticas en campos JSON
 conocidos (`texture_path`, `asset_path`, `sprite_sheet`, `prefab_path`, etc.).
-Assets cargados dinámicamente por scripts Python (ej. `load_texture(nombre)`)
-no se detectan. Para cubrirlos, activar `include_all_assets` en el preset o
-usar `mode: debug`.
+Assets construidos dinamicamente por scripts Python (ej. `load_texture(prefijo + nombre)`)
+no se detectan. Para cubrirlos, declararlos en `script.py.meta.json`, activar
+`include_all_assets` en el preset o usar `mode: debug`.
 
 ### Toolchains externas
 
