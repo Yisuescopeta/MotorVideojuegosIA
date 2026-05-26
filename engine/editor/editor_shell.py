@@ -86,3 +86,8 @@ class EditorShell:
         self.panel_slots.agent_panel = panel
         if self.layout is not None:
             self.layout.agent_panel = panel
+
+    def bind_export_panel(self, panel: Any) -> None:
+        self.panel_slots.export_panel = panel
+        if self.layout is not None:
+            self.layout.export_panel = panel

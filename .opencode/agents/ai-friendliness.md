@@ -104,6 +104,8 @@ Check if it follows engine contracts:
 {
   "audit_id": "audit-<task_id>",
   "target": "specific feature, component, or subsystem",
+  "applicable": true,
+  "not_applicable_reason": null,
   "scores": {
     "serialization": {"score": 0, "max": 25, "deductions": ["reason"]},
     "public_api": {"score": 0, "max": 25, "deductions": ["reason"]},
@@ -111,7 +113,7 @@ Check if it follows engine contracts:
     "compliance": {"score": 0, "max": 25, "deductions": ["reason"]}
   },
   "total_score": 0,
-  "tier": "excellent|good|needs_work|not_ready",
+  "tier": "excellent|good|needs_work|not_ready|not_applicable",
   "recommendations": [
     {
       "priority": "high|medium|low",
@@ -132,6 +134,19 @@ Check if it follows engine contracts:
 | 70-89 | good | Minor gaps, easy to fix |
 | 50-69 | needs_work | Significant gaps, needs effort |
 | 0-49 | not_ready | Not AI-usable, major rework needed |
+
+### Not Applicable
+
+When the change does NOT touch flows used by AI agents, serialization, public
+contracts, agent docs, CLI, EngineAPI, or motor compliance:
+
+- Set `"applicable": false` and `"tier": "not_applicable"`.
+- Provide `"not_applicable_reason"` with concrete justification.
+- Do NOT compute scores — set all dimensions to null.
+- Queen must accept `not_applicable` and skip the `>= 90` threshold check.
+
+This audit is mandatory only when the change affects AI-relevant subsystems.
+Declaring `not_applicable` when AI flows ARE touched is a contract violation.
 
 ## Reference Documents
 

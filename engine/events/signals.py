@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import IntFlag
 from typing import Any, Callable
 
-from engine.editor.console_panel import log_err
+from engine.core.runtime_logging import log_err
 from engine.events.deferred_queue import DeferredCallQueue
 
 SignalCallback = Callable[..., Any]

@@ -65,6 +65,8 @@ class StartHereAICoherenceTests(unittest.TestCase):
             "prefab:create", "prefab:instantiate", "prefab:list",
             "asset:list", "asset:slice:grid", "asset:slice:list",
             "animator:set_sheet", "animator:state:create", "animator:info",
+            "export:build", "export:build-all", "export:doctor",
+            "export:pack", "export:presets:list", "export:presets:validate",
             "introspect:capabilities",
         ]
 
@@ -124,7 +126,11 @@ class StartHereAICoherenceTests(unittest.TestCase):
         self.assertGreater(coming_start, implemented_start, "Should have 'Coming Soon' after implemented section")
 
         implemented_section = self.content[implemented_start:coming_start]
-        missing = sorted(cid for cid in implemented_ids if cid not in implemented_section)
+
+        missing = sorted(
+            cid for cid in implemented_ids
+            if cid not in implemented_section
+        )
 
         self.assertEqual(
             missing,

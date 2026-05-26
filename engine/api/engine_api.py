@@ -15,6 +15,7 @@ from engine.api._context import EngineAPIContext
 from engine.api._contracts import EngineAPIContracts, build_engine_api_contracts
 from engine.api._debug_api import DebugAPI
 from engine.api._editor_api import EditorAPI
+from engine.api._export_api import ExportAPI
 from engine.api._runtime_api import RuntimeAPI
 from engine.api._scene_workspace_api import SceneWorkspaceAPI
 from engine.api._ui_api import UIAPI
@@ -138,6 +139,7 @@ class EngineAPI:
         self._ui_api = UIAPI(self._context)
         self._agent_api = AgentAPI(self._context)
         self._editor_api = EditorAPI(self._context)
+        self._export_api = ExportAPI(self._context)
         self._editor_api.load_editor_preferences()
         self._delegates = (
             self._runtime_api,
@@ -148,6 +150,7 @@ class EngineAPI:
             self._ui_api,
             self._agent_api,
             self._editor_api,
+            self._export_api,
         )
 
     def _refresh_contracts(self) -> EngineAPIContracts:
@@ -241,6 +244,55 @@ class EngineAPI:
         if self.game is not None and self.game.physics_system is not None:
             return self.game.physics_system.get_solver_metrics()
         return {"warm_start_cache_size": 0, "iterations": 0}
+
+    # ---- Export API wrappers ----
+
+    def list_export_presets(self) -> dict[str, Any]:
+        return self._export_api.list_export_presets()
+
+    def validate_export_preset(self, name: str | None = None) -> dict[str, Any]:
+        return self._export_api.validate_export_preset(name)
+
+    def export_doctor(self) -> dict[str, Any]:
+        return self._export_api.export_doctor()
+
+    def export_pack(self, name: str) -> dict[str, Any]:
+        return self._export_api.export_pack(name)
+
+    def build_export(self, name: str) -> dict[str, Any]:
+        return self._export_api.build_export(name)
+
+    def build_export_for_scene(self, name: str, entry_scene: str) -> dict[str, Any]:
+        return self._export_api.build_export_for_scene(name, entry_scene)
+
+    def list_export_entry_scenes(self) -> dict[str, Any]:
+        return self._export_api.list_export_entry_scenes()
+
+    def build_all_exports(self) -> dict[str, Any]:
+        return self._export_api.build_all_exports()
+
+    # ---- Editor theme wrappers ----
+
+    def list_editor_themes(self) -> list[dict[str, Any]]:
+        return self._editor_api.list_editor_themes()
+
+    def get_active_editor_theme(self) -> dict[str, Any]:
+        return self._editor_api.get_active_editor_theme()
+
+    def set_active_editor_theme(self, name: str) -> ActionResult:
+        return self._editor_api.set_active_editor_theme(name)
+
+    def export_editor_theme(self, path: str, name: str | None = None) -> ActionResult:
+        return self._editor_api.export_editor_theme(path, name)
+
+    def import_editor_theme(self, path: str, activate: bool = True) -> ActionResult:
+        return self._editor_api.import_editor_theme(path, activate)
+
+    def get_editor_feature_flags(self) -> dict[str, Any]:
+        return self._editor_api.get_editor_feature_flags()
+
+    def set_editor_feature_flag(self, name: str, value: bool) -> ActionResult:
+        return self._editor_api.set_editor_feature_flag(name, value)
 
     def _resolve_api_path(self, path: str | os.PathLike[str], *, purpose: str) -> Path:
         candidate = Path(path)

@@ -9,8 +9,8 @@ from typing import Any, Callable, Optional
 
 from engine.assets.asset_service import AssetService
 from engine.components.scriptbehaviour import ScriptBehaviour
+from engine.core.runtime_logging import log_err, log_info
 from engine.ecs.world import World
-from engine.editor.console_panel import log_err, log_info
 
 ScriptHook = Callable[..., Any]
 ScriptMembershipSignature = tuple[tuple[int, str, int], ...]
@@ -332,6 +332,14 @@ class ScriptBehaviourSystem:
         module = None
         if self._hot_reload_manager is not None:
             module = self._hot_reload_manager.ensure_module_loaded(module_name)
+
+        if module is None:
+            # Fallback: use standard importlib for exported runtime (no hot-reload)
+            try:
+                import importlib
+                module = importlib.import_module(module_name)
+            except ImportError:
+                pass
 
         if module is None:
             log_err(f"[Script:{entity_name}] Modulo no encontrado: {module_name}")

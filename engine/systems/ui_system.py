@@ -11,9 +11,9 @@ import pyray as rl
 from engine.components.canvas import Canvas
 from engine.components.recttransform import RectTransform
 from engine.components.uibutton import UIButton
+from engine.core.cursor_state import CursorVisualState
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
-from engine.editor.cursor_manager import CursorVisualState
 from engine.events.event_bus import EventBus
 
 

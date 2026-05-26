@@ -22,39 +22,20 @@ import time
 from typing import TYPE_CHECKING, Any, Callable, Optional, cast
 
 import pyray as rl
-from engine.app import (
-    DebugToolsController,
-    EditorInteractionController,
-    ProjectWorkspaceController,
-    RuntimeController,
-    SceneTransitionController,
-    SceneWorkflowController,
-)
+from engine.app.runtime_controller import RuntimeController
+from engine.app.scene_transition_controller import SceneTransitionController
+from engine.app.scene_workflow_controller import SceneWorkflowController
 from engine.components.canvas import Canvas
 from engine.components.transform import Transform
 from engine.config import EDIT_ANIMATION_SPEED, ENGINE_VERSION, SCRIPTS_DIRECTORY, TIMELINE_CAPACITY
 from engine.core.engine_state import EngineState
 from engine.core.hot_reload import HotReloadManager
+from engine.core.runtime_logging import log_err, log_warn
 from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.core.runtime_loop import RuntimeTickPlan
 from engine.core.time_manager import TimeManager
 from engine.debug.profiler import EngineProfiler
 from engine.debug.timeline import Timeline
-from engine.editor.agent_panel import AgentPanel
-from engine.editor.animator_panel import AnimatorPanel
-from engine.editor.console_panel import log_err, log_warn
-from engine.editor.cursor_manager import CustomCursorRenderer
-from engine.editor.editor_layout import EditorLayout
-from engine.editor.editor_shell import EditorShell
-from engine.editor.editor_shell_state import EditorPanelSlots
-from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
-from engine.editor.gizmo_system import GizmoSystem
-from engine.editor.hierarchy_panel import HierarchyPanel
-from engine.editor.raygui_theme import apply_unity_dark_theme
-from engine.editor.render_safety import safe_reset_clip_state
-from engine.editor.sprite_editor_modal import SpriteEditorModal
-from engine.editor.terminal_panel import TerminalPanel
-from engine.editor.undo_redo import UndoRedoManager
 from engine.events.signals import SignalConnectionFlags
 from engine.physics.backend import (
     MotionResult2D,
@@ -69,8 +50,22 @@ from engine.project.project_service import ProjectService
 
 if TYPE_CHECKING:
     from cli.script_executor import ScriptExecutor
+    from engine.api import EngineAPI
     from engine.ecs.world import World
+    from engine.app.debug_tools_controller import DebugToolsController
+    from engine.app.editor_interaction_controller import EditorInteractionController
+    from engine.app.project_workspace_controller import ProjectWorkspaceController
+    from engine.editor.agent_panel import AgentPanel
+    from engine.editor.animator_panel import AnimatorPanel
+    from engine.editor.cursor_manager import CustomCursorRenderer
+    from engine.editor.editor_layout import EditorLayout
+    from engine.editor.editor_shell import EditorShell
+    from engine.editor.gizmo_system import GizmoSystem
+    from engine.editor.hierarchy_panel import HierarchyPanel
     from engine.editor.ui.inspector_render import InspectorPanel
+    from engine.editor.sprite_editor_modal import SpriteEditorModal
+    from engine.editor.terminal_panel import TerminalPanel
+    from engine.editor.undo_redo import UndoRedoManager
     from engine.events.event_bus import EventBus
     from engine.events.rule_system import RuleSystem
     from engine.inspector.inspector_system import InspectorSystem
@@ -106,12 +101,80 @@ if TYPE_CHECKING:
     from engine.systems.visible_on_screen_system import VisibleOnScreenSystem
 
 
+_EDITOR_DEPENDENCIES_LOADED = False
+
+
+def _load_editor_dependencies() -> None:
+    global _EDITOR_DEPENDENCIES_LOADED
+    global AgentPanel, AnimatorPanel, CustomCursorRenderer, EditorLayout, EditorShell, EditorPanelSlots
+    global EditorTool, PivotMode, TransformSpace, GizmoSystem, HierarchyPanel
+    global apply_unity_dark_theme, safe_reset_clip_state, SpriteEditorModal, TerminalPanel, UndoRedoManager
+    global DebugToolsController, EditorInteractionController, ProjectWorkspaceController
+    global log_err, log_warn
+    if _EDITOR_DEPENDENCIES_LOADED:
+        return
+    from engine.app.debug_tools_controller import DebugToolsController as _DebugToolsController
+    from engine.app.editor_interaction_controller import EditorInteractionController as _EditorInteractionController
+    from engine.app.project_workspace_controller import ProjectWorkspaceController as _ProjectWorkspaceController
+    from engine.editor.agent_panel import AgentPanel as _AgentPanel
+    from engine.editor.animator_panel import AnimatorPanel as _AnimatorPanel
+    from engine.editor.console_panel import log_err as _log_err, log_warn as _log_warn
+    from engine.editor.cursor_manager import CustomCursorRenderer as _CustomCursorRenderer
+    from engine.editor.editor_layout import EditorLayout as _EditorLayout
+    from engine.editor.editor_shell import EditorShell as _EditorShell
+    from engine.editor.editor_shell_state import EditorPanelSlots as _EditorPanelSlots
+    from engine.editor.editor_tools import EditorTool as _EditorTool, PivotMode as _PivotMode, TransformSpace as _TransformSpace
+    from engine.editor.gizmo_system import GizmoSystem as _GizmoSystem
+    from engine.editor.hierarchy_panel import HierarchyPanel as _HierarchyPanel
+    from engine.editor.raygui_theme import apply_unity_dark_theme as _apply_unity_dark_theme
+    from engine.editor.render_safety import safe_reset_clip_state as _safe_reset_clip_state
+    from engine.editor.sprite_editor_modal import SpriteEditorModal as _SpriteEditorModal
+    from engine.editor.terminal_panel import TerminalPanel as _TerminalPanel
+    from engine.editor.undo_redo import UndoRedoManager as _UndoRedoManager
+
+    AgentPanel = _AgentPanel
+    AnimatorPanel = _AnimatorPanel
+    CustomCursorRenderer = _CustomCursorRenderer
+    EditorLayout = _EditorLayout
+    EditorShell = _EditorShell
+    EditorPanelSlots = _EditorPanelSlots
+    EditorTool = _EditorTool
+    PivotMode = _PivotMode
+    TransformSpace = _TransformSpace
+    GizmoSystem = _GizmoSystem
+    HierarchyPanel = _HierarchyPanel
+    apply_unity_dark_theme = _apply_unity_dark_theme
+    safe_reset_clip_state = _safe_reset_clip_state
+    SpriteEditorModal = _SpriteEditorModal
+    TerminalPanel = _TerminalPanel
+    UndoRedoManager = _UndoRedoManager
+    DebugToolsController = _DebugToolsController
+    EditorInteractionController = _EditorInteractionController
+    ProjectWorkspaceController = _ProjectWorkspaceController
+    log_err = _log_err
+    log_warn = _log_warn
+    _EDITOR_DEPENDENCIES_LOADED = True
+
+
 class Game:
     """Clase principal del motor con gestión de estados y escenas."""
 
     EDIT_ANIMATION_SPEED: float = EDIT_ANIMATION_SPEED
 
-    def __init__(self, title: str = "Motor 2D", width: int = 800, height: int = 600, target_fps: int = 60) -> None:
+    def __init__(
+        self,
+        title: str = "Motor 2D",
+        width: int = 800,
+        height: int = 600,
+        target_fps: int = 60,
+        *,
+        editor_enabled: bool = True,
+        hot_reload_enabled: bool = True,
+    ) -> None:
+        self.editor_enabled = bool(editor_enabled)
+        self.hot_reload_enabled = bool(hot_reload_enabled and editor_enabled)
+        if self.editor_enabled:
+            _load_editor_dependencies()
         self.title = title
         self.width = width
         self.height = height
@@ -170,32 +233,45 @@ class Game:
         self.timeline: "Timeline" = Timeline(capacity=TIMELINE_CAPACITY)
 
         # Editor Panels
-        self.animator_panel: Optional["AnimatorPanel"] = AnimatorPanel()
-        self.sprite_editor_modal: Optional["SpriteEditorModal"] = SpriteEditorModal()
-        self.terminal_panel: Optional["TerminalPanel"] = TerminalPanel()
-        self.agent_panel: Optional["AgentPanel"] = AgentPanel()
-        self.editor_shell: EditorShell = EditorShell(
-            panel_slots=EditorPanelSlots(terminal_panel=self.terminal_panel, agent_panel=self.agent_panel),
+        self.animator_panel: Optional["AnimatorPanel"] = AnimatorPanel() if self.editor_enabled else None
+        self.sprite_editor_modal: Optional["SpriteEditorModal"] = SpriteEditorModal() if self.editor_enabled else None
+        self.terminal_panel: Optional["TerminalPanel"] = TerminalPanel() if self.editor_enabled else None
+        self.agent_panel: Optional["AgentPanel"] = AgentPanel() if self.editor_enabled else None
+        self.editor_shell: Optional["EditorShell"] = (
+            EditorShell(
+                panel_slots=EditorPanelSlots(terminal_panel=self.terminal_panel, agent_panel=self.agent_panel),
+            )
+            if self.editor_enabled
+            else None
         )
-        self._editor_selection_state = self.editor_shell.selection_state
-        self.hierarchy_panel: Optional["HierarchyPanel"] = self.editor_shell.hierarchy_panel
-        self.gizmo_system: Optional["GizmoSystem"] = GizmoSystem()
-        self.editor_layout: Optional["EditorLayout"] = self.editor_shell.layout
-        self._cursor_renderer: CustomCursorRenderer = CustomCursorRenderer()
+        self._editor_selection_state = self.editor_shell.selection_state if self.editor_shell is not None else None
+        self.hierarchy_panel: Optional["HierarchyPanel"] = (
+            self.editor_shell.hierarchy_panel if self.editor_shell is not None else None
+        )
+        self.gizmo_system: Optional["GizmoSystem"] = GizmoSystem() if self.editor_enabled else None
+        self.editor_layout: Optional["EditorLayout"] = self.editor_shell.layout if self.editor_shell is not None else None
+        self._editor_export_api: Optional["EngineAPI"] = None
+        self._cursor_renderer: Optional["CustomCursorRenderer"] = (
+            CustomCursorRenderer() if self.editor_enabled else None
+        )
 
         # Gestión de escenas
         self._scene_manager: Optional["SceneManager"] = None
+        self._external_scene_loader: Optional[Callable[[str], bool]] = None
+        self._external_scene_flow_loader: Optional[Callable[[str], bool]] = None
 
         # Estado de Persistencia
         self.current_scene_path: str = ""
         self._project_loaded: bool = False
 
         # Hot-Reload
-        self.hot_reload_manager: HotReloadManager = HotReloadManager(SCRIPTS_DIRECTORY)
-        self.hot_reload_manager.scan_directory()
+        self.hot_reload_manager: Optional[HotReloadManager] = None
+        if self.hot_reload_enabled:
+            self.hot_reload_manager = HotReloadManager(SCRIPTS_DIRECTORY)
+            self.hot_reload_manager.scan_directory()
 
         self._project_service: Optional[ProjectService] = None
-        self._history_manager: UndoRedoManager = UndoRedoManager()
+        self._history_manager: Optional["UndoRedoManager"] = UndoRedoManager() if self.editor_enabled else None
 
         self.autosave_timer: float = 0.0
         self.show_performance_overlay: bool = False
@@ -284,33 +360,36 @@ class Game:
                 reset_profiler=self.reset_profiler,
                 set_physics_backend=self.set_physics_backend,
                 edit_animation_speed=self.EDIT_ANIMATION_SPEED,
+                load_scene_data=self._load_scene_data_for_runtime,
             ),
             update_ui_overlay=update_ui_overlay,
         )
-        self._debug_tools_controller = DebugToolsController(
-            time_manager=self.time,
-            timeline=self.timeline,
-            profiler=self._profiler,
-            hot_reload_manager=self.hot_reload_manager,
-            perf_stats=self._perf_stats,
-            perf_counters=self._perf_counters,
-            get_state=lambda: self._state,
-            get_world=lambda: self.world,
-            set_world=self.set_world,
-            get_scene_manager=lambda: self._scene_manager,
-            get_level_loader=lambda: self._level_loader,
-            get_rule_system=lambda: self._rule_system,
-            get_collision_system=lambda: self._collision_system,
-            get_render_system=lambda: self._render_system,
-            get_physics_backend_registry=lambda: self._physics_backend_registry,
-            get_width=lambda: self.width,
-            get_show_performance_overlay=lambda: self.show_performance_overlay,
-            set_show_performance_overlay=lambda value: setattr(self, "show_performance_overlay", value),
-            get_debug_draw_colliders=lambda: self.debug_draw_colliders,
-            set_debug_draw_colliders=lambda value: setattr(self, "debug_draw_colliders", value),
-            get_debug_draw_labels=lambda: self.debug_draw_labels,
-            set_debug_draw_labels=lambda value: setattr(self, "debug_draw_labels", value),
-        )
+        self._debug_tools_controller: Optional["DebugToolsController"] = None
+        if self.editor_enabled:
+            self._debug_tools_controller = DebugToolsController(
+                time_manager=self.time,
+                timeline=self.timeline,
+                profiler=self._profiler,
+                hot_reload_manager=self.hot_reload_manager,
+                perf_stats=self._perf_stats,
+                perf_counters=self._perf_counters,
+                get_state=lambda: self._state,
+                get_world=lambda: self.world,
+                set_world=self.set_world,
+                get_scene_manager=lambda: self._scene_manager,
+                get_level_loader=lambda: self._level_loader,
+                get_rule_system=lambda: self._rule_system,
+                get_collision_system=lambda: self._collision_system,
+                get_render_system=lambda: self._render_system,
+                get_physics_backend_registry=lambda: self._physics_backend_registry,
+                get_width=lambda: self.width,
+                get_show_performance_overlay=lambda: self.show_performance_overlay,
+                set_show_performance_overlay=lambda value: setattr(self, "show_performance_overlay", value),
+                get_debug_draw_colliders=lambda: self.debug_draw_colliders,
+                set_debug_draw_colliders=lambda value: setattr(self, "debug_draw_colliders", value),
+                get_debug_draw_labels=lambda: self.debug_draw_labels,
+                set_debug_draw_labels=lambda value: setattr(self, "debug_draw_labels", value),
+            )
         self._scene_workflow_controller = SceneWorkflowController(
             get_scene_manager=lambda: self._scene_manager,
             get_project_service=lambda: self._project_service,
@@ -327,53 +406,58 @@ class Game:
             play_runtime=self.play,
             get_level_loader=lambda: self._level_loader,
         )
-        self._project_workspace_controller = ProjectWorkspaceController(
-            get_project_service=lambda: self._project_service,
-            get_scene_manager=lambda: self._scene_manager,
-            get_editor_layout=lambda: self.editor_layout,
-            get_editor_selection=lambda: self._editor_selection_state,
-            get_state=lambda: self._state,
-            get_current_scene_path=lambda: self.current_scene_path,
-            set_current_scene_path=lambda value: setattr(self, "current_scene_path", value),
-            is_project_loaded=lambda: self._project_loaded,
-            set_project_loaded=lambda value: setattr(self, "_project_loaded", value),
-            set_world=self.set_world,
-            terminal_panel=self.terminal_panel,
-            animator_panel=self.animator_panel,
-            sprite_editor_modal=self.sprite_editor_modal,
-            history_manager=self._history_manager,
-            hot_reload_manager=self.hot_reload_manager,
-            timeline=self.timeline,
-            get_render_system=lambda: self._render_system,
-            get_ui_render_system=lambda: self._ui_render_system,
-            get_audio_system=lambda: self._audio_system,
-            get_script_behaviour_system=lambda: self._script_behaviour_system,
-            get_rule_system=lambda: self._rule_system,
-            get_event_bus=lambda: self._event_bus,
-            load_scene_by_path=self.load_scene_by_path,
-            sync_scene_workspace_ui=self._sync_scene_workspace_ui,
-            save_all_dirty_scenes=self._save_all_dirty_scenes,
-            save_scene_entry=self._save_scene_entry,
-            close_scene_workspace_tab=self._close_scene_workspace_tab,
-            stop_runtime=self._stop_runtime_flow,
-            set_running=lambda value: setattr(self, "running", value),
-        )
-        self._editor_interaction_controller = EditorInteractionController(
-            get_state=lambda: self._state,
-            get_editor_layout=lambda: self.editor_layout,
-            get_editor_selection=lambda: self._editor_selection_state,
-            get_scene_manager=lambda: self._scene_manager,
-            get_selection_system=lambda: self._selection_system,
-            get_gizmo_system=lambda: self.gizmo_system,
-            get_ui_system=lambda: self._ui_system,
-            get_hierarchy_panel=lambda: self.hierarchy_panel,
-            get_inspector_system=lambda: self._inspector_system,
-            get_history_manager=lambda: self._history_manager,
-            get_current_scene_viewport_size=self._current_scene_viewport_size,
-            get_current_viewport_size=self._current_viewport_size,
-        )
+        self._project_workspace_controller: Optional["ProjectWorkspaceController"] = None
+        self._editor_interaction_controller: Optional["EditorInteractionController"] = None
+        if self.editor_enabled:
+            self._project_workspace_controller = ProjectWorkspaceController(
+                get_project_service=lambda: self._project_service,
+                get_scene_manager=lambda: self._scene_manager,
+                get_editor_layout=lambda: self.editor_layout,
+                get_editor_selection=lambda: self._editor_selection_state,
+                get_state=lambda: self._state,
+                get_current_scene_path=lambda: self.current_scene_path,
+                set_current_scene_path=lambda value: setattr(self, "current_scene_path", value),
+                is_project_loaded=lambda: self._project_loaded,
+                set_project_loaded=lambda value: setattr(self, "_project_loaded", value),
+                set_world=self.set_world,
+                terminal_panel=self.terminal_panel,
+                animator_panel=self.animator_panel,
+                sprite_editor_modal=self.sprite_editor_modal,
+                history_manager=self._history_manager,
+                hot_reload_manager=self.hot_reload_manager,
+                timeline=self.timeline,
+                get_render_system=lambda: self._render_system,
+                get_ui_render_system=lambda: self._ui_render_system,
+                get_audio_system=lambda: self._audio_system,
+                get_script_behaviour_system=lambda: self._script_behaviour_system,
+                get_rule_system=lambda: self._rule_system,
+                get_event_bus=lambda: self._event_bus,
+                load_scene_by_path=self.load_scene_by_path,
+                sync_scene_workspace_ui=self._sync_scene_workspace_ui,
+                save_all_dirty_scenes=self._save_all_dirty_scenes,
+                save_scene_entry=self._save_scene_entry,
+                close_scene_workspace_tab=self._close_scene_workspace_tab,
+                stop_runtime=self._stop_runtime_flow,
+                set_running=lambda value: setattr(self, "running", value),
+            )
+            self._editor_interaction_controller = EditorInteractionController(
+                get_state=lambda: self._state,
+                get_editor_layout=lambda: self.editor_layout,
+                get_editor_selection=lambda: self._editor_selection_state,
+                get_scene_manager=lambda: self._scene_manager,
+                get_selection_system=lambda: self._selection_system,
+                get_gizmo_system=lambda: self.gizmo_system,
+                get_ui_system=lambda: self._ui_system,
+                get_hierarchy_panel=lambda: self.hierarchy_panel,
+                get_inspector_system=lambda: self._inspector_system,
+                get_history_manager=lambda: self._history_manager,
+                get_current_scene_viewport_size=self._current_scene_viewport_size,
+                get_current_viewport_size=self._current_viewport_size,
+            )
 
     def _sync_editor_shell(self) -> None:
+        if not self.editor_enabled or self.editor_shell is None:
+            return
         if self.editor_layout is not None and self.editor_shell.layout is None:
             self.editor_shell.state = self.editor_layout.shell_state
             self.editor_shell.panel_slots = self.editor_layout.panel_slots
@@ -384,6 +468,7 @@ class Game:
             self.editor_layout = self.editor_shell.layout
         self.editor_shell.bind_terminal_panel(self.terminal_panel)
         self.editor_shell.bind_agent_panel(self.agent_panel)
+        self._bind_export_panel_api()
         self.hierarchy_panel = self.editor_shell.hierarchy_panel
         self.hierarchy_panel.set_selection_state(self._editor_selection_state)
         if self._scene_manager is not None:
@@ -396,6 +481,37 @@ class Game:
                 scene_manager=self._scene_manager,
                 project_service=self._project_service,
             )
+
+    def _resolve_editor_export_api(self) -> Optional["EngineAPI"]:
+        if self._scene_manager is None or self._project_service is None:
+            self._editor_export_api = None
+            return None
+        cached = self._editor_export_api
+        if (
+            cached is not None
+            and getattr(cached, "game", None) is self
+            and getattr(cached, "scene_manager", None) is self._scene_manager
+            and getattr(cached, "project_service", None) is self._project_service
+        ):
+            return cached
+        from engine.api import EngineAPI
+
+        self._editor_export_api = EngineAPI.from_runtime(self, self._scene_manager, self._project_service)
+        return self._editor_export_api
+
+    def _bind_export_panel_api(self) -> None:
+        if self.editor_shell is None:
+            return
+        panel = getattr(self.editor_shell.panel_slots, "export_panel", None)
+        if panel is None or not hasattr(panel, "bind_api"):
+            return
+        api = self._resolve_editor_export_api()
+        if api is not None:
+            panel.bind_api(api)
+            if hasattr(panel, "bind_prebuild_save_callback"):
+                panel.bind_prebuild_save_callback(self._save_all_dirty_scenes)
+            if hasattr(panel, "refresh_export_options"):
+                panel.refresh_export_options()
 
     # === PROPIEDADES ===
 
@@ -524,10 +640,11 @@ class Game:
     def reset_profiler(self, run_label: str = "default") -> None:
         self.enable_deep_profiling = False
         self._metrics_frame_index = 0
-        self._debug_tools_controller.reset_profiler(run_label=run_label)
+        if self._debug_tools_controller is not None:
+            self._debug_tools_controller.reset_profiler(run_label=run_label)
 
     def get_profiler_report(self) -> dict[str, Any]:
-        return self._debug_tools_controller.get_profiler_report()
+        return self._debug_tools_controller.get_profiler_report() if self._debug_tools_controller is not None else {}
 
     # === SETTERS ===
 
@@ -538,7 +655,8 @@ class Game:
         self._render_system = system
         if self._project_service is not None:
             self._render_system.set_project_service(self._project_service)
-        self._debug_tools_controller.apply_render_debug_options(self._render_system)
+        if self._debug_tools_controller is not None:
+            self._debug_tools_controller.apply_render_debug_options(self._render_system)
 
     def set_physics_system(self, system: "PhysicsSystem") -> None:
         self._physics_system = system
@@ -594,7 +712,8 @@ class Game:
 
     def set_script_behaviour_system(self, system: "ScriptBehaviourSystem") -> None:
         self._script_behaviour_system = system
-        self._script_behaviour_system.set_hot_reload_manager(self.hot_reload_manager)
+        if self.hot_reload_manager is not None:
+            self._script_behaviour_system.set_hot_reload_manager(self.hot_reload_manager)
         self._script_behaviour_system.set_scene_flow_loader(self._load_scene_flow_target_from_script)
         if self._scene_manager is not None:
             self._script_behaviour_system.set_scene_manager(self._scene_manager)
@@ -676,6 +795,8 @@ class Game:
         return self._scene_transition_controller.run_transition_for_entity(entity_name)
 
     def _load_runtime_scene_from_ui(self, path: str) -> bool:
+        if self._external_scene_loader is not None:
+            return bool(self._external_scene_loader(str(path)))
         return self._scene_workflow_controller.load_scene_by_path_runtime(path)
 
     def _compile_runtime_signal_connections(self, scene: "Scene", runtime_world: "World") -> int:
@@ -809,31 +930,47 @@ class Game:
     def set_project_service(self, service: ProjectService) -> None:
         self._project_service = service
         if service.read_only:
+            if self._render_system is not None:
+                self._render_system.set_project_service(service)
+            if self._ui_render_system is not None and hasattr(self._ui_render_system, "set_project_service"):
+                self._ui_render_system.set_project_service(service)
+            if self._audio_system is not None and hasattr(self._audio_system, "set_project_service"):
+                self._audio_system.set_project_service(service)
+            if self._script_behaviour_system is not None and hasattr(self._script_behaviour_system, "set_project_service"):
+                self._script_behaviour_system.set_project_service(service)
+            if self._resource_preloader_system is not None:
+                self._resource_preloader_system.set_project_service(service)
             return
         self._sync_editor_shell()
         if self._ui_render_system is not None and hasattr(self._ui_render_system, "set_project_service"):
             self._ui_render_system.set_project_service(service)
-        self._project_workspace_controller.set_project_service(service, notify_agent_panel=False)
+        if self._project_workspace_controller is not None:
+            self._project_workspace_controller.set_project_service(service, notify_agent_panel=False)
 
     def _refresh_project_scene_entries(self) -> None:
-        self._project_workspace_controller.refresh_project_scene_entries()
+        if self._project_workspace_controller is not None:
+            self._project_workspace_controller.refresh_project_scene_entries()
 
     def _persist_editor_preferences(self) -> None:
         if self.editor_layout is None or not self.editor_layout.consume_editor_preferences_dirty():
             return
-        self._project_workspace_controller.persist_editor_preferences()
+        if self._project_workspace_controller is not None:
+            self._project_workspace_controller.persist_editor_preferences()
 
     def _sync_current_scene_path(self) -> None:
         self.current_scene_path = self._scene_workflow_controller.sync_current_scene_path()
 
     def _capture_active_scene_view_state(self) -> None:
-        self._project_workspace_controller.capture_active_scene_view_state()
+        if self._project_workspace_controller is not None:
+            self._project_workspace_controller.capture_active_scene_view_state()
 
     def _apply_active_scene_view_state(self) -> None:
-        self._project_workspace_controller.apply_active_scene_view_state()
+        if self._project_workspace_controller is not None:
+            self._project_workspace_controller.apply_active_scene_view_state()
 
     def _persist_workspace_state(self) -> None:
-        self._project_workspace_controller.persist_workspace_state()
+        if self._project_workspace_controller is not None:
+            self._project_workspace_controller.persist_workspace_state()
 
     def _sync_scene_workspace_ui(self, apply_view_state: bool = False) -> None:
         if self._scene_manager is None:
@@ -880,7 +1017,85 @@ class Game:
         self._sync_scene_workspace_ui(apply_view_state=apply_view_state)
 
     def load_scene_by_path(self, path: str) -> bool:
+        if self._external_scene_loader is not None and not self.editor_enabled:
+            return bool(self._external_scene_loader(path))
         return self._scene_workflow_controller.load_scene_by_path(path)
+
+    def configure_external_scene_loader(
+        self,
+        load_scene_by_path: Optional[Callable[[str], bool]],
+        load_scene_flow_target: Optional[Callable[[str], bool]] = None,
+    ) -> None:
+        """Route runtime scene loads to an external content source."""
+        self._external_scene_loader = load_scene_by_path
+        self._external_scene_flow_loader = load_scene_flow_target
+        if self._ui_system is not None:
+            self._ui_system.set_scene_loader(self.load_scene_by_path)
+            self._ui_system.set_runtime_scene_loader(self._load_runtime_scene_from_ui)
+            self._ui_system.set_scene_flow_loader(self._load_scene_flow_target_from_script)
+        if self._script_behaviour_system is not None:
+            self._script_behaviour_system.set_scene_flow_loader(self._load_scene_flow_target_from_script)
+
+    def _load_scene_data_for_runtime(self, scene_path: str, data: dict[str, Any]) -> Optional["World"]:
+        if self._scene_manager is None:
+            return None
+        world = self._scene_manager.load_scene(data, source_path=scene_path, activate=True)
+        self.set_world(world)
+        self.current_scene_path = str(scene_path or "")
+        self._project_loaded = True
+        self._clear_rules_and_events()
+        return world
+
+    def load_scene_from_data(
+        self,
+        scene_path: str,
+        data: dict[str, Any],
+        *,
+        enter_play: bool = True,
+    ) -> bool:
+        return self._runtime_controller.load_scene_from_data(scene_path, data, enter_play=enter_play)
+
+    def step_runtime_frame(
+        self,
+        dt: float,
+        viewport_size: tuple[float, float],
+        pointer_state: Optional[dict[str, Any]] = None,
+    ) -> RuntimeTickPlan:
+        if pointer_state is not None and self._ui_system is not None:
+            self._ui_system.inject_pointer_state(
+                float(pointer_state.get("x", 0.0)),
+                float(pointer_state.get("y", 0.0)),
+                bool(pointer_state.get("down", False)),
+                bool(pointer_state.get("pressed", False)),
+                bool(pointer_state.get("released", False)),
+                int(pointer_state.get("frames", 1)),
+            )
+        frame_dt = max(0.0, float(dt))
+        self.time.update_manual(frame_dt)
+        return self._run_runtime_tick(
+            self.world,
+            frame_dt,
+            viewport_size=viewport_size,
+            active_tab="GAME",
+            should_render_like=self.world is not None,
+        )
+
+    def render_runtime_frame(self, viewport_size: tuple[float, float]) -> None:
+        world = self.world
+        if world is None:
+            return
+        if self._render_system is not None:
+            self._render_system.render(world, viewport_size=viewport_size)
+        if self._light2d_system is not None:
+            self._light2d_system.render(world)
+        if self._line2d_render_system is not None:
+            self._line2d_render_system.render(world)
+        if self._gpu_particles_system is not None:
+            self._gpu_particles_system.render(world)
+        if self._particle_system is not None:
+            self._particle_system.render(world)
+        if self._ui_render_system is not None and self._ui_system is not None:
+            self._ui_render_system.render(world, self._ui_system)
 
     def get_scene_flow(self) -> dict:
         if self._scene_manager is None:
@@ -894,10 +1109,12 @@ class Game:
 
     def _load_scene_flow_target_from_script(self, key: str) -> bool:
         """Carga una escena desde script y conserva PLAY cuando aplica."""
+        if self._external_scene_flow_loader is not None:
+            return bool(self._external_scene_flow_loader(str(key)))
         return self._scene_workflow_controller.load_scene_flow_target_from_script(key)
 
     def open_project(self, path: str) -> bool:
-        return self._project_workspace_controller.open_project(path)
+        return self._project_workspace_controller.open_project(path) if self._project_workspace_controller is not None else False
 
     def has_physics_backend(self, backend_name: str) -> bool:
         return self._physics_backend_registry.has_available_backend(backend_name)
@@ -1248,13 +1465,15 @@ class Game:
                     if self._state in (EngineState.PLAY, EngineState.PAUSED):
                         self.step()
 
-                self._editor_interaction_controller.handle_scene_view_drag_drop(active_world)
-                self._editor_interaction_controller.handle_inspector_drag_drop(active_world)
+                if self._editor_interaction_controller is not None:
+                    self._editor_interaction_controller.handle_scene_view_drag_drop(active_world)
+                    self._editor_interaction_controller.handle_inspector_drag_drop(active_world)
 
             # 2. Gizmos & Selection (Only if interaction enabled)
             selection_gizmo_start = time.perf_counter()
             if enable_scene_interaction:
-                self._editor_interaction_controller.handle_selection_and_gizmos(active_world)
+                if self._editor_interaction_controller is not None:
+                    self._editor_interaction_controller.handle_selection_and_gizmos(active_world)
             self._perf_stats["selection_gizmo"] = (time.perf_counter() - selection_gizmo_start) * 1000.0
 
             active_tab = self.editor_layout.active_tab if self.editor_layout is not None else "SCENE"
@@ -1436,6 +1655,8 @@ class Game:
             rl.end_texture_mode()
 
     def _process_input(self) -> None:
+        if self._debug_tools_controller is None:
+            return
         self._debug_tools_controller.handle_debug_shortcuts(
             step_callback=self.step,
             toggle_fullscreen_callback=self._toggle_fullscreen,
@@ -1468,26 +1689,29 @@ class Game:
 
     def save_snapshot(self) -> None:
         """Guarda un snapshot del estado actual."""
-        self._debug_tools_controller.save_snapshot()
+        if self._debug_tools_controller is not None:
+            self._debug_tools_controller.save_snapshot()
 
     def load_last_snapshot(self) -> None:
         """Carga el último snapshot guardado."""
-        self._debug_tools_controller.load_last_snapshot()
+        if self._debug_tools_controller is not None:
+            self._debug_tools_controller.load_last_snapshot()
 
     def undo(self) -> bool:
         """Revierte el ultimo cambio de authoring en modo edicion."""
-        if self._state != EngineState.EDIT:
+        if self._state != EngineState.EDIT or self._history_manager is None:
             return False
         return self._history_manager.undo()
 
     def redo(self) -> bool:
         """Reaplica el ultimo cambio revertido en modo edicion."""
-        if self._state != EngineState.EDIT:
+        if self._state != EngineState.EDIT or self._history_manager is None:
             return False
         return self._history_manager.redo()
 
     def _draw_debug_info(self) -> None:
-        self._debug_tools_controller.draw_debug_info()
+        if self._debug_tools_controller is not None:
+            self._debug_tools_controller.draw_debug_info()
 
     def _should_collect_metrics(self) -> bool:
         return self.enable_runtime_metrics or self.show_performance_overlay
@@ -1496,9 +1720,12 @@ class Game:
         return self.enable_deep_profiling
 
     def _update_perf_counters(self, active_world: Optional["World"]) -> None:
-        self._debug_tools_controller.update_perf_counters(active_world)
+        if self._debug_tools_controller is not None:
+            self._debug_tools_controller.update_perf_counters(active_world)
 
     def _approximate_memory_counters(self, active_world: Optional["World"]) -> dict[str, float]:
+        if self._debug_tools_controller is None:
+            return {}
         return self._debug_tools_controller.approximate_memory_counters(active_world)
 
     def _record_profiler_frame(
@@ -1508,10 +1735,12 @@ class Game:
         frame_time_ms: float | None = None,
         deep: bool = False,
     ) -> None:
-        self._debug_tools_controller.record_profiler_frame(active_world, frame_time_ms=frame_time_ms, deep=deep)
+        if self._debug_tools_controller is not None:
+            self._debug_tools_controller.record_profiler_frame(active_world, frame_time_ms=frame_time_ms, deep=deep)
 
     def _draw_performance_overlay(self) -> None:
-        self._debug_tools_controller.draw_performance_overlay()
+        if self._debug_tools_controller is not None:
+            self._debug_tools_controller.draw_performance_overlay()
 
     def _render_frame(self, active_world: "World") -> None:
         """Renderiza un frame completo de la aplicación (Scene, Game, UI)."""
@@ -1730,19 +1959,21 @@ class Game:
                 safe_reset_clip_state()
                 self.editor_layout.draw_top_dropdowns()
 
-            try:
-                cursor_state = self._editor_interaction_controller.resolve_cursor_state(overlay_world)
-                self._cursor_renderer.render(rl.get_mouse_position(), cursor_state)
-            except Exception as exc:
-                self._cursor_renderer.show_system_cursor()
-                log_err(f"Cursor render error: {exc}")
+            if self._editor_interaction_controller is not None and self._cursor_renderer is not None:
+                try:
+                    cursor_state = self._editor_interaction_controller.resolve_cursor_state(overlay_world)
+                    self._cursor_renderer.render(rl.get_mouse_position(), cursor_state)
+                except Exception as exc:
+                    self._cursor_renderer.show_system_cursor()
+                    log_err(f"Cursor render error: {exc}")
 
         finally:
             rl.end_drawing()
 
     def _cleanup(self) -> None:
         self.running = False
-        self._cursor_renderer.show_system_cursor()
+        if self._cursor_renderer is not None:
+            self._cursor_renderer.show_system_cursor()
         if self.terminal_panel is not None:
             self.terminal_panel.shutdown()
         if self.agent_panel is not None:

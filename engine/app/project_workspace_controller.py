@@ -84,6 +84,10 @@ class ProjectWorkspaceController:
             agent_panel = getattr(editor_layout, "agent_panel", None)
             if notify_agent_panel and agent_panel is not None and hasattr(agent_panel, "set_project_service"):
                 agent_panel.set_project_service(service)
+            if hasattr(editor_layout, "set_launcher_project_name_suggester"):
+                editor_layout.set_launcher_project_name_suggester(
+                    lambda: service.suggest_internal_project_name("NewProject")
+                )
             editor_layout.set_recent_projects(service.list_launcher_projects())
             editor_layout.set_project_scene_entries(service.list_project_scenes() if service.has_project else [])
             if getattr(editor_layout, "flow_panel", None) is not None:
@@ -405,12 +409,16 @@ class ProjectWorkspaceController:
                     raise ValueError("Project name is required")
                 if project_service is None:
                     raise RuntimeError("Project service not ready")
-                project_root = project_service.build_internal_project_path(project_name)
-                project_service.create_project(project_root, name=project_name)
+                resolved_name = project_service.suggest_internal_project_name(project_name)
+                project_root = project_service.build_internal_project_path(resolved_name)
+                project_service.create_project(project_root, name=resolved_name)
                 self.refresh_launcher_projects()
                 editor_layout.show_create_project_modal = False
                 editor_layout.launcher_create_name_focused = False
-                editor_layout.set_launcher_feedback("Project created")
+                if resolved_name != project_name:
+                    editor_layout.set_launcher_feedback(f"Project created as {resolved_name}")
+                else:
+                    editor_layout.set_launcher_feedback("Project created")
                 editor_layout.pending_project_path = project_root.as_posix()
             except Exception as exc:
                 editor_layout.set_launcher_feedback(f"Create project failed: {exc}", is_error=True)

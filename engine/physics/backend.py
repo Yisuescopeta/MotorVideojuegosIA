@@ -101,6 +101,7 @@ class MotionResult2D:
     collider_id: int = 0
     collider_entity_name: str = ""
     collider_shape: int = -1
+    collision_overlap_at_origin: bool = False
 
 
 class PhysicsBackend(ABC):

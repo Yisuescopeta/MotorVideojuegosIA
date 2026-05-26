@@ -6,7 +6,11 @@ measure/arrange layout, event dispatch, focus management, and basic controls.
 All modules are pure: no pyray, no engine.editor.ui, no window dependencies.
 """
 
-from engine.editor.ui_core.controls.console_control import ConsoleCommandResult, ConsoleControlModel, LogEntry
+from engine.editor.ui_core.controls.console_control import (
+    ConsoleCommandResult,
+    ConsoleControlModel,
+    LogEntry,
+)
 from engine.editor.ui_core.controls.container import (
     Container,
     HBoxContainer,
@@ -27,7 +31,11 @@ from engine.editor.ui_core.controls.control import (
     Panel,
     TextureRect,
 )
-from engine.editor.ui_core.controls.dropdown import ComboBoxModel, DropdownModel, DropdownOption
+from engine.editor.ui_core.controls.dropdown import (
+    ComboBoxModel,
+    DropdownModel,
+    DropdownOption,
+)
 from engine.editor.ui_core.controls.events import (
     Anchor,
     ControlEvent,
@@ -35,9 +43,15 @@ from engine.editor.ui_core.controls.events import (
     Margin,
     Size,
 )
-from engine.editor.ui_core.controls.focus import FocusManager
 from engine.editor.ui_core.controls.file_picker import FileEntry, FilePickerModel
-from engine.editor.ui_core.controls.popup import PopupManager, PopupModel, alert_popup, confirm_popup, yes_no_popup
+from engine.editor.ui_core.controls.focus import FocusManager
+from engine.editor.ui_core.controls.popup import (
+    PopupManager,
+    PopupModel,
+    alert_popup,
+    confirm_popup,
+    yes_no_popup,
+)
 from engine.editor.ui_core.controls.text_input import TextInput
 
 __all__ = [

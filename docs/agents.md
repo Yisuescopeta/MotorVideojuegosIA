@@ -104,6 +104,12 @@ py -m motor ai start --project . --json
 py -m motor ai compliance --project . --json
 py -m motor ai self-test --project . --profile platformer --json
 py -m motor doctor --project . --json
+py -m motor export presets list --project . --json
+py -m motor export presets validate --project . --json
+py -m motor export doctor --project . --json
+py -m motor export pack "Windows Desktop" --project . --json
+py -m motor export build "Windows Desktop" --project . --json
+py -m motor export build "Android Debug" --project . --json
 py -m motor editor theme list --project . --json
 py -m motor editor theme active --project . --json
 py -m motor editor theme set unity_dark --project . --json
@@ -140,6 +146,11 @@ py -m motor component add Player Transform --data '{"x":0,"y":0}' --project . --
 py -m motor component edit Player Transform x 200 --project . --json
 py -m motor component remove Player Sprite --project . --json
 ```
+
+Para tooling/editor sobre un runtime ya vinculado, `EngineAPI` tambien expone
+`list_export_entry_scenes()` y `build_export_for_scene(name, entry_scene)`.
+Ese override de `entry_scene` vive solo en memoria para el build actual y no
+reescribe `export_presets.motor.json`.
 
 Los temas de editor son preferencia de proyecto, no authoring de escena. Usa
 `EngineAPI.list_editor_themes`, `get_active_editor_theme`,

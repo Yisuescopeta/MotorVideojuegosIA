@@ -26,14 +26,14 @@ def swept_shape_toi(
     length = math.hypot(dx, dy)
     if length <= 1e-6:
         if _overlap_at(shape_type, shape_params, ox, oy, target_shape):
-            return _make_hit(0.0, ox, oy, target_shape, target_info, shape_type, shape_params)
+            return _make_hit(0.0, ox, oy, target_shape, target_info, shape_type, shape_params, dx, dy, overlap_at_origin=True)
         return None
     dx /= length
     dy /= length
 
     # Quick overlap test at origin
     if _overlap_at(shape_type, shape_params, ox, oy, target_shape):
-        return _make_hit(0.0, ox, oy, target_shape, target_info, shape_type, shape_params)
+        return _make_hit(0.0, ox, oy, target_shape, target_info, shape_type, shape_params, dx, dy, overlap_at_origin=True)
 
     # Check overlap at max_distance
     mx = ox + dx * max_distance
@@ -76,6 +76,9 @@ def _make_hit(
     target_info: dict,
     shape_type: str,
     shape_params: dict[str, float],
+    dx: float = 0.0,
+    dy: float = 0.0,
+    overlap_at_origin: bool = False,
 ) -> dict:
     hit_shape = ShapeFactory.build_from_params(shape_type, hit_x, hit_y, **shape_params)
     manifold = hit_shape.collide_shape(target_shape)
@@ -84,6 +87,12 @@ def _make_hit(
     if manifold is not None:
         normal_x = float(manifold.normal_x)
         normal_y = float(manifold.normal_y)
+
+    # Ensure normal points against sweep direction (toward origin)
+    if normal_x * dx + normal_y * dy > 0:
+        normal_x = -normal_x
+        normal_y = -normal_y
+
     return {
         "hit": True,
         "fraction": fraction,
@@ -92,6 +101,7 @@ def _make_hit(
         "entity": str(target_info.get("entity", "")),
         "entity_id": int(target_info.get("entity_id", 0)),
         "is_trigger": bool(target_info.get("is_trigger", False)),
+        "overlap_at_origin": overlap_at_origin,
     }
 
 

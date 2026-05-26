@@ -4,7 +4,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from engine.editor.console_panel import log_err, log_warn
+from engine.core.runtime_logging import log_err, log_warn
 
 DeferredCallback = Callable[..., Any]
 

@@ -31,6 +31,30 @@ Convenciones:
   desde el estado de editor cuando no hay una escena ya cargada.
 - `doctor` es de solo lectura y no genera `motor_ai.json` ni `START_HERE_AI.md`.
 
+## Export/build
+
+Los comandos de exportacion usan `EngineAPI`; la CLI no duplica logica de
+presets, validacion, empaquetado ni exporters.
+
+```bash
+py -m motor export presets list --project . --json
+py -m motor export presets validate --project . --json
+py -m motor export doctor --project . --json
+py -m motor export pack "Windows Desktop" --project . --json
+py -m motor export build "Windows Desktop" --project . --json
+py -m motor export build "Android Debug" --project . --json
+py -m motor export build-all --project . --json
+```
+
+Salida JSON: `{ "success": bool, "message": str, "data": object }`.
+`export pack` genera `.motor/build/staging/<preset>/game.manifest.json` y
+`game.pak`. `export build` genera report en `.motor/build/export_reports/`.
+Si falta toolchain externo, el comando falla con `TOOLCHAIN_UNAVAILABLE` y
+mantiene artefactos estructurales posibles, como proyecto Android generado.
+
+Documentacion relacionada: [export_pipeline.md](export_pipeline.md),
+[export_presets.md](export_presets.md), [troubleshooting_export.md](troubleshooting_export.md).
+
 ## Comandos de introspeccion
 
 ### `motor ai start`

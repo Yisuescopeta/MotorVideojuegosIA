@@ -1,6 +1,6 @@
-import json
 import tempfile
 import unittest
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -44,6 +44,8 @@ class _FakeEditorLayout:
         self.project_scene_entries = None
         self.scene_tabs = None
         self.applied_preferences = None
+        self.applied_layout = None
+        self.launcher_project_name_suggester = None
         self.editor_camera = SimpleNamespace(target=rl.Vector2(0.0, 0.0), zoom=1.0)
 
     def set_recent_projects(self, projects) -> None:
@@ -58,11 +60,17 @@ class _FakeEditorLayout:
     def apply_editor_preferences(self, preferences) -> None:
         self.applied_preferences = dict(preferences)
 
+    def apply_dock_layout(self, layout) -> None:
+        self.applied_layout = dict(layout)
+
     def export_editor_preferences(self) -> dict:
         return {"editor_active_tool": "Move", "panel": "PROJECT"}
 
     def set_launcher_feedback(self, message: str, is_error: bool = False) -> None:
         self.launcher_feedback = (message, is_error)
+
+    def set_launcher_project_name_suggester(self, suggester) -> None:
+        self.launcher_project_name_suggester = suggester
 
 
 class _FakeSceneManager:
@@ -233,6 +241,28 @@ class ProjectWorkspaceControllerTests(unittest.TestCase):
         self.assertIsNotNone(self.layout.project_scene_entries)
         self.layout.flow_panel.refresh.assert_called_once_with(force=True)
         self.layout.flow_workspace_panel.refresh.assert_called_once_with(force=True)
+
+    def test_set_project_service_registers_launcher_name_suggester(self) -> None:
+        self.controller.set_project_service(self.project_service)
+
+        suggested = self.layout.launcher_project_name_suggester()
+
+        self.assertEqual(suggested, "NewProject")
+
+    def test_handle_project_launcher_requests_autonumbers_existing_project_names(self) -> None:
+        existing = self.project_service.internal_projects_root / "NewProject"
+        existing.mkdir(parents=True, exist_ok=True)
+        self.layout.request_create_project = True
+        self.layout.launcher_create_name = "NewProject"
+        self.layout.show_create_project_modal = True
+
+        self.controller.handle_project_launcher_requests()
+
+        expected_root = self.project_service.internal_projects_root / "NewProject2"
+        self.assertTrue(expected_root.exists())
+        self.assertEqual(self.layout.pending_project_path, expected_root.as_posix())
+        self.assertEqual(self.layout.launcher_feedback, ("Project created as NewProject2", False))
+        self.assertFalse(self.layout.show_create_project_modal)
 
     def test_persist_and_restore_workspace_state_round_trip(self) -> None:
         intro_path = self.project_root / "levels" / "intro.json"

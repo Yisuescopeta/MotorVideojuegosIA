@@ -347,7 +347,7 @@ class ProjectPanel:
                 if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_RIGHT):
                     if self._layout:
                         from engine.editor.ui_core.controls.context_menu import ContextMenuItem, ContextMenuModel
-                        menu = ContextMenuModel(id="project_menu", items=[
+                        menu = ContextMenuModel(items=[
                             ContextMenuItem(id="create_folder", label="Create Folder"),
                             ContextMenuItem(id="refresh", label="Refresh Assets"),
                         ])

@@ -2,24 +2,33 @@
 engine/systems/input_system.py - Lectura declarativa de InputMap
 """
 
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple
 
 import pyray as rl
 from engine.components.inputmap import InputMap
 from engine.ecs.world import World
 
-KEY_LOOKUP: Dict[str, int] = {
-    "A": rl.KEY_A,
-    "D": rl.KEY_D,
-    "W": rl.KEY_W,
-    "S": rl.KEY_S,
-    "LEFT": rl.KEY_LEFT,
-    "RIGHT": rl.KEY_RIGHT,
-    "UP": rl.KEY_UP,
-    "DOWN": rl.KEY_DOWN,
-    "SPACE": rl.KEY_SPACE,
-    "ENTER": rl.KEY_ENTER,
-}
+def _build_key_lookup() -> Dict[str, int]:
+    lookup: Dict[str, int] = {}
+    for key_name, rl_attr in {
+        "A": "KEY_A",
+        "D": "KEY_D",
+        "W": "KEY_W",
+        "S": "KEY_S",
+        "LEFT": "KEY_LEFT",
+        "RIGHT": "KEY_RIGHT",
+        "UP": "KEY_UP",
+        "DOWN": "KEY_DOWN",
+        "SPACE": "KEY_SPACE",
+        "ENTER": "KEY_ENTER",
+    }.items():
+        key_code = getattr(rl, rl_attr, None)
+        if key_code is not None:
+            lookup[key_name] = key_code
+    return lookup
+
+
+KEY_LOOKUP: Dict[str, int] = _build_key_lookup()
 
 
 class InputSystem:
@@ -64,8 +73,11 @@ class InputSystem:
         return positive - negative
 
     def _pressed(self, keys: list[str]) -> bool:
+        is_key_down = getattr(rl, "is_key_down", None)
+        if not callable(is_key_down):
+            return False
         for key_name in keys:
             key_code = KEY_LOOKUP.get(key_name)
-            if key_code is not None and rl.is_key_down(key_code):
+            if key_code is not None and is_key_down(key_code):
                 return True
         return False

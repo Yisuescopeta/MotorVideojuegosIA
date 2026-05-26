@@ -7,9 +7,30 @@ migracion y validacion.
 
 - `scene schema_version = 2`
 - `prefab schema_version = 2`
+- `export_presets.motor.json schema_version = 1`
+- `game.manifest.json schema_version = 1`
 
 Toda carga migra primero a la version actual y valida despues. Todo guardado de
 escena o prefab emite payload canonico `v2`.
+
+## Presets y manifest de exportacion
+
+`export_presets.motor.json` vive en la raiz del proyecto. Contiene
+`schema_version` y una lista `presets`. Cada preset define `name`, `platform`,
+`architecture`, `mode`, `output_path`, `entry_scene`, `display_name`,
+`application_id`, version, `bundle_mode`, `include_debug_tools` y opciones de
+ventana o movil. Campos desconocidos fallan salvo extras documentados de Android
+release (`keystore_path`, `keystore_password`, `key_alias`, `key_password`) y
+`include_all_assets`. En Windows, `console: true` es un extra documentado para
+forzar consola incluso en release; release normal usa `console=False`.
+
+`game.manifest.json` se genera desde el grafo de contenido. Incluye entry scene,
+version de motor, proyecto, escenas, assets y scripts alcanzables, con `sha256`,
+`size_bytes`, `guid` estable derivado de path y dependencias. `game.pak` es ZIP
+determinista con timestamps fijos y orden estable.
+
+Documentacion relacionada: [export_presets.md](export_presets.md),
+[build_artifacts.md](build_artifacts.md), [export_pipeline.md](export_pipeline.md).
 
 ## Formatos fisicos de escena
 

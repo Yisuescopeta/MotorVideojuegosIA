@@ -405,6 +405,11 @@ class AssetService:
         return self.list_sprite_slices(locator)
 
     def get_sprite_slice_rect(self, locator: Any, slice_name: str) -> Optional[Dict[str, Any]]:
+        runtime_slice_resolver = getattr(self._project_service, "get_slice_rect", None)
+        if callable(runtime_slice_resolver):
+            return runtime_slice_resolver(locator, slice_name)
+        if bool(getattr(self._project_service, "read_only", False)):
+            return None
         asset_path = self._resolve_locator_path(locator)
         if not asset_path:
             return None

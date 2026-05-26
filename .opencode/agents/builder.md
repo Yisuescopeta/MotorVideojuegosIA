@@ -8,6 +8,7 @@ temperature: 0.3
 permission:
   read: allow
   edit: allow
+  write: allow
   bash:
     "*": deny
     "py -m unittest *": allow

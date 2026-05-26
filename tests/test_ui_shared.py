@@ -7,10 +7,12 @@ Verifies:
 """
 
 import ast
+import contextlib
 import importlib
 import sys
 import unittest
 from pathlib import Path
+from typing import Iterator
 
 
 UI_ROOT = Path(__file__).resolve().parents[1] / "engine" / "ui"
@@ -21,29 +23,40 @@ SHARED_MODULE_FILES = [
 ]
 
 
+@contextlib.contextmanager
+def _temp_pop_modules(*names: str) -> Iterator[None]:
+    """Temporarily pop module names from sys.modules; restore on exit."""
+    saved = {n: sys.modules.get(n) for n in names}
+    for n in names:
+        sys.modules.pop(n, None)
+    try:
+        yield
+    finally:
+        for n, mod in saved.items():
+            if mod is not None:
+                sys.modules[n] = mod
+
+
 class SharedUIPurityTests(unittest.TestCase):
     """Verify engine.ui.shared imports stay pure (no pyray, no editor, no engine internals)."""
 
     def test_import_shared_does_not_import_pyray(self) -> None:
-        sys.modules.pop("pyray", None)
-        sys.modules.pop("raylib", None)
-        importlib.import_module("engine.ui.shared")
-        self.assertNotIn("pyray", sys.modules)
-        self.assertNotIn("raylib", sys.modules)
+        with _temp_pop_modules("pyray", "raylib"):
+            importlib.import_module("engine.ui.shared")
+            self.assertNotIn("pyray", sys.modules)
+            self.assertNotIn("raylib", sys.modules)
 
     def test_import_shared_constants_does_not_import_pyray(self) -> None:
-        sys.modules.pop("pyray", None)
-        sys.modules.pop("raylib", None)
-        importlib.import_module("engine.ui.shared_constants")
-        self.assertNotIn("pyray", sys.modules)
-        self.assertNotIn("raylib", sys.modules)
+        with _temp_pop_modules("pyray", "raylib"):
+            importlib.import_module("engine.ui.shared_constants")
+            self.assertNotIn("pyray", sys.modules)
+            self.assertNotIn("raylib", sys.modules)
 
     def test_import_ui_package_does_not_import_pyray(self) -> None:
-        sys.modules.pop("pyray", None)
-        sys.modules.pop("raylib", None)
-        importlib.import_module("engine.ui")
-        self.assertNotIn("pyray", sys.modules)
-        self.assertNotIn("raylib", sys.modules)
+        with _temp_pop_modules("pyray", "raylib"):
+            importlib.import_module("engine.ui")
+            self.assertNotIn("pyray", sys.modules)
+            self.assertNotIn("raylib", sys.modules)
 
     def test_shared_static_imports_stay_pure(self) -> None:
         banned_exact = {

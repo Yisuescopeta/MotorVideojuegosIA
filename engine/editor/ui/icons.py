@@ -93,8 +93,8 @@ def draw_icon(
         right = int(x + w * 0.75)
         top = int(y + h * 0.25)
         bottom = int(y + h * 0.75)
-        _w = w
-        _h = h
+        _w = int(w)
+        _h = int(h)
 
     if icon_name == ICON_PLAY:
         rl.draw_triangle(_vec2(left, top), _vec2(left, bottom), _vec2(right, cy), c)

@@ -69,6 +69,40 @@ layout e interaccion y ahora soporta dos modos de foundation sobre
 `UIButton` por color o sprite, y `UIImage`, usando los rects ya calculados por
 `UISystem`.
 
+## Export/build pipeline
+
+`engine/export/` contiene modelos de preset, migraciones, schema, validacion,
+grafo de contenido, collector, pack determinista, registry de exporters,
+diagnosticos y reports. `engine/runtime/` contiene el entrypoint exportado y
+adaptadores de contenido para juegos exportados. El runtime exportado ya no es
+una reimplementacion independiente: `SharedGameRuntime` construye un
+`Game(editor_enabled=False, hot_reload_enabled=False)` y carga escenas mediante
+`RuntimeController.load_scene_from_data(...)`, conservando el orden de sistemas
+de PLAY del editor sin montar inspector, paneles ni hot-reload. Los sistemas
+runtime se crean con `create_runtime_system_bundle(...)`, usado tanto por
+`main.py` como por export para evitar forks de wiring.
+
+`ExportRuntime` permanece como shim deprecated para compatibilidad de imports y
+tests legacy; el camino canonico nuevo es `SharedGameRuntime`.
+
+Plataformas implementadas:
+
+- Windows y Linux: exporters PyInstaller contra `engine/runtime/exported_game.py`.
+- macOS: exporter condicionado a host macOS y toolchain Apple.
+- Android: genera proyecto Gradle desde `platforms/android/template/`; compila
+  APK/AAB si existen Android SDK, JDK, Gradle y signing cuando aplica.
+- iOS: estructura profesional condicionada a macOS/Xcode; reporta bloqueador si
+  el entorno no cumple.
+
+El content pack genera `runtime_config.json`, `game.manifest.json`, `content/` y
+`game.pak`. El manifest usa hashes SHA-256 y GUID estable por path. La copia de
+contenido rechaza rutas absolutas o traversal fuera del proyecto.
+
+Documentacion relacionada: [export_pipeline.md](export_pipeline.md),
+[export_presets.md](export_presets.md), [runtime_templates.md](runtime_templates.md),
+[build_artifacts.md](build_artifacts.md), [mobile_export.md](mobile_export.md),
+[troubleshooting_export.md](troubleshooting_export.md).
+
 El sistema fisico conserva `legacy_aabb` como fallback obligatorio y registra
 `box2d` como backend opcional cuando la dependencia esta disponible.
 

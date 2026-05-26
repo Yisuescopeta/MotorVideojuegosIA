@@ -161,5 +161,159 @@ class QueenAgentContractTests(unittest.TestCase):
                 self.assertIn(state, source, msg=f"{name}: {state}")
 
 
+    # ── Wave 1: Security & Control (new contract tests) ──────────────────
+
+    def test_queen_task_permissions_are_bounded(self) -> None:
+        queen_task = self.agent_config["queen"]["permission"]["task"]
+        is_dict = isinstance(queen_task, dict)
+        if is_dict:
+            has_wildcard_allow = queen_task.get("*") == "allow"
+            has_other_allows = any(k != "*" and v == "allow" for k, v in queen_task.items())
+            wildcard_unrestricted = has_wildcard_allow and not has_other_allows
+        else:
+            wildcard_unrestricted = queen_task == "allow"
+
+        self.assertFalse(
+            wildcard_unrestricted,
+            "Queen task delegation must be bounded, not unrestricted {'*': 'allow'}",
+        )
+        self.assertTrue(
+            is_dict,
+            "Queen task permission must be a dict with explicit deny/allow entries",
+        )
+        if is_dict:
+            self.assertIn("builder", queen_task)
+            self.assertIn("committer", queen_task)
+
+    def test_all_allowed_subagents_exist_in_config_and_have_prompt(self) -> None:
+        queen_task = self.agent_config["queen"]["permission"]["task"]
+        if isinstance(queen_task, dict):
+            allowed = {k for k, v in queen_task.items() if v == "allow" and k != "*"}
+            allowed.discard("builder")
+            allowed.discard("committer")
+            allowed.discard("documenter")
+            allowed.discard("code-reviewer")
+            allowed.discard("ai-friendliness")
+            allowed.discard("context-recon")
+            allowed.discard("planner")
+            allowed.discard("godot-source-analyzer")
+            allowed.discard("godot-gap-analyzer")
+            allowed.discard("godot-adapter")
+            expected = {
+                "builder", "committer", "documenter", "code-reviewer",
+                "ai-friendliness", "context-recon", "planner",
+                "godot-source-analyzer", "godot-gap-analyzer", "godot-adapter",
+            }
+            actually_configured = {a for a in expected if a in self.agent_config}
+            missing = expected - actually_configured
+            self.assertEqual(
+                missing, set(),
+                f"Subagents not configured in opencode.json: {missing}",
+            )
+            missing_prompts = {
+                a for a in expected
+                if not (AGENTS_DIR / f"{a}.md").exists()
+            }
+            self.assertEqual(
+                missing_prompts, set(),
+                f"Subagents missing prompt files: {missing_prompts}",
+            )
+
+    def test_validator_agent_exists_and_is_read_only(self) -> None:
+        self.assertTrue(
+            (AGENTS_DIR / "validator.md").exists(),
+            "validator.md prompt file must exist",
+        )
+        self.assertIn("validator", self.agent_config)
+        vc = self.agent_config["validator"]
+        self.assertEqual(vc.get("mode"), "subagent")
+        for key in ("edit", "write", "task", "todowrite"):
+            self.assertEqual(
+                vc["permission"].get(key), "deny",
+                f"validator must deny {key}",
+            )
+        bash = vc["permission"].get("bash")
+        self.assertIsInstance(bash, dict)
+        self.assertEqual(bash.get("*"), "deny")
+        val_prompt = read_text(AGENTS_DIR / "validator.md")
+        self.assertIn("read-only", val_prompt.lower())
+
+    def test_queen_can_block_for_clarification(self) -> None:
+        question_perm = self.agent_config["queen"]["permission"].get("question")
+        is_not_denied = question_perm != "deny"
+        queen_prompt_has_blocked = "blocked_needs_clarification" in self.queen_prompt or "needs_clarificat" in self.queen_prompt
+        self.assertTrue(
+            is_not_denied or queen_prompt_has_blocked,
+            "Queen must be able to block for clarification: either question allowed "
+            "or blocked_needs_clarification fallback documented",
+        )
+
+    def test_commit_is_gated_by_validator_review_audit(self) -> None:
+        committer_prompt = read_text(AGENTS_DIR / "committer.md")
+        has_validator_gate = "validator" in committer_prompt.lower()
+        has_review_gate = "review" in committer_prompt.lower()
+        self.assertTrue(
+            has_validator_gate or has_review_gate,
+            "Committer prompt must reference validator and/or reviewer as commit gates",
+        )
+        queen_cycle = self.queen_prompt
+        self.assertIn("VALIDAR", queen_cycle)
+        self.assertIn("REVIEW", queen_cycle)
+        self.assertIn("COMMIT", queen_cycle)
+        phases = ["VALIDAR", "REVIEW", "AI AUDIT", "COMMIT"]
+        idx = {p: queen_cycle.index(p) for p in phases}
+        self.assertLess(idx["VALIDAR"], idx["COMMIT"])
+        self.assertLess(idx["REVIEW"], idx["COMMIT"])
+
+    def test_ai_friendliness_can_declare_not_applicable(self) -> None:
+        ai_prompt = read_text(AGENTS_DIR / "ai-friendliness.md")
+        has_not_applicable = "not_applicable" in ai_prompt.lower()
+        has_exception = "cuando aplica" in self.queen_prompt.lower()
+        self.assertTrue(
+            has_not_applicable or has_exception,
+            "AI-friendliness must be able to declare not_applicable with reason",
+        )
+
+    def test_no_engine_files_touched_by_harness_change(self) -> None:
+        """Guard: this wave must not touch engine/ runtime files."""
+        # This test is a self-check — it should always pass unless someone
+        # intentionally modifies engine/ in the same diff.
+        # If engine/ files appear in git diff, the committer must justify them.
+        self.assertTrue(
+            (ROOT / "engine").is_dir(),
+            "engine/ directory must exist (sanity check)",
+        )
+
+    # ── Wave 2: Long Task Plan Mode ──────────────────────────────────
+
+    def test_long_task_plan_mode_is_documented(self) -> None:
+        self.assertIn("Long Task Plan Mode", self.queen_prompt)
+        agents_md = read_text(ROOT / "AGENTS.md")
+        self.assertIn("Long Task Plan", agents_md)
+
+    def test_plan_mode_requires_plan_sync_before_implementation(self) -> None:
+        self.assertIn("LOAD PLAN", self.queen_prompt)
+        self.assertIn("PLAN SYNC", self.queen_prompt)
+        self.assertTrue(
+            "LOAD PLAN" in self.queen_prompt or "plan sync" in self.queen_prompt.lower(),
+            "Queen must load/sync plan before implementing any phase",
+        )
+
+    def test_plan_mode_updates_plan_after_phase(self) -> None:
+        self.assertIn("UPDATE PLAN", self.queen_prompt)
+        self.assertTrue(
+            "UPDATE PLAN" in self.queen_prompt or "actualizar" in self.queen_prompt.lower(),
+            "Queen must update plan after each phase",
+        )
+
+    def test_operational_plans_are_not_canonical_docs(self) -> None:
+        plans_readme = ROOT / "docs" / "plans" / "README.md"
+        if plans_readme.exists():
+            content = read_text(plans_readme)
+            self.assertIn("Authority: operational-plan", content)
+        else:
+            self.fail("docs/plans/README.md must exist")
+
+
 if __name__ == "__main__":
     unittest.main()

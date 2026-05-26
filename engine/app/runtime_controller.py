@@ -6,7 +6,7 @@ from engine.core.engine_state import EngineState
 from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.core.runtime_loop import RuntimeLoopState, RuntimePhase, RuntimeTickPlan
 from engine.ecs.group_operations import GroupOperations
-from engine.editor.console_panel import log_info, log_warn
+from engine.core.runtime_logging import log_info, log_warn
 from engine.events.callable_resolver import CallableResolver, CallableResolverContext
 from engine.events.deferred_queue import DeferredCallQueue
 from engine.events.signals import SignalRuntime
@@ -63,6 +63,7 @@ class RuntimeController:
         self._get_physics_backend_registry = context.get_physics_backend_registry
         self._reset_profiler = context.reset_profiler
         self._set_physics_backend = context.set_physics_backend
+        self._load_scene_data = context.load_scene_data
         self._edit_animation_speed = float(context.edit_animation_speed)
         self._update_ui_overlay = update_ui_overlay
         self._phase_observer = phase_observer
@@ -129,6 +130,34 @@ class RuntimeController:
         if pf is not None:
             pf.reset()
         self._entity_destroyed_listener_registered = False
+
+    def load_scene_from_data(
+        self,
+        scene_path: str,
+        data: dict,
+        *,
+        enter_play: bool = True,
+    ) -> bool:
+        """Load a serialized scene payload into the shared runtime path."""
+        if self._load_scene_data is None:
+            return False
+
+        if self._get_state() in (EngineState.PLAY, EngineState.PAUSED, EngineState.STEPPING):
+            self.stop()
+
+        world = self._load_scene_data(str(scene_path or ""), data)
+        if world is None:
+            return False
+
+        if enter_play:
+            self.play()
+            if self._get_state() != EngineState.PLAY:
+                return False
+
+        event_bus = self._get_event_bus()
+        if event_bus is not None:
+            event_bus.emit("scene_loaded", {"scene_path": str(scene_path or "")})
+        return True
 
     def end_runtime_session(self) -> None:
         self._loop_state.reset()

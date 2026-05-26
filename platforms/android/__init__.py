@@ -1,0 +1,3 @@
+"""
+Android platform templates.
+"""

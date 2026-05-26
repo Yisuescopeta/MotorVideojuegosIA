@@ -56,9 +56,8 @@ class AssetBrowserPanel:
         self._hovered_idx: int = -1
 
         self.filter_dropdown = DropdownModel(
-            id="asset_filter",
             options=list(FILTER_OPTIONS),
-            selected_id="all",
+            selected_index=0,
         )
         self.search_input = TextInput(placeholder="Search assets...", max_length=64, font_size=10)
 
@@ -71,9 +70,10 @@ class AssetBrowserPanel:
     def refresh(self) -> None:
         """Refresh asset list from asset directory."""
         self._assets = []
-        if self._asset_service:
+        if self._project_service:
             try:
-                assets_dir = self._asset_service.assets_dir
+                assets_root = self._project_service.get_project_path("assets")
+                assets_dir = str(assets_root)
                 if os.path.isdir(assets_dir):
                     for root, dirs, files in os.walk(assets_dir):
                         for f in files:
@@ -149,8 +149,8 @@ class AssetBrowserPanel:
 
         # Filter dropdown
         dd_x = x + 8
-        self.filter_dropdown.arrange((float(dd_x), float(toolbar_y), 80.0, 20.0))
-        render_dropdown(self.filter_dropdown, self.filter_dropdown.global_rect)
+        dd_rect: tuple[float, float, float, float] = (float(dd_x), float(toolbar_y), 80.0, 20.0)
+        render_dropdown(self.filter_dropdown, dd_rect)
 
         # Search input
         search_x = dd_x + 90
@@ -253,7 +253,7 @@ class AssetBrowserPanel:
         asset = self._filtered[self._hovered_idx]
         self._selected_path = asset["path"]
         if self._layout and hasattr(self._layout, "show_context_menu"):
-            menu = ContextMenuModel(id="asset_menu", items=[
+            menu = ContextMenuModel(items=[
                 ContextMenuItem(id="delete", label="Delete"),
                 ContextMenuItem(id="rename", label="Rename"),
                 ContextMenuItem(id="show_explorer", label="Show in Explorer"),

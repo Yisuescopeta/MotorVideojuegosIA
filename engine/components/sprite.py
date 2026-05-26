@@ -49,7 +49,7 @@ class Sprite(Component):
 
     @staticmethod
     def _clamp_tint(value: Union[Tuple[int, ...], list[int], object]) -> Tuple[int, int, int, int]:
-        from engine.editor.console_panel import log_warn
+        from engine.core.runtime_logging import log_warn
 
         if not isinstance(value, (tuple, list)):
             log_warn(

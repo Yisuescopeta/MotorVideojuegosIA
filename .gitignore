@@ -35,6 +35,9 @@ htmlcov/
 # Temporary
 *.tmp
 *.temp
+
+# Python path configuration (generated, not tracked)
+test.pth
 .motor/agent_state/
 .motor/queen_state/
 .motor/meta/asset_catalog.json

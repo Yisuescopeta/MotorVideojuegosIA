@@ -335,6 +335,17 @@ class ProjectService:
             raise ValueError("Project name cannot be empty")
         return self.internal_projects_root / sanitized
 
+    def suggest_internal_project_name(self, project_name: str) -> str:
+        sanitized = self._sanitize_project_name(project_name)
+        if not sanitized:
+            raise ValueError("Project name cannot be empty")
+        candidate = sanitized
+        suffix = 2
+        while (self.internal_projects_root / candidate).exists():
+            candidate = f"{sanitized}{suffix}"
+            suffix += 1
+        return candidate
+
     def build_scene_file_path(self, scene_name: str) -> Path:
         if not self.has_project:
             raise RuntimeError("Project manifest not loaded")

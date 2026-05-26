@@ -2,34 +2,16 @@
 engine/editor/console_panel.py - Panel de Consola estilo Unity
 """
 
-from typing import Any, List, Tuple
+from typing import Any
 
 import pyray as rl
+from engine.core.runtime_logging import GLOBAL_LOGS, log_debug, log_err, log_info, log_warn  # noqa: F401
 from engine.editor.render_safety import gui_toggle_bool
 from engine.editor.theme import get_active_theme
 from engine.editor.theme.fonts import get_mono_font
 from engine.editor.ui.text_input_render import process_text_input, render_text_input
 from engine.editor.ui_core.controls.console_control import ConsoleControlModel
 from engine.editor.ui_core.controls.text_input import TextInput
-
-# Sistema de Logs Global
-GLOBAL_LOGS: List[Tuple[str, str]] = []
-
-
-def log_info(msg: str):
-    GLOBAL_LOGS.append(("INFO", msg))
-
-
-def log_warn(msg: str):
-    GLOBAL_LOGS.append(("WARN", msg))
-
-
-def log_err(msg: str):
-    GLOBAL_LOGS.append(("ERR", msg))
-
-
-def log_debug(msg: str):
-    GLOBAL_LOGS.append(("DEBUG", msg))
 
 
 class ConsolePanel:
@@ -145,6 +127,13 @@ class ConsolePanel:
         self.body_rect = rl.Rectangle(float(x), float(body_y), float(max(0, width)), float(max(0, body_h - command_h)))
         self.command_rect = rl.Rectangle(float(x + 4), float(y + height - command_h + 2), float(max(0, width - 8)), float(max(0, command_h - 4)))
         colors = self._resolve_colors()
+        is_window_ready = getattr(rl, "is_window_ready", None)
+        use_text_ex = False
+        if callable(is_window_ready):
+            try:
+                use_text_ex = bool(is_window_ready())
+            except Exception:
+                use_text_ex = False
 
         rl.draw_rectangle_rec(self.panel_rect, colors["BG"])
         rl.draw_rectangle_rec(self.toolbar_rect, colors["HEADER"])
@@ -220,10 +209,20 @@ class ConsolePanel:
 
                 icon = "(!)" if ltype == self.ERROR else ("/!\\") if ltype == self.WARNING else "(#)" if ltype == self.DEBUG else "(i)"
                 rl.draw_text(icon, int(self.body_rect.x) + 10, curr_y + 4, 10, color)
-                if self._mono_font is None:
-                    self._mono_font = get_mono_font(10)
-                if self._mono_font is not None:
-                    rl.draw_text_ex(self._mono_font, msg, rl.Vector2(float(self.body_rect.x) + 40, float(curr_y + 4)), 10, 0, colors["TEXT"])
+                if use_text_ex:
+                    if self._mono_font is None:
+                        self._mono_font = get_mono_font(10)
+                    if self._mono_font is not None:
+                        rl.draw_text_ex(
+                            self._mono_font,
+                            msg,
+                            rl.Vector2(float(self.body_rect.x) + 40, float(curr_y + 4)),
+                            10,
+                            0,
+                            colors["TEXT"],
+                        )
+                    else:
+                        rl.draw_text(msg, int(self.body_rect.x) + 40, curr_y + 4, 10, colors["TEXT"])
                 else:
                     rl.draw_text(msg, int(self.body_rect.x) + 40, curr_y + 4, 10, colors["TEXT"])
                 rl.draw_line(

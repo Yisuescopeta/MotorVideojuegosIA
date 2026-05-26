@@ -11,7 +11,7 @@ from engine.components.scene_transition_on_interact import SceneTransitionOnInte
 from engine.components.scene_transition_on_player_death import SceneTransitionOnPlayerDeath
 from engine.components.transform import Transform
 from engine.core.engine_state import EngineState
-from engine.editor.console_panel import log_err
+from engine.core.runtime_logging import log_err
 from engine.scenes.scene_transition_support import (
     find_scene_entry_point_in_world,
     list_scene_entry_points_from_payload,
@@ -48,6 +48,8 @@ class SceneTransitionController:
         self._event_bus: Optional["EventBus"] = None
         self._pending_entry_id: str = ""
         self._interact_latches: set[tuple[str, str]] = set()
+        self._external_scene_resolver: Optional[Callable[[str, str | None], str | None]] = None
+        self._external_scene_payload_loader: Optional[Callable[[str], dict[str, Any] | None]] = None
 
     def set_event_bus(self, event_bus: Optional["EventBus"]) -> None:
         if self._event_bus is event_bus:
@@ -61,6 +63,14 @@ class SceneTransitionController:
             self._event_bus.subscribe("on_trigger_enter", self._on_trigger_enter)
             self._event_bus.subscribe("on_collision", self._on_collision)
             self._event_bus.subscribe("player_death", self._on_player_death)
+
+    def set_external_scene_source(
+        self,
+        resolver: Optional[Callable[[str, str | None], str | None]],
+        payload_loader: Optional[Callable[[str], dict[str, Any] | None]],
+    ) -> None:
+        self._external_scene_resolver = resolver
+        self._external_scene_payload_loader = payload_loader
 
     def run_transition_for_entity(self, entity_name: str) -> bool:
         world = self._get_world()
@@ -80,11 +90,20 @@ class SceneTransitionController:
 
         source_scene_path = self._current_scene_source_path()
         resolved_path = resolve_scene_transition_target_path(source_scene_path, target_scene_path)
-        if resolved_path is None or not resolved_path.exists():
+        load_target = resolved_path.as_posix() if resolved_path is not None and resolved_path.exists() else ""
+        target_payload = load_scene_transition_payload(resolved_path) if load_target else None
+
+        if target_payload is None and self._external_scene_resolver is not None:
+            external_target = self._external_scene_resolver(target_scene_path, source_scene_path)
+            if external_target:
+                load_target = external_target
+                if self._external_scene_payload_loader is not None:
+                    target_payload = self._external_scene_payload_loader(external_target)
+
+        if not load_target:
             log_err(f"SceneTransition: target scene '{target_scene_path}' was not found")
             return False
 
-        target_payload = load_scene_transition_payload(resolved_path)
         if target_payload is None:
             log_err(f"SceneTransition: target scene '{target_scene_path}' is unreadable or invalid")
             return False
@@ -100,7 +119,7 @@ class SceneTransitionController:
 
         was_running = self._get_state() in (EngineState.PLAY, EngineState.PAUSED, EngineState.STEPPING)
         self._pending_entry_id = target_entry_id if was_running and target_entry_id else ""
-        if not self._load_scene_by_path(resolved_path.as_posix()):
+        if not self._load_scene_by_path(load_target):
             self._pending_entry_id = ""
             return False
 

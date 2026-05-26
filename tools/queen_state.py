@@ -8,6 +8,7 @@ Usage:
     py -m tools.queen_state list
     py -m tools.queen_state report <task_id>
     py -m tools.queen_state cycle-summary <task_id> <cycle> <summary_json>
+    py -m tools.queen_state plan-sync <task_id> <plan_md_path>
 
 State lives in .motor/queen_state/ as JSON files.
 Queen uses max_cycles=5, a measurable Definition of Done, and final states:
@@ -16,6 +17,7 @@ completed, partial, blocked, failed.
 
 import json
 import os
+import re
 import sys
 from datetime import datetime
 
@@ -245,6 +247,87 @@ def cmd_cycle_summary(task_id, cycle, summary_json):
     print(f"  Log saved: {log_path}")
 
 
+def _parse_md_plan_header(path: str) -> dict | None:
+    """Extract key fields from a markdown plan file."""
+    if not os.path.exists(path):
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        text = f.read()
+
+    def _field(name: str) -> str | None:
+        m = re.search(rf"^{re.escape(name)}:\s*(.+)$", text, re.MULTILINE)
+        return m.group(1).strip() if m else None
+
+    phases = []
+    for m in re.finditer(r"^###\s+Phase\s+(\d+(?:\.\d+)?)\s*[—-]\s*(.+)$", text, re.MULTILINE):
+        phases.append({"number": m.group(1), "name": m.group(2).strip()})
+    current_phase_match = re.search(r"^- Name:\s*(.+)$", text, re.MULTILINE)
+    current_phase = current_phase_match.group(1).strip() if current_phase_match else None
+
+    return {
+        "task_id": _field("Task ID"),
+        "status": _field("Status"),
+        "mode": _field("Mode"),
+        "created_at": _field("Created at"),
+        "updated_at": _field("Updated at"),
+        "current_phase": current_phase,
+        "phases": phases,
+    }
+
+
+def cmd_plan_sync(task_id: str, plan_md_path: str):
+    """Sync JSON state from a markdown plan."""
+    header = _parse_md_plan_header(plan_md_path)
+    if not header:
+        print(f"Error: Cannot read plan file: {plan_md_path}", file=sys.stderr)
+        sys.exit(1)
+
+    plan_path = os.path.join(PLANS_DIR, f"{task_id}.json")
+    plan = _load_json(plan_path)
+
+    if plan:
+        status_map = {"active": "in_progress", "completed": "completed", "blocked": "blocked", "failed": "failed"}
+        plan["status"] = status_map.get(header["status"] or "", plan.get("status", "in_progress"))
+        plan["mode"] = header.get("mode", plan.get("mode", ""))
+    else:
+        _ensure_dirs()
+        plan = {
+            "task_id": task_id,
+            "created_at": header.get("created_at", datetime.now().isoformat()),
+            "goal": f"Long Task Plan: {os.path.basename(plan_md_path)}",
+            "status": "in_progress",
+            "mode": header.get("mode", "long-task-plan"),
+            "max_cycles": DEFAULT_MAX_CYCLES,
+            "current_cycle": 1,
+            "definition_of_done": _default_definition_of_done(),
+            "final_statuses": sorted(FINAL_STATUSES),
+            "cycles": [],
+            "subtasks": [],
+            "final_report": None,
+            "completed_at": None,
+        }
+
+    plan["plan_md_path"] = plan_md_path
+    plan["plan_header"] = header
+    plan["current_phase"] = header.get("current_phase")
+    plan["updated_at"] = datetime.now().isoformat()
+
+    _save_json(plan_path, plan)
+    _save_json(os.path.join(TASKS_DIR, f"{task_id}.json"), {
+        "status": plan["status"],
+        "steps_completed": 0,
+        "steps_failed": 0,
+        "current_cycle": plan.get("current_cycle", 1),
+    })
+
+    print(f"Plan synced: {task_id}")
+    print(f"  MD path: {plan_md_path}")
+    print(f"  Status: {plan['status']}")
+    print(f"  Mode: {plan['mode']}")
+    if plan.get("current_phase"):
+        print(f"  Current phase: {plan['current_phase']}")
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -284,6 +367,12 @@ def main():
             print("Usage: py -m tools.queen_state cycle-summary <task_id> <cycle> <summary_json>")
             sys.exit(1)
         cmd_cycle_summary(sys.argv[2], sys.argv[3], sys.argv[4])
+
+    elif command == "plan-sync":
+        if len(sys.argv) < 4:
+            print("Usage: py -m tools.queen_state plan-sync <task_id> <plan_md_path>")
+            sys.exit(1)
+        cmd_plan_sync(sys.argv[2], sys.argv[3])
 
     else:
         print(f"Unknown command: {command}", file=sys.stderr)

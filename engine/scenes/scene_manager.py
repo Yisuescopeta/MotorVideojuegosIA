@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 from engine.authoring.changes import Change
 from engine.components.recttransform import RectTransform
 from engine.components.transform import Transform
-from engine.editor.console_panel import log_err
+from engine.core.runtime_logging import log_err
 from engine.scenes.change_history import SceneChangeCoordinator, SceneChangeCoordinatorContext
 from engine.scenes.contracts import (
     SceneAuthoringPort,

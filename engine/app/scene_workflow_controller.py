@@ -4,7 +4,7 @@ import os
 from typing import Any, Callable, Optional
 
 from engine.core.engine_state import EngineState
-from engine.editor.console_panel import log_err, log_info
+from engine.core.runtime_logging import log_err, log_info
 
 
 class SceneWorkflowController:

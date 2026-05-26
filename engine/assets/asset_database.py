@@ -285,6 +285,10 @@ class AssetDatabase:
                 return self._catalog_cache or payload
             except Exception as exc:
                 print(f"[WARNING] AssetDatabase: catalogo invalido en {catalog_path.as_posix()}, reconstruyendo: {exc}")
+        if bool(getattr(self._project_service, "read_only", False)):
+            payload: Dict[str, Any] = {"version": 1, "assets": []}
+            self._set_catalog_cache(payload)
+            return payload
         return self.refresh_catalog()
 
     def refresh_catalog(self) -> Dict[str, Any]:
@@ -356,6 +360,13 @@ class AssetDatabase:
         return Path(str(self._project_service.resolve_path(asset_path)) + ".meta.json")
 
     def get_asset_entry(self, locator: Any) -> Optional[Dict[str, Any]]:
+        runtime_resolver = getattr(self._project_service, "resolve_asset_entry", None)
+        if callable(runtime_resolver):
+            entry = runtime_resolver(locator)
+            if entry is not None:
+                return dict(entry)
+            if bool(getattr(self._project_service, "read_only", False)):
+                return None
         self.ensure_catalog()
         if isinstance(locator, str) and locator.startswith("ast_"):
             guid = locator
@@ -379,7 +390,7 @@ class AssetDatabase:
             if path.endswith(".meta.json"):
                 return None
             candidate = self._project_service.resolve_path(path)
-            if candidate.exists() and candidate.is_file():
+            if candidate.exists() and candidate.is_file() and not bool(getattr(self._project_service, "read_only", False)):
                 self.refresh_catalog()
                 if guid:
                     entry = self._guid_index.get(guid)

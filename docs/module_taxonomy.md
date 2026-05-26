@@ -49,6 +49,9 @@ orquestacion. Pueden ser valiosos, pero no son contrato duro del motor.
 | parallax | `modulos oficiales opcionales` | Capa de parallax serializable, fuera del nucleo minimo. |
 | audio | `modulos oficiales opcionales` | Capacidad soportada, no requisito de simulacion base. |
 | UI serializable | `modulos oficiales opcionales` | Capa oficial basada en datos, no core minimo. |
+| export pipeline (`engine/export/`, ExportAPI) | `modulos oficiales opcionales` | Exportacion de juegos por presets, content pack, exporters por plataforma y build reports. Integrado con `EngineAPI` y CLI `motor`. |
+| runtime exportado (`engine/runtime/`) | `modulos oficiales opcionales` | Entrypoint separado del editor para juegos exportados. |
+| exporters por plataforma | `modulos oficiales opcionales` | WindowsExporter, LinuxExporter, MacOSExporter, AndroidExporter, IOSExporter. Cada uno condicionado a toolchain del entorno. |
 | backend `box2d` | `modulos oficiales opcionales` | Mejora oficial opcional; `legacy_aabb` mantiene el core. |
 | `engine/navigation` | `experimental/tooling` | Infraestructura de pathfinding independiente, sin integracion core obligatoria. |
 | `engine/rl` | `experimental/tooling` | Integra workflows IA/RL, no el contrato minimo del runtime. |

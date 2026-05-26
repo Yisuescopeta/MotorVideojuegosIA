@@ -239,7 +239,7 @@ class UIRenderSystem:
     ) -> None:
         del wrap
         safe_font_size = max(10, int(font_size))
-        text_width = rl.measure_text(text, safe_font_size)
+        text_width = int(rl.measure_text(text, safe_font_size) or 0)
         x = rect.x + 8
         if alignment == "center":
             x = rect.x + max(0.0, (rect.width - text_width) * 0.5)

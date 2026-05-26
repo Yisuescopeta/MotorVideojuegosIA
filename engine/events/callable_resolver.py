@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
-from engine.editor.console_panel import log_warn
+from engine.core.runtime_logging import log_warn
 
 if TYPE_CHECKING:
     from engine.ecs.world import World

@@ -20,33 +20,15 @@ import os
 import pyray as rl
 from cli.runner import CLIRunner
 from cli.script_executor import ScriptExecutor
+from engine.app.runtime_system_factory import create_runtime_system_bundle
 from engine.core.game import Game
 from engine.events.event_bus import EventBus
-from engine.events.rule_system import RuleSystem
 from engine.inspector.inspector_system import InspectorSystem
 from engine.levels.component_registry import create_default_registry
 from engine.physics.box2d_backend import Box2DDependencyUnavailable, Box2DPhysicsBackend
 from engine.project.project_service import ProjectService
 from engine.scenes.scene_manager import SceneManager
-from engine.systems.animation_system import AnimationSystem
-from engine.systems.audio_system import AudioSystem
-from engine.systems.character_controller_system import CharacterControllerSystem
-from engine.systems.collision_system import CollisionSystem
-from engine.systems.input_system import InputSystem
-from engine.systems.light2d_system import Light2DSystem
-from engine.systems.parallax_system import ParallaxSystem
-from engine.systems.particle_system import ParticleSystem
-from engine.systems.physics_system import PhysicsSystem
-from engine.systems.player_controller_system import PlayerControllerSystem
-from engine.systems.render_system import RenderSystem
-from engine.systems.resource_preloader_system import ResourcePreloaderSystem
-from engine.systems.script_behaviour_system import ScriptBehaviourSystem
 from engine.systems.selection_system import SelectionSystem
-from engine.systems.timer_system import TimerSystem
-from engine.systems.tween_system import TweenSystem
-from engine.systems.ui_render_system import UIRenderSystem
-from engine.systems.ui_system import UISystem
-from engine.systems.visible_on_screen_system import VisibleOnScreenSystem
 
 
 def parse_args() -> argparse.Namespace:
@@ -124,31 +106,10 @@ def main() -> None:
     # Crear SceneManager
     scene_manager = SceneManager(registry)
 
-    # Crear bus de eventos y sistema de reglas
-    event_bus = EventBus()
-    rule_system = RuleSystem(event_bus)
-
-    # Crear sistemas
-    render_system = RenderSystem()
-    physics_system = PhysicsSystem(gravity=600)
-    collision_system = CollisionSystem(event_bus)
-    animation_system = AnimationSystem(event_bus)
-    audio_system = AudioSystem()
-    input_system = InputSystem()
-    player_controller_system = PlayerControllerSystem()
-    character_controller_system = CharacterControllerSystem()
-    script_behaviour_system = ScriptBehaviourSystem()
-    timer_system = TimerSystem()
-    tween_system = TweenSystem()
-    visible_on_screen_system = VisibleOnScreenSystem()
-    parallax_system = ParallaxSystem()
-    resource_preloader_system = ResourcePreloaderSystem()
+    # Crear sistemas runtime compartidos entre editor PLAY y export
+    runtime_systems = create_runtime_system_bundle(gravity=600)
     inspector_system = InspectorSystem()
     selection_system = SelectionSystem()
-    ui_system = UISystem()
-    ui_render_system = UIRenderSystem()
-    light2d_system = Light2DSystem()
-    particle_system = ParticleSystem(event_bus)
 
     # Configurar juego
     game = Game(
@@ -158,31 +119,14 @@ def main() -> None:
         target_fps=60,
     )
 
-    game.set_project_service(project_service)
-    game.set_scene_manager(scene_manager)
-    game.set_render_system(render_system)
-    game.set_physics_system(physics_system)
-    game.set_collision_system(collision_system)
-    game.set_animation_system(animation_system)
-    game.set_audio_system(audio_system)
-    game.set_input_system(input_system)
-    game.set_character_controller_system(character_controller_system)
-    game.set_player_controller_system(player_controller_system)
-    game.set_script_behaviour_system(script_behaviour_system)
-    game.set_timer_system(timer_system)
-    game.set_tween_system(tween_system)
-    game.set_visible_on_screen_system(visible_on_screen_system)
-    game.set_parallax_system(parallax_system)
-    game.set_resource_preloader_system(resource_preloader_system)
+    runtime_systems.install(game, project_service=project_service, scene_manager=scene_manager)
     game.set_inspector_system(inspector_system)
-    game.set_event_bus(event_bus)
-    game.set_rule_system(rule_system)
     game.set_selection_system(selection_system)
-    game.set_ui_system(ui_system)
-    game.set_ui_render_system(ui_render_system)
-    game.set_light2d_system(light2d_system)
-    game.set_particle_system(particle_system)
-    _register_optional_box2d_backend(game, gravity=physics_system.gravity, event_bus=event_bus)
+    _register_optional_box2d_backend(
+        game,
+        gravity=runtime_systems.physics_system.gravity,
+        event_bus=runtime_systems.event_bus,
+    )
 
     # Configurar ScriptExecutor si se solicito (Visual Automation)
     if args.script:
