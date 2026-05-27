@@ -253,33 +253,28 @@ class PhysicsSystem:
                     left_a, top_a, right_a, bottom_a = my_bounds
                     left_b, top_b, right_b, bottom_b = other_bounds
 
-                    # Try shape-based narrow-phase for accurate contact data.
-                    # Skip when body is already inside the other solid
-                    # (shape normal can push through the solid in containment).
+                    # Try shape-based narrow-phase for accurate contact data
                     shape_normal_x = None
                     shape_normal_y = None
                     shape_depth = 0.0
                     shape_contact_x = 0.0
                     shape_contact_y = 0.0
-                    current_bounds = collider.get_bounds(transform.x, transform.y)
-                    already_overlapping = self._aabb_overlaps(current_bounds, other_bounds)
-                    if not already_overlapping:
-                        try:
-                            my_shape = ShapeFactory.build(collider, tentative_x, tentative_y)
-                            other_shape = ShapeFactory.build(solid.collider, other_transform.x, other_transform.y)
-                            manifold = my_shape.collide_shape(other_shape)
-                            if manifold is not None and manifold.depth > 0:
-                                shape_normal_x = manifold.normal_x
-                                shape_normal_y = manifold.normal_y
-                                shape_depth = manifold.depth
-                                if manifold.contacts:
-                                    shape_contact_x = manifold.contacts[0].point_x
-                                    shape_contact_y = manifold.contacts[0].point_y
-                                else:
-                                    shape_contact_x = (max(left_a, left_b) + min(right_a, right_b)) / 2.0
-                                    shape_contact_y = (max(top_a, top_b) + min(bottom_a, bottom_b)) / 2.0
-                        except Exception:
-                            pass  # Fall back to AABB
+                    try:
+                        my_shape = ShapeFactory.build(collider, tentative_x, tentative_y)
+                        other_shape = ShapeFactory.build(solid.collider, other_transform.x, other_transform.y)
+                        manifold = my_shape.collide_shape(other_shape)
+                        if manifold is not None and manifold.depth > 0:
+                            shape_normal_x = manifold.normal_x
+                            shape_normal_y = manifold.normal_y
+                            shape_depth = manifold.depth
+                            if manifold.contacts:
+                                shape_contact_x = manifold.contacts[0].point_x
+                                shape_contact_y = manifold.contacts[0].point_y
+                            else:
+                                shape_contact_x = (max(left_a, left_b) + min(right_a, right_b)) / 2.0
+                                shape_contact_y = (max(top_a, top_b) + min(bottom_a, bottom_b)) / 2.0
+                    except Exception:
+                        pass  # Fall back to AABB
 
                     if shape_normal_x is not None:
                         if shape_normal_y is None:
@@ -300,21 +295,14 @@ class PhysicsSystem:
                         overlap_y = min(overlap_top, overlap_bottom)
 
                         if overlap_x < overlap_y:
-                            # Use overlap direction (not center positions) so that
-                            # bodies fully inside a large solid are pushed out along
-                            # the shorter exit path.
-                            if overlap_left < overlap_right:
-                                normal_x = -1.0  # push right to exit left-side overlap
-                            else:
-                                normal_x = 1.0   # push left to exit right-side overlap
+                            # Use center positions to determine normal direction
+                            # for standard edge-to-edge contacts.
+                            normal_x = 1.0 if tentative_x < other_transform.x else -1.0
                             normal_y = 0.0
                             depth = overlap_x
                         else:
-                            if overlap_top < overlap_bottom:
-                                normal_y = -1.0  # push down to exit top-side overlap
-                            else:
-                                normal_y = 1.0   # push up to exit bottom-side overlap
                             normal_x = 0.0
+                            normal_y = 1.0 if tentative_y < other_transform.y else -1.0
                             depth = overlap_y
 
                         contact_x = (max(left_a, left_b) + min(right_a, right_b)) / 2.0

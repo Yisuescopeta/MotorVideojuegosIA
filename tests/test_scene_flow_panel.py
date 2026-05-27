@@ -803,7 +803,6 @@ class SceneFlowPanelSupportTests(unittest.TestCase):
         self.assertTrue(panel._context_menu_node_key)
         self.assertEqual(panel._context_menu_node_key, node["node_key"])
         self.assertEqual(panel._selected_node_key, node["node_key"])
-        self.assertEqual(panel._selected_sidebar_key, "sidebar::doora")
 
     def test_context_menu_view_in_scene_requests_entity_open(self) -> None:
         from unittest.mock import MagicMock

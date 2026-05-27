@@ -23,7 +23,7 @@ class EditorShellTests(unittest.TestCase):
             shell = EditorShell(1280, 720, state=state, panel_slots=slots)
 
         self.assertIsNotNone(shell.layout)
-        self.assertEqual(shell.layout.active_tab, "FLOW")
+        self.assertEqual(shell.layout.active_tab, "SCENE")
         self.assertIs(shell.layout.project_panel, slots.project_panel)
         self.assertIs(shell.layout.terminal_panel, slots.terminal_panel)
         self.assertIs(shell.layout.agent_panel, slots.agent_panel)

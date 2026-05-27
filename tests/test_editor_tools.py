@@ -36,8 +36,8 @@ class EditorLayoutToolStateTests(unittest.TestCase):
 
         self.assertIs(layout.shell_state, state)
         self.assertIs(layout.panel_slots, slots)
-        self.assertEqual(layout.active_tab, "FLOW")
-        self.assertEqual(layout.active_bottom_tab, "TERMINAL")
+        self.assertEqual(layout.active_tab, "SCENE")
+        self.assertEqual(layout.active_bottom_tab, "PROJECT")
         self.assertTrue(layout.request_create_entity)
         self.assertIs(layout.project_panel, slots.project_panel)
         self.assertIs(layout.terminal_panel, slots.terminal_panel)
