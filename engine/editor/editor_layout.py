@@ -289,6 +289,7 @@ class EditorLayout:
         self.snap_settings: SnapSettings = SnapSettings()
         self._editor_preferences_dirty: bool = False
         self.dock_layout: DockLayout = DockLayout.default()
+        self._apply_dock_active_tabs()
         self._dock_layout_dirty: bool = False
         self._dock_drag_tab_id: str | None = None
         self._last_active_tab: str = ""

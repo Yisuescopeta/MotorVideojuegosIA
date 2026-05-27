@@ -772,7 +772,10 @@ class SceneFlowPanelSupportTests(unittest.TestCase):
         self.assertIsNone(panel.request_open_target)
 
     def test_right_click_on_node_opens_context_menu(self) -> None:
+        from unittest.mock import MagicMock
+
         panel = SceneFlowPanel()
+        panel._layout = MagicMock()
         node = {
             "node_key": "entity::levels/a.json::DoorA",
             "kind": "entity",
@@ -797,18 +800,21 @@ class SceneFlowPanelSupportTests(unittest.TestCase):
         ), patch("pyray.is_mouse_button_down", return_value=False), patch("pyray.is_mouse_button_released", return_value=False):
             panel._handle_canvas_interactions([node], snapshot)
 
-        self.assertTrue(panel._context_menu_active)
+        self.assertTrue(panel._context_menu_node_key)
         self.assertEqual(panel._context_menu_node_key, node["node_key"])
         self.assertEqual(panel._selected_node_key, node["node_key"])
         self.assertEqual(panel._selected_sidebar_key, "sidebar::doora")
 
     def test_context_menu_view_in_scene_requests_entity_open(self) -> None:
+        from unittest.mock import MagicMock
+
         panel = SceneFlowPanel()
         panel._panel_rect = rl.Rectangle(0.0, 0.0, 640.0, 360.0)
-        panel._context_menu_active = True
-        panel._context_menu_pos = rl.Vector2(120.0, 96.0)
         panel._context_menu_node_key = "entity::levels/a.json::DoorA"
-        snapshot = {
+        panel._layout = MagicMock()
+        panel._layout._process_global_context_menu.return_value = "open_in_scene"
+        panel._layout._render_global_context_menu = MagicMock()
+        panel._snapshot = {
             "canvas_nodes": [
                 {
                     "node_key": "entity::levels/a.json::DoorA",
@@ -818,28 +824,22 @@ class SceneFlowPanelSupportTests(unittest.TestCase):
                 }
             ]
         }
-        menu_rect = panel._context_menu_rect()
-        mouse = rl.Vector2(menu_rect.x + 10.0, menu_rect.y + 10.0)
 
-        with patch("pyray.get_mouse_position", return_value=mouse), patch(
-            "pyray.check_collision_point_rec",
-            side_effect=lambda point, rect: rect.x <= point.x <= rect.x + rect.width and rect.y <= point.y <= rect.y + rect.height,
-        ), patch("pyray.is_mouse_button_pressed", return_value=False), patch(
-            "pyray.is_mouse_button_released",
-            side_effect=lambda button: button == rl.MOUSE_BUTTON_LEFT,
-        ), patch("pyray.draw_rectangle_rec"), patch("pyray.draw_rectangle_lines_ex"), patch("pyray.draw_text"):
-            panel._draw_canvas_context_menu(snapshot)
+        with patch.object(panel, "refresh", return_value=panel._snapshot), patch.object(panel, "_layout_rects"), patch.object(panel, "_handle_wheel"), patch.object(panel, "_draw_toolbar"), patch.object(panel, "_draw_sidebar"), patch.object(panel, "_draw_canvas"), patch.object(panel, "_finalize_drag"), patch("pyray.draw_rectangle_rec"), patch("pyray.draw_rectangle_lines_ex"):
+            panel.render(0, 0, 640, 360)
 
         self.assertEqual(panel.request_open_source, {"scene_ref": "levels/a.json", "entity_name": "DoorA"})
-        self.assertFalse(panel._context_menu_active)
 
-    def test_context_menu_click_outside_closes_without_navigation(self) -> None:
+    def test_context_menu_click_outside_does_not_navigate(self) -> None:
+        from unittest.mock import MagicMock
+
         panel = SceneFlowPanel()
         panel._panel_rect = rl.Rectangle(0.0, 0.0, 640.0, 360.0)
-        panel._context_menu_active = True
-        panel._context_menu_pos = rl.Vector2(120.0, 96.0)
         panel._context_menu_node_key = "target::levels/b.json::DoorB"
-        snapshot = {
+        panel._layout = MagicMock()
+        panel._layout._process_global_context_menu.return_value = None
+        panel._layout._render_global_context_menu = MagicMock()
+        panel._snapshot = {
             "canvas_nodes": [
                 {
                     "node_key": "target::levels/b.json::DoorB",
@@ -849,20 +849,10 @@ class SceneFlowPanelSupportTests(unittest.TestCase):
                 }
             ]
         }
-        mouse = rl.Vector2(12.0, 12.0)
 
-        with patch("pyray.get_mouse_position", return_value=mouse), patch(
-            "pyray.check_collision_point_rec",
-            side_effect=lambda point, rect: rect.x <= point.x <= rect.x + rect.width and rect.y <= point.y <= rect.y + rect.height,
-        ), patch(
-            "pyray.is_mouse_button_pressed",
-            side_effect=lambda button: button == rl.MOUSE_BUTTON_LEFT,
-        ), patch("pyray.is_mouse_button_released", return_value=False), patch(
-            "pyray.draw_rectangle_rec"
-        ), patch("pyray.draw_rectangle_lines_ex"), patch("pyray.draw_text"):
-            panel._draw_canvas_context_menu(snapshot)
+        with patch.object(panel, "refresh", return_value=panel._snapshot), patch.object(panel, "_layout_rects"), patch.object(panel, "_handle_wheel"), patch.object(panel, "_draw_toolbar"), patch.object(panel, "_draw_sidebar"), patch.object(panel, "_draw_canvas"), patch.object(panel, "_finalize_drag"), patch("pyray.draw_rectangle_rec"), patch("pyray.draw_rectangle_lines_ex"):
+            panel.render(0, 0, 640, 360)
 
-        self.assertFalse(panel._context_menu_active)
         self.assertIsNone(panel.request_open_source)
         self.assertIsNone(panel.request_open_target)
 

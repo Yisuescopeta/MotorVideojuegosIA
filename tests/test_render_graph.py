@@ -484,7 +484,11 @@ class RenderGraphTests(unittest.TestCase):
         anchor.add_component(Transform(x=0.0, y=0.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
         jointed = world.create_entity("Pendulum")
         jointed.add_component(Transform(x=10.0, y=10.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
-        jointed.add_component(Joint2D(joint_type="distance", connected_entity="Anchor", rest_length=14.0))
+        j2d = Joint2D()
+        j2d.joint_type = "distance"
+        j2d.connected_entity = "Anchor"
+        j2d.rest_length = 14.0
+        jointed.add_component(j2d)
 
         render_system = RenderSystem()
         render_system.set_debug_options(draw_colliders=True)

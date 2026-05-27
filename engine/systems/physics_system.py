@@ -253,28 +253,33 @@ class PhysicsSystem:
                     left_a, top_a, right_a, bottom_a = my_bounds
                     left_b, top_b, right_b, bottom_b = other_bounds
 
-                    # Try shape-based narrow-phase for accurate contact data
+                    # Try shape-based narrow-phase for accurate contact data.
+                    # Skip when body is already inside the other solid
+                    # (shape normal can push through the solid in containment).
                     shape_normal_x = None
                     shape_normal_y = None
                     shape_depth = 0.0
                     shape_contact_x = 0.0
                     shape_contact_y = 0.0
-                    try:
-                        my_shape = ShapeFactory.build(collider, tentative_x, tentative_y)
-                        other_shape = ShapeFactory.build(solid.collider, other_transform.x, other_transform.y)
-                        manifold = my_shape.collide_shape(other_shape)
-                        if manifold is not None and manifold.depth > 0:
-                            shape_normal_x = manifold.normal_x
-                            shape_normal_y = manifold.normal_y
-                            shape_depth = manifold.depth
-                            if manifold.contacts:
-                                shape_contact_x = manifold.contacts[0].point_x
-                                shape_contact_y = manifold.contacts[0].point_y
-                            else:
-                                shape_contact_x = (max(left_a, left_b) + min(right_a, right_b)) / 2.0
-                                shape_contact_y = (max(top_a, top_b) + min(bottom_a, bottom_b)) / 2.0
-                    except Exception:
-                        pass  # Fall back to AABB
+                    current_bounds = collider.get_bounds(transform.x, transform.y)
+                    already_overlapping = self._aabb_overlaps(current_bounds, other_bounds)
+                    if not already_overlapping:
+                        try:
+                            my_shape = ShapeFactory.build(collider, tentative_x, tentative_y)
+                            other_shape = ShapeFactory.build(solid.collider, other_transform.x, other_transform.y)
+                            manifold = my_shape.collide_shape(other_shape)
+                            if manifold is not None and manifold.depth > 0:
+                                shape_normal_x = manifold.normal_x
+                                shape_normal_y = manifold.normal_y
+                                shape_depth = manifold.depth
+                                if manifold.contacts:
+                                    shape_contact_x = manifold.contacts[0].point_x
+                                    shape_contact_y = manifold.contacts[0].point_y
+                                else:
+                                    shape_contact_x = (max(left_a, left_b) + min(right_a, right_b)) / 2.0
+                                    shape_contact_y = (max(top_a, top_b) + min(bottom_a, bottom_b)) / 2.0
+                        except Exception:
+                            pass  # Fall back to AABB
 
                     if shape_normal_x is not None:
                         if shape_normal_y is None:
@@ -295,12 +300,21 @@ class PhysicsSystem:
                         overlap_y = min(overlap_top, overlap_bottom)
 
                         if overlap_x < overlap_y:
-                            normal_x = 1.0 if tentative_x < other_transform.x else -1.0
+                            # Use overlap direction (not center positions) so that
+                            # bodies fully inside a large solid are pushed out along
+                            # the shorter exit path.
+                            if overlap_left < overlap_right:
+                                normal_x = -1.0  # push right to exit left-side overlap
+                            else:
+                                normal_x = 1.0   # push left to exit right-side overlap
                             normal_y = 0.0
                             depth = overlap_x
                         else:
+                            if overlap_top < overlap_bottom:
+                                normal_y = -1.0  # push down to exit top-side overlap
+                            else:
+                                normal_y = 1.0   # push up to exit bottom-side overlap
                             normal_x = 0.0
-                            normal_y = 1.0 if tentative_y < other_transform.y else -1.0
                             depth = overlap_y
 
                         contact_x = (max(left_a, left_b) + min(right_a, right_b)) / 2.0
@@ -516,7 +530,10 @@ class PhysicsSystem:
                     rigidbody.velocity_x = 0.0
                 else:
                     if continuous_mode and collider is not None and collider.enabled:
+                        orig_delta_x = delta_x
                         delta_x = self._sweep_horizontal(entity, transform, rigidbody, collider, nearby_solids, delta_x)
+                        if abs(delta_x) < abs(orig_delta_x) - 1e-6:
+                            rigidbody.velocity_x = 0.0
                     transform.x += delta_x
                     if collider is not None and collider.enabled:
                         self._resolve_horizontal(transform, rigidbody, collider, nearby_solids)
@@ -525,7 +542,10 @@ class PhysicsSystem:
                     rigidbody.velocity_y = 0.0
                 else:
                     if continuous_mode and collider is not None and collider.enabled:
+                        orig_delta_y = delta_y
                         delta_y = self._sweep_vertical(entity, transform, rigidbody, collider, nearby_solids, delta_y)
+                        if abs(delta_y) < abs(orig_delta_y) - 1e-6:
+                            rigidbody.velocity_y = 0.0
                     transform.y += delta_y
                     rigidbody.is_grounded = False
                     if collider is not None and collider.enabled:
@@ -1151,12 +1171,20 @@ class PhysicsSystem:
                     continue
                 if delta_x > 0:
                     gap = o_left - right
-                    if 0.0 <= gap <= safe_delta:
+                    if gap < 0.0:
+                        # Already overlapping: prevent further penetration
+                        safe_delta = 0.0
+                        self._record_swept_contact(entity, other.entity)
+                    elif gap <= safe_delta:
                         safe_delta = min(safe_delta, max(0.0, gap))
                         self._record_swept_contact(entity, other.entity)
                 else:
                     gap = o_right - left
-                    if safe_delta <= gap <= 0.0:
+                    if gap > 0.0:
+                        # Already overlapping: prevent further penetration
+                        safe_delta = 0.0
+                        self._record_swept_contact(entity, other.entity)
+                    elif safe_delta <= gap <= 0.0:
                         safe_delta = max(safe_delta, min(0.0, gap))
                         self._record_swept_contact(entity, other.entity)
         return safe_delta
@@ -1186,12 +1214,20 @@ class PhysicsSystem:
                     continue
                 if delta_y > 0:
                     gap = o_top - bottom
-                    if 0.0 <= gap <= safe_delta:
+                    if gap < 0.0:
+                        # Already overlapping: prevent further penetration
+                        safe_delta = 0.0
+                        self._record_swept_contact(entity, other.entity)
+                    elif gap <= safe_delta:
                         safe_delta = min(safe_delta, max(0.0, gap))
                         self._record_swept_contact(entity, other.entity)
                 else:
                     gap = o_bottom - top
-                    if safe_delta <= gap <= 0.0:
+                    if gap > 0.0:
+                        # Already overlapping: prevent further penetration
+                        safe_delta = 0.0
+                        self._record_swept_contact(entity, other.entity)
+                    elif safe_delta <= gap <= 0.0:
                         safe_delta = max(safe_delta, min(0.0, gap))
                         self._record_swept_contact(entity, other.entity)
         return safe_delta
