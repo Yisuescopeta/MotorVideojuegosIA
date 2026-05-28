@@ -10,7 +10,7 @@ Exportacion a plataformas moviles: Android e iOS.
 |---|---|---|
 | Android SDK | `ANDROID_HOME` o `ANDROID_SDK_ROOT` | [Android Studio](https://developer.android.com/studio) |
 | JDK 11+ | `java -version` | `sdk install java 17.0.0-tem` o Android Studio JDK |
-| Gradle | `gradle --version` | `sdk install gradle 8.5` o wrapper incluido |
+| Gradle | `gradle --version` o `gradlew/gradlew.bat` | `sdk install gradle 8.5` o wrapper incluido |
 
 `motor export doctor` verifica estos requisitos y reporta `healthy: false`
 cuando faltan.
@@ -67,7 +67,7 @@ py -m motor export build "Android Release" --project . --json
 2. Genera proyecto Android desde `platforms/android/template/`.
 3. Copia content pack a `app/src/main/assets/`.
 4. Genera `AndroidManifest.xml` con `application_id`, `version_code`, orientacion.
-5. Ejecuta `gradle assembleDebug`.
+5. Ejecuta `gradlew assembleDebug` si existe wrapper; si no, `gradle assembleDebug`.
 6. Copia APK a `dist/export/android/`.
 7. Genera build report.
 
@@ -76,7 +76,7 @@ py -m motor export build "Android Release" --project . --json
 1. Todos los pasos de debug.
 2. Valida keystore desde `extra.keystore_path`.
 3. Configura signing en `app/build.gradle`.
-4. Ejecuta `gradle assembleRelease` y `gradle bundleRelease`.
+4. Ejecuta `gradlew assembleRelease`/`bundleRelease` si existe wrapper; si no, `gradle`.
 5. Copia APK firmado y AAB a `dist/export/android/`.
 6. Report incluye hashes de artefactos y redaccion de keystore.
 
@@ -114,13 +114,37 @@ app/
         styles.xml
       drawable/
         ic_launcher.png
-    java/com/motor/game/
-      MotorActivity.java
+    java/com/motorvideojuegos/
+      MainActivity.kt
 ```
 
-El exporter reemplaza placeholders (`{{APP_ID}}`, `{{APP_NAME}}`, `{{VERSION_CODE}}`,
-`{{VERSION_NAME}}`, `{{MIN_SDK}}`, `{{TARGET_SDK}}`, `{{ORIENTATION}}`) en los
-archivos de template.
+El exporter reemplaza placeholders (`{{APPLICATION_ID}}`, `{{DISPLAY_NAME}}`,
+`{{VERSION_CODE}}`, `{{VERSION_NAME}}`, `{{MIN_SDK}}`, `{{TARGET_SDK}}`,
+`{{ORIENTATION}}`) en los archivos de template.
+
+El template Android incluye un runtime Kotlin nativo v1 con `SurfaceView`.
+Carga `runtime_config.json`, escenas JSON y assets desde `app/src/main/assets/`.
+Soporta el primer APK jugable para menu UI, cambio de escena, camara,
+animacion spritesheet basica, fisica AABB, `PlayerController2D`, `InputMap` y
+`MobileControls2D`.
+
+Limitacion v1: no ejecuta `ScriptBehaviour` Python ni sistemas avanzados como
+audio, tilemap, particulas, luces, navegacion o tweens. El exporter falla con
+errores `ANDROID_RUNTIME_UNSUPPORTED_*` si una escena Android usa capacidades
+todavia no portadas, para evitar APKs silenciosamente no jugables.
+
+## Controles moviles
+
+```bash
+py -m motor mobile controls add --target Player --profile platformer --project . --json
+py -m motor mobile controls add --scene levels/platformer_test_scene.json --target Player --profile platformer --project . --json
+```
+
+Este comando crea un overlay `MobileControls2D` serializable. En runtime,
+`MobileControlsSystem` traduce touch/pointer a `InputMap.last_state` del
+`target_entity`. En Android v1, el exporter exige que toda escena reachable con
+`InputMap` + `PlayerController2D` tenga un overlay `MobileControls2D` apuntando
+a esa entidad. Es modulo interno del motor, no dependencia externa.
 
 ### Sin Android SDK
 
@@ -128,7 +152,7 @@ Si el entorno no tiene `ANDROID_HOME`:
 
 - Tests unitarios de Android siguen pasando.
 - `motor export doctor` reporta `healthy: false` con diagnostico.
-- `motor export build` genera proyecto estructural pero falla con
+- `motor export build` genera proyecto Android jugable en staging pero falla con
   `TOOLCHAIN_UNAVAILABLE`.
 - El proyecto Android generado queda en staging para inspeccion.
 
@@ -200,7 +224,7 @@ Los tests estructurales de iOS pasan en cualquier SO. El exporter reporta
 |---|---|---|
 | `ANDROID_HOME` | Variable de entorno | Android exports bloqueados |
 | `java` | `shutil.which("java")` | Android builds requieren JDK |
-| `gradle` | `shutil.which("gradle")` | Compilacion Android requiere Gradle |
+| `gradle` | `shutil.which("gradle")` o wrapper local | Compilacion Android requiere Gradle |
 | macOS host | `platform.system() == "Darwin"` | iOS exports requieren macOS |
 | Xcode | `shutil.which("xcodebuild")` | iOS compilacion requiere Xcode |
 
@@ -220,6 +244,9 @@ py -m motor export doctor --project . --json
 
 - **Android real build**: requiere Android SDK, JDK 11+ y Gradle. Sin ellos, se
   genera proyecto estructural pero no APK/AAB.
+- **Android jugable v1**: usa runtime Kotlin nativo. Soporta menu, escena
+  platformer basica, sprites/rect fallback, camara, fisica AABB y controles
+  moviles. `ScriptBehaviour` Python queda para la siguiente fase.
 - **Android release signing**: requiere keystore configurado en `extra`.
 - **iOS real build**: requiere macOS, Xcode y Apple Developer account. Nunca
   compila automaticamente desde el pipeline.

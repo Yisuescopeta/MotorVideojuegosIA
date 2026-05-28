@@ -30,8 +30,8 @@ from engine.components.transform import Transform
 from engine.config import EDIT_ANIMATION_SPEED, ENGINE_VERSION, SCRIPTS_DIRECTORY, TIMELINE_CAPACITY
 from engine.core.engine_state import EngineState
 from engine.core.hot_reload import HotReloadManager
-from engine.core.runtime_logging import log_err, log_warn
 from engine.core.runtime_contracts import RuntimeControllerContext
+from engine.core.runtime_logging import log_err, log_warn
 from engine.core.runtime_loop import RuntimeTickPlan
 from engine.core.time_manager import TimeManager
 from engine.debug.profiler import EngineProfiler
@@ -51,10 +51,10 @@ from engine.project.project_service import ProjectService
 if TYPE_CHECKING:
     from cli.script_executor import ScriptExecutor
     from engine.api import EngineAPI
-    from engine.ecs.world import World
     from engine.app.debug_tools_controller import DebugToolsController
     from engine.app.editor_interaction_controller import EditorInteractionController
     from engine.app.project_workspace_controller import ProjectWorkspaceController
+    from engine.ecs.world import World
     from engine.editor.agent_panel import AgentPanel
     from engine.editor.animator_panel import AnimatorPanel
     from engine.editor.cursor_manager import CustomCursorRenderer
@@ -62,9 +62,9 @@ if TYPE_CHECKING:
     from engine.editor.editor_shell import EditorShell
     from engine.editor.gizmo_system import GizmoSystem
     from engine.editor.hierarchy_panel import HierarchyPanel
-    from engine.editor.ui.inspector_render import InspectorPanel
     from engine.editor.sprite_editor_modal import SpriteEditorModal
     from engine.editor.terminal_panel import TerminalPanel
+    from engine.editor.ui.inspector_render import InspectorPanel
     from engine.editor.undo_redo import UndoRedoManager
     from engine.events.event_bus import EventBus
     from engine.events.rule_system import RuleSystem
@@ -82,6 +82,7 @@ if TYPE_CHECKING:
     from engine.systems.input_system import InputSystem
     from engine.systems.light2d_system import Light2DSystem
     from engine.systems.line2d_render_system import Line2DRenderSystem
+    from engine.systems.mobile_controls_system import MobileControlsSystem
     from engine.systems.navigation_agent_system import NavigationAgentSystem
     from engine.systems.parallax_system import ParallaxSystem
     from engine.systems.particle_system import ParticleSystem
@@ -118,12 +119,15 @@ def _load_editor_dependencies() -> None:
     from engine.app.project_workspace_controller import ProjectWorkspaceController as _ProjectWorkspaceController
     from engine.editor.agent_panel import AgentPanel as _AgentPanel
     from engine.editor.animator_panel import AnimatorPanel as _AnimatorPanel
-    from engine.editor.console_panel import log_err as _log_err, log_warn as _log_warn
+    from engine.editor.console_panel import log_err as _log_err
+    from engine.editor.console_panel import log_warn as _log_warn
     from engine.editor.cursor_manager import CustomCursorRenderer as _CustomCursorRenderer
     from engine.editor.editor_layout import EditorLayout as _EditorLayout
     from engine.editor.editor_shell import EditorShell as _EditorShell
     from engine.editor.editor_shell_state import EditorPanelSlots as _EditorPanelSlots
-    from engine.editor.editor_tools import EditorTool as _EditorTool, PivotMode as _PivotMode, TransformSpace as _TransformSpace
+    from engine.editor.editor_tools import EditorTool as _EditorTool
+    from engine.editor.editor_tools import PivotMode as _PivotMode
+    from engine.editor.editor_tools import TransformSpace as _TransformSpace
     from engine.editor.gizmo_system import GizmoSystem as _GizmoSystem
     from engine.editor.hierarchy_panel import HierarchyPanel as _HierarchyPanel
     from engine.editor.raygui_theme import apply_unity_dark_theme as _apply_unity_dark_theme
@@ -200,6 +204,7 @@ class Game:
         self._animation_system: Optional["AnimationSystem"] = None
         self._audio_system: Optional["AudioSystem"] = None
         self._input_system: Optional["InputSystem"] = None
+        self._mobile_controls_system: Optional["MobileControlsSystem"] = None
         self._player_controller_system: Optional["PlayerControllerSystem"] = None
         self._character_controller_system: Optional["CharacterControllerSystem"] = None
         self._script_behaviour_system: Optional["ScriptBehaviourSystem"] = None
@@ -338,6 +343,7 @@ class Game:
                 get_event_bus=lambda: self._event_bus,
                 get_animation_system=lambda: self._animation_system,
                 get_input_system=lambda: self._input_system,
+                get_mobile_controls_system=lambda: self._mobile_controls_system,
                 get_player_controller_system=lambda: self._player_controller_system,
                 get_character_controller_system=lambda: self._character_controller_system,
                 get_physics_system=lambda: self._physics_system,
@@ -701,6 +707,9 @@ class Game:
 
     def set_input_system(self, system: "InputSystem") -> None:
         self._input_system = system
+
+    def set_mobile_controls_system(self, system: "MobileControlsSystem") -> None:
+        self._mobile_controls_system = system
 
     def set_player_controller_system(self, system: "PlayerControllerSystem") -> None:
         self._player_controller_system = system
@@ -1069,6 +1078,15 @@ class Game:
                 bool(pointer_state.get("pressed", False)),
                 bool(pointer_state.get("released", False)),
                 int(pointer_state.get("frames", 1)),
+            )
+        if pointer_state is not None and self._mobile_controls_system is not None:
+            self._mobile_controls_system.inject_pointer_state(
+                float(pointer_state.get("x", 0.0)),
+                float(pointer_state.get("y", 0.0)),
+                down=bool(pointer_state.get("down", False)),
+                pressed=bool(pointer_state.get("pressed", False)),
+                released=bool(pointer_state.get("released", False)),
+                frames=int(pointer_state.get("frames", 1)),
             )
         frame_dt = max(0.0, float(dt))
         self.time.update_manual(frame_dt)
@@ -1548,7 +1566,12 @@ class Game:
             gameplay_start = time.perf_counter()
             try:
                 for _ in range(plan.fixed_steps):
-                    self._runtime_controller.run_fixed_update(active_world, plan.fixed_dt, plan)
+                    self._runtime_controller.run_fixed_update(
+                        active_world,
+                        plan.fixed_dt,
+                        plan,
+                        viewport_size,
+                    )
             except Exception as exc:
                 log_err(f"Gameplay error: {exc}")
             gameplay_elapsed = (time.perf_counter() - gameplay_start) * 1000.0

@@ -90,6 +90,7 @@ class EngineAPI:
         from engine.systems.gameplay2d_semantic_system import Gameplay2DSemanticSystem
         from engine.systems.gpu_particles_system import GPUParticlesSystem
         from engine.systems.input_system import InputSystem
+        from engine.systems.mobile_controls_system import MobileControlsSystem
         from engine.systems.physics_system import PhysicsSystem
         from engine.systems.player_controller_system import PlayerControllerSystem
         from engine.systems.raycast_2d_system import RayCast2DSystem
@@ -117,6 +118,7 @@ class EngineAPI:
         self.game.set_animation_system(AnimationSystem(event_bus))
         self.game.set_event_bus(event_bus)
         self.game.set_input_system(InputSystem())
+        self.game.set_mobile_controls_system(MobileControlsSystem())
         self.game.set_character_controller_system(CharacterControllerSystem())
         self.game.set_player_controller_system(PlayerControllerSystem())
         self.game.set_script_behaviour_system(ScriptBehaviourSystem())

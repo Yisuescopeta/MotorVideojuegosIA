@@ -152,17 +152,13 @@ The entries below are available now and are safe to use from the CLI.
   - API: `RecipeRunner.run_recipe`
   - CLI: `motor recipe run <id> [--project <path>]`
 
-- **introspect:capabilities**: Query this capability registry itself
-  - API: `CapabilityRegistry.cmd_capabilities`
-  - CLI: `motor capabilities [--json]`
+- **export:build**: Build a playable export artifact for one preset
+  - API: `ExportAPI.build_export`
+  - CLI: `motor export build <preset> [--project <path>] [--json]`
 
-- **export:presets:list**: List export presets configured for the project
-  - API: `ExportAPI.list_export_presets`
-  - CLI: `motor export presets list [--project <path>] [--json]`
-
-- **export:presets:validate**: Validate export presets and project paths
-  - API: `ExportAPI.validate_export_preset`
-  - CLI: `motor export presets validate [--project <path>] [--json]`
+- **export:build-all**: Build all configured export presets
+  - API: `ExportAPI.build_all_exports`
+  - CLI: `motor export build-all [--project <path>] [--json]`
 
 - **export:doctor**: Check export toolchains and external SDK availability
   - API: `ExportAPI.export_doctor`
@@ -172,13 +168,17 @@ The entries below are available now and are safe to use from the CLI.
   - API: `ExportAPI.export_pack`
   - CLI: `motor export pack <preset> [--project <path>] [--json]`
 
-- **export:build**: Build a playable export artifact for one preset
-  - API: `ExportAPI.build_export`
-  - CLI: `motor export build <preset> [--project <path>] [--json]`
+- **export:presets:list**: List export presets configured for the project
+  - API: `ExportAPI.list_export_presets`
+  - CLI: `motor export presets list [--project <path>] [--json]`
 
-- **export:build-all**: Build all configured export presets
-  - API: `ExportAPI.build_all_exports`
-  - CLI: `motor export build-all [--project <path>] [--json]`
+- **export:presets:validate**: Validate export presets and project paths
+  - API: `ExportAPI.validate_export_preset`
+  - CLI: `motor export presets validate [--project <path>] [--json]`
+
+- **introspect:capabilities**: Query this capability registry itself
+  - API: `CapabilityRegistry.cmd_capabilities`
+  - CLI: `motor capabilities [--json]`
 
 ## Capabilities by Category
 
@@ -340,6 +340,10 @@ The entries below are available now and are safe to use from the CLI.
 - `ui:create_canvas`: Create a UI canvas entity
 - `ui:create_image`: Create a UI image element
 - `ui:create_text`: Create a UI text element
+
+### Mobile
+
+- `mobile:controls:add`: Add mobile virtual controls to the active or selected scene
 
 ### Editor
 

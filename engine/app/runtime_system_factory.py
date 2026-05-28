@@ -13,6 +13,7 @@ from engine.systems.character_controller_system import CharacterControllerSystem
 from engine.systems.collision_system import CollisionSystem
 from engine.systems.input_system import InputSystem
 from engine.systems.light2d_system import Light2DSystem
+from engine.systems.mobile_controls_system import MobileControlsSystem
 from engine.systems.parallax_system import ParallaxSystem
 from engine.systems.particle_system import ParticleSystem
 from engine.systems.physics_system import PhysicsSystem
@@ -40,6 +41,7 @@ class RuntimeSystemBundle:
     animation_system: AnimationSystem
     audio_system: AudioSystem
     input_system: InputSystem
+    mobile_controls_system: MobileControlsSystem
     character_controller_system: CharacterControllerSystem
     player_controller_system: PlayerControllerSystem
     script_behaviour_system: ScriptBehaviourSystem
@@ -70,6 +72,7 @@ class RuntimeSystemBundle:
         game.set_animation_system(self.animation_system)
         game.set_audio_system(self.audio_system)
         game.set_input_system(self.input_system)
+        game.set_mobile_controls_system(self.mobile_controls_system)
         game.set_character_controller_system(self.character_controller_system)
         game.set_player_controller_system(self.player_controller_system)
         game.set_script_behaviour_system(self.script_behaviour_system)
@@ -97,6 +100,7 @@ def create_runtime_system_bundle(*, gravity: float = 600.0) -> RuntimeSystemBund
         animation_system=AnimationSystem(event_bus),
         audio_system=AudioSystem(),
         input_system=InputSystem(),
+        mobile_controls_system=MobileControlsSystem(),
         character_controller_system=CharacterControllerSystem(),
         player_controller_system=PlayerControllerSystem(),
         script_behaviour_system=ScriptBehaviourSystem(),

@@ -55,6 +55,19 @@ mantiene artefactos estructurales posibles, como proyecto Android generado.
 Documentacion relacionada: [export_pipeline.md](export_pipeline.md),
 [export_presets.md](export_presets.md), [troubleshooting_export.md](troubleshooting_export.md).
 
+## Mobile
+
+```bash
+py -m motor mobile controls add --target Player --profile platformer --project . --json
+py -m motor mobile controls add --scene levels/platformer_test_scene.json --target Player --profile platformer --project . --json
+```
+
+El comando agrega un overlay `MobileControls2D` serializable a la escena activa.
+Usa `--scene` para preparar una escena concreta sin depender de la ultima escena
+activa del editor. Por defecto no duplica overlays existentes; usa `--replace`
+para regenerarlo. El runtime traduce el control tactil a acciones `InputMap`
+antes de `PlayerController2D`.
+
 ## Comandos de introspeccion
 
 ### `motor ai start`

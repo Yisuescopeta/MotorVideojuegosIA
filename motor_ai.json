@@ -1406,6 +1406,166 @@
             ]
         },
         {
+            "id": "export:build",
+            "summary": "Build a playable export artifact for one preset",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "ExportAPI.build_export"
+            ],
+            "cli_command": "motor export build <preset> [--project <path>] [--json]",
+            "example": {
+                "description": "Build Windows Desktop export",
+                "api_calls": [
+                    {
+                        "method": "build_export",
+                        "args": {
+                            "name": "Windows Desktop"
+                        }
+                    }
+                ],
+                "expected_outcome": "Builds artifact or returns TOOLCHAIN_UNAVAILABLE with report"
+            },
+            "notes": "Does not use main.py editor as exported game entrypoint.",
+            "tags": [
+                "export",
+                "build",
+                "runtime"
+            ]
+        },
+        {
+            "id": "export:build-all",
+            "summary": "Build all configured export presets",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "ExportAPI.build_all_exports"
+            ],
+            "cli_command": "motor export build-all [--project <path>] [--json]",
+            "example": {
+                "description": "Build all exports",
+                "api_calls": [
+                    {
+                        "method": "build_all_exports",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns per-preset build results and reports"
+            },
+            "notes": "Overall command fails if any preset build fails.",
+            "tags": [
+                "export",
+                "build",
+                "automation"
+            ]
+        },
+        {
+            "id": "export:doctor",
+            "summary": "Check export toolchains and external SDK availability",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "ExportAPI.export_doctor"
+            ],
+            "cli_command": "motor export doctor [--project <path>] [--json]",
+            "example": {
+                "description": "Check export environment",
+                "api_calls": [
+                    {
+                        "method": "export_doctor",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Reports PyInstaller, Android SDK, Java, Gradle and OS data"
+            },
+            "notes": "Read-only diagnostic; warnings are not build success claims.",
+            "tags": [
+                "export",
+                "doctor",
+                "toolchain"
+            ]
+        },
+        {
+            "id": "export:pack",
+            "summary": "Build deterministic content pack for an export preset",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "ExportAPI.export_pack"
+            ],
+            "cli_command": "motor export pack <preset> [--project <path>] [--json]",
+            "example": {
+                "description": "Pack Windows Desktop content",
+                "api_calls": [
+                    {
+                        "method": "export_pack",
+                        "args": {
+                            "name": "Windows Desktop"
+                        }
+                    }
+                ],
+                "expected_outcome": "Writes game.manifest.json, game.pak and staged content"
+            },
+            "notes": "Uses reachable content graph unless debug/include_all_assets is enabled.",
+            "tags": [
+                "export",
+                "content",
+                "pack"
+            ]
+        },
+        {
+            "id": "export:presets:list",
+            "summary": "List export presets configured for the project",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "ExportAPI.list_export_presets"
+            ],
+            "cli_command": "motor export presets list [--project <path>] [--json]",
+            "example": {
+                "description": "List export presets",
+                "api_calls": [
+                    {
+                        "method": "list_export_presets",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns configured export presets"
+            },
+            "notes": "Reads export_presets.motor.json from the project root.",
+            "tags": [
+                "export",
+                "build",
+                "presets"
+            ]
+        },
+        {
+            "id": "export:presets:validate",
+            "summary": "Validate export presets and project paths",
+            "mode": "both",
+            "status": "implemented",
+            "api_methods": [
+                "ExportAPI.validate_export_preset"
+            ],
+            "cli_command": "motor export presets validate [--project <path>] [--json]",
+            "example": {
+                "description": "Validate all export presets",
+                "api_calls": [
+                    {
+                        "method": "validate_export_preset",
+                        "args": {}
+                    }
+                ],
+                "expected_outcome": "Returns actionable preset validation errors or success"
+            },
+            "notes": "Validates schema, entry scene, output path and platform options.",
+            "tags": [
+                "export",
+                "validation",
+                "presets"
+            ]
+        },
+        {
             "id": "game:platformer:add-checkpoint",
             "summary": "Create or update a named native checkpoint in the selected scene",
             "mode": "edit",
@@ -2002,6 +2162,35 @@
             "tags": [
                 "introspection",
                 "entity"
+            ]
+        },
+        {
+            "id": "mobile:controls:add",
+            "summary": "Add mobile virtual controls to the active scene",
+            "mode": "edit",
+            "status": "implemented",
+            "api_methods": [
+                "UIAPI.create_mobile_controls"
+            ],
+            "cli_command": "motor mobile controls add [--scene <path>] --target <entity> --profile <profile> [--project <path>] [--json]",
+            "example": {
+                "description": "Add platformer touch controls for Player",
+                "api_calls": [
+                    {
+                        "method": "create_mobile_controls",
+                        "args": {
+                            "target_entity": "Player",
+                            "profile": "platformer"
+                        }
+                    }
+                ],
+                "expected_outcome": "MobileControls2D overlay created and wired to Player InputMap"
+            },
+            "notes": "Creates a serializable internal mobile controls overlay. Use --scene to edit a specific scene and --replace to regenerate an existing overlay.",
+            "tags": [
+                "mobile",
+                "input",
+                "authoring"
             ]
         },
         {
@@ -3323,160 +3512,6 @@
                 "ui",
                 "authoring"
             ]
-        },
-        {
-            "id": "export:presets:list",
-            "summary": "List all export presets",
-            "mode": "both",
-            "status": "implemented",
-            "api_methods": [
-                "ExportAPI.list_export_presets"
-            ],
-            "cli_command": "motor export presets list [--project <path>] [--json]",
-            "example": {
-                "description": "List all configured export presets",
-                "api_calls": [
-                    {
-                        "method": "list_export_presets",
-                        "args": {}
-                    }
-                ],
-                "expected_outcome": "Returns array of export presets with their platform, mode, and entry scene"
-            },
-            "notes": "Reads export_presets.motor.json from project root. Auto-migrates old schema versions.",
-            "tags": [
-                "export",
-                "presets"
-            ]
-        },
-        {
-            "id": "export:presets:validate",
-            "summary": "Validate export presets against schema and project",
-            "mode": "both",
-            "status": "implemented",
-            "api_methods": [
-                "ExportAPI.validate_export_preset"
-            ],
-            "cli_command": "motor export presets validate [--project <path>] [--json]",
-            "example": {
-                "description": "Validate all export presets",
-                "api_calls": [
-                    {
-                        "method": "validate_export_preset",
-                        "args": {}
-                    }
-                ],
-                "expected_outcome": "Returns success if all presets are valid, or actionable errors per preset"
-            },
-            "notes": "Checks schema, unique names, platform enums, required fields, entry scene existence, and safe output paths.",
-            "tags": [
-                "export",
-                "validation"
-            ]
-        },
-        {
-            "id": "export:doctor",
-            "summary": "Check export toolchain health",
-            "mode": "both",
-            "status": "implemented",
-            "api_methods": [
-                "ExportAPI.export_doctor"
-            ],
-            "cli_command": "motor export doctor [--project <path>] [--json]",
-            "example": {
-                "description": "Diagnose export toolchain readiness",
-                "api_calls": [
-                    {
-                        "method": "export_doctor",
-                        "args": {}
-                    }
-                ],
-                "expected_outcome": "Returns toolchain availability for all platforms with actionable warnings"
-            },
-            "notes": "Checks PyInstaller, Android SDK, Java, Gradle, and reports what is missing per platform.",
-            "tags": [
-                "export",
-                "diagnostics"
-            ]
-        },
-        {
-            "id": "export:pack",
-            "summary": "Build content pack for a preset",
-            "mode": "both",
-            "status": "implemented",
-            "api_methods": [
-                "ExportAPI.export_pack"
-            ],
-            "cli_command": "motor export pack <preset_name> [--project <path>] [--json]",
-            "example": {
-                "description": "Build content pack for Windows Desktop preset",
-                "api_calls": [
-                    {
-                        "method": "export_pack",
-                        "args": {
-                            "name": "Windows Desktop"
-                        }
-                    }
-                ],
-                "expected_outcome": "Generates deterministic content pack with manifest, assets, scenes, and scripts"
-            },
-            "notes": "Builds dependency graph from entry scene, collects reachable assets, generates manifest with SHA-256 hashes.",
-            "tags": [
-                "export",
-                "content"
-            ]
-        },
-        {
-            "id": "export:build",
-            "summary": "Build export for a preset",
-            "mode": "both",
-            "status": "implemented",
-            "api_methods": [
-                "ExportAPI.build_export"
-            ],
-            "cli_command": "motor export build <preset_name> [--project <path>] [--json]",
-            "example": {
-                "description": "Build Windows Desktop executable",
-                "api_calls": [
-                    {
-                        "method": "build_export",
-                        "args": {
-                            "name": "Windows Desktop"
-                        }
-                    }
-                ],
-                "expected_outcome": "Produces platform-specific executable or reports TOOLCHAIN_UNAVAILABLE clearly"
-            },
-            "notes": "Builds content pack, generates platform-specific artifacts (exe for Windows). Reports TOOLCHAIN_UNAVAILABLE when PyInstaller/Android SDK/Xcode missing.",
-            "tags": [
-                "export",
-                "build"
-            ]
-        },
-        {
-            "id": "export:build-all",
-            "summary": "Build all export presets",
-            "mode": "both",
-            "status": "implemented",
-            "api_methods": [
-                "ExportAPI.build_all_exports"
-            ],
-            "cli_command": "motor export build-all [--project <path>] [--json]",
-            "example": {
-                "description": "Build all configured export presets",
-                "api_calls": [
-                    {
-                        "method": "build_all_exports",
-                        "args": {}
-                    }
-                ],
-                "expected_outcome": "Builds all presets and reports results per preset"
-            },
-            "notes": "Iterates over all presets and runs build_export for each. Returns aggregated results.",
-            "tags": [
-                "export",
-                "build"
-            ]
         }
     ],
     "planned_capabilities": [
@@ -3639,9 +3674,9 @@
         }
     ],
     "capability_counts": {
-        "implemented": 118,
+        "implemented": 119,
         "planned": 6,
-        "total": 118
+        "total": 125
     },
     "project": {
         "name": "MotorVideojuegosIA",

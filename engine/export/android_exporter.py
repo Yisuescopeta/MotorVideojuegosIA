@@ -38,17 +38,18 @@ def _gradle_escape(value: str) -> str:
 class AndroidExporter(PlatformExporter):
     platform = "android"
 
-    def validate_environment(self) -> dict[str, Any]:
+    def validate_environment(self, project_dir: Path | None = None) -> dict[str, Any]:
         android_home = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or ""
         java_path = shutil.which("java") or shutil.which("java.exe") or ""
-        gradle_path = shutil.which("gradle") or shutil.which("gradle.bat") or ""
+        gradle_command = self._resolve_gradle_command(project_dir)
+        gradle_path = " ".join(gradle_command)
         return {
             "platform": "android",
             "android_sdk_available": bool(android_home),
             "android_home": android_home,
             "java_available": bool(java_path),
             "java_path": java_path,
-            "gradle_available": bool(gradle_path),
+            "gradle_available": bool(gradle_command),
             "gradle_path": gradle_path,
             "python": sys.executable,
         }
@@ -84,9 +85,13 @@ class AndroidExporter(PlatformExporter):
             f"{len(manifest.scenes)} scenes, {len(manifest.scripts)} scripts"
         )
 
+        if not self._validate_android_runtime_v1(ctx, graph.reachable_scenes, graph.reachable_scripts):
+            return False
+
         self._write_runtime_config(ctx, staging)
 
         project_dir = self._generate_android_project(ctx, staging)
+        env = self.validate_environment(project_dir)
 
         assets_src = staging / "content"
         assets_dst = project_dir / "app" / "src" / "main" / "assets"
@@ -122,8 +127,9 @@ class AndroidExporter(PlatformExporter):
 
         if not env["gradle_available"]:
             ctx.add_error(
-                "Gradle not found in PATH. Android project generated but not built. "
-                "Install Gradle or use the generated project directly in Android Studio."
+                "Gradle not found in PATH and no Gradle wrapper found in generated project. "
+                "Android project generated but not built. Install Gradle, add gradlew/gradlew.bat, "
+                "or use the generated project directly in Android Studio."
             )
             return False
 
@@ -252,13 +258,136 @@ class AndroidExporter(PlatformExporter):
             },
         }
 
+    def _validate_android_runtime_v1(
+        self,
+        ctx: BuildContext,
+        reachable_scenes: list[str],
+        reachable_scripts: list[str],
+    ) -> bool:
+        """Fail early when the native Android v1 runtime cannot run a scene."""
+        if reachable_scripts:
+            for script in reachable_scripts:
+                ctx.add_error(
+                    "ANDROID_RUNTIME_UNSUPPORTED_SCRIPT: ScriptBehaviour/Python scripts "
+                    f"are not supported by the native Android runtime v1: {script}. "
+                    "Remove ScriptBehaviour from Android scenes or wait for the planned "
+                    "Chaquopy/Python bridge phase."
+                )
+
+        supported_components = {
+            "Transform",
+            "RectTransform",
+            "Canvas",
+            "UIText",
+            "UIButton",
+            "UIImage",
+            "Camera2D",
+            "Collider",
+            "RigidBody",
+            "InputMap",
+            "PlayerController2D",
+            "Animator",
+            "Sprite",
+            "MobileControls2D",
+        }
+        unsupported_v1 = {
+            "ScriptBehaviour",
+            "AudioSource",
+            "AudioListener2D",
+            "Tilemap",
+            "ParticleEmitter2D",
+            "Light2D",
+            "NavigationAgent2D",
+            "NavigationObstacle2D",
+            "Tween",
+            "Timer",
+            "ResourcePreloader",
+            "Line2D",
+            "Polygon2D",
+            "Area2D",
+            "RayCast2D",
+            "CharacterController2D",
+            "SceneTransitionAction",
+            "SceneTransitionOnContact",
+            "SceneTransitionOnInteract",
+            "SceneTransitionOnPlayerDeath",
+            "SceneEntryPoint",
+            "SceneLink",
+            "RenderOrder2D",
+            "RenderStyle2D",
+            "VisibleOnScreenNotifier2D",
+            "VisibleOnScreenEnabler2D",
+            "PathFollower2D",
+            "ParallaxLayer",
+            "Joint2D",
+            "CollisionShape2D",
+            "CollisionShapeSet2D",
+            "CollisionPolygon2D",
+            "CollisionFilter2D",
+            "StaticBody2D",
+            "AnimatableBody2D",
+            "Collectible2D",
+            "Hazard2D",
+            "Goal2D",
+            "RespawnPoint2D",
+            "MovingPlatform2D",
+            "EnemyPatrol2D",
+            "Checkpoint2D",
+            "KillZone2D",
+            "LevelBounds2D",
+            "Marker2D",
+        }
+
+        for scene_path in reachable_scenes:
+            scene_file = ctx.project_root / scene_path
+            try:
+                data = json.loads(scene_file.read_text(encoding="utf-8"))
+            except Exception as exc:
+                ctx.add_error(f"ANDROID_RUNTIME_SCENE_PARSE_FAILED: {scene_path}: {exc}")
+                continue
+
+            mobile_targets: set[str] = set()
+            playable_targets: set[str] = set()
+            for entity in data.get("entities", []):
+                if not isinstance(entity, dict):
+                    continue
+                name = str(entity.get("name", ""))
+                components = entity.get("components", {})
+                if not isinstance(components, dict):
+                    continue
+                if "MobileControls2D" in components:
+                    control = components.get("MobileControls2D", {})
+                    if isinstance(control, dict):
+                        mobile_targets.add(str(control.get("target_entity", "Player") or "Player"))
+                if "InputMap" in components and "PlayerController2D" in components:
+                    playable_targets.add(name)
+                for component_name in components:
+                    if component_name in unsupported_v1 or component_name not in supported_components:
+                        ctx.add_error(
+                            "ANDROID_RUNTIME_UNSUPPORTED_COMPONENT: "
+                            f"{scene_path}:{name} uses {component_name}, which is not "
+                            "supported by the native Android runtime v1."
+                        )
+
+            missing_controls = sorted(playable_targets - mobile_targets)
+            for target in missing_controls:
+                ctx.add_error(
+                    "ANDROID_RUNTIME_MOBILE_CONTROLS_MISSING: "
+                    f"{scene_path} has playable entity '{target}' without a "
+                    "MobileControls2D overlay targeting it. Run: "
+                    f"py -m motor mobile controls add --scene {scene_path} "
+                    f"--target {target} --profile platformer --project . --json"
+                )
+
+        return not ctx.has_errors
+
     def _run_gradle_build(
         self, ctx: BuildContext, project_dir: Path, task: str,
         extra_env: dict[str, str] | None = None,
     ) -> bool:
-        gradle = shutil.which("gradle") or shutil.which("gradle.bat")
+        gradle = self._resolve_gradle_command(project_dir)
         if not gradle:
-            ctx.add_error("Gradle not found in PATH.")
+            ctx.add_error("Gradle not found in PATH and no Gradle wrapper found in generated project.")
             return False
 
         env = os.environ.copy()
@@ -270,7 +399,7 @@ class AndroidExporter(PlatformExporter):
 
         try:
             result = subprocess.run(
-                [gradle, task],
+                [*gradle, task],
                 capture_output=True,
                 text=True,
                 timeout=600,
@@ -291,6 +420,14 @@ class AndroidExporter(PlatformExporter):
             return False
 
         return True
+
+    def _resolve_gradle_command(self, project_dir: Path | None = None) -> list[str]:
+        if project_dir is not None:
+            wrapper = project_dir / ("gradlew.bat" if os.name == "nt" else "gradlew")
+            if wrapper.exists():
+                return [str(wrapper)]
+        gradle = shutil.which("gradle") or shutil.which("gradle.bat")
+        return [gradle] if gradle else []
 
     def _build_release(
         self, ctx: BuildContext, project_dir: Path, env: dict[str, Any],

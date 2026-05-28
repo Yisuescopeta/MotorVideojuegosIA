@@ -754,6 +754,7 @@ Fuente: `engine/api/_ui_api.py`.
 - `create_ui_text(name, text, parent, rect_transform=None, font_size=24, alignment="center")`
 - `create_ui_button(name, label, parent, rect_transform=None, on_click=None, normal_sprite=None, hover_sprite=None, pressed_sprite=None, disabled_sprite=None, normal_slice="", hover_slice="", pressed_slice="", disabled_slice="", preserve_aspect=True)`
 - `create_ui_image(name, parent, sprite, rect_transform=None, slice_name="", preserve_aspect=True, tint=None)`
+- `create_mobile_controls(target_entity="Player", profile="platformer", replace=False)`
 - `set_button_on_click(entity_name, on_click)`
 - `list_ui_nodes()`
 - `get_ui_layout(entity_name)`
@@ -762,6 +763,11 @@ Fuente: `engine/api/_ui_api.py`.
 `UIButton` conserva el flujo declarativo actual y puede renderizarse por color o
 por sprite. `UIImage` representa imagen UI no interactiva con `sprite`,
 `slice_name`, `tint` y `preserve_aspect`.
+
+`MobileControls2D` es un overlay serializable para movil. `create_mobile_controls`
+crea `MobileControlsCanvas` y `MobileControlsOverlay`; en runtime
+`MobileControlsSystem` convierte touch/pointer en `InputMap.last_state` del
+`target_entity`.
 
 ## Uso recomendado para agentes
 

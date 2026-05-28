@@ -112,6 +112,7 @@ from motor.cli_core import (
     cmd_game_platformer_set_bounds,
     cmd_game_platformer_set_camera_follow,
     cmd_game_platformer_validate,
+    cmd_mobile_controls_add,
     cmd_physics_backend_list,
     cmd_physics_query_aabb,
     cmd_physics_query_motion,
@@ -1866,6 +1867,50 @@ Documentation:
     )
     ui_create_image_parser.add_argument("--json", action="store_true", help="Output in JSON format")
 
+    # === mobile ===
+    mobile_parser = subparsers.add_parser(
+        "mobile",
+        help="Mobile build and controls operations",
+    )
+    mobile_subparsers = mobile_parser.add_subparsers(dest="mobile_subcommand", required=True)
+    mobile_controls_parser = mobile_subparsers.add_parser(
+        "controls",
+        help="Mobile virtual controls",
+    )
+    mobile_controls_subparsers = mobile_controls_parser.add_subparsers(
+        dest="mobile_controls_subcommand",
+        required=True,
+    )
+    mobile_controls_add_parser = mobile_controls_subparsers.add_parser(
+        "add",
+        help="Add mobile virtual controls to the active or selected scene",
+    )
+    mobile_controls_add_parser.add_argument(
+        "--target",
+        default="Player",
+        help="Target entity with InputMap (default: Player)",
+    )
+    mobile_controls_add_parser.add_argument(
+        "--profile",
+        default="platformer",
+        help="Controls profile (default: platformer)",
+    )
+    mobile_controls_add_parser.add_argument(
+        "--replace",
+        action="store_true",
+        help="Replace existing MobileControls2D overlay",
+    )
+    mobile_controls_add_parser.add_argument(
+        "--scene",
+        default=None,
+        help="Scene path to edit instead of the last active scene",
+    )
+    mobile_controls_add_parser.add_argument(
+        "--project", dest="project_root", default=".",
+        help="Path to project directory",
+    )
+    mobile_controls_add_parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
     # === debug ===
     debug_parser = subparsers.add_parser(
         "debug",
@@ -2905,6 +2950,18 @@ def dispatch_command(parsed: argparse.Namespace) -> int:
                 project_path=Path(parsed.project_root).resolve(),
                 asset_path=parsed.asset_path,
                 parent=parsed.parent,
+                json_output=parsed.json,
+            )
+
+    # === mobile ===
+    elif parsed.command == "mobile":
+        if parsed.mobile_subcommand == "controls" and parsed.mobile_controls_subcommand == "add":
+            return cmd_mobile_controls_add(
+                project_path=Path(parsed.project_root).resolve(),
+                target_entity=parsed.target,
+                profile=parsed.profile,
+                replace=parsed.replace,
+                scene_path=parsed.scene,
                 json_output=parsed.json,
             )
 

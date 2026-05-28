@@ -393,6 +393,67 @@
                     "density": 1.0
                 }
             }
+        },
+        {
+            "name": "MobileControlsCanvas",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "components": {
+                "Canvas": {
+                    "enabled": true,
+                    "render_mode": "screen_space_overlay",
+                    "reference_width": 800,
+                    "reference_height": 600,
+                    "match_mode": "stretch",
+                    "sort_order": 100
+                },
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 0.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 1.0,
+                    "anchor_max_y": 1.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 0.0,
+                    "anchored_x": 0.0,
+                    "anchored_y": 0.0,
+                    "width": 0.0,
+                    "height": 0.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                }
+            }
+        },
+        {
+            "name": "MobileControlsOverlay",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "components": {
+                "MobileControls2D": {
+                    "enabled": true,
+                    "target_entity": "Player",
+                    "profile": "platformer",
+                    "left_stick_enabled": true,
+                    "action_1_enabled": true,
+                    "action_2_enabled": true,
+                    "left_stick_anchor_x": 0.16,
+                    "left_stick_anchor_y": 0.78,
+                    "left_stick_radius": 86.0,
+                    "left_stick_knob_radius": 34.0,
+                    "action_1_anchor_x": 0.84,
+                    "action_1_anchor_y": 0.78,
+                    "action_1_radius": 54.0,
+                    "action_2_anchor_x": 0.72,
+                    "action_2_anchor_y": 0.84,
+                    "action_2_radius": 46.0,
+                    "opacity": 0.65,
+                    "deadzone": 0.18
+                }
+            },
+            "parent": "MobileControlsCanvas"
         }
     ],
     "rules": [

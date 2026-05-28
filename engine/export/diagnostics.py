@@ -58,8 +58,12 @@ def run_export_doctor() -> dict[str, Any]:
         warnings.append("Java not found. Android exports require JDK.")
 
     gradle_path = shutil.which("gradle") or shutil.which("gradle.bat")
-    checks["gradle_available"] = gradle_path is not None
+    wrapper_name = "gradlew.bat" if os.name == "nt" else "gradlew"
+    gradle_wrapper = os.path.exists(os.path.join(os.getcwd(), wrapper_name))
+    checks["gradle_available"] = gradle_path is not None or gradle_wrapper
     checks["gradle_path"] = gradle_path or ""
+    checks["gradle_wrapper_available"] = gradle_wrapper
+    checks["gradle_resolution"] = "path_executable" if gradle_path else ("project_wrapper" if gradle_wrapper else "missing")
 
     healthy = len(issues) == 0
 
