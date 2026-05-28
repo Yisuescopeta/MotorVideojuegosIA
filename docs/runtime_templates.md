@@ -119,6 +119,13 @@ verifica hashes SHA-256 y expone assets, escenas y scripts al runtime.
 - Template Gradle en `platforms/android/template/`.
 - Content pack copiado a `app/src/main/assets/`.
 - AndroidManifest.xml generado automaticamente.
+- `MainActivity.kt` monta `MotorGameView` (`SurfaceView`) y ejecuta runtime
+  Kotlin nativo v1.
+- Runtime v1 soporta menu UI, `load_scene_flow`, camara follow/clamp basico,
+  sprites/animacion spritesheet, fisica AABB, `PlayerController2D`, `InputMap`
+  y `MobileControls2D`.
+- `ScriptBehaviour` Python y sistemas no portados fallan en export con
+  `ANDROID_RUNTIME_UNSUPPORTED_*`; no se genera APK silenciosamente roto.
 - Debug: `assembleDebug` → APK.
 - Release: `assembleRelease` → APK firmado, `bundleRelease` → AAB.
 - Requiere `ANDROID_HOME`, JDK 11+ y Gradle.

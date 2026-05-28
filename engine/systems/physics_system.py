@@ -295,6 +295,8 @@ class PhysicsSystem:
                         overlap_y = min(overlap_top, overlap_bottom)
 
                         if overlap_x < overlap_y:
+                            # Use center positions to determine normal direction
+                            # for standard edge-to-edge contacts.
                             normal_x = 1.0 if tentative_x < other_transform.x else -1.0
                             normal_y = 0.0
                             depth = overlap_x
@@ -516,7 +518,10 @@ class PhysicsSystem:
                     rigidbody.velocity_x = 0.0
                 else:
                     if continuous_mode and collider is not None and collider.enabled:
+                        orig_delta_x = delta_x
                         delta_x = self._sweep_horizontal(entity, transform, rigidbody, collider, nearby_solids, delta_x)
+                        if abs(delta_x) < abs(orig_delta_x) - 1e-6:
+                            rigidbody.velocity_x = 0.0
                     transform.x += delta_x
                     if collider is not None and collider.enabled:
                         self._resolve_horizontal(transform, rigidbody, collider, nearby_solids)
@@ -525,7 +530,10 @@ class PhysicsSystem:
                     rigidbody.velocity_y = 0.0
                 else:
                     if continuous_mode and collider is not None and collider.enabled:
+                        orig_delta_y = delta_y
                         delta_y = self._sweep_vertical(entity, transform, rigidbody, collider, nearby_solids, delta_y)
+                        if abs(delta_y) < abs(orig_delta_y) - 1e-6:
+                            rigidbody.velocity_y = 0.0
                     transform.y += delta_y
                     rigidbody.is_grounded = False
                     if collider is not None and collider.enabled:
@@ -1151,12 +1159,20 @@ class PhysicsSystem:
                     continue
                 if delta_x > 0:
                     gap = o_left - right
-                    if 0.0 <= gap <= safe_delta:
+                    if gap < 0.0:
+                        # Already overlapping: prevent further penetration
+                        safe_delta = 0.0
+                        self._record_swept_contact(entity, other.entity)
+                    elif gap <= safe_delta:
                         safe_delta = min(safe_delta, max(0.0, gap))
                         self._record_swept_contact(entity, other.entity)
                 else:
                     gap = o_right - left
-                    if safe_delta <= gap <= 0.0:
+                    if gap > 0.0:
+                        # Already overlapping: prevent further penetration
+                        safe_delta = 0.0
+                        self._record_swept_contact(entity, other.entity)
+                    elif safe_delta <= gap <= 0.0:
                         safe_delta = max(safe_delta, min(0.0, gap))
                         self._record_swept_contact(entity, other.entity)
         return safe_delta
@@ -1186,12 +1202,20 @@ class PhysicsSystem:
                     continue
                 if delta_y > 0:
                     gap = o_top - bottom
-                    if 0.0 <= gap <= safe_delta:
+                    if gap < 0.0:
+                        # Already overlapping: prevent further penetration
+                        safe_delta = 0.0
+                        self._record_swept_contact(entity, other.entity)
+                    elif gap <= safe_delta:
                         safe_delta = min(safe_delta, max(0.0, gap))
                         self._record_swept_contact(entity, other.entity)
                 else:
                     gap = o_bottom - top
-                    if safe_delta <= gap <= 0.0:
+                    if gap > 0.0:
+                        # Already overlapping: prevent further penetration
+                        safe_delta = 0.0
+                        self._record_swept_contact(entity, other.entity)
+                    elif safe_delta <= gap <= 0.0:
                         safe_delta = max(safe_delta, min(0.0, gap))
                         self._record_swept_contact(entity, other.entity)
         return safe_delta

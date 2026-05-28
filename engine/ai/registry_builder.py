@@ -45,6 +45,7 @@ class CapabilityRegistryBuilder:
         self._register_agent_capabilities()
         self._register_signal_capabilities()
         self._register_ui_capabilities()
+        self._register_mobile_capabilities()
         self._register_export_capabilities()
         self._register_editor_capabilities()
         self._register_debug_capabilities()
@@ -1985,6 +1986,24 @@ class CapabilityRegistryBuilder:
             tags=["ui", "authoring"],
         ))
 
+    def _register_mobile_capabilities(self) -> None:
+        self._add(Capability(
+            id="mobile:controls:add",
+            summary="Add mobile virtual controls to the active scene",
+            mode="edit",
+            api_methods=["UIAPI.create_mobile_controls"],
+            cli_command="motor mobile controls add [--scene <path>] --target <entity> --profile <profile> [--project <path>] [--json]",
+            example=CapabilityExample(
+                description="Add platformer touch controls for Player",
+                api_calls=[
+                    {"method": "create_mobile_controls", "args": {"target_entity": "Player", "profile": "platformer"}},
+                ],
+                expected_outcome="MobileControls2D overlay created and wired to Player InputMap",
+            ),
+            notes="Creates a serializable internal mobile controls overlay. Use --scene to edit a specific scene and --replace to regenerate an existing overlay.",
+            tags=["mobile", "input", "authoring"],
+        ))
+
     def _register_editor_capabilities(self) -> None:
         self._add(Capability(
             id="editor:theme:list",
@@ -2429,6 +2448,7 @@ class MotorAIBootstrapBuilder:
             "Services": ["service:"],
             "Signals": ["signal:"],
             "UI": ["ui:"],
+            "Mobile": ["mobile:"],
             "Editor": ["editor:"],
             "Export": ["export:"],
         }

@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from engine.core.engine_state import EngineState
 from engine.core.runtime_contracts import RuntimeControllerContext
+from engine.core.runtime_logging import log_info, log_warn
 from engine.core.runtime_loop import RuntimeLoopState, RuntimePhase, RuntimeTickPlan
 from engine.ecs.group_operations import GroupOperations
-from engine.core.runtime_logging import log_info, log_warn
 from engine.events.callable_resolver import CallableResolver, CallableResolverContext
 from engine.events.deferred_queue import DeferredCallQueue
 from engine.events.signals import SignalRuntime
@@ -42,6 +42,7 @@ class RuntimeController:
         self._get_event_bus = context.get_event_bus
         self._get_animation_system = context.get_animation_system
         self._get_input_system = context.get_input_system
+        self._get_mobile_controls_system = context.get_mobile_controls_system
         self._get_player_controller_system = context.get_player_controller_system
         self._get_character_controller_system = context.get_character_controller_system
         self._get_physics_system = context.get_physics_system
@@ -324,7 +325,12 @@ class RuntimeController:
         elif state.allows_animation_preview():
             animation_system.update(world, dt * self._edit_animation_speed)
 
-    def update_gameplay(self, world: "World", dt: float) -> None:
+    def update_gameplay(
+        self,
+        world: "World",
+        dt: float,
+        viewport_size: tuple[float, float] = (0.0, 0.0),
+    ) -> None:
         event_bus = self._get_event_bus()
         if event_bus is not None:
             event_bus.reset_frame_dedup()
@@ -332,6 +338,10 @@ class RuntimeController:
         input_system = self._get_input_system()
         if input_system is not None:
             input_system.update(world)
+
+        mobile_controls_system = self._get_mobile_controls_system()
+        if mobile_controls_system is not None:
+            mobile_controls_system.update(world, viewport_size)
 
         character_controller_system = self._get_character_controller_system()
         if character_controller_system is not None:
@@ -413,11 +423,17 @@ class RuntimeController:
         if scene_transition_controller is not None:
             scene_transition_controller.update(world)
 
-    def run_fixed_update(self, world: Optional["World"], fixed_dt: float, plan: RuntimeTickPlan) -> None:
+    def run_fixed_update(
+        self,
+        world: Optional["World"],
+        fixed_dt: float,
+        plan: RuntimeTickPlan,
+        viewport_size: tuple[float, float] = (0.0, 0.0),
+    ) -> None:
         if world is None:
             return
         self._emit_phase(RuntimePhase.FIXED_UPDATE, plan)
-        self.update_gameplay(world, fixed_dt)
+        self.update_gameplay(world, fixed_dt, viewport_size)
 
     def run_update(self, world: Optional["World"], dt: float, plan: RuntimeTickPlan) -> bool:
         self._emit_phase(RuntimePhase.UPDATE, plan)

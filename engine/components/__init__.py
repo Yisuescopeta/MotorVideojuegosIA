@@ -33,6 +33,7 @@ from engine.components.gameplay2d import (
 from engine.components.inputmap import InputMap
 from engine.components.joint2d import Joint2D
 from engine.components.marker2d import Marker2D
+from engine.components.mobile_controls_2d import MobileControls2D
 from engine.components.playercontroller2d import PlayerController2D
 from engine.components.polygon2d import Polygon2D
 from engine.components.renderorder2d import RenderOrder2D
@@ -93,6 +94,7 @@ __all__ = [
     "Tilemap",
     "Timer",
     "Marker2D",
+    "MobileControls2D",
     "ResourcePreloader",
     "Tween",
     "VisibleOnScreenNotifier2D",

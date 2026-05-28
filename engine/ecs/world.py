@@ -519,9 +519,13 @@ class World:
             previous = payload.get("previous")
             current = payload.get("current")
             if field == "name":
-                if previous is not None and self._name_index.get(str(previous)) == entity.id:
-                    del self._name_index[str(previous)]
+                if previous is not None:
+                    if self._entities_by_name.get(str(previous)) is entity:
+                        del self._entities_by_name[str(previous)]
+                    if self._name_index.get(str(previous)) == entity.id:
+                        del self._name_index[str(previous)]
                 self._name_index[str(current)] = entity.id
+                self._entities_by_name[str(current)] = entity
                 if self._selected_entity_name == previous:
                     self.selected_entity_name = str(current)
             elif field == "serialized_id":

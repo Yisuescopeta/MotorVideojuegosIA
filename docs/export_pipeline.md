@@ -201,7 +201,7 @@ no se detectan. Para incluirlos, declararlos en el `.py.meta.json`, usar
 - Smoke test via `open --args --smoke-test` para .app
 
 ### Android
-- Requiere `ANDROID_HOME`, JDK 11+, Gradle
+- Requiere `ANDROID_HOME`, JDK 11+, Gradle o wrapper `gradlew/gradlew.bat`
 - Genera proyecto Android desde template `platforms/android/template/`
 - Debug: `assembleDebug` -> APK
 - Release: `assembleRelease` -> APK firmado, `bundleRelease` -> AAB
@@ -289,7 +289,7 @@ Todas devuelven `{ "success": bool, "message": str, "data": object }`.
 | pip | Import `pip` | Reporte de entorno incompleto |
 | ANDROID_HOME | Variable de entorno `ANDROID_HOME`/`ANDROID_SDK_ROOT` | Android exports fallan |
 | Java/JDK | `shutil.which("java")` | Android builds requieren JDK |
-| Gradle | `shutil.which("gradle")` | Android compilacion requiere Gradle |
+| Gradle | `shutil.which("gradle")` o wrapper local | Android compilacion requiere Gradle |
 
 El resultado incluye `healthy: bool`. Cuando PyInstaller o pip faltan, `healthy`
 es `false` y `doctor` retorna `success: false` con lista de issues y warnings.
@@ -351,9 +351,16 @@ no se detectan. Para cubrirlos, declararlos en `script.py.meta.json`, activar
 ### Toolchains externas
 
 Los builds reales de Windows/Linux requieren PyInstaller, Android requiere
-Android SDK + JDK + Gradle, macOS/iOS requieren macOS + Xcode. Sin ellos,
+Android SDK + JDK + Gradle o wrapper, macOS/iOS requieren macOS + Xcode. Sin ellos,
 el pipeline genera content pack, proyecto Android estructural y build report
 con `TOOLCHAIN_UNAVAILABLE`, pero no el ejecutable final.
+
+El proyecto Android generado empaqueta el content pack y usa un runtime Kotlin
+nativo v1. Ese runtime ejecuta menu UI, cambio de escena, camara, animacion
+spritesheet basica, fisica AABB, `PlayerController2D`, `InputMap` y
+`MobileControls2D`. Si la escena usa capacidades no portadas, como
+`ScriptBehaviour` Python, audio, tilemap, particulas, luces o navegacion, el
+exporter falla con `ANDROID_RUNTIME_UNSUPPORTED_*` en vez de generar un APK roto.
 
 ## Troubleshooting
 

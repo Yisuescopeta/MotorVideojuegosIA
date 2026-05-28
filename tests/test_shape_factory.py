@@ -208,10 +208,10 @@ class ShapeFactoryTests(unittest.TestCase):
         aabb = AABBShape(100, 50, 30, 30)
         manifold = circle.collide_shape(aabb)
         self.assertIsNotNone(manifold)
-        # La normal debe apuntar del círculo hacia fuera (hacia la izquierda aquí)
+        # La normal apunta del círculo (self) hacia el AABB (other): derecha
         self.assertTrue(
-            manifold.normal_x < 0 or manifold.normal_y != 0,
-            f"Normal debería apuntar fuera del círculo: "
+            manifold.normal_x > 0,
+            f"Normal debe apuntar de self a other: "
             f"({manifold.normal_x}, {manifold.normal_y})",
         )
 

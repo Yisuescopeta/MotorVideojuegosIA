@@ -1,6 +1,7 @@
 """Tests for Android project generation."""
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -64,6 +65,19 @@ class TestAndroidProjectGeneration(unittest.TestCase):
             self.skipTest("MainActivity.kt not found")
         content = kt_path.read_text(encoding="utf-8")
         self.assertIn("{{APPLICATION_ID}}", content)
+        self.assertIn("MotorGameView", content)
+        self.assertIn("SurfaceView", content)
+        self.assertIn("MobileControls2D", content)
+        self.assertIn("load_scene_flow", content)
+
+    def test_android_template_uses_native_activity_theme(self):
+        manifest_path = self.template_dir / "app" / "src" / "main" / "AndroidManifest.xml"
+        themes_path = self.template_dir / "app" / "src" / "main" / "res" / "values" / "themes.xml"
+        manifest = manifest_path.read_text(encoding="utf-8")
+        themes = themes_path.read_text(encoding="utf-8")
+        self.assertIn("@style/Theme.MotorGame", manifest)
+        self.assertIn("@android:style/Theme.NoTitleBar.Fullscreen", themes)
+        self.assertNotIn("Theme.AppCompat", manifest + themes)
 
     def test_gradle_wrapper_properties(self):
         wrapper_path = self.template_dir / "gradle" / "wrapper" / "gradle-wrapper.properties"
@@ -116,6 +130,124 @@ class TestAndroidExporterImport(unittest.TestCase):
             self.assertEqual(AndroidExporter.platform, "android")
         except ImportError:
             self.skipTest("Android exporter not yet implemented")
+
+
+class TestAndroidRuntimeV1Validation(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.project_root = Path(self.tmp.name)
+        (self.project_root / "levels").mkdir()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _ctx(self):
+        from engine.export.build_context import BuildContext
+        from engine.export.models import ExportPreset
+
+        preset = ExportPreset(
+            name="Android Debug",
+            platform="android",
+            mode="debug",
+            output_path="dist/export/android/Test.apk",
+            entry_scene="levels/test.json",
+            display_name="Test",
+            application_id="com.example.test",
+        )
+        return BuildContext(preset, self.project_root)
+
+    def _write_scene(self, name, entities):
+        path = self.project_root / "levels" / name
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "name": name,
+                    "entities": entities,
+                    "rules": [],
+                    "feature_metadata": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+        return f"levels/{name}"
+
+    def test_validation_blocks_python_scripts(self):
+        from engine.export.android_exporter import AndroidExporter
+
+        scene = self._write_scene("test.json", [])
+        ctx = self._ctx()
+        ok = AndroidExporter()._validate_android_runtime_v1(ctx, [scene], ["scripts/player.py"])
+
+        self.assertFalse(ok)
+        self.assertTrue(any("ANDROID_RUNTIME_UNSUPPORTED_SCRIPT" in err for err in ctx.errors))
+
+    def test_validation_blocks_missing_mobile_controls_for_player(self):
+        from engine.export.android_exporter import AndroidExporter
+
+        scene = self._write_scene(
+            "test.json",
+            [
+                {
+                    "name": "Player",
+                    "components": {
+                        "Transform": {},
+                        "InputMap": {},
+                        "PlayerController2D": {},
+                    },
+                }
+            ],
+        )
+        ctx = self._ctx()
+        ok = AndroidExporter()._validate_android_runtime_v1(ctx, [scene], [])
+
+        self.assertFalse(ok)
+        self.assertTrue(any("ANDROID_RUNTIME_MOBILE_CONTROLS_MISSING" in err for err in ctx.errors))
+
+    def test_validation_accepts_supported_playable_scene_with_mobile_controls(self):
+        from engine.export.android_exporter import AndroidExporter
+
+        scene = self._write_scene(
+            "test.json",
+            [
+                {
+                    "name": "Player",
+                    "components": {
+                        "Transform": {},
+                        "Collider": {},
+                        "RigidBody": {},
+                        "InputMap": {},
+                        "PlayerController2D": {},
+                        "Animator": {},
+                    },
+                },
+                {
+                    "name": "MobileControlsOverlay",
+                    "components": {
+                        "MobileControls2D": {"target_entity": "Player"},
+                    },
+                },
+            ],
+        )
+        ctx = self._ctx()
+        ok = AndroidExporter()._validate_android_runtime_v1(ctx, [scene], [])
+
+        self.assertTrue(ok, ctx.errors)
+
+    def test_validation_blocks_unsupported_component(self):
+        from engine.export.android_exporter import AndroidExporter
+
+        scene = self._write_scene(
+            "test.json",
+            [{"name": "Audio", "components": {"AudioSource": {}}}],
+        )
+        ctx = self._ctx()
+        ok = AndroidExporter()._validate_android_runtime_v1(ctx, [scene], [])
+
+        self.assertFalse(ok)
+        self.assertTrue(any("ANDROID_RUNTIME_UNSUPPORTED_COMPONENT" in err for err in ctx.errors))
 
 
 class TestIOSExporterImport(unittest.TestCase):

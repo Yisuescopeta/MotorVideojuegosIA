@@ -131,6 +131,7 @@ def create_default_registry() -> ComponentRegistry:
     from engine.components.light2d import Light2D
     from engine.components.line2d import Line2D
     from engine.components.marker2d import Marker2D
+    from engine.components.mobile_controls_2d import MobileControls2D
     from engine.components.navigation_agent_2d import NavigationAgent2D
     from engine.components.navigation_obstacle_2d import NavigationObstacle2D
     from engine.components.parallax_layer import ParallaxLayer
@@ -311,6 +312,13 @@ def create_default_registry() -> ComponentRegistry:
     registry.register("AudioSource", AudioSource)
     registry.register("AudioListener2D", AudioListener2D)
     registry.register("InputMap", InputMap)
+    registry.register(
+        "MobileControls2D",
+        MobileControls2D,
+        description="Virtual joystick and action buttons that drive a target InputMap on touch devices.",
+        default_payload=MobileControls2D().to_dict(),
+        editor_tags=("input", "mobile", "ui"),
+    )
     registry.register("PlayerController2D", PlayerController2D)
     registry.register("RenderOrder2D", RenderOrder2D)
     registry.register("RenderStyle2D", RenderStyle2D)

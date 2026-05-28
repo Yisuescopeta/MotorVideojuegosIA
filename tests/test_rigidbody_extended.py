@@ -459,7 +459,7 @@ class RigidBodyCCDTests(unittest.TestCase):
         not tunneling through. Velocity zeroes when overlap resolves."""
         physics = PhysicsSystem()
         world = World()
-        # Static wall
+        # Static wall — left edge at x=10
         wall = world.create_entity("Wall")
         wall_transform = Transform(x=10, y=0)
         wall.add_component(wall_transform)
@@ -467,9 +467,11 @@ class RigidBodyCCDTests(unittest.TestCase):
         wall.add_component(wall_collider)
         wall.add_component(RigidBody(body_type="static"))
 
-        # Fast body placed inside wall's vertical extent
+        # Body starts left of wall. vx=500, dt=0.016 → displacement=8.
+        # Without CCD: right edge reaches 0+8+2.5=10.5 > 10 (tunnels).
+        # With CCD: body stops at right_edge ≤ 10 and vx zeroes.
         body = world.create_entity("Bullet")
-        body_transform = Transform(x=12, y=50)  # already slightly inside wall
+        body_transform = Transform(x=0, y=50)
         body.add_component(body_transform)
         body_collider = Collider(width=5, height=5)
         body.add_component(body_collider)
@@ -483,9 +485,7 @@ class RigidBodyCCDTests(unittest.TestCase):
         body.add_component(body_rb)
 
         physics.update(world, 0.016)
-        # With CCD active, the_resolve_horizontal pushes body back and zeroes vx
-        # Body was at x=12 (right edge 17), wall starts at x=10
-        # resolve pushes it left so right edge ≤ 10
+        # CCD sweep stops body with right edge ≤ wall left edge, vx zeroed
         self.assertLessEqual(body_transform.x + 5, 10)
         self.assertEqual(body_rb.velocity_x, 0.0)
 

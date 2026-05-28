@@ -576,15 +576,29 @@ class UnityCoreAuthoringTests(unittest.TestCase):
 
     def test_selection_system_returns_clicked_entity_name(self) -> None:
         selection_system = SelectionSystem()
-        player = self.api.game.world.get_entity_by_name("Player")
+        world = self.api.game.world
+        self.assertIsNotNone(world)
+
+        player = world.get_entity_by_name("Player")
+        self.assertIsNotNone(player, "Player entity not found in world")
+
         transform = player.get_component(Transform)
-        self.assertIsNotNone(transform)
+        self.assertIsNotNone(transform, "Player missing Transform component")
+
+        collider = player.get_component(Collider)
+        self.assertIsNotNone(collider, "Player missing Collider — required for selection hit-test")
+        self.assertTrue(collider.enabled, "Player Collider is disabled — selection hit-test will fail")
+
+        entities_with_transform = world.get_entities_with(Transform)
+        self.assertIn(player, entities_with_transform, "Player not in get_entities_with(Transform) — selection will miss it")
+
+        world.selected_entity_name = None
 
         with patch("pyray.is_mouse_button_pressed", return_value=True):
-            selected_name = selection_system.update(self.api.game.world, rl.Vector2(transform.x, transform.y))
+            selected_name = selection_system.update(world, rl.Vector2(transform.x, transform.y))
 
         self.assertEqual(selected_name, "Player")
-        self.assertEqual(self.api.game.world.selected_entity_name, "Player")
+        self.assertEqual(world.selected_entity_name, "Player")
 
     def test_camera_platformer_framing_recenters_and_clamps(self) -> None:
         self.assertTrue(
