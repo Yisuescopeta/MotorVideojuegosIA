@@ -767,7 +767,9 @@ por sprite. `UIImage` representa imagen UI no interactiva con `sprite`,
 `MobileControls2D` es un overlay serializable para movil. `create_mobile_controls`
 crea `MobileControlsCanvas` y `MobileControlsOverlay`; en runtime
 `MobileControlsSystem` convierte touch/pointer en `InputMap.last_state` del
-`target_entity`.
+`target_entity`. En Android, el preset puede incluir `android_python_runtime:
+true` para activar Chaquopy 17.0.0 y ejecutar `ScriptBehaviour`; este flag
+requiere `min_sdk >= 24`.
 
 ## Uso recomendado para agentes
 

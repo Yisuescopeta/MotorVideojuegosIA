@@ -4459,7 +4459,7 @@ def cmd_runtime_audio_resume(
 def cmd_export_presets_list(project_path: Path, json_output: bool) -> int:
     api = None
     try:
-        api = _init_engine(project_path)
+        api = _init_engine(project_path, auto_ensure_project=False, read_only=True)
         result = api.list_export_presets()
         return _output(
             result.get("success", False),
@@ -4480,7 +4480,7 @@ def cmd_export_presets_list(project_path: Path, json_output: bool) -> int:
 def cmd_export_presets_validate(project_path: Path, preset_name: str | None = None, json_output: bool = False) -> int:
     api = None
     try:
-        api = _init_engine(project_path)
+        api = _init_engine(project_path, auto_ensure_project=False, read_only=True)
         result = api.validate_export_preset(preset_name)
         return _output(
             result.get("success", False),
@@ -4501,7 +4501,7 @@ def cmd_export_presets_validate(project_path: Path, preset_name: str | None = No
 def cmd_export_doctor(project_path: Path, json_output: bool) -> int:
     api = None
     try:
-        api = _init_engine(project_path)
+        api = _init_engine(project_path, auto_ensure_project=False, read_only=True)
         result = api.export_doctor()
         return _output(
             result.get("success", False),
@@ -4524,7 +4524,7 @@ def cmd_export_pack(
 ) -> int:
     api = None
     try:
-        api = _init_engine(project_path)
+        api = _init_engine(project_path, auto_ensure_project=False, read_only=True)
         result = api.export_pack(preset_name)
         return _output(
             result.get("success", False),
@@ -4547,7 +4547,7 @@ def cmd_export_build(
 ) -> int:
     api = None
     try:
-        api = _init_engine(project_path)
+        api = _init_engine(project_path, auto_ensure_project=False, read_only=True)
         result = api.build_export(preset_name)
         return _output(
             result.get("success", False),
@@ -4568,7 +4568,7 @@ def cmd_export_build(
 def cmd_export_build_all(project_path: Path, json_output: bool) -> int:
     api = None
     try:
-        api = _init_engine(project_path)
+        api = _init_engine(project_path, auto_ensure_project=False, read_only=True)
         result = api.build_all_exports()
         return _output(
             result.get("success", False),

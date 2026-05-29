@@ -80,6 +80,18 @@ class MobileControlsSystemTests(unittest.TestCase):
         self.assertEqual(input_map.last_state["action_1"], 0.0)
         self.assertEqual(input_map.last_state["horizontal"], 0.0)
 
+    def test_left_stick_drag_stays_captured_outside_visible_radius(self) -> None:
+        world, input_map = self._make_world()
+        system = MobileControlsSystem()
+
+        system.inject_pointer_state(128.0, 468.0, down=True)
+        system.update(world, (800.0, 600.0))
+        system.inject_pointer_state(280.0, 468.0, down=True)
+        system.update(world, (800.0, 600.0))
+
+        self.assertGreater(input_map.last_state["horizontal"], 0.95)
+        self.assertEqual(input_map.last_state["vertical"], 0.0)
+
 
 class MobileControlsAPITests(unittest.TestCase):
     def setUp(self) -> None:

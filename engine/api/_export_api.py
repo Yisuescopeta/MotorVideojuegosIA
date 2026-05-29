@@ -143,7 +143,7 @@ class ExportAPI(EngineAPIComponent):  # type: ignore[misc]
 
         Side effects: probes installed SDKs and build tools read-only.
         """
-        result = run_export_doctor()
+        result = run_export_doctor(self._context.project_root)
         if result["healthy"]:
             return _ok("Export toolchain is healthy.", result)
         return _fail("Export toolchain has issues.", result)
