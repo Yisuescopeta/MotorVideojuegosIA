@@ -20,6 +20,7 @@ _ALLOWED_EXTRA_FIELDS = frozenset({
     "keystore_password",
     "key_alias",
     "key_password",
+    "android_python_runtime",
 })
 
 
@@ -104,6 +105,17 @@ def validate_preset(preset: ExportPreset) -> list[ExportValidationError]:
             "INVALID_ORIENTATION",
             path=preset.orientation,
             hint=f"Orientation must be one of: {', '.join(sorted(_VALID_ORIENTATIONS))}"
+        ))
+
+    if (
+        preset.platform == "android"
+        and bool(preset.extra.get("android_python_runtime", False))
+        and preset.min_sdk < 24
+    ):
+        errors.append(ExportValidationError(
+            "ANDROID_PYTHON_RUNTIME_MIN_SDK",
+            path=str(preset.min_sdk),
+            hint="android_python_runtime requires min_sdk >= 24 with Chaquopy 17.0.0."
         ))
 
     return errors

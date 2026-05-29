@@ -267,6 +267,54 @@ class TestAndroidOutputSemantics(unittest.TestCase):
 
         self.assertIsNone(ctx._artifact_filename)
 
+    def test_copy_android_artifact_replaces_stale_directory_for_exact_apk_path(self):
+        from engine.export.android_exporter import AndroidExporter
+        from engine.export.build_context import BuildContext
+        from engine.export.models import ExportPreset
+
+        source = self.staging / "app-debug.apk"
+        source.write_bytes(b"apk-bytes")
+        output = self.tmp / "dist" / "export" / "android"
+        stale = output / "MyGame-debug.apk"
+        stale.mkdir(parents=True)
+        (stale / "old.apk").write_bytes(b"old")
+
+        preset = ExportPreset(
+            name="AndroidTest",
+            platform="android",
+            output_path="dist/export/android/MyGame-debug.apk",
+            entry_scene="levels/test.json",
+            display_name="Test",
+        )
+        ctx = BuildContext(preset, str(self.tmp))
+        ctx._artifact_filename = "MyGame-debug.apk"
+
+        dest = AndroidExporter()._copy_android_artifact(ctx, source, output, "apk")
+
+        self.assertTrue(dest.is_file())
+        self.assertEqual(dest.read_bytes(), b"apk-bytes")
+        self.assertEqual(ctx.artifacts[0]["size_bytes"], len(b"apk-bytes"))
+        self.assertTrue(ctx.artifacts[0]["sha256"])
+
+    def test_artifact_dest_name_only_uses_matching_extension(self):
+        from engine.export.android_exporter import AndroidExporter
+        from engine.export.build_context import BuildContext
+        from engine.export.models import ExportPreset
+
+        preset = ExportPreset(
+            name="AndroidTest",
+            platform="android",
+            output_path="dist/export/android/MyGame-debug.apk",
+            entry_scene="levels/test.json",
+            display_name="Test",
+        )
+        ctx = BuildContext(preset, str(self.tmp))
+        ctx._artifact_filename = "MyGame-debug.apk"
+        exporter = AndroidExporter()
+
+        self.assertEqual(exporter._artifact_dest_name(ctx, Path("source.apk")), "MyGame-debug.apk")
+        self.assertEqual(exporter._artifact_dest_name(ctx, Path("source.aab")), "source.aab")
+
 
 if __name__ == "__main__":
     unittest.main()

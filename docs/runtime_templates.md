@@ -124,8 +124,11 @@ verifica hashes SHA-256 y expone assets, escenas y scripts al runtime.
 - Runtime v1 soporta menu UI, `load_scene_flow`, camara follow/clamp basico,
   sprites/animacion spritesheet, fisica AABB, `PlayerController2D`, `InputMap`
   y `MobileControls2D`.
-- `ScriptBehaviour` Python y sistemas no portados fallan en export con
-  `ANDROID_RUNTIME_UNSUPPORTED_*`; no se genera APK silenciosamente roto.
+- `android_python_runtime: true` aplica Chaquopy 17.0.0, exige `min_sdk >= 24`
+  y ejecuta `ScriptBehaviour` Python con `on_play`, `on_update` y `on_stop`.
+- Sin `android_python_runtime`, `ScriptBehaviour` Python y sistemas no portados
+  fallan en export con `ANDROID_RUNTIME_UNSUPPORTED_*`; no se genera APK
+  silenciosamente roto.
 - Debug: `assembleDebug` → APK.
 - Release: `assembleRelease` → APK firmado, `bundleRelease` → AAB.
 - Requiere `ANDROID_HOME`, JDK 11+ y Gradle.

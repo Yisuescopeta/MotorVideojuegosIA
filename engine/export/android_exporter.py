@@ -108,6 +108,9 @@ class AndroidExporter(PlatformExporter):
         if runtime_config_src.exists():
             shutil.copy2(runtime_config_src, assets_dst / "runtime_config.json")
 
+        if self._android_python_runtime_enabled(ctx):
+            self._copy_android_python_scripts(ctx, project_dir, graph.reachable_scripts)
+
         self._add_project_artifacts(ctx, project_dir)
 
         if not env["android_sdk_available"]:
@@ -151,26 +154,12 @@ class AndroidExporter(PlatformExporter):
 
         apk = self._find_apk(project_dir)
         if apk:
-            dest_name = ctx._artifact_filename if ctx._artifact_filename else apk.name
-            dest = output / dest_name
-            shutil.copy2(apk, dest)
-            ctx.add_artifact(
-                str(dest.relative_to(ctx.project_root)),
-                "apk",
-                dest.stat().st_size,
-            )
+            self._copy_android_artifact(ctx, apk, output, "apk")
 
         if ctx.preset.mode == "release":
             aab = self._find_aab(project_dir)
             if aab:
-                dest_name = ctx._artifact_filename if ctx._artifact_filename else aab.name
-                dest = output / dest_name
-                shutil.copy2(aab, dest)
-                ctx.add_artifact(
-                    str(dest.relative_to(ctx.project_root)),
-                    "aab",
-                    dest.stat().st_size,
-                )
+                self._copy_android_artifact(ctx, aab, output, "aab")
 
         return not ctx.has_errors
 
@@ -185,6 +174,7 @@ class AndroidExporter(PlatformExporter):
                 "resizable": True, "fullscreen": False,
             },
             "debug_tools": ctx.preset.include_debug_tools,
+            "android_python_runtime": self._android_python_runtime_enabled(ctx),
         }
         (staging / "runtime_config.json").write_text(
             json.dumps(config, indent=2, ensure_ascii=True),
@@ -245,6 +235,8 @@ class AndroidExporter(PlatformExporter):
                 "{{TARGET_SDK}}": target_sdk,
                 "{{ORIENTATION}}": _xml_escape(orientation),
                 "{{ENTRY_SCENE}}": _xml_escape(entry),
+                "{{CHAQUOPY_ROOT_PLUGIN}}": "",
+                "{{CHAQUOPY_APP_PLUGIN}}": "",
             },
             "gradle": {
                 "{{APPLICATION_ID}}": _gradle_escape(app_id),
@@ -255,8 +247,21 @@ class AndroidExporter(PlatformExporter):
                 "{{TARGET_SDK}}": target_sdk,
                 "{{ORIENTATION}}": _gradle_escape(orientation),
                 "{{ENTRY_SCENE}}": _gradle_escape(entry),
+                "{{CHAQUOPY_ROOT_PLUGIN}}": (
+                    "id 'com.chaquo.python' version '17.0.0' apply false"
+                    if self._android_python_runtime_enabled(ctx)
+                    else ""
+                ),
+                "{{CHAQUOPY_APP_PLUGIN}}": (
+                    "id 'com.chaquo.python'"
+                    if self._android_python_runtime_enabled(ctx)
+                    else ""
+                ),
             },
         }
+
+    def _android_python_runtime_enabled(self, ctx: BuildContext) -> bool:
+        return bool(ctx.preset.extra.get("android_python_runtime", False))
 
     def _validate_android_runtime_v1(
         self,
@@ -265,14 +270,20 @@ class AndroidExporter(PlatformExporter):
         reachable_scripts: list[str],
     ) -> bool:
         """Fail early when the native Android v1 runtime cannot run a scene."""
-        if reachable_scripts:
+        python_runtime = self._android_python_runtime_enabled(ctx)
+        if reachable_scripts and not python_runtime:
             for script in reachable_scripts:
                 ctx.add_error(
                     "ANDROID_RUNTIME_UNSUPPORTED_SCRIPT: ScriptBehaviour/Python scripts "
                     f"are not supported by the native Android runtime v1: {script}. "
-                    "Remove ScriptBehaviour from Android scenes or wait for the planned "
-                    "Chaquopy/Python bridge phase."
+                    "Enable android_python_runtime in the Android preset or remove "
+                    "ScriptBehaviour from Android scenes."
                 )
+        if python_runtime and ctx.preset.min_sdk < 24:
+            ctx.add_error(
+                "ANDROID_PYTHON_RUNTIME_MIN_SDK: android_python_runtime requires "
+                "min_sdk >= 24 for Chaquopy 17.0.0."
+            )
 
         supported_components = {
             "Transform",
@@ -290,8 +301,20 @@ class AndroidExporter(PlatformExporter):
             "Sprite",
             "MobileControls2D",
         }
+        if python_runtime:
+            supported_components.update({
+                "ScriptBehaviour",
+                "Collectible2D",
+                "Hazard2D",
+                "Goal2D",
+                "RespawnPoint2D",
+                "MovingPlatform2D",
+                "EnemyPatrol2D",
+                "Checkpoint2D",
+                "KillZone2D",
+                "LevelBounds2D",
+            })
         unsupported_v1 = {
-            "ScriptBehaviour",
             "AudioSource",
             "AudioListener2D",
             "Tilemap",
@@ -326,17 +349,21 @@ class AndroidExporter(PlatformExporter):
             "CollisionFilter2D",
             "StaticBody2D",
             "AnimatableBody2D",
-            "Collectible2D",
-            "Hazard2D",
-            "Goal2D",
-            "RespawnPoint2D",
-            "MovingPlatform2D",
-            "EnemyPatrol2D",
-            "Checkpoint2D",
-            "KillZone2D",
-            "LevelBounds2D",
             "Marker2D",
         }
+        if not python_runtime:
+            unsupported_v1.update({
+                "ScriptBehaviour",
+                "Collectible2D",
+                "Hazard2D",
+                "Goal2D",
+                "RespawnPoint2D",
+                "MovingPlatform2D",
+                "EnemyPatrol2D",
+                "Checkpoint2D",
+                "KillZone2D",
+                "LevelBounds2D",
+            })
 
         for scene_path in reachable_scenes:
             scene_file = ctx.project_root / scene_path
@@ -424,10 +451,36 @@ class AndroidExporter(PlatformExporter):
     def _resolve_gradle_command(self, project_dir: Path | None = None) -> list[str]:
         if project_dir is not None:
             wrapper = project_dir / ("gradlew.bat" if os.name == "nt" else "gradlew")
-            if wrapper.exists():
+            wrapper_dir = wrapper.parent / "gradle" / "wrapper"
+            if (
+                wrapper.exists()
+                and (wrapper_dir / "gradle-wrapper.properties").exists()
+                and (wrapper_dir / "gradle-wrapper.jar").exists()
+            ):
                 return [str(wrapper)]
         gradle = shutil.which("gradle") or shutil.which("gradle.bat")
         return [gradle] if gradle else []
+
+    def _copy_android_python_scripts(
+        self,
+        ctx: BuildContext,
+        project_dir: Path,
+        reachable_scripts: list[str],
+    ) -> None:
+        python_root = project_dir / "app" / "src" / "main" / "python"
+        python_root.mkdir(parents=True, exist_ok=True)
+        for script in reachable_scripts:
+            normalized = str(script).replace("\\", "/").lstrip("/")
+            if not normalized.startswith("scripts/") or not normalized.endswith(".py"):
+                continue
+            src = ctx.project_root / normalized
+            if not src.exists():
+                ctx.add_warning(f"Android Python script missing: {normalized}")
+                continue
+            rel = normalized[len("scripts/"):]
+            dest = python_root / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
 
     def _build_release(
         self, ctx: BuildContext, project_dir: Path, env: dict[str, Any],
@@ -508,6 +561,31 @@ class AndroidExporter(PlatformExporter):
             return None
         aabs = list(bundle_dir.rglob("*.aab"))
         return aabs[0] if aabs else None
+
+    def _copy_android_artifact(
+        self,
+        ctx: BuildContext,
+        source: Path,
+        output_dir: Path,
+        kind: str,
+    ) -> Path:
+        dest_name = self._artifact_dest_name(ctx, source)
+        dest = output_dir / dest_name
+        if dest.exists() and dest.is_dir():
+            shutil.rmtree(dest)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, dest)
+        ctx.add_artifact(
+            str(dest.relative_to(ctx.project_root)),
+            kind,
+            dest.stat().st_size,
+        )
+        return dest
+
+    def _artifact_dest_name(self, ctx: BuildContext, source: Path) -> str:
+        if ctx._artifact_filename and Path(ctx._artifact_filename).suffix == source.suffix:
+            return ctx._artifact_filename
+        return source.name
 
     def _add_project_artifacts(
         self, ctx: BuildContext, project_dir: Path,

@@ -55,9 +55,11 @@ class MobileControlsSystem:
                 continue
 
             state = dict(input_map.last_state)
+            captured = controls.target_entity in self._active_targets
             if pointer_down:
-                state.update(self._state_from_pointer(controls, pointer, width, height))
-                next_active_targets.add(controls.target_entity)
+                if captured or self._point_in_controls(controls, pointer, width, height):
+                    state.update(self._state_from_pointer(controls, pointer, width, height, captured=captured))
+                    next_active_targets.add(controls.target_entity)
             elif controls.target_entity in self._active_targets or bool(pointer.get("released")):
                 state.update({"horizontal": 0.0, "vertical": 0.0, "action_1": 0.0, "action_2": 0.0})
             input_map.last_state = state
@@ -82,6 +84,8 @@ class MobileControlsSystem:
         pointer: dict[str, Any],
         width: float,
         height: float,
+        *,
+        captured: bool = False,
     ) -> dict[str, float]:
         x = float(pointer.get("x", 0.0))
         y = float(pointer.get("y", 0.0))
@@ -93,7 +97,7 @@ class MobileControlsSystem:
             dx = x - cx
             dy = y - cy
             distance = math.hypot(dx, dy)
-            if distance <= controls.left_stick_radius and distance > 0.0:
+            if (captured or distance <= controls.left_stick_radius * 1.35) and distance > 0.0:
                 normalized = min(1.0, distance / controls.left_stick_radius)
                 if normalized >= controls.deadzone:
                     scale = (normalized - controls.deadzone) / max(0.001, 1.0 - controls.deadzone)
@@ -113,3 +117,39 @@ class MobileControlsSystem:
     @staticmethod
     def _inside_circle(x: float, y: float, cx: float, cy: float, radius: float) -> bool:
         return math.hypot(x - cx, y - cy) <= radius
+
+    def _point_in_controls(
+        self,
+        controls: MobileControls2D,
+        pointer: dict[str, Any],
+        width: float,
+        height: float,
+    ) -> bool:
+        x = float(pointer.get("x", 0.0))
+        y = float(pointer.get("y", 0.0))
+        if controls.left_stick_enabled and self._inside_circle(
+            x,
+            y,
+            width * controls.left_stick_anchor_x,
+            height * controls.left_stick_anchor_y,
+            controls.left_stick_radius * 1.35,
+        ):
+            return True
+        if controls.action_1_enabled and self._inside_circle(
+            x,
+            y,
+            width * controls.action_1_anchor_x,
+            height * controls.action_1_anchor_y,
+            controls.action_1_radius * 1.35,
+        ):
+            return True
+        return bool(
+            controls.action_2_enabled
+            and self._inside_circle(
+                x,
+                y,
+                width * controls.action_2_anchor_x,
+                height * controls.action_2_anchor_y,
+                controls.action_2_radius * 1.35,
+            )
+        )

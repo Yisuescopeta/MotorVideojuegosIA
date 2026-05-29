@@ -208,6 +208,8 @@ no se detectan. Para incluirlos, declararlos en el `.py.meta.json`, usar
 - Keystore configurable via `preset.extra.keystore_path`
 - Errores de keystore con codigos accionables: `ANDROID_KEYSTORE_MISSING`, `ANDROID_KEYSTORE_NOT_FOUND`
 - Si `output_path` termina en `.apk` o `.aab`, el artefacto se copia a ese nombre exacto
+- `android_python_runtime: true` activa Chaquopy 17.0.0, requiere `min_sdk >= 24`
+  y copia scripts alcanzables a `app/src/main/python/`
 
 ### iOS
 - Requiere macOS + Xcode
@@ -358,9 +360,10 @@ con `TOOLCHAIN_UNAVAILABLE`, pero no el ejecutable final.
 El proyecto Android generado empaqueta el content pack y usa un runtime Kotlin
 nativo v1. Ese runtime ejecuta menu UI, cambio de escena, camara, animacion
 spritesheet basica, fisica AABB, `PlayerController2D`, `InputMap` y
-`MobileControls2D`. Si la escena usa capacidades no portadas, como
-`ScriptBehaviour` Python, audio, tilemap, particulas, luces o navegacion, el
-exporter falla con `ANDROID_RUNTIME_UNSUPPORTED_*` en vez de generar un APK roto.
+`MobileControls2D`. Con `android_python_runtime: true`, el exporter integra
+Chaquopy y ejecuta `ScriptBehaviour` via puente Android (`on_play`,
+`on_update`, `on_stop`) con contexto minimo compatible para gameplay. Sin ese
+flag, scripts Python siguen bloqueados con `ANDROID_RUNTIME_UNSUPPORTED_*`.
 
 ## Troubleshooting
 

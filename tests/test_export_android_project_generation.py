@@ -20,13 +20,17 @@ class TestAndroidProjectGeneration(unittest.TestCase):
             "settings.gradle",
             "build.gradle",
             "gradle.properties",
+            "gradlew",
+            "gradlew.bat",
             "app/build.gradle",
             "app/src/main/AndroidManifest.xml",
             "app/src/main/java/com/motorvideojuegos/MainActivity.kt",
+            "app/src/main/python/motor_android_runtime.py",
             "app/src/main/res/drawable/ic_launcher.xml",
             "app/src/main/res/layout/activity_main.xml",
             "app/proguard-rules.pro",
             "gradle/wrapper/gradle-wrapper.properties",
+            "gradle/wrapper/gradle-wrapper.jar",
         ]
         for rel_path in required:
             full = self.template_dir / rel_path
@@ -69,6 +73,14 @@ class TestAndroidProjectGeneration(unittest.TestCase):
         self.assertIn("SurfaceView", content)
         self.assertIn("MobileControls2D", content)
         self.assertIn("load_scene_flow", content)
+        self.assertIn("controlCaptures", content)
+        self.assertIn("ScriptBehaviourBridge", content)
+
+    def test_android_template_has_chaquopy_placeholders(self):
+        root_gradle = (self.template_dir / "build.gradle").read_text(encoding="utf-8")
+        app_gradle = (self.template_dir / "app" / "build.gradle").read_text(encoding="utf-8")
+        self.assertIn("{{CHAQUOPY_ROOT_PLUGIN}}", root_gradle)
+        self.assertIn("{{CHAQUOPY_APP_PLUGIN}}", app_gradle)
 
     def test_android_template_uses_native_activity_theme(self):
         manifest_path = self.template_dir / "app" / "src" / "main" / "AndroidManifest.xml"
@@ -85,6 +97,24 @@ class TestAndroidProjectGeneration(unittest.TestCase):
             self.skipTest("gradle-wrapper.properties not found")
         content = wrapper_path.read_text(encoding="utf-8")
         self.assertIn("distributionUrl", content)
+
+    def test_android_exporter_prefers_generated_gradle_wrapper(self):
+        import tempfile
+
+        from engine.export.android_exporter import AndroidExporter
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_dir = Path(tmpdir)
+            wrapper_name = "gradlew.bat" if sys.platform.startswith("win") else "gradlew"
+            (project_dir / wrapper_name).write_text("", encoding="utf-8")
+            wrapper_dir = project_dir / "gradle" / "wrapper"
+            wrapper_dir.mkdir(parents=True)
+            (wrapper_dir / "gradle-wrapper.properties").write_text("distributionUrl=x", encoding="utf-8")
+            (wrapper_dir / "gradle-wrapper.jar").write_bytes(b"jar")
+
+            command = AndroidExporter()._resolve_gradle_command(project_dir)
+
+        self.assertEqual(command, [str(project_dir / wrapper_name)])
 
     def test_ios_template_structure_exists(self):
         ios_dir = Path(__file__).parent.parent / "platforms" / "ios" / "template"
@@ -143,7 +173,7 @@ class TestAndroidRuntimeV1Validation(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def _ctx(self):
+    def _ctx(self, *, android_python_runtime=False, min_sdk=23):
         from engine.export.build_context import BuildContext
         from engine.export.models import ExportPreset
 
@@ -155,6 +185,8 @@ class TestAndroidRuntimeV1Validation(unittest.TestCase):
             entry_scene="levels/test.json",
             display_name="Test",
             application_id="com.example.test",
+            min_sdk=min_sdk,
+            extra={"android_python_runtime": android_python_runtime} if android_python_runtime else {},
         )
         return BuildContext(preset, self.project_root)
 
@@ -183,6 +215,64 @@ class TestAndroidRuntimeV1Validation(unittest.TestCase):
 
         self.assertFalse(ok)
         self.assertTrue(any("ANDROID_RUNTIME_UNSUPPORTED_SCRIPT" in err for err in ctx.errors))
+
+    def test_validation_accepts_python_scripts_when_android_python_runtime_enabled(self):
+        from engine.export.android_exporter import AndroidExporter
+
+        scene = self._write_scene(
+            "test.json",
+            [
+                {
+                    "name": "Player",
+                    "components": {
+                        "Transform": {},
+                        "InputMap": {},
+                        "PlayerController2D": {},
+                        "ScriptBehaviour": {"module_path": "scripts/player.py"},
+                    },
+                },
+                {
+                    "name": "Coin",
+                    "components": {
+                        "Transform": {},
+                        "Collider": {"is_trigger": True},
+                        "Collectible2D": {"points": 1},
+                    },
+                },
+                {
+                    "name": "MobileControlsOverlay",
+                    "components": {"MobileControls2D": {"target_entity": "Player"}},
+                },
+            ],
+        )
+        ctx = self._ctx(android_python_runtime=True, min_sdk=24)
+        ok = AndroidExporter()._validate_android_runtime_v1(ctx, [scene], ["scripts/player.py"])
+
+        self.assertTrue(ok, ctx.errors)
+
+    def test_validation_blocks_android_python_runtime_below_min_sdk_24(self):
+        from engine.export.android_exporter import AndroidExporter
+
+        scene = self._write_scene("test.json", [])
+        ctx = self._ctx(android_python_runtime=True, min_sdk=23)
+        ok = AndroidExporter()._validate_android_runtime_v1(ctx, [scene], ["scripts/player.py"])
+
+        self.assertFalse(ok)
+        self.assertTrue(any("ANDROID_PYTHON_RUNTIME_MIN_SDK" in err for err in ctx.errors))
+
+    def test_android_python_runtime_copies_reachable_scripts(self):
+        from engine.export.android_exporter import AndroidExporter
+
+        script = self.project_root / "scripts" / "player.py"
+        script.parent.mkdir()
+        script.write_text("VALUE = 1\n", encoding="utf-8")
+        project_dir = self.project_root / "staging" / "android_project"
+        ctx = self._ctx(android_python_runtime=True, min_sdk=24)
+
+        AndroidExporter()._copy_android_python_scripts(ctx, project_dir, ["scripts/player.py"])
+
+        copied = project_dir / "app" / "src" / "main" / "python" / "player.py"
+        self.assertEqual(copied.read_text(encoding="utf-8"), "VALUE = 1\n")
 
     def test_validation_blocks_missing_mobile_controls_for_player(self):
         from engine.export.android_exporter import AndroidExporter
