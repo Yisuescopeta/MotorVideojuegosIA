@@ -100,6 +100,28 @@ class TestExportPresetSchema(unittest.TestCase):
         errors = validate_preset(preset)
         self.assertTrue(any(e.code == "OUTPUT_PATH_REQUIRED" for e in errors))
 
+    def test_valid_device_profile_window_passes(self):
+        preset = ExportPreset(
+            name="Windows Mobile Preview",
+            platform="windows",
+            output_path="dist/x",
+            entry_scene="a.json",
+            window={"device_profile": "mobile_portrait"},
+        )
+        errors = validate_preset(preset)
+        self.assertFalse(any(e.code == "INVALID_DEVICE_PROFILE" for e in errors))
+
+    def test_unknown_device_profile_window_fails(self):
+        preset = ExportPreset(
+            name="Windows Bad Profile",
+            platform="windows",
+            output_path="dist/x",
+            entry_scene="a.json",
+            window={"device_profile": "watch"},
+        )
+        errors = validate_preset(preset)
+        self.assertTrue(any(e.code == "INVALID_DEVICE_PROFILE" for e in errors))
+
     def test_android_requires_application_id(self):
         preset = ExportPreset(
             name="Android X", platform="android",

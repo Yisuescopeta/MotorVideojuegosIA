@@ -126,6 +126,13 @@ verifica hashes SHA-256 y expone assets, escenas y scripts al runtime.
   y `MobileControls2D`.
 - `android_python_runtime: true` aplica Chaquopy 17.0.0, exige `min_sdk >= 24`
   y ejecuta `ScriptBehaviour` Python con `on_play`, `on_update` y `on_stop`.
+- Cuando `android_python_runtime` esta activo, `runtime_config.json` incluye
+  `android_runtime_cache_key`, derivado del content pack. El shell Android
+  extrae solo `runtime_config.json`, `game.manifest.json`, `levels/`, `assets/`
+  y `scripts/` a `filesDir`, excluye `chaquopy/`, y reutiliza la copia si el
+  cache key no cambia.
+- Si el runtime compartido falla en Android, la APK muestra una pantalla de
+  error visible y escribe el detalle en Logcat con tag `MotorGame`.
 - Sin `android_python_runtime`, `ScriptBehaviour` Python y sistemas no portados
   fallan en export con `ANDROID_RUNTIME_UNSUPPORTED_*`; no se genera APK
   silenciosamente roto.

@@ -40,16 +40,19 @@ export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
   "application_id": "com.example.mygame",
   "version_name": "0.1.0",
   "version_code": 1,
-  "min_sdk": 23,
+  "min_sdk": 24,
   "target_sdk": 35,
   "orientation": "landscape",
   "bundle_mode": "packed",
-  "include_debug_tools": true
+  "include_debug_tools": true,
+  "android_python_runtime": true
 }
 ```
 
 Campos obligatorios Android: `application_id`. Campos obligatorios release:
-`version_code`.
+`version_code`. Para escenas jugables con `InputMap` + `PlayerController2D`,
+usa `android_python_runtime: true` y `min_sdk >= 24`; asi el APK ejecuta el
+mismo runtime compartido que PLAY del editor.
 
 ### Build
 
@@ -122,16 +125,23 @@ El exporter reemplaza placeholders (`{{APPLICATION_ID}}`, `{{DISPLAY_NAME}}`,
 `{{VERSION_CODE}}`, `{{VERSION_NAME}}`, `{{MIN_SDK}}`, `{{TARGET_SDK}}`,
 `{{ORIENTATION}}`) en los archivos de template.
 
-El template Android incluye un runtime Kotlin nativo v1 con `SurfaceView`.
-Carga `runtime_config.json`, escenas JSON y assets desde `app/src/main/assets/`.
-Soporta el primer APK jugable para menu UI, cambio de escena, camara,
-animacion spritesheet basica, fisica AABB, `PlayerController2D`, `InputMap` y
-`MobileControls2D`.
+El template Android incluye un shell Kotlin con `SurfaceView`. Con
+`android_python_runtime: true`, el shell extrae solo
+`runtime_config.json`, `game.manifest.json`, `levels/`, `assets/` y `scripts/`
+a `filesDir`, excluye siempre `chaquopy/`, arranca Chaquopy y delega la
+simulacion a `SharedGameRuntime` (`Game` + `RuntimeController`), la misma ruta
+que PLAY del editor. Kotlin queda limitado a input tactil, surface Android y
+render del snapshot serializado. La copia usa `android_runtime_cache_key` del
+`runtime_config.json`; si el content pack no cambia, se reutiliza en arranques
+posteriores. Si el runtime compartido falla, la APK muestra una pantalla de
+error visible y escribe el detalle en Logcat con tag `MotorGame`.
 
-Limitacion v1: no ejecuta `ScriptBehaviour` Python ni sistemas avanzados como
-audio, tilemap, particulas, luces, navegacion o tweens. El exporter falla con
-errores `ANDROID_RUNTIME_UNSUPPORTED_*` si una escena Android usa capacidades
-todavia no portadas, para evitar APKs silenciosamente no jugables.
+El fallback Kotlin nativo v1 queda solo para escenas simples sin gameplay
+avanzado. El exporter falla con `ANDROID_RUNTIME_REQUIRES_SHARED_RUNTIME` si una
+escena Android reachable tiene `InputMap` + `PlayerController2D` sin
+`android_python_runtime: true`. Tambien falla con `ANDROID_RUNTIME_UNSUPPORTED_*`
+para capacidades no soportadas por el modo elegido, evitando APKs
+silenciosamente no jugables.
 
 ## Controles moviles
 
@@ -142,9 +152,10 @@ py -m motor mobile controls add --scene levels/platformer_test_scene.json --targ
 
 Este comando crea un overlay `MobileControls2D` serializable. En runtime,
 `MobileControlsSystem` traduce touch/pointer a `InputMap.last_state` del
-`target_entity`. En Android v1, el exporter exige que toda escena reachable con
+`target_entity`. En Android, el exporter exige que toda escena reachable con
 `InputMap` + `PlayerController2D` tenga un overlay `MobileControls2D` apuntando
-a esa entidad. Es modulo interno del motor, no dependencia externa.
+a esa entidad y use el runtime Python compartido. Es modulo interno del motor,
+no dependencia externa.
 
 ### Sin Android SDK
 
@@ -244,12 +255,14 @@ py -m motor export doctor --project . --json
 
 - **Android real build**: requiere Android SDK, JDK 11+ y Gradle. Sin ellos, se
   genera proyecto estructural pero no APK/AAB.
-- **Android jugable v1**: usa runtime Kotlin nativo. Soporta menu, escena
-  platformer basica, sprites/rect fallback, camara, fisica AABB y controles
-  moviles. `ScriptBehaviour` Python queda para la siguiente fase.
+- **Android jugable**: las escenas con gameplay usan Chaquopy +
+  `SharedGameRuntime`, por lo que power-ups `ScriptBehaviour`, plataformas
+  moviles, fisica, semantica 2D y orden de sistemas siguen la ruta de PLAY del
+  editor. Requiere `android_python_runtime: true` y `min_sdk >= 24`.
+- **Android fallback v1**: el runtime Kotlin nativo queda limitado a escenas
+  simples sin gameplay avanzado.
 - **Android release signing**: requiere keystore configurado en `extra`.
 - **iOS real build**: requiere macOS, Xcode y Apple Developer account. Nunca
   compila automaticamente desde el pipeline.
-- **Python en movil**: si `raylib-py` no soporta iOS/Android de forma estable,
-  el runtime movil queda documentado como bloqueador y se prepara diseno para
-  runtime nativo progresivo.
+- **Render Android**: Kotlin renderiza snapshots serializados; el rect visual
+  usa `Sprite`/`Animator`, y el rect fisico usa `Collider`.

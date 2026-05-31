@@ -19,7 +19,12 @@ escena o prefab emite payload canonico `v2`.
 `schema_version` y una lista `presets`. Cada preset define `name`, `platform`,
 `architecture`, `mode`, `output_path`, `entry_scene`, `display_name`,
 `application_id`, version, `bundle_mode`, `include_debug_tools` y opciones de
-ventana o movil. Campos desconocidos fallan salvo extras documentados de Android
+ventana o movil. `window` acepta `device_profile`, `width`, `height`,
+`resizable` y `fullscreen`; `width`/`height` tienen prioridad sobre el tamano
+del perfil y, si no hay datos, el runtime usa `1280x720`. Los perfiles actuales
+son `fit_panel`, `mobile_portrait`, `mobile_landscape`, `tablet_landscape`,
+`desktop_16_9`, `desktop_16_10` y `desktop_ultrawide`. Campos desconocidos
+fallan salvo extras documentados de Android
 release (`keystore_path`, `keystore_password`, `key_alias`, `key_password`) y
 `include_all_assets`. En Windows, `console: true` es un extra documentado para
 forzar consola incluso en release; release normal usa `console=False`.

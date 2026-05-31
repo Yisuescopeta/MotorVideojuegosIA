@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+from hashlib import sha256
 from html import escape as _html_escape
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from typing import Any
 from engine.export.build_context import BuildContext
 from engine.export.content_pack import build_content_pack
 from engine.export.platform_exporter import PlatformExporter
+from engine.utils.device_profiles import resolve_window_config
 
 _PLACEHOLDERS = {
     "{{APPLICATION_ID}}": "application_id",
@@ -109,7 +111,7 @@ class AndroidExporter(PlatformExporter):
             shutil.copy2(runtime_config_src, assets_dst / "runtime_config.json")
 
         if self._android_python_runtime_enabled(ctx):
-            self._copy_android_python_scripts(ctx, project_dir, graph.reachable_scripts)
+            self._copy_android_python_runtime(ctx, project_dir, graph.reachable_scripts)
 
         self._add_project_artifacts(ctx, project_dir)
 
@@ -169,17 +171,21 @@ class AndroidExporter(PlatformExporter):
             "entry_scene": ctx.preset.entry_scene,
             "project_name": ctx.preset.display_name or ctx.preset.name,
             "version": ctx.preset.version_name,
-            "window": ctx.preset.window or {
-                "width": 1280, "height": 720,
-                "resizable": True, "fullscreen": False,
-            },
+            "window": resolve_window_config(ctx.preset.window),
             "debug_tools": ctx.preset.include_debug_tools,
             "android_python_runtime": self._android_python_runtime_enabled(ctx),
+            "android_runtime_cache_key": self._android_runtime_cache_key(staging),
         }
         (staging / "runtime_config.json").write_text(
             json.dumps(config, indent=2, ensure_ascii=True),
             encoding="utf-8",
         )
+
+    def _android_runtime_cache_key(self, staging: Path) -> str:
+        manifest = staging / "game.manifest.json"
+        if manifest.exists():
+            return sha256(manifest.read_bytes()).hexdigest()
+        return ""
 
     def _generate_android_project(
         self, ctx: BuildContext, staging: Path,
@@ -405,6 +411,13 @@ class AndroidExporter(PlatformExporter):
                     f"py -m motor mobile controls add --scene {scene_path} "
                     f"--target {target} --profile platformer --project . --json"
                 )
+            if playable_targets and not python_runtime:
+                ctx.add_error(
+                    "ANDROID_RUNTIME_REQUIRES_SHARED_RUNTIME: "
+                    f"{scene_path} has playable entities "
+                    f"{', '.join(sorted(playable_targets))}; Android gameplay parity "
+                    "requires android_python_runtime=true and min_sdk >= 24."
+                )
 
         return not ctx.has_errors
 
@@ -481,6 +494,38 @@ class AndroidExporter(PlatformExporter):
             dest = python_root / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dest)
+
+    def _copy_android_python_runtime(
+        self,
+        ctx: BuildContext,
+        project_dir: Path,
+        reachable_scripts: list[str],
+    ) -> None:
+        python_root = project_dir / "app" / "src" / "main" / "python"
+        python_root.mkdir(parents=True, exist_ok=True)
+        repo_root = Path(__file__).resolve().parents[2]
+        ignore = shutil.ignore_patterns(
+            "__pycache__",
+            "*.pyc",
+            ".mypy_cache",
+            ".pytest_cache",
+            ".ruff_cache",
+        )
+        for package_name in ("engine", "pyray"):
+            src = repo_root / package_name
+            dest = python_root / package_name
+            if not src.exists():
+                ctx.add_error(f"ANDROID_PYTHON_RUNTIME_MISSING: {package_name}")
+                continue
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(src, dest, ignore=ignore)
+        sitecustomize = repo_root / "sitecustomize.py"
+        if sitecustomize.exists():
+            shutil.copy2(sitecustomize, python_root / "sitecustomize.py")
+        else:
+            ctx.add_error("ANDROID_PYTHON_RUNTIME_MISSING: sitecustomize.py")
+        self._copy_android_python_scripts(ctx, project_dir, reachable_scripts)
 
     def _build_release(
         self, ctx: BuildContext, project_dir: Path, env: dict[str, Any],

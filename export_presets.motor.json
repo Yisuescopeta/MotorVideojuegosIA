@@ -32,11 +32,12 @@
       "application_id": "com.yisuescopeta.mygame",
       "version_name": "0.1.0",
       "version_code": 1,
-      "min_sdk": 23,
+      "min_sdk": 24,
       "target_sdk": 35,
       "orientation": "landscape",
       "bundle_mode": "packed",
-      "include_debug_tools": true
+      "include_debug_tools": true,
+      "android_python_runtime": true
     }
   ]
 }

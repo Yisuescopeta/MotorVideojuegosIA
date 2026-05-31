@@ -7,6 +7,7 @@ Tests ExportRuntime directly without requiring PyInstaller or full builds.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import shutil
 import sys
@@ -649,6 +650,131 @@ class TestPrueva1ExportParity(unittest.TestCase):
             with self.subTest(pickup=case[0]):
                 self._assert_pickup_effect(self.project_root, case)
 
+    @unittest.skipUnless(project_root.exists(), "Prueva1 project not present")
+    def test_prueva1_android_shared_runtime_adapter_pickups_apply_script_effects(self):
+        module = self._load_android_runtime_adapter()
+        config = {
+            "entry_scene": "levels/playground_platformer_mobile.json",
+            "window": {"width": 1280, "height": 720},
+        }
+        try:
+            for case in self.pickup_cases:
+                pickup_name, x, y, field, expected = case
+                with self.subTest(pickup=pickup_name):
+                    created = json.loads(module.create_shared_runtime(str(self.project_root), json.dumps(config)))
+                    self.assertTrue(created["ok"], created.get("error", ""))
+                    moved = json.loads(module.set_entity_transform("Player", x, y))
+                    self.assertTrue(moved["ok"])
+                    snapshot = {}
+                    for _ in range(2):
+                        snapshot = json.loads(module.run_shared_frame(1.0 / 60.0, "{}"))
+                    self.assertTrue(snapshot["ok"], snapshot.get("error", ""))
+
+                    by_name = {entity["name"]: entity for entity in snapshot["scene"]["entities"]}
+                    self.assertNotIn(pickup_name, by_name)
+                    player = by_name["Player"]
+                    script = player["components"]["ScriptBehaviour"]
+                    controller = player["components"]["PlayerController2D"]
+                    value = script["public_data"].get(field)
+                    if field.endswith("_timer"):
+                        self.assertGreaterEqual(float(value), float(expected))
+                    else:
+                        self.assertEqual(value, expected)
+                    if field == "speed_timer":
+                        self.assertGreater(controller["move_speed"], script["public_data"]["base_move_speed"])
+                    if field == "jump_timer":
+                        self.assertLess(controller["jump_velocity"], script["public_data"]["base_jump_velocity"])
+        finally:
+            module.shutdown_shared_runtime()
+            sys.modules.pop("motor_android_runtime_test_adapter", None)
+
+    @unittest.skipUnless(project_root.exists(), "Prueva1 project not present")
+    def test_prueva1_android_adapter_forces_pyray_stub_when_runtime_is_copied(self):
+        import os
+
+        from engine.export.android_exporter import AndroidExporter
+        from engine.export.build_context import BuildContext
+        from engine.export.models import ExportPreset
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            project_dir = tmp / "android_project"
+            assets_dir = project_dir / "app" / "src" / "main" / "assets"
+            shutil.copytree(self.project_root / "levels", assets_dir / "levels")
+            shutil.copytree(self.project_root / "assets", assets_dir / "assets")
+            (assets_dir / "runtime_config.json").write_text(
+                json.dumps(
+                    {
+                        "entry_scene": "levels/playground_platformer_mobile.json",
+                        "window": {"width": 844, "height": 390},
+                        "android_python_runtime": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            preset = ExportPreset(
+                name="Android Mobile Debug",
+                platform="android",
+                mode="debug",
+                output_path="dist/export/android/Prueva1-mobile-debug.apk",
+                entry_scene="levels/playground_platformer_mobile.json",
+                display_name="Prueva1",
+                application_id="com.prueva1.game",
+                min_sdk=24,
+                extra={"android_python_runtime": True},
+            )
+            ctx = BuildContext(preset, self.project_root)
+            AndroidExporter()._copy_android_python_runtime(ctx, project_dir, ["scripts/player_powerups.py"])
+            self.assertFalse(ctx.errors)
+            template_adapter = (
+                self.repo_root
+                / "platforms"
+                / "android"
+                / "template"
+                / "app"
+                / "src"
+                / "main"
+                / "python"
+                / "motor_android_runtime.py"
+            )
+            adapter_path = project_dir / "app" / "src" / "main" / "python" / "motor_android_runtime.py"
+            shutil.copy2(template_adapter, adapter_path)
+
+            before_env = os.environ.pop("PYRAY_FORCE_STUB", None)
+            before_paths = list(sys.path)
+            sys.modules.pop("pyray", None)
+            try:
+                spec = importlib.util.spec_from_file_location("motor_android_runtime_copied_adapter", adapter_path)
+                self.assertIsNotNone(spec)
+                self.assertIsNotNone(spec.loader)
+                module = importlib.util.module_from_spec(spec)
+                sys.modules["motor_android_runtime_copied_adapter"] = module
+                sys.path.insert(0, str(adapter_path.parent))
+                spec.loader.exec_module(module)
+                payload = json.loads(
+                    module.create_shared_runtime(
+                        str(assets_dir.resolve()),
+                        (assets_dir / "runtime_config.json").read_text(encoding="utf-8"),
+                    )
+                )
+
+                self.assertTrue(payload["ok"], payload.get("traceback", payload.get("error", "")))
+                self.assertEqual(payload["current_scene"], "levels/playground_platformer_mobile.json")
+                self.assertGreater(len(payload["scene"]["entities"]), 0)
+                self.assertEqual(os.environ.get("PYRAY_FORCE_STUB"), "1")
+            finally:
+                try:
+                    module.shutdown_shared_runtime()
+                except Exception:
+                    pass
+                sys.modules.pop("motor_android_runtime_copied_adapter", None)
+                sys.modules.pop("pyray", None)
+                sys.path[:] = before_paths
+                if before_env is None:
+                    os.environ.pop("PYRAY_FORCE_STUB", None)
+                else:
+                    os.environ["PYRAY_FORCE_STUB"] = before_env
+
     @unittest.skipUnless(packed_root.exists(), "Prueva1 packed build not present")
     def test_prueva1_packed_pickups_apply_script_effects(self):
         for case in self.pickup_cases:
@@ -727,6 +853,26 @@ class TestPrueva1ExportParity(unittest.TestCase):
         if field == "jump_timer":
             self.assertLess(controller.jump_velocity, script.public_data["base_jump_velocity"])
         runtime.shutdown()
+
+    def _load_android_runtime_adapter(self):
+        adapter_path = (
+            self.repo_root
+            / "platforms"
+            / "android"
+            / "template"
+            / "app"
+            / "src"
+            / "main"
+            / "python"
+            / "motor_android_runtime.py"
+        )
+        spec = importlib.util.spec_from_file_location("motor_android_runtime_test_adapter", adapter_path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["motor_android_runtime_test_adapter"] = module
+        spec.loader.exec_module(module)
+        return module
 
 
 class TestExportRuntimeUI(unittest.TestCase):

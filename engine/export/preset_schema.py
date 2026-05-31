@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from engine.export.models import ExportPreset, ExportValidationError, PresetsDocument
+from engine.utils.device_profiles import is_known_device_profile
 
 SCHEMA_VERSION = 1
 
@@ -80,6 +81,8 @@ def validate_preset(preset: ExportPreset) -> list[ExportValidationError]:
             hint=f"Bundle mode must be one of: {', '.join(sorted(_VALID_BUNDLE_MODES))}"
         ))
 
+    errors.extend(_validate_window_config(preset.window))
+
     if preset.platform in ("android", "ios") and not preset.application_id:
         errors.append(ExportValidationError(
             "APPLICATION_ID_REQUIRED",
@@ -118,6 +121,43 @@ def validate_preset(preset: ExportPreset) -> list[ExportValidationError]:
             hint="android_python_runtime requires min_sdk >= 24 with Chaquopy 17.0.0."
         ))
 
+    return errors
+
+
+def _validate_window_config(window: dict[str, Any]) -> list[ExportValidationError]:
+    errors: list[ExportValidationError] = []
+    if not window:
+        return errors
+    if not isinstance(window, dict):
+        return [
+            ExportValidationError(
+                "INVALID_WINDOW_CONFIG",
+                path="window",
+                hint="window must be an object.",
+            )
+        ]
+    for key in ("width", "height"):
+        if key in window:
+            try:
+                value = int(window[key])
+            except (TypeError, ValueError):
+                value = 0
+            if value < 1:
+                errors.append(
+                    ExportValidationError(
+                        "INVALID_WINDOW_SIZE",
+                        path=f"window.{key}",
+                        hint="Window width and height must be positive integers.",
+                    )
+                )
+    if "device_profile" in window and not is_known_device_profile(window.get("device_profile")):
+        errors.append(
+            ExportValidationError(
+                "INVALID_DEVICE_PROFILE",
+                path=str(window.get("device_profile", "")),
+                hint="Use one of the supported device profile ids.",
+            )
+        )
     return errors
 
 

@@ -1,8 +1,7 @@
-import tkinter as tk
-
-
 def get_clipboard_text() -> str:
     try:
+        import tkinter as tk
+
         root = tk.Tk()
         root.withdraw()
         text = root.clipboard_get()
@@ -14,6 +13,8 @@ def get_clipboard_text() -> str:
 
 def set_clipboard_text(text: str) -> None:
     try:
+        import tkinter as tk
+
         root = tk.Tk()
         root.withdraw()
         root.clipboard_clear()

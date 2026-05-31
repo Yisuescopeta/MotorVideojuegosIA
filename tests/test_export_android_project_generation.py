@@ -74,7 +74,54 @@ class TestAndroidProjectGeneration(unittest.TestCase):
         self.assertIn("MobileControls2D", content)
         self.assertIn("load_scene_flow", content)
         self.assertIn("controlCaptures", content)
+        self.assertIn("SharedRuntimeBridge", content)
         self.assertIn("ScriptBehaviourBridge", content)
+
+    def test_android_template_uses_logical_viewport_letterbox(self):
+        kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"
+        content = kt_path.read_text(encoding="utf-8")
+        self.assertIn('config.optJSONObject("window")', content)
+        self.assertIn("private fun viewportFrame(): RectF", content)
+        self.assertIn("private fun screenToViewport", content)
+        self.assertIn("canvas.translate(frame.left, frame.top)", content)
+        self.assertIn("canvas.scale(frame.width() / viewportW, frame.height() / viewportH)", content)
+        self.assertIn("if (mapped != null) activePointers", content)
+
+    def test_android_template_delegates_python_runtime_to_shared_runtime(self):
+        kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"
+        content = kt_path.read_text(encoding="utf-8")
+        self.assertIn("preparePythonRuntimeFiles()", content)
+        self.assertIn("sharedRuntimeBridge?.runFrame", content)
+        self.assertIn("return", content[content.index("if (androidPythonRuntime)") : content.index("updateMobileControls()")])
+        self.assertIn("create_shared_runtime", content)
+        self.assertIn("run_shared_frame", content)
+
+    def test_android_template_uses_selective_cached_runtime_asset_copy(self):
+        kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"
+        content = kt_path.read_text(encoding="utf-8")
+        self.assertIn('config.optString("android_runtime_cache_key", "uncached")', content)
+        self.assertIn('".motor_runtime_cache_key"', content)
+        self.assertIn("ANDROID_RUNTIME_ASSET_PATHS", content)
+        self.assertIn('"runtime_config.json", "game.manifest.json", "levels", "assets", "scripts"', content)
+        self.assertIn('assetPath == "chaquopy" || assetPath.startsWith("chaquopy/")', content)
+        self.assertNotIn('copyAssetTree("", runtimeDir)', content)
+
+    def test_android_template_renders_visible_runtime_error(self):
+        kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"
+        content = kt_path.read_text(encoding="utf-8")
+        self.assertIn("private var runtimeError: String? = null", content)
+        self.assertIn("drawRuntimeError(canvas, error)", content)
+        self.assertIn("Motor Android runtime error", content)
+        self.assertIn("setRuntimeError(", content)
+        self.assertIn('snapshot?.optString("traceback", "")', content)
+
+    def test_android_template_uses_visual_rect_for_render_and_collider_rect_for_physics(self):
+        kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"
+        content = kt_path.read_text(encoding="utf-8")
+        self.assertIn("private fun visualRect(entity: Entity): RectF?", content)
+        self.assertIn("val rect = visualRect(entity) ?: worldRect(entity) ?: return", content)
+        self.assertIn('val c = entity.components.optJSONObject("Collider")', content)
+        self.assertIn('sprite.optDouble("height", 64.0)', content)
 
     def test_android_template_has_chaquopy_placeholders(self):
         root_gradle = (self.template_dir / "build.gradle").read_text(encoding="utf-8")
@@ -260,6 +307,72 @@ class TestAndroidRuntimeV1Validation(unittest.TestCase):
         self.assertFalse(ok)
         self.assertTrue(any("ANDROID_PYTHON_RUNTIME_MIN_SDK" in err for err in ctx.errors))
 
+    def test_runtime_config_resolves_mobile_landscape_window(self):
+        from engine.export.android_exporter import AndroidExporter
+        from engine.export.build_context import BuildContext
+        from engine.export.models import ExportPreset
+
+        preset = ExportPreset(
+            name="Android Mobile Debug",
+            platform="android",
+            mode="debug",
+            output_path="dist/export/android/Test.apk",
+            entry_scene="levels/test.json",
+            display_name="Test",
+            application_id="com.example.test",
+            min_sdk=24,
+            window={"device_profile": "mobile_landscape"},
+        )
+        ctx = BuildContext(preset, self.project_root)
+        ctx.staging_dir.mkdir(parents=True, exist_ok=True)
+
+        AndroidExporter()._write_runtime_config(ctx, ctx.staging_dir)
+
+        config = json.loads((ctx.staging_dir / "runtime_config.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["window"]["device_profile"], "mobile_landscape")
+        self.assertEqual(config["window"]["width"], 844)
+        self.assertEqual(config["window"]["height"], 390)
+        self.assertIn("android_runtime_cache_key", config)
+
+    def test_runtime_config_android_cache_key_is_stable_and_content_derived(self):
+        from engine.export.android_exporter import AndroidExporter
+        from engine.export.build_context import BuildContext
+        from engine.export.models import ExportPreset
+
+        preset = ExportPreset(
+            name="Android Mobile Debug",
+            platform="android",
+            mode="debug",
+            output_path="dist/export/android/Test.apk",
+            entry_scene="levels/test.json",
+            display_name="Test",
+            application_id="com.example.test",
+            min_sdk=24,
+            extra={"android_python_runtime": True},
+        )
+        ctx = BuildContext(preset, self.project_root)
+        ctx.staging_dir.mkdir(parents=True, exist_ok=True)
+        manifest = ctx.staging_dir / "game.manifest.json"
+        manifest.write_text('{"assets":["a.png"]}', encoding="utf-8")
+
+        exporter = AndroidExporter()
+        exporter._write_runtime_config(ctx, ctx.staging_dir)
+        first = json.loads((ctx.staging_dir / "runtime_config.json").read_text(encoding="utf-8"))[
+            "android_runtime_cache_key"
+        ]
+        exporter._write_runtime_config(ctx, ctx.staging_dir)
+        second = json.loads((ctx.staging_dir / "runtime_config.json").read_text(encoding="utf-8"))[
+            "android_runtime_cache_key"
+        ]
+        manifest.write_text('{"assets":["b.png"]}', encoding="utf-8")
+        exporter._write_runtime_config(ctx, ctx.staging_dir)
+        third = json.loads((ctx.staging_dir / "runtime_config.json").read_text(encoding="utf-8"))[
+            "android_runtime_cache_key"
+        ]
+
+        self.assertEqual(first, second)
+        self.assertNotEqual(first, third)
+
     def test_android_python_runtime_copies_reachable_scripts(self):
         from engine.export.android_exporter import AndroidExporter
 
@@ -273,6 +386,20 @@ class TestAndroidRuntimeV1Validation(unittest.TestCase):
 
         copied = project_dir / "app" / "src" / "main" / "python" / "player.py"
         self.assertEqual(copied.read_text(encoding="utf-8"), "VALUE = 1\n")
+
+    def test_android_python_runtime_copies_shared_engine_runtime(self):
+        from engine.export.android_exporter import AndroidExporter
+
+        project_dir = self.project_root / "staging" / "android_project"
+        ctx = self._ctx(android_python_runtime=True, min_sdk=24)
+
+        AndroidExporter()._copy_android_python_runtime(ctx, project_dir, [])
+
+        python_root = project_dir / "app" / "src" / "main" / "python"
+        self.assertTrue((python_root / "engine" / "runtime" / "shared_game_runtime.py").exists())
+        self.assertTrue((python_root / "pyray" / "__init__.py").exists())
+        self.assertTrue((python_root / "sitecustomize.py").exists())
+        self.assertFalse(ctx.errors)
 
     def test_validation_blocks_missing_mobile_controls_for_player(self):
         from engine.export.android_exporter import AndroidExporter
@@ -321,10 +448,38 @@ class TestAndroidRuntimeV1Validation(unittest.TestCase):
                 },
             ],
         )
-        ctx = self._ctx()
+        ctx = self._ctx(android_python_runtime=True, min_sdk=24)
         ok = AndroidExporter()._validate_android_runtime_v1(ctx, [scene], [])
 
         self.assertTrue(ok, ctx.errors)
+
+    def test_validation_blocks_playable_scene_without_shared_runtime(self):
+        from engine.export.android_exporter import AndroidExporter
+
+        scene = self._write_scene(
+            "test.json",
+            [
+                {
+                    "name": "Player",
+                    "components": {
+                        "Transform": {},
+                        "InputMap": {},
+                        "PlayerController2D": {},
+                    },
+                },
+                {
+                    "name": "MobileControlsOverlay",
+                    "components": {
+                        "MobileControls2D": {"target_entity": "Player"},
+                    },
+                },
+            ],
+        )
+        ctx = self._ctx()
+        ok = AndroidExporter()._validate_android_runtime_v1(ctx, [scene], [])
+
+        self.assertFalse(ok)
+        self.assertTrue(any("ANDROID_RUNTIME_REQUIRES_SHARED_RUNTIME" in err for err in ctx.errors))
 
     def test_validation_blocks_unsupported_component(self):
         from engine.export.android_exporter import AndroidExporter

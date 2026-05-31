@@ -47,6 +47,12 @@ from engine.editor.ui_core.dock_rects import (
     compute_dock_rects,
 )
 from engine.editor.ui_core.docking import DockLayout, DockSplit
+from engine.utils.device_profiles import (
+    FIT_PANEL_PROFILE_ID,
+    get_device_profile,
+    next_device_profile_id,
+    resolve_preview_size,
+)
 
 
 def _to_ui_rect(rect: rl.Rectangle) -> tuple[float, float, float, float]:
@@ -281,12 +287,14 @@ class EditorLayout:
         self._layout_dropdown_open: bool = False
         self._layers_rect: rl.Rectangle = rl.Rectangle(0, 0, 0, 0)
         self._layout_rect: rl.Rectangle = rl.Rectangle(0, 0, 0, 0)
+        self._game_view_profile_rect: rl.Rectangle = rl.Rectangle(0, 0, 0, 0)
 
         # Tool selection
         self.active_tool: EditorTool = EditorTool.MOVE
         self.transform_space: TransformSpace = TransformSpace.WORLD
         self.pivot_mode: PivotMode = PivotMode.PIVOT
         self.snap_settings: SnapSettings = SnapSettings()
+        self.game_view_device_profile: str = FIT_PANEL_PROFILE_ID
         self._editor_preferences_dirty: bool = False
         self.dock_layout: DockLayout = DockLayout.default()
         self._apply_dock_active_tabs()
@@ -504,9 +512,19 @@ class EditorLayout:
         )
         self.pivot_mode = PivotMode.from_value(preferences.get("editor_pivot_mode", PivotMode.PIVOT.value))
         self.snap_settings = SnapSettings.from_preferences(preferences)
+        previous_profile = self.game_view_device_profile
+        self.set_game_view_device_profile(
+            preferences.get("editor_game_view_device_profile", FIT_PANEL_PROFILE_ID),
+            mark_dirty=False,
+            resize=False,
+        )
         raw_bottom_height = preferences.get("editor_bottom_panel_height", self.BOTTOM_HEIGHT) or self.BOTTOM_HEIGHT
         self.bottom_height = int(raw_bottom_height) if isinstance(raw_bottom_height, (int, float, str)) else self.BOTTOM_HEIGHT
         self.bottom_height = self._clamp_bottom_height(self.bottom_height)
+        if self.game_view_device_profile != previous_profile and (
+            self.scene_texture is not None or self.game_texture is not None
+        ):
+            self.update_layout(self.screen_width, self.screen_height, update_texture=True)
         self._editor_preferences_dirty = False
 
     def export_editor_preferences(self) -> dict[str, object]:
@@ -514,6 +532,7 @@ class EditorLayout:
             "editor_active_tool": self.active_tool.value,
             "editor_transform_space": self.transform_space.value,
             "editor_pivot_mode": self.pivot_mode.value,
+            "editor_game_view_device_profile": self.game_view_device_profile,
             "editor_bottom_panel_height": int(self.bottom_height),
         }
         data.update(self.snap_settings.to_preferences())
@@ -533,6 +552,25 @@ class EditorLayout:
 
     def export_dock_layout(self) -> dict[str, object]:
         return self.dock_layout.to_dict()
+
+    def set_game_view_device_profile(
+        self,
+        profile_id: object,
+        *,
+        mark_dirty: bool = True,
+        resize: bool = True,
+    ) -> None:
+        resolved = get_device_profile(profile_id).id
+        if resolved == self.game_view_device_profile:
+            return
+        self.game_view_device_profile = resolved
+        if mark_dirty:
+            self._editor_preferences_dirty = True
+        if resize:
+            self.update_layout(self.screen_width, self.screen_height, update_texture=True)
+
+    def cycle_game_view_device_profile(self) -> None:
+        self.set_game_view_device_profile(next_device_profile_id(self.game_view_device_profile))
 
     def consume_dock_layout_dirty(self) -> bool:
         dirty = self._dock_layout_dirty
@@ -1208,23 +1246,35 @@ class EditorLayout:
         if width <= 0 or height <= 0:
             return
 
-        # Scene Texture
-        should_resize = True
+        scene_should_resize = True
         if (
             self.scene_texture
             and self.scene_texture.texture.width == width
             and self.scene_texture.texture.height == height
         ):
-            should_resize = False
+            scene_should_resize = False
 
-        if should_resize:
+        if scene_should_resize:
             if self.scene_texture:
                 rl.unload_render_texture(self.scene_texture)
             self.scene_texture = rl.load_render_texture(width, height)
 
+        game_width, game_height = self.get_game_view_texture_size(width, height)
+        game_should_resize = True
+        if (
+            self.game_texture
+            and self.game_texture.texture.width == game_width
+            and self.game_texture.texture.height == game_height
+        ):
+            game_should_resize = False
+
+        if game_should_resize:
             if self.game_texture:
                 rl.unload_render_texture(self.game_texture)
-            self.game_texture = rl.load_render_texture(width, height)
+            self.game_texture = rl.load_render_texture(game_width, game_height)
+
+    def get_game_view_texture_size(self, panel_width: int, panel_height: int) -> tuple[int, int]:
+        return resolve_preview_size(self.game_view_device_profile, panel_width, panel_height)
 
     def begin_scene_render(self) -> None:
         if self.scene_texture:
@@ -1319,7 +1369,15 @@ class EditorLayout:
 
         if target_tex:
             source = rl.Rectangle(0, 0, target_tex.texture.width, -target_tex.texture.height)
-            rl.draw_texture_pro(target_tex.texture, source, view_rect, rl.Vector2(0, 0), 0.0, rl.WHITE)
+            dest_rect = view_rect
+            if self.active_tab == "GAME":
+                rl.draw_rectangle_rec(view_rect, rl.BLACK)
+                dest_rect = self._fit_texture_in_rect(
+                    float(target_tex.texture.width),
+                    float(target_tex.texture.height),
+                    view_rect,
+                )
+            rl.draw_texture_pro(target_tex.texture, source, dest_rect, rl.Vector2(0, 0), 0.0, rl.WHITE)
         else:
             rl.draw_rectangle_rec(view_rect, self.VIEW_BG_COLOR)
 
@@ -2373,7 +2431,19 @@ class EditorLayout:
         self._draw_tab("Animator", self.tab_animator_rect, self.active_tab == "ANIMATOR")
         separator_x = int(self.tab_animator_rect.x + self.tab_animator_rect.width + 6)
         rl.draw_line(separator_x, y + 3, separator_x, y + height - 3, self.UNITY_BORDER)
-        return separator_x + 6
+        return self._draw_game_view_device_profile_button(separator_x + 6, y, height) + 6
+
+    def _draw_game_view_device_profile_button(self, x: int, y: int, height: int) -> int:
+        profile = get_device_profile(self.game_view_device_profile)
+        label = profile.label
+        button_w = max(92, min(156, self._measure_text(label, 10) + 24))
+        button_h = max(0, height - 6)
+        rect = rl.Rectangle(float(x), float(y + 3), float(button_w), float(button_h))
+        self._game_view_profile_rect = rect
+        self._register_cursor_rect(rect)
+        if editor_button(_to_ui_rect(rect), label, active=self.active_tab == "GAME").clicked:
+            self.cycle_game_view_device_profile()
+        return int(rect.x + rect.width)
 
     def _draw_scene_workspace_tabs(self, x: int, y: int, height: int, max_x: int) -> None:
         mouse = rl.get_mouse_position()
@@ -2432,6 +2502,33 @@ class EditorLayout:
         measured = rl.measure_text(str(text), int(size))
         self._text_measure_cache[cache_key] = int(measured)
         return int(measured)
+
+    def _fit_texture_in_rect(self, texture_width: float, texture_height: float, rect: rl.Rectangle) -> rl.Rectangle:
+        if texture_width <= 0 or texture_height <= 0 or rect.width <= 0 or rect.height <= 0:
+            return rl.Rectangle(rect.x, rect.y, max(0.0, rect.width), max(0.0, rect.height))
+        scale = min(float(rect.width) / texture_width, float(rect.height) / texture_height)
+        width = texture_width * scale
+        height = texture_height * scale
+        return rl.Rectangle(
+            rect.x + (rect.width - width) * 0.5,
+            rect.y + (rect.height - height) * 0.5,
+            width,
+            height,
+        )
+
+    def map_game_view_screen_point_to_texture(self, screen_x: float, screen_y: float) -> tuple[float, float]:
+        if self.game_texture is None:
+            view_rect = self.get_center_view_rect()
+            return (float(screen_x) - float(view_rect.x), float(screen_y) - float(view_rect.y))
+        texture = self.game_texture.texture
+        view_rect = self.get_center_view_rect()
+        dest = self._fit_texture_in_rect(float(texture.width), float(texture.height), view_rect)
+        if dest.width <= 0 or dest.height <= 0:
+            return (0.0, 0.0)
+        return (
+            (float(screen_x) - float(dest.x)) * (float(texture.width) / float(dest.width)),
+            (float(screen_y) - float(dest.y)) * (float(texture.height) / float(dest.height)),
+        )
 
     def get_cursor_intent(self) -> CursorVisualState:
         mouse = rl.get_mouse_position()
