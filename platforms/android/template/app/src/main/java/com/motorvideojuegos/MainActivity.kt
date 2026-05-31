@@ -15,6 +15,7 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.Window
 import android.view.WindowManager
+import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.abs
@@ -103,24 +104,51 @@ private class MotorRuntime(private val context: Context) {
     private var sceneFlow = JSONObject()
     private var entryScene = ""
     private var androidPythonRuntime = false
+    private var sharedRuntimeBridge: SharedRuntimeBridge? = null
     private var scriptBridge: ScriptBehaviourBridge? = null
     private var activeRespawnName: String? = null
+    private var touchPressedX = 0.0f
+    private var touchPressedY = 0.0f
+    private var touchPressed = false
     private var touchReleasedX = 0.0f
     private var touchReleasedY = 0.0f
     private var touchReleased = false
     private var uiPressed: String? = null
+    private var runtimeError: String? = null
     private var viewportW = 1280.0f
     private var viewportH = 720.0f
+    private var surfaceW = 1280.0f
+    private var surfaceH = 720.0f
 
     fun load() {
         config = readJson("runtime_config.json")
+        val window = config.optJSONObject("window") ?: JSONObject()
+        viewportW = positiveFloat(window.optDouble("width", 1280.0), 1280.0f)
+        viewportH = positiveFloat(window.optDouble("height", 720.0), 720.0f)
         androidPythonRuntime = config.optBoolean("android_python_runtime", false)
-        scriptBridge = if (androidPythonRuntime) ScriptBehaviourBridge(context) else null
+        if (androidPythonRuntime) {
+            try {
+                val runtimeDir = preparePythonRuntimeFiles()
+                sharedRuntimeBridge = SharedRuntimeBridge(context)
+                val snapshot = sharedRuntimeBridge?.create(runtimeDir.absolutePath, config)
+                if (snapshot == null || !applyRuntimeSnapshot(snapshot)) {
+                    setRuntimeError("Shared runtime did not return a valid scene snapshot.", snapshot)
+                }
+            } catch (exc: Exception) {
+                setRuntimeError("Shared runtime preparation failed: ${exc.message ?: "unknown"}", null, exc)
+            }
+        } else {
+            scriptBridge = ScriptBehaviourBridge(context)
+        }
         entryScene = config.optString("entry_scene", "levels/main_menu_scene.json")
-        loadScene(entryScene)
+        if (!androidPythonRuntime) loadScene(entryScene)
     }
 
     fun loadScene(path: String): Boolean {
+        if (androidPythonRuntime) {
+            val snapshot = sharedRuntimeBridge?.loadScene(path) ?: return false
+            return applyRuntimeSnapshot(snapshot)
+        }
         return try {
             if (scene.length() > 0) {
                 runScripts("on_stop", 0.0f)
@@ -145,14 +173,28 @@ private class MotorRuntime(private val context: Context) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_MOVE -> {
                 activePointers.clear()
                 for (i in 0 until event.pointerCount) {
-                    activePointers[event.getPointerId(i)] = event.getX(i) to event.getY(i)
+                    val mapped = screenToViewport(event.getX(i), event.getY(i))
+                    if (mapped != null) activePointers[event.getPointerId(i)] = mapped
+                }
+                if (event.actionMasked == MotionEvent.ACTION_DOWN || event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
+                    val mapped = screenToViewport(event.getX(event.actionIndex), event.getY(event.actionIndex))
+                    if (mapped != null) {
+                        touchPressedX = mapped.first
+                        touchPressedY = mapped.second
+                        touchPressed = true
+                    }
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 val idx = event.actionIndex
-                touchReleasedX = event.getX(idx)
-                touchReleasedY = event.getY(idx)
-                touchReleased = true
+                val mapped = screenToViewport(event.getX(idx), event.getY(idx))
+                if (mapped != null) {
+                    touchReleasedX = mapped.first
+                    touchReleasedY = mapped.second
+                    touchReleased = true
+                } else {
+                    touchReleased = false
+                }
                 val pointerId = event.getPointerId(idx)
                 activePointers.remove(pointerId)
                 controlCaptures.remove(pointerId)
@@ -161,6 +203,7 @@ private class MotorRuntime(private val context: Context) {
             MotionEvent.ACTION_CANCEL -> {
                 activePointers.clear()
                 controlCaptures.clear()
+                touchPressed = false
                 touchReleased = false
                 uiPressed = null
             }
@@ -168,8 +211,18 @@ private class MotorRuntime(private val context: Context) {
     }
 
     fun update(dt: Float, width: Float, height: Float) {
-        viewportW = width
-        viewportH = height
+        surfaceW = max(1.0f, width)
+        surfaceH = max(1.0f, height)
+        if (androidPythonRuntime) {
+            if (runtimeError != null) return
+            val snapshot = sharedRuntimeBridge?.runFrame(dt, pointerStateJson())
+            if (snapshot == null || !applyRuntimeSnapshot(snapshot)) {
+                setRuntimeError("Shared runtime frame failed.", snapshot)
+            }
+            touchPressed = false
+            touchReleased = false
+            return
+        }
         updateMobileControls()
         updateButtons()
         runScripts("on_update", dt)
@@ -182,17 +235,193 @@ private class MotorRuntime(private val context: Context) {
     }
 
     fun render(canvas: Canvas) {
-        canvas.drawColor(Color.rgb(10, 12, 16))
-        val camera = resolveCamera()
-        for (entity in entities) {
-            if (!entity.active || entity.components.has("Canvas") || entity.components.has("RectTransform")) continue
-            drawWorldEntity(canvas, entity, camera)
+        updateSurfaceSize(canvas.width.toFloat(), canvas.height.toFloat())
+        val frame = viewportFrame()
+        canvas.drawColor(Color.BLACK)
+        val error = runtimeError
+        if (error != null) {
+            drawRuntimeError(canvas, error)
+            return
         }
-        for (entity in entities) {
-            if (!entity.active || !entity.components.has("RectTransform")) continue
-            drawUiEntity(canvas, entity)
+        val saveCount = canvas.save()
+        canvas.translate(frame.left, frame.top)
+        canvas.scale(frame.width() / viewportW, frame.height() / viewportH)
+        canvas.clipRect(0.0f, 0.0f, viewportW, viewportH)
+        try {
+            canvas.drawColor(Color.rgb(10, 12, 16))
+            val camera = resolveCamera()
+            for (entity in entities) {
+                if (!entity.active || entity.components.has("Canvas") || entity.components.has("RectTransform")) continue
+                drawWorldEntity(canvas, entity, camera)
+            }
+            for (entity in entities) {
+                if (!entity.active || !entity.components.has("RectTransform")) continue
+                drawUiEntity(canvas, entity)
+            }
+            drawMobileControls(canvas)
+        } finally {
+            canvas.restoreToCount(saveCount)
         }
-        drawMobileControls(canvas)
+    }
+
+    private fun positiveFloat(value: Double, fallback: Float): Float {
+        val out = value.toFloat()
+        return if (out > 0.0f) out else fallback
+    }
+
+    private fun preparePythonRuntimeFiles(): File {
+        val runtimeDir = File(context.filesDir, "motor_runtime")
+        val cacheKey = config.optString("android_runtime_cache_key", "uncached")
+        val marker = File(runtimeDir, ".motor_runtime_cache_key")
+        if (runtimeDir.exists() && marker.exists() && marker.readText() == cacheKey && File(runtimeDir, "runtime_config.json").exists()) {
+            return runtimeDir
+        }
+        if (runtimeDir.exists()) runtimeDir.deleteRecursively()
+        runtimeDir.mkdirs()
+        for (assetPath in ANDROID_RUNTIME_ASSET_PATHS) {
+            copyRuntimeAsset(assetPath, runtimeDir, required = assetPath in ANDROID_RUNTIME_REQUIRED_ASSET_PATHS)
+        }
+        marker.writeText(cacheKey)
+        return runtimeDir
+    }
+
+    private fun copyRuntimeAsset(assetPath: String, root: File, required: Boolean) {
+        try {
+            copyAssetTree(assetPath, root)
+        } catch (exc: Exception) {
+            if (required) throw exc
+            Log.i(TAG, "Optional Android runtime asset missing: $assetPath")
+        }
+    }
+
+    private fun copyAssetTree(assetPath: String, root: File) {
+        if (assetPath == "chaquopy" || assetPath.startsWith("chaquopy/")) return
+        val children = context.assets.list(assetPath) ?: emptyArray()
+        if (children.isNotEmpty()) {
+            if (assetPath.isNotBlank()) File(root, assetPath).mkdirs()
+            for (child in children) {
+                val childPath = if (assetPath.isBlank()) child else "$assetPath/$child"
+                copyAssetTree(childPath, root)
+            }
+            return
+        }
+        if (assetPath.isBlank()) return
+        val target = File(root, assetPath)
+        target.parentFile?.mkdirs()
+        context.assets.open(assetPath).use { input ->
+            target.outputStream().use { output -> input.copyTo(output) }
+        }
+    }
+
+    private fun applyRuntimeSnapshot(snapshot: JSONObject): Boolean {
+        if (!snapshot.optBoolean("ok", false)) {
+            setRuntimeError("Shared runtime failed: ${snapshot.optString("error", "unknown")}", snapshot)
+            return false
+        }
+        val scenePayload = snapshot.optJSONObject("scene")
+        if (scenePayload == null) {
+            setRuntimeError("Shared runtime returned no scene payload.", snapshot)
+            return false
+        }
+        runtimeError = null
+        scene = scenePayload
+        rebuildEntitiesFromScene()
+        val metadata = scene.optJSONObject("feature_metadata") ?: JSONObject()
+        sceneFlow = metadata.optJSONObject("scene_flow") ?: JSONObject()
+        uiPressed = null
+        activeRespawnName = null
+        return true
+    }
+
+    private fun setRuntimeError(message: String, snapshot: JSONObject? = null, exc: Exception? = null) {
+        val traceback = snapshot?.optString("traceback", "") ?: ""
+        val error = snapshot?.optString("error", "") ?: ""
+        runtimeError = listOf(message, error, traceback).filter { it.isNotBlank() }.joinToString("\n").take(1800)
+        if (exc != null) {
+            Log.e(TAG, runtimeError ?: message, exc)
+        } else {
+            Log.e(TAG, runtimeError ?: message)
+        }
+    }
+
+    private fun drawRuntimeError(canvas: Canvas, message: String) {
+        canvas.drawColor(Color.rgb(18, 20, 24))
+        val margin = 32.0f
+        textPaint.color = Color.rgb(255, 220, 120)
+        textPaint.textSize = 24.0f
+        textPaint.textAlign = Paint.Align.LEFT
+        canvas.drawText("Motor Android runtime error", margin, margin + 24.0f, textPaint)
+        textPaint.color = Color.WHITE
+        textPaint.textSize = 15.0f
+        var y = margin + 60.0f
+        for (line in wrapText(message, 58).take(14)) {
+            canvas.drawText(line, margin, y, textPaint)
+            y += 22.0f
+        }
+    }
+
+    private fun wrapText(value: String, width: Int): List<String> {
+        val out = mutableListOf<String>()
+        for (raw in value.split('\n')) {
+            var line = raw.trim()
+            while (line.length > width) {
+                out.add(line.substring(0, width))
+                line = line.substring(width)
+            }
+            if (line.isNotBlank()) out.add(line)
+        }
+        return out.ifEmpty { listOf("Unknown runtime error. Check Logcat tag $TAG.") }
+    }
+
+    private fun pointerStateJson(): JSONObject {
+        val pointer = activePointers.values.firstOrNull()
+        if (pointer != null) {
+            return JSONObject()
+                .put("x", pointer.first)
+                .put("y", pointer.second)
+                .put("down", true)
+                .put("pressed", touchPressed)
+                .put("released", false)
+        }
+        if (touchReleased) {
+            return JSONObject()
+                .put("x", touchReleasedX)
+                .put("y", touchReleasedY)
+                .put("down", false)
+                .put("pressed", false)
+                .put("released", true)
+        }
+        if (touchPressed) {
+            return JSONObject()
+                .put("x", touchPressedX)
+                .put("y", touchPressedY)
+                .put("down", true)
+                .put("pressed", true)
+                .put("released", false)
+        }
+        return JSONObject()
+    }
+
+    private fun updateSurfaceSize(width: Float, height: Float) {
+        surfaceW = max(1.0f, width)
+        surfaceH = max(1.0f, height)
+    }
+
+    private fun viewportFrame(): RectF {
+        val scale = min(surfaceW / viewportW, surfaceH / viewportH)
+        val width = viewportW * scale
+        val height = viewportH * scale
+        val left = (surfaceW - width) / 2.0f
+        val top = (surfaceH - height) / 2.0f
+        return RectF(left, top, left + width, top + height)
+    }
+
+    private fun screenToViewport(screenX: Float, screenY: Float): Pair<Float, Float>? {
+        val frame = viewportFrame()
+        if (!frame.contains(screenX, screenY)) return null
+        val x = (screenX - frame.left) * (viewportW / frame.width())
+        val y = (screenY - frame.top) * (viewportH / frame.height())
+        return x to y
     }
 
     private fun updateMobileControls() {
@@ -518,7 +747,7 @@ private class MotorRuntime(private val context: Context) {
     }
 
     private fun drawWorldEntity(canvas: Canvas, entity: Entity, camera: CameraState) {
-        val rect = worldRect(entity) ?: return
+        val rect = visualRect(entity) ?: worldRect(entity) ?: return
         val dst = RectF(
             (rect.left - camera.x) * camera.zoom + camera.offsetX,
             (rect.top - camera.y) * camera.zoom + camera.offsetY,
@@ -613,6 +842,33 @@ private class MotorRuntime(private val context: Context) {
         val h = (c?.optDouble("height") ?: sprite?.optDouble("height") ?: animator?.optDouble("frame_height") ?: 64.0).toFloat() * t.optDouble("scale_y", 1.0).toFloat()
         val x = t.optDouble("x", 0.0).toFloat() + (c?.optDouble("offset_x", 0.0)?.toFloat() ?: 0.0f)
         val y = t.optDouble("y", 0.0).toFloat() + (c?.optDouble("offset_y", 0.0)?.toFloat() ?: 0.0f)
+        return RectF(x - w / 2.0f, y - h / 2.0f, x + w / 2.0f, y + h / 2.0f)
+    }
+
+    private fun visualRect(entity: Entity): RectF? {
+        val t = entity.components.optJSONObject("Transform") ?: return null
+        val sprite = entity.components.optJSONObject("Sprite")
+        val animator = entity.components.optJSONObject("Animator")
+        val collider = entity.components.optJSONObject("Collider")
+        val w = when {
+            animator != null -> animator.optDouble("frame_width", 64.0)
+            sprite != null -> sprite.optDouble("width", 64.0)
+            collider != null -> collider.optDouble("width", 64.0)
+            else -> 64.0
+        }.toFloat() * t.optDouble("scale_x", 1.0).toFloat()
+        val h = when {
+            animator != null -> animator.optDouble("frame_height", 64.0)
+            sprite != null -> sprite.optDouble("height", 64.0)
+            collider != null -> collider.optDouble("height", 64.0)
+            else -> 64.0
+        }.toFloat() * t.optDouble("scale_y", 1.0).toFloat()
+        val x = t.optDouble("x", 0.0).toFloat()
+        val y = t.optDouble("y", 0.0).toFloat()
+        if (sprite != null && animator == null) {
+            val ox = sprite.optDouble("origin_x", 0.5).toFloat()
+            val oy = sprite.optDouble("origin_y", 0.5).toFloat()
+            return RectF(x - w * ox, y - h * oy, x + w * (1.0f - ox), y + h * (1.0f - oy))
+        }
         return RectF(x - w / 2.0f, y - h / 2.0f, x + w / 2.0f, y + h / 2.0f)
     }
 
@@ -722,9 +978,65 @@ private class MotorRuntime(private val context: Context) {
         }
     }
 
+    private class SharedRuntimeBridge(private val context: Context) {
+        private var module: Any? = null
+        private var unavailableLogged = false
+
+        fun create(basePath: String, config: JSONObject): JSONObject? {
+            return call("create_shared_runtime", basePath, config.toString())
+        }
+
+        fun loadScene(scenePath: String): JSONObject? {
+            return call("load_shared_scene", scenePath)
+        }
+
+        fun runFrame(dt: Float, pointerState: JSONObject): JSONObject? {
+            return call("run_shared_frame", dt.toDouble(), pointerState.toString())
+        }
+
+        private fun call(name: String, vararg args: Any): JSONObject? {
+            val target = module ?: loadModule() ?: return null
+            return try {
+                val callAttr = target.javaClass.methods.firstOrNull {
+                    it.name == "callAttr" && it.parameterTypes.size == 2
+                } ?: return null
+                val result = callAttr.invoke(target, name, args as Array<Any>)
+                val text = result?.toString() ?: return null
+                JSONObject(text)
+            } catch (exc: Exception) {
+                Log.e(TAG, "SharedRuntimeBridge call failed: $name", exc)
+                null
+            }
+        }
+
+        private fun loadModule(): Any? {
+            return try {
+                val pythonClass = Class.forName("com.chaquo.python.Python")
+                val isStarted = pythonClass.getMethod("isStarted").invoke(null) as Boolean
+                if (!isStarted) {
+                    val platformClass = Class.forName("com.chaquo.python.android.AndroidPlatform")
+                    val platform = platformClass.getConstructor(Context::class.java).newInstance(context)
+                    pythonClass.methods.first { it.name == "start" && it.parameterTypes.size == 1 }.invoke(null, platform)
+                }
+                val python = pythonClass.getMethod("getInstance").invoke(null)
+                val loaded = python.javaClass.getMethod("getModule", String::class.java).invoke(python, "motor_android_runtime")
+                module = loaded
+                loaded
+            } catch (exc: Exception) {
+                if (!unavailableLogged) {
+                    Log.e(TAG, "SharedRuntimeBridge unavailable. Check Chaquopy runtime.", exc)
+                    unavailableLogged = true
+                }
+                null
+            }
+        }
+    }
+
     private data class CameraState(val x: Float, val y: Float, val offsetX: Float, val offsetY: Float, val zoom: Float)
 
     companion object {
         private const val TAG = "MotorGame"
+        private val ANDROID_RUNTIME_ASSET_PATHS = listOf("runtime_config.json", "game.manifest.json", "levels", "assets", "scripts")
+        private val ANDROID_RUNTIME_REQUIRED_ASSET_PATHS = setOf("runtime_config.json", "game.manifest.json", "levels")
     }
 }

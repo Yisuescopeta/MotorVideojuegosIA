@@ -1623,9 +1623,16 @@ class Game:
         if self.editor_layout is not None and tab in ("SCENE", "GAME"):
             mouse = rl.get_mouse_position()
             view_rect = self.editor_layout.get_center_view_rect()
+            pointer_x = float(mouse.x - view_rect.x)
+            pointer_y = float(mouse.y - view_rect.y)
+            if tab == "GAME" and hasattr(self.editor_layout, "map_game_view_screen_point_to_texture"):
+                pointer_x, pointer_y = self.editor_layout.map_game_view_screen_point_to_texture(
+                    float(mouse.x),
+                    float(mouse.y),
+                )
             self._ui_system.inject_pointer_state(
-                float(mouse.x - view_rect.x),
-                float(mouse.y - view_rect.y),
+                float(pointer_x),
+                float(pointer_y),
                 bool(rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT)),
                 bool(rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT)),
                 bool(rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT)),

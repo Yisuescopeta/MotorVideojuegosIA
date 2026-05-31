@@ -102,6 +102,63 @@ class EditorLayoutToolStateTests(unittest.TestCase):
             (int(layout.get_center_view_rect().width), int(layout.get_center_view_rect().height)),
         )
 
+    def test_fixed_game_view_profile_resizes_only_game_texture(self) -> None:
+        with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
+            layout = EditorLayout(1280, 720)
+        layout.set_game_view_device_profile("mobile_portrait", resize=False)
+
+        def fake_render_texture(width: int, height: int) -> SimpleNamespace:
+            return SimpleNamespace(texture=SimpleNamespace(width=width, height=height))
+
+        with patch.object(rl, "load_render_texture", side_effect=fake_render_texture) as load_render_texture:
+            layout._resize_render_textures(500, 300)
+
+        self.assertEqual([call.args for call in load_render_texture.call_args_list], [(500, 300), (390, 844)])
+
+        with patch.object(rl, "load_render_texture", side_effect=fake_render_texture) as load_render_texture, patch.object(
+            rl, "unload_render_texture"
+        ):
+            layout.set_game_view_device_profile("desktop_16_9", resize=False)
+            layout._resize_render_textures(500, 300)
+
+        self.assertEqual([call.args for call in load_render_texture.call_args_list], [(1280, 720)])
+        self.assertEqual(layout.scene_texture.texture.width, 500)
+        self.assertEqual(layout.scene_texture.texture.height, 300)
+
+    def test_game_view_profile_preference_roundtrips(self) -> None:
+        with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
+            layout = EditorLayout(1280, 720)
+
+        layout.apply_editor_preferences({"editor_game_view_device_profile": "desktop_16_10"})
+
+        self.assertEqual(layout.game_view_device_profile, "desktop_16_10")
+        self.assertEqual(
+            layout.export_editor_preferences()["editor_game_view_device_profile"],
+            "desktop_16_10",
+        )
+
+    def test_game_view_letterbox_centers_fixed_profile(self) -> None:
+        with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
+            layout = EditorLayout(1280, 720)
+
+        dest = layout._fit_texture_in_rect(390, 844, rl.Rectangle(100, 50, 800, 400))
+
+        self.assertAlmostEqual(dest.width, 184.8341, places=3)
+        self.assertAlmostEqual(dest.height, 400.0, places=3)
+        self.assertAlmostEqual(dest.x, 407.5829, places=3)
+        self.assertAlmostEqual(dest.y, 50.0, places=3)
+
+    def test_game_view_pointer_maps_letterbox_to_texture_coordinates(self) -> None:
+        with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
+            layout = EditorLayout(1280, 720)
+        layout.center_rect = rl.Rectangle(100, 50, 800, 422)
+        layout.game_texture = SimpleNamespace(texture=SimpleNamespace(width=390, height=844))
+
+        x, y = layout.map_game_view_screen_point_to_texture(500, 272)
+
+        self.assertAlmostEqual(x, 195.0, places=3)
+        self.assertAlmostEqual(y, 422.0, places=3)
+
     def test_editor_camera_offset_tracks_visible_scene_view_center(self) -> None:
         with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
             layout = EditorLayout(1280, 720)

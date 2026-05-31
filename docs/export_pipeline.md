@@ -209,7 +209,15 @@ no se detectan. Para incluirlos, declararlos en el `.py.meta.json`, usar
 - Errores de keystore con codigos accionables: `ANDROID_KEYSTORE_MISSING`, `ANDROID_KEYSTORE_NOT_FOUND`
 - Si `output_path` termina en `.apk` o `.aab`, el artefacto se copia a ese nombre exacto
 - `android_python_runtime: true` activa Chaquopy 17.0.0, requiere `min_sdk >= 24`
-  y copia scripts alcanzables a `app/src/main/python/`
+  y copia `engine/`, `pyray/`, `sitecustomize.py` y scripts alcanzables a
+  `app/src/main/python/`
+- `runtime_config.json` incluye `android_runtime_cache_key`, derivado de
+  `game.manifest.json`; el shell Android lo usa para cachear en `filesDir` solo
+  los assets runtime necesarios y nunca copia `chaquopy/`
+- Si el runtime compartido falla al crear escena o frame, Android muestra una
+  pantalla de error visible y registra el detalle en Logcat (`MotorGame`)
+- Escenas Android jugables (`InputMap` + `PlayerController2D`) requieren
+  `android_python_runtime: true` para mantener paridad con PLAY del editor
 
 ### iOS
 - Requiere macOS + Xcode
@@ -357,13 +365,15 @@ Android SDK + JDK + Gradle o wrapper, macOS/iOS requieren macOS + Xcode. Sin ell
 el pipeline genera content pack, proyecto Android estructural y build report
 con `TOOLCHAIN_UNAVAILABLE`, pero no el ejecutable final.
 
-El proyecto Android generado empaqueta el content pack y usa un runtime Kotlin
-nativo v1. Ese runtime ejecuta menu UI, cambio de escena, camara, animacion
-spritesheet basica, fisica AABB, `PlayerController2D`, `InputMap` y
-`MobileControls2D`. Con `android_python_runtime: true`, el exporter integra
-Chaquopy y ejecuta `ScriptBehaviour` via puente Android (`on_play`,
-`on_update`, `on_stop`) con contexto minimo compatible para gameplay. Sin ese
-flag, scripts Python siguen bloqueados con `ANDROID_RUNTIME_UNSUPPORTED_*`.
+El proyecto Android generado empaqueta el content pack en assets. Con
+`android_python_runtime: true`, el shell Kotlin extrae a `filesDir` solo
+`runtime_config.json`, `game.manifest.json`, `levels/`, `assets/` y `scripts/`,
+excluye `chaquopy/`, cachea la copia con `android_runtime_cache_key`, arranca
+Chaquopy y ejecuta `SharedGameRuntime`, la misma ruta `Game` +
+`RuntimeController` que usa PLAY del editor. Kotlin no decide gameplay en ese
+modo: solo traduce touch, mantiene `SurfaceView` y renderiza el snapshot
+serializado. Sin ese flag, el fallback Kotlin nativo v1 queda limitado a escenas
+simples; escenas jugables fallan con `ANDROID_RUNTIME_REQUIRES_SHARED_RUNTIME`.
 
 ## Troubleshooting
 

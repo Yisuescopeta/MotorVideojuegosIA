@@ -11,6 +11,7 @@ from typing import Any
 from engine.export.build_context import BuildContext
 from engine.export.content_pack import build_content_pack
 from engine.export.platform_exporter import PlatformExporter
+from engine.utils.device_profiles import resolve_window_config
 
 IS_MACOS = sys.platform == "darwin"
 
@@ -185,10 +186,7 @@ class MacOSExporter(PlatformExporter):
             "entry_scene": ctx.preset.entry_scene,
             "project_name": ctx.preset.display_name or ctx.preset.name,
             "version": ctx.preset.version_name,
-            "window": ctx.preset.window or {
-                "width": 1280, "height": 720,
-                "resizable": True, "fullscreen": False,
-            },
+            "window": resolve_window_config(ctx.preset.window),
             "debug_tools": ctx.preset.include_debug_tools,
         }
         (staging / "runtime_config.json").write_text(

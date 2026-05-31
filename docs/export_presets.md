@@ -25,6 +25,7 @@ Configuracion de exportacion estilo Godot para MotorVideojuegosIA. Un archivo
       "include_all_assets": false,
       "console": false,
       "window": {
+        "device_profile": "desktop_16_9",
         "width": 1280,
         "height": 720,
         "resizable": true,
@@ -53,11 +54,31 @@ Configuracion de exportacion estilo Godot para MotorVideojuegosIA. Un archivo
 | `include_debug_tools` | bool | No | Incluir tooling IA y debug en el export. Default: `false`. |
 | `include_all_assets` | bool | No | Incluir todos los assets, no solo los alcanzables por grafo. |
 | `console` | bool | No | Windows: forzar consola. Release normal usa `false`; debug o `include_debug_tools` usan consola. |
-| `window` | object | No | Configuracion de ventana (solo desktop). |
+| `window` | object | No | Configuracion de ventana y perfil de preview/build. |
 | `min_sdk` | int | No | API level minimo Android. Default: `23`. |
 | `target_sdk` | int | No | API level objetivo Android. Default: `35`. |
 | `orientation` | string | No | `landscape`, `portrait`, `auto`. Default: `landscape`. |
 | `extra` | object | No | Opciones especificas de plataforma (keystore, etc.). |
+| `android_python_runtime` | bool | No | Android: activa Chaquopy + `SharedGameRuntime` para paridad con PLAY. Requiere `min_sdk >= 24`. |
+
+### Window y perfiles de dispositivo
+
+`window.device_profile` permite usar los mismos perfiles que el `Game View` del
+editor:
+
+- `fit_panel`: sin tamano fijo; en export cae al default `1280x720`.
+- `mobile_portrait`: `390x844`.
+- `mobile_landscape`: `844x390`.
+- `tablet_landscape`: `1180x820`.
+- `desktop_16_9`: `1280x720`.
+- `desktop_16_10`: `1440x900`.
+- `desktop_ultrawide`: `2560x1080`.
+
+Precedencia de resolucion:
+
+1. `window.width` y `window.height` si existen.
+2. Tamano de `window.device_profile` para campos faltantes.
+3. Fallback `1280x720`.
 
 ### Extra: Android release
 
@@ -73,6 +94,22 @@ Configuracion de exportacion estilo Godot para MotorVideojuegosIA. Un archivo
 ```
 
 Estos campos se redactan automaticamente (`[REDACTED]`) en build reports.
+
+### Android runtime
+
+Para una escena Android jugable con `InputMap` + `PlayerController2D`, configura:
+
+```json
+{
+  "platform": "android",
+  "min_sdk": 24,
+  "android_python_runtime": true
+}
+```
+
+Ese modo copia el runtime Python compartido al proyecto Android y ejecuta la
+misma ruta `Game` + `RuntimeController` que PLAY del editor. Sin ese flag, el
+fallback Kotlin nativo solo es valido para escenas simples sin gameplay avanzado.
 
 ### Extra: Windows console
 

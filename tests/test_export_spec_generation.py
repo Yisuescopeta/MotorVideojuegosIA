@@ -173,6 +173,46 @@ class TestWindowsSpecGeneration(unittest.TestCase):
         content = spec_path.read_text(encoding="utf-8")
         self.assertIn("game.pak", content)
 
+    def test_runtime_config_resolves_device_profile_window(self):
+        from engine.export.windows_exporter import WindowsExporter
+        preset = ExportPreset(
+            name="Win Mobile Preview",
+            platform="windows",
+            output_path="dist/export/windows/Test",
+            entry_scene="levels/test.json",
+            display_name="My App",
+            window={"device_profile": "mobile_portrait"},
+        )
+        ctx = BuildContext(preset, str(self.tmp))
+        ctx.staging_dir = self.staging
+        exporter = WindowsExporter()
+
+        exporter._write_runtime_config(ctx, self.staging)
+
+        config = json.loads((self.staging / "runtime_config.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["window"]["device_profile"], "mobile_portrait")
+        self.assertEqual(config["window"]["width"], 390)
+        self.assertEqual(config["window"]["height"], 844)
+
+    def test_runtime_config_preserves_explicit_window_size(self):
+        from engine.export.windows_exporter import WindowsExporter
+        preset = ExportPreset(
+            name="Win Legacy",
+            platform="windows",
+            output_path="dist/export/windows/Test",
+            entry_scene="levels/test.json",
+            window={"width": 800, "height": 600},
+        )
+        ctx = BuildContext(preset, str(self.tmp))
+        ctx.staging_dir = self.staging
+        exporter = WindowsExporter()
+
+        exporter._write_runtime_config(ctx, self.staging)
+
+        config = json.loads((self.staging / "runtime_config.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["window"]["width"], 800)
+        self.assertEqual(config["window"]["height"], 600)
+
 
 class TestPyInstallerArgsWindows(unittest.TestCase):
     """Verify PyInstaller args for Windows exporter do NOT include --specpath."""
