@@ -79,6 +79,10 @@ class SharedGameRuntime:
         return self._active
 
     @property
+    def resource_preloader_system(self) -> Any:
+        return self.systems.resource_preloader_system
+
+    @property
     def render_system(self) -> Any:
         return self.game.render_system
 
@@ -131,7 +135,7 @@ class SharedGameRuntime:
             if scripts_path not in sys.path:
                 sys.path.insert(0, scripts_path)
 
-    def load_scene(self, scene_path: str) -> bool:
+    def load_scene(self, scene_path: str, *, enter_play: bool = True) -> bool:
         resolved_scene_path = self._resolve_scene_reference(scene_path, self._current_scene_path or None)
         if not resolved_scene_path:
             print(f"[ExportRuntime] Scene not found: {scene_path}", file=sys.stderr)
@@ -141,7 +145,7 @@ class SharedGameRuntime:
             print(f"[ExportRuntime] Scene not found: {scene_path}", file=sys.stderr)
             return False
         try:
-            if not self.game.load_scene_from_data(resolved_scene_path, scene_data, enter_play=True):
+            if not self.game.load_scene_from_data(resolved_scene_path, scene_data, enter_play=enter_play):
                 return False
             self._current_scene_path = resolved_scene_path
             self._current_scene_data = scene_data
@@ -173,6 +177,10 @@ class SharedGameRuntime:
             return
         self.game.step_runtime_frame(dt, self._viewport_size(), pointer_state=pointer_state)
         self._frame_count += 1
+
+    def play_runtime(self, *, preload_resources: bool = True) -> None:
+        if self.game._runtime_controller is not None:
+            self.game._runtime_controller.play(preload_resources=preload_resources)
 
     def render(self, viewport_size: tuple[float, float] | None = None) -> None:
         self.game.render_runtime_frame(viewport_size or self._viewport_size())
