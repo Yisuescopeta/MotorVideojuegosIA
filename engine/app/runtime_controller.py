@@ -200,8 +200,12 @@ class RuntimeController:
             should_render_like=bool(should_render_like),
         )
 
-    def play(self) -> None:
-        """Inicia el juego (EDIT -> PLAY)."""
+    def play(self, *, preload_resources: bool = True) -> None:
+        """Inicia el juego (EDIT -> PLAY).
+
+        Si preload_resources es False, la precarga de assets se omite
+        (el caller debe gestionar la precarga por partes).
+        """
         if self._get_state() != EngineState.EDIT:
             return
 
@@ -222,12 +226,13 @@ class RuntimeController:
             bake_tilemap_colliders(runtime_world, merge_shapes=True)
 
             # Precarga de assets para evitar stalls durante el gameplay
-            resource_preloader_system = self._get_resource_preloader_system()
-            if resource_preloader_system is not None:
-                try:
-                    resource_preloader_system.preload(runtime_world)
-                except Exception as exc:
-                    log_warn(f"ResourcePreloader: precarga fallida: {exc}")
+            if preload_resources:
+                resource_preloader_system = self._get_resource_preloader_system()
+                if resource_preloader_system is not None:
+                    try:
+                        resource_preloader_system.preload(runtime_world)
+                    except Exception as exc:
+                        log_warn(f"ResourcePreloader: precarga fallida: {exc}")
 
             rule_system = self._get_rule_system()
             if rule_system is not None:

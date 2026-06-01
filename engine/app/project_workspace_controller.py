@@ -334,9 +334,21 @@ class ProjectWorkspaceController:
         editor_layout = self._get_editor_layout()
         if project_service is None or scene_manager is None:
             return False
+
+        if editor_layout is not None:
+            editor_layout.loading_message = "Opening project..."
+            rl.begin_drawing()
+            rl.clear_background(rl.BLACK)
+            editor_layout.draw_loading_overlay(
+                rl.get_screen_width(), rl.get_screen_height(), "Opening project..."
+            )
+            rl.end_drawing()
+
         try:
             manifest = project_service.open_project(path)
         except Exception as exc:
+            if editor_layout is not None:
+                editor_layout.loading_message = ""
             log_err(f"Open Project failed: {exc}")
             return False
 
@@ -364,6 +376,7 @@ class ProjectWorkspaceController:
                 editor_layout.project_panel.set_project_service(project_service)
             self.refresh_launcher_projects()
             editor_layout.show_project_launcher = False
+            editor_layout.loading_message = ""
         log_info(f"Proyecto activo: {manifest.name}")
         return True
 

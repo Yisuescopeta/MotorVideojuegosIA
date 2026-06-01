@@ -80,3 +80,4 @@ class EditorShellState:
     scene_browser_scroll_offset: float = 0.0
     scene_tabs: list[dict[str, Any]] = field(default_factory=list)
     active_scene_tab_key: str = ""
+    loading_message: str = ""

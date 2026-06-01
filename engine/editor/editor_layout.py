@@ -112,6 +112,7 @@ _SHELL_STATE_FIELDS = (
     "scene_browser_scroll_offset",
     "scene_tabs",
     "active_scene_tab_key",
+    "loading_message",
 )
 
 _PANEL_SLOT_FIELDS = (
@@ -1642,6 +1643,28 @@ class EditorLayout:
 
         if self.show_create_project_modal:
             self._draw_create_project_modal()
+
+    def draw_loading_overlay(self, screen_width: int, screen_height: int, message: str) -> None:
+        rl.draw_rectangle(0, 0, screen_width, screen_height, rl.Color(0, 0, 0, 200))
+        title = "Loading..."
+        title_size = 28
+        title_width = rl.measure_text(title, title_size)
+        rl.draw_text(
+            title,
+            int((screen_width - title_width) / 2.0),
+            int(screen_height / 2.0 - 50.0),
+            title_size,
+            rl.WHITE,
+        )
+        msg_size = 14
+        msg_width = rl.measure_text(message, msg_size)
+        rl.draw_text(
+            message,
+            int((screen_width - msg_width) / 2.0),
+            int(screen_height / 2.0 - 10.0),
+            msg_size,
+            rl.GRAY,
+        )
 
     def _filtered_launcher_projects(self) -> list[dict]:
         query = self.launcher_search_text.strip().lower()

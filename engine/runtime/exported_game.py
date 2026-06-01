@@ -137,6 +137,53 @@ def _run_windowed_export(config) -> int:  # type: ignore[no-untyped-def]
         return 1
 
 
+def _draw_loading_screen(
+    pyray: Any,
+    width: float,
+    height: float,
+    project_name: str,
+    status: str = "Loading...",
+    progress: float = 0.0,
+) -> None:
+    bar_width = min(400.0, width * 0.6)
+    bar_height = 18.0
+    bar_x = (width - bar_width) / 2.0
+    bar_y = height / 2.0 + 20.0
+
+    pyray.begin_drawing()
+    pyray.clear_background(pyray.BLACK)
+
+    title = f"{project_name}"
+    title_size = 36
+    title_width = pyray.measure_text(title, title_size)
+    pyray.draw_text(
+        title,
+        int((width - title_width) / 2.0),
+        int(height / 2.0 - 60.0),
+        title_size,
+        pyray.WHITE,
+    )
+
+    status_size = 16
+    status_width = pyray.measure_text(status, status_size)
+    pyray.draw_text(
+        status,
+        int((width - status_width) / 2.0),
+        int(height / 2.0 - 10.0),
+        status_size,
+        pyray.GRAY,
+    )
+
+    if progress > 0.0:
+        pyray.draw_rectangle(int(bar_x), int(bar_y), int(bar_width), int(bar_height), pyray.DARKGRAY)
+        filled = int(bar_width * min(progress, 1.0))
+        if filled > 0:
+            pyray.draw_rectangle(int(bar_x), int(bar_y), filled, int(bar_height), pyray.SKYBLUE)
+        pyray.draw_rectangle_lines(int(bar_x), int(bar_y), int(bar_width), int(bar_height), pyray.GRAY)
+
+    pyray.end_drawing()
+
+
 def _run_windowed_pyray(config) -> int:  # type: ignore[no-untyped-def]
     """Windowed mode using pyray/raylib."""
     import pyray
@@ -161,14 +208,16 @@ def _run_windowed_pyray(config) -> int:  # type: ignore[no-untyped-def]
             pyray.close_window()
         return 2
 
+    _draw_loading_screen(pyray, width, height, config.project_name, "Loading scene...")
+
     runtime = SharedGameRuntime(
         loader=loader,
         registry=registry,
-        window_config=getattr(config, 'window', {}),
+        window_config=window_config,
     )
     runtime.setup_scripts_path()
 
-    if not runtime.load_scene(entry_scene):
+    if not runtime.load_scene(entry_scene, enter_play=False):
         print(
             f"ERROR: Entry scene not found: {entry_scene}",
             file=sys.stderr,
@@ -176,6 +225,27 @@ def _run_windowed_pyray(config) -> int:  # type: ignore[no-untyped-def]
         if hasattr(pyray, "close_window"):
             pyray.close_window()
         return 1
+
+    world = runtime.world
+    preloader = runtime.resource_preloader_system if runtime.systems is not None else None
+    plan = preloader.build_preload_plan(world) if preloader is not None and world is not None else []
+    total = len(plan)
+
+    if total > 0 and preloader is not None:
+        runtime.play_runtime(preload_resources=False)
+        runtime_world = runtime.world
+        if runtime_world is not None:
+            chunk_size = max(1, total // 30)
+            loaded = 0
+            while loaded < total:
+                batch = min(chunk_size, total - loaded)
+                count, _resolved = preloader.preload_budgeted(runtime_world, batch)
+                loaded += count
+                progress = loaded / total
+                status = f"Precargando assets... ({loaded}/{total})"
+                _draw_loading_screen(pyray, width, height, config.project_name, status, progress)
+    else:
+        runtime.play_runtime(preload_resources=True)
 
     try:
         pyray.set_target_fps(60)
