@@ -27,6 +27,7 @@ class Sprite(Component):
         flip_x: bool = False,
         flip_y: bool = False,
         tint: Tuple[int, int, int, int] = (255, 255, 255, 255),
+        source_slice: str = "",
     ) -> None:
         self.enabled: bool = True
         self.texture = normalize_asset_reference(texture if texture is not None else texture_path)
@@ -38,6 +39,7 @@ class Sprite(Component):
         self.flip_x: bool = flip_x
         self.flip_y: bool = flip_y
         self.tint = tint
+        self.source_slice: str = source_slice
 
     @property
     def tint(self) -> Tuple[int, int, int, int]:
@@ -86,6 +88,7 @@ class Sprite(Component):
             "flip_x": self.flip_x,
             "flip_y": self.flip_y,
             "tint": list(self.tint),
+            "source_slice": self.source_slice,
         }
 
     @classmethod
@@ -95,6 +98,7 @@ class Sprite(Component):
         texture_path = cast(str, data.get("texture_path", ""))
         if texture_path and texture_ref.get("path") != texture_path:
             texture_ref = build_asset_reference(texture_path, texture_ref.get("guid", ""))
+        source_slice = cast(str, data.get("source_slice", ""))
         component = cls(
             texture_path=texture_path,
             texture=texture_ref,
@@ -105,6 +109,7 @@ class Sprite(Component):
             flip_x=cast(bool, data.get("flip_x", False)),
             flip_y=cast(bool, data.get("flip_y", False)),
             tint=tuple(tint),  # type: ignore[arg-type]
+            source_slice=source_slice,
         )
         component.enabled = cast(bool, data.get("enabled", True))
         return component

@@ -69,6 +69,30 @@ class TestBuildGraph(unittest.TestCase):
         result = build_content_graph("levels/test.json", str(self.tmp))
         self.assertIn("scripts/player.py", result.reachable_scripts)
 
+    def test_detects_script_behaviour_module_path(self):
+        script_path = self.scripts / "player.py"
+        script_path.write_text("pass", encoding="utf-8")
+        self._write_scene("test.json", {
+            "entities": [
+                {"name": "Player", "components": {"ScriptBehaviour": {"module_path": "player"}}},
+            ],
+        })
+        result = build_content_graph("levels/test.json", str(self.tmp))
+        self.assertIn("scripts/player.py", result.reachable_scripts)
+
+    def test_detects_dotted_script_behaviour_module_path(self):
+        nested = self.scripts / "gameplay"
+        nested.mkdir()
+        script_path = nested / "player.py"
+        script_path.write_text("pass", encoding="utf-8")
+        self._write_scene("test.json", {
+            "entities": [
+                {"name": "Player", "components": {"ScriptBehaviour": {"module_path": "gameplay.player"}}},
+            ],
+        })
+        result = build_content_graph("levels/test.json", str(self.tmp))
+        self.assertIn("scripts/gameplay/player.py", result.reachable_scripts)
+
     def test_script_literal_asset_dependencies_are_reachable(self):
         self._write_asset("player_speed.png")
         script_path = self.scripts / "player_powerups.py"

@@ -131,8 +131,8 @@ class MotorDocumentationAlignmentTests(unittest.TestCase):
         """START_HERE_AI.md must use 'motor ' not 'tools.engine_cli' except in compatibility notes."""
         start_here_path = ROOT / "START_HERE_AI.md"
 
-        if not start_here_path.exists():
-            self.skipTest("START_HERE_AI.md not found")
+        self.assertTrue(start_here_path.exists(),
+            f"START_HERE_AI.md must exist at {start_here_path}")
 
         content = start_here_path.read_text(encoding="utf-8")
 
@@ -165,8 +165,8 @@ class MotorDocumentationAlignmentTests(unittest.TestCase):
         """Commands in START_HERE_AI.md should use 'motor ' prefix."""
         start_here_path = ROOT / "START_HERE_AI.md"
 
-        if not start_here_path.exists():
-            self.skipTest("START_HERE_AI.md not found")
+        self.assertTrue(start_here_path.exists(),
+            f"START_HERE_AI.md must exist at {start_here_path}")
 
         content = start_here_path.read_text(encoding="utf-8")
 
@@ -193,8 +193,8 @@ class MotorExamplesAlignmentTests(unittest.TestCase):
 
     def test_examples_use_motor_not_tools_engine_cli(self) -> None:
         """Examples must use 'motor' command, not 'python -m tools.engine_cli'."""
-        if not self.EXAMPLES_DIR.exists():
-            self.skipTest("Examples directory not found")
+        self.assertTrue(self.EXAMPLES_DIR.exists(),
+            f"Examples directory must exist at {self.EXAMPLES_DIR}")
 
         violations = []
 
@@ -213,8 +213,8 @@ class MotorExamplesAlignmentTests(unittest.TestCase):
 
     def test_examples_import_and_use_motor_env(self) -> None:
         """Examples should set up PYTHONPATH for motor CLI."""
-        if not self.EXAMPLES_DIR.exists():
-            self.skipTest("Examples directory not found")
+        self.assertTrue(self.EXAMPLES_DIR.exists(),
+            f"Examples directory must exist at {self.EXAMPLES_DIR}")
 
         for py_file in self.EXAMPLES_DIR.glob("*.py"):
             content = py_file.read_text(encoding="utf-8")

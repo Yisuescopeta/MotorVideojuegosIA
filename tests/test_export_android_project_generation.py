@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -43,6 +44,7 @@ class TestAndroidProjectGeneration(unittest.TestCase):
         content = manifest_path.read_text(encoding="utf-8")
         self.assertIn("{{DISPLAY_NAME}}", content)
         self.assertIn("{{ORIENTATION}}", content)
+        self.assertIn("{{ANDROID_PERMISSIONS}}", content)
         self.assertIn("@drawable/ic_launcher", content)
 
     def test_build_gradle_has_placeholders(self):
@@ -55,6 +57,40 @@ class TestAndroidProjectGeneration(unittest.TestCase):
         self.assertIn("{{TARGET_SDK}}", content)
         self.assertIn("{{VERSION_NAME}}", content)
         self.assertIn("{{VERSION_CODE}}", content)
+        self.assertIn("{{ANDROID_ABI_FILTERS}}", content)
+        self.assertIn("{{DEBUG_APPLICATION_ID_SUFFIX}}", content)
+
+    def test_android_release_project_is_not_debuggable_or_debug_suffixed(self):
+        from engine.export.android_exporter import AndroidExporter
+        from engine.export.build_context import BuildContext
+        from engine.export.models import ExportPreset
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            preset = ExportPreset(
+                name="Android Release Local",
+                platform="android",
+                architecture="arm64-v8a",
+                mode="release",
+                output_path="dist/export/android/Test-release-local.apk",
+                entry_scene="levels/test.json",
+                display_name="Test",
+                application_id="com.example.test",
+                min_sdk=24,
+                extra={"android_python_runtime": True, "local_release_signing": True},
+            )
+            ctx = BuildContext(preset, root)
+            ctx.staging_dir.mkdir(parents=True, exist_ok=True)
+
+            project_dir = AndroidExporter()._generate_android_project(ctx, ctx.staging_dir)
+            gradle = (project_dir / "app" / "build.gradle").read_text(encoding="utf-8")
+            manifest = (project_dir / "app" / "src" / "main" / "AndroidManifest.xml").read_text(encoding="utf-8")
+
+        self.assertNotIn("applicationIdSuffix '.debug'", gradle)
+        self.assertNotIn("signingConfig signingConfigs.debug", gradle)
+        self.assertIn("abiFilters 'arm64-v8a'", gradle)
+        self.assertNotIn("android.permission.INTERNET", manifest)
+        self.assertNotIn("android.permission.ACCESS_NETWORK_STATE", manifest)
 
     def test_settings_gradle_has_placeholders(self):
         settings_path = self.template_dir / "settings.gradle"
@@ -105,6 +141,56 @@ class TestAndroidProjectGeneration(unittest.TestCase):
         self.assertIn('"runtime_config.json", "game.manifest.json", "levels", "assets", "scripts"', content)
         self.assertIn('assetPath == "chaquopy" || assetPath.startsWith("chaquopy/")', content)
         self.assertNotIn('copyAssetTree("", runtimeDir)', content)
+
+    def test_android_template_sends_pointer_id_payload_to_python_runtime(self):
+        kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"
+        content = kt_path.read_text(encoding="utf-8")
+        self.assertIn("private val pressedPointers = mutableMapOf<Int, Pair<Float, Float>>()", content)
+        self.assertIn("private val releasedPointers = mutableMapOf<Int, Pair<Float, Float>>()", content)
+        self.assertIn("val pointers = JSONArray()", content)
+        self.assertIn('.put("id", pointerId)', content)
+        self.assertIn('payload.put("pointers", pointers)', content)
+        self.assertIn("pressedPointers.containsKey(pointerId)", content)
+        self.assertIn("clearTouchEdges()", content)
+        self.assertIn("pressedPointers.clear()", content)
+        self.assertIn("releasedPointers.clear()", content)
+
+    def test_android_template_keeps_mobile_control_alpha_out_of_world_paint(self):
+        kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"
+        content = kt_path.read_text(encoding="utf-8")
+        self.assertIn("private val controlsPaint = Paint(Paint.ANTI_ALIAS_FLAG)", content)
+        self.assertIn("paint.alpha = 255", content)
+        self.assertIn("controlsPaint.color = Color.argb", content)
+        self.assertIn("drawCircle(sx, sy, controls.optDouble(\"left_stick_radius\", 86.0).toFloat(), controlsPaint)", content)
+
+    def test_android_template_renders_pixel_art_without_bitmap_filtering(self):
+        kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"
+        content = kt_path.read_text(encoding="utf-8")
+        self.assertIn("private val spritePaint = Paint().apply", content)
+        self.assertIn("isAntiAlias = false", content)
+        self.assertIn("isFilterBitmap = false", content)
+        self.assertIn("isDither = false", content)
+        self.assertIn("BitmapFactory.Options().apply", content)
+        self.assertIn("inScaled = false", content)
+        self.assertIn("BitmapFactory.decodeStream(it, null, options)", content)
+
+    def test_android_template_applies_animator_flip_when_drawing_frames(self):
+        kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"
+        content = kt_path.read_text(encoding="utf-8")
+        self.assertIn("private fun drawBitmapFrame", content)
+        self.assertIn('flipX = animator.optBoolean("flip_x", false)', content)
+        self.assertIn('flipY = animator.optBoolean("flip_y", false)', content)
+        self.assertIn("if (flipX) -1.0f else 1.0f", content)
+        self.assertIn("if (flipY) -1.0f else 1.0f", content)
+        self.assertIn("canvas.drawBitmap(bitmap, src, dst, spritePaint)", content)
+
+    def test_android_template_hides_disabled_mobile_action_buttons(self):
+        kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"
+        content = kt_path.read_text(encoding="utf-8")
+        self.assertIn('if (controls.optBoolean("action_1_enabled", true))', content)
+        self.assertIn('if (controls.optBoolean("action_2_enabled", true))', content)
+        self.assertIn('controls.optDouble("action_1_radius", 54.0).toFloat()', content)
+        self.assertIn('controls.optDouble("action_2_radius", 46.0).toFloat()', content)
 
     def test_android_template_renders_visible_runtime_error(self):
         kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"

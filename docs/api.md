@@ -214,13 +214,30 @@ Transacciones y cambios:
 
 Entidades:
 
-- `create_entity(name, components=None)`
+- `create_entity(name, components=None, *, tag=None, layer=None, active=None)`
 - `delete_entity(name)`
 - `set_entity_active(name, active)`
 - `set_entity_tag(name, tag)`
 - `set_entity_layer(name, layer)`
 - `set_entity_parent(name, parent_name)`
 - `create_child_entity(parent_name, name, components=None)`
+
+`create_entity` acepta argumentos keyword-only opcionales que se aplican tras
+crear la entidad:
+
+- `tag` (str | None): tag asignado a la entidad (default: `None`, sin tag).
+- `layer` (str | None): capa asignada a la entidad (default: `None`, sin capa).
+- `active` (bool | None): estado activo de la entidad (default: `None`, usa el
+  default del motor).
+
+Si alguna propiedad falla al aplicarse, se devuelve `success=False` con el
+mensaje correspondiente. Si todas las propiedades se aplican correctamente,
+se devuelve `success=True` con `{"entity": name}`.
+
+```python
+api.create_entity("Enemy", tag="enemy", layer="gameplay", active=True)
+api.create_entity("Bullet", components={"Transform": {"x": 0, "y": 0}}, tag="projectile")
+```
 
 Componentes:
 
@@ -295,6 +312,11 @@ Input, audio y scripts:
 - `get_raycast_result(entity_name)`: obtiene el resultado runtime de un RayCast2D como dict
 - `set_character_max_slides(entity_name, max_slides)`: setea max_slides en CharacterController2D (default 4, rango 1-8, controla iteraciones de deslizamiento en move_and_slide)
 - `floor_stop_on_slope` (bool, default False) configurable via `edit_component(entity, "CharacterController2D", "floor_stop_on_slope", True)`: cuando True, move_and_slide frena la velocidad al instante al contactar el suelo (sin deslizar remanente horizontal). No expone método EngineAPI dedicado; se accede por el campo serializable del componente.
+
+**`InputMap.last_state` es solo runtime.** `last_state` es un campo interno
+del componente `InputMap` que almacena el estado de input del frame actual
+durante PLAY. **No se serializa** en la escena (queda fuera de `to_dict()`).
+La ruta canonica de lectura durante PLAY es `RuntimeAPI.get_input_state(entity_name)`.
 
 Fisica:
 
@@ -653,7 +675,7 @@ Carga y guardado:
 Workspace:
 
 - `list_open_scenes()`
-- `get_active_scene()`
+- `get_active_scene(include_entities=False)`
 - `has_active_scene()`
 - `get_active_scene_info()`
 - `activate_scene(key_or_path)`
@@ -672,6 +694,40 @@ Scene flow:
 - `load_next_scene()`
 - `load_menu_scene()`
 - `load_scene_flow_target(key)`
+
+Sincronizacion de escena:
+
+- `refresh_active_scene_if_stale()`: recarga la escena activa desde disco si el
+  archivo fue modificado externamente. El guardia de suciedad lo impone
+  `SceneManager`: si la escena tiene cambios sin guardar (`dirty=True`), el
+  refresh se salta. Retorna `ActionResult` con `world_available` (bool),
+  `active_scene` (summary) y un mensaje. No expone referencias raw de `World`.
+- `register_on_scene_saved(callback)`: registra un callback Python en proceso
+  que se invoca tras cada `save_scene` exitoso. Firma del callback:
+  `callback(path: str, info: Dict[str, Any]) -> None`. `info` contiene `key`,
+  `scene_name` y `entity_count`. Excepciones del callback se loguean pero no
+  hacen fallar el guardado. Retorna `ActionResult` con `registered` (bool) y
+  `callback_id` en `data`.
+- `unregister_on_scene_saved(callback)`: elimina un callback previamente
+  registrado. Retorna `ActionResult`; siempre tiene exito aunque el callback
+  no estuviera registrado.
+
+Los callbacks son solo Python en proceso (no serializables via CLI/JSON).
+
+```python
+# Detectar cambios externos
+result = api.refresh_active_scene_if_stale()
+if result["data"]["world_available"]:
+    print(f"Escena activa: {result['data'].get('active_scene', {}).get('name')}")
+
+# Registrar callback de guardado
+def on_saved(path, info):
+    print(f"Escena guardada: {info['scene_name']} ({info['entity_count']} entidades)")
+
+api.register_on_scene_saved(on_saved)
+api.save_scene()
+api.unregister_on_scene_saved(on_saved)
+```
 
 Prefabs:
 

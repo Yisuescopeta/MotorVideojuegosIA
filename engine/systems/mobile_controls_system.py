@@ -15,7 +15,7 @@ class MobileControlsSystem:
 
     def __init__(self) -> None:
         self._pointer_state: dict[str, Any] | None = None
-        self._active_targets: set[str] = set()
+        self._active_controls: dict[tuple[str, str], str] = {}
 
     def inject_pointer_state(
         self,
@@ -26,8 +26,10 @@ class MobileControlsSystem:
         pressed: bool = False,
         released: bool = False,
         frames: int = 1,
+        pointer_id: str | int = "legacy",
     ) -> None:
         self._pointer_state = {
+            "id": str(pointer_id),
             "x": float(x),
             "y": float(y),
             "down": bool(down),
@@ -41,9 +43,12 @@ class MobileControlsSystem:
         if pointer is None:
             return
 
-        next_active_targets: set[str] = set()
+        pointers = self._normalize_pointer_payload(pointer)
+        if not pointers:
+            return
+
+        next_active_controls: dict[tuple[str, str], str] = {}
         width, height = float(viewport_size[0]), float(viewport_size[1])
-        pointer_down = bool(pointer.get("down") or pointer.get("pressed"))
 
         for entity in world.get_entities_with(MobileControls2D):
             controls = entity.get_component(MobileControls2D)
@@ -55,16 +60,54 @@ class MobileControlsSystem:
                 continue
 
             state = dict(input_map.last_state)
-            captured = controls.target_entity in self._active_targets
-            if pointer_down:
-                if captured or self._point_in_controls(controls, pointer, width, height):
-                    state.update(self._state_from_pointer(controls, pointer, width, height, captured=captured))
-                    next_active_targets.add(controls.target_entity)
-            elif controls.target_entity in self._active_targets or bool(pointer.get("released")):
-                state.update({"horizontal": 0.0, "vertical": 0.0, "action_1": 0.0, "action_2": 0.0})
+            mobile_state = {"horizontal": 0.0, "vertical": 0.0, "action_1": 0.0, "action_2": 0.0}
+            has_mobile_input = False
+            should_reset = False
+
+            for active_pointer in pointers:
+                pointer_id = str(active_pointer.get("id", "legacy"))
+                capture_key = (controls.target_entity, pointer_id)
+                pointer_down = bool(active_pointer.get("down") or active_pointer.get("pressed"))
+                if pointer_down:
+                    capture = self._active_controls.get(capture_key) or self._capture_control(
+                        controls, active_pointer, width, height
+                    )
+                    if capture is not None:
+                        partial = self._state_from_pointer(controls, active_pointer, width, height, capture=capture)
+                        self._merge_mobile_state(mobile_state, partial, capture)
+                        next_active_controls[capture_key] = capture
+                        has_mobile_input = True
+                elif capture_key in self._active_controls or bool(active_pointer.get("released")):
+                    should_reset = True
+
+            if has_mobile_input or should_reset:
+                state.update(mobile_state)
             input_map.last_state = state
 
-        self._active_targets = next_active_targets
+        self._active_controls = next_active_controls
+
+    def _normalize_pointer_payload(self, pointer: dict[str, Any]) -> list[dict[str, Any]]:
+        raw_pointers = pointer.get("pointers")
+        if isinstance(raw_pointers, list):
+            pointers: list[dict[str, Any]] = []
+            for index, raw_pointer in enumerate(raw_pointers):
+                if not isinstance(raw_pointer, dict):
+                    continue
+                normalized = dict(raw_pointer)
+                normalized["id"] = str(normalized.get("id", index))
+                pointers.append(normalized)
+            return pointers
+        return [dict(pointer)]
+
+    @staticmethod
+    def _merge_mobile_state(mobile_state: dict[str, float], partial: dict[str, float], capture: str) -> None:
+        if capture == "left_stick":
+            mobile_state["horizontal"] = partial["horizontal"]
+            mobile_state["vertical"] = partial["vertical"]
+        elif capture == "action_1":
+            mobile_state["action_1"] = max(mobile_state["action_1"], partial["action_1"])
+        elif capture == "action_2":
+            mobile_state["action_2"] = max(mobile_state["action_2"], partial["action_2"])
 
     def _consume_pointer_state(self) -> dict[str, Any] | None:
         if self._pointer_state is None:
@@ -85,32 +128,28 @@ class MobileControlsSystem:
         width: float,
         height: float,
         *,
-        captured: bool = False,
+        capture: str,
     ) -> dict[str, float]:
         x = float(pointer.get("x", 0.0))
         y = float(pointer.get("y", 0.0))
         state = {"horizontal": 0.0, "vertical": 0.0, "action_1": 0.0, "action_2": 0.0}
 
-        if controls.left_stick_enabled:
+        if capture == "left_stick" and controls.left_stick_enabled:
             cx = width * controls.left_stick_anchor_x
             cy = height * controls.left_stick_anchor_y
             dx = x - cx
             dy = y - cy
             distance = math.hypot(dx, dy)
-            if (captured or distance <= controls.left_stick_radius * 1.35) and distance > 0.0:
+            if distance > 0.0:
                 normalized = min(1.0, distance / controls.left_stick_radius)
                 if normalized >= controls.deadzone:
                     scale = (normalized - controls.deadzone) / max(0.001, 1.0 - controls.deadzone)
                     state["horizontal"] = max(-1.0, min(1.0, (dx / distance) * scale))
                     state["vertical"] = max(-1.0, min(1.0, -(dy / distance) * scale))
 
-        if controls.action_1_enabled and self._inside_circle(
-            x, y, width * controls.action_1_anchor_x, height * controls.action_1_anchor_y, controls.action_1_radius
-        ):
+        if capture == "action_1" and controls.action_1_enabled:
             state["action_1"] = 1.0
-        if controls.action_2_enabled and self._inside_circle(
-            x, y, width * controls.action_2_anchor_x, height * controls.action_2_anchor_y, controls.action_2_radius
-        ):
+        if capture == "action_2" and controls.action_2_enabled:
             state["action_2"] = 1.0
         return state
 
@@ -118,13 +157,13 @@ class MobileControlsSystem:
     def _inside_circle(x: float, y: float, cx: float, cy: float, radius: float) -> bool:
         return math.hypot(x - cx, y - cy) <= radius
 
-    def _point_in_controls(
+    def _capture_control(
         self,
         controls: MobileControls2D,
         pointer: dict[str, Any],
         width: float,
         height: float,
-    ) -> bool:
+    ) -> str | None:
         x = float(pointer.get("x", 0.0))
         y = float(pointer.get("y", 0.0))
         if controls.left_stick_enabled and self._inside_circle(
@@ -134,7 +173,7 @@ class MobileControlsSystem:
             height * controls.left_stick_anchor_y,
             controls.left_stick_radius * 1.35,
         ):
-            return True
+            return "left_stick"
         if controls.action_1_enabled and self._inside_circle(
             x,
             y,
@@ -142,14 +181,13 @@ class MobileControlsSystem:
             height * controls.action_1_anchor_y,
             controls.action_1_radius * 1.35,
         ):
-            return True
-        return bool(
-            controls.action_2_enabled
-            and self._inside_circle(
-                x,
-                y,
-                width * controls.action_2_anchor_x,
-                height * controls.action_2_anchor_y,
-                controls.action_2_radius * 1.35,
-            )
-        )
+            return "action_1"
+        if controls.action_2_enabled and self._inside_circle(
+            x,
+            y,
+            width * controls.action_2_anchor_x,
+            height * controls.action_2_anchor_y,
+            controls.action_2_radius * 1.35,
+        ):
+            return "action_2"
+        return None

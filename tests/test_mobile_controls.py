@@ -46,6 +46,9 @@ class MobileControlsSystemTests(unittest.TestCase):
         overlay.add_component(MobileControls2D(target_entity="Player"))
         return world, input_map
 
+    def _inject_pointer_payload(self, system: MobileControlsSystem, pointers: list[dict], **legacy: object) -> None:
+        system._pointer_state = {"pointers": pointers, **legacy}
+
     def test_left_stick_updates_axis(self) -> None:
         world, input_map = self._make_world()
         system = MobileControlsSystem()
@@ -59,10 +62,14 @@ class MobileControlsSystemTests(unittest.TestCase):
     def test_action_buttons_update_actions(self) -> None:
         world, input_map = self._make_world()
         system = MobileControlsSystem()
+        controls = world.get_entity_by_name("MobileControlsOverlay").get_component(MobileControls2D)
+        controls.action_2_enabled = True
 
         system.inject_pointer_state(672.0, 468.0, down=True)
         system.update(world, (800.0, 600.0))
         self.assertEqual(input_map.last_state["action_1"], 1.0)
+        system.inject_pointer_state(672.0, 468.0, released=True)
+        system.update(world, (800.0, 600.0))
 
         system.inject_pointer_state(576.0, 504.0, down=True)
         system.update(world, (800.0, 600.0))
@@ -91,6 +98,118 @@ class MobileControlsSystemTests(unittest.TestCase):
 
         self.assertGreater(input_map.last_state["horizontal"], 0.95)
         self.assertEqual(input_map.last_state["vertical"], 0.0)
+
+    def test_action_1_hold_does_not_become_left_stick_axis(self) -> None:
+        world, input_map = self._make_world()
+        system = MobileControlsSystem()
+
+        for _ in range(3):
+            system.inject_pointer_state(672.0, 468.0, down=True)
+            system.update(world, (800.0, 600.0))
+
+        self.assertEqual(input_map.last_state["action_1"], 1.0)
+        self.assertEqual(input_map.last_state["horizontal"], 0.0)
+        self.assertEqual(input_map.last_state["vertical"], 0.0)
+
+    def test_action_2_hold_does_not_become_left_stick_axis(self) -> None:
+        world, input_map = self._make_world()
+        controls = world.get_entity_by_name("MobileControlsOverlay").get_component(MobileControls2D)
+        controls.action_2_enabled = True
+        system = MobileControlsSystem()
+
+        for _ in range(3):
+            system.inject_pointer_state(576.0, 504.0, down=True)
+            system.update(world, (800.0, 600.0))
+
+        self.assertEqual(input_map.last_state["action_2"], 1.0)
+        self.assertEqual(input_map.last_state["horizontal"], 0.0)
+        self.assertEqual(input_map.last_state["vertical"], 0.0)
+
+    def test_right_touch_does_not_steal_left_stick_capture_with_pointer_ids(self) -> None:
+        world, input_map = self._make_world()
+        system = MobileControlsSystem()
+
+        system.inject_pointer_state(174.0, 468.0, down=True, pressed=True, pointer_id=1)
+        system.update(world, (800.0, 600.0))
+        initial_horizontal = input_map.last_state["horizontal"]
+
+        self._inject_pointer_payload(
+            system,
+            [
+                {"id": 1, "x": 174.0, "y": 468.0, "down": True, "pressed": False, "released": False},
+                {"id": 2, "x": 720.0, "y": 468.0, "down": True, "pressed": True, "released": False},
+            ],
+            x=720.0,
+            y=468.0,
+            down=True,
+            pressed=True,
+            released=False,
+        )
+        system.update(world, (800.0, 600.0))
+
+        self.assertGreater(input_map.last_state["horizontal"], 0.3)
+        self.assertAlmostEqual(input_map.last_state["horizontal"], initial_horizontal)
+
+    def test_releasing_left_pointer_resets_axis_while_right_pointer_remains_down(self) -> None:
+        world, input_map = self._make_world()
+        system = MobileControlsSystem()
+
+        system.inject_pointer_state(174.0, 468.0, down=True, pressed=True, pointer_id=1)
+        system.update(world, (800.0, 600.0))
+        self.assertGreater(input_map.last_state["horizontal"], 0.3)
+
+        self._inject_pointer_payload(
+            system,
+            [
+                {"id": 1, "x": 174.0, "y": 468.0, "down": False, "pressed": False, "released": True},
+                {"id": 2, "x": 720.0, "y": 468.0, "down": True, "pressed": False, "released": False},
+            ],
+            x=720.0,
+            y=468.0,
+            down=True,
+            pressed=False,
+            released=False,
+        )
+        system.update(world, (800.0, 600.0))
+
+        self.assertEqual(input_map.last_state["horizontal"], 0.0)
+        self.assertEqual(input_map.last_state["vertical"], 0.0)
+
+    def test_disabled_right_action_buttons_do_not_affect_input(self) -> None:
+        world, input_map = self._make_world()
+        controls = world.get_entity_by_name("MobileControlsOverlay").get_component(MobileControls2D)
+        controls.action_1_enabled = False
+        controls.action_2_enabled = False
+        system = MobileControlsSystem()
+
+        system.inject_pointer_state(672.0, 468.0, down=True, pressed=True, pointer_id=2)
+        system.update(world, (800.0, 600.0))
+
+        self.assertEqual(input_map.last_state["horizontal"], 0.0)
+        self.assertEqual(input_map.last_state["vertical"], 0.0)
+        self.assertEqual(input_map.last_state["action_1"], 0.0)
+        self.assertEqual(input_map.last_state["action_2"], 0.0)
+
+    def test_enabled_action_button_combines_with_left_stick_pointer_id(self) -> None:
+        world, input_map = self._make_world()
+        system = MobileControlsSystem()
+
+        self._inject_pointer_payload(
+            system,
+            [
+                {"id": 1, "x": 174.0, "y": 468.0, "down": True, "pressed": True, "released": False},
+                {"id": 2, "x": 672.0, "y": 468.0, "down": True, "pressed": True, "released": False},
+            ],
+            x=174.0,
+            y=468.0,
+            down=True,
+            pressed=True,
+            released=False,
+        )
+        system.update(world, (800.0, 600.0))
+
+        self.assertGreater(input_map.last_state["horizontal"], 0.3)
+        self.assertEqual(input_map.last_state["action_1"], 1.0)
 
 
 class MobileControlsAPITests(unittest.TestCase):

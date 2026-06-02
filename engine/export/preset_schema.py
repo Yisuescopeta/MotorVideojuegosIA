@@ -22,6 +22,8 @@ _ALLOWED_EXTRA_FIELDS = frozenset({
     "key_alias",
     "key_password",
     "android_python_runtime",
+    "android_network_permissions",
+    "local_release_signing",
 })
 
 

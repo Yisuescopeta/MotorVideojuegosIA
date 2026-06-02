@@ -327,8 +327,6 @@ class RuntimeController:
         state = self._get_state()
         if state.allows_animation():
             animation_system.update(world, dt)
-        elif state.allows_animation_preview():
-            animation_system.update(world, dt * self._edit_animation_speed)
 
     def update_gameplay(
         self,

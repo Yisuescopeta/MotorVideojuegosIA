@@ -1468,14 +1468,19 @@ class RenderSystem:
             return
         animator = entity.get_component(Animator)
         sprite = entity.get_component(Sprite)
+        drew_something = False
         if animator is not None and animator.enabled and animator.sprite_sheet:
             self._draw_animated_sprite(transform, animator)
-        elif sprite is not None and sprite.enabled and sprite.texture_path:
+            drew_something = True
+        if sprite is not None and sprite.enabled and sprite.texture_path:
             self._draw_sprite(transform, sprite)
-        else:
+            drew_something = True
+        if not drew_something:
             polygon = entity.get_component(Polygon2D)
             if polygon is not None and polygon.enabled and len(polygon.points) >= 3:
                 self._draw_polygon(transform, polygon)
+                return
+            if entity.get_component(Camera2D) is not None:
                 return
             self._draw_placeholder(entity.name, transform)
 
@@ -1516,16 +1521,31 @@ class RenderSystem:
         if texture.id == 0:
             return
 
-        width = sprite.width if sprite.width > 0 else texture.width
-        height = sprite.height if sprite.height > 0 else texture.height
+        src_x: int = 0
+        src_y: int = 0
+        src_w: int = texture.width
+        src_h: int = texture.height
+
+        slice_rect = None
+        if sprite.source_slice and self._asset_service is not None:
+            slice_rect = self._asset_service.get_slice_rect(sprite.get_texture_reference(), sprite.source_slice)
+
+        if slice_rect is not None:
+            src_x = int(slice_rect.get("x", 0))
+            src_y = int(slice_rect.get("y", 0))
+            src_w = max(1, int(slice_rect.get("width", 0)))
+            src_h = max(1, int(slice_rect.get("height", 0)))
+
+        width = sprite.width if sprite.width > 0 else src_w
+        height = sprite.height if sprite.height > 0 else src_h
         width = int(width * transform.scale_x)
         height = int(height * transform.scale_y)
         dest_x = transform.x - (width * sprite.origin_x)
         dest_y = transform.y - (height * sprite.origin_y)
 
-        source_width = texture.width if not sprite.flip_x else -texture.width
-        source_height = texture.height if not sprite.flip_y else -texture.height
-        source_rect = rl.Rectangle(0, 0, source_width, source_height)
+        source_width = src_w if not sprite.flip_x else -src_w
+        source_height = src_h if not sprite.flip_y else -src_h
+        source_rect = rl.Rectangle(src_x, src_y, source_width, source_height)
         dest_rect = rl.Rectangle(dest_x, dest_y, width, height)
         tint = rl.Color(*sprite.tint)
         rl.draw_texture_pro(texture, source_rect, dest_rect, rl.Vector2(0, 0), transform.rotation, tint)

@@ -45,13 +45,38 @@ nombre (`animations`, `default_state`, `current_state`, `play()` y
 `AnimationData.on_complete`) y ahora admite foundation opcional de state
 machine de una sola capa:
 
-- `parameters`: definiciones serializables de `bool`, `int`, `float` y `trigger`
+- `parameters`: definiciones serializables de `bool`, `int`, `float`, `trigger` y `string`
 - `state_machine`: `entry_state` y nodos por estado con `transitions`
 - `transitions`: condiciones declarativas, `has_exit_time`, `exit_time` y
   `force_restart`
 
-Los valores runtime de parametros y triggers no forman parte del payload
+Los parametros de tipo `string` solo admiten los operadores `==` y `!=` en
+condiciones. Ejemplo de animacion direccional:
+
+```python
+# Definir parametro de tipo string
+api.edit_component("Player", "Animator", "parameters", {
+    "facing": {"type": "string", "default": "down"},
+})
+
+# Transicion condicional en state_machine
+# condition: parameter="facing", operator="==", value="up"
+```
+
+Los valores runtime de parametros no forman parte del payload
 serializable del authoring.
+
+`Sprite` ahora expone el campo `source_slice` (string, default vacio). Cuando
+no esta vacio, `RenderSystem` resuelve el rectangulo del tile mediante
+`AssetService.get_slice_rect()` y renderiza solo esa region de la textura. Si
+el slice no se encuentra o el campo esta vacio, se usa la textura completa.
+
+**Render combinado Sprite + Animator:** una entidad con ambos componentes
+renderiza `Sprite` primero (capa inferior) y `Animator` encima (capa superior).
+El comportamiento de entidades con un solo componente se conserva sin cambios.
+Cuando ambos componentes estan presentes pero inhabilitados, el sistema
+dibuja el placeholder por defecto.
+
 `engine/audio/` define la foundation interna del runtime de audio. Expone
 contratos runtime (`AudioPlaybackRequest`, `AudioVoiceState`,
 `AudioRuntimeEvent`), un `NullAudioBackend` headless-safe y `AudioRuntime`
@@ -751,8 +776,10 @@ publico headless.
 
 1. `FIXED_UPDATE`: simulacion runtime con `fixed_dt = 1/60` y acumulador con
    limite de pasos por frame.
-2. `UPDATE`: animacion normal o preview y trabajo variable que no entra todavia
-   en fixed-step.
+2. `UPDATE`: animacion runtime solo en `PLAY`/`STEPPING` y trabajo variable que
+   no entra todavia en fixed-step. En `EDIT`, las animaciones globales quedan
+   congeladas; la preview de animacion pertenece a herramientas explicitas como
+   el panel Animator.
 3. `POST_UPDATE`: UI runtime/render-like, bookkeeping y transicion
    `STEPPING -> PAUSED`.
 4. `RENDER`: solo en el loop grafico; el foundation no cambia `RenderSystem`.
@@ -787,6 +814,11 @@ Acciones de reglas soportadas por contrato:
 dirty state, historial, transacciones, `EDIT -> PLAY -> STOP`, operaciones
 estructurales y prefabs.
 
+El guardado de prefabs usa logging de proyecto (`ProjectLog`) para registrar
+fallos de escritura. La instanciacion de prefabs emplea nombrado atomico con
+lock para evitar nombres duplicados concurrentes: antes de asignar un nombre
+generado, verifica y reserva bajo lock que no exista ya en la escena activa.
+
 Las rutas recomendadas para cambios persistentes son `SceneManager` y
 `EngineAPI`. `sync_from_edit_world()` queda como compatibilidad legacy.
 
@@ -804,6 +836,21 @@ de `EditorShell`, `EditorShellState`, `EditorPanelSlots` y
   authoring.
 - El runtime sigue orquestado por `Game`; la costura editor/runtime solo monta
   la foundation del editor y no redefine contratos del motor.
+
+#### Hierarchy panel scroll
+
+El panel de jerarquia soporta scroll vertical controlado por rueda del raton:
+
+- **Scroll offset**: la rueda del raton desplaza un offset vertical acumulado
+  dentro del viewport del panel. El desplazamiento respeta los limites del
+  contenido total.
+- **Viewport culling**: solo se dibujan los items de jerarquia cuyos rects
+  intersectan el rect visible del viewport (considerando el offset de scroll).
+  Esto evita renderizar nodos fuera de pantalla.
+- **Scrolled hit-tests**: los hit-tests (click, seleccion) compensan el offset
+  de scroll para que la deteccion de item corresponda correctamente con la
+  posicion visual desplazada.
+
 ### Foundation incremental de tilemap
 
 `Tilemap` conserva su payload serializable actual y su superficie publica para

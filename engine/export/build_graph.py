@@ -134,6 +134,11 @@ def _extract_references(
             _add_reference(
                 asset_ref_path, root, visited_assets, visited_scripts, result,
             )
+        module_script = _script_reference_from_module_path(data.get("module_path"))
+        if module_script:
+            _add_reference(
+                module_script, root, visited_assets, visited_scripts, result,
+            )
         for key, value in data.items():
             if key in _ASSET_FIELD_PATTERNS and isinstance(value, str) and value:
                 _add_reference(
@@ -158,6 +163,17 @@ def _looks_like_asset_reference(data: dict[str, Any], path: Any) -> bool:
     if "guid" in data:
         return True
     return path.startswith(("assets/", "scripts/", "prefabs/"))
+
+
+def _script_reference_from_module_path(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    normalized = value.strip().replace("\\", "/").strip("/")
+    if normalized.endswith(".py"):
+        return normalized
+    if normalized.startswith("scripts/"):
+        return f"{normalized}.py"
+    return f"scripts/{normalized.replace('.', '/')}.py"
 
 
 def _add_reference(

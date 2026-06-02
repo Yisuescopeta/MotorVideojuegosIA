@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Union
 from engine.assets.asset_reference import build_asset_reference, clone_asset_reference, normalize_asset_reference
 from engine.ecs.component import Component
 
-PARAMETER_TYPES = {"bool", "int", "float", "trigger"}
+PARAMETER_TYPES = {"bool", "int", "float", "trigger", "string"}
 CONDITION_OPERATORS = {"==", "!=", ">", ">=", "<", "<="}
 
 
@@ -21,7 +21,7 @@ def _coerce_parameter_type(parameter_type: Any) -> str:
     return "bool"
 
 
-def _coerce_parameter_value(value: Any, parameter_type: str) -> bool | int | float:
+def _coerce_parameter_value(value: Any, parameter_type: str) -> bool | int | float | str:
     normalized_type = _coerce_parameter_type(parameter_type)
     if normalized_type in {"bool", "trigger"}:
         return bool(value)
@@ -30,6 +30,8 @@ def _coerce_parameter_value(value: Any, parameter_type: str) -> bool | int | flo
             return int(value)
         except (TypeError, ValueError):
             return 0
+    if normalized_type == "string":
+        return "" if value is None else str(value)
     try:
         return float(value)
     except (TypeError, ValueError):
@@ -85,7 +87,7 @@ class AnimationParameterDefinition:
     """Define un parametro serializable de la state machine."""
 
     type: str = "bool"
-    default: bool | int | float = False
+    default: bool | int | float | str = False
 
     def __post_init__(self) -> None:
         self.type = _coerce_parameter_type(self.type)
@@ -263,7 +265,7 @@ class Animator(Component):
         self.speed: float = max(0.01, float(speed))
         self.parameters: Dict[str, AnimationParameterDefinition] = parameters or {}
         self.state_machine: Optional[AnimationStateMachine] = state_machine
-        self._parameter_values: Dict[str, bool | int | float] = self._build_runtime_parameter_store()
+        self._parameter_values: Dict[str, bool | int | float | str] = self._build_runtime_parameter_store()
 
         self.current_state: str = default_state
         self.current_frame: int = 0
@@ -273,7 +275,7 @@ class Animator(Component):
         if self.current_state not in self.animations:
             self.current_state = self.resolve_entry_state()
 
-    def _build_runtime_parameter_store(self) -> Dict[str, bool | int | float]:
+    def _build_runtime_parameter_store(self) -> Dict[str, bool | int | float | str]:
         return {
             name: definition.default
             for name, definition in self.parameters.items()
@@ -304,7 +306,7 @@ class Animator(Component):
         self._parameter_values[name] = _coerce_parameter_value(value, definition.type)
         return True
 
-    def get_parameter(self, name: str) -> Optional[bool | int | float]:
+    def get_parameter(self, name: str) -> Optional[bool | int | float | str]:
         if name not in self.parameters:
             return None
         return self._parameter_values.get(name, self.parameters[name].default)
@@ -352,14 +354,18 @@ class Animator(Component):
             return left_value == right_value
         if operator == "!=":
             return left_value != right_value
+        if definition.type == "string":
+            return False
+        if not isinstance(left_value, (bool, int, float)) or not isinstance(right_value, (bool, int, float)):
+            return False
         if operator == ">":
-            return bool(left_value is not None and left_value > right_value)
+            return left_value > right_value
         if operator == ">=":
-            return bool(left_value is not None and left_value >= right_value)
+            return left_value >= right_value
         if operator == "<":
-            return bool(left_value is not None and left_value < right_value)
+            return left_value < right_value
         if operator == "<=":
-            return bool(left_value is not None and left_value <= right_value)
+            return left_value <= right_value
         return False
 
     def transition_conditions_match(self, transition: AnimationTransition) -> bool:

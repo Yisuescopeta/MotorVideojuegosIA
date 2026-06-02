@@ -74,6 +74,68 @@ class SpriteComponentTests(unittest.TestCase):
         d = sprite.to_dict()
         self.assertEqual(d["tint"], [1, 2, 3, 4])
 
+    def test_source_slice_default_empty(self) -> None:
+        sprite = Sprite()
+        self.assertEqual(sprite.source_slice, "")
+
+    def test_source_slice_constructor(self) -> None:
+        sprite = Sprite(source_slice="my_slice")
+        self.assertEqual(sprite.source_slice, "my_slice")
+
+    def test_source_slice_serialization(self) -> None:
+        sprite = Sprite(source_slice="hero_idle", tint=(1, 2, 3, 4))
+        d = sprite.to_dict()
+        self.assertEqual(d["source_slice"], "hero_idle")
+
+    def test_source_slice_deserialization(self) -> None:
+        data = {
+            "enabled": True,
+            "texture": {"path": "img.png"},
+            "texture_path": "img.png",
+            "width": 32,
+            "height": 32,
+            "origin_x": 0.5,
+            "origin_y": 0.5,
+            "flip_x": False,
+            "flip_y": False,
+            "tint": [255, 255, 255, 255],
+            "source_slice": "icon_sword",
+        }
+        sprite = Sprite.from_dict(data)
+        self.assertEqual(sprite.source_slice, "icon_sword")
+
+    def test_source_slice_deserialization_missing_defaults_empty(self) -> None:
+        data = {
+            "enabled": True,
+            "texture": {"path": "img.png"},
+            "texture_path": "img.png",
+            "width": 0,
+            "height": 0,
+            "origin_x": 0.5,
+            "origin_y": 0.5,
+            "flip_x": False,
+            "flip_y": False,
+            "tint": [255, 255, 255, 255],
+        }
+        sprite = Sprite.from_dict(data)
+        self.assertEqual(sprite.source_slice, "")
+
+    def test_full_roundtrip_with_source_slice(self) -> None:
+        sprite = Sprite(
+            texture_path="spritesheet.png",
+            width=64,
+            height=64,
+            source_slice="walk_01",
+            tint=(100, 200, 50, 255),
+        )
+        data = sprite.to_dict()
+        restored = Sprite.from_dict(data)
+        self.assertEqual(restored.source_slice, "walk_01")
+        self.assertEqual(restored.texture_path, "spritesheet.png")
+        self.assertEqual(restored.width, 64)
+        self.assertEqual(restored.height, 64)
+        self.assertEqual(restored.tint, (100, 200, 50, 255))
+
 
 if __name__ == "__main__":
     unittest.main()

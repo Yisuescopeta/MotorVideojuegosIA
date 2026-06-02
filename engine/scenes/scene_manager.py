@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import os
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -94,6 +95,8 @@ class SceneManager:
         self._workspace_port: SceneWorkspacePort = SceneManagerWorkspaceAdapter(self)
         self._runtime_signal_compiler: Optional[Callable[[Scene, "World"], int]] = None
         self._authoring_transaction: AuthoringTransactionState | None = None
+        self._on_scene_saved_callbacks: list[Callable[[str, Dict[str, Any]], None]] = []
+        self._scene_file_mtimes: dict[str, float] = {}
 
     @property
     def _entries(self) -> dict[str, SceneWorkspaceEntry]:
@@ -160,6 +163,67 @@ class SceneManager:
         compiler: Optional[Callable[[Scene, "World"], int]],
     ) -> None:
         self._runtime_signal_compiler = compiler
+
+    def register_on_scene_saved(self, callback: Callable[[str, Dict[str, Any]], None]) -> None:
+        """Register a callback invoked after each successful save_scene_to_file.
+
+        Callback signature: callback(path: str, info: dict) -> None.
+        Info dict keys: 'key', 'scene_name', 'entity_count'.
+        Callback exceptions are logged and never make the save fail.
+        """
+        if callback not in self._on_scene_saved_callbacks:
+            self._on_scene_saved_callbacks.append(callback)
+
+    def unregister_on_scene_saved(self, callback: Callable[[str, Dict[str, Any]], None]) -> None:
+        """Remove a previously registered on_scene_saved callback."""
+        try:
+            self._on_scene_saved_callbacks.remove(callback)
+        except ValueError:
+            pass
+
+    def _fire_on_scene_saved(self, path: str, key: str, scene_name: str, entity_count: int) -> None:
+        info: Dict[str, Any] = {"key": key, "scene_name": scene_name, "entity_count": entity_count}
+        for callback in self._on_scene_saved_callbacks:
+            try:
+                callback(path, info)
+            except Exception as exc:
+                log_err(f"SceneManager: on_scene_saved callback raised {type(exc).__name__}: {exc}")
+
+    def refresh_active_scene_if_stale(self) -> Optional["World"]:
+        """Reload active scene from disk if file mtime changed and scene is not dirty.
+
+        Safe guard: if the scene has unsaved authoring changes (dirty=True),
+        the refresh is skipped to avoid silently discarding them. Returns the
+        edit_world (refreshed or existing) or None if no active entry.
+        """
+        entry = self._get_active_entry()
+        if entry is None:
+            return None
+        raw_source = entry.source_path
+        if not raw_source:
+            return entry.edit_world
+        if entry.dirty:
+            return entry.edit_world
+        resolved_source = str(Path(raw_source).resolve())
+        try:
+            current_mtime = os.path.getmtime(resolved_source)
+        except OSError:
+            return entry.edit_world
+        previous_mtime = self._scene_file_mtimes.get(resolved_source)
+        if previous_mtime is not None and current_mtime <= previous_mtime:
+            return entry.edit_world
+        try:
+            data = JsonSceneStorage().load(resolved_source)
+        except Exception as exc:
+            log_err(f"SceneManager: failed to reload stale scene from {resolved_source}: {exc}")
+            return entry.edit_world
+        try:
+            self._install_scene_payload(entry, data, source_path=resolved_source)
+            entry.dirty = False
+            self._scene_file_mtimes[resolved_source] = current_mtime
+        except Exception as exc:
+            log_err(f"SceneManager: failed to install refreshed scene payload from {resolved_source}: {exc}")
+        return entry.edit_world
 
     def list_open_scenes(self) -> list[Dict[str, Any]]:
         return self._workspace.list_open_scenes()
@@ -366,7 +430,14 @@ class SceneManager:
         self._structural_authoring.reset_state()
 
     def load_scene(self, data: Dict[str, Any], source_path: Optional[str] = None, activate: bool = True) -> "World":
-        return self._workspace.load_scene(data, source_path=source_path, activate=activate)
+        world = self._workspace.load_scene(data, source_path=source_path, activate=activate)
+        if world is not None and source_path:
+            try:
+                resolved_path = str(Path(source_path).resolve())
+                self._scene_file_mtimes[resolved_path] = os.path.getmtime(resolved_path)
+            except OSError:
+                pass
+        return world
 
     def load_scene_from_file(
         self,
@@ -374,9 +445,17 @@ class SceneManager:
         activate: bool = True,
         storage: Optional[SceneStorage] = None,
     ) -> Optional["World"]:
-        return self._workspace.load_scene_from_file(path, activate=activate, storage=storage)
+        world = self._workspace.load_scene_from_file(path, activate=activate, storage=storage)
+        if world is not None:
+            try:
+                resolved_path = str(Path(path).resolve())
+                self._scene_file_mtimes[resolved_path] = os.path.getmtime(resolved_path)
+            except OSError:
+                pass
+        return world
 
     def get_edit_world(self) -> Optional["World"]:
+        self.refresh_active_scene_if_stale()
         entry = self._get_active_entry()
         return entry.edit_world if entry is not None else None
 
@@ -898,20 +977,54 @@ class SceneManager:
                 self._sync_entry_from_edit_world(entry)
             data = self._validated_scene_payload(entry.scene.to_dict())
             target_path = Path(path)
+            stored_entity_count = len(data.get("entities", [])) if isinstance(data.get("entities"), list) else 0
             if storage is None:
                 temp_path = target_path.with_name(f"{target_path.name}.tmp")
-                entity_count = len(data.get("entities", [])) if isinstance(data.get("entities"), list) else 0
                 use_compact_save = (
-                    compact_save if compact_save is not None else entity_count > COMPACT_SCENE_SAVE_ENTITY_THRESHOLD
+                    compact_save if compact_save is not None else stored_entity_count > COMPACT_SCENE_SAVE_ENTITY_THRESHOLD
                 )
-                JsonSceneStorage(compact=use_compact_save, separators=COMPACT_SCENE_SAVE_SEPARATORS).save(temp_path, data)
+                json_storage = JsonSceneStorage(compact=use_compact_save, separators=COMPACT_SCENE_SAVE_SEPARATORS)
+                json_storage.save(temp_path, data)
                 temp_path.replace(target_path)
+                # Post-write integrity verification
+                readback = json_storage.load(target_path)
+                verified = migrate_scene_data(readback)
+                validation_errors = validate_scene_data(verified)
+                if validation_errors:
+                    raise ValueError(f"Post-write validation failed: {'; '.join(validation_errors)}")
+                readback_entity_count = len(verified.get("entities", [])) if isinstance(verified.get("entities"), list) else 0
+                if readback_entity_count != stored_entity_count:
+                    raise ValueError(
+                        f"Post-write entity count mismatch: written={readback_entity_count}, expected={stored_entity_count}"
+                    )
             else:
                 storage.save(target_path, data)
+                # Post-write integrity verification
+                readback = storage.load(target_path)
+                verified = migrate_scene_data(readback)
+                validation_errors = validate_scene_data(verified)
+                if validation_errors:
+                    raise ValueError(f"Post-write validation failed: {'; '.join(validation_errors)}")
+                readback_entity_count = len(verified.get("entities", [])) if isinstance(verified.get("entities"), list) else 0
+                if readback_entity_count != stored_entity_count:
+                    raise ValueError(
+                        f"Post-write entity count mismatch: written={readback_entity_count}, expected={stored_entity_count}"
+                    )
             self._install_scene_payload(entry, data, source_path=path)
             self._workspace.rekey_entry(entry, self._build_scene_key(path, entry.scene.name))
             entry.dirty = False
             self._clear_pending_edit_world_sync(entry)
+            saved_path = str(target_path.resolve())
+            try:
+                self._scene_file_mtimes[saved_path] = os.path.getmtime(saved_path)
+            except OSError:
+                pass
+            self._fire_on_scene_saved(
+                saved_path,
+                entry.key,
+                entry.scene.name,
+                stored_entity_count,
+            )
             return True
         except Exception as exc:
             if temp_path is not None:

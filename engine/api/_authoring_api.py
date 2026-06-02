@@ -66,7 +66,15 @@ class AuthoringAPI(EngineAPIComponent):
         success = self.scene_authoring.rollback_transaction()
         return self.ok("Transaction rolled back") if success else self.fail("Transaction rollback failed")
 
-    def create_entity(self, name: str, components: Optional[Dict[str, dict[str, Any]]] = None) -> ActionResult:
+    def create_entity(
+        self,
+        name: str,
+        components: Optional[Dict[str, dict[str, Any]]] = None,
+        *,
+        tag: Optional[str] = None,
+        layer: Optional[str] = None,
+        active: Optional[bool] = None,
+    ) -> ActionResult:
         """Create a new entity in the active scene with optional component payloads.
 
         Args:
@@ -74,6 +82,9 @@ class AuthoringAPI(EngineAPIComponent):
             components: Mapping of component type names to their data dictionaries.
                 Keys should match registered component names (e.g. "Transform",
                 "RigidBody"). Defaults to None (no components).
+            tag: Optional tag string applied after creation.
+            layer: Optional layer name applied after creation.
+            active: Optional active state applied after creation.
 
         Returns:
             ActionResult confirming entity creation or reporting that the name
@@ -87,7 +98,23 @@ class AuthoringAPI(EngineAPIComponent):
         if self.scene_authoring is None:
             return self.fail("SceneManager not ready")
         success = self.scene_authoring.create_entity(name, components=components)
-        return self.ok("Entity created", {"entity": name}) if success else self.fail("Entity already exists")
+        if not success:
+            return self.fail("Entity already exists")
+
+        if tag is not None:
+            result = self._apply_entity_property(name, "tag", tag, "Entity tag updated")
+            if not result["success"]:
+                return result
+        if layer is not None:
+            result = self._apply_entity_property(name, "layer", layer, "Entity layer updated")
+            if not result["success"]:
+                return result
+        if active is not None:
+            result = self._apply_entity_property(name, "active", active, "Entity active updated")
+            if not result["success"]:
+                return result
+
+        return self.ok("Entity created", {"entity": name})
 
     def delete_entity(self, name: str) -> ActionResult:
         """Delete an entity and its children from the active scene.

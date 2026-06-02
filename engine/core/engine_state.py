@@ -6,7 +6,7 @@ PROPÓSITO:
     Controla qué sistemas se actualizan en cada momento.
 
 ESTADOS:
-    - EDIT: Modo edición, física detenida, animaciones en preview
+    - EDIT: Modo edición, física y animaciones runtime detenidas
     - PLAY: Modo juego, todos los sistemas activos
     - PAUSED: Modo pausado, solo renderizado
 
@@ -15,7 +15,7 @@ COMPORTAMIENTO POR ESTADO:
     | Sistema          | EDIT    | PLAY | PAUSED |
     |------------------|---------|------|--------|
     | RenderSystem     | ✔️      | ✔️   | ✔️     |
-    | AnimationSystem  | preview | ✔️   | ❌     |
+    | AnimationSystem  | ❌      | ✔️   | ❌     |
     | PhysicsSystem    | ❌      | ✔️   | ❌     |
     | CollisionSystem  | ❌      | ✔️   | ❌     |
     | RuleSystem       | ❌      | ✔️   | ❌     |
@@ -36,7 +36,7 @@ class EngineState(Enum):
     Estados del motor de juego.
 
     Valores:
-        EDIT: Modo edición - física detenida, inspección libre
+        EDIT: Modo edición - física y animaciones runtime detenidas, inspección libre
         PLAY: Modo juego - todos los sistemas activos
         PAUSED: Modo pausado - juego congelado, solo render
     """
@@ -74,8 +74,8 @@ class EngineState(Enum):
         return self == EngineState.PLAY or self == EngineState.STEPPING
 
     def allows_animation_preview(self) -> bool:
-        """True si las animaciones deben avanzar en modo preview (lento)."""
-        return self == EngineState.EDIT
+        """True si el runtime debe avanzar animaciones globales en preview."""
+        return False
 
     def __str__(self) -> str:
         return self.name
