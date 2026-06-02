@@ -644,13 +644,13 @@ class TestPrueva1ExportParity(unittest.TestCase):
             if path not in self._before_paths:
                 sys.path.remove(path)
 
-    @unittest.skipUnless(project_root.exists(), "Prueva1 project not present")
+    @unittest.skipUnless(project_root.exists(), "Prueva1 project not present. Clone from source or create at projects/Prueva1 with a valid project.json and levels/")
     def test_prueva1_project_pickups_apply_script_effects(self):
         for case in self.pickup_cases:
             with self.subTest(pickup=case[0]):
                 self._assert_pickup_effect(self.project_root, case)
 
-    @unittest.skipUnless(project_root.exists(), "Prueva1 project not present")
+    @unittest.skipUnless(project_root.exists(), "Prueva1 project not present. Clone from source or create at projects/Prueva1 with a valid project.json and levels/")
     def test_prueva1_android_shared_runtime_adapter_pickups_apply_script_effects(self):
         module = self._load_android_runtime_adapter()
         config = {
@@ -688,7 +688,7 @@ class TestPrueva1ExportParity(unittest.TestCase):
             module.shutdown_shared_runtime()
             sys.modules.pop("motor_android_runtime_test_adapter", None)
 
-    @unittest.skipUnless(project_root.exists(), "Prueva1 project not present")
+    @unittest.skipUnless(project_root.exists(), "Prueva1 project not present. Clone from source or create at projects/Prueva1 with a valid project.json and levels/")
     def test_prueva1_android_adapter_forces_pyray_stub_when_runtime_is_copied(self):
         import os
 
@@ -775,13 +775,13 @@ class TestPrueva1ExportParity(unittest.TestCase):
                 else:
                     os.environ["PYRAY_FORCE_STUB"] = before_env
 
-    @unittest.skipUnless(packed_root.exists(), "Prueva1 packed build not present")
+    @unittest.skipUnless(packed_root.exists(), "Prueva1 packed build not present. Build with: py -m motor export pack \"Windows Desktop\" --project projects/Prueva1 --json")
     def test_prueva1_packed_pickups_apply_script_effects(self):
         for case in self.pickup_cases:
             with self.subTest(pickup=case[0]):
                 self._assert_pickup_effect(self.packed_root, case)
 
-    @unittest.skipUnless(packed_root.exists(), "Prueva1 packed build not present")
+    @unittest.skipUnless(packed_root.exists(), "Prueva1 packed build not present. Build with: py -m motor export pack \"Windows Desktop\" --project projects/Prueva1 --json")
     def test_prueva1_packed_texture_hot_path_does_not_refresh_authoring_catalog(self):
         from engine.assets.asset_database import AssetDatabase
         from engine.components.animator import Animator

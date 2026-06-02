@@ -391,6 +391,10 @@ Ejemplos de errores esperados:
 
 Tras migrar, el payload se valida contra `v2`.
 
+El guardado de escena realiza una verificacion de integridad post-escritura:
+relee el archivo guardado, valida el payload y confirma que el numero de
+entidades coincide con el esperado antes de retornar exito.
+
 Los errores usan paths estables, por ejemplo:
 
 - `$.entities[1].parent: unknown parent 'Ghost'`

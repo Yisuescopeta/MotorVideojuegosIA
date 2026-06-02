@@ -1654,8 +1654,8 @@ class DocumentationContractTests(unittest.TestCase):
     def test_start_here_md_uses_motor_as_primary_interface(self) -> None:
         """START_HERE_AI.md debe usar `motor` como interfaz principal."""
         start_here_path = ROOT / "START_HERE_AI.md"
-        if not start_here_path.exists():
-            self.skipTest("START_HERE_AI.md no encontrado")
+        self.assertTrue(start_here_path.exists(),
+            f"START_HERE_AI.md must exist at {start_here_path}")
 
         content = start_here_path.read_text(encoding="utf-8")
         lines = content.split("\n")
@@ -1680,8 +1680,8 @@ class DocumentationContractTests(unittest.TestCase):
     def test_start_here_md_no_python_m_tools_pattern(self) -> None:
         """START_HERE_AI.md no debe tener `python -m tools...` como ejemplo principal."""
         start_here_path = ROOT / "START_HERE_AI.md"
-        if not start_here_path.exists():
-            self.skipTest("START_HERE_AI.md no encontrado")
+        self.assertTrue(start_here_path.exists(),
+            f"START_HERE_AI.md must exist at {start_here_path}")
 
         content = start_here_path.read_text(encoding="utf-8")
 
@@ -1715,8 +1715,8 @@ class ExamplesContractTests(unittest.TestCase):
 
     def test_all_examples_use_motor_not_legacy_cli(self) -> None:
         """Todos los ejemplos deben usar `motor`, no `python -m tools.engine_cli`."""
-        if not self.EXAMPLES_DIR.exists():
-            self.skipTest("Directorio de ejemplos no encontrado")
+        self.assertTrue(self.EXAMPLES_DIR.exists(),
+            f"Examples directory must exist at {self.EXAMPLES_DIR}")
 
         violations = []
         for py_file in self.EXAMPLES_DIR.glob("*.py"):
@@ -1738,8 +1738,8 @@ class ExamplesContractTests(unittest.TestCase):
 
     def test_examples_are_executable(self) -> None:
         """Los ejemplos deben poder ejecutarse sin errores de importación."""
-        if not self.EXAMPLES_DIR.exists():
-            self.skipTest("Directorio de ejemplos no encontrado")
+        self.assertTrue(self.EXAMPLES_DIR.exists(),
+            f"Examples directory must exist at {self.EXAMPLES_DIR}")
 
         # Solo verificar sintaxis, no ejecutar completamente
         for py_file in self.EXAMPLES_DIR.glob("*.py"):

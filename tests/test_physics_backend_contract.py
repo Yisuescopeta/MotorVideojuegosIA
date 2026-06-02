@@ -95,7 +95,8 @@ class TestLegacyBackendContract(unittest.TestCase):
         assert result.position_x > 100, f"Player debería atravesar trigger, x={result.position_x}"
 
 
-@unittest.skipUnless(BOX2D_AVAILABLE, "Box2D not installed")
+@unittest.skipUnless(BOX2D_AVAILABLE,
+    "Box2D not installed. Install with: pip install box2d-py")
 class TestCrossBackendContract(unittest.TestCase):
     """Comparación directa entre legacy y box2d."""
 

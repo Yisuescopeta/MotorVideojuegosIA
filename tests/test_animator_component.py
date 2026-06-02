@@ -354,6 +354,134 @@ class AnimationDataTests(unittest.TestCase):
         self.assertTrue(anim.loop)
         self.assertIsNone(anim.on_complete)
 
+class AnimatorStringParameterTests(unittest.TestCase):
+    def test_string_parameter_definition_roundtrip(self) -> None:
+        definition = AnimationParameterDefinition(type="string", default="idle")
+        self.assertEqual(definition.type, "string")
+        self.assertEqual(definition.default, "idle")
+
+        data = definition.to_dict()
+        self.assertEqual(data["type"], "string")
+        self.assertEqual(data["default"], "idle")
+
+        restored = AnimationParameterDefinition.from_dict(data)
+        self.assertEqual(restored.type, "string")
+        self.assertEqual(restored.default, "idle")
+
+    def test_string_parameter_empty_default(self) -> None:
+        definition = AnimationParameterDefinition(type="string", default="")
+        self.assertEqual(definition.type, "string")
+        self.assertEqual(definition.default, "")
+
+    def test_string_parameter_none_default_becomes_empty(self) -> None:
+        definition = AnimationParameterDefinition(type="string", default=None)
+        self.assertEqual(definition.type, "string")
+        self.assertEqual(definition.default, "")
+
+    def test_string_condition_equals_true(self) -> None:
+        animator = Animator(
+            parameters={
+                "state": AnimationParameterDefinition(type="string", default="idle"),
+            },
+            state_machine=AnimationStateMachine(
+                entry_state="idle",
+                states={
+                    "idle": AnimationStateDefinition(
+                        transitions=[
+                            AnimationTransition(
+                                to="run",
+                                conditions=[
+                                    AnimationCondition(
+                                        parameter="state",
+                                        operator="==",
+                                        value="idle",
+                                    )
+                                ],
+                            )
+                        ]
+                    )
+                },
+            ),
+            animations={
+                "idle": AnimationData(),
+                "run": AnimationData(),
+            },
+        )
+        condition = AnimationCondition(parameter="state", operator="==", value="idle")
+        self.assertTrue(animator.evaluate_condition(condition))
+
+    def test_string_condition_equals_false(self) -> None:
+        animator = Animator(
+            parameters={
+                "state": AnimationParameterDefinition(type="string", default="running"),
+            }
+        )
+        condition = AnimationCondition(parameter="state", operator="==", value="idle")
+        self.assertFalse(animator.evaluate_condition(condition))
+
+    def test_string_condition_not_equals(self) -> None:
+        animator = Animator(
+            parameters={
+                "state": AnimationParameterDefinition(type="string", default="idle"),
+            }
+        )
+        condition_eq = AnimationCondition(parameter="state", operator="!=", value="running")
+        self.assertTrue(animator.evaluate_condition(condition_eq))
+
+        condition_eq2 = AnimationCondition(parameter="state", operator="!=", value="idle")
+        self.assertFalse(animator.evaluate_condition(condition_eq2))
+
+    def test_string_condition_numeric_operator_returns_false(self) -> None:
+        animator = Animator(
+            parameters={
+                "state": AnimationParameterDefinition(type="string", default="idle"),
+            }
+        )
+        for op in (">", ">=", "<", "<="):
+            condition = AnimationCondition(parameter="state", operator=op, value="anything")
+            self.assertFalse(
+                animator.evaluate_condition(condition),
+                f"expected False for operator {op} on string param, but got something else",
+            )
+
+    def test_string_condition_numeric_operator_no_exception(self) -> None:
+        animator = Animator(
+            parameters={
+                "state": AnimationParameterDefinition(type="string", default="idle"),
+            }
+        )
+        condition = AnimationCondition(parameter="state", operator=">", value="idle")
+        # Should not raise any exception
+        result = animator.evaluate_condition(condition)
+        self.assertFalse(result)
+
+    def test_string_parameter_set_and_get(self) -> None:
+        animator = Animator(
+            parameters={
+                "state": AnimationParameterDefinition(type="string", default="idle"),
+            }
+        )
+        self.assertEqual(animator.get_parameter("state"), "idle")
+        animator.set_parameter("state", "running")
+        self.assertEqual(animator.get_parameter("state"), "running")
+        animator.set_parameter("state", 42)
+        self.assertEqual(animator.get_parameter("state"), "42")
+
+    def test_string_parameter_roundtrip_with_animator(self) -> None:
+        animator = Animator(
+            animations={"idle": AnimationData()},
+            parameters={
+                "state": AnimationParameterDefinition(type="string", default="idle"),
+                "weapon": AnimationParameterDefinition(type="string", default=""),
+            },
+        )
+        data = animator.to_dict()
+        restored = Animator.from_dict(data)
+
+        self.assertIn("parameters", restored.to_dict())
+        self.assertEqual(restored.get_parameter("state"), "idle")
+        self.assertEqual(restored.get_parameter("weapon"), "")
+
 
 if __name__ == "__main__":
     unittest.main()

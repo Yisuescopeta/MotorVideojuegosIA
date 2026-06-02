@@ -252,14 +252,14 @@ def _find_runtime_input_player(api: EngineAPI) -> Optional[str]:
     try:
         player = api.get_entity("Player")
         components = player.get("components", {})
-        if "InputMap" in components and "PlayerController2D" in components:
+        if "InputMap" in components and ("PlayerController2D" in components or "ScriptBehaviour" in components):
             return "Player"
     except Exception:
         pass
 
     for entity in api.list_entities(active=True):
         components = entity.get("components", {})
-        if "InputMap" in components and "PlayerController2D" in components:
+        if "InputMap" in components and ("PlayerController2D" in components or "ScriptBehaviour" in components):
             return str(entity.get("name", "") or "")
     return None
 
@@ -272,7 +272,7 @@ def _player_runtime_snapshot(api: EngineAPI, entity_name: Optional[str]) -> Opti
     except Exception:
         return None
     components = entity.get("components", {})
-    return {
+    snapshot = {
         "name": entity.get("name", entity_name),
         "tag": entity.get("tag", ""),
         "layer": entity.get("layer", ""),
@@ -281,6 +281,9 @@ def _player_runtime_snapshot(api: EngineAPI, entity_name: Optional[str]) -> Opti
         "InputMap": components.get("InputMap"),
         "PlayerController2D": components.get("PlayerController2D"),
     }
+    if "ScriptBehaviour" in components:
+        snapshot["ScriptBehaviour"] = components["ScriptBehaviour"]
+    return snapshot
 
 
 def cmd_runtime_play(project_path: Path, headless: bool, json_output: bool) -> int:
@@ -360,7 +363,7 @@ def cmd_runtime_step(project_path: Path, frames: int, json_output: bool, input_s
         player_name = _find_runtime_input_player(api)
         if input_state is not None:
             if not player_name:
-                warnings.append("No Player entity with InputMap and PlayerController2D found for input simulation.")
+                warnings.append("No Player entity with InputMap and PlayerController2D (or ScriptBehaviour) found for input simulation.")
                 data["warnings"] = list(warnings)
                 api.stop()
                 data["status_after"] = _runtime_status(api)
@@ -1295,7 +1298,7 @@ def cmd_doctor(project_path: Path, json_output: bool) -> int:
     warnings: List[str] = []
     checks: Dict[str, Any] = {}
 
-    api = None
+    api: Optional[EngineAPI] = None
     try:
         api = _init_engine(project_path, auto_ensure_project=False, read_only=True)
     except Exception:
@@ -1418,7 +1421,6 @@ def cmd_doctor(project_path: Path, json_output: bool) -> int:
             warnings.append(f"Could not validate entrypoints: {exc}")
 
     # Check 6: Try to init engine (read-only mode - no side effects)
-    api: Optional[EngineAPI] = None
     try:
         api = _init_engine(project_path, auto_ensure_project=False, read_only=True)
         checks["engine_init"] = True
@@ -1476,7 +1478,7 @@ def cmd_doctor(project_path: Path, json_output: bool) -> int:
     healthy = len(issues) == 0 and all(critical_checks)
     status = "healthy" if healthy else "unhealthy" if issues else "degraded"
 
-    data = {
+    data: Dict[str, Any] = {
         "healthy": healthy,
         "status": status,
         "project_path": str(project_path),

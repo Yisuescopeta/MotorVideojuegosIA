@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import shutil
 import subprocess
 import sys
@@ -140,7 +141,7 @@ class AndroidExporter(PlatformExporter):
 
         if ctx.preset.mode == "release":
             keystore = ctx.preset.extra.get("keystore_path", "")
-            if keystore:
+            if keystore or bool(ctx.preset.extra.get("local_release_signing", False)):
                 ok = self._build_release(ctx, project_dir, env)
             else:
                 ctx.add_warning(
@@ -230,6 +231,9 @@ class AndroidExporter(PlatformExporter):
         target_sdk = str(ctx.preset.target_sdk)
         orientation = ctx.preset.orientation or "landscape"
         entry = ctx.preset.entry_scene
+        android_permissions = self._android_permissions(ctx)
+        abi_filters = self._android_abi_filters(ctx)
+        debug_application_id_suffix = "applicationIdSuffix '.debug'" if ctx.preset.mode == "debug" else ""
 
         return {
             "xml": {
@@ -243,6 +247,9 @@ class AndroidExporter(PlatformExporter):
                 "{{ENTRY_SCENE}}": _xml_escape(entry),
                 "{{CHAQUOPY_ROOT_PLUGIN}}": "",
                 "{{CHAQUOPY_APP_PLUGIN}}": "",
+                "{{ANDROID_PERMISSIONS}}": android_permissions,
+                "{{ANDROID_ABI_FILTERS}}": abi_filters,
+                "{{DEBUG_APPLICATION_ID_SUFFIX}}": debug_application_id_suffix,
             },
             "gradle": {
                 "{{APPLICATION_ID}}": _gradle_escape(app_id),
@@ -263,11 +270,28 @@ class AndroidExporter(PlatformExporter):
                     if self._android_python_runtime_enabled(ctx)
                     else ""
                 ),
+                "{{ANDROID_PERMISSIONS}}": android_permissions,
+                "{{ANDROID_ABI_FILTERS}}": abi_filters,
+                "{{DEBUG_APPLICATION_ID_SUFFIX}}": debug_application_id_suffix,
             },
         }
 
     def _android_python_runtime_enabled(self, ctx: BuildContext) -> bool:
         return bool(ctx.preset.extra.get("android_python_runtime", False))
+
+    def _android_permissions(self, ctx: BuildContext) -> str:
+        if not bool(ctx.preset.extra.get("android_network_permissions", False)):
+            return ""
+        return (
+            '<uses-permission android:name="android.permission.INTERNET" />\n'
+            '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />'
+        )
+
+    def _android_abi_filters(self, ctx: BuildContext) -> str:
+        architecture = str(ctx.preset.architecture or "").strip()
+        if architecture and architecture != "universal":
+            return f"'{_gradle_escape(architecture)}'"
+        return "'arm64-v8a', 'armeabi-v7a', 'x86_64'"
 
     def _validate_android_runtime_v1(
         self,
@@ -530,29 +554,14 @@ class AndroidExporter(PlatformExporter):
     def _build_release(
         self, ctx: BuildContext, project_dir: Path, env: dict[str, Any],
     ) -> bool:
-        keystore = ctx.preset.extra.get("keystore_path", "")
-        store_pass = ctx.preset.extra.get("keystore_password", "")
-        key_alias = ctx.preset.extra.get("key_alias", "")
-        key_pass = ctx.preset.extra.get("key_password", store_pass)
-
-        if not keystore:
-            ctx.add_error(
-                "ANDROID_KEYSTORE_MISSING: Release build requires "
-                "keystore_path in preset extra. Configure keystore_path, "
-                "keystore_password, key_alias in the preset extra fields."
-            )
+        signing = self._resolve_release_signing(ctx, project_dir, env)
+        if signing is None:
             return False
 
-        keystore_path = Path(keystore)
-        if not keystore_path.is_absolute():
-            keystore_path = ctx.project_root / keystore_path
-
-        if not keystore_path.exists():
-            ctx.add_error(
-                "ANDROID_KEYSTORE_NOT_FOUND: Keystore not found at configured path. "
-                "Create a keystore or update keystore_path."
-            )
-            return False
+        keystore_path = signing["keystore_path"]
+        store_pass = signing["store_pass"]
+        key_alias = signing["key_alias"]
+        key_pass = signing["key_pass"]
 
         gradle_path = project_dir / "app" / "build.gradle"
         if gradle_path.exists():
@@ -572,13 +581,17 @@ class AndroidExporter(PlatformExporter):
                     "buildTypes {",
                     signing_block + "    buildTypes {",
                 )
+            if "signingConfig signingConfigs.release" not in content:
+                content = content.replace(
+                    "release {\n            minifyEnabled true",
+                    "release {\n            minifyEnabled true\n            signingConfig signingConfigs.release",
+                )
             content = content.replace(
                 "signingConfig signingConfigs.debug",
                 "signingConfig signingConfigs.release",
             )
             gradle_path.write_text(content, encoding="utf-8")
 
-        # Copy keystore to project root so relative path resolves
         keystore_dest = project_dir / "keystore.jks"
         shutil.copy2(keystore_path, keystore_dest)
 
@@ -592,6 +605,103 @@ class AndroidExporter(PlatformExporter):
         if ok:
             self._run_gradle_build(ctx, project_dir, "bundleRelease", extra_env=sign_env)
         return ok
+
+    def _resolve_release_signing(
+        self, ctx: BuildContext, project_dir: Path, env: dict[str, Any],
+    ) -> dict[str, str] | None:
+        if bool(ctx.preset.extra.get("local_release_signing", False)) and not ctx.preset.extra.get("keystore_path", ""):
+            return self._ensure_local_release_signing(ctx, env)
+
+        keystore = ctx.preset.extra.get("keystore_path", "")
+        store_pass = ctx.preset.extra.get("keystore_password", "")
+        key_alias = ctx.preset.extra.get("key_alias", "")
+        key_pass = ctx.preset.extra.get("key_password", store_pass)
+
+        if not keystore:
+            ctx.add_error(
+                "ANDROID_KEYSTORE_MISSING: Release build requires "
+                "keystore_path in preset extra. Configure keystore_path, "
+                "keystore_password, key_alias in the preset extra fields."
+            )
+            return None
+
+        keystore_path = Path(keystore)
+        if not keystore_path.is_absolute():
+            keystore_path = ctx.project_root / keystore_path
+
+        if not keystore_path.exists():
+            ctx.add_error(
+                "ANDROID_KEYSTORE_NOT_FOUND: Keystore not found at configured path. "
+                "Create a keystore or update keystore_path."
+            )
+            return None
+        return {
+            "keystore_path": str(keystore_path),
+            "store_pass": str(store_pass),
+            "key_alias": str(key_alias),
+            "key_pass": str(key_pass),
+        }
+
+    def _ensure_local_release_signing(self, ctx: BuildContext, env: dict[str, Any]) -> dict[str, str] | None:
+        signing_dir = ctx.project_root / ".motor" / "android"
+        signing_dir.mkdir(parents=True, exist_ok=True)
+        keystore_path = signing_dir / "local-release.keystore"
+        metadata_path = signing_dir / "local-release-signing.json"
+
+        if metadata_path.exists() and keystore_path.exists():
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        else:
+            keytool = shutil.which("keytool") or shutil.which("keytool.exe")
+            if not keytool:
+                java_path = str(env.get("java_path", "") or "")
+                candidate = Path(java_path).resolve().parent / "keytool.exe" if java_path else Path()
+                keytool = str(candidate) if candidate.exists() else ""
+            if not keytool:
+                ctx.add_error(
+                    "ANDROID_KEYTOOL_MISSING: local_release_signing requires keytool from the JDK."
+                )
+                return None
+            metadata = {
+                "store_pass": secrets.token_urlsafe(24),
+                "key_alias": "motor_local_release",
+            }
+            metadata["key_pass"] = metadata["store_pass"]
+            command = [
+                keytool,
+                "-genkeypair",
+                "-v",
+                "-keystore",
+                str(keystore_path),
+                "-storepass",
+                metadata["store_pass"],
+                "-keypass",
+                metadata["key_pass"],
+                "-alias",
+                metadata["key_alias"],
+                "-keyalg",
+                "RSA",
+                "-keysize",
+                "2048",
+                "-validity",
+                "10000",
+                "-dname",
+                "CN=Motor Local Release, O=MotorVideojuegosIA, C=ES",
+            ]
+            result = subprocess.run(command, cwd=str(ctx.project_root), capture_output=True, text=True)
+            if result.returncode != 0:
+                ctx.add_error(
+                    "ANDROID_LOCAL_KEYSTORE_FAILED: keytool could not create the local release keystore. "
+                    f"{result.stderr.strip() or result.stdout.strip()}"
+                )
+                return None
+            metadata_path.write_text(json.dumps(metadata, indent=2, ensure_ascii=True), encoding="utf-8")
+
+        return {
+            "keystore_path": str(keystore_path),
+            "store_pass": str(metadata.get("store_pass", "")),
+            "key_alias": str(metadata.get("key_alias", "motor_local_release")),
+            "key_pass": str(metadata.get("store_pass", "")),
+        }
 
     def _find_apk(self, project_dir: Path) -> Path | None:
         apk_dir = project_dir / "app" / "build" / "outputs" / "apk"

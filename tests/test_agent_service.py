@@ -599,7 +599,10 @@ class AgentSessionServiceTests(unittest.TestCase):
     def test_login_stores_secret_outside_project_and_sets_default_provider(self) -> None:
         service = AgentSessionService(project_root=self.project, global_state_dir=self.root / "global")
         if not service.credential_store.supports_local_secrets():
-            self.skipTest("Local secret storage requires Windows DPAPI")
+            self.skipTest(
+                "Local secret storage requires Windows DPAPI (only available on Windows). "
+                "Run on Windows or mock credential_store for cross-platform testing."
+            )
         secret = "sk-opencodego-test-secret-123456789"
 
         result = service.login_provider("opencode-go", api_key=secret)
@@ -643,7 +646,10 @@ class AgentSessionServiceTests(unittest.TestCase):
     def test_logout_removes_secret_and_resets_default_provider(self) -> None:
         service = AgentSessionService(project_root=self.project, global_state_dir=self.root / "global")
         if not service.credential_store.supports_local_secrets():
-            self.skipTest("Local secret storage requires Windows DPAPI")
+            self.skipTest(
+                "Local secret storage requires Windows DPAPI (only available on Windows). "
+                "Run on Windows or mock credential_store for cross-platform testing."
+            )
         service.login_provider("opencode-go", api_key="sk-opencodego-test-secret-123456789")
 
         result = service.logout_provider("opencode-go")

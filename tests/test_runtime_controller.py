@@ -3,11 +3,14 @@ from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
 from engine.app.runtime_controller import RuntimeController
+from engine.components.animator import AnimationData, Animator
 from engine.core.engine_state import EngineState
 from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.core.runtime_loop import RuntimePhase
+from engine.ecs.world import World
 from engine.physics.registry import PhysicsBackendRegistry
 from engine.services.registro_servicios import RegistroServicios
+from engine.systems.animation_system import AnimationSystem
 
 
 class RuntimeControllerTests(unittest.TestCase):
@@ -275,15 +278,39 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertEqual(selection["effective_backend"], "legacy_aabb")
         self.assertTrue(selection["used_fallback"])
 
-    def test_update_animation_uses_preview_speed_in_edit_mode(self) -> None:
+    def test_update_animation_does_not_advance_global_animation_in_edit_mode(self) -> None:
         world = SimpleNamespace(feature_metadata={})
         self.state["value"] = EngineState.EDIT
 
         self.controller.update_animation(world, 2.0)
 
-        self.animation_system.update.assert_called_once_with(world, 0.7)
+        self.animation_system.update.assert_not_called()
 
-    def test_run_update_in_edit_mode_keeps_preview_and_edit_scripts_outside_fixed_step(self) -> None:
+    def test_update_animation_runs_in_play_mode(self) -> None:
+        world = SimpleNamespace(feature_metadata={})
+        self.state["value"] = EngineState.PLAY
+
+        self.controller.update_animation(world, 2.0)
+
+        self.animation_system.update.assert_called_once_with(world, 2.0)
+
+    def test_update_animation_runs_in_stepping_mode(self) -> None:
+        world = SimpleNamespace(feature_metadata={})
+        self.state["value"] = EngineState.STEPPING
+
+        self.controller.update_animation(world, 1.0 / 60.0)
+
+        self.animation_system.update.assert_called_once_with(world, 1.0 / 60.0)
+
+    def test_update_animation_does_not_run_while_paused(self) -> None:
+        world = SimpleNamespace(feature_metadata={})
+        self.state["value"] = EngineState.PAUSED
+
+        self.controller.update_animation(world, 2.0)
+
+        self.animation_system.update.assert_not_called()
+
+    def test_run_update_in_edit_mode_keeps_animations_frozen_and_edit_scripts_outside_fixed_step(self) -> None:
         world = SimpleNamespace(feature_metadata={})
         self.state["value"] = EngineState.EDIT
         plan = self.controller.build_tick_plan(0.2)
@@ -293,12 +320,27 @@ class RuntimeControllerTests(unittest.TestCase):
 
         self.assertEqual(plan.fixed_steps, 0)
         self.assertTrue(ran_edit_scripts)
-        self.animation_system.update.assert_called_once()
-        animation_args = self.animation_system.update.call_args.args
-        self.assertIs(animation_args[0], world)
-        self.assertAlmostEqual(animation_args[1], 0.07)
+        self.animation_system.update.assert_not_called()
         self.script_behaviour_system.update.assert_called_once_with(world, 0.2, is_edit_mode=True)
         self.assertEqual(self.phase_events, [RuntimePhase.UPDATE])
+
+    def test_run_update_in_edit_mode_does_not_mutate_animator_frame(self) -> None:
+        world = World()
+        entity = world.create_entity("Player")
+        animator = Animator(
+            animations={"idle": AnimationData(frames=[0, 1], fps=1.0, loop=True)},
+            default_state="idle",
+        )
+        entity.add_component(animator)
+        self.animation_system = AnimationSystem()
+        self.script_behaviour_system.update.return_value = False
+        self.state["value"] = EngineState.EDIT
+        plan = self.controller.build_tick_plan(2.0)
+
+        self.controller.run_update(world, 2.0, plan)
+
+        self.assertEqual(animator.current_frame, 0)
+        self.assertEqual(animator.elapsed_time, 0.0)
 
     def test_run_post_update_pauses_after_single_step_and_updates_render_like_state(self) -> None:
         world = SimpleNamespace(feature_metadata={})

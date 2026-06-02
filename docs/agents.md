@@ -57,6 +57,25 @@ finally:
     api.shutdown()
 ```
 
+## Sincronizacion de escena (stale refresh y callbacks)
+
+Cuando un agente o herramienta externa modifica el archivo `.json` de la escena
+activa, `EngineAPI` expone metodos para detectarlo y reaccionar:
+
+- `api.refresh_active_scene_if_stale()`: recarga la escena desde disco si el
+  archivo externo cambio. Si la escena tiene cambios sin guardar (`dirty=True`)
+  el refresh se salta automaticamente. Retorna `ActionResult` con
+  `world_available` (bool) y `active_scene` (summary).
+- `api.register_on_scene_saved(callback)` /
+  `api.unregister_on_scene_saved(callback)`: registra callbacks Python en
+  proceso que se ejecutan tras cada `save_scene()` exitoso. El callback recibe
+  `(path, info)` donde `info` incluye `scene_name` y `entity_count`. Util para
+  sincronizar editores externos o herramientas de asset pipeline.
+
+Estos callbacks son solo Python en proceso, no serializables por CLI/JSON.
+Usalos en scripts de automatizacion o tooling que necesite reaccionar a
+guardados de escena.
+
 ## Agente nativo experimental
 
 El repo incluye una base clean-room en `engine/agent/` para un agente de
@@ -235,6 +254,126 @@ progreso runtime en la escena. Tambien transporta al Player cuando su
 movimiento del frame. Este soporte de riders es minimo, centrado en Player y
 no define todavia eventos publicos `moving_platform_rider_attached`,
 `moving_platform_rider_moved` ni `moving_platform_rider_detached`.
+
+## Sprite y Animator
+
+### `Sprite.source_slice`
+
+El componente `Sprite` expone `source_slice: str` para recortar una textura
+multi-tile (spritesheet) a un tile individual. Sin `source_slice`, el Sprite
+renderiza la textura completa aplastada a `width`×`height`.
+
+```python
+api.add_component("npc", "Sprite", {
+    "asset_path": "assets/tiles.png",
+    "width": 16, "height": 16,
+    "source_slice": "grass_0",
+})
+```
+
+El campo `source_slice` se resuelve via `AssetService.get_slice_rect()` contra
+los slices definidos en los assets del proyecto (definiciones `.slices.json` o
+grid slices via `motor asset slice`). Si el slice no se encuentra, se renderiza
+la textura completa como fallback.
+
+### Animator con parametros `string` y animacion direccional
+
+El `Animator` soporta `AnimationParameterDefinition` de tipo `string`. Esto
+permite transiciones basadas en parametros como `facing` (valores `"down"`,
+`"side"`, `"up"`) sin logica Python externa:
+
+```python
+api.add_component("player", "Animator", {
+    "parameters": {
+        "facing": {"type": "string", "default": "down"},
+        "moving": {"type": "bool", "default": false},
+    },
+    "states": {
+        "idle_down": {"frames": [0], "fps": 1, "loop": True},
+        "walk_down": {"frames": [1, 2, 3, 4], "fps": 8, "loop": True},
+        "walk_side": {"frames": [5, 6, 7, 8], "fps": 8, "loop": True},
+        "walk_up": {"frames": [9, 10, 11, 12], "fps": 8, "loop": True},
+    },
+    "transitions": [
+        {"from": "idle_down", "to": "walk_down", "conditions": [
+            {"parameter": "moving", "operator": "==", "value": true},
+            {"parameter": "facing", "operator": "==", "value": "down"},
+        ]},
+        {"from": "walk_down", "to": "walk_side", "conditions": [
+            {"parameter": "facing", "operator": "==", "value": "side"},
+        ]},
+    ],
+})
+```
+
+Desde un `ScriptBehaviour`, el parametro se actualiza con `animator.set("facing", "side")`.
+Los operadores soportados para string son `==` y `!=`.
+
+### Sprite + Animator combinados en la misma entidad
+
+Cuando una entidad tiene ambos `Sprite` y `Animator` habilitados, ambos
+renderizan: `Sprite` se dibuja primero (capa inferior/fondo) y `Animator` se
+dibuja encima (capa superior). Esto permite combinar un icono o decoracion
+estatica (`Sprite`) con un personaje animado (`Animator`) en la misma entidad.
+Usa entidades separadas solo si necesitas control independiente de transform,
+z-order o capas de render distintas.
+
+## Prefabs
+
+El motor soporta prefabs como assets serializables reutilizables. Los prefabs
+se guardan como `.prefab` (JSON) bajo `prefabs/` y pueden instanciarse,
+desempaquetarse y aplicar overrides.
+
+### Flujo de authoring con prefabs
+
+```python
+from engine.api import EngineAPI
+
+api = EngineAPI(project_root=".")
+api.load_scene("levels/main_scene.json")
+
+# 1. Crear entidad base
+api.create_entity("EnemyBase", components={
+    "Transform": {"x": 0, "y": 0},
+    "Sprite": {"asset_path": "assets/slime.png", "width": 32, "height": 32},
+    "Collider": {"width": 32, "height": 32, "is_trigger": True},
+    "EnemyPatrol2D": {"points": [{"x": 100, "y": 200}, {"x": 300, "y": 200}], "speed": 60},
+})
+
+# 2. Guardar como prefab
+api.create_prefab("EnemyBase", "prefabs/slime.prefab")
+
+# 3. Instanciar copias con overrides
+api.instantiate_prefab("prefabs/slime.prefab", name="Slime_A")
+api.instantiate_prefab("prefabs/slime.prefab", name="Slime_B")
+
+# 4. Desempaquetar instancia (rompe vinculo con prefab fuente)
+api.unpack_prefab("Slime_A")
+
+# 5. Aplicar overrides de vuelta al prefab fuente
+api.apply_prefab_overrides("Slime_B")
+
+api.save_scene()
+api.shutdown()
+```
+
+Desde CLI:
+
+```bash
+py -m motor prefab create EnemyBase prefabs/slime.prefab --project . --json
+py -m motor prefab instantiate prefabs/slime.prefab --name Slime_A --project . --json
+py -m motor prefab unpack Slime_A --project . --json
+py -m motor prefab apply Slime_B --project . --json
+py -m motor prefab list --project . --json
+```
+
+### Metodos EngineAPI para prefabs
+
+- `create_prefab(entity_name, prefab_path, replace_original=False, instance_name=None)`: guarda subarbol de entidad como `.prefab`.
+- `instantiate_prefab(prefab_path, name=None, parent=None)`: instancia prefab en escena activa.
+- `unpack_prefab(entity_name)`: convierte instancia de prefab en entidades explicitas.
+- `apply_prefab_overrides(entity_name)`: aplica overrides de instancia al prefab fuente.
+- `list_project_prefabs()`: lista paths de prefabs en el proyecto.
 
 Para UI serializable usa los helpers publicos de `EngineAPI` como
 `create_canvas`, `create_ui_text`, `create_ui_button` y `create_ui_image`.

@@ -57,6 +57,32 @@ tests, `EngineAPI` o la CLI oficial `motor`.
 - `docs/archive/roadmaps/` sigue siendo historico; no debe reabsorberse como
   canon ni como plan operativo vivo.
 
+## Marcadores de codigo (TODO/FIXME/BUG/LIMITATION)
+
+El codigo fuente del motor y proyectos derivados debe usar marcadores estandar
+para deuda tecnica, bugs conocidos y limitaciones aceptadas:
+
+| Marcador | Uso |
+|---|---|
+| `TODO(<contexto>)` | Trabajo pendiente planificado. Debe incluir owner o issue. Ej: `# TODO(physics): mover solver iterations a config.` |
+| `FIXME(<contexto>)` | Codigo funcional pero fragil que requiere refactor. Debe incluir owner o issue. Ej: `# FIXME(render): hardcodeado a 60fps, leer de project_settings.` |
+| `BUG(<id>)` | Bug conocido y aceptado con trazabilidad. Ej: `# BUG(issue-142): RayCast no detecta triggers con mask=0.` |
+| `LIMITATION` | Limitacion aceptada por diseno, sin plan inmediato de cambio. Ej: `# LIMITATION: NavigationAgent2D solo soporta avoidance con obstaculos estaticos.` |
+
+Reglas:
+
+- **No false BUG markers**: un bug ya corregido no debe conservar su marcador
+  `BUG`. Borrar o convertir en `TODO` si queda trabajo residual.
+- `TODO`/`FIXME` deben incluir owner (`TODO(nombre)` o `TODO(issue-N)`)
+  o contexto suficiente para entender quien/cuando debe actuar.
+- `BUG`/`LIMITATION` solo para issues aceptados o limitaciones conocidas
+  vigentes. No usar `BUG` para workarounds ni `LIMITATION` para features no
+  planificadas.
+- Los marcadores no reemplazan bugs en el tracker; un `BUG(id)` debe
+  corresponder a un issue o entrada en el informe de fallos.
+- El reporte de fallos (`docs/bug_report.md`) es la fuente complementaria para
+  trazabilidad cruzada; los marcadores en codigo deben apuntar al mismo id.
+
 ## Checklist para PRs de documentacion
 
 - La doc nueva o modificada esta enlazada desde el portal correcto.

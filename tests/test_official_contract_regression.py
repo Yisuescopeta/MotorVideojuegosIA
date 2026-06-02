@@ -179,8 +179,8 @@ class ExamplesUseOfficialInterfaceTests(unittest.TestCase):
 
     def test_examples_use_motor_not_tools_engine_cli(self) -> None:
         """CRITICAL: Examples must use 'motor', not 'tools.engine_cli'."""
-        if not self.EXAMPLES_DIR.exists():
-            self.skipTest("Examples directory not found")
+        self.assertTrue(self.EXAMPLES_DIR.exists(),
+            f"Examples directory must exist at {self.EXAMPLES_DIR}")
 
         violations = []
         for py_file in self.EXAMPLES_DIR.glob("*.py"):
@@ -201,8 +201,8 @@ class ExamplesUseOfficialInterfaceTests(unittest.TestCase):
 
     def test_examples_do_not_use_legacy_upsert_state(self) -> None:
         """Examples must use 'animator state create', not 'upsert-state'."""
-        if not self.EXAMPLES_DIR.exists():
-            self.skipTest("Examples directory not found")
+        self.assertTrue(self.EXAMPLES_DIR.exists(),
+            f"Examples directory must exist at {self.EXAMPLES_DIR}")
 
         violations = []
         for py_file in self.EXAMPLES_DIR.glob("*.py"):

@@ -652,7 +652,8 @@ class KinematicFallbackTests(unittest.TestCase):
             )
 
 
-@unittest.skipUnless(BOX2D_AVAILABLE, "Box2D not installed")
+@unittest.skipUnless(BOX2D_AVAILABLE,
+    "Box2D not installed. Install with: pip install box2d-py")
 class TestBox2DKinematicMove(unittest.TestCase):
     """Verifica que Box2D NO soporta kinematic move y que el servicio redirige a legacy."""
 

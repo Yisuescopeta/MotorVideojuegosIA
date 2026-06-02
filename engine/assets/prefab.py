@@ -7,9 +7,11 @@ from __future__ import annotations
 import copy
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Any, Optional
 
+from engine.core.runtime_logging import log_err
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.serialization.schema import migrate_prefab_data, validate_prefab_data
@@ -120,22 +122,41 @@ def _apply_override_operations(entities: list[dict[str, Any]], overrides: dict[s
 
 
 class PrefabManager:
-    """Gestor estÃ¡tico para operaciones con Prefabs."""
+    """Gestor estático para operaciones con Prefabs."""
+
+    _name_lock: threading.Lock = threading.Lock()
 
     @staticmethod
     def save_prefab(entity: Entity, path: str, world: Optional[World] = None) -> bool:
         try:
-            payload = migrate_prefab_data(PrefabManager._build_prefab_payload(entity, world))
+            payload = PrefabManager._build_prefab_payload(entity, world)
+        except Exception as exc:
+            log_err(f"[PREFAB] Error building prefab payload for '{entity.name}': {exc}")
+            return False
+
+        try:
+            payload = migrate_prefab_data(payload)
+        except Exception as exc:
+            log_err(f"[PREFAB] Error migrating prefab data for '{entity.name}': {exc}")
+            return False
+
+        try:
             directory = os.path.dirname(path)
             if directory:
                 os.makedirs(directory, exist_ok=True)
             with open(path, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, indent=4)
-            print(f"[PREFAB] Entity '{entity.name}' saved to {path}")
-            return True
-        except Exception as exc:
-            print(f"[PREFAB] Error saving prefab to {path}: {exc}")
+        except PermissionError as exc:
+            log_err(f"[PREFAB] Permission denied saving prefab to {path}: {exc}")
             return False
+        except OSError as exc:
+            log_err(f"[PREFAB] I/O error saving prefab to {path}: {exc}")
+            return False
+        except Exception as exc:
+            log_err(f"[PREFAB] Unexpected error saving prefab to {path}: {exc}")
+            return False
+
+        return True
 
     @staticmethod
     def _build_prefab_payload(entity: Entity, world: Optional[World]) -> dict[str, Any]:
@@ -196,7 +217,7 @@ class PrefabManager:
                 return None
             return payload
         except Exception as exc:
-            print(f"[PREFAB] Error loading prefab {path}: {exc}")
+            log_err(f"[PREFAB] Error loading prefab {path}: {exc}")
             return None
 
     @staticmethod
@@ -260,11 +281,13 @@ class PrefabManager:
             return None
 
         base_name = data.get("root_name", "Prefab")
-        unique_name = base_name
-        count = 1
-        while world.get_entity_by_name(unique_name):
-            unique_name = f"{base_name}_{count}"
-            count += 1
+        with PrefabManager._name_lock:
+            unique_name = base_name
+            count = 1
+            while world.get_entity_by_name(unique_name):
+                unique_name = f"{base_name}_{count}"
+                count += 1
+            root_entity = world.create_entity(unique_name)
 
         overrides = {}
         if position is not None:
@@ -276,14 +299,17 @@ class PrefabManager:
             prefab_path=Path(path).as_posix(),
             overrides=overrides,
         )
-        registry = None
         from engine.components.transform import Transform
         from engine.levels.component_registry import create_default_registry
 
         registry = create_default_registry()
         created: dict[str, Entity] = {}
         for payload in expanded:
-            entity = world.create_entity(payload["name"])
+            entity_name = payload["name"]
+            if entity_name == unique_name:
+                entity = root_entity
+            else:
+                entity = world.create_entity(entity_name)
             entity.active = payload.get("active", True)
             entity.tag = payload.get("tag", "Untagged")
             entity.layer = payload.get("layer", "Default")
@@ -295,7 +321,7 @@ class PrefabManager:
                 component = registry.create(comp_name, comp_data)
                 if component is not None:
                     entity.add_component(component)
-            created[entity.name] = entity
+            created[entity_name] = entity
 
         for entity in created.values():
             if entity.parent_name is None:
@@ -309,4 +335,4 @@ class PrefabManager:
                 child_transform.parent = parent_transform
                 if parent_transform is not None and child_transform not in parent_transform.children:
                     parent_transform.children.append(child_transform)
-        return created.get(unique_name)
+        return root_entity

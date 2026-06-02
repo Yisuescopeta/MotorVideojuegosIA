@@ -603,6 +603,15 @@ Tokens soportados: `left`, `right`, `up`, `down`, `jump`, `action_1`,
 `action_2`. `jump` equivale a `action_1`; ejes opuestos se cancelan y se
 reportan en `warnings`.
 
+La entidad destino del input se detecta automaticamente buscando entidades que
+tengan `InputMap` y cumplan al menos una de estas condiciones:
+- `InputMap + PlayerController2D` (controlador de personaje nativo), o
+- `InputMap + ScriptBehaviour` (script de comportamiento con logica de input).
+
+Se prioriza la entidad `Player` si existe y cumple los criterios; si no, se
+busca la primera entidad activa que los cumpla. Si no se encuentra ninguna,
+se emite un warning y el comando no simula input.
+
 Los eventos semanticos observados aqui dependen de una sesion `PLAY` stateless
 por invocacion. Con implementacion actual, `hazard` y `goal` se deduplican por
 par jugador/objetivo dentro de esa sesion y no re-emiten tras contactos
@@ -933,6 +942,69 @@ Elimina un estado de animacion.
 ```bash
 py -m motor animator state remove Player idle --project . --json
 ```
+
+## Prefabs
+
+Los comandos `motor prefab` gestionan prefabs serializables: crear desde entidades
+existentes, instanciar en escenas, desempaquetar instancias y aplicar overrides.
+
+### `motor prefab create <entity> <path>`
+
+Guarda el subarbol de una entidad como prefab (`.prefab` JSON bajo `prefabs/`).
+Opcionalmente reemplaza la entidad original por una instancia vinculada al prefab.
+
+```bash
+py -m motor prefab create EnemyBase prefabs/slime.prefab --project . --json
+py -m motor prefab create Player prefabs/player.prefab --replace-original --instance-name Player_Instance --project . --json
+```
+
+Opciones:
+- `--replace-original`: reemplaza la entidad fuente por una instancia de prefab vinculada.
+- `--instance-name`: nombre de la instancia cuando se usa `--replace-original`.
+
+### `motor prefab instantiate <path>`
+
+Instancia un prefab en la escena activa. Cada instancia mantiene un vinculo con
+el prefab fuente y permite overrides por propiedad.
+
+```bash
+py -m motor prefab instantiate prefabs/slime.prefab --name Slime_A --project . --json
+py -m motor prefab instantiate prefabs/slime.prefab --name Slime_B --parent Enemies --project . --json
+```
+
+Opciones:
+- `--name`: nombre de la entidad raiz instanciada (por defecto usa el nombre del prefab).
+- `--parent`: entidad padre bajo la cual instanciar.
+
+### `motor prefab unpack <entity>`
+
+Rompe el vinculo de una instancia con su prefab fuente, convirtiendola en
+entidades explicitas de escena. Los cambios posteriores no afectan al prefab
+original ni a otras instancias.
+
+```bash
+py -m motor prefab unpack Slime_A --project . --json
+```
+
+### `motor prefab apply <entity>`
+
+Aplica los overrides de una instancia de vuelta al prefab fuente. Util para
+propagar cambios de una instancia personalizada a todas las demas instancias
+del mismo prefab.
+
+```bash
+py -m motor prefab apply Slime_B --project . --json
+```
+
+### `motor prefab list`
+
+Lista los prefabs detectados en el proyecto.
+
+```bash
+py -m motor prefab list --project . --json
+```
+
+El JSON devuelve `count` y `prefabs` (lista de paths relativos).
 
 ## Validacion recomendada
 

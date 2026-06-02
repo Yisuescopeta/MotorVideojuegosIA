@@ -39,6 +39,8 @@ class HierarchyPanel:
     FONT_SIZE: int = 10
     LINE_HEIGHT: int = 18
     INDENT_SIZE: int = 14
+    SCROLLBAR_WIDTH: int = 6
+    WHEEL_STEP: int = 24
 
     def __init__(self, selection_state: Optional[EditorSelectionState] = None, layout: Any = None) -> None:
         self.visible: bool = True
@@ -201,8 +203,25 @@ class HierarchyPanel:
             self._drop_target_scene_id = None
             self._drop_as_root = False
 
-            # Renderizar árbol
+            # Scroll handling
             row_height = self.LINE_HEIGHT
+            total_content = len(visible_rows) * row_height
+
+            content_rect = rl.Rectangle(float(x), float(content_y_start), float(width), float(content_height))
+            if not self._input_blocked and rl.check_collision_point_rec(rl.get_mouse_position(), content_rect):
+                wheel_delta = rl.get_mouse_wheel_move()
+                if wheel_delta != 0.0:
+                    self.scroll_offset -= int(wheel_delta * self.WHEEL_STEP)
+
+            self._clamp_scroll_offset(visible_rows, content_height)
+            max_scroll = self._compute_max_scroll(visible_rows, content_height)
+
+            if max_scroll > 0:
+                self._draw_hierarchy_scrollbar(x + width - self.SCROLLBAR_WIDTH, content_y_start,
+                                               self.SCROLLBAR_WIDTH, content_height,
+                                               self.scroll_offset, max_scroll, total_content)
+
+            # Renderizar árbol
             first_row = max(0, self.scroll_offset // row_height)
             last_row = min(
                 len(visible_rows),
@@ -415,6 +434,14 @@ class HierarchyPanel:
         self._cached_visible_rows = rows
         return rows
 
+    def _compute_max_scroll(self, visible_rows: List[Tuple[int, int]], viewport_height: int) -> int:
+        total_content = len(visible_rows) * self.LINE_HEIGHT
+        return max(0, total_content - viewport_height)
+
+    def _clamp_scroll_offset(self, visible_rows: List[Tuple[int, int]], viewport_height: int) -> None:
+        max_scroll = self._compute_max_scroll(visible_rows, viewport_height)
+        self.scroll_offset = max(0, min(self.scroll_offset, max_scroll))
+
     def _build_visible_rows(self, world: "World", roots: List[Entity]) -> List[Tuple[int, int]]:
         del roots
         model = self._get_tree_model(world)
@@ -428,6 +455,21 @@ class HierarchyPanel:
         label = self.search_text if self.search_text else "Search"
         color = colors["TEXT"] if self.search_text else colors["TEXT_DIM"]
         rl.draw_text(label[:32], int(field_rect.x + 6), int(field_rect.y + 5), self.FONT_SIZE, color)
+
+    def _draw_hierarchy_scrollbar(self, x: int, y: int, width: int, height: int,
+                                   scroll_offset: int, max_scroll: int,
+                                   total_content: int) -> None:
+        colors = self._resolve_colors()
+        track = rl.Rectangle(float(x), float(y), float(width), float(height))
+        rl.draw_rectangle_rec(track, colors["BORDER"])
+
+        ratio = height / max(total_content, 1)
+        thumb_h = max(16.0, min(float(height), height * ratio))
+        travel = float(height) - thumb_h
+        thumb_y = float(y) + (scroll_offset / max_scroll) * travel if max_scroll else float(y)
+
+        thumb = rl.Rectangle(float(x), thumb_y, float(width), thumb_h)
+        rl.draw_rectangle_rec(thumb, colors["TEXT_DIM"])
 
     def _complete_hierarchy_drag(self, world: "World") -> None:
         """Finish a drag-and-drop reparenting operation."""

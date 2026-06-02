@@ -128,6 +128,11 @@ La UI visualiza y traduce acciones de usuario. Puede mantener estado efimero de
 layout, hover o seleccion visual. No debe introducir comportamiento funcional
 inaccesible por `EngineAPI` o por datos serializables.
 
+Sincronizacion escena-editor: `Scene` es la fuente de verdad. `World` se refresca
+como proyeccion operativa cuando la escena se recarga. Un guardado exitoso de
+escena puede notificar al editor para refrescar vistas. La recarga segura de
+archivo stale evita descartar estado de authoring sucio no guardado.
+
 ## Contrato fisico
 
 El core conserva un contrato comun de backends fisicos:

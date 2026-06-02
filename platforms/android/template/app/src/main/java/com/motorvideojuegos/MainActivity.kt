@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Bundle
 import android.util.Log
@@ -93,10 +94,18 @@ private data class Entity(
 
 private class MotorRuntime(private val context: Context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val spritePaint = Paint().apply {
+        isAntiAlias = false
+        isFilterBitmap = false
+        isDither = false
+    }
+    private val controlsPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val bitmaps = mutableMapOf<String, Bitmap?>()
     private val inputState = mutableMapOf("horizontal" to 0.0f, "vertical" to 0.0f, "action_1" to 0.0f, "action_2" to 0.0f)
     private val activePointers = mutableMapOf<Int, Pair<Float, Float>>()
+    private val pressedPointers = mutableMapOf<Int, Pair<Float, Float>>()
+    private val releasedPointers = mutableMapOf<Int, Pair<Float, Float>>()
     private val controlCaptures = mutableMapOf<Int, String>()
     private var config = JSONObject()
     private var scene = JSONObject()
@@ -177,34 +186,55 @@ private class MotorRuntime(private val context: Context) {
                     if (mapped != null) activePointers[event.getPointerId(i)] = mapped
                 }
                 if (event.actionMasked == MotionEvent.ACTION_DOWN || event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
+                    val pointerId = event.getPointerId(event.actionIndex)
                     val mapped = screenToViewport(event.getX(event.actionIndex), event.getY(event.actionIndex))
                     if (mapped != null) {
                         touchPressedX = mapped.first
                         touchPressedY = mapped.second
                         touchPressed = true
+                        pressedPointers[pointerId] = mapped
+                        releasedPointers.remove(pointerId)
                     }
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 val idx = event.actionIndex
+                for (i in 0 until event.pointerCount) {
+                    if (i == idx) continue
+                    val mapped = screenToViewport(event.getX(i), event.getY(i))
+                    if (mapped != null) activePointers[event.getPointerId(i)] = mapped
+                }
                 val mapped = screenToViewport(event.getX(idx), event.getY(idx))
+                val pointerId = event.getPointerId(idx)
                 if (mapped != null) {
                     touchReleasedX = mapped.first
                     touchReleasedY = mapped.second
                     touchReleased = true
+                    releasedPointers[pointerId] = mapped
                 } else {
                     touchReleased = false
                 }
-                val pointerId = event.getPointerId(idx)
                 activePointers.remove(pointerId)
+                pressedPointers.remove(pointerId)
                 controlCaptures.remove(pointerId)
-                if (event.actionMasked == MotionEvent.ACTION_UP) activePointers.clear()
+                if (event.actionMasked == MotionEvent.ACTION_UP) {
+                    activePointers.clear()
+                    controlCaptures.clear()
+                }
             }
             MotionEvent.ACTION_CANCEL -> {
+                for ((pointerId, point) in activePointers) {
+                    releasedPointers[pointerId] = point
+                    if (!touchReleased) {
+                        touchReleasedX = point.first
+                        touchReleasedY = point.second
+                        touchReleased = true
+                    }
+                }
                 activePointers.clear()
+                pressedPointers.clear()
                 controlCaptures.clear()
                 touchPressed = false
-                touchReleased = false
                 uiPressed = null
             }
         }
@@ -219,8 +249,7 @@ private class MotorRuntime(private val context: Context) {
             if (snapshot == null || !applyRuntimeSnapshot(snapshot)) {
                 setRuntimeError("Shared runtime frame failed.", snapshot)
             }
-            touchPressed = false
-            touchReleased = false
+            clearTouchEdges()
             return
         }
         updateMobileControls()
@@ -374,17 +403,44 @@ private class MotorRuntime(private val context: Context) {
     }
 
     private fun pointerStateJson(): JSONObject {
-        val pointer = activePointers.values.firstOrNull()
+        val payload = JSONObject()
+        val pointers = JSONArray()
+        for ((pointerId, point) in activePointers.entries.sortedBy { it.key }) {
+            pointers.put(
+                JSONObject()
+                    .put("id", pointerId)
+                    .put("x", point.first)
+                    .put("y", point.second)
+                    .put("down", true)
+                    .put("pressed", pressedPointers.containsKey(pointerId))
+                    .put("released", false)
+            )
+        }
+        for ((pointerId, point) in releasedPointers.entries.sortedBy { it.key }) {
+            if (activePointers.containsKey(pointerId)) continue
+            pointers.put(
+                JSONObject()
+                    .put("id", pointerId)
+                    .put("x", point.first)
+                    .put("y", point.second)
+                    .put("down", false)
+                    .put("pressed", false)
+                    .put("released", true)
+            )
+        }
+        if (pointers.length() > 0) payload.put("pointers", pointers)
+
+        val pointer = activePointers.entries.sortedBy { it.key }.firstOrNull()
         if (pointer != null) {
-            return JSONObject()
-                .put("x", pointer.first)
-                .put("y", pointer.second)
+            return payload
+                .put("x", pointer.value.first)
+                .put("y", pointer.value.second)
                 .put("down", true)
-                .put("pressed", touchPressed)
+                .put("pressed", pressedPointers.containsKey(pointer.key))
                 .put("released", false)
         }
         if (touchReleased) {
-            return JSONObject()
+            return payload
                 .put("x", touchReleasedX)
                 .put("y", touchReleasedY)
                 .put("down", false)
@@ -392,14 +448,21 @@ private class MotorRuntime(private val context: Context) {
                 .put("released", true)
         }
         if (touchPressed) {
-            return JSONObject()
+            return payload
                 .put("x", touchPressedX)
                 .put("y", touchPressedY)
                 .put("down", true)
                 .put("pressed", true)
                 .put("released", false)
         }
-        return JSONObject()
+        return payload
+    }
+
+    private fun clearTouchEdges() {
+        touchPressed = false
+        touchReleased = false
+        pressedPointers.clear()
+        releasedPointers.clear()
     }
 
     private fun updateSurfaceSize(width: Float, height: Float) {
@@ -747,6 +810,9 @@ private class MotorRuntime(private val context: Context) {
     }
 
     private fun drawWorldEntity(canvas: Canvas, entity: Entity, camera: CameraState) {
+        paint.alpha = 255
+        paint.colorFilter = null
+        paint.style = Paint.Style.FILL
         val rect = visualRect(entity) ?: worldRect(entity) ?: return
         val dst = RectF(
             (rect.left - camera.x) * camera.zoom + camera.offsetX,
@@ -769,9 +835,23 @@ private class MotorRuntime(private val context: Context) {
             val cols = max(1, bitmap.width / max(1, fw))
             val sx = (frameIndex % cols) * fw
             val sy = (frameIndex / cols) * fh
-            canvas.drawBitmap(bitmap, android.graphics.Rect(sx, sy, sx + fw, sy + fh), dst, paint)
+            drawBitmapFrame(
+                canvas,
+                bitmap,
+                Rect(sx, sy, sx + fw, sy + fh),
+                dst,
+                flipX = animator.optBoolean("flip_x", false),
+                flipY = animator.optBoolean("flip_y", false),
+            )
         } else if (bitmap != null) {
-            canvas.drawBitmap(bitmap, null, dst, paint)
+            drawBitmapFrame(
+                canvas,
+                bitmap,
+                null,
+                dst,
+                flipX = sprite?.optBoolean("flip_x", false) ?: false,
+                flipY = sprite?.optBoolean("flip_y", false) ?: false,
+            )
         } else {
             paint.color = when (entity.tag.lowercase()) {
                 "hero", "player" -> Color.rgb(80, 180, 255)
@@ -783,7 +863,26 @@ private class MotorRuntime(private val context: Context) {
         }
     }
 
+    private fun drawBitmapFrame(canvas: Canvas, bitmap: Bitmap, src: Rect?, dst: RectF, flipX: Boolean, flipY: Boolean) {
+        spritePaint.alpha = 255
+        spritePaint.colorFilter = null
+        val saveCount = canvas.save()
+        if (flipX || flipY) {
+            canvas.scale(
+                if (flipX) -1.0f else 1.0f,
+                if (flipY) -1.0f else 1.0f,
+                dst.centerX(),
+                dst.centerY(),
+            )
+        }
+        canvas.drawBitmap(bitmap, src, dst, spritePaint)
+        canvas.restoreToCount(saveCount)
+    }
+
     private fun drawUiEntity(canvas: Canvas, entity: Entity) {
+        paint.alpha = 255
+        paint.colorFilter = null
+        paint.style = Paint.Style.FILL
         val rect = uiRect(entity)
         val button = entity.components.optJSONObject("UIButton")
         val text = entity.components.optJSONObject("UIText")
@@ -799,17 +898,21 @@ private class MotorRuntime(private val context: Context) {
 
     private fun drawMobileControls(canvas: Canvas) {
         val controls = entities.firstOrNull { it.components.has("MobileControls2D") }?.components?.optJSONObject("MobileControls2D") ?: return
-        paint.style = Paint.Style.FILL
-        paint.color = Color.argb((255 * controls.optDouble("opacity", 0.65)).toInt(), 255, 255, 255)
+        controlsPaint.style = Paint.Style.FILL
+        controlsPaint.color = Color.argb((255 * controls.optDouble("opacity", 0.65)).toInt(), 255, 255, 255)
         val sx = viewportW * controls.optDouble("left_stick_anchor_x", 0.16).toFloat()
         val sy = viewportH * controls.optDouble("left_stick_anchor_y", 0.78).toFloat()
-        canvas.drawCircle(sx, sy, controls.optDouble("left_stick_radius", 86.0).toFloat(), paint)
-        val a1x = viewportW * controls.optDouble("action_1_anchor_x", 0.84).toFloat()
-        val a1y = viewportH * controls.optDouble("action_1_anchor_y", 0.78).toFloat()
-        canvas.drawCircle(a1x, a1y, controls.optDouble("action_1_radius", 54.0).toFloat(), paint)
-        val a2x = viewportW * controls.optDouble("action_2_anchor_x", 0.72).toFloat()
-        val a2y = viewportH * controls.optDouble("action_2_anchor_y", 0.84).toFloat()
-        canvas.drawCircle(a2x, a2y, controls.optDouble("action_2_radius", 46.0).toFloat(), paint)
+        canvas.drawCircle(sx, sy, controls.optDouble("left_stick_radius", 86.0).toFloat(), controlsPaint)
+        if (controls.optBoolean("action_1_enabled", true)) {
+            val a1x = viewportW * controls.optDouble("action_1_anchor_x", 0.84).toFloat()
+            val a1y = viewportH * controls.optDouble("action_1_anchor_y", 0.78).toFloat()
+            canvas.drawCircle(a1x, a1y, controls.optDouble("action_1_radius", 54.0).toFloat(), controlsPaint)
+        }
+        if (controls.optBoolean("action_2_enabled", true)) {
+            val a2x = viewportW * controls.optDouble("action_2_anchor_x", 0.72).toFloat()
+            val a2y = viewportH * controls.optDouble("action_2_anchor_y", 0.84).toFloat()
+            canvas.drawCircle(a2x, a2y, controls.optDouble("action_2_radius", 46.0).toFloat(), controlsPaint)
+        }
     }
 
     private fun drawCenteredText(canvas: Canvas, value: String, rect: RectF, size: Float, color: Int) {
@@ -903,7 +1006,10 @@ private class MotorRuntime(private val context: Context) {
         if (path.isBlank()) return null
         return bitmaps.getOrPut(path) {
             try {
-                context.assets.open(path).use { BitmapFactory.decodeStream(it) }
+                val options = BitmapFactory.Options().apply {
+                    inScaled = false
+                }
+                context.assets.open(path).use { BitmapFactory.decodeStream(it, null, options) }
             } catch (_: Exception) {
                 null
             }

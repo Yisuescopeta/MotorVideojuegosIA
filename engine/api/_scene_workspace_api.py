@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 from engine.api._context import EngineAPIComponent
 from engine.api.errors import InvalidOperationError, LevelLoadError
@@ -78,16 +78,35 @@ class SceneWorkspaceAPI(EngineAPIComponent):
             return []
         return workspace.list_open_scenes()
 
-    def get_active_scene(self) -> Dict[str, Any]:
+    def get_active_scene(self, include_entities: bool = False) -> Dict[str, Any]:
         """Get summary information about the currently active scene.
+
+        Args:
+            include_entities: If True, also include entity names and count
+                from the active runtime world. Defaults to False (summary only).
 
         Returns:
             Dictionary with active scene metadata, or empty dict if none.
+            With include_entities=True, also contains ``entities`` list and
+            ``entity_count``.
         """
         workspace = self.scene_workspace
         if workspace is None:
             return {}
-        return workspace.get_active_scene_summary()
+        summary = workspace.get_active_scene_summary()
+        if not include_entities:
+            return summary
+        if not summary.get("path"):
+            return {}
+        runtime = self.runtime
+        world = runtime.world if runtime is not None else None
+        if world is not None:
+            summary["entity_count"] = world.entity_count()
+            summary["entities"] = [entity.name for entity in world.get_all_entities()]
+        else:
+            summary["entity_count"] = 0
+            summary["entities"] = []
+        return summary
 
     def has_active_scene(self) -> bool:
         """Check if there is an active scene loaded.
@@ -639,3 +658,75 @@ class SceneWorkspaceAPI(EngineAPIComponent):
             return self.fail("SceneManager not ready")
         success = authoring.apply_prefab_overrides(entity_name)
         return self.ok("Prefab overrides applied", {"entity": entity_name}) if success else self.fail("Prefab apply failed")
+
+    # ----------------------------------------------------------------
+    # Scene sync: external change detection and save callbacks
+    # ----------------------------------------------------------------
+
+    def refresh_active_scene_if_stale(self) -> ActionResult:
+        """Reload the active scene from disk if its file changed externally.
+
+        The dirty guard is enforced by SceneManager: if the scene has unsaved
+        authoring changes (dirty=True), the refresh is silently skipped to
+        avoid discarding them.
+
+        Returns:
+            ActionResult with ``world_available`` (bool), active scene
+            summary (if available), and a message. The payload does not
+            expose raw World references.
+        """
+        scene_manager = self.scene_manager
+        if scene_manager is None:
+            return self.fail("SceneManager not ready")
+        refreshed = scene_manager.refresh_active_scene_if_stale()
+        data: Dict[str, Any] = {
+            "world_available": refreshed is not None,
+        }
+        summary = self.get_active_scene()
+        if summary:
+            data["active_scene"] = summary
+        return self.ok("Scene refresh check completed", data)
+
+    def register_on_scene_saved(self, callback: Callable[[str, Dict[str, Any]], None]) -> ActionResult:
+        """Register a callback invoked after each successful ``save_scene`` via SceneManager.
+
+        Callback signature: ``callback(path: str, info: Dict[str, Any]) -> None``.
+        The info dict contains keys ``'key'``, ``'scene_name'``, and
+        ``'entity_count'``. Callback exceptions are logged but never make
+        the save fail. These are in-process Python callbacks only — not
+        CLI/JSON serializable.
+
+        Args:
+            callback: A callable matching the signature above.
+
+        Returns:
+            ActionResult with ``registered`` (bool) and ``id(callback)``
+            for traceability in ``data``.
+        """
+        scene_manager = self.scene_manager
+        if scene_manager is None:
+            return self.fail("SceneManager not ready")
+        scene_manager.register_on_scene_saved(callback)
+        return self.ok(
+            "Save callback registered",
+            {"registered": True, "callback_id": id(callback)},
+        )
+
+    def unregister_on_scene_saved(self, callback: Callable[[str, Dict[str, Any]], None]) -> ActionResult:
+        """Remove a previously registered on_scene_saved callback.
+
+        Args:
+            callback: The same callable passed to register_on_scene_saved.
+
+        Returns:
+            ActionResult confirming removal. Always succeeds even if the
+            callback was not found.
+        """
+        scene_manager = self.scene_manager
+        if scene_manager is None:
+            return self.fail("SceneManager not ready")
+        scene_manager.unregister_on_scene_saved(callback)
+        return self.ok(
+            "Save callback unregistered",
+            {"registered": False, "callback_id": id(callback)},
+        )
