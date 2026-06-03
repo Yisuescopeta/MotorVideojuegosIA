@@ -20,6 +20,7 @@ from engine.project.project_service import ProjectService
 from engine.rendering.render_targets import RenderTargetPool
 from engine.rendering.tilemap_chunk_renderer import TilemapChunkRenderer
 from engine.systems.render_system import RenderBatchKey, RenderSystem
+from engine.utils.viewport import resolve_effective_camera2d
 
 
 class RenderGraphTests(unittest.TestCase):
@@ -92,6 +93,89 @@ class RenderGraphTests(unittest.TestCase):
         project_root = Path(temp_dir.name) / "RenderProject"
         project_service = ProjectService(project_root.as_posix())
         return project_service, AssetService(project_service)
+
+    def test_build_camera_from_world_applies_profile_override_target(self) -> None:
+        world = World()
+        camera_entity = self._make_camera_entity(world, x=0.0, y=0.0, offset_x=320.0, offset_y=180.0)
+        camera_component = camera_entity.get_component(Camera2D)
+        camera_component.profile_overrides = {
+            "desktop_16_9": {
+                "target_x": 120.0,
+                "target_y": -40.0,
+                "offset_x": 640.0,
+                "offset_y": 360.0,
+                "zoom": 1.5,
+                "rotation": 5.0,
+            }
+        }
+
+        camera = RenderSystem()._build_camera_from_world(
+            world,
+            viewport_size=(1280.0, 720.0),
+            camera_profile_id="desktop_16_9",
+        )
+
+        self.assertIsNotNone(camera)
+        self.assertEqual((camera.target.x, camera.target.y), (120.0, -40.0))
+        self.assertEqual((camera.offset.x, camera.offset.y), (640.0, 360.0))
+        self.assertEqual(camera.zoom, 1.5)
+        self.assertEqual(camera.rotation, 5.0)
+
+    def test_build_camera_from_world_applies_follow_profile_offset(self) -> None:
+        world = World()
+        player = world.create_entity("Player")
+        player.add_component(Transform(x=200.0, y=100.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        camera_entity = self._make_camera_entity(world, x=0.0, y=0.0)
+        camera_component = camera_entity.get_component(Camera2D)
+        camera_component.follow_entity = "Player"
+        camera_component.profile_overrides = {
+            "mobile_portrait": {
+                "target_offset_x": -20.0,
+                "target_offset_y": 30.0,
+            }
+        }
+
+        camera = RenderSystem()._build_camera_from_world(
+            world,
+            viewport_size=(390.0, 844.0),
+            camera_profile_id="mobile_portrait",
+        )
+
+        self.assertIsNotNone(camera)
+        self.assertEqual((camera.target.x, camera.target.y), (180.0, 130.0))
+
+    def test_camera_debug_geometry_matches_effective_viewport_rect(self) -> None:
+        world = World()
+        camera_entity = self._make_camera_entity(world, x=0.0, y=0.0, offset_x=320.0, offset_y=180.0)
+        camera_component = camera_entity.get_component(Camera2D)
+        camera_component.profile_overrides = {
+            "desktop_16_9": {
+                "target_x": 120.0,
+                "target_y": -40.0,
+                "offset_x": 640.0,
+                "offset_y": 360.0,
+                "zoom": 2.0,
+            }
+        }
+
+        geometry = RenderSystem()._build_camera_geometry(
+            world,
+            viewport_size=(1280.0, 720.0),
+            camera_profile_id="desktop_16_9",
+        )
+        resolved = resolve_effective_camera2d(
+            world,
+            viewport_size=(1280.0, 720.0),
+            camera_profile_id="desktop_16_9",
+        )
+
+        self.assertIsNotNone(geometry)
+        self.assertIsNotNone(resolved)
+        assert geometry is not None and resolved is not None
+        self.assertEqual(geometry["x"], resolved.rect_left)
+        self.assertEqual(geometry["y"], resolved.rect_top)
+        self.assertEqual(geometry["width"], resolved.rect_width)
+        self.assertEqual(geometry["height"], resolved.rect_height)
 
     def _copy_fixture_asset(self, project_service: ProjectService, source_relative_path: str, target_relative_path: str) -> str:
         source_path = self.REPO_ROOT / source_relative_path

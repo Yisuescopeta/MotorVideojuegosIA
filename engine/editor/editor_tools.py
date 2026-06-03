@@ -12,6 +12,7 @@ class EditorTool(Enum):
     SCALE = "Scale"
     TRANSFORM = "Transform"
     RECT = "Rect"
+    CAMERA = "Camera"
 
     @classmethod
     def from_value(cls, value: Any) -> "EditorTool":

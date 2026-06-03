@@ -88,6 +88,17 @@ duplicados para persistir membresias declarativas por entidad.
 Los componentes publicos deben estar registrados en
 `engine/levels/component_registry.py`.
 
+`Camera2D` admite `profile_overrides` para guardar encuadres especificos por
+perfil de pantalla del editor/export (`device_profile`). Las claves son ids de
+perfil como `desktop_16_9` o `mobile_portrait`; cada valor puede incluir
+`target_x`, `target_y` para camaras libres, `target_offset_x`,
+`target_offset_y` para camaras con `follow_entity`, y ajustes de camara
+`offset_x`, `offset_y`, `zoom`, `rotation`. Si un perfil no tiene override, se
+usa la configuracion base de `Transform` + `Camera2D`.
+El marco editable del editor en Scene View no agrega campos nuevos: mueve la
+camara escribiendo targets/offsets y redimensiona escribiendo `zoom` dentro del
+override del perfil activo.
+
 `rules` contiene reglas declarativas validadas por schema. Las acciones actuales
 incluyen `set_animation`, `set_position`, `spawn_entity`, `destroy_entity`,
 `emit_event` y `log_message`; `spawn_entity` crea entidades runtime y no cambia
@@ -98,6 +109,8 @@ En UI serializable, el contrato vigente incluye `Canvas`, `RectTransform`,
 sprite (`*_sprite`, `*_slice`, `image_tint`, `preserve_aspect`) sin romper el
 payload legacy basado en colores. `UIImage` serializa `sprite`, `slice_name`,
 `tint` y `preserve_aspect`.
+`MobileControls2D` serializa controles tactiles; `movement_mode` acepta
+`"joystick"` (default) o `"dpad"` para cruceta de 4 direcciones.
 
 Los componentes semanticos minimos de gameplay 2D se serializan como datos.
 En runtime, `Gameplay2DSemanticSystem` consume contactos fisicos para emitir

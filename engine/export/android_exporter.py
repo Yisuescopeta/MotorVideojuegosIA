@@ -183,10 +183,29 @@ class AndroidExporter(PlatformExporter):
         )
 
     def _android_runtime_cache_key(self, staging: Path) -> str:
+        digest = sha256()
         manifest = staging / "game.manifest.json"
         if manifest.exists():
-            return sha256(manifest.read_bytes()).hexdigest()
-        return ""
+            digest.update(b"manifest\0")
+            digest.update(manifest.read_bytes())
+        for path in self._android_runtime_cache_seed_files():
+            if path.exists():
+                try:
+                    seed_name = str(path.relative_to(Path(__file__).resolve().parent.parent.parent))
+                except ValueError:
+                    seed_name = path.name
+                digest.update(seed_name.encode("utf-8"))
+                digest.update(b"\0")
+                digest.update(path.read_bytes())
+        return digest.hexdigest()
+
+    def _android_runtime_cache_seed_files(self) -> list[Path]:
+        root = Path(__file__).resolve().parent.parent.parent
+        template_root = root / "platforms" / "android" / "template"
+        return [
+            template_root / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt",
+            template_root / "app" / "src" / "main" / "python" / "motor_android_runtime.py",
+        ]
 
     def _generate_android_project(
         self, ctx: BuildContext, staging: Path,
@@ -418,6 +437,14 @@ class AndroidExporter(PlatformExporter):
                         mobile_targets.add(str(control.get("target_entity", "Player") or "Player"))
                 if "InputMap" in components and "PlayerController2D" in components:
                     playable_targets.add(name)
+                animator = components.get("Animator")
+                if not python_runtime and isinstance(animator, dict) and self._animator_requires_shared_runtime(animator):
+                    ctx.add_error(
+                        "ANDROID_RUNTIME_UNSUPPORTED_ANIMATOR_ADVANCED: "
+                        f"{scene_path}:{name} uses Animator state_machine, parameters, "
+                        "slice_names, flip_y, speed, or on_complete, which require "
+                        "android_python_runtime=true for Android parity."
+                    )
                 for component_name in components:
                     if component_name in unsupported_v1 or component_name not in supported_components:
                         ctx.add_error(
@@ -444,6 +471,31 @@ class AndroidExporter(PlatformExporter):
                 )
 
         return not ctx.has_errors
+
+    def _animator_requires_shared_runtime(self, animator: dict[str, Any]) -> bool:
+        if isinstance(animator.get("state_machine"), dict):
+            return True
+        if isinstance(animator.get("parameters"), dict) and animator.get("parameters"):
+            return True
+        if bool(animator.get("flip_y", False)):
+            return True
+        try:
+            if float(animator.get("speed", 1.0)) != 1.0:
+                return True
+        except (TypeError, ValueError):
+            return True
+        animations = animator.get("animations", {})
+        if not isinstance(animations, dict):
+            return False
+        for animation in animations.values():
+            if not isinstance(animation, dict):
+                continue
+            if animation.get("on_complete") is not None:
+                return True
+            slice_names = animation.get("slice_names", [])
+            if isinstance(slice_names, list) and slice_names:
+                return True
+        return False
 
     def _run_gradle_build(
         self, ctx: BuildContext, project_dir: Path, task: str,

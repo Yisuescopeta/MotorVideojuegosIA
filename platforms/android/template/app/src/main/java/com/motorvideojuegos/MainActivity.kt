@@ -84,6 +84,7 @@ private class MotorGameView(context: Context) : SurfaceView(context), SurfaceHol
 }
 
 private data class Entity(
+    val sceneIndex: Int,
     val name: String,
     val active: Boolean,
     val tag: String,
@@ -102,6 +103,7 @@ private class MotorRuntime(private val context: Context) {
     private val controlsPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val bitmaps = mutableMapOf<String, Bitmap?>()
+    private val spriteMetadata = mutableMapOf<String, JSONObject?>()
     private val inputState = mutableMapOf("horizontal" to 0.0f, "vertical" to 0.0f, "action_1" to 0.0f, "action_2" to 0.0f)
     private val activePointers = mutableMapOf<Int, Pair<Float, Float>>()
     private val pressedPointers = mutableMapOf<Int, Pair<Float, Float>>()
@@ -279,8 +281,7 @@ private class MotorRuntime(private val context: Context) {
         try {
             canvas.drawColor(Color.rgb(10, 12, 16))
             val camera = resolveCamera()
-            for (entity in entities) {
-                if (!entity.active || entity.components.has("Canvas") || entity.components.has("RectTransform")) continue
+            for (entity in sortedWorldEntities()) {
                 drawWorldEntity(canvas, entity, camera)
             }
             for (entity in entities) {
@@ -510,9 +511,17 @@ private class MotorRuntime(private val context: Context) {
                         val deadzone = controls.optDouble("deadzone", 0.18).toFloat()
                         val normalized = min(1.0f, distance / stickRadius)
                         if (normalized >= deadzone) {
-                            val scale = (normalized - deadzone) / max(0.001f, 1.0f - deadzone)
-                            inputState["horizontal"] = (dx / distance * scale).coerceIn(-1.0f, 1.0f)
-                            inputState["vertical"] = (-dy / distance * scale).coerceIn(-1.0f, 1.0f)
+                            if (movementMode(controls) == "dpad") {
+                                if (abs(dx) >= abs(dy)) {
+                                    inputState["horizontal"] = if (dx >= 0.0f) 1.0f else -1.0f
+                                } else {
+                                    inputState["vertical"] = if (dy >= 0.0f) -1.0f else 1.0f
+                                }
+                            } else {
+                                val scale = (normalized - deadzone) / max(0.001f, 1.0f - deadzone)
+                                inputState["horizontal"] = (dx / distance * scale).coerceIn(-1.0f, 1.0f)
+                                inputState["vertical"] = (-dy / distance * scale).coerceIn(-1.0f, 1.0f)
+                            }
                         }
                     }
                 }
@@ -528,6 +537,11 @@ private class MotorRuntime(private val context: Context) {
         val cy = viewportH * controls.optDouble("${prefix}_anchor_y", if (prefix == "action_1") 0.78 else 0.84).toFloat()
         val radius = controls.optDouble("${prefix}_radius", if (prefix == "action_1") 54.0 else 46.0).toFloat() * 1.35f
         return hypot(x - cx, y - cy) <= radius
+    }
+
+    private fun movementMode(controls: JSONObject): String {
+        val mode = controls.optString("movement_mode", "joystick").lowercase()
+        return if (mode == "dpad") "dpad" else "joystick"
     }
 
     private fun captureControl(controls: JSONObject, x: Float, y: Float): String? {
@@ -576,6 +590,7 @@ private class MotorRuntime(private val context: Context) {
                 val obj = arr.optJSONObject(i) ?: continue
                 list.add(
                     Entity(
+                        sceneIndex = i,
                         name = obj.optString("name"),
                         active = obj.optBoolean("active", true),
                         tag = obj.optString("tag"),
@@ -586,6 +601,83 @@ private class MotorRuntime(private val context: Context) {
                 )
             }
         }
+    }
+
+    private fun sortedWorldEntities(): List<Entity> {
+        return entities
+            .filter {
+                it.active &&
+                    !it.components.has("Canvas") &&
+                    !it.components.has("RectTransform") &&
+                    !it.components.has("Camera2D")
+            }
+            .sortedWith(
+                compareBy<Entity> { renderPassIndex(it) }
+                    .thenBy { sortingLayerIndex(it) }
+                    .thenBy { renderOrderInLayer(it) }
+                    .thenBy { entityDepth(it) }
+                    .thenBy { it.sceneIndex }
+            )
+    }
+
+    private fun renderPassIndex(entity: Entity): Int {
+        return when (renderPassName(entity)) {
+            "World" -> 0
+            "Overlay" -> 1
+            "Debug" -> 2
+            else -> 0
+        }
+    }
+
+    private fun renderPassName(entity: Entity): String {
+        val renderOrder = enabledRenderOrder(entity) ?: return "World"
+        val candidate = renderOrder.optString("render_pass", "World").ifBlank { "World" }
+        return when (candidate) {
+            "World", "Overlay", "Debug" -> candidate
+            else -> "World"
+        }
+    }
+
+    private fun sortingLayerIndex(entity: Entity): Int {
+        val layer = enabledRenderOrder(entity)?.optString("sorting_layer", "Default")?.ifBlank { "Default" } ?: "Default"
+        val layers = sortingLayers()
+        val index = layers.indexOf(layer)
+        return if (index >= 0) index else layers.size
+    }
+
+    private fun sortingLayers(): List<String> {
+        val raw = scene.optJSONObject("feature_metadata")
+            ?.optJSONObject("render_2d")
+            ?.optJSONArray("sorting_layers")
+        val layers = mutableListOf<String>()
+        if (raw != null) {
+            for (i in 0 until raw.length()) {
+                val layer = raw.optString(i, "")
+                if (layer.isNotBlank()) layers.add(layer)
+            }
+        }
+        return layers.ifEmpty { listOf("Default") }
+    }
+
+    private fun renderOrderInLayer(entity: Entity): Int {
+        val value = enabledRenderOrder(entity)?.optInt("order_in_layer", 0) ?: 0
+        return value.coerceIn(-32768, 32767)
+    }
+
+    private fun enabledRenderOrder(entity: Entity): JSONObject? {
+        val renderOrder = entity.components.optJSONObject("RenderOrder2D") ?: return null
+        return if (renderOrder.optBoolean("enabled", true)) renderOrder else null
+    }
+
+    private fun entityDepth(entity: Entity): Int {
+        var depth = 0
+        var parentName = entity.parent
+        val seen = mutableSetOf<String>()
+        while (!parentName.isNullOrBlank() && seen.add(parentName)) {
+            depth += 1
+            parentName = entities.firstOrNull { it.name == parentName }?.parent
+        }
+        return depth
     }
 
     private fun runScripts(hookName: String, dt: Float) {
@@ -792,67 +884,70 @@ private class MotorRuntime(private val context: Context) {
     private fun updateAnimator(dt: Float) {
         for (entity in entities) {
             val animator = entity.components.optJSONObject("Animator") ?: continue
+            if (!animator.optBoolean("enabled", true)) continue
             val animations = animator.optJSONObject("animations") ?: continue
             val state = animator.optString("current_state", animator.optString("default_state", "idle"))
             val anim = animations.optJSONObject(state) ?: continue
-            val frames = anim.optJSONArray("frames") ?: continue
-            if (frames.length() == 0) continue
+            val frameCount = animationFrameCount(anim)
+            if (frameCount == 0) continue
+            if (animator.optBoolean("is_finished", false) && !anim.optBoolean("loop", true)) continue
             val fps = anim.optDouble("fps", 8.0).toFloat()
-            val elapsed = animator.optDouble("_elapsed", 0.0).toFloat() + dt
+            if (fps <= 0.0f) continue
+            var elapsed = animator.optDouble("_elapsed", 0.0).toFloat() + dt * animator.optDouble("speed", 1.0).toFloat().coerceAtLeast(0.01f)
             val frameTime = 1.0f / max(0.1f, fps)
-            if (elapsed >= frameTime) {
-                animator.put("current_frame", (animator.optInt("current_frame", 0) + 1) % frames.length())
-                animator.put("_elapsed", 0.0)
-            } else {
-                animator.put("_elapsed", elapsed)
+            var currentFrame = animator.optInt("current_frame", 0).coerceIn(0, frameCount - 1)
+            var completed = false
+            while (elapsed >= frameTime && !completed) {
+                elapsed -= frameTime
+                currentFrame += 1
+                if (currentFrame >= frameCount) {
+                    if (anim.optBoolean("loop", true)) {
+                        currentFrame = 0
+                    } else {
+                        currentFrame = frameCount - 1
+                        animator.put("is_finished", true)
+                        completed = true
+                    }
+                }
+            }
+            animator.put("current_frame", currentFrame)
+            animator.put("_elapsed", elapsed)
+            if (completed) {
+                val onComplete = anim.optString("on_complete", "")
+                if (onComplete.isNotBlank() && animations.has(onComplete)) {
+                    animator.put("current_state", onComplete)
+                    animator.put("current_frame", 0)
+                    animator.put("_elapsed", 0.0)
+                    animator.put("is_finished", false)
+                }
             }
         }
+    }
+
+    private fun animationFrameCount(anim: JSONObject): Int {
+        val slices = anim.optJSONArray("slice_names")
+        if (slices != null && slices.length() > 0) return slices.length()
+        val frames = anim.optJSONArray("frames")
+        return frames?.length() ?: 0
     }
 
     private fun drawWorldEntity(canvas: Canvas, entity: Entity, camera: CameraState) {
         paint.alpha = 255
         paint.colorFilter = null
         paint.style = Paint.Style.FILL
-        val rect = visualRect(entity) ?: worldRect(entity) ?: return
-        val dst = RectF(
-            (rect.left - camera.x) * camera.zoom + camera.offsetX,
-            (rect.top - camera.y) * camera.zoom + camera.offsetY,
-            (rect.right - camera.x) * camera.zoom + camera.offsetX,
-            (rect.bottom - camera.y) * camera.zoom + camera.offsetY,
-        )
+        if (entity.components.has("Camera2D")) return
         val animator = entity.components.optJSONObject("Animator")
         val sprite = entity.components.optJSONObject("Sprite")
-        val bitmapPath = animator?.assetPath("sprite_sheet") ?: animator?.optString("sprite_sheet_path", "")
-            ?: sprite?.assetPath("texture") ?: sprite?.optString("texture_path", "") ?: ""
-        val bitmap = loadBitmap(bitmapPath)
-        if (bitmap != null && animator != null) {
-            val fw = animator.optInt("frame_width", bitmap.width)
-            val fh = animator.optInt("frame_height", bitmap.height)
-            val animations = animator.optJSONObject("animations") ?: JSONObject()
-            val state = animator.optString("current_state", animator.optString("default_state", "idle"))
-            val frames = animations.optJSONObject(state)?.optJSONArray("frames")
-            val frameIndex = frames?.optInt(min(animator.optInt("current_frame", 0), frames.length() - 1), 0) ?: 0
-            val cols = max(1, bitmap.width / max(1, fw))
-            val sx = (frameIndex % cols) * fw
-            val sy = (frameIndex / cols) * fh
-            drawBitmapFrame(
-                canvas,
-                bitmap,
-                Rect(sx, sy, sx + fw, sy + fh),
-                dst,
-                flipX = animator.optBoolean("flip_x", false),
-                flipY = animator.optBoolean("flip_y", false),
-            )
-        } else if (bitmap != null) {
-            drawBitmapFrame(
-                canvas,
-                bitmap,
-                null,
-                dst,
-                flipX = sprite?.optBoolean("flip_x", false) ?: false,
-                flipY = sprite?.optBoolean("flip_y", false) ?: false,
-            )
-        } else {
+        var drew = false
+        if (animator != null && animator.optBoolean("enabled", true) && animatorPath(animator).isNotBlank()) {
+            drew = drawAnimatedSprite(canvas, animator, entity, camera) || drew
+        }
+        if (sprite != null && sprite.optBoolean("enabled", true) && spritePath(sprite).isNotBlank()) {
+            drew = drawSprite(canvas, sprite, entity, camera) || drew
+        }
+        if (!drew) {
+            val rect = visualRect(entity) ?: worldRect(entity) ?: return
+            val dst = cameraRect(rect, camera)
             paint.color = when (entity.tag.lowercase()) {
                 "hero", "player" -> Color.rgb(80, 180, 255)
                 "hazard" -> Color.rgb(220, 60, 80)
@@ -861,6 +956,74 @@ private class MotorRuntime(private val context: Context) {
             }
             canvas.drawRect(dst, paint)
         }
+    }
+
+    private fun drawAnimatedSprite(canvas: Canvas, animator: JSONObject, entity: Entity, camera: CameraState): Boolean {
+        val bitmapPath = animatorPath(animator)
+        val bitmap = loadBitmap(bitmapPath) ?: return false
+        val frame = animatorFrame(animator, bitmap, bitmapPath)
+        val rect = visualRectForFrame(entity, frame.width, frame.height, center = true) ?: return false
+        drawBitmapFrame(
+            canvas,
+            bitmap,
+            frame.src,
+            cameraRect(rect, camera),
+            flipX = animator.optBoolean("flip_x", false),
+            flipY = animator.optBoolean("flip_y", false),
+        )
+        return true
+    }
+
+    private fun drawSprite(canvas: Canvas, sprite: JSONObject, entity: Entity, camera: CameraState): Boolean {
+        val bitmapPath = spritePath(sprite)
+        val bitmap = loadBitmap(bitmapPath) ?: return false
+        val slice = sprite.optString("source_slice", "")
+        val sliceRect = if (slice.isNotBlank()) getSliceRect(bitmapPath, slice) else null
+        val src = sliceRect ?: Rect(0, 0, bitmap.width, bitmap.height)
+        val width = positiveFloat(sprite.optDouble("width", src.width().toDouble()), src.width().toFloat())
+        val height = positiveFloat(sprite.optDouble("height", src.height().toDouble()), src.height().toFloat())
+        val rect = visualRectForSprite(entity, width, height, sprite) ?: return false
+        drawBitmapFrame(
+            canvas,
+            bitmap,
+            src,
+            cameraRect(rect, camera),
+            flipX = sprite.optBoolean("flip_x", false),
+            flipY = sprite.optBoolean("flip_y", false),
+        )
+        return true
+    }
+
+    private fun animatorFrame(animator: JSONObject, bitmap: Bitmap, bitmapPath: String): SpriteFrame {
+        val fw = animator.optInt("frame_width", bitmap.width).coerceAtLeast(1)
+        val fh = animator.optInt("frame_height", bitmap.height).coerceAtLeast(1)
+        val animations = animator.optJSONObject("animations") ?: JSONObject()
+        val state = animator.optString("current_state", animator.optString("default_state", "idle"))
+        val anim = animations.optJSONObject(state)
+        val framePosition = animator.optInt("current_frame", 0).coerceAtLeast(0)
+        val sliceNames = anim?.optJSONArray("slice_names")
+        if (sliceNames != null && sliceNames.length() > 0) {
+            val sliceName = sliceNames.optString(min(framePosition, sliceNames.length() - 1), "")
+            val sliceRect = getSliceRect(bitmapPath, sliceName)
+            if (sliceRect != null) {
+                return SpriteFrame(sliceRect, sliceRect.width().toFloat(), sliceRect.height().toFloat())
+            }
+        }
+        val frames = anim?.optJSONArray("frames")
+        val frameIndex = frames?.optInt(min(framePosition, frames.length() - 1), framePosition) ?: framePosition
+        val cols = max(1, bitmap.width / fw)
+        val sx = (frameIndex % cols) * fw
+        val sy = (frameIndex / cols) * fh
+        return SpriteFrame(Rect(sx, sy, sx + fw, sy + fh), fw.toFloat(), fh.toFloat())
+    }
+
+    private fun cameraRect(rect: RectF, camera: CameraState): RectF {
+        return RectF(
+            (rect.left - camera.x) * camera.zoom + camera.offsetX,
+            (rect.top - camera.y) * camera.zoom + camera.offsetY,
+            (rect.right - camera.x) * camera.zoom + camera.offsetX,
+            (rect.bottom - camera.y) * camera.zoom + camera.offsetY,
+        )
     }
 
     private fun drawBitmapFrame(canvas: Canvas, bitmap: Bitmap, src: Rect?, dst: RectF, flipX: Boolean, flipY: Boolean) {
@@ -902,7 +1065,12 @@ private class MotorRuntime(private val context: Context) {
         controlsPaint.color = Color.argb((255 * controls.optDouble("opacity", 0.65)).toInt(), 255, 255, 255)
         val sx = viewportW * controls.optDouble("left_stick_anchor_x", 0.16).toFloat()
         val sy = viewportH * controls.optDouble("left_stick_anchor_y", 0.78).toFloat()
-        canvas.drawCircle(sx, sy, controls.optDouble("left_stick_radius", 86.0).toFloat(), controlsPaint)
+        val radius = controls.optDouble("left_stick_radius", 86.0).toFloat()
+        if (movementMode(controls) == "dpad") {
+            drawDpad(canvas, sx, sy, radius)
+        } else {
+            canvas.drawCircle(sx, sy, radius, controlsPaint)
+        }
         if (controls.optBoolean("action_1_enabled", true)) {
             val a1x = viewportW * controls.optDouble("action_1_anchor_x", 0.84).toFloat()
             val a1y = viewportH * controls.optDouble("action_1_anchor_y", 0.78).toFloat()
@@ -913,6 +1081,16 @@ private class MotorRuntime(private val context: Context) {
             val a2y = viewportH * controls.optDouble("action_2_anchor_y", 0.84).toFloat()
             canvas.drawCircle(a2x, a2y, controls.optDouble("action_2_radius", 46.0).toFloat(), controlsPaint)
         }
+    }
+
+    private fun drawDpad(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
+        val arm = max(18.0f, radius * 0.34f)
+        val extent = max(36.0f, radius * 0.95f)
+        val corner = max(6.0f, arm * 0.22f)
+        val horizontal = RectF(cx - extent, cy - arm / 2.0f, cx + extent, cy + arm / 2.0f)
+        val vertical = RectF(cx - arm / 2.0f, cy - extent, cx + arm / 2.0f, cy + extent)
+        canvas.drawRoundRect(horizontal, corner, corner, controlsPaint)
+        canvas.drawRoundRect(vertical, corner, corner, controlsPaint)
     }
 
     private fun drawCenteredText(canvas: Canvas, value: String, rect: RectF, size: Float, color: Int) {
@@ -953,26 +1131,61 @@ private class MotorRuntime(private val context: Context) {
         val sprite = entity.components.optJSONObject("Sprite")
         val animator = entity.components.optJSONObject("Animator")
         val collider = entity.components.optJSONObject("Collider")
-        val w = when {
-            animator != null -> animator.optDouble("frame_width", 64.0)
-            sprite != null -> sprite.optDouble("width", 64.0)
-            collider != null -> collider.optDouble("width", 64.0)
-            else -> 64.0
-        }.toFloat() * t.optDouble("scale_x", 1.0).toFloat()
-        val h = when {
-            animator != null -> animator.optDouble("frame_height", 64.0)
-            sprite != null -> sprite.optDouble("height", 64.0)
-            collider != null -> collider.optDouble("height", 64.0)
-            else -> 64.0
-        }.toFloat() * t.optDouble("scale_y", 1.0).toFloat()
+        if (animator != null) {
+            val bitmapPath = animatorPath(animator)
+            val bitmap = loadBitmap(bitmapPath)
+            if (bitmap != null) {
+                val frame = animatorFrame(animator, bitmap, bitmapPath)
+                return visualRectForFrame(entity, frame.width, frame.height, center = true)
+            }
+            return visualRectForFrame(
+                entity,
+                animator.optDouble("frame_width", 64.0).toFloat(),
+                animator.optDouble("frame_height", 64.0).toFloat(),
+                center = true,
+            )
+        }
+        if (sprite != null) {
+            val bitmapPath = spritePath(sprite)
+            val bitmap = loadBitmap(bitmapPath)
+            val sliceName = sprite.optString("source_slice", "")
+            val sliceRect = if (sliceName.isNotBlank()) getSliceRect(bitmapPath, sliceName) else null
+            val baseWidth = sliceRect?.width()?.toDouble() ?: bitmap?.width?.toDouble() ?: 64.0
+            val baseHeight = sliceRect?.height()?.toDouble() ?: bitmap?.height?.toDouble() ?: 64.0
+            val width = positiveFloat(sprite.optDouble("width", baseWidth), baseWidth.toFloat())
+            val height = positiveFloat(sprite.optDouble("height", baseHeight), baseHeight.toFloat())
+            return visualRectForSprite(entity, width, height, sprite)
+        }
+        if (collider != null) {
+            return visualRectForFrame(
+                entity,
+                collider.optDouble("width", 64.0).toFloat(),
+                collider.optDouble("height", 64.0).toFloat(),
+                center = true,
+            )
+        }
+        return visualRectForFrame(entity, 64.0f, 64.0f, center = true)
+    }
+
+    private fun visualRectForFrame(entity: Entity, width: Float, height: Float, center: Boolean): RectF? {
+        val t = entity.components.optJSONObject("Transform") ?: return null
+        val w = width * t.optDouble("scale_x", 1.0).toFloat()
+        val h = height * t.optDouble("scale_y", 1.0).toFloat()
         val x = t.optDouble("x", 0.0).toFloat()
         val y = t.optDouble("y", 0.0).toFloat()
-        if (sprite != null && animator == null) {
-            val ox = sprite.optDouble("origin_x", 0.5).toFloat()
-            val oy = sprite.optDouble("origin_y", 0.5).toFloat()
-            return RectF(x - w * ox, y - h * oy, x + w * (1.0f - ox), y + h * (1.0f - oy))
-        }
-        return RectF(x - w / 2.0f, y - h / 2.0f, x + w / 2.0f, y + h / 2.0f)
+        return if (center) RectF(x - w / 2.0f, y - h / 2.0f, x + w / 2.0f, y + h / 2.0f)
+        else RectF(x, y, x + w, y + h)
+    }
+
+    private fun visualRectForSprite(entity: Entity, width: Float, height: Float, sprite: JSONObject): RectF? {
+        val t = entity.components.optJSONObject("Transform") ?: return null
+        val w = width * t.optDouble("scale_x", 1.0).toFloat()
+        val h = height * t.optDouble("scale_y", 1.0).toFloat()
+        val x = t.optDouble("x", 0.0).toFloat()
+        val y = t.optDouble("y", 0.0).toFloat()
+        val ox = sprite.optDouble("origin_x", 0.5).toFloat()
+        val oy = sprite.optDouble("origin_y", 0.5).toFloat()
+        return RectF(x - w * ox, y - h * oy, x + w * (1.0f - ox), y + h * (1.0f - oy))
     }
 
     private fun resolveCamera(): CameraState {
@@ -1016,6 +1229,37 @@ private class MotorRuntime(private val context: Context) {
         }
     }
 
+    private fun getSliceRect(assetPath: String, sliceName: String): Rect? {
+        if (assetPath.isBlank() || sliceName.isBlank()) return null
+        val metadata = loadSpriteMetadata(assetPath) ?: return null
+        val topLevel = metadata.optJSONArray("slices")
+        val importSettings = metadata.optJSONObject("import_settings")
+        val slices = if (topLevel != null && topLevel.length() > 0) topLevel else importSettings?.optJSONArray("slices")
+        if (slices == null) return null
+        for (i in 0 until slices.length()) {
+            val item = slices.optJSONObject(i) ?: continue
+            if (item.optString("name", "") != sliceName) continue
+            val x = item.optInt("x", 0)
+            val y = item.optInt("y", 0)
+            val w = item.optInt("width", 0)
+            val h = item.optInt("height", 0)
+            if (w <= 0 || h <= 0) return null
+            return Rect(x, y, x + w, y + h)
+        }
+        return null
+    }
+
+    private fun loadSpriteMetadata(assetPath: String): JSONObject? {
+        if (assetPath.isBlank()) return null
+        return spriteMetadata.getOrPut(assetPath) {
+            try {
+                context.assets.open("$assetPath.meta.json").bufferedReader().use { JSONObject(it.readText()) }
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
     private fun readJson(path: String): JSONObject {
         return context.assets.open(path).bufferedReader().use { JSONObject(it.readText()) }
     }
@@ -1024,6 +1268,14 @@ private class MotorRuntime(private val context: Context) {
         val obj = optJSONObject(key)
         if (obj != null) return obj.optString("path", "")
         return optString(key, "")
+    }
+
+    private fun animatorPath(animator: JSONObject): String {
+        return animator.assetPath("sprite_sheet").ifBlank { animator.optString("sprite_sheet_path", "") }
+    }
+
+    private fun spritePath(sprite: JSONObject): String {
+        return sprite.assetPath("texture").ifBlank { sprite.optString("texture_path", "") }
     }
 
     private fun color(value: JSONArray?, fallback: Int): Int {
@@ -1139,6 +1391,7 @@ private class MotorRuntime(private val context: Context) {
     }
 
     private data class CameraState(val x: Float, val y: Float, val offsetX: Float, val offsetY: Float, val zoom: Float)
+    private data class SpriteFrame(val src: Rect?, val width: Float, val height: Float)
 
     companion object {
         private const val TAG = "MotorGame"

@@ -161,7 +161,15 @@ class TestAndroidProjectGeneration(unittest.TestCase):
         self.assertIn("private val controlsPaint = Paint(Paint.ANTI_ALIAS_FLAG)", content)
         self.assertIn("paint.alpha = 255", content)
         self.assertIn("controlsPaint.color = Color.argb", content)
-        self.assertIn("drawCircle(sx, sy, controls.optDouble(\"left_stick_radius\", 86.0).toFloat(), controlsPaint)", content)
+        self.assertIn("canvas.drawCircle(sx, sy, radius, controlsPaint)", content)
+
+    def test_android_template_supports_dpad_mobile_controls(self):
+        kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"
+        content = kt_path.read_text(encoding="utf-8")
+        self.assertIn('controls.optString("movement_mode", "joystick")', content)
+        self.assertIn('if (movementMode(controls) == "dpad")', content)
+        self.assertIn('inputState["horizontal"] = if (dx >= 0.0f) 1.0f else -1.0f', content)
+        self.assertIn("private fun drawDpad", content)
 
     def test_android_template_renders_pixel_art_without_bitmap_filtering(self):
         kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"
@@ -183,6 +191,53 @@ class TestAndroidProjectGeneration(unittest.TestCase):
         self.assertIn("if (flipX) -1.0f else 1.0f", content)
         self.assertIn("if (flipY) -1.0f else 1.0f", content)
         self.assertIn("canvas.drawBitmap(bitmap, src, dst, spritePaint)", content)
+
+    def test_android_template_resolves_animator_slices_and_sprite_source_slice(self):
+        kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"
+        content = kt_path.read_text(encoding="utf-8")
+        self.assertIn("private val spriteMetadata = mutableMapOf<String, JSONObject?>()", content)
+        self.assertIn("private fun getSliceRect", content)
+        self.assertIn("private fun loadSpriteMetadata", content)
+        self.assertIn('context.assets.open("$assetPath.meta.json")', content)
+        self.assertIn('anim?.optJSONArray("slice_names")', content)
+        self.assertIn('sprite.optString("source_slice", "")', content)
+
+    def test_android_template_draws_sprite_and_animator_when_both_exist(self):
+        kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"
+        content = kt_path.read_text(encoding="utf-8")
+        self.assertIn("drawAnimatedSprite(canvas, animator, entity, camera)", content)
+        self.assertIn("drawSprite(canvas, sprite, entity, camera)", content)
+        self.assertNotIn("} else if (bitmap != null) {", content)
+
+    def test_android_template_does_not_render_camera_placeholder(self):
+        kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"
+        content = kt_path.read_text(encoding="utf-8")
+        self.assertIn('if (entity.components.has("Camera2D")) return', content)
+        self.assertIn("canvas.drawRect(dst, paint)", content)
+
+    def test_android_template_sorts_world_entities_like_renderer(self):
+        kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"
+        content = kt_path.read_text(encoding="utf-8")
+        self.assertIn("val sceneIndex: Int", content)
+        self.assertIn("for (entity in sortedWorldEntities())", content)
+        self.assertIn("private fun sortedWorldEntities(): List<Entity>", content)
+        self.assertIn('!it.components.has("Camera2D")', content)
+        self.assertIn("compareBy<Entity> { renderPassIndex(it) }", content)
+        self.assertIn(".thenBy { sortingLayerIndex(it) }", content)
+        self.assertIn(".thenBy { renderOrderInLayer(it) }", content)
+        self.assertIn(".thenBy { entityDepth(it) }", content)
+        self.assertIn(".thenBy { it.sceneIndex }", content)
+        self.assertIn('optJSONObject("render_2d")', content)
+        self.assertIn('optJSONArray("sorting_layers")', content)
+        self.assertIn('optJSONObject("RenderOrder2D")', content)
+
+    def test_android_template_fallback_animator_tracks_speed_loop_and_on_complete(self):
+        kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"
+        content = kt_path.read_text(encoding="utf-8")
+        self.assertIn('animator.optDouble("speed", 1.0)', content)
+        self.assertIn('animator.put("is_finished", true)', content)
+        self.assertIn('val onComplete = anim.optString("on_complete", "")', content)
+        self.assertIn('animator.put("current_state", onComplete)', content)
 
     def test_android_template_hides_disabled_mobile_action_buttons(self):
         kt_path = self.template_dir / "app" / "src" / "main" / "java" / "com" / "motorvideojuegos" / "MainActivity.kt"
@@ -207,7 +262,8 @@ class TestAndroidProjectGeneration(unittest.TestCase):
         self.assertIn("private fun visualRect(entity: Entity): RectF?", content)
         self.assertIn("val rect = visualRect(entity) ?: worldRect(entity) ?: return", content)
         self.assertIn('val c = entity.components.optJSONObject("Collider")', content)
-        self.assertIn('sprite.optDouble("height", 64.0)', content)
+        self.assertIn("private fun visualRectForSprite", content)
+        self.assertIn('sprite.optDouble("height", baseHeight)', content)
 
     def test_android_template_has_chaquopy_placeholders(self):
         root_gradle = (self.template_dir / "build.gradle").read_text(encoding="utf-8")
@@ -420,10 +476,17 @@ class TestAndroidRuntimeV1Validation(unittest.TestCase):
         self.assertEqual(config["window"]["height"], 390)
         self.assertIn("android_runtime_cache_key", config)
 
-    def test_runtime_config_android_cache_key_is_stable_and_content_derived(self):
+    def test_runtime_config_android_cache_key_is_stable_and_content_and_runtime_derived(self):
         from engine.export.android_exporter import AndroidExporter
         from engine.export.build_context import BuildContext
         from engine.export.models import ExportPreset
+
+        runtime_seed = self.project_root / "runtime_seed.txt"
+        runtime_seed.write_text("runtime-a", encoding="utf-8")
+
+        class TestAndroidExporter(AndroidExporter):
+            def _android_runtime_cache_seed_files(self):
+                return [runtime_seed]
 
         preset = ExportPreset(
             name="Android Mobile Debug",
@@ -441,7 +504,7 @@ class TestAndroidRuntimeV1Validation(unittest.TestCase):
         manifest = ctx.staging_dir / "game.manifest.json"
         manifest.write_text('{"assets":["a.png"]}', encoding="utf-8")
 
-        exporter = AndroidExporter()
+        exporter = TestAndroidExporter()
         exporter._write_runtime_config(ctx, ctx.staging_dir)
         first = json.loads((ctx.staging_dir / "runtime_config.json").read_text(encoding="utf-8"))[
             "android_runtime_cache_key"
@@ -455,9 +518,16 @@ class TestAndroidRuntimeV1Validation(unittest.TestCase):
         third = json.loads((ctx.staging_dir / "runtime_config.json").read_text(encoding="utf-8"))[
             "android_runtime_cache_key"
         ]
+        manifest.write_text('{"assets":["a.png"]}', encoding="utf-8")
+        runtime_seed.write_text("runtime-b", encoding="utf-8")
+        exporter._write_runtime_config(ctx, ctx.staging_dir)
+        fourth = json.loads((ctx.staging_dir / "runtime_config.json").read_text(encoding="utf-8"))[
+            "android_runtime_cache_key"
+        ]
 
         self.assertEqual(first, second)
         self.assertNotEqual(first, third)
+        self.assertNotEqual(first, fourth)
 
     def test_android_python_runtime_copies_reachable_scripts(self):
         from engine.export.android_exporter import AndroidExporter
@@ -579,6 +649,68 @@ class TestAndroidRuntimeV1Validation(unittest.TestCase):
 
         self.assertFalse(ok)
         self.assertTrue(any("ANDROID_RUNTIME_UNSUPPORTED_COMPONENT" in err for err in ctx.errors))
+
+    def test_validation_blocks_advanced_animator_without_shared_runtime(self):
+        from engine.export.android_exporter import AndroidExporter
+
+        scene = self._write_scene(
+            "test.json",
+            [
+                {
+                    "name": "Player",
+                    "components": {
+                        "Transform": {},
+                        "Animator": {
+                            "sprite_sheet": {"path": "assets/player.png", "guid": ""},
+                            "speed": 1.5,
+                            "flip_y": True,
+                            "parameters": {"facing": {"type": "string", "default": "down"}},
+                            "state_machine": {"entry_state": "idle", "states": {}},
+                            "animations": {
+                                "idle": {
+                                    "slice_names": ["idle_0"],
+                                    "fps": 8.0,
+                                    "loop": False,
+                                    "on_complete": "run",
+                                },
+                                "run": {"frames": [1], "fps": 8.0, "loop": True},
+                            },
+                        },
+                    },
+                },
+            ],
+        )
+        ctx = self._ctx()
+        ok = AndroidExporter()._validate_android_runtime_v1(ctx, [scene], [])
+
+        self.assertFalse(ok)
+        self.assertTrue(any("ANDROID_RUNTIME_UNSUPPORTED_ANIMATOR_ADVANCED" in err for err in ctx.errors))
+
+    def test_validation_accepts_advanced_animator_with_shared_runtime(self):
+        from engine.export.android_exporter import AndroidExporter
+
+        scene = self._write_scene(
+            "test.json",
+            [
+                {
+                    "name": "Player",
+                    "components": {
+                        "Transform": {},
+                        "Animator": {
+                            "sprite_sheet": {"path": "assets/player.png", "guid": ""},
+                            "speed": 1.5,
+                            "parameters": {"facing": {"type": "string", "default": "down"}},
+                            "state_machine": {"entry_state": "idle", "states": {}},
+                            "animations": {"idle": {"slice_names": ["idle_0"], "fps": 8.0, "loop": True}},
+                        },
+                    },
+                },
+            ],
+        )
+        ctx = self._ctx(android_python_runtime=True, min_sdk=24)
+        ok = AndroidExporter()._validate_android_runtime_v1(ctx, [scene], [])
+
+        self.assertTrue(ok, ctx.errors)
 
 
 class TestIOSExporterImport(unittest.TestCase):

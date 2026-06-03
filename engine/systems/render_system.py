@@ -30,6 +30,7 @@ from engine.rendering.render_spatial_index import AABB, RenderSpatialIndex
 from engine.rendering.render_targets import RenderTargetPool
 from engine.rendering.tilemap_chunk_renderer import TilemapChunkRenderer
 from engine.resources.texture_manager import TextureManager
+from engine.utils.viewport import resolve_effective_camera2d
 
 if TYPE_CHECKING:
     from engine.project.project_service import ProjectService
@@ -270,8 +271,15 @@ class RenderSystem:
     def get_last_render_graph(self) -> dict[str, Any]:
         return self._public_graph(self._render_graph_cache)
 
-    def get_debug_geometry_dump(self, world: World, viewport_size: Optional[tuple[float, float]] = None) -> dict[str, Any]:
-        graph = self._public_graph(self._build_render_graph(world, viewport_size=viewport_size))
+    def get_debug_geometry_dump(
+        self,
+        world: World,
+        viewport_size: Optional[tuple[float, float]] = None,
+        camera_profile_id: Optional[str] = None,
+    ) -> dict[str, Any]:
+        graph = self._public_graph(
+            self._build_render_graph(world, viewport_size=viewport_size, camera_profile_id=camera_profile_id)
+        )
         debug_pass = cast(
             dict[str, Any],
             next((entry for entry in graph.get("passes", []) if entry.get("name") == "Debug"), {"commands": [], "stats": {}}),
@@ -286,8 +294,13 @@ class RenderSystem:
             "stats": dict(debug_pass.get("stats", {})),
         }
 
-    def profile_world(self, world: World, viewport_size: Optional[tuple[float, float]] = None) -> dict[str, Any]:
-        frame_plan = self._build_frame_plan(world, viewport_size=viewport_size)
+    def profile_world(
+        self,
+        world: World,
+        viewport_size: Optional[tuple[float, float]] = None,
+        camera_profile_id: Optional[str] = None,
+    ) -> dict[str, Any]:
+        frame_plan = self._build_frame_plan(world, viewport_size=viewport_size, camera_profile_id=camera_profile_id)
         return self._copy_stats(frame_plan["totals"])
 
     def render(
@@ -297,8 +310,9 @@ class RenderSystem:
         use_world_camera: bool = True,
         viewport_size: Optional[tuple[float, float]] = None,
         allow_render_targets: bool = True,
+        camera_profile_id: Optional[str] = None,
     ) -> None:
-        frame_plan = self._build_frame_plan(world, viewport_size=viewport_size)
+        frame_plan = self._build_frame_plan(world, viewport_size=viewport_size, camera_profile_id=camera_profile_id)
         graph = frame_plan["graph"]
         backend_ready = bool(hasattr(rl, "is_window_ready") and rl.is_window_ready())
 
@@ -312,7 +326,11 @@ class RenderSystem:
 
         camera = override_camera
         if camera is None and use_world_camera:
-            camera = self._build_camera_from_world(world, viewport_size=viewport_size)
+            camera = self._build_camera_from_world(
+                world,
+                viewport_size=viewport_size,
+                camera_profile_id=camera_profile_id,
+            )
         if allow_render_targets:
             self._render_targets.begin_frame()
             self._prepare_tilemap_chunk_targets(graph)
@@ -376,16 +394,27 @@ class RenderSystem:
         self._sorted_entities_cache_key = cache_key
         return self._sorted_entities_cache
 
-    def _build_render_graph(self, world: World, viewport_size: Optional[tuple[float, float]] = None) -> dict[str, Any]:
+    def _build_render_graph(
+        self,
+        world: World,
+        viewport_size: Optional[tuple[float, float]] = None,
+        camera_profile_id: Optional[str] = None,
+    ) -> dict[str, Any]:
         sorting_layers = self._get_sorting_layers(world)
         normalized_viewport = self._normalize_viewport_size(viewport_size)
-        camera_bounds = self._resolve_spatial_camera_bounds(world, viewport_size, normalized_viewport)
+        camera_bounds = self._resolve_spatial_camera_bounds(
+            world,
+            viewport_size,
+            normalized_viewport,
+            camera_profile_id=camera_profile_id,
+        )
         cache_key = (
             id(world),
             self._world_version(world, "render_version"),
             self._world_version(world, "transform_version"),
             int(getattr(world, "selection_version", -1)),
             normalized_viewport,
+            str(camera_profile_id or ""),
             camera_bounds,
             tuple(sorting_layers),
             bool(self.spatial_culling_enabled),
@@ -511,7 +540,11 @@ class RenderSystem:
                 )
 
         if self.debug_draw_camera:
-            camera_geometry = self._build_camera_geometry(world, normalized_viewport)
+            camera_geometry = self._build_camera_geometry(
+                world,
+                normalized_viewport,
+                camera_profile_id=camera_profile_id,
+            )
             if camera_geometry is not None:
                 self._append_debug_command(
                     pass_commands["Debug"],
@@ -642,8 +675,13 @@ class RenderSystem:
         world: World,
         *,
         viewport_size: Optional[tuple[float, float]],
+        camera_profile_id: Optional[str] = None,
     ) -> dict[str, Any]:
-        graph = self._build_render_graph(world, viewport_size=viewport_size)
+        graph = self._build_render_graph(
+            world,
+            viewport_size=viewport_size,
+            camera_profile_id=camera_profile_id,
+        )
         minimap_config = self._get_minimap_config(world)
         debug_commands: list[RenderCommand] = next((entry["commands"] for entry in graph["passes"] if entry["name"] == "Debug"), [])
         target_jobs: list[dict[str, Any]] = []
@@ -682,9 +720,14 @@ class RenderSystem:
         world: World,
         *,
         viewport_size: Optional[tuple[float, float]],
+        camera_profile_id: Optional[str] = None,
     ) -> FramePlan2D:
         return self._pipeline_planner.adapt_frame_plan_payload(
-            self._build_frame_plan(world, viewport_size=viewport_size)
+            self._build_frame_plan(
+                world,
+                viewport_size=viewport_size,
+                camera_profile_id=camera_profile_id,
+            )
         )
 
     def _build_batches(self, commands: list[RenderCommand]) -> list[RenderBatch]:
@@ -1185,20 +1228,21 @@ class RenderSystem:
         world: World,
         viewport_size: Optional[tuple[float, float]],
         normalized_viewport: tuple[int, int],
+        *,
+        camera_profile_id: Optional[str] = None,
     ) -> AABB | None:
         if not self.spatial_culling_enabled:
             return None
         if viewport_size is None and not bool(hasattr(rl, "is_window_ready") and rl.is_window_ready()):
             return None
-        camera = self._build_camera_from_world(world, viewport_size=normalized_viewport)
-        if camera is None:
+        resolved = resolve_effective_camera2d(
+            world,
+            viewport_size=normalized_viewport,
+            camera_profile_id=camera_profile_id,
+        )
+        if resolved is None:
             return None
-        zoom = max(abs(float(camera.zoom)), 0.0001)
-        width = float(normalized_viewport[0]) / zoom
-        height = float(normalized_viewport[1]) / zoom
-        left = float(camera.target.x) - (float(camera.offset.x) / zoom)
-        top = float(camera.target.y) - (float(camera.offset.y) / zoom)
-        return (left, top, left + width, top + height)
+        return resolved.rect
 
     def _compute_minimap_bounds(self, entities: list[Entity]) -> tuple[float, float, float, float]:
         transforms = [transform for entity in entities if (transform := entity.get_component(Transform)) is not None]
@@ -1351,37 +1395,41 @@ class RenderSystem:
         self,
         world: World,
         viewport_size: Optional[tuple[float, float]] = None,
+        camera_profile_id: Optional[str] = None,
     ) -> Optional[rl.Camera2D]:
-        primary_entity = None
-        for entity in world.get_entities_with(Transform, Camera2D):
-            camera_component = entity.get_component(Camera2D)
-            if camera_component is not None and camera_component.enabled and camera_component.is_primary:
-                primary_entity = entity
-                break
-        if primary_entity is None:
+        resolved = resolve_effective_camera2d(
+            world,
+            viewport_size=viewport_size,
+            camera_profile_id=camera_profile_id,
+        )
+        if resolved is None:
             return None
-
-        transform = primary_entity.get_component(Transform)
-        camera_component = primary_entity.get_component(Camera2D)
-        if transform is None or camera_component is None:
-            return None
-
-        target_x = transform.x
-        target_y = transform.y
-        follow_target = world.get_entity_by_name(camera_component.follow_entity) if camera_component.follow_entity else None
-        if follow_target is not None and follow_target.active:
-            follow_transform = follow_target.get_component(Transform)
-            if follow_transform is not None and follow_transform.enabled:
-                target_x, target_y = self._resolve_camera_target(camera_component, follow_transform, viewport_size)
-
-        target_x, target_y = self._apply_camera_clamp(camera_component, target_x, target_y)
-
         camera = rl.Camera2D()
-        camera.target = rl.Vector2(target_x, target_y)
-        camera.offset = rl.Vector2(camera_component.offset_x, camera_component.offset_y)
-        camera.rotation = camera_component.rotation
-        camera.zoom = camera_component.zoom
+        camera.target = rl.Vector2(resolved.target_x, resolved.target_y)
+        camera.offset = rl.Vector2(resolved.offset_x, resolved.offset_y)
+        camera.rotation = resolved.rotation
+        camera.zoom = resolved.zoom
         return camera
+
+    @staticmethod
+    def _camera_profile_override(camera_component: Camera2D, camera_profile_id: Optional[str]) -> dict[str, Any]:
+        profile_id = str(camera_profile_id or "").strip()
+        if not profile_id:
+            return {}
+        overrides = getattr(camera_component, "profile_overrides", {})
+        if not isinstance(overrides, dict):
+            return {}
+        payload = overrides.get(profile_id, {})
+        return payload if isinstance(payload, dict) else {}
+
+    @staticmethod
+    def _profile_number(profile_override: dict[str, Any], key: str, fallback: float) -> float:
+        if key not in profile_override:
+            return float(fallback)
+        try:
+            return float(profile_override[key])
+        except (TypeError, ValueError):
+            return float(fallback)
 
     def _resolve_camera_target(
         self,
@@ -1833,21 +1881,25 @@ class RenderSystem:
         top = transform.y - (height * offset_y)
         return {"left": float(left), "top": float(top), "width": float(width), "height": float(height)}
 
-    def _build_camera_geometry(self, world: World, viewport_size: tuple[float, float]) -> dict[str, Any] | None:
-        camera = self._build_camera_from_world(world, viewport_size=viewport_size)
-        if camera is None:
+    def _build_camera_geometry(
+        self,
+        world: World,
+        viewport_size: tuple[float, float],
+        camera_profile_id: Optional[str] = None,
+    ) -> dict[str, Any] | None:
+        resolved = resolve_effective_camera2d(
+            world,
+            viewport_size=viewport_size,
+            camera_profile_id=camera_profile_id,
+        )
+        if resolved is None:
             return None
-        zoom = max(float(camera.zoom), 0.0001)
-        width = float(viewport_size[0]) / zoom
-        height = float(viewport_size[1]) / zoom
-        center_x = float(camera.target.x)
-        center_y = float(camera.target.y)
         return {
             "kind": "rect",
-            "x": center_x - (width * 0.5),
-            "y": center_y - (height * 0.5),
-            "width": width,
-            "height": height,
+            "x": resolved.rect_left,
+            "y": resolved.rect_top,
+            "width": resolved.rect_width,
+            "height": resolved.rect_height,
             "thickness": 1,
             "color": [64, 224, 208, 255],
         }

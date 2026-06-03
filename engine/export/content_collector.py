@@ -76,33 +76,25 @@ def collect_content(
 
     dep_map = graph.dependency_map
 
+    copied_asset_paths: set[str] = set()
     for asset_path in sorted(set(all_assets)):
-        src = _safe_project_path(root, asset_path)
-        if src is None:
+        entry = _copy_manifest_entry(root, content_dir, asset_path, dep_map)
+        if entry is None:
             continue
-        if not src.exists() or not src.is_file():
-            continue
-        dst = content_dir / asset_path
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dst)
-        size = src.stat().st_size
-        sha = _sha256_file(src)
-        kind = _classify_kind(asset_path)
-        entry_deps: list[str] = list(dep_map.get(asset_path, []))
-        entry = ContentManifestEntry(
-            guid=_stable_guid(asset_path),
-            path=asset_path,
-            kind=kind,
-            sha256=sha,
-            size_bytes=size,
-            dependencies=entry_deps,
-        )
+        copied_asset_paths.add(entry.path)
         if asset_path.endswith(".json") and (
             "levels/" in asset_path or asset_path.startswith("levels/")
         ):
             manifest.scenes.append(entry)
         else:
             manifest.assets.append(entry)
+
+        sidecar_path = f"{asset_path}.meta.json"
+        if sidecar_path not in copied_asset_paths:
+            sidecar_entry = _copy_manifest_entry(root, content_dir, sidecar_path, dep_map)
+            if sidecar_entry is not None:
+                copied_asset_paths.add(sidecar_entry.path)
+                manifest.assets.append(sidecar_entry)
 
     for script_path in sorted(graph.reachable_scripts):
         src = _safe_project_path(root, script_path)
@@ -123,6 +115,30 @@ def collect_content(
         ))
 
     return manifest
+
+
+def _copy_manifest_entry(
+    root: Path,
+    content_dir: Path,
+    asset_path: str,
+    dep_map: dict[str, list[str]],
+) -> ContentManifestEntry | None:
+    src = _safe_project_path(root, asset_path)
+    if src is None:
+        return None
+    if not src.exists() or not src.is_file():
+        return None
+    dst = content_dir / asset_path
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+    return ContentManifestEntry(
+        guid=_stable_guid(asset_path),
+        path=asset_path,
+        kind=_classify_kind(asset_path),
+        sha256=_sha256_file(src),
+        size_bytes=src.stat().st_size,
+        dependencies=list(dep_map.get(asset_path, [])),
+    )
 
 
 def write_manifest(manifest: ContentManifest, staging_dir: str | Path) -> Path:

@@ -257,6 +257,14 @@ Helpers de componentes oficiales:
 - tilemap: `create_tilemap`, `set_tilemap_tile`, `clear_tilemap_tile`, `get_tilemap`, `get_tilemap_layer`, `create_tilemap_layer`, `update_tilemap_layer`, `delete_tilemap_layer`, `set_tilemap_tile_full`, `bulk_set_tilemap_tiles`, `resize_tilemap`, `set_cells_terrain_connect`
 - animator: `list_animator_states`, `set_animator_sprite_sheet`, `upsert_animator_state`, `set_animator_state_frames`, `remove_animator_state`, `duplicate_animator_state`, `rename_animator_state`, `set_animator_flip`, `set_animator_speed`, `get_animator_info`, `create_animator_state`
 
+`update_camera2d` y `set_camera_framing` aceptan `profile_overrides` en
+`Camera2D` para persistir encuadres por `device_profile`. Cada perfil puede
+guardar `target_x/y` para camaras libres, `target_offset_x/y` para camaras con
+`follow_entity`, y `offset_x/y`, `zoom`, `rotation`.
+En el editor, al seleccionar una entidad con `Camera2D` en Scene View, el marco
+editable de camara escribe esos mismos overrides: mover actualiza target/offset
+del perfil activo y redimensionar actualiza `zoom`.
+
 Metadata:
 
 - `set_feature_metadata(key, value)`
@@ -823,9 +831,10 @@ por sprite. `UIImage` representa imagen UI no interactiva con `sprite`,
 `MobileControls2D` es un overlay serializable para movil. `create_mobile_controls`
 crea `MobileControlsCanvas` y `MobileControlsOverlay`; en runtime
 `MobileControlsSystem` convierte touch/pointer en `InputMap.last_state` del
-`target_entity`. En Android, el preset puede incluir `android_python_runtime:
-true` para activar Chaquopy 17.0.0 y ejecutar `ScriptBehaviour`; este flag
-requiere `min_sdk >= 24`.
+`target_entity`. Su `movement_mode` soporta `"joystick"` por defecto y `"dpad"`
+para cruceta discreta de 4 direcciones. En Android, el preset puede incluir
+`android_python_runtime: true` para activar Chaquopy 17.0.0 y ejecutar
+`ScriptBehaviour`; este flag requiere `min_sdk >= 24`.
 
 ## Uso recomendado para agentes
 

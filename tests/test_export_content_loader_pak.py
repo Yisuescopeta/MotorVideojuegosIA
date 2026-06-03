@@ -9,6 +9,7 @@ import zipfile
 from pathlib import Path
 
 from engine.runtime.content_loader import ContentLoader
+from engine.runtime.runtime_project_service import RuntimeProjectService
 
 
 class TestContentLoaderPakSceneLoading(unittest.TestCase):
@@ -166,6 +167,61 @@ class TestContentLoaderPakSceneLoading(unittest.TestCase):
         result = loader.verify_integrity()
         self.assertFalse(result["valid"])
         self.assertIn("levels/missing.json", result["tampered"])
+
+
+class TestRuntimeProjectServiceSlices(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(str(self.tmp), ignore_errors=True)
+
+    def _metadata_payload(self) -> dict:
+        return {
+            "path": "assets/player.png",
+            "import_settings": {
+                "slices": [
+                    {"name": "idle_0", "x": 4, "y": 8, "width": 16, "height": 24, "pivot_x": 0.5, "pivot_y": 0.5},
+                ],
+            },
+        }
+
+    def test_get_slice_rect_from_directory_sidecar(self):
+        metadata_path = self.tmp / "assets" / "player.png.meta.json"
+        metadata_path.parent.mkdir(parents=True, exist_ok=True)
+        metadata_path.write_text(json.dumps(self._metadata_payload()), encoding="utf-8")
+
+        service = RuntimeProjectService(self.tmp)
+        rect = service.get_slice_rect({"path": "assets/player.png", "guid": ""}, "idle_0")
+
+        self.assertEqual(rect["x"], 4)
+        self.assertEqual(rect["y"], 8)
+        self.assertEqual(rect["width"], 16)
+        self.assertEqual(rect["height"], 24)
+
+    def test_get_slice_rect_from_packed_sidecar(self):
+        manifest = {
+            "schema_version": 1,
+            "entry_scene": "levels/main.json",
+            "assets": [
+                {"guid": "guid_player", "path": "assets/player.png", "kind": "texture", "sha256": "", "size_bytes": 0, "dependencies": []},
+                {"guid": "guid_player_meta", "path": "assets/player.png.meta.json", "kind": "data", "sha256": "", "size_bytes": 0, "dependencies": []},
+            ],
+            "scenes": [],
+            "scripts": [],
+        }
+        with zipfile.ZipFile(self.tmp / "game.pak", "w", compression=zipfile.ZIP_DEFLATED) as pak:
+            pak.writestr("game.manifest.json", json.dumps(manifest))
+            pak.writestr("assets/player.png.meta.json", json.dumps(self._metadata_payload()))
+
+        service = RuntimeProjectService(self.tmp)
+        rect = service.get_slice_rect("assets/player.png", "idle_0")
+
+        self.assertEqual(rect["x"], 4)
+        self.assertEqual(rect["y"], 8)
+        self.assertEqual(rect["width"], 16)
+        self.assertEqual(rect["height"], 24)
 
 
 if __name__ == "__main__":

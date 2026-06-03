@@ -43,6 +43,8 @@ DOCUMENTATION:
 
 from __future__ import annotations
 
+from engine.config import ENGINE_VERSION
+
 # Public API exports
 from motor.cli import (
     create_motor_parser,
@@ -51,7 +53,7 @@ from motor.cli import (
     main,
 )
 
-__version__ = "2026.03"
+__version__ = ENGINE_VERSION
 
 __all__ = [
     # Official public API

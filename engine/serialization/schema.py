@@ -935,6 +935,24 @@ def _validate_camera2d(data: dict[str, Any], *, path: str) -> list[str]:
     for key in ("clamp_left", "clamp_right", "clamp_top", "clamp_bottom"):
         if key in data and data[key] is not None:
             _expect_number(data[key], path=f"{path}.{key}", errors=errors)
+    if "profile_overrides" in data:
+        overrides = data["profile_overrides"]
+        if not isinstance(overrides, dict):
+            errors.append(f"{path}.profile_overrides: expected object")
+        else:
+            for profile_id, override in overrides.items():
+                override_path = f"{path}.profile_overrides.{profile_id}"
+                if not isinstance(profile_id, str) or not profile_id.strip():
+                    errors.append(f"{path}.profile_overrides: expected non-empty string keys")
+                    continue
+                payload = _expect_object(override, path=override_path, errors=errors)
+                if payload is None:
+                    continue
+                for key in ("target_x", "target_y", "target_offset_x", "target_offset_y", "offset_x", "offset_y", "rotation"):
+                    if key in payload:
+                        _expect_number(payload[key], path=f"{override_path}.{key}", errors=errors)
+                if "zoom" in payload:
+                    _expect_number(payload["zoom"], path=f"{override_path}.zoom", errors=errors, exclusive_minimum=0.0)
     return errors
 
 

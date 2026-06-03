@@ -621,6 +621,69 @@ class TestExportRuntimeScriptedPickups(unittest.TestCase):
                     sys.path.remove(path)
 
 
+class TestRPGAndroidRuntimeParity(unittest.TestCase):
+    """Regression coverage for RPG Animator state through Android shared runtime path."""
+
+    repo_root = Path(__file__).resolve().parents[1]
+    project_root = repo_root / "projects" / "RPG"
+
+    def setUp(self):
+        self.registry = create_default_registry()
+        self._before_paths = set(sys.path)
+
+    def tearDown(self):
+        sys.modules.pop("player", None)
+        for path in list(sys.path):
+            if path not in self._before_paths:
+                sys.path.remove(path)
+
+    @unittest.skipUnless(project_root.exists(), "RPG project not present at projects/RPG")
+    def test_rpg_shared_runtime_advances_idle_and_mobile_walk_animation(self):
+        from engine.runtime.shared_game_runtime import SharedGameRuntime
+
+        runtime = SharedGameRuntime(
+            loader=ContentLoader(self.project_root),
+            registry=self.registry,
+            window_config={"width": 844, "height": 390},
+        )
+        runtime.setup_scripts_path()
+        try:
+            self.assertTrue(runtime.load_scene("levels/main_scene.json"))
+            for _ in range(10):
+                runtime.run_frame(1.0 / 60.0)
+
+            player = runtime.world.get_entity_by_name("Player")
+            animator = player.get_component_by_name("Animator")
+            self.assertEqual(animator.current_state, "idle_down")
+            self.assertGreater(animator.current_frame, 0)
+
+            self.assertTrue(runtime.load_scene("levels/main_scene.json"))
+            for frame in range(20):
+                runtime.run_frame(
+                    1.0 / 60.0,
+                    pointer_state={
+                        "x": 80.0,
+                        "y": 304.0,
+                        "down": True,
+                        "pressed": frame == 0,
+                        "released": False,
+                        "frames": 1,
+                    },
+                )
+
+            player = runtime.world.get_entity_by_name("Player")
+            animator = player.get_component_by_name("Animator")
+            transform = player.get_component_by_name("Transform")
+            input_map = player.get_component_by_name("InputMap")
+            self.assertEqual(animator.current_state, "walk_side")
+            self.assertGreater(animator.current_frame, 0)
+            self.assertTrue(animator.flip_x)
+            self.assertLess(transform.x, -1.0)
+            self.assertLess(input_map.last_state["horizontal"], 0.0)
+        finally:
+            runtime.shutdown()
+
+
 class TestPrueva1ExportParity(unittest.TestCase):
     """Regression coverage for Prueva1 scripted pickups in export runtime."""
 

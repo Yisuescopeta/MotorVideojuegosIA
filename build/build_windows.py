@@ -39,6 +39,7 @@ def find_iscc() -> str:
     """Busca ISCC.exe de Inno Setup en ubicaciones comunes."""
     candidates = [
         shutil.which("ISCC"),
+        os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Inno Setup 6", "ISCC.exe"),
         os.path.join(os.environ.get("ProgramFiles(x86)", ""), "Inno Setup 6", "ISCC.exe"),
         os.path.join(os.environ.get("ProgramFiles", ""), "Inno Setup 6", "ISCC.exe"),
     ]

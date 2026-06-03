@@ -1817,7 +1817,14 @@ class Game:
                     transform_space = self.editor_layout.transform_space if self.editor_layout else TransformSpace.WORLD
                     pivot_mode = self.editor_layout.pivot_mode if self.editor_layout else PivotMode.PIVOT
                     self.editor_layout.begin_scene_camera_pass()
-                    self.gizmo_system.render(active_world, active_tool, transform_space, pivot_mode)
+                    self.gizmo_system.render(
+                        active_world,
+                        active_tool,
+                        transform_space,
+                        pivot_mode,
+                        camera_profile_id=self.editor_layout.game_view_device_profile if self.editor_layout is not None else None,
+                        camera_viewport_size=self._current_viewport_size(),
+                    )
                     self.editor_layout.end_scene_camera_pass()
 
                 if self._light2d_system is not None and active_world is not None:
@@ -1848,7 +1855,9 @@ class Game:
             # --- GAME VIEW RENDER ---
             if self.editor_layout and self.editor_layout.active_tab == "GAME":
                 target_world = (
-                    self.world if self._state == EngineState.PLAY or self._state == EngineState.PAUSED else None
+                    self.world
+                    if self._state in (EngineState.PLAY, EngineState.PAUSED, EngineState.STEPPING)
+                    else active_world
                 )
 
                 self.editor_layout.begin_game_render()
@@ -1856,7 +1865,11 @@ class Game:
                 if target_world and self._render_system and game_texture is not None:
                     texture = game_texture.texture
                     viewport_size = (float(texture.width), float(texture.height))
-                    self._render_system.render(target_world, viewport_size=viewport_size)
+                    self._render_system.render(
+                        target_world,
+                        viewport_size=viewport_size,
+                        camera_profile_id=self.editor_layout.game_view_device_profile,
+                    )
                 else:
                     rl.draw_text("Press PLAY to start", 10, 10, 20, rl.GRAY)
 

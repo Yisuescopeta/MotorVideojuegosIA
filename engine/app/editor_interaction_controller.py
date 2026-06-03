@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import copy
 import os
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import pyray as rl
+from engine.components.camera2d import Camera2D
+from engine.components.transform import Transform
 from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.editor_selection import EditorSelectionState
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
@@ -43,6 +46,7 @@ class EditorInteractionController:
         self._get_history_manager = get_history_manager
         self._get_current_scene_viewport_size = get_current_scene_viewport_size
         self._get_current_viewport_size = get_current_viewport_size
+        self._camera_drag_state: dict[str, Any] | None = None
 
     def _apply_selection(self, active_world: Optional["World"], entity_name: Optional[str]) -> Optional[str]:
         normalized = EditorSelectionState.normalize(entity_name)
@@ -61,6 +65,14 @@ class EditorInteractionController:
     def commit_gizmo_drag(self, drag: Any) -> None:
         scene_manager = self._get_scene_manager()
         if scene_manager is None:
+            return
+        if getattr(drag, "component_name", "") == "Camera2D":
+            scene_manager.apply_edit_to_world(
+                drag.entity_name,
+                "Camera2D",
+                "profile_overrides",
+                copy.deepcopy(drag.after_state),
+            )
             return
         active_key = scene_manager.active_scene_key
         if not active_key:
@@ -179,6 +191,9 @@ class EditorInteractionController:
             if layout.is_mouse_in_inspector():
                 mouse_in_scene = False
 
+        if self._handle_game_camera_edit(active_world):
+            return
+
         ui_system = self._get_ui_system()
         scene_ui_visible = False
         if ui_system is not None and active_world is not None:
@@ -225,6 +240,8 @@ class EditorInteractionController:
                     ui_system=ui_system if scene_ui_visible else None,
                     ui_mouse_pos=mouse_ui,
                     ui_viewport_size=scene_viewport_size,
+                    camera_profile_id=getattr(layout, "game_view_device_profile", None) if layout is not None else None,
+                    camera_viewport_size=self._get_current_viewport_size(),
                 )
                 if (was_dragging or gizmo_system.is_dragging) and scene_manager is not None:
                     scene_manager.mark_edit_world_dirty(reason="transient_preview")
@@ -328,6 +345,151 @@ class EditorInteractionController:
                     )
 
         return state
+
+    def _handle_game_camera_edit(self, active_world: Optional["World"]) -> bool:
+        layout = self._get_editor_layout()
+        if layout is None:
+            return False
+        if getattr(layout, "active_tab", "") != "GAME" or getattr(layout, "active_tool", None) != EditorTool.CAMERA:
+            self._camera_drag_state = None
+            return False
+        if active_world is None:
+            return True
+
+        scene_manager = self._get_scene_manager()
+        profile_id = str(getattr(layout, "game_view_device_profile", "") or "")
+        camera_entity = self._find_primary_camera_entity(active_world)
+        if camera_entity is None:
+            self._camera_drag_state = None
+            return True
+
+        if bool(getattr(layout, "request_reset_camera_profile", False)):
+            layout.request_reset_camera_profile = False
+            self._reset_camera_profile_override(camera_entity, profile_id, scene_manager)
+            return True
+
+        mouse_in_game = bool(hasattr(layout, "is_mouse_in_game_view") and layout.is_mouse_in_game_view())
+        dragging = self._camera_drag_state is not None
+        if not mouse_in_game and not dragging:
+            return True
+
+        if rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT) and mouse_in_game:
+            mouse = rl.get_mouse_position()
+            texture_x, texture_y = layout.map_game_view_screen_point_to_texture(float(mouse.x), float(mouse.y))
+            self._camera_drag_state = {
+                "entity_name": camera_entity.name,
+                "profile_id": profile_id,
+                "last_x": float(texture_x),
+                "last_y": float(texture_y),
+            }
+            self._ensure_camera_profile_override(camera_entity, profile_id)
+            return True
+
+        if self._camera_drag_state is None:
+            return True
+
+        if rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT):
+            mouse = rl.get_mouse_position()
+            texture_x, texture_y = layout.map_game_view_screen_point_to_texture(float(mouse.x), float(mouse.y))
+            delta_x = float(texture_x) - float(self._camera_drag_state["last_x"])
+            delta_y = float(texture_y) - float(self._camera_drag_state["last_y"])
+            self._camera_drag_state["last_x"] = float(texture_x)
+            self._camera_drag_state["last_y"] = float(texture_y)
+            self._apply_camera_drag_delta(camera_entity, profile_id, delta_x, delta_y)
+            if scene_manager is not None:
+                scene_manager.mark_edit_world_dirty(reason="transient_preview")
+            return True
+
+        if rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
+            self._persist_camera_profile_override(camera_entity, profile_id, scene_manager)
+            self._camera_drag_state = None
+            return True
+
+        if not rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT):
+            self._camera_drag_state = None
+        return True
+
+    @staticmethod
+    def _find_primary_camera_entity(active_world: "World") -> Any | None:
+        for entity in active_world.get_entities_with(Transform, Camera2D):
+            camera = entity.get_component(Camera2D)
+            if camera is not None and camera.enabled and camera.is_primary:
+                return entity
+        return None
+
+    def _ensure_camera_profile_override(self, camera_entity: Any, profile_id: str) -> dict[str, Any]:
+        camera = camera_entity.get_component(Camera2D)
+        transform = camera_entity.get_component(Transform)
+        if camera is None or transform is None:
+            return {}
+        overrides = self._camera_overrides(camera)
+        existing = overrides.get(profile_id)
+        if isinstance(existing, dict):
+            return existing
+        payload: dict[str, Any] = {
+            "offset_x": float(camera.offset_x),
+            "offset_y": float(camera.offset_y),
+            "zoom": float(camera.zoom),
+            "rotation": float(camera.rotation),
+        }
+        if camera.follow_entity:
+            payload["target_offset_x"] = 0.0
+            payload["target_offset_y"] = 0.0
+        else:
+            payload["target_x"] = float(transform.x)
+            payload["target_y"] = float(transform.y)
+        overrides[profile_id] = payload
+        camera.profile_overrides = overrides
+        return payload
+
+    def _apply_camera_drag_delta(self, camera_entity: Any, profile_id: str, delta_x: float, delta_y: float) -> None:
+        camera = camera_entity.get_component(Camera2D)
+        if camera is None:
+            return
+        payload = self._ensure_camera_profile_override(camera_entity, profile_id)
+        zoom = max(abs(float(payload.get("zoom", camera.zoom) or camera.zoom or 1.0)), 0.0001)
+        world_dx = float(delta_x) / zoom
+        world_dy = float(delta_y) / zoom
+        if camera.follow_entity:
+            payload["target_offset_x"] = float(payload.get("target_offset_x", 0.0) or 0.0) - world_dx
+            payload["target_offset_y"] = float(payload.get("target_offset_y", 0.0) or 0.0) - world_dy
+        else:
+            payload["target_x"] = float(payload.get("target_x", 0.0) or 0.0) - world_dx
+            payload["target_y"] = float(payload.get("target_y", 0.0) or 0.0) - world_dy
+
+    def _persist_camera_profile_override(self, camera_entity: Any, profile_id: str, scene_manager: Any) -> None:
+        camera = camera_entity.get_component(Camera2D)
+        if camera is None or scene_manager is None:
+            return
+        scene_manager.apply_edit_to_world(
+            camera_entity.name,
+            "Camera2D",
+            "profile_overrides",
+            copy.deepcopy(self._camera_overrides(camera)),
+        )
+
+    def _reset_camera_profile_override(self, camera_entity: Any, profile_id: str, scene_manager: Any) -> None:
+        camera = camera_entity.get_component(Camera2D)
+        if camera is None:
+            return
+        overrides = self._camera_overrides(camera)
+        overrides.pop(profile_id, None)
+        camera.profile_overrides = overrides
+        if scene_manager is not None:
+            scene_manager.apply_edit_to_world(
+                camera_entity.name,
+                "Camera2D",
+                "profile_overrides",
+                copy.deepcopy(overrides),
+            )
+
+    @staticmethod
+    def _camera_overrides(camera: Camera2D) -> dict[str, dict[str, Any]]:
+        overrides = getattr(camera, "profile_overrides", {})
+        if not isinstance(overrides, dict):
+            camera.profile_overrides = {}
+            return {}
+        return overrides
 
     @staticmethod
     def _build_sprite_entity_payload(file_path: str, x: float, y: float) -> dict[str, dict[str, Any]]:

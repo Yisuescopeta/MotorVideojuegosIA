@@ -5,19 +5,22 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pyray as rl
+from engine.components.camera2d import Camera2D
 from engine.components.recttransform import RectTransform
 from engine.components.sprite import Sprite
 from engine.components.transform import Transform
 from engine.core.game import Game
 from engine.ecs.entity import Entity
+from engine.ecs.world import World
 from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.editor_layout import EditorLayout
 from engine.editor.editor_shell_state import EditorPanelSlots, EditorShellState
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
-from engine.editor.gizmo_system import GizmoSystem
+from engine.editor.gizmo_system import GizmoMode, GizmoSystem
 from engine.levels.component_registry import create_default_registry
 from engine.project.project_service import ProjectService
 from engine.scenes.scene_manager import SceneManager
+from engine.utils.viewport import resolve_effective_camera2d
 
 
 class EditorLayoutToolStateTests(unittest.TestCase):
@@ -158,6 +161,31 @@ class EditorLayoutToolStateTests(unittest.TestCase):
 
         self.assertAlmostEqual(x, 195.0, places=3)
         self.assertAlmostEqual(y, 422.0, places=3)
+
+    def test_game_view_content_hit_test_excludes_letterbox(self) -> None:
+        with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
+            layout = EditorLayout(1280, 720)
+        layout.active_tab = "GAME"
+        layout.active_tool = EditorTool.CAMERA
+        layout.center_rect = rl.Rectangle(100, 50, 800, 422)
+        layout.game_texture = SimpleNamespace(texture=SimpleNamespace(width=390, height=844))
+        content_rect = layout.get_game_view_content_rect()
+
+        with patch("pyray.get_mouse_position", return_value=rl.Vector2(content_rect.x + 4, content_rect.y + 4)):
+            self.assertTrue(layout.is_mouse_in_game_view())
+            self.assertEqual(layout.get_cursor_intent(), CursorVisualState.INTERACTIVE)
+        with patch("pyray.get_mouse_position", return_value=rl.Vector2(layout.get_center_view_rect().x + 4, layout.get_center_view_rect().y + 4)):
+            self.assertFalse(layout.is_mouse_in_game_view())
+
+    def test_camera_tool_roundtrips_through_editor_preferences(self) -> None:
+        with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
+            layout = EditorLayout(1280, 720)
+
+        layout.set_active_tool(EditorTool.CAMERA)
+        exported = layout.export_editor_preferences()
+
+        self.assertEqual(exported["editor_active_tool"], "Camera")
+        self.assertEqual(EditorTool.from_value("Camera"), EditorTool.CAMERA)
 
     def test_editor_camera_offset_tracks_visible_scene_view_center(self) -> None:
         with patch.object(EditorLayout, "_resize_render_textures", lambda *args, **kwargs: None):
@@ -613,6 +641,254 @@ class GameCursorRenderTests(unittest.TestCase):
 
 
 class GizmoSystemMathTests(unittest.TestCase):
+    def _make_camera_world(self, *, follow_entity: str = "", zoom: float = 2.0) -> tuple[World, Entity, Camera2D]:
+        world = SceneManager(create_default_registry()).load_scene(
+            {
+                "name": "CameraFrameProbe",
+                "entities": [
+                    {
+                        "name": "Player",
+                        "active": True,
+                        "tag": "Untagged",
+                        "layer": "Default",
+                        "components": {
+                            "Transform": {
+                                "enabled": True,
+                                "x": 100.0,
+                                "y": 50.0,
+                                "rotation": 0.0,
+                                "scale_x": 1.0,
+                                "scale_y": 1.0,
+                            }
+                        },
+                    },
+                    {
+                        "name": "Camera",
+                        "active": True,
+                        "tag": "Untagged",
+                        "layer": "Default",
+                        "components": {
+                            "Transform": {
+                                "enabled": True,
+                                "x": 10.0,
+                                "y": 20.0,
+                                "rotation": 0.0,
+                                "scale_x": 1.0,
+                                "scale_y": 1.0,
+                            },
+                            "Camera2D": {
+                                "enabled": True,
+                                "zoom": zoom,
+                                "follow_entity": follow_entity,
+                                "framing_mode": "locked",
+                            },
+                        },
+                    },
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )
+        world.selected_entity_name = "Camera"
+        camera_entity = world.get_entity_by_name("Camera")
+        return world, camera_entity, camera_entity.get_component(Camera2D)
+
+    def test_selected_camera_frame_uses_active_profile_aspect_ratio(self) -> None:
+        gizmo = GizmoSystem()
+        world, entity, camera = self._make_camera_world(zoom=2.0)
+        transform = entity.get_component(Transform)
+
+        frame = gizmo._camera_frame_layout(
+            world,
+            entity,
+            transform,
+            camera,
+            camera_profile_id="desktop_16_9",
+            camera_viewport_size=(320.0, 180.0),
+        )
+
+        self.assertIsNotNone(frame)
+        self.assertEqual((frame["target_x"], frame["target_y"]), (10.0, 20.0))
+        self.assertEqual((frame["x"], frame["y"]), (10.0, 20.0))
+        self.assertEqual((frame["width"], frame["height"]), (160.0, 90.0))
+        self.assertAlmostEqual(frame["width"] / frame["height"], 16.0 / 9.0)
+
+    def test_selected_camera_frame_matches_effective_runtime_camera_rect(self) -> None:
+        gizmo = GizmoSystem()
+        world, entity, camera = self._make_camera_world(zoom=1.0)
+        camera.profile_overrides = {
+            "desktop_16_9": {
+                "target_x": 120.0,
+                "target_y": -40.0,
+                "offset_x": 640.0,
+                "offset_y": 360.0,
+                "zoom": 2.0,
+            }
+        }
+        transform = entity.get_component(Transform)
+
+        frame = gizmo._camera_frame_layout(
+            world,
+            entity,
+            transform,
+            camera,
+            camera_profile_id="desktop_16_9",
+            camera_viewport_size=(1280.0, 720.0),
+        )
+        resolved = resolve_effective_camera2d(
+            world,
+            viewport_size=(1280.0, 720.0),
+            camera_profile_id="desktop_16_9",
+            camera_entity=entity,
+        )
+
+        self.assertIsNotNone(frame)
+        self.assertIsNotNone(resolved)
+        assert frame is not None and resolved is not None
+        self.assertEqual(frame["x"], resolved.rect_left)
+        self.assertEqual(frame["y"], resolved.rect_top)
+        self.assertEqual(frame["width"], resolved.rect_width)
+        self.assertEqual(frame["height"], resolved.rect_height)
+
+    def test_camera_frame_hit_test_distinguishes_handles_inside_and_outside(self) -> None:
+        gizmo = GizmoSystem()
+        frame = {"x": -320.0, "y": -180.0, "width": 640.0, "height": 360.0}
+
+        self.assertEqual(
+            gizmo._check_camera_frame_intersection(320.0, 0.0, frame, EditorTool.CAMERA),
+            GizmoMode.RECT_RIGHT,
+        )
+        self.assertEqual(
+            gizmo._check_camera_frame_intersection(0.0, 0.0, frame, EditorTool.CAMERA),
+            GizmoMode.TRANSLATE_FREE,
+        )
+        self.assertEqual(
+            gizmo._check_camera_frame_intersection(500.0, 0.0, frame, EditorTool.CAMERA),
+            GizmoMode.NONE,
+        )
+
+    def test_camera_frame_drag_moves_free_camera_profile_target(self) -> None:
+        gizmo = GizmoSystem()
+        world, entity, camera = self._make_camera_world(zoom=2.0)
+
+        with patch("pyray.is_mouse_button_pressed", return_value=True), patch(
+            "pyray.is_mouse_button_released",
+            return_value=False,
+        ):
+            gizmo.update(
+                world,
+                rl.Vector2(30.0, 40.0),
+                EditorTool.CAMERA,
+                camera_profile_id="desktop_16_9",
+                camera_viewport_size=(1280.0, 720.0),
+            )
+        with patch("pyray.is_mouse_button_released", return_value=False), patch(
+            "pyray.is_key_down",
+            return_value=False,
+        ):
+            gizmo.update(
+                world,
+                rl.Vector2(60.0, 25.0),
+                EditorTool.CAMERA,
+                camera_profile_id="desktop_16_9",
+                camera_viewport_size=(1280.0, 720.0),
+            )
+        with patch("pyray.is_mouse_button_released", return_value=True):
+            gizmo.update(
+                world,
+                rl.Vector2(60.0, 25.0),
+                EditorTool.CAMERA,
+                camera_profile_id="desktop_16_9",
+                camera_viewport_size=(1280.0, 720.0),
+            )
+
+        drag = gizmo.consume_completed_drag()
+        self.assertIsNotNone(drag)
+        self.assertEqual(drag.component_name, "Camera2D")
+        payload = drag.after_state["desktop_16_9"]
+        self.assertEqual(payload["target_x"], 40.0)
+        self.assertEqual(payload["target_y"], 5.0)
+
+    def test_camera_frame_resize_changes_zoom_and_preserves_profile_aspect(self) -> None:
+        gizmo = GizmoSystem()
+        world, entity, camera = self._make_camera_world(zoom=2.0)
+
+        with patch("pyray.is_mouse_button_pressed", return_value=True), patch(
+            "pyray.is_mouse_button_released",
+            return_value=False,
+        ):
+            gizmo.update(
+                world,
+                rl.Vector2(650.0, 200.0),
+                EditorTool.CAMERA,
+                camera_profile_id="desktop_16_9",
+                camera_viewport_size=(1280.0, 720.0),
+            )
+        with patch("pyray.is_mouse_button_released", return_value=False), patch(
+            "pyray.is_key_down",
+            return_value=False,
+        ):
+            gizmo.update(
+                world,
+                rl.Vector2(970.0, 200.0),
+                EditorTool.CAMERA,
+                camera_profile_id="desktop_16_9",
+                camera_viewport_size=(1280.0, 720.0),
+            )
+        with patch("pyray.is_mouse_button_released", return_value=True):
+            gizmo.update(
+                world,
+                rl.Vector2(970.0, 200.0),
+                EditorTool.CAMERA,
+                camera_profile_id="desktop_16_9",
+                camera_viewport_size=(1280.0, 720.0),
+            )
+
+        drag = gizmo.consume_completed_drag()
+        self.assertIsNotNone(drag)
+        payload = drag.after_state["desktop_16_9"]
+        self.assertAlmostEqual(payload["zoom"], 1.0, places=4)
+
+    def test_camera_frame_drag_with_follow_updates_profile_offset(self) -> None:
+        gizmo = GizmoSystem()
+        world, entity, camera = self._make_camera_world(follow_entity="Player", zoom=1.0)
+
+        with patch("pyray.is_mouse_button_pressed", return_value=True), patch(
+            "pyray.is_mouse_button_released",
+            return_value=False,
+        ):
+            gizmo.update(
+                world,
+                rl.Vector2(120.0, 80.0),
+                EditorTool.CAMERA,
+                camera_profile_id="mobile_portrait",
+                camera_viewport_size=(390.0, 844.0),
+            )
+        with patch("pyray.is_mouse_button_released", return_value=False), patch(
+            "pyray.is_key_down",
+            return_value=False,
+        ):
+            gizmo.update(
+                world,
+                rl.Vector2(135.0, 70.0),
+                EditorTool.CAMERA,
+                camera_profile_id="mobile_portrait",
+                camera_viewport_size=(390.0, 844.0),
+            )
+        with patch("pyray.is_mouse_button_released", return_value=True):
+            gizmo.update(
+                world,
+                rl.Vector2(135.0, 70.0),
+                EditorTool.CAMERA,
+                camera_profile_id="mobile_portrait",
+                camera_viewport_size=(390.0, 844.0),
+            )
+
+        drag = gizmo.consume_completed_drag()
+        payload = drag.after_state["mobile_portrait"]
+        self.assertEqual(payload["target_offset_x"], 15.0)
+        self.assertEqual(payload["target_offset_y"], -10.0)
+
     def test_local_axes_follow_transform_rotation(self) -> None:
         gizmo = GizmoSystem()
         gizmo.transform_space = TransformSpace.LOCAL

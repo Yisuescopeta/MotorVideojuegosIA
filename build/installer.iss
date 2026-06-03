@@ -5,7 +5,7 @@
 ; Compilar: ISCC.exe build\installer.iss
 
 #ifndef AppVersion
-  #define AppVersion "2026.03"
+  #define AppVersion "2026.06"
 #endif
 
 [Setup]

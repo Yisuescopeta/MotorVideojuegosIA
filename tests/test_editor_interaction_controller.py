@@ -8,7 +8,10 @@ from unittest.mock import Mock, patch
 
 import pyray as rl
 from engine.app.editor_interaction_controller import EditorInteractionController
+from engine.components.camera2d import Camera2D
+from engine.components.transform import Transform
 from engine.core.engine_state import EngineState
+from engine.ecs.world import World
 from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.editor_selection import EditorSelectionState
 from engine.editor.editor_tools import EditorTool, PivotMode, TransformSpace
@@ -51,6 +54,8 @@ class EditorInteractionControllerTests(unittest.TestCase):
         self.layout.pivot_mode = PivotMode.PIVOT
         self.layout.snap_settings = None
         self.layout.active_tab = "SCENE"
+        self.layout.game_view_device_profile = "desktop_16_9"
+        self.layout.request_reset_camera_profile = False
         self.layout.active_bottom_tab = "PROJECT"
         self.layout.flow_panel = Mock()
         self.layout.flow_panel.get_cursor_intent.return_value = CursorVisualState.DEFAULT
@@ -59,6 +64,8 @@ class EditorInteractionControllerTests(unittest.TestCase):
         self.layout.get_scene_mouse_pos.return_value = rl.Vector2(10, 20)
         self.layout.get_scene_overlay_mouse_pos.return_value = rl.Vector2(5, 6)
         self.layout.is_mouse_in_scene_view.return_value = True
+        self.layout.is_mouse_in_game_view.return_value = False
+        self.layout.map_game_view_screen_point_to_texture.return_value = (0.0, 0.0)
         self.layout.is_mouse_in_inspector.return_value = False
         self.layout.get_cursor_intent.return_value = CursorVisualState.DEFAULT
         self.layout.get_center_view_rect.return_value = rl.Rectangle(0, 0, 320, 180)
@@ -82,6 +89,16 @@ class EditorInteractionControllerTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
+    def _make_camera_world(self, *, follow_entity: str = "") -> World:
+        world = World()
+        if follow_entity:
+            target = world.create_entity(follow_entity)
+            target.add_component(Transform(x=100.0, y=50.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        camera = world.create_entity("Camera")
+        camera.add_component(Transform(x=0.0, y=0.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        camera.add_component(Camera2D(zoom=1.0, follow_entity=follow_entity, framing_mode="locked"))
+        return world
+
     def test_handle_selection_and_gizmos_blocks_interaction_over_inspector(self) -> None:
         world = Mock()
         self.layout.is_mouse_in_inspector.return_value = True
@@ -91,6 +108,77 @@ class EditorInteractionControllerTests(unittest.TestCase):
 
         self.gizmo_system.update.assert_not_called()
         self.selection_system.update.assert_not_called()
+
+    def test_game_camera_drag_persists_only_active_profile_and_blocks_gizmos(self) -> None:
+        world = self._make_camera_world()
+        self.layout.active_tab = "GAME"
+        self.layout.active_tool = EditorTool.CAMERA
+        self.layout.is_mouse_in_game_view.return_value = True
+        self.layout.map_game_view_screen_point_to_texture.side_effect = [(100.0, 50.0), (120.0, 70.0)]
+
+        with patch("pyray.get_mouse_position", return_value=rl.Vector2(0, 0)), patch(
+            "pyray.is_mouse_button_pressed", return_value=True
+        ), patch("pyray.is_mouse_button_down", return_value=False), patch("pyray.is_mouse_button_released", return_value=False):
+            self.controller.handle_selection_and_gizmos(world)
+        with patch("pyray.get_mouse_position", return_value=rl.Vector2(0, 0)), patch(
+            "pyray.is_mouse_button_pressed", return_value=False
+        ), patch("pyray.is_mouse_button_down", return_value=True), patch("pyray.is_mouse_button_released", return_value=False):
+            self.controller.handle_selection_and_gizmos(world)
+        with patch("pyray.is_mouse_button_pressed", return_value=False), patch(
+            "pyray.is_mouse_button_down", return_value=False
+        ), patch("pyray.is_mouse_button_released", return_value=True):
+            self.controller.handle_selection_and_gizmos(world)
+
+        self.gizmo_system.update.assert_not_called()
+        self.selection_system.update.assert_not_called()
+        self.scene_manager.mark_edit_world_dirty.assert_called_with(reason="transient_preview")
+        self.scene_manager.apply_edit_to_world.assert_called_once()
+        args = self.scene_manager.apply_edit_to_world.call_args.args
+        self.assertEqual(args[:3], ("Camera", "Camera2D", "profile_overrides"))
+        overrides = args[3]
+        self.assertEqual(set(overrides.keys()), {"desktop_16_9"})
+        self.assertEqual(overrides["desktop_16_9"]["target_x"], -20.0)
+        self.assertEqual(overrides["desktop_16_9"]["target_y"], -20.0)
+
+    def test_game_camera_drag_with_follow_edits_profile_target_offset(self) -> None:
+        world = self._make_camera_world(follow_entity="Player")
+        self.layout.active_tab = "GAME"
+        self.layout.active_tool = EditorTool.CAMERA
+        self.layout.is_mouse_in_game_view.return_value = True
+        self.layout.map_game_view_screen_point_to_texture.side_effect = [(10.0, 10.0), (25.0, 5.0)]
+
+        with patch("pyray.get_mouse_position", return_value=rl.Vector2(0, 0)), patch(
+            "pyray.is_mouse_button_pressed", return_value=True
+        ), patch("pyray.is_mouse_button_down", return_value=False), patch("pyray.is_mouse_button_released", return_value=False):
+            self.controller.handle_selection_and_gizmos(world)
+        with patch("pyray.get_mouse_position", return_value=rl.Vector2(0, 0)), patch(
+            "pyray.is_mouse_button_pressed", return_value=False
+        ), patch("pyray.is_mouse_button_down", return_value=True), patch("pyray.is_mouse_button_released", return_value=False):
+            self.controller.handle_selection_and_gizmos(world)
+        with patch("pyray.is_mouse_button_pressed", return_value=False), patch(
+            "pyray.is_mouse_button_down", return_value=False
+        ), patch("pyray.is_mouse_button_released", return_value=True):
+            self.controller.handle_selection_and_gizmos(world)
+
+        overrides = self.scene_manager.apply_edit_to_world.call_args.args[3]
+        self.assertEqual(overrides["desktop_16_9"]["target_offset_x"], -15.0)
+        self.assertEqual(overrides["desktop_16_9"]["target_offset_y"], 5.0)
+
+    def test_game_camera_reset_removes_active_profile_override(self) -> None:
+        world = self._make_camera_world()
+        camera = world.get_entity_by_name("Camera").get_component(Camera2D)
+        camera.profile_overrides = {
+            "desktop_16_9": {"target_x": 10.0},
+            "mobile_portrait": {"target_x": 20.0},
+        }
+        self.layout.active_tab = "GAME"
+        self.layout.active_tool = EditorTool.CAMERA
+        self.layout.request_reset_camera_profile = True
+
+        self.controller.handle_selection_and_gizmos(world)
+
+        overrides = self.scene_manager.apply_edit_to_world.call_args.args[3]
+        self.assertEqual(set(overrides.keys()), {"mobile_portrait"})
 
     def test_handle_selection_and_gizmos_prioritizes_ui_hits(self) -> None:
         world = Mock()
@@ -171,6 +259,38 @@ class EditorInteractionControllerTests(unittest.TestCase):
             key_or_path="scene-a",
             record_history=True,
             label="Move Entity",
+        )
+
+    def test_commit_gizmo_drag_persists_camera_profile_overrides(self) -> None:
+        drag = SimpleNamespace(
+            label="camera_frame:Camera",
+            entity_name="Camera",
+            before_state={},
+            after_state={
+                "desktop_16_9": {
+                    "target_x": 32.0,
+                    "target_y": 48.0,
+                    "zoom": 1.5,
+                }
+            },
+            component_name="Camera2D",
+        )
+
+        self.controller.commit_gizmo_drag(drag)
+
+        self.scene_manager.apply_transform_state.assert_not_called()
+        self.scene_manager.apply_rect_transform_state.assert_not_called()
+        self.scene_manager.apply_edit_to_world.assert_called_once_with(
+            "Camera",
+            "Camera2D",
+            "profile_overrides",
+            {
+                "desktop_16_9": {
+                    "target_x": 32.0,
+                    "target_y": 48.0,
+                    "zoom": 1.5,
+                }
+            },
         )
 
     def test_handle_selection_and_gizmos_delegates_to_tilemap_tool_and_skips_selection(self) -> None:

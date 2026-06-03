@@ -55,6 +55,39 @@ class TestContentCollector(unittest.TestCase):
         copied = self.staging / "content" / "assets" / "player.png"
         self.assertTrue(copied.exists())
 
+    def test_collect_copies_reachable_asset_metadata_sidecar(self):
+        self._write_asset("player.png", "fake_png")
+        self._write_asset(
+            "player.png.meta.json",
+            json.dumps(
+                {
+                    "path": "assets/player.png",
+                    "slices": [
+                        {"name": "idle_0", "x": 1, "y": 2, "width": 16, "height": 24},
+                    ],
+                }
+            ),
+        )
+        self._write_scene("main.json", {
+            "entities": [
+                {
+                    "components": {
+                        "Animator": {
+                            "sprite_sheet": {"path": "assets/player.png", "guid": ""},
+                            "animations": {"idle": {"slice_names": ["idle_0"], "fps": 8.0, "loop": True}},
+                        }
+                    }
+                },
+            ],
+        })
+        graph = build_content_graph("levels/main.json", str(self.tmp))
+        manifest = collect_content(graph, str(self.tmp), str(self.staging))
+
+        manifest_paths = {asset.path for asset in manifest.assets}
+        self.assertIn("assets/player.png", manifest_paths)
+        self.assertIn("assets/player.png.meta.json", manifest_paths)
+        self.assertTrue((self.staging / "content" / "assets" / "player.png.meta.json").exists())
+
     def test_collects_serialized_asset_reference_paths(self):
         self._write_asset("ui/background.png", "fake_background")
         self._write_asset("ui/button.png", "fake_button")

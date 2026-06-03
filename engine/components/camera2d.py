@@ -2,6 +2,7 @@
 engine/components/camera2d.py - Camara 2D serializable y editable por IA
 """
 
+import copy
 from typing import Any
 
 from engine.ecs.component import Component
@@ -26,6 +27,7 @@ class Camera2D(Component):
         clamp_top: float | None = None,
         clamp_bottom: float | None = None,
         recenter_on_play: bool = True,
+        profile_overrides: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         self.enabled: bool = True
         self.offset_x: float = offset_x
@@ -42,6 +44,7 @@ class Camera2D(Component):
         self.clamp_top: float | None = clamp_top
         self.clamp_bottom: float | None = clamp_bottom
         self.recenter_on_play: bool = recenter_on_play
+        self.profile_overrides: dict[str, dict[str, Any]] = copy.deepcopy(profile_overrides or {})
 
         # Estado de runtime no serializable para seguimiento suave.
         self._runtime_target_x: float = 0.0
@@ -65,6 +68,7 @@ class Camera2D(Component):
             "clamp_top": self.clamp_top,
             "clamp_bottom": self.clamp_bottom,
             "recenter_on_play": self.recenter_on_play,
+            "profile_overrides": copy.deepcopy(self.profile_overrides),
         }
 
     @classmethod
@@ -84,6 +88,7 @@ class Camera2D(Component):
             clamp_top=data.get("clamp_top"),
             clamp_bottom=data.get("clamp_bottom"),
             recenter_on_play=data.get("recenter_on_play", True),
+            profile_overrides=data.get("profile_overrides", {}),
         )
         component.enabled = data.get("enabled", True)
         return component
