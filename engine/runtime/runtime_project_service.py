@@ -31,6 +31,7 @@ class RuntimeProjectService:
         self._manifest_entries_by_path: dict[str, dict[str, Any]] | None = None
         self._manifest_entries_by_guid: dict[str, dict[str, Any]] | None = None
         self._runtime_entry_payload_cache: dict[str, dict[str, Any]] = {}
+        self._sprite_metadata_cache: dict[str, dict[str, Any]] = {}
         self.read_only = True
         self.auto_ensure = False
 
@@ -86,7 +87,37 @@ class RuntimeProjectService:
         return self._runtime_entry_payload(entry)
 
     def get_slice_rect(self, locator: Any, slice_name: str) -> dict[str, Any] | None:
-        """Runtime manifests do not currently ship sprite slice metadata."""
+        """Resolve exported sprite slice metadata for runtime rendering."""
+        normalized_name = str(slice_name or "").strip()
+        if not normalized_name:
+            return None
+        ref = normalize_asset_reference(locator)
+        asset_path = normalize_asset_path(ref.get("path", ""))
+        if not asset_path:
+            return None
+        metadata = self._load_sprite_metadata(asset_path)
+        slices = metadata.get("slices", [])
+        if not isinstance(slices, list) or not slices:
+            import_settings = metadata.get("import_settings", {})
+            if isinstance(import_settings, dict):
+                slices = import_settings.get("slices", [])
+        if not isinstance(slices, list):
+            return None
+        for raw_slice in slices:
+            if not isinstance(raw_slice, dict) or str(raw_slice.get("name", "") or "") != normalized_name:
+                continue
+            try:
+                return {
+                    "name": normalized_name,
+                    "x": int(raw_slice.get("x", 0)),
+                    "y": int(raw_slice.get("y", 0)),
+                    "width": int(raw_slice.get("width", 0)),
+                    "height": int(raw_slice.get("height", 0)),
+                    "pivot_x": float(raw_slice.get("pivot_x", 0.5)),
+                    "pivot_y": float(raw_slice.get("pivot_y", 0.5)),
+                }
+            except (TypeError, ValueError):
+                return None
         return None
 
     def extract_packed_scripts(self, destination: Path | str | None = None) -> Path | None:
@@ -183,6 +214,24 @@ class RuntimeProjectService:
         payload["reference"] = {"path": path, "guid": guid}
         payload.setdefault("dependencies", list(entry.get("dependencies", []) or []))
         self._runtime_entry_payload_cache[path] = dict(payload)
+        return dict(payload)
+
+    def _load_sprite_metadata(self, asset_path: str) -> dict[str, Any]:
+        cached = self._sprite_metadata_cache.get(asset_path)
+        if cached is not None:
+            return dict(cached)
+        metadata_path = f"{asset_path}.meta.json"
+        resolved = self.resolve_path(metadata_path)
+        if not resolved.exists():
+            self._sprite_metadata_cache[asset_path] = {}
+            return {}
+        try:
+            payload = json.loads(resolved.read_text(encoding="utf-8"))
+        except Exception:
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        self._sprite_metadata_cache[asset_path] = dict(payload)
         return dict(payload)
 
     def _manifest_entry_indexes(self) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:

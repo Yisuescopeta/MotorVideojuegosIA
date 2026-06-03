@@ -38,6 +38,24 @@
       "bundle_mode": "packed",
       "include_debug_tools": true,
       "android_python_runtime": true
+    },
+    {
+      "name": "Android Emulator Debug",
+      "platform": "android",
+      "architecture": "x86_64",
+      "mode": "debug",
+      "output_path": "dist/export/android/MyGame-emulator-debug.apk",
+      "entry_scene": "levels/main_menu_scene.json",
+      "display_name": "My Game",
+      "application_id": "com.yisuescopeta.mygame",
+      "version_name": "0.1.0",
+      "version_code": 1,
+      "min_sdk": 24,
+      "target_sdk": 35,
+      "orientation": "landscape",
+      "bundle_mode": "packed",
+      "include_debug_tools": true,
+      "android_python_runtime": true
     }
   ]
 }

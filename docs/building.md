@@ -8,7 +8,8 @@ El script de build vive en [../build/build_windows.py](../build/build_windows.py
 
 - Python 3.11+
 - PyInstaller
-- Inno Setup 6 solo si se genera instalador
+- Inno Setup 6 solo si se genera instalador. En Windows puede instalarse con
+  `winget install --id JRSoftware.InnoSetup -e -s winget`.
 
 Instalacion minima:
 
@@ -42,8 +43,8 @@ Salida esperada:
 dist/MotorVideojuegosIA-{version}-Setup.exe
 ```
 
-El instalador requiere `ISCC.exe` en el `PATH` o en una ruta estandar de Inno
-Setup 6.
+El instalador requiere `ISCC.exe` en el `PATH`, en la instalacion por usuario de
+`winget` o en una ruta estandar de Inno Setup 6.
 
 ## Version
 
@@ -54,7 +55,7 @@ instalador y las referencias de version del motor.
 Ejemplo:
 
 ```python
-ENGINE_VERSION: str = "2026.03"
+ENGINE_VERSION: str = "2026.06"
 ```
 
 No dupliques la version en documentacion ni scripts si puede leerse desde

@@ -17,6 +17,7 @@ class MobileControlsComponentTests(unittest.TestCase):
         component = MobileControls2D(
             target_entity="Hero",
             profile="dual_action",
+            movement_mode="dpad",
             left_stick_radius=96.0,
             opacity=0.5,
             deadzone=0.25,
@@ -26,9 +27,15 @@ class MobileControlsComponentTests(unittest.TestCase):
 
         self.assertEqual(restored.target_entity, "Hero")
         self.assertEqual(restored.profile, "dual_action")
+        self.assertEqual(restored.movement_mode, "dpad")
         self.assertEqual(restored.left_stick_radius, 96.0)
         self.assertEqual(restored.opacity, 0.5)
         self.assertEqual(restored.deadzone, 0.25)
+
+    def test_mobile_controls_invalid_movement_mode_falls_back_to_joystick(self) -> None:
+        component = MobileControls2D(movement_mode="bad")
+
+        self.assertEqual(component.movement_mode, "joystick")
 
     def test_mobile_controls_registered(self) -> None:
         registry = create_default_registry()
@@ -58,6 +65,30 @@ class MobileControlsSystemTests(unittest.TestCase):
 
         self.assertGreater(input_map.last_state["horizontal"], 0.3)
         self.assertGreater(input_map.last_state["vertical"], 0.3)
+
+    def test_dpad_left_control_uses_single_dominant_axis(self) -> None:
+        world, input_map = self._make_world()
+        controls = world.get_entity_by_name("MobileControlsOverlay").get_component(MobileControls2D)
+        controls.movement_mode = "dpad"
+        system = MobileControlsSystem()
+
+        system.inject_pointer_state(174.0, 398.0, down=True)
+        system.update(world, (800.0, 600.0))
+
+        self.assertEqual(input_map.last_state["horizontal"], 0.0)
+        self.assertEqual(input_map.last_state["vertical"], 1.0)
+
+    def test_dpad_left_control_respects_deadzone(self) -> None:
+        world, input_map = self._make_world()
+        controls = world.get_entity_by_name("MobileControlsOverlay").get_component(MobileControls2D)
+        controls.movement_mode = "dpad"
+        system = MobileControlsSystem()
+
+        system.inject_pointer_state(132.0, 470.0, down=True)
+        system.update(world, (800.0, 600.0))
+
+        self.assertEqual(input_map.last_state["horizontal"], 0.0)
+        self.assertEqual(input_map.last_state["vertical"], 0.0)
 
     def test_action_buttons_update_actions(self) -> None:
         world, input_map = self._make_world()

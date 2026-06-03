@@ -30,10 +30,12 @@ class MobileControls2D(Component):
         action_2_radius: float = 46.0,
         opacity: float = 0.65,
         deadzone: float = 0.18,
+        movement_mode: str = "joystick",
     ) -> None:
         self.enabled = bool(enabled)
         self.target_entity = str(target_entity or "Player")
         self.profile = str(profile or "platformer")
+        self.movement_mode = self._normalize_movement_mode(movement_mode)
         self.left_stick_enabled = bool(left_stick_enabled)
         self.action_1_enabled = bool(action_1_enabled)
         self.action_2_enabled = bool(action_2_enabled)
@@ -55,6 +57,7 @@ class MobileControls2D(Component):
             "enabled": self.enabled,
             "target_entity": self.target_entity,
             "profile": self.profile,
+            "movement_mode": self.movement_mode,
             "left_stick_enabled": self.left_stick_enabled,
             "action_1_enabled": self.action_1_enabled,
             "action_2_enabled": self.action_2_enabled,
@@ -78,6 +81,7 @@ class MobileControls2D(Component):
             enabled=data.get("enabled", True),
             target_entity=data.get("target_entity", "Player"),
             profile=data.get("profile", "platformer"),
+            movement_mode=data.get("movement_mode", "joystick"),
             left_stick_enabled=data.get("left_stick_enabled", True),
             action_1_enabled=data.get("action_1_enabled", True),
             action_2_enabled=data.get("action_2_enabled", True),
@@ -94,3 +98,8 @@ class MobileControls2D(Component):
             opacity=data.get("opacity", 0.65),
             deadzone=data.get("deadzone", 0.18),
         )
+
+    @staticmethod
+    def _normalize_movement_mode(value: str) -> str:
+        mode = str(value or "joystick").strip().lower()
+        return mode if mode in {"joystick", "dpad"} else "joystick"

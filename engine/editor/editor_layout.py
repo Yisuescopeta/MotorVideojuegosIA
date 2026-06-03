@@ -289,6 +289,7 @@ class EditorLayout:
         self._layers_rect: rl.Rectangle = rl.Rectangle(0, 0, 0, 0)
         self._layout_rect: rl.Rectangle = rl.Rectangle(0, 0, 0, 0)
         self._game_view_profile_rect: rl.Rectangle = rl.Rectangle(0, 0, 0, 0)
+        self._game_view_reset_camera_rect: rl.Rectangle = rl.Rectangle(0, 0, 0, 0)
 
         # Tool selection
         self.active_tool: EditorTool = EditorTool.MOVE
@@ -296,6 +297,7 @@ class EditorLayout:
         self.pivot_mode: PivotMode = PivotMode.PIVOT
         self.snap_settings: SnapSettings = SnapSettings()
         self.game_view_device_profile: str = FIT_PANEL_PROFILE_ID
+        self.request_reset_camera_profile: bool = False
         self._editor_preferences_dirty: bool = False
         self.dock_layout: DockLayout = DockLayout.default()
         self._apply_dock_active_tabs()
@@ -722,7 +724,7 @@ class EditorLayout:
 
     def _update_auto_hide_animations(self) -> None:
         """Lerp auto-hide animations each frame."""
-        dt = rl.get_frame_time()
+        dt = rl.get_frame_time() or 0.0
         speed = 8.0
         mouse = rl.get_mouse_position()
         mx, my = float(mouse.x), float(mouse.y)
@@ -1121,6 +1123,8 @@ class EditorLayout:
             self.set_active_tool(EditorTool.SCALE)
         if rl.is_key_pressed(rl.KEY_T):
             self.set_active_tool(EditorTool.TRANSFORM)
+        if rl.is_key_pressed(rl.KEY_C):
+            self.set_active_tool(EditorTool.CAMERA)
 
     def _handle_launcher_input(self) -> None:
         mouse = rl.get_mouse_position()
@@ -1918,6 +1922,7 @@ class EditorLayout:
             ("E", EditorTool.ROTATE),
             ("R", EditorTool.SCALE),
             ("T", EditorTool.TRANSFORM),
+            ("C", EditorTool.CAMERA),
         ]
 
         for shortcut, tool in tools:
@@ -2454,7 +2459,10 @@ class EditorLayout:
         self._draw_tab("Animator", self.tab_animator_rect, self.active_tab == "ANIMATOR")
         separator_x = int(self.tab_animator_rect.x + self.tab_animator_rect.width + 6)
         rl.draw_line(separator_x, y + 3, separator_x, y + height - 3, self.UNITY_BORDER)
-        return self._draw_game_view_device_profile_button(separator_x + 6, y, height) + 6
+        next_x = self._draw_game_view_device_profile_button(separator_x + 6, y, height) + 6
+        if self.active_tab == "GAME" and self.active_tool == EditorTool.CAMERA:
+            next_x = self._draw_game_view_reset_camera_button(next_x, y, height) + 6
+        return next_x
 
     def _draw_game_view_device_profile_button(self, x: int, y: int, height: int) -> int:
         profile = get_device_profile(self.game_view_device_profile)
@@ -2466,6 +2474,17 @@ class EditorLayout:
         self._register_cursor_rect(rect)
         if editor_button(_to_ui_rect(rect), label, active=self.active_tab == "GAME").clicked:
             self.cycle_game_view_device_profile()
+        return int(rect.x + rect.width)
+
+    def _draw_game_view_reset_camera_button(self, x: int, y: int, height: int) -> int:
+        label = "Reset Camera"
+        button_w = max(94, self._measure_text(label, 10) + 18)
+        button_h = max(0, height - 6)
+        rect = rl.Rectangle(float(x), float(y + 3), float(button_w), float(button_h))
+        self._game_view_reset_camera_rect = rect
+        self._register_cursor_rect(rect)
+        if editor_button(_to_ui_rect(rect), label).clicked:
+            self.request_reset_camera_profile = True
         return int(rect.x + rect.width)
 
     def _draw_scene_workspace_tabs(self, x: int, y: int, height: int, max_x: int) -> None:
@@ -2523,8 +2542,12 @@ class EditorLayout:
         if cached is not None:
             return cached
         measured = rl.measure_text(str(text), int(size))
-        self._text_measure_cache[cache_key] = int(measured)
-        return int(measured)
+        if measured is not None:
+            result = int(measured)
+        else:
+            result = len(str(text)) * int(size)
+        self._text_measure_cache[cache_key] = result
+        return result
 
     def _fit_texture_in_rect(self, texture_width: float, texture_height: float, rect: rl.Rectangle) -> rl.Rectangle:
         if texture_width <= 0 or texture_height <= 0 or rect.width <= 0 or rect.height <= 0:
@@ -2544,14 +2567,26 @@ class EditorLayout:
             view_rect = self.get_center_view_rect()
             return (float(screen_x) - float(view_rect.x), float(screen_y) - float(view_rect.y))
         texture = self.game_texture.texture
-        view_rect = self.get_center_view_rect()
-        dest = self._fit_texture_in_rect(float(texture.width), float(texture.height), view_rect)
+        dest = self.get_game_view_content_rect()
         if dest.width <= 0 or dest.height <= 0:
             return (0.0, 0.0)
         return (
             (float(screen_x) - float(dest.x)) * (float(texture.width) / float(dest.width)),
             (float(screen_y) - float(dest.y)) * (float(texture.height) / float(dest.height)),
         )
+
+    def get_game_view_content_rect(self) -> rl.Rectangle:
+        view_rect = self.get_center_view_rect()
+        if self.game_texture is None:
+            return view_rect
+        texture = self.game_texture.texture
+        return self._fit_texture_in_rect(float(texture.width), float(texture.height), view_rect)
+
+    def is_mouse_in_game_view(self) -> bool:
+        if self.active_tab != "GAME":
+            return False
+        mouse = rl.get_mouse_position()
+        return rl.check_collision_point_rec(mouse, self.get_game_view_content_rect())
 
     def get_cursor_intent(self) -> CursorVisualState:
         mouse = rl.get_mouse_position()
@@ -2580,6 +2615,8 @@ class EditorLayout:
         for rect in self._cursor_interactive_rects:
             if rl.check_collision_point_rec(mouse, rect):
                 return CursorVisualState.INTERACTIVE
+        if self.active_tab == "GAME" and self.active_tool == EditorTool.CAMERA and self.is_mouse_in_game_view():
+            return CursorVisualState.INTERACTIVE
         return CursorVisualState.DEFAULT
 
     def _reset_cursor_regions(self) -> None:
@@ -2627,7 +2664,7 @@ class EditorLayout:
 
     def _draw_viewport_overlay(self, view_rect: rl.Rectangle) -> None:
         try:
-            fps = int(rl.get_fps())
+            fps = int(rl.get_fps() or 0)
         except Exception:
             fps = 0
 
@@ -2636,6 +2673,11 @@ class EditorLayout:
             f"Zoom {self.editor_camera.zoom:.2f}",
             f"Target {self.editor_camera.target.x:.1f}, {self.editor_camera.target.y:.1f}",
         ]
+        if self.active_tab == "GAME":
+            profile = get_device_profile(self.game_view_device_profile)
+            lines = [f"Profile {profile.label}"]
+            if self.active_tool == EditorTool.CAMERA:
+                lines.append("Camera Edit")
         if self.active_tab == "SCENE":
             try:
                 mouse_world = self.get_scene_mouse_pos()

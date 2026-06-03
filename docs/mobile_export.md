@@ -132,8 +132,8 @@ a `filesDir`, excluye siempre `chaquopy/`, arranca Chaquopy y delega la
 simulacion a `SharedGameRuntime` (`Game` + `RuntimeController`), la misma ruta
 que PLAY del editor. Kotlin queda limitado a input tactil, surface Android y
 render del snapshot serializado. La copia usa `android_runtime_cache_key` del
-`runtime_config.json`; si el content pack no cambia, se reutiliza en arranques
-posteriores. Si el runtime compartido falla, la APK muestra una pantalla de
+`runtime_config.json`; si el contenido empaquetado y el runtime/template Android
+relevante no cambian, se reutiliza en arranques posteriores. Si el runtime compartido falla, la APK muestra una pantalla de
 error visible y escribe el detalle en Logcat con tag `MotorGame`.
 
 El fallback Kotlin nativo v1 queda solo para escenas simples sin gameplay
@@ -156,6 +156,10 @@ Este comando crea un overlay `MobileControls2D` serializable. En runtime,
 `InputMap` + `PlayerController2D` tenga un overlay `MobileControls2D` apuntando
 a esa entidad y use el runtime Python compartido. Es modulo interno del motor,
 no dependencia externa.
+
+`MobileControls2D.movement_mode` controla la entrada izquierda: `"joystick"`
+mantiene el eje analogico por defecto y `"dpad"` usa cruceta discreta de 4
+direcciones, sin diagonales.
 
 ### Sin Android SDK
 
@@ -259,6 +263,11 @@ py -m motor export doctor --project . --json
   `SharedGameRuntime`, por lo que power-ups `ScriptBehaviour`, plataformas
   moviles, fisica, semantica 2D y orden de sistemas siguen la ruta de PLAY del
   editor. Requiere `android_python_runtime: true` y `min_sdk >= 24`.
+- **Animaciones Android**: el export incluye sidecars `*.meta.json` de assets
+  alcanzables. El render Android resuelve `Animator.slice_names`,
+  `Sprite.source_slice`, `flip_x`, `flip_y` y entidades con `Sprite` +
+  `Animator`; animaciones avanzadas sin runtime compartido se bloquean con error
+  explicito.
 - **Android fallback v1**: el runtime Kotlin nativo queda limitado a escenas
   simples sin gameplay avanzado.
 - **Android release signing**: requiere keystore configurado en `extra`.

@@ -13,6 +13,7 @@ from typing import Any, Optional, Tuple
 import pyray as rl
 from engine.components.animator import Animator
 from engine.components.canvas import Canvas
+from engine.components.camera2d import Camera2D
 from engine.components.collider import Collider
 from engine.components.recttransform import RectTransform
 from engine.components.sprite import Sprite
@@ -21,6 +22,8 @@ from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.editor.editor_tools import EditorTool, PivotMode, SnapSettings, TransformSpace
 from engine.resources.texture_manager import TextureManager
+from engine.utils.device_profiles import resolve_preview_size
+from engine.utils.viewport import resolve_effective_camera2d
 
 
 class GizmoMode(Enum):
@@ -46,8 +49,8 @@ class GizmoMode(Enum):
 class CompletedGizmoDrag:
     entity_name: str
     component_name: str
-    before_state: dict[str, float]
-    after_state: dict[str, float]
+    before_state: dict[str, Any]
+    after_state: dict[str, Any]
     label: str
 
 
@@ -61,6 +64,8 @@ class GizmoSystem:
     AXIS_Y_COLOR = rl.Color(60, 220, 60, 255)
     ROTATE_COLOR = rl.Color(80, 150, 255, 255)
     RECT_COLOR = rl.Color(80, 150, 255, 255)
+    CAMERA_FRAME_COLOR = rl.Color(90, 220, 255, 255)
+    CAMERA_FRAME_FILL = rl.Color(90, 220, 255, 34)
     HOVER_COLOR = rl.Color(255, 255, 100, 255)
     CENTER_SIZE: int = 8
     ROTATE_RING_RADIUS: int = 40
@@ -69,6 +74,8 @@ class GizmoSystem:
     PICK_TOLERANCE: float = 10.0
     MIN_SCALE: float = 0.05
     MIN_RECT_SIZE: float = 1.0
+    MIN_CAMERA_ZOOM: float = 0.01
+    MIN_CAMERA_FRAME_SIZE: float = 16.0
     SCALE_SENSITIVITY: float = 0.02
 
     def __init__(self) -> None:
@@ -86,9 +93,10 @@ class GizmoSystem:
         self.drag_origin: Tuple[float, float] = (0.0, 0.0)
         self.drag_entity_name: str = ""
         self.drag_component_name: str = ""
-        self.drag_before_state: dict[str, float] | None = None
+        self.drag_before_state: dict[str, Any] | None = None
         self.drag_start_rect: dict[str, float] | None = None
         self.drag_parent_rect: dict[str, float] | None = None
+        self.drag_start_camera: dict[str, Any] | None = None
         self._completed_drag: CompletedGizmoDrag | None = None
         self._tilemap_preview: dict[str, Any] | None = None
         self._tilemap_texture_manager = TextureManager()
@@ -108,6 +116,8 @@ class GizmoSystem:
         ui_system: Any | None = None,
         ui_mouse_pos: rl.Vector2 | None = None,
         ui_viewport_size: tuple[float, float] | None = None,
+        camera_profile_id: str | None = None,
+        camera_viewport_size: tuple[float, float] | None = None,
     ) -> None:
         self.current_tool = EditorTool.from_value(tool)
         self.transform_space = transform_space
@@ -143,6 +153,17 @@ class GizmoSystem:
         if transform is None:
             self._clear_state()
             return
+        camera = selected_entity.get_component(Camera2D)
+        if camera is not None and self._update_camera_frame_gizmo(
+            world,
+            selected_entity,
+            transform,
+            camera,
+            mouse_world_pos,
+            camera_profile_id=camera_profile_id,
+            camera_viewport_size=camera_viewport_size,
+        ):
+            return
         self._update_world_gizmo(selected_entity, transform, mouse_world_pos)
 
     def render(
@@ -151,6 +172,8 @@ class GizmoSystem:
         tool: EditorTool | str = EditorTool.MOVE,
         transform_space: TransformSpace = TransformSpace.WORLD,
         pivot_mode: PivotMode = PivotMode.PIVOT,
+        camera_profile_id: str | None = None,
+        camera_viewport_size: tuple[float, float] | None = None,
     ) -> None:
         selected_entity = self._get_selected_entity(world)
         if selected_entity is not None and selected_entity.get_component(RectTransform) is None:
@@ -162,6 +185,16 @@ class GizmoSystem:
 
                 active_tool = self._resolve_effective_tool(selected_entity)
                 if active_tool != EditorTool.HAND:
+                    camera = selected_entity.get_component(Camera2D)
+                    if camera is not None:
+                        self._draw_camera_frame(
+                            world,
+                            selected_entity,
+                            transform,
+                            camera,
+                            camera_profile_id=camera_profile_id,
+                            camera_viewport_size=camera_viewport_size,
+                        )
                     origin_x, origin_y = self._get_gizmo_origin(selected_entity, transform, pivot_mode)
                     if active_tool in (EditorTool.MOVE, EditorTool.TRANSFORM):
                         self._draw_translate_gizmo(origin_x, origin_y, transform)
@@ -240,6 +273,61 @@ class GizmoSystem:
                 self.hover_mode = GizmoMode.TRANSLATE_FREE
         if self.hover_mode != GizmoMode.NONE and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
             self._start_transform_drag(entity, transform, mouse_x, mouse_y, origin_x, origin_y, self.hover_mode)
+
+    def _update_camera_frame_gizmo(
+        self,
+        world: World,
+        entity: Entity,
+        transform: Transform,
+        camera: Camera2D,
+        mouse_world_pos: rl.Vector2,
+        *,
+        camera_profile_id: str | None,
+        camera_viewport_size: tuple[float, float] | None,
+    ) -> bool:
+        effective_tool = self._resolve_effective_tool(entity)
+        if effective_tool not in (EditorTool.MOVE, EditorTool.TRANSFORM, EditorTool.SCALE, EditorTool.CAMERA):
+            if self.is_dragging and self.drag_component_name == "Camera2D":
+                self._end_drag(camera)
+                return True
+            return False
+
+        frame = self._camera_frame_layout(
+            world,
+            entity,
+            transform,
+            camera,
+            camera_profile_id=camera_profile_id,
+            camera_viewport_size=camera_viewport_size,
+        )
+        if frame is None:
+            return False
+
+        mouse_x, mouse_y = mouse_world_pos.x, mouse_world_pos.y
+        if self.is_dragging and self.drag_component_name == "Camera2D":
+            if rl.is_mouse_button_released(rl.MOUSE_BUTTON_LEFT):
+                self._end_drag(camera)
+            else:
+                snap_enabled = self._is_snap_modifier_down()
+                constrain_enabled = self._is_constrain_modifier_down()
+                self._handle_camera_frame_drag(camera, mouse_x, mouse_y, snap_enabled, constrain_enabled)
+            return True
+
+        self.hover_mode = self._check_camera_frame_intersection(mouse_x, mouse_y, frame, effective_tool)
+        if self.hover_mode != GizmoMode.NONE and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+            self._start_camera_frame_drag(
+                world,
+                entity,
+                transform,
+                camera,
+                frame=frame,
+                profile_id=str(camera_profile_id or ""),
+                mode=self.hover_mode,
+                mouse_x=mouse_x,
+                mouse_y=mouse_y,
+            )
+            return True
+        return self.hover_mode != GizmoMode.NONE
 
     def _update_rect_gizmo(
         self,
@@ -379,6 +467,44 @@ class GizmoSystem:
         color = self.HOVER_COLOR if active else rl.WHITE
         rl.draw_rectangle(int(point.x - size / 2), int(point.y - size / 2), size, size, color)
         rl.draw_rectangle_lines(int(point.x - size / 2), int(point.y - size / 2), size, size, rl.Color(20, 20, 20, 220))
+
+    def _draw_camera_frame(
+        self,
+        world: World,
+        entity: Entity,
+        transform: Transform,
+        camera: Camera2D,
+        *,
+        camera_profile_id: str | None,
+        camera_viewport_size: tuple[float, float] | None,
+    ) -> None:
+        frame = self._camera_frame_layout(
+            world,
+            entity,
+            transform,
+            camera,
+            camera_profile_id=camera_profile_id,
+            camera_viewport_size=camera_viewport_size,
+        )
+        if frame is None:
+            return
+        rect = rl.Rectangle(
+            float(frame["x"]),
+            float(frame["y"]),
+            float(frame["width"]),
+            float(frame["height"]),
+        )
+        active = self.hover_mode != GizmoMode.NONE or (self.is_dragging and self.drag_component_name == "Camera2D")
+        outline = self.HOVER_COLOR if active else self.CAMERA_FRAME_COLOR
+        rl.draw_rectangle_rec(rect, self.CAMERA_FRAME_FILL)
+        rl.draw_rectangle_lines_ex(rect, 2, outline)
+        label = str(frame.get("profile_id") or "camera")
+        rl.draw_text(label, int(rect.x + 6), int(rect.y + 6), 10, outline)
+        if self.current_tool in (EditorTool.TRANSFORM, EditorTool.CAMERA, EditorTool.SCALE):
+            for mode, point in self._rect_handle_positions(frame).items():
+                self._draw_rect_handle(point, self.hover_mode == mode or self.active_mode == mode)
+        if self.current_tool in (EditorTool.MOVE, EditorTool.TRANSFORM, EditorTool.CAMERA):
+            self._draw_rect_move_handle(frame)
 
     def _draw_tilemap_preview(self) -> None:
         preview = self._tilemap_preview
@@ -576,7 +702,30 @@ class GizmoSystem:
             for mode, handle_point in scale_handles.items():
                 if self._point_in_square(point, handle_point, self.RECT_HANDLE_SIZE + 4):
                     return mode
-            return GizmoMode.NONE
+                return GizmoMode.NONE
+        return GizmoMode.NONE
+
+    def _check_camera_frame_intersection(
+        self,
+        mx: float,
+        my: float,
+        frame: dict[str, Any],
+        tool: EditorTool,
+    ) -> GizmoMode:
+        point = rl.Vector2(mx, my)
+        rect = rl.Rectangle(
+            float(frame["x"]),
+            float(frame["y"]),
+            float(frame["width"]),
+            float(frame["height"]),
+        )
+        if tool in (EditorTool.TRANSFORM, EditorTool.CAMERA, EditorTool.SCALE):
+            for mode, handle_point in self._rect_handle_positions(frame).items():
+                if self._point_in_square(point, handle_point, self.RECT_HANDLE_SIZE + 4):
+                    return mode
+        if tool in (EditorTool.MOVE, EditorTool.TRANSFORM, EditorTool.CAMERA):
+            if self._point_in_rect(point, rect):
+                return GizmoMode.TRANSLATE_FREE
         return GizmoMode.NONE
 
     def _distance_to_axis(self, point: rl.Vector2, origin: rl.Vector2, axis: rl.Vector2) -> float:
@@ -646,6 +795,55 @@ class GizmoSystem:
         self.drag_entity_name = entity.name
         self.drag_component_name = "RectTransform"
         self.drag_before_state = self._capture_rect_transform_state(rect_transform)
+
+    def _start_camera_frame_drag(
+        self,
+        world: World,
+        entity: Entity,
+        transform: Transform,
+        camera: Camera2D,
+        *,
+        frame: dict[str, Any],
+        profile_id: str,
+        mode: GizmoMode,
+        mouse_x: float,
+        mouse_y: float,
+    ) -> None:
+        payload = self._ensure_camera_profile_override(
+            world,
+            entity,
+            transform,
+            camera,
+            profile_id,
+            target_x=float(frame["target_x"]),
+            target_y=float(frame["target_y"]),
+        )
+        follow = bool(camera.follow_entity)
+        target_x = float(payload.get("target_offset_x" if follow else "target_x", frame["target_x"]) or 0.0)
+        target_y = float(payload.get("target_offset_y" if follow else "target_y", frame["target_y"]) or 0.0)
+        self.is_dragging = True
+        self.active_mode = mode
+        self.drag_start_mouse = (mouse_x, mouse_y)
+        self.drag_start_pos = (target_x, target_y)
+        self.drag_origin = (float(frame["center_x"]), float(frame["center_y"]))
+        self.drag_start_rect = {
+            "x": float(frame["x"]),
+            "y": float(frame["y"]),
+            "width": float(frame["width"]),
+            "height": float(frame["height"]),
+        }
+        self.drag_start_camera = {
+            "profile_id": profile_id,
+            "follow": follow,
+            "zoom": float(payload.get("zoom", camera.zoom) or camera.zoom or 1.0),
+            "viewport_width": float(frame["viewport_width"]),
+            "viewport_height": float(frame["viewport_height"]),
+            "center_x": float(frame["center_x"]),
+            "center_y": float(frame["center_y"]),
+        }
+        self.drag_entity_name = entity.name
+        self.drag_component_name = "Camera2D"
+        self.drag_before_state = self._capture_camera_profile_overrides(camera)
 
     def _handle_transform_drag(self, transform: Transform, mx: float, my: float, snap_enabled: bool, constrain_enabled: bool) -> None:
         start_mx, start_my = self.drag_start_mouse
@@ -813,6 +1011,66 @@ class GizmoSystem:
             rect_transform.scale_x = max(self.MIN_SCALE, new_scale_x)
             rect_transform.scale_y = max(self.MIN_SCALE, new_scale_y)
 
+    def _handle_camera_frame_drag(
+        self,
+        camera: Camera2D,
+        mx: float,
+        my: float,
+        snap_enabled: bool,
+        constrain_enabled: bool,
+    ) -> None:
+        if self.drag_start_camera is None:
+            return
+        payload = self._active_camera_profile_payload(camera)
+        if payload is None:
+            return
+
+        start_mx, start_my = self.drag_start_mouse
+        dx = mx - start_mx
+        dy = my - start_my
+        follow = bool(self.drag_start_camera.get("follow"))
+        if self.active_mode == GizmoMode.TRANSLATE_FREE:
+            if constrain_enabled:
+                if abs(dx) >= abs(dy):
+                    dy = 0.0
+                else:
+                    dx = 0.0
+            if snap_enabled:
+                dx = self._snap(dx, self.snap_settings.move_step)
+                dy = self._snap(dy, self.snap_settings.move_step)
+            if follow:
+                payload["target_offset_x"] = float(self.drag_start_pos[0]) + dx
+                payload["target_offset_y"] = float(self.drag_start_pos[1]) + dy
+            else:
+                payload["target_x"] = float(self.drag_start_pos[0]) + dx
+                payload["target_y"] = float(self.drag_start_pos[1]) + dy
+            return
+
+        if self.drag_start_rect is None:
+            return
+        center_x = float(self.drag_start_camera["center_x"])
+        center_y = float(self.drag_start_camera["center_y"])
+        start_width = max(self.MIN_CAMERA_FRAME_SIZE, float(self.drag_start_rect["width"]))
+        start_height = max(self.MIN_CAMERA_FRAME_SIZE, float(self.drag_start_rect["height"]))
+        half_width = max(self.MIN_CAMERA_FRAME_SIZE * 0.5, start_width * 0.5)
+        half_height = max(self.MIN_CAMERA_FRAME_SIZE * 0.5, start_height * 0.5)
+
+        factor_x = abs(mx - center_x) / half_width
+        factor_y = abs(my - center_y) / half_height
+        if self.active_mode in (GizmoMode.RECT_LEFT, GizmoMode.RECT_RIGHT):
+            factor = factor_x
+        elif self.active_mode in (GizmoMode.RECT_TOP, GizmoMode.RECT_BOTTOM):
+            factor = factor_y
+        else:
+            factor = max(factor_x, factor_y)
+        factor = max(self.MIN_CAMERA_FRAME_SIZE / start_width, factor)
+        new_width = max(self.MIN_CAMERA_FRAME_SIZE, start_width * factor)
+        viewport_width = max(1.0, float(self.drag_start_camera["viewport_width"]))
+        zoom = max(self.MIN_CAMERA_ZOOM, viewport_width / new_width)
+        if snap_enabled:
+            zoom = max(self.MIN_CAMERA_ZOOM, self._snap(zoom, self.snap_settings.scale_step))
+        payload["zoom"] = zoom
+
     def _apply_visual_rect_to_rect_transform(
         self,
         rect_transform: RectTransform,
@@ -865,9 +1123,15 @@ class GizmoSystem:
             if self.drag_component_name == "Transform":
                 after_state = self._capture_transform_state(component)
                 label = f"transform:{self.drag_entity_name}"
-            else:
+            elif self.drag_component_name == "RectTransform":
                 after_state = self._capture_rect_transform_state(component)
                 label = f"rect_transform:{self.drag_entity_name}"
+            elif self.drag_component_name == "Camera2D":
+                after_state = self._capture_camera_profile_overrides(component)
+                label = f"camera_frame:{self.drag_entity_name}"
+            else:
+                after_state = {}
+                label = f"gizmo:{self.drag_entity_name}"
             if after_state != self.drag_before_state:
                 self._completed_drag = CompletedGizmoDrag(
                     entity_name=self.drag_entity_name,
@@ -889,6 +1153,7 @@ class GizmoSystem:
         self.drag_component_name = ""
         self.drag_start_rect = None
         self.drag_parent_rect = None
+        self.drag_start_camera = None
 
     def _capture_transform_state(self, transform: Transform) -> dict[str, float]:
         return {
@@ -909,6 +1174,165 @@ class GizmoSystem:
             "scale_x": float(rect_transform.scale_x),
             "scale_y": float(rect_transform.scale_y),
         }
+
+    def _capture_camera_profile_overrides(self, camera: Camera2D) -> dict[str, Any]:
+        overrides = getattr(camera, "profile_overrides", {})
+        return copy.deepcopy(overrides) if isinstance(overrides, dict) else {}
+
+    def _camera_frame_layout(
+        self,
+        world: World,
+        entity: Entity,
+        transform: Transform,
+        camera: Camera2D,
+        *,
+        camera_profile_id: str | None,
+        camera_viewport_size: tuple[float, float] | None,
+    ) -> dict[str, Any] | None:
+        if camera is None or not bool(getattr(camera, "enabled", True)):
+            return None
+        del transform
+        resolved = resolve_effective_camera2d(
+            world,
+            viewport_size=camera_viewport_size,
+            camera_profile_id=camera_profile_id,
+            camera_entity=entity,
+        )
+        if resolved is None:
+            return None
+        width = max(self.MIN_CAMERA_FRAME_SIZE, resolved.rect_width)
+        height = max(self.MIN_CAMERA_FRAME_SIZE, resolved.rect_height)
+        return {
+            "x": resolved.rect_left,
+            "y": resolved.rect_top,
+            "width": width,
+            "height": height,
+            "center_x": resolved.rect_center_x,
+            "center_y": resolved.rect_center_y,
+            "target_x": resolved.target_x,
+            "target_y": resolved.target_y,
+            "viewport_width": resolved.viewport_width,
+            "viewport_height": resolved.viewport_height,
+            "profile_id": str(camera_profile_id or ""),
+            "entity_name": entity.name,
+        }
+
+    def _camera_frame_center(
+        self,
+        world: World,
+        transform: Transform,
+        camera: Camera2D,
+        override: dict[str, Any],
+    ) -> tuple[float, float]:
+        target_x = float(transform.x)
+        target_y = float(transform.y)
+        follow_name = str(getattr(camera, "follow_entity", "") or "")
+        follow_target = world.get_entity_by_name(follow_name) if follow_name else None
+        if follow_target is not None and bool(getattr(follow_target, "active", True)):
+            follow_transform = follow_target.get_component(Transform)
+            if follow_transform is not None and bool(getattr(follow_transform, "enabled", True)):
+                target_x = float(follow_transform.x) + self._profile_number(override, "target_offset_x", 0.0)
+                target_y = float(follow_transform.y) + self._profile_number(override, "target_offset_y", 0.0)
+        else:
+            target_x = self._profile_number(override, "target_x", target_x)
+            target_y = self._profile_number(override, "target_y", target_y)
+
+        if camera.clamp_left is not None:
+            target_x = max(float(camera.clamp_left), target_x)
+        if camera.clamp_right is not None:
+            target_x = min(float(camera.clamp_right), target_x)
+        if camera.clamp_top is not None:
+            target_y = max(float(camera.clamp_top), target_y)
+        if camera.clamp_bottom is not None:
+            target_y = min(float(camera.clamp_bottom), target_y)
+        return target_x, target_y
+
+    def _resolve_camera_viewport_size(
+        self,
+        camera_profile_id: str | None,
+        camera_viewport_size: tuple[float, float] | None,
+    ) -> tuple[float, float]:
+        fallback_width = 800
+        fallback_height = 600
+        if camera_viewport_size is not None:
+            fallback_width = max(1, int(camera_viewport_size[0]))
+            fallback_height = max(1, int(camera_viewport_size[1]))
+        width, height = resolve_preview_size(camera_profile_id, fallback_width, fallback_height)
+        return float(width), float(height)
+
+    @staticmethod
+    def _camera_profile_override(camera: Camera2D, profile_id: str | None) -> dict[str, Any]:
+        key = str(profile_id or "").strip()
+        if not key:
+            return {}
+        overrides = getattr(camera, "profile_overrides", {})
+        if not isinstance(overrides, dict):
+            return {}
+        payload = overrides.get(key, {})
+        return payload if isinstance(payload, dict) else {}
+
+    @staticmethod
+    def _profile_number(payload: dict[str, Any], key: str, fallback: float) -> float:
+        if key not in payload:
+            return float(fallback)
+        try:
+            return float(payload[key])
+        except (TypeError, ValueError):
+            return float(fallback)
+
+    def _ensure_camera_profile_override(
+        self,
+        world: World,
+        entity: Entity,
+        transform: Transform,
+        camera: Camera2D,
+        profile_id: str,
+        *,
+        target_x: float | None = None,
+        target_y: float | None = None,
+    ) -> dict[str, Any]:
+        overrides = getattr(camera, "profile_overrides", {})
+        if not isinstance(overrides, dict):
+            overrides = {}
+        key = str(profile_id or "")
+        payload = overrides.get(key)
+        if isinstance(payload, dict):
+            return payload
+
+        resolved = resolve_effective_camera2d(world, camera_entity=entity)
+        center_x = float(target_x) if target_x is not None else float(resolved.target_x) if resolved is not None else float(transform.x)
+        center_y = float(target_y) if target_y is not None else float(resolved.target_y) if resolved is not None else float(transform.y)
+        payload = {
+            "offset_x": float(camera.offset_x),
+            "offset_y": float(camera.offset_y),
+            "zoom": float(camera.zoom),
+            "rotation": float(camera.rotation),
+        }
+        if camera.follow_entity:
+            follow_target = world.get_entity_by_name(str(camera.follow_entity))
+            follow_transform = follow_target.get_component(Transform) if follow_target is not None else None
+            if follow_transform is not None:
+                payload["target_offset_x"] = center_x - float(follow_transform.x)
+                payload["target_offset_y"] = center_y - float(follow_transform.y)
+            else:
+                payload["target_offset_x"] = 0.0
+                payload["target_offset_y"] = 0.0
+        else:
+            payload["target_x"] = center_x
+            payload["target_y"] = center_y
+        overrides[key] = payload
+        camera.profile_overrides = overrides
+        return payload
+
+    def _active_camera_profile_payload(self, camera: Camera2D) -> dict[str, Any] | None:
+        if self.drag_start_camera is None:
+            return None
+        profile_id = str(self.drag_start_camera.get("profile_id", ""))
+        overrides = getattr(camera, "profile_overrides", {})
+        if not isinstance(overrides, dict):
+            return None
+        payload = overrides.get(profile_id)
+        return payload if isinstance(payload, dict) else None
 
     def _get_axes(self, transform: Transform) -> tuple[rl.Vector2, rl.Vector2]:
         if self.transform_space == TransformSpace.WORLD:

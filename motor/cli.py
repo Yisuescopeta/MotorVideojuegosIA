@@ -47,6 +47,7 @@ import json
 import sys
 from typing import List, Optional
 
+from engine.config import ENGINE_VERSION
 from motor.cli_core import (
     cmd_agent_action_approve,
     cmd_agent_message_send,
@@ -281,7 +282,7 @@ Documentation:
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 2026.03 (MotorVideojuegosIA)",
+        version=f"%(prog)s {ENGINE_VERSION} (MotorVideojuegosIA)",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")

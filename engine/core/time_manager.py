@@ -38,9 +38,9 @@ class TimeManager:
         Actualiza los valores de tiempo desde Raylib.
         Debe llamarse una vez al inicio de cada frame en modo gráfico.
         """
-        self._delta_time = rl.get_frame_time()
+        self._delta_time = rl.get_frame_time() or 0.0
         self._total_time += self._delta_time
-        self._fps = rl.get_fps()
+        self._fps = rl.get_fps() or 0
         self._frame_count += 1
 
     def update_manual(self, dt: float) -> None:

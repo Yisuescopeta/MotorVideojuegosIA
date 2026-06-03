@@ -451,6 +451,11 @@ class SchemaValidationTests(unittest.TestCase):
                 "$.entities[0].components.Camera2D.zoom: expected > 0.0",
             ),
             (
+                "Camera2D",
+                {"profile_overrides": {"desktop_16_9": {"zoom": 0}}},
+                "$.entities[0].components.Camera2D.profile_overrides.desktop_16_9.zoom: expected > 0.0",
+            ),
+            (
                 "InputMap",
                 {"action_1": 7},
                 "$.entities[0].components.InputMap.action_1: expected string",
@@ -491,6 +496,59 @@ class SchemaValidationTests(unittest.TestCase):
                 )
                 errors = validate_scene_data(payload)
                 self.assertTrue(any(expected in error for error in errors), errors)
+
+    def test_camera2d_profile_overrides_are_valid_scene_payload(self) -> None:
+        payload = _scene_payload(
+            entities=[
+                _entity_payload(
+                    "Camera",
+                    components={
+                        "Transform": _transform_component(),
+                        "Camera2D": {
+                            "enabled": True,
+                            "zoom": 1.0,
+                            "profile_overrides": {
+                                "desktop_16_9": {
+                                    "target_x": 120.0,
+                                    "target_y": -40.0,
+                                    "offset_x": 640.0,
+                                    "offset_y": 360.0,
+                                    "zoom": 1.5,
+                                    "rotation": 0.0,
+                                },
+                                "mobile_portrait": {
+                                    "target_offset_x": 8.0,
+                                    "target_offset_y": -12.0,
+                                },
+                            },
+                        },
+                    },
+                )
+            ]
+        )
+
+        migrated = migrate_scene_data(payload)
+
+        self.assertEqual(validate_scene_data(migrated), [])
+        camera = migrated["entities"][0]["components"]["Camera2D"]
+        self.assertIn("desktop_16_9", camera["profile_overrides"])
+
+    def test_legacy_camera2d_without_profile_overrides_remains_valid(self) -> None:
+        payload = _scene_payload(
+            entities=[
+                _entity_payload(
+                    "Camera",
+                    components={
+                        "Transform": _transform_component(),
+                        "Camera2D": {"enabled": True, "zoom": 1.0},
+                    },
+                )
+            ]
+        )
+
+        migrated = migrate_scene_data(payload)
+
+        self.assertEqual(validate_scene_data(migrated), [])
 
     def test_scene_validation_accepts_ui_button_sprite_fields_and_uiimage(self) -> None:
         payload = migrate_scene_data(

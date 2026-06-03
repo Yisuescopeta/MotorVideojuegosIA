@@ -143,9 +143,15 @@ class MobileControlsSystem:
             if distance > 0.0:
                 normalized = min(1.0, distance / controls.left_stick_radius)
                 if normalized >= controls.deadzone:
-                    scale = (normalized - controls.deadzone) / max(0.001, 1.0 - controls.deadzone)
-                    state["horizontal"] = max(-1.0, min(1.0, (dx / distance) * scale))
-                    state["vertical"] = max(-1.0, min(1.0, -(dy / distance) * scale))
+                    if controls.movement_mode == "dpad":
+                        if abs(dx) >= abs(dy):
+                            state["horizontal"] = 1.0 if dx >= 0.0 else -1.0
+                        else:
+                            state["vertical"] = -1.0 if dy >= 0.0 else 1.0
+                    else:
+                        scale = (normalized - controls.deadzone) / max(0.001, 1.0 - controls.deadzone)
+                        state["horizontal"] = max(-1.0, min(1.0, (dx / distance) * scale))
+                        state["vertical"] = max(-1.0, min(1.0, -(dy / distance) * scale))
 
         if capture == "action_1" and controls.action_1_enabled:
             state["action_1"] = 1.0

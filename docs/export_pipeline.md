@@ -156,6 +156,10 @@ El content pack incluye:
   produce mismo hash)
 - `runtime_config.json`: configuracion de runtime (entry scene, window, etc.)
 
+Cuando un asset alcanzable tiene sidecar `*.meta.json`, el sidecar tambien se
+incluye en el content pack. Esto conserva metadata de slices para `Sprite` y
+`Animator` en exports PC/Android.
+
 Cada asset, escena y script en el manifest incluye `sha256` y `size_bytes`.
 Los GUIDs son estables: derivados del path y dependencias.
 
@@ -212,8 +216,9 @@ no se detectan. Para incluirlos, declararlos en el `.py.meta.json`, usar
   y copia `engine/`, `pyray/`, `sitecustomize.py` y scripts alcanzables a
   `app/src/main/python/`
 - `runtime_config.json` incluye `android_runtime_cache_key`, derivado de
-  `game.manifest.json`; el shell Android lo usa para cachear en `filesDir` solo
-  los assets runtime necesarios y nunca copia `chaquopy/`
+  `game.manifest.json` y del runtime/template Android relevante; el shell
+  Android lo usa para cachear en `filesDir` solo los assets runtime necesarios
+  y nunca copia `chaquopy/`
 - Si el runtime compartido falla al crear escena o frame, Android muestra una
   pantalla de error visible y registra el detalle en Logcat (`MotorGame`)
 - Escenas Android jugables (`InputMap` + `PlayerController2D`) requieren
@@ -372,8 +377,10 @@ excluye `chaquopy/`, cachea la copia con `android_runtime_cache_key`, arranca
 Chaquopy y ejecuta `SharedGameRuntime`, la misma ruta `Game` +
 `RuntimeController` que usa PLAY del editor. Kotlin no decide gameplay en ese
 modo: solo traduce touch, mantiene `SurfaceView` y renderiza el snapshot
-serializado. Sin ese flag, el fallback Kotlin nativo v1 queda limitado a escenas
-simples; escenas jugables fallan con `ANDROID_RUNTIME_REQUIRES_SHARED_RUNTIME`.
+serializado usando metadata de slices para `Sprite.source_slice` y
+`Animator.slice_names`. Sin ese flag, el fallback Kotlin nativo v1 queda limitado
+a escenas simples; escenas jugables fallan con `ANDROID_RUNTIME_REQUIRES_SHARED_RUNTIME`
+y animaciones avanzadas fallan con `ANDROID_RUNTIME_UNSUPPORTED_ANIMATOR_ADVANCED`.
 
 ## Troubleshooting
 

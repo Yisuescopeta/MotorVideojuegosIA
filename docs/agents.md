@@ -171,6 +171,17 @@ Para tooling/editor sobre un runtime ya vinculado, `EngineAPI` tambien expone
 Ese override de `entry_scene` vive solo en memoria para el build actual y no
 reescribe `export_presets.motor.json`.
 
+Para controles tactiles, usa `MobileControls2D.movement_mode="dpad"` cuando una
+escena movil necesite cruceta discreta de 4 direcciones en vez de joystick.
+
+Para camaras, `Camera2D.profile_overrides` es authoring serializable por
+`device_profile`. Usa `EngineAPI.update_camera2d`/`set_camera_framing` o rutas
+del editor que deleguen en `SceneManager`; no edites `edit_world` directamente
+para persistir encuadres por perfil.
+El marco editable de una camara seleccionada en Scene View tambien persiste por
+esa ruta: mover escribe `target_x/y` o `target_offset_x/y` y redimensionar
+escribe `zoom` para el perfil activo.
+
 Los temas de editor son preferencia de proyecto, no authoring de escena. Usa
 `EngineAPI.list_editor_themes`, `get_active_editor_theme`,
 `set_active_editor_theme`, `export_editor_theme` e `import_editor_theme`, o la
