@@ -724,7 +724,7 @@ class EditorLayout:
 
     def _update_auto_hide_animations(self) -> None:
         """Lerp auto-hide animations each frame."""
-        dt = rl.get_frame_time()
+        dt = rl.get_frame_time() or 0.0
         speed = 8.0
         mouse = rl.get_mouse_position()
         mx, my = float(mouse.x), float(mouse.y)
@@ -2542,8 +2542,12 @@ class EditorLayout:
         if cached is not None:
             return cached
         measured = rl.measure_text(str(text), int(size))
-        self._text_measure_cache[cache_key] = int(measured)
-        return int(measured)
+        if measured is not None:
+            result = int(measured)
+        else:
+            result = len(str(text)) * int(size)
+        self._text_measure_cache[cache_key] = result
+        return result
 
     def _fit_texture_in_rect(self, texture_width: float, texture_height: float, rect: rl.Rectangle) -> rl.Rectangle:
         if texture_width <= 0 or texture_height <= 0 or rect.width <= 0 or rect.height <= 0:
@@ -2660,7 +2664,7 @@ class EditorLayout:
 
     def _draw_viewport_overlay(self, view_rect: rl.Rectangle) -> None:
         try:
-            fps = int(rl.get_fps())
+            fps = int(rl.get_fps() or 0)
         except Exception:
             fps = 0
 
