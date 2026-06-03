@@ -25,6 +25,7 @@ from engine.ecs.component import Component
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.editor.cursor_manager import CursorVisualState
+from engine.editor.ui.icons import ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, ICON_TRASH, draw_icon
 from engine.editor.render_safety import editor_scissor
 from engine.inspector.component_editor_registry import ComponentEditorRegistry
 from engine.levels.component_registry import create_default_registry
@@ -3197,21 +3198,21 @@ class InspectorSystem:
             up_rect = rl.Rectangle(value_x + value_w + 2, current_y + 1, 24, row_height - 2)
             down_rect = rl.Rectangle(value_x + value_w + 28, current_y + 1, 24, row_height - 2)
             delete_rect = rl.Rectangle(value_x + value_w + 54, current_y + 1, 24, row_height - 2)
-            if rl.gui_button(up_rect, "<") and index > 0:
+            if self._draw_inspector_icon_button(up_rect, ICON_CHEVRON_LEFT) and index > 0:
                 self.update_component_payload(
                     world,
                     entity_name,
                     "Animator",
                     lambda payload, state_name=state_name, field_name=field_name, index=index: self._move_animator_list_item(payload, state_name, field_name, index, index - 1),
                 )
-            if rl.gui_button(down_rect, ">") and index < len(items) - 1:
+            if self._draw_inspector_icon_button(down_rect, ICON_CHEVRON_RIGHT) and index < len(items) - 1:
                 self.update_component_payload(
                     world,
                     entity_name,
                     "Animator",
                     lambda payload, state_name=state_name, field_name=field_name, index=index: self._move_animator_list_item(payload, state_name, field_name, index, index + 1),
                 )
-            if rl.gui_button(delete_rect, "x"):
+            if self._draw_inspector_icon_button(delete_rect, ICON_TRASH):
                 self.update_component_payload(
                     world,
                     entity_name,
@@ -3220,6 +3221,11 @@ class InspectorSystem:
                 )
             current_y += row_height
         return current_y
+
+    def _draw_inspector_icon_button(self, rect: rl.Rectangle, icon_name: str) -> bool:
+        clicked = bool(rl.gui_button(rect, ""))
+        draw_icon(icon_name, (float(rect.x), float(rect.y), float(rect.width), float(rect.height)), size=12)
+        return clicked
 
     def _draw_camera2d_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:
         current_y = y

@@ -18,11 +18,13 @@ ICON_PLUS = "plus"
 ICON_MINUS = "minus"
 ICON_CHECK = "check"
 ICON_ARROW_DOWN = "arrow_down"
+ICON_CHEVRON_LEFT = "chevron_left"
 ICON_CHEVRON_RIGHT = "chevron_right"
 ICON_SEARCH = "search"
 ICON_GEAR = "gear"
 ICON_MENU = "menu"
 ICON_FOLDER = "folder"
+ICON_TRASH = "trash"
 
 KNOWN_ICONS = {
     ICON_PLAY,
@@ -33,11 +35,13 @@ KNOWN_ICONS = {
     ICON_MINUS,
     ICON_CHECK,
     ICON_ARROW_DOWN,
+    ICON_CHEVRON_LEFT,
     ICON_CHEVRON_RIGHT,
     ICON_SEARCH,
     ICON_GEAR,
     ICON_MENU,
     ICON_FOLDER,
+    ICON_TRASH,
 }
 
 
@@ -117,6 +121,9 @@ def draw_icon(
         rl.draw_line(cx, bottom, right, top, c)
     elif icon_name == ICON_ARROW_DOWN:
         rl.draw_triangle(_vec2(left, top), _vec2(right, top), _vec2(cx, bottom), c)
+    elif icon_name == ICON_CHEVRON_LEFT:
+        rl.draw_line(right, top, left, cy, c)
+        rl.draw_line(left, cy, right, bottom, c)
     elif icon_name == ICON_CHEVRON_RIGHT:
         rl.draw_line(left, top, right, cy, c)
         rl.draw_line(right, cy, left, bottom, c)
@@ -143,3 +150,10 @@ def draw_icon(
         rl.draw_rectangle_lines(left, top, right - left, bottom - top, c)
         rl.draw_line(left, top + tab_h, left + tab_w, top + tab_h, c)
         rl.draw_line(left + tab_w, top + tab_h, left + tab_w, top, c)
+    elif icon_name == ICON_TRASH:
+        lid_y = top + max(1, int(_h * 0.2))
+        body_top = top + max(2, int(_h * 0.32))
+        rl.draw_line(left, lid_y, right, lid_y, c)
+        rl.draw_rectangle_lines(left + 2, body_top, max(1, right - left - 4), max(1, bottom - body_top), c)
+        rl.draw_line(cx - 3, top, cx + 3, top, c)
+        rl.draw_line(cx, top, cx, lid_y, c)

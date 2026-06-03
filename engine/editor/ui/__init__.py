@@ -5,6 +5,7 @@ from engine.editor.ui.file_picker_render import process_file_picker, render_file
 from engine.editor.ui.icons import (
     ICON_ARROW_DOWN,
     ICON_CHECK,
+    ICON_CHEVRON_LEFT,
     ICON_CHEVRON_RIGHT,
     ICON_CLOSE,
     ICON_GEAR,
@@ -15,6 +16,7 @@ from engine.editor.ui.icons import (
     ICON_PLUS,
     ICON_SEARCH,
     ICON_STOP,
+    ICON_TRASH,
     draw_icon,
     icon_exists,
 )
@@ -95,6 +97,7 @@ __all__ = [
     "EditorTheme",
     "ICON_ARROW_DOWN",
     "ICON_CHECK",
+    "ICON_CHEVRON_LEFT",
     "ICON_CHEVRON_RIGHT",
     "ICON_CLOSE",
     "ICON_GEAR",
@@ -105,6 +108,7 @@ __all__ = [
     "ICON_PLUS",
     "ICON_SEARCH",
     "ICON_STOP",
+    "ICON_TRASH",
     "UNITY_DARK",
     "UNITY_LIGHT",
     "VirtualScroll",
