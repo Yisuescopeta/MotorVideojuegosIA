@@ -14,8 +14,37 @@ class HeadlessGame(Game):
     """
 
     def __init__(self, width: int = 800, height: int = 600) -> None:
-        super().__init__("Headless", width, height, 60)
+        super().__init__("Headless", width, height, 60, editor_enabled=False, hot_reload_enabled=False)
         self.headless_running: bool = False
+        self._install_headless_debug_tools()
+
+    def _install_headless_debug_tools(self) -> None:
+        from engine.app.debug_tools_controller import DebugToolsController
+
+        self._debug_tools_controller = DebugToolsController(
+            time_manager=self.time,
+            timeline=self.timeline,
+            profiler=self._profiler,
+            hot_reload_manager=self.hot_reload_manager,
+            perf_stats=self._perf_stats,
+            perf_counters=self._perf_counters,
+            get_state=lambda: self._state,
+            get_world=lambda: self.world,
+            set_world=self.set_world,
+            get_scene_manager=lambda: self._scene_manager,
+            get_level_loader=lambda: self._level_loader,
+            get_rule_system=lambda: self._rule_system,
+            get_collision_system=lambda: self._collision_system,
+            get_render_system=lambda: self._render_system,
+            get_physics_backend_registry=lambda: self._physics_backend_registry,
+            get_width=lambda: self.width,
+            get_show_performance_overlay=lambda: self.show_performance_overlay,
+            set_show_performance_overlay=lambda value: setattr(self, "show_performance_overlay", value),
+            get_debug_draw_colliders=lambda: self.debug_draw_colliders,
+            set_debug_draw_colliders=lambda value: setattr(self, "debug_draw_colliders", value),
+            get_debug_draw_labels=lambda: self.debug_draw_labels,
+            set_debug_draw_labels=lambda value: setattr(self, "debug_draw_labels", value),
+        )
 
     def run(self) -> None:
         """

@@ -5,9 +5,12 @@ from unittest.mock import MagicMock, patch
 
 from engine.editor.ui.icons import (
     ICON_CLOSE,
+    ICON_CHEVRON_LEFT,
+    ICON_CHEVRON_RIGHT,
     ICON_FOLDER,
     ICON_PLAY,
     ICON_SEARCH,
+    ICON_TRASH,
     KNOWN_ICONS,
     draw_icon,
     icon_exists,
@@ -61,8 +64,11 @@ class TestIconsMultisize(unittest.TestCase):
     def test_icon_exists(self):
         self.assertTrue(icon_exists(ICON_PLAY))
         self.assertTrue(icon_exists(ICON_CLOSE))
+        self.assertTrue(icon_exists(ICON_CHEVRON_LEFT))
+        self.assertTrue(icon_exists(ICON_CHEVRON_RIGHT))
         self.assertTrue(icon_exists(ICON_SEARCH))
         self.assertTrue(icon_exists(ICON_FOLDER))
+        self.assertTrue(icon_exists(ICON_TRASH))
         self.assertFalse(icon_exists("bogus"))
 
     def test_all_icons_draw_with_size(self):

@@ -1080,14 +1080,18 @@ class Game:
                 int(pointer_state.get("frames", 1)),
             )
         if pointer_state is not None and self._mobile_controls_system is not None:
-            self._mobile_controls_system.inject_pointer_state(
-                float(pointer_state.get("x", 0.0)),
-                float(pointer_state.get("y", 0.0)),
-                down=bool(pointer_state.get("down", False)),
-                pressed=bool(pointer_state.get("pressed", False)),
-                released=bool(pointer_state.get("released", False)),
-                frames=int(pointer_state.get("frames", 1)),
-            )
+            mobile_pointer_state = self._expand_mobile_pointer_frames(pointer_state, dt)
+            if isinstance(pointer_state.get("pointers"), list):
+                self._mobile_controls_system.inject_pointer_payload(mobile_pointer_state)
+            else:
+                self._mobile_controls_system.inject_pointer_state(
+                    float(mobile_pointer_state.get("x", 0.0)),
+                    float(mobile_pointer_state.get("y", 0.0)),
+                    down=bool(mobile_pointer_state.get("down", False)),
+                    pressed=bool(mobile_pointer_state.get("pressed", False)),
+                    released=bool(mobile_pointer_state.get("released", False)),
+                    frames=int(mobile_pointer_state.get("frames", 1)),
+                )
         frame_dt = max(0.0, float(dt))
         self.time.update_manual(frame_dt)
         return self._run_runtime_tick(
@@ -1097,6 +1101,32 @@ class Game:
             active_tab="GAME",
             should_render_like=self.world is not None,
         )
+
+    def _expand_mobile_pointer_frames(self, pointer_state: dict[str, Any], dt: float) -> dict[str, Any]:
+        payload = dict(pointer_state)
+        payload["frames"] = max(int(payload.get("frames", 1)), self._estimated_runtime_fixed_steps(dt), 1)
+        return payload
+
+    def _estimated_runtime_fixed_steps(self, dt: float) -> int:
+        runtime_controller = self._runtime_controller
+        if runtime_controller is None:
+            return 1
+
+        frame_dt = max(0.0, float(dt))
+        loop_state = runtime_controller._loop_state
+        state = self._state
+
+        if state == EngineState.STEPPING:
+            return 1
+        if not (state.allows_physics() or state.allows_gameplay()):
+            return 0
+
+        fixed_dt = loop_state.fixed_dt
+        if fixed_dt <= 0.0:
+            return 0
+
+        requested_steps = int((loop_state.accumulator + frame_dt) / fixed_dt)
+        return min(requested_steps, loop_state.max_fixed_steps_per_frame)
 
     def render_runtime_frame(self, viewport_size: tuple[float, float]) -> None:
         world = self.world
@@ -1457,7 +1487,12 @@ class Game:
                     if self.agent_panel is not None:
                         self.agent_panel.update_input(self.editor_layout.active_bottom_tab == "AGENT")
                     self._persist_editor_preferences()
-                if self.animator_panel is not None and active_world is not None:
+                if (
+                    self.animator_panel is not None
+                    and active_world is not None
+                    and self.editor_layout is not None
+                    and self.editor_layout.active_tab == "ANIMATOR"
+                ):
                     self.animator_panel.update(active_world, dt)
 
                 # Procesar requests de UI

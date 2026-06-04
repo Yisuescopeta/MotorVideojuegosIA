@@ -2,10 +2,13 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
 from engine.api import EngineAPI
 from engine.components.inputmap import InputMap
 from engine.components.mobile_controls_2d import MobileControls2D
+from engine.core.engine_state import EngineState
+from engine.core.game import Game
 from engine.ecs.world import World
 from engine.levels.component_registry import create_default_registry
 from engine.systems.mobile_controls_system import MobileControlsSystem
@@ -241,6 +244,54 @@ class MobileControlsSystemTests(unittest.TestCase):
 
         self.assertGreater(input_map.last_state["horizontal"], 0.3)
         self.assertEqual(input_map.last_state["action_1"], 1.0)
+
+
+class MobileControlsRuntimeBridgeTests(unittest.TestCase):
+    def test_step_runtime_frame_preserves_multitouch_payload_for_mobile_controls(self) -> None:
+        game = Game(editor_enabled=False, hot_reload_enabled=False)
+        game._ui_system = Mock()
+        mobile_controls = Mock()
+        game.set_mobile_controls_system(mobile_controls)
+        game._run_runtime_tick = Mock(return_value=None)
+        payload = {
+            "pointers": [
+                {"id": 1, "x": 52.0, "y": 304.2, "down": True, "pressed": False, "released": False},
+                {"id": 2, "x": 708.96, "y": 304.2, "down": True, "pressed": True, "released": False},
+            ],
+            "x": 52.0,
+            "y": 304.2,
+            "down": True,
+            "pressed": False,
+            "released": False,
+        }
+
+        game.step_runtime_frame(1.0 / 60.0, (844.0, 390.0), pointer_state=payload)
+
+        game._ui_system.inject_pointer_state.assert_called_once_with(52.0, 304.2, True, False, False, 1)
+        mobile_controls.inject_pointer_payload.assert_called_once_with({**payload, "frames": 1})
+        mobile_controls.inject_pointer_state.assert_not_called()
+
+    def test_step_runtime_frame_extends_mobile_payload_across_multiple_fixed_steps(self) -> None:
+        game = Game(editor_enabled=False, hot_reload_enabled=False)
+        game._ui_system = Mock()
+        mobile_controls = Mock()
+        game.set_mobile_controls_system(mobile_controls)
+        game._run_runtime_tick = Mock(return_value=None)
+        game._state = EngineState.PLAY
+        payload = {
+            "pointers": [
+                {"id": 1, "x": 52.0, "y": 304.2, "down": True, "pressed": False, "released": False},
+            ],
+            "x": 52.0,
+            "y": 304.2,
+            "down": True,
+            "pressed": False,
+            "released": False,
+        }
+
+        game.step_runtime_frame(0.05, (844.0, 390.0), pointer_state=payload)
+
+        mobile_controls.inject_pointer_payload.assert_called_once_with({**payload, "frames": 3})
 
 
 class MobileControlsAPITests(unittest.TestCase):

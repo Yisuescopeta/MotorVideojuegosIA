@@ -48,6 +48,18 @@ class PhysicsSystem:
     """Sistema que aplica fisica 2D determinista y simple."""
 
     @staticmethod
+    def _world_has_any_component(world: World, *component_types: type) -> bool:
+        component_index = getattr(world, "_component_index", None)
+        if isinstance(component_index, dict):
+            if any(bool(component_index.get(component_type)) for component_type in component_types):
+                return True
+            legacy_component_index = getattr(world, "_entities_by_component", None)
+            if isinstance(legacy_component_index, dict):
+                return any(bool(legacy_component_index.get(component_type)) for component_type in component_types)
+            return False
+        return any(bool(world.get_entities_with(component_type)) for component_type in component_types)
+
+    @staticmethod
     def _collider_to_shape_params(collider: Collider) -> dict[str, Any]:
         """Convert Collider to shape params dict compatible with swept_shape_toi."""
         shape_type = str(collider.shape_type or "box")
@@ -93,6 +105,9 @@ class PhysicsSystem:
         self._step_metrics = {"ccd_bodies": 0, "swept_checks": 0, "candidate_solids": 0, "island_count": 0, "sleeping_islands": 0}
         self._swept_contacts = []
         self._swept_contact_set = set()
+        if not self._world_has_any_component(world, RigidBody, StaticBody2D, AnimatableBody2D, Joint2D):
+            self._last_grid = shared_grid
+            return
         entities = world.get_entities_with(Transform, RigidBody)
         static_like_candidates: dict[int, _SolidCandidate] = {}
         moving_candidates: list[_SolidCandidate] = []

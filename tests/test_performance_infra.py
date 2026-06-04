@@ -1,14 +1,22 @@
 import unittest
 from unittest.mock import patch
 
+from cli.headless_game import HeadlessGame
+from engine.app.runtime_controller import RuntimeController
 from engine.components.canvas import Canvas
 from engine.components.recttransform import RectTransform
 from engine.components.renderorder2d import RenderOrder2D
 from engine.components.sprite import Sprite
+from engine.components.tilemap import Tilemap
 from engine.components.transform import Transform
 from engine.components.uibutton import UIButton
+from engine.core.engine_state import EngineState
+from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.ecs.world import World
+from engine.physics.box2d_backend import Box2DDependencyUnavailable, Box2DPhysicsBackend
 from engine.systems.render_system import RenderSystem
+from engine.systems.collision_system import CollisionSystem
+from engine.systems.physics_system import PhysicsSystem
 from engine.systems.ui_system import UISystem
 
 
@@ -99,6 +107,132 @@ class PerformanceInfraTests(unittest.TestCase):
         updated_sorted = render_system._sorted_render_entities(world)
         self.assertIsNot(updated_sorted, first_sorted)
         self.assertEqual([entity.name for entity in updated_sorted], ["A", "C", "B"])
+
+    def test_tilemap_empty_tileset_resource_path_does_not_import_tileset_loader(self) -> None:
+        tilemap = Tilemap()
+
+        def fail_tileset_import(name, *args, **kwargs):
+            if name == "engine.resources.tileset":
+                raise AssertionError("tileset loader should not be imported without a resource path")
+            return original_import(name, *args, **kwargs)
+
+        original_import = __import__
+        with patch("builtins.__import__", fail_tileset_import):
+            self.assertIsNone(tilemap.get_tileset_resource())
+
+    def test_physics_update_skips_world_scan_without_physics_components(self) -> None:
+        world = World()
+        for index in range(10):
+            entity = world.create_entity(f"Entity_{index}")
+            entity.add_component(self._make_transform())
+
+        physics = PhysicsSystem()
+        with patch.object(world, "iter_entities", side_effect=AssertionError("unexpected full world scan")):
+            physics.update(world, 1.0 / 60.0)
+
+        self.assertEqual(physics.get_step_metrics()["candidate_solids"], 0)
+
+    def test_collision_update_skips_transform_scan_without_collision_components(self) -> None:
+        world = World()
+        for index in range(10):
+            entity = world.create_entity(f"Entity_{index}")
+            entity.add_component(self._make_transform())
+
+        collision = CollisionSystem()
+        with patch.object(world, "get_entities_with", side_effect=AssertionError("unexpected component scan")):
+            collision.update(world)
+
+        self.assertEqual(collision.get_step_metrics()["candidate_pairs"], 0)
+
+    def test_box2d_sync_world_ignores_entities_without_colliders(self) -> None:
+        try:
+            backend = Box2DPhysicsBackend()
+        except Box2DDependencyUnavailable:
+            self.skipTest("Box2D dependency is unavailable")
+
+        world = World()
+        entity = world.create_entity("NoCollider")
+        entity.add_component(self._make_transform())
+
+        with patch.object(backend, "destroy_body", wraps=backend.destroy_body) as destroy_body:
+            backend.sync_world(world)
+
+        self.assertEqual(destroy_body.call_count, 0)
+
+    def test_headless_game_keeps_profiler_without_editor_shell(self) -> None:
+        game = HeadlessGame()
+        try:
+            self.assertFalse(game.editor_enabled)
+            self.assertIsNone(game.editor_shell)
+            game.enable_runtime_metrics = True
+            game.reset_profiler(run_label="headless_smoke")
+            game.step_frame(1.0 / 60.0)
+            self.assertEqual(game.get_profiler_report()["frames"], 1)
+        finally:
+            game.request_shutdown()
+
+    def test_runtime_gameplay_skips_empty_systems_for_transform_only_world(self) -> None:
+        class UnexpectedRuntimeSystem:
+            total_particle_count = 0
+
+            def update(self, *args, **kwargs) -> None:
+                raise AssertionError("unexpected runtime system update")
+
+            def update_moving_platforms(self, *args, **kwargs) -> None:
+                raise AssertionError("unexpected moving platform update")
+
+            def update_enemy_patrols(self, *args, **kwargs) -> None:
+                raise AssertionError("unexpected enemy patrol update")
+
+        class UnexpectedPhysicsBackendRegistry:
+            def resolve(self, *args, **kwargs):
+                raise AssertionError("unexpected physics backend resolve")
+
+        world = World()
+        for index in range(10):
+            entity = world.create_entity(f"Entity_{index}")
+            entity.add_component(self._make_transform())
+
+        unexpected = UnexpectedRuntimeSystem()
+        controller = RuntimeController(
+            RuntimeControllerContext(
+                get_state=lambda: EngineState.PLAY,
+                set_state=lambda _state: None,
+                get_world=lambda: world,
+                set_world=lambda _world: None,
+                get_scene_runtime=lambda: None,
+                get_rule_system=lambda: None,
+                get_script_behaviour_system=lambda: unexpected,
+                get_event_bus=lambda: None,
+                get_animation_system=lambda: None,
+                get_input_system=lambda: unexpected,
+                get_mobile_controls_system=lambda: unexpected,
+                get_player_controller_system=lambda: unexpected,
+                get_character_controller_system=lambda: unexpected,
+                get_physics_system=lambda: unexpected,
+                get_collision_system=lambda: unexpected,
+                get_audio_system=lambda: unexpected,
+                get_timer_system=lambda: unexpected,
+                get_tween_system=lambda: unexpected,
+                get_visible_on_screen_system=lambda: unexpected,
+                get_parallax_system=lambda: unexpected,
+                get_resource_preloader_system=lambda: None,
+                get_particle_system=lambda: unexpected,
+                get_gpu_particles_system=lambda: unexpected,
+                get_area2d_system=lambda: unexpected,
+                get_path_follow_system=lambda: unexpected,
+                get_gameplay2d_semantic_system=lambda: unexpected,
+                get_navigation_agent_system=lambda: unexpected,
+                get_raycast_2d_system=lambda: unexpected,
+                get_scene_transition_controller=lambda: unexpected,
+                get_physics_backend_registry=lambda: UnexpectedPhysicsBackendRegistry(),
+                reset_profiler=lambda **_kwargs: None,
+                set_physics_backend=lambda _backend, _name: None,
+                edit_animation_speed=1.0,
+            )
+        )
+
+        controller.update_gameplay(world, 1.0 / 60.0)
 
 
 if __name__ == "__main__":

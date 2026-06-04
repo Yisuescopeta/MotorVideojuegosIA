@@ -13,6 +13,7 @@ from engine.components.gameplay2d import Collectible2D, Goal2D, Hazard2D, Respaw
 from engine.components.recttransform import RectTransform
 from engine.components.transform import Transform
 from engine.ecs.world import World
+from engine.editor.ui.icons import ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, ICON_TRASH
 from engine.systems.render_system import RenderSystem
 
 MINIMAL_PNG_BYTES = (
@@ -140,6 +141,47 @@ class InspectorCoreTests(unittest.TestCase):
             "RespawnPoint2D",
         }
         self.assertTrue(expected.issubset(set(self.inspector.list_dedicated_editors())))
+
+    def test_animator_list_editor_uses_icons_for_compact_item_actions(self) -> None:
+        world = World()
+        entity = world.create_entity("AnimatorProbe")
+
+        for field_name, items in (("frames", [0, 1]), ("slice_names", ["idle_a", "idle_b"])):
+            with self.subTest(field_name=field_name):
+                button_labels: list[str] = []
+                drawn_icons: list[str] = []
+
+                def capture_button(_rect: rl.Rectangle, label: str) -> bool:
+                    button_labels.append(label)
+                    return False
+
+                with patch("pyray.gui_button", side_effect=capture_button), patch("pyray.gui_label"), patch.object(
+                    self.inspector,
+                    "_draw_section_title",
+                    side_effect=lambda _title, _x, y, _width: y + self.inspector.LINE_HEIGHT,
+                ), patch.object(self.inspector, "_draw_int_field"), patch.object(self.inspector, "_draw_text_field"), patch(
+                    "engine.inspector.inspector_system.draw_icon",
+                    side_effect=lambda icon_name, _rect, **_kwargs: drawn_icons.append(icon_name),
+                ):
+                    self.inspector._draw_animator_list_editor(
+                        entity.id,
+                        entity.name,
+                        "idle",
+                        field_name,
+                        items,
+                        0,
+                        0,
+                        240,
+                        True,
+                        world,
+                    )
+
+                self.assertEqual(button_labels[0], "Add Item")
+                self.assertNotIn("<", button_labels)
+                self.assertNotIn(">", button_labels)
+                self.assertNotIn("x", button_labels)
+                self.assertEqual(button_labels.count(""), len(items) * 3)
+                self.assertEqual(drawn_icons, [ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, ICON_TRASH] * len(items))
 
     def test_semantic2d_editor_renders_typed_fields_and_metadata_rows(self) -> None:
         world = World()
