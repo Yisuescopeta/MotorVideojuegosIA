@@ -46,10 +46,24 @@ def process_context_menu_pointer(model: ContextMenuModel) -> str | None:
     mouse = pyray.get_mouse_position()
     model.highlight_at(mouse.x, mouse.y)
     if pyray.is_mouse_button_pressed(pyray.MouseButton.MOUSE_BUTTON_LEFT):
+        if not _contains_menu_point(model, mouse.x, mouse.y):
+            model.close()
+            return None
         return model.activate_at(mouse.x, mouse.y)
     if pyray.is_mouse_button_pressed(pyray.MouseButton.MOUSE_BUTTON_RIGHT):
+        if not _contains_menu_point(model, mouse.x, mouse.y):
+            model.close()
+            return None
         model.popup.handle_pointer_down(mouse.x, mouse.y)
     return None
+
+
+def _contains_menu_point(model: ContextMenuModel, x: float, y: float) -> bool:
+    if model.popup.visible and model.popup.contains_point(x, y):
+        return True
+    if model.child_menu is not None:
+        return _contains_menu_point(model.child_menu, x, y)
+    return False
 
 
 def _color(pyray, color: tuple[int, int, int, int]):
