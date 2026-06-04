@@ -43,11 +43,36 @@ class EditorShell:
                 state=self.state,
                 panel_slots=self.panel_slots,
             )
+            self._wire_hierarchy_layout(self.layout)
 
     def attach_layout(self, layout: EditorLayout) -> EditorLayout:
         layout.bind_shell(self.state, self.panel_slots)
         self.layout = layout
+        self._wire_hierarchy_layout(layout)
         return layout
+
+    def _wire_hierarchy_layout(self, layout: EditorLayout) -> None:
+        """Attach the Hierarchy panel to the active layout and overlay menu renderer."""
+        # HierarchyPanel opens its context menu through self._layout.show_context_menu(...).
+        # The panel is created before EditorLayout exists, so keep the reference in sync here.
+        self.hierarchy_panel._layout = layout
+
+        if bool(getattr(layout, "_hierarchy_context_menu_overlay_bound", False)):
+            return
+
+        original_draw_top_dropdowns = getattr(layout, "draw_top_dropdowns", None)
+        if not callable(original_draw_top_dropdowns):
+            return
+
+        def draw_top_dropdowns_with_context_menu(*args: Any, **kwargs: Any) -> Any:
+            result = original_draw_top_dropdowns(*args, **kwargs)
+            render_context_menu = getattr(layout, "_render_global_context_menu", None)
+            if callable(render_context_menu):
+                render_context_menu()
+            return result
+
+        layout.draw_top_dropdowns = draw_top_dropdowns_with_context_menu
+        layout._hierarchy_context_menu_overlay_bound = True
 
     def ensure_layout(self, screen_width: int, screen_height: int) -> EditorLayout:
         if self.layout is None:
@@ -57,8 +82,10 @@ class EditorShell:
                 state=self.state,
                 panel_slots=self.panel_slots,
             )
+            self._wire_hierarchy_layout(self.layout)
         else:
             self.layout.bind_shell(self.state, self.panel_slots)
+            self._wire_hierarchy_layout(self.layout)
         return self.layout
 
     def bind_scene_manager(self, manager: Any) -> None:
