@@ -89,38 +89,11 @@ class LegacyAABBPhysicsBackend(PhysicsBackend):
         self.sync_world(world)
         self._latest_contacts = []
 
-        # Build shared spatial hash once per frame
+        # CollisionSystem owns shared-grid population; pre-filling it here is
+        # wasted because CollisionSystem clears shared grids before use.
         grid: SpatialHash2D | None = None
-        if hasattr(world, "get_all_entities"):
+        if self._collision_system is not None:
             grid = SpatialHash2D(cell_size=128.0)
-            for entity in world.get_all_entities():
-                transform = entity.get_component(Transform) if hasattr(entity, "get_component") else None
-                if transform is None:
-                    continue
-                # Try Collider first
-                collider = entity.get_component(Collider) if hasattr(entity, "get_component") else None
-                if collider is not None and collider.enabled:
-                    aabb = collider.get_bounds(transform.x, transform.y)
-                    grid.insert(entity.id, aabb)
-                    continue
-                # Try CollisionShapeSet2D
-                shape_set = entity.get_component(CollisionShapeSet2D) if hasattr(entity, "get_component") else None
-                if shape_set is not None:
-                    aabb = shape_set.get_composite_bounds(transform.x, transform.y)
-                    grid.insert(entity.id, aabb)
-                    continue
-                # Try CollisionShape2D
-                shape_2d = entity.get_component(CollisionShape2D) if hasattr(entity, "get_component") else None
-                if shape_2d is not None and not shape_2d.disabled:
-                    aabb = shape_2d.get_bounds(transform.x, transform.y)
-                    grid.insert(entity.id, aabb)
-                    continue
-                # Try CollisionPolygon2D
-                poly_2d = entity.get_component(CollisionPolygon2D) if hasattr(entity, "get_component") else None
-                if poly_2d is not None and not poly_2d.disabled:
-                    aabb = poly_2d.get_bounds(transform.x, transform.y)
-                    grid.insert(entity.id, aabb)
-                    continue
             self._shared_grid = grid
 
         # Collision detection FIRST — on pre-physics positions — so events fire

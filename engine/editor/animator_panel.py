@@ -197,6 +197,7 @@ class AnimatorPanel:
     TEXT_COLOR = rl.Color(220, 220, 220, 255)
     DIM_COLOR = rl.Color(140, 140, 140, 255)
     ACCENT_COLOR = rl.Color(58, 121, 187, 255)
+    OVERLAY_COLOR = rl.Color(0, 0, 0, 170)
     MIN_FRAME_MS = 16
     MAX_FRAME_MS = 1000
     IMAGE_EXTENSIONS: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".bmp")
@@ -206,6 +207,7 @@ class AnimatorPanel:
         self._project_service: Any = None
         self._asset_service: Optional[AssetService] = None
         self._texture_manager = TextureManager()
+        self._sprite_sheet_asset_cache: Optional[List[Dict[str, Any]]] = None
 
         self.selected_entity_name: str = ""
         self.selected_state_name: str = ""
@@ -214,6 +216,12 @@ class AnimatorPanel:
         self.preview_frame: int = 0
         self.preview_elapsed: float = 0.0
         self.request_open_sprite_editor_for: Optional[str] = None
+        self.slice_picker_open: bool = False
+        self.slice_picker_state_name: str = ""
+        self.slice_picker_frame_index: int = -1
+        self.slice_picker_scroll: float = 0.0
+        self.slice_picker_selected_slice: str = ""
+        self._slice_picker_ignore_click_until_release: bool = False
 
     def set_scene_manager(self, manager: Any) -> None:
         self._scene_manager = manager
@@ -221,6 +229,7 @@ class AnimatorPanel:
     def set_project_service(self, project_service: Any) -> None:
         self._project_service = project_service
         self._asset_service = AssetService(project_service) if project_service is not None else None
+        self._invalidate_sprite_sheet_asset_cache()
 
     def reset(self) -> None:
         self.selected_entity_name = ""
@@ -230,6 +239,11 @@ class AnimatorPanel:
         self.preview_frame = 0
         self.preview_elapsed = 0.0
         self.request_open_sprite_editor_for = None
+        self.close_slice_picker()
+        self._invalidate_sprite_sheet_asset_cache()
+
+    def _invalidate_sprite_sheet_asset_cache(self) -> None:
+        self._sprite_sheet_asset_cache = None
 
     def _fps_to_frame_ms(self, fps: float) -> int:
         safe_fps = max(0.001, float(fps))
@@ -241,6 +255,8 @@ class AnimatorPanel:
 
     def update(self, world: Any, dt: float) -> None:
         context = self.get_selection_context(world)
+        if self._slice_picker_ignore_click_until_release and not rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT):
+            self._slice_picker_ignore_click_until_release = False
         entity_name = context.get("entity_name", "")
         if entity_name != self.selected_entity_name:
             self.selected_entity_name = entity_name
@@ -248,6 +264,7 @@ class AnimatorPanel:
             self.preview_playing = False
             self.preview_frame = 0
             self.preview_elapsed = 0.0
+            self.close_slice_picker()
 
         selected_state = context.get("selected_state_name", "")
         if selected_state != self.selected_state_name:
@@ -255,6 +272,10 @@ class AnimatorPanel:
             self.selected_frame_index = 0
             self.preview_frame = 0
             self.preview_elapsed = 0.0
+            self.close_slice_picker()
+
+        if self.slice_picker_open and self._get_slice_picker_target(context) is None:
+            self.close_slice_picker()
 
         state_data = context.get("selected_state_data") or {}
         slice_names = list(state_data.get("slice_names", []))
@@ -334,10 +355,15 @@ class AnimatorPanel:
             "sprite_sheet_ready": str(sprite_summary.get("pipeline_status", "") or "") == "ready",
         }
 
-    def list_sprite_sheet_assets(self) -> List[Dict[str, Any]]:
+    def list_sprite_sheet_assets(self, *, force_refresh: bool = False) -> List[Dict[str, Any]]:
         if self._asset_service is None:
             return []
-        self._asset_service.refresh_catalog()
+        if force_refresh:
+            self._asset_service.refresh_catalog()
+            self._invalidate_sprite_sheet_asset_cache()
+        if self._sprite_sheet_asset_cache is not None:
+            return [dict(item) for item in self._sprite_sheet_asset_cache]
+
         assets = self._asset_service.list_assets(asset_kind="texture")
         if not assets:
             assets = self._asset_service.list_assets(extensions=list(self.IMAGE_EXTENSIONS))
@@ -355,7 +381,8 @@ class AnimatorPanel:
             item["guid_short"] = str(summary.get("guid_short", asset.get("guid_short", "")) or "")
             item["has_metadata"] = bool(summary.get("has_metadata", False))
             result.append(item)
-        return result
+        self._sprite_sheet_asset_cache = [dict(item) for item in result]
+        return [dict(item) for item in result]
 
     def set_sprite_sheet(self, world: Any, asset_path: str) -> bool:
         context = self.get_selection_context(world)
@@ -372,6 +399,7 @@ class AnimatorPanel:
         payload["sprite_sheet_path"] = asset_path
         success = self._replace_animator_payload(world, entity_name, payload)
         if success:
+            self._invalidate_sprite_sheet_asset_cache()
             self.preview_playing = False
             self.preview_frame = 0
             self.preview_elapsed = 0.0
@@ -639,6 +667,46 @@ class AnimatorPanel:
         state["slice_names"] = items
         return self._replace_animator_payload(world, entity_name, payload)
 
+    def open_slice_picker(self, state_name: str, frame_index: int) -> bool:
+        if not str(state_name or "").strip() or int(frame_index) < 0:
+            return False
+        self.slice_picker_open = True
+        self.slice_picker_state_name = str(state_name)
+        self.slice_picker_frame_index = int(frame_index)
+        self.slice_picker_scroll = 0.0
+        self.slice_picker_selected_slice = ""
+        self._slice_picker_ignore_click_until_release = True
+        return True
+
+    def close_slice_picker(self) -> None:
+        self.slice_picker_open = False
+        self.slice_picker_state_name = ""
+        self.slice_picker_frame_index = -1
+        self.slice_picker_scroll = 0.0
+        self.slice_picker_selected_slice = ""
+        self._slice_picker_ignore_click_until_release = False
+
+    def select_slice_for_open_picker(self, world: Any, slice_name: str) -> bool:
+        if not self.slice_picker_open or not str(slice_name or "").strip():
+            return False
+        context = self.get_selection_context(world)
+        target = self._get_slice_picker_target(context)
+        if target is None:
+            self.close_slice_picker()
+            return False
+        available = list(context.get("available_slices", []))
+        if slice_name not in available:
+            return False
+        success = self.set_frame_slice(world, target["state_name"], target["frame_index"], slice_name)
+        if not success:
+            return False
+        self.selected_frame_index = target["frame_index"]
+        self.preview_frame = target["frame_index"]
+        self.preview_elapsed = 0.0
+        self.slice_picker_selected_slice = str(slice_name)
+        self.close_slice_picker()
+        return True
+
     def move_frame(self, world: Any, state_name: str, frame_index: int, delta: int) -> bool:
         payload = self._get_animator_payload(world, self.get_selection_context(world).get("entity_name", ""))
         context = self.get_selection_context(world)
@@ -732,6 +800,7 @@ class AnimatorPanel:
             context = self.get_selection_context(world)
             status = context.get("status") or "unknown"
             if status != "ready":
+                self.close_slice_picker()
                 self._draw_empty_state(status, x, y, width, height)
                 return
 
@@ -745,6 +814,8 @@ class AnimatorPanel:
             self._draw_states_column(world, context, left_rect)
             self._draw_state_editor(world, context, center_rect)
             self._draw_preview_column(context, right_rect)
+            if self.slice_picker_open:
+                self._draw_slice_picker_modal(world, context, center_rect)
 
     def _draw_empty_state(self, status: str, x: int, y: int, width: int, height: int) -> None:
         title = "Animator"
@@ -1001,19 +1072,18 @@ class AnimatorPanel:
             active = index == self.selected_frame_index
             rl.draw_rectangle_rec(row_rect, self.ACCENT_COLOR if active else rl.Color(40, 40, 40, 255))
             rl.draw_text(f"#{index}", int(row_rect.x + 6), int(row_rect.y + 6), 10, self.TEXT_COLOR)
-            prev_rect = rl.Rectangle(row_rect.x + 34, row_rect.y, 20, 24)
-            next_rect = rl.Rectangle(row_rect.x + 58, row_rect.y, 20, 24)
+            thumb_rect = rl.Rectangle(row_rect.x + 34, row_rect.y + 2, 20, 20)
+            pick_rect = rl.Rectangle(row_rect.x + row_rect.width - 104, row_rect.y, 36, 24)
             move_up_rect = rl.Rectangle(row_rect.x + row_rect.width - 66, row_rect.y, 20, 24)
             move_down_rect = rl.Rectangle(row_rect.x + row_rect.width - 44, row_rect.y, 20, 24)
             delete_rect = rl.Rectangle(row_rect.x + row_rect.width - 22, row_rect.y, 20, 24)
-            value_rect = rl.Rectangle(row_rect.x + 82, row_rect.y, row_rect.width - 152, 24)
+            value_rect = rl.Rectangle(row_rect.x + 58, row_rect.y, row_rect.width - 164, 24)
 
-            if rl.gui_button(prev_rect, "<"):
-                self.cycle_frame_slice(world, state_name, index, -1)
+            self._draw_slice_texture(context.get("sprite_sheet", ""), frame_name, thumb_rect, fill_color=rl.Color(32, 32, 32, 255), border_color=self.BORDER_COLOR)
             rl.draw_rectangle_rec(value_rect, rl.Color(32, 32, 32, 255))
-            rl.draw_text(frame_name or "-", int(value_rect.x + 6), int(value_rect.y + 6), 10, self.TEXT_COLOR)
-            if rl.gui_button(next_rect, ">"):
-                self.cycle_frame_slice(world, state_name, index, 1)
+            rl.draw_text(self._truncate_label(frame_name or "-", 24), int(value_rect.x + 6), int(value_rect.y + 6), 10, self.TEXT_COLOR)
+            if rl.gui_button(pick_rect, "Pick"):
+                self.open_slice_picker(state_name, index)
             if rl.gui_button(move_up_rect, "^"):
                 self.move_frame(world, state_name, index, -1)
             if rl.gui_button(move_down_rect, "v"):
@@ -1079,25 +1149,208 @@ class AnimatorPanel:
         rl.draw_text(f"{len(slice_names)} frames", int(rect.x + 10), int(current_y), 10, self.DIM_COLOR)
 
     def _draw_preview_texture(self, asset_path: str, slice_name: str, rect: rl.Rectangle) -> None:
-        rl.draw_rectangle_rec(rect, rl.Color(32, 32, 32, 255))
-        rl.draw_rectangle_lines_ex(rect, 1, self.BORDER_COLOR)
-        if self._asset_service is None or self._project_service is None or not asset_path or not slice_name:
+        self._draw_slice_texture(
+            asset_path,
+            slice_name,
+            rect,
+            fill_color=rl.Color(32, 32, 32, 255),
+            border_color=self.BORDER_COLOR,
+        )
+
+    def _draw_slice_picker_modal(self, world: Any, context: Dict[str, Any], parent_rect: rl.Rectangle) -> None:
+        target = self._get_slice_picker_target(context)
+        if target is None:
+            self.close_slice_picker()
             return
+        if self._slice_picker_ignore_click_until_release and not rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT):
+            self._slice_picker_ignore_click_until_release = False
+
+        rl.draw_rectangle_rec(parent_rect, self.OVERLAY_COLOR)
+        modal_width = min(parent_rect.width - 24, 540)
+        modal_height = min(parent_rect.height - 24, 420)
+        modal_rect = rl.Rectangle(
+            parent_rect.x + (parent_rect.width - modal_width) / 2,
+            parent_rect.y + (parent_rect.height - modal_height) / 2,
+            modal_width,
+            modal_height,
+        )
+        rl.draw_rectangle_rec(modal_rect, self.CARD_COLOR)
+        rl.draw_rectangle_lines_ex(modal_rect, 1, self.BORDER_COLOR)
+
+        title_y = int(modal_rect.y + 12)
+        rl.draw_text("Select Frame Sprite", int(modal_rect.x + 14), title_y, 16, self.TEXT_COLOR)
+        close_rect = rl.Rectangle(modal_rect.x + modal_rect.width - 34, modal_rect.y + 10, 22, 22)
+        if rl.gui_button(close_rect, "X"):
+            self.close_slice_picker()
+            return
+
+        sheet_label = self._truncate_label(str(context.get("sprite_sheet", "") or "No sprite sheet"), 48)
+        rl.draw_text(sheet_label, int(modal_rect.x + 14), int(modal_rect.y + 36), 10, self.DIM_COLOR)
+
+        size_label = "unknown"
+        first_slice = self._get_first_slice_info(context)
+        if first_slice is not None:
+            size_label = f"{int(first_slice.get('width', 0) or 0)}x{int(first_slice.get('height', 0) or 0)}"
+        rl.draw_text(
+            f"Slices: {len(target['available_slices'])} | Approx size: {size_label}",
+            int(modal_rect.x + 14),
+            int(modal_rect.y + 54),
+            10,
+            self.TEXT_COLOR,
+        )
+        rl.draw_text(
+            f"Frame #{target['frame_index']} | Current: {self._truncate_label(target['current_slice'] or '-', 28)}",
+            int(modal_rect.x + 14),
+            int(modal_rect.y + 70),
+            10,
+            self.DIM_COLOR,
+        )
+
+        cancel_rect = rl.Rectangle(modal_rect.x + modal_rect.width - 92, modal_rect.y + modal_rect.height - 34, 78, 22)
+        if rl.gui_button(cancel_rect, "Cancel"):
+            self.close_slice_picker()
+            return
+
+        grid_rect = rl.Rectangle(modal_rect.x + 14, modal_rect.y + 96, modal_rect.width - 28, modal_rect.height - 144)
+        rl.draw_rectangle_rec(grid_rect, rl.Color(32, 32, 32, 255))
+        rl.draw_rectangle_lines_ex(grid_rect, 1, self.BORDER_COLOR)
+
+        available = target["available_slices"]
+        if not available:
+            rl.draw_text("No slices available.", int(grid_rect.x + 12), int(grid_rect.y + 12), 11, self.DIM_COLOR)
+            return
+
+        gap = 8.0
+        min_tile_width = 88.0
+        columns = max(1, int((grid_rect.width + gap) // (min_tile_width + gap)))
+        tile_width = max(72.0, (grid_rect.width - gap * float(columns + 1)) / float(columns))
+        tile_height = tile_width + 22.0
+        row_stride = tile_height + gap
+        row_count = (len(available) + columns - 1) // columns
+        content_height = max(0.0, row_count * row_stride + gap)
+        max_scroll = max(0.0, content_height - grid_rect.height)
+        if rl.check_collision_point_rec(rl.get_mouse_position(), grid_rect):
+            wheel_delta = rl.get_mouse_wheel_move()
+            if wheel_delta:
+                self.slice_picker_scroll = max(0.0, min(max_scroll, self.slice_picker_scroll - wheel_delta * 40.0))
+        self.slice_picker_scroll = max(0.0, min(max_scroll, self.slice_picker_scroll))
+
+        start_row = max(0, int(self.slice_picker_scroll // max(1.0, row_stride)))
+        visible_rows = max(1, int(grid_rect.height // max(1.0, row_stride)) + 2)
+        end_row = min(row_count, start_row + visible_rows)
+
+        with editor_scissor(grid_rect):
+            for row in range(start_row, end_row):
+                tile_y = grid_rect.y + gap + row * row_stride - self.slice_picker_scroll
+                for column in range(columns):
+                    item_index = row * columns + column
+                    if item_index >= len(available):
+                        break
+                    tile_x = grid_rect.x + gap + column * (tile_width + gap)
+                    tile_rect = rl.Rectangle(tile_x, tile_y, tile_width, tile_height)
+                    slice_name = available[item_index]
+                    is_selected = slice_name == target["current_slice"]
+                    self._draw_slice_thumbnail(context.get("sprite_sheet", ""), slice_name, tile_rect, selected=is_selected)
+                    if (
+                        not self._slice_picker_ignore_click_until_release
+                        and rl.check_collision_point_rec(rl.get_mouse_position(), tile_rect)
+                        and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT)
+                    ):
+                        self.select_slice_for_open_picker(world, slice_name)
+                        return
+
+        if max_scroll > 0.0:
+            track_rect = rl.Rectangle(grid_rect.x + grid_rect.width - 6, grid_rect.y + 2, 4, grid_rect.height - 4)
+            thumb_height = max(24.0, grid_rect.height * (grid_rect.height / max(content_height, 1.0)))
+            thumb_travel = max(0.0, grid_rect.height - thumb_height)
+            thumb_y = grid_rect.y + (self.slice_picker_scroll / max_scroll) * thumb_travel if max_scroll else grid_rect.y
+            thumb_rect = rl.Rectangle(track_rect.x, thumb_y, track_rect.width, thumb_height)
+            rl.draw_rectangle_rec(track_rect, rl.Color(42, 42, 42, 255))
+            rl.draw_rectangle_rec(thumb_rect, self.ACCENT_COLOR)
+
+    def _draw_slice_thumbnail(self, asset_path: str, slice_name: str, rect: rl.Rectangle, selected: bool = False) -> None:
+        rl.draw_rectangle_rec(rect, rl.Color(40, 40, 40, 255))
+        rl.draw_rectangle_lines_ex(rect, 2 if selected else 1, self.ACCENT_COLOR if selected else self.BORDER_COLOR)
+        preview_rect = rl.Rectangle(rect.x + 8, rect.y + 8, rect.width - 16, max(10.0, rect.height - 30))
+        self._draw_slice_texture(asset_path, slice_name, preview_rect, fill_color=rl.Color(30, 30, 30, 255), border_color=self.BORDER_COLOR)
+        label = self._truncate_label(slice_name or "-", 16)
+        rl.draw_text(label, int(rect.x + 6), int(rect.y + rect.height - 16), 9, self.TEXT_COLOR if selected else self.DIM_COLOR)
+
+    def _draw_slice_texture(
+        self,
+        asset_path: str,
+        slice_name: str,
+        rect: rl.Rectangle,
+        *,
+        fill_color: Optional[rl.Color] = None,
+        border_color: Optional[rl.Color] = None,
+    ) -> bool:
+        if fill_color is not None:
+            rl.draw_rectangle_rec(rect, fill_color)
+        if border_color is not None:
+            rl.draw_rectangle_lines_ex(rect, 1, border_color)
+        if self._asset_service is None or self._project_service is None or not asset_path or not slice_name:
+            return False
         slice_rect = self._asset_service.get_slice_rect(asset_path, slice_name)
         if slice_rect is None:
-            return
+            return False
         texture = self._texture_manager.load(self._project_service.resolve_path(asset_path).as_posix())
         if texture.id == 0:
-            return
+            return False
         source = rl.Rectangle(slice_rect["x"], slice_rect["y"], slice_rect["width"], slice_rect["height"])
         scale = min(rect.width / max(1.0, source.width), rect.height / max(1.0, source.height))
         dest_w = source.width * scale
         dest_h = source.height * scale
         dest = rl.Rectangle(rect.x + (rect.width - dest_w) / 2, rect.y + (rect.height - dest_h) / 2, dest_w, dest_h)
         rl.draw_texture_pro(texture, source, dest, rl.Vector2(0, 0), 0.0, rl.WHITE)
+        return True
+
+    def _truncate_label(self, value: str, max_chars: int) -> str:
+        text = str(value or "")
+        if max_chars <= 3 or len(text) <= max_chars:
+            return text
+        return f"{text[:max_chars - 3]}..."
+
+    def _get_first_slice_info(self, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        sprite_summary = context.get("sprite_sheet_summary") or {}
+        slices = list(sprite_summary.get("slices", []))
+        if slices:
+            return dict(slices[0])
+        available = list(context.get("available_slices", []))
+        sprite_sheet = str(context.get("sprite_sheet", "") or "")
+        if not available or not sprite_sheet or self._asset_service is None:
+            return None
+        return self._asset_service.get_slice_rect(sprite_sheet, available[0])
+
+    def _get_slice_picker_target(self, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not self.slice_picker_open:
+            return None
+        state_name = str(self.slice_picker_state_name or "").strip()
+        if not state_name:
+            return None
+        if str(context.get("selected_state_name", "")) != state_name:
+            return None
+        state_data = context.get("states", {}).get(state_name)
+        if state_data is None:
+            return None
+        frame_items = [str(name) for name in state_data.get("slice_names", [])]
+        frame_index = int(self.slice_picker_frame_index)
+        if frame_index < 0 or frame_index >= len(frame_items):
+            return None
+        current_slice = frame_items[frame_index]
+        if current_slice and self.slice_picker_selected_slice != current_slice:
+            self.slice_picker_selected_slice = current_slice
+        return {
+            "state_name": state_name,
+            "frame_index": frame_index,
+            "current_slice": current_slice,
+            "available_slices": [str(name) for name in context.get("available_slices", []) if str(name)],
+        }
 
     def _detect_groups_from_context(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
-        return detect_slice_groups(list(context.get("available_slices", [])))
+        if "slice_groups" not in context:
+            context["slice_groups"] = detect_slice_groups(list(context.get("available_slices", [])))
+        return [dict(group) for group in context.get("slice_groups", [])]
 
     def _find_slice_group(self, context: Dict[str, Any], group_name: str) -> Optional[Dict[str, Any]]:
         target = str(group_name or "").strip()

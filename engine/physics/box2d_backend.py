@@ -152,12 +152,19 @@ class Box2DPhysicsBackend(PhysicsBackend):
         self.create_body(entity)
 
     def sync_world(self, world: Any) -> None:
-        current_ids = {int(entity.id) for entity in world.get_all_entities()}
+        if hasattr(world, "get_entities_with"):
+            collider_entities = world.get_entities_with(Transform, Collider)
+            joint_entities = world.get_entities_with(Joint2D)
+        else:
+            collider_entities = world.get_all_entities()
+            joint_entities = world.get_all_entities()
+        current_ids = {int(entity.id) for entity in collider_entities}
+        current_joint_ids = {int(entity.id) for entity in joint_entities}
         for entity_id in list(set(self._bodies.keys()) - current_ids):
             self.destroy_body(entity_id)
-        for joint_id in list(set(self._joints.keys()) - current_ids):
+        for joint_id in list(set(self._joints.keys()) - current_joint_ids):
             self._destroy_joint(joint_id)
-        for entity in world.get_all_entities():
+        for entity in collider_entities:
             transform = entity.get_component(Transform)
             collider = entity.get_component(Collider)
             if transform is None or collider is None or not collider.enabled:

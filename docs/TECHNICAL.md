@@ -18,16 +18,53 @@ arquitectonico lee [architecture.md](architecture.md); para la taxonomia lee
 ## Componentes registrados
 
 La fuente de verdad para componentes publicos registrados es
-`engine/levels/component_registry.py`.
+`engine/levels/component_registry.py`, concretamente `create_default_registry()`.
 
-Familias principales:
+Inventario actual por familia:
 
-- Espacial/render: `Transform`, `RectTransform`, `Sprite`, `Animator`, `Camera2D`, `RenderOrder2D`, `RenderStyle2D`.
-- Gameplay/fisica: `Collider`, `CollisionShapeSet2D`, `RigidBody`, `CharacterController2D`, `PlayerController2D`, `Joint2D`, `InputMap`, `AudioSource`, `ScriptBehaviour`, `RayCast2D`, `NavigationObstacle2D`.
-- Gameplay semantico 2D: `Collectible2D`, `Hazard2D`, `Goal2D`, `RespawnPoint2D`, `MovingPlatform2D`, `EnemyPatrol2D`, `Checkpoint2D`, `KillZone2D`, `LevelBounds2D`. Son componentes serializables. En runtime, `Gameplay2DSemanticSystem` consume contactos fisicos existentes para emitir eventos de coleccionable, hazard, goal, checkpoint y killzone, aplicar respawn runtime y no modificar la escena serializada. Tambien evalua `LevelBounds2D` por frame: emite `level_bounds_exited`, clampa salidas horizontales y respawnea salidas por `bottom` con el respawn de sesion o el primer `RespawnPoint2D` activo. `Checkpoint2D` puede activar un respawn de sesion usando un `RespawnPoint2D` con el mismo id o su propio `Transform`; `KillZone2D` puede devolver al Player a ese respawn o al primer `RespawnPoint2D` activo. `MovingPlatform2D` mueve la entidad por su path, emite eventos de plataforma sin modificar la escena serializada y transporta al Player cuando su `Collider` esta apoyado encima del `Collider` de la plataforma antes del movimiento del frame. Este soporte de riders es minimo, centrado en Player; los eventos `moving_platform_rider_attached`, `moving_platform_rider_moved` y `moving_platform_rider_detached` quedan planned. `EnemyPatrol2D` mueve la entidad entre sus puntos de patrulla en runtime de forma ciclica, emite `enemy_patrol_started` y `enemy_patrol_reached_point`, y al contactar con Player emite `enemy_touched` (o el evento configurado) con daño y respawn usando el respawn de sesion o el primer `RespawnPoint2D` activo; si no hay respawn emite `enemy_respawn_missing`. Si `EnemyPatrol2D` y `Hazard2D` coexisten en la misma entidad, `EnemyPatrol2D` absorbe la interaccion para evitar eventos duplicados. No persiste progreso runtime en la escena.
-- Escena, tilemap y UI: `Tilemap`, `SceneLink`, `SceneEntryPoint`, `SceneTransition*`, `Canvas`, `UIText`, `UIButton`, `UIImage`.
+- Core espacial: `Transform`, `RectTransform`, `Marker2D`.
+- Render 2D: `Sprite`, `Polygon2D`, `Line2D`, `RenderOrder2D`, `RenderStyle2D`, `Camera2D`, `Light2D`, `ParallaxLayer`, `VisibleOnScreenNotifier2D`, `VisibleOnScreenEnabler2D`.
+- Animacion y movimiento: `Animator`, `Tween`, `PathFollower2D`.
+- Fisica y colisiones: `Collider`, `CollisionShape2D`, `CollisionShapeSet2D`, `CollisionPolygon2D`, `CollisionFilter2D`, `RigidBody`, `StaticBody2D`, `AnimatableBody2D`, `Area2D`, `CharacterController2D`, `Joint2D`, `RayCast2D`.
+- Gameplay 2D semantico: `Collectible2D`, `Hazard2D`, `Goal2D`, `RespawnPoint2D`, `MovingPlatform2D`, `EnemyPatrol2D`, `Checkpoint2D`, `KillZone2D`, `LevelBounds2D`.
+- Input, control, audio y scripting: `InputMap`, `MobileControls2D`, `PlayerController2D`, `AudioSource`, `AudioListener2D`, `ScriptBehaviour`, `Timer`.
+- Navegacion: `NavigationAgent2D`, `NavigationObstacle2D`.
+- Escena, recursos y transiciones: `Tilemap`, `SceneLink`, `SceneEntryPoint`, `SceneTransitionAction`, `SceneTransitionOnContact`, `SceneTransitionOnInteract`, `SceneTransitionOnPlayerDeath`, `ResourcePreloader`.
+- UI: `Canvas`, `UIText`, `UIButton`, `UIImage`.
+- Particulas: `ParticleEmitter2D`.
+
+Cuando `create_default_registry()` agregue, renombre o elimine un componente,
+esta seccion debe actualizarse en el mismo PR.
 
 No se debe asumir soporte publico para componentes no registrados.
+
+### Gameplay2DSemanticSystem
+
+`Collectible2D`, `Hazard2D`, `Goal2D`, `RespawnPoint2D`,
+`MovingPlatform2D`, `EnemyPatrol2D`, `Checkpoint2D`, `KillZone2D` y
+`LevelBounds2D` son componentes serializables. En runtime,
+`Gameplay2DSemanticSystem` consume contactos fisicos existentes para emitir
+eventos de coleccionable, hazard, goal, checkpoint y killzone, aplicar
+respawn runtime y no modificar la escena serializada. Tambien evalua
+`LevelBounds2D` por frame: emite `level_bounds_exited`, clampa salidas
+horizontales y respawnea salidas por `bottom` con el respawn de sesion o el
+primer `RespawnPoint2D` activo. `Checkpoint2D` puede activar un respawn de
+sesion usando un `RespawnPoint2D` con el mismo id o su propio `Transform`;
+`KillZone2D` puede devolver al Player a ese respawn o al primer
+`RespawnPoint2D` activo. `MovingPlatform2D` mueve la entidad por su path,
+emite eventos de plataforma sin modificar la escena serializada y transporta
+al Player cuando su `Collider` esta apoyado encima del `Collider` de la
+plataforma antes del movimiento del frame. Este soporte de riders es minimo,
+centrado en Player; los eventos `moving_platform_rider_attached`,
+`moving_platform_rider_moved` y `moving_platform_rider_detached` quedan
+planned. `EnemyPatrol2D` mueve la entidad entre sus puntos de patrulla en
+runtime de forma ciclica, emite `enemy_patrol_started` y
+`enemy_patrol_reached_point`, y al contactar con Player emite
+`enemy_touched` (o el evento configurado) con dano y respawn usando el
+respawn de sesion o el primer `RespawnPoint2D` activo; si no hay respawn
+emite `enemy_respawn_missing`. Si `EnemyPatrol2D` y `Hazard2D` coexisten en
+la misma entidad, `EnemyPatrol2D` absorbe la interaccion para evitar eventos
+duplicados. No persiste progreso runtime en la escena.
 
 ## Runtime y sistemas
 

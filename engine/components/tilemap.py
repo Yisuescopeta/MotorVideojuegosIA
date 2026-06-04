@@ -66,11 +66,11 @@ class Tilemap(Component):
 
         Cache interno por instancia. Retorna None si no hay path o falla carga.
         """
-        from engine.resources.tileset import load_tileset
-
         path = self.tileset_resource_path
         if not path:
             return None
+        from engine.resources.tileset import load_tileset
+
         if path == self._tileset_resource_cache_key and self._tileset_resource_cache is not None:
             return self._tileset_resource_cache
         ts = load_tileset(path)

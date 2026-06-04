@@ -2,6 +2,42 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable, Optional
 
+from engine.components.animatable_body_2d import AnimatableBody2D
+from engine.components.area2d import Area2D
+from engine.components.audio_listener_2d import AudioListener2D
+from engine.components.audiosource import AudioSource
+from engine.components.charactercontroller2d import CharacterController2D
+from engine.components.collider import Collider
+from engine.components.gameplay2d import (
+    Checkpoint2D,
+    Collectible2D,
+    EnemyPatrol2D,
+    Goal2D,
+    Hazard2D,
+    KillZone2D,
+    LevelBounds2D,
+    MovingPlatform2D,
+    RespawnPoint2D,
+)
+from engine.components.inputmap import InputMap
+from engine.components.joint2d import Joint2D
+from engine.components.mobile_controls_2d import MobileControls2D
+from engine.components.navigation_agent_2d import NavigationAgent2D
+from engine.components.parallax_layer import ParallaxLayer
+from engine.components.particle_emitter2d import ParticleEmitter2D
+from engine.components.path_follower_2d import PathFollower2D
+from engine.components.playercontroller2d import PlayerController2D
+from engine.components.raycast_2d import RayCast2D
+from engine.components.rigidbody import RigidBody
+from engine.components.scene_transition_on_interact import SceneTransitionOnInteract
+from engine.components.scriptbehaviour import ScriptBehaviour
+from engine.components.static_body_2d import StaticBody2D
+from engine.components.timer import Timer
+from engine.components.tween import Tween
+from engine.components.visible_on_screen_notifier_2d import (
+    VisibleOnScreenEnabler2D,
+    VisibleOnScreenNotifier2D,
+)
 from engine.core.engine_state import EngineState
 from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.core.runtime_logging import log_info, log_warn
@@ -338,16 +374,67 @@ class RuntimeController:
         if event_bus is not None:
             event_bus.reset_frame_dedup()
 
+        has_input_maps = self._world_has_any_component(world, InputMap)
+        has_mobile_controls = self._world_has_any_component(world, MobileControls2D)
+        has_character_controllers = self._world_has_any_component(world, CharacterController2D)
+        has_player_controllers = self._world_has_any_component(world, PlayerController2D)
+        has_script_behaviours = self._world_has_any_component(world, ScriptBehaviour)
+        has_colliders = self._world_has_any_component(world, Collider)
+        has_backend_physics = self._world_has_any_component(
+            world,
+            Collider,
+            RigidBody,
+            StaticBody2D,
+            AnimatableBody2D,
+            Joint2D,
+            RayCast2D,
+        )
+        has_moving_platforms = self._world_has_any_component(world, MovingPlatform2D)
+        has_enemy_patrols = self._world_has_any_component(world, EnemyPatrol2D)
+        has_path_followers = self._world_has_any_component(world, PathFollower2D)
+        has_navigation_agents = self._world_has_any_component(world, NavigationAgent2D)
+        has_raycasts = self._world_has_any_component(world, RayCast2D)
+        has_gameplay_semantics = self._world_has_any_component(
+            world,
+            Collectible2D,
+            Hazard2D,
+            Goal2D,
+            RespawnPoint2D,
+            Checkpoint2D,
+            KillZone2D,
+            LevelBounds2D,
+            EnemyPatrol2D,
+        )
+        has_audio = self._world_has_any_component(world, AudioSource, AudioListener2D)
+        has_timers = self._world_has_any_component(world, Timer)
+        has_tweens = self._world_has_any_component(world, Tween)
+        has_particles = self._world_has_any_component(world, ParticleEmitter2D)
+        has_areas = self._world_has_any_component(world, Area2D)
+        has_visible_notifiers = self._world_has_any_component(
+            world,
+            VisibleOnScreenNotifier2D,
+            VisibleOnScreenEnabler2D,
+        )
+        has_parallax = self._world_has_any_component(world, ParallaxLayer)
+        has_scene_transition_interacts = self._world_has_any_component(
+            world,
+            SceneTransitionOnInteract,
+        )
+
         input_system = self._get_input_system()
-        if input_system is not None:
+        if input_system is not None and has_input_maps:
             input_system.update(world)
 
         mobile_controls_system = self._get_mobile_controls_system()
-        if mobile_controls_system is not None:
+        if mobile_controls_system is not None and (
+            has_mobile_controls
+            or getattr(mobile_controls_system, "_pointer_state", None) is not None
+            or bool(getattr(mobile_controls_system, "_active_controls", None))
+        ):
             mobile_controls_system.update(world, viewport_size)
 
         character_controller_system = self._get_character_controller_system()
-        if character_controller_system is not None:
+        if character_controller_system is not None and has_character_controllers:
             backend_registry = self._get_physics_backend_registry()
             resolved_backend = None
             if backend_registry is not None:
@@ -356,32 +443,50 @@ class RuntimeController:
             character_controller_system.update(world, dt, backend=resolved_backend)
 
         player_controller_system = self._get_player_controller_system()
-        if player_controller_system is not None:
+        if player_controller_system is not None and has_player_controllers:
             player_controller_system.update(world)
 
         script_behaviour_system = self._get_script_behaviour_system()
-        if script_behaviour_system is not None:
+        if script_behaviour_system is not None and (
+            has_script_behaviours
+            or bool(getattr(script_behaviour_system, "_runtime_compiled_scripts", None))
+            or bool(getattr(script_behaviour_system, "_runtime_cache_dirty", False))
+        ):
             script_behaviour_system.update(world, dt, is_edit_mode=False)
 
         state = self._get_state()
-        backend = self._get_physics_backend_registry().resolve(world).backend
-        if backend is not None and state.allows_physics():
+        has_fixed_update_work = (
+            has_backend_physics
+            or has_moving_platforms
+            or has_enemy_patrols
+            or has_path_followers
+            or has_navigation_agents
+            or has_raycasts
+            or has_gameplay_semantics
+        )
+        if has_fixed_update_work and state.allows_physics():
+            backend = self._get_physics_backend_registry().resolve(world).backend
+        else:
+            backend = None
+        if backend is not None:
             g2d = self._get_gameplay2d_semantic_system()
             pf = self._get_path_follow_system()
             event_bus = self._get_event_bus()
-            if g2d is not None:
+            if g2d is not None and has_moving_platforms:
                 g2d.update_moving_platforms(world, dt, event_bus)
+            if g2d is not None and has_enemy_patrols:
                 g2d.update_enemy_patrols(world, dt, event_bus)
-            if pf is not None:
+            if pf is not None and has_path_followers:
                 pf.update(world, dt, event_bus)
             nav_agent = self._get_navigation_agent_system()
-            if nav_agent is not None:
+            if nav_agent is not None and has_navigation_agents:
                 nav_agent.update(world, dt)
-            backend.step(world, dt)
+            if has_backend_physics:
+                backend.step(world, dt)
             raycast_2d_system = self._get_raycast_2d_system()
-            if raycast_2d_system is not None:
+            if raycast_2d_system is not None and has_raycasts:
                 raycast_2d_system.update(world, dt)
-            if g2d is not None:
+            if g2d is not None and has_gameplay_semantics:
                 g2d.update(
                     world,
                     backend.collect_contacts(world),
@@ -389,41 +494,57 @@ class RuntimeController:
                 )
 
         audio_system = self._get_audio_system()
-        if audio_system is not None:
+        if audio_system is not None and (
+            has_audio
+            or bool(getattr(getattr(audio_system, "_runtime", None), "_voices", None))
+        ):
             audio_system.update(world)
 
         timer_system = self._get_timer_system()
-        if timer_system is not None:
+        if timer_system is not None and has_timers:
             timer_system.update(world, dt, time_scale=1.0)
 
         tween_system = self._get_tween_system()
-        if tween_system is not None:
+        if tween_system is not None and has_tweens:
             tween_system.update(world, dt)
 
         particle_system = self._get_particle_system()
-        if particle_system is not None:
+        if particle_system is not None and (
+            has_particles
+            or bool(getattr(particle_system, "total_particle_count", 0))
+        ):
             particle_system.update(world, dt)
 
         gpu_particles_system = self._get_gpu_particles_system()
-        if gpu_particles_system is not None:
+        if gpu_particles_system is not None and (
+            has_particles
+            or bool(getattr(gpu_particles_system, "total_particle_count", 0))
+        ):
             gpu_particles_system.update(world, dt)
 
         area2d_system = self._get_area2d_system()
-        if area2d_system is not None:
+        if area2d_system is not None and (
+            (has_areas and has_colliders)
+            or bool(getattr(area2d_system, "_area_entries", None))
+            or bool(getattr(area2d_system, "_body_entries", None))
+        ):
             area2d_system.update(world)
 
         visible_on_screen_system = self._get_visible_on_screen_system()
-        if visible_on_screen_system is not None:
+        if visible_on_screen_system is not None and has_visible_notifiers:
             # Obtener viewport rect en coordenadas de mundo desde la camara
             viewport_rect = resolve_world_viewport_rect(world)
             visible_on_screen_system.update(world, viewport_rect)
 
         parallax_system = self._get_parallax_system()
-        if parallax_system is not None:
+        if parallax_system is not None and has_parallax:
             parallax_system.update(world, dt)
 
         scene_transition_controller = self._get_scene_transition_controller()
-        if scene_transition_controller is not None:
+        if scene_transition_controller is not None and (
+            has_scene_transition_interacts
+            or bool(getattr(scene_transition_controller, "_interact_latches", None))
+        ):
             scene_transition_controller.update(world)
 
     def run_fixed_update(
@@ -484,6 +605,25 @@ class RuntimeController:
         if isinstance(serialized_id, str) and serialized_id.strip():
             self._signal_runtime.prune_by_source(serialized_id.strip())
             self._signal_runtime.prune_by_target(serialized_id.strip())
+
+    @staticmethod
+    def _world_has_any_component(world: "World", *component_types: type) -> bool:
+        component_index = getattr(world, "_component_index", None)
+        if isinstance(component_index, dict):
+            for component_type in component_types:
+                if component_index.get(component_type):
+                    return True
+            legacy_component_index = getattr(world, "_entities_by_component", None)
+            if isinstance(legacy_component_index, dict):
+                for component_type in component_types:
+                    if legacy_component_index.get(component_type):
+                        return True
+            return False
+
+        get_entities_with = getattr(world, "get_entities_with", None)
+        if not callable(get_entities_with):
+            return False
+        return any(bool(get_entities_with(component_type)) for component_type in component_types)
 
     def get_physics_backend_selection(self, world: Optional["World"]) -> PhysicsBackendSelection:
         return self._get_physics_backend_registry().resolve(world).selection

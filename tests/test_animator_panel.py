@@ -1,10 +1,12 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import pyray as rl
 from engine.api import EngineAPI
 from engine.editor.animator_panel import (
+    AnimatorPanel,
     build_state_payload_from_slice_group,
     can_refresh_from_recommended_group,
     choose_default_slice_sequence,
@@ -22,6 +24,8 @@ from engine.editor.animator_panel import (
     normalize_group_match_name,
 )
 from engine.editor.project_panel import ProjectPanel
+from engine.editor.sprite_editor_modal import SpriteEditorModal
+from engine.editor.undo_redo import UndoRedoManager
 
 MINIMAL_PNG_BYTES = (
     b"\x89PNG\r\n\x1a\n"
@@ -49,6 +53,17 @@ class AnimatorPanelTests(unittest.TestCase):
             global_state_dir=self.global_state_dir.as_posix(),
         )
         self.api.load_level("levels/demo_level.json")
+        if self.api.game._history_manager is None:
+            self.api.game._history_manager = UndoRedoManager()
+            self.api.scene_manager.set_history_manager(self.api.game._history_manager)
+        if self.api.game.animator_panel is None:
+            self.api.game.animator_panel = AnimatorPanel()
+        if self.api.game.sprite_editor_modal is None:
+            self.api.game.sprite_editor_modal = SpriteEditorModal()
+        self.api.game.animator_panel.set_scene_manager(self.api.scene_manager)
+        self.api.game.animator_panel.set_project_service(self.api.project_service)
+        self.api.game.sprite_editor_modal.set_project_service(self.api.project_service)
+        self.api.game.sprite_editor_modal.set_history_manager(self.api.game._history_manager)
         self.panel = self.api.game.animator_panel
         self.modal = self.api.game.sprite_editor_modal
         self._temp_files: list[Path] = []
@@ -286,6 +301,52 @@ class AnimatorPanelTests(unittest.TestCase):
         self.assertEqual(assets[sliced]["pipeline_status"], "ready")
         self.assertEqual(assets[sliced]["slice_count"], 1)
 
+    def test_animator_sprite_sheet_asset_list_cache_avoids_repeated_catalog_refresh(self) -> None:
+        self._write_sheet_with_slices("assets/test_animator_cached_sliced.png", ["cached_0"])
+        asset_service = self.panel._asset_service
+        self.assertIsNotNone(asset_service)
+
+        with patch.object(asset_service, "refresh_catalog", wraps=asset_service.refresh_catalog) as refresh_catalog:
+            first = self.panel.list_sprite_sheet_assets(force_refresh=True)
+            second = self.panel.list_sprite_sheet_assets()
+            third = self.panel.list_sprite_sheet_assets()
+
+        self.assertTrue(first)
+        self.assertEqual(first, second)
+        self.assertEqual(second, third)
+        self.assertEqual(refresh_catalog.call_count, 1)
+
+    def test_animator_sprite_sheet_asset_list_force_refresh_rebuilds_cache(self) -> None:
+        first_asset = self._write_temp_png("assets/test_animator_cache_first.png")
+        asset_service = self.panel._asset_service
+        self.assertIsNotNone(asset_service)
+
+        first_assets = {item["path"]: item for item in self.panel.list_sprite_sheet_assets(force_refresh=True)}
+        self.assertIn(first_asset, first_assets)
+
+        second_asset = self._write_temp_png("assets/test_animator_cache_second.png")
+        stale_assets = {item["path"]: item for item in self.panel.list_sprite_sheet_assets()}
+        refreshed_assets = {item["path"]: item for item in self.panel.list_sprite_sheet_assets(force_refresh=True)}
+
+        self.assertNotIn(second_asset, stale_assets)
+        self.assertIn(second_asset, refreshed_assets)
+
+    def test_animator_context_reuses_precomputed_slice_groups(self) -> None:
+        context = {
+            "available_slices": ["run_0", "run_1"],
+            "selected_state_name": "run",
+            "selected_state_data": {"slice_names": ["run_0"]},
+            "slice_groups": [{"group_name": "run", "slice_names": ["run_0", "run_1"], "count": 2}],
+        }
+
+        with patch("engine.editor.animator_panel.detect_slice_groups") as detect_groups:
+            groups = self.panel._detect_groups_from_context(context)
+            recommended = self.panel._get_recommended_group_from_context(context)
+
+        self.assertEqual(groups, context["slice_groups"])
+        self.assertEqual(recommended["group_name"], "run")
+        self.assertEqual(detect_groups.call_count, 0)
+
     def test_game_opens_sprite_editor_modal_from_animator_request(self) -> None:
         unsliced = self._write_temp_png("assets/test_animator_modal.png")
         self._create_animator_probe(
@@ -463,6 +524,87 @@ class AnimatorPanelTests(unittest.TestCase):
         self.assertTrue(self.api.redo()["success"])
         animator = self.api.get_entity("AnimatorRowsProbe")["components"]["Animator"]
         self.assertEqual(animator["animations"]["idle"]["slice_names"], ["slice_2"])
+
+    def test_animator_panel_open_slice_picker_stores_target_state(self) -> None:
+        sprite_sheet = self._write_sheet_with_slices("assets/test_animator_picker_open.png", ["slice_0", "slice_1"])
+        self._create_animator_probe(
+            "AnimatorPickerOpenProbe",
+            sprite_sheet,
+            {"idle": {"frames": [0, 1], "slice_names": ["slice_0", "slice_1"], "fps": 8.0, "loop": True, "on_complete": None}},
+        )
+
+        world = self.api.game.world
+        world.selected_entity_name = "AnimatorPickerOpenProbe"
+        self.panel.selected_state_name = "idle"
+
+        self.assertTrue(self.panel.open_slice_picker("idle", 1))
+        self.assertTrue(self.panel.slice_picker_open)
+        self.assertEqual(self.panel.slice_picker_state_name, "idle")
+        self.assertEqual(self.panel.slice_picker_frame_index, 1)
+        self.assertEqual(self.panel.slice_picker_scroll, 0.0)
+
+    def test_animator_panel_close_slice_picker_clears_state(self) -> None:
+        self.assertTrue(self.panel.open_slice_picker("idle", 0))
+        self.panel.slice_picker_scroll = 48.0
+        self.panel.slice_picker_selected_slice = "slice_9"
+        self.panel.close_slice_picker()
+
+        self.assertFalse(self.panel.slice_picker_open)
+        self.assertEqual(self.panel.slice_picker_state_name, "")
+        self.assertEqual(self.panel.slice_picker_frame_index, -1)
+        self.assertEqual(self.panel.slice_picker_scroll, 0.0)
+        self.assertEqual(self.panel.slice_picker_selected_slice, "")
+
+    def test_animator_panel_select_slice_for_open_picker_updates_frame_and_preview(self) -> None:
+        sprite_sheet = self._write_sheet_with_slices("assets/test_animator_picker_select.png", ["slice_0", "slice_1", "slice_2"])
+        self._create_animator_probe(
+            "AnimatorPickerSelectProbe",
+            sprite_sheet,
+            {"idle": {"frames": [0, 1], "slice_names": ["slice_0", "slice_1"], "fps": 8.0, "loop": True, "on_complete": None}},
+        )
+
+        world = self.api.game.world
+        world.selected_entity_name = "AnimatorPickerSelectProbe"
+        self.panel.selected_state_name = "idle"
+        self.panel.selected_frame_index = 0
+        self.panel.preview_frame = 0
+        self.panel.preview_elapsed = 1.5
+
+        self.assertTrue(self.panel.open_slice_picker("idle", 1))
+        self.assertTrue(self.panel.select_slice_for_open_picker(world, "slice_2"))
+
+        animator = self.api.get_entity("AnimatorPickerSelectProbe")["components"]["Animator"]
+        self.assertEqual(animator["animations"]["idle"]["slice_names"], ["slice_0", "slice_2"])
+        self.assertEqual(self.panel.selected_frame_index, 1)
+        self.assertEqual(self.panel.preview_frame, 1)
+        self.assertEqual(self.panel.preview_elapsed, 0.0)
+        self.assertFalse(self.panel.slice_picker_open)
+
+        self.assertTrue(self.api.undo()["success"])
+        animator = self.api.get_entity("AnimatorPickerSelectProbe")["components"]["Animator"]
+        self.assertEqual(animator["animations"]["idle"]["slice_names"], ["slice_0", "slice_1"])
+
+        self.assertTrue(self.api.redo()["success"])
+        animator = self.api.get_entity("AnimatorPickerSelectProbe")["components"]["Animator"]
+        self.assertEqual(animator["animations"]["idle"]["slice_names"], ["slice_0", "slice_2"])
+
+    def test_animator_panel_select_slice_for_open_picker_ignores_invalid_frame_index(self) -> None:
+        sprite_sheet = self._write_sheet_with_slices("assets/test_animator_picker_invalid.png", ["slice_0", "slice_1", "slice_2"])
+        self._create_animator_probe(
+            "AnimatorPickerInvalidProbe",
+            sprite_sheet,
+            {"idle": {"frames": [0, 1], "slice_names": ["slice_0", "slice_1"], "fps": 8.0, "loop": True, "on_complete": None}},
+        )
+
+        world = self.api.game.world
+        world.selected_entity_name = "AnimatorPickerInvalidProbe"
+        self.panel.selected_state_name = "idle"
+
+        self.assertTrue(self.panel.open_slice_picker("idle", 5))
+        self.assertFalse(self.panel.select_slice_for_open_picker(world, "slice_2"))
+
+        animator = self.api.get_entity("AnimatorPickerInvalidProbe")["components"]["Animator"]
+        self.assertEqual(animator["animations"]["idle"]["slice_names"], ["slice_0", "slice_1"])
 
     def test_animator_panel_selection_context_handles_selection_states(self) -> None:
         world = self.api.game.world
@@ -1027,6 +1169,14 @@ class AnimatorPanelSourceRegressionTests(unittest.TestCase):
 
         for token in forbidden_tokens:
             self.assertNotIn(token, source, msg=f"engine/editor/animator_panel.py still references {token}")
+
+    def test_game_updates_animator_panel_only_when_animator_tab_is_active(self) -> None:
+        source = Path("engine/core/game.py").read_text(encoding="utf-8")
+        self.assertIn('self.editor_layout.active_tab == "ANIMATOR"', source)
+        self.assertLess(
+            source.index('self.editor_layout.active_tab == "ANIMATOR"'),
+            source.index("self.animator_panel.update(active_world, dt)"),
+        )
 
 
 if __name__ == "__main__":

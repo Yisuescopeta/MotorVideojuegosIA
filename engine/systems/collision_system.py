@@ -46,6 +46,18 @@ class _CollisionEntry:
 class CollisionSystem:
     """Sistema de deteccion de colisiones AABB."""
 
+    @staticmethod
+    def _world_has_any_component(world: World, *component_types: type) -> bool:
+        component_index = getattr(world, "_component_index", None)
+        if isinstance(component_index, dict):
+            if any(bool(component_index.get(component_type)) for component_type in component_types):
+                return True
+            legacy_component_index = getattr(world, "_entities_by_component", None)
+            if isinstance(legacy_component_index, dict):
+                return any(bool(legacy_component_index.get(component_type)) for component_type in component_types)
+            return False
+        return any(bool(world.get_entities_with(component_type)) for component_type in component_types)
+
     def __init__(self, event_bus: Optional["EventBus"] = None, *, deterministic_debug: bool = False) -> None:
         self._collisions: list[CollisionInfo] = []
         self._event_bus: Optional["EventBus"] = event_bus
@@ -68,9 +80,27 @@ class CollisionSystem:
         self._collisions.clear()
         self._reset_step_metrics()
         self._query_buffer.clear()
+        self._checked_pairs.clear()
+
+        has_colliders = self._world_has_any_component(world, Collider)
+        has_dedicated_shapes = self._world_has_any_component(
+            world,
+            CollisionShapeSet2D,
+            CollisionShape2D,
+            CollisionPolygon2D,
+        )
+        has_rigidbodies = self._world_has_any_component(world, RigidBody)
+        if not has_colliders and not has_dedicated_shapes:
+            if shared_grid is not None:
+                shared_grid.clear()
+            if has_rigidbodies:
+                self._clear_contact_tracking(world)
+            self._entries_by_id.clear()
+            return
 
         # Limpiar contactos runtime para RigidBodies con contact_monitor activo
-        self._clear_contact_tracking(world)
+        if has_rigidbodies:
+            self._clear_contact_tracking(world)
 
         if shared_grid is not None:
             shared_grid.clear()
@@ -108,42 +138,43 @@ class CollisionSystem:
             entries_by_id[int(entity.id)] = entry
             grid.insert(entity.id, entry.aabb)
 
-        # Also gather entities with dedicated shape components but no Collider
-        for entity in world.get_entities_with(Transform):
-            entity_id = int(entity.id)
-            if entity_id in entries_by_id:
-                continue
-            transform = entity.get_component(Transform)
-            if transform is None:
-                continue
-            shape_set = entity.get_component(CollisionShapeSet2D)
-            if shape_set is not None:
-                bounds = shape_set.get_composite_bounds(transform.x, transform.y)
-                shape_defs = tuple(shape_set.shapes)
+        # Also gather entities with dedicated shape components but no Collider.
+        if has_dedicated_shapes:
+            for entity in world.get_entities_with(Transform):
+                entity_id = int(entity.id)
+                if entity_id in entries_by_id:
+                    continue
+                transform = entity.get_component(Transform)
+                if transform is None:
+                    continue
+                shape_set = entity.get_component(CollisionShapeSet2D)
+                if shape_set is not None:
+                    bounds = shape_set.get_composite_bounds(transform.x, transform.y)
+                    shape_defs = tuple(shape_set.shapes)
+                    entry = _CollisionEntry(
+                        entity=entity,
+                        collider=None,
+                        rigidbody=entity.get_component(RigidBody),
+                        aabb=bounds,
+                        shape_defs=shape_defs,
+                        use_shape_set=True,
+                    )
+                    entries_by_id[entity_id] = entry
+                    grid.insert(entity.id, entry.aabb)
+                    continue
+                if not self._entity_has_collision_shape(entity):
+                    continue
+                computed_bounds = self._compute_shape_bounds(entity, transform)
+                if computed_bounds is None:
+                    continue
                 entry = _CollisionEntry(
                     entity=entity,
                     collider=None,
                     rigidbody=entity.get_component(RigidBody),
-                    aabb=bounds,
-                    shape_defs=shape_defs,
-                    use_shape_set=True,
+                    aabb=computed_bounds,
                 )
                 entries_by_id[entity_id] = entry
                 grid.insert(entity.id, entry.aabb)
-                continue
-            if not self._entity_has_collision_shape(entity):
-                continue
-            computed_bounds = self._compute_shape_bounds(entity, transform)
-            if computed_bounds is None:
-                continue
-            entry = _CollisionEntry(
-                entity=entity,
-                collider=None,
-                rigidbody=entity.get_component(RigidBody),
-                aabb=computed_bounds,
-            )
-            entries_by_id[entity_id] = entry
-            grid.insert(entity.id, entry.aabb)
 
         checked_pairs = self._checked_pairs
         checked_pairs.clear()
@@ -166,13 +197,12 @@ class CollisionSystem:
                 self._step_metrics["candidate_pairs"] += 1
 
                 entry_b = entries_by_id.get(entity_b_id)
-                if entry_b is None or not self._can_check_pair(world, entry_a, entry_b):
+                if entry_b is None or not self._aabbs_overlap(entry_a.aabb, entry_b.aabb):
+                    continue
+                if not self._can_check_pair(world, entry_a, entry_b):
                     continue
 
                 self._step_metrics["narrow_phase_pairs"] += 1
-                if not self._aabbs_overlap(entry_a.aabb, entry_b.aabb):
-                    continue
-
                 # Narrow-phase: check shape pairs
                 if not self._narrow_phase_check(entry_a, entry_b):
                     continue
@@ -204,7 +234,7 @@ class CollisionSystem:
 
     def _clear_contact_tracking(self, world: World) -> None:
         """Limpia el tracking de contactos para RigidBodies con contact_monitor activo."""
-        for entity in world.get_entities_with(Transform):
+        for entity in world.get_entities_with(RigidBody):
             rb = entity.get_component(RigidBody)
             if rb is not None and rb.contact_monitor:
                 rb._clear_contacts()

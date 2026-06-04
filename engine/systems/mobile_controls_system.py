@@ -38,6 +38,11 @@ class MobileControlsSystem:
             "frames": max(1, int(frames)),
         }
 
+    def inject_pointer_payload(self, pointer_state: dict[str, Any]) -> None:
+        payload = dict(pointer_state)
+        payload["frames"] = max(1, int(payload.get("frames", 1)))
+        self._pointer_state = payload
+
     def update(self, world: World, viewport_size: tuple[float, float]) -> None:
         pointer = self._consume_pointer_state()
         if pointer is None:
