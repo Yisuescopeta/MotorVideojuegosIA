@@ -130,7 +130,7 @@ Cada plataforma tiene un exporter que implementa `PlatformExporter`:
 | Windows | `WindowsExporter` | PyInstaller |
 | Linux | `LinuxExporter` | PyInstaller |
 | macOS | `MacOSExporter` | macOS + PyInstaller + Xcode |
-| Android | `AndroidExporter` | Android SDK, JDK 11+, Gradle |
+| Android | `AndroidExporter` | Android SDK, Build-Tools 34.0.0+, JDK 17+, Gradle 8.7+ |
 | iOS | `IOSExporter` | macOS + Xcode |
 
 Sin toolchain: `validate_environment()` falla, `export()` retorna `false`, se

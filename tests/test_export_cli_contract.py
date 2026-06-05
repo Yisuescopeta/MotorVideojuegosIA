@@ -261,6 +261,109 @@ class TestExportDoctorDiagnostics(unittest.TestCase):
         self.assertFalse(absent["android_build_tools_available"])
         self.assertFalse(empty["android_build_tools_available"])
         self.assertTrue(installed["android_build_tools_available"])
+        self.assertEqual(installed["android_build_tools_version"], "35.0.0")
+        self.assertTrue(installed["android_build_tools_compatible"])
+
+    def test_android_probe_reports_toolchain_versions_and_compatibility(self):
+        from engine.export import android_environment
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = Path(tmpdir)
+            sdk = project / "sdk"
+            (sdk / "platforms" / "android-35").mkdir(parents=True)
+            (sdk / "build-tools" / "34.0.0").mkdir(parents=True)
+            wrapper = project / ("gradlew.bat" if os.name == "nt" else "gradlew")
+            wrapper.write_text("", encoding="utf-8")
+            if os.name != "nt":
+                wrapper.chmod(0o755)
+            wrapper_dir = project / "gradle" / "wrapper"
+            wrapper_dir.mkdir(parents=True)
+            wrapper_dir.joinpath("gradle-wrapper.jar").write_bytes(b"jar")
+            wrapper_dir.joinpath("gradle-wrapper.properties").write_text(
+                "distributionUrl=https\\://services.gradle.org/distributions/"
+                "gradle-8.7-bin.zip",
+                encoding="utf-8",
+            )
+
+            def fake_which(name):
+                return "/tools/java" if name in {"java", "java.exe"} else None
+
+            java_result = subprocess.CompletedProcess(
+                args=["java", "-version"],
+                returncode=0,
+                stdout="",
+                stderr='openjdk version "17.0.12" 2024-07-16',
+            )
+            with (
+                patch.dict(os.environ, {"ANDROID_HOME": str(sdk)}, clear=True),
+                patch.object(android_environment.shutil, "which", side_effect=fake_which),
+                patch.object(
+                    android_environment.subprocess,
+                    "run",
+                    return_value=java_result,
+                ),
+            ):
+                result = android_environment.probe_android_environment(project)
+
+        self.assertEqual(result["java_version"], "17.0.12")
+        self.assertEqual(result["java_major"], 17)
+        self.assertTrue(result["java_compatible"])
+        self.assertEqual(result["gradle_version"], "8.7")
+        self.assertTrue(result["gradle_compatible"])
+        self.assertEqual(result["android_build_tools_version"], "34.0.0")
+        self.assertTrue(result["android_build_tools_compatible"])
+
+    def test_doctor_rejects_incompatible_android_toolchain(self):
+        from engine.export import diagnostics
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = Path(tmpdir)
+            self._write_android_presets(project, [35])
+            incompatible = {
+                "android_sdk_available": True,
+                "android_home": "/sdk",
+                "android_platform_available": True,
+                "android_platform_path": "/sdk/platforms/android-35",
+                "android_build_tools_available": True,
+                "android_build_tools_version": "33.0.2",
+                "android_build_tools_compatible": False,
+                "java_available": True,
+                "java_path": "/java",
+                "java_version": "11.0.24",
+                "java_major": 11,
+                "java_compatible": False,
+                "gradle_available": True,
+                "gradle_path": "/gradle",
+                "gradle_version": "8.5",
+                "gradle_compatible": False,
+                "gradle_wrapper_available": False,
+                "gradle_wrapper_executable": False,
+                "gradle_wrapper_path": "",
+                "gradle_resolution": "path_executable",
+            }
+            with (
+                patch.object(
+                    diagnostics,
+                    "probe_android_environment",
+                    return_value=incompatible,
+                ),
+                patch.object(
+                    diagnostics,
+                    "resolve_pyinstaller",
+                    return_value={
+                        "pyinstaller_available": True,
+                        "pyinstaller_path": "/tools/pyinstaller",
+                        "pyinstaller_module_available": False,
+                        "pyinstaller_resolution": "path_executable",
+                    },
+                ),
+            ):
+                result = diagnostics.run_export_doctor(project)
+
+        self.assertFalse(result["healthy"])
+        self.assertTrue(any("ANDROID_JDK_INCOMPATIBLE" in issue for issue in result["issues"]))
+        self.assertTrue(any("ANDROID_GRADLE_INCOMPATIBLE" in issue for issue in result["issues"]))
+        self.assertTrue(any("ANDROID_BUILD_TOOLS_INCOMPATIBLE" in issue for issue in result["issues"]))
 
     def test_android_probe_falls_back_to_android_sdk_root(self):
         from engine.export.android_environment import probe_android_environment

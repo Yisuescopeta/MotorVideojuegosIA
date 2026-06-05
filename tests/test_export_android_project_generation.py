@@ -93,6 +93,55 @@ class TestAndroidProjectGeneration(unittest.TestCase):
         self.assertIn("targetSdk 35", gradle)
         self.assertNotIn("compileSdk {{TARGET_SDK}}", gradle)
 
+    def test_generated_project_has_no_unresolved_placeholders(self):
+        from engine.export.android_exporter import AndroidExporter
+        from engine.export.build_context import BuildContext
+        from engine.export.models import ExportPreset
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            preset = ExportPreset(
+                name="Android Debug",
+                platform="android",
+                architecture="arm64-v8a",
+                mode="debug",
+                output_path="dist/Test-debug.apk",
+                entry_scene="levels/test.json",
+                display_name="Test",
+                application_id="com.example.test",
+                min_sdk=24,
+                target_sdk=35,
+                compile_sdk=35,
+                extra={"android_python_runtime": True},
+            )
+            ctx = BuildContext(preset, root)
+            ctx.staging_dir.mkdir(parents=True, exist_ok=True)
+
+            project_dir = AndroidExporter()._generate_android_project(
+                ctx, ctx.staging_dir,
+            )
+            unresolved = []
+            for path in project_dir.rglob("*"):
+                if path.is_file() and path.suffix in {
+                    ".gradle", ".xml", ".kt", ".properties", ".pro",
+                }:
+                    if "{{" in path.read_text(encoding="utf-8"):
+                        unresolved.append(path.relative_to(project_dir).as_posix())
+
+        self.assertFalse(ctx.errors)
+        self.assertEqual(unresolved, [])
+
+    def test_android_template_uses_api_35_compatible_toolchain(self):
+        build_gradle = (self.template_dir / "build.gradle").read_text(
+            encoding="utf-8",
+        )
+        wrapper = (
+            self.template_dir / "gradle" / "wrapper" / "gradle-wrapper.properties"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("version '8.6.1'", build_gradle)
+        self.assertIn("gradle-8.7-bin.zip", wrapper)
+
     def test_generated_proguard_rules_use_application_id(self):
         from engine.export.android_exporter import AndroidExporter
         from engine.export.build_context import BuildContext
@@ -373,7 +422,7 @@ class TestAndroidProjectGeneration(unittest.TestCase):
 
         self.assertEqual(command, [str(project_dir / wrapper_name)])
 
-    def test_gradle_build_failure_includes_stdout_task_and_project_dir(self):
+    def test_gradle_build_failure_includes_both_streams_task_and_project_dir(self):
         from unittest.mock import MagicMock, patch
 
         from engine.export.android_exporter import AndroidExporter
@@ -402,7 +451,7 @@ class TestAndroidProjectGeneration(unittest.TestCase):
                 mock_run.return_value = MagicMock(
                     returncode=1,
                     stdout="SDK Platform 35 is missing",
-                    stderr="",
+                    stderr="Could not resolve android.jar",
                 )
 
                 result = exporter._run_gradle_build(
@@ -414,7 +463,52 @@ class TestAndroidProjectGeneration(unittest.TestCase):
         error = ctx.errors[0]
         self.assertIn("Gradle assembleDebug failed (code 1)", error)
         self.assertIn(str(project_dir), error)
+        self.assertIn("--- Gradle stdout ---", error)
         self.assertIn("SDK Platform 35 is missing", error)
+        self.assertIn("--- Gradle stderr ---", error)
+        self.assertIn("Could not resolve android.jar", error)
+
+    def test_gradle_timeout_preserves_partial_output(self):
+        import subprocess
+        from unittest.mock import patch
+
+        from engine.export.android_exporter import AndroidExporter
+        from engine.export.build_context import BuildContext
+        from engine.export.models import ExportPreset
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            project_dir = project_root / "android_project"
+            project_dir.mkdir()
+            ctx = BuildContext(
+                ExportPreset(
+                    name="Android Debug",
+                    platform="android",
+                    mode="debug",
+                    output_path="dist/Test-debug.apk",
+                    entry_scene="levels/test.json",
+                    application_id="com.example.test",
+                ),
+                project_root,
+            )
+            exporter = AndroidExporter()
+            timeout = subprocess.TimeoutExpired(
+                cmd=["gradlew", "assembleDebug"],
+                timeout=600,
+                output=b"partial stdout",
+                stderr=b"partial stderr",
+            )
+
+            with patch.object(
+                exporter, "_resolve_gradle_command", return_value=["gradlew"],
+            ), patch("subprocess.run", side_effect=timeout):
+                result = exporter._run_gradle_build(
+                    ctx, project_dir, "assembleDebug",
+                )
+
+        self.assertFalse(result)
+        self.assertIn("partial stdout", ctx.errors[0])
+        self.assertIn("partial stderr", ctx.errors[0])
 
     def test_find_apk_prefers_expected_debug_artifact(self):
         from engine.export.android_exporter import AndroidExporter
@@ -475,6 +569,25 @@ class TestAndroidProjectGeneration(unittest.TestCase):
             selected = AndroidExporter()._find_apk(project_dir, "release")
 
         self.assertEqual(selected, expected)
+
+    def test_find_apk_never_selects_unsigned_release(self):
+        from engine.export.android_exporter import AndroidExporter
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_dir = Path(tmpdir)
+            apk_dir = project_dir / "app" / "build" / "outputs" / "apk"
+            unsigned = apk_dir / "release" / "app-release-unsigned.apk"
+            signed = apk_dir / "custom" / "signed-release.apk"
+            unsigned.parent.mkdir(parents=True)
+            signed.parent.mkdir(parents=True)
+            unsigned.write_bytes(b"unsigned")
+            signed.write_bytes(b"signed")
+            os.utime(unsigned, (2, 2))
+            os.utime(signed, (1, 1))
+
+            selected = AndroidExporter()._find_apk(project_dir, "release")
+
+        self.assertEqual(selected, signed)
 
     def test_find_aab_prefers_expected_release_and_newest_fallback(self):
         from engine.export.android_exporter import AndroidExporter

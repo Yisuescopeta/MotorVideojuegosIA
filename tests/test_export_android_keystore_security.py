@@ -65,7 +65,9 @@ class TestAndroidKeystoreSecurity(unittest.TestCase):
             extra=defaults,
         )
 
-    def _run_export_with_signing(self, extra, environment_override=None):
+    def _run_export_with_signing(
+        self, extra, environment_override=None, *, apk_found=True,
+    ):
         from engine.export.android_exporter import AndroidExporter
 
         preset = ExportPreset(
@@ -81,9 +83,22 @@ class TestAndroidKeystoreSecurity(unittest.TestCase):
         ctx = BuildContext(preset, self.tmp)
         exporter = AndroidExporter()
         project_dir = self.tmp / "generated_android"
-        (project_dir / "app" / "src" / "main" / "assets").mkdir(parents=True)
+        (project_dir / "app" / "src" / "main" / "assets").mkdir(
+            parents=True, exist_ok=True,
+        )
         manifest = MagicMock(assets=[], scenes=[], scripts=[])
         graph = MagicMock(reachable_scenes=[], reachable_scripts=[])
+        apk_path = (
+            project_dir
+            / "app"
+            / "build"
+            / "outputs"
+            / "apk"
+            / "release"
+            / "app-release.apk"
+        )
+        apk_path.parent.mkdir(parents=True, exist_ok=True)
+        apk_path.write_bytes(b"signed-apk")
         environment = {
             "android_sdk_available": True,
             "android_platform_available": True,
@@ -107,7 +122,10 @@ class TestAndroidKeystoreSecurity(unittest.TestCase):
             patch.object(exporter, "_add_project_artifacts"),
             patch.object(exporter, "_build_release", return_value=True) as build_release,
             patch.object(exporter, "_run_gradle_build", return_value=True) as run_gradle,
-            patch.object(exporter, "_find_apk", return_value=None),
+            patch.object(
+                exporter, "_find_apk",
+                return_value=apk_path if apk_found else None,
+            ),
             patch.object(exporter, "_find_aab", return_value=None),
         ):
             result = exporter.export(ctx)
@@ -138,6 +156,39 @@ class TestAndroidKeystoreSecurity(unittest.TestCase):
         build_release.assert_not_called()
         run_gradle.assert_not_called()
 
+    def test_incompatible_toolchain_fails_before_gradle(self):
+        cases = [
+            (
+                {
+                    "android_build_tools_compatible": False,
+                    "android_build_tools_version": "33.0.2",
+                },
+                "ANDROID_BUILD_TOOLS_INCOMPATIBLE",
+            ),
+            (
+                {"java_compatible": False, "java_version": "11.0.24"},
+                "ANDROID_JDK_INCOMPATIBLE",
+            ),
+            (
+                {"gradle_compatible": False, "gradle_version": "8.5"},
+                "ANDROID_GRADLE_INCOMPATIBLE",
+            ),
+        ]
+
+        for environment, code in cases:
+            with self.subTest(code=code):
+                result, ctx, build_release, run_gradle = (
+                    self._run_export_with_signing(
+                        {"local_release_signing": True},
+                        environment,
+                    )
+                )
+
+                self.assertFalse(result)
+                self.assertTrue(any(code in error for error in ctx.errors))
+                build_release.assert_not_called()
+                run_gradle.assert_not_called()
+
     def test_release_with_local_signing_keeps_release_flow(self):
         result, ctx, build_release, run_gradle = self._run_export_with_signing(
             {"local_release_signing": True}
@@ -157,6 +208,18 @@ class TestAndroidKeystoreSecurity(unittest.TestCase):
         self.assertFalse(ctx.errors)
         build_release.assert_called_once()
         run_gradle.assert_not_called()
+
+    def test_release_fails_when_gradle_produces_no_apk(self):
+        result, ctx, build_release, _ = self._run_export_with_signing(
+            {"keystore_path": str(self.keystore)},
+            apk_found=False,
+        )
+
+        self.assertFalse(result)
+        build_release.assert_called_once()
+        self.assertTrue(
+            any("ANDROID_ARTIFACT_NOT_FOUND" in error for error in ctx.errors)
+        )
 
     def test_build_gradle_does_not_contain_password_plaintext(self):
         preset = self._make_preset_with_keystore()

@@ -9,8 +9,9 @@ Exportacion a plataformas moviles: Android e iOS.
 | Tool | Comprobacion | Instalacion |
 |---|---|---|
 | Android SDK | `ANDROID_HOME` o `ANDROID_SDK_ROOT` | [Android Studio](https://developer.android.com/studio) |
-| JDK 11+ | `java -version` | `sdk install java 17.0.0-tem` o Android Studio JDK |
-| Gradle | `gradle --version` o `gradlew/gradlew.bat` | `sdk install gradle 8.5` o wrapper incluido |
+| JDK 17+ | `java -version` | `sdk install java 17.0.0-tem` o Android Studio JDK |
+| Gradle 8.7+ | `gradle --version` o `gradlew/gradlew.bat` | Wrapper 8.7 incluido |
+| SDK Build-Tools 34.0.0+ | Directorio `build-tools/` | Android SDK Manager |
 
 `motor export doctor` verifica estos requisitos y reporta `healthy: false`
 cuando faltan.
@@ -76,7 +77,8 @@ py -m motor export build "Android Release" --project . --json
    Android usa automaticamente el debug keystore para este tipo de build.
 6. Copia `app/build/outputs/apk/debug/app-debug.apk` a
    `dist/export/android/`. Si Gradle usa otro nombre, selecciona el APK debug
-   mas reciente sin mezclar artefactos release.
+   firmado mas reciente sin mezclar artefactos release ni `unsigned`. Si no
+   existe APK, falla con `ANDROID_ARTIFACT_NOT_FOUND`.
 7. Genera build report.
 
 ### Release
@@ -89,7 +91,8 @@ py -m motor export build "Android Release" --project . --json
 4. Ejecuta `gradlew assembleRelease`/`bundleRelease` si existe wrapper; si no, `gradle`.
 5. Copia preferentemente `app-release.apk` y `app-release.aab` desde las rutas
    release estandar de Gradle. Si usan otro nombre, selecciona el artefacto
-   release mas reciente sin mezclar artefactos debug.
+   release firmado mas reciente sin mezclar artefactos debug ni `unsigned`.
+   El APK es obligatorio y el AAB se copia si existe.
 6. Report incluye hashes de artefactos y redaccion de keystore.
 
 ### Keystore config
@@ -168,6 +171,10 @@ escena Android reachable tiene `InputMap` + `PlayerController2D` sin
 `android_python_runtime: true`. Tambien falla con `ANDROID_RUNTIME_UNSUPPORTED_*`
 para capacidades no soportadas por el modo elegido, evitando APKs
 silenciosamente no jugables.
+
+El template usa Android Gradle Plugin 8.6.1, Gradle Wrapper 8.7 y JDK 17+.
+Esta combinacion soporta `compile_sdk: 35`; Chaquopy 17.0.0 permanece dentro
+de su matriz compatible.
 
 ## Controles moviles
 
@@ -265,9 +272,9 @@ Los tests estructurales de iOS pasan en cualquier SO. El exporter reporta
 |---|---|---|
 | `android_sdk_available` | Variable de entorno apuntando a un SDK existente | Android exports bloqueados |
 | `android_platform_available` | `platforms/android-{compile_sdk}` para cada preset | Falla con `ANDROID_PLATFORM_MISSING` |
-| `android_build_tools_available` | Al menos una version bajo `build-tools/` | Falla con `ANDROID_BUILD_TOOLS_MISSING` |
-| `java` | `shutil.which("java")` | Android builds requieren JDK |
-| `gradle` | Wrapper completo y ejecutable o Gradle global | Compilacion Android requiere Gradle |
+| `android_build_tools_available` / `android_build_tools_version` | Version mas alta bajo `build-tools/` | Requiere 34.0.0+ |
+| `java_version` / `java_major` / `java_compatible` | Version real de `java -version` | Requiere JDK 17+ |
+| `gradle_version` / `gradle_compatible` | Wrapper o Gradle global | Requiere Gradle 8.7+ |
 | `gradle_wrapper_executable` | Permiso ejecutable de `gradlew` en Unix | Requiere `chmod +x gradlew` o Gradle global |
 | macOS host | `platform.system() == "Darwin"` | iOS exports requieren macOS |
 | Xcode | `shutil.which("xcodebuild")` | iOS compilacion requiere Xcode |
@@ -292,7 +299,8 @@ py -m motor export doctor --project . --json
 
 ## Limitaciones reales
 
-- **Android real build**: requiere Android SDK, JDK 11+ y Gradle. Sin ellos, se
+- **Android real build**: requiere Android SDK, Build-Tools 34.0.0+, JDK 17+ y
+  Gradle 8.7+. Sin ellos, se
   genera proyecto estructural pero no APK/AAB.
 - **Android jugable**: las escenas con gameplay usan Chaquopy +
   `SharedGameRuntime`, por lo que power-ups `ScriptBehaviour`, plataformas

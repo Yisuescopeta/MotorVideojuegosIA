@@ -64,10 +64,24 @@ def run_export_doctor(project_root: str | os.PathLike[str] | None = None) -> dic
             "to an installed Android SDK."
         )
     if android_required and not primary_android["java_available"]:
-        warnings.append("Java not found. Android exports require JDK.")
+        issues.append(
+            "TOOLCHAIN_UNAVAILABLE: Java not found. Android exports require JDK 17+."
+        )
+    elif android_required and not primary_android["java_compatible"]:
+        issues.append(
+            "ANDROID_JDK_INCOMPATIBLE: Android Gradle Plugin 8.6.1 requires "
+            "JDK 17 or later. Detected "
+            f"{primary_android['java_version'] or 'unknown'}."
+        )
     if android_required and not primary_android["android_build_tools_available"]:
         issues.append(
             "ANDROID_BUILD_TOOLS_MISSING: Install Android SDK Build-Tools"
+        )
+    elif android_required and not primary_android["android_build_tools_compatible"]:
+        issues.append(
+            "ANDROID_BUILD_TOOLS_INCOMPATIBLE: Android builds require SDK "
+            "Build-Tools 34.0.0 or later. Detected "
+            f"{primary_android['android_build_tools_version'] or 'unknown'}."
         )
     for android_check in android_checks if android_required else []:
         if not android_check["android_platform_available"]:
@@ -94,6 +108,12 @@ def run_export_doctor(project_root: str | os.PathLike[str] | None = None) -> dic
             "was found in the project or Android template. Install Gradle, add "
             "gradlew/gradlew.bat with gradle-wrapper.jar, or restore "
             "platforms/android/template/gradle/wrapper/gradle-wrapper.jar."
+        )
+    elif android_required and not primary_android["gradle_compatible"]:
+        issues.append(
+            "ANDROID_GRADLE_INCOMPATIBLE: Android Gradle Plugin 8.6.1 requires "
+            "Gradle 8.7 or later. Detected "
+            f"{primary_android['gradle_version'] or 'unknown'}."
         )
 
     healthy = len(issues) == 0

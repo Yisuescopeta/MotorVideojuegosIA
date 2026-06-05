@@ -141,7 +141,7 @@ verifica hashes SHA-256 y expone assets, escenas y scripts al runtime.
   silenciosamente roto.
 - Debug: `assembleDebug` → APK.
 - Release: `assembleRelease` → APK firmado, `bundleRelease` → AAB.
-- Requiere `ANDROID_HOME`, JDK 11+ y Gradle.
+- Requiere `ANDROID_HOME`, Build-Tools 34.0.0+, JDK 17+ y Gradle 8.7.
 
 ### iOS
 

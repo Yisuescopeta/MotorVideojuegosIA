@@ -64,6 +64,8 @@ usa `main.py` del editor como entrypoint de juego exportado.
   Android valida todos los `compile_sdk` declarados y expone
   `android_sdk_available`, `android_platform_available`,
   `android_platform_path`, `android_build_tools_available`,
+  `android_build_tools_version`, `java_version`, `java_major`,
+  `java_compatible`, `gradle_version`, `gradle_compatible`,
   `gradle_wrapper_executable` y el detalle `android_platforms`.
 - `export_pack(name)` genera content staging, `game.manifest.json` y `game.pak`.
 - `build_export(name)` ejecuta el exporter de plataforma y escribe build report.
@@ -73,7 +75,9 @@ usa `main.py` del editor como entrypoint de juego exportado.
 Todas devuelven `{ "success": bool, "message": str, "data": object }`. Los
 errores accionables incluyen `ENTRY_SCENE_NOT_FOUND`, `UNSAFE_OUTPUT_PATH`,
 `UNKNOWN_PRESET_FIELD`, `TOOLCHAIN_UNAVAILABLE`,
-`ANDROID_PLATFORM_MISSING` y `ANDROID_BUILD_TOOLS_MISSING`.
+`ANDROID_PLATFORM_MISSING`, `ANDROID_BUILD_TOOLS_MISSING`,
+`ANDROID_BUILD_TOOLS_INCOMPATIBLE`, `ANDROID_JDK_INCOMPATIBLE` y
+`ANDROID_GRADLE_INCOMPATIBLE`.
 
 Documentacion relacionada: [export_pipeline.md](export_pipeline.md),
 [export_presets.md](export_presets.md), [build_artifacts.md](build_artifacts.md).

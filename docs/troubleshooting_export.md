@@ -58,7 +58,7 @@ Android builds requieren Android SDK.
 #### Java not found
 
 ```bash
-# Instalar JDK 11+ (sdkman, apt, brew, o Android Studio)
+# Instalar JDK 17+ (sdkman, apt, brew, o Android Studio)
 sdk install java 17.0.0-tem
 ```
 

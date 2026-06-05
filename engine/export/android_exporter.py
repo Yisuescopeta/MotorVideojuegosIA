@@ -30,6 +30,8 @@ _PLACEHOLDERS = {
     "{{ORIENTATION}}": "orientation",
     "{{ENTRY_SCENE}}": "entry_scene",
 }
+_TEMPLATE_SUFFIXES = (".gradle", ".xml", ".kt", ".properties", ".pro")
+_GRADLE_LOG_LIMIT = 16000
 
 
 def _xml_escape(value: str) -> str:
@@ -90,6 +92,8 @@ class AndroidExporter(PlatformExporter):
         self._write_runtime_config(ctx, staging)
 
         project_dir = self._generate_android_project(ctx, staging)
+        if ctx.has_errors:
+            return False
         env = self.validate_environment(project_dir, ctx.preset.compile_sdk)
 
         assets_src = staging / "content"
@@ -132,11 +136,25 @@ class AndroidExporter(PlatformExporter):
                 "ANDROID_BUILD_TOOLS_MISSING: Install Android SDK Build-Tools"
             )
             return False
+        if not env.get("android_build_tools_compatible", True):
+            ctx.add_error(
+                "ANDROID_BUILD_TOOLS_INCOMPATIBLE: Android builds require "
+                "SDK Build-Tools 34.0.0 or later. Detected "
+                f"{env.get('android_build_tools_version') or 'unknown'}."
+            )
+            return False
 
         if not env["java_available"]:
             ctx.add_error(
                 "TOOLCHAIN_UNAVAILABLE: Java/JDK not found. "
-                "Install JDK 11 or later. Run: java -version"
+                "Install JDK 17 or later. Run: java -version"
+            )
+            return False
+        if not env.get("java_compatible", True):
+            ctx.add_error(
+                "ANDROID_JDK_INCOMPATIBLE: Android Gradle Plugin 8.6.1 "
+                "requires JDK 17 or later. Detected "
+                f"{env.get('java_version') or 'unknown'}."
             )
             return False
 
@@ -145,6 +163,13 @@ class AndroidExporter(PlatformExporter):
                 "Gradle not found in PATH and no Gradle wrapper found in generated project. "
                 "Android project generated but not built. Install Gradle, add gradlew/gradlew.bat, "
                 "or use the generated project directly in Android Studio."
+            )
+            return False
+        if not env.get("gradle_compatible", True):
+            ctx.add_error(
+                "ANDROID_GRADLE_INCOMPATIBLE: Android Gradle Plugin 8.6.1 "
+                "requires Gradle 8.7 or later. Detected "
+                f"{env.get('gradle_version') or 'unknown'}."
             )
             return False
 
@@ -167,6 +192,12 @@ class AndroidExporter(PlatformExporter):
         apk = self._find_apk(project_dir, ctx.preset.mode)
         if apk:
             self._copy_android_artifact(ctx, apk, output, "apk")
+        else:
+            ctx.add_error(
+                "ANDROID_ARTIFACT_NOT_FOUND: Gradle completed but no signed "
+                f"{ctx.preset.mode} APK was found under "
+                "app/build/outputs/apk/."
+            )
 
         if ctx.preset.mode == "release":
             aab = self._find_aab(project_dir, ctx.preset.mode)
@@ -236,17 +267,36 @@ class AndroidExporter(PlatformExporter):
 
         replacements = self._build_replacements(ctx)
         for file_path in project_dir.rglob("*"):
-            if file_path.is_file() and file_path.suffix in (
-                ".gradle", ".xml", ".kt", ".properties", ".pro",
-            ):
+            if file_path.is_file() and file_path.suffix in _TEMPLATE_SUFFIXES:
                 try:
                     content = file_path.read_text(encoding="utf-8")
                     rmap = replacements["gradle"] if file_path.suffix == ".gradle" else replacements["xml"]
                     for placeholder, value in rmap.items():
                         content = content.replace(placeholder, value)
                     file_path.write_text(content, encoding="utf-8")
-                except Exception:
-                    pass
+                except Exception as exc:
+                    ctx.add_error(
+                        "ANDROID_TEMPLATE_RENDER_FAILED: Could not render "
+                        f"{file_path.relative_to(project_dir)}: {exc}"
+                    )
+
+        unresolved = []
+        for file_path in project_dir.rglob("*"):
+            if not file_path.is_file() or file_path.suffix not in _TEMPLATE_SUFFIXES:
+                continue
+            try:
+                if "{{" in file_path.read_text(encoding="utf-8"):
+                    unresolved.append(file_path.relative_to(project_dir).as_posix())
+            except OSError as exc:
+                ctx.add_error(
+                    "ANDROID_TEMPLATE_RENDER_FAILED: Could not validate "
+                    f"{file_path.relative_to(project_dir)}: {exc}"
+                )
+        if unresolved:
+            ctx.add_error(
+                "ANDROID_TEMPLATE_PLACEHOLDER_UNRESOLVED: Generated Android "
+                f"project still contains placeholders in: {', '.join(unresolved)}"
+            )
 
         return project_dir
 
@@ -535,23 +585,40 @@ class AndroidExporter(PlatformExporter):
                 env=env,
             )
             if result.returncode != 0:
-                output = "\n".join(
-                    part for part in (result.stdout, result.stderr) if part
-                )
-                tail = output[-8000:]
                 ctx.add_error(
                     f"Gradle {task} failed (code {result.returncode}) "
-                    f"in {project_dir}:\n{tail}"
+                    f"in {project_dir}:\n"
+                    f"{self._format_gradle_stream('stdout', result.stdout)}\n"
+                    f"{self._format_gradle_stream('stderr', result.stderr)}"
                 )
                 return False
-        except subprocess.TimeoutExpired:
-            ctx.add_error(f"Gradle {task} timed out after 600s")
+        except subprocess.TimeoutExpired as exc:
+            ctx.add_error(
+                f"Gradle {task} timed out after 600s in {project_dir}:\n"
+                f"{self._format_gradle_stream('stdout', exc.stdout)}\n"
+                f"{self._format_gradle_stream('stderr', exc.stderr)}"
+            )
             return False
         except Exception as exc:
             ctx.add_error(f"Gradle {task} failed: {exc}")
             return False
 
         return True
+
+    def _format_gradle_stream(
+        self, label: str, content: str | bytes | None,
+    ) -> str:
+        if isinstance(content, bytes):
+            text = content.decode("utf-8", errors="replace")
+        else:
+            text = content or ""
+        if len(text) > _GRADLE_LOG_LIMIT:
+            omitted = len(text) - _GRADLE_LOG_LIMIT
+            text = (
+                f"[truncated {omitted} leading characters]\n"
+                + text[-_GRADLE_LOG_LIMIT:]
+            )
+        return f"--- Gradle {label} ---\n{text.rstrip() or '[empty]'}"
 
     def _resolve_gradle_command(self, project_dir: Path | None = None) -> list[str]:
         return list(resolve_gradle(project_dir)["command"])
@@ -785,7 +852,11 @@ class AndroidExporter(PlatformExporter):
         candidates = [
             path
             for path in output_dir.rglob(pattern)
-            if path.is_file() and mode.lower() in path.name.lower()
+            if (
+                path.is_file()
+                and mode.lower() in path.name.lower()
+                and "unsigned" not in path.name.lower()
+            )
         ]
         if not candidates:
             return None
