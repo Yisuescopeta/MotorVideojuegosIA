@@ -42,6 +42,7 @@ export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
   "version_code": 1,
   "min_sdk": 24,
   "target_sdk": 35,
+  "compile_sdk": 35,
   "orientation": "landscape",
   "bundle_mode": "packed",
   "include_debug_tools": true,
@@ -123,7 +124,9 @@ app/
 
 El exporter reemplaza placeholders (`{{APPLICATION_ID}}`, `{{DISPLAY_NAME}}`,
 `{{VERSION_CODE}}`, `{{VERSION_NAME}}`, `{{MIN_SDK}}`, `{{TARGET_SDK}}`,
-`{{ORIENTATION}}`) en los archivos de template.
+`{{COMPILE_SDK}}`, `{{ORIENTATION}}`) en los archivos de template.
+`compile_sdk` controla `compileSdk`; `target_sdk` controla `targetSdk` dentro
+de `defaultConfig`.
 
 El template Android incluye un shell Kotlin con `SurfaceView`. Con
 `android_python_runtime: true`, el shell extrae solo

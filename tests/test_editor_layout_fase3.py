@@ -74,7 +74,7 @@ class EditorLayoutFase3Tests(unittest.TestCase):
         self.assertTrue(self.layout.request_pause)
 
     def test_step_button_click_sets_request_step(self) -> None:
-        with self._patch_widgets(buttons={">|"}):
+        with self._patch_widgets(icons={"step_forward"}):
             self.layout._draw_toolbar(is_playing=True)
         self.assertTrue(self.layout.request_step)
 

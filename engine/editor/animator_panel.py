@@ -12,11 +12,13 @@ import pyray as rl
 from engine.assets.asset_service import AssetService
 from engine.components.animator import Animator
 from engine.editor.render_safety import editor_scissor
+from engine.editor.ui.icons import ICON_ARROW_DOWN, ICON_ARROW_UP, ICON_MINUS, ICON_PLUS, ICON_TRASH, draw_icon
 from engine.resources.texture_manager import TextureManager
 
 _UNSET = object()
 _SLICE_SEQUENCE_PATTERN = re.compile(r"^(.*?)(\d+)$")
 _TRAILING_STATE_NUMBER_PATTERN = re.compile(r"_(\d+)$")
+_ICON_PICK = "pick"
 
 
 def expand_slice_sequence(slice_names: List[str], start_slice_name: str, sprite_count: int) -> List[str]:
@@ -198,6 +200,8 @@ class AnimatorPanel:
     DIM_COLOR = rl.Color(140, 140, 140, 255)
     ACCENT_COLOR = rl.Color(58, 121, 187, 255)
     OVERLAY_COLOR = rl.Color(0, 0, 0, 170)
+    ICON_COLOR = (255, 255, 255, 255)
+    ICON_DISABLED_COLOR = (140, 140, 140, 255)
     MIN_FRAME_MS = 16
     MAX_FRAME_MS = 1000
     IMAGE_EXTENSIONS: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".bmp")
@@ -1068,34 +1072,35 @@ class AnimatorPanel:
             current_y += 18
 
         for index, frame_name in enumerate(frame_items[:8]):
-            row_rect = rl.Rectangle(rect.x + 10, current_y, rect.width - 20, 24)
+            row_rect = rl.Rectangle(rect.x + 10, current_y, rect.width - 20, 26)
             active = index == self.selected_frame_index
             rl.draw_rectangle_rec(row_rect, self.ACCENT_COLOR if active else rl.Color(40, 40, 40, 255))
             rl.draw_text(f"#{index}", int(row_rect.x + 6), int(row_rect.y + 6), 10, self.TEXT_COLOR)
-            thumb_rect = rl.Rectangle(row_rect.x + 34, row_rect.y + 2, 20, 20)
-            pick_rect = rl.Rectangle(row_rect.x + row_rect.width - 104, row_rect.y, 36, 24)
-            move_up_rect = rl.Rectangle(row_rect.x + row_rect.width - 66, row_rect.y, 20, 24)
-            move_down_rect = rl.Rectangle(row_rect.x + row_rect.width - 44, row_rect.y, 20, 24)
-            delete_rect = rl.Rectangle(row_rect.x + row_rect.width - 22, row_rect.y, 20, 24)
-            value_rect = rl.Rectangle(row_rect.x + 58, row_rect.y, row_rect.width - 164, 24)
+            thumb_rect = rl.Rectangle(row_rect.x + 34, row_rect.y + 2, 22, 22)
+            button_y = row_rect.y + 1
+            delete_rect = rl.Rectangle(row_rect.x + row_rect.width - 30, button_y, 24, 24)
+            move_down_rect = rl.Rectangle(delete_rect.x - 28, button_y, 24, 24)
+            move_up_rect = rl.Rectangle(move_down_rect.x - 28, button_y, 24, 24)
+            pick_rect = rl.Rectangle(move_up_rect.x - 28, button_y, 24, 24)
+            value_rect = rl.Rectangle(row_rect.x + 60, row_rect.y + 1, pick_rect.x - (row_rect.x + 64), 24)
 
             self._draw_slice_texture(context.get("sprite_sheet", ""), frame_name, thumb_rect, fill_color=rl.Color(32, 32, 32, 255), border_color=self.BORDER_COLOR)
             rl.draw_rectangle_rec(value_rect, rl.Color(32, 32, 32, 255))
             rl.draw_text(self._truncate_label(frame_name or "-", 24), int(value_rect.x + 6), int(value_rect.y + 6), 10, self.TEXT_COLOR)
-            if rl.gui_button(pick_rect, "Pick"):
+            if self._gui_icon_button(pick_rect, _ICON_PICK):
                 self.open_slice_picker(state_name, index)
-            if rl.gui_button(move_up_rect, "^"):
+            if self._gui_icon_button(move_up_rect, ICON_ARROW_UP, enabled=index > 0):
                 self.move_frame(world, state_name, index, -1)
-            if rl.gui_button(move_down_rect, "v"):
+            if self._gui_icon_button(move_down_rect, ICON_ARROW_DOWN, enabled=index < len(frame_items) - 1):
                 self.move_frame(world, state_name, index, 1)
-            if rl.gui_button(delete_rect, "x"):
+            if self._gui_icon_button(delete_rect, ICON_TRASH):
                 self.remove_frame(world, state_name, index)
 
             if rl.check_collision_point_rec(rl.get_mouse_position(), row_rect) and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 self.selected_frame_index = index
                 self.preview_frame = index
                 self.preview_elapsed = 0.0
-            current_y += 28
+            current_y += 30
 
         remove_rect = rl.Rectangle(rect.x + 10, rect.y + rect.height - 32, rect.width - 20, 22)
         if rl.gui_button(remove_rect, "Remove State"):
@@ -1103,16 +1108,32 @@ class AnimatorPanel:
 
     def _draw_value_stepper(self, rect: rl.Rectangle, y: int, label: str, value: str, on_minus: Any, on_plus: Any) -> int:
         rl.draw_text(label, int(rect.x + 10), int(y + 5), 10, self.TEXT_COLOR)
-        minus_rect = rl.Rectangle(rect.x + rect.width - 104, y, 22, 22)
-        plus_rect = rl.Rectangle(rect.x + rect.width - 24, y, 22, 22)
-        value_rect = rl.Rectangle(rect.x + rect.width - 78, y, 50, 22)
-        if rl.gui_button(minus_rect, "-"):
+        minus_rect = rl.Rectangle(rect.x + rect.width - 108, y, 24, 22)
+        plus_rect = rl.Rectangle(rect.x + rect.width - 24, y, 24, 22)
+        value_rect = rl.Rectangle(rect.x + rect.width - 80, y, 52, 22)
+        if self._gui_icon_button(minus_rect, ICON_MINUS):
             on_minus()
         rl.draw_rectangle_rec(value_rect, rl.Color(40, 40, 40, 255))
         rl.draw_text(value, int(value_rect.x + 4), int(value_rect.y + 6), 10, self.TEXT_COLOR)
-        if rl.gui_button(plus_rect, "+"):
+        if self._gui_icon_button(plus_rect, ICON_PLUS):
             on_plus()
         return y + 28
+
+    def _gui_icon_button(self, rect: rl.Rectangle, icon: str, *, enabled: bool = True) -> bool:
+        clicked = bool(rl.gui_button(rect, ""))
+        if not enabled:
+            rl.draw_rectangle_rec(rect, rl.Color(28, 28, 28, 150))
+            rl.draw_rectangle_lines_ex(rect, 1, self.BORDER_COLOR)
+        self._draw_shared_icon(rect, icon, enabled=enabled)
+        return clicked if enabled else False
+
+    def _draw_shared_icon(self, rect: rl.Rectangle, icon: str, *, enabled: bool = True) -> None:
+        draw_icon(
+            icon,
+            (float(rect.x), float(rect.y), float(rect.width), float(rect.height)),
+            self.ICON_COLOR if enabled else self.ICON_DISABLED_COLOR,
+            size=max(12, int(min(rect.width, rect.height) - 8)),
+        )
 
     def _draw_preview_column(self, context: Dict[str, Any], rect: rl.Rectangle) -> None:
         current_y = self._draw_card(rect, "Preview")

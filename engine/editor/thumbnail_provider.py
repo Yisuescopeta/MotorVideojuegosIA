@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 import pyray as rl
+from engine.editor.ui.icons import ICON_AUDIO, ICON_MATERIAL, ICON_PREFAB, ICON_SCENE, ICON_SCRIPT, ICON_UNKNOWN, draw_icon
 
 
 @dataclass(frozen=True)
@@ -26,12 +27,12 @@ class ThumbnailProvider:
     ICONS: Dict[str, ThumbnailInfo] = {
         "folder": ThumbnailInfo("folder", (220, 200, 100), "DIR"),
         "image": ThumbnailInfo("image", (118, 158, 223), "IMG"),
-        "scene": ThumbnailInfo("scene", (120, 190, 130), "SCN"),
-        "prefab": ThumbnailInfo("prefab", (176, 135, 222), "PFB"),
-        "script": ThumbnailInfo("script", (226, 180, 96), "PY"),
-        "audio": ThumbnailInfo("audio", (104, 190, 205), "AUD"),
-        "material": ThumbnailInfo("material", (205, 150, 110), "MAT"),
-        "unknown": ThumbnailInfo("unknown", (160, 160, 160), "?"),
+        "scene": ThumbnailInfo(ICON_SCENE, (120, 190, 130), "SCN"),
+        "prefab": ThumbnailInfo(ICON_PREFAB, (176, 135, 222), "PFB"),
+        "script": ThumbnailInfo(ICON_SCRIPT, (226, 180, 96), "PY"),
+        "audio": ThumbnailInfo(ICON_AUDIO, (104, 190, 205), "AUD"),
+        "material": ThumbnailInfo(ICON_MATERIAL, (205, 150, 110), "MAT"),
+        "unknown": ThumbnailInfo(ICON_UNKNOWN, (160, 160, 160), "?"),
     }
 
     def __init__(self) -> None:
@@ -114,21 +115,15 @@ class ThumbnailProvider:
         color = rl.Color(*info.color_rgb, 255)
         dark = rl.Color(75, 75, 75, 255)
         rl.draw_rectangle_rec(rect, color)
-        if info.icon_type == "folder":
-            rl.draw_rectangle(int(rect.x), int(rect.y), max(6, int(rect.width * 0.45)), max(3, int(rect.height * 0.18)), color)
-        elif info.icon_type == "scene":
-            rl.draw_circle(int(rect.x + rect.width * 0.5), int(rect.y + rect.height * 0.5), max(3, rect.height * 0.22), rl.Color(245, 245, 245, 255))
-        elif info.icon_type == "audio":
-            rl.draw_circle(int(rect.x + rect.width * 0.62), int(rect.y + rect.height * 0.62), max(3, rect.height * 0.18), rl.Color(245, 245, 245, 255))
-        elif info.icon_type == "script":
-            rl.draw_rectangle(int(rect.x + rect.width * 0.18), int(rect.y + rect.height * 0.2), int(rect.width * 0.64), 2, rl.Color(245, 245, 245, 255))
-            rl.draw_rectangle(int(rect.x + rect.width * 0.18), int(rect.y + rect.height * 0.42), int(rect.width * 0.5), 2, rl.Color(245, 245, 245, 255))
-        elif info.icon_type == "prefab":
-            rl.draw_rectangle_lines_ex(rl.Rectangle(rect.x + 5, rect.y + 5, max(1, rect.width - 10), max(1, rect.height - 10)), 2, rl.Color(245, 245, 245, 255))
-        elif info.icon_type == "material":
-            rl.draw_circle(int(rect.x + rect.width * 0.5), int(rect.y + rect.height * 0.5), max(3, rect.height * 0.28), rl.Color(245, 220, 180, 255))
-        elif info.icon_type == "unknown":
-            rl.draw_text(info.label, int(rect.x + rect.width * 0.4), int(rect.y + rect.height * 0.24), max(8, int(rect.height * 0.5)), rl.Color(245, 245, 245, 255))
+        icon_name = info.icon_type
+        if icon_name == "image":
+            icon_name = "image"
+        draw_icon(
+            icon_name,
+            (float(rect.x), float(rect.y), float(rect.width), float(rect.height)),
+            (245, 245, 245, 255),
+            size=min(24, int(min(rect.width, rect.height))),
+        )
         if info.icon_type != "unknown" and rect.width >= 24 and rect.height >= 18:
             rl.draw_text(info.label, int(rect.x + 3), int(rect.y + rect.height - 11), 8, rl.Color(245, 245, 245, 255))
         rl.draw_rectangle_lines_ex(rect, 1, dark)

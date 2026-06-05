@@ -37,7 +37,7 @@ from engine.editor.ui.dock_render import (
     draw_floating_window,
 )
 from engine.editor.ui.draw import draw_border, draw_rounded_rect
-from engine.editor.ui.icons import ICON_PAUSE, ICON_PLAY
+from engine.editor.ui.icons import ICON_FOLDER, ICON_PAUSE, ICON_PLAY
 from engine.editor.ui.panels import draw_editor_panel_frame
 from engine.editor.ui.widgets import editor_button, editor_icon_button, editor_toggle_button
 from engine.editor.ui_core import ContextMenuManager, ContextMenuModel
@@ -2003,7 +2003,7 @@ class EditorLayout:
         # Step button
         step_rect = rl.Rectangle(center_x + 20, play_y, btn_width, btn_height)
         self._register_cursor_rect(step_rect)
-        if editor_button(_to_ui_rect(step_rect), ">|").clicked:
+        if editor_icon_button(_to_ui_rect(step_rect), "step_forward").clicked:
             self.request_step = True
 
         # ========================================
@@ -2014,7 +2014,7 @@ class EditorLayout:
         # Botón Abrir Carpeta del Proyecto
         folder_rect = rl.Rectangle(right_x - 32, play_y, 28, btn_height)
         self._register_cursor_rect(folder_rect)
-        if editor_icon_button(_to_ui_rect(folder_rect), "folder").clicked:
+        if editor_icon_button(_to_ui_rect(folder_rect), ICON_FOLDER).clicked:
             self.open_project_folder()
 
         # Layers dropdown

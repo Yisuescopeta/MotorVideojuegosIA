@@ -160,7 +160,7 @@ def editor_icon_button(
 
     theme = resolve_theme(theme)
     result = editor_button(rect, "", enabled=enabled, active=active, theme=theme)
-    draw_icon(icon_name, inset_rect(rect, 3), theme.text if enabled else theme.text_disabled, theme)
+    draw_icon(icon_name, inset_rect(rect, 3), (255, 255, 255, 255) if enabled else theme.text_disabled, theme)
     result.value = icon_name
     return result
 
@@ -206,10 +206,10 @@ def editor_tab(
         draw_tab_accent_bar(rect, theme.accent)
     if icon:
         x, y, _w, h = rect
-        draw_icon(icon, (x + CONTROL_PADDING_X, y + (h - ICON_SIZE_SM) / 2, ICON_SIZE_SM, ICON_SIZE_SM), theme.text, theme)
+        draw_icon(icon, (x + CONTROL_PADDING_X, y + (h - ICON_SIZE_SM) / 2, ICON_SIZE_SM, ICON_SIZE_SM), (255, 255, 255, 255), theme)
     if closeable:
         x, y, w, h = rect
-        draw_icon("close", (x + w - ICON_SIZE_SM - CONTROL_PADDING_X, y + (h - ICON_SIZE_SM) / 2, ICON_SIZE_SM, ICON_SIZE_SM), theme.text, theme)
+        draw_icon("close", (x + w - ICON_SIZE_SM - CONTROL_PADDING_X, y + (h - ICON_SIZE_SM) / 2, ICON_SIZE_SM, ICON_SIZE_SM), (255, 255, 255, 255), theme)
     return result
 
 

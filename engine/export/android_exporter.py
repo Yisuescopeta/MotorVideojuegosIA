@@ -25,6 +25,7 @@ _PLACEHOLDERS = {
     "{{VERSION_CODE}}": "version_code",
     "{{MIN_SDK}}": "min_sdk",
     "{{TARGET_SDK}}": "target_sdk",
+    "{{COMPILE_SDK}}": "compile_sdk",
     "{{ORIENTATION}}": "orientation",
     "{{ENTRY_SCENE}}": "entry_scene",
 }
@@ -248,6 +249,7 @@ class AndroidExporter(PlatformExporter):
         version_code = str(ctx.preset.version_code)
         min_sdk = str(ctx.preset.min_sdk)
         target_sdk = str(ctx.preset.target_sdk)
+        compile_sdk = str(ctx.preset.compile_sdk)
         orientation = ctx.preset.orientation or "landscape"
         entry = ctx.preset.entry_scene
         android_permissions = self._android_permissions(ctx)
@@ -262,6 +264,7 @@ class AndroidExporter(PlatformExporter):
                 "{{VERSION_CODE}}": version_code,
                 "{{MIN_SDK}}": min_sdk,
                 "{{TARGET_SDK}}": target_sdk,
+                "{{COMPILE_SDK}}": compile_sdk,
                 "{{ORIENTATION}}": _xml_escape(orientation),
                 "{{ENTRY_SCENE}}": _xml_escape(entry),
                 "{{CHAQUOPY_ROOT_PLUGIN}}": "",
@@ -277,6 +280,7 @@ class AndroidExporter(PlatformExporter):
                 "{{VERSION_CODE}}": version_code,
                 "{{MIN_SDK}}": min_sdk,
                 "{{TARGET_SDK}}": target_sdk,
+                "{{COMPILE_SDK}}": compile_sdk,
                 "{{ORIENTATION}}": _gradle_escape(orientation),
                 "{{ENTRY_SCENE}}": _gradle_escape(entry),
                 "{{CHAQUOPY_ROOT_PLUGIN}}": (

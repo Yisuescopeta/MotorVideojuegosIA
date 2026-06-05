@@ -3224,7 +3224,7 @@ class InspectorSystem:
 
     def _draw_inspector_icon_button(self, rect: rl.Rectangle, icon_name: str) -> bool:
         clicked = bool(rl.gui_button(rect, ""))
-        draw_icon(icon_name, (float(rect.x), float(rect.y), float(rect.width), float(rect.height)), size=12)
+        draw_icon(icon_name, (float(rect.x), float(rect.y), float(rect.width), float(rect.height)), (255, 255, 255, 255), size=12)
         return clicked
 
     def _draw_camera2d_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:

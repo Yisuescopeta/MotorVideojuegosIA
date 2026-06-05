@@ -55,10 +55,42 @@ class TestAndroidProjectGeneration(unittest.TestCase):
         self.assertIn("{{APPLICATION_ID}}", content)
         self.assertIn("{{MIN_SDK}}", content)
         self.assertIn("{{TARGET_SDK}}", content)
+        self.assertIn("{{COMPILE_SDK}}", content)
         self.assertIn("{{VERSION_NAME}}", content)
         self.assertIn("{{VERSION_CODE}}", content)
         self.assertIn("{{ANDROID_ABI_FILTERS}}", content)
         self.assertIn("{{DEBUG_APPLICATION_ID_SUFFIX}}", content)
+
+    def test_generated_gradle_keeps_compile_sdk_and_target_sdk_separate(self):
+        from engine.export.android_exporter import AndroidExporter
+        from engine.export.build_context import BuildContext
+        from engine.export.models import ExportPreset
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            preset = ExportPreset(
+                name="Android Debug",
+                platform="android",
+                architecture="arm64-v8a",
+                mode="debug",
+                output_path="dist/export/android/Test-debug.apk",
+                entry_scene="levels/test.json",
+                display_name="Test",
+                application_id="com.example.test",
+                min_sdk=24,
+                target_sdk=35,
+                compile_sdk=35,
+                extra={"android_python_runtime": True},
+            )
+            ctx = BuildContext(preset, root)
+            ctx.staging_dir.mkdir(parents=True, exist_ok=True)
+
+            project_dir = AndroidExporter()._generate_android_project(ctx, ctx.staging_dir)
+            gradle = (project_dir / "app" / "build.gradle").read_text(encoding="utf-8")
+
+        self.assertIn("compileSdk 35", gradle)
+        self.assertIn("targetSdk 35", gradle)
+        self.assertNotIn("compileSdk {{TARGET_SDK}}", gradle)
 
     def test_android_release_project_is_not_debuggable_or_debug_suffixed(self):
         from engine.export.android_exporter import AndroidExporter

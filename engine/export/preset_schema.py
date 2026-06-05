@@ -112,6 +112,38 @@ def validate_preset(preset: ExportPreset) -> list[ExportValidationError]:
             hint=f"Orientation must be one of: {', '.join(sorted(_VALID_ORIENTATIONS))}"
         ))
 
+    if preset.platform == "android":
+        if preset.min_sdk < 1:
+            errors.append(ExportValidationError(
+                "ANDROID_MIN_SDK_INVALID",
+                path=str(preset.min_sdk),
+                hint="Android min_sdk must be >= 1."
+            ))
+        if preset.target_sdk < 1:
+            errors.append(ExportValidationError(
+                "ANDROID_TARGET_SDK_INVALID",
+                path=str(preset.target_sdk),
+                hint="Android target_sdk must be >= 1."
+            ))
+        if preset.compile_sdk < 1:
+            errors.append(ExportValidationError(
+                "ANDROID_COMPILE_SDK_INVALID",
+                path=str(preset.compile_sdk),
+                hint="Android compile_sdk must be >= 1."
+            ))
+        if preset.min_sdk > preset.target_sdk:
+            errors.append(ExportValidationError(
+                "ANDROID_MIN_SDK_GT_TARGET_SDK",
+                path=f"{preset.min_sdk}>{preset.target_sdk}",
+                hint="Android min_sdk must be <= target_sdk."
+            ))
+        if preset.compile_sdk < preset.target_sdk:
+            errors.append(ExportValidationError(
+                "ANDROID_COMPILE_SDK_LT_TARGET_SDK",
+                path=f"{preset.compile_sdk}<{preset.target_sdk}",
+                hint="Android compile_sdk must be >= target_sdk."
+            ))
+
     if (
         preset.platform == "android"
         and bool(preset.extra.get("android_python_runtime", False))

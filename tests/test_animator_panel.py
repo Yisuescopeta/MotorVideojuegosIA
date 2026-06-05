@@ -25,6 +25,7 @@ from engine.editor.animator_panel import (
 )
 from engine.editor.project_panel import ProjectPanel
 from engine.editor.sprite_editor_modal import SpriteEditorModal
+from engine.editor.ui.icons import ICON_ARROW_UP, ICON_MINUS, ICON_PLUS, ICON_TRASH
 from engine.editor.undo_redo import UndoRedoManager
 
 MINIMAL_PNG_BYTES = (
@@ -1156,6 +1157,63 @@ class AnimatorPanelTests(unittest.TestCase):
         self.assertTrue(self.panel.set_animator_speed(world, 0.0))
         animator = self.api.get_entity("AnimatorSpeedPanelProbe")["components"]["Animator"]
         self.assertEqual(animator["speed"], 0.01)
+
+    def test_gui_icon_button_returns_false_when_disabled(self) -> None:
+        rect = rl.Rectangle(10, 10, 24, 24)
+        with patch("pyray.gui_button", return_value=True) as gui_button, patch.object(
+            self.panel, "_draw_shared_icon"
+        ) as draw_shared_icon, patch("pyray.draw_rectangle_rec"), patch("pyray.draw_rectangle_lines_ex"):
+            result = self.panel._gui_icon_button(rect, ICON_ARROW_UP, enabled=False)
+
+        self.assertFalse(result)
+        gui_button.assert_called_once_with(rect, "")
+        draw_shared_icon.assert_called_once_with(rect, ICON_ARROW_UP, enabled=False)
+
+    def test_gui_icon_button_returns_click_when_enabled(self) -> None:
+        rect = rl.Rectangle(10, 10, 24, 24)
+        with patch("pyray.gui_button", return_value=True) as gui_button, patch.object(
+            self.panel, "_draw_shared_icon"
+        ) as draw_shared_icon:
+            result = self.panel._gui_icon_button(rect, "pick", enabled=True)
+
+        self.assertTrue(result)
+        gui_button.assert_called_once_with(rect, "")
+        draw_shared_icon.assert_called_once_with(rect, "pick", enabled=True)
+
+    def test_draw_shared_icon_uses_white_tint_for_enabled_buttons(self) -> None:
+        rect = rl.Rectangle(10, 10, 24, 22)
+        with patch("engine.editor.animator_panel.draw_icon") as draw_icon:
+            self.panel._draw_shared_icon(rect, "pick", enabled=True)
+
+        draw_icon.assert_called_once_with("pick", (10.0, 10.0, 24.0, 22.0), (255, 255, 255, 255), size=14)
+
+    def test_draw_shared_icon_uses_dim_tint_for_disabled_buttons(self) -> None:
+        rect = rl.Rectangle(10, 10, 24, 22)
+        with patch("engine.editor.animator_panel.draw_icon") as draw_icon:
+            self.panel._draw_shared_icon(rect, ICON_TRASH, enabled=False)
+
+        draw_icon.assert_called_once_with(ICON_TRASH, (10.0, 10.0, 24.0, 22.0), (140, 140, 140, 255), size=14)
+
+    def test_draw_value_stepper_uses_icon_buttons_for_callbacks(self) -> None:
+        calls: list[str] = []
+
+        def on_minus() -> None:
+            calls.append("minus")
+
+        def on_plus() -> None:
+            calls.append("plus")
+
+        rect = rl.Rectangle(0, 0, 220, 22)
+        with patch.object(self.panel, "_gui_icon_button", side_effect=[True, True]) as icon_button, patch(
+            "pyray.draw_text"
+        ), patch("pyray.draw_rectangle_rec"):
+            next_y = self.panel._draw_value_stepper(rect, 12, "FPS", "8.0", on_minus, on_plus)
+
+        self.assertEqual(next_y, 40)
+        self.assertEqual(calls, ["minus", "plus"])
+        self.assertEqual(icon_button.call_count, 2)
+        self.assertEqual(icon_button.call_args_list[0][0][1], ICON_MINUS)
+        self.assertEqual(icon_button.call_args_list[1][0][1], ICON_PLUS)
 
 
 class AnimatorPanelSourceRegressionTests(unittest.TestCase):

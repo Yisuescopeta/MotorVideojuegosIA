@@ -39,6 +39,7 @@ El runtime UI (cuando exista) debe importar solo de `ui_core`, nunca de `ui`.
 | `geometry.py` | Helpers de rect: `inset_rect()`, `split_*()`, `Rect`, `clamp_rect()` | solo stdlib |
 | `widget_state.py` | `WidgetResult`, `WidgetState`, `WidgetVisualState`, `resolve_visual_state()` | solo stdlib |
 | `theme.py` | `EditorTheme` (con `name`, `to_dict()`, `from_dict()`, `colors`/`fonts`/`metrics`), `ThemeRegistry`, `UNITY_DARK`, `UNITY_LIGHT`, `THEME_REGISTRY`, `get_active_theme()`, `set_active_theme()`, `resolve_theme()`, `theme_to_raygui_map()` | `tokens` |
+| `icon_names.py` | Constantes puras de nombres de iconos compartidos entre `ui_core` y la fachada impura de dibujo | solo stdlib |
 | `protocols.py` | `EntityLike`, `WorldLike`, `PropertyValue` para contratos estructurales puros | solo stdlib |
 | `property_widgets.py` | `PropertyKind`, `PropertyDescriptor`, `EditTransaction`, `PropertyEditResult` | solo stdlib |
 | `inspector.py` | `InspectorGroup`, `InspectorModel`, `build_inspector_model_from_dict()` | `property_widgets` |
@@ -93,6 +94,7 @@ actual.
 | `geometry.py` | shim: `from engine.editor.ui_core.geometry import *` | `ui_core.geometry` |
 | `widget_state.py` | shim: `from engine.editor.ui_core.widget_state import *` | `ui_core.widget_state` |
 | `theme.py` | shim: `from engine.editor.ui_core.theme import *` | `ui_core.theme` |
+| `icon_names.py` | shim: `from engine.editor.ui_core.icon_names import *` | `ui_core.icon_names` |
 | `property_widgets.py` | shim: `from engine.editor.ui_core.property_widgets import *` | `ui_core.property_widgets` |
 | `inspector.py` | shim: `from engine.editor.ui_core.inspector import *` | `ui_core.inspector` |
 | `tree_view.py` | shim: `from engine.editor.ui_core.tree_view import *` | `ui_core.tree_view` |

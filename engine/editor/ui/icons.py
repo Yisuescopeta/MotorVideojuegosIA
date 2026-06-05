@@ -1,32 +1,71 @@
-"""Primitive icon drawing for editor widgets."""
+"""Editor icon facade with Godot hierarchy, Lucide, and primitive fallback."""
 
 from __future__ import annotations
 
 from engine.editor.ui.colors import to_ray_color
 from engine.editor.ui.geometry import Rect
+from engine.editor.ui.icon_provider import (
+    draw_icon_from_pack as _draw_icon_from_pack,
+    draw_icon as _draw_lucide_icon,
+    icon_exists_in_pack as _icon_exists_in_pack,
+)
+from engine.editor.ui.icon_provider import (
+    icon_exists as _lucide_icon_exists,
+)
 from engine.editor.ui.theme import UNITY_DARK, EditorTheme
 from engine.editor.ui.tokens import (
     EDITOR_TEXT,
     RGBA,
 )
+from engine.editor.ui_core.icon_names import (
+    ICON_AUDIO,
+    ICON_ANIMATION,
+    ICON_ARROW_DOWN,
+    ICON_ARROW_UP,
+    ICON_CAMERA,
+    ICON_CANVAS,
+    ICON_CHECK,
+    ICON_CHEVRON_LEFT,
+    ICON_CHEVRON_RIGHT,
+    ICON_CLOSE,
+    ICON_COLLIDER,
+    ICON_COMPONENT,
+    ICON_CONSOLE,
+    ICON_COPY,
+    ICON_ENTITY,
+    ICON_EXPORT,
+    ICON_FOLDER,
+    ICON_GEAR,
+    ICON_LIGHT,
+    ICON_MATERIAL,
+    ICON_MENU,
+    ICON_MINUS,
+    ICON_NODE2D,
+    ICON_OPEN,
+    ICON_PAUSE,
+    ICON_PARTICLES,
+    ICON_PLAY,
+    ICON_PLUS,
+    ICON_PREFAB,
+    ICON_PROJECT,
+    ICON_RIGIDBODY,
+    ICON_SAVE,
+    ICON_SCENE,
+    ICON_SCRIPT,
+    ICON_SEARCH,
+    ICON_SPRITE,
+    ICON_STOP,
+    ICON_TERMINAL,
+    ICON_TILEMAP,
+    ICON_TRASH,
+    ICON_UI_BUTTON,
+    ICON_UNKNOWN,
+    PUBLIC_ICON_NAMES,
+)
 
-ICON_PLAY = "play"
-ICON_PAUSE = "pause"
-ICON_STOP = "stop"
-ICON_CLOSE = "close"
-ICON_PLUS = "plus"
-ICON_MINUS = "minus"
-ICON_CHECK = "check"
-ICON_ARROW_DOWN = "arrow_down"
-ICON_CHEVRON_LEFT = "chevron_left"
-ICON_CHEVRON_RIGHT = "chevron_right"
-ICON_SEARCH = "search"
-ICON_GEAR = "gear"
-ICON_MENU = "menu"
-ICON_FOLDER = "folder"
-ICON_TRASH = "trash"
+_GODOT_HIERARCHY_COLOR = (255, 255, 255, 255)
 
-KNOWN_ICONS = {
+PRIMITIVE_ICONS = {
     ICON_PLAY,
     ICON_PAUSE,
     ICON_STOP,
@@ -44,6 +83,23 @@ KNOWN_ICONS = {
     ICON_TRASH,
 }
 
+KNOWN_ICONS = set(PUBLIC_ICON_NAMES)
+HIERARCHY_ICONS = {
+    ICON_ENTITY,
+    ICON_NODE2D,
+    ICON_SPRITE,
+    ICON_CAMERA,
+    ICON_TILEMAP,
+    ICON_COLLIDER,
+    ICON_RIGIDBODY,
+    ICON_AUDIO,
+    ICON_ANIMATION,
+    ICON_CANVAS,
+    ICON_UI_BUTTON,
+    ICON_LIGHT,
+    ICON_PARTICLES,
+}
+
 
 def _rl():
     import pyray as rl
@@ -56,9 +112,14 @@ def _vec2(x: int, y: int):
 
 
 def icon_exists(name: str) -> bool:
-    """Return whether ``name`` is a known primitive editor icon."""
+    """Return whether ``name`` resolves to a supported editor icon."""
 
-    return name in KNOWN_ICONS
+    return (
+        name in KNOWN_ICONS
+        or name in PRIMITIVE_ICONS
+        or _icon_exists_in_pack("godot_hierarchy", name)
+        or _lucide_icon_exists(name)
+    )
 
 
 def draw_icon(
@@ -69,14 +130,36 @@ def draw_icon(
     *,
     size: int | None = None,
 ) -> None:
-    """Draw a known primitive icon centered inside ``rect``.
+    """Draw an editor icon centered inside ``rect``.
 
-    If *size* is given, the icon geometry is scaled to that pixel size
-    (e.g. 16, 24, 32, 64) while staying centered on *rect*. Unknown
-    icon names are silently ignored.
+    Hierarchy-specific Godot rendering is attempted first for semantic node
+    icons. Lucide remains the primary general editor icon pack and primitive
+    drawing remains the final fallback.
     """
 
-    if not icon_exists(icon_name):
+    if icon_name in HIERARCHY_ICONS and _draw_icon_from_pack(
+        "godot_hierarchy",
+        icon_name,
+        rect,
+        _GODOT_HIERARCHY_COLOR,
+        theme,
+        size=size,
+    ):
+        return
+    if _draw_lucide_icon(icon_name, rect, color, theme, size=size):
+        return
+    _draw_primitive_icon(icon_name, rect, color, theme, size=size)
+
+
+def _draw_primitive_icon(
+    icon_name: str,
+    rect: Rect,
+    color: RGBA = EDITOR_TEXT,
+    theme: EditorTheme = UNITY_DARK,
+    *,
+    size: int | None = None,
+) -> None:
+    if icon_name not in PRIMITIVE_ICONS:
         return
     del theme
     rl = _rl()
@@ -91,19 +174,19 @@ def draw_icon(
         right = cx + half
         top = cy - half
         bottom = cy + half
-        _w = _h = size
+        icon_w = icon_h = size
     else:
         left = int(x + w * 0.25)
         right = int(x + w * 0.75)
         top = int(y + h * 0.25)
         bottom = int(y + h * 0.75)
-        _w = int(w)
-        _h = int(h)
+        icon_w = int(w)
+        icon_h = int(h)
 
     if icon_name == ICON_PLAY:
         rl.draw_triangle(_vec2(left, top), _vec2(left, bottom), _vec2(right, cy), c)
     elif icon_name == ICON_PAUSE:
-        bar_w = max(1, int(_w * 0.18))
+        bar_w = max(1, int(icon_w * 0.18))
         rl.draw_rectangle(left, top, bar_w, bottom - top, c)
         rl.draw_rectangle(right - bar_w, top, bar_w, bottom - top, c)
     elif icon_name == ICON_STOP:
@@ -128,11 +211,11 @@ def draw_icon(
         rl.draw_line(left, top, right, cy, c)
         rl.draw_line(right, cy, left, bottom, c)
     elif icon_name == ICON_SEARCH:
-        radius = max(2, int(min(_w, _h) * 0.2))
+        radius = max(2, int(min(icon_w, icon_h) * 0.2))
         rl.draw_circle_lines(cx - 2, cy - 2, radius, c)
         rl.draw_line(cx + radius - 2, cy + radius - 2, right, bottom, c)
     elif icon_name == ICON_GEAR:
-        radius = max(3, int(min(_w, _h) * 0.25))
+        radius = max(3, int(min(icon_w, icon_h) * 0.25))
         rl.draw_circle_lines(cx, cy, radius, c)
         rl.draw_circle_lines(cx, cy, max(1, radius // 2), c)
         rl.draw_line(cx, top, cx, top + 3, c)
@@ -140,20 +223,71 @@ def draw_icon(
         rl.draw_line(left, cy, left + 3, cy, c)
         rl.draw_line(right - 3, cy, right, cy, c)
     elif icon_name == ICON_MENU:
-        dot_radius = max(1, int(min(_w, _h) * 0.07))
+        dot_radius = max(1, int(min(icon_w, icon_h) * 0.07))
         for dot_x in (left, cx, right):
             rl.draw_circle(dot_x, cy, dot_radius, c)
     elif icon_name == ICON_FOLDER:
-        tab_w = max(2, int(_w * 0.35))
-        tab_h = max(2, int(_h * 0.18))
+        tab_w = max(2, int(icon_w * 0.35))
+        tab_h = max(2, int(icon_h * 0.18))
         rl.draw_rectangle(left, top, tab_w, tab_h, c)
         rl.draw_rectangle_lines(left, top, right - left, bottom - top, c)
         rl.draw_line(left, top + tab_h, left + tab_w, top + tab_h, c)
         rl.draw_line(left + tab_w, top + tab_h, left + tab_w, top, c)
     elif icon_name == ICON_TRASH:
-        lid_y = top + max(1, int(_h * 0.2))
-        body_top = top + max(2, int(_h * 0.32))
+        lid_y = top + max(1, int(icon_h * 0.2))
+        body_top = top + max(2, int(icon_h * 0.32))
         rl.draw_line(left, lid_y, right, lid_y, c)
         rl.draw_rectangle_lines(left + 2, body_top, max(1, right - left - 4), max(1, bottom - body_top), c)
         rl.draw_line(cx - 3, top, cx + 3, top, c)
         rl.draw_line(cx, top, cx, lid_y, c)
+
+
+__all__ = [
+    "ICON_AUDIO",
+    "ICON_ANIMATION",
+    "ICON_ARROW_DOWN",
+    "ICON_ARROW_UP",
+    "ICON_CAMERA",
+    "ICON_CANVAS",
+    "ICON_CHECK",
+    "ICON_CHEVRON_LEFT",
+    "ICON_CHEVRON_RIGHT",
+    "ICON_CLOSE",
+    "ICON_COLLIDER",
+    "ICON_COMPONENT",
+    "ICON_CONSOLE",
+    "ICON_COPY",
+    "ICON_ENTITY",
+    "ICON_EXPORT",
+    "ICON_FOLDER",
+    "ICON_GEAR",
+    "ICON_LIGHT",
+    "ICON_MATERIAL",
+    "ICON_MENU",
+    "ICON_MINUS",
+    "ICON_NODE2D",
+    "ICON_OPEN",
+    "ICON_PAUSE",
+    "ICON_PARTICLES",
+    "ICON_PLAY",
+    "ICON_PLUS",
+    "ICON_PREFAB",
+    "ICON_PROJECT",
+    "ICON_RIGIDBODY",
+    "ICON_SAVE",
+    "ICON_SCENE",
+    "ICON_SCRIPT",
+    "ICON_SEARCH",
+    "ICON_SPRITE",
+    "ICON_STOP",
+    "ICON_TERMINAL",
+    "ICON_TILEMAP",
+    "ICON_TRASH",
+    "ICON_UI_BUTTON",
+    "ICON_UNKNOWN",
+    "HIERARCHY_ICONS",
+    "KNOWN_ICONS",
+    "PRIMITIVE_ICONS",
+    "draw_icon",
+    "icon_exists",
+]
