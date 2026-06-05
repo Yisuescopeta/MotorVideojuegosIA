@@ -65,7 +65,7 @@ class TestAndroidKeystoreSecurity(unittest.TestCase):
             extra=defaults,
         )
 
-    def _run_export_with_signing(self, extra):
+    def _run_export_with_signing(self, extra, environment_override=None):
         from engine.export.android_exporter import AndroidExporter
 
         preset = ExportPreset(
@@ -86,9 +86,13 @@ class TestAndroidKeystoreSecurity(unittest.TestCase):
         graph = MagicMock(reachable_scenes=[], reachable_scripts=[])
         environment = {
             "android_sdk_available": True,
+            "android_platform_available": True,
+            "android_build_tools_available": True,
             "java_available": True,
             "gradle_available": True,
         }
+        if environment_override:
+            environment.update(environment_override)
 
         with (
             patch(
@@ -116,6 +120,20 @@ class TestAndroidKeystoreSecurity(unittest.TestCase):
         self.assertFalse(result)
         self.assertTrue(
             any("ANDROID_RELEASE_SIGNING_REQUIRED" in error for error in ctx.errors)
+        )
+        build_release.assert_not_called()
+        run_gradle.assert_not_called()
+
+    def test_missing_compile_sdk_platform_fails_before_gradle(self):
+        result, ctx, build_release, run_gradle = self._run_export_with_signing(
+            {"local_release_signing": True},
+            {"android_platform_available": False},
+        )
+
+        self.assertFalse(result)
+        self.assertIn(
+            "ANDROID_PLATFORM_MISSING: Install Android SDK Platform 35",
+            ctx.errors,
         )
         build_release.assert_not_called()
         run_gradle.assert_not_called()

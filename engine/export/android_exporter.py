@@ -13,6 +13,7 @@ from html import escape as _html_escape
 from pathlib import Path
 from typing import Any
 
+from engine.export.android_environment import probe_android_environment, resolve_gradle
 from engine.export.build_context import BuildContext
 from engine.export.content_pack import build_content_pack
 from engine.export.platform_exporter import PlatformExporter
@@ -42,24 +43,18 @@ def _gradle_escape(value: str) -> str:
 class AndroidExporter(PlatformExporter):
     platform = "android"
 
-    def validate_environment(self, project_dir: Path | None = None) -> dict[str, Any]:
-        android_home = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or ""
-        java_path = shutil.which("java") or shutil.which("java.exe") or ""
-        gradle_command = self._resolve_gradle_command(project_dir)
-        gradle_path = " ".join(gradle_command)
+    def validate_environment(
+        self,
+        project_dir: Path | None = None,
+        compile_sdk: int = 35,
+    ) -> dict[str, Any]:
         return {
             "platform": "android",
-            "android_sdk_available": bool(android_home),
-            "android_home": android_home,
-            "java_available": bool(java_path),
-            "java_path": java_path,
-            "gradle_available": bool(gradle_command),
-            "gradle_path": gradle_path,
+            **probe_android_environment(project_dir, compile_sdk),
             "python": sys.executable,
         }
 
     def export(self, ctx: BuildContext) -> bool:
-        env = self.validate_environment()
         staging = ctx.staging_dir
         staging.mkdir(parents=True, exist_ok=True)
 
@@ -95,7 +90,7 @@ class AndroidExporter(PlatformExporter):
         self._write_runtime_config(ctx, staging)
 
         project_dir = self._generate_android_project(ctx, staging)
-        env = self.validate_environment(project_dir)
+        env = self.validate_environment(project_dir, ctx.preset.compile_sdk)
 
         assets_src = staging / "content"
         assets_dst = project_dir / "app" / "src" / "main" / "assets"
@@ -122,6 +117,19 @@ class AndroidExporter(PlatformExporter):
                 "TOOLCHAIN_UNAVAILABLE: ANDROID_HOME not set. "
                 "Set ANDROID_HOME or ANDROID_SDK_ROOT environment variable. "
                 "Download Android SDK from https://developer.android.com/studio"
+            )
+            return False
+
+        if not env["android_platform_available"]:
+            ctx.add_error(
+                "ANDROID_PLATFORM_MISSING: Install Android SDK Platform "
+                f"{ctx.preset.compile_sdk}"
+            )
+            return False
+
+        if not env["android_build_tools_available"]:
+            ctx.add_error(
+                "ANDROID_BUILD_TOOLS_MISSING: Install Android SDK Build-Tools"
             )
             return False
 
@@ -546,17 +554,7 @@ class AndroidExporter(PlatformExporter):
         return True
 
     def _resolve_gradle_command(self, project_dir: Path | None = None) -> list[str]:
-        if project_dir is not None:
-            wrapper = project_dir / ("gradlew.bat" if os.name == "nt" else "gradlew")
-            wrapper_dir = wrapper.parent / "gradle" / "wrapper"
-            if (
-                wrapper.exists()
-                and (wrapper_dir / "gradle-wrapper.properties").exists()
-                and (wrapper_dir / "gradle-wrapper.jar").exists()
-            ):
-                return [str(wrapper)]
-        gradle = shutil.which("gradle") or shutil.which("gradle.bat")
-        return [gradle] if gradle else []
+        return list(resolve_gradle(project_dir)["command"])
 
     def _copy_android_python_scripts(
         self,

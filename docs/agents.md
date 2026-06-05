@@ -118,6 +118,11 @@ final, aprobacion pendiente, cancelacion o limite de iteraciones.
 
 Para CLI:
 
+Antes de un build Android, usa `export doctor`: valida la ruta real del SDK,
+build-tools, Java, Gradle y cada `compile_sdk` declarado. Un
+`ANDROID_PLATFORM_MISSING` debe resolverse instalando esa plataforma antes de
+reintentar el build.
+
 ```bash
 py -m motor ai start --project . --json
 py -m motor ai compliance --project . --json

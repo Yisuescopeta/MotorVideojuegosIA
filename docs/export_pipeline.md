@@ -303,8 +303,10 @@ Todas devuelven `{ "success": bool, "message": str, "data": object }`.
 | PyInstaller | `shutil.which("pyinstaller")` | Desktop builds fallan con `TOOLCHAIN_UNAVAILABLE` |
 | pip | Import `pip` | Reporte de entorno incompleto |
 | ANDROID_HOME | Variable de entorno `ANDROID_HOME`/`ANDROID_SDK_ROOT` | Android exports fallan |
+| Android platforms | `platforms/android-{compile_sdk}` para todos los presets Android | Falla con `ANDROID_PLATFORM_MISSING` |
+| Android build-tools | Al menos una version instalada bajo `build-tools/` | Falla con `ANDROID_BUILD_TOOLS_MISSING` |
 | Java/JDK | `shutil.which("java")` | Android builds requieren JDK |
-| Gradle | `shutil.which("gradle")` o wrapper local | Android compilacion requiere Gradle |
+| Gradle | Gradle global o wrapper completo y ejecutable | Android compilacion requiere Gradle |
 
 El resultado incluye `healthy: bool`. Cuando PyInstaller o pip faltan, `healthy`
 es `false` y `doctor` retorna `success: false` con lista de issues y warnings.

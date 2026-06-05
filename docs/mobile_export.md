@@ -67,7 +67,8 @@ py -m motor export build "Android Release" --project . --json
 
 ### Debug
 
-1. Valida `ANDROID_HOME`, JDK, Gradle.
+1. Valida la ruta de `ANDROID_HOME`/`ANDROID_SDK_ROOT`, la plataforma
+   `android-{compile_sdk}`, build-tools, JDK y Gradle.
 2. Genera proyecto Android desde `platforms/android/template/`.
 3. Copia content pack a `app/src/main/assets/`.
 4. Genera `AndroidManifest.xml` con `application_id`, `version_code`, orientacion.
@@ -188,7 +189,7 @@ direcciones, sin diagonales.
 
 ### Sin Android SDK
 
-Si el entorno no tiene `ANDROID_HOME`:
+Si el entorno no tiene un SDK valido en `ANDROID_HOME` o `ANDROID_SDK_ROOT`:
 
 - Tests unitarios de Android siguen pasando.
 - `motor export doctor` reporta `healthy: false` con diagnostico.
@@ -262,9 +263,12 @@ Los tests estructurales de iOS pasan en cualquier SO. El exporter reporta
 
 | Check | Detecta | Impacto si falla |
 |---|---|---|
-| `ANDROID_HOME` | Variable de entorno | Android exports bloqueados |
+| `android_sdk_available` | Variable de entorno apuntando a un SDK existente | Android exports bloqueados |
+| `android_platform_available` | `platforms/android-{compile_sdk}` para cada preset | Falla con `ANDROID_PLATFORM_MISSING` |
+| `android_build_tools_available` | Al menos una version bajo `build-tools/` | Falla con `ANDROID_BUILD_TOOLS_MISSING` |
 | `java` | `shutil.which("java")` | Android builds requieren JDK |
-| `gradle` | `shutil.which("gradle")` o wrapper local | Compilacion Android requiere Gradle |
+| `gradle` | Wrapper completo y ejecutable o Gradle global | Compilacion Android requiere Gradle |
+| `gradle_wrapper_executable` | Permiso ejecutable de `gradlew` en Unix | Requiere `chmod +x gradlew` o Gradle global |
 | macOS host | `platform.system() == "Darwin"` | iOS exports requieren macOS |
 | Xcode | `shutil.which("xcodebuild")` | iOS compilacion requiere Xcode |
 
@@ -274,8 +278,14 @@ py -m motor export doctor --project . --json
 #   "success": false,
 #   "data": {
 #     "healthy": false,
-#     "issues": ["ANDROID_HOME not set", "macOS required for iOS"],
-#     "warnings": ["Gradle not found in PATH"]
+#     "issues": [
+#       "ANDROID_PLATFORM_MISSING: Install Android SDK Platform 35"
+#     ],
+#     "checks": {
+#       "android_build_tools_available": true,
+#       "gradle_wrapper_executable": true,
+#       "android_platforms": [{"compile_sdk": 35}]
+#     }
 #   }
 # }
 ```

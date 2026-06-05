@@ -362,6 +362,8 @@ class TestAndroidProjectGeneration(unittest.TestCase):
             project_dir = Path(tmpdir)
             wrapper_name = "gradlew.bat" if sys.platform.startswith("win") else "gradlew"
             (project_dir / wrapper_name).write_text("", encoding="utf-8")
+            if not sys.platform.startswith("win"):
+                (project_dir / wrapper_name).chmod(0o755)
             wrapper_dir = project_dir / "gradle" / "wrapper"
             wrapper_dir.mkdir(parents=True)
             (wrapper_dir / "gradle-wrapper.properties").write_text("distributionUrl=x", encoding="utf-8")

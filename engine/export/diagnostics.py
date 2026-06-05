@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import os
-import shutil
 import sys
-from pathlib import Path
 from typing import Any
 
+from engine.export.android_environment import probe_android_environment, resolve_gradle
+from engine.export.preset_loader import PresetLoadError, load_presets
 from engine.export.toolchain import resolve_pyinstaller
 
 _KEY_TOOLCHAINS = frozenset({"pyinstaller", "pip"})
@@ -43,28 +43,52 @@ def run_export_doctor(project_root: str | os.PathLike[str] | None = None) -> dic
     checks["os_name"] = os.name
     checks["platform"] = sys.platform
 
-    android_home = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT")
-    checks["android_sdk"] = bool(android_home)
-    checks["android_home"] = android_home or ""
-    if not android_home:
-        warnings.append(
-            "ANDROID_HOME not set. Android exports will fail "
-            "with TOOLCHAIN_UNAVAILABLE."
+    compile_sdks = _android_compile_sdks(project_root)
+    android_required = bool(compile_sdks)
+    probe_sdks = compile_sdks or [35]
+    android_checks = [
+        {
+            "compile_sdk": compile_sdk,
+            **probe_android_environment(project_root, compile_sdk),
+        }
+        for compile_sdk in probe_sdks
+    ]
+    primary_android = android_checks[0]
+    checks.update(primary_android)
+    checks["android_sdk"] = primary_android["android_sdk_available"]
+    checks["android_platforms"] = android_checks if android_required else []
+
+    if android_required and not primary_android["android_sdk_available"]:
+        issues.append(
+            "TOOLCHAIN_UNAVAILABLE: ANDROID_HOME or ANDROID_SDK_ROOT must point "
+            "to an installed Android SDK."
         )
-
-    java_path = shutil.which("java") or shutil.which("java.exe")
-    checks["java_available"] = bool(java_path)
-    checks["java_path"] = java_path or ""
-    if not java_path:
+    if android_required and not primary_android["java_available"]:
         warnings.append("Java not found. Android exports require JDK.")
+    if android_required and not primary_android["android_build_tools_available"]:
+        issues.append(
+            "ANDROID_BUILD_TOOLS_MISSING: Install Android SDK Build-Tools"
+        )
+    for android_check in android_checks if android_required else []:
+        if not android_check["android_platform_available"]:
+            issues.append(
+                "ANDROID_PLATFORM_MISSING: Install Android SDK Platform "
+                f"{android_check['compile_sdk']}"
+            )
 
-    gradle = _resolve_gradle(project_root)
-    checks["gradle_available"] = gradle["available"]
-    checks["gradle_path"] = gradle["path"]
-    checks["gradle_wrapper_available"] = gradle["wrapper_available"]
-    checks["gradle_resolution"] = gradle["resolution"]
-    checks["gradle_wrapper_path"] = gradle["wrapper_path"]
-    if android_home and java_path and not gradle["available"]:
+    if (
+        android_required
+        and primary_android["android_sdk_available"]
+        and primary_android["java_available"]
+        and not primary_android["gradle_available"]
+    ):
+        if (
+            primary_android["gradle_wrapper_available"]
+            and not primary_android["gradle_wrapper_executable"]
+        ):
+            issues.append(
+                "GRADLE_WRAPPER_NOT_EXECUTABLE: Run chmod +x gradlew"
+            )
         issues.append(
             "TOOLCHAIN_UNAVAILABLE: Gradle not found and no complete Gradle wrapper "
             "was found in the project or Android template. Install Gradle, add "
@@ -82,55 +106,22 @@ def run_export_doctor(project_root: str | os.PathLike[str] | None = None) -> dic
     }
 
 
+def _android_compile_sdks(
+    project_root: str | os.PathLike[str] | None,
+) -> list[int]:
+    if project_root is None:
+        return [35]
+    try:
+        doc = load_presets(project_root)
+    except PresetLoadError:
+        return [35]
+    compile_sdks = sorted({
+        preset.compile_sdk
+        for preset in doc.presets
+        if preset.platform == "android"
+    })
+    return compile_sdks
+
+
 def _resolve_gradle(project_root: str | os.PathLike[str] | None = None) -> dict[str, Any]:
-    gradle_path = shutil.which("gradle") or shutil.which("gradle.bat")
-    if gradle_path:
-        return {
-            "available": True,
-            "path": gradle_path,
-            "wrapper_available": False,
-            "wrapper_path": "",
-            "resolution": "path_executable",
-        }
-
-    wrapper_name = "gradlew.bat" if os.name == "nt" else "gradlew"
-    candidates: list[Path] = []
-    if project_root is not None:
-        candidates.append(Path(project_root) / wrapper_name)
-    candidates.append(Path.cwd() / wrapper_name)
-    candidates.append(_android_template_dir() / wrapper_name)
-
-    for wrapper in candidates:
-        if _is_complete_gradle_wrapper(wrapper):
-            return {
-                "available": True,
-                "path": str(wrapper),
-                "wrapper_available": True,
-                "wrapper_path": str(wrapper),
-                "resolution": (
-                    "android_template_wrapper"
-                    if wrapper.parent == _android_template_dir()
-                    else "project_wrapper"
-                ),
-            }
-
-    return {
-        "available": False,
-        "path": "",
-        "wrapper_available": False,
-        "wrapper_path": "",
-        "resolution": "missing",
-    }
-
-
-def _android_template_dir() -> Path:
-    return Path(__file__).resolve().parents[2] / "platforms" / "android" / "template"
-
-
-def _is_complete_gradle_wrapper(wrapper: Path) -> bool:
-    wrapper_dir = wrapper.parent
-    return (
-        wrapper.exists()
-        and (wrapper_dir / "gradle" / "wrapper" / "gradle-wrapper.properties").exists()
-        and (wrapper_dir / "gradle" / "wrapper" / "gradle-wrapper.jar").exists()
-    )
+    return resolve_gradle(project_root)
