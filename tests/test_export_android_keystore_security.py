@@ -8,6 +8,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from engine.export.build_context import BuildContext
 from engine.export.models import ExportPreset
@@ -63,6 +64,81 @@ class TestAndroidKeystoreSecurity(unittest.TestCase):
             application_id="com.test.app",
             extra=defaults,
         )
+
+    def _run_export_with_signing(self, extra):
+        from engine.export.android_exporter import AndroidExporter
+
+        preset = ExportPreset(
+            name="AndroidTest",
+            platform="android",
+            mode="release",
+            output_path="dist/export/android/Test-release.apk",
+            entry_scene="levels/test.json",
+            display_name="TestApp",
+            application_id="com.test.app",
+            extra=extra,
+        )
+        ctx = BuildContext(preset, self.tmp)
+        exporter = AndroidExporter()
+        project_dir = self.tmp / "generated_android"
+        (project_dir / "app" / "src" / "main" / "assets").mkdir(parents=True)
+        manifest = MagicMock(assets=[], scenes=[], scripts=[])
+        graph = MagicMock(reachable_scenes=[], reachable_scripts=[])
+        environment = {
+            "android_sdk_available": True,
+            "java_available": True,
+            "gradle_available": True,
+        }
+
+        with (
+            patch(
+                "engine.export.android_exporter.build_content_pack",
+                return_value=(manifest, graph),
+            ),
+            patch.object(exporter, "validate_environment", return_value=environment),
+            patch.object(exporter, "_validate_android_runtime_v1", return_value=True),
+            patch.object(exporter, "_write_runtime_config"),
+            patch.object(exporter, "_generate_android_project", return_value=project_dir),
+            patch.object(exporter, "_android_python_runtime_enabled", return_value=False),
+            patch.object(exporter, "_add_project_artifacts"),
+            patch.object(exporter, "_build_release", return_value=True) as build_release,
+            patch.object(exporter, "_run_gradle_build", return_value=True) as run_gradle,
+            patch.object(exporter, "_find_apk", return_value=None),
+            patch.object(exporter, "_find_aab", return_value=None),
+        ):
+            result = exporter.export(ctx)
+
+        return result, ctx, build_release, run_gradle
+
+    def test_release_without_signing_fails_before_gradle(self):
+        result, ctx, build_release, run_gradle = self._run_export_with_signing({})
+
+        self.assertFalse(result)
+        self.assertTrue(
+            any("ANDROID_RELEASE_SIGNING_REQUIRED" in error for error in ctx.errors)
+        )
+        build_release.assert_not_called()
+        run_gradle.assert_not_called()
+
+    def test_release_with_local_signing_keeps_release_flow(self):
+        result, ctx, build_release, run_gradle = self._run_export_with_signing(
+            {"local_release_signing": True}
+        )
+
+        self.assertTrue(result)
+        self.assertFalse(ctx.errors)
+        build_release.assert_called_once()
+        run_gradle.assert_not_called()
+
+    def test_release_with_existing_keystore_keeps_release_flow(self):
+        result, ctx, build_release, run_gradle = self._run_export_with_signing(
+            {"keystore_path": str(self.keystore)}
+        )
+
+        self.assertTrue(result)
+        self.assertFalse(ctx.errors)
+        build_release.assert_called_once()
+        run_gradle.assert_not_called()
 
     def test_build_gradle_does_not_contain_password_plaintext(self):
         preset = self._make_preset_with_keystore()

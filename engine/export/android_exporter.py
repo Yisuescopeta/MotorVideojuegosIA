@@ -145,23 +145,23 @@ class AndroidExporter(PlatformExporter):
             if keystore or bool(ctx.preset.extra.get("local_release_signing", False)):
                 ok = self._build_release(ctx, project_dir, env)
             else:
-                ctx.add_warning(
-                    "No keystore configured for release build. "
-                    "Set keystore_path in preset extra. Building unsigned release."
+                ctx.add_error(
+                    "ANDROID_RELEASE_SIGNING_REQUIRED: Release build requires "
+                    "extra.keystore_path or extra.local_release_signing=true."
                 )
-                ok = self._run_gradle_build(ctx, project_dir, "assembleRelease")
+                return False
         else:
             ok = self._run_gradle_build(ctx, project_dir, "assembleDebug")
 
         if not ok:
             return False
 
-        apk = self._find_apk(project_dir)
+        apk = self._find_apk(project_dir, ctx.preset.mode)
         if apk:
             self._copy_android_artifact(ctx, apk, output, "apk")
 
         if ctx.preset.mode == "release":
-            aab = self._find_aab(project_dir)
+            aab = self._find_aab(project_dir, ctx.preset.mode)
             if aab:
                 self._copy_android_artifact(ctx, aab, output, "aab")
 
@@ -527,9 +527,13 @@ class AndroidExporter(PlatformExporter):
                 env=env,
             )
             if result.returncode != 0:
+                output = "\n".join(
+                    part for part in (result.stdout, result.stderr) if part
+                )
+                tail = output[-8000:]
                 ctx.add_error(
-                    f"Gradle {task} failed (code {result.returncode}): "
-                    f"{result.stderr[:500]}"
+                    f"Gradle {task} failed (code {result.returncode}) "
+                    f"in {project_dir}:\n{tail}"
                 )
                 return False
         except subprocess.TimeoutExpired:
@@ -759,19 +763,38 @@ class AndroidExporter(PlatformExporter):
             "key_pass": str(metadata.get("store_pass", "")),
         }
 
-    def _find_apk(self, project_dir: Path) -> Path | None:
+    def _find_apk(self, project_dir: Path, mode: str) -> Path | None:
         apk_dir = project_dir / "app" / "build" / "outputs" / "apk"
-        if not apk_dir.exists():
-            return None
-        apks = list(apk_dir.rglob("*.apk"))
-        return apks[0] if apks else None
+        expected = apk_dir / mode / f"app-{mode}.apk"
+        return self._find_android_artifact(apk_dir, expected, "*.apk", mode)
 
-    def _find_aab(self, project_dir: Path) -> Path | None:
+    def _find_aab(self, project_dir: Path, mode: str) -> Path | None:
         bundle_dir = project_dir / "app" / "build" / "outputs" / "bundle"
-        if not bundle_dir.exists():
+        expected = bundle_dir / mode / f"app-{mode}.aab"
+        return self._find_android_artifact(bundle_dir, expected, "*.aab", mode)
+
+    def _find_android_artifact(
+        self,
+        output_dir: Path,
+        expected: Path,
+        pattern: str,
+        mode: str,
+    ) -> Path | None:
+        if expected.is_file():
+            return expected
+        if not output_dir.exists():
             return None
-        aabs = list(bundle_dir.rglob("*.aab"))
-        return aabs[0] if aabs else None
+        candidates = [
+            path
+            for path in output_dir.rglob(pattern)
+            if path.is_file() and mode.lower() in path.name.lower()
+        ]
+        if not candidates:
+            return None
+        return sorted(
+            candidates,
+            key=lambda path: (-path.stat().st_mtime_ns, path.as_posix()),
+        )[0]
 
     def _copy_android_artifact(
         self,

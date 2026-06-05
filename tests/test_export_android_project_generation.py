@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -91,6 +92,39 @@ class TestAndroidProjectGeneration(unittest.TestCase):
         self.assertIn("compileSdk 35", gradle)
         self.assertIn("targetSdk 35", gradle)
         self.assertNotIn("compileSdk {{TARGET_SDK}}", gradle)
+
+    def test_generated_proguard_rules_use_application_id(self):
+        from engine.export.android_exporter import AndroidExporter
+        from engine.export.build_context import BuildContext
+        from engine.export.models import ExportPreset
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            preset = ExportPreset(
+                name="Android Release",
+                platform="android",
+                architecture="arm64-v8a",
+                mode="release",
+                output_path="dist/export/android/Test-release.apk",
+                entry_scene="levels/test.json",
+                display_name="Test",
+                application_id="com.yisuescopeta.mygame",
+                min_sdk=24,
+                extra={"android_python_runtime": True},
+            )
+            ctx = BuildContext(preset, root)
+            ctx.staging_dir.mkdir(parents=True, exist_ok=True)
+
+            project_dir = AndroidExporter()._generate_android_project(ctx, ctx.staging_dir)
+            proguard = (project_dir / "app" / "proguard-rules.pro").read_text(
+                encoding="utf-8"
+            )
+
+        self.assertIn("-keep class com.yisuescopeta.mygame.** { *; }", proguard)
+        self.assertNotIn("{{APPLICATION_ID}}", proguard)
+        self.assertIn("-keep class com.chaquo.python.** { *; }", proguard)
+        self.assertIn("-dontwarn com.chaquo.python.**", proguard)
+        self.assertIn("-keep class org.json.** { *; }", proguard)
 
     def test_android_release_project_is_not_debuggable_or_debug_suffixed(self):
         from engine.export.android_exporter import AndroidExporter
@@ -336,6 +370,133 @@ class TestAndroidProjectGeneration(unittest.TestCase):
             command = AndroidExporter()._resolve_gradle_command(project_dir)
 
         self.assertEqual(command, [str(project_dir / wrapper_name)])
+
+    def test_gradle_build_failure_includes_stdout_task_and_project_dir(self):
+        from unittest.mock import MagicMock, patch
+
+        from engine.export.android_exporter import AndroidExporter
+        from engine.export.build_context import BuildContext
+        from engine.export.models import ExportPreset
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            project_dir = project_root / "android_project"
+            project_dir.mkdir()
+            preset = ExportPreset(
+                name="Android Debug",
+                platform="android",
+                mode="debug",
+                output_path="dist/export/android/Test-debug.apk",
+                entry_scene="levels/test.json",
+                display_name="Test",
+                application_id="com.example.test",
+            )
+            ctx = BuildContext(preset, project_root)
+            exporter = AndroidExporter()
+
+            with patch.object(
+                exporter, "_resolve_gradle_command", return_value=["gradlew"],
+            ), patch("subprocess.run") as mock_run:
+                mock_run.return_value = MagicMock(
+                    returncode=1,
+                    stdout="SDK Platform 35 is missing",
+                    stderr="",
+                )
+
+                result = exporter._run_gradle_build(
+                    ctx, project_dir, "assembleDebug",
+                )
+
+        self.assertFalse(result)
+        self.assertEqual(len(ctx.errors), 1)
+        error = ctx.errors[0]
+        self.assertIn("Gradle assembleDebug failed (code 1)", error)
+        self.assertIn(str(project_dir), error)
+        self.assertIn("SDK Platform 35 is missing", error)
+
+    def test_find_apk_prefers_expected_debug_artifact(self):
+        from engine.export.android_exporter import AndroidExporter
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_dir = Path(tmpdir)
+            apk_dir = project_dir / "app" / "build" / "outputs" / "apk"
+            expected = apk_dir / "debug" / "app-debug.apk"
+            other = apk_dir / "custom" / "newer-debug.apk"
+            expected.parent.mkdir(parents=True)
+            other.parent.mkdir(parents=True)
+            expected.write_bytes(b"expected")
+            other.write_bytes(b"other")
+            os.utime(expected, (1, 1))
+            os.utime(other, (2, 2))
+
+            selected = AndroidExporter()._find_apk(project_dir, "debug")
+
+        self.assertEqual(selected, expected)
+
+    def test_find_apk_fallback_prefers_newest_matching_mode(self):
+        from engine.export.android_exporter import AndroidExporter
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_dir = Path(tmpdir)
+            apk_dir = project_dir / "app" / "build" / "outputs" / "apk"
+            old = apk_dir / "legacy" / "old-debug.apk"
+            new = apk_dir / "custom" / "new-debug.apk"
+            release = apk_dir / "release" / "newer-release.apk"
+            for artifact in (old, new, release):
+                artifact.parent.mkdir(parents=True, exist_ok=True)
+                artifact.write_bytes(artifact.name.encode("ascii"))
+            os.utime(old, (1, 1))
+            os.utime(new, (2, 2))
+            os.utime(release, (3, 3))
+
+            selected = AndroidExporter()._find_apk(project_dir, "debug")
+
+        self.assertEqual(selected, new)
+
+    def test_find_apk_prefers_expected_release_artifact(self):
+        from engine.export.android_exporter import AndroidExporter
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_dir = Path(tmpdir)
+            expected = (
+                project_dir
+                / "app"
+                / "build"
+                / "outputs"
+                / "apk"
+                / "release"
+                / "app-release.apk"
+            )
+            expected.parent.mkdir(parents=True)
+            expected.write_bytes(b"release")
+
+            selected = AndroidExporter()._find_apk(project_dir, "release")
+
+        self.assertEqual(selected, expected)
+
+    def test_find_aab_prefers_expected_release_and_newest_fallback(self):
+        from engine.export.android_exporter import AndroidExporter
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_dir = Path(tmpdir)
+            bundle_dir = project_dir / "app" / "build" / "outputs" / "bundle"
+            expected = bundle_dir / "release" / "app-release.aab"
+            fallback_old = bundle_dir / "legacy" / "old-release.aab"
+            fallback_new = bundle_dir / "custom" / "new-release.aab"
+            for artifact in (expected, fallback_old, fallback_new):
+                artifact.parent.mkdir(parents=True, exist_ok=True)
+                artifact.write_bytes(artifact.name.encode("ascii"))
+            os.utime(expected, (1, 1))
+            os.utime(fallback_old, (2, 2))
+            os.utime(fallback_new, (3, 3))
+
+            exporter = AndroidExporter()
+            selected_expected = exporter._find_aab(project_dir, "release")
+            expected.unlink()
+            selected_fallback = exporter._find_aab(project_dir, "release")
+
+        self.assertEqual(selected_expected, expected)
+        self.assertEqual(selected_fallback, fallback_new)
 
     def test_ios_template_structure_exists(self):
         ios_dir = Path(__file__).parent.parent / "platforms" / "ios" / "template"

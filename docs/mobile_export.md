@@ -61,7 +61,7 @@ mismo runtime compartido que PLAY del editor.
 # Build debug (APK)
 py -m motor export build "Android Debug" --project . --json
 
-# Build release (APK firmado + AAB)
+# Build release (requiere configuracion de firma)
 py -m motor export build "Android Release" --project . --json
 ```
 
@@ -72,16 +72,23 @@ py -m motor export build "Android Release" --project . --json
 3. Copia content pack a `app/src/main/assets/`.
 4. Genera `AndroidManifest.xml` con `application_id`, `version_code`, orientacion.
 5. Ejecuta `gradlew assembleDebug` si existe wrapper; si no, `gradle assembleDebug`.
-6. Copia APK a `dist/export/android/`.
+   Android usa automaticamente el debug keystore para este tipo de build.
+6. Copia `app/build/outputs/apk/debug/app-debug.apk` a
+   `dist/export/android/`. Si Gradle usa otro nombre, selecciona el APK debug
+   mas reciente sin mezclar artefactos release.
 7. Genera build report.
 
 ### Release
 
-1. Todos los pasos de debug.
-2. Valida keystore desde `extra.keystore_path`.
+1. Genera y valida el proyecto Android como en debug, sin usar la configuracion
+   de firma debug.
+2. Exige `extra.keystore_path` o `extra.local_release_signing: true`; si faltan
+   ambos, falla con `ANDROID_RELEASE_SIGNING_REQUIRED` antes de ejecutar Gradle.
 3. Configura signing en `app/build.gradle`.
 4. Ejecuta `gradlew assembleRelease`/`bundleRelease` si existe wrapper; si no, `gradle`.
-5. Copia APK firmado y AAB a `dist/export/android/`.
+5. Copia preferentemente `app-release.apk` y `app-release.aab` desde las rutas
+   release estandar de Gradle. Si usan otro nombre, selecciona el artefacto
+   release mas reciente sin mezclar artefactos debug.
 6. Report incluye hashes de artefactos y redaccion de keystore.
 
 ### Keystore config
@@ -98,6 +105,21 @@ py -m motor export build "Android Release" --project . --json
 ```
 
 Las credenciales se redactan automaticamente en build reports.
+
+Para builds release locales se puede usar:
+
+```json
+{
+  "extra": {
+    "local_release_signing": true
+  }
+}
+```
+
+Esta opcion crea y reutiliza un keystore local bajo `.motor/android/`. Es
+adecuada para pruebas locales, no para publicar. Para builds distribuibles usa
+un `keystore_path` explicito y conserva sus credenciales fuera de los build
+files.
 
 ### Template Android
 
@@ -273,7 +295,9 @@ py -m motor export doctor --project . --json
   explicito.
 - **Android fallback v1**: el runtime Kotlin nativo queda limitado a escenas
   simples sin gameplay avanzado.
-- **Android release signing**: requiere keystore configurado en `extra`.
+- **Android release signing**: requiere `extra.keystore_path` para builds
+  distribuibles o `extra.local_release_signing: true` para pruebas locales. El
+  exporter no ejecuta un build release sin una de estas opciones.
 - **iOS real build**: requiere macOS, Xcode y Apple Developer account. Nunca
   compila automaticamente desde el pipeline.
 - **Render Android**: Kotlin renderiza snapshots serializados; el rect visual
