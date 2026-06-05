@@ -205,10 +205,12 @@ no se detectan. Para incluirlos, declararlos en el `.py.meta.json`, usar
 - Smoke test via `open --args --smoke-test` para .app
 
 ### Android
-- Requiere `ANDROID_HOME`, JDK 11+, Gradle o wrapper `gradlew/gradlew.bat`
+- Requiere `ANDROID_HOME`, Build-Tools 34.0.0+, JDK 17+ y Gradle 8.7+
+- El template fija Android Gradle Plugin 8.6.1 y wrapper Gradle 8.7 para API 35
 - Genera proyecto Android desde template `platforms/android/template/`
 - Debug: `assembleDebug` -> APK
 - Release: `assembleRelease` -> APK firmado, `bundleRelease` -> AAB
+- El APK esperado es obligatorio; nunca se seleccionan variantes `unsigned`
 - Keystore configurable via `preset.extra.keystore_path`
 - Errores de keystore con codigos accionables: `ANDROID_KEYSTORE_MISSING`, `ANDROID_KEYSTORE_NOT_FOUND`
 - Si `output_path` termina en `.apk` o `.aab`, el artefacto se copia a ese nombre exacto
@@ -303,8 +305,10 @@ Todas devuelven `{ "success": bool, "message": str, "data": object }`.
 | PyInstaller | `shutil.which("pyinstaller")` | Desktop builds fallan con `TOOLCHAIN_UNAVAILABLE` |
 | pip | Import `pip` | Reporte de entorno incompleto |
 | ANDROID_HOME | Variable de entorno `ANDROID_HOME`/`ANDROID_SDK_ROOT` | Android exports fallan |
-| Java/JDK | `shutil.which("java")` | Android builds requieren JDK |
-| Gradle | `shutil.which("gradle")` o wrapper local | Android compilacion requiere Gradle |
+| Android platforms | `platforms/android-{compile_sdk}` para todos los presets Android | Falla con `ANDROID_PLATFORM_MISSING` |
+| Android build-tools | Version mas alta bajo `build-tools/` | Requiere 34.0.0+ |
+| Java/JDK | Ruta, version, major y compatibilidad | Requiere JDK 17+ |
+| Gradle | Ruta, version y compatibilidad del wrapper/global | Requiere Gradle 8.7+ |
 
 El resultado incluye `healthy: bool`. Cuando PyInstaller o pip faltan, `healthy`
 es `false` y `doctor` retorna `success: false` con lista de issues y warnings.
@@ -316,7 +320,7 @@ es `false` y `doctor` retorna `success: false` con lista de issues y warnings.
 | Windows | PyInstaller | Windows |
 | Linux | PyInstaller | Linux |
 | macOS | PyInstaller, Xcode | macOS |
-| Android | Android SDK, JDK 11+, Gradle | Cualquiera |
+| Android | Android SDK, Build-Tools 34.0.0+, JDK 17+, Gradle 8.7+ | Cualquiera |
 | iOS | Xcode, Apple Developer | macOS |
 
 ## Limitaciones reales

@@ -60,7 +60,13 @@ usa `main.py` del editor como entrypoint de juego exportado.
 - `list_export_entry_scenes()` lista escenas exportables del proyecto y la activa del editor cuando el runtime ya esta vinculado.
 - `validate_export_preset(name=None)` valida schema, rutas, plataforma, modo,
   entry scene, output y opciones moviles.
-- `export_doctor()` reporta toolchains disponibles y bloqueos externos.
+- `export_doctor()` reporta toolchains disponibles y bloqueos externos. Para
+  Android valida todos los `compile_sdk` declarados y expone
+  `android_sdk_available`, `android_platform_available`,
+  `android_platform_path`, `android_build_tools_available`,
+  `android_build_tools_version`, `java_version`, `java_major`,
+  `java_compatible`, `gradle_version`, `gradle_compatible`,
+  `gradle_wrapper_executable` y el detalle `android_platforms`.
 - `export_pack(name)` genera content staging, `game.manifest.json` y `game.pak`.
 - `build_export(name)` ejecuta el exporter de plataforma y escribe build report.
 - `build_export_for_scene(name, entry_scene)` ejecuta el mismo build con override temporal de `entry_scene` solo en memoria; no reescribe `export_presets.motor.json`.
@@ -68,7 +74,10 @@ usa `main.py` del editor como entrypoint de juego exportado.
 
 Todas devuelven `{ "success": bool, "message": str, "data": object }`. Los
 errores accionables incluyen `ENTRY_SCENE_NOT_FOUND`, `UNSAFE_OUTPUT_PATH`,
-`UNKNOWN_PRESET_FIELD` y `TOOLCHAIN_UNAVAILABLE`.
+`UNKNOWN_PRESET_FIELD`, `TOOLCHAIN_UNAVAILABLE`,
+`ANDROID_PLATFORM_MISSING`, `ANDROID_BUILD_TOOLS_MISSING`,
+`ANDROID_BUILD_TOOLS_INCOMPATIBLE`, `ANDROID_JDK_INCOMPATIBLE` y
+`ANDROID_GRADLE_INCOMPATIBLE`.
 
 Documentacion relacionada: [export_pipeline.md](export_pipeline.md),
 [export_presets.md](export_presets.md), [build_artifacts.md](build_artifacts.md).

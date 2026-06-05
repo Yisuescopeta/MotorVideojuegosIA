@@ -5,6 +5,21 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 
+from engine.editor.ui_core.icon_names import (
+    ICON_ANIMATION,
+    ICON_AUDIO,
+    ICON_CAMERA,
+    ICON_CANVAS,
+    ICON_COLLIDER,
+    ICON_ENTITY,
+    ICON_LIGHT,
+    ICON_NODE2D,
+    ICON_PARTICLES,
+    ICON_RIGIDBODY,
+    ICON_SPRITE,
+    ICON_TILEMAP,
+    ICON_UI_BUTTON,
+)
 from engine.editor.ui_core.protocols import EntityLike, WorldLike
 
 
@@ -98,6 +113,20 @@ def get_entity_type(entity: EntityLike | object) -> str:
         return "RigidBody"
     if any(name.endswith("Collider") or name.endswith("Collider2D") for name in component_names):
         return "Collider"
+    if {"Canvas", "CanvasLayer", "UICanvas"} & component_names:
+        return "Canvas"
+    if "UIButton" in component_names:
+        return "UIButton"
+    if {"AudioSource", "AudioStreamPlayer", "AudioStreamPlayer2D"} & component_names:
+        return "Audio"
+    if {"AnimationPlayer", "Animator", "SpriteAnimator"} & component_names:
+        return "Animation"
+    if {"Light", "Light2D", "DirectionalLight2D", "PointLight2D"} & component_names:
+        return "Light"
+    if {"Particles", "ParticleSystem", "CPUParticles2D", "GPUParticles2D"} & component_names:
+        return "Particles"
+    if "Transform" in component_names:
+        return "Node2D"
     if component_names:
         return "ComponentEntity"
     return "Entity"
@@ -105,14 +134,21 @@ def get_entity_type(entity: EntityLike | object) -> str:
 
 def get_type_icon(entity_type: str) -> str:
     return {
-        "Camera": "search",
-        "TileMap": "menu",
-        "Sprite": "play",
-        "RigidBody": "gear",
-        "Collider": "check",
-        "ComponentEntity": "gear",
-        "Entity": "menu",
-    }.get(entity_type, "menu")
+        "Camera": ICON_CAMERA,
+        "TileMap": ICON_TILEMAP,
+        "Sprite": ICON_SPRITE,
+        "RigidBody": ICON_RIGIDBODY,
+        "Collider": ICON_COLLIDER,
+        "Canvas": ICON_CANVAS,
+        "UIButton": ICON_UI_BUTTON,
+        "Audio": ICON_AUDIO,
+        "Animation": ICON_ANIMATION,
+        "Light": ICON_LIGHT,
+        "Particles": ICON_PARTICLES,
+        "Node2D": ICON_NODE2D,
+        "ComponentEntity": ICON_ENTITY,
+        "Entity": ICON_ENTITY,
+    }.get(entity_type, ICON_ENTITY)
 
 
 def matches_search(node: TreeNode, query: str) -> bool:

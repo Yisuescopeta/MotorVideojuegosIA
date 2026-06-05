@@ -1,4 +1,5 @@
 import unittest
+from contextlib import nullcontext
 from unittest.mock import patch
 
 from engine.ecs.world import World
@@ -102,6 +103,36 @@ class HierarchyPanelRowsTests(unittest.TestCase):
 
         self.assertIsNot(second_model, first_model)
         self.assertIn(second.id, second_model.node_map)
+
+    def test_render_does_not_crash_with_normal_entities(self) -> None:
+        world = World()
+        world.create_entity("Root")
+        panel = HierarchyPanel()
+
+        class FakeMouse:
+            x = 0.0
+            y = 0.0
+
+        fake_rl = unittest.mock.MagicMock()
+        fake_rl.Color.side_effect = lambda r, g, b, a: (r, g, b, a)
+        fake_rl.Rectangle.side_effect = lambda x, y, w, h: unittest.mock.MagicMock(x=x, y=y, width=w, height=h)
+        fake_rl.Vector2.side_effect = lambda x, y: unittest.mock.MagicMock(x=x, y=y)
+        fake_rl.get_mouse_position.return_value = FakeMouse()
+        fake_rl.check_collision_point_rec.return_value = False
+        fake_rl.get_mouse_wheel_move.return_value = 0.0
+        fake_rl.is_mouse_button_pressed.return_value = False
+        fake_rl.is_mouse_button_released.return_value = False
+        fake_rl.is_mouse_button_down.return_value = False
+        fake_rl.MOUSE_BUTTON_LEFT = 0
+        fake_rl.MOUSE_BUTTON_RIGHT = 1
+        fake_rl.GRAY = (128, 128, 128, 255)
+
+        with patch("engine.editor.hierarchy_panel.rl", fake_rl), patch(
+            "engine.editor.hierarchy_panel.editor_scissor", lambda *_args, **_kwargs: nullcontext()
+        ), patch("engine.editor.hierarchy_panel.draw_icon") as draw_icon_mock:
+            panel.render(world, 0, 0, 240, 180)
+
+        draw_icon_mock.assert_called()
 
 
 if __name__ == "__main__":

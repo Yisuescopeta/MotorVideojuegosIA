@@ -73,6 +73,34 @@ class TestExportModels(unittest.TestCase):
         self.assertEqual(len(doc.presets), 2)
         self.assertEqual(doc.presets[0].name, "A")
 
+    def test_android_compile_sdk_falls_back_to_target_sdk(self):
+        data = {
+            "name": "Android Legacy",
+            "platform": "android",
+            "output_path": "dist/android/app.apk",
+            "entry_scene": "levels/test.json",
+            "application_id": "com.example.game",
+            "target_sdk": 34,
+        }
+        preset = ExportPreset.from_dict(data)
+        self.assertEqual(preset.target_sdk, 34)
+        self.assertEqual(preset.compile_sdk, 34)
+
+    def test_android_compile_sdk_roundtrips(self):
+        preset = ExportPreset(
+            name="Android",
+            platform="android",
+            output_path="dist/android/app.apk",
+            entry_scene="levels/test.json",
+            application_id="com.example.game",
+            min_sdk=24,
+            target_sdk=35,
+            compile_sdk=36,
+        )
+        result = preset.to_dict()
+        self.assertEqual(result["target_sdk"], 35)
+        self.assertEqual(result["compile_sdk"], 36)
+
 
 class TestExportPresetSchema(unittest.TestCase):
     def test_valid_preset_passes(self):
@@ -131,6 +159,51 @@ class TestExportPresetSchema(unittest.TestCase):
         )
         errors = validate_preset(preset)
         self.assertTrue(any(e.code == "APPLICATION_ID_REQUIRED" for e in errors))
+
+    def test_android_compile_sdk_must_not_be_less_than_target_sdk(self):
+        preset = ExportPreset(
+            name="Android X",
+            platform="android",
+            output_path="dist/export/android/x.apk",
+            entry_scene="levels/x.json",
+            application_id="com.example.game",
+            min_sdk=24,
+            target_sdk=35,
+            compile_sdk=34,
+        )
+        errors = validate_preset(preset)
+        self.assertTrue(any(e.code == "ANDROID_COMPILE_SDK_LT_TARGET_SDK" for e in errors))
+
+    def test_android_sdk_levels_must_be_positive(self):
+        preset = ExportPreset(
+            name="Android X",
+            platform="android",
+            output_path="dist/export/android/x.apk",
+            entry_scene="levels/x.json",
+            application_id="com.example.game",
+            min_sdk=0,
+            target_sdk=0,
+            compile_sdk=0,
+        )
+        errors = validate_preset(preset)
+        codes = {e.code for e in errors}
+        self.assertIn("ANDROID_MIN_SDK_INVALID", codes)
+        self.assertIn("ANDROID_TARGET_SDK_INVALID", codes)
+        self.assertIn("ANDROID_COMPILE_SDK_INVALID", codes)
+
+    def test_android_min_sdk_must_not_exceed_target_sdk(self):
+        preset = ExportPreset(
+            name="Android X",
+            platform="android",
+            output_path="dist/export/android/x.apk",
+            entry_scene="levels/x.json",
+            application_id="com.example.game",
+            min_sdk=36,
+            target_sdk=35,
+            compile_sdk=36,
+        )
+        errors = validate_preset(preset)
+        self.assertTrue(any(e.code == "ANDROID_MIN_SDK_GT_TARGET_SDK" for e in errors))
 
     def test_validate_raw_missing_schema(self):
         errors = validate_presets_raw({"presets": []})

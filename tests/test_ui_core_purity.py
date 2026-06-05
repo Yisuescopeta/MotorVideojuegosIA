@@ -14,6 +14,7 @@ UI_CORE_MODULES = [
     "widget_state",
     "colors",
     "theme",
+    "icon_names",
     "protocols",
     "docking",
     "dock_rects",
@@ -99,16 +100,18 @@ class UICorePurityTests(unittest.TestCase):
 
     def test_old_shim_paths_match_core_symbols(self) -> None:
         from engine.editor.ui import geometry as old_geometry
+        from engine.editor.ui import icon_names as old_icon_names
         from engine.editor.ui import inspector as old_inspector
         from engine.editor.ui import property_widgets as old_property_widgets
         from engine.editor.ui import theme as old_theme
         from engine.editor.ui import tokens as old_tokens
         from engine.editor.ui import tree_view as old_tree_view
         from engine.editor.ui import widget_state as old_widget_state
-        from engine.editor.ui_core import geometry, inspector, property_widgets, theme, tokens, tree_view, widget_state
+        from engine.editor.ui_core import geometry, icon_names, inspector, property_widgets, theme, tokens, tree_view, widget_state
 
         self.assertEqual(old_tokens.EDITOR_BG, tokens.EDITOR_BG)
         self.assertIs(old_geometry.inset_rect, geometry.inset_rect)
+        self.assertEqual(old_icon_names.ICON_ENTITY, icon_names.ICON_ENTITY)
         self.assertIs(old_widget_state.WidgetState, widget_state.WidgetState)
         self.assertIs(old_theme.EditorTheme, theme.EditorTheme)
         self.assertIs(old_property_widgets.PropertyDescriptor, property_widgets.PropertyDescriptor)

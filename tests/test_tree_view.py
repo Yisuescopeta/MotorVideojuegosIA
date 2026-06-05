@@ -9,6 +9,21 @@ from engine.editor.ui.tree_view import (
     get_entity_type,
     get_type_icon,
 )
+from engine.editor.ui_core.icon_names import (
+    ICON_ANIMATION,
+    ICON_AUDIO,
+    ICON_CAMERA,
+    ICON_CANVAS,
+    ICON_COLLIDER,
+    ICON_ENTITY,
+    ICON_LIGHT,
+    ICON_NODE2D,
+    ICON_PARTICLES,
+    ICON_RIGIDBODY,
+    ICON_SPRITE,
+    ICON_TILEMAP,
+    ICON_UI_BUTTON,
+)
 
 
 class TreeViewTests(unittest.TestCase):
@@ -87,11 +102,71 @@ class TreeViewTests(unittest.TestCase):
         world = World()
         entity = world.create_entity("Thing")
         self.assertEqual(get_entity_type(entity), "Entity")
-        self.assertEqual(get_type_icon("Entity"), "menu")
+        self.assertEqual(get_type_icon("Entity"), ICON_ENTITY)
 
         entity.add_component(Transform())
-        self.assertEqual(get_entity_type(entity), "ComponentEntity")
-        self.assertEqual(get_type_icon("ComponentEntity"), "gear")
+        self.assertEqual(get_entity_type(entity), "Node2D")
+        self.assertEqual(get_type_icon("Node2D"), ICON_NODE2D)
+
+        camera = world.create_entity("CameraThing")
+        camera.add_component(type("Camera2D", (), {})())
+        self.assertEqual(get_entity_type(camera), "Camera")
+        self.assertEqual(get_type_icon(get_entity_type(camera)), ICON_CAMERA)
+
+        sprite = world.create_entity("SpriteThing")
+        sprite.add_component(type("Sprite", (), {})())
+        self.assertEqual(get_entity_type(sprite), "Sprite")
+        self.assertEqual(get_type_icon("Sprite"), ICON_SPRITE)
+
+        tilemap = world.create_entity("TilemapThing")
+        tilemap.add_component(type("TileMap", (), {})())
+        self.assertEqual(get_entity_type(tilemap), "TileMap")
+        self.assertEqual(get_type_icon("TileMap"), ICON_TILEMAP)
+
+        rigidbody = world.create_entity("BodyThing")
+        rigidbody.add_component(type("RigidBody2D", (), {})())
+        self.assertEqual(get_entity_type(rigidbody), "RigidBody")
+        self.assertEqual(get_type_icon("RigidBody"), ICON_RIGIDBODY)
+
+        collider = world.create_entity("ColliderThing")
+        collider.add_component(type("BoxCollider", (), {})())
+        self.assertEqual(get_entity_type(collider), "Collider")
+        self.assertEqual(get_type_icon("Collider"), ICON_COLLIDER)
+
+        canvas = world.create_entity("CanvasThing")
+        canvas.add_component(type("CanvasLayer", (), {})())
+        self.assertEqual(get_entity_type(canvas), "Canvas")
+        self.assertEqual(get_type_icon("Canvas"), ICON_CANVAS)
+
+        ui_button = world.create_entity("ButtonThing")
+        ui_button.add_component(type("UIButton", (), {})())
+        self.assertEqual(get_entity_type(ui_button), "UIButton")
+        self.assertEqual(get_type_icon("UIButton"), ICON_UI_BUTTON)
+
+        audio = world.create_entity("AudioThing")
+        audio.add_component(type("AudioStreamPlayer2D", (), {})())
+        self.assertEqual(get_entity_type(audio), "Audio")
+        self.assertEqual(get_type_icon("Audio"), ICON_AUDIO)
+
+        animation = world.create_entity("AnimationThing")
+        animation.add_component(type("AnimationPlayer", (), {})())
+        self.assertEqual(get_entity_type(animation), "Animation")
+        self.assertEqual(get_type_icon("Animation"), ICON_ANIMATION)
+
+        light = world.create_entity("LightThing")
+        light.add_component(type("Light2D", (), {})())
+        self.assertEqual(get_entity_type(light), "Light")
+        self.assertEqual(get_type_icon("Light"), ICON_LIGHT)
+
+        particles = world.create_entity("ParticlesThing")
+        particles.add_component(type("CPUParticles2D", (), {})())
+        self.assertEqual(get_entity_type(particles), "Particles")
+        self.assertEqual(get_type_icon("Particles"), ICON_PARTICLES)
+
+        component_only = world.create_entity("ComponentOnly")
+        component_only.add_component(type("CustomComponent", (), {})())
+        self.assertEqual(get_entity_type(component_only), "ComponentEntity")
+        self.assertEqual(get_type_icon("ComponentEntity"), ICON_ENTITY)
 
 
 if __name__ == "__main__":

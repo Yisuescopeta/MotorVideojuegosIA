@@ -28,6 +28,9 @@ fallan salvo extras documentados de Android
 release (`keystore_path`, `keystore_password`, `key_alias`, `key_password`) y
 `include_all_assets`. En Windows, `console: true` es un extra documentado para
 forzar consola incluso en release; release normal usa `console=False`.
+En Android, `min_sdk`, `target_sdk` y `compile_sdk` son enteros positivos;
+`min_sdk <= target_sdk` y `compile_sdk >= target_sdk`. Si `compile_sdk` falta
+en un preset legacy, se carga con el valor de `target_sdk`.
 
 `game.manifest.json` se genera desde el grafo de contenido. Incluye entry scene,
 version de motor, proyecto, escenas, assets y scripts alcanzables, con `sha256`,

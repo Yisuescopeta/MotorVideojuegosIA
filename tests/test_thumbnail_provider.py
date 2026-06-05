@@ -82,6 +82,20 @@ class ThumbnailProviderTests(unittest.TestCase):
 
         unload_texture.assert_called_once_with(texture)
 
+    def test_non_image_asset_uses_draw_icon(self) -> None:
+        rect = rl.Rectangle(0, 0, 32, 32)
+        item = {"absolute_path": "enemy.prefab", "asset_kind": "prefab", "entry_type": "file"}
+
+        with patch("engine.editor.thumbnail_provider.draw_icon", return_value=None) as draw_icon_mock, patch.object(
+            rl, "draw_rectangle_rec", create=True
+        ), patch.object(rl, "draw_rectangle_lines_ex", create=True), patch.object(
+            rl, "draw_text", create=True
+        ):
+            info = self.provider.draw_item_icon(rect, item)
+
+        self.assertEqual(info.icon_type, "prefab")
+        draw_icon_mock.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -57,6 +57,7 @@ Configuracion de exportacion estilo Godot para MotorVideojuegosIA. Un archivo
 | `window` | object | No | Configuracion de ventana y perfil de preview/build. |
 | `min_sdk` | int | No | API level minimo Android. Default: `23`. |
 | `target_sdk` | int | No | API level objetivo Android. Default: `35`. |
+| `compile_sdk` | int | No | API level del SDK usado para compilar Android. Default: `35`; si falta, usa `target_sdk`. Debe ser `>= target_sdk`. |
 | `orientation` | string | No | `landscape`, `portrait`, `auto`. Default: `landscape`. |
 | `extra` | object | No | Opciones especificas de plataforma (keystore, etc.). |
 | `android_python_runtime` | bool | No | Android: activa Chaquopy + `SharedGameRuntime` para paridad con PLAY. Requiere `min_sdk >= 24`. |
@@ -128,6 +129,7 @@ El schema valida automaticamente:
 - Campos desconocidos rechazados (salvo extras documentados).
 - `application_id` obligatorio en mobile.
 - `version_code` obligatorio en Android release.
+- Android exige `min_sdk`, `target_sdk` y `compile_sdk` positivos, `min_sdk <= target_sdk` y `compile_sdk >= target_sdk`.
 
 Errores accionables:
 

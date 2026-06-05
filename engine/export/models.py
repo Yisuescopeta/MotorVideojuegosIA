@@ -65,6 +65,7 @@ class ExportPreset:
     window: dict[str, Any] = field(default_factory=dict)
     min_sdk: int = 23
     target_sdk: int = 35
+    compile_sdk: int = 35
     orientation: str = "landscape"
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -72,6 +73,7 @@ class ExportPreset:
     def from_dict(cls, data: dict[str, Any]) -> "ExportPreset":
         window = dict(data.get("window", {}) or {})
         extra = {k: v for k, v in data.items() if k not in _KNOWN_PRESET_KEYS}
+        target_sdk = int(data.get("target_sdk", 35))
         return cls(
             name=str(data.get("name", "")),
             platform=str(data.get("platform", "")),
@@ -87,7 +89,8 @@ class ExportPreset:
             include_debug_tools=bool(data.get("include_debug_tools", False)),
             window=window,
             min_sdk=int(data.get("min_sdk", 23)),
-            target_sdk=int(data.get("target_sdk", 35)),
+            target_sdk=target_sdk,
+            compile_sdk=int(data.get("compile_sdk", target_sdk)),
             orientation=str(data.get("orientation", "landscape")),
             extra=extra,
         )
@@ -116,6 +119,7 @@ class ExportPreset:
         if self.platform == "android":
             result["min_sdk"] = self.min_sdk
             result["target_sdk"] = self.target_sdk
+            result["compile_sdk"] = self.compile_sdk
             result["orientation"] = self.orientation
         if include_secrets:
             result.update(self.extra)
@@ -131,7 +135,7 @@ _KNOWN_PRESET_KEYS = frozenset({
     "name", "platform", "architecture", "mode", "output_path",
     "entry_scene", "display_name", "application_id", "version_name",
     "version_code", "bundle_mode", "include_debug_tools", "window",
-    "min_sdk", "target_sdk", "orientation",
+    "min_sdk", "target_sdk", "compile_sdk", "orientation",
 })
 
 

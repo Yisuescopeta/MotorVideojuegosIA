@@ -13,6 +13,7 @@ from html import escape as _html_escape
 from pathlib import Path
 from typing import Any
 
+from engine.export.android_environment import probe_android_environment, resolve_gradle
 from engine.export.build_context import BuildContext
 from engine.export.content_pack import build_content_pack
 from engine.export.platform_exporter import PlatformExporter
@@ -25,9 +26,12 @@ _PLACEHOLDERS = {
     "{{VERSION_CODE}}": "version_code",
     "{{MIN_SDK}}": "min_sdk",
     "{{TARGET_SDK}}": "target_sdk",
+    "{{COMPILE_SDK}}": "compile_sdk",
     "{{ORIENTATION}}": "orientation",
     "{{ENTRY_SCENE}}": "entry_scene",
 }
+_TEMPLATE_SUFFIXES = (".gradle", ".xml", ".kt", ".properties", ".pro")
+_GRADLE_LOG_LIMIT = 16000
 
 
 def _xml_escape(value: str) -> str:
@@ -41,24 +45,18 @@ def _gradle_escape(value: str) -> str:
 class AndroidExporter(PlatformExporter):
     platform = "android"
 
-    def validate_environment(self, project_dir: Path | None = None) -> dict[str, Any]:
-        android_home = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or ""
-        java_path = shutil.which("java") or shutil.which("java.exe") or ""
-        gradle_command = self._resolve_gradle_command(project_dir)
-        gradle_path = " ".join(gradle_command)
+    def validate_environment(
+        self,
+        project_dir: Path | None = None,
+        compile_sdk: int = 35,
+    ) -> dict[str, Any]:
         return {
             "platform": "android",
-            "android_sdk_available": bool(android_home),
-            "android_home": android_home,
-            "java_available": bool(java_path),
-            "java_path": java_path,
-            "gradle_available": bool(gradle_command),
-            "gradle_path": gradle_path,
+            **probe_android_environment(project_dir, compile_sdk),
             "python": sys.executable,
         }
 
     def export(self, ctx: BuildContext) -> bool:
-        env = self.validate_environment()
         staging = ctx.staging_dir
         staging.mkdir(parents=True, exist_ok=True)
 
@@ -94,7 +92,9 @@ class AndroidExporter(PlatformExporter):
         self._write_runtime_config(ctx, staging)
 
         project_dir = self._generate_android_project(ctx, staging)
-        env = self.validate_environment(project_dir)
+        if ctx.has_errors:
+            return False
+        env = self.validate_environment(project_dir, ctx.preset.compile_sdk)
 
         assets_src = staging / "content"
         assets_dst = project_dir / "app" / "src" / "main" / "assets"
@@ -124,10 +124,37 @@ class AndroidExporter(PlatformExporter):
             )
             return False
 
+        if not env["android_platform_available"]:
+            ctx.add_error(
+                "ANDROID_PLATFORM_MISSING: Install Android SDK Platform "
+                f"{ctx.preset.compile_sdk}"
+            )
+            return False
+
+        if not env["android_build_tools_available"]:
+            ctx.add_error(
+                "ANDROID_BUILD_TOOLS_MISSING: Install Android SDK Build-Tools"
+            )
+            return False
+        if not env.get("android_build_tools_compatible", True):
+            ctx.add_error(
+                "ANDROID_BUILD_TOOLS_INCOMPATIBLE: Android builds require "
+                "SDK Build-Tools 34.0.0 or later. Detected "
+                f"{env.get('android_build_tools_version') or 'unknown'}."
+            )
+            return False
+
         if not env["java_available"]:
             ctx.add_error(
                 "TOOLCHAIN_UNAVAILABLE: Java/JDK not found. "
-                "Install JDK 11 or later. Run: java -version"
+                "Install JDK 17 or later. Run: java -version"
+            )
+            return False
+        if not env.get("java_compatible", True):
+            ctx.add_error(
+                "ANDROID_JDK_INCOMPATIBLE: Android Gradle Plugin 8.6.1 "
+                "requires JDK 17 or later. Detected "
+                f"{env.get('java_version') or 'unknown'}."
             )
             return False
 
@@ -138,29 +165,42 @@ class AndroidExporter(PlatformExporter):
                 "or use the generated project directly in Android Studio."
             )
             return False
+        if not env.get("gradle_compatible", True):
+            ctx.add_error(
+                "ANDROID_GRADLE_INCOMPATIBLE: Android Gradle Plugin 8.6.1 "
+                "requires Gradle 8.7 or later. Detected "
+                f"{env.get('gradle_version') or 'unknown'}."
+            )
+            return False
 
         if ctx.preset.mode == "release":
             keystore = ctx.preset.extra.get("keystore_path", "")
             if keystore or bool(ctx.preset.extra.get("local_release_signing", False)):
                 ok = self._build_release(ctx, project_dir, env)
             else:
-                ctx.add_warning(
-                    "No keystore configured for release build. "
-                    "Set keystore_path in preset extra. Building unsigned release."
+                ctx.add_error(
+                    "ANDROID_RELEASE_SIGNING_REQUIRED: Release build requires "
+                    "extra.keystore_path or extra.local_release_signing=true."
                 )
-                ok = self._run_gradle_build(ctx, project_dir, "assembleRelease")
+                return False
         else:
             ok = self._run_gradle_build(ctx, project_dir, "assembleDebug")
 
         if not ok:
             return False
 
-        apk = self._find_apk(project_dir)
+        apk = self._find_apk(project_dir, ctx.preset.mode)
         if apk:
             self._copy_android_artifact(ctx, apk, output, "apk")
+        else:
+            ctx.add_error(
+                "ANDROID_ARTIFACT_NOT_FOUND: Gradle completed but no signed "
+                f"{ctx.preset.mode} APK was found under "
+                "app/build/outputs/apk/."
+            )
 
         if ctx.preset.mode == "release":
-            aab = self._find_aab(project_dir)
+            aab = self._find_aab(project_dir, ctx.preset.mode)
             if aab:
                 self._copy_android_artifact(ctx, aab, output, "aab")
 
@@ -227,17 +267,36 @@ class AndroidExporter(PlatformExporter):
 
         replacements = self._build_replacements(ctx)
         for file_path in project_dir.rglob("*"):
-            if file_path.is_file() and file_path.suffix in (
-                ".gradle", ".xml", ".kt", ".properties", ".pro",
-            ):
+            if file_path.is_file() and file_path.suffix in _TEMPLATE_SUFFIXES:
                 try:
                     content = file_path.read_text(encoding="utf-8")
                     rmap = replacements["gradle"] if file_path.suffix == ".gradle" else replacements["xml"]
                     for placeholder, value in rmap.items():
                         content = content.replace(placeholder, value)
                     file_path.write_text(content, encoding="utf-8")
-                except Exception:
-                    pass
+                except Exception as exc:
+                    ctx.add_error(
+                        "ANDROID_TEMPLATE_RENDER_FAILED: Could not render "
+                        f"{file_path.relative_to(project_dir)}: {exc}"
+                    )
+
+        unresolved = []
+        for file_path in project_dir.rglob("*"):
+            if not file_path.is_file() or file_path.suffix not in _TEMPLATE_SUFFIXES:
+                continue
+            try:
+                if "{{" in file_path.read_text(encoding="utf-8"):
+                    unresolved.append(file_path.relative_to(project_dir).as_posix())
+            except OSError as exc:
+                ctx.add_error(
+                    "ANDROID_TEMPLATE_RENDER_FAILED: Could not validate "
+                    f"{file_path.relative_to(project_dir)}: {exc}"
+                )
+        if unresolved:
+            ctx.add_error(
+                "ANDROID_TEMPLATE_PLACEHOLDER_UNRESOLVED: Generated Android "
+                f"project still contains placeholders in: {', '.join(unresolved)}"
+            )
 
         return project_dir
 
@@ -248,6 +307,7 @@ class AndroidExporter(PlatformExporter):
         version_code = str(ctx.preset.version_code)
         min_sdk = str(ctx.preset.min_sdk)
         target_sdk = str(ctx.preset.target_sdk)
+        compile_sdk = str(ctx.preset.compile_sdk)
         orientation = ctx.preset.orientation or "landscape"
         entry = ctx.preset.entry_scene
         android_permissions = self._android_permissions(ctx)
@@ -262,6 +322,7 @@ class AndroidExporter(PlatformExporter):
                 "{{VERSION_CODE}}": version_code,
                 "{{MIN_SDK}}": min_sdk,
                 "{{TARGET_SDK}}": target_sdk,
+                "{{COMPILE_SDK}}": compile_sdk,
                 "{{ORIENTATION}}": _xml_escape(orientation),
                 "{{ENTRY_SCENE}}": _xml_escape(entry),
                 "{{CHAQUOPY_ROOT_PLUGIN}}": "",
@@ -277,6 +338,7 @@ class AndroidExporter(PlatformExporter):
                 "{{VERSION_CODE}}": version_code,
                 "{{MIN_SDK}}": min_sdk,
                 "{{TARGET_SDK}}": target_sdk,
+                "{{COMPILE_SDK}}": compile_sdk,
                 "{{ORIENTATION}}": _gradle_escape(orientation),
                 "{{ENTRY_SCENE}}": _gradle_escape(entry),
                 "{{CHAQUOPY_ROOT_PLUGIN}}": (
@@ -524,12 +586,18 @@ class AndroidExporter(PlatformExporter):
             )
             if result.returncode != 0:
                 ctx.add_error(
-                    f"Gradle {task} failed (code {result.returncode}): "
-                    f"{result.stderr[:500]}"
+                    f"Gradle {task} failed (code {result.returncode}) "
+                    f"in {project_dir}:\n"
+                    f"{self._format_gradle_stream('stdout', result.stdout)}\n"
+                    f"{self._format_gradle_stream('stderr', result.stderr)}"
                 )
                 return False
-        except subprocess.TimeoutExpired:
-            ctx.add_error(f"Gradle {task} timed out after 600s")
+        except subprocess.TimeoutExpired as exc:
+            ctx.add_error(
+                f"Gradle {task} timed out after 600s in {project_dir}:\n"
+                f"{self._format_gradle_stream('stdout', exc.stdout)}\n"
+                f"{self._format_gradle_stream('stderr', exc.stderr)}"
+            )
             return False
         except Exception as exc:
             ctx.add_error(f"Gradle {task} failed: {exc}")
@@ -537,18 +605,23 @@ class AndroidExporter(PlatformExporter):
 
         return True
 
+    def _format_gradle_stream(
+        self, label: str, content: str | bytes | None,
+    ) -> str:
+        if isinstance(content, bytes):
+            text = content.decode("utf-8", errors="replace")
+        else:
+            text = content or ""
+        if len(text) > _GRADLE_LOG_LIMIT:
+            omitted = len(text) - _GRADLE_LOG_LIMIT
+            text = (
+                f"[truncated {omitted} leading characters]\n"
+                + text[-_GRADLE_LOG_LIMIT:]
+            )
+        return f"--- Gradle {label} ---\n{text.rstrip() or '[empty]'}"
+
     def _resolve_gradle_command(self, project_dir: Path | None = None) -> list[str]:
-        if project_dir is not None:
-            wrapper = project_dir / ("gradlew.bat" if os.name == "nt" else "gradlew")
-            wrapper_dir = wrapper.parent / "gradle" / "wrapper"
-            if (
-                wrapper.exists()
-                and (wrapper_dir / "gradle-wrapper.properties").exists()
-                and (wrapper_dir / "gradle-wrapper.jar").exists()
-            ):
-                return [str(wrapper)]
-        gradle = shutil.which("gradle") or shutil.which("gradle.bat")
-        return [gradle] if gradle else []
+        return list(resolve_gradle(project_dir)["command"])
 
     def _copy_android_python_scripts(
         self,
@@ -755,19 +828,42 @@ class AndroidExporter(PlatformExporter):
             "key_pass": str(metadata.get("store_pass", "")),
         }
 
-    def _find_apk(self, project_dir: Path) -> Path | None:
+    def _find_apk(self, project_dir: Path, mode: str) -> Path | None:
         apk_dir = project_dir / "app" / "build" / "outputs" / "apk"
-        if not apk_dir.exists():
-            return None
-        apks = list(apk_dir.rglob("*.apk"))
-        return apks[0] if apks else None
+        expected = apk_dir / mode / f"app-{mode}.apk"
+        return self._find_android_artifact(apk_dir, expected, "*.apk", mode)
 
-    def _find_aab(self, project_dir: Path) -> Path | None:
+    def _find_aab(self, project_dir: Path, mode: str) -> Path | None:
         bundle_dir = project_dir / "app" / "build" / "outputs" / "bundle"
-        if not bundle_dir.exists():
+        expected = bundle_dir / mode / f"app-{mode}.aab"
+        return self._find_android_artifact(bundle_dir, expected, "*.aab", mode)
+
+    def _find_android_artifact(
+        self,
+        output_dir: Path,
+        expected: Path,
+        pattern: str,
+        mode: str,
+    ) -> Path | None:
+        if expected.is_file():
+            return expected
+        if not output_dir.exists():
             return None
-        aabs = list(bundle_dir.rglob("*.aab"))
-        return aabs[0] if aabs else None
+        candidates = [
+            path
+            for path in output_dir.rglob(pattern)
+            if (
+                path.is_file()
+                and mode.lower() in path.name.lower()
+                and "unsigned" not in path.name.lower()
+            )
+        ]
+        if not candidates:
+            return None
+        return sorted(
+            candidates,
+            key=lambda path: (-path.stat().st_mtime_ns, path.as_posix()),
+        )[0]
 
     def _copy_android_artifact(
         self,

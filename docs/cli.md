@@ -51,6 +51,16 @@ Salida JSON: `{ "success": bool, "message": str, "data": object }`.
 `game.pak`. `export build` genera report en `.motor/build/export_reports/`.
 Si falta toolchain externo, el comando falla con `TOOLCHAIN_UNAVAILABLE` y
 mantiene artefactos estructurales posibles, como proyecto Android generado.
+Para Android, `export doctor` valida todos los `compile_sdk` de los presets y
+devuelve `android_platforms` junto con
+`android_sdk_available`, `android_platform_available`,
+`android_platform_path`, `android_build_tools_available`,
+`android_build_tools_version`, `java_version`, `java_major`,
+`java_compatible`, `gradle_version`, `gradle_compatible` y
+`gradle_wrapper_executable`. Una plataforma ausente produce
+`ANDROID_PLATFORM_MISSING: Install Android SDK Platform <compile_sdk>`.
+Versiones incompatibles producen `ANDROID_BUILD_TOOLS_INCOMPATIBLE`,
+`ANDROID_JDK_INCOMPATIBLE` o `ANDROID_GRADLE_INCOMPATIBLE`.
 
 Documentacion relacionada: [export_pipeline.md](export_pipeline.md),
 [export_presets.md](export_presets.md), [troubleshooting_export.md](troubleshooting_export.md).

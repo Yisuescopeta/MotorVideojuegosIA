@@ -56,6 +56,8 @@ contradecirlos.
 
 - [glossary.md](glossary.md) - conceptos clave para lectores frios.
 - [building.md](building.md) - build y distribucion Windows.
+- [editor_godot_hierarchy_icons.md](editor_godot_hierarchy_icons.md) - pack Godot especializado para iconos semanticos de Hierarchy.
+- [editor_lucide_icons.md](editor_lucide_icons.md) - pipeline, manifest y licencia del sistema de iconos Lucide del editor.
 - [troubleshooting_export.md](troubleshooting_export.md) - diagnostico de errores comunes de export.
 - [export_implementation_report.md](export_implementation_report.md) - reporte operativo de la implementacion del pipeline de export.
 

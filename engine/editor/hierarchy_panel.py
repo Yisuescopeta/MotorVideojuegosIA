@@ -16,7 +16,7 @@ from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.editor_selection import EditorSelectionState
 from engine.editor.render_safety import editor_scissor
 from engine.editor.theme import get_active_theme
-from engine.editor.ui.icons import draw_icon
+from engine.editor.ui.icons import ICON_PLUS, draw_icon
 from engine.editor.ui.tree_view import TreeModel, filter_visible_rows, get_type_icon
 
 
@@ -169,7 +169,12 @@ class HierarchyPanel:
             is_hover_plus = rl.check_collision_point_rec(rl.get_mouse_position(), plus_rect)
             plus_color = colors["HOVER"] if is_hover_plus else colors["HEADER"]
             rl.draw_rectangle_rec(plus_rect, plus_color)
-            rl.draw_text("+", int(x + width - 17), int(y + 4), 14, colors["TEXT"])
+            draw_icon(
+                ICON_PLUS,
+                (plus_rect.x, plus_rect.y, plus_rect.width, plus_rect.height),
+                (255, 255, 255, 255),
+                size=12,
+            )
 
             if is_hover_plus and not self._input_blocked and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
                 new_name = f"New Entity {world.entity_count()}"
@@ -360,8 +365,9 @@ class HierarchyPanel:
         # Icono + nombre
         text_x = indent_x
         if node is not None:
-            draw_icon(get_type_icon(node.entity_type), (int(indent_x), int(y + 3), 12, 12), (180, 180, 180, 255))
-            text_x += 15
+            icon_rect = (float(indent_x), float(y + (row_height - 14) / 2.0), 14.0, 14.0)
+            draw_icon(get_type_icon(node.entity_type), icon_rect, (255, 255, 255, 255), size=14)
+            text_x += 18
         rl.draw_text(
             f"{entity.name}",
             int(text_x),
