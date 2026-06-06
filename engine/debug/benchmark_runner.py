@@ -15,7 +15,7 @@ from engine.api import EngineAPI
 from engine.components.transform import Transform
 from engine.debug.benchmark_scenarios import build_benchmark_scenario
 
-BENCHMARK_REPORT_VERSION = 2
+BENCHMARK_REPORT_VERSION = 3
 
 
 def _resolve_scene_path(scene_path: str, project_root: Path) -> Path:
@@ -79,6 +79,18 @@ def _build_summary(report: dict[str, Any]) -> dict[str, float]:
         "gameplay_max_ms": _system_metric(report, "gameplay", "max_ms"),
         "candidate_solids_avg": _counter_metric(report, "avg", "physics_candidate_solids"),
         "candidate_solids_max": _counter_metric(report, "max", "physics_candidate_solids"),
+        "swept_checks_avg": _counter_metric(report, "avg", "physics_swept_checks"),
+        "swept_checks_max": _counter_metric(report, "max", "physics_swept_checks"),
+        "aabb_builds_avg": _counter_metric(report, "avg", "physics_aabb_builds"),
+        "aabb_builds_max": _counter_metric(report, "max", "physics_aabb_builds"),
+        "shape_builds_avg": _counter_metric(report, "avg", "physics_shape_builds"),
+        "shape_builds_max": _counter_metric(report, "max", "physics_shape_builds"),
+        "aabb_cache_hits_avg": _counter_metric(report, "avg", "physics_aabb_cache_hits"),
+        "aabb_cache_hits_max": _counter_metric(report, "max", "physics_aabb_cache_hits"),
+        "shape_cache_hits_avg": _counter_metric(report, "avg", "physics_shape_cache_hits"),
+        "shape_cache_hits_max": _counter_metric(report, "max", "physics_shape_cache_hits"),
+        "spatial_cell_size_avg": _counter_metric(report, "avg", "physics_spatial_cell_size"),
+        "spatial_cell_size_max": _counter_metric(report, "max", "physics_spatial_cell_size"),
         "collision_candidates_avg": _counter_metric(report, "avg", "collision_candidates"),
         "collision_candidates_max": _counter_metric(report, "max", "collision_candidates"),
         "collision_pairs_tested_avg": _counter_metric(report, "avg", "collision_pairs_tested"),
@@ -133,6 +145,7 @@ def run_benchmark(
         scenario_name: str | None = None
         resolved_scene_path: Path
         operations: dict[str, Any] = {}
+        physics_metric_samples: list[dict[str, float]] = []
 
         if scenario is not None:
             source = "scenario"
@@ -282,6 +295,15 @@ def run_benchmark(
 
                 for _ in range(frame_count):
                     game.step_frame(delta_time)
+                    active_world = game.world
+                    if active_world is not None:
+                        resolved = game._physics_backend_registry.resolve(active_world)
+                        if resolved.backend is not None:
+                            physics_metric_samples.append({
+                                str(key): float(value)
+                                for key, value in resolved.backend.get_step_metrics().items()
+                                if isinstance(value, (int, float))
+                            })
 
                 profiler_report = api.get_profiler_report()
                 world = game.world
@@ -294,6 +316,19 @@ def run_benchmark(
                     stop_start = time.perf_counter()
                     api.stop()
                     operations["play_to_edit"] = {"ms": _elapsed_ms(stop_start)}
+                if physics_metric_samples:
+                    cold = physics_metric_samples[0]
+                    hot = physics_metric_samples[-1]
+                    operations["physics_cache_metrics"] = {
+                        "cold_frame": cold,
+                        "hot_frame": hot,
+                        "aabb_build_reduction": cold.get("aabb_builds", 0.0)
+                        - hot.get("aabb_builds", 0.0),
+                        "shape_build_reduction": cold.get("shape_builds", 0.0)
+                        - hot.get("shape_builds", 0.0),
+                        "candidate_reduction": cold.get("candidate_solids", 0.0)
+                        - hot.get("candidate_solids", 0.0),
+                    }
             finally:
                 game._metrics_sample_every = previous_sample_every
                 game.show_performance_overlay = previous_overlay

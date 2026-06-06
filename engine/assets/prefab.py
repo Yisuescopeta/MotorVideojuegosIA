@@ -332,6 +332,4 @@ class PrefabManager:
             parent_transform = parent.get_component(Transform)
             if child_transform is not None:
                 child_transform.parent = parent_transform
-                if parent_transform is not None and child_transform not in parent_transform.children:
-                    parent_transform.children.append(child_transform)
         return root_entity

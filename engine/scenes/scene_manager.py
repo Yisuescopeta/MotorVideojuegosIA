@@ -1402,8 +1402,8 @@ class SceneManager:
         ]
         for entity in reversed(targets):
             transform = entity.get_component(Transform)
-            if transform is not None and transform.parent is not None and transform in transform.parent.children:
-                transform.parent.children.remove(transform)
+            if transform is not None and transform.parent is not None:
+                transform.parent = None
             world.remove_entity(entity.id)
 
     def _entity_id_for_name(self, entry: SceneWorkspaceEntry, entity_name: Optional[str]) -> Optional[str]:

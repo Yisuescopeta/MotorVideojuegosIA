@@ -89,6 +89,38 @@ class ProfilerApiTests(unittest.TestCase):
             profiler.to_report()["last_frame"]["backend_metrics"],
             {"nested": {"values": [1]}},
         )
+
+    def test_profiler_report_mutation_does_not_alias_internal_last_frame(self) -> None:
+        profiler = EngineProfiler()
+        profiler.record_frame(
+            timings_ms={"frame": 16.5},
+            counters={"draw_calls": 9},
+            memory={"world_json_bytes": 128.0},
+            mode="PLAY",
+            frame_index=7,
+            backend="legacy_aabb",
+            backend_metrics={"nested": {"values": [1]}},
+        )
+
+        report = profiler.to_report()
+        report["last_frame"]["timings_ms"]["frame"] = 99.0
+        report["last_frame"]["counters"]["draw_calls"] = 42
+        report["last_frame"]["memory"]["world_json_bytes"] = 0.0
+        report["last_frame"]["backend_metrics"]["nested"]["values"].append(2)
+
+        self.assertEqual(
+            profiler.to_report()["last_frame"],
+            {
+                "frame": 7,
+                "mode": "PLAY",
+                "backend": "legacy_aabb",
+                "timings_ms": {"frame": 16.5},
+                "counters": {"draw_calls": 9},
+                "memory": {"world_json_bytes": 128.0},
+                "backend_metrics": {"nested": {"values": [1]}},
+            },
+        )
+
     def setUp(self) -> None:
         self._temp_dir = tempfile.TemporaryDirectory()
         self.project_root = Path(self._temp_dir.name) / "project"

@@ -82,6 +82,10 @@ class DebugToolsControllerTests(unittest.TestCase):
             "candidate_pairs": 11,
             "narrow_phase_pairs": 4,
             "actual_collisions": 2,
+            "aabb_builds": 5,
+            "shape_builds": 3,
+            "aabb_cache_hits": 17,
+            "shape_cache_hits": 9,
         }
         self.render_system.get_last_render_stats.return_value = {
             "render_entities": 5,
@@ -97,7 +101,20 @@ class DebugToolsControllerTests(unittest.TestCase):
         self.render_system._tilemap_chunk_cache = {}
         self.backend = Mock()
         self.backend.backend_name = "stub_backend"
-        self.backend.get_step_metrics.return_value = {"ccd_bodies": 8, "contacts": 7, "candidate_solids": 13}
+        self.backend.get_step_metrics.return_value = {
+            "ccd_bodies": 8,
+            "contacts": 7,
+            "candidate_solids": 13,
+            "swept_checks": 6,
+            "aabb_builds": 5,
+            "shape_builds": 3,
+            "aabb_cache_hits": 17,
+            "shape_cache_hits": 9,
+            "spatial_cell_size": 32,
+            "spatial_cell_count": 12,
+            "spatial_references": 24,
+            "spatial_oversized_entries": 1,
+        }
         self.physics_backend_registry = PhysicsBackendRegistry(default_backend_name="stub_backend")
         self.physics_backend_registry.register_backend(self.backend, backend_name="stub_backend")
         self.controller = DebugToolsController(
@@ -182,9 +199,14 @@ class DebugToolsControllerTests(unittest.TestCase):
         self.assertEqual(report["last_frame"]["backend_metrics"]["contacts"], 7)
         self.assertEqual(report["last_frame"]["counters"]["draw_calls"], 9)
         self.assertEqual(report["last_frame"]["counters"]["physics_candidate_solids"], 13)
+        self.assertEqual(report["last_frame"]["counters"]["physics_aabb_cache_hits"], 17)
+        self.assertEqual(report["last_frame"]["counters"]["physics_shape_cache_hits"], 9)
+        self.assertEqual(report["last_frame"]["counters"]["physics_spatial_cell_size"], 32)
         self.assertEqual(report["last_frame"]["counters"]["collision_candidates"], 11)
         self.assertEqual(report["last_frame"]["counters"]["collision_pairs_tested"], 4)
         self.assertEqual(report["last_frame"]["counters"]["collision_hits"], 2)
+        self.assertEqual(report["last_frame"]["counters"]["collision_aabb_cache_hits"], 17)
+        self.assertEqual(report["last_frame"]["counters"]["collision_shape_cache_hits"], 9)
         self.assertEqual(report["last_frame"]["counters"]["canvases"], 1)
         self.assertEqual(report["last_frame"]["counters"]["buttons"], 2)
         self.assertEqual(report["last_frame"]["counters"]["scripts"], 3)

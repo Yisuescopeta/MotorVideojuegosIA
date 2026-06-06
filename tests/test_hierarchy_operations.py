@@ -390,6 +390,67 @@ class TestTransformHierarchyCore(unittest.TestCase):
         self.assertEqual(b.depth, 1)
         self.assertEqual(c.depth, 2)
 
+    def test_deep_hierarchy_reuses_cached_depth_and_global_state(self) -> None:
+        root = Transform(x=5.0, y=7.0)
+        current = root
+        chain = [root]
+        for index in range(1, 12):
+            child = Transform(x=float(index), y=float(index))
+            child.parent = current
+            chain.append(child)
+            current = child
+
+        leaf = chain[-1]
+        self.assertEqual(leaf.depth, 11)
+        self.assertEqual((leaf.x, leaf.y), (71.0, 73.0))
+        first_revisions = [node._global_cache_revision for node in chain]
+
+        self.assertEqual(leaf.depth, 11)
+        self.assertEqual((leaf.x, leaf.y), (71.0, 73.0))
+        self.assertEqual([node._global_cache_revision for node in chain], first_revisions)
+
+    def test_reparent_invalidates_depth_and_preserves_global(self) -> None:
+        root = Transform(x=10.0, y=20.0)
+        branch = Transform(x=5.0, y=6.0)
+        leaf = Transform(x=3.0, y=4.0)
+        branch.parent = root
+        leaf.parent = branch
+
+        self.assertEqual(leaf.depth, 2)
+        self.assertEqual((leaf.x, leaf.y), (18.0, 30.0))
+
+        leaf.set_parent(root)
+
+        self.assertEqual(leaf.depth, 1)
+        self.assertEqual((leaf.x, leaf.y), (18.0, 30.0))
+        self.assertEqual((leaf.local_x, leaf.local_y), (8.0, 10.0))
+
+    def test_set_parent_rejects_cycles(self) -> None:
+        root = Transform()
+        child = Transform()
+        grandchild = Transform()
+        child.set_parent(root)
+        grandchild.set_parent(child)
+
+        with self.assertRaises(ValueError):
+            root.set_parent(grandchild)
+
+        with self.assertRaises(ValueError):
+            root.set_parent(root)
+
+    def test_parent_motion_invalidates_descendant_global_cache(self) -> None:
+        parent = Transform(x=10.0, y=20.0)
+        child = Transform(x=3.0, y=4.0)
+        child.parent = parent
+
+        self.assertEqual((child.x, child.y), (13.0, 24.0))
+        first_revision = child._global_cache_revision
+
+        parent.local_x = 50.0
+
+        self.assertEqual((child.x, child.y), (53.0, 24.0))
+        self.assertGreater(child._global_cache_revision, first_revision)
+
     def test_scale_multiplicative(self) -> None:
         parent = Transform(scale_x=2.0, scale_y=3.0)
         child = Transform(scale_x=0.5, scale_y=0.5)

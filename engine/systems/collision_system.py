@@ -17,6 +17,13 @@ from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.physics.contact_data import ContactManifold2D, ContactPoint2D
+from engine.physics.geometry_cache import (
+    VersionedGeometryCache,
+    collider_geometry_signature,
+    shape_def_geometry_signature,
+    shape_set_geometry_signature,
+    transform_pose_signature,
+)
 from engine.physics.shapes import AABBShape, CapsuleShape, CircleShape, PolygonShape, ShapeFactory
 from engine.physics.spatial_hash import SpatialHash2D
 
@@ -65,6 +72,14 @@ class CollisionSystem:
             "candidate_pairs": 0,
             "narrow_phase_pairs": 0,
             "actual_collisions": 0,
+            "aabb_builds": 0,
+            "shape_builds": 0,
+            "aabb_cache_hits": 0,
+            "shape_cache_hits": 0,
+            "spatial_cell_size": 0,
+            "spatial_cell_count": 0,
+            "spatial_references": 0,
+            "spatial_oversized_entries": 0,
         }
         self._query_buffer: set[int] = set()
         self._spatial_hash_cell_size: float = 128.0
@@ -72,6 +87,8 @@ class CollisionSystem:
         self._grid: SpatialHash2D = SpatialHash2D(cell_size=self._spatial_hash_cell_size)
         self._entries_by_id: dict[int, _CollisionEntry] = {}
         self._checked_pairs: set[int] = set()
+        self._geometry_cache = VersionedGeometryCache()
+        self._active_collider_cache_keys: dict[int, int] = {}
 
     def set_event_bus(self, event_bus: "EventBus") -> None:
         self._event_bus = event_bus
@@ -79,6 +96,7 @@ class CollisionSystem:
     def update(self, world: World, shared_grid: SpatialHash2D | None = None) -> None:
         self._collisions.clear()
         self._reset_step_metrics()
+        self._geometry_cache.begin_frame(world)
         self._query_buffer.clear()
         self._checked_pairs.clear()
 
@@ -102,28 +120,35 @@ class CollisionSystem:
         if has_rigidbodies:
             self._clear_contact_tracking(world)
 
-        if shared_grid is not None:
-            shared_grid.clear()
-            grid = shared_grid
-        else:
-            grid = self._prepare_grid()
         entries_by_id = self._entries_by_id
         entries_by_id.clear()
 
-        for entity in world.get_entities_with(Transform, Collider):
+        collider_entities = world.get_entities_with(Transform, Collider)
+        current_collider_keys = {
+            int(entity.id): id(collider)
+            for entity in collider_entities
+            if (collider := entity.get_component(Collider)) is not None
+        }
+        for entity_id, collider_id in self._active_collider_cache_keys.items():
+            if current_collider_keys.get(entity_id) != collider_id:
+                self._geometry_cache.invalidate(("collider", collider_id))
+                self._geometry_cache.invalidate(("shape_set", entity_id))
+        self._active_collider_cache_keys = current_collider_keys
+
+        for entity in collider_entities:
             transform = entity.get_component(Transform)
             collider = entity.get_component(Collider)
-            if transform is None or collider is None or not collider.enabled:
+            if transform is None or collider is None:
                 continue
             shape_set = entity.get_component(CollisionShapeSet2D)
             if shape_set is not None:
                 # Use composite bounds from shape set, flat shape defs
-                bounds = shape_set.get_composite_bounds(transform.x, transform.y)
+                bounds = self._get_cached_shape_set_bounds(entity, shape_set, transform)
                 shape_defs = tuple(shape_set.shapes)
             else:
                 computed_bounds = self._compute_shape_bounds(entity, transform)
                 if computed_bounds is None:
-                    bounds = collider.get_bounds(transform.x, transform.y)
+                    bounds = self._get_cached_collider_bounds(collider, transform)
                 else:
                     bounds = computed_bounds
                 shape_defs = (self._collider_to_shape_def(collider),)
@@ -136,7 +161,6 @@ class CollisionSystem:
                 use_shape_set=(shape_set is not None),
             )
             entries_by_id[int(entity.id)] = entry
-            grid.insert(entity.id, entry.aabb)
 
         # Also gather entities with dedicated shape components but no Collider.
         if has_dedicated_shapes:
@@ -149,7 +173,7 @@ class CollisionSystem:
                     continue
                 shape_set = entity.get_component(CollisionShapeSet2D)
                 if shape_set is not None:
-                    bounds = shape_set.get_composite_bounds(transform.x, transform.y)
+                    bounds = self._get_cached_shape_set_bounds(entity, shape_set, transform)
                     shape_defs = tuple(shape_set.shapes)
                     entry = _CollisionEntry(
                         entity=entity,
@@ -160,7 +184,6 @@ class CollisionSystem:
                         use_shape_set=True,
                     )
                     entries_by_id[entity_id] = entry
-                    grid.insert(entity.id, entry.aabb)
                     continue
                 if not self._entity_has_collision_shape(entity):
                     continue
@@ -174,7 +197,22 @@ class CollisionSystem:
                     aabb=computed_bounds,
                 )
                 entries_by_id[entity_id] = entry
-                grid.insert(entity.id, entry.aabb)
+
+        selected_cell_size = SpatialHash2D.choose_cell_size(
+            [entry.aabb for entry in entries_by_id.values()],
+            fallback=self._spatial_hash_cell_size,
+        )
+        if shared_grid is not None:
+            shared_grid.reset(cell_size=selected_cell_size)
+            grid = shared_grid
+        else:
+            grid = self._prepare_grid(selected_cell_size)
+        for entity_id, entry in entries_by_id.items():
+            grid.insert(entity_id, entry.aabb)
+        self._step_metrics["spatial_cell_size"] = int(grid.cell_size)
+        self._step_metrics["spatial_cell_count"] = grid.cell_count
+        self._step_metrics["spatial_references"] = grid.reference_count
+        self._step_metrics["spatial_oversized_entries"] = grid.oversized_entry_count
 
         checked_pairs = self._checked_pairs
         checked_pairs.clear()
@@ -231,6 +269,14 @@ class CollisionSystem:
         self._step_metrics["candidate_pairs"] = 0
         self._step_metrics["narrow_phase_pairs"] = 0
         self._step_metrics["actual_collisions"] = 0
+        self._step_metrics["aabb_builds"] = 0
+        self._step_metrics["shape_builds"] = 0
+        self._step_metrics["aabb_cache_hits"] = 0
+        self._step_metrics["shape_cache_hits"] = 0
+        self._step_metrics["spatial_cell_size"] = 0
+        self._step_metrics["spatial_cell_count"] = 0
+        self._step_metrics["spatial_references"] = 0
+        self._step_metrics["spatial_oversized_entries"] = 0
 
     def _clear_contact_tracking(self, world: World) -> None:
         """Limpia el tracking de contactos para RigidBodies con contact_monitor activo."""
@@ -239,11 +285,8 @@ class CollisionSystem:
             if rb is not None and rb.contact_monitor:
                 rb._clear_contacts()
 
-    def _prepare_grid(self) -> SpatialHash2D:
-        if self._grid.cell_size != max(float(self._spatial_hash_cell_size), 1.0):
-            self._grid = SpatialHash2D(cell_size=self._spatial_hash_cell_size)
-        else:
-            self._grid.clear()
+    def _prepare_grid(self, cell_size: float) -> SpatialHash2D:
+        self._grid.reset(cell_size=cell_size)
         return self._grid
 
     def _pair_shift(self, entries_by_id: dict[int, _CollisionEntry]) -> int:
@@ -288,12 +331,16 @@ class CollisionSystem:
         defs_b = entry_b.shape_defs if entry_b.shape_defs else (None,)
 
         best_manifold: ContactManifold2D | None = None
-        for def_a in defs_a:
-            shape_a = self._build_shape_from_def_or_entry(def_a, entry_a, transform_a)
+        for index_a, def_a in enumerate(defs_a):
+            shape_a = self._build_shape_from_def_or_entry(
+                def_a, index_a, entry_a, transform_a,
+            )
             if shape_a is None:
                 continue
-            for def_b in defs_b:
-                shape_b = self._build_shape_from_def_or_entry(def_b, entry_b, transform_b)
+            for index_b, def_b in enumerate(defs_b):
+                shape_b = self._build_shape_from_def_or_entry(
+                    def_b, index_b, entry_b, transform_b,
+                )
                 if shape_b is None:
                     continue
                 manifold = shape_a.collide_shape(shape_b)
@@ -426,8 +473,7 @@ class CollisionSystem:
 
         return False
 
-    @staticmethod
-    def _compute_shape_bounds(entity: Entity, transform: Transform) -> AABB | None:
+    def _compute_shape_bounds(self, entity: Entity, transform: Transform) -> AABB | None:
         """Compute AABB bounds from CollisionShape2D, CollisionPolygon2D, or Collider.
 
         Precedence: CollisionShape2D > CollisionPolygon2D > Collider.
@@ -435,14 +481,85 @@ class CollisionSystem:
         """
         shape = entity.get_component(CollisionShape2D)
         if shape is not None and not shape.disabled:
-            return shape.get_bounds(transform.x, transform.y)
+            return self._get_cached_component_bounds(
+                ("collision_shape", int(entity.id)),
+                self._collision_shape_signature(shape),
+                transform,
+                lambda: shape.get_bounds(transform.x, transform.y),
+            )
         poly = entity.get_component(CollisionPolygon2D)
         if poly is not None and not poly.disabled:
-            return poly.get_bounds(transform.x, transform.y)
+            return self._get_cached_component_bounds(
+                ("collision_polygon", int(entity.id)),
+                self._collision_polygon_signature(poly),
+                transform,
+                lambda: poly.get_bounds(transform.x, transform.y),
+            )
         collider = entity.get_component(Collider)
         if collider is not None and collider.enabled:
-            return collider.get_bounds(transform.x, transform.y)
+            return self._get_cached_collider_bounds(collider, transform)
         return None
+
+    def _get_cached_collider_bounds(self, collider: Collider, transform: Transform) -> AABB:
+        return self._get_cached_component_bounds(
+            ("collider", id(collider)),
+            collider_geometry_signature(collider),
+            transform,
+            lambda: collider.get_bounds(transform.x, transform.y),
+        )
+
+    def _get_cached_shape_set_bounds(
+        self,
+        entity: Entity,
+        shape_set: CollisionShapeSet2D,
+        transform: Transform,
+    ) -> AABB:
+        return self._get_cached_component_bounds(
+            ("shape_set", int(entity.id)),
+            shape_set_geometry_signature(shape_set.shapes),
+            transform,
+            lambda: shape_set.get_composite_bounds(transform.x, transform.y),
+        )
+
+    def _get_cached_component_bounds(
+        self,
+        key: tuple[object, ...],
+        geometry_signature: tuple[object, ...],
+        transform: Transform,
+        builder,
+    ) -> AABB:
+        bounds, hit = self._geometry_cache.get_aabb(
+            key,
+            geometry_signature,
+            transform_pose_signature(transform),
+            builder,
+        )
+        if hit:
+            self._step_metrics["aabb_cache_hits"] += 1
+        else:
+            self._step_metrics["aabb_builds"] += 1
+        return bounds
+
+    @staticmethod
+    def _collision_shape_signature(shape: CollisionShape2D) -> tuple[object, ...]:
+        return (
+            bool(shape.disabled),
+            str(shape.shape_type or "box"),
+            float(shape.width),
+            float(shape.height),
+            float(shape.radius),
+            tuple(tuple(float(value) for value in point) for point in shape.points),
+            bool(shape.one_way_collision),
+        )
+
+    @staticmethod
+    def _collision_polygon_signature(poly: CollisionPolygon2D) -> tuple[object, ...]:
+        return (
+            bool(poly.disabled),
+            str(poly.build_mode),
+            tuple(tuple(float(value) for value in point) for point in poly.polygon),
+            bool(poly.one_way_collision),
+        )
 
     @staticmethod
     def _entity_has_collision_shape(entity: Entity) -> bool:
@@ -504,12 +621,16 @@ class CollisionSystem:
         if transform_a is None or transform_b is None:
             return True
 
-        for def_a in defs_a:
-            shape_a = self._build_shape_from_def_or_entry(def_a, entry_a, transform_a)
+        for index_a, def_a in enumerate(defs_a):
+            shape_a = self._build_shape_from_def_or_entry(
+                def_a, index_a, entry_a, transform_a,
+            )
             if shape_a is None:
                 continue
-            for def_b in defs_b:
-                shape_b = self._build_shape_from_def_or_entry(def_b, entry_b, transform_b)
+            for index_b, def_b in enumerate(defs_b):
+                shape_b = self._build_shape_from_def_or_entry(
+                    def_b, index_b, entry_b, transform_b,
+                )
                 if shape_b is None:
                     continue
                 if isinstance(shape_a, AABBShape) and isinstance(shape_b, AABBShape):
@@ -518,10 +639,21 @@ class CollisionSystem:
                     return True
         return False
 
-    def _build_shape_from_def_or_entry(self, def_: CollisionShape2DDef | None, entry: _CollisionEntry, transform: Transform):
+    def _build_shape_from_def_or_entry(
+        self,
+        def_: CollisionShape2DDef | None,
+        shape_index: int,
+        entry: _CollisionEntry,
+        transform: Transform,
+    ):
         """Build ShapeInstance from a CollisionShape2DDef, or fallback to entry."""
-        if def_ is not None:
-            return ShapeFactory.build_from_def(def_, transform.x, transform.y)
+        if def_ is not None and entry.use_shape_set:
+            return self._get_cached_component_shape(
+                ("shape_def", int(entry.entity.id), int(shape_index)),
+                shape_def_geometry_signature(def_),
+                transform,
+                lambda: ShapeFactory.build_from_def(def_, transform.x, transform.y),
+            )
         return self._build_shape_from_entry(entry)
 
     def _build_shape_from_entry(self, entry: _CollisionEntry):
@@ -534,39 +666,80 @@ class CollisionSystem:
         # 1. Collider
         collider = entry.collider
         if collider is not None and collider.enabled:
-            return ShapeFactory.build(collider, transform.x, transform.y)
+            return self._get_cached_component_shape(
+                ("collider", id(collider)),
+                collider_geometry_signature(collider),
+                transform,
+                lambda: ShapeFactory.build(collider, transform.x, transform.y),
+            )
 
         # 2. CollisionShape2D
         shape2d = entity.get_component(CollisionShape2D)
         if shape2d is not None and not shape2d.disabled:
-            cx = transform.x
-            cy = transform.y
-            st = shape2d.shape_type
-            if st == "circle":
-                return CircleShape(cx, cy, shape2d.radius)
-            if st == "capsule":
-                return CapsuleShape(cx, cy, shape2d.radius, shape2d.height)
-            if st == "polygon" and shape2d.points:
-                world_verts = [(cx + p[0], cy + p[1]) for p in shape2d.points]
-                return PolygonShape(world_verts)
-            hw = shape2d.width / 2
-            hh = shape2d.height / 2
-            return AABBShape(cx, cy, hw, hh)
+            def build_shape2d():
+                cx = transform.x
+                cy = transform.y
+                st = shape2d.shape_type
+                if st == "circle":
+                    return CircleShape(cx, cy, shape2d.radius)
+                if st == "capsule":
+                    return CapsuleShape(cx, cy, shape2d.radius, shape2d.height)
+                if st == "polygon" and shape2d.points:
+                    world_verts = [(cx + p[0], cy + p[1]) for p in shape2d.points]
+                    return PolygonShape(world_verts)
+                return AABBShape(cx, cy, shape2d.width / 2, shape2d.height / 2)
+
+            return self._get_cached_component_shape(
+                ("collision_shape", int(entity.id)),
+                self._collision_shape_signature(shape2d),
+                transform,
+                build_shape2d,
+            )
 
         # 3. CollisionPolygon2D
         poly = entity.get_component(CollisionPolygon2D)
         if poly is not None and not poly.disabled and poly.polygon:
-            world_verts = [(transform.x + v[0], transform.y + v[1]) for v in poly.polygon]
-            return PolygonShape(world_verts)
+            return self._get_cached_component_shape(
+                ("collision_polygon", int(entity.id)),
+                self._collision_polygon_signature(poly),
+                transform,
+                lambda: PolygonShape([
+                    (transform.x + vertex[0], transform.y + vertex[1])
+                    for vertex in poly.polygon
+                ]),
+            )
 
         # 4. Fallback: AABB desde bounds calculados
-        aabb = entry.aabb
-        return AABBShape(
-            (aabb[0] + aabb[2]) / 2,
-            (aabb[1] + aabb[3]) / 2,
-            (aabb[2] - aabb[0]) / 2,
-            (aabb[3] - aabb[1]) / 2,
+        return self._get_cached_component_shape(
+            ("fallback_aabb", int(entity.id)),
+            tuple(float(value) for value in entry.aabb),
+            transform,
+            lambda: AABBShape(
+                (entry.aabb[0] + entry.aabb[2]) / 2,
+                (entry.aabb[1] + entry.aabb[3]) / 2,
+                (entry.aabb[2] - entry.aabb[0]) / 2,
+                (entry.aabb[3] - entry.aabb[1]) / 2,
+            ),
         )
+
+    def _get_cached_component_shape(
+        self,
+        key: tuple[object, ...],
+        geometry_signature: tuple[object, ...],
+        transform: Transform,
+        builder,
+    ):
+        shape, hit = self._geometry_cache.get_shape(
+            key,
+            geometry_signature,
+            transform_pose_signature(transform),
+            builder,
+        )
+        if hit:
+            self._step_metrics["shape_cache_hits"] += 1
+        else:
+            self._step_metrics["shape_builds"] += 1
+        return shape
 
     def _layers_can_collide(self, world: World, layer_a: str, layer_b: str) -> bool:
         matrix = world.feature_metadata.get("physics_2d", {}).get("layer_matrix", {})

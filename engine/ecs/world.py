@@ -465,11 +465,7 @@ class World:
             parent_transform = parent.get_component(Transform)
             if child_transform is None:
                 continue
-            if child_transform.parent and child_transform in child_transform.parent.children:
-                child_transform.parent.children.remove(child_transform)
             child_transform.parent = parent_transform
-            if parent_transform is not None and child_transform not in parent_transform.children:
-                parent_transform.children.append(child_transform)
 
     def _clone_component(self, component: Component, *, entity_name: str) -> Component:
         component_class = type(component)

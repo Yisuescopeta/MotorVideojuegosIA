@@ -703,8 +703,10 @@ resolucion de contactos y joints bilaterales entre cuerpos rigidos 2D.
   `sleep_timer` se acumula hasta superar `time_to_sleep` (default 0.5s) antes
   de dormir. Cualquier movimiento reactiva la isla.
 - **Metricas** via `get_step_metrics()`: `ccd_bodies`, `swept_checks`,
-  `candidate_solids`, `island_count` (total de islas) y `sleeping_islands`
-  (islas dormidas este frame).
+  `candidate_solids`, `island_count`, `sleeping_islands`, `aabb_builds`,
+  `shape_builds`, `aabb_cache_hits`, `shape_cache_hits` y estadisticas del
+  broadphase (`spatial_cell_size`, `spatial_cell_count`,
+  `spatial_references`, `spatial_oversized_entries`).
 - `_body_id_to_island` persiste el mapeo entre frames para transferir estado
   de sueño entre islas que mantienen la misma composicion.
 
@@ -737,29 +739,39 @@ La busqueda de entidades con joints paso de `world.iter_entities()` a
 
 ### Broadphase unificado
 
-El motor mantiene un unico `SpatialHash2D` (celda 128px) compartido entre
-`PhysicsSystem`, `CollisionSystem` y las queries de `LegacyAABBPhysicsBackend`:
+El motor mantiene un `SpatialHash2D` compartido entre `PhysicsSystem`,
+`CollisionSystem` y las queries de `LegacyAABBPhysicsBackend`:
 
-1. `LegacyAABBPhysicsBackend.step()` construye el grid de todos los colliders
-   del mundo al inicio del frame (shared_grid).
-2. Pasa `shared_grid=grid` a `PhysicsSystem.update()`: PhysicsSystem lo usa
-   como broadphase en lugar de construir su propio `SpatialHash2D`.
-3. Despues de la simulacion, repuebla el grid con posiciones post-fisica y lo
-   pasa a `CollisionSystem.update(shared_grid=grid)`, que lo reusa en lugar de
-   construir su propio grid.
+1. `LegacyAABBPhysicsBackend.step()` crea el contenedor compartido.
+2. `CollisionSystem.update(shared_grid=grid)` selecciona el tamano de celda,
+   limpia y puebla el grid con las posiciones pre-fisica.
+3. `PhysicsSystem.update(shared_grid=grid)` reutiliza ese indice para estaticos
+   y construye un indice local de cuerpos moviles con el mismo tamano de celda.
 4. `query_physics_ray()`, `query_physics_aabb()` y `query_shape_cast()` usan
    el grid compartido (`self._shared_grid`) para obtener candidatos iniciales
    en vez de iterar todas las entidades del mundo.
 
-Benefits: ~1 SpatialHash2D construido por frame (vs ~3 antes de la
-unificacion). El grid se almacena como `PhysicsSystem.spatial_grid` (propiedad
-de solo lectura) y en `LegacyAABBPhysicsBackend._shared_grid`.
+El tamano se calcula como la siguiente potencia de dos de dos veces la mediana
+del lado mayor de los AABB activos, limitado a `32..256px` y con fallback
+`128px`. Un AABB que ocuparia mas de 256 celdas se registra como entrada
+sobredimensionada y se incluye conservativamente en queries; el filtro AABB
+exacto posterior elimina falsos positivos.
 
-**Nuevo metodo en SpatialHash2D:**
+Metodos relevantes de `SpatialHash2D`:
 - `query_ray_candidates(ox, oy, dx, dy, max_distance)`: retorna IDs de entidad
   en celdas intersecadas por el barrido AABB del segmento de rayo (DDA
   conservativo via swept AABB). Usado por `query_physics_ray` para reducir
   candidatos.
+- `choose_cell_size(aabbs)`: seleccion determinista del tamano de celda.
+- `reset(cell_size=...)`: reutiliza buffers internos con un nuevo tamano.
+
+`PhysicsSystem` y `CollisionSystem` mantienen una cache runtime versionada de
+AABB y shapes. La version se deriva de los valores de `Transform`, `enabled`,
+`shape_type`, `points`, `radius`, `width`, `height`, `capsule_height` y
+offsets. Cada geometria retiene como maximo dos poses, suficientes para posicion
+actual y tentativa; entradas sin uso se purgan. `ShapeFactory.build` queda
+despues de broadphase y filtro AABB, y narrow-phase/manifold comparten la misma
+shape cache. Esta cache no modifica `Scene`, componentes ni serializacion.
 
 ### Box2D: CollisionFilter2D soportado
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from engine.serialization.json_value import clone_json_value
+from engine.serialization.json_value import freeze_json_value, thaw_json_value
 
 PROFILE_REPORT_VERSION = 1
 
@@ -45,6 +45,20 @@ class EngineProfiler:
     last_frame: dict[str, Any] = field(default_factory=dict)
     frames: int = 0
 
+    def _copy_last_frame_for_report(self) -> dict[str, Any]:
+        if not self.last_frame:
+            return {}
+        last_frame = self.last_frame
+        return {
+            "frame": int(last_frame.get("frame", 0)),
+            "mode": str(last_frame.get("mode", "")),
+            "backend": str(last_frame.get("backend", "")),
+            "timings_ms": dict(last_frame.get("timings_ms", {})),
+            "counters": dict(last_frame.get("counters", {})),
+            "memory": dict(last_frame.get("memory", {})),
+            "backend_metrics": thaw_json_value(last_frame.get("backend_metrics", {})),
+        }
+
     def begin_run(self, label: str = "default", run_label: str | None = None) -> None:
         resolved_label = run_label if run_label is not None else label
         self.run_label = str(resolved_label or "default")
@@ -79,7 +93,7 @@ class EngineProfiler:
             "timings_ms": {key: float(value) for key, value in timings_ms.items()},
             "counters": {key: int(value) for key, value in counters.items()},
             "memory": {key: float(value) for key, value in memory.items()},
-            "backend_metrics": clone_json_value(backend_metrics),
+            "backend_metrics": freeze_json_value(backend_metrics),
         }
 
     def to_report(self) -> dict[str, Any]:
@@ -99,5 +113,5 @@ class EngineProfiler:
                 "avg": counters_avg,
                 "max": dict(sorted(self.counters_max.items())),
             },
-            "last_frame": clone_json_value(self.last_frame),
+            "last_frame": self._copy_last_frame_for_report(),
         }

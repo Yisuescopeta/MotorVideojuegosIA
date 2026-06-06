@@ -227,11 +227,22 @@ class DebugToolsController:
                 "physics_ccd_bodies": 0,
                 "physics_contacts": 0,
                 "physics_candidate_solids": 0,
+                "physics_swept_checks": 0,
                 "physics_aabb_builds": 0,
                 "physics_shape_builds": 0,
+                "physics_aabb_cache_hits": 0,
+                "physics_shape_cache_hits": 0,
+                "physics_spatial_cell_size": 0,
+                "physics_spatial_cell_count": 0,
+                "physics_spatial_references": 0,
+                "physics_spatial_oversized_entries": 0,
                 "collision_candidates": 0,
                 "collision_pairs_tested": 0,
                 "collision_hits": 0,
+                "collision_aabb_builds": 0,
+                "collision_shape_builds": 0,
+                "collision_aabb_cache_hits": 0,
+                "collision_shape_cache_hits": 0,
                 "canvases": 0,
                 "buttons": 0,
                 "scripts": 0,
@@ -258,11 +269,22 @@ class DebugToolsController:
         physics_ccd_bodies = 0
         physics_contacts = 0
         physics_candidate_solids = 0
+        physics_swept_checks = 0
         physics_aabb_builds = 0
         physics_shape_builds = 0
+        physics_aabb_cache_hits = 0
+        physics_shape_cache_hits = 0
+        physics_spatial_cell_size = 0
+        physics_spatial_cell_count = 0
+        physics_spatial_references = 0
+        physics_spatial_oversized_entries = 0
         collision_candidates = 0
         collision_pairs_tested = 0
         collision_hits = 0
+        collision_aabb_builds = 0
+        collision_shape_builds = 0
+        collision_aabb_cache_hits = 0
+        collision_shape_cache_hits = 0
 
         render_system = self._get_render_system()
         if render_system is not None and hasattr(render_system, "get_last_render_stats"):
@@ -286,8 +308,17 @@ class DebugToolsController:
             physics_ccd_bodies = int(backend_metrics.get("ccd_bodies", 0))
             physics_contacts = int(backend_metrics.get("contacts", 0))
             physics_candidate_solids = int(backend_metrics.get("candidate_solids", 0))
+            physics_swept_checks = int(backend_metrics.get("swept_checks", 0))
             physics_aabb_builds = int(backend_metrics.get("aabb_builds", 0))
             physics_shape_builds = int(backend_metrics.get("shape_builds", 0))
+            physics_aabb_cache_hits = int(backend_metrics.get("aabb_cache_hits", 0))
+            physics_shape_cache_hits = int(backend_metrics.get("shape_cache_hits", 0))
+            physics_spatial_cell_size = int(backend_metrics.get("spatial_cell_size", 0))
+            physics_spatial_cell_count = int(backend_metrics.get("spatial_cell_count", 0))
+            physics_spatial_references = int(backend_metrics.get("spatial_references", 0))
+            physics_spatial_oversized_entries = int(
+                backend_metrics.get("spatial_oversized_entries", 0)
+            )
 
         collision_system = self._get_collision_system()
         if collision_system is not None and hasattr(collision_system, "get_step_metrics"):
@@ -295,6 +326,10 @@ class DebugToolsController:
             collision_candidates = int(collision_metrics.get("candidate_pairs", 0))
             collision_pairs_tested = int(collision_metrics.get("narrow_phase_pairs", 0))
             collision_hits = int(collision_metrics.get("actual_collisions", 0))
+            collision_aabb_builds = int(collision_metrics.get("aabb_builds", 0))
+            collision_shape_builds = int(collision_metrics.get("shape_builds", 0))
+            collision_aabb_cache_hits = int(collision_metrics.get("aabb_cache_hits", 0))
+            collision_shape_cache_hits = int(collision_metrics.get("shape_cache_hits", 0))
 
         counters = {
             "entities": active_world.entity_count(),
@@ -309,11 +344,22 @@ class DebugToolsController:
             "physics_ccd_bodies": physics_ccd_bodies,
             "physics_contacts": physics_contacts,
             "physics_candidate_solids": physics_candidate_solids,
+            "physics_swept_checks": physics_swept_checks,
             "physics_aabb_builds": physics_aabb_builds,
             "physics_shape_builds": physics_shape_builds,
+            "physics_aabb_cache_hits": physics_aabb_cache_hits,
+            "physics_shape_cache_hits": physics_shape_cache_hits,
+            "physics_spatial_cell_size": physics_spatial_cell_size,
+            "physics_spatial_cell_count": physics_spatial_cell_count,
+            "physics_spatial_references": physics_spatial_references,
+            "physics_spatial_oversized_entries": physics_spatial_oversized_entries,
             "collision_candidates": collision_candidates,
             "collision_pairs_tested": collision_pairs_tested,
             "collision_hits": collision_hits,
+            "collision_aabb_builds": collision_aabb_builds,
+            "collision_shape_builds": collision_shape_builds,
+            "collision_aabb_cache_hits": collision_aabb_cache_hits,
+            "collision_shape_cache_hits": collision_shape_cache_hits,
             "canvases": len(active_world.get_entities_with(Canvas)),
             "buttons": len(active_world.get_entities_with(UIButton)),
             "scripts": len(active_world.get_entities_with(ScriptBehaviour)),

@@ -55,6 +55,15 @@ class CanvasUISystemTests(unittest.TestCase):
 
         self.assertEqual(button.on_click, {"args": {"values": [1]}})
 
+    def test_ui_button_from_dict_does_not_alias_source_payload(self) -> None:
+        source = {"on_click": {"args": {"values": [1]}}}
+        button = UIButton.from_dict(source)
+        source["on_click"]["args"]["values"].append(2)
+        serialized = button.to_dict()
+        serialized["on_click"]["args"]["values"].append(3)
+
+        self.assertEqual(button.on_click, {"args": {"values": [1]}})
+
     def setUp(self) -> None:
         self._temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self._temp_dir.name)
