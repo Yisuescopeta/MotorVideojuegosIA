@@ -21,6 +21,10 @@ EJEMPLO DE USO:
             return {"x": self.x, "y": self.y}
 """
 
+from __future__ import annotations
+
+from engine.serialization.json_value import clone_json_value
+
 
 class Component:
     """
@@ -69,6 +73,11 @@ class Component:
             if hasattr(instance, key):
                 setattr(instance, key, value)
         return instance
+
+    def clone(self) -> "Component":
+        """Crea una copia independiente usando el contrato serializable."""
+        payload = clone_json_value(self.to_dict())
+        return type(self).from_dict(payload)
 
     def __repr__(self) -> str:
         """Representación legible del componente para debug."""

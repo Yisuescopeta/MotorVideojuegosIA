@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 from engine.components.animatable_body_2d import AnimatableBody2D
 from engine.components.area2d import Area2D
@@ -87,6 +87,8 @@ class PhysicsSystem:
             "ccd_bodies": 0,
             "swept_checks": 0,
             "candidate_solids": 0,
+            "aabb_builds": 0,
+            "shape_builds": 0,
         }
         self._swept_contacts: list[tuple[int, int]] = []
         self._swept_contact_set: set[tuple[int, int]] = set()
@@ -97,21 +99,40 @@ class PhysicsSystem:
         self._body_id_to_island: dict[int, Island2D] = {}
         self._position_correction_ratio: float = 0.05  # Minimal safety net; PGS position solve handles main correction
         self._PUSH_OUT_MIN_OVERLAP: float = 0.005
+        self._bounds_cache: dict[tuple[int, float, float], AABB] = {}
+        self._shape_cache: dict[tuple[int, float, float], Any] = {}
+        self._composite_bounds_cache: dict[tuple[int, float, float], AABB] = {}
+        self._static_grid_cache_key: tuple[Any, ...] | None = None
+        self._static_grid_cache: SpatialHash2D | None = None
 
     def set_event_bus(self, event_bus: Optional[Any]) -> None:  # type: ignore[no-any-explicit]  # EventBus: tipo externo determinado en runtime
         self._event_bus = event_bus
 
     def update(self, world: World, delta_time: float, shared_grid: SpatialHash2D | None = None) -> None:
-        self._step_metrics = {"ccd_bodies": 0, "swept_checks": 0, "candidate_solids": 0, "island_count": 0, "sleeping_islands": 0}
+        self._step_metrics = {
+            "ccd_bodies": 0,
+            "swept_checks": 0,
+            "candidate_solids": 0,
+            "island_count": 0,
+            "sleeping_islands": 0,
+            "aabb_builds": 0,
+            "shape_builds": 0,
+        }
         self._swept_contacts = []
         self._swept_contact_set = set()
+        self._bounds_cache.clear()
+        self._shape_cache.clear()
+        self._composite_bounds_cache.clear()
         if not self._world_has_any_component(world, RigidBody, StaticBody2D, AnimatableBody2D, Joint2D):
             self._last_grid = shared_grid
             return
         entities = world.get_entities_with(Transform, RigidBody)
         static_like_candidates: dict[int, _SolidCandidate] = {}
         moving_candidates: list[_SolidCandidate] = []
-        grid = shared_grid if shared_grid is not None else SpatialHash2D(cell_size=self._spatial_hash_cell_size)
+        static_entries: list[tuple[_SolidCandidate, Transform]] = []
+        static_signature: list[tuple[Any, ...]] = []
+        moving_grid = SpatialHash2D(cell_size=self._spatial_hash_cell_size)
+        moving_by_id: dict[int, _SolidCandidate] = {}
 
         for entity in world.get_entities_with(Transform, Collider):
             transform = entity.get_component(Transform)
@@ -122,13 +143,73 @@ class PhysicsSystem:
                 continue
             candidate = _SolidCandidate(entity=entity, collider=collider)
             effective_type = self._get_effective_body_type(entity)
-            solid_aabb = self._get_solid_composite_aabb(entity, transform, collider)
             if effective_type == "static":
                 static_like_candidates[int(entity.id)] = candidate
-                if shared_grid is None:
-                    grid.insert(entity.id, solid_aabb)
+                static_entries.append((candidate, transform))
+                shape_set = entity.get_component(CollisionShapeSet2D)
+                shape_set_signature: tuple[Any, ...] = ()
+                if shape_set is not None:
+                    shape_set_signature = tuple(
+                        (
+                            shape.shape_type,
+                            shape.offset_x,
+                            shape.offset_y,
+                            shape.disabled,
+                            shape.is_trigger,
+                            shape.width,
+                            shape.height,
+                            shape.radius,
+                            shape.capsule_height,
+                            tuple(tuple(point) for point in shape.points),
+                        )
+                        for shape in shape_set.shapes
+                    )
+                static_signature.append(
+                    (
+                        int(entity.id),
+                        transform.x,
+                        transform.y,
+                        id(collider),
+                        collider.enabled,
+                        collider.width,
+                        collider.height,
+                        collider.offset_x,
+                        collider.offset_y,
+                        collider.shape_type,
+                        collider.radius,
+                        collider.capsule_height,
+                        tuple(tuple(point) for point in collider.points),
+                        shape_set_signature,
+                    )
+                )
             else:
                 moving_candidates.append(candidate)
+                moving_by_id[int(entity.id)] = candidate
+                moving_grid.insert(
+                    entity.id,
+                    self._get_solid_composite_aabb(entity, transform, collider),
+                )
+
+        if shared_grid is not None:
+            grid = shared_grid
+        else:
+            cache_key = (
+                id(world),
+                world.structure_version,
+                world.physics_version,
+                tuple(static_signature),
+            )
+            if cache_key == self._static_grid_cache_key and self._static_grid_cache is not None:
+                grid = self._static_grid_cache
+            else:
+                grid = SpatialHash2D(cell_size=self._spatial_hash_cell_size)
+                for candidate, transform in static_entries:
+                    grid.insert(
+                        candidate.entity.id,
+                        self._get_solid_composite_aabb(candidate.entity, transform, candidate.collider),
+                    )
+                self._static_grid_cache_key = cache_key
+                self._static_grid_cache = grid
         self._last_grid = grid
 
         moving_candidates.sort(key=lambda candidate: int(candidate.entity.id))
@@ -236,6 +317,8 @@ class PhysicsSystem:
                 world, entity, rigidbody, collider, transform,
                 grid, static_like_candidates, moving_candidates,
                 delta_x, delta_y,
+                moving_grid=moving_grid,
+                moving_by_id=moving_by_id,
             )
             self._step_metrics["candidate_solids"] += len(nearby_solids)
             body_nearby[int(entity.id)] = nearby_solids
@@ -260,8 +343,8 @@ class PhysicsSystem:
                     if other_transform is None:
                         continue
 
-                    my_bounds = collider.get_bounds(tentative_x, tentative_y)
-                    other_bounds = solid.collider.get_bounds(other_transform.x, other_transform.y)
+                    my_bounds = self._get_cached_bounds(collider, tentative_x, tentative_y)
+                    other_bounds = self._get_cached_bounds(solid.collider, other_transform.x, other_transform.y)
                     if not self._aabb_overlaps(my_bounds, other_bounds):
                         continue
 
@@ -275,8 +358,8 @@ class PhysicsSystem:
                     shape_contact_x = 0.0
                     shape_contact_y = 0.0
                     try:
-                        my_shape = ShapeFactory.build(collider, tentative_x, tentative_y)
-                        other_shape = ShapeFactory.build(solid.collider, other_transform.x, other_transform.y)
+                        my_shape = self._get_cached_shape(collider, tentative_x, tentative_y)
+                        other_shape = self._get_cached_shape(solid.collider, other_transform.x, other_transform.y)
                         manifold = my_shape.collide_shape(other_shape)
                         if manifold is not None and manifold.depth > 0:
                             shape_normal_x = manifold.normal_x
@@ -356,7 +439,7 @@ class PhysicsSystem:
                     mass_tangent = mass_normal
                     # Compute bias from current-depth (not tentative) to avoid
                     # over-correcting collisions that only overlap in speculative positions.
-                    current_bounds = collider.get_bounds(transform.x, transform.y)
+                    current_bounds = self._get_cached_bounds(collider, transform.x, transform.y)
                     c_left_a, c_top_a, c_right_a, c_bottom_a = current_bounds
                     c_overlap_left = c_right_a - left_b
                     c_overlap_right = right_b - c_left_a
@@ -764,7 +847,7 @@ class PhysicsSystem:
         """Get AABB for any entity that might fall into an area."""
         collider = entity.get_component(Collider)
         if collider is not None:
-            return collider.get_bounds(transform.x, transform.y)
+            return self._get_cached_bounds(collider, transform.x, transform.y)
         return (transform.x, transform.y, transform.x, transform.y)
 
     def _get_effective_linear_damp(
@@ -902,8 +985,25 @@ class PhysicsSystem:
             return "static"
         return rigidbody.body_type
 
-    @staticmethod
-    def _get_entity_shape_aabbs(entity: Entity, transform: Transform) -> list[tuple[AABB, CollisionShape2DDef | None]]:
+    def _get_cached_bounds(self, collider: Collider, x: float, y: float) -> AABB:
+        key = (id(collider), float(x), float(y))
+        cached = self._bounds_cache.get(key)
+        if cached is None:
+            cached = collider.get_bounds(x, y)
+            self._bounds_cache[key] = cached
+            self._step_metrics["aabb_builds"] = self._step_metrics.get("aabb_builds", 0) + 1
+        return cached
+
+    def _get_cached_shape(self, collider: Collider, x: float, y: float) -> Any:
+        key = (id(collider), float(x), float(y))
+        cached = self._shape_cache.get(key)
+        if cached is None:
+            cached = ShapeFactory.build(collider, x, y)
+            self._shape_cache[key] = cached
+            self._step_metrics["shape_builds"] = self._step_metrics.get("shape_builds", 0) + 1
+        return cached
+
+    def _get_entity_shape_aabbs(self, entity: Entity, transform: Transform) -> list[tuple[AABB, CollisionShape2DDef | None]]:
         """Return (AABB, shape_def|None) for each enabled non-trigger shape on entity."""
         shape_set = entity.get_component(CollisionShapeSet2D)
         if shape_set is not None:
@@ -912,18 +1012,26 @@ class PhysicsSystem:
                 return [(s.get_bounds(transform.x, transform.y), s) for s in enabled]
         collider = entity.get_component(Collider)
         if collider is not None and collider.enabled and not collider.is_trigger:
-            return [(collider.get_bounds(transform.x, transform.y), None)]
+            return [(self._get_cached_bounds(collider, transform.x, transform.y), None)]
         return []
 
-    @staticmethod
-    def _get_solid_composite_aabb(entity: Entity, transform: Transform, collider: Collider) -> AABB:
+    def _get_solid_composite_aabb(self, entity: Entity, transform: Transform, collider: Collider) -> AABB:
         """Return composite bounds for spatial hash. Uses shape set if present."""
+        key = (int(entity.id), float(transform.x), float(transform.y))
+        cached = self._composite_bounds_cache.get(key)
+        if cached is not None:
+            return cached
         shape_set = entity.get_component(CollisionShapeSet2D)
         if shape_set is not None:
             enabled = shape_set.get_enabled_non_trigger_shapes()
             if enabled:
-                return shape_set.get_composite_bounds(transform.x, transform.y)
-        return collider.get_bounds(transform.x, transform.y)
+                bounds = shape_set.get_composite_bounds(transform.x, transform.y)
+                self._composite_bounds_cache[key] = bounds
+                self._step_metrics["aabb_builds"] = self._step_metrics.get("aabb_builds", 0) + 1
+                return bounds
+        bounds = self._get_cached_bounds(collider, transform.x, transform.y)
+        self._composite_bounds_cache[key] = bounds
+        return bounds
 
     @staticmethod
     def _get_material_path_from_entity(entity: Entity) -> str:
@@ -982,10 +1090,13 @@ class PhysicsSystem:
         moving_candidates: list[_SolidCandidate],
         delta_x: float,
         delta_y: float,
+        *,
+        moving_grid: SpatialHash2D | None = None,
+        moving_by_id: dict[int, _SolidCandidate] | None = None,
     ) -> list[_SolidCandidate]:
         if collider is None or not collider.enabled:
             return []
-        current_aabb = collider.get_bounds(transform.x, transform.y)
+        current_aabb = self._get_cached_bounds(collider, transform.x, transform.y)
         swept_aabb = self._build_swept_aabb(current_aabb, delta_x, delta_y)
         candidates: list[_SolidCandidate] = []
         seen_ids: set[int] = set()
@@ -999,7 +1110,16 @@ class PhysicsSystem:
                 continue
             seen_ids.add(int(candidate_id))
             candidates.append(candidate)
-        for candidate in moving_candidates:
+        moving_iterable: Iterable[_SolidCandidate]
+        if moving_grid is not None and moving_by_id is not None:
+            moving_iterable = (
+                moving_by_id[candidate_id]
+                for candidate_id in sorted(moving_grid.query(swept_aabb))
+                if candidate_id in moving_by_id
+            )
+        else:
+            moving_iterable = iter(moving_candidates)
+        for candidate in moving_iterable:
             candidate_id = int(candidate.entity.id)
             if candidate_id == int(entity.id) or candidate_id in seen_ids:
                 continue
@@ -1063,7 +1183,7 @@ class PhysicsSystem:
         collider: Collider,
         solids: list[_SolidCandidate],
     ) -> None:
-        left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
+        left, top, right, bottom = self._get_cached_bounds(collider, transform.x, transform.y)
         for other in solids:
             other_transform = other.entity.get_component(Transform)
             if other_transform is None or not other.collider.enabled:
@@ -1098,7 +1218,7 @@ class PhysicsSystem:
                         correction = overlap_left * self._position_correction_ratio
                         transform.x += correction * my_ratio
                         other_transform.x -= correction * other_ratio
-                left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
+                left, top, right, bottom = self._get_cached_bounds(collider, transform.x, transform.y)
 
     def _resolve_vertical(
         self,
@@ -1107,7 +1227,7 @@ class PhysicsSystem:
         collider: Collider,
         solids: list[_SolidCandidate],
     ) -> None:
-        left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
+        left, top, right, bottom = self._get_cached_bounds(collider, transform.x, transform.y)
         for other in solids:
             other_transform = other.entity.get_component(Transform)
             if other_transform is None or not other.collider.enabled:
@@ -1147,7 +1267,7 @@ class PhysicsSystem:
                         correction = overlap_top * self._position_correction_ratio
                         transform.y += correction * my_ratio
                         other_transform.y -= correction * other_ratio
-                left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
+                left, top, right, bottom = self._get_cached_bounds(collider, transform.x, transform.y)
 
     def _sweep_horizontal(
         self,
@@ -1160,7 +1280,7 @@ class PhysicsSystem:
     ) -> float:
         if abs(delta_x) <= 1e-6:
             return delta_x
-        left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
+        left, top, right, bottom = self._get_cached_bounds(collider, transform.x, transform.y)
         safe_delta = delta_x
         for other in solids:
             other_transform = other.entity.get_component(Transform)
@@ -1203,7 +1323,7 @@ class PhysicsSystem:
     ) -> float:
         if abs(delta_y) <= 1e-6:
             return delta_y
-        left, top, right, bottom = collider.get_bounds(transform.x, transform.y)
+        left, top, right, bottom = self._get_cached_bounds(collider, transform.x, transform.y)
         safe_delta = delta_y
         for other in solids:
             other_transform = other.entity.get_component(Transform)
@@ -1250,7 +1370,6 @@ class PhysicsSystem:
         """
 
 
-        from engine.physics.shapes import ShapeFactory
         from engine.physics.swept_collision import swept_shape_toi
 
         total_dist = math.hypot(delta_x, delta_y)
@@ -1273,7 +1392,7 @@ class PhysicsSystem:
             if other_transform is None or not solid.collider.enabled:
                 continue
 
-            target_shape = ShapeFactory.build(solid.collider, other_transform.x, other_transform.y)
+            target_shape = self._get_cached_shape(solid.collider, other_transform.x, other_transform.y)
             target_info = {
                 "entity": str(solid.entity.name),
                 "entity_id": int(solid.entity.id),
@@ -1328,7 +1447,7 @@ class PhysicsSystem:
         collider: Collider,
         solids: list[_SolidCandidate],
     ) -> bool:
-        left, _, right, bottom = collider.get_bounds(transform.x, transform.y)
+        left, _, right, bottom = self._get_cached_bounds(collider, transform.x, transform.y)
         probe_top = bottom
         probe_bottom = bottom + 1.0
         for other in solids:

@@ -36,6 +36,26 @@ class PhysicsSystemTests(unittest.TestCase):
             ],
         )
 
+    def test_static_grid_is_reused_and_step_build_counters_are_reported(self) -> None:
+        world = World()
+        ground = world.create_entity("Ground")
+        ground.add_component(Transform(x=0.0, y=20.0))
+        ground.add_component(Collider(width=100.0, height=10.0))
+        body = world.create_entity("Body")
+        body.add_component(Transform(x=0.0, y=0.0))
+        body.add_component(Collider(width=10.0, height=10.0))
+        body.add_component(RigidBody(body_type="dynamic", gravity_scale=0.0))
+
+        physics = PhysicsSystem()
+        physics.update(world, 1.0 / 60.0)
+        first_grid = physics.spatial_grid
+        physics.update(world, 1.0 / 60.0)
+
+        self.assertIs(physics.spatial_grid, first_grid)
+        metrics = physics.get_step_metrics()
+        self.assertIn("aabb_builds", metrics)
+        self.assertIn("shape_builds", metrics)
+
     def test_continuous_body_checks_only_local_candidates(self) -> None:
         world = World()
         bullet = world.create_entity("Bullet")

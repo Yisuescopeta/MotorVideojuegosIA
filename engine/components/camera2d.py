@@ -2,10 +2,10 @@
 engine/components/camera2d.py - Camara 2D serializable y editable por IA
 """
 
-import copy
 from typing import Any
 
 from engine.ecs.component import Component
+from engine.serialization.json_value import clone_json_value
 
 
 class Camera2D(Component):
@@ -44,7 +44,7 @@ class Camera2D(Component):
         self.clamp_top: float | None = clamp_top
         self.clamp_bottom: float | None = clamp_bottom
         self.recenter_on_play: bool = recenter_on_play
-        self.profile_overrides: dict[str, dict[str, Any]] = copy.deepcopy(profile_overrides or {})
+        self.profile_overrides: dict[str, dict[str, Any]] = clone_json_value(profile_overrides or {})
 
         # Estado de runtime no serializable para seguimiento suave.
         self._runtime_target_x: float = 0.0
@@ -68,7 +68,7 @@ class Camera2D(Component):
             "clamp_top": self.clamp_top,
             "clamp_bottom": self.clamp_bottom,
             "recenter_on_play": self.recenter_on_play,
-            "profile_overrides": copy.deepcopy(self.profile_overrides),
+            "profile_overrides": clone_json_value(self.profile_overrides),
         }
 
     @classmethod

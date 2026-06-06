@@ -95,6 +95,12 @@ class BenchmarkRunTests(unittest.TestCase):
         self.assertIn("last_sample", report)
         self.assertIn("operations", report)
         self.assertIn("load_level", report["operations"])
+        self.assertIn("world_clone", report["operations"])
+        self.assertIn("world_serialize", report["operations"])
+        self.assertIn("scene_create_world", report["operations"])
+        self.assertEqual(report["measurement"]["repeats"], 3)
+        self.assertIn("median_ms", report["operations"]["world_clone"])
+        self.assertIn("p95_ms", report["operations"]["world_clone"])
         self.assertEqual(
             set(report["summary"].keys()),
             {

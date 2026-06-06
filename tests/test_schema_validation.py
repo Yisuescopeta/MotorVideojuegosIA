@@ -15,6 +15,7 @@ from engine.serialization.schema import (
     CURRENT_PREFAB_SCHEMA_VERSION,
     CURRENT_SCENE_SCHEMA_VERSION,
     build_canonical_scene_payload,
+    canonicalize_scene_entity,
     migrate_prefab_data,
     migrate_scene_data,
     validate_prefab_data,
@@ -67,6 +68,28 @@ def _entity_payload(
 
 
 class SchemaValidationTests(unittest.TestCase):
+    def test_incremental_entity_canonicalization_matches_full_scene_migration(self) -> None:
+        entity = {"name": "Added", "components": {"Transform": {"x": 2.0, "y": 3.0}}}
+        incremental = canonicalize_scene_entity(
+            entity,
+            scene_name="Canonical",
+            index=1,
+            used_ids={"existing"},
+        )
+        full = migrate_scene_data(
+            {
+                "name": "Canonical",
+                "schema_version": CURRENT_SCENE_SCHEMA_VERSION,
+                "entities": [
+                    {"id": "existing", "name": "Existing", "components": {}},
+                    entity,
+                ],
+                "rules": [],
+                "feature_metadata": {},
+            }
+        )["entities"][1]
+
+        self.assertEqual(incremental, full)
     def test_legacy_scene_payload_migrates_to_current_schema(self) -> None:
         legacy = {"name": "Legacy", "entities": [], "rules": []}
         migrated = migrate_scene_data(legacy)

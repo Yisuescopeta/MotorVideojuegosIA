@@ -227,6 +227,8 @@ class DebugToolsController:
                 "physics_ccd_bodies": 0,
                 "physics_contacts": 0,
                 "physics_candidate_solids": 0,
+                "physics_aabb_builds": 0,
+                "physics_shape_builds": 0,
                 "collision_candidates": 0,
                 "collision_pairs_tested": 0,
                 "collision_hits": 0,
@@ -256,6 +258,8 @@ class DebugToolsController:
         physics_ccd_bodies = 0
         physics_contacts = 0
         physics_candidate_solids = 0
+        physics_aabb_builds = 0
+        physics_shape_builds = 0
         collision_candidates = 0
         collision_pairs_tested = 0
         collision_hits = 0
@@ -282,6 +286,8 @@ class DebugToolsController:
             physics_ccd_bodies = int(backend_metrics.get("ccd_bodies", 0))
             physics_contacts = int(backend_metrics.get("contacts", 0))
             physics_candidate_solids = int(backend_metrics.get("candidate_solids", 0))
+            physics_aabb_builds = int(backend_metrics.get("aabb_builds", 0))
+            physics_shape_builds = int(backend_metrics.get("shape_builds", 0))
 
         collision_system = self._get_collision_system()
         if collision_system is not None and hasattr(collision_system, "get_step_metrics"):
@@ -303,6 +309,8 @@ class DebugToolsController:
             "physics_ccd_bodies": physics_ccd_bodies,
             "physics_contacts": physics_contacts,
             "physics_candidate_solids": physics_candidate_solids,
+            "physics_aabb_builds": physics_aabb_builds,
+            "physics_shape_builds": physics_shape_builds,
             "collision_candidates": collision_candidates,
             "collision_pairs_tested": collision_pairs_tested,
             "collision_hits": collision_hits,

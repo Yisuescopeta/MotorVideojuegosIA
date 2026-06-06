@@ -363,6 +363,32 @@ def _canonicalize_entity_payload(entity: dict[str, Any], *, entity_path: str) ->
             prefab_instance["overrides"] = _normalize_prefab_override_map(overrides)
 
 
+def canonicalize_scene_entity(
+    entity_data: dict[str, Any],
+    *,
+    scene_name: str,
+    index: int,
+    used_ids: set[str] | None = None,
+) -> dict[str, Any]:
+    """Canonicalize one entity with the same rules used by scene schema v2."""
+    entity = copy.deepcopy(entity_data)
+    entity_id = entity.get("id")
+    if isinstance(entity_id, str) and entity_id.strip():
+        entity["id"] = entity_id.strip()
+    else:
+        occupied = used_ids or set()
+        entity_name = str(entity.get("name", "Entity") or "Entity")
+        base_id = _build_deterministic_entity_id(str(scene_name or "Untitled"), entity_name, int(index))
+        candidate = base_id
+        suffix = 1
+        while candidate in occupied:
+            suffix += 1
+            candidate = f"{base_id}_{suffix}"
+        entity["id"] = candidate
+    _canonicalize_entity_payload(entity, entity_path=f"$.entities[{int(index)}]")
+    return entity
+
+
 def _migrate_scene_v0_to_v1(data: dict[str, Any]) -> dict[str, Any]:
     migrated = copy.deepcopy(data)
     migrated["schema_version"] = 1

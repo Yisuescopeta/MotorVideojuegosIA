@@ -29,6 +29,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--velocity", type=float, default=160.0)
     parser.add_argument("--tilemap-width", type=int, default=128)
     parser.add_argument("--tilemap-height", type=int, default=128)
+    parser.add_argument("--operation-warmup", type=int, default=1)
+    parser.add_argument("--operation-repeats", type=int, default=3)
     return parser.parse_args()
 
 
@@ -52,6 +54,8 @@ def main() -> int:
         velocity=args.velocity,
         tilemap_width=args.tilemap_width,
         tilemap_height=args.tilemap_height,
+        operation_warmup=args.operation_warmup,
+        operation_repeats=args.operation_repeats,
     )
     payload = json.dumps(report, indent=2, ensure_ascii=True)
     if args.out:

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import copy
 from dataclasses import dataclass, field
 from typing import Any
+
+from engine.serialization.json_value import clone_json_value
 
 PROFILE_REPORT_VERSION = 1
 
@@ -78,7 +79,7 @@ class EngineProfiler:
             "timings_ms": {key: float(value) for key, value in timings_ms.items()},
             "counters": {key: int(value) for key, value in counters.items()},
             "memory": {key: float(value) for key, value in memory.items()},
-            "backend_metrics": copy.deepcopy(backend_metrics),
+            "backend_metrics": clone_json_value(backend_metrics),
         }
 
     def to_report(self) -> dict[str, Any]:
@@ -98,5 +99,5 @@ class EngineProfiler:
                 "avg": counters_avg,
                 "max": dict(sorted(self.counters_max.items())),
             },
-            "last_frame": copy.deepcopy(self.last_frame),
+            "last_frame": clone_json_value(self.last_frame),
         }

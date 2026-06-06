@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from engine.ecs.entity import normalize_entity_groups
-from engine.serialization.schema import migrate_scene_data
+from engine.serialization.json_value import clone_json_value
+from engine.serialization.schema import canonicalize_scene_entity, migrate_scene_data
 
 if TYPE_CHECKING:
     from engine.ecs.world import World
@@ -82,7 +83,7 @@ class Scene:
         from engine.ecs.world import World
 
         world = World()
-        world.feature_metadata = copy.deepcopy(self.feature_metadata)
+        world.feature_metadata = clone_json_value(self.feature_metadata)
         created_entities = {}
         pending_links: list[tuple[str, str]] = []
 
@@ -93,7 +94,7 @@ class Scene:
                 prefab_path = self._resolve_prefab_path(prefab_instance.get("prefab_path", ""))
                 prefab_data = PrefabManager.load_prefab_data(prefab_path)
                 if prefab_data is None:
-                    expanded_entities = [copy.deepcopy(entity_data)]
+                    expanded_entities = [entity_data]
                 else:
                     expanded_entities = PrefabManager.expand_prefab_instance(
                         prefab_data,
@@ -109,7 +110,7 @@ class Scene:
                                 expanded_data["id"] = root_entity_id.strip()
                                 break
             else:
-                expanded_entities = [copy.deepcopy(entity_data)]
+                expanded_entities = [entity_data]
 
             for expanded_data in expanded_entities:
                 entity_name = expanded_data.get("name", "Entity")
@@ -125,7 +126,7 @@ class Scene:
                 entity.prefab_instance = copy.deepcopy(expanded_data.get("prefab_instance"))
                 entity.prefab_source_path = expanded_data.get("prefab_source_path")
                 entity.prefab_root_name = expanded_data.get("prefab_root_name")
-                component_metadata = copy.deepcopy(expanded_data.get("component_metadata", {}))
+                component_metadata = expanded_data.get("component_metadata", {})
 
                 for comp_name, comp_props in expanded_data.get("components", {}).items():
                     component = registry.create(comp_name, comp_props)
@@ -172,13 +173,18 @@ class Scene:
                 self._entity_id_index[entity_id] = entity_data
 
     def _canonicalize_entity_for_add(self, entity_data: Dict[str, Any]) -> Dict[str, Any]:
-        payload = copy.deepcopy(self._data)
-        payload.setdefault("entities", []).append(copy.deepcopy(entity_data))
-        canonical = migrate_scene_data(payload)
-        entities = canonical.get("entities", [])
-        if not entities or not isinstance(entities[-1], dict):
-            return copy.deepcopy(entity_data)
-        return entities[-1]
+        entities = self.entities_data
+        used_ids = {
+            str(item.get("id")).strip()
+            for item in entities
+            if isinstance(item, dict) and isinstance(item.get("id"), str) and str(item.get("id")).strip()
+        }
+        return canonicalize_scene_entity(
+            entity_data,
+            scene_name=str(self._data.get("name", self._name) or self._name),
+            index=len(entities),
+            used_ids=used_ids,
+        )
 
     def _rename_entity_references(self, old_name: str, new_name: str, entity_id: str | None = None) -> None:
         for entity_data in self.entities_data:
@@ -427,7 +433,7 @@ class Scene:
         return True
 
     def to_dict(self) -> Dict[str, Any]:
-        return migrate_scene_data(copy.deepcopy(self._data))
+        return migrate_scene_data(self._data)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any], source_path: Optional[str] = None) -> "Scene":

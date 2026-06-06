@@ -46,6 +46,15 @@ def _rect_transform_payload(**overrides: object) -> dict[str, object]:
 
 
 class CanvasUISystemTests(unittest.TestCase):
+    def test_ui_button_action_payload_is_defensively_cloned(self) -> None:
+        source = {"args": {"values": [1]}}
+        button = UIButton(on_click=source)
+        source["args"]["values"].append(2)
+        serialized = button.to_dict()
+        serialized["on_click"]["args"]["values"].append(3)
+
+        self.assertEqual(button.on_click, {"args": {"values": [1]}})
+
     def setUp(self) -> None:
         self._temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self._temp_dir.name)

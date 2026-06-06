@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+import gc
 import json
+import math
 import os
+import platform
+import statistics
 import tempfile
 import time
 from pathlib import Path
 from typing import Any
 
 from engine.api import EngineAPI
+from engine.components.transform import Transform
 from engine.debug.benchmark_scenarios import build_benchmark_scenario
 
-BENCHMARK_REPORT_VERSION = 1
+BENCHMARK_REPORT_VERSION = 2
 
 
 def _resolve_scene_path(scene_path: str, project_root: Path) -> Path:
@@ -28,6 +33,30 @@ def _write_scene(path: Path, payload: dict[str, Any]) -> Path:
 
 def _elapsed_ms(start: float) -> float:
     return (time.perf_counter() - start) * 1000.0
+
+
+def _percentile(values: list[float], percentile: float) -> float:
+    ordered = sorted(values)
+    if not ordered:
+        return 0.0
+    index = max(0, min(len(ordered) - 1, math.ceil(percentile * len(ordered)) - 1))
+    return ordered[index]
+
+
+def _measure_repeated(callback: Any, *, warmup: int, repeats: int) -> dict[str, Any]:
+    for _ in range(max(0, int(warmup))):
+        callback()
+    samples: list[float] = []
+    for _ in range(max(1, int(repeats))):
+        started = time.perf_counter()
+        callback()
+        samples.append(_elapsed_ms(started))
+    return {
+        "ms": statistics.median(samples),
+        "median_ms": statistics.median(samples),
+        "p95_ms": _percentile(samples, 0.95),
+        "samples_ms": samples,
+    }
 
 
 def _system_metric(report: dict[str, Any], name: str, field: str) -> float:
@@ -84,6 +113,8 @@ def run_benchmark(
     velocity: float = 160.0,
     tilemap_width: int = 128,
     tilemap_height: int = 128,
+    operation_warmup: int = 1,
+    operation_repeats: int = 3,
 ) -> dict[str, Any]:
     if bool(scenario) == bool(scene_path):
         raise ValueError("Provide exactly one of scenario or scene_path")
@@ -136,12 +167,64 @@ def run_benchmark(
             global_state_dir=(temp_root / "global_state").as_posix(),
         )
         try:
+            gc.collect()
             load_start = time.perf_counter()
             api.load_level(resolved_scene_path.as_posix())
             operations["load_level"] = {"ms": _elapsed_ms(load_start)}
             if api.game is None:
                 raise RuntimeError("Engine game is not initialized")
             game = api.game
+            scene_manager = getattr(game, "_scene_manager", None)
+            edit_world = scene_manager.get_edit_world() if scene_manager is not None else game.world
+            current_scene = scene_manager.current_scene if scene_manager is not None else None
+            if edit_world is not None:
+                operations["world_clone"] = _measure_repeated(
+                    edit_world.clone,
+                    warmup=operation_warmup,
+                    repeats=operation_repeats,
+                )
+                operations["world_serialize"] = _measure_repeated(
+                    edit_world.serialize,
+                    warmup=operation_warmup,
+                    repeats=operation_repeats,
+                )
+
+                def query_ecs() -> None:
+                    edit_world.get_entities_with(Transform)
+                    edit_world.group_registry.list_groups()
+                    edit_world.get_children(None)
+
+                operations["ecs_queries"] = _measure_repeated(
+                    query_ecs,
+                    warmup=operation_warmup,
+                    repeats=operation_repeats,
+                )
+            if current_scene is not None:
+                operations["scene_create_world"] = _measure_repeated(
+                    lambda: current_scene.create_world(api._registry),
+                    warmup=operation_warmup,
+                    repeats=operation_repeats,
+                )
+                probe_index = len(current_scene.entities_data)
+                operations["scene_add_entity_canonicalization"] = _measure_repeated(
+                    lambda: current_scene._canonicalize_entity_for_add(
+                        {
+                            "name": f"BenchmarkProbe_{probe_index}",
+                            "components": {
+                                "Transform": {
+                                    "enabled": True,
+                                    "x": 0.0,
+                                    "y": 0.0,
+                                    "rotation": 0.0,
+                                    "scale_x": 1.0,
+                                    "scale_y": 1.0,
+                                }
+                            },
+                        }
+                    ),
+                    warmup=operation_warmup,
+                    repeats=operation_repeats,
+                )
             if seed is not None:
                 api.set_seed(seed)
             if source == "scene":
@@ -231,6 +314,14 @@ def run_benchmark(
         "frames_requested": frame_count,
         "profiler_frames_recorded": int(profiler_report.get("frames", 0)),
         "dt": delta_time,
+        "environment": {
+            "python": platform.python_version(),
+            "platform": platform.platform(),
+        },
+        "measurement": {
+            "warmup": max(0, int(operation_warmup)),
+            "repeats": max(1, int(operation_repeats)),
+        },
         "parameters": parameters,
         "operations": operations,
         "profiler_report": profiler_report,

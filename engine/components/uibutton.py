@@ -4,11 +4,11 @@ engine/components/uibutton.py - Boton UI serializable con accion declarativa.
 
 from __future__ import annotations
 
-import copy
 from typing import Any
 
 from engine.assets.asset_reference import clone_asset_reference, normalize_asset_reference, reference_has_identity
 from engine.ecs.component import Component
+from engine.serialization.json_value import clone_json_value
 
 
 def _color_tuple(value: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
@@ -49,7 +49,7 @@ class UIButton(Component):
         self.pressed_color = _color_tuple(pressed_color)
         self.disabled_color = _color_tuple(disabled_color)
         self.transition_scale_pressed = float(transition_scale_pressed)
-        self.on_click = copy.deepcopy(on_click or {})
+        self.on_click = clone_json_value(on_click or {})
         self.normal_sprite = normalize_asset_reference(normal_sprite)
         self.hover_sprite = normalize_asset_reference(hover_sprite)
         self.pressed_sprite = normalize_asset_reference(pressed_sprite)
@@ -82,7 +82,7 @@ class UIButton(Component):
             "pressed_color": list(self.pressed_color),
             "disabled_color": list(self.disabled_color),
             "transition_scale_pressed": self.transition_scale_pressed,
-            "on_click": copy.deepcopy(self.on_click),
+            "on_click": clone_json_value(self.on_click),
             "normal_sprite": clone_asset_reference(self.normal_sprite),
             "hover_sprite": clone_asset_reference(self.hover_sprite),
             "pressed_sprite": clone_asset_reference(self.pressed_sprite),
@@ -106,7 +106,7 @@ class UIButton(Component):
             pressed_color=tuple(data.get("pressed_color", [56, 56, 56, 255])),  # type: ignore[arg-type]
             disabled_color=tuple(data.get("disabled_color", [48, 48, 48, 200])),  # type: ignore[arg-type]
             transition_scale_pressed=data.get("transition_scale_pressed", 0.96),
-            on_click=copy.deepcopy(data.get("on_click", {})),
+            on_click=clone_json_value(data.get("on_click", {})),
             normal_sprite=data.get("normal_sprite"),
             hover_sprite=data.get("hover_sprite"),
             pressed_sprite=data.get("pressed_sprite"),

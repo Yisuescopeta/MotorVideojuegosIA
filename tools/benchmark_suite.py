@@ -10,7 +10,7 @@ from typing import Any, Callable
 
 from engine.debug.benchmark_runner import run_benchmark
 
-BENCHMARK_SUITE_VERSION = 1
+BENCHMARK_SUITE_VERSION = 2
 
 
 BenchmarkRunner = Callable[..., dict[str, Any]]

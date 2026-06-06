@@ -29,20 +29,51 @@ class Transform(Component):
         self.parent: Optional["Transform"] = None
         self.children: list["Transform"] = []
 
+    def _global_state(self) -> tuple[tuple[int, float, float, float, float, float], int]:
+        parent_state: tuple[int, float, float, float, float, float] | None = None
+        parent_revision = -1
+        if self.parent is not None:
+            parent_state, parent_revision = self.parent._global_state()
+        key = (
+            id(self.parent) if self.parent is not None else None,
+            parent_revision,
+            self.local_x,
+            self.local_y,
+            self.local_rotation,
+            self.local_scale_x,
+            self.local_scale_y,
+        )
+        if key != getattr(self, "_global_cache_key", None):
+            if parent_state is None:
+                state = (
+                    0,
+                    self.local_x,
+                    self.local_y,
+                    self.local_rotation,
+                    self.local_scale_x,
+                    self.local_scale_y,
+                )
+            else:
+                state = (
+                    parent_state[0] + 1,
+                    parent_state[1] + self.local_x,
+                    parent_state[2] + self.local_y,
+                    parent_state[3] + self.local_rotation,
+                    parent_state[4] * self.local_scale_x,
+                    parent_state[5] * self.local_scale_y,
+                )
+            self._global_cache_key = key
+            self._global_cache_state = state
+            self._global_cache_revision = getattr(self, "_global_cache_revision", 0) + 1
+        return self._global_cache_state, self._global_cache_revision
+
     @property
     def depth(self) -> int:
-        depth = 0
-        current = self.parent
-        while current is not None:
-            depth += 1
-            current = current.parent
-        return depth
+        return self._global_state()[0][0]
 
     @property
     def x(self) -> float:
-        if self.parent:
-            return self.parent.x + self.local_x
-        return self.local_x
+        return self._global_state()[0][1]
 
     @x.setter
     def x(self, value: float) -> None:
@@ -53,9 +84,7 @@ class Transform(Component):
 
     @property
     def y(self) -> float:
-        if self.parent:
-            return self.parent.y + self.local_y
-        return self.local_y
+        return self._global_state()[0][2]
 
     @y.setter
     def y(self, value: float) -> None:
@@ -66,9 +95,7 @@ class Transform(Component):
 
     @property
     def rotation(self) -> float:
-        if self.parent:
-            return self.parent.rotation + self.local_rotation
-        return self.local_rotation
+        return self._global_state()[0][3]
 
     @rotation.setter
     def rotation(self, value: float) -> None:
@@ -79,9 +106,7 @@ class Transform(Component):
 
     @property
     def scale_x(self) -> float:
-        if self.parent:
-            return self.parent.scale_x * self.local_scale_x
-        return self.local_scale_x
+        return self._global_state()[0][4]
 
     @scale_x.setter
     def scale_x(self, value: float) -> None:
@@ -93,9 +118,7 @@ class Transform(Component):
 
     @property
     def scale_y(self) -> float:
-        if self.parent:
-            return self.parent.scale_y * self.local_scale_y
-        return self.local_scale_y
+        return self._global_state()[0][5]
 
     @scale_y.setter
     def scale_y(self, value: float) -> None:
@@ -107,10 +130,8 @@ class Transform(Component):
 
     def set_parent(self, parent: Optional["Transform"]) -> None:
         """Asigna un nuevo padre manteniendo la transformaciÃ³n global."""
-        global_x, global_y = self.x, self.y
-        global_rotation = self.rotation
-        global_scale_x = self.scale_x
-        global_scale_y = self.scale_y
+        global_state, _revision = self._global_state()
+        _, global_x, global_y, global_rotation, global_scale_x, global_scale_y = global_state
 
         if self.parent and self in self.parent.children:
             self.parent.children.remove(self)
@@ -119,11 +140,19 @@ class Transform(Component):
         if self.parent is not None and self not in self.parent.children:
             self.parent.children.append(self)
 
-        self.x = global_x
-        self.y = global_y
-        self.rotation = global_rotation
-        self.scale_x = global_scale_x
-        self.scale_y = global_scale_y
+        if parent is None:
+            self.local_x = global_x
+            self.local_y = global_y
+            self.local_rotation = global_rotation
+            self.local_scale_x = global_scale_x
+            self.local_scale_y = global_scale_y
+        else:
+            parent_state, _parent_revision = parent._global_state()
+            self.local_x = global_x - parent_state[1]
+            self.local_y = global_y - parent_state[2]
+            self.local_rotation = global_rotation - parent_state[3]
+            self.local_scale_x = global_scale_x / parent_state[4] if parent_state[4] != 0 else global_scale_x
+            self.local_scale_y = global_scale_y / parent_state[5] if parent_state[5] != 0 else global_scale_y
 
     def add_child(self, child: "Transform") -> None:
         child.set_parent(self)

@@ -15,6 +15,15 @@ arquitectonico lee [architecture.md](architecture.md); para la taxonomia lee
 
 `Scene` es persistente. `World` es una proyeccion operativa.
 
+### Clonacion ECS
+
+`Component.clone()` es la ruta normal para crear componentes del mundo runtime:
+clona el payload de `to_dict()` y lo reconstruye mediante `from_dict()`.
+`World.clone()` usa este contrato y reserva `copy.deepcopy()` como fallback para
+componentes legacy incompatibles. Los metadatos serializables se copian con
+`clone_json_value()` para mantener independencia entre EDIT y PLAY sin activar
+el protocolo generico de copia profunda en la ruta normal.
+
 ## Componentes registrados
 
 La fuente de verdad para componentes publicos registrados es
