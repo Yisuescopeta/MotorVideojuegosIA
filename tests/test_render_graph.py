@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pyray as rl
 from engine.assets.asset_service import AssetService
 from engine.components.camera2d import Camera2D
 from engine.components.collider import Collider
@@ -86,6 +87,23 @@ class RenderGraphTests(unittest.TestCase):
         entity.add_component(Transform(x=x, y=y, rotation=0.0, scale_x=1.0, scale_y=1.0))
         entity.add_component(Camera2D(offset_x=offset_x, offset_y=offset_y, framing_mode="locked"))
         return entity
+
+    @staticmethod
+    def _make_runtime_camera(
+        *,
+        target_x: float,
+        target_y: float = 0.0,
+        offset_x: float = 0.0,
+        offset_y: float = 0.0,
+        zoom: float = 1.0,
+        rotation: float = 0.0,
+    ) -> rl.Camera2D:
+        camera = rl.Camera2D()
+        camera.target = rl.Vector2(target_x, target_y)
+        camera.offset = rl.Vector2(offset_x, offset_y)
+        camera.zoom = zoom
+        camera.rotation = rotation
+        return camera
 
     def _create_temp_render_project(self) -> tuple[ProjectService, AssetService]:
         temp_dir = tempfile.TemporaryDirectory()
@@ -456,6 +474,95 @@ class RenderGraphTests(unittest.TestCase):
         self.assertTrue(graph["totals"]["spatial_culling_enabled"])
         self.assertLess(graph["totals"]["spatial_visible_entities"], graph["totals"]["spatial_total_entities"])
 
+    def test_spatial_camera_bounds_use_external_camera_transform(self) -> None:
+        render_system = RenderSystem()
+        camera = self._make_runtime_camera(
+            target_x=100.0,
+            target_y=50.0,
+            offset_x=50.0,
+            offset_y=25.0,
+            zoom=2.0,
+            rotation=90.0,
+        )
+
+        bounds = render_system._resolve_spatial_camera_bounds(
+            World(),
+            (100.0, 50.0),
+            (100, 50),
+            culling_camera=camera,
+        )
+
+        self.assertIsNotNone(bounds)
+        assert bounds is not None
+        self.assertAlmostEqual(bounds[0], 87.5)
+        self.assertAlmostEqual(bounds[1], 25.0)
+        self.assertAlmostEqual(bounds[2], 112.5)
+        self.assertAlmostEqual(bounds[3], 75.0)
+
+    def test_external_culling_camera_takes_priority_over_world_camera(self) -> None:
+        world = World()
+        self._make_camera_entity(world, x=0.0, offset_x=50.0, offset_y=50.0)
+        self._make_sprite_entity(world, "WorldVisible", x=0.0)
+        self._make_sprite_entity(world, "EditorVisible", x=300.0)
+        editor_camera = self._make_runtime_camera(target_x=300.0, offset_x=50.0, offset_y=50.0)
+
+        render_system = RenderSystem()
+        graph = render_system._public_graph(
+            render_system._build_render_graph(
+                world,
+                viewport_size=(100.0, 100.0),
+                culling_camera=editor_camera,
+            )
+        )
+
+        self.assertEqual([command["entity_name"] for command in graph["passes"][0]["commands"]], ["EditorVisible"])
+
+    def test_render_propagates_override_camera_to_frame_plan(self) -> None:
+        world = World()
+        editor_camera = self._make_runtime_camera(target_x=300.0)
+        render_system = RenderSystem()
+
+        with patch.object(render_system, "_build_frame_plan", wraps=render_system._build_frame_plan) as build_frame_plan:
+            render_system.render(
+                world,
+                override_camera=editor_camera,
+                use_world_camera=False,
+                viewport_size=(100.0, 100.0),
+                allow_render_targets=False,
+            )
+
+        self.assertIs(build_frame_plan.call_args.kwargs["culling_camera"], editor_camera)
+
+    def test_external_culling_camera_remains_source_when_viewport_changes(self) -> None:
+        world = World()
+        self._make_camera_entity(world, x=0.0, offset_x=50.0, offset_y=50.0)
+        self._make_sprite_entity(world, "WorldVisible", x=0.0)
+        self._make_sprite_entity(world, "EditorNear", x=300.0)
+        self._make_sprite_entity(world, "EditorWide", x=390.0)
+        editor_camera = self._make_runtime_camera(target_x=300.0, offset_x=50.0, offset_y=50.0)
+        render_system = RenderSystem()
+
+        small = render_system._public_graph(
+            render_system._build_render_graph(
+                world,
+                viewport_size=(100.0, 100.0),
+                culling_camera=editor_camera,
+            )
+        )
+        wide = render_system._public_graph(
+            render_system._build_render_graph(
+                world,
+                viewport_size=(240.0, 100.0),
+                culling_camera=editor_camera,
+            )
+        )
+
+        self.assertEqual([command["entity_name"] for command in small["passes"][0]["commands"]], ["EditorNear"])
+        self.assertEqual(
+            [command["entity_name"] for command in wide["passes"][0]["commands"]],
+            ["EditorNear", "EditorWide"],
+        )
+
     def test_spatial_culling_keeps_transform_only_entities_inside_camera_bounds(self) -> None:
         world = World()
         self._make_camera_entity(world)
@@ -664,6 +771,39 @@ class RenderGraphTests(unittest.TestCase):
         self.assertEqual(stats["tilemap_visible_chunks"], 1)
         self.assertEqual(stats["tilemap_chunks"], 1)
         self.assertEqual(stats["render_commands"], 2)
+
+    def test_tilemap_render_graph_culls_chunks_with_external_camera(self) -> None:
+        world = World()
+        self._make_camera_entity(world, x=0.0, offset_x=50.0, offset_y=50.0)
+        tilemap_entity = world.create_entity("Map")
+        tilemap_entity.add_component(Transform(x=0.0, y=0.0, rotation=0.0, scale_x=1.0, scale_y=1.0))
+        tilemap_entity.add_component(
+            Tilemap(
+                cell_width=16,
+                cell_height=16,
+                layers=[{"name": "Ground", "tiles": [{"x": 0, "y": 0, "tile_id": "grass"}, {"x": 20, "y": 0, "tile_id": "stone"}]}],
+            )
+        )
+        tilemap_entity.add_component(RenderOrder2D(sorting_layer="Default", order_in_layer=0, render_pass="World"))
+        editor_camera = self._make_runtime_camera(target_x=320.0, offset_x=50.0, offset_y=50.0)
+
+        render_system = RenderSystem()
+        graph = render_system._build_render_graph(
+            world,
+            viewport_size=(100.0, 100.0),
+            culling_camera=editor_camera,
+        )
+
+        self.assertEqual(graph["totals"]["tilemap_total_chunks"], 2)
+        self.assertEqual(graph["totals"]["tilemap_visible_chunks"], 1)
+        tilemap_commands = [
+            command
+            for render_pass in graph["passes"]
+            for command in render_pass["commands"]
+            if command.kind == "tilemap_chunk"
+        ]
+        self.assertEqual(len(tilemap_commands), 1)
+        self.assertEqual(tilemap_commands[0].chunk_id, "Ground/1,0")
 
     def test_tilemap_render_graph_without_camera_keeps_all_chunks(self) -> None:
         world = World()
