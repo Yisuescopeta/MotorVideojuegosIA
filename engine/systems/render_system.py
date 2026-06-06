@@ -4,6 +4,7 @@ engine/systems/render_system.py - Sistema de renderizado 2D con render graph min
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, NamedTuple, Optional, Union, cast
 
@@ -312,7 +313,12 @@ class RenderSystem:
         allow_render_targets: bool = True,
         camera_profile_id: Optional[str] = None,
     ) -> None:
-        frame_plan = self._build_frame_plan(world, viewport_size=viewport_size, camera_profile_id=camera_profile_id)
+        frame_plan = self._build_frame_plan(
+            world,
+            viewport_size=viewport_size,
+            camera_profile_id=camera_profile_id,
+            culling_camera=override_camera,
+        )
         graph = frame_plan["graph"]
         backend_ready = bool(hasattr(rl, "is_window_ready") and rl.is_window_ready())
 
@@ -399,6 +405,7 @@ class RenderSystem:
         world: World,
         viewport_size: Optional[tuple[float, float]] = None,
         camera_profile_id: Optional[str] = None,
+        culling_camera: Optional[rl.Camera2D] = None,
     ) -> dict[str, Any]:
         sorting_layers = self._get_sorting_layers(world)
         normalized_viewport = self._normalize_viewport_size(viewport_size)
@@ -407,6 +414,7 @@ class RenderSystem:
             viewport_size,
             normalized_viewport,
             camera_profile_id=camera_profile_id,
+            culling_camera=culling_camera,
         )
         cache_key = (
             id(world),
@@ -676,11 +684,13 @@ class RenderSystem:
         *,
         viewport_size: Optional[tuple[float, float]],
         camera_profile_id: Optional[str] = None,
+        culling_camera: Optional[rl.Camera2D] = None,
     ) -> dict[str, Any]:
         graph = self._build_render_graph(
             world,
             viewport_size=viewport_size,
             camera_profile_id=camera_profile_id,
+            culling_camera=culling_camera,
         )
         minimap_config = self._get_minimap_config(world)
         debug_commands: list[RenderCommand] = next((entry["commands"] for entry in graph["passes"] if entry["name"] == "Debug"), [])
@@ -721,12 +731,14 @@ class RenderSystem:
         *,
         viewport_size: Optional[tuple[float, float]],
         camera_profile_id: Optional[str] = None,
+        culling_camera: Optional[rl.Camera2D] = None,
     ) -> FramePlan2D:
         return self._pipeline_planner.adapt_frame_plan_payload(
             self._build_frame_plan(
                 world,
                 viewport_size=viewport_size,
                 camera_profile_id=camera_profile_id,
+                culling_camera=culling_camera,
             )
         )
 
@@ -1230,9 +1242,12 @@ class RenderSystem:
         normalized_viewport: tuple[int, int],
         *,
         camera_profile_id: Optional[str] = None,
+        culling_camera: Optional[rl.Camera2D] = None,
     ) -> AABB | None:
         if not self.spatial_culling_enabled:
             return None
+        if culling_camera is not None:
+            return self._camera2d_bounds(culling_camera, normalized_viewport)
         if viewport_size is None and not bool(hasattr(rl, "is_window_ready") and rl.is_window_ready()):
             return None
         resolved = resolve_effective_camera2d(
@@ -1243,6 +1258,39 @@ class RenderSystem:
         if resolved is None:
             return None
         return resolved.rect
+
+    def _camera2d_bounds(
+        self,
+        camera: rl.Camera2D,
+        viewport_size: tuple[int, int],
+    ) -> AABB:
+        width, height = viewport_size
+        target_x = float(camera.target.x)
+        target_y = float(camera.target.y)
+        offset_x = float(camera.offset.x)
+        offset_y = float(camera.offset.y)
+        zoom = max(abs(float(camera.zoom)), 1e-4)
+        radians = math.radians(-float(camera.rotation))
+        cos_r = math.cos(radians)
+        sin_r = math.sin(radians)
+
+        def screen_to_world(screen_x: float, screen_y: float) -> tuple[float, float]:
+            dx = (screen_x - offset_x) / zoom
+            dy = (screen_y - offset_y) / zoom
+            return (
+                target_x + dx * cos_r - dy * sin_r,
+                target_y + dx * sin_r + dy * cos_r,
+            )
+
+        corners = (
+            screen_to_world(0.0, 0.0),
+            screen_to_world(float(width), 0.0),
+            screen_to_world(float(width), float(height)),
+            screen_to_world(0.0, float(height)),
+        )
+        xs = [point[0] for point in corners]
+        ys = [point[1] for point in corners]
+        return min(xs), min(ys), max(xs), max(ys)
 
     def _compute_minimap_bounds(self, entities: list[Entity]) -> tuple[float, float, float, float]:
         transforms = [transform for entity in entities if (transform := entity.get_component(Transform)) is not None]
