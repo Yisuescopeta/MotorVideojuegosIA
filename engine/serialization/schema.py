@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+from collections.abc import Container
 from pathlib import Path
 from typing import Any, Callable
 
@@ -368,7 +369,7 @@ def canonicalize_scene_entity(
     *,
     scene_name: str,
     index: int,
-    used_ids: set[str] | None = None,
+    used_ids: Container[str] | None = None,
 ) -> dict[str, Any]:
     """Canonicalize one entity with the same rules used by scene schema v2."""
     entity = copy.deepcopy(entity_data)
@@ -387,6 +388,45 @@ def canonicalize_scene_entity(
         entity["id"] = candidate
     _canonicalize_entity_payload(entity, entity_path=f"$.entities[{int(index)}]")
     return entity
+
+
+def validate_scene_entity_for_add(
+    entity: dict[str, Any],
+    *,
+    index: int,
+    existing_names: Container[str],
+    existing_ids: Container[str],
+    existing_entry_ids: Container[str],
+) -> list[str]:
+    """Validate one canonical entity against the current scene indexes."""
+    path = f"$.entities[{int(index)}]"
+    errors = _validate_entity(entity, path=path, require_id=True)
+    name = str(entity.get("name", "") or "").strip()
+    entity_id = str(entity.get("id", "") or "").strip()
+    parent = entity.get("parent")
+    if name and name in existing_names:
+        errors.append(f"{path}.name: duplicate entity name '{name}'")
+    if entity_id and entity_id in existing_ids:
+        errors.append(f"{path}.id: duplicate entity id '{entity_id}'")
+    if parent is not None:
+        if not isinstance(parent, str) or not parent.strip():
+            errors.append(f"{path}.parent: expected non-empty string or null")
+        elif parent == name:
+            errors.append(f"{path}.parent: entity cannot be its own parent")
+        elif parent not in existing_names:
+            errors.append(f"{path}.parent: unknown parent '{parent}'")
+
+    components = entity.get("components", {})
+    if isinstance(components, dict):
+        entry_point = components.get("SceneEntryPoint")
+        if isinstance(entry_point, dict):
+            entry_id = str(entry_point.get("entry_id", "") or "").strip()
+            if entry_id and entry_id in existing_entry_ids:
+                errors.append(
+                    f"{path}.components.SceneEntryPoint.entry_id: duplicate entry id '{entry_id}'"
+                )
+        errors.extend(_validate_scene_transition_semantics([entity], path="$.entities"))
+    return errors
 
 
 def _migrate_scene_v0_to_v1(data: dict[str, Any]) -> dict[str, Any]:

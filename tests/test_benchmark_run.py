@@ -125,6 +125,23 @@ class BenchmarkRunTests(unittest.TestCase):
             },
         )
 
+    def test_large_scene_create_world_microbenchmark_reports_distribution(self) -> None:
+        report = run_benchmark(
+            scenario="many_transform_entities",
+            backend="legacy_aabb",
+            mode="edit",
+            frames=1,
+            entity_count=1000,
+            columns=50,
+            operation_warmup=0,
+            operation_repeats=3,
+        )
+
+        measurement = report["operations"]["scene_create_world"]
+        self.assertEqual(len(measurement["samples_ms"]), 3)
+        self.assertGreaterEqual(measurement["median_ms"], 0.0)
+        self.assertGreaterEqual(measurement["p95_ms"], measurement["median_ms"])
+
     def test_new_synthetic_benchmark_scenarios_run_headless(self) -> None:
         for scenario_name in NEW_SYNTHETIC_SCENARIOS:
             with self.subTest(scenario=scenario_name):

@@ -24,6 +24,7 @@ from engine.scenes.scene import Scene
 from engine.scenes.storage import JsonSceneStorage, SceneStorage
 from engine.scenes.structural_authoring import SceneStructuralAuthoring, SceneStructuralAuthoringContext
 from engine.scenes.workspace_lifecycle import SceneWorkspace, SceneWorkspaceEntry
+from engine.serialization.json_value import clone_json_value
 from engine.serialization.schema import build_canonical_scene_payload, migrate_scene_data, validate_scene_data
 
 if TYPE_CHECKING:
@@ -647,29 +648,11 @@ class SceneManager:
         if isinstance(components_payload, dict) and isinstance(metadata_payload, dict):
             for component_name in components_payload.keys():
                 metadata_payload[component_name] = {"origin": self._registry.get_origin(str(component_name))}
-        before = copy.deepcopy(entry.scene.to_dict())
-        rollback_selected_name = entry.selected_entity_name
-        rollback_selected_id = entry.selected_entity_id
-        rollback_dirty = entry.dirty
-        rollback_pending_reason = entry.pending_edit_world_sync_reason
-        if not entry.scene.add_entity(payload):
-            return False
-        if not payload["component_metadata"]:
-            payload.pop("component_metadata", None)
-        if self._entity_has_scene_link(payload):
-            self._sync_feature_metadata_from_scene_links(entry)
-        if not self._commit_serializable_scene_mutation(
-            entry,
-            before,
-            rollback_selected_name=rollback_selected_name,
-            rollback_selected_id=rollback_selected_id,
-            rollback_dirty=rollback_dirty,
-            rollback_pending_reason=rollback_pending_reason,
-            failure_context=f"create_entity:{name}",
-        ):
+        canonical_entity = self._add_entity_incrementally(entry, payload, failure_context=f"create_entity:{name}")
+        if canonical_entity is None:
             return False
         entry.dirty = True
-        self._record_scene_change(entry, f"create_entity:{name}", before)
+        self._record_entity_create_delta(entry, f"create_entity:{name}", canonical_entity)
         return True
 
     def create_entity_from_data(self, entity_data: Dict[str, Any]) -> bool:
@@ -679,7 +662,7 @@ class SceneManager:
         entity_name = str(entity_data.get("name", "") or "")
         if not self._flush_pending_edit_world(entry, failure_context=f"create_entity:{entity_name}"):
             return False
-        payload = copy.deepcopy(entity_data)
+        payload = clone_json_value(entity_data)
         payload.setdefault("active", True)
         payload.setdefault("tag", "Untagged")
         payload.setdefault("layer", "Default")
@@ -689,27 +672,19 @@ class SceneManager:
         for component_name in payload["components"].keys():
             payload["component_metadata"].setdefault(component_name, {})
             payload["component_metadata"][component_name].setdefault("origin", self._registry.get_origin(component_name))
-        before = copy.deepcopy(entry.scene.to_dict())
-        rollback_selected_name = entry.selected_entity_name
-        rollback_selected_id = entry.selected_entity_id
-        rollback_dirty = entry.dirty
-        rollback_pending_reason = entry.pending_edit_world_sync_reason
-        if not entry.scene.add_entity(payload):
-            return False
-        if self._entity_has_scene_link(payload):
-            self._sync_feature_metadata_from_scene_links(entry)
-        if not self._commit_serializable_scene_mutation(
+        canonical_entity = self._add_entity_incrementally(
             entry,
-            before,
-            rollback_selected_name=rollback_selected_name,
-            rollback_selected_id=rollback_selected_id,
-            rollback_dirty=rollback_dirty,
-            rollback_pending_reason=rollback_pending_reason,
+            payload,
             failure_context=f"create_entity:{payload.get('name', '')}",
-        ):
+        )
+        if canonical_entity is None:
             return False
         entry.dirty = True
-        self._record_scene_change(entry, f"create_entity:{payload.get('name', '')}", before)
+        self._record_entity_create_delta(
+            entry,
+            f"create_entity:{payload.get('name', '')}",
+            canonical_entity,
+        )
         return True
 
     def remove_entity(self, entity_name: str) -> bool:
@@ -1341,6 +1316,95 @@ class SceneManager:
             entry.selected_entity_id = None
             entry.edit_world.selected_entity_name = None
         entry.edit_world_version = entry.edit_world.version
+
+    def _add_entity_incrementally(
+        self,
+        entry: SceneWorkspaceEntry,
+        payload: Dict[str, Any],
+        *,
+        failure_context: str,
+    ) -> Optional[Dict[str, Any]]:
+        entity_name = str(payload.get("name", "") or "")
+        if entry.edit_world is None or not entry.scene.add_entity(payload):
+            return None
+        canonical_entity = entry.scene.find_entity(entity_name)
+        if canonical_entity is None:
+            return None
+        try:
+            entry.scene.materialize_entity(entry.edit_world, self._registry, canonical_entity)
+        except Exception as exc:
+            entry.scene.remove_entity_by_id(str(canonical_entity.get("id", "") or ""))
+            log_err(f"SceneManager: rejected incremental entity during {failure_context}: {exc}")
+            return None
+        if self._entity_has_scene_link(canonical_entity):
+            self._sync_feature_metadata_from_scene_links(entry)
+        self._clear_pending_edit_world_sync(entry)
+        entry.edit_world_version = entry.edit_world.version
+        return canonical_entity
+
+    def _record_entity_create_delta(
+        self,
+        entry: SceneWorkspaceEntry,
+        label: str,
+        entity_data: Dict[str, Any],
+    ) -> None:
+        key = entry.key
+        payload = clone_json_value(entity_data)
+        entity_id = str(entity_data.get("id", "") or "")
+        self._change_history.record_differential_change(
+            label=label,
+            undo=lambda key=key, entity_id=entity_id: self._remove_entity_create_delta(key, entity_id),
+            redo=lambda key=key, payload=payload: self._restore_entity_create_delta(key, payload),
+        )
+
+    def _remove_entity_create_delta(self, key: str, entity_id: str) -> bool:
+        entry = self._resolve_entry(key)
+        if entry is None or entry.is_playing or entry.edit_world is None:
+            return False
+        entity_data = entry.scene.find_entity_by_id(entity_id)
+        if entity_data is None:
+            return False
+        entity_name = str(entity_data.get("name", "") or "")
+        had_scene_link = self._entity_has_scene_link(entity_data)
+        if not entry.scene.remove_entity_by_id(entity_id):
+            return False
+        self._remove_world_entity_projection(entry.edit_world, entity_name, entity_id)
+        if had_scene_link:
+            self._sync_feature_metadata_from_scene_links(entry)
+        self._clear_pending_edit_world_sync(entry)
+        entry.edit_world_version = entry.edit_world.version
+        entry.dirty = True
+        return True
+
+    def _restore_entity_create_delta(self, key: str, entity_data: Dict[str, Any]) -> bool:
+        entry = self._resolve_entry(key)
+        if entry is None or entry.is_playing:
+            return False
+        restored = self._add_entity_incrementally(
+            entry,
+            clone_json_value(entity_data),
+            failure_context=f"redo_create_entity:{entity_data.get('name', '')}",
+        )
+        if restored is None:
+            return False
+        entry.dirty = True
+        return True
+
+    @staticmethod
+    def _remove_world_entity_projection(world: "World", entity_name: str, entity_id: str) -> None:
+        from engine.components.transform import Transform
+
+        root = world.get_entity_by_serialized_id(entity_id) or world.get_entity_by_name(entity_name)
+        targets = [
+            entity
+            for entity in world.iter_all_entities()
+            if entity is root or entity.prefab_root_name == entity_name
+        ]
+        for entity in reversed(targets):
+            transform = entity.get_component(Transform)
+            if transform is not None and transform.parent is not None and transform in transform.parent.children:
+                transform.parent.children.remove(transform)
+            world.remove_entity(entity.id)
 
     def _entity_id_for_name(self, entry: SceneWorkspaceEntry, entity_name: Optional[str]) -> Optional[str]:
         if not entity_name:

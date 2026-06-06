@@ -97,6 +97,13 @@ puntuales viven en `operations`:
 Las claves no aplicables se omiten. Por ejemplo, `transform_edit` solo aparece en
 `transform_edit_stress`.
 
+Todos los escenarios con una escena cargada incluyen
+`operations.scene_create_world` y
+`operations.scene_add_entity_canonicalization`. Ambas mediciones publican
+`samples_ms`, `median_ms` y `p95_ms`; permiten comparar la materializacion de un
+`World` grande y el coste aislado de canonicalizar una entidad nueva sin usar
+umbrales temporales dependientes del hardware.
+
 ## Guardado compacto de escenas grandes
 
 `SceneManager.save_scene_to_file` mantiene por defecto el JSON legible con

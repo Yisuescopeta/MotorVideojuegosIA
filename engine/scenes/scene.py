@@ -10,7 +10,11 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from engine.ecs.entity import normalize_entity_groups
 from engine.serialization.json_value import clone_json_value
-from engine.serialization.schema import canonicalize_scene_entity, migrate_scene_data
+from engine.serialization.schema import (
+    canonicalize_scene_entity,
+    migrate_scene_data,
+    validate_scene_entity_for_add,
+)
 
 if TYPE_CHECKING:
     from engine.ecs.world import World
@@ -37,6 +41,7 @@ class Scene:
         self._source_path: Optional[str] = source_path
         self._entity_index: Dict[str, Dict[str, Any]] = {}
         self._entity_id_index: Dict[str, Dict[str, Any]] = {}
+        self._scene_entry_id_index: Dict[str, Dict[str, Any]] = {}
         self._rebuild_entity_index()
 
     @property
@@ -78,43 +83,60 @@ class Scene:
         self._source_path = source_path
 
     def create_world(self, registry: "ComponentRegistry") -> "World":
-        from engine.assets.prefab import PrefabManager
-        from engine.components.transform import Transform
         from engine.ecs.world import World
 
         world = World()
         world.feature_metadata = clone_json_value(self.feature_metadata)
-        created_entities = {}
-        pending_links: list[tuple[str, str]] = []
-
         for entity_data in self.entities_data:
-            expanded_entities: list[dict[str, Any]]
-            prefab_instance = entity_data.get("prefab_instance")
-            if prefab_instance:
-                prefab_path = self._resolve_prefab_path(prefab_instance.get("prefab_path", ""))
-                prefab_data = PrefabManager.load_prefab_data(prefab_path)
-                if prefab_data is None:
-                    expanded_entities = [entity_data]
-                else:
-                    expanded_entities = PrefabManager.expand_prefab_instance(
-                        prefab_data,
-                        instance_name=entity_data.get("name", prefab_instance.get("root_name", "Prefab")),
-                        parent_name=entity_data.get("parent"),
-                        prefab_path=prefab_instance.get("prefab_path", ""),
-                        overrides=copy.deepcopy(prefab_instance.get("overrides", {})),
-                    )
-                    root_entity_id = entity_data.get("id")
-                    if isinstance(root_entity_id, str) and root_entity_id.strip():
-                        for expanded_data in expanded_entities:
-                            if expanded_data.get("prefab_source_path", "") == "":
-                                expanded_data["id"] = root_entity_id.strip()
-                                break
-            else:
-                expanded_entities = [entity_data]
+            self.materialize_entity(world, registry, entity_data)
+        self._link_world_hierarchy(world, list(world.iter_all_entities()))
+        return world
 
+    def materialize_entity(
+        self,
+        world: "World",
+        registry: "ComponentRegistry",
+        entity_data: Dict[str, Any],
+    ) -> list[Any]:
+        """Project one serialized scene entity into an existing World."""
+        from engine.assets.prefab import PrefabManager
+
+        prefab_instance = entity_data.get("prefab_instance")
+        expanded_entities: list[dict[str, Any]]
+        if isinstance(prefab_instance, dict):
+            prefab_path = self._resolve_prefab_path(str(prefab_instance.get("prefab_path", "")))
+            prefab_data = PrefabManager.load_prefab_data(prefab_path)
+            if prefab_data is None:
+                expanded_entities = [entity_data]
+            else:
+                expanded_entities = PrefabManager.expand_prefab_instance(
+                    prefab_data,
+                    instance_name=entity_data.get("name", prefab_instance.get("root_name", "Prefab")),
+                    parent_name=entity_data.get("parent"),
+                    prefab_path=prefab_instance.get("prefab_path", ""),
+                    overrides=prefab_instance.get("overrides", {}),
+                )
+                root_entity_id = entity_data.get("id")
+                if isinstance(root_entity_id, str) and root_entity_id.strip():
+                    for expanded_data in expanded_entities:
+                        if expanded_data.get("prefab_source_path", "") == "":
+                            expanded_data["id"] = root_entity_id.strip()
+                            break
+        else:
+            expanded_entities = [entity_data]
+
+        names = [str(item.get("name", "Entity")) for item in expanded_entities]
+        if len(set(names)) != len(names):
+            raise ValueError("Prefab expansion contains duplicate entity names")
+        duplicate_name = next((name for name in names if world.get_entity_by_name(name) is not None), None)
+        if duplicate_name is not None:
+            raise ValueError(f"World already contains entity '{duplicate_name}'")
+
+        created = []
+        try:
             for expanded_data in expanded_entities:
-                entity_name = expanded_data.get("name", "Entity")
-                entity = world.create_entity(entity_name)
+                entity = world.create_entity(str(expanded_data.get("name", "Entity")))
+                created.append(entity)
                 entity_id = expanded_data.get("id")
                 if isinstance(entity_id, str) and entity_id.strip():
                     entity.serialized_id = entity_id.strip()
@@ -123,35 +145,40 @@ class Scene:
                 entity.layer = expanded_data.get("layer", "Default")
                 entity.groups = normalize_entity_groups(expanded_data.get("groups", ()))
                 entity.parent_name = expanded_data.get("parent")
-                entity.prefab_instance = copy.deepcopy(expanded_data.get("prefab_instance"))
+                entity.prefab_instance = clone_json_value(expanded_data.get("prefab_instance"))
                 entity.prefab_source_path = expanded_data.get("prefab_source_path")
                 entity.prefab_root_name = expanded_data.get("prefab_root_name")
                 component_metadata = expanded_data.get("component_metadata", {})
-
                 for comp_name, comp_props in expanded_data.get("components", {}).items():
-                    component = registry.create(comp_name, comp_props)
-                    if component is not None:
-                        entity.add_component(component, metadata=component_metadata.get(comp_name, {}))
+                    component = registry.create(comp_name, clone_json_value(comp_props))
+                    entity.add_component(component, metadata=component_metadata.get(comp_name, {}))
 
-                created_entities[entity_name] = entity
-                if entity.parent_name:
-                    pending_links.append((entity_name, entity.parent_name))
+            self._link_world_hierarchy(world, created)
+            return created
+        except Exception:
+            for entity in reversed(created):
+                world.remove_entity(entity.id)
+            raise
 
-        for entity_name, parent_name in pending_links:
-            linked_entity = created_entities.get(entity_name)
-            parent = created_entities.get(parent_name)
-            if linked_entity is None or parent is None:
+    @staticmethod
+    def _link_world_hierarchy(world: "World", entities: list[Any]) -> None:
+        from engine.components.transform import Transform
+
+        for entity in entities:
+            if not entity.parent_name:
                 continue
-            child_transform = linked_entity.get_component(Transform)
+            parent = world.get_entity_by_name(entity.parent_name)
+            if parent is None:
+                continue
+            child_transform = entity.get_component(Transform)
             parent_transform = parent.get_component(Transform)
-            if child_transform is not None:
-                if child_transform.parent and child_transform in child_transform.parent.children:
-                    child_transform.parent.children.remove(child_transform)
-                child_transform.parent = parent_transform
-                if parent_transform is not None and child_transform not in parent_transform.children:
-                    parent_transform.children.append(child_transform)
-
-        return world
+            if child_transform is None:
+                continue
+            if child_transform.parent and child_transform in child_transform.parent.children:
+                child_transform.parent.children.remove(child_transform)
+            child_transform.parent = parent_transform
+            if parent_transform is not None and child_transform not in parent_transform.children:
+                parent_transform.children.append(child_transform)
 
     def _resolve_prefab_path(self, prefab_path: str) -> str:
         path = Path(prefab_path)
@@ -162,6 +189,7 @@ class Scene:
     def _rebuild_entity_index(self) -> None:
         self._entity_index.clear()
         self._entity_id_index.clear()
+        self._scene_entry_id_index.clear()
         for entity_data in self.entities_data:
             if not isinstance(entity_data, dict):
                 continue
@@ -171,19 +199,27 @@ class Scene:
             entity_id = entity_data.get("id")
             if isinstance(entity_id, str) and entity_id.strip() and entity_id not in self._entity_id_index:
                 self._entity_id_index[entity_id] = entity_data
+            self._index_scene_entry(entity_data)
+
+    def _index_scene_entry(self, entity_data: Dict[str, Any]) -> None:
+        entry_point = entity_data.get("components", {}).get("SceneEntryPoint")
+        entry_id = entry_point.get("entry_id") if isinstance(entry_point, dict) else None
+        if isinstance(entry_id, str) and entry_id.strip() and entry_id not in self._scene_entry_id_index:
+            self._scene_entry_id_index[entry_id] = entity_data
+
+    def _deindex_scene_entry(self, entity_data: Dict[str, Any]) -> None:
+        entry_point = entity_data.get("components", {}).get("SceneEntryPoint")
+        entry_id = entry_point.get("entry_id") if isinstance(entry_point, dict) else None
+        if isinstance(entry_id, str) and self._scene_entry_id_index.get(entry_id) is entity_data:
+            self._scene_entry_id_index.pop(entry_id, None)
 
     def _canonicalize_entity_for_add(self, entity_data: Dict[str, Any]) -> Dict[str, Any]:
         entities = self.entities_data
-        used_ids = {
-            str(item.get("id")).strip()
-            for item in entities
-            if isinstance(item, dict) and isinstance(item.get("id"), str) and str(item.get("id")).strip()
-        }
         return canonicalize_scene_entity(
             entity_data,
             scene_name=str(self._data.get("name", self._name) or self._name),
             index=len(entities),
-            used_ids=used_ids,
+            used_ids=self._entity_id_index,
         )
 
     def _rename_entity_references(self, old_name: str, new_name: str, entity_id: str | None = None) -> None:
@@ -231,7 +267,11 @@ class Scene:
             return False
         components = entity_data.get("components", {})
         if component_name in components:
+            if component_name == "SceneEntryPoint":
+                self._deindex_scene_entry(entity_data)
             components[component_name][property_name] = value
+            if component_name == "SceneEntryPoint":
+                self._index_scene_entry(entity_data)
             print(f"[EDIT] Scene: {entity_name}.{component_name}.{property_name} = {value}")
             return True
         return False
@@ -287,7 +327,11 @@ class Scene:
         components = entity_data.setdefault("components", {})
         if component_name not in components:
             return False
+        if component_name == "SceneEntryPoint":
+            self._deindex_scene_entry(entity_data)
         components[component_name] = component_data
+        if component_name == "SceneEntryPoint":
+            self._index_scene_entry(entity_data)
         return True
 
     def get_component_metadata(self, entity_name: str, component_name: str) -> Dict[str, Any]:
@@ -320,17 +364,21 @@ class Scene:
 
     def add_entity(self, entity_data: Dict[str, Any]) -> bool:
         canonical_entity = self._canonicalize_entity_for_add(entity_data)
-        entity_name = canonical_entity.get("name", "")
-        if self.find_entity(entity_name) is not None:
+        errors = validate_scene_entity_for_add(
+            canonical_entity,
+            index=len(self.entities_data),
+            existing_names=self._entity_index,
+            existing_ids=self._entity_id_index,
+            existing_entry_ids=self._scene_entry_id_index,
+        )
+        if errors:
             return False
-        entity_id = canonical_entity.get("id")
-        if isinstance(entity_id, str) and entity_id.strip() and self.find_entity_by_id(entity_id) is not None:
-            return False
+        entity_name = canonical_entity["name"]
+        entity_id = canonical_entity["id"]
         self._data.setdefault("entities", []).append(canonical_entity)
-        if isinstance(entity_name, str):
-            self._entity_index[entity_name] = canonical_entity
-        if isinstance(entity_id, str) and entity_id.strip():
-            self._entity_id_index[entity_id] = canonical_entity
+        self._entity_index[entity_name] = canonical_entity
+        self._entity_id_index[entity_id] = canonical_entity
+        self._index_scene_entry(canonical_entity)
         return True
 
     def remove_entity(self, entity_name: str) -> bool:
@@ -357,6 +405,8 @@ class Scene:
             return False
         components = entity_data.setdefault("components", {})
         components[component_name] = component_data
+        if component_name == "SceneEntryPoint":
+            self._index_scene_entry(entity_data)
         return True
 
     def add_component_by_id(self, entity_id: str, component_name: str, component_data: Dict[str, Any]) -> bool:
@@ -365,6 +415,8 @@ class Scene:
             return False
         components = entity_data.setdefault("components", {})
         components[component_name] = component_data
+        if component_name == "SceneEntryPoint":
+            self._index_scene_entry(entity_data)
         return True
 
     def remove_component(self, entity_name: str, component_name: str) -> bool:
@@ -374,6 +426,8 @@ class Scene:
         components = entity_data.setdefault("components", {})
         if component_name not in components:
             return False
+        if component_name == "SceneEntryPoint":
+            self._deindex_scene_entry(entity_data)
         del components[component_name]
         component_metadata = entity_data.get("component_metadata", {})
         if isinstance(component_metadata, dict):
@@ -408,7 +462,11 @@ class Scene:
             return False
         components = entity_data.get("components", {})
         if component_name in components:
+            if component_name == "SceneEntryPoint":
+                self._deindex_scene_entry(entity_data)
             components[component_name][property_name] = value
+            if component_name == "SceneEntryPoint":
+                self._index_scene_entry(entity_data)
             print(f"[EDIT] Scene: {entity_id}.{component_name}.{property_name} = {value}")
             return True
         return False
@@ -429,7 +487,11 @@ class Scene:
         components = entity_data.setdefault("components", {})
         if component_name not in components:
             return False
+        if component_name == "SceneEntryPoint":
+            self._deindex_scene_entry(entity_data)
         components[component_name] = component_data
+        if component_name == "SceneEntryPoint":
+            self._index_scene_entry(entity_data)
         return True
 
     def to_dict(self) -> Dict[str, Any]:

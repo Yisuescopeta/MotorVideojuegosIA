@@ -24,6 +24,11 @@ componentes legacy incompatibles. Los metadatos serializables se copian con
 `clone_json_value()` para mantener independencia entre EDIT y PLAY sin activar
 el protocolo generico de copia profunda en la ruta normal.
 
+`Scene.create_world()` materializa cada entidad directamente y clona solo los
+valores JSON mutables que pasan al runtime: payloads de componentes,
+`component_metadata`, `prefab_instance` y `feature_metadata`. El `World`
+resultante no comparte contenedores mutables con `Scene.data`.
+
 ## Componentes registrados
 
 La fuente de verdad para componentes publicos registrados es
@@ -867,6 +872,13 @@ generado, verifica y reserva bajo lock que no exista ya en la escena activa.
 
 Las rutas recomendadas para cambios persistentes son `SceneManager` y
 `EngineAPI`. `sync_from_edit_world()` queda como compatibilidad legacy.
+
+La creacion normal de una entidad canonicaliza y valida solo el payload nuevo
+contra los indices de nombre, id, padre y `SceneEntryPoint`. Despues materializa
+esa entidad o su expansion de prefab en el `edit_world` existente y registra
+undo/redo diferencial. No migra, copia ni reconstruye la escena completa.
+Las transacciones explicitas conservan snapshots globales para rollback
+agrupado.
 
 ## Foundation del editor
 
