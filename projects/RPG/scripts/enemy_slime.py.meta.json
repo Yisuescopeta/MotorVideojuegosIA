@@ -1,0 +1,21 @@
+{
+    "guid": "ast_938d29fb20d44dbfbc9c677471686fd0",
+    "source_path": "scripts/enemy_slime.py",
+    "path": "scripts/enemy_slime.py",
+    "asset_kind": "script",
+    "importer": "script",
+    "labels": [],
+    "dependencies": [],
+    "import_settings": {
+        "asset_type": "script",
+        "import_mode": "raw",
+        "grid": {},
+        "automatic": {},
+        "slices": []
+    },
+    "asset_type": "script",
+    "import_mode": "raw",
+    "grid": {},
+    "automatic": {},
+    "slices": []
+}

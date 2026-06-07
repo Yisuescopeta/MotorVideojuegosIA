@@ -27,8 +27,8 @@ from engine.ecs.component import Component
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.editor.collider_authoring import (
-    build_collider_preview_snapshot,
     build_collider_payload,
+    build_collider_preview_snapshot,
     get_effective_animator_collider_payload,
 )
 from engine.editor.cursor_manager import CursorVisualState

@@ -873,7 +873,7 @@ class AndroidExporter(PlatformExporter):
         kind: str,
     ) -> Path:
         dest_name = self._artifact_dest_name(ctx, source)
-        dest = output_dir / dest_name
+        dest = (output_dir / dest_name).resolve()
         if dest.exists() and dest.is_dir():
             shutil.rmtree(dest)
         dest.parent.mkdir(parents=True, exist_ok=True)

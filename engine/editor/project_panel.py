@@ -813,11 +813,17 @@ class ProjectPanel:
         value = str(locator or "").strip()
         if not value:
             return ""
-        if os.path.isabs(value):
-            return value if os.path.isfile(value) else ""
         if self.project_service is not None:
             resolved = self.project_service.resolve_path(value)
-            return resolved.as_posix() if resolved.exists() else ""
+            if not resolved.is_file():
+                return ""
+            try:
+                relative = resolved.relative_to(self.project_service.project_root)
+            except ValueError:
+                return resolved.as_posix()
+            return (self.project_service.project_root_display / relative).absolute().as_posix()
+        if os.path.isabs(value):
+            return value if os.path.isfile(value) else ""
         candidate = os.path.abspath(os.path.join(self.root_path, value))
         return candidate if os.path.isfile(candidate) else ""
 
