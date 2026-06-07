@@ -145,3 +145,38 @@ def get_payload_bounds(payload: dict[str, Any], x: float = 0.0, y: float = 0.0) 
     normalized = normalize_collision_frame_payload(payload)
     temp = Collider.from_dict(normalized)
     return temp.get_bounds(float(x), float(y))
+
+
+def build_collider_preview_snapshot(
+    payload: Any,
+    transform: Any,
+    *,
+    entity_name: str = "",
+) -> Optional[dict[str, Any]]:
+    """Construye el snapshot efimero consumido por GizmoSystem."""
+    if not isinstance(payload, dict) or transform is None:
+        return None
+    try:
+        x = float(getattr(transform, "x"))
+        y = float(getattr(transform, "y"))
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+    normalized = build_collider_payload(payload)
+    bounds = get_payload_bounds(normalized, x, y)
+    return {
+        "entity_name": str(entity_name or ""),
+        "x": x,
+        "y": y,
+        "payload": dict(normalized),
+        "bounds": {
+            "left": bounds[0],
+            "top": bounds[1],
+            "right": bounds[2],
+            "bottom": bounds[3],
+            "width": bounds[2] - bounds[0],
+            "height": bounds[3] - bounds[1],
+        },
+        "shape_type": normalized.get("shape_type", "box"),
+        "is_trigger": bool(normalized.get("is_trigger", False)),
+    }

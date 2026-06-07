@@ -805,6 +805,7 @@ class TestPrueva1ExportParity(unittest.TestCase):
 
             before_env = os.environ.pop("PYRAY_FORCE_STUB", None)
             before_paths = list(sys.path)
+            before_pyray = sys.modules.get("pyray")
             sys.modules.pop("pyray", None)
             try:
                 spec = importlib.util.spec_from_file_location("motor_android_runtime_copied_adapter", adapter_path)
@@ -832,6 +833,8 @@ class TestPrueva1ExportParity(unittest.TestCase):
                     pass
                 sys.modules.pop("motor_android_runtime_copied_adapter", None)
                 sys.modules.pop("pyray", None)
+                if before_pyray is not None:
+                    sys.modules["pyray"] = before_pyray
                 sys.path[:] = before_paths
                 if before_env is None:
                     os.environ.pop("PYRAY_FORCE_STUB", None)

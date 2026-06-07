@@ -269,7 +269,7 @@ class TestWindowsExporter(unittest.TestCase):
         self.assertIn("pyinstaller_hooks", content)
         self.assertLess(
             content.index("sysconfig.get_paths().get('purelib')"),
-            content.index(f"r'{self.tmp.as_posix()}'"),
+            content.index(f"r'{self.tmp.resolve().as_posix()}'"),
         )
 
     def test_preset_validation_accepts_console_extra_field(self):

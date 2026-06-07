@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "source_repository": "https://github.com/godotengine/godot",
+  "source_commit": "72cc0fc9a75bf041e84b9d37e7e31e17cb114a9e",
+  "source_path": "editor/icons",
+  "icons": {
+    "entity": {
+      "source": "Node.svg",
+      "atlas_name": "entity",
+      "description": "Generic entity or node icon"
+    },
+    "node2d": {
+      "source": "Node2D.svg",
+      "atlas_name": "node2d",
+      "description": "2D node icon"
+    },
+    "sprite": {
+      "source": "Sprite2D.svg",
+      "atlas_name": "sprite",
+      "description": "2D sprite entity"
+    },
+    "camera": {
+      "source": "Camera2D.svg",
+      "atlas_name": "camera",
+      "description": "2D camera entity"
+    },
+    "tilemap": {
+      "source": "TileMap.svg",
+      "atlas_name": "tilemap",
+      "description": "TileMap entity"
+    },
+    "collider": {
+      "source": "CollisionShape2D.svg",
+      "atlas_name": "collider",
+      "description": "2D collision shape entity"
+    },
+    "rigidbody": {
+      "source": "RigidBody2D.svg",
+      "atlas_name": "rigidbody",
+      "description": "2D rigid body entity"
+    },
+    "audio": {
+      "source": "AudioStreamPlayer2D.svg",
+      "atlas_name": "audio",
+      "description": "2D positional audio entity"
+    },
+    "animation": {
+      "source": "AnimationPlayer.svg",
+      "atlas_name": "animation",
+      "description": "Animation player entity"
+    },
+    "canvas": {
+      "source": "CanvasLayer.svg",
+      "atlas_name": "canvas",
+      "description": "Canvas layer entity"
+    },
+    "ui_button": {
+      "source": "Button.svg",
+      "atlas_name": "ui_button",
+      "description": "UI button entity"
+    },
+    "light": {
+      "source": "DirectionalLight2D.svg",
+      "atlas_name": "light",
+      "description": "2D light entity",
+      "substitution_from": "Light2D.svg"
+    },
+    "particles": {
+      "source": "CPUParticles2D.svg",
+      "atlas_name": "particles",
+      "description": "CPU particles entity"
+    }
+  }
+}

@@ -500,6 +500,11 @@ class Game:
                 get_history_manager=lambda: self._history_manager,
                 get_current_scene_viewport_size=self._current_scene_viewport_size,
                 get_current_viewport_size=self._current_viewport_size,
+                get_animator_collider_preview=(
+                    lambda world: self.animator_panel.get_frame_collider_preview_snapshot(world)
+                    if self.animator_panel is not None
+                    else None
+                ),
             )
 
     def _sync_editor_shell(self) -> None:

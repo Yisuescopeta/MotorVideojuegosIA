@@ -813,11 +813,17 @@ class ProjectPanel:
         value = str(locator or "").strip()
         if not value:
             return ""
-        if os.path.isabs(value):
-            return value if os.path.isfile(value) else ""
         if self.project_service is not None:
             resolved = self.project_service.resolve_path(value)
-            return resolved.as_posix() if resolved.exists() else ""
+            if not resolved.is_file():
+                return ""
+            try:
+                relative = resolved.relative_to(self.project_service.project_root)
+            except ValueError:
+                return resolved.as_posix()
+            return (self.project_service.project_root_display / relative).absolute().as_posix()
+        if os.path.isabs(value):
+            return value if os.path.isfile(value) else ""
         candidate = os.path.abspath(os.path.join(self.root_path, value))
         return candidate if os.path.isfile(candidate) else ""
 
@@ -837,9 +843,9 @@ class ProjectPanel:
     def _is_scene_path(self, file_path: str) -> bool:
         if self.project_service is None or not str(file_path).lower().endswith(".json"):
             return False
-        levels_root = self.project_service.get_project_path("levels").as_posix()
+        levels_root = self.project_service.get_project_path("levels")
         try:
-            return os.path.commonpath([os.path.abspath(file_path), levels_root]) == os.path.abspath(levels_root)
+            return self.project_service.resolve_path(file_path).is_relative_to(levels_root)
         except ValueError:
             return False
 

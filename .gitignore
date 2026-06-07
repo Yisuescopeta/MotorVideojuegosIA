@@ -55,9 +55,28 @@ zzz_test.txt
 
 # Local projects created from the launcher
 projects/
+!projects/
+projects/*
+!projects/RPG/
+projects/RPG/*
+!projects/RPG/levels/
+projects/RPG/levels/*
+!projects/RPG/levels/main_scene.json
+!projects/RPG/scripts/
+projects/RPG/scripts/*
+!projects/RPG/scripts/enemy_slime.py
+!projects/RPG/scripts/enemy_slime.py.meta.json
+!projects/RPG/scripts/player.py
+!projects/RPG/scripts/player.py.meta.json
 
 # Godot engine source / submodule (no se versiona)
 godot/
+!engine/editor/resources/icons/godot/
+engine/editor/resources/icons/godot/*
+!engine/editor/resources/icons/godot/__init__.py
+!engine/editor/resources/icons/godot/godot_hierarchy_atlas.json
+!engine/editor/resources/icons/godot/godot_hierarchy_atlas.png
+!engine/editor/resources/icons/godot/godot_hierarchy_manifest.json
 
 # Claude Code workspace (no se versiona)
 claude code/
