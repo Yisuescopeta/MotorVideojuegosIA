@@ -12,8 +12,8 @@ from typing import Any, Optional, Tuple
 
 import pyray as rl
 from engine.components.animator import Animator
-from engine.components.canvas import Canvas
 from engine.components.camera2d import Camera2D
+from engine.components.canvas import Canvas
 from engine.components.collider import Collider
 from engine.components.recttransform import RectTransform
 from engine.components.sprite import Sprite
@@ -66,6 +66,10 @@ class GizmoSystem:
     RECT_COLOR = rl.Color(80, 150, 255, 255)
     CAMERA_FRAME_COLOR = rl.Color(90, 220, 255, 255)
     CAMERA_FRAME_FILL = rl.Color(90, 220, 255, 34)
+    COLLIDER_PREVIEW_COLOR = rl.Color(80, 220, 120, 255)
+    COLLIDER_TRIGGER_PREVIEW_COLOR = rl.Color(255, 190, 80, 255)
+    COLLIDER_PREVIEW_FILL = rl.Color(80, 220, 120, 35)
+    COLLIDER_TRIGGER_PREVIEW_FILL = rl.Color(255, 190, 80, 35)
     HOVER_COLOR = rl.Color(255, 255, 100, 255)
     CENTER_SIZE: int = 8
     ROTATE_RING_RADIUS: int = 40
@@ -98,8 +102,12 @@ class GizmoSystem:
         self.drag_parent_rect: dict[str, float] | None = None
         self.drag_start_camera: dict[str, Any] | None = None
         self._completed_drag: CompletedGizmoDrag | None = None
+        self._collider_preview: dict[str, Any] | None = None
         self._tilemap_preview: dict[str, Any] | None = None
         self._tilemap_texture_manager = TextureManager()
+
+    def set_collider_preview(self, preview: dict[str, Any] | None) -> None:
+        self._collider_preview = copy.deepcopy(preview) if preview is not None else None
 
     def set_tilemap_preview(self, preview: dict[str, Any] | None) -> None:
         self._tilemap_preview = copy.deepcopy(preview) if preview is not None else None
@@ -175,6 +183,7 @@ class GizmoSystem:
         camera_profile_id: str | None = None,
         camera_viewport_size: tuple[float, float] | None = None,
     ) -> None:
+        self._draw_collider_preview()
         selected_entity = self._get_selected_entity(world)
         if selected_entity is not None and selected_entity.get_component(RectTransform) is None:
             transform = selected_entity.get_component(Transform)
@@ -557,6 +566,81 @@ class GizmoSystem:
             return
         self._draw_tilemap_preview_fill(rect, corners, rl.Color(220, 72, 72, 60))
         self._draw_tilemap_preview_outline(rect, corners, rl.Color(255, 92, 92, 255))
+
+    def _draw_collider_preview(self) -> None:
+        preview = self._collider_preview
+        if not isinstance(preview, dict):
+            return
+        payload = preview.get("payload")
+        bounds = preview.get("bounds")
+        if not isinstance(payload, dict) or not isinstance(bounds, dict):
+            return
+        if not bool(payload.get("enabled", True)):
+            return
+        try:
+            left = float(bounds["left"])
+            top = float(bounds["top"])
+            right = float(bounds["right"])
+            bottom = float(bounds["bottom"])
+        except (KeyError, TypeError, ValueError):
+            return
+        if not all(math.isfinite(value) for value in (left, top, right, bottom)):
+            return
+        width = right - left
+        height = bottom - top
+        if width <= 0.0 or height <= 0.0:
+            return
+
+        shape_type = str(preview.get("shape_type", payload.get("shape_type", "box")) or "box").strip().lower()
+        is_trigger = bool(preview.get("is_trigger", payload.get("is_trigger", False)))
+        color = self.COLLIDER_TRIGGER_PREVIEW_COLOR if is_trigger else self.COLLIDER_PREVIEW_COLOR
+        fill = self.COLLIDER_TRIGGER_PREVIEW_FILL if is_trigger else self.COLLIDER_PREVIEW_FILL
+        center_x = (left + right) * 0.5
+        center_y = (top + bottom) * 0.5
+
+        if shape_type == "circle":
+            radius = float(payload.get("radius", 0.0) or 0.0)
+            if not math.isfinite(radius) or radius <= 0.0:
+                radius = min(width, height) * 0.5
+            if radius > 0.0:
+                rl.draw_circle(int(center_x), int(center_y), radius, fill)
+                rl.draw_circle_lines(int(center_x), int(center_y), radius, color)
+            return
+
+        if shape_type == "capsule":
+            rect = rl.Rectangle(left, top, width, height)
+            rl.draw_rectangle_rec(rect, fill)
+            rl.draw_rectangle_lines_ex(rect, 2, color)
+            return
+
+        if shape_type == "polygon":
+            raw_points = payload.get("points", [])
+            if not isinstance(raw_points, list):
+                return
+            points: list[rl.Vector2] = []
+            for point in raw_points:
+                if not isinstance(point, (list, tuple)) or len(point) < 2:
+                    continue
+                try:
+                    point_x = float(point[0])
+                    point_y = float(point[1])
+                except (TypeError, ValueError):
+                    continue
+                if not math.isfinite(point_x) or not math.isfinite(point_y):
+                    continue
+                points.append(rl.Vector2(center_x + point_x, center_y + point_y))
+            if len(points) >= 2:
+                self._draw_closed_preview_polyline(points, color)
+                return
+
+        rect = rl.Rectangle(left, top, width, height)
+        rl.draw_rectangle_rec(rect, fill)
+        rl.draw_rectangle_lines_ex(rect, 2, color)
+
+    @staticmethod
+    def _draw_closed_preview_polyline(points: list[rl.Vector2], color: rl.Color) -> None:
+        for index, point in enumerate(points):
+            rl.draw_line_ex(point, points[(index + 1) % len(points)], 2.0, color)
 
     def _draw_tilemap_preview_tile(self, preview_tile: dict[str, Any], editable: bool) -> None:
         rect_data = preview_tile.get("cell_rect")

@@ -221,6 +221,11 @@ class EditorInteractionController:
                 tilemap_preview = inspector_system.get_tilemap_preview_snapshot(active_world)
         if gizmo_system is not None and hasattr(gizmo_system, "set_tilemap_preview"):
             gizmo_system.set_tilemap_preview(tilemap_preview)
+        collider_preview = None
+        if inspector_system is not None and active_world is not None and hasattr(inspector_system, "get_collider_preview_snapshot"):
+            collider_preview = inspector_system.get_collider_preview_snapshot(active_world)
+        if gizmo_system is not None and hasattr(gizmo_system, "set_collider_preview"):
+            gizmo_system.set_collider_preview(collider_preview)
 
         scene_manager = self._get_scene_manager()
         if not tilemap_tool_active and gizmo_system is not None and active_world is not None:
@@ -271,6 +276,13 @@ class EditorInteractionController:
             else:
                 selected_name = selection_system.update(active_world, mouse_world)
                 self._apply_selection(active_world, selected_name)
+            if (
+                inspector_system is not None
+                and gizmo_system is not None
+                and hasattr(inspector_system, "get_collider_preview_snapshot")
+                and hasattr(gizmo_system, "set_collider_preview")
+            ):
+                gizmo_system.set_collider_preview(inspector_system.get_collider_preview_snapshot(active_world))
 
     def resolve_cursor_state(self, active_world: Optional["World"]) -> CursorVisualState:
         state = CursorVisualState.DEFAULT

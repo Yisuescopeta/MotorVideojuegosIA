@@ -15,18 +15,25 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 import pyray as rl
 from engine.assets.asset_reference import clone_asset_reference, normalize_asset_reference
 from engine.assets.asset_service import AssetService
+from engine.components.animator import Animator
 from engine.components.collider import Collider
 from engine.components.playercontroller2d import PlayerController2D
 from engine.components.scene_transition_on_contact import SceneTransitionOnContact
 from engine.components.scene_transition_on_interact import SceneTransitionOnInteract
 from engine.components.scene_transition_on_player_death import SceneTransitionOnPlayerDeath
+from engine.components.transform import Transform
 from engine.components.uibutton import UIButton
 from engine.ecs.component import Component
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
+from engine.editor.collider_authoring import (
+    build_collider_payload,
+    get_effective_animator_collider_payload,
+    get_payload_bounds,
+)
 from engine.editor.cursor_manager import CursorVisualState
-from engine.editor.ui.icons import ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, ICON_TRASH, draw_icon
 from engine.editor.render_safety import editor_scissor
+from engine.editor.ui.icons import ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, ICON_TRASH, draw_icon
 from engine.inspector.component_editor_registry import ComponentEditorRegistry
 from engine.levels.component_registry import create_default_registry
 from engine.project.project_service import ProjectService
@@ -137,6 +144,8 @@ class InspectorSystem:
         self._scene_entry_point_cache_time: float = 0.0
         self._cursor_interactive_rects: List[rl.Rectangle] = []
         self._cursor_text_rects: List[rl.Rectangle] = []
+        self._collider_preview_entity_name: str = ""
+        self._collider_preview_enabled: bool = False
         self._tilemap_authoring = TilemapAuthoringState()
         self._tilemap_project_service: Optional[ProjectService] = None
         self._tilemap_asset_service: Optional[AssetService] = None
@@ -187,6 +196,68 @@ class InspectorSystem:
             "flood_preview_count": int(self._tilemap_authoring.flood_preview_count),
             "flood_truncated": bool(self._tilemap_authoring.flood_truncated),
         }
+
+    def is_collider_preview_active(self, world: "World") -> bool:
+        if not self._collider_preview_enabled:
+            return False
+        entity_name = str(self._collider_preview_entity_name or "").strip()
+        selected_name = str(world.selected_entity_name or "").strip()
+        if not entity_name or selected_name != entity_name:
+            self._collider_preview_enabled = False
+            self._collider_preview_entity_name = ""
+            return False
+        if world.get_entity_by_name(entity_name) is None:
+            self._collider_preview_enabled = False
+            self._collider_preview_entity_name = ""
+            return False
+        return True
+
+    def get_collider_preview_snapshot(self, world: "World") -> dict[str, Any] | None:
+        if not self.is_collider_preview_active(world):
+            return None
+        entity = world.get_entity_by_name(self._collider_preview_entity_name)
+        if entity is None:
+            return None
+        transform = entity.get_component(Transform)
+        collider = entity.get_component(Collider)
+        if transform is None or collider is None:
+            return None
+        animator = entity.get_component(Animator)
+        payload = (
+            get_effective_animator_collider_payload(animator, base_collider=collider)
+            if animator is not None
+            else build_collider_payload(collider)
+        )
+        bounds = get_payload_bounds(payload, float(transform.x), float(transform.y))
+        return {
+            "entity_name": entity.name,
+            "x": float(transform.x),
+            "y": float(transform.y),
+            "payload": copy.deepcopy(payload),
+            "bounds": {
+                "left": bounds[0],
+                "top": bounds[1],
+                "right": bounds[2],
+                "bottom": bounds[3],
+                "width": bounds[2] - bounds[0],
+                "height": bounds[3] - bounds[1],
+            },
+            "shape_type": payload.get("shape_type", "box"),
+            "is_trigger": bool(payload.get("is_trigger", False)),
+        }
+
+    def toggle_collider_preview(self, world: "World", entity_name: str) -> bool:
+        target_name = str(entity_name or "").strip()
+        entity = world.get_entity_by_name(target_name) if target_name else None
+        if entity is None or entity.get_component(Transform) is None or entity.get_component(Collider) is None:
+            return False
+        if self._collider_preview_enabled and self._collider_preview_entity_name == target_name:
+            self._collider_preview_enabled = False
+            self._collider_preview_entity_name = ""
+            return False
+        self._collider_preview_enabled = True
+        self._collider_preview_entity_name = target_name
+        return True
 
     def get_tilemap_preview_snapshot(self, world: "World") -> Optional[Dict[str, Any]]:
         entity_name = self._resolve_tilemap_tool_entity_name(world)
@@ -3064,6 +3135,18 @@ class InspectorSystem:
             ("Trigger", "is_trigger"),
         ):
             current_y = self._draw_component_field(label, getattr(component, prop_name), entity_id, "Collider", prop_name, x, current_y, width, is_edit, world)
+        entity_name = self._entity_name_from_id(world, entity_id)
+        preview_enabled = bool(
+            self._collider_preview_enabled
+            and entity_name is not None
+            and self._collider_preview_entity_name == entity_name
+        )
+        button_rect = rl.Rectangle(x + 8, current_y + 1, width - 16, self.LINE_HEIGHT - 2)
+        self._register_cursor_rect(button_rect)
+        button_label = f"Preview Collision: {'ON' if preview_enabled else 'OFF'}"
+        if rl.gui_button(button_rect, button_label) and is_edit and entity_name is not None:
+            self.toggle_collider_preview(world, entity_name)
+        current_y += self.LINE_HEIGHT
         return current_y
 
     def _draw_rigidbody_editor(self, component: Any, entity_id: int, x: int, y: int, width: int, is_edit: bool, world: "World") -> int:

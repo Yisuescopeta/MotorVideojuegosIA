@@ -1041,6 +1041,161 @@ class GizmoSystemMathTests(unittest.TestCase):
         gizmo._draw_rotate_gizmo.assert_called_once()
         gizmo._draw_scale_gizmo.assert_called_once()
 
+    def test_collider_preview_renders_box_with_single_offset_application(self) -> None:
+        gizmo = GizmoSystem()
+        world = World()
+        gizmo.set_collider_preview(
+            {
+                "entity_name": "Box",
+                "payload": {
+                    "enabled": True,
+                    "shape_type": "box",
+                    "width": 20.0,
+                    "height": 10.0,
+                    "offset_x": 5.0,
+                    "offset_y": 0.0,
+                },
+                "bounds": {"left": 95.0, "top": 45.0, "right": 115.0, "bottom": 55.0},
+                "shape_type": "box",
+                "is_trigger": False,
+            }
+        )
+
+        with patch("pyray.draw_rectangle_rec") as draw_fill, patch("pyray.draw_rectangle_lines_ex") as draw_rect:
+            gizmo.render(world)
+
+        draw_fill.assert_called_once()
+        draw_rect.assert_called_once()
+        rect = draw_rect.call_args.args[0]
+        self.assertEqual((rect.x, rect.y, rect.width, rect.height), (95.0, 45.0, 20.0, 10.0))
+        self.assertEqual(draw_rect.call_args.args[2], gizmo.COLLIDER_PREVIEW_COLOR)
+
+    def test_collider_preview_renders_circle_capsule_and_polygon_shapes(self) -> None:
+        gizmo = GizmoSystem()
+        world = World()
+
+        gizmo.set_collider_preview(
+            {
+                "payload": {
+                    "enabled": True,
+                    "shape_type": "circle",
+                    "radius": 6.0,
+                    "offset_x": 3.0,
+                    "offset_y": -3.0,
+                },
+                "bounds": {"left": 7.0, "top": 11.0, "right": 19.0, "bottom": 23.0},
+                "shape_type": "circle",
+                "is_trigger": False,
+            }
+        )
+        with patch("pyray.draw_circle") as draw_circle_fill, patch("pyray.draw_circle_lines") as draw_circle:
+            gizmo.render(world)
+        draw_circle_fill.assert_called_once()
+        draw_circle.assert_called_once_with(13, 17, 6.0, gizmo.COLLIDER_PREVIEW_COLOR)
+
+        gizmo.set_collider_preview(
+            {
+                "payload": {
+                    "enabled": True,
+                    "shape_type": "capsule",
+                    "radius": 4.0,
+                    "capsule_height": 10.0,
+                },
+                "bounds": {"left": -4.0, "top": -9.0, "right": 4.0, "bottom": 9.0},
+                "shape_type": "capsule",
+                "is_trigger": True,
+            }
+        )
+        with patch("pyray.draw_rectangle_rec") as draw_fill, patch("pyray.draw_rectangle_lines_ex") as draw_rect:
+            gizmo.render(world)
+        draw_fill.assert_called_once()
+        draw_rect.assert_called_once()
+        self.assertEqual(draw_rect.call_args.args[2], gizmo.COLLIDER_TRIGGER_PREVIEW_COLOR)
+
+        gizmo.set_collider_preview(
+            {
+                "payload": {
+                    "enabled": True,
+                    "shape_type": "polygon",
+                    "points": [[-2.0, -1.0], [4.0, -1.0], [0.0, 5.0]],
+                    "offset_x": 3.0,
+                    "offset_y": 4.0,
+                },
+                "bounds": {"left": 7.0, "top": 18.0, "right": 39.0, "bottom": 50.0},
+                "shape_type": "polygon",
+                "is_trigger": False,
+            }
+        )
+        with patch("pyray.draw_line_ex") as draw_line:
+            gizmo.render(world)
+        self.assertEqual(draw_line.call_count, 3)
+        first_start = draw_line.call_args_list[0].args[0]
+        first_end = draw_line.call_args_list[0].args[1]
+        self.assertEqual((first_start.x, first_start.y), (21.0, 33.0))
+        self.assertEqual((first_end.x, first_end.y), (27.0, 33.0))
+
+    def test_collider_preview_ignores_disabled_or_invalid_payload(self) -> None:
+        gizmo = GizmoSystem()
+        world = World()
+
+        for preview in (
+            {"payload": {"enabled": False, "shape_type": "box"}, "bounds": {"left": 0, "top": 0, "right": 10, "bottom": 10}},
+            {"payload": {"enabled": True, "shape_type": "box"}},
+            {"payload": "invalid", "bounds": {"left": 0, "top": 0, "right": 10, "bottom": 10}},
+            {"payload": {"enabled": True, "shape_type": "box"}, "bounds": {"left": float("nan"), "top": 0, "right": 10, "bottom": 10}},
+        ):
+            gizmo.set_collider_preview(preview)
+            with patch("pyray.draw_rectangle_lines_ex") as draw_rect, patch(
+                "pyray.draw_circle_lines"
+            ) as draw_circle, patch("pyray.draw_line_ex") as draw_line:
+                gizmo.render(world)
+            draw_rect.assert_not_called()
+            draw_circle.assert_not_called()
+            draw_line.assert_not_called()
+
+    def test_collider_preview_polygon_ignores_invalid_points_and_falls_back_to_bounds(self) -> None:
+        gizmo = GizmoSystem()
+        world = World()
+        gizmo.set_collider_preview(
+            {
+                "payload": {
+                    "enabled": True,
+                    "shape_type": "polygon",
+                    "points": [["invalid", 0], [float("inf"), 1], [2], None],
+                },
+                "bounds": {"left": 1.0, "top": 2.0, "right": 11.0, "bottom": 12.0},
+                "shape_type": "polygon",
+                "is_trigger": False,
+            }
+        )
+
+        with patch("pyray.draw_line_ex") as draw_line, patch(
+            "pyray.draw_rectangle_rec"
+        ) as draw_fill, patch("pyray.draw_rectangle_lines_ex") as draw_rect:
+            gizmo.render(world)
+
+        draw_line.assert_not_called()
+        draw_fill.assert_called_once()
+        draw_rect.assert_called_once()
+        rect = draw_rect.call_args.args[0]
+        self.assertEqual((rect.x, rect.y, rect.width, rect.height), (1.0, 2.0, 10.0, 10.0))
+
+    def test_collider_preview_is_copied_defensively_and_cleared_with_none(self) -> None:
+        gizmo = GizmoSystem()
+        preview = {
+            "payload": {"enabled": True, "shape_type": "box"},
+            "bounds": {"left": 1.0, "top": 2.0, "right": 11.0, "bottom": 12.0},
+            "shape_type": "box",
+            "is_trigger": False,
+        }
+
+        gizmo.set_collider_preview(preview)
+        preview["bounds"]["left"] = 99.0
+
+        self.assertEqual(gizmo._collider_preview["bounds"]["left"], 1.0)
+        gizmo.set_collider_preview(None)
+        self.assertIsNone(gizmo._collider_preview)
+
     def test_tilemap_preview_renders_paint_ghost_without_selected_entity(self) -> None:
         gizmo = GizmoSystem()
         world = SceneManager(create_default_registry()).load_scene({"name": "PreviewOnly", "entities": [], "rules": [], "feature_metadata": {}})

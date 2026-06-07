@@ -581,7 +581,7 @@ class Animator(Component):
         row = frame_index // sheet_columns
         return (
             col * self.frame_width,
-            row * sheet_columns * 0 + row * self.frame_height,
+            row * self.frame_height,
             self.frame_width,
             self.frame_height,
         )

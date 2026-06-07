@@ -41,6 +41,7 @@ class EditorInteractionControllerTests(unittest.TestCase):
         self.inspector_system.is_tilemap_tool_active.return_value = False
         self.inspector_system.handle_tilemap_scene_input.return_value = False
         self.inspector_system.get_tilemap_preview_snapshot.return_value = None
+        self.inspector_system.get_collider_preview_snapshot.return_value = None
         self.history_manager = Mock()
         self.editor_selection = EditorSelectionState()
         self.layout = Mock()
@@ -317,6 +318,25 @@ class EditorInteractionControllerTests(unittest.TestCase):
             self.controller.handle_selection_and_gizmos(world)
 
         self.gizmo_system.set_tilemap_preview.assert_called_once_with(None)
+
+    def test_handle_selection_and_gizmos_syncs_collider_preview(self) -> None:
+        world = Mock()
+        preview = {"entity_name": "Hero", "x": 10.0, "y": 20.0, "payload": {"shape_type": "box"}}
+        self.inspector_system.get_collider_preview_snapshot.return_value = preview
+
+        with patch("pyray.is_mouse_button_pressed", return_value=False):
+            self.controller.handle_selection_and_gizmos(world)
+
+        self.inspector_system.get_collider_preview_snapshot.assert_called_once_with(world)
+        self.gizmo_system.set_collider_preview.assert_called_once_with(preview)
+
+    def test_handle_selection_and_gizmos_clears_collider_preview_when_snapshot_is_missing(self) -> None:
+        world = Mock()
+
+        with patch("pyray.is_mouse_button_pressed", return_value=False):
+            self.controller.handle_selection_and_gizmos(world)
+
+        self.gizmo_system.set_collider_preview.assert_called_once_with(None)
 
     def test_resolve_cursor_state_marks_scene_interactive_when_tilemap_tool_is_active(self) -> None:
         world = Mock()
