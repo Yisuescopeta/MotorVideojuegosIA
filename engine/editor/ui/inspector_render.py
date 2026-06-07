@@ -217,7 +217,7 @@ class InspectorPanel:
         self.text_buffer = ""
 
     def handle_key(self, key: int) -> bool:
-        if key == getattr(rl, "KEY_ESCAPE", 256):
+        if key == 256 or key == getattr(rl, "KEY_ESCAPE", 256):
             if self.editing_color_group:
                 self._cancel_color_edit()
                 return True

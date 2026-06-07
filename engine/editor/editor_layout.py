@@ -2426,14 +2426,21 @@ class EditorLayout:
     def handle_bottom_tab_input(self, mouse_pos: rl.Vector2) -> None:
         if not rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
             return
-        if not rl.check_collision_point_rec(mouse_pos, self.bottom_header_rect):
+        if not self._point_in_rect(mouse_pos, self.bottom_header_rect):
             return
 
         for tab_id, rect in self.compute_dock_tab_rects("bottom").items():
             self._register_cursor_rect(rect)
-            if rl.check_collision_point_rec(mouse_pos, rect):
+            if self._point_in_rect(mouse_pos, rect):
                 self.set_dock_active_tab("bottom", tab_id)
                 return
+
+    @staticmethod
+    def _point_in_rect(point: rl.Vector2, rect: rl.Rectangle) -> bool:
+        return (
+            rect.x <= point.x <= rect.x + rect.width
+            and rect.y <= point.y <= rect.y + rect.height
+        )
 
     def draw_bottom_tabs(self) -> None:
         rl.draw_rectangle_rec(self.bottom_header_rect, self.UNITY_BG_DARK)

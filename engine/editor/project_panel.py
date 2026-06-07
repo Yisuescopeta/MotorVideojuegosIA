@@ -843,9 +843,9 @@ class ProjectPanel:
     def _is_scene_path(self, file_path: str) -> bool:
         if self.project_service is None or not str(file_path).lower().endswith(".json"):
             return False
-        levels_root = self.project_service.get_project_path("levels").as_posix()
+        levels_root = self.project_service.get_project_path("levels")
         try:
-            return os.path.commonpath([os.path.abspath(file_path), levels_root]) == os.path.abspath(levels_root)
+            return self.project_service.resolve_path(file_path).is_relative_to(levels_root)
         except ValueError:
             return False
 
