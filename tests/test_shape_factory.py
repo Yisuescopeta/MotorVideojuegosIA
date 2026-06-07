@@ -7,7 +7,6 @@ from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
-from engine.physics.contact_data import ContactManifold2D, ContactPoint2D
 from engine.physics.shapes import AABBShape, CapsuleShape, CircleShape, PolygonShape, ShapeFactory
 
 

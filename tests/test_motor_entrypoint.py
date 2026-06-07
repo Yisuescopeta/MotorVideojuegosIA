@@ -17,6 +17,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from engine.config import ENGINE_VERSION
+
 
 class MotorEntrypointImportTests(unittest.TestCase):
     """Tests for motor package importability."""
@@ -25,7 +27,7 @@ class MotorEntrypointImportTests(unittest.TestCase):
         """motor package is importable."""
         import motor
         self.assertIsNotNone(motor)
-        self.assertEqual(motor.__version__, "2026.03")
+        self.assertEqual(motor.__version__, ENGINE_VERSION)
 
     def test_motor_cli_can_be_imported(self) -> None:
         """motor.cli module is importable."""

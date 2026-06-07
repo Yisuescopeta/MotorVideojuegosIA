@@ -9,14 +9,13 @@ from engine.components.collider import Collider
 from engine.components.joint2d import Joint2D
 from engine.components.rigidbody import RigidBody
 from engine.components.transform import Transform
-from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.systems.physics_system import PhysicsSystem
 
 
 class TestContactConstraint2D(unittest.TestCase):
     """Tests unitarios para ContactConstraint2D."""
-    
+
     def test_construct_basic(self):
         """Constraint se construye con campos correctos."""
         from engine.physics.contact_solver import ContactConstraint2D
@@ -61,7 +60,7 @@ class TestImpulseSolver2D_RestingContact(unittest.TestCase):
         """Caja sobre suelo no debe penetrar. Velocidad debe ser ~0 tras contacto."""
         world = World()
         physics = PhysicsSystem(gravity=980.0)
-        
+
         box = world.create_entity("Box")
         box.add_component(Transform(x=100.0, y=90.0))
         box.add_component(Collider(width=32.0, height=32.0))
@@ -69,30 +68,30 @@ class TestImpulseSolver2D_RestingContact(unittest.TestCase):
             body_type="dynamic", mass=1.0, gravity_scale=1.0,
             velocity_x=0.0, velocity_y=0.0,
         ))
-        
+
         ground = world.create_entity("Ground")
         ground.add_component(Transform(x=100.0, y=108.0))
         ground.add_component(Collider(width=200.0, height=16.0))
         # Static: sin RigidBody = static implícito
-        
+
         # Ejecutar varios frames para que la caja caiga y se asiente
         dt = 1.0 / 60.0
         for _ in range(120):  # 2 segundos
             physics.update(world, dt)
-        
+
         rb = box.get_component(RigidBody)
         t = box.get_component(Transform)
-        
+
         # La caja debe estar SOBRE el suelo, no dentro
         ground_top = 108.0 - 8.0  # 100.0
         box_bottom = t.y + 16.0  # half height
         self.assertLessEqual(box_bottom, ground_top + 1.0,
             f"Box bottom={box_bottom} should be <= ground_top={ground_top}+1. Box is penetrating ground")
-        
+
         # La velocidad debe ser cercana a cero en reposo
         self.assertAlmostEqual(rb.velocity_y, 0.0, delta=10.0,
             msg=f"Box should be at rest, vy={rb.velocity_y}")
-        
+
         # is_grounded debe ser True
         self.assertTrue(rb.is_grounded, "Box should be grounded")
 
@@ -100,7 +99,7 @@ class TestImpulseSolver2D_RestingContact(unittest.TestCase):
         """Caja pesada (mass=100) no debe hundirse a traves del suelo."""
         world = World()
         physics = PhysicsSystem(gravity=980.0)
-        
+
         box = world.create_entity("HeavyBox")
         box.add_component(Transform(x=100.0, y=90.0))
         box.add_component(Collider(width=32.0, height=32.0))
@@ -108,15 +107,15 @@ class TestImpulseSolver2D_RestingContact(unittest.TestCase):
             body_type="dynamic", mass=100.0, gravity_scale=1.0,
             velocity_x=0.0, velocity_y=0.0,
         ))
-        
+
         ground = world.create_entity("Ground")
         ground.add_component(Transform(x=100.0, y=108.0))
         ground.add_component(Collider(width=200.0, height=16.0))
-        
+
         dt = 1.0 / 60.0
         for _ in range(120):
             physics.update(world, dt)
-        
+
         t = box.get_component(Transform)
         ground_top = 108.0 - 8.0  # 100.0
         box_bottom = t.y + 16.0
@@ -128,7 +127,7 @@ class TestImpulseSolver2D_RestingContact(unittest.TestCase):
         """Caja en reposo sobre suelo debe seguir en reposo (sin drift)."""
         world = World()
         physics = PhysicsSystem(gravity=980.0)
-        
+
         box = world.create_entity("Box")
         box.add_component(Transform(x=100.0, y=84.0))  # justo sobre suelo: suelo top=100, box bottom=84+16=100
         box.add_component(Collider(width=32.0, height=32.0))
@@ -136,22 +135,22 @@ class TestImpulseSolver2D_RestingContact(unittest.TestCase):
             body_type="dynamic", mass=1.0, gravity_scale=1.0,
             velocity_x=0.0, velocity_y=0.0,
         ))
-        
+
         ground = world.create_entity("Ground")
         ground.add_component(Transform(x=100.0, y=108.0))
         ground.add_component(Collider(width=200.0, height=16.0))
-        
+
         # Asentar la caja
         dt = 1.0 / 60.0
         for _ in range(60):
             physics.update(world, dt)
-        
+
         y_after_settle = box.get_component(Transform).y
-        
+
         # Dejar reposar 60 frames mas
         for _ in range(60):
             physics.update(world, dt)
-        
+
         y_after_rest = box.get_component(Transform).y
         drift = abs(y_after_rest - y_after_settle)
         self.assertLess(drift, 2.0, f"Box drifted {drift}px while at rest")
@@ -164,7 +163,7 @@ class TestImpulseSolver2D_Friction(unittest.TestCase):
         """Caja deslizandose sobre suelo debe frenar por friccion."""
         world = World()
         physics = PhysicsSystem(gravity=980.0)
-        
+
         box = world.create_entity("Box")
         # Posicion inicial: la caja debe estar tocando el suelo
         # Suelo: center_y=108, half_h=8 → top at 100
@@ -175,28 +174,28 @@ class TestImpulseSolver2D_Friction(unittest.TestCase):
             body_type="dynamic", mass=1.0, gravity_scale=1.0,
             velocity_x=200.0, velocity_y=0.0,
         ))
-        
+
         ground = world.create_entity("Ground")
         ground.add_component(Transform(x=200.0, y=108.0))
         ground.add_component(Collider(width=800.0, height=16.0, friction=0.5))
-        
+
         dt = 1.0 / 60.0
         vx_initial = box.get_component(RigidBody).velocity_x
-        
+
         # Varios frames para que la friccion actue
         for _ in range(30):
             physics.update(world, dt)
-        
+
         rb = box.get_component(RigidBody)
         # La friccion debe reducir la velocidad (aunque sea parcialmente)
         self.assertLess(abs(rb.velocity_x), abs(vx_initial) - 1.0,
             f"Friction should reduce velocity at least 1 px/s. vx_initial={vx_initial}, vx_final={rb.velocity_x}")
-    
+
     def test_no_friction_allows_free_slide(self):
         """Sin friccion, la caja debe deslizar libremente sin perder velocidad horizontal."""
         world = World()
         physics = PhysicsSystem(gravity=0.0)  # sin gravedad para aislar friccion
-        
+
         box = world.create_entity("Box")
         box.add_component(Transform(x=0.0, y=84.0))
         box.add_component(Collider(width=32.0, height=32.0, friction=0.0))
@@ -204,17 +203,17 @@ class TestImpulseSolver2D_Friction(unittest.TestCase):
             body_type="dynamic", mass=1.0, gravity_scale=0.0,
             velocity_x=200.0, velocity_y=0.0,
         ))
-        
+
         ground = world.create_entity("Ground")
         ground.add_component(Transform(x=200.0, y=108.0))
         ground.add_component(Collider(width=800.0, height=16.0, friction=0.0))
-        
+
         dt = 1.0 / 60.0
         vx_initial = box.get_component(RigidBody).velocity_x
-        
+
         for _ in range(30):
             physics.update(world, dt)
-        
+
         rb = box.get_component(RigidBody)
         # Sin friccion, la velocidad horizontal debe mantenerse (solo damping la reduce)
         self.assertGreater(abs(rb.velocity_x), abs(vx_initial) * 0.85,
@@ -228,7 +227,7 @@ class TestImpulseSolver2D_DynamicDynamic(unittest.TestCase):
         """Dos cajas de igual masa chocan frontalmente con restitution=0. Deben detenerse o transferir momento."""
         world = World()
         physics = PhysicsSystem(gravity=0.0)
-        
+
         box_a = world.create_entity("BoxA")
         box_a.add_component(Transform(x=0.0, y=100.0))
         box_a.add_component(Collider(width=32.0, height=32.0, restitution=0.0))
@@ -236,7 +235,7 @@ class TestImpulseSolver2D_DynamicDynamic(unittest.TestCase):
             body_type="dynamic", mass=1.0, gravity_scale=0.0,
             velocity_x=100.0, velocity_y=0.0,
         ))
-        
+
         box_b = world.create_entity("BoxB")
         box_b.add_component(Transform(x=40.0, y=100.0))
         box_b.add_component(Collider(width=32.0, height=32.0, restitution=0.0))
@@ -244,22 +243,22 @@ class TestImpulseSolver2D_DynamicDynamic(unittest.TestCase):
             body_type="dynamic", mass=1.0, gravity_scale=0.0,
             velocity_x=-100.0, velocity_y=0.0,
         ))
-        
+
         dt = 1.0 / 60.0
         # Ejecutar suficientes frames para que colisionen
         for _ in range(20):
             physics.update(world, dt)
-        
+
         rb_a = box_a.get_component(RigidBody)
         rb_b = box_b.get_component(RigidBody)
-        
+
         # Con restitution=0 y masa igual, deberian detenerse (o casi)
         # El momento total debe conservarse aproximadamente
         total_momentum_before = 1.0 * 100.0 + 1.0 * (-100.0)  # = 0
         total_momentum_after = rb_a.mass * rb_a.velocity_x + rb_b.mass * rb_b.velocity_x
         self.assertAlmostEqual(total_momentum_after, total_momentum_before, delta=20.0,
             msg=f"Momentum not conserved: {total_momentum_after} vs {total_momentum_before}")
-        
+
         # No deben solaparse
         t_a = box_a.get_component(Transform)
         t_b = box_b.get_component(Transform)
@@ -270,7 +269,7 @@ class TestImpulseSolver2D_DynamicDynamic(unittest.TestCase):
         """Caja pesada (mass=100) empuja caja ligera (mass=1) con restitution=0. Deben moverse juntas."""
         world = World()
         physics = PhysicsSystem(gravity=0.0)
-        
+
         heavy = world.create_entity("Heavy")
         heavy.add_component(Transform(x=0.0, y=100.0))
         heavy.add_component(Collider(width=32.0, height=32.0, restitution=0.0))
@@ -278,7 +277,7 @@ class TestImpulseSolver2D_DynamicDynamic(unittest.TestCase):
             body_type="dynamic", mass=100.0, gravity_scale=0.0,
             velocity_x=50.0, velocity_y=0.0,
         ))
-        
+
         light = world.create_entity("Light")
         light.add_component(Transform(x=40.0, y=100.0))
         light.add_component(Collider(width=32.0, height=32.0, restitution=0.0))
@@ -286,14 +285,14 @@ class TestImpulseSolver2D_DynamicDynamic(unittest.TestCase):
             body_type="dynamic", mass=1.0, gravity_scale=0.0,
             velocity_x=0.0, velocity_y=0.0,
         ))
-        
+
         dt = 1.0 / 60.0
         for _ in range(20):
             physics.update(world, dt)
-        
+
         rb_heavy = heavy.get_component(RigidBody)
         rb_light = light.get_component(RigidBody)
-        
+
         # Con restitution=0, los cuerpos deben pegarse y moverse a velocidad similar
         # Conservacion de momento: (100*50 + 1*0) / 101 ≈ 49.5
         expected_v = 100.0 * 50.0 / 101.0  # ≈ 49.5
@@ -308,7 +307,7 @@ class TestImpulseSolver2D_DynamicDynamic(unittest.TestCase):
         """Cuerpo dinamico choca con estatico. Estatico no se mueve."""
         world = World()
         physics = PhysicsSystem(gravity=0.0)
-        
+
         moving = world.create_entity("Moving")
         moving.add_component(Transform(x=0.0, y=100.0))
         moving.add_component(Collider(width=32.0, height=32.0, restitution=0.0))
@@ -316,22 +315,22 @@ class TestImpulseSolver2D_DynamicDynamic(unittest.TestCase):
             body_type="dynamic", mass=1.0, gravity_scale=0.0,
             velocity_x=100.0, velocity_y=0.0,
         ))
-        
+
         wall = world.create_entity("Wall")
         wall.add_component(Transform(x=50.0, y=100.0))
         wall.add_component(Collider(width=16.0, height=100.0, restitution=0.0))
         wall.add_component(RigidBody(body_type="static", mass=1.0))
-        
+
         wall_x_before = wall.get_component(Transform).x
-        
+
         dt = 1.0 / 60.0
         for _ in range(30):
             physics.update(world, dt)
-        
+
         # El muro NO debe haberse movido
         self.assertEqual(wall.get_component(Transform).x, wall_x_before,
             "Static body should not move")
-        
+
         # El moving debe haberse frenado
         rb_moving = moving.get_component(RigidBody)
         self.assertLess(abs(rb_moving.velocity_x), 90.0,
@@ -345,7 +344,7 @@ class TestImpulseSolver2D_Restitution(unittest.TestCase):
         """Con restitution=1.0, la velocidad debe invertirse completamente."""
         world = World()
         physics = PhysicsSystem(gravity=0.0)
-        
+
         ball = world.create_entity("Ball")
         ball.add_component(Transform(x=0.0, y=100.0))
         ball.add_component(Collider(width=16.0, height=16.0, restitution=1.0))
@@ -353,18 +352,18 @@ class TestImpulseSolver2D_Restitution(unittest.TestCase):
             body_type="dynamic", mass=1.0, gravity_scale=0.0,
             velocity_x=100.0, velocity_y=0.0,
         ))
-        
+
         wall = world.create_entity("Wall")
         wall.add_component(Transform(x=20.0, y=100.0))
         wall.add_component(Collider(width=8.0, height=50.0, restitution=1.0))
         wall.add_component(RigidBody(body_type="static", mass=1.0))
-        
+
         dt = 1.0 / 60.0
         vx_before = ball.get_component(RigidBody).velocity_x
-        
+
         for _ in range(30):
             physics.update(world, dt)
-        
+
         rb = ball.get_component(RigidBody)
         # Con restitution=1 y pared estatica, la velocidad deberia ser ~-vx_before
         self.assertLess(rb.velocity_x, -vx_before * 0.7,
@@ -374,7 +373,7 @@ class TestImpulseSolver2D_Restitution(unittest.TestCase):
         """Con restitution=0, la velocidad normal debe anularse."""
         world = World()
         physics = PhysicsSystem(gravity=0.0)
-        
+
         ball = world.create_entity("Ball")
         ball.add_component(Transform(x=0.0, y=100.0))
         ball.add_component(Collider(width=16.0, height=16.0, restitution=0.0))
@@ -382,16 +381,16 @@ class TestImpulseSolver2D_Restitution(unittest.TestCase):
             body_type="dynamic", mass=1.0, gravity_scale=0.0,
             velocity_x=100.0, velocity_y=0.0,
         ))
-        
+
         wall = world.create_entity("Wall")
         wall.add_component(Transform(x=20.0, y=100.0))
         wall.add_component(Collider(width=8.0, height=50.0, restitution=0.0))
         wall.add_component(RigidBody(body_type="static", mass=1.0))
-        
+
         dt = 1.0 / 60.0
         for _ in range(30):
             physics.update(world, dt)
-        
+
         rb = ball.get_component(RigidBody)
         # Con restitution=0, la velocidad normal deberia ser ~0 (o muy baja)
         self.assertAlmostEqual(rb.velocity_x, 0.0, delta=15.0,
@@ -407,7 +406,7 @@ class TestImpulseSolver2D_Stacking(unittest.TestCase):
         physics = PhysicsSystem(gravity=300.0)  # gravedad mas baja
         physics.solver_iterations = 16  # mas iteraciones
         physics._position_correction_ratio = 0.3  # same as default, explicit for clarity
-        
+
         # Caja 3 (arriba) — just touching box2
         # ground top = 124-8 = 116, box1 bottom = box1.y+16, etc.
         # stack: box1 bottom=116 → y1=100; top=84
@@ -417,35 +416,35 @@ class TestImpulseSolver2D_Stacking(unittest.TestCase):
         box3.add_component(Transform(x=100.0, y=36.0))
         box3.add_component(Collider(width=32.0, height=32.0, restitution=0.0, friction=0.5))
         box3.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=1.0))
-        
+
         # Caja 2 (medio) — just touching box1
         box2 = world.create_entity("Box2")
         box2.add_component(Transform(x=100.0, y=68.0))
         box2.add_component(Collider(width=32.0, height=32.0, restitution=0.0, friction=0.5))
         box2.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=1.0))
-        
+
         # Caja 1 (abajo) — just touching ground
         box1 = world.create_entity("Box1")
         box1.add_component(Transform(x=100.0, y=100.0))
         box1.add_component(Collider(width=32.0, height=32.0, restitution=0.0, friction=0.5))
         box1.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=1.0))
-        
+
         ground = world.create_entity("Ground")
         ground.add_component(Transform(x=100.0, y=124.0))  # mas abajo
         ground.add_component(Collider(width=200.0, height=16.0, friction=0.5))
-        
+
         dt = 1.0 / 60.0
         for _ in range(300):  # 5 segundos, asentamiento con ratio 0.3 + mas iteraciones
             physics.update(world, dt)
-        
+
         t1 = box1.get_component(Transform)
         t2 = box2.get_component(Transform)
         t3 = box3.get_component(Transform)
-        
+
         # En y-down: abajo = mayor valor de y. box1 abajo, box2 medio, box3 arriba.
         self.assertGreater(t1.y, t2.y - 4.0, f"Box1 should be below Box2. y1={t1.y}, y2={t2.y}")
         self.assertGreater(t2.y, t3.y - 4.0, f"Box2 should be below Box3. y2={t2.y}, y3={t3.y}")
-        
+
         # Ninguna debe estar dentro del suelo
         ground_top = 124.0 - 8.0
         for name, t in [("Box1", t1), ("Box2", t2), ("Box3", t3)]:
@@ -461,25 +460,24 @@ class TestImpulseSolver2D_WarmStarting(unittest.TestCase):
         """Impulsos acumulados deben persistir entre frames en cache del solver."""
         world = World()
         physics = PhysicsSystem(gravity=500.0)
-        
+
         box = world.create_entity("Box")
         box.add_component(Transform(x=100.0, y=84.0))
         box.add_component(Collider(width=32.0, height=32.0))
         box.add_component(RigidBody(body_type="dynamic", mass=1.0, gravity_scale=1.0))
-        
+
         ground = world.create_entity("Ground")
         ground.add_component(Transform(x=100.0, y=108.0))
         ground.add_component(Collider(width=200.0, height=16.0))
-        
+
         dt = 1.0 / 60.0
         # Primer frame: establecer contacto
         physics.update(world, dt)
-        cache_size_after_1 = physics.get_solver_metrics()["warm_start_cache_size"]
-        
+
         # Segundo frame: cache debe tener algo si hubo contacto
         physics.update(world, dt)
         cache_size_after_2 = physics.get_solver_metrics()["warm_start_cache_size"]
-        
+
         # Al menos debe haber intentado cachear
         # (Puede ser 0 si no hubo dynamic-vs-dynamic, pero con el nuevo codigo ground es static sin RigidBody)
         # El test verifica que el metodo no crashea y retorna metricas validas
@@ -548,7 +546,7 @@ class TestContactPersistenceSpatial(unittest.TestCase):
         solver._warm_start_cache[key] = (5.0, 2.0, 0)
 
         # Frame 2: nuevo constraint en posicion cercana, debe recuperar impulsos
-        c2 = ContactConstraint2D(
+        ContactConstraint2D(
             entity_a_id=1, entity_b_id=2,
             normal_x=0.0, normal_y=1.0,
             tangent_x=-1.0, tangent_y=0.0,
@@ -622,7 +620,7 @@ class TestContactPersistenceSpatial(unittest.TestCase):
 
     def test_cache_pruned_after_solve(self):
         """Contactos viejos se eliminan del cache tras solve()."""
-        from engine.physics.contact_solver import ContactConstraint2D, ImpulseSolver2D
+        from engine.physics.contact_solver import ImpulseSolver2D
 
         solver = ImpulseSolver2D()
 
@@ -956,12 +954,12 @@ class TestContactPersistenceAge(unittest.TestCase):
 
 class TestRotationalInertia(unittest.TestCase):
     """Verifica que contactos descentrados generan rotacion."""
-    
+
     def test_off_center_collision_produces_rotation(self):
         """Golpe descentrado debe generar velocidad angular no cero."""
         world = World()
         physics = PhysicsSystem(gravity=0.0)
-        
+
         # Box that will be hit off-center
         target = world.create_entity("Target")
         target.add_component(Transform(x=100.0, y=100.0))
@@ -970,7 +968,7 @@ class TestRotationalInertia(unittest.TestCase):
             body_type="dynamic", mass=1.0, inertia=500.0,
             gravity_scale=0.0, velocity_x=0.0, velocity_y=0.0,
         ))
-        
+
         # Projectile hitting the top half of the target
         bullet = world.create_entity("Bullet")
         bullet.add_component(Transform(x=70.0, y=80.0))  # hits upper portion
@@ -979,21 +977,21 @@ class TestRotationalInertia(unittest.TestCase):
             body_type="dynamic", mass=0.1, inertia=1.0,
             gravity_scale=0.0, velocity_x=200.0, velocity_y=0.0,
         ))
-        
+
         dt = 1.0 / 60.0
         for _ in range(5):
             physics.update(world, dt)
-        
+
         rb = target.get_component(RigidBody)
         # Off-center hit should produce rotation
         self.assertNotEqual(rb.angular_velocity, 0.0,
             f"Off-center collision should produce angular velocity, got {rb.angular_velocity}")
-    
+
     def test_centered_collision_produces_no_rotation(self):
         """Golpe centrado NO debe generar rotacion significativa."""
         world = World()
         physics = PhysicsSystem(gravity=0.0)
-        
+
         target = world.create_entity("Target")
         target.add_component(Transform(x=100.0, y=100.0))
         target.add_component(Collider(width=32.0, height=32.0))
@@ -1001,7 +999,7 @@ class TestRotationalInertia(unittest.TestCase):
             body_type="dynamic", mass=1.0, inertia=500.0,
             gravity_scale=0.0, velocity_x=0.0, velocity_y=0.0,
         ))
-        
+
         bullet = world.create_entity("Bullet")
         bullet.add_component(Transform(x=70.0, y=100.0))  # centered
         bullet.add_component(Collider(width=8.0, height=8.0))
@@ -1009,21 +1007,21 @@ class TestRotationalInertia(unittest.TestCase):
             body_type="dynamic", mass=0.1, inertia=1.0,
             gravity_scale=0.0, velocity_x=200.0, velocity_y=0.0,
         ))
-        
+
         dt = 1.0 / 60.0
         for _ in range(5):
             physics.update(world, dt)
-        
+
         rb = target.get_component(RigidBody)
         # Centered hit: angular velocity should be negligible
         self.assertAlmostEqual(rb.angular_velocity, 0.0, delta=0.1,
             msg=f"Centered collision should produce negligible rotation, got {rb.angular_velocity}")
-    
+
     def test_warm_start_persists_angular_velocity(self):
         """Velocidad angular acumulada por warm-start debe persistir entre frames."""
         world = World()
         physics = PhysicsSystem(gravity=0.0)
-        
+
         target = world.create_entity("Target")
         target.add_component(Transform(x=100.0, y=100.0))
         target.add_component(Collider(width=32.0, height=64.0))
@@ -1031,7 +1029,7 @@ class TestRotationalInertia(unittest.TestCase):
             body_type="dynamic", mass=1.0, inertia=500.0,
             gravity_scale=0.0, velocity_x=0.0, velocity_y=0.0,
         ))
-        
+
         bullet = world.create_entity("Bullet")
         # Start close to target so contact occurs in first frame
         # Target left edge ~84, bullet right edge needs to reach it
@@ -1041,26 +1039,26 @@ class TestRotationalInertia(unittest.TestCase):
             body_type="dynamic", mass=0.1, inertia=1.0,
             gravity_scale=0.0, velocity_x=400.0, velocity_y=0.0,
         ))
-        
+
         dt = 1.0 / 60.0
         # Frame 1: bullet hits target off-center → angular velocity
         physics.update(world, dt)
         rb = target.get_component(RigidBody)
         self.assertNotEqual(rb.angular_velocity, 0.0,
             "Off-center hit should produce angular velocity in first frame")
-        
+
         # Reset bullet for re-hit at same position
         t_bullet = bullet.get_component(Transform)
         t_bullet.x = 78.0
         rb_bullet = bullet.get_component(RigidBody)
         rb_bullet.velocity_x = 400.0
         rb_bullet.velocity_y = 0.0
-        
+
         # Reset target to original position
         t_target = target.get_component(Transform)
         t_target.x = 100.0
         t_target.y = 100.0
-        
+
         # Frame 2: same hit again — warm-start should use previous angular impulse
         physics.update(world, dt)
         rb2 = target.get_component(RigidBody)
@@ -1071,7 +1069,7 @@ class TestRotationalInertia(unittest.TestCase):
         """lock_rotation=True debe impedir velocidad angular incluso en golpe descentrado."""
         world = World()
         physics = PhysicsSystem(gravity=0.0)
-        
+
         target = world.create_entity("Target")
         target.add_component(Transform(x=100.0, y=100.0))
         target.add_component(Collider(width=32.0, height=64.0))
@@ -1079,7 +1077,7 @@ class TestRotationalInertia(unittest.TestCase):
             body_type="dynamic", mass=1.0, inertia=500.0,
             gravity_scale=0.0, lock_rotation=True,
         ))
-        
+
         bullet = world.create_entity("Bullet")
         bullet.add_component(Transform(x=70.0, y=80.0))
         bullet.add_component(Collider(width=8.0, height=8.0))
@@ -1087,11 +1085,11 @@ class TestRotationalInertia(unittest.TestCase):
             body_type="dynamic", mass=0.1, inertia=1.0,
             gravity_scale=0.0, velocity_x=200.0, velocity_y=0.0,
         ))
-        
+
         dt = 1.0 / 60.0
         for _ in range(5):
             physics.update(world, dt)
-        
+
         rb = target.get_component(RigidBody)
         self.assertEqual(rb.angular_velocity, 0.0,
             "lock_rotation=True should prevent any angular velocity")

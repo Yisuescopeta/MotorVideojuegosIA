@@ -326,9 +326,6 @@ class TestAndroidKeystoreSecurity(unittest.TestCase):
         ctx = BuildContext(preset, str(self.tmp))
         ctx.staging_dir = self.staging
 
-        from engine.export.android_exporter import AndroidExporter
-        exporter = AndroidExporter()
-
         # Simulate _build_release but stop before running Gradle
         keystore = ctx.preset.extra.get("keystore_path", "")
         keystore_path = Path(keystore)
@@ -366,7 +363,7 @@ class TestAndroidKeystoreSecurity(unittest.TestCase):
 
 class TestAndroidOutputSemantics(unittest.TestCase):
     """Test output_path .apk/.aab semantics."""
-    
+
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.staging = self.tmp / "staging"
@@ -389,9 +386,6 @@ class TestAndroidOutputSemantics(unittest.TestCase):
         )
         ctx = BuildContext(preset, str(self.tmp))
         ctx.staging_dir = self.staging
-
-        from engine.export.android_exporter import AndroidExporter
-        exporter = AndroidExporter()
 
         # Reset output_dir to simulate what the export method does
         output_path_str = ctx.preset.output_path

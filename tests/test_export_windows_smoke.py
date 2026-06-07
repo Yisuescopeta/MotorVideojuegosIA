@@ -366,7 +366,7 @@ class TestExportedGameWindowed(unittest.TestCase):
             "engine.runtime.content_loader.ContentLoader",
             return_value=fake_loader,
         ), patch(
-            "engine.runtime.shared_game_runtime.SharedGameRuntime",
+            "engine.runtime.exported_game._create_shared_runtime",
             return_value=fake_runtime,
         ), patch(
             "engine.levels.component_registry.create_default_registry",
@@ -384,6 +384,10 @@ class TestExportedGameWindowed(unittest.TestCase):
 
         fake_pyray = SimpleNamespace(
             BLACK=object(),
+            WHITE=object(),
+            GRAY=object(),
+            DARKGRAY=object(),
+            SKYBLUE=object(),
             MOUSE_BUTTON_LEFT=0,
             init_window=MagicMock(),
             is_window_ready=MagicMock(return_value=True),
@@ -396,6 +400,10 @@ class TestExportedGameWindowed(unittest.TestCase):
             is_mouse_button_released=MagicMock(return_value=True),
             begin_drawing=MagicMock(),
             clear_background=MagicMock(),
+            measure_text=MagicMock(return_value=40),
+            draw_text=MagicMock(),
+            draw_rectangle=MagicMock(),
+            draw_rectangle_lines=MagicMock(),
             end_drawing=MagicMock(),
         )
         fake_runtime = MagicMock()
@@ -415,7 +423,7 @@ class TestExportedGameWindowed(unittest.TestCase):
             "engine.runtime.content_loader.ContentLoader",
             return_value=fake_loader,
         ), patch(
-            "engine.runtime.shared_game_runtime.SharedGameRuntime",
+            "engine.runtime.exported_game._create_shared_runtime",
             return_value=fake_runtime,
         ), patch(
             "engine.levels.component_registry.create_default_registry",

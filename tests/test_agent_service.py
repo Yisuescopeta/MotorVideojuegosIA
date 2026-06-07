@@ -396,9 +396,10 @@ class AgentSessionServiceTests(unittest.TestCase):
             resolver.resolve("missing")
 
     def test_default_provider_list_includes_openai_as_online_credentialed_provider(self) -> None:
-        service = AgentSessionService(project_root=self.project)
+        with patch.dict(os.environ, {"OPENCODE_GO_API_KEY": ""}, clear=False):
+            service = AgentSessionService(project_root=self.project, global_state_dir=self.root / "global")
 
-        providers = {provider["provider_id"]: provider for provider in service.list_providers()}
+            providers = {provider["provider_id"]: provider for provider in service.list_providers()}
 
         self.assertIn("fake", providers)
         self.assertIn("openai", providers)

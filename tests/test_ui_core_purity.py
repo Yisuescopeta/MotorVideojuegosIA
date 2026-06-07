@@ -5,7 +5,6 @@ import sys
 import unittest
 from pathlib import Path
 
-
 UI_CORE_ROOT = Path(__file__).resolve().parents[1] / "engine" / "editor" / "ui_core"
 UI_CORE_MODULES = [
     "__init__",
@@ -107,7 +106,16 @@ class UICorePurityTests(unittest.TestCase):
         from engine.editor.ui import tokens as old_tokens
         from engine.editor.ui import tree_view as old_tree_view
         from engine.editor.ui import widget_state as old_widget_state
-        from engine.editor.ui_core import geometry, icon_names, inspector, property_widgets, theme, tokens, tree_view, widget_state
+        from engine.editor.ui_core import (
+            geometry,
+            icon_names,
+            inspector,
+            property_widgets,
+            theme,
+            tokens,
+            tree_view,
+            widget_state,
+        )
 
         self.assertEqual(old_tokens.EDITOR_BG, tokens.EDITOR_BG)
         self.assertIs(old_geometry.inset_rect, geometry.inset_rect)

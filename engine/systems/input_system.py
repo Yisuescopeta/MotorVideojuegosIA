@@ -2,11 +2,12 @@
 engine/systems/input_system.py - Lectura declarativa de InputMap
 """
 
-from typing import Any, Dict, Tuple
+from typing import Dict, Tuple
 
 import pyray as rl
 from engine.components.inputmap import InputMap
 from engine.ecs.world import World
+
 
 def _build_key_lookup() -> Dict[str, int]:
     lookup: Dict[str, int] = {}

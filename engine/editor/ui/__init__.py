@@ -3,10 +3,10 @@
 from engine.editor.ui.animation import AnimationController, ColorLerp, LerpValue, PanelAnimation
 from engine.editor.ui.file_picker_render import process_file_picker, render_file_picker
 from engine.editor.ui.icons import (
-    ICON_AUDIO,
     ICON_ANIMATION,
     ICON_ARROW_DOWN,
     ICON_ARROW_UP,
+    ICON_AUDIO,
     ICON_CAMERA,
     ICON_CANVAS,
     ICON_CHECK,
@@ -27,8 +27,8 @@ from engine.editor.ui.icons import (
     ICON_MINUS,
     ICON_NODE2D,
     ICON_OPEN,
-    ICON_PAUSE,
     ICON_PARTICLES,
+    ICON_PAUSE,
     ICON_PLAY,
     ICON_PLUS,
     ICON_PREFAB,

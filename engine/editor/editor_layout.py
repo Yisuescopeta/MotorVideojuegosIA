@@ -515,7 +515,13 @@ class EditorLayout:
         )
         self.pivot_mode = PivotMode.from_value(preferences.get("editor_pivot_mode", PivotMode.PIVOT.value))
         self.snap_settings = SnapSettings.from_preferences(preferences)
-        previous_profile = self.game_view_device_profile
+        previous_profile = getattr(self, "game_view_device_profile", FIT_PANEL_PROFILE_ID)
+        if not hasattr(self, "game_view_device_profile"):
+            self.game_view_device_profile = previous_profile
+        if not hasattr(self, "scene_texture"):
+            self.scene_texture = None
+        if not hasattr(self, "game_texture"):
+            self.game_texture = None
         self.set_game_view_device_profile(
             preferences.get("editor_game_view_device_profile", FIT_PANEL_PROFILE_ID),
             mark_dirty=False,
@@ -564,7 +570,7 @@ class EditorLayout:
         resize: bool = True,
     ) -> None:
         resolved = get_device_profile(profile_id).id
-        if resolved == self.game_view_device_profile:
+        if resolved == getattr(self, "game_view_device_profile", FIT_PANEL_PROFILE_ID):
             return
         self.game_view_device_profile = resolved
         if mark_dirty:
@@ -674,9 +680,11 @@ class EditorLayout:
                 and self._floating_drag_state.get("tab_id") == window.tab_id
             )
             if is_dragging and rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT):
-                assert self._floating_drag_state is not None
-                off_x = self._floating_drag_state.get("offset_x", 0.0)
-                off_y = self._floating_drag_state.get("offset_y", 0.0)
+                drag_state = self._floating_drag_state
+                if drag_state is None:
+                    return
+                off_x = drag_state.get("offset_x", 0.0)
+                off_y = drag_state.get("offset_y", 0.0)
                 new_rect = (mx - off_x, my - off_y, window.width, window.height)
                 self.move_floating_window(window.tab_id, new_rect)
                 rect = new_rect

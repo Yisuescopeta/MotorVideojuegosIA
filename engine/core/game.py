@@ -103,14 +103,42 @@ if TYPE_CHECKING:
 
 
 _EDITOR_DEPENDENCIES_LOADED = False
+_AgentPanelFactory: Any = None
+_AnimatorPanelFactory: Any = None
+_CustomCursorRendererFactory: Any = None
+_EditorLayoutFactory: Any = None
+_EditorShellFactory: Any = None
+_EditorPanelSlotsFactory: Any = None
+_EditorToolRuntime: Any = None
+_PivotModeRuntime: Any = None
+_TransformSpaceRuntime: Any = None
+_GizmoSystemFactory: Any = None
+_HierarchyPanelFactory: Any = None
+_SpriteEditorModalFactory: Any = None
+_TerminalPanelFactory: Any = None
+_UndoRedoManagerFactory: Any = None
+_DebugToolsControllerFactory: Any = None
+_EditorInteractionControllerFactory: Any = None
+_ProjectWorkspaceControllerFactory: Any = None
+
+
+def _noop_editor_callback() -> None:
+    pass
+
+
+_apply_unity_dark_theme_runtime: Callable[[], None] = _noop_editor_callback
+_safe_reset_clip_state_runtime: Callable[[], None] = _noop_editor_callback
 
 
 def _load_editor_dependencies() -> None:
     global _EDITOR_DEPENDENCIES_LOADED
-    global AgentPanel, AnimatorPanel, CustomCursorRenderer, EditorLayout, EditorShell, EditorPanelSlots
-    global EditorTool, PivotMode, TransformSpace, GizmoSystem, HierarchyPanel
-    global apply_unity_dark_theme, safe_reset_clip_state, SpriteEditorModal, TerminalPanel, UndoRedoManager
-    global DebugToolsController, EditorInteractionController, ProjectWorkspaceController
+    global _AgentPanelFactory, _AnimatorPanelFactory, _CustomCursorRendererFactory
+    global _EditorLayoutFactory, _EditorShellFactory, _EditorPanelSlotsFactory
+    global _EditorToolRuntime, _PivotModeRuntime, _TransformSpaceRuntime
+    global _GizmoSystemFactory, _HierarchyPanelFactory, _SpriteEditorModalFactory
+    global _TerminalPanelFactory, _UndoRedoManagerFactory, _DebugToolsControllerFactory
+    global _EditorInteractionControllerFactory, _ProjectWorkspaceControllerFactory
+    global _apply_unity_dark_theme_runtime, _safe_reset_clip_state_runtime
     global log_err, log_warn
     if _EDITOR_DEPENDENCIES_LOADED:
         return
@@ -136,25 +164,25 @@ def _load_editor_dependencies() -> None:
     from engine.editor.terminal_panel import TerminalPanel as _TerminalPanel
     from engine.editor.undo_redo import UndoRedoManager as _UndoRedoManager
 
-    AgentPanel = _AgentPanel
-    AnimatorPanel = _AnimatorPanel
-    CustomCursorRenderer = _CustomCursorRenderer
-    EditorLayout = _EditorLayout
-    EditorShell = _EditorShell
-    EditorPanelSlots = _EditorPanelSlots
-    EditorTool = _EditorTool
-    PivotMode = _PivotMode
-    TransformSpace = _TransformSpace
-    GizmoSystem = _GizmoSystem
-    HierarchyPanel = _HierarchyPanel
-    apply_unity_dark_theme = _apply_unity_dark_theme
-    safe_reset_clip_state = _safe_reset_clip_state
-    SpriteEditorModal = _SpriteEditorModal
-    TerminalPanel = _TerminalPanel
-    UndoRedoManager = _UndoRedoManager
-    DebugToolsController = _DebugToolsController
-    EditorInteractionController = _EditorInteractionController
-    ProjectWorkspaceController = _ProjectWorkspaceController
+    _AgentPanelFactory = _AgentPanel
+    _AnimatorPanelFactory = _AnimatorPanel
+    _CustomCursorRendererFactory = _CustomCursorRenderer
+    _EditorLayoutFactory = _EditorLayout
+    _EditorShellFactory = _EditorShell
+    _EditorPanelSlotsFactory = _EditorPanelSlots
+    _EditorToolRuntime = _EditorTool
+    _PivotModeRuntime = _PivotMode
+    _TransformSpaceRuntime = _TransformSpace
+    _GizmoSystemFactory = _GizmoSystem
+    _HierarchyPanelFactory = _HierarchyPanel
+    _apply_unity_dark_theme_runtime = _apply_unity_dark_theme
+    _safe_reset_clip_state_runtime = _safe_reset_clip_state
+    _SpriteEditorModalFactory = _SpriteEditorModal
+    _TerminalPanelFactory = _TerminalPanel
+    _UndoRedoManagerFactory = _UndoRedoManager
+    _DebugToolsControllerFactory = _DebugToolsController
+    _EditorInteractionControllerFactory = _EditorInteractionController
+    _ProjectWorkspaceControllerFactory = _ProjectWorkspaceController
     log_err = _log_err
     log_warn = _log_warn
     _EDITOR_DEPENDENCIES_LOADED = True
@@ -238,13 +266,13 @@ class Game:
         self.timeline: "Timeline" = Timeline(capacity=TIMELINE_CAPACITY)
 
         # Editor Panels
-        self.animator_panel: Optional["AnimatorPanel"] = AnimatorPanel() if self.editor_enabled else None
-        self.sprite_editor_modal: Optional["SpriteEditorModal"] = SpriteEditorModal() if self.editor_enabled else None
-        self.terminal_panel: Optional["TerminalPanel"] = TerminalPanel() if self.editor_enabled else None
-        self.agent_panel: Optional["AgentPanel"] = AgentPanel() if self.editor_enabled else None
+        self.animator_panel: Optional["AnimatorPanel"] = _AnimatorPanelFactory() if self.editor_enabled else None
+        self.sprite_editor_modal: Optional["SpriteEditorModal"] = _SpriteEditorModalFactory() if self.editor_enabled else None
+        self.terminal_panel: Optional["TerminalPanel"] = _TerminalPanelFactory() if self.editor_enabled else None
+        self.agent_panel: Optional["AgentPanel"] = _AgentPanelFactory() if self.editor_enabled else None
         self.editor_shell: Optional["EditorShell"] = (
-            EditorShell(
-                panel_slots=EditorPanelSlots(terminal_panel=self.terminal_panel, agent_panel=self.agent_panel),
+            _EditorShellFactory(
+                panel_slots=_EditorPanelSlotsFactory(terminal_panel=self.terminal_panel, agent_panel=self.agent_panel),
             )
             if self.editor_enabled
             else None
@@ -253,11 +281,11 @@ class Game:
         self.hierarchy_panel: Optional["HierarchyPanel"] = (
             self.editor_shell.hierarchy_panel if self.editor_shell is not None else None
         )
-        self.gizmo_system: Optional["GizmoSystem"] = GizmoSystem() if self.editor_enabled else None
+        self.gizmo_system: Optional["GizmoSystem"] = _GizmoSystemFactory() if self.editor_enabled else None
         self.editor_layout: Optional["EditorLayout"] = self.editor_shell.layout if self.editor_shell is not None else None
         self._editor_export_api: Optional["EngineAPI"] = None
         self._cursor_renderer: Optional["CustomCursorRenderer"] = (
-            CustomCursorRenderer() if self.editor_enabled else None
+            _CustomCursorRendererFactory() if self.editor_enabled else None
         )
 
         # Gestión de escenas
@@ -276,7 +304,7 @@ class Game:
             self.hot_reload_manager.scan_directory()
 
         self._project_service: Optional[ProjectService] = None
-        self._history_manager: Optional["UndoRedoManager"] = UndoRedoManager() if self.editor_enabled else None
+        self._history_manager: Optional["UndoRedoManager"] = _UndoRedoManagerFactory() if self.editor_enabled else None
 
         self.autosave_timer: float = 0.0
         self.show_performance_overlay: bool = False
@@ -385,7 +413,7 @@ class Game:
         )
         self._debug_tools_controller: Optional["DebugToolsController"] = None
         if self.editor_enabled:
-            self._debug_tools_controller = DebugToolsController(
+            self._debug_tools_controller = _DebugToolsControllerFactory(
                 time_manager=self.time,
                 timeline=self.timeline,
                 profiler=self._profiler,
@@ -428,7 +456,7 @@ class Game:
         self._project_workspace_controller: Optional["ProjectWorkspaceController"] = None
         self._editor_interaction_controller: Optional["EditorInteractionController"] = None
         if self.editor_enabled:
-            self._project_workspace_controller = ProjectWorkspaceController(
+            self._project_workspace_controller = _ProjectWorkspaceControllerFactory(
                 get_project_service=lambda: self._project_service,
                 get_scene_manager=lambda: self._scene_manager,
                 get_editor_layout=lambda: self.editor_layout,
@@ -459,7 +487,7 @@ class Game:
                 stop_runtime=self._stop_runtime_flow,
                 set_running=lambda value: setattr(self, "running", value),
             )
-            self._editor_interaction_controller = EditorInteractionController(
+            self._editor_interaction_controller = _EditorInteractionControllerFactory(
                 get_state=lambda: self._state,
                 get_editor_layout=lambda: self.editor_layout,
                 get_editor_selection=lambda: self._editor_selection_state,
@@ -951,21 +979,19 @@ class Game:
 
     def set_project_service(self, service: ProjectService) -> None:
         self._project_service = service
-        if service.read_only:
-            if self._render_system is not None:
-                self._render_system.set_project_service(service)
-            if self._ui_render_system is not None and hasattr(self._ui_render_system, "set_project_service"):
-                self._ui_render_system.set_project_service(service)
-            if self._audio_system is not None and hasattr(self._audio_system, "set_project_service"):
-                self._audio_system.set_project_service(service)
-            if self._script_behaviour_system is not None and hasattr(self._script_behaviour_system, "set_project_service"):
-                self._script_behaviour_system.set_project_service(service)
-            if self._resource_preloader_system is not None:
-                self._resource_preloader_system.set_project_service(service)
-            return
-        self._sync_editor_shell()
+        if self._render_system is not None:
+            self._render_system.set_project_service(service)
         if self._ui_render_system is not None and hasattr(self._ui_render_system, "set_project_service"):
             self._ui_render_system.set_project_service(service)
+        if self._audio_system is not None and hasattr(self._audio_system, "set_project_service"):
+            self._audio_system.set_project_service(service)
+        if self._script_behaviour_system is not None and hasattr(self._script_behaviour_system, "set_project_service"):
+            self._script_behaviour_system.set_project_service(service)
+        if self._resource_preloader_system is not None:
+            self._resource_preloader_system.set_project_service(service)
+        if service.read_only:
+            return
+        self._sync_editor_shell()
         if self._project_workspace_controller is not None:
             self._project_workspace_controller.set_project_service(service, notify_agent_panel=False)
 
@@ -993,6 +1019,20 @@ class Game:
     def _persist_workspace_state(self) -> None:
         if self._project_workspace_controller is not None:
             self._project_workspace_controller.persist_workspace_state()
+            return
+        if self._project_service is None or self._scene_manager is None or not self._project_service.has_project:
+            return
+        state = self._project_service.load_editor_state()
+        workspace_state = self._scene_manager.get_workspace_state()
+        state["open_scenes"] = [
+            self._project_service.to_relative_path(scene_ref)
+            for scene_ref in workspace_state.get("open_scenes", [])
+            if str(scene_ref).strip()
+        ]
+        active_scene = str(workspace_state.get("active_scene", "") or "")
+        state["active_scene"] = self._project_service.to_relative_path(active_scene) if active_scene else ""
+        state["last_scene"] = self._project_service.to_relative_path(self.current_scene_path) if self.current_scene_path else ""
+        self._project_service.save_editor_state(state)
 
     def _sync_scene_workspace_ui(self, apply_view_state: bool = False) -> None:
         if self._scene_manager is None:
@@ -1175,7 +1215,43 @@ class Game:
         return self._scene_workflow_controller.load_scene_flow_target_from_script(key)
 
     def open_project(self, path: str) -> bool:
-        return self._project_workspace_controller.open_project(path) if self._project_workspace_controller is not None else False
+        if self._project_workspace_controller is not None:
+            return self._project_workspace_controller.open_project(path)
+        if self._project_service is None or self._scene_manager is None:
+            return False
+        try:
+            manifest = self._project_service.open_project(path)
+        except Exception as exc:
+            log_err(f"Open Project failed: {exc}")
+            return False
+
+        self._scene_manager.reset_workspace()
+        self.set_project_service(self._project_service)
+        state = self._project_service.load_editor_state()
+        for scene_ref in state.get("open_scenes", []):
+            resolved = self._project_service.resolve_path(str(scene_ref)).as_posix()
+            self._scene_manager.load_scene_from_file(resolved, activate=False)
+
+        desired_scene = str(state.get("active_scene") or state.get("last_scene") or "").strip()
+        if desired_scene:
+            desired_scene = self._project_service.resolve_path(desired_scene).as_posix()
+            self._scene_manager.load_scene_from_file(desired_scene, activate=True)
+
+        if self._scene_manager.current_scene is None:
+            startup_scene = str(self._project_service.load_project_settings().get("startup_scene", "") or "").strip()
+            startup_path = self._project_service.resolve_path(startup_scene) if startup_scene else None
+            candidates = sorted(self._project_service.get_project_path("levels").rglob("*.json"))
+            if startup_path is not None and startup_path.exists():
+                self._scene_manager.load_scene_from_file(startup_path.as_posix(), activate=True)
+            elif candidates:
+                self._scene_manager.load_scene_from_file(candidates[0].as_posix(), activate=True)
+            else:
+                world = self._scene_manager.create_new_scene(manifest.name, activate=True)
+                self.set_world(world)
+
+        self._project_loaded = self._scene_manager.current_scene is not None
+        self._sync_scene_workspace_ui(True)
+        return self._project_loaded
 
     def has_physics_backend(self, backend_name: str) -> bool:
         return self._physics_backend_registry.has_available_backend(backend_name)
@@ -1409,10 +1485,12 @@ class Game:
             )
         except Exception:
             pass
+        if self._cursor_renderer is None or self.editor_shell is None:
+            raise RuntimeError("Editor dependencies are unavailable")
         self._cursor_renderer.hide_system_cursor()
 
         # Aplicar tema Raygui
-        apply_unity_dark_theme()
+        _apply_unity_dark_theme_runtime()
 
         # Crear EditorLayout (necesita ventana Raylib inicializada)
         if self.editor_layout is None:
@@ -1420,7 +1498,8 @@ class Game:
             self.editor_shell.bind_terminal_panel(self.terminal_panel)
             self.editor_shell.bind_agent_panel(self.agent_panel)
             if self._project_service is not None:
-                self._project_workspace_controller.refresh_launcher_projects()
+                if self._project_workspace_controller is not None:
+                    self._project_workspace_controller.refresh_launcher_projects()
                 if self._project_service.has_project:
                     self.editor_shell.bind_project_service(self._project_service)
                 else:
@@ -1744,9 +1823,11 @@ class Game:
         if rl.is_key_down(rl.KEY_LEFT_CONTROL) and rl.is_key_pressed(rl.KEY_S):
             self.save_current_scene()
         if rl.is_key_down(rl.KEY_LEFT_CONTROL) and rl.is_key_pressed(rl.KEY_Z):
-            self._history_manager.undo()
+            if self._history_manager is not None:
+                self._history_manager.undo()
         if rl.is_key_down(rl.KEY_LEFT_CONTROL) and rl.is_key_pressed(rl.KEY_Y):
-            self._history_manager.redo()
+            if self._history_manager is not None:
+                self._history_manager.redo()
 
     def save_current_scene(self) -> None:
         """Guarda la escena actual a disco."""
@@ -1861,9 +1942,9 @@ class Game:
 
                 # Render Gizmos
                 if self.gizmo_system is not None and active_world is not None:
-                    active_tool = self.editor_layout.active_tool if self.editor_layout else EditorTool.MOVE
-                    transform_space = self.editor_layout.transform_space if self.editor_layout else TransformSpace.WORLD
-                    pivot_mode = self.editor_layout.pivot_mode if self.editor_layout else PivotMode.PIVOT
+                    active_tool = self.editor_layout.active_tool if self.editor_layout else _EditorToolRuntime.MOVE
+                    transform_space = self.editor_layout.transform_space if self.editor_layout else _TransformSpaceRuntime.WORLD
+                    pivot_mode = self.editor_layout.pivot_mode if self.editor_layout else _PivotModeRuntime.PIVOT
                     self.editor_layout.begin_scene_camera_pass()
                     self.gizmo_system.render(
                         active_world,
@@ -1942,11 +2023,11 @@ class Game:
             # --- MAIN SCREEN RENDER (LAYOUT & OVERLAYS) ---
             if self.editor_layout:
                 is_playing = self._state == EngineState.PLAY or self._state == EngineState.PAUSED
-                safe_reset_clip_state()
+                _safe_reset_clip_state_runtime()
                 try:
                     self.editor_layout.draw_layout(is_playing)
                 except Exception as exc:
-                    safe_reset_clip_state()
+                    _safe_reset_clip_state_runtime()
                     log_err(f"Editor layout render error: {exc}")
                     self.editor_layout.draw_bottom_tabs()
             else:
@@ -1957,7 +2038,7 @@ class Game:
             # Inspector Render (Overlay on Layout)
             if (self._inspector_panel is not None or self._inspector_system is not None) and overlay_world is not None:
                 if self.editor_layout:
-                    safe_reset_clip_state()
+                    _safe_reset_clip_state_runtime()
                     rect = self.editor_layout.inspector_rect
                     inspector_start = time.perf_counter()
                     try:
@@ -1980,7 +2061,7 @@ class Game:
                                 is_edit_mode=self.is_edit_mode,
                             )
                     except Exception as exc:
-                        safe_reset_clip_state()
+                        _safe_reset_clip_state_runtime()
                         log_err(f"Inspector render error: {exc}")
                     self._perf_stats["inspector"] = (time.perf_counter() - inspector_start) * 1000.0
 
@@ -1990,7 +2071,7 @@ class Game:
                 and self.editor_layout
                 and self.editor_layout.active_tab == "ANIMATOR"
             ):
-                safe_reset_clip_state()
+                _safe_reset_clip_state_runtime()
                 rect = self.editor_layout.get_center_view_rect()
                 self.animator_panel.render(
                     active_world,
@@ -2003,7 +2084,7 @@ class Game:
             if self.editor_layout is not None and self.editor_layout.active_tab == "FLOW":
                 flow_workspace_panel = getattr(self.editor_layout, "flow_workspace_panel", None)
                 if flow_workspace_panel is not None:
-                    safe_reset_clip_state()
+                    _safe_reset_clip_state_runtime()
                     rect = self.editor_layout.get_center_view_rect()
                     try:
                         flow_workspace_panel.render(
@@ -2013,7 +2094,7 @@ class Game:
                             int(rect.height),
                         )
                     except Exception as exc:
-                        safe_reset_clip_state()
+                        _safe_reset_clip_state_runtime()
                         log_err(f"Flow workspace render error: {exc}")
 
             if self.sprite_editor_modal is not None and self.sprite_editor_modal.is_open:
@@ -2024,7 +2105,7 @@ class Game:
 
             # Hierachy Panel Overlay
             if self.hierarchy_panel is not None and overlay_world is not None:
-                safe_reset_clip_state()
+                _safe_reset_clip_state_runtime()
                 hierarchy_start = time.perf_counter()
                 dropdown_open = self.editor_layout.dropdown_active if self.editor_layout else False
                 try:
@@ -2041,13 +2122,13 @@ class Game:
                     else:
                         self.hierarchy_panel.render(overlay_world, 0, 0, 200, self.height)
                 except Exception as exc:
-                    safe_reset_clip_state()
+                    _safe_reset_clip_state_runtime()
                     log_err(f"Hierarchy render error: {exc}")
                 self._perf_stats["hierarchy"] = (time.perf_counter() - hierarchy_start) * 1000.0
 
             # Dropdowns de menú y toolbar — siempre encima de todo (incluyendo hierarchy e inspector)
             if self.editor_layout:
-                safe_reset_clip_state()
+                _safe_reset_clip_state_runtime()
                 self.editor_layout.draw_top_dropdowns()
 
             if self._editor_interaction_controller is not None and self._cursor_renderer is not None:
@@ -2281,6 +2362,8 @@ class Game:
             return
 
         self._scene_workflow_controller.handle_scene_tab_requests()
+        if self._project_workspace_controller is None:
+            return
         should_exit_launcher = self._project_workspace_controller.handle_project_launcher_requests()
         if should_exit_launcher:
             return

@@ -594,7 +594,7 @@ class UnityCoreAuthoringTests(unittest.TestCase):
 
         world.selected_entity_name = None
 
-        with patch("pyray.is_mouse_button_pressed", return_value=True):
+        with patch("engine.systems.selection_system.rl.is_mouse_button_pressed", return_value=True):
             selected_name = selection_system.update(world, rl.Vector2(transform.x, transform.y))
 
         self.assertEqual(selected_name, "Player")

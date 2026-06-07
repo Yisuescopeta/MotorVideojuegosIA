@@ -8,7 +8,6 @@ from engine.components.collider import Collider
 from engine.components.transform import Transform
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
-from engine.events.event_bus import EventBus
 from engine.physics.legacy_backend import LegacyAABBPhysicsBackend
 from engine.systems.character_controller_system import CharacterControllerSystem
 

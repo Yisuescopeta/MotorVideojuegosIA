@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import unittest
 
 from engine.components.navigation_agent_2d import NavigationAgent2D

@@ -150,7 +150,15 @@ class EditTransaction:
         new_value: PropertyValue | object,
     ) -> PropertyEditResult:
         callback = self._commit_callback
-        assert callback is not None
+        if callback is None:
+            return PropertyEditResult(
+                group_name,
+                prop_name,
+                False,
+                "Commit callback unavailable",
+                old_value,
+                new_value,
+            )
         try:
             raw_result = callback(group_name, prop_name, old_value, new_value)
         except Exception as exc:  # pragma: no cover - defensive path still deterministic.

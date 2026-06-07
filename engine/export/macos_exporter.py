@@ -26,7 +26,7 @@ class MacOSExporter(PlatformExporter):
         if xcodebuild and IS_MACOS:
             try:
                 result = subprocess.run(
-                    ["xcodebuild", "-version"],
+                    [xcodebuild, "-version"],
                     capture_output=True, text=True, timeout=15,
                 )
                 xcode_version = result.stdout.strip().split("\n")[0]

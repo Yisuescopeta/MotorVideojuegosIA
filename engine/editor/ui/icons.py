@@ -5,12 +5,16 @@ from __future__ import annotations
 from engine.editor.ui.colors import to_ray_color
 from engine.editor.ui.geometry import Rect
 from engine.editor.ui.icon_provider import (
-    draw_icon_from_pack as _draw_icon_from_pack,
     draw_icon as _draw_lucide_icon,
-    icon_exists_in_pack as _icon_exists_in_pack,
+)
+from engine.editor.ui.icon_provider import (
+    draw_icon_from_pack as _draw_icon_from_pack,
 )
 from engine.editor.ui.icon_provider import (
     icon_exists as _lucide_icon_exists,
+)
+from engine.editor.ui.icon_provider import (
+    icon_exists_in_pack as _icon_exists_in_pack,
 )
 from engine.editor.ui.theme import UNITY_DARK, EditorTheme
 from engine.editor.ui.tokens import (
@@ -18,10 +22,10 @@ from engine.editor.ui.tokens import (
     RGBA,
 )
 from engine.editor.ui_core.icon_names import (
-    ICON_AUDIO,
     ICON_ANIMATION,
     ICON_ARROW_DOWN,
     ICON_ARROW_UP,
+    ICON_AUDIO,
     ICON_CAMERA,
     ICON_CANVAS,
     ICON_CHECK,
@@ -42,8 +46,8 @@ from engine.editor.ui_core.icon_names import (
     ICON_MINUS,
     ICON_NODE2D,
     ICON_OPEN,
-    ICON_PAUSE,
     ICON_PARTICLES,
+    ICON_PAUSE,
     ICON_PLAY,
     ICON_PLUS,
     ICON_PREFAB,

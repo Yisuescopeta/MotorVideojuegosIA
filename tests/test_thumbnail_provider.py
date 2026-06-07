@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pyray as rl
-
 from engine.editor.thumbnail_provider import ThumbnailProvider
 
 

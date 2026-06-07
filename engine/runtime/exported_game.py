@@ -15,11 +15,18 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 TOOLCHAIN_UNAVAILABLE_MSG = (
     "TOOLCHAIN/RUNTIME_UNAVAILABLE: raylib not available. "
     "Install pyray for windowed exports: pip install raylib"
 )
+
+
+def _create_shared_runtime(**kwargs: Any) -> Any:
+    from engine.runtime.shared_game_runtime import SharedGameRuntime
+
+    return SharedGameRuntime(**kwargs)
 
 
 def main() -> int:
@@ -59,7 +66,6 @@ def main() -> int:
 def _run_headless_export(config) -> int:  # type: ignore[no-untyped-def]
     """Export-only headless runtime. No EngineAPI, no inspector, no editor."""
     from engine.runtime.content_loader import ContentLoader
-    from engine.runtime.shared_game_runtime import SharedGameRuntime
 
     loader = ContentLoader(config.base_path)
 
@@ -82,7 +88,7 @@ def _run_headless_export(config) -> int:  # type: ignore[no-untyped-def]
     from engine.levels.component_registry import create_default_registry
 
     registry = create_default_registry()
-    runtime = SharedGameRuntime(
+    runtime = _create_shared_runtime(
         loader=loader,
         registry=registry,
         window_config=getattr(config, 'window', {}),
@@ -188,7 +194,6 @@ def _run_windowed_pyray(config) -> int:  # type: ignore[no-untyped-def]
     """Windowed mode using pyray/raylib."""
     import pyray
     from engine.runtime.content_loader import ContentLoader
-    from engine.runtime.shared_game_runtime import SharedGameRuntime
 
     loader = ContentLoader(config.base_path)
     entry_scene = config.entry_scene or loader.get_entry_scene()
@@ -210,7 +215,7 @@ def _run_windowed_pyray(config) -> int:  # type: ignore[no-untyped-def]
 
     _draw_loading_screen(pyray, width, height, config.project_name, "Loading scene...")
 
-    runtime = SharedGameRuntime(
+    runtime = _create_shared_runtime(
         loader=loader,
         registry=registry,
         window_config=window_config,

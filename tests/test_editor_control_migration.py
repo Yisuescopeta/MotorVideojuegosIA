@@ -1,5 +1,5 @@
-import unittest
 import tempfile
+import unittest
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,8 +8,8 @@ from unittest.mock import Mock
 from engine.app.project_workspace_controller import ProjectWorkspaceController
 from engine.core.engine_state import EngineState
 from engine.editor.editor_control_adapter import ConsolePanelEditorControlAdapter
-from engine.editor.editor_layout import EditorLayout
 from engine.editor.editor_control_flags import EditorControlFeatureFlags
+from engine.editor.editor_layout import EditorLayout
 from engine.editor.ui_core.controls.console_control import ConsoleControlModel
 from engine.project.project_service import ProjectService
 

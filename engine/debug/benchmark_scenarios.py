@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 
 def _normalize_count(value: int, *, minimum: int) -> int:
@@ -629,7 +629,7 @@ def play_mode_clone_stress(
     return payload, params
 
 
-SCENARIO_BUILDERS = {
+SCENARIO_BUILDERS: dict[str, Callable[..., tuple[dict[str, Any], dict[str, Any]]]] = {
     "many_static_colliders": many_static_colliders,
     "one_dynamic_many_static": one_dynamic_many_static,
     "many_dynamic_and_static": many_dynamic_and_static,

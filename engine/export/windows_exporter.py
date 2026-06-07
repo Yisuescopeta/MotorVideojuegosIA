@@ -11,8 +11,8 @@ from typing import Any
 from engine.export.build_context import BuildContext
 from engine.export.content_pack import build_content_pack
 from engine.export.platform_exporter import PlatformExporter
-from engine.utils.device_profiles import resolve_window_config
 from engine.export.toolchain import resolve_pyinstaller
+from engine.utils.device_profiles import resolve_window_config
 
 
 class WindowsExporter(PlatformExporter):

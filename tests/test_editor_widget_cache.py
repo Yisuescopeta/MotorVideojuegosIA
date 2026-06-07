@@ -1,7 +1,7 @@
 """Tests for Control dirty flags and cache (E5)."""
 import unittest
-from engine.editor.ui_core.controls.control import Control, Label, Button, Panel
-from engine.editor.ui_core.controls.events import Anchor, Margin, Size
+
+from engine.editor.ui_core.controls.control import Button, Control, Label, Panel
 
 
 class TestControlDirty(unittest.TestCase):

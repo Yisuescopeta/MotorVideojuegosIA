@@ -160,10 +160,10 @@ class TestRpgLivesSystem(unittest.TestCase):
 
             self.assertEqual(runtime.current_scene_path, "levels/main_scene.json")
             self.assertEqual(player_script.public_data["lives"], 3)
-            self.assertAlmostEqual(player_transform.x, 0.0, delta=0.01)
-            self.assertAlmostEqual(player_transform.y, 0.0, delta=0.01)
-            self.assertAlmostEqual(slime_transform.x, 48.0, delta=0.01)
-            self.assertAlmostEqual(slime_transform.y, 0.0, delta=0.01)
+            self.assertAlmostEqual(player_transform.local_x, 0.0, delta=0.01)
+            self.assertAlmostEqual(player_transform.local_y, 0.0, delta=0.01)
+            self.assertAlmostEqual(slime_transform.local_x, 48.0, delta=0.01)
+            self.assertAlmostEqual(slime_transform.local_y, 0.0, delta=0.01)
             self.assertEqual(self._heart_states(runtime), [True, True, True])
         finally:
             runtime.shutdown()

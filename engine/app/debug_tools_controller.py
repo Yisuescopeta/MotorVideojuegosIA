@@ -31,7 +31,7 @@ class DebugToolsController:
         time_manager: "TimeManager",
         timeline: Timeline,
         profiler: EngineProfiler,
-        hot_reload_manager: "HotReloadManager",
+        hot_reload_manager: Optional["HotReloadManager"],
         perf_stats: dict[str, float],
         perf_counters: dict[str, int],
         get_state: Callable[[], EngineState],
@@ -115,6 +115,9 @@ class DebugToolsController:
             toggle_fullscreen_callback()
 
         if rl.is_key_pressed(rl.KEY_F8):
+            if self._hot_reload_manager is None:
+                log_info("Hot-reload: No disponible")
+                return
             reloaded = self._hot_reload_manager.check_for_changes()
             if reloaded:
                 for module_name in reloaded:

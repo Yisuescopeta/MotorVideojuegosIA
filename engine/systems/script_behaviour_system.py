@@ -4,6 +4,8 @@ engine/systems/script_behaviour_system.py - Ejecucion de ScriptBehaviour.
 
 from __future__ import annotations
 
+import os
+import sys
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
@@ -78,6 +80,7 @@ class ScriptBehaviourSystem:
         self._runtime_world_structure_version: int | None = None
         self._runtime_script_membership_signature: ScriptMembershipSignature = ()
         self._runtime_cache_dirty: bool = False
+        self._module_mtimes: dict[str, float] = {}
 
     def set_hot_reload_manager(self, manager: Any) -> None:
         self._hot_reload_manager = manager
@@ -236,6 +239,20 @@ class ScriptBehaviourSystem:
 
     def _runtime_cache_invalidated_by_hot_reload(self) -> bool:
         if self._hot_reload_manager is None:
+            for compiled in self._runtime_compiled_scripts:
+                module = sys.modules.get(compiled.module_name)
+                source_path = getattr(module, "__file__", "") if module is not None else ""
+                if not source_path:
+                    continue
+                try:
+                    current_mtime = os.path.getmtime(source_path)
+                except OSError:
+                    continue
+                previous_mtime = self._module_mtimes.get(compiled.module_name)
+                if previous_mtime is not None and current_mtime > previous_mtime:
+                    sys.modules.pop(compiled.module_name, None)
+                    self._runtime_cache_dirty = True
+                    return True
             return False
 
         modules: dict[str, Any] = {}
@@ -341,8 +358,30 @@ class ScriptBehaviourSystem:
             except ImportError:
                 pass
 
+        if module is None and self._asset_resolver is not None:
+            script_path = self._asset_resolver.resolve_path(f"scripts/{module_name.replace('.', '/')}.py")
+            if script_path:
+                try:
+                    import importlib.util
+                    import sys
+
+                    spec = importlib.util.spec_from_file_location(module_name, script_path)
+                    if spec is not None and spec.loader is not None:
+                        module = importlib.util.module_from_spec(spec)
+                        sys.modules[module_name] = module
+                        spec.loader.exec_module(module)
+                except (ImportError, OSError):
+                    module = None
+
         if module is None:
             log_err(f"[Script:{entity_name}] Modulo no encontrado: {module_name}")
+        else:
+            source_path = getattr(module, "__file__", "")
+            if source_path:
+                try:
+                    self._module_mtimes[module_name] = os.path.getmtime(source_path)
+                except OSError:
+                    pass
         return module
 
     def _build_context(

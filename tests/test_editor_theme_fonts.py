@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from engine.editor.theme.fonts import (
-    load_font,
-    get_default_font,
-    unload_all_fonts,
     _FONT_CACHE,
+    get_default_font,
+    load_font,
+    unload_all_fonts,
 )
 
 

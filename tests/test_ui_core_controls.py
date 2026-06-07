@@ -4,19 +4,19 @@ import json
 import sys
 import unittest
 
-from engine.editor.ui_core.controls.events import (
-    ControlEvent,
-    ControlEventKind,
-    Margin,
-    Size,
-)
-from engine.editor.ui_core.controls.control import Button, Control, Label, Panel, TextureRect
 from engine.editor.ui_core.controls.container import (
     Container,
     HBoxContainer,
     LayoutDirection,
     ScrollContainer,
     VBoxContainer,
+)
+from engine.editor.ui_core.controls.control import Button, Control, Label, Panel, TextureRect
+from engine.editor.ui_core.controls.events import (
+    ControlEvent,
+    ControlEventKind,
+    Margin,
+    Size,
 )
 from engine.editor.ui_core.controls.focus import FocusManager
 
@@ -426,14 +426,12 @@ class TestFocusManager(unittest.TestCase):
 class TestControlsPurity(unittest.TestCase):
     def test_import_controls_does_not_import_pyray(self):
         sys.modules.pop("pyray", None)
-        import engine.editor.ui_core.controls
 
         self.assertNotIn("pyray", sys.modules)
 
     def test_controls_modules_are_serializable(self):
         from engine.editor.ui_core.controls import (
             Button,
-            Control,
             ControlEvent,
             ControlEventKind,
             FocusManager,
@@ -460,10 +458,16 @@ class TestControlsPurity(unittest.TestCase):
 class TestControlsFromUICoreInit(unittest.TestCase):
     def test_controls_accessible_via_ui_core(self):
         from engine.editor.ui_core import (
-            Anchor, Button, Container, Control, ControlEvent,
-            ControlEventKind, FocusManager, HBoxContainer, Label,
-            LayoutDirection, Margin, Panel, ScrollContainer,
-            Size, TextureRect, VBoxContainer,
+            Button,
+            Container,
+            FocusManager,
+            HBoxContainer,
+            Label,
+            Panel,
+            ScrollContainer,
+            Size,
+            TextureRect,
+            VBoxContainer,
         )
 
         self.assertIsNotNone(Size(10.0, 10.0))

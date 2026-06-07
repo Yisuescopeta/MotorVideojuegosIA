@@ -52,7 +52,6 @@ class HierarchyPanelScrollTests(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_first_visible_row_increases_with_scroll(self) -> None:
-        visible_rows = self.panel._get_visible_rows(self.world)
         row_height = self.panel.LINE_HEIGHT
 
         self.panel.scroll_offset = 0

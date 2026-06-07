@@ -335,7 +335,7 @@ class ProjectWorkspaceController:
         if project_service is None or scene_manager is None:
             return False
 
-        if editor_layout is not None:
+        if editor_layout is not None and rl.is_window_ready():
             editor_layout.loading_message = "Opening project..."
             rl.begin_drawing()
             rl.clear_background(rl.BLACK)

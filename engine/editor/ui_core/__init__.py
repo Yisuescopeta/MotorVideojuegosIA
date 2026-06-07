@@ -59,17 +59,11 @@ from engine.editor.ui_core.geometry import (
     split_right,
     split_top,
 )
-from engine.editor.ui_core.inspector import (
-    InspectorGroup,
-    InspectorModel,
-    build_inspector_model_from_dict,
-    infer_property_kind,
-)
 from engine.editor.ui_core.icon_names import (
-    ICON_AUDIO,
     ICON_ANIMATION,
     ICON_ARROW_DOWN,
     ICON_ARROW_UP,
+    ICON_AUDIO,
     ICON_CAMERA,
     ICON_CANVAS,
     ICON_CHECK,
@@ -90,8 +84,8 @@ from engine.editor.ui_core.icon_names import (
     ICON_MINUS,
     ICON_NODE2D,
     ICON_OPEN,
-    ICON_PAUSE,
     ICON_PARTICLES,
+    ICON_PAUSE,
     ICON_PLAY,
     ICON_PLUS,
     ICON_PREFAB,
@@ -109,6 +103,12 @@ from engine.editor.ui_core.icon_names import (
     ICON_UI_BUTTON,
     ICON_UNKNOWN,
     PUBLIC_ICON_NAMES,
+)
+from engine.editor.ui_core.inspector import (
+    InspectorGroup,
+    InspectorModel,
+    build_inspector_model_from_dict,
+    infer_property_kind,
 )
 from engine.editor.ui_core.property_widgets import (
     EditTransaction,

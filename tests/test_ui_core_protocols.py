@@ -4,7 +4,6 @@ import sys
 import unittest
 from pathlib import Path
 
-
 PROTOCOLS_PATH = (
     Path(__file__).resolve().parents[1]
     / "engine"

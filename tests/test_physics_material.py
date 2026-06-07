@@ -301,19 +301,18 @@ class PhysicsMaterialIntegrationTests(unittest.TestCase):
             wall.add_component(Transform(x=20.0, y=100.0))
             wall.add_component(Collider(width=4.0, height=40.0, restitution=0.0))
             wall.add_component(RigidBody(body_type="static", mass=1.0))
-            
-            vx_before = ball.get_component(RigidBody).velocity_x
+
             dt = 1.0 / 60.0
             for _ in range(30):
                 physics.update(world, dt)
-            
+
             rb = ball.get_component(RigidBody)
             # Con bounce efectivo > 0, la velocidad debe invertirse
             self.assertLess(rb.velocity_x, 0,
                 f"Material bounce should reverse velocity. vx={rb.velocity_x}")
         finally:
             os.unlink(mat_path)
-    
+
     def test_material_rough_kills_tangential_velocity_horizontal(self) -> None:
         """Rough material (infinite friction) reduce significativamente velocidad tangencial."""
         mat_path = self._write_temp_material({
@@ -336,18 +335,18 @@ class PhysicsMaterialIntegrationTests(unittest.TestCase):
             wall.add_component(Transform(x=20.0, y=100.0))
             wall.add_component(Collider(width=4.0, height=40.0))
             wall.add_component(RigidBody(body_type="static", mass=1.0))
-            
+
             dt = 1.0 / 60.0
             for _ in range(30):
                 physics.update(world, dt)
-            
+
             rb = ball.get_component(RigidBody)
             # Con rough material, se espera que la velocidad tangencial se reduzca
             self.assertLess(abs(rb.velocity_y) if abs(rb.velocity_x) < 1.0 else abs(rb.velocity_x),
                 50.0, f"Rough material should reduce tangential velocity. vx={rb.velocity_x}")
         finally:
             os.unlink(mat_path)
-    
+
     def test_material_rough_kills_tangential_velocity_vertical(self) -> None:
         """Rough material en colision vertical reduce velocidad tangencial."""
         mat_path = self._write_temp_material({
@@ -370,18 +369,18 @@ class PhysicsMaterialIntegrationTests(unittest.TestCase):
             ground.add_component(Transform(x=0.0, y=20.0))
             ground.add_component(Collider(width=100.0, height=4.0))
             ground.add_component(RigidBody(body_type="static", mass=1.0))
-            
+
             dt = 1.0 / 60.0
             for _ in range(30):
                 physics.update(world, dt)
-            
+
             rb = ball.get_component(RigidBody)
             # Con rough, la velocidad tangencial (vx) debe reducirse
             self.assertLess(abs(rb.velocity_x), 25.0,
                 f"Rough material should reduce tangential vx. vx={rb.velocity_x}")
         finally:
             os.unlink(mat_path)
-    
+
     def test_empty_path_falls_back_to_collider(self) -> None:
         """Path vacio usa collider friction/restitution (PGS)."""
         world = World()
@@ -398,16 +397,16 @@ class PhysicsMaterialIntegrationTests(unittest.TestCase):
         wall.add_component(Transform(x=20.0, y=100.0))
         wall.add_component(Collider(width=4.0, height=40.0, restitution=0.0))
         wall.add_component(RigidBody(body_type="static", mass=1.0))
-        
+
         dt = 1.0 / 60.0
         for _ in range(30):
             physics.update(world, dt)
-        
+
         rb = ball.get_component(RigidBody)
         # Con restitution=0.3 del collider, la velocidad debe reducirse (no invertirse completamente)
         self.assertLess(abs(rb.velocity_x), 95.0,
             f"Collider restitution should affect bounce. vx={rb.velocity_x}")
-    
+
     def test_invalid_path_falls_back_to_collider(self) -> None:
         """Path invalido usa collider valores (PGS)."""
         world = World()
@@ -424,16 +423,16 @@ class PhysicsMaterialIntegrationTests(unittest.TestCase):
         wall.add_component(Transform(x=20.0, y=100.0))
         wall.add_component(Collider(width=4.0, height=40.0, restitution=0.0))
         wall.add_component(RigidBody(body_type="static", mass=1.0))
-        
+
         dt = 1.0 / 60.0
         for _ in range(30):
             physics.update(world, dt)
-        
+
         rb = ball.get_component(RigidBody)
         # Fallback al collider con restitution=0.5
         self.assertLess(abs(rb.velocity_x), 95.0,
             "Invalid path should fall back to collider values")
-    
+
     def test_absorbent_vs_zero_restitution_wall(self) -> None:
         """Material absorbente + pared zero-restitution = sin bounce."""
         mat_path = self._write_temp_material({
@@ -457,11 +456,11 @@ class PhysicsMaterialIntegrationTests(unittest.TestCase):
             wall.add_component(Transform(x=20.0, y=100.0))
             wall.add_component(Collider(width=4.0, height=40.0, restitution=0.0))
             wall.add_component(RigidBody(body_type="static", mass=1.0))
-            
+
             dt = 1.0 / 60.0
             for _ in range(30):
                 physics.update(world, dt)
-            
+
             rb = ball.get_component(RigidBody)
             # Absorbent efectivo = bounce casi 0
             self.assertAlmostEqual(abs(rb.velocity_x), 0.0, msg=

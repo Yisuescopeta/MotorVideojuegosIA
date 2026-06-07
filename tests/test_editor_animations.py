@@ -1,6 +1,7 @@
 """Tests for editor animation system (E1)."""
 import unittest
-from engine.editor.ui.animation import AnimationController, LerpValue, ColorLerp, PanelAnimation
+
+from engine.editor.ui.animation import AnimationController, ColorLerp, LerpValue, PanelAnimation
 
 
 class TestLerpValue(unittest.TestCase):
