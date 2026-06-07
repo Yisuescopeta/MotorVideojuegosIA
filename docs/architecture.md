@@ -147,7 +147,13 @@ El core conserva un contrato comun de backends fisicos:
   1. **PGS velocity solve** (8 iteraciones): impulsos normales con clamp no-negativo y friccion Coulomb
   2. **PGS position solve** (3 iteraciones): correccion mass-weighted sobre transforms con age-based damping
   Los joints bilaterales usan `is_bilateral=True` para permitir impulso negativo.
-- **Broadphase unificado**: `SpatialHash2D` compartido (celda 128px) construido una vez por frame y reutilizado entre PhysicsSystem, CollisionSystem y queries espaciales.
+- **Broadphase unificado**: `SpatialHash2D` compartido y reutilizado entre
+  `PhysicsSystem`, `CollisionSystem` y queries espaciales. El tamano de celda se
+  selecciona de forma determinista desde el tamano mediano de los colliders,
+  limitado a `32..256px`; AABB gigantes usan un registro conservativo separado.
+- **Cache geometrica runtime**: AABB y `ShapeInstance` se reutilizan entre
+  frames mientras no cambien transform, estado enabled ni geometria del
+  collider. La cache no es authoring state ni se serializa.
 - **Joint stiffness**: `Joint2D.joint_stiffness` (default 0.2) controla bias en constraints PGS bilaterales.
 
 ## Taxonomia arquitectonica

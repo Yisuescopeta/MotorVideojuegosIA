@@ -20,11 +20,11 @@ EJEMPLO DE USO:
     print(transform.x)  # 100
 """
 
-import copy
 import itertools
 from typing import Iterable, TypeVar
 
 from engine.ecs.component import Component
+from engine.serialization.json_value import clone_json_value
 
 # TypeVar para tipado genérico de componentes
 T = TypeVar("T", bound=Component)
@@ -168,7 +168,7 @@ class Entity:
         previous_component = self._components.get(component_type)
         self._components[component_type] = component
         self._component_types_by_name[component_type.__name__] = component_type
-        self._component_metadata[component_type] = copy.deepcopy(metadata or {})
+        self._component_metadata[component_type] = clone_json_value(metadata or {})
         self._notify_owner_world(
             "component_added",
             component_type=component_type,
@@ -261,12 +261,15 @@ class Entity:
         return self._components.values()
 
     def get_component_metadata(self, component_type: type[T]) -> dict[str, object]:
-        return copy.deepcopy(self._component_metadata.get(component_type, {}))
+        return clone_json_value(self._component_metadata.get(component_type, {}))
+
+    def _get_component_metadata_ref(self, component_type: type[T]) -> dict[str, object]:
+        return self._component_metadata.get(component_type, {})
 
     def set_component_metadata(self, component_type: type[T], metadata: dict[str, object] | None) -> None:
         if component_type not in self._components:
             return
-        self._component_metadata[component_type] = copy.deepcopy(metadata or {})
+        self._component_metadata[component_type] = clone_json_value(metadata or {})
         self._notify_owner_world(
             "component_metadata_changed",
             component_type=component_type,
@@ -294,7 +297,7 @@ class Entity:
             "layer": self.layer,
             "components": {comp_type.__name__: comp.to_dict() for comp_type, comp in self._components.items()},
             "component_metadata": {
-                comp_type.__name__: copy.deepcopy(self._component_metadata.get(comp_type, {}))
+                comp_type.__name__: clone_json_value(self._component_metadata.get(comp_type, {}))
                 for comp_type in self._components.keys()
                 if self._component_metadata.get(comp_type)
             },

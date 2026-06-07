@@ -15,6 +15,9 @@ class HeadlessGame(Game):
 
     def __init__(self, width: int = 800, height: int = 600) -> None:
         super().__init__("Headless", width, height, 60, editor_enabled=False, hot_reload_enabled=False)
+        from engine.editor.undo_redo import UndoRedoManager
+
+        self._history_manager = UndoRedoManager()
         self.headless_running: bool = False
         self._install_headless_debug_tools()
 

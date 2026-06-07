@@ -115,6 +115,20 @@ class ECSIteratorTests(unittest.TestCase):
 
         self.assertIsNone(entity.get_component_by_name("ProbeComponent"))
 
+    def test_component_metadata_is_defensively_cloned(self) -> None:
+        entity = Entity("Entity")
+        source = {"nested": {"values": [1, 2]}}
+        entity.add_component(ProbeComponent(), metadata=source)
+        source["nested"]["values"].append(3)
+
+        first = entity.get_component_metadata(ProbeComponent)
+        first["nested"]["values"].append(4)
+
+        self.assertEqual(
+            entity.get_component_metadata(ProbeComponent),
+            {"nested": {"values": [1, 2]}},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

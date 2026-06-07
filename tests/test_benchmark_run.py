@@ -95,6 +95,12 @@ class BenchmarkRunTests(unittest.TestCase):
         self.assertIn("last_sample", report)
         self.assertIn("operations", report)
         self.assertIn("load_level", report["operations"])
+        self.assertIn("world_clone", report["operations"])
+        self.assertIn("world_serialize", report["operations"])
+        self.assertIn("scene_create_world", report["operations"])
+        self.assertEqual(report["measurement"]["repeats"], 3)
+        self.assertIn("median_ms", report["operations"]["world_clone"])
+        self.assertIn("p95_ms", report["operations"]["world_clone"])
         self.assertEqual(
             set(report["summary"].keys()),
             {
@@ -104,6 +110,18 @@ class BenchmarkRunTests(unittest.TestCase):
                 "gameplay_max_ms",
                 "candidate_solids_avg",
                 "candidate_solids_max",
+                "swept_checks_avg",
+                "swept_checks_max",
+                "aabb_builds_avg",
+                "aabb_builds_max",
+                "shape_builds_avg",
+                "shape_builds_max",
+                "aabb_cache_hits_avg",
+                "aabb_cache_hits_max",
+                "shape_cache_hits_avg",
+                "shape_cache_hits_max",
+                "spatial_cell_size_avg",
+                "spatial_cell_size_max",
                 "collision_candidates_avg",
                 "collision_candidates_max",
                 "collision_pairs_tested_avg",
@@ -118,6 +136,23 @@ class BenchmarkRunTests(unittest.TestCase):
                 "render_entities_max",
             },
         )
+
+    def test_large_scene_create_world_microbenchmark_reports_distribution(self) -> None:
+        report = run_benchmark(
+            scenario="many_transform_entities",
+            backend="legacy_aabb",
+            mode="edit",
+            frames=1,
+            entity_count=1000,
+            columns=50,
+            operation_warmup=0,
+            operation_repeats=3,
+        )
+
+        measurement = report["operations"]["scene_create_world"]
+        self.assertEqual(len(measurement["samples_ms"]), 3)
+        self.assertGreaterEqual(measurement["median_ms"], 0.0)
+        self.assertGreaterEqual(measurement["p95_ms"], measurement["median_ms"])
 
     def test_new_synthetic_benchmark_scenarios_run_headless(self) -> None:
         for scenario_name in NEW_SYNTHETIC_SCENARIOS:

@@ -14,9 +14,9 @@ from engine.core.engine_state import EngineState
 from engine.core.runtime_contracts import RuntimeControllerContext
 from engine.ecs.world import World
 from engine.physics.box2d_backend import Box2DDependencyUnavailable, Box2DPhysicsBackend
-from engine.systems.render_system import RenderSystem
 from engine.systems.collision_system import CollisionSystem
 from engine.systems.physics_system import PhysicsSystem
+from engine.systems.render_system import RenderSystem
 from engine.systems.ui_system import UISystem
 
 
@@ -45,6 +45,20 @@ class PerformanceInfraTests(unittest.TestCase):
 
         child.remove_component(Transform)
         self.assertEqual([entity.name for entity in world.get_entities_with(Transform)], ["Parent"])
+
+    def test_transform_global_cache_reuses_and_invalidates_parent_state(self) -> None:
+        parent = Transform(x=10.0, y=20.0)
+        child = Transform(x=2.0, y=3.0)
+        child.parent = parent
+
+        self.assertEqual((child.x, child.y, child.depth), (12.0, 23.0, 1))
+        revision = child._global_cache_revision
+        self.assertEqual((child.x, child.y, child.depth), (12.0, 23.0, 1))
+        self.assertEqual(child._global_cache_revision, revision)
+
+        parent.local_x = 30.0
+        self.assertEqual(child.x, 32.0)
+        self.assertGreater(child._global_cache_revision, revision)
 
     def test_ui_layout_cache_reuses_layout_until_ui_layout_changes(self) -> None:
         world = World()

@@ -4,7 +4,6 @@ engine/assets/prefab.py - Sistema de Prefabs
 
 from __future__ import annotations
 
-import copy
 import json
 import os
 import threading
@@ -14,21 +13,22 @@ from typing import Any, Optional
 from engine.core.runtime_logging import log_err
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
+from engine.serialization.json_value import clone_json_value
 from engine.serialization.schema import migrate_prefab_data, validate_prefab_data
 
 
 def _deep_merge(base: Any, override: Any) -> Any:
     if isinstance(base, dict) and isinstance(override, dict):
-        merged = copy.deepcopy(base)
+        merged = clone_json_value(base)
         for key, value in override.items():
-            merged[key] = _deep_merge(merged.get(key), value) if key in merged else copy.deepcopy(value)
+            merged[key] = _deep_merge(merged.get(key), value) if key in merged else clone_json_value(value)
         return merged
-    return copy.deepcopy(override)
+    return clone_json_value(override)
 
 
 def _normalize_legacy_overrides(overrides: dict[str, Any]) -> dict[str, Any]:
     if "operations" in overrides:
-        return copy.deepcopy(overrides)
+        return clone_json_value(overrides)
     operations: list[dict[str, Any]] = []
     for target_path, payload in overrides.items():
         if not isinstance(payload, dict):
@@ -40,7 +40,7 @@ def _normalize_legacy_overrides(overrides: dict[str, Any]) -> dict[str, Any]:
                         "op": "set_entity_property",
                         "target": target_path,
                         "field": field_name,
-                        "value": copy.deepcopy(payload[field_name]),
+                        "value": clone_json_value(payload[field_name]),
                     }
                 )
         components = payload.get("components", {})
@@ -55,7 +55,7 @@ def _normalize_legacy_overrides(overrides: dict[str, Any]) -> dict[str, Any]:
                             "target": target_path,
                             "component": component_name,
                             "field": field_name,
-                            "value": copy.deepcopy(field_value),
+                            "value": clone_json_value(field_value),
                         }
                     )
     return {"operations": operations}
@@ -109,13 +109,13 @@ def _apply_override_operations(entities: list[dict[str, Any]], overrides: dict[s
         if op_name == "set_field":
             component_name = str(operation.get("component", ""))
             field_name = str(operation.get("field", ""))
-            entity_payload.setdefault("components", {}).setdefault(component_name, {})[field_name] = copy.deepcopy(operation.get("value"))
+            entity_payload.setdefault("components", {}).setdefault(component_name, {})[field_name] = clone_json_value(operation.get("value"))
         elif op_name == "set_entity_property":
-            entity_payload[str(operation.get("field", ""))] = copy.deepcopy(operation.get("value"))
+            entity_payload[str(operation.get("field", ""))] = clone_json_value(operation.get("value"))
         elif op_name == "add_component":
-            entity_payload.setdefault("components", {})[str(operation.get("component", ""))] = copy.deepcopy(operation.get("data", {}))
+            entity_payload.setdefault("components", {})[str(operation.get("component", ""))] = clone_json_value(operation.get("data", {}))
         elif op_name == "replace_component":
-            entity_payload.setdefault("components", {})[str(operation.get("component", ""))] = copy.deepcopy(operation.get("data", {}))
+            entity_payload.setdefault("components", {})[str(operation.get("component", ""))] = clone_json_value(operation.get("data", {}))
         elif op_name == "remove_component":
             entity_payload.setdefault("components", {}).pop(str(operation.get("component", "")), None)
     return entities
@@ -212,7 +212,7 @@ class PrefabManager:
         try:
             with open(path, "r", encoding="utf-8") as handle:
                 raw = json.load(handle)
-            payload = migrate_prefab_data(copy.deepcopy(raw))
+            payload = migrate_prefab_data(raw)
             if validate_prefab_data(payload):
                 return None
             return payload
@@ -229,7 +229,7 @@ class PrefabManager:
         prefab_path: str,
         overrides: Optional[dict[str, Any]] = None,
     ) -> list[dict[str, Any]]:
-        overrides = copy.deepcopy(overrides or {})
+        overrides = clone_json_value(overrides or {})
         root_prefab_name = prefab_data.get("root_name", "Prefab")
         expanded: list[dict[str, Any]] = []
 
@@ -244,7 +244,6 @@ class PrefabManager:
             else:
                 world_parent = f"{instance_name}/{relative_parent}"
 
-            normalized_overrides = _normalize_legacy_overrides(overrides)
             merged = _deep_merge(entity_data, {})
             merged["name"] = world_name
             if world_parent is not None:
@@ -255,14 +254,14 @@ class PrefabManager:
                 merged["prefab_instance"] = {
                     "prefab_path": prefab_path,
                     "root_name": root_prefab_name,
-                    "overrides": copy.deepcopy(overrides),
+                    "overrides": overrides,
                 }
                 merged["prefab_root_name"] = instance_name
             else:
                 merged["prefab_root_name"] = instance_name
             merged["prefab_source_path"] = relative_path
             expanded.append(merged)
-        return _apply_override_operations(expanded, normalized_overrides)
+        return _apply_override_operations(expanded, overrides)
 
     @staticmethod
     def _entity_relative_path(entity_data: dict[str, Any]) -> str:
@@ -333,6 +332,4 @@ class PrefabManager:
             parent_transform = parent.get_component(Transform)
             if child_transform is not None:
                 child_transform.parent = parent_transform
-                if parent_transform is not None and child_transform not in parent_transform.children:
-                    parent_transform.children.append(child_transform)
         return root_entity

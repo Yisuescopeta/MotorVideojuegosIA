@@ -90,6 +90,13 @@ Opcionalmente puede incluir `groups` como lista de strings no vacios y sin
 duplicados para persistir membresias declarativas por entidad.
 Los componentes publicos deben estar registrados en
 `engine/levels/component_registry.py`.
+Cada componente oficial registrado debe definir un contrato explicito
+`to_dict()`/`from_dict()`; los tests del registro verifican serializacion JSON y
+roundtrip. El fallback generico de `Component` queda reservado para componentes
+externos legacy, emite `LegacyComponentSerializationWarning` y solo inspecciona
+atributos publicos no-callable almacenados en `__dict__`. No se usa `dir()`. Los
+enlaces y caches runtime deben permanecer fuera del payload mediante el contrato
+explicito del componente.
 
 `Camera2D` admite `profile_overrides` para guardar encuadres especificos por
 perfil de pantalla del editor/export (`device_profile`). Las claves son ids de

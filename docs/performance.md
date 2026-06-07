@@ -86,6 +86,13 @@ puntuales viven en `operations`:
     },
     "edit_to_play": {"ms": 0.0},
     "play_to_edit": {"ms": 0.0},
+    "physics_cache_metrics": {
+      "cold_frame": {"aabb_builds": 0, "shape_builds": 0},
+      "hot_frame": {"aabb_builds": 0, "shape_builds": 0},
+      "aabb_build_reduction": 0,
+      "shape_build_reduction": 0,
+      "candidate_reduction": 0
+    },
     "render_preparation": {
       "ms": 0.0,
       "stats": {"render_entities": 0, "draw_calls": 0}
@@ -96,6 +103,19 @@ puntuales viven en `operations`:
 
 Las claves no aplicables se omiten. Por ejemplo, `transform_edit` solo aparece en
 `transform_edit_stress`.
+
+Los runs de PLAY incluyen `operations.physics_cache_metrics`. Compara el primer
+frame frio con el ultimo frame caliente usando contadores internos, evitando
+depender del tiempo de CPU. El profiler tambien publica `physics_aabb_builds`,
+`physics_shape_builds`, hits de ambas caches, `physics_swept_checks` y
+estadisticas del `SpatialHash2D`.
+
+Todos los escenarios con una escena cargada incluyen
+`operations.scene_create_world` y
+`operations.scene_add_entity_canonicalization`. Ambas mediciones publican
+`samples_ms`, `median_ms` y `p95_ms`; permiten comparar la materializacion de un
+`World` grande y el coste aislado de canonicalizar una entidad nueva sin usar
+umbrales temporales dependientes del hardware.
 
 ## Guardado compacto de escenas grandes
 
