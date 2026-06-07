@@ -4,7 +4,8 @@ engine/components/transform.py - Componente de posicion y transformacion
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from collections.abc import Iterable
+from typing import Any, Optional, SupportsIndex
 
 from engine.ecs.component import Component
 
@@ -16,11 +17,11 @@ class _TransformChildren(list["Transform"]):
         if item not in self:
             super().append(item)
 
-    def extend(self, items: list["Transform"]) -> None:
+    def extend(self, items: Iterable["Transform"]) -> None:
         for item in items:
             self.append(item)
 
-    def insert(self, index: int, item: "Transform") -> None:
+    def insert(self, index: SupportsIndex, item: "Transform") -> None:
         if item not in self:
             super().insert(index, item)
 
@@ -36,6 +37,17 @@ class Transform(Component):
         scale_x: float = 1.0,
         scale_y: float = 1.0,
     ) -> None:
+        self.enabled: bool
+        self._local_x: float
+        self._local_y: float
+        self._local_rotation: float
+        self._local_scale_x: float
+        self._local_scale_y: float
+        self._parent: Optional["Transform"]
+        self.children: _TransformChildren
+        self._global_cache_state: tuple[int, float, float, float, float, float]
+        self._global_cache_revision: int
+        self._global_dirty: bool
         object.__setattr__(self, "enabled", True)
         object.__setattr__(self, "_local_x", x)
         object.__setattr__(self, "_local_y", y)
@@ -150,39 +162,50 @@ class Transform(Component):
         self._mark_subtree_dirty()
 
     def _mark_subtree_dirty(self) -> None:
-        object.__setattr__(self, "_global_dirty", True)
-        for child in self.children:
-            child._mark_subtree_dirty()
+        pending = [self]
+        while pending:
+            current = pending.pop()
+            object.__setattr__(current, "_global_dirty", True)
+            pending.extend(current.children)
 
     def _global_state(self) -> tuple[tuple[int, float, float, float, float, float], int]:
         if not self._global_dirty:
             return self._global_cache_state, self._global_cache_revision
 
-        parent_state: tuple[int, float, float, float, float, float] | None = None
-        if self._parent is not None:
-            parent_state, _parent_revision = self._parent._global_state()
+        dirty_chain: list[Transform] = []
+        current: Optional[Transform] = self
+        while current is not None and current._global_dirty:
+            dirty_chain.append(current)
+            current = current._parent
 
-        if parent_state is None:
-            state = (
-                0,
-                self._local_x,
-                self._local_y,
-                self._local_rotation,
-                self._local_scale_x,
-                self._local_scale_y,
+        parent_state = current._global_cache_state if current is not None else None
+        for transform in reversed(dirty_chain):
+            if parent_state is None:
+                state = (
+                    0,
+                    transform._local_x,
+                    transform._local_y,
+                    transform._local_rotation,
+                    transform._local_scale_x,
+                    transform._local_scale_y,
+                )
+            else:
+                state = (
+                    parent_state[0] + 1,
+                    parent_state[1] + transform._local_x,
+                    parent_state[2] + transform._local_y,
+                    parent_state[3] + transform._local_rotation,
+                    parent_state[4] * transform._local_scale_x,
+                    parent_state[5] * transform._local_scale_y,
+                )
+            object.__setattr__(transform, "_global_cache_state", state)
+            object.__setattr__(
+                transform,
+                "_global_cache_revision",
+                transform._global_cache_revision + 1,
             )
-        else:
-            state = (
-                parent_state[0] + 1,
-                parent_state[1] + self._local_x,
-                parent_state[2] + self._local_y,
-                parent_state[3] + self._local_rotation,
-                parent_state[4] * self._local_scale_x,
-                parent_state[5] * self._local_scale_y,
-            )
-        object.__setattr__(self, "_global_cache_state", state)
-        object.__setattr__(self, "_global_cache_revision", self._global_cache_revision + 1)
-        object.__setattr__(self, "_global_dirty", False)
+            object.__setattr__(transform, "_global_dirty", False)
+            parent_state = state
         return self._global_cache_state, self._global_cache_revision
 
     @property

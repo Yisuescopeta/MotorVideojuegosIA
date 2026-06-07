@@ -14,10 +14,10 @@ class FrozenJsonDict(dict):
     __delitem__ = _readonly
     clear = _readonly
     pop = _readonly
-    popitem = _readonly
+    popitem = _readonly  # type: ignore[assignment]
     setdefault = _readonly
     update = _readonly
-    __ior__ = _readonly
+    __ior__ = _readonly  # type: ignore[assignment]
 
 
 class FrozenJsonList(list):
@@ -36,8 +36,8 @@ class FrozenJsonList(list):
     remove = _readonly
     reverse = _readonly
     sort = _readonly
-    __iadd__ = _readonly
-    __imul__ = _readonly
+    __iadd__ = _readonly  # type: ignore[assignment]
+    __imul__ = _readonly  # type: ignore[assignment]
 
 
 def freeze_json_value(value: Any) -> Any:

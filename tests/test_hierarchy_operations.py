@@ -409,6 +409,18 @@ class TestTransformHierarchyCore(unittest.TestCase):
         self.assertEqual((leaf.x, leaf.y), (71.0, 73.0))
         self.assertEqual([node._global_cache_revision for node in chain], first_revisions)
 
+    def test_very_deep_hierarchy_does_not_depend_on_python_recursion_limit(self) -> None:
+        transforms = [Transform(x=1.0) for _ in range(1200)]
+        for index in range(1, len(transforms)):
+            transforms[index].parent = transforms[index - 1]
+
+        self.assertEqual(transforms[-1].depth, 1199)
+        self.assertEqual(transforms[-1].x, 1200.0)
+
+        transforms[0].x = 2.0
+
+        self.assertEqual(transforms[-1].x, 1201.0)
+
     def test_reparent_invalidates_depth_and_preserves_global(self) -> None:
         root = Transform(x=10.0, y=20.0)
         branch = Transform(x=5.0, y=6.0)

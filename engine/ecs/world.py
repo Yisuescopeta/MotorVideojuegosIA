@@ -9,10 +9,17 @@ PROPÓSITO:
 from __future__ import annotations
 
 import copy
+import warnings
 from collections import defaultdict, deque
 from typing import Any, Callable, Iterable, Iterator, TypeVar
 
-from engine.ecs.component import Component
+from engine.ecs.component import (
+    Component,
+    LegacyComponentSerializationWarning,
+    has_explicit_serialization_contract,
+    has_explicit_to_dict,
+    is_official_component_type,
+)
 from engine.ecs.entity import Entity, normalize_entity_groups
 from engine.serialization.json_value import clone_json_value
 
@@ -488,22 +495,41 @@ class World:
             ) from exc
 
     def _serialize_component(self, entity: Entity, component: Component) -> dict[str, Any]:
-        component_name = type(component).__name__
-        if hasattr(component, "to_dict"):
-            try:
-                return component.to_dict()
-            except Exception as exc:
-                raise WorldSerializationError(
-                    f"World.serialize: no se pudo serializar {entity.name}.{component_name}: {exc}"
-                ) from exc
+        component_type = type(component)
+        component_name = component_type.__name__
+        has_contract = has_explicit_serialization_contract(component_type)
 
-        data: dict[str, Any] = {}
-        for attr, value in vars(component).items():
-            if attr.startswith("_") or callable(value):
-                continue
-            if isinstance(value, (int, float, str, bool, list, dict)):
-                data[attr] = clone_json_value(value)
-        return data
+        if is_official_component_type(component_type) and not has_contract:
+            raise WorldSerializationError(
+                "World.serialize: componente oficial "
+                f"{entity.name}.{component_name} debe implementar to_dict()/from_dict() explicitos"
+            )
+
+        has_incomplete_legacy_contract = has_explicit_to_dict(component_type) and not has_contract
+
+        try:
+            payload = component.to_dict()
+        except Exception as exc:
+            raise WorldSerializationError(
+                f"World.serialize: no se pudo serializar {entity.name}.{component_name}: {exc}"
+            ) from exc
+
+        if not isinstance(payload, dict):
+            raise WorldSerializationError(
+                "World.serialize: "
+                f"{entity.name}.{component_name}.to_dict() debe devolver dict, "
+                f"no {type(payload).__name__}"
+            )
+        if has_incomplete_legacy_contract:
+            warnings.warn(
+                (
+                    f"{component_type.__module__}.{component_name} tiene un contrato "
+                    "de serializacion legacy incompleto; implemente from_dict() explicito"
+                ),
+                LegacyComponentSerializationWarning,
+                stacklevel=2,
+            )
+        return payload
 
     def _adopt_entities(self, entities: Iterable[Entity]) -> None:
         for entity in entities:
@@ -570,9 +596,7 @@ class World:
             self._entities_by_name.pop(entity.name, None)
 
     def _legacy_add_component_entity(self, component_type: type, entity: Entity) -> None:
-        entities = self._entities_by_component[component_type]
-        if entity not in entities:
-            entities.append(entity)
+        self._entities_by_component[component_type].append(entity)
 
     def _legacy_remove_component_entity(self, component_type: type, entity: Entity) -> None:
         entities = self._entities_by_component.get(component_type)

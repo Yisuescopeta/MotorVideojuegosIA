@@ -23,7 +23,13 @@ EJEMPLO DE USO:
 
 from __future__ import annotations
 
+import warnings
+
 from engine.serialization.json_value import clone_json_value
+
+
+class LegacyComponentSerializationWarning(UserWarning):
+    """Advierte que un componente usa el contrato generico de compatibilidad."""
 
 
 class Component:
@@ -47,10 +53,18 @@ class Component:
             Diccionario con todos los datos del componente.
             Las claves deben ser strings, los valores tipos básicos serializables.
         """
+        warnings.warn(
+            (
+                f"{type(self).__module__}.{type(self).__name__} usa la serializacion "
+                "legacy de Component; implemente to_dict()/from_dict() explicitos"
+            ),
+            LegacyComponentSerializationWarning,
+            stacklevel=2,
+        )
         data: dict[str, object] = {
             key: value
             for key, value in self.__dict__.items()
-            if not key.startswith("_")
+            if not key.startswith("_") and not callable(value)
         }
         data.setdefault("enabled", getattr(self, "enabled", True))
         return data
@@ -84,3 +98,29 @@ class Component:
         class_name = self.__class__.__name__
         attrs = ", ".join(f"{k}={v!r}" for k, v in self.to_dict().items())
         return f"{class_name}({attrs})"
+
+
+def _serialization_method_owner(component_type: type[Component], method_name: str) -> type | None:
+    for base in component_type.__mro__:
+        if method_name in base.__dict__:
+            return base
+    return None
+
+
+def has_explicit_serialization_contract(component_type: type[Component]) -> bool:
+    """Indica si el tipo evita ambos fallbacks genericos de Component."""
+    return (
+        _serialization_method_owner(component_type, "to_dict") is not Component
+        and _serialization_method_owner(component_type, "from_dict") is not Component
+    )
+
+
+def has_explicit_to_dict(component_type: type[Component]) -> bool:
+    """Indica si el tipo tiene una ruta de serializacion no generica."""
+    return _serialization_method_owner(component_type, "to_dict") is not Component
+
+
+def is_official_component_type(component_type: type[Component]) -> bool:
+    """Identifica componentes mantenidos dentro del paquete oficial."""
+    module_name = str(getattr(component_type, "__module__", ""))
+    return module_name == "engine.components" or module_name.startswith("engine.components.")

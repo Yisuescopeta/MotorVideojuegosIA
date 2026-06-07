@@ -24,6 +24,14 @@ componentes legacy incompatibles. Los metadatos serializables se copian con
 `clone_json_value()` para mantener independencia entre EDIT y PLAY sin activar
 el protocolo generico de copia profunda en la ruta normal.
 
+Los componentes oficiales de `engine.components` deben implementar contratos
+explicitos `to_dict()` y `from_dict()`. `World.serialize()` rechaza un componente
+oficial que herede el contrato generico de `Component`. Para componentes
+externos legacy se conserva temporalmente el fallback basado solo en
+`__dict__`: incluye atributos publicos, ignora atributos privados y emite
+`LegacyComponentSerializationWarning`. Los callables tambien quedan fuera. Esta
+ruta no usa `dir()` ni inspecciona descriptores heredados.
+
 `Scene.create_world()` materializa cada entidad directamente y clona solo los
 valores JSON mutables que pasan al runtime: payloads de componentes,
 `component_metadata`, `prefab_instance` y `feature_metadata`. El `World`

@@ -111,7 +111,9 @@ class Scene:
             else:
                 expanded_entities = PrefabManager.expand_prefab_instance(
                     prefab_data,
-                    instance_name=entity_data.get("name", prefab_instance.get("root_name", "Prefab")),
+                    instance_name=str(
+                        entity_data.get("name", prefab_instance.get("root_name", "Prefab"))
+                    ),
                     parent_name=entity_data.get("parent"),
                     prefab_path=prefab_instance.get("prefab_path", ""),
                     overrides=prefab_instance.get("overrides", {}),
