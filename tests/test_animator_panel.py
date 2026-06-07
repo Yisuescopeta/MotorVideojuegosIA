@@ -526,6 +526,214 @@ class AnimatorPanelTests(unittest.TestCase):
         animator = self.api.get_entity("AnimatorRowsProbe")["components"]["Animator"]
         self.assertEqual(animator["animations"]["idle"]["slice_names"], ["slice_2"])
 
+    def test_frame_collider_copy_clear_and_inherited_status_persist(self) -> None:
+        created = self.api.create_entity(
+            "FrameColliderProbe",
+            {
+                "Transform": {"x": 100.0, "y": 50.0},
+                "Collider": {"width": 20.0, "height": 10.0, "offset_x": 5.0},
+                "Animator": {
+                    "animations": {
+                        "idle": {
+                            "frames": [0],
+                            "slice_names": ["idle_0"],
+                            "fps": 8.0,
+                            "loop": True,
+                        }
+                    },
+                    "default_state": "idle",
+                    "current_state": "idle",
+                },
+            },
+        )
+        self.assertTrue(created["success"])
+        world = self.api.game.world
+        world.selected_entity_name = "FrameColliderProbe"
+        self.panel.selected_state_name = "idle"
+
+        context = self.panel.get_selected_frame_collider_context(world)
+        self.assertEqual(context["status_label"], "Inherited from base")
+        self.assertFalse(context["has_override"])
+
+        self.assertTrue(self.panel.copy_base_collider_to_selected_frame(world))
+        animator = self.api.get_entity("FrameColliderProbe")["components"]["Animator"]
+        self.assertEqual(animator["animations"]["idle"]["collision_frames"]["0"]["width"], 20.0)
+        self.assertEqual(self.panel.get_selected_frame_collider_context(world)["status_label"], "Frame override")
+
+        self.assertTrue(self.panel.clear_selected_frame_collider_override(world))
+        animator = self.api.get_entity("FrameColliderProbe")["components"]["Animator"]
+        self.assertNotIn("collision_frames", animator["animations"]["idle"])
+
+    def test_frame_collider_preview_uses_selected_effective_payload_and_follows_frame(self) -> None:
+        created = self.api.create_entity(
+            "FramePreviewProbe",
+            {
+                "Transform": {"x": 100.0, "y": 50.0},
+                "Collider": {"width": 32.0, "height": 24.0},
+                "Animator": {
+                    "animations": {
+                        "attack": {
+                            "frames": [0, 1],
+                            "slice_names": ["attack_0", "attack_1"],
+                            "fps": 8.0,
+                            "loop": True,
+                            "collision_frames": {
+                                "1": {
+                                    "shape_type": "circle",
+                                    "radius": 10.0,
+                                    "width": 20.0,
+                                    "height": 20.0,
+                                    "offset_x": 6.0,
+                                }
+                            },
+                        }
+                    },
+                    "default_state": "attack",
+                    "current_state": "attack",
+                },
+            },
+        )
+        self.assertTrue(created["success"])
+        world = self.api.game.world
+        world.selected_entity_name = "FramePreviewProbe"
+        self.panel.selected_state_name = "attack"
+        self.panel.selected_frame_index = 0
+
+        self.assertTrue(self.panel.toggle_selected_frame_collider_preview(world))
+        inherited = self.panel.get_frame_collider_preview_snapshot(world)
+        self.assertEqual(inherited["payload"]["shape_type"], "box")
+
+        self.panel.selected_frame_index = 1
+        overridden = self.panel.get_frame_collider_preview_snapshot(world)
+        self.assertEqual(overridden["payload"]["shape_type"], "circle")
+        self.assertEqual(overridden["bounds"]["left"], 96.0)
+        self.assertFalse(self.panel.toggle_selected_frame_collider_preview(world))
+        self.assertIsNone(self.panel.get_frame_collider_preview_snapshot(world))
+
+    def test_frame_collider_override_without_base_previews_and_missing_inputs_fail_safely(self) -> None:
+        created = self.api.create_entity(
+            "OverrideOnlyProbe",
+            {
+                "Transform": {"x": 4.0, "y": 8.0},
+                "Animator": {
+                    "animations": {
+                        "idle": {
+                            "frames": [0],
+                            "slice_names": ["idle_0"],
+                            "collision_frames": {"0": {"shape_type": "circle", "radius": 6.0}},
+                        }
+                    },
+                    "default_state": "idle",
+                    "current_state": "idle",
+                },
+            },
+        )
+        self.assertTrue(created["success"])
+        world = self.api.game.world
+        world.selected_entity_name = "OverrideOnlyProbe"
+        self.panel.selected_state_name = "idle"
+
+        context = self.panel.get_selected_frame_collider_context(world)
+        self.assertFalse(context["has_base"])
+        self.assertTrue(context["has_effective"])
+        self.assertFalse(self.panel.copy_base_collider_to_selected_frame(world))
+        self.assertTrue(self.panel.toggle_selected_frame_collider_preview(world))
+        self.assertEqual(self.panel.get_frame_collider_preview_snapshot(world)["payload"]["radius"], 6.0)
+
+        self.panel.selected_frame_index = 99
+        self.assertIsNone(self.panel.get_frame_collider_preview_snapshot(world))
+        self.assertFalse(self.panel.toggle_selected_frame_collider_preview(world))
+
+        world.selected_entity_name = ""
+        context = self.panel.get_selected_frame_collider_context(world)
+        self.assertFalse(context["valid_frame"])
+        self.assertFalse(self.panel.clear_selected_frame_collider_override(world))
+
+        missing_transform = self.api.create_entity(
+            "MissingTransformFrameCollider",
+            {
+                "Animator": {
+                    "animations": {
+                        "idle": {
+                            "frames": [0],
+                            "slice_names": ["idle_0"],
+                            "collision_frames": {"0": {"width": 12.0}},
+                        }
+                    },
+                    "default_state": "idle",
+                    "current_state": "idle",
+                }
+            },
+        )
+        self.assertTrue(missing_transform["success"])
+        world.selected_entity_name = "MissingTransformFrameCollider"
+        self.panel.selected_state_name = "idle"
+        self.panel.selected_frame_index = 0
+        context = self.panel.get_selected_frame_collider_context(world)
+        self.assertFalse(context["has_transform"])
+        self.assertFalse(self.panel.toggle_selected_frame_collider_preview(world))
+
+        no_effective = self.api.create_entity(
+            "NoEffectiveFrameCollider",
+            {
+                "Transform": {},
+                "Animator": {
+                    "animations": {"idle": {"frames": [0], "slice_names": ["idle_0"]}},
+                    "default_state": "idle",
+                    "current_state": "idle",
+                },
+            },
+        )
+        self.assertTrue(no_effective["success"])
+        world.selected_entity_name = "NoEffectiveFrameCollider"
+        context = self.panel.get_selected_frame_collider_context(world)
+        self.assertEqual(context["status_label"], "No collider")
+        self.assertFalse(context["has_effective"])
+        self.assertFalse(self.panel.toggle_selected_frame_collider_preview(world))
+
+        no_animator = self.api.create_entity("NoAnimatorFrameCollider", {"Transform": {}, "Collider": {}})
+        self.assertTrue(no_animator["success"])
+        world.selected_entity_name = "NoAnimatorFrameCollider"
+        self.assertFalse(self.panel.get_selected_frame_collider_context(world)["valid_frame"])
+
+    def test_frame_collider_overrides_follow_move_and_remove(self) -> None:
+        created = self.api.create_entity(
+            "FrameRemapProbe",
+            {
+                "Transform": {},
+                "Animator": {
+                    "animations": {
+                        "idle": {
+                            "frames": [0, 1, 2],
+                            "slice_names": ["a", "b", "c"],
+                            "collision_frames": {
+                                "0": {"width": 10.0},
+                                "2": {"width": 30.0},
+                            },
+                        }
+                    },
+                    "default_state": "idle",
+                    "current_state": "idle",
+                },
+            },
+        )
+        self.assertTrue(created["success"])
+        world = self.api.game.world
+        world.selected_entity_name = "FrameRemapProbe"
+        self.panel.selected_state_name = "idle"
+
+        self.assertTrue(self.panel.move_frame(world, "idle", 0, 1))
+        animator = self.api.get_entity("FrameRemapProbe")["components"]["Animator"]
+        collision_frames = animator["animations"]["idle"]["collision_frames"]
+        self.assertEqual(collision_frames["1"]["width"], 10.0)
+        self.assertEqual(collision_frames["2"]["width"], 30.0)
+
+        self.assertTrue(self.panel.remove_frame(world, "idle", 1))
+        animator = self.api.get_entity("FrameRemapProbe")["components"]["Animator"]
+        collision_frames = animator["animations"]["idle"]["collision_frames"]
+        self.assertNotIn("0", collision_frames)
+        self.assertEqual(collision_frames["1"]["width"], 30.0)
+
     def test_animator_panel_open_slice_picker_stores_target_state(self) -> None:
         sprite_sheet = self._write_sheet_with_slices("assets/test_animator_picker_open.png", ["slice_0", "slice_1"])
         self._create_animator_probe(

@@ -11,6 +11,14 @@ from typing import Any, Dict, List, Optional
 import pyray as rl
 from engine.assets.asset_service import AssetService
 from engine.components.animator import Animator
+from engine.components.collider import Collider
+from engine.components.transform import Transform
+from engine.editor.collider_authoring import (
+    build_collider_preview_snapshot,
+    clear_animator_frame_collider_payload,
+    copy_base_collider_to_animator_frame,
+    get_effective_animator_collider_payload,
+)
 from engine.editor.render_safety import editor_scissor
 from engine.editor.ui.icons import ICON_ARROW_DOWN, ICON_ARROW_UP, ICON_MINUS, ICON_PLUS, ICON_TRASH, draw_icon
 from engine.resources.texture_manager import TextureManager
@@ -192,6 +200,53 @@ def get_recommended_group_sync_badge_variant(sync_status: Optional[str]) -> str:
     return get_recommended_group_refresh_variant(sync_status)
 
 
+def _remap_collision_frames_for_move(state: Dict[str, Any], source_index: int, target_index: int) -> None:
+    collision_frames = state.get("collision_frames")
+    if not isinstance(collision_frames, dict) or source_index == target_index:
+        return
+    remapped: Dict[str, Any] = {}
+    for raw_index, frame_payload in collision_frames.items():
+        try:
+            frame_index = int(raw_index)
+        except (TypeError, ValueError):
+            remapped[str(raw_index)] = copy.deepcopy(frame_payload)
+            continue
+        if frame_index == source_index:
+            next_index = target_index
+        elif source_index < target_index and source_index < frame_index <= target_index:
+            next_index = frame_index - 1
+        elif target_index < source_index and target_index <= frame_index < source_index:
+            next_index = frame_index + 1
+        else:
+            next_index = frame_index
+        remapped[str(next_index)] = copy.deepcopy(frame_payload)
+    if remapped:
+        state["collision_frames"] = remapped
+    else:
+        state.pop("collision_frames", None)
+
+
+def _remap_collision_frames_for_remove(state: Dict[str, Any], removed_index: int) -> None:
+    collision_frames = state.get("collision_frames")
+    if not isinstance(collision_frames, dict):
+        return
+    remapped: Dict[str, Any] = {}
+    for raw_index, frame_payload in collision_frames.items():
+        try:
+            frame_index = int(raw_index)
+        except (TypeError, ValueError):
+            remapped[str(raw_index)] = copy.deepcopy(frame_payload)
+            continue
+        if frame_index == removed_index:
+            continue
+        next_index = frame_index - 1 if frame_index > removed_index else frame_index
+        remapped[str(next_index)] = copy.deepcopy(frame_payload)
+    if remapped:
+        state["collision_frames"] = remapped
+    else:
+        state.pop("collision_frames", None)
+
+
 class AnimatorPanel:
     BG_COLOR = rl.Color(36, 36, 36, 255)
     CARD_COLOR = rl.Color(46, 46, 46, 255)
@@ -226,6 +281,9 @@ class AnimatorPanel:
         self.slice_picker_scroll: float = 0.0
         self.slice_picker_selected_slice: str = ""
         self._slice_picker_ignore_click_until_release: bool = False
+        self._frame_collider_preview_enabled: bool = False
+        self._frame_collider_preview_entity_name: str = ""
+        self._frame_collider_preview_state_name: str = ""
 
     def set_scene_manager(self, manager: Any) -> None:
         self._scene_manager = manager
@@ -244,6 +302,7 @@ class AnimatorPanel:
         self.preview_elapsed = 0.0
         self.request_open_sprite_editor_for = None
         self.close_slice_picker()
+        self.clear_frame_collider_preview()
         self._invalidate_sprite_sheet_asset_cache()
 
     def _invalidate_sprite_sheet_asset_cache(self) -> None:
@@ -263,6 +322,7 @@ class AnimatorPanel:
             self._slice_picker_ignore_click_until_release = False
         entity_name = context.get("entity_name", "")
         if entity_name != self.selected_entity_name:
+            self.clear_frame_collider_preview()
             self.selected_entity_name = entity_name
             self.selected_frame_index = 0
             self.preview_playing = False
@@ -272,6 +332,7 @@ class AnimatorPanel:
 
         selected_state = context.get("selected_state_name", "")
         if selected_state != self.selected_state_name:
+            self.clear_frame_collider_preview()
             self.selected_state_name = selected_state
             self.selected_frame_index = 0
             self.preview_frame = 0
@@ -636,6 +697,149 @@ class AnimatorPanel:
         payload["speed"] = max(0.01, float(speed))
         return self._replace_animator_payload(world, entity_name, payload)
 
+    def get_selected_frame_collider_context(self, world: Any) -> Dict[str, Any]:
+        context = self.get_selection_context(world)
+        result: Dict[str, Any] = {
+            "valid_frame": False,
+            "entity_name": str(context.get("entity_name", "") or ""),
+            "state_name": str(context.get("selected_state_name", "") or ""),
+            "frame_index": int(self.selected_frame_index),
+            "status_label": "No frame selected",
+            "has_base": False,
+            "has_override": False,
+            "has_effective": False,
+            "has_transform": False,
+            "effective_payload": None,
+            "base_collider": None,
+            "transform": None,
+            "animator_payload": None,
+        }
+        if context.get("status") != "ready":
+            return result
+
+        entity_name = result["entity_name"]
+        state_name = result["state_name"]
+        entity = context.get("entity")
+        animator_payload = self._get_animator_payload(world, entity_name)
+        if entity is None or animator_payload is None or not state_name:
+            return result
+        try:
+            animator = Animator.from_dict(animator_payload)
+        except (TypeError, ValueError):
+            return result
+        animation = animator.animations.get(state_name)
+        if animation is None:
+            return result
+
+        frame_index = int(self.selected_frame_index)
+        if frame_index < 0 or frame_index >= animation.get_frame_count():
+            return result
+
+        base_collider = entity.get_component(Collider)
+        transform = entity.get_component(Transform)
+        override = animator.get_collision_frame_override(state_name, frame_index)
+        has_override = override is not None
+        has_base = base_collider is not None
+        has_effective = has_base or has_override
+        effective_payload = (
+            get_effective_animator_collider_payload(
+                animator,
+                base_collider=base_collider,
+                state_name=state_name,
+                frame_index=frame_index,
+            )
+            if has_effective
+            else None
+        )
+        result.update(
+            {
+                "valid_frame": True,
+                "status_label": "Frame override" if has_override else ("Inherited from base" if has_base else "No collider"),
+                "has_base": has_base,
+                "has_override": has_override,
+                "has_effective": has_effective,
+                "has_transform": transform is not None,
+                "effective_payload": effective_payload,
+                "base_collider": base_collider,
+                "transform": transform,
+                "animator_payload": animator_payload,
+            }
+        )
+        return result
+
+    def copy_base_collider_to_selected_frame(self, world: Any) -> bool:
+        frame_context = self.get_selected_frame_collider_context(world)
+        if not frame_context["valid_frame"] or not frame_context["has_base"]:
+            return False
+        animator = Animator.from_dict(frame_context["animator_payload"])
+        if not copy_base_collider_to_animator_frame(
+            animator,
+            frame_context["base_collider"],
+            frame_context["state_name"],
+            frame_context["frame_index"],
+        ):
+            return False
+        return self._replace_animator_payload(world, frame_context["entity_name"], animator.to_dict())
+
+    def clear_selected_frame_collider_override(self, world: Any) -> bool:
+        frame_context = self.get_selected_frame_collider_context(world)
+        if not frame_context["valid_frame"] or not frame_context["has_override"]:
+            return False
+        animator = Animator.from_dict(frame_context["animator_payload"])
+        if not clear_animator_frame_collider_payload(
+            animator,
+            frame_context["state_name"],
+            frame_context["frame_index"],
+        ):
+            return False
+        return self._replace_animator_payload(world, frame_context["entity_name"], animator.to_dict())
+
+    def toggle_selected_frame_collider_preview(self, world: Any) -> bool:
+        frame_context = self.get_selected_frame_collider_context(world)
+        target_matches = (
+            self._frame_collider_preview_enabled
+            and self._frame_collider_preview_entity_name == frame_context["entity_name"]
+            and self._frame_collider_preview_state_name == frame_context["state_name"]
+        )
+        if target_matches:
+            self.clear_frame_collider_preview()
+            return False
+        if (
+            not frame_context["valid_frame"]
+            or not frame_context["has_effective"]
+            or not frame_context["has_transform"]
+        ):
+            self.clear_frame_collider_preview()
+            return False
+        self._frame_collider_preview_enabled = True
+        self._frame_collider_preview_entity_name = frame_context["entity_name"]
+        self._frame_collider_preview_state_name = frame_context["state_name"]
+        return True
+
+    def clear_frame_collider_preview(self) -> None:
+        self._frame_collider_preview_enabled = False
+        self._frame_collider_preview_entity_name = ""
+        self._frame_collider_preview_state_name = ""
+
+    def get_frame_collider_preview_snapshot(self, world: Any) -> Optional[Dict[str, Any]]:
+        if not self._frame_collider_preview_enabled:
+            return None
+        frame_context = self.get_selected_frame_collider_context(world)
+        if (
+            not frame_context["valid_frame"]
+            or not frame_context["has_effective"]
+            or not frame_context["has_transform"]
+            or frame_context["entity_name"] != self._frame_collider_preview_entity_name
+            or frame_context["state_name"] != self._frame_collider_preview_state_name
+        ):
+            self.clear_frame_collider_preview()
+            return None
+        return build_collider_preview_snapshot(
+            frame_context["effective_payload"],
+            frame_context["transform"],
+            entity_name=frame_context["entity_name"],
+        )
+
     def add_frame(self, world: Any, state_name: str) -> bool:
         context = self.get_selection_context(world)
         available = list(context.get("available_slices", []))
@@ -727,6 +931,7 @@ class AnimatorPanel:
         item = items.pop(frame_index)
         items.insert(target_index, item)
         state["slice_names"] = items
+        _remap_collision_frames_for_move(state, frame_index, target_index)
         success = self._replace_animator_payload(world, entity_name, payload)
         if success:
             self.selected_frame_index = target_index
@@ -746,6 +951,7 @@ class AnimatorPanel:
             return False
         del items[frame_index]
         state["slice_names"] = items
+        _remap_collision_frames_for_remove(state, frame_index)
         success = self._replace_animator_payload(world, entity_name, payload)
         if success:
             self.selected_frame_index = max(0, min(self.selected_frame_index, max(0, len(items) - 1)))
@@ -817,7 +1023,7 @@ class AnimatorPanel:
 
             self._draw_states_column(world, context, left_rect)
             self._draw_state_editor(world, context, center_rect)
-            self._draw_preview_column(context, right_rect)
+            self._draw_preview_column(world, context, right_rect)
             if self.slice_picker_open:
                 self._draw_slice_picker_modal(world, context, center_rect)
 
@@ -1135,7 +1341,7 @@ class AnimatorPanel:
             size=max(12, int(min(rect.width, rect.height) - 8)),
         )
 
-    def _draw_preview_column(self, context: Dict[str, Any], rect: rl.Rectangle) -> None:
+    def _draw_preview_column(self, world: Any, context: Dict[str, Any], rect: rl.Rectangle) -> None:
         current_y = self._draw_card(rect, "Preview")
         state_data = context.get("selected_state_data")
         if state_data is None:
@@ -1164,10 +1370,52 @@ class AnimatorPanel:
         preview_name = slice_names[preview_index]
         rl.draw_text(f"Frame {preview_index}: {preview_name}", int(rect.x + 10), int(current_y), 10, self.TEXT_COLOR)
         current_y += 18
-        preview_rect = rl.Rectangle(rect.x + 10, current_y, rect.width - 20, min(rect.width - 20, rect.height - 96))
+        remaining_height = max(48.0, rect.height - (current_y - rect.y) - 170.0)
+        preview_rect = rl.Rectangle(rect.x + 10, current_y, rect.width - 20, min(rect.width - 20, remaining_height))
         self._draw_preview_texture(context.get("sprite_sheet", ""), preview_name, preview_rect)
         current_y += int(preview_rect.height + 8)
         rl.draw_text(f"{len(slice_names)} frames", int(rect.x + 10), int(current_y), 10, self.DIM_COLOR)
+        current_y += 22
+        self._draw_frame_collider_section(world, rect, current_y)
+
+    def _draw_frame_collider_section(self, world: Any, rect: rl.Rectangle, current_y: int) -> None:
+        frame_context = self.get_selected_frame_collider_context(world)
+        rl.draw_text("Frame Collider", int(rect.x + 10), int(current_y), 12, self.TEXT_COLOR)
+        current_y += 20
+        rl.draw_text(
+            f"Status: {frame_context['status_label']}",
+            int(rect.x + 10),
+            int(current_y),
+            10,
+            self.DIM_COLOR,
+        )
+        current_y += 18
+
+        copy_rect = rl.Rectangle(rect.x + 10, current_y, rect.width - 20, 22)
+        if self._gui_text_button(copy_rect, "Copy Base Collider", enabled=bool(frame_context["valid_frame"] and frame_context["has_base"])):
+            self.copy_base_collider_to_selected_frame(world)
+        current_y += 28
+
+        clear_rect = rl.Rectangle(rect.x + 10, current_y, rect.width - 20, 22)
+        if self._gui_text_button(clear_rect, "Clear Frame Override", enabled=bool(frame_context["valid_frame"] and frame_context["has_override"])):
+            self.clear_selected_frame_collider_override(world)
+        current_y += 28
+
+        preview_rect = rl.Rectangle(rect.x + 10, current_y, rect.width - 20, 22)
+        if self._gui_text_button(
+            preview_rect,
+            "Preview Frame Collider",
+            enabled=bool(frame_context["valid_frame"] and frame_context["has_effective"] and frame_context["has_transform"]),
+        ):
+            self.toggle_selected_frame_collider_preview(world)
+
+    def _gui_text_button(self, rect: rl.Rectangle, label: str, *, enabled: bool = True) -> bool:
+        if enabled:
+            return bool(rl.gui_button(rect, label))
+        rl.draw_rectangle_rec(rect, rl.Color(32, 32, 32, 255))
+        rl.draw_rectangle_lines_ex(rect, 1, self.BORDER_COLOR)
+        rl.draw_text(label, int(rect.x + 6), int(rect.y + 6), 10, self.DIM_COLOR)
+        return False
 
     def _draw_preview_texture(self, asset_path: str, slice_name: str, rect: rl.Rectangle) -> None:
         self._draw_slice_texture(

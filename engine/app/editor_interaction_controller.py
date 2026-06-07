@@ -33,6 +33,7 @@ class EditorInteractionController:
         get_history_manager: Callable[[], Any],
         get_current_scene_viewport_size: Callable[[], tuple[float, float]],
         get_current_viewport_size: Callable[[], tuple[float, float]],
+        get_animator_collider_preview: Optional[Callable[[Any], Any]] = None,
     ) -> None:
         self._get_state = get_state
         self._get_editor_layout = get_editor_layout
@@ -46,7 +47,18 @@ class EditorInteractionController:
         self._get_history_manager = get_history_manager
         self._get_current_scene_viewport_size = get_current_scene_viewport_size
         self._get_current_viewport_size = get_current_viewport_size
+        self._get_animator_collider_preview = get_animator_collider_preview
         self._camera_drag_state: dict[str, Any] | None = None
+
+    def _resolve_collider_preview_snapshot(self, world: "World") -> Any:
+        if self._get_animator_collider_preview is not None:
+            animator_preview = self._get_animator_collider_preview(world)
+            if animator_preview is not None:
+                return animator_preview
+        inspector_system = self._get_inspector_system()
+        if inspector_system is not None and hasattr(inspector_system, "get_collider_preview_snapshot"):
+            return inspector_system.get_collider_preview_snapshot(world)
+        return None
 
     def _apply_selection(self, active_world: Optional["World"], entity_name: Optional[str]) -> Optional[str]:
         normalized = EditorSelectionState.normalize(entity_name)
@@ -221,9 +233,7 @@ class EditorInteractionController:
                 tilemap_preview = inspector_system.get_tilemap_preview_snapshot(active_world)
         if gizmo_system is not None and hasattr(gizmo_system, "set_tilemap_preview"):
             gizmo_system.set_tilemap_preview(tilemap_preview)
-        collider_preview = None
-        if inspector_system is not None and active_world is not None and hasattr(inspector_system, "get_collider_preview_snapshot"):
-            collider_preview = inspector_system.get_collider_preview_snapshot(active_world)
+        collider_preview = self._resolve_collider_preview_snapshot(active_world) if active_world is not None else None
         if gizmo_system is not None and hasattr(gizmo_system, "set_collider_preview"):
             gizmo_system.set_collider_preview(collider_preview)
 
@@ -277,12 +287,10 @@ class EditorInteractionController:
                 selected_name = selection_system.update(active_world, mouse_world)
                 self._apply_selection(active_world, selected_name)
             if (
-                inspector_system is not None
-                and gizmo_system is not None
-                and hasattr(inspector_system, "get_collider_preview_snapshot")
+                gizmo_system is not None
                 and hasattr(gizmo_system, "set_collider_preview")
             ):
-                gizmo_system.set_collider_preview(inspector_system.get_collider_preview_snapshot(active_world))
+                gizmo_system.set_collider_preview(self._resolve_collider_preview_snapshot(active_world))
 
     def resolve_cursor_state(self, active_world: Optional["World"]) -> CursorVisualState:
         state = CursorVisualState.DEFAULT

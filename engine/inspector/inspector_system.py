@@ -27,9 +27,9 @@ from engine.ecs.component import Component
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.editor.collider_authoring import (
+    build_collider_preview_snapshot,
     build_collider_payload,
     get_effective_animator_collider_payload,
-    get_payload_bounds,
 )
 from engine.editor.cursor_manager import CursorVisualState
 from engine.editor.render_safety import editor_scissor
@@ -228,23 +228,7 @@ class InspectorSystem:
             if animator is not None
             else build_collider_payload(collider)
         )
-        bounds = get_payload_bounds(payload, float(transform.x), float(transform.y))
-        return {
-            "entity_name": entity.name,
-            "x": float(transform.x),
-            "y": float(transform.y),
-            "payload": copy.deepcopy(payload),
-            "bounds": {
-                "left": bounds[0],
-                "top": bounds[1],
-                "right": bounds[2],
-                "bottom": bounds[3],
-                "width": bounds[2] - bounds[0],
-                "height": bounds[3] - bounds[1],
-            },
-            "shape_type": payload.get("shape_type", "box"),
-            "is_trigger": bool(payload.get("is_trigger", False)),
-        }
+        return build_collider_preview_snapshot(payload, transform, entity_name=entity.name)
 
     def toggle_collider_preview(self, world: "World", entity_name: str) -> bool:
         target_name = str(entity_name or "").strip()

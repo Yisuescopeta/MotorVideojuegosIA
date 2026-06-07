@@ -2,9 +2,11 @@ import unittest
 
 from engine.components.animator import AnimationData, Animator, normalize_collision_frame_payload
 from engine.components.collider import Collider
+from engine.components.transform import Transform
 from engine.editor.collider_authoring import (
     apply_payload_to_collider,
     build_collider_payload,
+    build_collider_preview_snapshot,
     clear_animator_frame_collider_payload,
     copy_base_collider_to_animator_frame,
     get_effective_animator_collider_payload,
@@ -155,6 +157,18 @@ class AnimatorCollisionAuthoringTests(unittest.TestCase):
         self.assertEqual(payload["shape_type"], "circle")
         self.assertEqual(payload["radius"], 8.0)
         self.assertEqual(payload["offset_y"], 4.0)
+
+    def test_build_collider_preview_snapshot_matches_gizmo_contract(self) -> None:
+        snapshot = build_collider_preview_snapshot(
+            {"shape_type": "box", "width": 20, "height": 10, "offset_x": 5},
+            Transform(x=100, y=50),
+            entity_name="Hero",
+        )
+
+        self.assertEqual(snapshot["entity_name"], "Hero")
+        self.assertEqual(snapshot["bounds"], {"left": 95.0, "top": 45.0, "right": 115.0, "bottom": 55.0, "width": 20.0, "height": 10.0})
+        self.assertEqual(snapshot["shape_type"], "box")
+        self.assertIsNone(build_collider_preview_snapshot({}, None, entity_name="Missing"))
 
 
 if __name__ == "__main__":

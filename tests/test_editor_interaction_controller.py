@@ -42,6 +42,7 @@ class EditorInteractionControllerTests(unittest.TestCase):
         self.inspector_system.handle_tilemap_scene_input.return_value = False
         self.inspector_system.get_tilemap_preview_snapshot.return_value = None
         self.inspector_system.get_collider_preview_snapshot.return_value = None
+        self.animator_collider_preview = Mock(return_value=None)
         self.history_manager = Mock()
         self.editor_selection = EditorSelectionState()
         self.layout = Mock()
@@ -85,6 +86,7 @@ class EditorInteractionControllerTests(unittest.TestCase):
             get_history_manager=lambda: self.history_manager,
             get_current_scene_viewport_size=lambda: (320.0, 180.0),
             get_current_viewport_size=lambda: (640.0, 360.0),
+            get_animator_collider_preview=self.animator_collider_preview,
         )
 
     def tearDown(self) -> None:
@@ -329,6 +331,18 @@ class EditorInteractionControllerTests(unittest.TestCase):
 
         self.inspector_system.get_collider_preview_snapshot.assert_called_once_with(world)
         self.gizmo_system.set_collider_preview.assert_called_once_with(preview)
+
+    def test_handle_selection_and_gizmos_prioritizes_animator_collider_preview(self) -> None:
+        world = Mock()
+        animator_preview = {"entity_name": "Hero", "payload": {"shape_type": "circle"}}
+        self.animator_collider_preview.return_value = animator_preview
+        self.inspector_system.get_collider_preview_snapshot.return_value = {"entity_name": "Inspector"}
+
+        with patch("pyray.is_mouse_button_pressed", return_value=False):
+            self.controller.handle_selection_and_gizmos(world)
+
+        self.inspector_system.get_collider_preview_snapshot.assert_not_called()
+        self.gizmo_system.set_collider_preview.assert_called_once_with(animator_preview)
 
     def test_handle_selection_and_gizmos_clears_collider_preview_when_snapshot_is_missing(self) -> None:
         world = Mock()
