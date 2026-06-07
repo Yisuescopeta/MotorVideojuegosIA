@@ -5,18 +5,18 @@ from unittest.mock import MagicMock, patch
 
 from engine.editor.ui.icon_provider import reset_cache
 from engine.editor.ui.icons import (
+    HIERARCHY_ICONS,
     ICON_CAMERA,
-    ICON_CLOSE,
     ICON_CHEVRON_LEFT,
     ICON_CHEVRON_RIGHT,
+    ICON_CLOSE,
     ICON_ENTITY,
     ICON_FOLDER,
     ICON_PLAY,
-    ICON_SPRITE,
     ICON_SEARCH,
+    ICON_SPRITE,
     ICON_TILEMAP,
     ICON_TRASH,
-    HIERARCHY_ICONS,
     PRIMITIVE_ICONS,
     draw_icon,
     icon_exists,

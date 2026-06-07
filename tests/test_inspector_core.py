@@ -8,11 +8,13 @@ from unittest.mock import patch
 import pyray as rl
 from cli.script_executor import ScriptExecutor
 from engine.api import EngineAPI
+from engine.components.animator import AnimationData, Animator
 from engine.components.collider import Collider
 from engine.components.gameplay2d import Collectible2D, Goal2D, Hazard2D, RespawnPoint2D
 from engine.components.recttransform import RectTransform
 from engine.components.transform import Transform
 from engine.ecs.world import World
+from engine.editor.collider_authoring import get_payload_bounds
 from engine.editor.ui.icons import ICON_CHEVRON_LEFT, ICON_CHEVRON_RIGHT, ICON_TRASH
 from engine.systems.render_system import RenderSystem
 
@@ -142,6 +144,195 @@ class InspectorCoreTests(unittest.TestCase):
         }
         self.assertTrue(expected.issubset(set(self.inspector.list_dedicated_editors())))
 
+    def test_collider_preview_snapshot_is_ephemeral_and_resets_on_selection_change(self) -> None:
+        world = World()
+        entity = world.create_entity("PreviewProbe")
+        entity.add_component(Transform(x=100.0, y=50.0))
+        entity.add_component(Collider(width=20.0, height=10.0, offset_x=5.0))
+        other = world.create_entity("Other")
+        other.add_component(Transform())
+        other.add_component(Collider())
+        world.selected_entity_name = entity.name
+
+        self.assertFalse(self.inspector.is_collider_preview_active(world))
+        self.assertIsNone(self.inspector.get_collider_preview_snapshot(world))
+        self.assertTrue(self.inspector.toggle_collider_preview(world, entity.name))
+
+        snapshot = self.inspector.get_collider_preview_snapshot(world)
+
+        self.assertIsNotNone(snapshot)
+        self.assertEqual(snapshot["entity_name"], entity.name)
+        self.assertEqual(snapshot["bounds"], {"left": 95.0, "top": 45.0, "right": 115.0, "bottom": 55.0, "width": 20.0, "height": 10.0})
+        self.assertEqual(get_payload_bounds(snapshot["payload"], snapshot["x"], snapshot["y"]), (95.0, 45.0, 115.0, 55.0))
+
+        world.selected_entity_name = other.name
+        self.assertIsNone(self.inspector.get_collider_preview_snapshot(world))
+        self.assertFalse(self.inspector.is_collider_preview_active(world))
+
+        self.assertTrue(self.inspector.toggle_collider_preview(world, other.name))
+        world.destroy_entity(other.id)
+        self.assertIsNone(self.inspector.get_collider_preview_snapshot(world))
+        self.assertFalse(self.inspector.is_collider_preview_active(world))
+
+    def test_collider_preview_toggle_replaces_target_and_turns_same_target_off(self) -> None:
+        world = World()
+        first = world.create_entity("First")
+        first.add_component(Transform())
+        first.add_component(Collider())
+        second = world.create_entity("Second")
+        second.add_component(Transform())
+        second.add_component(Collider())
+
+        world.selected_entity_name = first.name
+        self.assertTrue(self.inspector.toggle_collider_preview(world, first.name))
+        world.selected_entity_name = second.name
+        self.assertTrue(self.inspector.toggle_collider_preview(world, second.name))
+        self.assertTrue(self.inspector.is_collider_preview_active(world))
+        self.assertEqual(self.inspector.get_collider_preview_snapshot(world)["entity_name"], second.name)
+        self.assertFalse(self.inspector.toggle_collider_preview(world, second.name))
+        self.assertFalse(self.inspector.is_collider_preview_active(world))
+
+    def test_collider_preview_snapshot_uses_current_collider_bounds(self) -> None:
+        world = World()
+        entity = world.create_entity("BoundsProbe")
+        entity.add_component(Transform(x=40.0, y=30.0))
+        collider = Collider(width=24.0, height=18.0, offset_y=6.0)
+        entity.add_component(collider)
+        world.selected_entity_name = entity.name
+
+        self.assertTrue(self.inspector.toggle_collider_preview(world, entity.name))
+        snapshot = self.inspector.get_collider_preview_snapshot(world)
+
+        self.assertEqual(
+            snapshot["bounds"],
+            {
+                "left": 28.0,
+                "top": 27.0,
+                "right": 52.0,
+                "bottom": 45.0,
+                "width": 24.0,
+                "height": 18.0,
+            },
+        )
+
+        collider.width = 30.0
+        collider.offset_y = 8.0
+        refreshed = self.inspector.get_collider_preview_snapshot(world)
+        self.assertEqual(refreshed["bounds"]["width"], 30.0)
+        self.assertEqual((refreshed["bounds"]["top"], refreshed["bounds"]["bottom"]), (29.0, 47.0))
+
+    def test_collider_preview_snapshot_uses_active_animator_frame_override(self) -> None:
+        world = World()
+        entity = world.create_entity("AnimatedCollider")
+        entity.add_component(Transform(x=100.0, y=50.0))
+        entity.add_component(Collider(width=32.0, height=24.0, offset_y=2.0))
+        animator = Animator(
+            animations={
+                "attack": AnimationData(
+                    frames=[0, 1],
+                    collision_frames={
+                        1: {
+                            "shape_type": "circle",
+                            "radius": 10.0,
+                            "width": 20.0,
+                            "height": 20.0,
+                            "offset_x": 6.0,
+                        }
+                    },
+                )
+            },
+            default_state="attack",
+        )
+        animator.current_state = "attack"
+        animator.current_frame = 1
+        entity.add_component(animator)
+        world.selected_entity_name = entity.name
+
+        self.assertTrue(self.inspector.toggle_collider_preview(world, entity.name))
+        snapshot = self.inspector.get_collider_preview_snapshot(world)
+
+        self.assertEqual(snapshot["shape_type"], "circle")
+        self.assertEqual(snapshot["payload"]["radius"], 10.0)
+        self.assertEqual(snapshot["payload"]["offset_y"], 0.0)
+        self.assertEqual(
+            snapshot["bounds"],
+            {
+                "left": 96.0,
+                "top": 40.0,
+                "right": 116.0,
+                "bottom": 60.0,
+                "width": 20.0,
+                "height": 20.0,
+            },
+        )
+
+    def test_collider_preview_snapshot_returns_none_when_required_component_is_removed(self) -> None:
+        world = World()
+        entity = world.create_entity("ComponentRemovalProbe")
+        entity.add_component(Transform())
+        entity.add_component(Collider())
+        world.selected_entity_name = entity.name
+
+        self.assertTrue(self.inspector.toggle_collider_preview(world, entity.name))
+        entity.remove_component(Collider)
+        self.assertIsNone(self.inspector.get_collider_preview_snapshot(world))
+
+        other = world.create_entity("TransformRemovalProbe")
+        other.add_component(Transform())
+        other.add_component(Collider())
+        world.selected_entity_name = other.name
+        self.assertTrue(self.inspector.toggle_collider_preview(world, other.name))
+        other.remove_component(Transform)
+        self.assertIsNone(self.inspector.get_collider_preview_snapshot(world))
+
+    def test_collider_preview_ignores_disabled_collider_and_missing_transform(self) -> None:
+        world = World()
+        disabled = world.create_entity("DisabledCollider")
+        disabled.add_component(Transform())
+        collider = Collider()
+        collider.enabled = False
+        disabled.add_component(collider)
+        world.selected_entity_name = disabled.name
+
+        self.assertTrue(self.inspector.toggle_collider_preview(world, disabled.name))
+        self.assertFalse(self.inspector.get_collider_preview_snapshot(world)["payload"]["enabled"])
+
+        missing_transform = world.create_entity("MissingTransform")
+        missing_transform.add_component(Collider())
+        world.selected_entity_name = missing_transform.name
+        self.assertFalse(self.inspector.toggle_collider_preview(world, missing_transform.name))
+        self.assertIsNone(self.inspector.get_collider_preview_snapshot(world))
+
+        world.selected_entity_name = "MissingEntity"
+        self.assertFalse(self.inspector.toggle_collider_preview(world, "MissingEntity"))
+        self.assertIsNone(self.inspector.get_collider_preview_snapshot(world))
+
+    def test_collider_editor_button_toggles_preview_label_and_state(self) -> None:
+        world = World()
+        entity = world.create_entity("ButtonProbe")
+        entity.add_component(Transform())
+        collider = Collider()
+        entity.add_component(collider)
+        world.selected_entity_name = entity.name
+        labels: list[str] = []
+        collider_before = collider.to_dict()
+
+        def click_button(_rect: rl.Rectangle, label: str) -> bool:
+            labels.append(label)
+            return True
+
+        with patch.object(
+            self.inspector,
+            "_draw_component_field",
+            side_effect=lambda _label, _value, _entity_id, _component_name, _prop_name, _x, y, _width, _is_edit, _world: y + 1,
+        ), patch("pyray.gui_button", side_effect=click_button):
+            self.inspector._draw_collider_editor(collider, entity.id, 0, 0, 240, True, world)
+            self.inspector._draw_collider_editor(collider, entity.id, 0, 0, 240, True, world)
+
+        self.assertEqual(labels, ["Preview Collision: OFF", "Preview Collision: ON"])
+        self.assertFalse(self.inspector.is_collider_preview_active(world))
+        self.assertEqual(collider.to_dict(), collider_before)
+
     def test_animator_list_editor_uses_icons_for_compact_item_actions(self) -> None:
         world = World()
         entity = world.create_entity("AnimatorProbe")
@@ -161,7 +352,7 @@ class InspectorCoreTests(unittest.TestCase):
                     side_effect=lambda _title, _x, y, _width: y + self.inspector.LINE_HEIGHT,
                 ), patch.object(self.inspector, "_draw_int_field"), patch.object(self.inspector, "_draw_text_field"), patch(
                     "engine.inspector.inspector_system.draw_icon",
-                    side_effect=lambda icon_name, _rect, **_kwargs: drawn_icons.append(icon_name),
+                    side_effect=lambda icon_name, _rect, *_args, **_kwargs: drawn_icons.append(icon_name),
                 ):
                     self.inspector._draw_animator_list_editor(
                         entity.id,

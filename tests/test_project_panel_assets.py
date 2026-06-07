@@ -6,7 +6,6 @@ import unittest
 from pathlib import Path
 
 import pyray as rl
-
 from engine.editor.project_panel import ProjectPanel
 from engine.project.project_service import ProjectService
 

@@ -132,7 +132,7 @@ def _android_compile_sdks(
     if project_root is None:
         return [35]
     try:
-        doc = load_presets(project_root)
+        doc = load_presets(os.fspath(project_root))
     except PresetLoadError:
         return [35]
     compile_sdks = sorted({

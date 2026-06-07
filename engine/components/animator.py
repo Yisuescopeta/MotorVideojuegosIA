@@ -12,6 +12,7 @@ from engine.ecs.component import Component
 
 PARAMETER_TYPES = {"bool", "int", "float", "trigger", "string"}
 CONDITION_OPERATORS = {"==", "!=", ">", ">=", "<", "<="}
+COLLISION_SHAPE_TYPES = {"box", "circle", "polygon", "capsule"}
 
 
 def _coerce_parameter_type(parameter_type: Any) -> str:
@@ -45,6 +46,78 @@ def _coerce_operator(operator: Any) -> str:
     return "=="
 
 
+def _coerce_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _coerce_collision_points(points: Any) -> list[list[float]]:
+    if not isinstance(points, list):
+        return []
+    result: list[list[float]] = []
+    for point in points:
+        if not isinstance(point, (list, tuple)) or len(point) < 2:
+            continue
+        result.append([
+            _coerce_float(point[0], 0.0),
+            _coerce_float(point[1], 0.0),
+        ])
+    return result
+
+
+def normalize_collision_frame_payload(payload: Any) -> dict[str, Any]:
+    """Normaliza un payload de collider guardado por frame de animacion.
+
+    El formato replica las claves principales de Collider para que el editor
+    pueda copiar el collider base, ajustarlo por frame y serializarlo dentro
+    de AnimationData sin acoplar Animator a un componente fisico concreto.
+    """
+    if not isinstance(payload, dict):
+        return {}
+    shape_type = str(payload.get("shape_type", "box") or "box").strip().lower()
+    if shape_type not in COLLISION_SHAPE_TYPES:
+        shape_type = "box"
+    normalized = {
+        "enabled": bool(payload.get("enabled", True)),
+        "shape_type": shape_type,
+        "width": max(0.0, _coerce_float(payload.get("width", 32.0), 32.0)),
+        "height": max(0.0, _coerce_float(payload.get("height", 32.0), 32.0)),
+        "offset_x": _coerce_float(payload.get("offset_x", 0.0), 0.0),
+        "offset_y": _coerce_float(payload.get("offset_y", 0.0), 0.0),
+        "is_trigger": bool(payload.get("is_trigger", False)),
+        "radius": max(0.0, _coerce_float(payload.get("radius", 16.0), 16.0)),
+        "points": _coerce_collision_points(payload.get("points", [])),
+        "friction": _coerce_float(payload.get("friction", 0.2), 0.2),
+        "restitution": _coerce_float(payload.get("restitution", 0.0), 0.0),
+        "density": _coerce_float(payload.get("density", 1.0), 1.0),
+        "capsule_height": max(0.0, _coerce_float(payload.get("capsule_height", 0.0), 0.0)),
+        "one_way_collision": bool(payload.get("one_way_collision", False)),
+        "one_way_collision_direction_y": _coerce_float(payload.get("one_way_collision_direction_y", -1.0), -1.0),
+        "one_way_collision_margin": _coerce_float(payload.get("one_way_collision_margin", 1.0), 1.0),
+        "one_way_collision_direction_x": _coerce_float(payload.get("one_way_collision_direction_x", 0.0), 0.0),
+    }
+    return normalized
+
+
+def normalize_collision_frame_map(raw_frames: Any) -> dict[int, dict[str, Any]]:
+    if not isinstance(raw_frames, dict):
+        return {}
+    result: dict[int, dict[str, Any]] = {}
+    for raw_index, raw_payload in raw_frames.items():
+        try:
+            frame_index = int(raw_index)
+        except (TypeError, ValueError):
+            continue
+        if frame_index < 0:
+            continue
+        payload = normalize_collision_frame_payload(raw_payload)
+        if payload:
+            result[frame_index] = payload
+    return result
+
+
 @dataclass
 class AnimationData:
     """Datos de una animacion individual."""
@@ -54,6 +127,14 @@ class AnimationData:
     fps: float = 8.0
     loop: bool = True
     on_complete: Optional[str] = None
+    collision_frames: Dict[int, dict[str, Any]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self.frames = [int(frame) for frame in self.frames]
+        self.slice_names = [str(name) for name in self.slice_names]
+        self.fps = float(self.fps)
+        self.loop = bool(self.loop)
+        self.collision_frames = normalize_collision_frame_map(self.collision_frames)
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -64,6 +145,11 @@ class AnimationData:
         }
         if self.on_complete is not None:
             result["on_complete"] = self.on_complete
+        if self.collision_frames:
+            result["collision_frames"] = {
+                str(frame_index): dict(payload)
+                for frame_index, payload in sorted(self.collision_frames.items())
+            }
         return result
 
     @classmethod
@@ -74,12 +160,41 @@ class AnimationData:
             fps=data.get("fps", 8.0),
             loop=data.get("loop", True),
             on_complete=data.get("on_complete"),
+            collision_frames=data.get("collision_frames", data.get("collider_frames", {})),
         )
 
     def get_frame_count(self) -> int:
         if self.slice_names:
             return len(self.slice_names)
         return len(self.frames)
+
+    def get_collision_frame(self, frame_index: int) -> Optional[dict[str, Any]]:
+        try:
+            normalized_index = int(frame_index)
+        except (TypeError, ValueError):
+            return None
+        payload = self.collision_frames.get(normalized_index)
+        return dict(payload) if payload is not None else None
+
+    def set_collision_frame(self, frame_index: int, payload: dict[str, Any]) -> bool:
+        try:
+            normalized_index = int(frame_index)
+        except (TypeError, ValueError):
+            return False
+        if normalized_index < 0:
+            return False
+        normalized_payload = normalize_collision_frame_payload(payload)
+        if not normalized_payload:
+            return False
+        self.collision_frames[normalized_index] = normalized_payload
+        return True
+
+    def clear_collision_frame(self, frame_index: int) -> bool:
+        try:
+            normalized_index = int(frame_index)
+        except (TypeError, ValueError):
+            return False
+        return self.collision_frames.pop(normalized_index, None) is not None
 
 
 @dataclass
@@ -430,6 +545,35 @@ class Animator(Component):
             return None
         frame_index = min(self.current_frame, len(anim.slice_names) - 1)
         return anim.slice_names[frame_index]
+
+    def get_collision_frame_override(
+        self,
+        state_name: Optional[str] = None,
+        frame_index: Optional[int] = None,
+    ) -> Optional[dict[str, Any]]:
+        target_state = self.current_state if state_name is None else str(state_name)
+        animation = self.animations.get(target_state)
+        if animation is None:
+            return None
+        target_frame = self.current_frame if frame_index is None else int(frame_index)
+        return animation.get_collision_frame(target_frame)
+
+    def set_collision_frame_override(
+        self,
+        state_name: str,
+        frame_index: int,
+        payload: dict[str, Any],
+    ) -> bool:
+        animation = self.animations.get(str(state_name))
+        if animation is None:
+            return False
+        return animation.set_collision_frame(frame_index, payload)
+
+    def clear_collision_frame_override(self, state_name: str, frame_index: int) -> bool:
+        animation = self.animations.get(str(state_name))
+        if animation is None:
+            return False
+        return animation.clear_collision_frame(frame_index)
 
     def get_source_rect(self, sheet_columns: int) -> tuple[int, int, int, int]:
         frame_index = self.get_current_sprite_frame()

@@ -1,7 +1,7 @@
 import unittest
 
-from engine.editor.ui import tokens
 from engine.editor import ui_core
+from engine.editor.ui import tokens
 
 
 class EditorUITokenTests(unittest.TestCase):

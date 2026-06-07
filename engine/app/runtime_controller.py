@@ -622,7 +622,9 @@ class RuntimeController:
 
         get_entities_with = getattr(world, "get_entities_with", None)
         if not callable(get_entities_with):
-            return False
+            # Adapters and test doubles without component introspection must
+            # preserve the pre-index behavior and run registered systems.
+            return True
         return any(bool(get_entities_with(component_type)) for component_type in component_types)
 
     def get_physics_backend_selection(self, world: Optional["World"]) -> PhysicsBackendSelection:

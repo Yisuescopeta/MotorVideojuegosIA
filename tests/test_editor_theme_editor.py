@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from engine.editor.theme import THEME_REGISTRY, set_active_theme
+from engine.editor.theme import set_active_theme
 from engine.editor.theme.theme_editor import ThemeEditorPanel, ThemeEditorState
 
 

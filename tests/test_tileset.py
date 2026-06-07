@@ -4,11 +4,11 @@ import unittest
 from pathlib import Path
 
 from engine.resources.tileset import (
+    TerrainSet,
     TileAtlasSource,
     TileMetadata,
     TilePhysicsShape,
     TileSet,
-    TerrainSet,
     clear_tileset_cache,
     load_tileset,
 )

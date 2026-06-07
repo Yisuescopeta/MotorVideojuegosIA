@@ -7,7 +7,15 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 import pyray as rl
-from engine.editor.ui.icons import ICON_AUDIO, ICON_MATERIAL, ICON_PREFAB, ICON_SCENE, ICON_SCRIPT, ICON_UNKNOWN, draw_icon
+from engine.editor.ui.icons import (
+    ICON_AUDIO,
+    ICON_MATERIAL,
+    ICON_PREFAB,
+    ICON_SCENE,
+    ICON_SCRIPT,
+    ICON_UNKNOWN,
+    draw_icon,
+)
 
 
 @dataclass(frozen=True)

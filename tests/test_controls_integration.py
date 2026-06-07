@@ -1,15 +1,15 @@
 import unittest
 from unittest.mock import Mock
 
-from engine.editor.editor_control_flags import (
-    EditorControlFeatureFlags,
-    EditorControlFeatureFlagManager,
-    editor_control_feature_flags_from_preferences,
-    editor_control_feature_flag_names,
-    default_editor_control_feature_flags,
-)
 from engine.editor.console_panel import ConsolePanel
 from engine.editor.editor_control_adapter import ConsolePanelEditorControlAdapter
+from engine.editor.editor_control_flags import (
+    EditorControlFeatureFlagManager,
+    EditorControlFeatureFlags,
+    default_editor_control_feature_flags,
+    editor_control_feature_flag_names,
+    editor_control_feature_flags_from_preferences,
+)
 from engine.editor.ui_core.controls.console_control import ConsoleControlModel
 
 
@@ -105,7 +105,7 @@ class TestControlsIntegration(unittest.TestCase):
 
     def test_context_menu_model_exists(self) -> None:
         """C3: ContextMenuModel is importable."""
-        from engine.editor.ui_core.controls.context_menu import ContextMenuModel, ContextMenuManager, ContextMenuItem
+        from engine.editor.ui_core.controls.context_menu import ContextMenuItem, ContextMenuModel
         menu = ContextMenuModel(items=[
             ContextMenuItem(id="action1", label="Action 1"),
         ])
@@ -114,14 +114,14 @@ class TestControlsIntegration(unittest.TestCase):
 
     def test_popup_model_exists(self) -> None:
         """C4: PopupModel has confirm_popup helper."""
-        from engine.editor.ui_core.controls.popup import PopupModel, confirm_popup, PopupManager
+        from engine.editor.ui_core.controls.popup import confirm_popup
         popup = confirm_popup("Delete?", "Are you sure?")
         self.assertTrue(popup.visible)
         self.assertEqual(popup.title, "Delete?")
 
     def test_file_picker_model_exists(self) -> None:
         """C6: FilePickerModel is importable."""
-        from engine.editor.ui_core.controls.file_picker import FilePickerModel, FileEntry
+        from engine.editor.ui_core.controls.file_picker import FilePickerModel
         model = FilePickerModel(title="Test")
         self.assertEqual(model.title, "Test")
         self.assertEqual(model.mode, "open")

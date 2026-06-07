@@ -286,9 +286,9 @@ class AssetDatabase:
             except Exception as exc:
                 print(f"[WARNING] AssetDatabase: catalogo invalido en {catalog_path.as_posix()}, reconstruyendo: {exc}")
         if bool(getattr(self._project_service, "read_only", False)):
-            payload: Dict[str, Any] = {"version": 1, "assets": []}
-            self._set_catalog_cache(payload)
-            return payload
+            empty_payload: Dict[str, Any] = {"version": 1, "assets": []}
+            self._set_catalog_cache(empty_payload)
+            return empty_payload
         return self.refresh_catalog()
 
     def refresh_catalog(self) -> Dict[str, Any]:

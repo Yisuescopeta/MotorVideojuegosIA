@@ -132,7 +132,7 @@ def _extract_references(
         asset_ref_path = data.get("path")
         if _looks_like_asset_reference(data, asset_ref_path):
             _add_reference(
-                asset_ref_path, root, visited_assets, visited_scripts, result,
+                str(asset_ref_path), root, visited_assets, visited_scripts, result,
             )
         module_script = _script_reference_from_module_path(data.get("module_path"))
         if module_script:

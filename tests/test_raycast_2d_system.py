@@ -88,8 +88,6 @@ class RayCast2DSystemTests(unittest.TestCase):
         self.assertFalse(raycast.is_colliding)
 
     def test_multiple_entities(self) -> None:
-        hits_log: list[str] = []
-
         def mock_query(ox, oy, dx, dy, md):
             return [{"point": {"x": ox + dx, "y": oy + dy}, "normal": {"x": 0.0, "y": 0.0}, "entity": "hit", "is_trigger": False}]
 

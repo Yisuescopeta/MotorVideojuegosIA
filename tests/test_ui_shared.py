@@ -14,7 +14,6 @@ import unittest
 from pathlib import Path
 from typing import Iterator
 
-
 UI_ROOT = Path(__file__).resolve().parents[1] / "engine" / "ui"
 SHARED_MODULE_FILES = [
     "__init__",
@@ -105,7 +104,6 @@ class SharedUIGeometryTests(unittest.TestCase):
 
     def setUp(self):
         from engine.ui.shared import (
-            Rect,
             clamp_rect,
             inset_rect,
             rect_contains,
@@ -356,8 +354,8 @@ class SharedUIEditorReimportTests(unittest.TestCase):
 
     def test_editor_ui_shims_still_work_after_shared_exists(self):
         """Verify editor ui/ shims still re-export correctly."""
-        from engine.editor.ui import geometry as editor_geom
         from engine.editor.ui import colors as editor_colors
+        from engine.editor.ui import geometry as editor_geom
 
         self.assertTrue(callable(editor_geom.inset_rect))
         self.assertTrue(callable(editor_geom.split_top))

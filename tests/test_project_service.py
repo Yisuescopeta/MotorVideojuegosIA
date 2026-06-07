@@ -8,6 +8,7 @@ from unittest.mock import patch
 from cli.script_executor import ScriptExecutor
 from engine.api import EngineAPI
 from engine.assets.asset_database import AssetDatabase
+from engine.config import ENGINE_VERSION
 from engine.project.project_service import ProjectService
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -57,7 +58,7 @@ class ProjectServiceTests(unittest.TestCase):
         self.assertEqual(service.manifest.name, "ProjectAlpha")
         self.assertEqual(service.manifest.version, 2)
         self.assertEqual(service.manifest.template, "empty")
-        self.assertEqual(service.manifest.engine_version, "2026.03")
+        self.assertEqual(service.manifest.engine_version, ENGINE_VERSION)
         self.assertTrue((project_root / "levels" / "main_scene.json").exists())
         self.assertEqual(
             service.load_project_settings(),
@@ -250,7 +251,7 @@ class ProjectServiceTests(unittest.TestCase):
         migrated = json.loads((external_root / "project.json").read_text(encoding="utf-8"))
         self.assertEqual(migrated["version"], 2)
         self.assertEqual(migrated["template"], "empty")
-        self.assertEqual(migrated["engine_version"], "2026.03")
+        self.assertEqual(migrated["engine_version"], ENGINE_VERSION)
         self.assertIn("settings", migrated["paths"])
         self.assertTrue((external_root / "settings" / "project_settings.json").exists())
 

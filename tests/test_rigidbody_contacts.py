@@ -63,7 +63,7 @@ class RigidBodyContactsTests(unittest.TestCase):
         cs = CollisionSystem()
 
         a = self._make_entity(world, "A", x=0.0, contact_monitor=True, max_contacts_reported=0)
-        b = self._make_entity(world, "B", x=5.0)
+        self._make_entity(world, "B", x=5.0)
 
         cs.update(world)
 

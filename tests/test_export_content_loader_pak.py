@@ -32,7 +32,7 @@ class TestContentLoaderPakSceneLoading(unittest.TestCase):
     def _build_pak(self, scenes: dict[str, dict] | None = None):
         if scenes is None:
             scenes = {"levels/main.json": {"entities": []}}
-        
+
         # Compute real SHA-256 for each scene
         scene_entries = []
         for rel, data in scenes.items():

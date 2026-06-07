@@ -1,5 +1,6 @@
 """Tests for virtual scroll (E4)."""
 import unittest
+
 from engine.editor.ui.virtual_scroll import VirtualScroll
 
 

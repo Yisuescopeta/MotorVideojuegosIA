@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-
 FIT_PANEL_PROFILE_ID = "fit_panel"
 DEFAULT_EXPORT_WIDTH = 1280
 DEFAULT_EXPORT_HEIGHT = 720
@@ -84,8 +83,10 @@ def resolve_window_config(window: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def _resolve_positive_int(value: object, fallback: int) -> int:
+    if not isinstance(value, (str, bytes, bytearray, int, float)):
+        return int(fallback)
     try:
-        resolved = int(value)  # type: ignore[arg-type]
+        resolved = int(value)
     except (TypeError, ValueError):
         return int(fallback)
     return resolved if resolved > 0 else int(fallback)

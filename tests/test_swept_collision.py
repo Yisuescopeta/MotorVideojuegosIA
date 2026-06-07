@@ -1,6 +1,6 @@
 import unittest
 
-from engine.physics.shapes import AABBShape, CapsuleShape, CircleShape, ShapeInstance
+from engine.physics.shapes import AABBShape, ShapeInstance
 from engine.physics.swept_collision import swept_shape_toi
 
 

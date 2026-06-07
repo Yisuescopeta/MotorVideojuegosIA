@@ -35,6 +35,15 @@ class AnimatorComponentTests(unittest.TestCase):
         animator = Animator(speed=-5.0)
         self.assertEqual(animator.speed, 0.01)
 
+    def test_get_source_rect_uses_frame_row_height(self) -> None:
+        animator = Animator(
+            frame_width=16,
+            frame_height=24,
+            animations={"idle": AnimationData(frames=[6])},
+        )
+
+        self.assertEqual(animator.get_source_rect(sheet_columns=4), (32, 24, 16, 24))
+
     def test_animator_play_returns_previous_state(self) -> None:
         animator = Animator(animations={"idle": AnimationData(), "run": AnimationData()})
         prev = animator.play("run")

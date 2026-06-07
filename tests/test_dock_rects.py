@@ -1,7 +1,7 @@
 import unittest
 
-from engine.editor.ui_core.docking import DockArea, DockLayout, DockSplit
 from engine.editor.ui_core.dock_rects import compute_dock_rects
+from engine.editor.ui_core.docking import DockArea, DockLayout, DockSplit
 
 
 class DockRectsTests(unittest.TestCase):
