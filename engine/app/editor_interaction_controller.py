@@ -225,6 +225,12 @@ class EditorInteractionController:
             and hasattr(inspector_system, "is_tilemap_tool_active")
             and inspector_system.is_tilemap_tool_active(active_world)
         )
+        collider_tool_active = bool(
+            inspector_system is not None
+            and active_world is not None
+            and hasattr(inspector_system, "is_collider_preview_active")
+            and inspector_system.is_collider_preview_active(active_world)
+        )
         gizmo_system = self._get_gizmo_system()
         tilemap_preview = None
         if tilemap_tool_active and inspector_system is not None and active_world is not None:
@@ -237,8 +243,17 @@ class EditorInteractionController:
         if gizmo_system is not None and hasattr(gizmo_system, "set_collider_preview"):
             gizmo_system.set_collider_preview(collider_preview)
 
+        if collider_tool_active and inspector_system is not None and active_world is not None:
+            inspector_system.handle_collider_scene_input(active_world, mouse_world, mouse_in_scene)
+
+        collider_dragging = bool(
+            inspector_system is not None
+            and hasattr(inspector_system, "is_collider_dragging")
+            and inspector_system.is_collider_dragging()
+        )
+
         scene_manager = self._get_scene_manager()
-        if not tilemap_tool_active and gizmo_system is not None and active_world is not None:
+        if not tilemap_tool_active and not collider_dragging and gizmo_system is not None and active_world is not None:
             if gizmo_system.is_dragging or mouse_in_scene:
                 was_dragging = gizmo_system.is_dragging
                 active_tool = layout.active_tool if layout is not None else EditorTool.MOVE
@@ -270,7 +285,7 @@ class EditorInteractionController:
 
         gizmo_active = gizmo_system.is_hot() if gizmo_system is not None else False
         hand_tool_active = layout is not None and layout.active_tool == EditorTool.HAND
-        if tilemap_tool_active:
+        if tilemap_tool_active or collider_dragging:
             return
         if not hand_tool_active and not gizmo_active and mouse_in_scene and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
             ui_hit = None

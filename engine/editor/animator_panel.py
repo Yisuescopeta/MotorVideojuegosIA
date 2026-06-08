@@ -284,6 +284,11 @@ class AnimatorPanel:
         self._frame_collider_preview_enabled: bool = False
         self._frame_collider_preview_entity_name: str = ""
         self._frame_collider_preview_state_name: str = ""
+        self._preview_collider_drag_mode: str = ""
+        self._preview_collider_drag_start_mouse: tuple[float, float] = (0.0, 0.0)
+        self._preview_collider_drag_start_payload: Optional[Dict[str, Any]] = None
+        self._preview_collider_drag_frame_index: int = -1
+        self._preview_collider_drag_scale: float = 1.0
 
     def set_scene_manager(self, manager: Any) -> None:
         self._scene_manager = manager
@@ -820,6 +825,7 @@ class AnimatorPanel:
         self._frame_collider_preview_enabled = False
         self._frame_collider_preview_entity_name = ""
         self._frame_collider_preview_state_name = ""
+        self._clear_preview_collider_drag()
 
     def get_frame_collider_preview_snapshot(self, world: Any) -> Optional[Dict[str, Any]]:
         if not self._frame_collider_preview_enabled:
@@ -1436,8 +1442,10 @@ class AnimatorPanel:
         frame_index: int,
     ) -> None:
         if not self._frame_collider_preview_enabled:
+            self._clear_preview_collider_drag()
             return
         if self._asset_service is None:
+            self._clear_preview_collider_drag()
             return
 
         frame_context = self.get_selected_frame_collider_context(world, frame_index)
@@ -1447,54 +1455,46 @@ class AnimatorPanel:
             or frame_context["entity_name"] != self._frame_collider_preview_entity_name
             or frame_context["state_name"] != self._frame_collider_preview_state_name
         ):
+            self._clear_preview_collider_drag()
             return
 
         payload = frame_context["effective_payload"]
         if not isinstance(payload, dict) or not bool(payload.get("enabled", True)):
+            self._clear_preview_collider_drag()
             return
 
-        asset_path = str(context.get("sprite_sheet", "") or "")
-        slice_rect = self._asset_service.get_slice_rect(asset_path, slice_name)
-        if slice_rect is None:
+        slice_dest = self._get_preview_slice_dest_rect(context, slice_name, preview_rect)
+        if slice_dest is None:
+            self._clear_preview_collider_drag()
             return
 
-        source_w = max(1.0, float(slice_rect.get("width", 1.0)))
-        source_h = max(1.0, float(slice_rect.get("height", 1.0)))
+        dest_rect, scale = slice_dest
+        collider_rect = self._get_preview_collider_screen_rect(payload, dest_rect, scale)
+        if collider_rect is None:
+            self._clear_preview_collider_drag()
+            return
 
-        scale = min(preview_rect.width / source_w, preview_rect.height / source_h)
-        dest_w = source_w * scale
-        dest_h = source_h * scale
+        self._handle_preview_collider_mouse_input(world, frame_context, payload, collider_rect, scale, frame_index)
 
-        dest_x = preview_rect.x + (preview_rect.width - dest_w) * 0.5
-        dest_y = preview_rect.y + (preview_rect.height - dest_h) * 0.5
-
-        frame_center_x = dest_x + dest_w * 0.5
-        frame_center_y = dest_y + dest_h * 0.5
-
-        offset_x = float(payload.get("offset_x", 0.0) or 0.0) * scale
-        offset_y = float(payload.get("offset_y", 0.0) or 0.0) * scale
-
-        collider_center_x = frame_center_x + offset_x
-        collider_center_y = frame_center_y + offset_y
-
+        shape_type = str(payload.get("shape_type", "box") or "box").strip().lower()
         is_trigger = bool(payload.get("is_trigger", False))
         outline = rl.Color(255, 190, 80, 255) if is_trigger else rl.Color(80, 220, 120, 255)
         fill = rl.Color(255, 190, 80, 35) if is_trigger else rl.Color(80, 220, 120, 35)
 
-        shape_type = str(payload.get("shape_type", "box") or "box").strip().lower()
-
         if shape_type == "circle":
-            radius = float(payload.get("radius", 0.0) or 0.0) * scale
-            if radius <= 0.0:
-                radius = float(payload.get("width", 32.0) or 32.0) * scale * 0.5
-
-            rl.draw_circle(int(collider_center_x), int(collider_center_y), radius, fill)
-            rl.draw_circle_lines(int(collider_center_x), int(collider_center_y), radius, outline)
+            radius = max(1.0, collider_rect.width * 0.5)
+            center_x = collider_rect.x + collider_rect.width * 0.5
+            center_y = collider_rect.y + collider_rect.height * 0.5
+            rl.draw_circle(int(center_x), int(center_y), radius, fill)
+            rl.draw_circle_lines(int(center_x), int(center_y), radius, outline)
+            self._draw_preview_collider_handles(collider_rect, outline)
             return
 
         if shape_type == "polygon":
             raw_points = payload.get("points", [])
             points: list[rl.Vector2] = []
+            center_x = collider_rect.x + collider_rect.width * 0.5
+            center_y = collider_rect.y + collider_rect.height * 0.5
 
             if isinstance(raw_points, list):
                 for point in raw_points:
@@ -1505,12 +1505,7 @@ class AnimatorPanel:
                         py = float(point[1])
                     except (TypeError, ValueError):
                         continue
-                    points.append(
-                        rl.Vector2(
-                            collider_center_x + px * scale,
-                            collider_center_y + py * scale,
-                        )
-                    )
+                    points.append(rl.Vector2(center_x + px * scale, center_y + py * scale))
 
             if len(points) >= 2:
                 for index, point in enumerate(points):
@@ -1518,25 +1513,281 @@ class AnimatorPanel:
                     rl.draw_line_ex(point, next_point, 2.0, outline)
             return
 
-        if shape_type == "capsule":
-            radius = float(payload.get("radius", 0.0) or 0.0)
-            capsule_height = float(payload.get("capsule_height", 0.0) or 0.0)
-
-            width = max(1.0, radius * 2.0) * scale
-            height = max(1.0, radius * 2.0 + capsule_height) * scale
-        else:
-            width = float(payload.get("width", 32.0) or 32.0) * scale
-            height = float(payload.get("height", 32.0) or 32.0) * scale
-
-        collider_rect = rl.Rectangle(
-            collider_center_x - width * 0.5,
-            collider_center_y - height * 0.5,
-            width,
-            height,
-        )
-
         rl.draw_rectangle_rec(collider_rect, fill)
         rl.draw_rectangle_lines_ex(collider_rect, 2, outline)
+        self._draw_preview_collider_handles(collider_rect, outline)
+
+    def _get_preview_slice_dest_rect(
+        self,
+        context: Dict[str, Any],
+        slice_name: str,
+        preview_rect: rl.Rectangle,
+    ) -> Optional[tuple[rl.Rectangle, float]]:
+        if self._asset_service is None:
+            return None
+
+        asset_path = str(context.get("sprite_sheet", "") or "")
+        slice_rect = self._asset_service.get_slice_rect(asset_path, slice_name)
+        if slice_rect is None:
+            return None
+
+        source_w = max(1.0, float(slice_rect.get("width", 1.0)))
+        source_h = max(1.0, float(slice_rect.get("height", 1.0)))
+
+        scale = min(preview_rect.width / source_w, preview_rect.height / source_h)
+        dest_w = source_w * scale
+        dest_h = source_h * scale
+
+        dest_rect = rl.Rectangle(
+            preview_rect.x + (preview_rect.width - dest_w) * 0.5,
+            preview_rect.y + (preview_rect.height - dest_h) * 0.5,
+            dest_w,
+            dest_h,
+        )
+        return dest_rect, scale
+
+
+    def _get_preview_collider_screen_rect(
+        self,
+        payload: Dict[str, Any],
+        sprite_rect: rl.Rectangle,
+        scale: float,
+    ) -> Optional[rl.Rectangle]:
+        if scale <= 0.0:
+            return None
+
+        center_x = sprite_rect.x + sprite_rect.width * 0.5 + float(payload.get("offset_x", 0.0) or 0.0) * scale
+        center_y = sprite_rect.y + sprite_rect.height * 0.5 + float(payload.get("offset_y", 0.0) or 0.0) * scale
+
+        shape_type = str(payload.get("shape_type", "box") or "box").strip().lower()
+        if shape_type == "circle":
+            radius = max(1.0, float(payload.get("radius", 16.0) or 16.0)) * scale
+            width = radius * 2.0
+            height = radius * 2.0
+        elif shape_type == "capsule":
+            radius = max(1.0, float(payload.get("radius", 16.0) or 16.0))
+            capsule_height = max(0.0, float(payload.get("capsule_height", 0.0) or 0.0))
+            width = radius * 2.0 * scale
+            height = (radius * 2.0 + capsule_height) * scale
+        else:
+            width = max(1.0, float(payload.get("width", 32.0) or 32.0)) * scale
+            height = max(1.0, float(payload.get("height", 32.0) or 32.0)) * scale
+
+        return rl.Rectangle(center_x - width * 0.5, center_y - height * 0.5, width, height)
+
+
+    def _draw_preview_collider_handles(self, collider_rect: rl.Rectangle, color: rl.Color) -> None:
+        for handle_rect in self._preview_collider_handle_rects(collider_rect).values():
+            rl.draw_rectangle_rec(handle_rect, rl.Color(30, 30, 30, 230))
+            rl.draw_rectangle_lines_ex(handle_rect, 1, color)
+
+
+    def _preview_collider_handle_rects(self, collider_rect: rl.Rectangle) -> Dict[str, rl.Rectangle]:
+        size = 8.0
+        half = size * 0.5
+        left = collider_rect.x
+        top = collider_rect.y
+        right = collider_rect.x + collider_rect.width
+        bottom = collider_rect.y + collider_rect.height
+        center_x = collider_rect.x + collider_rect.width * 0.5
+        center_y = collider_rect.y + collider_rect.height * 0.5
+
+        return {
+            "top_left": rl.Rectangle(left - half, top - half, size, size),
+            "top": rl.Rectangle(center_x - half, top - half, size, size),
+            "top_right": rl.Rectangle(right - half, top - half, size, size),
+            "right": rl.Rectangle(right - half, center_y - half, size, size),
+            "bottom_right": rl.Rectangle(right - half, bottom - half, size, size),
+            "bottom": rl.Rectangle(center_x - half, bottom - half, size, size),
+            "bottom_left": rl.Rectangle(left - half, bottom - half, size, size),
+            "left": rl.Rectangle(left - half, center_y - half, size, size),
+        }
+
+
+    def _hit_preview_collider_handle(self, collider_rect: rl.Rectangle, mouse_pos: rl.Vector2) -> str:
+        for mode, handle_rect in self._preview_collider_handle_rects(collider_rect).items():
+            if rl.check_collision_point_rec(mouse_pos, handle_rect):
+                return mode
+        if rl.check_collision_point_rec(mouse_pos, collider_rect):
+            return "move"
+        return ""
+
+
+    def _handle_preview_collider_mouse_input(
+        self,
+        world: Any,
+        frame_context: Dict[str, Any],
+        payload: Dict[str, Any],
+        collider_rect: rl.Rectangle,
+        scale: float,
+        frame_index: int,
+    ) -> None:
+        mouse_pos = rl.get_mouse_position()
+
+        if self._preview_collider_drag_mode:
+            if not rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT):
+                self._clear_preview_collider_drag()
+                return
+
+            self._update_preview_collider_drag(world, frame_context, mouse_pos)
+            return
+
+        if not rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+            return
+
+        mode = self._hit_preview_collider_handle(collider_rect, mouse_pos)
+        if not mode:
+            return
+
+        self._preview_collider_drag_mode = mode
+        self._preview_collider_drag_start_mouse = (float(mouse_pos.x), float(mouse_pos.y))
+        self._preview_collider_drag_start_payload = copy.deepcopy(payload)
+        self._preview_collider_drag_frame_index = int(frame_index)
+        self._preview_collider_drag_scale = max(0.0001, float(scale))
+
+
+    def _update_preview_collider_drag(
+        self,
+        world: Any,
+        frame_context: Dict[str, Any],
+        mouse_pos: rl.Vector2,
+    ) -> None:
+        start_payload = self._preview_collider_drag_start_payload
+        if not isinstance(start_payload, dict):
+            self._clear_preview_collider_drag()
+            return
+
+        if self._preview_collider_drag_frame_index != int(frame_context["frame_index"]):
+            self._clear_preview_collider_drag()
+            return
+
+        start_mouse_x, start_mouse_y = self._preview_collider_drag_start_mouse
+        scale = max(0.0001, float(self._preview_collider_drag_scale))
+        dx = (float(mouse_pos.x) - start_mouse_x) / scale
+        dy = (float(mouse_pos.y) - start_mouse_y) / scale
+
+        updated = self._apply_drag_to_collider_payload(start_payload, self._preview_collider_drag_mode, dx, dy)
+        self._replace_animator_frame_collider_payload(world, frame_context, updated)
+
+
+    def _apply_drag_to_collider_payload(
+        self,
+        payload: Dict[str, Any],
+        mode: str,
+        dx: float,
+        dy: float,
+    ) -> Dict[str, Any]:
+        updated = copy.deepcopy(payload)
+        shape_type = str(updated.get("shape_type", "box") or "box").strip().lower()
+
+        offset_x = float(updated.get("offset_x", 0.0) or 0.0)
+        offset_y = float(updated.get("offset_y", 0.0) or 0.0)
+
+        if mode == "move":
+            updated["offset_x"] = offset_x + dx
+            updated["offset_y"] = offset_y + dy
+            return updated
+
+        if shape_type == "polygon":
+            return updated
+
+        if shape_type == "circle":
+            radius = max(1.0, float(updated.get("radius", 16.0) or 16.0))
+            left = offset_x - radius
+            right = offset_x + radius
+            top = offset_y - radius
+            bottom = offset_y + radius
+        elif shape_type == "capsule":
+            radius = max(1.0, float(updated.get("radius", 16.0) or 16.0))
+            capsule_height = max(0.0, float(updated.get("capsule_height", 0.0) or 0.0))
+            half_w = radius
+            half_h = radius + capsule_height * 0.5
+            left = offset_x - half_w
+            right = offset_x + half_w
+            top = offset_y - half_h
+            bottom = offset_y + half_h
+        else:
+            width = max(1.0, float(updated.get("width", 32.0) or 32.0))
+            height = max(1.0, float(updated.get("height", 32.0) or 32.0))
+            left = offset_x - width * 0.5
+            right = offset_x + width * 0.5
+            top = offset_y - height * 0.5
+            bottom = offset_y + height * 0.5
+
+        if "left" in mode:
+            left += dx
+        if "right" in mode:
+            right += dx
+        if "top" in mode:
+            top += dy
+        if "bottom" in mode:
+            bottom += dy
+
+        min_size = 1.0
+        if right - left < min_size:
+            if "left" in mode:
+                left = right - min_size
+            else:
+                right = left + min_size
+        if bottom - top < min_size:
+            if "top" in mode:
+                top = bottom - min_size
+            else:
+                bottom = top + min_size
+
+        next_width = max(min_size, right - left)
+        next_height = max(min_size, bottom - top)
+        updated["offset_x"] = (left + right) * 0.5
+        updated["offset_y"] = (top + bottom) * 0.5
+
+        if shape_type == "circle":
+            updated["radius"] = max(min_size, max(next_width, next_height) * 0.5)
+            updated["width"] = updated["radius"] * 2.0
+            updated["height"] = updated["radius"] * 2.0
+        elif shape_type == "capsule":
+            radius = max(min_size, next_width * 0.5)
+            updated["radius"] = radius
+            updated["capsule_height"] = max(0.0, next_height - radius * 2.0)
+            updated["width"] = radius * 2.0
+            updated["height"] = next_height
+        else:
+            updated["width"] = next_width
+            updated["height"] = next_height
+
+        return updated
+
+
+    def _replace_animator_frame_collider_payload(
+        self,
+        world: Any,
+        frame_context: Dict[str, Any],
+        payload: Dict[str, Any],
+    ) -> bool:
+        animator_payload = frame_context.get("animator_payload")
+        if not isinstance(animator_payload, dict):
+            return False
+
+        try:
+            animator = Animator.from_dict(animator_payload)
+        except (TypeError, ValueError):
+            return False
+
+        if not animator.set_collision_frame_override(
+            str(frame_context["state_name"]),
+            int(frame_context["frame_index"]),
+            copy.deepcopy(payload),
+        ):
+            return False
+
+        return self._replace_animator_payload(world, str(frame_context["entity_name"]), animator.to_dict())
+
+
+    def _clear_preview_collider_drag(self) -> None:
+        self._preview_collider_drag_mode = ""
+        self._preview_collider_drag_start_mouse = (0.0, 0.0)
+        self._preview_collider_drag_start_payload = None
+        self._preview_collider_drag_frame_index = -1
+        self._preview_collider_drag_scale = 1.0
 
     def _draw_slice_picker_modal(self, world: Any, context: Dict[str, Any], parent_rect: rl.Rectangle) -> None:
         target = self._get_slice_picker_target(context)

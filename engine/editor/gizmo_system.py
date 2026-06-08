@@ -603,14 +603,19 @@ class GizmoSystem:
             if not math.isfinite(radius) or radius <= 0.0:
                 radius = min(width, height) * 0.5
             if radius > 0.0:
+                circle_rect = rl.Rectangle(center_x - radius, center_y - radius, radius * 2.0, radius * 2.0)
                 rl.draw_circle(int(center_x), int(center_y), radius, fill)
                 rl.draw_circle_lines(int(center_x), int(center_y), radius, color)
+                if bool(preview.get("editable", False)):
+                    self._draw_collider_preview_handles(circle_rect, color)
             return
 
         if shape_type == "capsule":
             rect = rl.Rectangle(left, top, width, height)
             rl.draw_rectangle_rec(rect, fill)
             rl.draw_rectangle_lines_ex(rect, 2, color)
+            if bool(preview.get("editable", False)):
+                self._draw_collider_preview_handles(rect, color)
             return
 
         if shape_type == "polygon":
@@ -636,6 +641,33 @@ class GizmoSystem:
         rect = rl.Rectangle(left, top, width, height)
         rl.draw_rectangle_rec(rect, fill)
         rl.draw_rectangle_lines_ex(rect, 2, color)
+        if bool(preview.get("editable", False)):
+            self._draw_collider_preview_handles(rect, color)
+
+    def _draw_collider_preview_handles(self, rect: rl.Rectangle, color: rl.Color) -> None:
+        size = 8.0
+        half = size * 0.5
+        left = rect.x
+        top = rect.y
+        right = rect.x + rect.width
+        bottom = rect.y + rect.height
+        center_x = rect.x + rect.width * 0.5
+        center_y = rect.y + rect.height * 0.5
+
+        handles = (
+            rl.Rectangle(left - half, top - half, size, size),
+            rl.Rectangle(center_x - half, top - half, size, size),
+            rl.Rectangle(right - half, top - half, size, size),
+            rl.Rectangle(right - half, center_y - half, size, size),
+            rl.Rectangle(right - half, bottom - half, size, size),
+            rl.Rectangle(center_x - half, bottom - half, size, size),
+            rl.Rectangle(left - half, bottom - half, size, size),
+            rl.Rectangle(left - half, center_y - half, size, size),
+        )
+
+        for handle in handles:
+            rl.draw_rectangle_rec(handle, rl.Color(30, 30, 30, 230))
+            rl.draw_rectangle_lines_ex(handle, 1, color)
 
     @staticmethod
     def _draw_closed_preview_polyline(points: list[rl.Vector2], color: rl.Color) -> None:

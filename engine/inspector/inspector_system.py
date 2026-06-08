@@ -146,6 +146,10 @@ class InspectorSystem:
         self._cursor_text_rects: List[rl.Rectangle] = []
         self._collider_preview_entity_name: str = ""
         self._collider_preview_enabled: bool = False
+        self._collider_drag_mode: str = ""
+        self._collider_drag_entity_name: str = ""
+        self._collider_drag_start_mouse: tuple[float, float] = (0.0, 0.0)
+        self._collider_drag_start_payload: Optional[Dict[str, Any]] = None
         self._tilemap_authoring = TilemapAuthoringState()
         self._tilemap_project_service: Optional[ProjectService] = None
         self._tilemap_asset_service: Optional[AssetService] = None
@@ -228,7 +232,10 @@ class InspectorSystem:
             if animator is not None
             else build_collider_payload(collider)
         )
-        return build_collider_preview_snapshot(payload, transform, entity_name=entity.name)
+        snapshot = build_collider_preview_snapshot(payload, transform, entity_name=entity.name)
+        if snapshot is not None:
+            snapshot["editable"] = True
+        return snapshot
 
     def toggle_collider_preview(self, world: "World", entity_name: str) -> bool:
         target_name = str(entity_name or "").strip()
@@ -242,6 +249,237 @@ class InspectorSystem:
         self._collider_preview_enabled = True
         self._collider_preview_entity_name = target_name
         return True
+
+    def is_collider_dragging(self) -> bool:
+        return bool(self._collider_drag_mode)
+
+
+    def handle_collider_scene_input(
+        self,
+        world: "World",
+        mouse_world_pos: rl.Vector2,
+        mouse_in_scene: bool,
+    ) -> None:
+        if not self.is_collider_preview_active(world):
+            self._clear_collider_drag()
+            return
+
+        entity_name = str(self._collider_preview_entity_name or "").strip()
+        entity = world.get_entity_by_name(entity_name)
+        if entity is None:
+            self._clear_collider_drag()
+            return
+
+        transform = entity.get_component(Transform)
+        collider = entity.get_component(Collider)
+        if transform is None or collider is None:
+            self._clear_collider_drag()
+            return
+
+        payload = build_collider_payload(collider)
+        rect = self._collider_payload_world_rect(payload, transform)
+        if rect is None:
+            self._clear_collider_drag()
+            return
+
+        if self._collider_drag_mode:
+            if not rl.is_mouse_button_down(rl.MOUSE_BUTTON_LEFT):
+                self._clear_collider_drag()
+                return
+            self._update_scene_collider_drag(world, entity_name, mouse_world_pos)
+            return
+
+        if not mouse_in_scene:
+            return
+
+        if not rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_LEFT):
+            return
+
+        mode = self._hit_scene_collider_handle(rect, mouse_world_pos)
+        if not mode:
+            return
+
+        self._collider_drag_mode = mode
+        self._collider_drag_entity_name = entity_name
+        self._collider_drag_start_mouse = (float(mouse_world_pos.x), float(mouse_world_pos.y))
+        self._collider_drag_start_payload = copy.deepcopy(payload)
+
+
+    def _update_scene_collider_drag(
+        self,
+        world: "World",
+        entity_name: str,
+        mouse_world_pos: rl.Vector2,
+    ) -> None:
+        if entity_name != self._collider_drag_entity_name:
+            self._clear_collider_drag()
+            return
+
+        start_payload = self._collider_drag_start_payload
+        if not isinstance(start_payload, dict):
+            self._clear_collider_drag()
+            return
+
+        start_mouse_x, start_mouse_y = self._collider_drag_start_mouse
+        dx = float(mouse_world_pos.x) - start_mouse_x
+        dy = float(mouse_world_pos.y) - start_mouse_y
+
+        updated = self._apply_scene_drag_to_collider_payload(start_payload, self._collider_drag_mode, dx, dy)
+        self.replace_component_payload(world, entity_name, "Collider", updated)
+
+
+    def _collider_payload_world_rect(
+        self,
+        payload: Dict[str, Any],
+        transform: Transform,
+    ) -> Optional[rl.Rectangle]:
+        try:
+            center_x = float(transform.x) + float(payload.get("offset_x", 0.0) or 0.0)
+            center_y = float(transform.y) + float(payload.get("offset_y", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return None
+
+        shape_type = str(payload.get("shape_type", "box") or "box").strip().lower()
+        if shape_type == "circle":
+            radius = max(1.0, float(payload.get("radius", 16.0) or 16.0))
+            width = radius * 2.0
+            height = radius * 2.0
+        elif shape_type == "capsule":
+            radius = max(1.0, float(payload.get("radius", 16.0) or 16.0))
+            capsule_height = max(0.0, float(payload.get("capsule_height", 0.0) or 0.0))
+            width = radius * 2.0
+            height = radius * 2.0 + capsule_height
+        else:
+            width = max(1.0, float(payload.get("width", 32.0) or 32.0))
+            height = max(1.0, float(payload.get("height", 32.0) or 32.0))
+
+        return rl.Rectangle(center_x - width * 0.5, center_y - height * 0.5, width, height)
+
+
+    def _scene_collider_handle_rects(self, collider_rect: rl.Rectangle) -> Dict[str, rl.Rectangle]:
+        size = 10.0
+        half = size * 0.5
+        left = collider_rect.x
+        top = collider_rect.y
+        right = collider_rect.x + collider_rect.width
+        bottom = collider_rect.y + collider_rect.height
+        center_x = collider_rect.x + collider_rect.width * 0.5
+        center_y = collider_rect.y + collider_rect.height * 0.5
+
+        return {
+            "top_left": rl.Rectangle(left - half, top - half, size, size),
+            "top": rl.Rectangle(center_x - half, top - half, size, size),
+            "top_right": rl.Rectangle(right - half, top - half, size, size),
+            "right": rl.Rectangle(right - half, center_y - half, size, size),
+            "bottom_right": rl.Rectangle(right - half, bottom - half, size, size),
+            "bottom": rl.Rectangle(center_x - half, bottom - half, size, size),
+            "bottom_left": rl.Rectangle(left - half, bottom - half, size, size),
+            "left": rl.Rectangle(left - half, center_y - half, size, size),
+        }
+
+
+    def _hit_scene_collider_handle(self, collider_rect: rl.Rectangle, mouse_world_pos: rl.Vector2) -> str:
+        for mode, handle_rect in self._scene_collider_handle_rects(collider_rect).items():
+            if rl.check_collision_point_rec(mouse_world_pos, handle_rect):
+                return mode
+
+        if rl.check_collision_point_rec(mouse_world_pos, collider_rect):
+            return "move"
+
+        return ""
+
+
+    def _apply_scene_drag_to_collider_payload(
+        self,
+        payload: Dict[str, Any],
+        mode: str,
+        dx: float,
+        dy: float,
+    ) -> Dict[str, Any]:
+        updated = copy.deepcopy(payload)
+        shape_type = str(updated.get("shape_type", "box") or "box").strip().lower()
+
+        offset_x = float(updated.get("offset_x", 0.0) or 0.0)
+        offset_y = float(updated.get("offset_y", 0.0) or 0.0)
+
+        if mode == "move":
+            updated["offset_x"] = offset_x + dx
+            updated["offset_y"] = offset_y + dy
+            return updated
+
+        if shape_type == "polygon":
+            return updated
+
+        if shape_type == "circle":
+            radius = max(1.0, float(updated.get("radius", 16.0) or 16.0))
+            left = offset_x - radius
+            right = offset_x + radius
+            top = offset_y - radius
+            bottom = offset_y + radius
+        elif shape_type == "capsule":
+            radius = max(1.0, float(updated.get("radius", 16.0) or 16.0))
+            capsule_height = max(0.0, float(updated.get("capsule_height", 0.0) or 0.0))
+            left = offset_x - radius
+            right = offset_x + radius
+            top = offset_y - radius - capsule_height * 0.5
+            bottom = offset_y + radius + capsule_height * 0.5
+        else:
+            width = max(1.0, float(updated.get("width", 32.0) or 32.0))
+            height = max(1.0, float(updated.get("height", 32.0) or 32.0))
+            left = offset_x - width * 0.5
+            right = offset_x + width * 0.5
+            top = offset_y - height * 0.5
+            bottom = offset_y + height * 0.5
+
+        if "left" in mode:
+            left += dx
+        if "right" in mode:
+            right += dx
+        if "top" in mode:
+            top += dy
+        if "bottom" in mode:
+            bottom += dy
+
+        min_size = 1.0
+        if right - left < min_size:
+            if "left" in mode:
+                left = right - min_size
+            else:
+                right = left + min_size
+        if bottom - top < min_size:
+            if "top" in mode:
+                top = bottom - min_size
+            else:
+                bottom = top + min_size
+
+        next_width = max(min_size, right - left)
+        next_height = max(min_size, bottom - top)
+
+        updated["offset_x"] = (left + right) * 0.5
+        updated["offset_y"] = (top + bottom) * 0.5
+
+        if shape_type == "circle":
+            updated["radius"] = max(min_size, max(next_width, next_height) * 0.5)
+            updated["width"] = updated["radius"] * 2.0
+            updated["height"] = updated["radius"] * 2.0
+        elif shape_type == "capsule":
+            radius = max(min_size, next_width * 0.5)
+            updated["radius"] = radius
+            updated["capsule_height"] = max(0.0, next_height - radius * 2.0)
+            updated["width"] = radius * 2.0
+            updated["height"] = next_height
+        else:
+            updated["width"] = next_width
+            updated["height"] = next_height
+
+        return updated
+
+
+    def _clear_collider_drag(self) -> None:
+        self._collider_drag_mode = ""
+        self._collider_drag_entity_name = ""
+        self._collider_drag_start_mouse = (0.0, 0.0)
+        self._collider_drag_start_payload = None
 
     def get_tilemap_preview_snapshot(self, world: "World") -> Optional[Dict[str, Any]]:
         entity_name = self._resolve_tilemap_tool_entity_name(world)
