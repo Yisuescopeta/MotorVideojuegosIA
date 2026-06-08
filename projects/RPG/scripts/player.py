@@ -35,6 +35,7 @@ def _set_defaults(public: dict) -> None:
     public.setdefault("move_speed", MOVE_SPEED)
     public.setdefault("last_facing", "down")
     public.setdefault("attack_was_down", False)
+    public.setdefault("action_2_was_down", False)
     public.setdefault("max_lives", DEFAULT_LIVES)
     public.setdefault("lives", public["max_lives"])
     public.setdefault("invulnerable_duration", INVULNERABLE_DURATION)
@@ -177,6 +178,15 @@ def on_update(context, dt: float) -> None:
     action_1 = float(state.get("action_1") or 0.0)
 
     is_attacking = str(animator.current_state or "").startswith("attack_")
+
+    action_2_val = float(state.get("action_2") or 0.0)
+    action_2_was_down = bool(public.get("action_2_was_down", False))
+    action_2_just_pressed = action_2_val > 0.5 and not action_2_was_down
+    public["action_2_was_down"] = action_2_val > 0.5
+
+    if action_2_just_pressed:
+        if context.load_scene_flow_target("menu"):
+            return
 
     attack_was_down = bool(public.get("attack_was_down", False))
     attack_just_pressed = action_1 > 0.5 and not attack_was_down

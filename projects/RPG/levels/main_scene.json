@@ -4616,7 +4616,7 @@
                     "move_up": "W,UP",
                     "move_down": "S,DOWN",
                     "action_1": "SPACE",
-                    "action_2": "ENTER"
+                    "action_2": "ENTER,ESCAPE"
                 },
                 "ScriptBehaviour": {
                     "enabled": true,
@@ -4858,678 +4858,6 @@
                 }
             },
             "id": "entity_0279275fd065"
-        },
-        {
-            "name": "Slime_0",
-            "active": true,
-            "tag": "Enemy",
-            "layer": "Gameplay",
-            "parent": "ActorsWorld",
-            "components": {
-                "Transform": {
-                    "enabled": true,
-                    "x": 48.0,
-                    "y": 0.0
-                },
-                "Sprite": {
-                    "enabled": false,
-                    "texture": {
-                        "guid": "",
-                        "path": "assets/mystic_woods_free_2.2/sprites/characters/slime.png"
-                    },
-                    "texture_path": "assets/mystic_woods_free_2.2/sprites/characters/slime.png",
-                    "width": 32,
-                    "height": 32,
-                    "origin_x": 0.5,
-                    "origin_y": 0.5,
-                    "flip_x": false,
-                    "flip_y": false,
-                    "tint": [
-                        255,
-                        255,
-                        255,
-                        255
-                    ],
-                    "source_slice": "slime_0"
-                },
-                "Animator": {
-                    "enabled": true,
-                    "sprite_sheet": {
-                        "guid": "",
-                        "path": "assets/mystic_woods_free_2.2/sprites/characters/slime.png"
-                    },
-                    "sprite_sheet_path": "assets/mystic_woods_free_2.2/sprites/characters/slime.png",
-                    "frame_width": 32,
-                    "frame_height": 32,
-                    "flip_x": false,
-                    "flip_y": false,
-                    "speed": 1.0,
-                    "animations": {
-                        "idle_down": {
-                            "frames": [
-                                0,
-                                1,
-                                2,
-                                9,
-                                8,
-                                7
-                            ],
-                            "slice_names": [
-                                "slime_0",
-                                "slime_1",
-                                "slime_2",
-                                "slime_9",
-                                "slime_8",
-                                "slime_7"
-                            ],
-                            "fps": 6.0,
-                            "loop": true
-                        },
-                        "idle_side": {
-                            "frames": [
-                                3,
-                                10,
-                                3,
-                                10
-                            ],
-                            "slice_names": [
-                                "slime_3",
-                                "slime_10",
-                                "slime_3",
-                                "slime_10"
-                            ],
-                            "fps": 6.0,
-                            "loop": true
-                        },
-                        "idle_up": {
-                            "frames": [
-                                14,
-                                15,
-                                16,
-                                17
-                            ],
-                            "slice_names": [
-                                "slime_14",
-                                "slime_15",
-                                "slime_16",
-                                "slime_17"
-                            ],
-                            "fps": 6.0,
-                            "loop": true
-                        },
-                        "walk_down": {
-                            "frames": [
-                                24,
-                                25,
-                                26,
-                                33,
-                                32,
-                                31
-                            ],
-                            "slice_names": [
-                                "slime_24",
-                                "slime_25",
-                                "slime_26",
-                                "slime_33",
-                                "slime_32",
-                                "slime_31"
-                            ],
-                            "fps": 8.0,
-                            "loop": true
-                        },
-                        "walk_side": {
-                            "frames": [
-                                21,
-                                28,
-                                35,
-                                28
-                            ],
-                            "slice_names": [
-                                "slime_21",
-                                "slime_28",
-                                "slime_35",
-                                "slime_28"
-                            ],
-                            "fps": 8.0,
-                            "loop": true
-                        },
-                        "walk_up": {
-                            "frames": [
-                                22,
-                                23,
-                                30,
-                                37,
-                                36,
-                                29
-                            ],
-                            "slice_names": [
-                                "slime_22",
-                                "slime_23",
-                                "slime_30",
-                                "slime_37",
-                                "slime_36",
-                                "slime_29"
-                            ],
-                            "fps": 8.0,
-                            "loop": true
-                        },
-                        "attack": {
-                            "frames": [
-                                42,
-                                43,
-                                44,
-                                45,
-                                46,
-                                47,
-                                48,
-                                49,
-                                50,
-                                51,
-                                52,
-                                53,
-                                54,
-                                55,
-                                56,
-                                57,
-                                58,
-                                59,
-                                60,
-                                61,
-                                62
-                            ],
-                            "slice_names": [
-                                "slime_42",
-                                "slime_43",
-                                "slime_44",
-                                "slime_45",
-                                "slime_46",
-                                "slime_47",
-                                "slime_48",
-                                "slime_49",
-                                "slime_50",
-                                "slime_51",
-                                "slime_52",
-                                "slime_53",
-                                "slime_54",
-                                "slime_55",
-                                "slime_56",
-                                "slime_57",
-                                "slime_58",
-                                "slime_59",
-                                "slime_60",
-                                "slime_61",
-                                "slime_62"
-                            ],
-                            "fps": 10.0,
-                            "loop": false,
-                            "on_complete": "idle_down"
-                        },
-                        "damaged": {
-                            "frames": [
-                                63,
-                                64,
-                                65,
-                                66,
-                                67,
-                                68,
-                                69,
-                                70,
-                                71,
-                                72,
-                                73,
-                                74,
-                                75,
-                                76,
-                                77,
-                                78,
-                                79,
-                                80,
-                                81,
-                                82,
-                                83
-                            ],
-                            "slice_names": [
-                                "slime_63",
-                                "slime_64",
-                                "slime_65",
-                                "slime_66",
-                                "slime_67",
-                                "slime_68",
-                                "slime_69",
-                                "slime_70",
-                                "slime_71",
-                                "slime_72",
-                                "slime_73",
-                                "slime_74",
-                                "slime_75",
-                                "slime_76",
-                                "slime_77",
-                                "slime_78",
-                                "slime_79",
-                                "slime_80",
-                                "slime_81",
-                                "slime_82",
-                                "slime_83"
-                            ],
-                            "fps": 10.0,
-                            "loop": false,
-                            "on_complete": "idle_down"
-                        },
-                        "death": {
-                            "frames": [
-                                84,
-                                85,
-                                86,
-                                87,
-                                88,
-                                89
-                            ],
-                            "slice_names": [
-                                "slime_84",
-                                "slime_85",
-                                "slime_86",
-                                "slime_87",
-                                "slime_88",
-                                "slime_89"
-                            ],
-                            "fps": 6.0,
-                            "loop": false
-                        }
-                    },
-                    "default_state": "idle_down",
-                    "current_state": "idle_down",
-                    "current_frame": 0,
-                    "is_finished": false
-                },
-                "ScriptBehaviour": {
-                    "enabled": true,
-                    "script": {
-                        "guid": "",
-                        "path": "scripts/enemy_slime.py"
-                    },
-                    "module_path": "enemy_slime",
-                    "run_in_edit_mode": false,
-                    "public_data": {
-                        "target_entity": "Player",
-                        "move_speed": 10.0,
-                        "hit_radius": 24.0,
-                        "last_facing": "down"
-                    }
-                },
-                "Collider": {
-                    "enabled": true,
-                    "width": 18.0,
-                    "height": 14.0,
-                    "offset_x": 0.0,
-                    "offset_y": 5.0,
-                    "is_trigger": true,
-                    "shape_type": "box",
-                    "radius": 16.0,
-                    "points": [],
-                    "friction": 0.2,
-                    "restitution": 0.0,
-                    "density": 1.0,
-                    "capsule_height": 0.0,
-                    "one_way_collision": false,
-                    "one_way_collision_direction_y": -1.0,
-                    "one_way_collision_margin": 1.0,
-                    "one_way_collision_direction_x": 0.0
-                }
-            },
-            "component_metadata": {
-                "Transform": {
-                    "origin": "native"
-                },
-                "Sprite": {
-                    "origin": "native"
-                },
-                "Animator": {
-                    "origin": "native"
-                },
-                "ScriptBehaviour": {
-                    "origin": "native"
-                },
-                "Collider": {
-                    "origin": "native"
-                }
-            },
-            "id": "entity_52e1d9ea7f1f"
-        },
-        {
-            "name": "Slime_1",
-            "active": true,
-            "tag": "Enemy",
-            "layer": "Gameplay",
-            "parent": "ActorsWorld",
-            "components": {
-                "Transform": {
-                    "enabled": true,
-                    "x": -48.0,
-                    "y": 0.0
-                },
-                "Sprite": {
-                    "enabled": false,
-                    "texture": {
-                        "guid": "",
-                        "path": "assets/mystic_woods_free_2.2/sprites/characters/slime.png"
-                    },
-                    "texture_path": "assets/mystic_woods_free_2.2/sprites/characters/slime.png",
-                    "width": 32,
-                    "height": 32,
-                    "origin_x": 0.5,
-                    "origin_y": 0.5,
-                    "flip_x": false,
-                    "flip_y": false,
-                    "tint": [
-                        255,
-                        255,
-                        255,
-                        255
-                    ],
-                    "source_slice": "slime_0"
-                },
-                "Animator": {
-                    "enabled": true,
-                    "sprite_sheet": {
-                        "guid": "",
-                        "path": "assets/mystic_woods_free_2.2/sprites/characters/slime.png"
-                    },
-                    "sprite_sheet_path": "assets/mystic_woods_free_2.2/sprites/characters/slime.png",
-                    "frame_width": 32,
-                    "frame_height": 32,
-                    "flip_x": false,
-                    "flip_y": false,
-                    "speed": 1.0,
-                    "animations": {
-                        "idle_down": {
-                            "frames": [
-                                0,
-                                1,
-                                2,
-                                9,
-                                8,
-                                7
-                            ],
-                            "slice_names": [
-                                "slime_0",
-                                "slime_1",
-                                "slime_2",
-                                "slime_9",
-                                "slime_8",
-                                "slime_7"
-                            ],
-                            "fps": 6.0,
-                            "loop": true
-                        },
-                        "idle_side": {
-                            "frames": [
-                                3,
-                                10,
-                                3,
-                                10
-                            ],
-                            "slice_names": [
-                                "slime_3",
-                                "slime_10",
-                                "slime_3",
-                                "slime_10"
-                            ],
-                            "fps": 6.0,
-                            "loop": true
-                        },
-                        "idle_up": {
-                            "frames": [
-                                14,
-                                15,
-                                16,
-                                17
-                            ],
-                            "slice_names": [
-                                "slime_14",
-                                "slime_15",
-                                "slime_16",
-                                "slime_17"
-                            ],
-                            "fps": 6.0,
-                            "loop": true
-                        },
-                        "walk_down": {
-                            "frames": [
-                                24,
-                                25,
-                                26,
-                                33,
-                                32,
-                                31
-                            ],
-                            "slice_names": [
-                                "slime_24",
-                                "slime_25",
-                                "slime_26",
-                                "slime_33",
-                                "slime_32",
-                                "slime_31"
-                            ],
-                            "fps": 8.0,
-                            "loop": true
-                        },
-                        "walk_side": {
-                            "frames": [
-                                21,
-                                28,
-                                35,
-                                28
-                            ],
-                            "slice_names": [
-                                "slime_21",
-                                "slime_28",
-                                "slime_35",
-                                "slime_28"
-                            ],
-                            "fps": 8.0,
-                            "loop": true
-                        },
-                        "walk_up": {
-                            "frames": [
-                                22,
-                                23,
-                                30,
-                                37,
-                                36,
-                                29
-                            ],
-                            "slice_names": [
-                                "slime_22",
-                                "slime_23",
-                                "slime_30",
-                                "slime_37",
-                                "slime_36",
-                                "slime_29"
-                            ],
-                            "fps": 8.0,
-                            "loop": true
-                        },
-                        "attack": {
-                            "frames": [
-                                42,
-                                43,
-                                44,
-                                45,
-                                46,
-                                47,
-                                48,
-                                49,
-                                50,
-                                51,
-                                52,
-                                53,
-                                54,
-                                55,
-                                56,
-                                57,
-                                58,
-                                59,
-                                60,
-                                61,
-                                62
-                            ],
-                            "slice_names": [
-                                "slime_42",
-                                "slime_43",
-                                "slime_44",
-                                "slime_45",
-                                "slime_46",
-                                "slime_47",
-                                "slime_48",
-                                "slime_49",
-                                "slime_50",
-                                "slime_51",
-                                "slime_52",
-                                "slime_53",
-                                "slime_54",
-                                "slime_55",
-                                "slime_56",
-                                "slime_57",
-                                "slime_58",
-                                "slime_59",
-                                "slime_60",
-                                "slime_61",
-                                "slime_62"
-                            ],
-                            "fps": 10.0,
-                            "loop": false,
-                            "on_complete": "idle_down"
-                        },
-                        "damaged": {
-                            "frames": [
-                                63,
-                                64,
-                                65,
-                                66,
-                                67,
-                                68,
-                                69,
-                                70,
-                                71,
-                                72,
-                                73,
-                                74,
-                                75,
-                                76,
-                                77,
-                                78,
-                                79,
-                                80,
-                                81,
-                                82,
-                                83
-                            ],
-                            "slice_names": [
-                                "slime_63",
-                                "slime_64",
-                                "slime_65",
-                                "slime_66",
-                                "slime_67",
-                                "slime_68",
-                                "slime_69",
-                                "slime_70",
-                                "slime_71",
-                                "slime_72",
-                                "slime_73",
-                                "slime_74",
-                                "slime_75",
-                                "slime_76",
-                                "slime_77",
-                                "slime_78",
-                                "slime_79",
-                                "slime_80",
-                                "slime_81",
-                                "slime_82",
-                                "slime_83"
-                            ],
-                            "fps": 10.0,
-                            "loop": false,
-                            "on_complete": "idle_down"
-                        },
-                        "death": {
-                            "frames": [
-                                84,
-                                85,
-                                86,
-                                87,
-                                88,
-                                89
-                            ],
-                            "slice_names": [
-                                "slime_84",
-                                "slime_85",
-                                "slime_86",
-                                "slime_87",
-                                "slime_88",
-                                "slime_89"
-                            ],
-                            "fps": 6.0,
-                            "loop": false
-                        }
-                    },
-                    "default_state": "idle_down",
-                    "current_state": "idle_down",
-                    "current_frame": 0,
-                    "is_finished": false
-                },
-                "ScriptBehaviour": {
-                    "enabled": true,
-                    "script": {
-                        "guid": "",
-                        "path": "scripts/enemy_slime.py"
-                    },
-                    "module_path": "enemy_slime",
-                    "run_in_edit_mode": false,
-                    "public_data": {
-                        "target_entity": "Player",
-                        "move_speed": 10.0,
-                        "hit_radius": 24.0,
-                        "last_facing": "down"
-                    }
-                },
-                "Collider": {
-                    "enabled": true,
-                    "width": 18.0,
-                    "height": 14.0,
-                    "offset_x": 0.0,
-                    "offset_y": 5.0,
-                    "is_trigger": true,
-                    "shape_type": "box",
-                    "radius": 16.0,
-                    "points": [],
-                    "friction": 0.2,
-                    "restitution": 0.0,
-                    "density": 1.0,
-                    "capsule_height": 0.0,
-                    "one_way_collision": false,
-                    "one_way_collision_direction_y": -1.0,
-                    "one_way_collision_margin": 1.0,
-                    "one_way_collision_direction_x": 0.0
-                }
-            },
-            "component_metadata": {
-                "Transform": {
-                    "origin": "native"
-                },
-                "Sprite": {
-                    "origin": "native"
-                },
-                "Animator": {
-                    "origin": "native"
-                },
-                "ScriptBehaviour": {
-                    "origin": "native"
-                },
-                "Collider": {
-                    "origin": "native"
-                }
-            },
-            "id": "entity_12a9be1eaefd"
         },
         {
             "name": "Slime_2",
@@ -11836,6 +11164,53 @@
             "id": "entity_408b98a884dc"
         },
         {
+            "name": "BackButton",
+            "active": true,
+            "tag": "UI",
+            "layer": "UI",
+            "parent": "HUDCanvas",
+            "components": {
+                "RectTransform": {
+                    "enabled": true,
+                    "anchor_min_x": 1.0,
+                    "anchor_min_y": 0.0,
+                    "anchor_max_x": 1.0,
+                    "anchor_max_y": 0.0,
+                    "pivot_x": 0.0,
+                    "pivot_y": 1.0,
+                    "anchored_x": -100.0,
+                    "anchored_y": 24.0,
+                    "width": 90.0,
+                    "height": 30.0,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "UIButton": {
+                    "enabled": true,
+                    "interactable": true,
+                    "label": "MENU",
+                    "normal_color": [72, 72, 72, 255],
+                    "hover_color": [92, 92, 92, 255],
+                    "pressed_color": [56, 56, 56, 255],
+                    "transition_scale_pressed": 0.96,
+                    "on_click": {
+                        "type": "load_scene_flow",
+                        "target": "menu"
+                    }
+                }
+            },
+            "component_metadata": {
+                "RectTransform": {
+                    "origin": "native"
+                },
+                "UIButton": {
+                    "origin": "native"
+                }
+            },
+            "id": "entity_back_button"
+        },
+        {
             "name": "Ground_copy_copy",
             "active": true,
             "tag": "Untagged",
@@ -17543,12 +16918,693 @@
             },
             "parent": "Ground_copy_copy",
             "id": "entity_d1415af795c6"
+        },
+        {
+            "name": "Slime_2_copy",
+            "active": true,
+            "tag": "Enemy",
+            "layer": "Gameplay",
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": 48.33332824707031,
+                    "y": 0.5000076293945312,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": false,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/mystic_woods_free_2.2/sprites/characters/slime.png"
+                    },
+                    "texture_path": "assets/mystic_woods_free_2.2/sprites/characters/slime.png",
+                    "width": 32,
+                    "height": 32,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": "slime_0"
+                },
+                "Animator": {
+                    "enabled": true,
+                    "sprite_sheet": {
+                        "guid": "ast_001ab73a25194897a987e48e269e55ac",
+                        "path": "assets/mystic_woods_free_2.2/sprites/characters/slime.png"
+                    },
+                    "sprite_sheet_path": "assets/mystic_woods_free_2.2/sprites/characters/slime.png",
+                    "frame_width": 32,
+                    "frame_height": 32,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "speed": 1.0,
+                    "animations": {
+                        "idle_down": {
+                            "frames": [
+                                0,
+                                1,
+                                2,
+                                9,
+                                8,
+                                7
+                            ],
+                            "slice_names": [
+                                "slime_0",
+                                "slime_1",
+                                "slime_9",
+                                "slime_8",
+                                "slime_2",
+                                "slime_7"
+                            ],
+                            "fps": 6.0,
+                            "loop": true
+                        },
+                        "idle_side": {
+                            "frames": [
+                                3,
+                                10,
+                                3,
+                                10
+                            ],
+                            "slice_names": [
+                                "slime_3",
+                                "slime_10",
+                                "slime_3",
+                                "slime_10"
+                            ],
+                            "fps": 6.0,
+                            "loop": true
+                        },
+                        "idle_up": {
+                            "frames": [
+                                14,
+                                15,
+                                16,
+                                17
+                            ],
+                            "slice_names": [
+                                "slime_14",
+                                "slime_15",
+                                "slime_16",
+                                "slime_17"
+                            ],
+                            "fps": 6.0,
+                            "loop": true
+                        },
+                        "walk_down": {
+                            "frames": [
+                                24,
+                                25,
+                                26,
+                                33,
+                                32,
+                                31
+                            ],
+                            "slice_names": [
+                                "slime_24",
+                                "slime_25",
+                                "slime_26",
+                                "slime_24"
+                            ],
+                            "fps": 8.0,
+                            "loop": true
+                        },
+                        "walk_side": {
+                            "frames": [
+                                21,
+                                28,
+                                35,
+                                28
+                            ],
+                            "slice_names": [
+                                "slime_50",
+                                "slime_51",
+                                "slime_52",
+                                "slime_54",
+                                "slime_55"
+                            ],
+                            "fps": 8.0,
+                            "loop": true,
+                            "on_complete": "idle_down"
+                        },
+                        "walk_up": {
+                            "frames": [
+                                22,
+                                23,
+                                30,
+                                37,
+                                36,
+                                29
+                            ],
+                            "slice_names": [
+                                "slime_35",
+                                "slime_36",
+                                "slime_37",
+                                "slime_38",
+                                "slime_39",
+                                "slime_40"
+                            ],
+                            "fps": 8.0,
+                            "loop": false,
+                            "on_complete": "idle_up"
+                        },
+                        "attack": {
+                            "frames": [
+                                42,
+                                43,
+                                44,
+                                45,
+                                46,
+                                47,
+                                48,
+                                49,
+                                50,
+                                51,
+                                52,
+                                53,
+                                54,
+                                55,
+                                56,
+                                57,
+                                58,
+                                59,
+                                60,
+                                61,
+                                62
+                            ],
+                            "slice_names": [
+                                "slime_42",
+                                "slime_43",
+                                "slime_44",
+                                "slime_45",
+                                "slime_46",
+                                "slime_47",
+                                "slime_48",
+                                "slime_49",
+                                "slime_50",
+                                "slime_51",
+                                "slime_52",
+                                "slime_53",
+                                "slime_54",
+                                "slime_55",
+                                "slime_56",
+                                "slime_57",
+                                "slime_58",
+                                "slime_59",
+                                "slime_60",
+                                "slime_61",
+                                "slime_62"
+                            ],
+                            "fps": 10.0,
+                            "loop": false,
+                            "on_complete": "idle_down"
+                        },
+                        "damaged": {
+                            "frames": [
+                                63,
+                                64,
+                                65,
+                                66,
+                                67,
+                                68,
+                                69,
+                                70,
+                                71,
+                                72,
+                                73,
+                                74,
+                                75,
+                                76,
+                                77,
+                                78,
+                                79,
+                                80,
+                                81,
+                                82,
+                                83
+                            ],
+                            "slice_names": [
+                                "slime_63",
+                                "slime_64",
+                                "slime_65",
+                                "slime_66",
+                                "slime_67",
+                                "slime_68",
+                                "slime_69",
+                                "slime_70",
+                                "slime_71",
+                                "slime_72",
+                                "slime_73",
+                                "slime_74",
+                                "slime_75",
+                                "slime_76",
+                                "slime_77",
+                                "slime_78",
+                                "slime_79",
+                                "slime_80",
+                                "slime_81",
+                                "slime_82",
+                                "slime_83"
+                            ],
+                            "fps": 10.0,
+                            "loop": false,
+                            "on_complete": "idle_down"
+                        },
+                        "death": {
+                            "frames": [
+                                84,
+                                85,
+                                86,
+                                87,
+                                88,
+                                89
+                            ],
+                            "slice_names": [
+                                "slime_84",
+                                "slime_85",
+                                "slime_86",
+                                "slime_87",
+                                "slime_88",
+                                "slime_89"
+                            ],
+                            "fps": 6.0,
+                            "loop": false
+                        }
+                    },
+                    "default_state": "idle_down",
+                    "current_state": "idle_down",
+                    "current_frame": 0,
+                    "is_finished": false
+                },
+                "ScriptBehaviour": {
+                    "enabled": true,
+                    "script": {
+                        "guid": "",
+                        "path": "scripts/enemy_slime.py"
+                    },
+                    "module_path": "enemy_slime",
+                    "run_in_edit_mode": false,
+                    "public_data": {
+                        "target_entity": "Player",
+                        "move_speed": 10.0,
+                        "hit_radius": 24.0,
+                        "last_facing": "down"
+                    }
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 18.0,
+                    "height": 14.0,
+                    "offset_x": 0.0,
+                    "offset_y": 5.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 16.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0,
+                    "capsule_height": 0.0,
+                    "one_way_collision": false,
+                    "one_way_collision_direction_y": -1.0,
+                    "one_way_collision_margin": 1.0,
+                    "one_way_collision_direction_x": 0.0
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Animator": {
+                    "origin": "native"
+                },
+                "ScriptBehaviour": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                }
+            },
+            "parent": "ActorsWorld",
+            "id": "entity_851fb993233e"
+        },
+        {
+            "name": "Slime_2_copy_copy",
+            "active": true,
+            "tag": "Enemy",
+            "layer": "Gameplay",
+            "components": {
+                "Transform": {
+                    "enabled": true,
+                    "x": -51.388885498046875,
+                    "y": 0.5000076293945312,
+                    "rotation": 0.0,
+                    "scale_x": 1.0,
+                    "scale_y": 1.0
+                },
+                "Sprite": {
+                    "enabled": false,
+                    "texture": {
+                        "guid": "",
+                        "path": "assets/mystic_woods_free_2.2/sprites/characters/slime.png"
+                    },
+                    "texture_path": "assets/mystic_woods_free_2.2/sprites/characters/slime.png",
+                    "width": 32,
+                    "height": 32,
+                    "origin_x": 0.5,
+                    "origin_y": 0.5,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "tint": [
+                        255,
+                        255,
+                        255,
+                        255
+                    ],
+                    "source_slice": "slime_0"
+                },
+                "Animator": {
+                    "enabled": true,
+                    "sprite_sheet": {
+                        "guid": "ast_001ab73a25194897a987e48e269e55ac",
+                        "path": "assets/mystic_woods_free_2.2/sprites/characters/slime.png"
+                    },
+                    "sprite_sheet_path": "assets/mystic_woods_free_2.2/sprites/characters/slime.png",
+                    "frame_width": 32,
+                    "frame_height": 32,
+                    "flip_x": false,
+                    "flip_y": false,
+                    "speed": 1.0,
+                    "animations": {
+                        "idle_down": {
+                            "frames": [
+                                0,
+                                1,
+                                2,
+                                9,
+                                8,
+                                7
+                            ],
+                            "slice_names": [
+                                "slime_0",
+                                "slime_1",
+                                "slime_9",
+                                "slime_8",
+                                "slime_2",
+                                "slime_7"
+                            ],
+                            "fps": 6.0,
+                            "loop": true
+                        },
+                        "idle_side": {
+                            "frames": [
+                                3,
+                                10,
+                                3,
+                                10
+                            ],
+                            "slice_names": [
+                                "slime_3",
+                                "slime_10",
+                                "slime_3",
+                                "slime_10"
+                            ],
+                            "fps": 6.0,
+                            "loop": true
+                        },
+                        "idle_up": {
+                            "frames": [
+                                14,
+                                15,
+                                16,
+                                17
+                            ],
+                            "slice_names": [
+                                "slime_14",
+                                "slime_15",
+                                "slime_16",
+                                "slime_17"
+                            ],
+                            "fps": 6.0,
+                            "loop": true
+                        },
+                        "walk_down": {
+                            "frames": [
+                                24,
+                                25,
+                                26,
+                                33,
+                                32,
+                                31
+                            ],
+                            "slice_names": [
+                                "slime_24",
+                                "slime_25",
+                                "slime_26",
+                                "slime_24"
+                            ],
+                            "fps": 8.0,
+                            "loop": true
+                        },
+                        "walk_side": {
+                            "frames": [
+                                21,
+                                28,
+                                35,
+                                28
+                            ],
+                            "slice_names": [
+                                "slime_50",
+                                "slime_51",
+                                "slime_52",
+                                "slime_54",
+                                "slime_55"
+                            ],
+                            "fps": 8.0,
+                            "loop": true,
+                            "on_complete": "idle_down"
+                        },
+                        "walk_up": {
+                            "frames": [
+                                22,
+                                23,
+                                30,
+                                37,
+                                36,
+                                29
+                            ],
+                            "slice_names": [
+                                "slime_35",
+                                "slime_36",
+                                "slime_37",
+                                "slime_38",
+                                "slime_39",
+                                "slime_40"
+                            ],
+                            "fps": 8.0,
+                            "loop": false,
+                            "on_complete": "idle_up"
+                        },
+                        "attack": {
+                            "frames": [
+                                42,
+                                43,
+                                44,
+                                45,
+                                46,
+                                47,
+                                48,
+                                49,
+                                50,
+                                51,
+                                52,
+                                53,
+                                54,
+                                55,
+                                56,
+                                57,
+                                58,
+                                59,
+                                60,
+                                61,
+                                62
+                            ],
+                            "slice_names": [
+                                "slime_42",
+                                "slime_43",
+                                "slime_44",
+                                "slime_45",
+                                "slime_46",
+                                "slime_47",
+                                "slime_48",
+                                "slime_49",
+                                "slime_50",
+                                "slime_51",
+                                "slime_52",
+                                "slime_53",
+                                "slime_54",
+                                "slime_55",
+                                "slime_56",
+                                "slime_57",
+                                "slime_58",
+                                "slime_59",
+                                "slime_60",
+                                "slime_61",
+                                "slime_62"
+                            ],
+                            "fps": 10.0,
+                            "loop": false,
+                            "on_complete": "idle_down"
+                        },
+                        "damaged": {
+                            "frames": [
+                                63,
+                                64,
+                                65,
+                                66,
+                                67,
+                                68,
+                                69,
+                                70,
+                                71,
+                                72,
+                                73,
+                                74,
+                                75,
+                                76,
+                                77,
+                                78,
+                                79,
+                                80,
+                                81,
+                                82,
+                                83
+                            ],
+                            "slice_names": [
+                                "slime_63",
+                                "slime_64",
+                                "slime_65",
+                                "slime_66",
+                                "slime_67",
+                                "slime_68",
+                                "slime_69",
+                                "slime_70",
+                                "slime_71",
+                                "slime_72",
+                                "slime_73",
+                                "slime_74",
+                                "slime_75",
+                                "slime_76",
+                                "slime_77",
+                                "slime_78",
+                                "slime_79",
+                                "slime_80",
+                                "slime_81",
+                                "slime_82",
+                                "slime_83"
+                            ],
+                            "fps": 10.0,
+                            "loop": false,
+                            "on_complete": "idle_down"
+                        },
+                        "death": {
+                            "frames": [
+                                84,
+                                85,
+                                86,
+                                87,
+                                88,
+                                89
+                            ],
+                            "slice_names": [
+                                "slime_84",
+                                "slime_85",
+                                "slime_86",
+                                "slime_87",
+                                "slime_88",
+                                "slime_89"
+                            ],
+                            "fps": 6.0,
+                            "loop": false
+                        }
+                    },
+                    "default_state": "idle_down",
+                    "current_state": "idle_down",
+                    "current_frame": 0,
+                    "is_finished": false
+                },
+                "ScriptBehaviour": {
+                    "enabled": true,
+                    "script": {
+                        "guid": "",
+                        "path": "scripts/enemy_slime.py"
+                    },
+                    "module_path": "enemy_slime",
+                    "run_in_edit_mode": false,
+                    "public_data": {
+                        "target_entity": "Player",
+                        "move_speed": 10.0,
+                        "hit_radius": 24.0,
+                        "last_facing": "down"
+                    }
+                },
+                "Collider": {
+                    "enabled": true,
+                    "width": 18.0,
+                    "height": 14.0,
+                    "offset_x": 0.0,
+                    "offset_y": 5.0,
+                    "is_trigger": true,
+                    "shape_type": "box",
+                    "radius": 16.0,
+                    "points": [],
+                    "friction": 0.2,
+                    "restitution": 0.0,
+                    "density": 1.0,
+                    "capsule_height": 0.0,
+                    "one_way_collision": false,
+                    "one_way_collision_direction_y": -1.0,
+                    "one_way_collision_margin": 1.0,
+                    "one_way_collision_direction_x": 0.0
+                }
+            },
+            "component_metadata": {
+                "Transform": {
+                    "origin": "native"
+                },
+                "Sprite": {
+                    "origin": "native"
+                },
+                "Animator": {
+                    "origin": "native"
+                },
+                "ScriptBehaviour": {
+                    "origin": "native"
+                },
+                "Collider": {
+                    "origin": "native"
+                }
+            },
+            "parent": "ActorsWorld",
+            "id": "entity_c4f7861377c1"
         }
     ],
     "rules": [],
     "feature_metadata": {
         "scene_flow": {
-            "restart": "levels/main_scene.json"
+            "restart": "levels/main_scene.json",
+            "menu": "levels/main_menu.json"
         }
     },
     "schema_version": 2
