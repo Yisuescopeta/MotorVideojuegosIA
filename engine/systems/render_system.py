@@ -31,6 +31,7 @@ from engine.rendering.render_spatial_index import AABB, RenderSpatialIndex
 from engine.rendering.render_targets import RenderTargetPool
 from engine.rendering.tilemap_chunk_renderer import TilemapChunkRenderer
 from engine.resources.texture_manager import TextureManager
+from engine.resources.texture_resolution_cache import TextureResolutionCache
 from engine.utils.viewport import resolve_effective_camera2d
 
 if TYPE_CHECKING:
@@ -140,6 +141,23 @@ class RenderBatch:
 
 
 @dataclass(slots=True)
+class SpriteBatchItem:
+    entity: Entity
+    transform: Transform
+    sprite: Sprite
+    texture: Any
+    left: float
+    top: float
+    right: float
+    bottom: float
+    u_left: float
+    v_top: float
+    u_right: float
+    v_bottom: float
+    tint: tuple[int, int, int, int]
+
+
+@dataclass(slots=True)
 class RenderPass:
     name: str
     commands: list[RenderCommand] = field(default_factory=list)
@@ -171,12 +189,14 @@ class RenderSystem:
     DEBUG_DRAW_COLLIDERS: bool = False
     PASS_SEQUENCE: tuple[str, ...] = ("World", "Overlay", "Debug")
     TILEMAP_CHUNK_SIZE: int = 16
+    MAX_SPRITES_PER_BATCH: int = 1024
 
     def __init__(self) -> None:
         self._texture_manager: TextureManager = TextureManager()
         self._project_service: ProjectService | None = None
         self._asset_service: AssetService | None = None
         self._asset_resolver: AssetResolver | None = None  # Resuelto dinámicamente desde AssetService
+        self._texture_resolution_cache = TextureResolutionCache(self._texture_manager)
         self._render_targets: RenderTargetPool = RenderTargetPool()
         self._tilemap_chunk_renderer: TilemapChunkRenderer = TilemapChunkRenderer(self._render_targets, lambda reference, fallback_path: self._load_texture(reference, fallback_path))
         self._pipeline_planner: RenderPipelinePlanner2D = RenderPipelinePlanner2D(self)
@@ -196,6 +216,9 @@ class RenderSystem:
             "draw_calls": 0,
             "batches": 0,
             "state_changes": 0,
+            "sprite_batches": 0,
+            "batched_sprites": 0,
+            "sprite_batch_fallbacks": 0,
             "tilemap_chunks": 0,
             "tilemap_total_chunks": 0,
             "tilemap_visible_chunks": 0,
@@ -226,8 +249,14 @@ class RenderSystem:
         self._project_service = project_service
         self._asset_service = AssetService(project_service) if project_service is not None else None
         self._asset_resolver = self._asset_service.get_asset_resolver() if self._asset_service is not None else None
+        self._texture_resolution_cache = TextureResolutionCache(
+            self._texture_manager,
+            project_service=project_service,
+            asset_resolver=self._asset_resolver,
+        )
 
     def reset_project_resources(self) -> None:
+        self._texture_resolution_cache.clear()
         self._texture_manager.unload_all()
         self._tilemap_chunk_renderer.invalidate_cached_targets(self._tilemap_chunk_cache)
 
@@ -582,13 +611,17 @@ class RenderSystem:
         total_batches = 0
         total_state_changes = 0
         total_entities = 0
+        total_sprite_batches = 0
+        total_batched_sprites = 0
+        total_sprite_batch_fallbacks = 0
 
         for pass_name in self.PASS_SEQUENCE:
             commands = pass_commands[pass_name]
             batches = self._build_batches(commands)
             entity_count = sum(1 for command in commands if command["kind"] == "entity")
             render_commands = len(commands)
-            draw_calls = sum(self._command_draw_call_count(command) for command in commands)
+            sprite_stats = self._sprite_batch_plan_stats(commands)
+            draw_calls = sprite_stats["draw_calls"]
             tilemap_tile_draw_calls = sum(self._tilemap_command_draw_call_count(command) for command in commands)
             batch_count = len(batches)
             state_changes = max(0, batch_count - 1)
@@ -604,6 +637,9 @@ class RenderSystem:
                         "tilemap_tile_draw_calls": tilemap_tile_draw_calls,
                         "batches": batch_count,
                         "state_changes": state_changes,
+                        "sprite_batches": sprite_stats["sprite_batches"],
+                        "batched_sprites": sprite_stats["batched_sprites"],
+                        "sprite_batch_fallbacks": sprite_stats["sprite_batch_fallbacks"],
                     },
                 )
             )
@@ -613,6 +649,9 @@ class RenderSystem:
             total_tilemap_tile_draw_calls += tilemap_tile_draw_calls
             total_batches += batch_count
             total_state_changes += state_changes
+            total_sprite_batches += sprite_stats["sprite_batches"]
+            total_batched_sprites += sprite_stats["batched_sprites"]
+            total_sprite_batch_fallbacks += sprite_stats["sprite_batch_fallbacks"]
 
         totals = {
             "render_entities": total_entities,
@@ -620,6 +659,9 @@ class RenderSystem:
             "draw_calls": total_draw_calls,
             "batches": total_batches,
             "state_changes": total_state_changes,
+            "sprite_batches": total_sprite_batches,
+            "batched_sprites": total_batched_sprites,
+            "sprite_batch_fallbacks": total_sprite_batch_fallbacks,
             "tilemap_chunks": tilemap_chunks,
             "tilemap_total_chunks": tilemap_total_chunks,
             "tilemap_visible_chunks": tilemap_visible_chunks,
@@ -650,6 +692,66 @@ class RenderSystem:
         if command.kind == "tilemap_chunk":
             return self._tilemap_chunk_renderer.command_draw_call_count(command.to_payload())
         return 1
+
+    def _sprite_batch_plan_stats(self, commands: list[RenderCommand]) -> dict[str, int]:
+        draw_calls = 0
+        sprite_batches = 0
+        batched_sprites = 0
+        sprite_batch_fallbacks = 0
+        current_texture_key = ""
+        current_render_key: RenderBatchKey | None = None
+        current_batch_size = 0
+        api_available = self._sprite_batch_api_available()
+
+        def flush() -> None:
+            nonlocal draw_calls, sprite_batches, current_texture_key, current_render_key, current_batch_size
+            if current_batch_size:
+                draw_calls += 1
+                sprite_batches += 1
+                current_texture_key = ""
+                current_render_key = None
+                current_batch_size = 0
+
+        for command in commands:
+            entity, transform, sprite = self._simple_sprite_components(command)
+            if entity is None or transform is None or sprite is None:
+                flush()
+                draw_calls += self._command_draw_call_count(command)
+                if self._command_has_sprite(command):
+                    sprite_batch_fallbacks += 1
+                continue
+            if not api_available:
+                flush()
+                draw_calls += 1
+                sprite_batch_fallbacks += 1
+                continue
+
+            texture_key = self._sprite_texture_batch_key(sprite)
+            render_key = RenderBatchKey.from_payload(command.batch_key)
+            if not texture_key:
+                flush()
+                draw_calls += 1
+                sprite_batch_fallbacks += 1
+                continue
+            if current_batch_size and (
+                texture_key != current_texture_key
+                or render_key != current_render_key
+                or current_batch_size >= self.MAX_SPRITES_PER_BATCH
+            ):
+                flush()
+            if not current_batch_size:
+                current_texture_key = texture_key
+                current_render_key = render_key
+            current_batch_size += 1
+            batched_sprites += 1
+
+        flush()
+        return {
+            "draw_calls": draw_calls,
+            "sprite_batches": sprite_batches,
+            "batched_sprites": batched_sprites,
+            "sprite_batch_fallbacks": sprite_batch_fallbacks,
+        }
 
     def _tilemap_command_draw_call_count(self, command: RenderCommand) -> int:
         return self._tilemap_chunk_renderer.tile_draw_call_count(command.to_payload())
@@ -765,29 +867,75 @@ class RenderSystem:
         for batch in pass_data["batches"]:
             self._begin_batch_state(batch["key"])
             try:
-                for command in batch["commands"]:
-                    if command["kind"] == "entity":
-                        entity = command["entity"]
-                        transform = entity.get_component(Transform)
-                        if transform is None:
-                            continue
-                        self._render_entity(entity, transform)
-                    elif command["kind"] == "tilemap_chunk":
-                        self._draw_tilemap_chunk(command)
-                    elif command["debug_kind"] == "collider":
-                        entity = command["entity"]
-                        transform = entity.get_component(Transform)
-                        collider = entity.get_component(Collider)
-                        if transform is not None and collider is not None:
-                            self._draw_collider(transform, collider)
-                    elif command["debug_kind"] == "joint":
-                        self._draw_joint(command["entity"])
-                    elif command["debug_kind"] == "selection":
-                        self._draw_selection_highlight(command["entity"])
-                    else:
-                        self._draw_debug_primitive(command.get("geometry", {}))
+                self._execute_render_commands(batch["commands"])
             finally:
                 self._end_batch_state(batch["key"])
+
+    def _execute_render_commands(self, commands: list[Any]) -> None:
+        pending: list[SpriteBatchItem] = []
+        pending_texture_id = 0
+
+        def flush() -> None:
+            nonlocal pending, pending_texture_id
+            if not pending:
+                return
+            if not self._draw_sprite_batch(pending[0].texture, pending):
+                for item in pending:
+                    self._render_entity(item.entity, item.transform)
+            pending = []
+            pending_texture_id = 0
+
+        for command in commands:
+            item = self._build_sprite_batch_item(command)
+            if item is None:
+                flush()
+                self._execute_render_command(command)
+                continue
+
+            texture_id = int(getattr(item.texture, "id", 0))
+            if pending and (
+                texture_id != pending_texture_id or len(pending) >= self.MAX_SPRITES_PER_BATCH
+            ):
+                flush()
+            if not pending:
+                pending_texture_id = texture_id
+            pending.append(item)
+
+        flush()
+
+    def _execute_render_command(self, command: Any) -> None:
+        kind = str(command.get("kind", "")) if hasattr(command, "get") else str(getattr(command, "kind", ""))
+        entity = command.get("entity") if hasattr(command, "get") else getattr(command, "entity", None)
+        debug_kind = (
+            str(command.get("debug_kind", ""))
+            if hasattr(command, "get")
+            else str(getattr(command, "debug_kind", ""))
+        )
+        if kind == "entity":
+            if entity is None:
+                return
+            transform = entity.get_component(Transform)
+            if transform is not None:
+                self._render_entity(entity, transform)
+            return
+        if kind == "tilemap_chunk":
+            payload = command.to_payload() if hasattr(command, "to_payload") else command
+            self._draw_tilemap_chunk(payload)
+            return
+        if debug_kind == "collider":
+            if entity is None:
+                return
+            transform = entity.get_component(Transform)
+            collider = entity.get_component(Collider)
+            if transform is not None and collider is not None:
+                self._draw_collider(transform, collider)
+        elif debug_kind == "joint" and entity is not None:
+            self._draw_joint(entity)
+        elif debug_kind == "selection" and entity is not None:
+            self._draw_selection_highlight(entity)
+        else:
+            geometry = command.get("geometry", {}) if hasattr(command, "get") else getattr(command, "geometry", {})
+            self._draw_debug_primitive(geometry)
 
     def _render_debug_overlay(
         self,
@@ -1390,6 +1538,9 @@ class RenderSystem:
             "draw_calls": int(payload.get("draw_calls", 0)),
             "batches": int(payload.get("batches", 0)),
             "state_changes": int(payload.get("state_changes", 0)),
+            "sprite_batches": int(payload.get("sprite_batches", 0)),
+            "batched_sprites": int(payload.get("batched_sprites", 0)),
+            "sprite_batch_fallbacks": int(payload.get("sprite_batch_fallbacks", 0)),
             "tilemap_chunks": int(payload.get("tilemap_chunks", 0)),
             "tilemap_total_chunks": int(payload.get("tilemap_total_chunks", payload.get("tilemap_chunks", 0))),
             "tilemap_visible_chunks": int(payload.get("tilemap_visible_chunks", payload.get("tilemap_chunks", 0))),
@@ -1413,6 +1564,9 @@ class RenderSystem:
                     "tilemap_tile_draw_calls": int(stats.get("tilemap_tile_draw_calls", 0)),
                     "batches": int(stats.get("batches", 0)),
                     "state_changes": int(stats.get("state_changes", 0)),
+                    "sprite_batches": int(stats.get("sprite_batches", 0)),
+                    "batched_sprites": int(stats.get("batched_sprites", 0)),
+                    "sprite_batch_fallbacks": int(stats.get("sprite_batch_fallbacks", 0)),
                 }
                 for name, stats in payload.get("passes", {}).items()
             },
@@ -1425,12 +1579,11 @@ class RenderSystem:
         for pass_data in graph.get("passes", []):
             pass_name = str(pass_data.get("name", ""))
             commands = list(pass_data.get("commands", []))
-            draw_calls = 0
+            draw_calls = self._sprite_batch_plan_stats(commands)["draw_calls"]
             for command in commands:
                 if command.get("kind") == "tilemap_chunk":
+                    draw_calls -= self._command_draw_call_count(command)
                     draw_calls += self._tilemap_command_draw_call_count(command)
-                else:
-                    draw_calls += 1
             current = dict(stats.get("passes", {}).get(pass_name, {}))
             current["draw_calls"] = draw_calls
             pass_stats[pass_name] = current
@@ -1579,6 +1732,161 @@ class RenderSystem:
             if entity.get_component(Camera2D) is not None:
                 return
             self._draw_placeholder(entity.name, transform)
+
+    def _command_has_sprite(self, command: Any) -> bool:
+        kind = str(command.get("kind", "")) if hasattr(command, "get") else str(getattr(command, "kind", ""))
+        if kind != "entity":
+            return False
+        entity = command.get("entity") if hasattr(command, "get") else getattr(command, "entity", None)
+        if entity is None:
+            return False
+        sprite = entity.get_component(Sprite)
+        return sprite is not None and sprite.enabled and bool(sprite.texture_path)
+
+    def _simple_sprite_components(
+        self,
+        command: Any,
+    ) -> tuple[Entity | None, Transform | None, Sprite | None]:
+        kind = str(command.get("kind", "")) if hasattr(command, "get") else str(getattr(command, "kind", ""))
+        if kind != "entity":
+            return None, None, None
+        entity = command.get("entity") if hasattr(command, "get") else getattr(command, "entity", None)
+        if entity is None or not entity.active or entity.name.startswith("__tilecollider__"):
+            return None, None, None
+        transform = entity.get_component(Transform)
+        sprite = entity.get_component(Sprite)
+        if transform is None or sprite is None or not sprite.enabled or not sprite.texture_path:
+            return None, None, None
+        if not math.isclose(float(transform.rotation), 0.0, abs_tol=1e-9):
+            return None, None, None
+        animator = entity.get_component(Animator)
+        if animator is not None and animator.enabled:
+            return None, None, None
+        polygon = entity.get_component(Polygon2D)
+        if polygon is not None and polygon.enabled:
+            return None, None, None
+        return entity, transform, sprite
+
+    def _sprite_texture_batch_key(self, sprite: Sprite) -> str:
+        reference = sprite.get_texture_reference()
+        guid = str(reference.get("guid", "") or "")
+        path = str(reference.get("path", "") or sprite.texture_path).replace("\\", "/")
+        return f"guid:{guid}" if guid else f"path:{path}"
+
+    def _build_sprite_batch_item(self, command: Any) -> SpriteBatchItem | None:
+        if not self._sprite_batch_api_available():
+            return None
+        entity, transform, sprite = self._simple_sprite_components(command)
+        if entity is None or transform is None or sprite is None:
+            return None
+
+        texture = self._load_texture(
+            sprite.get_texture_reference(),
+            sprite.texture_path,
+            sync_callback=sprite.sync_texture_reference,
+        )
+        texture_id = int(getattr(texture, "id", 0))
+        texture_width = int(getattr(texture, "width", 0))
+        texture_height = int(getattr(texture, "height", 0))
+        if texture_id == 0 or texture_width <= 0 or texture_height <= 0:
+            return None
+
+        src_x = 0
+        src_y = 0
+        src_w = texture_width
+        src_h = texture_height
+        if sprite.source_slice and self._asset_service is not None:
+            slice_rect = self._asset_service.get_slice_rect(
+                sprite.get_texture_reference(),
+                sprite.source_slice,
+            )
+            if slice_rect is not None:
+                src_x = int(slice_rect.get("x", 0))
+                src_y = int(slice_rect.get("y", 0))
+                src_w = max(1, int(slice_rect.get("width", 0)))
+                src_h = max(1, int(slice_rect.get("height", 0)))
+
+        width = int((sprite.width if sprite.width > 0 else src_w) * transform.scale_x)
+        height = int((sprite.height if sprite.height > 0 else src_h) * transform.scale_y)
+        dest_x = float(transform.x - (width * sprite.origin_x))
+        dest_y = float(transform.y - (height * sprite.origin_y))
+        left = min(dest_x, dest_x + width)
+        right = max(dest_x, dest_x + width)
+        top = min(dest_y, dest_y + height)
+        bottom = max(dest_y, dest_y + height)
+
+        u_left = src_x / texture_width
+        u_right = (src_x + src_w) / texture_width
+        v_top = src_y / texture_height
+        v_bottom = (src_y + src_h) / texture_height
+        if bool(sprite.flip_x) ^ (width < 0):
+            u_left, u_right = u_right, u_left
+        if bool(sprite.flip_y) ^ (height < 0):
+            v_top, v_bottom = v_bottom, v_top
+
+        return SpriteBatchItem(
+            entity=entity,
+            transform=transform,
+            sprite=sprite,
+            texture=texture,
+            left=left,
+            top=top,
+            right=right,
+            bottom=bottom,
+            u_left=u_left,
+            v_top=v_top,
+            u_right=u_right,
+            v_bottom=v_bottom,
+            tint=sprite.tint,
+        )
+
+    def _sprite_batch_api_available(self) -> bool:
+        required = (
+            "rl_set_texture",
+            "rl_begin",
+            "rl_tex_coord2f",
+            "rl_color4ub",
+            "rl_vertex2f",
+            "rl_end",
+            "RL_QUADS",
+        )
+        return all(hasattr(rl, name) for name in required)
+
+    def _draw_sprite_batch(self, texture: Any, items: list[SpriteBatchItem]) -> bool:
+        if not items or not self._sprite_batch_api_available():
+            return False
+        began = False
+        try:
+            capacity_check = getattr(rl, "rl_check_render_batch_limit", None)
+            window_ready = getattr(rl, "is_window_ready", None)
+            if capacity_check is not None and window_ready is not None and bool(window_ready()):
+                capacity_check(len(items) * 4)
+            rl.rl_set_texture(int(texture.id))
+            rl.rl_begin(rl.RL_QUADS)
+            began = True
+            for item in items:
+                rl.rl_color4ub(*item.tint)
+                rl.rl_tex_coord2f(item.u_left, item.v_top)
+                rl.rl_vertex2f(item.left, item.top)
+                rl.rl_tex_coord2f(item.u_left, item.v_bottom)
+                rl.rl_vertex2f(item.left, item.bottom)
+                rl.rl_tex_coord2f(item.u_right, item.v_bottom)
+                rl.rl_vertex2f(item.right, item.bottom)
+                rl.rl_tex_coord2f(item.u_right, item.v_top)
+                rl.rl_vertex2f(item.right, item.top)
+            return True
+        except Exception:
+            return False
+        finally:
+            if began:
+                try:
+                    rl.rl_end()
+                except Exception:
+                    pass
+            try:
+                rl.rl_set_texture(0)
+            except Exception:
+                pass
 
     def _draw_animated_sprite(self, transform: Transform, animator: Animator) -> None:
         texture = self._load_texture(animator.get_sprite_sheet_reference(), animator.sprite_sheet, sync_callback=animator.sync_sprite_sheet_reference)
@@ -2036,14 +2344,7 @@ class RenderSystem:
         rl.draw_circle(int(end_x), int(end_y), 3.0, color)
 
     def _load_texture(self, reference: Union[str, dict[str, str]], fallback_path: str, sync_callback: Callable[..., Any] | None = None) -> rl.Texture:
-        entry = self._asset_resolver.resolve_entry(reference) if self._asset_resolver is not None else None
-        if entry is not None:
-            if sync_callback is not None:
-                sync_callback(entry.get("reference", {}))
-            return self._texture_manager.load(entry["absolute_path"], cache_key=entry.get("guid") or entry.get("path"))
-
-        resolved_path = self._resolve_texture_path(fallback_path)
-        return self._texture_manager.load(resolved_path, cache_key=resolved_path)
+        return self._texture_resolution_cache.resolve(reference, fallback_path, sync_callback)
 
     def _resolve_texture_path(self, path: str) -> str:
         if self._project_service is None or not path:
@@ -2128,5 +2429,6 @@ class RenderSystem:
             return None
 
     def cleanup(self) -> None:
+        self._texture_resolution_cache.clear()
         self._texture_manager.unload_all()
         self._render_targets.unload_all()

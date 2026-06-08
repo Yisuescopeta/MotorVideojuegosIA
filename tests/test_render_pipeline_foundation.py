@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from engine.components.renderorder2d import RenderOrder2D
@@ -149,6 +150,28 @@ class RenderPipelineFoundationTests(unittest.TestCase):
         compose_target.assert_called_once()
         draw_circle.assert_called_once()
         draw_rectangle_lines.assert_called_once()
+
+    def test_typed_executor_uses_same_sprite_batch_path_as_legacy_executor(self) -> None:
+        world = World()
+        self._make_sprite_entity(world, "A", x=0.0)
+        self._make_sprite_entity(world, "B", x=32.0)
+        render_system = RenderSystem()
+        frame_plan = render_system._build_frame_plan_model(world, viewport_size=(320.0, 180.0))
+
+        with (
+            patch.object(
+                render_system,
+                "_load_texture",
+                return_value=SimpleNamespace(id=8, width=32, height=32),
+            ),
+            patch.object(render_system, "_draw_sprite_batch", return_value=True) as draw_batch,
+            patch.object(render_system, "_render_entity") as render_entity,
+        ):
+            render_system._pipeline_executor.render_pass(frame_plan, "World")
+
+        draw_batch.assert_called_once()
+        self.assertEqual([item.entity.name for item in draw_batch.call_args.args[1]], ["A", "B"])
+        render_entity.assert_not_called()
 
 
 if __name__ == "__main__":

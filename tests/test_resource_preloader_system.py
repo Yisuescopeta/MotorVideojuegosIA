@@ -3,6 +3,7 @@ tests/test_resource_preloader_system.py - Tests para ResourcePreloaderSystem.
 """
 
 import unittest
+from pathlib import Path
 from unittest.mock import Mock
 
 from engine.assets.asset_reference import normalize_asset_reference
@@ -90,6 +91,23 @@ class TestResourcePreloaderSystem(unittest.TestCase):
         self.assertEqual(texture_count, 1)
         self.assertEqual(resolved_count, 1)
         self.assertIn("test-guid-123", self.texture_manager.loaded)
+
+    def test_preload_fallback_resolves_relative_path_before_loading(self) -> None:
+        project_service = Mock()
+        project_service.resolve_path.return_value = Path("C:/project/assets/legacy.png")
+        self.system._project_service = project_service
+
+        texture_count, resolved_count = self.system._load_references(
+            [{"guid": "", "path": "assets/legacy.png"}],
+            include_textures=True,
+        )
+
+        self.assertEqual((texture_count, resolved_count), (1, 0))
+        project_service.resolve_path.assert_called_once_with("assets/legacy.png")
+        self.assertEqual(
+            self.texture_manager.loaded,
+            {"C:/project/assets/legacy.png": "C:/project/assets/legacy.png"},
+        )
 
     def test_preload_auto_scan_sprite(self) -> None:
         """Verifica que se detecte y precargue texturas de Sprite."""
