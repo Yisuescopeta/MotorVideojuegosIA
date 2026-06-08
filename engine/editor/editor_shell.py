@@ -47,6 +47,7 @@ class EditorShell:
     def attach_layout(self, layout: EditorLayout) -> EditorLayout:
         layout.bind_shell(self.state, self.panel_slots)
         self.layout = layout
+        self.hierarchy_panel._layout = layout
         return layout
 
     def ensure_layout(self, screen_width: int, screen_height: int) -> EditorLayout:
@@ -59,6 +60,7 @@ class EditorShell:
             )
         else:
             self.layout.bind_shell(self.state, self.panel_slots)
+        self.hierarchy_panel._layout = self.layout
         return self.layout
 
     def bind_scene_manager(self, manager: Any) -> None:
