@@ -697,13 +697,13 @@ class AnimatorPanel:
         payload["speed"] = max(0.01, float(speed))
         return self._replace_animator_payload(world, entity_name, payload)
 
-    def get_selected_frame_collider_context(self, world: Any) -> Dict[str, Any]:
+    def get_selected_frame_collider_context(self, world: Any, frame_index: Optional[int] = None) -> Dict[str, Any]:
         context = self.get_selection_context(world)
         result: Dict[str, Any] = {
             "valid_frame": False,
             "entity_name": str(context.get("entity_name", "") or ""),
             "state_name": str(context.get("selected_state_name", "") or ""),
-            "frame_index": int(self.selected_frame_index),
+            "frame_index": int(self.selected_frame_index if frame_index is None else frame_index),
             "status_label": "No frame selected",
             "has_base": False,
             "has_override": False,
@@ -731,7 +731,7 @@ class AnimatorPanel:
         if animation is None:
             return result
 
-        frame_index = int(self.selected_frame_index)
+        frame_index = int(result["frame_index"])
         if frame_index < 0 or frame_index >= animation.get_frame_count():
             return result
 
@@ -1373,6 +1373,7 @@ class AnimatorPanel:
         remaining_height = max(48.0, rect.height - (current_y - rect.y) - 170.0)
         preview_rect = rl.Rectangle(rect.x + 10, current_y, rect.width - 20, min(rect.width - 20, remaining_height))
         self._draw_preview_texture(context.get("sprite_sheet", ""), preview_name, preview_rect)
+        self._draw_preview_frame_collider_overlay(world, context, preview_name, preview_rect, preview_index)
         current_y += int(preview_rect.height + 8)
         rl.draw_text(f"{len(slice_names)} frames", int(rect.x + 10), int(current_y), 10, self.DIM_COLOR)
         current_y += 22
@@ -1425,6 +1426,117 @@ class AnimatorPanel:
             fill_color=rl.Color(32, 32, 32, 255),
             border_color=self.BORDER_COLOR,
         )
+
+    def _draw_preview_frame_collider_overlay(
+        self,
+        world: Any,
+        context: Dict[str, Any],
+        slice_name: str,
+        preview_rect: rl.Rectangle,
+        frame_index: int,
+    ) -> None:
+        if not self._frame_collider_preview_enabled:
+            return
+        if self._asset_service is None:
+            return
+
+        frame_context = self.get_selected_frame_collider_context(world, frame_index)
+        if (
+            not frame_context["valid_frame"]
+            or not frame_context["has_effective"]
+            or frame_context["entity_name"] != self._frame_collider_preview_entity_name
+            or frame_context["state_name"] != self._frame_collider_preview_state_name
+        ):
+            return
+
+        payload = frame_context["effective_payload"]
+        if not isinstance(payload, dict) or not bool(payload.get("enabled", True)):
+            return
+
+        asset_path = str(context.get("sprite_sheet", "") or "")
+        slice_rect = self._asset_service.get_slice_rect(asset_path, slice_name)
+        if slice_rect is None:
+            return
+
+        source_w = max(1.0, float(slice_rect.get("width", 1.0)))
+        source_h = max(1.0, float(slice_rect.get("height", 1.0)))
+
+        scale = min(preview_rect.width / source_w, preview_rect.height / source_h)
+        dest_w = source_w * scale
+        dest_h = source_h * scale
+
+        dest_x = preview_rect.x + (preview_rect.width - dest_w) * 0.5
+        dest_y = preview_rect.y + (preview_rect.height - dest_h) * 0.5
+
+        frame_center_x = dest_x + dest_w * 0.5
+        frame_center_y = dest_y + dest_h * 0.5
+
+        offset_x = float(payload.get("offset_x", 0.0) or 0.0) * scale
+        offset_y = float(payload.get("offset_y", 0.0) or 0.0) * scale
+
+        collider_center_x = frame_center_x + offset_x
+        collider_center_y = frame_center_y + offset_y
+
+        is_trigger = bool(payload.get("is_trigger", False))
+        outline = rl.Color(255, 190, 80, 255) if is_trigger else rl.Color(80, 220, 120, 255)
+        fill = rl.Color(255, 190, 80, 35) if is_trigger else rl.Color(80, 220, 120, 35)
+
+        shape_type = str(payload.get("shape_type", "box") or "box").strip().lower()
+
+        if shape_type == "circle":
+            radius = float(payload.get("radius", 0.0) or 0.0) * scale
+            if radius <= 0.0:
+                radius = float(payload.get("width", 32.0) or 32.0) * scale * 0.5
+
+            rl.draw_circle(int(collider_center_x), int(collider_center_y), radius, fill)
+            rl.draw_circle_lines(int(collider_center_x), int(collider_center_y), radius, outline)
+            return
+
+        if shape_type == "polygon":
+            raw_points = payload.get("points", [])
+            points: list[rl.Vector2] = []
+
+            if isinstance(raw_points, list):
+                for point in raw_points:
+                    if not isinstance(point, (list, tuple)) or len(point) < 2:
+                        continue
+                    try:
+                        px = float(point[0])
+                        py = float(point[1])
+                    except (TypeError, ValueError):
+                        continue
+                    points.append(
+                        rl.Vector2(
+                            collider_center_x + px * scale,
+                            collider_center_y + py * scale,
+                        )
+                    )
+
+            if len(points) >= 2:
+                for index, point in enumerate(points):
+                    next_point = points[(index + 1) % len(points)]
+                    rl.draw_line_ex(point, next_point, 2.0, outline)
+            return
+
+        if shape_type == "capsule":
+            radius = float(payload.get("radius", 0.0) or 0.0)
+            capsule_height = float(payload.get("capsule_height", 0.0) or 0.0)
+
+            width = max(1.0, radius * 2.0) * scale
+            height = max(1.0, radius * 2.0 + capsule_height) * scale
+        else:
+            width = float(payload.get("width", 32.0) or 32.0) * scale
+            height = float(payload.get("height", 32.0) or 32.0) * scale
+
+        collider_rect = rl.Rectangle(
+            collider_center_x - width * 0.5,
+            collider_center_y - height * 0.5,
+            width,
+            height,
+        )
+
+        rl.draw_rectangle_rec(collider_rect, fill)
+        rl.draw_rectangle_lines_ex(collider_rect, 2, outline)
 
     def _draw_slice_picker_modal(self, world: Any, context: Dict[str, Any], parent_rect: rl.Rectangle) -> None:
         target = self._get_slice_picker_target(context)
