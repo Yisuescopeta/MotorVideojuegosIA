@@ -4366,8 +4366,8 @@
             "components": {
                 "Transform": {
                     "enabled": true,
-                    "x": 0.0,
-                    "y": 0.0,
+                    "x": -0.35713958740234375,
+                    "y": -1.0714263916015625,
                     "rotation": 0.0,
                     "scale_x": 1.0,
                     "scale_y": 1.0
