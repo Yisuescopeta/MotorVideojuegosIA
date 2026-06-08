@@ -173,7 +173,7 @@ class DockLayout:
         hierarchy = DockArea("hierarchy", ["HIERARCHY"], "HIERARCHY")
         center = DockArea("center", ["SCENE", "GAME", "FLOW", "ANIMATOR"], "SCENE")
         inspector = DockArea("inspector", ["INSPECTOR"], "INSPECTOR")
-        bottom = DockArea("bottom", ["PROJECT", "FLOW_PANEL", "CONSOLE", "TERMINAL", "AGENT", "EXPORT", "ASSETS"], "PROJECT")
+        bottom = DockArea("bottom", ["PROJECT", "FLOW_PANEL", "CONSOLE", "TERMINAL", "AGENT", "EXPORT"], "PROJECT")
         center_and_inspector = DockSplit("main_right", "horizontal", 0.72, center, inspector)
         main = DockSplit("main", "horizontal", 0.18, hierarchy, center_and_inspector)
         root = DockSplit("root", "vertical", 0.74, main, bottom)

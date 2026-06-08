@@ -123,7 +123,6 @@ _PANEL_SLOT_FIELDS = (
     "terminal_panel",
     "agent_panel",
     "export_panel",
-    "asset_browser",
 )
 
 
@@ -146,7 +145,6 @@ class EditorLayout:
     terminal_panel: Any
     agent_panel: Any
     export_panel: Any
-    asset_browser: Any
 
     # ========================================
     # Layout Dimensions (Unity-style)
@@ -909,7 +907,7 @@ class EditorLayout:
         bottom_tab = self.dock_layout.active_tab("bottom")
         if bottom_tab == "FLOW_PANEL":
             bottom_tab = "FLOW"
-        if bottom_tab in {"PROJECT", "FLOW", "CONSOLE", "TERMINAL", "AGENT", "EXPORT", "ASSETS"}:
+        if bottom_tab in {"PROJECT", "FLOW", "CONSOLE", "TERMINAL", "AGENT", "EXPORT"}:
             self.active_bottom_tab = bottom_tab
 
     def update_layout(self, width: int, height: int, update_texture: bool = True) -> None:
@@ -1475,15 +1473,7 @@ class EditorLayout:
                     int(self.bottom_content_rect.height),
                 )
                 self._panel_profile["export"] = time.perf_counter() - t0
-            elif self.active_bottom_tab == "ASSETS" and self.asset_browser:
-                t0 = time.perf_counter()
-                self.asset_browser.render(
-                    int(self.bottom_content_rect.x),
-                    int(self.bottom_content_rect.y),
-                    int(self.bottom_content_rect.width),
-                    int(self.bottom_content_rect.height),
-                )
-                self._panel_profile["assets"] = time.perf_counter() - t0
+
         except Exception as exc:
             log_err(f"Bottom panel render error ({self.active_bottom_tab}): {exc}")
             safe_reset_clip_state()
@@ -2184,8 +2174,7 @@ class EditorLayout:
             self.active_bottom_tab = "AGENT"
         elif action_id == "bottom_export":
             self.active_bottom_tab = "EXPORT"
-        elif action_id == "bottom_assets":
-            self.active_bottom_tab = "ASSETS"
+
         elif action_id == "about":
             self.show_about_modal = True
 
