@@ -540,6 +540,8 @@ class HierarchyPanel:
         if in_panel and not self._input_blocked and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_RIGHT):
             target_entity = world.get_entity(self.hovered_entity_id) if self.hovered_entity_id is not None else None
             self._context_target_name = target_entity.name if target_entity else None
+            if target_entity is not None:
+                self._set_selected_entity(world, target_entity.name)
             from engine.editor.ui_core.controls.context_menu import ContextMenuItem, ContextMenuModel
             items = [
                 ContextMenuItem(id="create_entity", label="Create Entity"),
