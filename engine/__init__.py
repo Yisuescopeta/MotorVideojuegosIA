@@ -62,6 +62,15 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
 
 __all__ = list(_LAZY_IMPORTS)
 
+try:
+    from engine.systems.simple_sprite_batcher import install_simple_sprite_batcher as _install_simple_sprite_batcher
+
+    _install_simple_sprite_batcher()
+except Exception:
+    # The batcher is an internal render optimization.  Import-time failures must
+    # not make headless validation or serialization imports fail.
+    pass
+
 
 def __getattr__(name: str) -> Any:
     if name not in _LAZY_IMPORTS:
