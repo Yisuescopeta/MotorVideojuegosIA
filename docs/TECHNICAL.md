@@ -95,10 +95,19 @@ activo. Los sistemas actuales incluyen render, fisica, colisiones, animacion,
 input, controladores de personaje/jugador, scripts, audio y UI.
 
 `RenderSystem` conserva el flujo visible actual del render 2D: render graph,
-sorting layers, batching base, tilemap chunks, debug geometry y render targets
-con fallback seguro cuando no hay backend grafico disponible. `engine/rendering/`
-añade una foundation modular con planner/executor tipados para adaptar ese
-flujo legacy y preparar fases futuras sin sustituir todavia el sistema actual.
+sorting layers, batching, tilemap chunks, debug geometry y render targets con
+fallback seguro cuando no hay backend grafico disponible. Los sprites simples
+consecutivos que comparten textura y `RenderBatchKey` se emiten como quads en
+un unico envio `rlgl`. Sprites animados, poligonos, rotacion, texturas invalidas
+o backends sin la API requerida conservan el dibujo individual existente. El
+flush ante cambios de textura, estado o comandos no compatibles preserva el
+orden visual. El planner/executor tipado y el flujo legacy reutilizan la misma
+ejecucion de batches.
+
+Las metricas mantienen `render_entities` como numero de entidades y separan el
+trabajo agrupado mediante `sprite_batches`, `batched_sprites` y
+`sprite_batch_fallbacks`. `draw_calls` cuenta cada envio agrupado como una
+llamada, no una llamada por sprite.
 `Animator` mantiene compatibilidad con el flujo actual basado en clips por
 nombre (`animations`, `default_state`, `current_state`, `play()` y
 `AnimationData.on_complete`) y ahora admite foundation opcional de state

@@ -16,6 +16,7 @@ from engine.components.uitext import UIText
 from engine.ecs.entity import Entity
 from engine.ecs.world import World
 from engine.resources.texture_manager import TextureManager
+from engine.resources.texture_resolution_cache import TextureResolutionCache
 from engine.systems.ui_system import UISystem
 
 
@@ -27,16 +28,24 @@ class UIRenderSystem:
         self._project_service: Any = None
         self._asset_service: AssetService | None = None
         self._asset_resolver: Any = None
+        self._texture_resolution_cache = TextureResolutionCache(self._texture_manager)
 
     def set_project_service(self, project_service: Any) -> None:
         self._project_service = project_service
         self._asset_service = AssetService(project_service) if project_service is not None else None
         self._asset_resolver = self._asset_service.get_asset_resolver() if self._asset_service is not None else None
+        self._texture_resolution_cache = TextureResolutionCache(
+            self._texture_manager,
+            project_service=project_service,
+            asset_resolver=self._asset_resolver,
+        )
 
     def reset_project_resources(self) -> None:
+        self._texture_resolution_cache.clear()
         self._texture_manager.unload_all()
 
     def cleanup(self) -> None:
+        self._texture_resolution_cache.clear()
         self._texture_manager.unload_all()
 
     def render(self, world: World, ui_system: UISystem) -> None:
@@ -180,15 +189,7 @@ class UIRenderSystem:
         normalized_ref = normalize_asset_reference(reference)
         if not reference_has_identity(normalized_ref):
             return SimpleNamespace(id=0, width=0, height=0)
-        entry = self._asset_resolver.resolve_entry(normalized_ref) if self._asset_resolver is not None else None
-        if entry is not None:
-            return self._texture_manager.load(entry["absolute_path"], cache_key=entry.get("guid") or entry.get("path"))
-        path = normalized_ref.get("path", "")
-        if self._project_service is not None and path:
-            path = self._project_service.resolve_path(path).as_posix()
-        if not path:
-            return SimpleNamespace(id=0, width=0, height=0)
-        return self._texture_manager.load(path, cache_key=path)
+        return self._texture_resolution_cache.resolve(normalized_ref, normalized_ref.get("path", ""))
 
     def _resolve_source_rect(self, asset_ref: Any, slice_name: str, texture: Any) -> rl.Rectangle:
         if self._asset_service is not None and slice_name:

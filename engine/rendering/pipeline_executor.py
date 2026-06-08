@@ -43,10 +43,7 @@ class RenderPipelineExecutor2D:
         for batch in pass_plan.batches:
             self._owner._begin_batch_state(batch.key)
             try:
-                for command in batch.commands:
-                    handler = self._command_handlers.get(command.kind)
-                    if handler is not None:
-                        handler(command)
+                self._owner._execute_render_commands(batch.commands)
             finally:
                 self._owner._end_batch_state(batch.key)
 

@@ -8,9 +8,11 @@ from unittest.mock import patch
 
 import pyray as rl
 from engine.assets.asset_service import AssetService
+from engine.components.animator import Animator
 from engine.components.camera2d import Camera2D
 from engine.components.collider import Collider
 from engine.components.joint2d import Joint2D
+from engine.components.polygon2d import Polygon2D
 from engine.components.renderorder2d import RenderOrder2D
 from engine.components.renderstyle2d import RenderStyle2D
 from engine.components.sprite import Sprite
@@ -378,7 +380,134 @@ class RenderGraphTests(unittest.TestCase):
         self.assertEqual([batch["entity_names"] for batch in world_pass["batches"]], [["A", "B"], ["C"], ["D"], ["E"]])
         self.assertEqual(world_pass["stats"]["batches"], 4)
         self.assertEqual(graph["totals"]["render_commands"], 5)
-        self.assertEqual(graph["totals"]["draw_calls"], 5)
+        self.assertEqual(graph["totals"]["draw_calls"], 4)
+        self.assertEqual(graph["totals"]["sprite_batches"], 4)
+        self.assertEqual(graph["totals"]["batched_sprites"], 5)
+        self.assertEqual(graph["totals"]["sprite_batch_fallbacks"], 0)
+
+    def test_simple_sprite_batch_emits_one_rlgl_quad_batch(self) -> None:
+        world = World()
+        self._make_sprite_entity(world, "A", x=0.0)
+        self._make_sprite_entity(world, "B", x=32.0)
+        render_system = RenderSystem()
+        commands = render_system._build_render_graph(world)["passes"][0]["commands"]
+        texture = SimpleNamespace(id=7, width=64, height=64)
+
+        with (
+            patch.object(render_system, "_load_texture", return_value=texture),
+            patch.object(render_system, "_render_entity") as render_entity,
+            patch("pyray.rl_set_texture") as set_texture,
+            patch("pyray.rl_begin") as begin,
+            patch("pyray.rl_end") as end,
+            patch("pyray.rl_color4ub") as color,
+            patch("pyray.rl_tex_coord2f") as tex_coord,
+            patch("pyray.rl_vertex2f") as vertex,
+            patch("pyray.draw_texture_pro") as draw_texture,
+        ):
+            render_system._execute_render_commands(commands)
+
+        begin.assert_called_once_with(rl.RL_QUADS)
+        end.assert_called_once()
+        self.assertEqual(set_texture.call_args_list[-1].args, (0,))
+        self.assertEqual(color.call_count, 2)
+        self.assertEqual(tex_coord.call_count, 8)
+        self.assertEqual(vertex.call_count, 8)
+        render_entity.assert_not_called()
+        draw_texture.assert_not_called()
+
+    def test_sprite_batch_item_preserves_geometry_uv_flip_tint_and_slice(self) -> None:
+        world = World()
+        entity = self._make_sprite_entity(world, "Slice", x=100.0)
+        transform = entity.get_component(Transform)
+        transform.y = 50.0
+        transform.scale_x = 2.0
+        transform.scale_y = 3.0
+        sprite = entity.get_component(Sprite)
+        sprite.width = 20
+        sprite.height = 10
+        sprite.origin_x = 0.25
+        sprite.origin_y = 0.5
+        sprite.flip_x = True
+        sprite.tint = (10, 20, 30, 40)
+        sprite.source_slice = "piece"
+
+        render_system = RenderSystem()
+        render_system._asset_service = SimpleNamespace(
+            get_slice_rect=lambda *_args: {"x": 10, "y": 20, "width": 30, "height": 40}
+        )
+        command = render_system._build_render_graph(world)["passes"][0]["commands"][0]
+        texture = SimpleNamespace(id=9, width=128, height=64)
+
+        with patch.object(render_system, "_load_texture", return_value=texture):
+            item = render_system._build_sprite_batch_item(command)
+
+        self.assertIsNotNone(item)
+        self.assertEqual((item.left, item.top, item.right, item.bottom), (90.0, 35.0, 130.0, 65.0))
+        self.assertEqual((item.u_left, item.u_right), (40 / 128, 10 / 128))
+        self.assertEqual((item.v_top, item.v_bottom), (20 / 64, 60 / 64))
+        self.assertEqual(item.tint, (10, 20, 30, 40))
+
+    def test_sprite_batch_fallbacks_cover_rotation_animation_polygon_texture_and_api(self) -> None:
+        cases = ("rotation", "animator", "polygon", "invalid_texture", "missing_api")
+        for case in cases:
+            with self.subTest(case=case):
+                world = World()
+                entity = self._make_sprite_entity(world, "Fallback", x=0.0)
+                if case == "rotation":
+                    entity.get_component(Transform).rotation = 15.0
+                elif case == "animator":
+                    entity.add_component(Animator(sprite_sheet="assets/animated.png"))
+                elif case == "polygon":
+                    entity.add_component(Polygon2D(points=[[0, 0], [1, 0], [0, 1]]))
+
+                render_system = RenderSystem()
+                command = render_system._build_render_graph(world)["passes"][0]["commands"][0]
+                texture = (
+                    SimpleNamespace(id=0, width=0, height=0)
+                    if case == "invalid_texture"
+                    else SimpleNamespace(id=3, width=32, height=32)
+                )
+                api_available = case != "missing_api"
+                with (
+                    patch.object(render_system, "_load_texture", return_value=texture),
+                    patch.object(render_system, "_sprite_batch_api_available", return_value=api_available),
+                    patch.object(render_system, "_draw_sprite_batch") as draw_batch,
+                    patch.object(render_system, "_render_entity") as render_entity,
+                ):
+                    render_system._execute_render_commands([command])
+
+                draw_batch.assert_not_called()
+                render_entity.assert_called_once()
+
+    def test_sprite_batch_flushes_around_non_batchable_command_without_reordering(self) -> None:
+        world = World()
+        self._make_sprite_entity(world, "A", x=0.0)
+        middle = self._make_sprite_entity(world, "B", x=32.0)
+        middle.get_component(Transform).rotation = 5.0
+        self._make_sprite_entity(world, "C", x=64.0)
+        render_system = RenderSystem()
+        commands = render_system._build_render_graph(world)["passes"][0]["commands"]
+        events: list[str] = []
+
+        def draw_batch(_texture, items):
+            events.append("batch:" + ",".join(item.entity.name for item in items))
+            return True
+
+        def draw_fallback(entity, _transform):
+            events.append("fallback:" + entity.name)
+
+        with (
+            patch.object(
+                render_system,
+                "_load_texture",
+                return_value=SimpleNamespace(id=4, width=32, height=32),
+            ),
+            patch.object(render_system, "_draw_sprite_batch", side_effect=draw_batch),
+            patch.object(render_system, "_render_entity", side_effect=draw_fallback),
+        ):
+            render_system._execute_render_commands(commands)
+
+        self.assertEqual(events, ["batch:A", "fallback:B", "batch:C"])
 
     def test_render_stats_public_graph_and_internal_batch_keys_stay_compatible(self) -> None:
         world = World()
@@ -405,9 +534,12 @@ class RenderGraphTests(unittest.TestCase):
         expected_totals = {
             "render_entities": 4,
             "render_commands": 6,
-            "draw_calls": 5,
+            "draw_calls": 4,
             "batches": 5,
             "state_changes": 2,
+            "sprite_batches": 3,
+            "batched_sprites": 4,
+            "sprite_batch_fallbacks": 0,
             "tilemap_chunks": 1,
             "tilemap_total_chunks": 1,
             "tilemap_visible_chunks": 1,
@@ -424,10 +556,13 @@ class RenderGraphTests(unittest.TestCase):
                 "World": {
                     "render_entities": 3,
                     "render_commands": 4,
-                    "draw_calls": 3,
+                    "draw_calls": 2,
                     "tilemap_tile_draw_calls": 0,
                     "batches": 3,
                     "state_changes": 2,
+                    "sprite_batches": 2,
+                    "batched_sprites": 3,
+                    "sprite_batch_fallbacks": 0,
                 },
                 "Overlay": {
                     "render_entities": 1,
@@ -436,6 +571,9 @@ class RenderGraphTests(unittest.TestCase):
                     "tilemap_tile_draw_calls": 0,
                     "batches": 1,
                     "state_changes": 0,
+                    "sprite_batches": 1,
+                    "batched_sprites": 1,
+                    "sprite_batch_fallbacks": 0,
                 },
                 "Debug": {
                     "render_entities": 0,
@@ -444,6 +582,9 @@ class RenderGraphTests(unittest.TestCase):
                     "tilemap_tile_draw_calls": 0,
                     "batches": 1,
                     "state_changes": 0,
+                    "sprite_batches": 0,
+                    "batched_sprites": 0,
+                    "sprite_batch_fallbacks": 0,
                 },
             },
         }
@@ -662,11 +803,14 @@ class RenderGraphTests(unittest.TestCase):
 
         self.assertEqual(stats["render_entities"], 5000)
         self.assertEqual(stats["render_commands"], 5000)
-        self.assertEqual(stats["draw_calls"], 5000)
+        self.assertEqual(stats["draw_calls"], 5)
         self.assertEqual(stats["batches"], 1)
+        self.assertEqual(stats["sprite_batches"], 5)
+        self.assertEqual(stats["batched_sprites"], 5000)
+        self.assertEqual(stats["sprite_batch_fallbacks"], 0)
         self.assertEqual(stats["passes"]["World"]["batches"], 1)
         self.assertEqual(stats["passes"]["World"]["render_commands"], 5000)
-        self.assertEqual(stats["passes"]["World"]["draw_calls"], 5000)
+        self.assertEqual(stats["passes"]["World"]["draw_calls"], 5)
 
     def test_debug_graph_includes_joint_commands_when_debug_overlay_is_enabled(self) -> None:
         world = World()

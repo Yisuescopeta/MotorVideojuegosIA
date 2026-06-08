@@ -43,6 +43,14 @@ Sprites y preparacion de render headless:
 py -m tools.benchmark_run --scenario many_sprite_entities --mode play --frames 120 --entity-count 10000 --columns 100 --out reports/sprites_10k.json
 ```
 
+La preparacion headless agrupa sprites simples consecutivos por textura y
+estado de render. `render_entities` conserva el numero de entidades;
+`draw_calls` representa los envios planificados; `sprite_batches` cuenta envios
+`rlgl`; `batched_sprites` cuenta sprites agrupados; y
+`sprite_batch_fallbacks` cuenta sprites que mantienen el camino individual.
+El runtime hace flush al cambiar textura o estado, alcanzar el limite
+conservador del buffer o encontrar un comando no compatible.
+
 Edicion de `Transform.x` en escena grande:
 
 ```bash
@@ -219,3 +227,26 @@ Clasificacion de riesgo:
 - No se puede afirmar preexistencia definitiva sin ejecutar las mismas
   validaciones en `origin/main`.
 - El fallo de disponibilidad de `python` es de entorno local, no de la rama.
+
+## Cache de resolucion de texturas
+
+El render de sprites y UI conserva por instancia la resolucion de cada
+referencia de textura. Una vez resuelta, la ruta caliente reutiliza la ruta
+absoluta, la clave del `TextureManager` y la referencia canonica, evitando
+consultas repetidas al catalogo y llamadas a `Path.resolve()`/`stat()` por
+sprite y frame.
+
+La cache se invalida al cambiar el servicio de proyecto, reiniciar recursos o
+cerrar el sistema. Si una textura valida deja de estar registrada en
+`TextureManager`, se carga de nuevo desde la ruta ya resuelta. El preloader
+tambien convierte los fallbacks relativos a rutas de proyecto antes de cargar.
+
+Benchmark local del proyecto RPG, ventana oculta de 844x390, 600 frames con
+gameplay y camara activos, excluyendo calentamiento:
+
+- `RuntimeProjectService`: media 2.09 ms, p95 2.66 ms, p99 3.75 ms.
+- `ProjectService`: media 3.15 ms, p95 4.55 ms, p99 4.98 ms.
+- Las metricas de texturas permanecieron estables durante ambas muestras.
+
+Antes del cambio, el mismo recorrido consumia aproximadamente 28-30 ms por
+frame porque la resolucion de filesystem representaba cerca de 24 ms.

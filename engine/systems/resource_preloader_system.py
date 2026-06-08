@@ -24,6 +24,7 @@ class ResourcePreloaderSystem:
     """Sistema que precarga assets antes de que comience el gameplay."""
 
     def __init__(self) -> None:
+        self._project_service: Any = None
         self._asset_service: Optional[AssetService] = None
         self._texture_manager: Optional[TextureManager] = None
         self._budgeted_world_id: int | None = None
@@ -33,6 +34,7 @@ class ResourcePreloaderSystem:
         self._budgeted_include_textures: bool = True
 
     def set_project_service(self, project_service: Any) -> None:
+        self._project_service = project_service
         self._asset_service = AssetService(project_service) if project_service is not None else None
         # El TextureManager se provee externamente para reutilizar el mismo cache
 
@@ -121,7 +123,12 @@ class ResourcePreloaderSystem:
                 # Fallback por path directo si no hay catalogo
                 path = ref.get("path", "")
                 if path and include_textures and texture_loader_ready and self._texture_manager is not None:
-                    self._texture_manager.load(path, cache_key=path)
+                    resolved_path = (
+                        self._project_service.resolve_path(path).as_posix()
+                        if self._project_service is not None
+                        else path
+                    )
+                    self._texture_manager.load(resolved_path, cache_key=resolved_path)
                     texture_count += 1
 
         return texture_count, resolved_count
