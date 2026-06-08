@@ -1715,23 +1715,37 @@ class RenderSystem:
     def _render_entity(self, entity: Entity, transform: Transform) -> None:
         if entity.name.startswith("__tilecollider__"):
             return
+
         animator = entity.get_component(Animator)
         sprite = entity.get_component(Sprite)
+
+        has_visual_component = animator is not None or sprite is not None
+
         drew_something = False
+
         if animator is not None and animator.enabled and animator.sprite_sheet:
             self._draw_animated_sprite(transform, animator)
             drew_something = True
+
         if sprite is not None and sprite.enabled and sprite.texture_path:
             self._draw_sprite(transform, sprite)
             drew_something = True
-        if not drew_something:
-            polygon = entity.get_component(Polygon2D)
-            if polygon is not None and polygon.enabled and len(polygon.points) >= 3:
-                self._draw_polygon(transform, polygon)
-                return
-            if entity.get_component(Camera2D) is not None:
-                return
-            self._draw_placeholder(entity.name, transform)
+
+        if drew_something:
+            return
+
+        polygon = entity.get_component(Polygon2D)
+        if polygon is not None and polygon.enabled and len(polygon.points) >= 3:
+            self._draw_polygon(transform, polygon)
+            return
+
+        if entity.get_component(Camera2D) is not None:
+            return
+
+        if has_visual_component:
+            return
+
+        self._draw_placeholder(entity.name, transform)
 
     def _command_has_sprite(self, command: Any) -> bool:
         kind = str(command.get("kind", "")) if hasattr(command, "get") else str(getattr(command, "kind", ""))

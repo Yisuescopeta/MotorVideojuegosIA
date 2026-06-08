@@ -112,7 +112,7 @@ class RenderSpriteAnimatorDispatchTests(unittest.TestCase):
         self.assertFalse(self.tracker.drew_polygon)
         self.assertFalse(self.tracker.drew_placeholder)
 
-    def test_disabled_sprite_falls_through_to_placeholder(self):
+    def test_disabled_sprite_does_not_draw_placeholder(self):
         entity = _make_entity("Item")
         sprite = Sprite(texture_path="item.png")
         sprite.enabled = False
@@ -122,16 +122,19 @@ class RenderSpriteAnimatorDispatchTests(unittest.TestCase):
 
         self.assertFalse(self.tracker.drew_sprite)
         self.assertFalse(self.tracker.drew_animator)
-        self.assertTrue(self.tracker.drew_placeholder)
+        self.assertFalse(self.tracker.drew_polygon)
+        self.assertFalse(self.tracker.drew_placeholder)
 
-    def test_sprite_no_texture_path_falls_through_to_placeholder(self):
+    def test_sprite_no_texture_path_does_not_draw_placeholder(self):
         entity = _make_entity("Item")
         entity.add_component(Sprite(texture_path=""))
 
         self.rs._render_entity(entity, entity.get_component(Transform))
 
         self.assertFalse(self.tracker.drew_sprite)
-        self.assertTrue(self.tracker.drew_placeholder)
+        self.assertFalse(self.tracker.drew_animator)
+        self.assertFalse(self.tracker.drew_polygon)
+        self.assertFalse(self.tracker.drew_placeholder)
 
     # --- Animator-only ---
 
@@ -144,7 +147,7 @@ class RenderSpriteAnimatorDispatchTests(unittest.TestCase):
         self.assertTrue(self.tracker.drew_animator)
         self.assertFalse(self.tracker.drew_sprite)
 
-    def test_disabled_animator_falls_through_to_placeholder(self):
+    def test_disabled_animator_does_not_draw_placeholder(self):
         entity = _make_entity("Hero")
         anim = Animator(sprite_sheet="spritesheet.png")
         anim.enabled = False
@@ -152,8 +155,10 @@ class RenderSpriteAnimatorDispatchTests(unittest.TestCase):
 
         self.rs._render_entity(entity, entity.get_component(Transform))
 
+        self.assertFalse(self.tracker.drew_sprite)
         self.assertFalse(self.tracker.drew_animator)
-        self.assertTrue(self.tracker.drew_placeholder)
+        self.assertFalse(self.tracker.drew_polygon)
+        self.assertFalse(self.tracker.drew_placeholder)
 
     # --- Polygon fallback ---
 
