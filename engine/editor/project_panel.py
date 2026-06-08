@@ -286,37 +286,44 @@ class ProjectPanel:
 
         filter_x = x + 10
         filter_y = y + 29
+        right_limit = x + width - 124
+
         for key in self.FILTER_ORDER:
-            label = self.FILTER_LABELS[key]
-            button_width = 56 if key != "prefabs" else 62
+            label = f"* {self.FILTER_LABELS[key]}" if self.asset_filter == key else self.FILTER_LABELS[key]
+            button_width = max(48, rl.measure_text(label, 10) + 18)
+            if filter_x + button_width > right_limit:
+                break
             button_rect = rl.Rectangle(filter_x, filter_y, float(button_width), 18.0)
             self._register_cursor_rect(button_rect)
-            button_label = f"* {label}" if self.asset_filter == key else label
-            if rl.gui_button(button_rect, button_label):
+            if rl.gui_button(button_rect, label):
                 self.set_asset_filter(key)
             filter_x += button_width + 6
 
         toggle_x = filter_x + 4
-        if toggle_x + 140 < x + width - 124:
-            grid_rect = rl.Rectangle(toggle_x, filter_y, 42.0, 18.0)
-            list_rect = rl.Rectangle(toggle_x + 46, filter_y, 42.0, 18.0)
-            cards_rect = rl.Rectangle(toggle_x + 92, filter_y, 48.0, 18.0)
-            self._register_cursor_rect(grid_rect)
-            self._register_cursor_rect(list_rect)
-            self._register_cursor_rect(cards_rect)
-            if rl.gui_button(grid_rect, "* Grid" if self._view_mode == "grid" else "Grid"):
-                self.set_view_mode("grid")
-            if rl.gui_button(list_rect, "* List" if self._view_mode == "list" else "List"):
-                self.set_view_mode("list")
-            if rl.gui_button(cards_rect, "* Cards" if self._view_mode == "cards" else "Cards"):
-                self.set_view_mode("cards")
+        view_labels = [("grid", "Grid"), ("list", "List"), ("cards", "Cards")]
+        view_widths = [max(38, rl.measure_text("* " + lbl if self._view_mode == k else lbl, 10) + 18) for k, lbl in view_labels]
+        group_width = sum(view_widths) + 12
+        if toggle_x + group_width <= right_limit:
+            vx = toggle_x
+            for (key, lbl), vw in zip(view_labels, view_widths):
+                vlabel = f"* {lbl}" if self._view_mode == key else lbl
+                vrect = rl.Rectangle(vx, filter_y, float(vw), 18.0)
+                self._register_cursor_rect(vrect)
+                if rl.gui_button(vrect, vlabel):
+                    self.set_view_mode(key)
+                vx += vw + 6
+            controls_end = vx - 6
+        else:
+            controls_end = toggle_x - 4
 
-        breadcrumb_x = x + 360
-        for text, text_width in self._breadcrumb_cache:
-            if breadcrumb_x + text_width >= x + width - 124:
-                break
-            rl.draw_text(text, breadcrumb_x, y + 32, 10, self.UNITY_TEXT_DIM)
-            breadcrumb_x += text_width + 4
+        breadcrumb_x = controls_end + 8
+        breadcrumb_limit = x + width - 124
+        with editor_scissor(rl.Rectangle(controls_end + 8, filter_y, breadcrumb_limit - controls_end - 8, 18)):
+            for text, text_width in self._breadcrumb_cache:
+                if breadcrumb_x + text_width >= breadcrumb_limit:
+                    break
+                rl.draw_text(text, breadcrumb_x, y + 32, 10, self.UNITY_TEXT_DIM)
+                breadcrumb_x += text_width + 4
 
     def _render_sidebar(self, x: int, y: int, width: int, height: int) -> None:
         with editor_scissor(rl.Rectangle(x, y, width, height)):
@@ -860,3 +867,15 @@ class ProjectPanel:
 
     def _register_cursor_rect(self, rect: rl.Rectangle) -> None:
         self._cursor_interactive_rects.append(rl.Rectangle(rect.x, rect.y, rect.width, rect.height))
+
+    def _compute_header_controls_width(self) -> int:
+        total = 0
+        for key in self.FILTER_ORDER:
+            label = f"* {self.FILTER_LABELS[key]}" if self.asset_filter == key else self.FILTER_LABELS[key]
+            total += max(48, rl.measure_text(label, 10) + 18) + 6
+        total += 4
+        view_labels = [("grid", "Grid"), ("list", "List"), ("cards", "Cards")]
+        for k, lbl in view_labels:
+            vlabel = f"* {lbl}" if self._view_mode == k else lbl
+            total += max(38, rl.measure_text(vlabel, 10) + 18) + 6
+        return total
