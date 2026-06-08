@@ -1509,7 +1509,6 @@ class EditorLayout:
             self._draw_about_modal()
 
         TOAST_MANAGER.render(self.screen_width, self.screen_height)
-        self._render_global_context_menu()
 
     @property
     def dropdown_active(self) -> bool:
@@ -1521,6 +1520,11 @@ class EditorLayout:
         Debe llamarse en game.py después de renderizar Hierarchy e Inspector."""
         self._draw_menu_dropdown()
         self._draw_toolbar_dropdowns()
+
+    def draw_context_menu_overlay(self) -> None:
+        """Dibuja el menú contextual global por encima de todos los paneles.
+        Debe llamarse en game.py después de draw_top_dropdowns()."""
+        self._render_global_context_menu()
 
     def draw_project_launcher(self) -> None:
         self._reset_cursor_regions()

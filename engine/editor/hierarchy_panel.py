@@ -279,6 +279,9 @@ class HierarchyPanel:
             if action:
                 self._execute_context_action(world, action)
 
+        # Clipboard shortcuts: Ctrl+C / Ctrl+V
+        self._handle_clipboard_shortcuts(world, x, y, width, height, input_blocked)
+
     def _render_row(self, entity: Entity, depth: int, panel_x: int, y: int, world: "World", panel_y: int, panel_h: int) -> None:
         """Renderiza una fila visible de la jerarquia."""
         colors = self._resolve_colors()
@@ -537,6 +540,8 @@ class HierarchyPanel:
         if in_panel and not self._input_blocked and rl.is_mouse_button_pressed(rl.MOUSE_BUTTON_RIGHT):
             target_entity = world.get_entity(self.hovered_entity_id) if self.hovered_entity_id is not None else None
             self._context_target_name = target_entity.name if target_entity else None
+            if target_entity is not None:
+                self._set_selected_entity(world, target_entity.name)
             from engine.editor.ui_core.controls.context_menu import ContextMenuItem, ContextMenuModel
             items = [
                 ContextMenuItem(id="create_entity", label="Create Entity"),
@@ -544,11 +549,15 @@ class HierarchyPanel:
             if self._context_target_name:
                 items.extend([
                     ContextMenuItem(id="create_child_entity", label="Create Child Entity"),
-                    ContextMenuItem(id="delete_entity", label="Delete Entity"),
+                    ContextMenuItem(id="copy_entity", label="Copy Entity"),
+                    ContextMenuItem(id="paste_entity", label="Paste Entity"),
                     ContextMenuItem(id="duplicate_entity", label="Duplicate Entity"),
+                    ContextMenuItem(id="delete_entity", label="Delete Entity"),
                     ContextMenuItem(id="unparent", label="Unparent"),
                     ContextMenuItem(id="save_prefab", label="Save as Prefab"),
                 ])
+            else:
+                items.append(ContextMenuItem(id="paste_entity", label="Paste Entity"))
             menu = ContextMenuModel(items=items)
             if self._layout:
                 self._layout.show_context_menu(menu, mouse.x, mouse.y)
@@ -562,6 +571,14 @@ class HierarchyPanel:
                 new_ent = world.create_entity(new_name)
                 new_ent.add_component(Transform())
                 self._set_selected_entity(world, new_ent.name)
+
+        elif action == "copy_entity":
+            target_name = self._context_target_name
+            if target_name and self._scene_manager is not None:
+                self._scene_manager.copy_entity_subtree(target_name)
+
+        elif action == "paste_entity":
+            self._paste_copied_entities(world)
 
         elif action in ("delete_entity", "create_child_entity", "duplicate_entity", "unparent", "save_prefab"):
             target_name = self._context_target_name
@@ -616,6 +633,34 @@ class HierarchyPanel:
                         self._scene_manager.create_prefab(entity.name, path)
                 except Exception as e:
                     print(f"[ERROR] Save Prefab dialog failed: {e}")
+
+    def _paste_copied_entities(self, world: "World") -> bool:
+        if self._scene_manager is None:
+            return False
+        before_names = {e.name for e in world.iter_all_entities() if e.name}
+        if not self._scene_manager.paste_copied_entities():
+            return False
+        for entity in world.iter_all_entities():
+            if entity.name and entity.name not in before_names:
+                self._set_selected_entity(world, entity.name)
+                break
+        return True
+
+    def _handle_clipboard_shortcuts(self, world: "World", x: int, y: int, width: int, height: int, input_blocked: bool) -> None:
+        if input_blocked:
+            return
+        mouse = rl.get_mouse_position()
+        if not rl.check_collision_point_rec(mouse, rl.Rectangle(x, y, width, height)):
+            return
+        ctrl_down = rl.is_key_down(rl.KEY_LEFT_CONTROL) or rl.is_key_down(rl.KEY_RIGHT_CONTROL)
+        if not ctrl_down:
+            return
+        if rl.is_key_pressed(rl.KEY_C):
+            selected_name = self._get_selected_entity_name(world)
+            if selected_name and self._scene_manager is not None:
+                self._scene_manager.copy_entity_subtree(selected_name)
+        if rl.is_key_pressed(rl.KEY_V):
+            self._paste_copied_entities(world)
 
     def get_cursor_intent(self, mouse_pos: Optional[rl.Vector2] = None) -> CursorVisualState:
         mouse = rl.get_mouse_position() if mouse_pos is None else mouse_pos

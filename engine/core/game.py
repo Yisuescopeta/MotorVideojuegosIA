@@ -2136,6 +2136,11 @@ class Game:
                 _safe_reset_clip_state_runtime()
                 self.editor_layout.draw_top_dropdowns()
 
+            # Context menu overlay — por encima de paneles y dropdowns, antes del cursor
+            if self.editor_layout:
+                _safe_reset_clip_state_runtime()
+                self.editor_layout.draw_context_menu_overlay()
+
             if self._editor_interaction_controller is not None and self._cursor_renderer is not None:
                 try:
                     cursor_state = self._editor_interaction_controller.resolve_cursor_state(overlay_world)
