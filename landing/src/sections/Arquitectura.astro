@@ -96,10 +96,6 @@ import PixelCard from '../components/PixelCard.astro';
     margin-top: 48px;
   }
 
-  .arch-card {
-    padding: var(--card-padding);
-  }
-
   .tag {
     display: inline-block;
     font-family: 'Press Start 2P', monospace;
@@ -173,5 +169,11 @@ import PixelCard from '../components/PixelCard.astro';
     .arch-arrows-h {
       transform: rotate(90deg);
     }
+  }
+</style>
+
+<style is:global>
+  #arquitectura .arch-card {
+    padding: var(--card-padding);
   }
 </style>

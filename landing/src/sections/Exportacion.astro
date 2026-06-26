@@ -107,15 +107,6 @@ import PixelCard from '../components/PixelCard.astro';
     margin-top: 48px;
   }
 
-  .platform-card {
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    text-align: center;
-  }
-
   .platform-dot {
     width: 10px;
     height: 10px;
@@ -143,5 +134,16 @@ import PixelCard from '../components/PixelCard.astro';
     .platform-grid {
       grid-template-columns: repeat(2, 1fr);
     }
+  }
+</style>
+
+<style is:global>
+  #exportacion .platform-card {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    text-align: center;
   }
 </style>

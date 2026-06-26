@@ -89,10 +89,6 @@ import PixelCard from '../components/PixelCard.astro';
     margin-top: 48px;
   }
 
-  .cli-card {
-    padding: 20px;
-  }
-
   @media (max-width: 991px) {
     .cli-cards {
       grid-template-columns: repeat(2, 1fr);
@@ -103,5 +99,11 @@ import PixelCard from '../components/PixelCard.astro';
     .cli-cards {
       grid-template-columns: 1fr;
     }
+  }
+</style>
+
+<style is:global>
+  #cli .cli-card {
+    padding: 20px;
   }
 </style>

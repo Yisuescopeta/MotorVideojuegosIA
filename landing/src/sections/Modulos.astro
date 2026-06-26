@@ -64,10 +64,6 @@ import PixelCard from '../components/PixelCard.astro';
     margin-top: 48px;
   }
 
-  .module-card {
-    padding: 28px;
-  }
-
   .module-divider {
     height: 1px;
     background: var(--border);
@@ -94,5 +90,11 @@ import PixelCard from '../components/PixelCard.astro';
     .modules-grid {
       grid-template-columns: 1fr;
     }
+  }
+</style>
+
+<style is:global>
+  #modulos .module-card {
+    padding: 28px;
   }
 </style>
