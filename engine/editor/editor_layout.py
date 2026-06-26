@@ -2671,42 +2671,7 @@ class EditorLayout:
         rl.draw_line(right, bottom - length, right, bottom, accent)
 
     def _draw_viewport_overlay(self, view_rect: rl.Rectangle) -> None:
-        try:
-            fps = int(rl.get_fps() or 0)
-        except Exception:
-            fps = 0
-
-        lines = [
-            f"FPS {fps}",
-            f"Zoom {self.editor_camera.zoom:.2f}",
-            f"Target {self.editor_camera.target.x:.1f}, {self.editor_camera.target.y:.1f}",
-        ]
-        if self.active_tab == "GAME":
-            profile = get_device_profile(self.game_view_device_profile)
-            lines = [f"Profile {profile.label}"]
-            if self.active_tool == EditorTool.CAMERA:
-                lines.append("Camera Edit")
-        if self.active_tab == "SCENE":
-            try:
-                mouse_world = self.get_scene_mouse_pos()
-                lines.insert(1, f"Mouse {mouse_world.x:.1f}, {mouse_world.y:.1f}")
-            except Exception:
-                pass
-        selected = self.viewport_overlay_context.get("selected_entity")
-        if selected is not None:
-            lines.append(f"Selected {selected}")
-
-        padding = 8
-        line_h = 14
-        width = max((self._measure_text(line, 10) for line in lines), default=0) + padding * 2
-        height = len(lines) * line_h + padding * 2
-        overlay = rl.Rectangle(view_rect.x + 8, view_rect.y + 8, float(width), float(height))
-        rl.draw_rectangle_rec(overlay, rl.Color(0, 0, 0, 105))
-        rl.draw_rectangle_lines_ex(overlay, 1, rl.Color(255, 255, 255, 28))
-        text_y = int(overlay.y + padding)
-        for line in lines:
-            rl.draw_text(line, int(overlay.x + padding), text_y, 10, self.UNITY_TEXT)
-            text_y += line_h
+        _ = view_rect
 
     def _draw_project_modal(self) -> None:
         rl.draw_rectangle(0, 0, self.screen_width, self.screen_height, rl.Color(0, 0, 0, 150))

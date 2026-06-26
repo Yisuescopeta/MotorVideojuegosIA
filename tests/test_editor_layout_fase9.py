@@ -120,7 +120,7 @@ class EditorLayoutFase9Tests(unittest.TestCase):
         self.layout.set_viewport_overlay_context(selected_entity="player")
         self.assertEqual(self.layout.viewport_overlay_context["selected_entity"], "player")
 
-    def test_draw_layout_smoke_draws_viewport_chrome_and_overlay(self) -> None:
+    def test_draw_layout_smoke_draws_viewport_chrome_without_overlay(self) -> None:
         self.layout.active_tab = "SCENE"
         self.layout.set_viewport_overlay_context(selected_entity="player")
         with patch.object(self.layout, "get_scene_mouse_pos", Mock(return_value=layout_module.rl.Vector2(1.0, 2.0))):
@@ -128,9 +128,9 @@ class EditorLayoutFase9Tests(unittest.TestCase):
 
         self.assertTrue(layout_module.rl.draw_rectangle_lines_ex.called)
         drawn_text = [call.args[0] for call in layout_module.rl.draw_text.call_args_list]
-        self.assertIn("FPS 60", drawn_text)
-        self.assertIn("Mouse 1.0, 2.0", drawn_text)
-        self.assertIn("Selected player", drawn_text)
+        self.assertNotIn("FPS 60", drawn_text)
+        self.assertNotIn("Mouse 1.0, 2.0", drawn_text)
+        self.assertNotIn("Selected player", drawn_text)
 
     def test_scene_mouse_vector_uses_viewport_local_position(self) -> None:
         view_rect = self.layout.get_center_view_rect()

@@ -213,7 +213,8 @@ def on_update(context, dt: float) -> None:
     facing = _facing(horizontal, vertical, last_facing)
 
     if facing == "side":
-        animator.flip_x = horizontal < -INPUT_DEAD_ZONE
+        if abs(horizontal) > INPUT_DEAD_ZONE:
+            animator.flip_x = horizontal < 0
         target_state = "walk_side" if moving else "idle_side"
     elif facing == "up":
         target_state = "walk_up" if moving else "idle_up"
