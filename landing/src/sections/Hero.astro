@@ -1,0 +1,155 @@
+---
+import SectionWrapper from '../components/SectionWrapper.astro';
+---
+
+<SectionWrapper className="grid-pattern" style="min-height: 100vh; display: flex; align-items: center; padding-top: 64px;">
+  <div class="container" style="width: 100%;">
+    <div class="hero-grid">
+      <!-- Left column -->
+      <div class="hero-left">
+        <div class="stagger-child">
+          <span class="badge">EXPERIMENTAL — PYTHON 3.11+</span>
+        </div>
+        <h1 class="font-display stagger-child" style="margin-top: 24px;">
+          MotorVideojuegosIA
+        </h1>
+        <p class="font-h1 stagger-child" style="color: var(--text-secondary); margin-top: 16px;">
+          Motor 2D IA-first en Python
+        </p>
+        <p class="font-body stagger-child" style="color: var(--text-secondary); margin-top: 24px; max-width: 520px;">
+          Motor/editor experimental para crear, editar, ejecutar y exportar juegos 2D mediante escenas serializables, CLI oficial y una API pública pensada para automatización e IA.
+        </p>
+        <div class="hero-buttons stagger-child" style="margin-top: 32px;">
+          <a href="https://github.com/Yisuescopeta/MotorVideojuegosIA" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
+            VER REPOSITORIO →
+          </a>
+          <a href="https://github.com/Yisuescopeta/MotorVideojuegosIA/blob/main/docs/README.md" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
+            LEER DOCUMENTACION →
+          </a>
+        </div>
+      </div>
+
+      <!-- Right column — Diagram -->
+      <div class="hero-right stagger-child">
+        <div class="flow-diagram">
+          <div class="flow-box">
+            <span class="font-h2" style="font-size: 14px;">Scene serializable</span>
+            <span class="font-label" style="color: var(--text-muted); margin-top: 8px; display: block;">fuente de verdad</span>
+          </div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-box">
+            <span class="font-h2" style="font-size: 14px;">Edit World</span>
+            <span class="font-label" style="color: var(--text-muted); margin-top: 8px; display: block;">proyeccion</span>
+          </div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-box pulse-box" style="border-color: var(--code-green);">
+            <span class="font-h2" style="font-size: 14px; color: var(--code-green);">PLAY Runtime World</span>
+            <span class="font-label" style="color: var(--code-green); margin-top: 8px; display: block;">simulacion</span>
+          </div>
+          <div class="flow-arrow">↓</div>
+          <div class="flow-box">
+            <span class="font-h2" style="font-size: 14px;">STOP → vuelve a Scene</span>
+            <span class="font-label" style="color: var(--text-muted); margin-top: 8px; display: block;">persistencia</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scroll indicator -->
+    <div class="scroll-indicator bounce-arrow">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="square">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </div>
+  </div>
+</SectionWrapper>
+
+<style>
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 55% 45%;
+    gap: 48px;
+    align-items: center;
+    min-height: calc(100vh - 64px);
+  }
+
+  .badge {
+    display: inline-block;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 10px;
+    color: var(--code-green);
+    border: 1px solid var(--code-green);
+    padding: 8px 12px;
+  }
+
+  .hero-buttons {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .hero-right {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .flow-diagram {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  .flow-box {
+    background: var(--surface);
+    border: 2px solid var(--border-hover);
+    padding: 20px 28px;
+    text-align: center;
+    min-width: 260px;
+    position: relative;
+  }
+
+  .flow-arrow {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 18px;
+    color: var(--border-hover);
+    padding: 8px 0;
+    line-height: 1;
+  }
+
+  .scroll-indicator {
+    position: absolute;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  @media (max-width: 767px) {
+    .hero-grid {
+      grid-template-columns: 1fr;
+      gap: 48px;
+      padding-top: 32px;
+      padding-bottom: 64px;
+      min-height: auto;
+    }
+
+    .hero-right {
+      order: 2;
+    }
+
+    .flow-box {
+      min-width: 240px;
+      padding: 16px 20px;
+    }
+
+    .hero-buttons {
+      flex-direction: column;
+    }
+
+    .hero-buttons .btn {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+</style>

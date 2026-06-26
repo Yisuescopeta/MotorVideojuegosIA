@@ -1,0 +1,28 @@
+---
+import SectionWrapper from '../components/SectionWrapper.astro';
+---
+
+<SectionWrapper id="introduccion" style="padding: var(--section-padding) 0; background: var(--bg);">
+  <div class="container" style="max-width: 800px; text-align: center;">
+    <h2 class="font-h1 stagger-child">Que es MotorVideojuegosIA?</h2>
+    <p class="font-body stagger-child" style="color: var(--text-secondary); margin-top: 24px;">
+      MotorVideojuegosIA es un motor/editor 2D experimental construido en Python. Su objetivo es separar claramente el contenido persistente, la simulacion en runtime y las herramientas de authoring, permitiendo que humanos, scripts y agentes IA trabajen sobre el mismo modelo de datos.
+    </p>
+    <div class="divider stagger-child"></div>
+    <div class="stagger-child" style="display: flex; align-items: flex-start; gap: 12px; text-align: left; justify-content: center;">
+      <span style="color: var(--code-red); font-size: 20px; line-height: 1.4; flex-shrink: 0;">&#9888;</span>
+      <p class="font-body-small" style="color: var(--text-muted); margin: 0;">
+        Este proyecto es experimental. Algunas capacidades son oficiales y estables, mientras que otras areas como RL, datasets y tooling multiagente se tratan explicitamente como experimental/tooling.
+      </p>
+    </div>
+  </div>
+</SectionWrapper>
+
+<style>
+  .divider {
+    width: 80px;
+    height: 2px;
+    background: var(--border-hover);
+    margin: 40px auto;
+  }
+</style>

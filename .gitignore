@@ -36,6 +36,12 @@ htmlcov/
 *.tmp
 *.temp
 
+# Node / Astro
+node_modules/
+landing/node_modules/
+landing/.astro/
+landing/dist/
+
 # Python path configuration (generated, not tracked)
 test.pth
 .motor/agent_state/

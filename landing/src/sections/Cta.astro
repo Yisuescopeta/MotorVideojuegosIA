@@ -1,0 +1,83 @@
+---
+import SectionWrapper from '../components/SectionWrapper.astro';
+---
+
+<SectionWrapper style="padding: 160px 0; background: var(--bg-alt); border-top: 1px solid var(--border);">
+  <div class="container" style="text-align: center;">
+    <h2 class="font-display stagger-child">MotorVideojuegosIA</h2>
+    <p class="font-body stagger-child" style="color: var(--text-secondary); max-width: 720px; margin: 32px auto 0;">
+      No es solo una demo: es una base experimental para construir juegos 2D con un modelo de datos serializable, una API automatizable y un flujo preparado para trabajar con herramientas IA.
+    </p>
+
+    <div class="divider stagger-child"></div>
+
+    <div class="cta-buttons stagger-child">
+      <a href="https://github.com/Yisuescopeta/MotorVideojuegosIA" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
+        VER REPOSITORIO &#8594;
+      </a>
+      <a href="https://github.com/Yisuescopeta/MotorVideojuegosIA#readme" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
+        LEER README &#8594;
+      </a>
+      <a href="https://github.com/Yisuescopeta/MotorVideojuegosIA/blob/main/docs/architecture.md" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
+        VER ARQUITECTURA &#8594;
+      </a>
+      <a href="https://github.com/Yisuescopeta/MotorVideojuegosIA/blob/main/docs/cli.md" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
+        VER CLI &#8594;
+      </a>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer style="margin-top: 160px; padding: 40px 0 0; border-top: 1px solid var(--border);">
+    <div class="container" style="text-align: center;">
+      <p class="font-body-small" style="color: var(--text-muted);">
+        MotorVideojuegosIA — Motor 2D experimental en Python
+      </p>
+      <p style="margin-top: 8px;">
+        <a href="https://github.com/Yisuescopeta/MotorVideojuegosIA" target="_blank" rel="noopener noreferrer" class="footer-link">
+          GitHub
+        </a>
+      </p>
+    </div>
+  </footer>
+</SectionWrapper>
+
+<style>
+  .divider {
+    width: 60px;
+    height: 2px;
+    background: var(--border-hover);
+    margin: 48px auto;
+  }
+
+  .cta-buttons {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .footer-link {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    color: var(--code-blue);
+    text-decoration: underline;
+  }
+
+  .footer-link:hover {
+    color: var(--text-primary);
+  }
+
+  @media (max-width: 767px) {
+    .cta-buttons {
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .cta-buttons .btn {
+      width: 100%;
+      max-width: 320px;
+      justify-content: center;
+    }
+  }
+</style>
