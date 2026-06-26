@@ -1,10 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <!-- Pixel art letter M -->
-  <rect x="2" y="2" width="4" height="28" fill="white"/>
-  <rect x="6" y="2" width="4" height="8" fill="white"/>
-  <rect x="10" y="10" width="4" height="4" fill="white"/>
-  <rect x="14" y="14" width="4" height="4" fill="white"/>
-  <rect x="18" y="10" width="4" height="4" fill="white"/>
-  <rect x="22" y="2" width="4" height="8" fill="white"/>
-  <rect x="26" y="2" width="4" height="28" fill="white"/>
+  <!-- Pixel art letter O -->
+  <rect x="6" y="2" width="20" height="4" fill="white"/>
+  <rect x="2" y="6" width="4" height="20" fill="white"/>
+  <rect x="26" y="6" width="4" height="20" fill="white"/>
+  <rect x="6" y="26" width="20" height="4" fill="white"/>
 </svg>
